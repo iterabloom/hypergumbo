@@ -16,6 +16,13 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Added
 
+#### Android XML components folded onto canonical `component` kind (WI-razus)
+
+- `xml_config.py:_process_android_application` now emits `kind="component"` for AndroidManifest `<activity>` / `<service>` / `<receiver>` / `<provider>` elements (previously each emitted the bare element name, none of which were in the canonical `SYMBOL_KINDS` registry). The original element name lives on `meta["component_type"]` (already populated pre-fold), so consumers can still distinguish the four shapes.
+- `config-conventions.yaml`'s four `android_component` rules migrate from `symbol_kind: "^activity$"` (etc.) to `symbol_kind: "^component$"` + `meta_match: {component_type: "^activity$"}` (etc.), per the WI-limas meta_match mechanism. The four rules are individually pinned by new tests in `TestConfigConventionsMigratedRules`.
+- Routing Android `<provider>` through `component` + `meta["component_type"]="provider"` keeps the existing canonical `provider` kind (Apex/Salesforce `[Provider]`) cleanly disjoint from Android content providers — both consumer paths stay correct without smuggling Android semantics into the Apex kind.
+- Producers / tests / framework rules updated in lockstep; no consumer-side hardcoded `kind == "activity"` checks remain in `test_xml_analyzer.py` or `BRANCHES_test_xml_config.py`. The synthetic kind="activity" reference in `test_pattern_meta_match_value_must_be_string` rewritten to use the new shape.
+
 #### Solidity `contract` promoted to canonical `Symbol.kind` (WI-jujoj)
 
 - `symbol_kinds.SYMBOL_KINDS` gains `SymbolKindSpec("contract", AXIS_LANGUAGE_CONSTRUCT, ...)`. Path-1 verdict per WI-jujoj's tracker description: smart-contract declarations are a source-language top-level construct (sibling to `class` / `interface` / `struct`), not a relabel of an existing canonical kind — folding to `class + meta["contract_kind"]="contract"` would have been the less honest option since Solidity contracts are not classes.

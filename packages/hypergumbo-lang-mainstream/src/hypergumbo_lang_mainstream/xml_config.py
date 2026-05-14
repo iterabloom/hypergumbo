@@ -451,7 +451,21 @@ def _process_android_application(
                                 shape_id=None,
                                 canonical_name=full_name,
                                 fingerprint=hashlib.sha256(source[sub.start_byte:sub.end_byte]).hexdigest()[:16],
-                                kind=elem_name,
+                                # WI-razus: AndroidManifest.xml's activity /
+                                # service / receiver / provider elements are
+                                # all variants of the same source-language
+                                # construct (a registered application
+                                # component). Fold all four onto the
+                                # canonical "component" kind; the original
+                                # element name lives on
+                                # meta["component_type"] (already populated
+                                # above) and config-conventions.yaml uses
+                                # meta_match to distinguish them. Routing
+                                # Android <provider> through component+meta
+                                # also keeps the existing canonical
+                                # "provider" kind (Apex/Salesforce) cleanly
+                                # disjoint.
+                                kind="component",
                                 name=short_name,
                                 path=rel_path,
                                 language="xml",

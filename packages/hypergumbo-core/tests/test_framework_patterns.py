@@ -975,19 +975,19 @@ class TestPattern:
         """
         pattern = Pattern(
             concept="exported_component",
-            symbol_kind=r"^activity$",
+            symbol_kind=r"^component$",
             language=r"^xml$",
             meta_match={"exported": r"^True$"},
         )
 
         sym = Symbol(
-            id="test:AndroidManifest.xml:1:MainActivity:activity",
+            id="test:AndroidManifest.xml:1:MainActivity:component",
             name="MainActivity",
-            kind="activity",
+            kind="component",
             language="xml",
             path="AndroidManifest.xml",
             span=Span(1, 1, 0, 10),
-            meta={"exported": True},
+            meta={"exported": True, "component_type": "activity"},
         )
         assert pattern.matches(sym) is not None
 
@@ -1432,6 +1432,77 @@ class TestConfigConventionsMigratedRules:
         )
         concepts = self._concepts_for(pat, sym)
         assert "pyproject_script" in concepts
+
+    # WI-razus: Android component fold. xml_config.py emits kind="component"
+    # with meta["component_type"] = "activity" / "service" / "receiver" /
+    # "provider"; config-conventions.yaml has four rules with meta_match on
+    # component_type. These four tests pin each rule to a producer-shaped
+    # synthetic symbol and assert the android_component concept fires.
+
+    def test_android_activity_post_fold(self) -> None:
+        """Android activity: kind="component" + meta["component_type"]="activity"."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="xml:AndroidManifest.xml:10-20:MainActivity:component",
+            name="MainActivity",
+            kind="component",
+            language="xml",
+            path="AndroidManifest.xml",
+            span=Span(10, 20, 0, 200),
+            meta={"component_type": "activity", "full_name": "com.example.MainActivity"},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "android_component" in concepts
+
+    def test_android_service_post_fold(self) -> None:
+        """Android service: kind="component" + meta["component_type"]="service"."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="xml:AndroidManifest.xml:22-25:BgService:component",
+            name="BgService",
+            kind="component",
+            language="xml",
+            path="AndroidManifest.xml",
+            span=Span(22, 25, 0, 100),
+            meta={"component_type": "service", "full_name": "com.example.BgService"},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "android_component" in concepts
+
+    def test_android_receiver_post_fold(self) -> None:
+        """Android receiver: kind="component" + meta["component_type"]="receiver"."""
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="xml:AndroidManifest.xml:27-30:BootReceiver:component",
+            name="BootReceiver",
+            kind="component",
+            language="xml",
+            path="AndroidManifest.xml",
+            span=Span(27, 30, 0, 100),
+            meta={"component_type": "receiver", "full_name": "com.example.BootReceiver"},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "android_component" in concepts
+
+    def test_android_provider_post_fold(self) -> None:
+        """Android provider: kind="component" + meta["component_type"]="provider".
+
+        Routed through component+meta (not the canonical "provider" kind)
+        so Android content providers stay disjoint from Apex/Salesforce
+        providers, which keep the canonical "provider" Symbol.kind.
+        """
+        pat = self._load_config_conventions()
+        sym = Symbol(
+            id="xml:AndroidManifest.xml:32-35:MyContentProvider:component",
+            name="MyContentProvider",
+            kind="component",
+            language="xml",
+            path="AndroidManifest.xml",
+            span=Span(32, 35, 0, 100),
+            meta={"component_type": "provider", "full_name": "com.example.MyContentProvider"},
+        )
+        concepts = self._concepts_for(pat, sym)
+        assert "android_component" in concepts
 
 
 class TestLanguageConventionsMigratedRules:
@@ -10514,20 +10585,27 @@ class TestConfigConventionPatterns:
         assert result["concept"] == "android_permission"
 
     def test_android_activity_pattern(self) -> None:
-        """Pattern matches Android activities."""
+        """Pattern matches Android activities (folded onto kind="component" + meta).
+
+        WI-razus: AndroidManifest <activity> / <service> / <receiver> /
+        <provider> elements all emit kind="component" with the original
+        element name in meta["component_type"]; config-conventions.yaml
+        uses meta_match to distinguish them.
+        """
         pattern = Pattern(
             concept="android_component",
-            symbol_kind="^activity$",
+            symbol_kind="^component$",
             language="^xml$",
+            meta_match={"component_type": "^activity$"},
         )
         symbol = Symbol(
-            id="xml:AndroidManifest.xml:10-20:MainActivity:activity",
+            id="xml:AndroidManifest.xml:10-20:MainActivity:component",
             name="MainActivity",
-            kind="activity",
+            kind="component",
             language="xml",
             path="AndroidManifest.xml",
             span=Span(10, 20, 0, 200),
-            meta={},
+            meta={"component_type": "activity"},
         )
         result = pattern.matches(symbol)
         assert result is not None

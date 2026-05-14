@@ -205,7 +205,12 @@ def test_analyze_android_manifest_activities(tmp_path):
 
     assert not result.skipped
 
-    activities = [s for s in result.symbols if s.kind == "activity"]
+    # WI-razus: AndroidManifest components fold to kind="component" with
+    # meta["component_type"] = "activity" / "service" / "receiver" / "provider".
+    activities = [
+        s for s in result.symbols
+        if s.kind == "component" and s.meta and s.meta.get("component_type") == "activity"
+    ]
     assert len(activities) >= 2
 
     main_activity = next((a for a in activities if a.name == "MainActivity"), None)
@@ -236,7 +241,10 @@ def test_analyze_android_manifest_services(tmp_path):
 """)
     result = analyze_xml_files(tmp_path)
 
-    services = [s for s in result.symbols if s.kind == "service"]
+    services = [
+        s for s in result.symbols
+        if s.kind == "component" and s.meta and s.meta.get("component_type") == "service"
+    ]
     assert len(services) >= 1
     assert services[0].name == "BackgroundService"
 
@@ -286,12 +294,18 @@ def test_analyze_android_receivers_and_providers(tmp_path):
 """)
     result = analyze_xml_files(tmp_path)
 
-    receivers = [s for s in result.symbols if s.kind == "receiver"]
+    receivers = [
+        s for s in result.symbols
+        if s.kind == "component" and s.meta and s.meta.get("component_type") == "receiver"
+    ]
     assert len(receivers) >= 1
     assert receivers[0].name == "BootReceiver"
     assert "android.intent.action.BOOT_COMPLETED" in receivers[0].meta.get("intent_actions", [])
 
-    providers = [s for s in result.symbols if s.kind == "provider"]
+    providers = [
+        s for s in result.symbols
+        if s.kind == "component" and s.meta and s.meta.get("component_type") == "provider"
+    ]
     assert len(providers) >= 1
     assert providers[0].name == "MyContentProvider"
 
@@ -309,7 +323,10 @@ def test_analyze_android_fully_qualified_name(tmp_path):
 """)
     result = analyze_xml_files(tmp_path)
 
-    activities = [s for s in result.symbols if s.kind == "activity"]
+    activities = [
+        s for s in result.symbols
+        if s.kind == "component" and s.meta and s.meta.get("component_type") == "activity"
+    ]
     assert len(activities) >= 1
     # Should use the full name as-is (not prefixed with package)
     assert activities[0].meta.get("full_name") == "com.other.library.LibraryActivity"

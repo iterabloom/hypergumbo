@@ -86,25 +86,36 @@ patterns:
     symbol_kind: "^permission$"
     language: "^xml$"
 
-  # Android activities (potential entry points)
+  # Android activities / services / receivers / providers (potential entry
+  # points). Producer xml_config.py:_process_android_application emits
+  # kind="component" with meta["component_type"] = "activity" | "service" |
+  # "receiver" | "provider" per WI-razus's canonical fold; the four rules
+  # below filter on the meta key. Routing <provider> through
+  # component+meta keeps the canonical "provider" kind (Apex/Salesforce)
+  # cleanly disjoint from Android content providers.
   - concept: android_component
-    symbol_kind: "^activity$"
+    symbol_kind: "^component$"
     language: "^xml$"
+    meta_match:
+      component_type: "^activity$"
 
-  # Android services
   - concept: android_component
-    symbol_kind: "^service$"
+    symbol_kind: "^component$"
     language: "^xml$"
+    meta_match:
+      component_type: "^service$"
 
-  # Android receivers
   - concept: android_component
-    symbol_kind: "^receiver$"
+    symbol_kind: "^component$"
     language: "^xml$"
+    meta_match:
+      component_type: "^receiver$"
 
-  # Android providers
   - concept: android_component
-    symbol_kind: "^provider$"
+    symbol_kind: "^component$"
     language: "^xml$"
+    meta_match:
+      component_type: "^provider$"
 
   # ====== Cargo/Rust (toml_config.py) ======
   # Cargo dependencies

@@ -144,7 +144,12 @@ class TestAndroidManifestExtraction:
 </manifest>
 """)
         result = analyze_xml_files(tmp_path)
-        activities = [s for s in result.symbols if s.kind == "activity"]
+        # WI-razus: Android components fold to kind="component" +
+        # meta["component_type"].
+        activities = [
+            s for s in result.symbols
+            if s.kind == "component" and s.meta and s.meta.get("component_type") == "activity"
+        ]
 
         assert len(activities) >= 1
         activity = activities[0]
@@ -164,7 +169,10 @@ class TestAndroidManifestExtraction:
 </manifest>
 """)
         result = analyze_xml_files(tmp_path)
-        services = [s for s in result.symbols if s.kind == "service"]
+        services = [
+            s for s in result.symbols
+            if s.kind == "component" and s.meta and s.meta.get("component_type") == "service"
+        ]
 
         assert len(services) >= 1
 
@@ -179,7 +187,10 @@ class TestAndroidManifestExtraction:
 </manifest>
 """)
         result = analyze_xml_files(tmp_path)
-        receivers = [s for s in result.symbols if s.kind == "receiver"]
+        receivers = [
+            s for s in result.symbols
+            if s.kind == "component" and s.meta and s.meta.get("component_type") == "receiver"
+        ]
 
         assert len(receivers) >= 1
 
@@ -194,7 +205,10 @@ class TestAndroidManifestExtraction:
 </manifest>
 """)
         result = analyze_xml_files(tmp_path)
-        providers = [s for s in result.symbols if s.kind == "provider"]
+        providers = [
+            s for s in result.symbols
+            if s.kind == "component" and s.meta and s.meta.get("component_type") == "provider"
+        ]
 
         assert len(providers) >= 1
 
