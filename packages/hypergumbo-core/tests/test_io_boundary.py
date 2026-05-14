@@ -3401,6 +3401,429 @@ class TestCatalogMerge:
         assert "exec" in merged.ambiguous_names
 
 
+class TestStdlibModulesAndFilter2:
+    """F3 PR-C: stdlib_modules / stdlib_prefixes / per-module completeness.
+
+    These tests pin the behavior of:
+    - :attr:`IoBoundaryCatalog.stdlib_modules` (frozenset)
+    - :attr:`IoBoundaryCatalog.stdlib_prefixes` (tuple)
+    - :attr:`IoBoundaryCatalog.stdlib_module_completeness` (dict)
+    - :meth:`IoBoundaryCatalog.is_stdlib_module` (exact + prefix)
+    - :meth:`IoBoundaryCatalog.is_stdlib_module_complete`
+    - YAML parser for the new shapes (flat list AND list-of-dicts with
+      ``completeness:``)
+    - ``merge`` propagation for all three fields
+    - Filter 2 in ``_compute_external_potential`` (module gating)
+    """
+
+    def test_is_stdlib_module_exact(self) -> None:
+        cat = IoBoundaryCatalog(
+            language="python",
+            stdlib_modules=frozenset({"os", "sys", "re"}),
+        )
+        assert cat.is_stdlib_module("os")
+        assert cat.is_stdlib_module("sys")
+        assert not cat.is_stdlib_module("not_a_stdlib")
+
+    def test_is_stdlib_module_empty_string_returns_false(self) -> None:
+        cat = IoBoundaryCatalog(
+            language="python",
+            stdlib_modules=frozenset({"os"}),
+        )
+        assert cat.is_stdlib_module("") is False
+
+    def test_is_stdlib_module_prefix_dot(self) -> None:
+        cat = IoBoundaryCatalog(
+            language="java",
+            stdlib_prefixes=("java.util", "java.io"),
+        )
+        # Exact prefix match.
+        assert cat.is_stdlib_module("java.util")
+        # Sub-module under prefix.
+        assert cat.is_stdlib_module("java.util.HashMap")
+        assert cat.is_stdlib_module("java.io.File")
+        # Lookalike that is NOT a sub-module — must NOT match the prefix.
+        assert not cat.is_stdlib_module("java.utilities")
+
+    def test_is_stdlib_module_prefix_slash(self) -> None:
+        cat = IoBoundaryCatalog(
+            language="go",
+            stdlib_prefixes=("encoding",),
+        )
+        assert cat.is_stdlib_module("encoding")
+        assert cat.is_stdlib_module("encoding/json")
+        assert not cat.is_stdlib_module("encoder/foo")
+
+    def test_is_stdlib_module_empty_catalog_returns_false(self) -> None:
+        cat = IoBoundaryCatalog(language="python")
+        assert not cat.is_stdlib_module("os")
+
+    def test_is_stdlib_module_complete_flag(self) -> None:
+        cat = IoBoundaryCatalog(
+            language="python",
+            stdlib_modules=frozenset({"math", "os"}),
+            stdlib_module_completeness={"math": "2026-05-13"},
+        )
+        assert cat.is_stdlib_module_complete("math")
+        # Listed in stdlib_modules but not flagged complete.
+        assert not cat.is_stdlib_module_complete("os")
+        # Not listed at all.
+        assert not cat.is_stdlib_module_complete("unknown")
+
+    def test_from_yaml_parses_flat_list_of_strings(
+        self, tmp_path: Path,
+    ) -> None:
+        yaml_path = tmp_path / "lang.yaml"
+        yaml_path.write_text(
+            "language: python\n"
+            "status: in_progress\n"
+            "stdlib_modules:\n"
+            "  - os\n"
+            "  - sys\n"
+            "  - re\n",
+        )
+        cat = IoBoundaryCatalog.from_yaml(yaml_path)
+        assert cat.stdlib_modules == frozenset({"os", "sys", "re"})
+        assert cat.stdlib_module_completeness == {}
+
+    def test_from_yaml_parses_list_of_dicts_with_completeness(
+        self, tmp_path: Path,
+    ) -> None:
+        yaml_path = tmp_path / "lang.yaml"
+        yaml_path.write_text(
+            "language: python\n"
+            "status: in_progress\n"
+            "stdlib_modules:\n"
+            "  - module: math\n"
+            "    completeness: complete\n"
+            '    retrieved: "2026-05-13"\n'
+            "  - module: os\n"
+            "  - foo_should_be_ignored\n",  # mixed-shape entry
+        )
+        cat = IoBoundaryCatalog.from_yaml(yaml_path)
+        assert cat.stdlib_modules == frozenset(
+            {"math", "os", "foo_should_be_ignored"},
+        )
+        assert cat.stdlib_module_completeness == {"math": "2026-05-13"}
+
+    def test_from_yaml_rejects_completeness_without_retrieved(
+        self, tmp_path: Path,
+    ) -> None:
+        yaml_path = tmp_path / "lang.yaml"
+        yaml_path.write_text(
+            "language: python\n"
+            "status: in_progress\n"
+            "stdlib_modules:\n"
+            "  - module: math\n"
+            "    completeness: complete\n",
+        )
+        with pytest.raises(ValueError, match="retrieved"):
+            IoBoundaryCatalog.from_yaml(yaml_path)
+
+    def test_from_yaml_skips_dict_without_module_name(
+        self, tmp_path: Path,
+    ) -> None:
+        yaml_path = tmp_path / "lang.yaml"
+        yaml_path.write_text(
+            "language: python\n"
+            "status: in_progress\n"
+            "stdlib_modules:\n"
+            "  - completeness: complete\n"   # missing ``module:`` key
+            '    retrieved: "2026-05-13"\n'
+            "  - module: \"\"\n",            # empty module name
+        )
+        cat = IoBoundaryCatalog.from_yaml(yaml_path)
+        # Neither malformed entry contributes.
+        assert cat.stdlib_modules == frozenset()
+        assert cat.stdlib_module_completeness == {}
+
+    def test_from_yaml_parses_stdlib_prefixes(
+        self, tmp_path: Path,
+    ) -> None:
+        yaml_path = tmp_path / "lang.yaml"
+        yaml_path.write_text(
+            "language: java\n"
+            "status: in_progress\n"
+            "stdlib_prefixes:\n"
+            "  - java.util\n"
+            "  - java.io\n"
+            "  - \"\"\n"               # empty prefix is dropped
+            "  - 42\n",                # non-string is dropped
+        )
+        cat = IoBoundaryCatalog.from_yaml(yaml_path)
+        assert cat.stdlib_prefixes == ("java.util", "java.io")
+
+    def test_from_yaml_ignores_non_list_stdlib_modules(
+        self, tmp_path: Path,
+    ) -> None:
+        yaml_path = tmp_path / "lang.yaml"
+        yaml_path.write_text(
+            "language: python\n"
+            "status: in_progress\n"
+            "stdlib_modules: not a list\n"
+            "stdlib_prefixes: also not a list\n",
+        )
+        cat = IoBoundaryCatalog.from_yaml(yaml_path)
+        assert cat.stdlib_modules == frozenset()
+        assert cat.stdlib_prefixes == ()
+
+    def test_merge_unions_stdlib_modules_and_prefixes(self) -> None:
+        child = IoBoundaryCatalog(
+            language="kotlin",
+            stdlib_modules=frozenset({"kotlin.collections"}),
+            stdlib_prefixes=("kotlin",),
+            stdlib_module_completeness={"kotlin.collections": "2026-05-13"},
+        )
+        parent = IoBoundaryCatalog(
+            language="java",
+            stdlib_modules=frozenset({"java.util"}),
+            stdlib_prefixes=("java.io",),
+            stdlib_module_completeness={
+                "kotlin.collections": "2024-01-01",  # parent loses on collision
+                "java.util": "2026-05-13",
+            },
+        )
+        merged = child.merge(parent)
+        assert merged.stdlib_modules == frozenset(
+            {"kotlin.collections", "java.util"},
+        )
+        # Child-first dedup preserved.
+        assert merged.stdlib_prefixes == ("kotlin", "java.io")
+        # Child wins on completeness-map collision.
+        assert merged.stdlib_module_completeness == {
+            "kotlin.collections": "2026-05-13",
+            "java.util": "2026-05-13",
+        }
+
+    def test_merge_dedupes_prefixes_in_child(self) -> None:
+        # When child and parent share a prefix, the merged tuple has it
+        # exactly once.
+        child = IoBoundaryCatalog(
+            language="scala",
+            stdlib_prefixes=("scala.collection", "java.util"),
+        )
+        parent = IoBoundaryCatalog(
+            language="java",
+            stdlib_prefixes=("java.util", "java.io"),
+        )
+        merged = child.merge(parent)
+        assert merged.stdlib_prefixes == (
+            "scala.collection", "java.util", "java.io",
+        )
+
+    # ---- Filter 2 wired into _compute_external_potential ----
+
+    def _make_edge_with_dst_ref(
+        self,
+        src: str,
+        dst: str,
+        module_path: str,
+        name: str,
+        is_resolved: bool = True,
+    ):
+        from hypergumbo_core.ir import Edge, ExternalRef
+        return Edge.create(
+            src=src,
+            dst=dst,
+            edge_type="calls",
+            line=1,
+            is_resolved=is_resolved,
+            dst_ref=ExternalRef(
+                lang="python",
+                module_path=module_path,
+                name=name,
+            ),
+        )
+
+    def _boundary_node(self, dst_id: str, name: str) -> dict:
+        return {
+            "id": dst_id,
+            "name": name,
+            "kind": "external_symbol",
+            "language": "python",
+            "path": "<external>",
+            "meta": {"external_boundary": True},
+            "supply_chain": {"tier": 3, "tier_name": "external_dep"},
+        }
+
+    def test_filter_2_skips_when_module_is_completeness_complete(self) -> None:
+        catalog = load_catalog("python")
+        # Inject completeness for ``math`` for the duration of this test.
+        # ``math.sqrt`` is provably not I/O — Filter 2 must skip it.
+        catalog = IoBoundaryCatalog(
+            language=catalog.language,
+            primitives=catalog.primitives,
+            ambiguous_names=catalog.ambiguous_names,
+            status=catalog.status,
+            stdlib_provenance=catalog.stdlib_provenance,
+            stdlib_other=catalog.stdlib_other,
+            stdlib_modules=frozenset({"math"}),
+            stdlib_prefixes=catalog.stdlib_prefixes,
+            stdlib_module_completeness={"math": "2026-05-13"},
+        )
+        dst = "python:math:0-0:sqrt:unresolved"
+        edge = self._make_edge_with_dst_ref(
+            src="python:/app/calc.py:5-10:calc:function",
+            dst=dst,
+            module_path="math",
+            name="sqrt",
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "sqrt")}
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": catalog},
+            nodes_by_id=nodes_by_id,
+        )
+        # Filter 2 short-circuits before chain emission.
+        assert "external_potential" not in bmap.entries
+
+    def test_filter_2_does_not_fire_for_unflagged_module(self) -> None:
+        catalog = load_catalog("python")
+        # ``some_random_lib`` is not flagged complete. Filter 2 must NOT
+        # fire; the chain still appears in external_potential.
+        dst = "python:some_random_lib:0-0:do_thing:unresolved"
+        edge = self._make_edge_with_dst_ref(
+            src="python:/app/main.py:5-10:run:function",
+            dst=dst,
+            module_path="some_random_lib",
+            name="do_thing",
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "do_thing")}
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": catalog},
+            nodes_by_id=nodes_by_id,
+        )
+        ext = bmap.entries.get("external_potential")
+        assert ext is not None and len(ext.chains) == 1
+
+    def test_from_yaml_parses_top_level_completeness_section(
+        self, tmp_path: Path,
+    ) -> None:
+        """The separate ``stdlib_module_completeness:`` section is parsed.
+
+        The refresh script regenerates ``stdlib_modules`` from the live
+        interpreter; the closed-world flags live in their own section so
+        the script doesn't have to merge dict-form entries it didn't
+        author.
+        """
+        yaml_path = tmp_path / "lang.yaml"
+        yaml_path.write_text(
+            "language: python\n"
+            "status: in_progress\n"
+            "stdlib_modules:\n"
+            "  - os\n"
+            "  - math\n"
+            "stdlib_module_completeness:\n"
+            "  - module: math\n"
+            "    completeness: complete\n"
+            '    retrieved: "2026-05-13"\n'
+            "  - module: os\n"   # listed without completeness flag
+            "  - module: derived_auto_promoted\n"
+            "    completeness: complete\n"
+            '    retrieved: "2026-05-13"\n',
+        )
+        cat = IoBoundaryCatalog.from_yaml(yaml_path)
+        # math is flagged complete.
+        assert cat.is_stdlib_module_complete("math")
+        # os listed but unflagged.
+        assert not cat.is_stdlib_module_complete("os")
+        # Auto-promotion: derived_auto_promoted appears only in the
+        # completeness section but is auto-added to stdlib_modules.
+        assert cat.is_stdlib_module("derived_auto_promoted")
+        assert cat.is_stdlib_module_complete("derived_auto_promoted")
+
+    def test_from_yaml_top_level_completeness_rejects_missing_retrieved(
+        self, tmp_path: Path,
+    ) -> None:
+        yaml_path = tmp_path / "lang.yaml"
+        yaml_path.write_text(
+            "language: python\n"
+            "status: in_progress\n"
+            "stdlib_module_completeness:\n"
+            "  - module: math\n"
+            "    completeness: complete\n",
+        )
+        with pytest.raises(ValueError, match="retrieved"):
+            IoBoundaryCatalog.from_yaml(yaml_path)
+
+    def test_from_yaml_top_level_completeness_skips_bad_entries(
+        self, tmp_path: Path,
+    ) -> None:
+        yaml_path = tmp_path / "lang.yaml"
+        yaml_path.write_text(
+            "language: python\n"
+            "status: in_progress\n"
+            "stdlib_module_completeness:\n"
+            "  - not_a_dict\n"
+            "  - module: \"\"\n"
+            '    retrieved: "2026-05-13"\n',
+        )
+        cat = IoBoundaryCatalog.from_yaml(yaml_path)
+        assert cat.stdlib_module_completeness == {}
+
+    def test_python_catalog_lists_stdlib_modules_and_math_complete(
+        self,
+    ) -> None:
+        """The shipped python.yaml has the 3.12 stdlib list + math flagged.
+
+        Smoke test against the actually-shipped catalog. The exact count
+        depends on the interpreter the refresh script was last run
+        against; assert non-trivial size and presence of canonical
+        members rather than a magic number.
+        """
+        cat = load_catalog("python")
+        # Spot-check well-known modules.
+        for mod in ("os", "sys", "re", "math", "json", "collections"):
+            assert cat.is_stdlib_module(mod), (
+                f"{mod!r} should be in python stdlib_modules"
+            )
+        # Long-tail non-stdlib should be absent.
+        assert not cat.is_stdlib_module("requests")
+        # Worked-example closed-world flag is on math, NOT on os.
+        assert cat.is_stdlib_module_complete("math")
+        assert not cat.is_stdlib_module_complete("os")
+
+    def test_filter_2_skips_only_when_module_hint_is_present(self) -> None:
+        """No module_hint (``module_hint == "external"``) → Filter 2 cannot fire.
+
+        This is the safety property: Filter 2 only acts when it has a
+        confident module identification. The dst_ref branch supplies
+        ``module_path``, which we set to ``"external"`` here; the rest
+        of the function then treats ``module_hint == "external"`` as
+        no-info (see the composition guard). Filter 2 must not skip
+        the chain when we have no module to check.
+        """
+        catalog = load_catalog("python")
+        catalog = IoBoundaryCatalog(
+            language=catalog.language,
+            primitives=catalog.primitives,
+            ambiguous_names=catalog.ambiguous_names,
+            status=catalog.status,
+            stdlib_provenance=catalog.stdlib_provenance,
+            stdlib_other=catalog.stdlib_other,
+            stdlib_modules=frozenset({"math"}),
+            stdlib_prefixes=catalog.stdlib_prefixes,
+            stdlib_module_completeness={"math": "2026-05-13"},
+        )
+        dst = "python:external:0-0:Mystery:unresolved"
+        edge = self._make_edge_with_dst_ref(
+            src="python:/app/x.py:5-10:f:function",
+            dst=dst,
+            module_path="external",  # no real module info
+            name="Mystery",
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "Mystery")}
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": catalog},
+            nodes_by_id=nodes_by_id,
+        )
+        # Chain still emitted — we lacked the module to apply Filter 2.
+        ext = bmap.entries.get("external_potential")
+        assert ext is not None and len(ext.chains) == 1
+
+
 class TestSwiftCatalog:
     """Tests for the Swift I/O primitive catalog."""
 

@@ -273,6 +273,29 @@ class IoBoundaryCatalog:
     # the bucket — those aren't catalog gaps. Empty until catalogs
     # populate ``stdlib_other:`` sections.
     stdlib_other: frozenset[str] = field(default_factory=frozenset)
+    # F3 PR-C: enumerated stdlib module names for this language. Populated
+    # from the authoritative interpreter list (``sys.stdlib_module_names``
+    # for Python; equivalent authoritative sources for other languages).
+    # Used as input to :meth:`is_stdlib_module`.
+    stdlib_modules: frozenset[str] = field(default_factory=frozenset)
+    # F3 PR-C: stdlib module name prefixes — useful for languages where
+    # stdlib modules live under a hierarchical namespace (e.g. Go's
+    # ``encoding/`` family, Java's ``java.*``, Rust's ``std::*``).
+    # Membership in :meth:`is_stdlib_module` matches if any prefix is
+    # a strict prefix of the queried module (with the module name's
+    # separator between prefix and remainder).
+    stdlib_prefixes: tuple[str, ...] = field(default_factory=tuple)
+    # F3 PR-C: per-module exhaustiveness flag. Module names appearing
+    # here are treated as closed-world — i.e., we've audited the
+    # module and any unmatched call into it is provably NOT an I/O
+    # primitive (so the F3 Filter 2 ``external_potential`` skip is
+    # safe for them). The long tail of stdlib modules stays
+    # unflagged; Filter 2 does not fire for them. Each entry's value
+    # carries the ``retrieved:`` date for provenance, paralleling the
+    # catalog-level ``stdlib_provenance.retrieved`` field.
+    stdlib_module_completeness: dict[str, str] = field(
+        default_factory=dict,
+    )
     _by_qualified: dict[str, IoPrimitive] = field(
         default_factory=dict, repr=False,
     )
@@ -367,6 +390,43 @@ class IoBoundaryCatalog:
             return None
         return hits[0]
 
+    def is_stdlib_module(self, module: str) -> bool:
+        """Return True when ``module`` is a recognised stdlib module.
+
+        Match rules:
+        - Exact match against :attr:`stdlib_modules` (the authoritative
+          per-language interpreter list).
+        - Prefix match against :attr:`stdlib_prefixes` — a prefix
+          matches when ``module`` is exactly the prefix or starts with
+          ``prefix + "."`` or ``prefix + "/"``. The two separators
+          cover dot-namespaced languages (Python, Java) and slash-
+          namespaced languages (Go's encoding/json).
+
+        Returns False when both sets are empty (the default state —
+        before a catalog populates them).
+        """
+        if not module:
+            return False
+        if module in self.stdlib_modules:
+            return True
+        for prefix in self.stdlib_prefixes:
+            if module == prefix:
+                return True
+            for sep in (".", "/"):
+                if module.startswith(prefix + sep):
+                    return True
+        return False
+
+    def is_stdlib_module_complete(self, module: str) -> bool:
+        """Return True when ``module`` is flagged closed-world complete.
+
+        Closed-world means we've enumerated every I/O primitive in this
+        module, so an unmatched call to ``module.X`` is provably NOT
+        I/O. The F3 PR-C Filter 2 short-circuit consults this method
+        before suppressing ``external_potential`` chains.
+        """
+        return module in self.stdlib_module_completeness
+
     def merge(self, parent: IoBoundaryCatalog) -> IoBoundaryCatalog:
         """Merge a parent catalog into this one. Self's entries take precedence.
 
@@ -379,6 +439,11 @@ class IoBoundaryCatalog:
         ``status`` and ``stdlib_provenance`` stay on the child — the
         completeness claim belongs to the language whose catalog is
         being loaded, not the parent.
+
+        F3 PR-C: ``stdlib_modules``, ``stdlib_prefixes`` and
+        ``stdlib_module_completeness`` are also unioned across child
+        and parent. Child entries win for ``stdlib_module_completeness``
+        on key collision (the child language is what was loaded).
         """
         existing_qnames = {p.qualified_name for p in self.primitives}
         merged_primitives = list(self.primitives) + [
@@ -387,6 +452,14 @@ class IoBoundaryCatalog:
         ]
         merged_ambiguous = self.ambiguous_names | parent.ambiguous_names
         merged_stdlib_other = self.stdlib_other | parent.stdlib_other
+        merged_stdlib_modules = self.stdlib_modules | parent.stdlib_modules
+        # Dedupe prefixes while preserving child-first order.
+        merged_prefix_list = list(self.stdlib_prefixes) + [
+            p for p in parent.stdlib_prefixes
+            if p not in self.stdlib_prefixes
+        ]
+        merged_completeness: dict[str, str] = dict(parent.stdlib_module_completeness)
+        merged_completeness.update(self.stdlib_module_completeness)
         return IoBoundaryCatalog(
             language=self.language,
             primitives=merged_primitives,
@@ -394,6 +467,9 @@ class IoBoundaryCatalog:
             status=self.status,
             stdlib_provenance=self.stdlib_provenance,
             stdlib_other=merged_stdlib_other,
+            stdlib_modules=merged_stdlib_modules,
+            stdlib_prefixes=tuple(merged_prefix_list),
+            stdlib_module_completeness=merged_completeness,
         )
 
     @classmethod
@@ -489,6 +565,73 @@ class IoBoundaryCatalog:
                     for sym_name in entry.get(kind_key, []):
                         stdlib_other_set.add(f"{module}.{sym_name}")
 
+        # F3 PR-C: parse stdlib_modules (authoritative interpreter list).
+        # Two YAML shapes are accepted: a flat list of strings ("os") and
+        # a list of dicts with a ``module`` key plus an optional
+        # ``completeness:`` flag and ``retrieved:`` date for the closed-
+        # world gating of Filter 2.
+        stdlib_modules_set: set[str] = set()
+        completeness_map: dict[str, str] = {}
+        stdlib_modules_raw = data.get("stdlib_modules", [])
+        if isinstance(stdlib_modules_raw, list):
+            for entry in stdlib_modules_raw:
+                if isinstance(entry, str):
+                    stdlib_modules_set.add(entry)
+                elif isinstance(entry, dict):
+                    name = entry.get("module")
+                    if not isinstance(name, str) or not name:
+                        continue
+                    stdlib_modules_set.add(name)
+                    if entry.get("completeness") == "complete":
+                        retrieved = entry.get("retrieved")
+                        if not isinstance(retrieved, str) or not retrieved:
+                            raise ValueError(
+                                f"Catalog for {language!r} stdlib_modules "
+                                f"entry {name!r} declares completeness: "
+                                f"complete but is missing a "
+                                f"``retrieved:`` ISO date. Closed-world "
+                                f"reasoning requires provenance.",
+                            )
+                        completeness_map[name] = retrieved
+
+        # F3 PR-C: parse stdlib_prefixes (hierarchical-namespace languages).
+        stdlib_prefixes_list: list[str] = []
+        prefixes_raw = data.get("stdlib_prefixes", [])
+        if isinstance(prefixes_raw, list):
+            for entry in prefixes_raw:
+                if isinstance(entry, str) and entry:
+                    stdlib_prefixes_list.append(entry)
+
+        # F3 PR-C: parse stdlib_module_completeness as an optional
+        # top-level section, separate from stdlib_modules. This shape
+        # keeps the operator script (which regenerates stdlib_modules
+        # from the live interpreter) decoupled from the hand-curated
+        # closed-world flags — the script never has to merge dict-form
+        # entries it didn't author.
+        completeness_section = data.get("stdlib_module_completeness", [])
+        if isinstance(completeness_section, list):
+            for entry in completeness_section:
+                if not isinstance(entry, dict):
+                    continue
+                name = entry.get("module")
+                if not isinstance(name, str) or not name:
+                    continue
+                # Adding to completeness implies the module is stdlib —
+                # auto-promote so callers don't have to keep both
+                # sections in sync.
+                stdlib_modules_set.add(name)
+                if entry.get("completeness") == "complete":
+                    retrieved = entry.get("retrieved")
+                    if not isinstance(retrieved, str) or not retrieved:
+                        raise ValueError(
+                            f"Catalog for {language!r} "
+                            f"stdlib_module_completeness entry {name!r} "
+                            f"declares completeness: complete but is "
+                            f"missing a ``retrieved:`` ISO date. "
+                            f"Closed-world reasoning requires provenance.",
+                        )
+                    completeness_map[name] = retrieved
+
         catalog = cls(
             language=language,
             primitives=primitives,
@@ -496,6 +639,9 @@ class IoBoundaryCatalog:
             status=status,
             stdlib_provenance=provenance,
             stdlib_other=frozenset(stdlib_other_set),
+            stdlib_modules=frozenset(stdlib_modules_set),
+            stdlib_prefixes=tuple(stdlib_prefixes_list),
+            stdlib_module_completeness=completeness_map,
         )
         return catalog
 
@@ -895,6 +1041,19 @@ def _compute_external_potential(
 
         # Filter out stdlib non-IO symbols — those aren't catalog gaps.
         if primitive in catalog.stdlib_other:
+            continue
+
+        # F3 PR-C Filter 2: closed-world stdlib skip, per-module gated.
+        # When ``module_hint`` is non-empty AND the catalog has flagged
+        # that exact module as ``completeness: complete`` (meaning we've
+        # audited every I/O primitive it exposes), an unmatched call into
+        # the module is provably NOT I/O — so suppress the
+        # external_potential chain. Modules not flagged complete fall
+        # through to the previous behavior: chain emitted, user can
+        # still see catalog gaps. ``module_hint`` is the structured
+        # source (``edge.dst_ref.module_path`` when available, else the
+        # colon-split fallback) computed earlier in this function.
+        if module_hint and catalog.is_stdlib_module_complete(module_hint):
             continue
 
         sc = dst_node.get("supply_chain") or {}
