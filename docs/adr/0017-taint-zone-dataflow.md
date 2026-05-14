@@ -129,8 +129,8 @@ class CfgStatement:
     col: int
     node_type: str          # tree-sitter node type (normalized)
     code_snippet: str       # Source text (truncated)
-    defines: list[str]      # Variables assigned/written by this statement
-    uses: list[str]         # Variables read by this statement
+    defines: list[str]      # Variables assigned/written (populated by the def/use post-pass; see §1c)
+    uses: list[str]         # Variables read (populated by the def/use post-pass; see §1c)
     call_target: str | None # If this is a call, the resolved Symbol.id (format: {lang}:{file}:{start}-{end}:{name}:{kind})
 
 @dataclass
@@ -226,6 +226,10 @@ class RustDefUseExtractor:
         ...
 ```
 
+**Invocation: a post-pass, not inline during CFG construction.** Extractors are deliberately not invoked by `CfgBuilder` itself during graph construction. The CFG is built first with `CfgStatement.defines` / `.uses` left empty, then a separate post-pass — `populate_def_use_for_cfg(cfg, body_node, source, language)` — walks the AST in parallel with the CFG, looks each AST node up by `(line, col, node_type)` against the CFG's statement index, and when matched runs the registered extractor on the AST node and copies the result into the matched `CfgStatement`. This phasing keeps `CfgBuilder` purely structural (its only job is control-flow shape; the YAML node mappings in §1d tell it what's a branch / loop / break / etc., not what variables anything reads) and makes the extractor invocation a discrete, testable bridge that the reaching-def solver (§1b) can be wired against without coupling the solver to the builder. A no-extractor language is a no-op at this post-pass; `solve_reaching_defs` then produces an empty DDG for that language and the structural fallback (§3b) takes over without errors.
+
+**The post-pass also depends on a `CfgNodeMapping.atomic_statements` declaration** — see §1d. Without it, the builder recurses past statement-level AST nodes (e.g., `expression_statement`, `assignment`) into their leaves (bare identifiers, integers) and `populate_def_use_for_cfg`'s lookup-by-`(line, col, node_type)` fails to match because the CFG records the leaves but the extractor operates at the statement level.
+
 **Name resolution and scope tracking.** The `defines` and `uses` lists contain variable names as strings. Correct def/use extraction requires distinguishing variables at different scopes: in Rust, `let x = 1; let x = x + 1;` involves two distinct definitions of `x`, and `self.field = val` requires knowing that `self` is a parameter. The existing language analyzers (e.g., `rust.py` at 1,867 lines) already have scope analysis, type registry, and call resolution infrastructure. Def/use extractors should import and build on this per-language infrastructure rather than duplicating it. The `DefUseExtractor` protocol is intentionally minimal — extractors are free to use whatever per-language analysis they need internally, including the existing analyzer's scope tracker. This coupling is expected and acceptable: a Rust def/use extractor naturally depends on Rust-specific scope analysis, just as a Python def/use extractor would build on Python's `ast` module (which `annotate_dataflow_ast()` in `dataflow.py` already uses).
 
 **Rust is the first extractor.** PlazaFlow's Rust code is the motivating use case. Three of four taint-flow claims (TF-001, TF-002, TF-004) have Rust-side sinks. The concrete scope is bounded:
@@ -312,9 +316,23 @@ early_return:
     err_edge: exit
 
 try_catch: []                        # Rust uses Result/?, not try/catch
+
+# Atomic statement node types: tree-sitter node types the CFG builder
+# should treat as a single CfgStatement instead of recursing into their
+# named children. Required for any node the def/use extractor operates
+# on at statement granularity — typically the assignment / augmented-
+# assignment / expression-statement / return-statement forms.
+atomic_statement:
+  - let_declaration
+  - expression_statement
+  - assignment_expression
+  - compound_assignment_expr
+  - return_expression
 ```
 
 Each language with a def/use extractor also needs a CFG node mapping YAML. These are small (~30-60 lines per language) and follow the same YAML-driven pattern as `io_primitives/` and `dataflow_patterns/`.
+
+**The `atomic_statement` list is load-bearing for any language that ships a def/use extractor.** When an AST node is *unmapped* (no entry in `conditional` / `loop` / `break_statement` / etc. and not listed in `atomic_statement`), the CFG builder treats it as a *compound statement* and recurses into its named children — capturing any hidden control flow at the cost of decomposing the statement into its leaves. For statement-level nodes that contain no internal control flow (assignments, returns, expression statements), that decomposition is exactly wrong: the leaves are bare identifiers / literals that the def/use extractor doesn't know how to handle. Listing such nodes under `atomic_statement` tells the builder to stop the recursion at that node, preserving the statement-level granularity the extractor expects. A language can ship its CFG node mapping without `atomic_statement` and still get a structurally correct CFG, but the DDG will be empty (extractor never matches a statement) until the mapping is filled in.
 
 #### 1e. Accretion model
 
@@ -409,9 +427,26 @@ sources:
       return_tainted: true
 ```
 
+**`start_at` semantics: `caller` (default) vs. `callee`.** Most taint sources name a *callee* in some library — `aes_gcm::Aes256Gcm::decrypt`, `crypto.subtle.decrypt`, `Y.Map.get` — and what becomes tainted is the return value at the *caller's* site. That's the default and matches everything in §2a above. But the same catalog mechanism is also the natural place to declare *synthetic* entry-point sources: a project-local catalog can declare "every runtime CLI handler in this codebase is a source taint" so that reachability claims like "no path from runtime CLI to dev-zone sinks" can be expressed as taint flows. For those synthetic sources, the source *is* the callee — the handler function — and propagation should seed at the source-callee symbol itself, not at every place that invokes it. The `start_at: callee` opt-in expresses this:
+
+```yaml
+# Synthetic entry-point source — project-local catalog
+description: "Each runtime CLI subcommand handler is a taint source"
+taint_label: runtime_cli_entry
+start_at: callee   # seed BFS at the handler itself, not at its callers
+
+sources:
+  python:
+    - module: hypergumbo_core.cli
+      functions: [cmd_run, cmd_slice, cmd_search, cmd_sketch, cmd_routes, ...]
+      return_tainted: true
+```
+
+Default behavior (`start_at: caller`, applied when the key is omitted) preserves library-callee semantics for every existing catalog above. Setting `start_at: callee` makes reachability precisely scoped to that specific source-callee's descendants — required for per-entry-point claims like "this CLI subcommand has no path to host_fs writes outside the user_cache zone."
+
 #### 2b. Taint sink catalogs
 
-**Implementation note (2026-04, commit 51e1d232f3):** the `taint_sinks/` directory described below was retired during Phase 1 in favor of deriving sinks directly from `io_primitives/*.yaml`. Every IO primitive whose `boundary` is a write-side category (`fs_write`, `subprocess`, `net_send`, `env_write`, `ipc_send`, `browser_storage_write`) becomes a structural taint sink at `trust_level=untrusted` in a zone determined by `AUTO_SINK_ZONE_MAP` in `taint.py`. The YAML schemas shown below remain valid as a contract for **project-local** sink catalogs loaded via the `--taint-sinks` CLI flag (each can declare project-specific zones such as `relay`). What changed is only that hypergumbo no longer ships a built-in `taint_sinks/` directory — the auto-derivation from `io_primitives/` covers the built-in case, and project-specific zones (`relay`, `compute_host`, etc.) are by definition project-local. See `taint.py:load_builtin_taint_catalog` for the implementation and `AUTO_SINK_ZONE_MAP` for the boundary→zone mapping.
+Built-in taint sinks are derived directly from `io_primitives/*.yaml` — every IO primitive whose `boundary` is a write-side category (`fs_write`, `subprocess`, `net_send`, `env_write`, `ipc_send`, `browser_storage_write`) becomes a structural taint sink at `trust_level=untrusted` in a zone determined by `AUTO_SINK_ZONE_MAP` in `taint.py`. Hypergumbo does not ship a built-in `taint_sinks/` directory; auto-derivation from the IO primitive catalog covers the built-in case without a second source of truth that could drift out of sync. The YAML schemas shown below remain valid as a contract for **project-local** sink catalogs loaded via the `--taint-sinks` CLI flag — these are where project-specific zones (`relay`, `compute_host`, `dev_zone`, `user_cache`, `install_artifact`, …) are declared. See `taint.py:load_builtin_taint_catalog` for the implementation and `AUTO_SINK_ZONE_MAP` for the boundary→zone mapping.
 
 ```yaml
 # taint_sinks/relay_communication.yaml — project-local catalog passed via --taint-sinks
@@ -487,6 +522,8 @@ transforms:
         - vsock::VsockStream::write_all
 ```
 
+**Multi-label sanitizers: list-per-callee indexing.** A single sanitizer function may sanitize *multiple* input taint labels. The canonical case is a zone-barrier marker like `_safety_zone_barrier()` that hypergumbo's own self-audit declares as a sanitizer for every entry-point taint label (`runtime_cli_entry`, `install_gitleaks_entry`, `install_embeddings_entry`, …) — each declared on its own `transforms` row but pointing at the same callee. The sanitizer index used by `propagate_taint_structural` / `propagate_taint_ddg` keys on `(qualified_name, input_taint)` and stores a *list* per callee, not a flat dict — so each `(qualified_name → input_taint)` declaration is preserved rather than the last one overwriting the others. The structural BFS consults every entry whose `input_taint` matches the currently-flowing taint label; absence in the list means no sanitization on this path for this label.
+
 ### 3. Taint propagation
 
 #### 3a. On native DDG (primary path)
@@ -498,6 +535,13 @@ When a function has been analyzed by the native CFG builder + reaching-def solve
 3. **At call sites, apply function summaries (§4).** If the callee has a summary (inferred or declared), propagate taint through the call according to the summary's param-to-return and param-to-call mappings.
 4. **At sanitizer calls (§2c), transform the taint label** (e.g., `plaintext` → `ciphertext`).
 5. **If tainted data reaches a sink (§2b), record a taint-flow finding.**
+
+**Short-name sink-matching disambiguation.** Sinks are declared with a module-qualified name (e.g., `multiprocessing.Queue.get`, `os.environ.get`). Edges, however, are not always resolved to a specific module: when the analyzer can't pin down a callee's origin, it emits a synthetic external dst of shape `{lang}:external:0-0:{name}:unresolved`. A naive "match sinks by callee short-name" rule then fires the sink on every `.get()` call site in the codebase. The propagator applies `_sink_module_compatible(sink_module, callee_module)` as a filter:
+
+- When the edge's dst carries a module hint, the sink's declared module must match that hint by direct equality or by prefix (e.g., callee module `os.environ` is compatible with sink module `os.environ` or with `os`).
+- When the dst hint is `external` or `<external>`, the analyzer didn't recover module information; the filter degrades to short-name matching (legacy behavior). This is the documented overapproximation surface — the systemic fix is to enrich the IR's external-edge construction so unresolved externals carry a receiver-type hint, tracked as a separate work item.
+
+This disambiguation runs at sink-match time and applies to both the DDG path here and the structural fallback in §3b.
 
 #### 3b. Structural fallback (no extractor for the language)
 
@@ -646,6 +690,8 @@ No new linkers are needed — existing linker edges provide the call connectivit
 
 For the virtio-vsock bridge (PlazaFlow-specific): the vsock channel is modeled as a sanitizer (§2c) that transforms `plaintext` → `guest_local`, reflecting that data crossing into the VM guest is no longer on the host filesystem but is visible inside the VM.
 
+**Per-language propagation pass for `verify-claims`.** Linker edges enable cross-language taint flow at the bridge boundary, but the per-language *sink* declarations are not language-tagged in the catalogs — a sink declared on the Elixir method `HTTPoison.get` is indistinguishable from the Python method `dict.get` once both are stored under the short callee name `get`. Without an additional filter this produces O(N×M) spurious cross-language matches: every Python `.get()` call in the codebase fires against the Elixir HTTPoison sink declaration. The `verify-claims` consumer therefore invokes propagation **once per language**, with each language's sources, sinks, and sanitizers restricted to that language's catalog entries — preserving genuine cross-language flow through linker edges (which connect symbols carrying their own language tag) while preventing the short-name collision. The §3a `_sink_module_compatible` filter handles the same problem at sink-match granularity within a single propagation run; the per-language outer loop handles it across runs.
+
 ### 6. Enhanced `verify-claims`
 
 Extend `verify-claims` to support taint-flow claims alongside the existing structural claims:
@@ -784,22 +830,20 @@ ADR-0015's `access_mode` field (read/write/mutate/delete) classifies what an edg
 
 ## Phased Implementation
 
-| Phase | Scope | Enables | Estimated effort |
-|-------|-------|---------|-----------------|
-| 1 | Taint catalogs + structural taint flow | `verify-claims` with taint-flow claims checked via call-graph BFS with dominance-based sanitizer checking. Immediately catches "no sanitizer on any call path" violations. See note below. | 2-3 weeks |
-| 1b | Precision measurement (see §9 for validation targets) | Baseline false positive rate for structural taint flow. Informs Phase 2 prioritization. See §9. | 1 week |
-| 2 | Native CFG builder + reaching-def solver + Rust def/use extractor (core patterns) + field-sensitivity lite (§7) | Variable-level taint tracking within Rust functions for Simple/Moderate patterns. False positive reduction at Rust-side sinks. | 4-6 weeks |
-| 2b | Rust hard patterns: borrow aliases, `ref`/`ref mut`, macro analysis | Full Rust def/use coverage. Prioritized by Phase 2 precision measurement. | 2-3 weeks |
-| 3 | Function summaries (inferred from DDG + YAML-declared) + TypeScript def/use extractor | Interprocedural taint flow. Cross-function data tracking. DDG-backed analysis for both PlazaFlow primary languages. | 4-5 weeks |
-| 4 | Cross-language taint propagation via existing linkers | End-to-end taint flow through WASM/IPC/FFI bridges. Full PlazaFlow verification with DDG precision on both sides. | 3-4 weeks |
+All originally-planned phases have shipped. The phasing is preserved here as a guide to what each phase delivered and where to find its anchor commits, not as a forward-looking roadmap.
 
-**Phase 1 is the MVP; Phase 1b is the decision gate for further investment.** Phase 1 is not an experiment — it is a standalone, shippable capability. Without any intraprocedural analysis, Phase 1 extends `verify-claims` to reason about taint labels on call-graph paths. For example, the claim "relays never see plaintext" becomes: "is there any call path from a `plaintext` source to a `relay` sink that does not pass through an `encrypt` sanitizer?" This is strictly more powerful than the current `must_not_exist`/`max_chains` constraints and can catch real violations — such as a code path that sends data to a relay without encrypting it first. Phase 1 cannot eliminate false positives *within* a function (that requires Phase 2), but it catches missing sanitizers on entire call paths, which is the most common class of security bug. Phase 1b measurement determines whether to *invest further in intraprocedural precision*, not whether Phase 1 itself was worthwhile. Phase 1b should categorize false positives by *where* in the taint path the imprecision occurs (source function, intermediate, sink function) to inform whether Phase 2 (Rust extractor for sink-side precision) or Phase 3 (TypeScript extractor for source-side precision) delivers more value first.
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 1 | Taint catalogs + structural taint flow | Shipped (Phase 1 commit `d7f43332d7`) |
+| 1b | Precision measurement against synthetic + open-source fixtures (§9) | Carried out; informed Phase 2 prioritization |
+| 2 | Language-parameterized CFG builder + reaching-def solver + Python / Rust / TypeScript def/use extractors (core patterns) + field-sensitivity lite (§7) | Shipped (CFG builder `6afcd40b03`, solver `7a0728b3c2`, Python `509de245f1`, Rust `b8fc35d173`, TypeScript `7e2ee83a90`) |
+| 2b | Rust hard patterns: borrow aliases, `ref`/`ref mut` bindings | Shipped (`03dee372c3`) |
+| 3 | Function summaries (inferred from DDG + YAML-declared) | Shipped (inferred `942100377c`, declared `2df1ec8bf0`) |
+| 4 | Cross-language taint propagation via existing linkers | Shipped (`749a73b47f`) |
 
-Phase 2 builds the language-parameterized shared infrastructure (CFG builder with semantic hooks, reaching-def solver) and the first def/use extractor (Rust core patterns). The infrastructure is ~800-1,150 lines of Python implementing well-understood algorithms (same as Joern's `CfgCreator` and `DataFlowSolver`, ported to Python, plus semantic hooks for non-standard control flow and gen/kill computation). The Rust core extractor is ~500-800 lines handling Simple and Moderate patterns (see §1c for phased scope); hard patterns (borrow aliases, `ref`/`ref mut`, macro analysis) are deferred to Phase 2b (~300-500 additional lines). The main risk is extractor correctness — edge cases in pattern matching, the `?` operator, and nested destructuring need thorough testing. Phase 2 includes at least 10 test programs covering straight-line flow, branching, loops, function calls, sanitizers, and field access. Phase 2b adds tests for borrow-based mutation and macro invocation patterns.
+The original ordering had Rust first (motivated by PlazaFlow's trust-boundary verification needs) with Python as a fallback if PlazaFlow code was delayed; the actual landing order put Python first via the accepted-ADR revision (see `fad503239213` and the "Python is the first extractor" rationale in Context). Phase 1 and Phase 2 together produce structural and DDG-precise taint analysis; Phase 2b extends Rust precision for borrow-mediated mutation; Phase 3 enables interprocedural taint flow via summaries; Phase 4 extends propagation across language boundaries via the existing linker edge types.
 
-Phase 3 adds the TypeScript extractor (~600-1,000 lines, the most complex due to destructuring and optional chaining) and function summaries. With both Rust and TypeScript extractors, all four PlazaFlow taint claims have DDG precision on both source and sink sides.
-
-**Total estimated effort: 16-22 weeks.** These are floor-to-ceiling estimates; the lower bound assumes few surprises in extractor development, the upper bound accounts for the YAML mapping maintenance, semantic hook edge cases, and name-resolution coupling discussed in §1a and §1c. Phase 2b is optional if Phase 2 precision measurement shows borrow aliases are not a significant false negative source. Additional extractors (Python, Go, Java, etc.) are contributed via the accretion model (§1e) as demand arises — each is an incremental ~200-1,000 line addition, not a phase of the core plan. If PlazaFlow code is delayed >3 months past Phase 1, a Python extractor (~200-400 lines, building on existing `annotate_dataflow_ast()`) should be built first to validate infrastructure against hypergumbo's own codebase (see "Alternative considered: Python first" in Context).
+**Production deployments.** PlazaFlow (the motivating use case in Context) consumes Phase 1 through Phase 4 once its codebase exists. The first in-tree deployment is hypergumbo's own self-audit: `docs/hypergumbo.claims.yaml` declares per-CLI-entry-point taint-flow claims (every runtime subcommand prohibited from reaching `host_fs` / `network` / `subprocess` / `install_artifact` / `dev_zone`), `docs/hypergumbo-self-catalog/` declares the project-local sources / sinks / sanitizers those claims reference, and `hypergumbo verify-claims docs/hypergumbo.claims.yaml` runs the full pipeline (per-language outer loop → CFG → def/use post-pass → reaching-def → DDG-backed propagation with sink-module-compatibility filtering). The wrapper-discipline pattern documented in `SECURITY.md` (`safety_zones.py`'s `cache_write`, `user_out_write`, `install_artifact_copy`, …) is the project-local artifact that makes path-bounded zone claims expressible against this ADR's sink-by-callee-name matching model.
 
 ### 8. Testing strategy
 

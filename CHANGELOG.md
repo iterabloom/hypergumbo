@@ -14,6 +14,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence_type` and 71 `Symbol.kind` endpoint_shape values are removed from their registries, completing the ADR-0027 / ADR-0028 program. Thirteen linker slices adopt a new disambiguation-fallback contract (`confidence ≤ 0.5` + `meta["disambiguation_fallback"]=True` on ambiguous simple-name resolutions), closing the cross-linker invariant. A new L4 fallback-coherence linter and pre-commit hook enforce the contract statically, and the L3 producer-coherence linter learns to see through inline ternaries, f-strings, and Constant sentinels. Nine bugfixes span release tooling, supply-chain tier classification, JS/TS access-mode coverage, framework-linker gating, and `--backend rust-analyzer` install advice.
 
+### Changed
+
+#### ADR-0017 drift sync — Phase 3 substrate extensions integrated in-place
+
+ADR-0017 (Taint-Zone Dataflow Analysis) updated to reflect the six substrate extensions that landed during the safety-claim Phase 3 work (commits `834736591c`, `cd10f0bad9`, `cdca0840df`, `4d6c07c695`, `c08eebb2b2`) but were not previously reflected in the ADR text. Edits are integrated into the existing sections rather than appended as a chronological log — the document now reads as currently-true rather than as a sequence of "Status Update" patches.
+
+- §1a `CfgStatement` — clarified that `defines` / `uses` are populated by the def/use post-pass, not during CFG construction.
+- §1c — new "Invocation: a post-pass, not inline during CFG construction" paragraph describing `populate_def_use_for_cfg(cfg, body_node, source, language)` and its dependency on §1d's `atomic_statement` declaration.
+- §1d — `atomic_statement` added to the example YAML schema with a load-bearing-paragraph explaining why it's required for any language shipping a def/use extractor (without it, the CFG builder recurses past statement-level nodes into their leaves and the post-pass lookup-by-`(line, col, node_type)` fails to match).
+- §2a — new "`start_at` semantics: `caller` (default) vs. `callee`" paragraph covering the synthetic-entry-point-source pattern used by hypergumbo's own self-audit.
+- §2b — retired the "Implementation note (2026-04, commit 51e1d232f3)" prefix; the §2b paragraph is rewritten as integrated currently-true prose (the `taint_sinks/` directory description was already retired in favor of auto-derivation from `io_primitives/`; the ADR now states the current fact directly).
+- §2c — new "Multi-label sanitizers: list-per-callee indexing" paragraph documenting that sanitizers are stored as a list per callee (not flat dict overwrite) so multi-label barrier patterns (e.g., `_safety_zone_barrier()` declared for every entry-point taint label) work correctly.
+- §3a — new "Short-name sink-matching disambiguation" paragraph documenting `_sink_module_compatible(sink_module, callee_module)` and the `external` exemption that remains the documented overapproximation surface (with the systemic fix tracked separately).
+- §5 — new "Per-language propagation pass for `verify-claims`" paragraph documenting the once-per-language outer loop that prevents O(N×M) cross-language sink-pollution from short-name collisions.
+- §"Phased Implementation" — the original aspirational roadmap table replaced with a "shipped" status table referencing each phase's anchor commit. Added "Production deployments" paragraph noting that hypergumbo's own self-audit (`docs/hypergumbo.claims.yaml` + `docs/hypergumbo-self-catalog/`) is the first in-tree consumer of the pipeline.
+
 ### Added
 
 #### Safety-zone wrappers expanded to cover `rmtree` / `chmod` / `unlink` callsites
