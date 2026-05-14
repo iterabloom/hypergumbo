@@ -3496,8 +3496,14 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # Output
     if getattr(args, "json_output", False):
         if boundary_filter or primitive_filter or exclude_tests:
+            from .io_boundary import IO_BOUNDARIES_SCHEMA_VERSION
+
             filtered_total = sum(len(e.chains) for e in filtered_entries.values())
             output = {
+                # PR-B: pin the io-boundaries envelope schema_version on
+                # the filtered path too; the unfiltered path inherits it
+                # from ``BoundaryMap.to_dict``.
+                "schema_version": IO_BOUNDARIES_SCHEMA_VERSION,
                 "total_io_edges": filtered_total,
                 "boundaries": {
                     k: v.to_dict() for k, v in sorted(filtered_entries.items())

@@ -36,6 +36,32 @@ import yaml
 
 
 # ---------------------------------------------------------------------------
+# io-boundaries --json envelope schema version (Phase 1 PR-B)
+# ---------------------------------------------------------------------------
+# The ``io-boundaries`` JSON envelope is a *separate* wire contract from
+# the behavior-map envelope (which has its own ``schema_version`` value
+# starting at 0.1.0, emitted by ``cli.py`` at the run/sketch/slice
+# sites). Prior to PR-B the io-boundaries output had no version field;
+# this constant pins the inaugural ``1.0`` and locks the top-level
+# envelope shape produced by :meth:`BoundaryMap.to_dict` (and by the
+# filtered-output path in ``cmd_io_boundaries``).
+#
+# Top-level envelope keys (post-PR-B):
+#   - schema_version: str (this constant)
+#   - total_io_edges: int
+#   - boundaries: dict[str, BoundaryMapEntry.to_dict()]
+#   - unsupported_languages: list[str]  (added by ``cmd_io_boundaries``)
+#
+# Bumping rules:
+#   - Adding a new top-level key: minor bump (1.0 -> 1.1).
+#   - Renaming or removing a key, or changing a value type: major bump
+#     (1.0 -> 2.0).
+#   - Changes to ``BoundaryMapEntry.to_dict()`` / ``IoChain.to_dict()``
+#     shape are part of this same contract — they share the version.
+IO_BOUNDARIES_SCHEMA_VERSION: str = "1.0"
+
+
+# ---------------------------------------------------------------------------
 # Provenance allowlist (Plan C, PR B)
 # ---------------------------------------------------------------------------
 # Hostnames that are permitted as the host of a catalog's
@@ -692,8 +718,16 @@ class BoundaryMap:
     total_io_edges: int = 0
 
     def to_dict(self) -> dict:
-        """Serialize to JSON-friendly dict."""
+        """Serialize to JSON-friendly dict.
+
+        Top-level keys form the io-boundaries wire contract pinned by
+        :data:`IO_BOUNDARIES_SCHEMA_VERSION`. Anyone adding/removing
+        keys here must bump that constant; the property tests in
+        ``test_io_boundary.py::TestIoBoundariesEnvelopeSchema`` will
+        fire if the contract drifts silently.
+        """
         return {
+            "schema_version": IO_BOUNDARIES_SCHEMA_VERSION,
             "total_io_edges": self.total_io_edges,
             "boundaries": {
                 k: v.to_dict() for k, v in sorted(self.entries.items())

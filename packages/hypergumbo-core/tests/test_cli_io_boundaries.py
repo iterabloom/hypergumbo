@@ -171,6 +171,75 @@ def test_cmd_io_boundaries_json_output(tmp_path: Path, capsys) -> None:
     assert "subprocess" in data["boundaries"]
 
 
+def test_cmd_io_boundaries_json_envelope_top_level_keys(
+    tmp_path: Path, capsys,
+) -> None:
+    """PR-B property test: --json envelope top-level shape locked.
+
+    The io-boundaries envelope (schema_version 1.0 per PR-B) is a wire
+    contract for downstream consumers (verify-claims, security audit
+    scripts, RCT variants). Loud-fail on any silent change to the
+    top-level keys, value types, or schema_version string.
+    """
+    from hypergumbo_core.io_boundary import IO_BOUNDARIES_SCHEMA_VERSION
+
+    bmap_fixture = _make_behavior_map(
+        nodes=[
+            {
+                "id": "python:src/app.py:1-5:app:function",
+                "name": "app", "kind": "function", "language": "python",
+                "path": "src/app.py",
+                "span": {"start_line": 1, "end_line": 5},
+            },
+        ],
+        edges=[
+            {
+                "src": "python:src/app.py:1-5:app:function",
+                "dst": "python:stdlib/sub.py:1-2:subprocess.run:function",
+                "type": "calls", "confidence": 0.9,
+            },
+        ],
+    )
+
+    # Unfiltered path: exclude_tests=False so the default filter does
+    # not engage and we exercise the BoundaryMap.to_dict route.
+    args = _make_args(
+        tmp_path, bmap_fixture, json_output=True, exclude_tests=False,
+    )
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    expected_keys = {
+        "schema_version",
+        "total_io_edges",
+        "boundaries",
+        "unsupported_languages",
+    }
+    assert set(data.keys()) == expected_keys, (
+        f"Unfiltered io-boundaries --json envelope drift: "
+        f"got {sorted(data.keys())}, expected {sorted(expected_keys)}. "
+        f"Bump IO_BOUNDARIES_SCHEMA_VERSION before merging."
+    )
+    assert data["schema_version"] == IO_BOUNDARIES_SCHEMA_VERSION
+    assert isinstance(data["total_io_edges"], int)
+    assert isinstance(data["boundaries"], dict)
+    assert isinstance(data["unsupported_languages"], list)
+
+    # Filtered path: exercises the manually-rebuilt envelope in
+    # cmd_io_boundaries (the branch that does not call BoundaryMap.to_dict).
+    args = _make_args(
+        tmp_path, bmap_fixture, json_output=True, boundary="subprocess",
+    )
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert set(data.keys()) == expected_keys, (
+        f"Filtered io-boundaries --json envelope drift: "
+        f"got {sorted(data.keys())}, expected {sorted(expected_keys)}."
+    )
+    assert data["schema_version"] == IO_BOUNDARIES_SCHEMA_VERSION
+
+
 def test_cmd_io_boundaries_chain_shows_dst_tier_for_external_boundary(
     tmp_path: Path, capsys,
 ) -> None:

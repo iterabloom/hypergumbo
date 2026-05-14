@@ -12,6 +12,7 @@ import pytest
 
 from hypergumbo_core.io_boundary import (
     HIGH_RISK_PRIMITIVES,
+    IO_BOUNDARIES_SCHEMA_VERSION,
     BoundaryMap,
     BoundaryMapEntry,
     IoBoundaryCatalog,
@@ -2348,6 +2349,55 @@ class TestIoChainTierFields:
         assert chain.dst_tier == 1
         assert chain.dst_tier_name == "first_party"
         assert chain.dst_external_boundary is False
+
+
+class TestIoBoundariesEnvelopeSchema:
+    """Plan PR-B: io-boundaries --json envelope schema_version freeze.
+
+    The io-boundaries envelope is a *separate* contract from the
+    behavior-map envelope (which has its own ``schema_version``
+    starting at 0.1.0 per cli.py). The io-boundaries envelope had no
+    version field prior to PR-B; this test class pins ``1.0`` as the
+    inaugural value and locks the top-level shape so any change to
+    the wire format must consciously bump the version.
+    """
+
+    def test_io_boundaries_schema_version_constant_pinned(self) -> None:
+        """The exported constant pins the inaugural ``1.0`` value."""
+        assert IO_BOUNDARIES_SCHEMA_VERSION == "1.0", (
+            "io-boundaries schema_version is a wire-format contract. "
+            "Do NOT change the value without bumping it deliberately "
+            "AND updating the inline schema docs + CHANGELOG."
+        )
+
+    def test_boundary_map_to_dict_includes_schema_version(self) -> None:
+        bmap = BoundaryMap()
+        d = bmap.to_dict()
+        assert d.get("schema_version") == IO_BOUNDARIES_SCHEMA_VERSION
+
+    def test_boundary_map_to_dict_top_level_keys_locked(self) -> None:
+        """Top-level envelope keys are part of the wire contract."""
+        bmap = BoundaryMap()
+        d = bmap.to_dict()
+        # The exact set of top-level keys produced by ``to_dict()``.
+        # ``unsupported_languages`` is added by ``cmd_io_boundaries`` in
+        # cli.py (it's not part of BoundaryMap state), so it's not in
+        # this lock-set; the CLI integration test below covers it.
+        expected_keys = {"schema_version", "total_io_edges", "boundaries"}
+        assert set(d.keys()) == expected_keys, (
+            f"Unexpected top-level keys in BoundaryMap.to_dict(): "
+            f"got {sorted(d.keys())}, expected {sorted(expected_keys)}. "
+            f"Adding/removing keys is a wire-format change — bump "
+            f"IO_BOUNDARIES_SCHEMA_VERSION and update this test."
+        )
+
+    def test_boundary_map_to_dict_value_types_locked(self) -> None:
+        """Top-level value types are part of the wire contract."""
+        bmap = BoundaryMap()
+        d = bmap.to_dict()
+        assert isinstance(d["schema_version"], str)
+        assert isinstance(d["total_io_edges"], int)
+        assert isinstance(d["boundaries"], dict)
 
 
 class TestBoundaryMapEntryEnriched:

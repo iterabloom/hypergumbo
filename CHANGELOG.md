@@ -14,6 +14,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence_type` and 71 `Symbol.kind` endpoint_shape values are removed from their registries, completing the ADR-0027 / ADR-0028 program. Thirteen linker slices adopt a new disambiguation-fallback contract (`confidence ≤ 0.5` + `meta["disambiguation_fallback"]=True` on ambiguous simple-name resolutions), closing the cross-linker invariant. A new L4 fallback-coherence linter and pre-commit hook enforce the contract statically, and the L3 producer-coherence linter learns to see through inline ternaries, f-strings, and Constant sentinels. Nine bugfixes span release tooling, supply-chain tier classification, JS/TS access-mode coverage, framework-linker gating, and `--backend rust-analyzer` install advice.
 
+### Added
+
+#### `io-boundaries --json` envelope `schema_version` (PR-B)
+
+- **`IO_BOUNDARIES_SCHEMA_VERSION = "1.0"`** is now the inaugural wire-contract version for the `hypergumbo io-boundaries --json` envelope. Investigation confirmed the io-boundaries envelope is a **separate** contract from the behavior-map envelope (which has its own `schema_version` starting at 0.1.0, emitted by `cli.py`'s run/sketch/slice sites); io-boundaries had no version field prior to PR-B, so `1.0` is the first deliberate commitment to the shape. `BoundaryMap.to_dict` now emits `schema_version` at the top of the envelope; the filtered path in `cmd_io_boundaries` also explicitly injects it (the filtered branch rebuilds the dict from scratch and would otherwise miss it).
+- **Locked top-level envelope keys** (any change must bump the constant): `schema_version`, `total_io_edges`, `boundaries`, `unsupported_languages`. Bumping rules in the module docstring: minor for additive, major for renames/removals/type changes. Per-category `IoChain` / `BoundaryMapEntry` shapes share the version.
+- **Property tests**: `TestIoBoundariesEnvelopeSchema` in `test_io_boundary.py` (4 tests: constant pin, `to_dict` schema_version emission, top-level key set lock, value-type lock); `test_cmd_io_boundaries_json_envelope_top_level_keys` in `test_cli_io_boundaries.py` exercises both the unfiltered and filtered CLI paths end-to-end. Loud-fails on silent drift.
+
 ### Changed
 
 #### IO-boundary noise reduction — F3 Filters 1 + 3 (PR-A)
