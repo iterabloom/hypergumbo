@@ -25,6 +25,7 @@ from hypergumbo_core.ranking import (
     is_utility_symbol,
     DEFAULT_EDGE_TYPE_WEIGHTS,
     TIER_WEIGHTS,
+    _CANONICAL_DAMPENERS,
     RankedSymbol,
     RankedFile,
     compute_raw_in_degree,
@@ -4081,3 +4082,185 @@ class TestComputeDampenedCentrality:
         )
 
         assert helper_default == helper_explicit
+
+
+class TestCanonicalDampenerStackPinned:
+    """Pins for the canonical 8-stage dampener stack (Phase 2b).
+
+    Pins the tuple order and the specific multiplier formulas for the two
+    dampeners whose exact factors weren't previously asserted (only
+    monotonicity bounds were). The other six dampeners already pin their
+    multipliers explicitly elsewhere in this file:
+
+    - apply_tier_weights: 2.0 / 1.5 / 1.0 / 0.0 (TestApplyTierWeights)
+    - apply_noise_weights: 0.1 (TestApplyNoiseWeights)
+    - apply_utility_symbol_weights: 0.1 / 0.5 (TestApplyUtilitySymbolWeights)
+    - apply_trivial_sink_weights: 0.1 / 0.8 etc (TestTrivialSinkDampening)
+    - apply_generated_code_weights: 0.05 default (TestApplyGeneratedCodeWeights)
+    - apply_file_kind_weights: 0.0 (TestApplyFileKindWeights)
+    """
+
+    def test_canonical_dampener_order_pinned(self) -> None:
+        """The 8-stage dampener stack order is load-bearing.
+
+        Per the code comment at ranking.py:1103: "Order is load-bearing —
+        see ranking.py for rationale on why tier comes first and file_kind
+        comes last." This test guards against silent reordering.
+
+        Specifically: ``tier`` first (so first-party boost happens before
+        path-based dampening), ``utility``/``common_method``/``sibling_impl``
+        in that progression (each subsequent dampener narrows the surface
+        the previous one widened), ``trivial_sink`` after the name-based
+        dampeners (so it sees post-dampener scores), ``file_kind`` last
+        (so the file-kind zero doesn't propagate through subsequent stages).
+        """
+        assert _CANONICAL_DAMPENERS == (
+            "tier",
+            "noise",
+            "utility",
+            "common_method",
+            "sibling_impl",
+            "trivial_sink",
+            "generated",
+            "file_kind",
+        ), (
+            f"_CANONICAL_DAMPENERS changed to {_CANONICAL_DAMPENERS!r}. "
+            "Order is load-bearing per ranking.py:1103. If this is "
+            "intentional, document the new order rationale and update "
+            "this pin."
+        )
+
+    def test_common_method_name_exact_formula_pinned(self) -> None:
+        """Pins the ``factor = max(floor, threshold/count)`` formula.
+
+        Existing tests assert below-threshold has no dampening and floor
+        is respected, but the exact multiplier when dampening fires
+        wasn't pinned. The bakeoff finding WI-luvaj documents that
+        50 ``execute`` symbols should produce ``10/50 = 0.2x`` and
+        15 ``process`` symbols should produce ``10/15 ≈ 0.67x``; these
+        ratios drive expected user-visible behavior on real repos.
+        """
+        # 20 symbols sharing name "call" → factor = 10/20 = 0.5
+        syms_20 = [
+            make_symbol("call", path=f"src/c{i}.py", language="python")
+            for i in range(20)
+        ]
+        centrality = {s.id: 1.0 for s in syms_20}
+        result = apply_common_method_name_weights(centrality, syms_20)
+        # All 20 should get the same factor (they share the name).
+        for s in syms_20:
+            assert result[s.id] == pytest.approx(0.5), (
+                f"Expected 1.0 * (10/20) = 0.5, got {result[s.id]} — "
+                "common-method formula `max(floor, threshold/count)` drifted."
+            )
+
+        # 50 symbols sharing name "execute" → factor = 10/50 = 0.2
+        # (matches WI-luvaj's documented example from the docstring).
+        syms_50 = [
+            make_symbol("execute", path=f"src/svc{i}.rb", language="ruby")
+            for i in range(50)
+        ]
+        centrality_50 = {s.id: 1.0 for s in syms_50}
+        result_50 = apply_common_method_name_weights(centrality_50, syms_50)
+        for s in syms_50:
+            assert result_50[s.id] == pytest.approx(0.2), (
+                f"Expected 1.0 * (10/50) = 0.2 per WI-luvaj's documented "
+                f"example, got {result_50[s.id]} — formula drifted."
+            )
+
+        # 15 symbols sharing name "process" → factor = 10/15 ≈ 0.667
+        syms_15 = [
+            make_symbol("process", path=f"src/h{i}.py")
+            for i in range(15)
+        ]
+        centrality_15 = {s.id: 1.0 for s in syms_15}
+        result_15 = apply_common_method_name_weights(centrality_15, syms_15)
+        for s in syms_15:
+            assert result_15[s.id] == pytest.approx(10 / 15), (
+                f"Expected 1.0 * (10/15) ≈ 0.667 per docstring example, "
+                f"got {result_15[s.id]} — formula drifted."
+            )
+
+    def test_sibling_impl_tail_factor_pinned(self) -> None:
+        """Pins the ``tail_factor = 0.15`` multiplier when dampening fires.
+
+        Existing tests assert top-K is unchanged and non-top-K is
+        ``< original``, but the exact 0.15 multiplier wasn't pinned.
+        The bakeoff rationale (alertmanager cohort-008 iter-003) chose
+        0.15 deliberately to move below-top-K out of typical top-30
+        ranges; silently bumping to 0.5 or 0.05 would change real-repo
+        rankings.
+
+        Note (WI-karad reference): the 6-repo audit found 0 top-100
+        movement from this dampener across 24 cells. Outcome is "remove
+        dead code or document conditions." Either way, the multiplier
+        itself is what gets pinned here — if WI-karad ultimately removes
+        the dampener entirely, this test gets removed alongside it.
+        """
+        # 7 same-name methods, top_k=3, min_group_size=6 (default) →
+        # symbols ranked 4-7 get multiplied by tail_factor=0.15.
+        notify_syms = [
+            make_symbol(
+                "Notifier.Notify",
+                path=f"notify/ch{i}/ch.go",
+                kind="method",
+                language="go",
+            )
+            for i in range(7)
+        ]
+        # Distinct centrality scores so ranking is unambiguous.
+        centrality = {
+            s.id: 100.0 - i for i, s in enumerate(notify_syms)
+        }
+        result = apply_sibling_impl_weights(centrality, notify_syms)
+
+        sorted_ids = sorted(centrality.keys(), key=lambda k: -centrality[k])
+        # Top 3 unchanged.
+        for sid in sorted_ids[:3]:
+            assert result[sid] == centrality[sid]
+        # Symbols 4-7 each get multiplied by exactly 0.15.
+        for sid in sorted_ids[3:]:
+            expected = centrality[sid] * 0.15
+            assert result[sid] == pytest.approx(expected), (
+                f"Expected centrality * 0.15 = {expected}, got "
+                f"{result[sid]} — apply_sibling_impl_weights "
+                "tail_factor drifted from 0.15."
+            )
+
+    def test_compute_dampened_centrality_applies_stack_in_order(self) -> None:
+        """compute_dampened_centrality applies dampeners in canonical order.
+
+        Smoke test that ``exclude_dampeners=()`` produces the same result
+        as running the eight dampeners manually in the documented order.
+        Catches accidental reordering inside _apply_canonical_dampeners
+        even when _CANONICAL_DAMPENERS itself is unchanged (e.g., if
+        someone manually inlined a stage in the wrong position).
+        """
+        # Single first-party symbol, single edge — keeps the test cheap
+        # while still exercising every stage.
+        target = make_symbol("foo", path="src/foo.py", tier=1)
+        caller = make_symbol("caller", path="src/caller.py", tier=1)
+        edges = [make_edge(caller.id, target.id)]
+
+        from hypergumbo_core.ranking import (
+            apply_noise_weights,
+            apply_trivial_sink_weights,
+            apply_generated_code_weights,
+            apply_file_kind_weights,
+        )
+        manual = compute_centrality([target, caller], edges)
+        manual = apply_tier_weights(manual, [target, caller])
+        manual = apply_noise_weights(manual, [target, caller])
+        manual = apply_utility_symbol_weights(manual, [target, caller])
+        manual = apply_common_method_name_weights(manual, [target, caller])
+        manual = apply_sibling_impl_weights(manual, [target, caller])
+        manual = apply_trivial_sink_weights(manual, [target, caller], edges)
+        manual = apply_generated_code_weights(manual, [target, caller])
+        manual = apply_file_kind_weights(manual, [target, caller])
+
+        via_helper = compute_dampened_centrality([target, caller], edges)
+        assert via_helper == manual, (
+            "compute_dampened_centrality output disagrees with the "
+            "manual canonical-order application; the helper reordered "
+            "or skipped a stage."
+        )
