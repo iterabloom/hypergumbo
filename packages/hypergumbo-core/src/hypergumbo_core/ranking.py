@@ -1212,6 +1212,7 @@ def compute_dampened_centrality(
     )
 
 
+# RCT-pinned surface — see tests/test_rct_public_api_pinned.py before changing signature.
 def rank_symbols(
     symbols: List[Symbol],
     edges: List[Edge],

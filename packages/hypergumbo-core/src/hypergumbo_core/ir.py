@@ -411,6 +411,7 @@ def format_legacy_dst(ref: ExternalRef) -> str:
     return f"{ref.lang}:{ref.module_path}:0-0:{ref.name}:unresolved"
 
 
+# RCT-pinned surface — see tests/test_rct_public_api_pinned.py before changing field names, types, or defaults.
 @dataclass
 class Edge:
     """A relationship between two symbols (e.g., function calls).

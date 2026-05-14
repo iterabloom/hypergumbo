@@ -6644,6 +6644,7 @@ def _relativize_ir_paths(
             uc.symbol_ref = uc.symbol_ref.replace(prefix, "")
 
 
+# RCT-pinned surface — see tests/test_rct_public_api_pinned.py before changing parameter names or defaults.
 def run_behavior_map(
     repo_root: Path,
     out_path: Path | None = None,

@@ -708,6 +708,7 @@ def count_language_analyzers(categories: dict[str, list[tuple[str, str | None]]]
 # open with one of these four labels. An "Uncategorized" bucket catches
 # files that don't follow the convention so the generator surfaces the
 # omission rather than silently miscounting.
+# RCT-pinned surface — see tests/test_rct_public_api_pinned.py before changing this tuple.
 _LINKER_SUBCATEGORIES = ("Protocol", "Bridge", "Framework", "Infrastructure")
 
 
