@@ -8074,6 +8074,180 @@ class TestUsagePatternSpec:
         assert spec.matches(ctx) is False
 
 
+class TestBareNodeHttpAndApolloStandaloneRoutes:
+    """WI-tisam: route detection for raw-stdlib HTTP servers.
+
+    ``http.createServer(callback)`` and Apollo's ``startStandaloneServer``
+    establish HTTP entry points without any framework router. routes.txt
+    on apollo-server reported "No API routes found" because no YAML
+    pattern recognised these idioms (DEEP cohort 1 reflect on
+    deep-20260510-054430). WI-tisam adds the patterns in
+    ``frameworks/node-http.yaml`` (always-loaded) and an Apollo block in
+    ``frameworks/graphql.yaml`` (loaded when graphql is detected).
+    """
+
+    def test_node_http_createServer_via_usage_context(self) -> None:
+        """``http.createServer(...)`` matches the node-http route pattern."""
+        from hypergumbo_core.framework_patterns import (
+            clear_pattern_cache,
+            load_framework_patterns,
+            match_usage_patterns,
+        )
+
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("node-http")
+        assert pattern_def is not None, "node-http.yaml must be loadable"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="http.createServer",
+            position="args[0]",
+            path="server.js",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="javascript:server.js:10:startServer:function",
+            metadata={},
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        concepts = [r["concept"] for r in results]
+        assert "route" in concepts
+        # Method is ALL because http.createServer dispatches every HTTP verb.
+        for r in results:
+            if r["concept"] == "route":
+                assert r["method"] == "ALL"
+                assert r["path"] == "/"
+
+    def test_node_https_and_http2_createServer_match(self) -> None:
+        """``https.createServer`` and ``http2.createServer`` match too."""
+        from hypergumbo_core.framework_patterns import (
+            clear_pattern_cache,
+            load_framework_patterns,
+            match_usage_patterns,
+        )
+
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("node-http")
+        assert pattern_def is not None
+
+        for receiver in ("https", "http2"):
+            ctx = UsageContext.create(
+                kind="call",
+                context_name=f"{receiver}.createServer",
+                position="args[0]",
+                path="server.js",
+                span=Span(10, 10, 0, 50),
+                symbol_ref="javascript:server.js:10:startServer:function",
+                metadata={},
+            )
+            results = match_usage_patterns(ctx, [pattern_def])
+            concepts = [r["concept"] for r in results]
+            assert "route" in concepts, (
+                f"{receiver}.createServer should match the route pattern; "
+                f"got {results}"
+            )
+
+    def test_destructured_createServer_import_match(self) -> None:
+        """``import { createServer } from 'http'; createServer(...)`` matches."""
+        from hypergumbo_core.framework_patterns import (
+            clear_pattern_cache,
+            load_framework_patterns,
+            match_usage_patterns,
+        )
+
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("node-http")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="createServer",
+            position="args[0]",
+            path="server.js",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="javascript:server.js:10:startServer:function",
+            metadata={},
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        concepts = [r["concept"] for r in results]
+        assert "route" in concepts
+
+    def test_node_http_irrelevant_call_does_not_match(self) -> None:
+        """``app.use(...)`` etc. don't get spuriously tagged as routes by node-http."""
+        from hypergumbo_core.framework_patterns import (
+            clear_pattern_cache,
+            load_framework_patterns,
+            match_usage_patterns,
+        )
+
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("node-http")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="app.use",
+            position="args[0]",
+            path="server.js",
+            span=Span(10, 10, 0, 50),
+            symbol_ref="javascript:server.js:10:wireMiddleware:function",
+            metadata={},
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert results == []
+
+    def test_apollo_startStandaloneServer_match(self) -> None:
+        """Apollo's ``startStandaloneServer`` matches via graphql.yaml."""
+        from hypergumbo_core.framework_patterns import (
+            clear_pattern_cache,
+            load_framework_patterns,
+            match_usage_patterns,
+        )
+
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("graphql")
+        assert pattern_def is not None, "graphql.yaml must be loadable"
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="startStandaloneServer",
+            position="args[0]",
+            path="server.ts",
+            span=Span(20, 20, 0, 50),
+            symbol_ref="typescript:server.ts:20:bootstrap:function",
+            metadata={},
+        )
+        results = match_usage_patterns(ctx, [pattern_def])
+        concepts = [r["concept"] for r in results]
+        assert "route" in concepts
+
+    def test_apollo_runHttpQuery_match(self) -> None:
+        """Apollo's ``runHttpQuery`` / ``executeHTTPGraphQLRequest`` match."""
+        from hypergumbo_core.framework_patterns import (
+            clear_pattern_cache,
+            load_framework_patterns,
+            match_usage_patterns,
+        )
+
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("graphql")
+        assert pattern_def is not None
+
+        for name in ("runHttpQuery", "executeHTTPGraphQLRequest"):
+            ctx = UsageContext.create(
+                kind="call",
+                context_name=name,
+                position="args[0]",
+                path="server.ts",
+                span=Span(20, 20, 0, 50),
+                symbol_ref="typescript:server.ts:20:handler:function",
+                metadata={},
+            )
+            results = match_usage_patterns(ctx, [pattern_def])
+            concepts = [r["concept"] for r in results]
+            assert "route" in concepts, (
+                f"{name} should match the Apollo route pattern; got {results}"
+            )
+
+
 class TestExtractUsageValue:
     """Tests for extract_usage_value function (v1.1.x)."""
 

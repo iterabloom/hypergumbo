@@ -100,6 +100,31 @@ patterns:
   - concept: graphql_schema
     decorator: "^Info$"
 
+  # ==================== APOLLO STANDALONE / BARE-NODE HTTP (WI-tisam) ====================
+  # Apollo's startStandaloneServer(server, options) launches the GraphQL
+  # server as its own HTTP listener — no Express/Fastify middleware wraps
+  # it, so the standard app.use(expressMiddleware(server)) detection
+  # misses it entirely. The function that calls startStandaloneServer
+  # IS the HTTP entrypoint for the deployment.
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^startStandaloneServer$"
+    extract:
+      path: "literal:/"
+      method: "literal:ALL"
+
+  # Apollo Server v3-style runHttpQuery — the underlying HTTP entry that
+  # newer wrappers delegate to. Surfaces apollo-server's executeHTTPGraphQLRequest
+  # path which routes.txt missed (DEEP cohort 1 reflect on apollo-server).
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(runHttpQuery|executeHTTPGraphQLRequest)$"
+    extract:
+      path: "literal:/"
+      method: "literal:ALL"
+
 linkers:
   - graphql_resolver
   - websocket

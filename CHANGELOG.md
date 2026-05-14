@@ -16,6 +16,10 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Changed
 
+#### HTTP route detection — bare-Node + Apollo standalone
+
+- **WI-tisam — `http.createServer` and Apollo `startStandaloneServer` route patterns.** DEEP cohort 1 reflect on `apollo-server` showed routes.txt reporting "No API routes found" because the route-handler-linker had no YAML pattern for raw-stdlib HTTP servers or Apollo's standalone GraphQL server. New `frameworks/node-http.yaml` (always-loaded) captures `http.createServer` / `https.createServer` / `http2.createServer` / bare destructured `createServer(...)` as `concept: route` with method `ALL`. New patterns in `frameworks/graphql.yaml` cover `startStandaloneServer`, `runHttpQuery`, and `executeHTTPGraphQLRequest`. These produce `framework_role='route'` on the calling function, restoring routes.txt visibility for apollo-server-style and other bare-Node HTTP deployments. 6 new tests; 100% coverage maintained.
+
 #### gRPC cross-language coverage — TS client → proto fallback
 
 - **WI-ropoz — TS gRPC client → proto service binding when no impl is in-tree.** Workadventure-style cross-codebase setups (TS clients calling a gRPC server that lives in a separate language repo) lost the entire client side of the graph: the linker only emitted `calls` edges when both stub and servicer were detected in the analyzed tree. WI-ropoz adds a fallback pass — after the existing stub→servicer matching, any unmatched TS/JS stub now binds directly to the proto service Symbol via `calls` + `meta['protocol']='grpc'` + `Edge.is_resolved=False`. Confidence drops to 0.6 (or 0.5 with `meta['disambiguation_fallback']=True` per INV-zuhub when two `.proto` files declare the same short-name service across packages). 3 new tests covering: no-impl fallback, with-impl precision preserved, cross-package collision disambiguation. 100% coverage maintained.

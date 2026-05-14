@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Bare Node.js HTTP server patterns (WI-tisam)
+#
+# Node's stdlib ``http.createServer`` / ``https.createServer`` /
+# ``http2.createServer`` accept a request callback that handles every
+# incoming request — no framework router, no per-route registration.
+# The function that *calls* createServer is therefore the HTTP entry
+# point for the deployment. The reflect agent's "where do HTTP requests
+# enter?" question on apollo-server-style deployments was answerable
+# from rslice seeds + slice.0 but not from the route-handler-linker
+# output, because no YAML pattern recognised this idiom.
+#
+# Sibling framework files (express.yaml, graphql.yaml) capture the
+# router-attached idioms. This file is the catch-all for raw-stdlib
+# patterns that are otherwise invisible to the framework_role-driven
+# route materialiser.
+
+id: node-http
+language: javascript
+
+patterns:
+  # Node stdlib HTTP/HTTPS/HTTP2 server creation.
+  # The receiver (``http``, ``https``, ``http2``, ``Http`` for typed
+  # imports, or a renamed import) is followed by ``.createServer``.
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(http|https|http2|Http)\\.createServer$"
+    extract:
+      path: "literal:/"
+      method: "literal:ALL"
+
+  # Destructured-import shape: ``import { createServer } from 'http'``
+  # makes the function callable as bare ``createServer(...)``. UsageContext
+  # records this with ``context_name == "createServer"``.
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^createServer$"
+    extract:
+      path: "literal:/"
+      method: "literal:ALL"
+
+linkers: []

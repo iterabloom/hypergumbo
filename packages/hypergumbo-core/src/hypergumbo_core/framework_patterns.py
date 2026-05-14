@@ -1332,6 +1332,7 @@ def enrich_symbols(
     # - library-exports.yaml: JS/TS index exports, Go exported symbols, Elixir modules
     # - logging-conventions.yaml: Logger classes, factory methods, log bridges
     # - go-encoding-callbacks.yaml: Go MarshalJSON/UnmarshalYAML/etc. methods (WI-pimig)
+    # - node-http.yaml: bare-Node http.createServer / Apollo startStandaloneServer (WI-tisam)
     for convention_id in (
         "main-functions",
         "test-frameworks",
@@ -1341,6 +1342,7 @@ def enrich_symbols(
         "library-exports",
         "logging-conventions",
         "go-encoding-callbacks",
+        "node-http",
     ):
         convention_patterns = load_framework_patterns(convention_id)
         if convention_patterns:
