@@ -16,6 +16,10 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Changed
 
+#### Harden remaining `git rev-parse <ref>` call-sites against unverified-ref stdout contamination (WI-sigob)
+
+`scripts/release-check:95` was previously fixed by switching from `git rev-parse <ref>` to `git rev-parse --verify <ref>^{commit}`. The underlying invariant — "`git rev-parse` without `--verify` echoes the input ref to stdout *and* returns non-zero when the ref is unresolvable, contaminating any command-substitution capture" — applies to ten other sites in `scripts/auto-pr`, `scripts/lib/forgejo-api.sh`, and `scripts/ci-failover` that didn't currently bite because their refs (`origin/dev`, local `dev`) were effectively always resolvable. They've now been hardened for consistency so a future contributor doesn't reintroduce the pattern by copy-paste. Each became `git rev-parse --verify <ref>^{commit} 2>/dev/null || <fallback>`. A short rationale header comment near the first site in each file points at the release-check long-form explanation.
+
 #### `hypergumbo run --out` help text surfaces side-output files at point of first contact (WI-pijal)
 
 UAT campaign 4.0.0 surfaced that contributors and agents are surprised when `hypergumbo run --out analysis.json` writes additional files at the same prefix beyond the requested path: compact-tier previews (`<stem>.{4k,16k,64k}.json` per `--budgets`) and a `<stem>.slices/` subdirectory of per-route handler slices (per `--no-handler-slices` / `--max-handler-slices`, written into a subdir post-WI-rimos). The capability to suppress both already existed; the `--out OUT` help line did not mention them, so the reader had to scroll to `--budgets` and `--no-handler-slices` to discover the opt-outs.

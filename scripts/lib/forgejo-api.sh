@@ -663,9 +663,13 @@ fetch_job_log() {
 	local head_sha="$1"
 	local target_name="${2:-}"
 
-	# Resolve full SHA (the API requires it, not a prefix)
+	# Resolve full SHA (the API requires it, not a prefix).
+	# NOTE on --verify: `git rev-parse <ref>` without --verify echoes the input
+	# ref to stdout on an unresolvable ref. See scripts/release-check:93-102
+	# for the long-form rationale. `--verify "<ref>^{commit}"` emits nothing
+	# on failure, so the failure branch is the only thing the capture sees.
 	if [[ ${#head_sha} -lt 40 ]]; then
-		head_sha=$(git rev-parse "$head_sha" 2>/dev/null) || {
+		head_sha=$(git rev-parse --verify "$head_sha^{commit}" 2>/dev/null) || {
 			echo "Could not resolve SHA: $1" >&2
 			return 1
 		}
@@ -1369,7 +1373,7 @@ _attach_git_note() {
 	local base_branch="${BASE_BRANCH:-dev}"
 	git fetch origin "$base_branch" --quiet 2>/dev/null || return 0
 	local new_sha
-	new_sha=$(git rev-parse "origin/$base_branch" 2>/dev/null) || return 0
+	new_sha=$(git rev-parse --verify "origin/$base_branch^{commit}" 2>/dev/null) || return 0
 
 	echo "📝 Attaching git note with original commit body..."
 	git notes add -f -m "Original commit body from $orig_sha:

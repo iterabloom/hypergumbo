@@ -141,10 +141,16 @@ cmd_engage() {
 		git remote set-url selfh "$authed_url/$repo.git"
 	fi
 
-	# Record origin/dev SHA
+	# Record origin/dev SHA.
+	# NOTE on --verify: `git rev-parse <ref>` without --verify echoes the input
+	# ref to stdout on an unresolvable ref AND returns non-zero, so the form
+	# `$(git rev-parse "X" 2>/dev/null || echo "unknown")` produces the
+	# multi-line string "X\nunknown" on failure rather than "unknown" alone.
+	# See scripts/release-check:93-102 for the worked example that motivated
+	# this hardening. `--verify "<ref>^{commit}"` emits nothing on failure.
 	git fetch origin dev --quiet 2>/dev/null || warn "Could not fetch origin/dev (Codeberg may be down)"
 	local codeberg_dev_sha
-	codeberg_dev_sha=$(git rev-parse origin/dev 2>/dev/null || echo "unknown")
+	codeberg_dev_sha=$(git rev-parse --verify "origin/dev^{commit}" 2>/dev/null || echo "unknown")
 
 	# Check if the local repo is a mirror and convert it
 	local api_url="$local_url/api/v1/repos/$repo"
@@ -380,9 +386,9 @@ cmd_disengage() {
 	git fetch origin dev --quiet 2>/dev/null || warn "Could not fetch origin/dev"
 
 	local origin_dev_sha codeberg_dev_sha local_dev_sha
-	origin_dev_sha=$(git rev-parse origin/dev 2>/dev/null || echo "unknown")
+	origin_dev_sha=$(git rev-parse --verify "origin/dev^{commit}" 2>/dev/null || echo "unknown")
 	codeberg_dev_sha=$(failover_json_field "codeberg_dev_sha")
-	local_dev_sha=$(git rev-parse dev 2>/dev/null)
+	local_dev_sha=$(git rev-parse --verify "dev^{commit}" 2>/dev/null || echo "unknown")
 
 	# Check fast-forward feasibility
 	if [[ "$origin_dev_sha" != "unknown" ]] && [[ "$codeberg_dev_sha" != "unknown" ]]; then
@@ -688,7 +694,7 @@ cmd_disengage_cleanup() {
 	local codeberg_dev_sha
 	codeberg_dev_sha=$(failover_json_field "codeberg_dev_sha")
 	local local_dev_sha
-	local_dev_sha=$(git rev-parse dev 2>/dev/null)
+	local_dev_sha=$(git rev-parse --verify "dev^{commit}" 2>/dev/null || echo "unknown")
 
 	if [[ -n "$local_url" ]] && [[ -n "$local_repo" ]]; then
 		local saved_token="${FORGEJO_TOKEN:-}"
@@ -861,7 +867,7 @@ cmd_status() {
 		engaged_at=$(failover_json_field "engaged_at")
 		local_url=$(failover_json_field "selfhosted_forgejo_url")
 		codeberg_sha=$(failover_json_field "codeberg_dev_sha")
-		local_sha=$(git rev-parse dev 2>/dev/null || echo "unknown")
+		local_sha=$(git rev-parse --verify "dev^{commit}" 2>/dev/null || echo "unknown")
 
 		echo "🔴 CI Failover: ENGAGED"
 		echo "   Since:          $engaged_at"

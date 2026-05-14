@@ -768,10 +768,15 @@ flush_queue() {
 	echo "🔄 Flushing $count vPR(s) as single atomic PR..."
 	echo "---------------------------------------------------"
 
-	# Get the tip branch (contains all changes due to linear chain)
+	# Get the tip branch (contains all changes due to linear chain).
+	# NOTE on --verify: `git rev-parse <ref>` without --verify echoes the input
+	# ref to stdout AND returns non-zero on an unresolvable ref, contaminating
+	# any command-substitution capture. See scripts/release-check:93-102 for
+	# the long-form rationale. `--verify "<ref>^{commit}"` makes rev-parse
+	# emit nothing on failure, so command substitutions stay safe.
 	local tip_branch tip_sha base_branch
 	tip_branch=$(queue_tip)
-	tip_sha=$(git rev-parse "$tip_branch")
+	tip_sha=$(git rev-parse --verify "$tip_branch^{commit}")
 	base_branch=$(head -1 "$QUEUE_FILE" | json_field "base")
 
 	# Build PR title and description
@@ -1305,7 +1310,7 @@ do_pr() {
 
 	# Record base SHA before push — used to detect dev divergence after CI poll
 	local BASE_SHA_BEFORE_PUSH
-	BASE_SHA_BEFORE_PUSH=$(git rev-parse "origin/$BASE_BRANCH" 2>/dev/null || true)
+	BASE_SHA_BEFORE_PUSH=$(git rev-parse --verify "origin/$BASE_BRANCH^{commit}" 2>/dev/null || true)
 
 	while [[ $attempt -le $max_attempts ]]; do
 		PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
@@ -1578,7 +1583,7 @@ do_pr() {
 	if [[ -n "${BASE_SHA_BEFORE_PUSH:-}" ]]; then
 		git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null || true
 		local new_base_sha
-		new_base_sha=$(git rev-parse "origin/$BASE_BRANCH" 2>/dev/null || true)
+		new_base_sha=$(git rev-parse --verify "origin/$BASE_BRANCH^{commit}" 2>/dev/null || true)
 		if [[ -n "$new_base_sha" && "$BASE_SHA_BEFORE_PUSH" != "$new_base_sha" ]]; then
 			echo "---------------------------------------------------"
 			echo "⚠️  dev advanced during CI poll (${BASE_SHA_BEFORE_PUSH:0:8}→${new_base_sha:0:8}) — rebasing..."
