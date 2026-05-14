@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Layer-3 project-local catalog — see docs/hypergumbo-self-catalog/README.md
+# for the layer-1/2/3 firewall convention.
+#
+# Declares hypergumbo's runtime CLI subcommand handlers as synthetic taint
+# sources with start_at: callee. Each runtime cmd_* function is the seed
+# for the verify-claims per-entry-point reachability analysis: anything
+# downstream of cmd_sketch (etc.) is considered reachable-from-runtime-CLI.
+#
+# Runtime CLI subcommands are the "analyze my code" surface — they should
+# NOT shell out to subprocesses, NOT reach the network directly, and NOT
+# reach dev-zone code paths (tracker sync, agent supervisor, etc.). Those
+# are verified as separate claims in docs/hypergumbo.claims.yaml.
+taint_label: runtime_cli_entry
+
+sources:
+  python:
+    - module: hypergumbo_core.cli
+      start_at: callee
+      functions:
+        # Code-analysis subcommands (the user runs `hypergumbo <cmd> .`)
+        - cmd_sketch
+        - cmd_run
+        - cmd_slice
+        - cmd_search
+        - cmd_routes
+        - cmd_explain
+        - cmd_symbols
+        - cmd_compact
+        - cmd_io_boundaries
+        - cmd_verify_claims
+        - cmd_catalog
+        - cmd_test_coverage
+        - cmd_dead_code_maybe
+        - cmd_config
+        # Cache management — read-only / clear operations on hypergumbo's
+        # own cache. Treated as runtime because they don't install
+        # third-party software or hit the network on the user's behalf.
+        - cmd_cache_status
+        - cmd_cache_clear

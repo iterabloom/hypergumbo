@@ -194,7 +194,11 @@ ipc_recv:
   - module: process
     attributes: [stdin]
   - module: process
-    methods: [on]
+    # Quote "on" so YAML 1.1 doesn't parse it as boolean True. Without
+    # the quotes, the auto-derived TaintSource for process.on lands
+    # with name=True, which trips `if "." in src.name` in
+    # `propagate_taint_structural`.
+    methods: ["on"]
     notes: "process.on('message', ...) for IPC from parent"
 
 logging:

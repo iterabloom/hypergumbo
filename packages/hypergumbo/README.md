@@ -28,6 +28,8 @@ Output:
 
 hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. The goal of this project is to efficiently help developers and LLMs understand a codebase. > Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing. > Intel Mac users:
 
+> **Audited IO surface.** hypergumbo's own filesystem / network / subprocess activity is enumerated per CLI subcommand category in [SECURITY.md](SECURITY.md), with machine-verifiable claims authored at `docs/hypergumbo.claims.yaml`. Re-run the audit locally via `hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml`. The wrapper-function discipline used to make path-bounded claims structurally verifiable is documented as the recommended pattern for any hypergumbo user (any language) wanting the same precision.
+
 ## Overview
 Python (91%), Markdown (4%), Yaml (3%)
 728 files    (383 non-test + 345 test)

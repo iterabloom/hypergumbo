@@ -34,6 +34,7 @@ _IPV6_CIDR_PATTERN = re.compile(r"[0-9a-fA-F:]*::[0-9a-fA-F:]*/\d+")
 # Set HF env vars BEFORE importing sentence_transformers downstream — most
 # HuggingFace libraries cache these at their own import time (WI-gatot).
 from ._hf_noise import suppress_hf_noise as _suppress_hf_noise  # noqa: E402
+from .safety_zones import cache_save_npy  # noqa: E402
 
 _suppress_hf_noise()
 
@@ -1497,8 +1498,7 @@ def _save_cached_embedding(
 
     cache_file = cache_dir / f"embed_{file_hash}.npy"
     try:
-        import numpy as np
-        np.save(cache_file, embedding)
+        cache_save_npy(cache_file, embedding)
     except Exception:
         pass  # Silently fail if caching doesn't work
 

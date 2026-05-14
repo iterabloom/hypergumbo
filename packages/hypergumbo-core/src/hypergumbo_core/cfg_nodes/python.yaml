@@ -44,3 +44,26 @@ switch:
     scrutinee_child: "field:subject"
     arms_child: "field:body"
     arm_type: case_clause
+
+# Atomic statement node types — the CFG builder treats these as a single
+# CfgStatement and stops descending into their children. Without this, the
+# builder recurses past expression_statement / assignment into bare
+# identifiers and integers, destroying the statement-level granularity
+# that def/use extractors operate on. Listed types correspond to Python's
+# statement-level AST shapes (the children of a block / module body).
+atomic_statement:
+  - expression_statement
+  - assignment
+  - augmented_assignment
+  - delete_statement
+  - raise_statement
+  - assert_statement
+  - global_statement
+  - nonlocal_statement
+  - print_statement
+  - exec_statement
+  - import_statement
+  - import_from_statement
+  - future_import_statement
+  - pass_statement
+  - call

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Layer-3 project-local catalog — user_out zone sinks.
+zone: user_out
+trust_level: untrusted
+
+sinks:
+  python:
+    - module: hypergumbo_core.safety_zones
+      functions:
+        - user_out_write
+        - user_out_open_json_dump

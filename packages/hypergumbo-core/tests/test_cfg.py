@@ -2299,3 +2299,98 @@ class TestDefUseExtractorRegistry:
                 return DefUseResult()
 
         assert isinstance(Good(), DefUseExtractor)
+
+
+class TestPopulateDefUseForCfg:
+    """Tests for the def/use population pass that bridges CFG → DDG.
+
+    The CFG builder records each statement's ``(line, col, node_type)``
+    but leaves ``defines`` and ``uses`` empty (per the ADR-0017 §1c
+    pluggable-extractor design). ``populate_def_use_for_cfg`` walks the
+    AST in parallel and applies the language's def/use extractor to
+    statement-level nodes.
+    """
+
+    def _parse_python(self, source: str):
+        from tree_sitter_language_pack import get_language
+        import tree_sitter
+        lang = get_language("python")
+        parser = tree_sitter.Parser(lang)
+        return parser.parse(source.encode("utf-8")), source.encode("utf-8")
+
+    def _get_body(self, tree):
+        for child in tree.root_node.children:
+            if child.type == "function_definition":
+                return child.child_by_field_name("body")
+        return None  # pragma: no cover - test inputs always have a function
+
+    def test_populate_fills_defines_and_uses(self) -> None:
+        from hypergumbo_core.cfg import (
+            build_function_cfg, load_cfg_mapping,
+            populate_def_use_for_cfg, clear_cfg_mapping_cache,
+        )
+        # Force import to register Python extractor.
+        import hypergumbo_lang_mainstream.py_def_use
+        clear_cfg_mapping_cache()
+        mapping = load_cfg_mapping("python")
+        tree, src = self._parse_python(
+            "def f(x):\n    y = x + 1\n    return y\n"
+        )
+        body = self._get_body(tree)
+        cfg = build_function_cfg(body, src, mapping, "p:t.py:1-3:f:function")
+        populate_def_use_for_cfg(cfg, body, src, "python")
+
+        defines_found: list[str] = []
+        for block in cfg.blocks.values():
+            for stmt in block.statements:
+                defines_found.extend(stmt.defines)
+        assert "y" in defines_found
+
+    def test_populate_no_op_for_unregistered_language(self) -> None:
+        from hypergumbo_core.cfg import (
+            build_function_cfg, load_cfg_mapping,
+            populate_def_use_for_cfg, clear_cfg_mapping_cache,
+        )
+        clear_cfg_mapping_cache()
+        mapping = load_cfg_mapping("python")
+        tree, src = self._parse_python(
+            "def f(x):\n    return x\n"
+        )
+        body = self._get_body(tree)
+        cfg = build_function_cfg(body, src, mapping, "p:t.py:1-2:f:function")
+        # Should not raise even when no extractor is registered.
+        populate_def_use_for_cfg(cfg, body, src, "no_such_language")
+        # Statements stay empty.
+        for block in cfg.blocks.values():
+            for stmt in block.statements:
+                assert stmt.defines == []
+                assert stmt.uses == []
+
+    def test_atomic_statement_keeps_assignment_single_block(self) -> None:
+        """``atomic_statement`` declaration in python.yaml prevents CFG
+        from decomposing ``y = x + 1`` into bare identifier blocks."""
+        from hypergumbo_core.cfg import (
+            build_function_cfg, load_cfg_mapping, clear_cfg_mapping_cache,
+        )
+        clear_cfg_mapping_cache()
+        mapping = load_cfg_mapping("python")
+        # python.yaml declares assignment + expression_statement atomic.
+        assert "assignment" in mapping.atomic_statements
+        tree, src = self._parse_python(
+            "def f(x):\n    y = x + 1\n    return y\n"
+        )
+        body = self._get_body(tree)
+        cfg = build_function_cfg(body, src, mapping, "p:t.py:1-3:f:function")
+        # The CfgStatement for the assignment line should be of type
+        # 'assignment' (not 'identifier' / 'integer' as would happen if
+        # atomic-statement classification were absent).
+        node_types = {
+            stmt.node_type
+            for block in cfg.blocks.values()
+            for stmt in block.statements
+        }
+        assert "assignment" in node_types
+        # And NOT bare identifiers — those are the pre-atomic-classification
+        # symptoms.
+        assert "identifier" not in node_types
+        assert "integer" not in node_types

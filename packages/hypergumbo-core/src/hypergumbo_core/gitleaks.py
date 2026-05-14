@@ -26,6 +26,12 @@ import sys
 import tarfile
 import tempfile
 import zipfile
+
+from .safety_zones import (
+    cache_write,
+    install_artifact_copy,
+    install_artifact_write_bytes,
+)
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -174,7 +180,7 @@ def install_gitleaks(quiet: bool = False) -> bool:
             archive_path = tmppath / filename
 
             # Write archive
-            archive_path.write_bytes(data)
+            install_artifact_write_bytes(archive_path, data)
 
             # Extract (from trusted GitHub release - nosec B202)
             if filename.endswith(".zip"):
@@ -202,7 +208,7 @@ def install_gitleaks(quiet: bool = False) -> bool:
             GITLEAKS_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
 
             # Copy binary
-            shutil.copy2(extracted_binary, GITLEAKS_PATH)
+            install_artifact_copy(extracted_binary, GITLEAKS_PATH)
 
             # Make executable on Unix
             if sys.platform != "win32":
@@ -348,7 +354,7 @@ def scan_content_cached(
 
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text(json.dumps(cache, indent=2))
+        cache_write(cache_file, json.dumps(cache, indent=2))
     except OSError:  # pragma: no cover - cache write failure must not break scan
         pass
 

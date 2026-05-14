@@ -297,6 +297,13 @@ class CfgNodeMapping:
     context_manager: list[ContextManagerMapping] = field(default_factory=list)
     deferred: list[DeferredMapping] = field(default_factory=list)
     switch: list[SwitchMapping] = field(default_factory=list)
+    # Atomic statement node types — types that the CFG builder treats
+    # as a single CfgStatement, NOT as a control-flow construct. Without
+    # this hint, _process_sequential decomposes every unmapped node into
+    # its children, which for Python recurses past expression_statement
+    # all the way down to bare identifiers / integers — losing the
+    # statement-level granularity that def/use extractors need.
+    atomic_statements: list[str] = field(default_factory=list)
 
     def classify(self, node_type: str) -> Optional[str]:
         """Return the control-flow category for a tree-sitter node type.
@@ -510,6 +517,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         context_manager=context_manager,
         deferred=deferred,
         switch=switch,
+        atomic_statements=data.get("atomic_statement", []),
     )
 
 
@@ -753,8 +761,15 @@ class CfgBuilder:
 
         # If this node has named children, it may be a compound statement we
         # don't recognize. Recurse into its children to capture any control
-        # flow hidden inside.
-        if node.named_child_count > 0 and self._mapping.classify(node.type) is None:
+        # flow hidden inside. EXCEPT: when the YAML mapping declares this
+        # node type as an atomic statement, treat it as a single block —
+        # def/use extractors operate at the statement level and want the
+        # full expression/assignment node, not its decomposed leaves.
+        if (
+            node.named_child_count > 0
+            and self._mapping.classify(node.type) is None
+            and node.type not in self._mapping.atomic_statements
+        ):
             # Track unmapped compound types
             if node.type not in _SKIP_UNMAPPED_TYPES:
                 self._unmapped_types.add(node.type)
@@ -1301,6 +1316,54 @@ def build_function_cfg(
     """
     builder = CfgBuilder(mapping, symbol_id)
     return builder.build(body_node, source)
+
+
+def populate_def_use_for_cfg(
+    cfg: FunctionCfg,
+    body_node: Any,
+    source: bytes,
+    language: str,
+) -> None:
+    """Populate ``CfgStatement.defines`` / ``.uses`` via the registered extractor.
+
+    The CFG builder (``CfgBuilder``) records each statement's
+    ``(line, col, node_type)`` but leaves ``defines`` and ``uses`` empty
+    — they are intentionally a separate pass (per the ADR-0017 §1c
+    pluggable-extractor design). This helper performs that pass: walks
+    the original AST in parallel with the CFG, looks each AST node up by
+    ``(line, col, node_type)`` against the CFG's statement index, and
+    when matched runs the language-specific def/use extractor on the
+    AST node, copying the result into the CfgStatement.
+
+    No-op when no extractor is registered for ``language``. Required
+    before :func:`solve_reaching_defs` can produce useful output for
+    AST-built CFGs — without populate, every statement has empty
+    defines/uses and the reaching-defs solver returns zero DDG edges.
+    """
+    extractor = _DEF_USE_EXTRACTORS.get(language)
+    if extractor is None:  # pragma: no cover - all major languages register
+        return
+
+    cfg_stmts: dict[tuple[int, int, str], CfgStatement] = {}
+    for block in cfg.blocks.values():
+        for stmt in block.statements:
+            cfg_stmts[(stmt.line, stmt.col, stmt.node_type)] = stmt
+
+    def visit(node: Any) -> None:
+        key = (
+            node.start_point[0] + 1,
+            node.start_point[1],
+            node.type,
+        )
+        cfg_stmt = cfg_stmts.get(key)
+        if cfg_stmt is not None:
+            result = extractor.extract(node, source)
+            cfg_stmt.defines = list(result.defines)
+            cfg_stmt.uses = list(result.uses)
+        for child in node.children:
+            visit(child)
+
+    visit(body_node)
 
 
 # ---------------------------------------------------------------------------

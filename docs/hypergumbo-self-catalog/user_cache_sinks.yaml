@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Layer-3 project-local catalog — user_cache zone sinks.
+#
+# Hypergumbo's internal wrappers in safety_zones.py are the canonical
+# user_cache write callees. Declaring them here, NOT builtins.open or
+# Path.write_text, gives the verify-claims taint pass a sink that is
+# distinct from raw fs_write — which keeps host_fs prohibited for
+# runtime CLI while user_cache is allowed.
+zone: user_cache
+trust_level: untrusted
+
+sinks:
+  python:
+    - module: hypergumbo_core.safety_zones
+      functions:
+        - cache_write
+        - cache_write_bytes
+        - cache_save_npy

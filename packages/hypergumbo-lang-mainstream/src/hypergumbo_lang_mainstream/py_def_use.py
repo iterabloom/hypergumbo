@@ -224,6 +224,25 @@ def _handle_for_in_clause(node: Any, source: bytes) -> DefUseResult:
     return DefUseResult(defines=defines, uses=uses)
 
 
+def _handle_expression_statement(node: Any, source: bytes) -> DefUseResult:
+    """Python wraps every statement-level expression in ``expression_statement``.
+
+    The AST-built CFG records this wrapper as the statement node_type
+    (see ``cfg.CfgBuilder``), but the substantive def/use information
+    lives on the inner node (``assignment``, ``augmented_assignment``,
+    bare ``call``, etc.). Unwrap one level and re-dispatch — if the
+    inner type has a registered handler it gets called; otherwise the
+    default "collect all identifiers as uses" path applies.
+    """
+    if node.named_child_count == 1:
+        inner = node.named_children[0]
+        handler = _HANDLERS.get(inner.type)
+        if handler is not None:
+            return handler(inner, source)
+        return DefUseResult(uses=_collect_identifiers(inner, source))
+    return DefUseResult(uses=_collect_identifiers(node, source))
+
+
 # Map node types to handler functions
 _HANDLERS: dict[str, Any] = {
     "assignment": _handle_assignment,
@@ -232,4 +251,5 @@ _HANDLERS: dict[str, Any] = {
     "delete_statement": _handle_delete,
     "for_statement": _handle_for,
     "for_in_clause": _handle_for_in_clause,
+    "expression_statement": _handle_expression_statement,
 }

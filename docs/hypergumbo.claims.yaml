@@ -1,0 +1,255 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Hypergumbo's security claims, verified by `hypergumbo verify-claims`.
+#
+# Each claim is a taint-flow constraint over the per-entry-point safety
+# zones declared in docs/hypergumbo-self-catalog/. The matcher is flat:
+# verify-claims reports a violation if some unsanitized data with the
+# named source_taint reaches the named prohibited_sink_zone.
+#
+# How to read this file:
+#
+# - Sources are CLI subcommand handlers declared in
+#   docs/hypergumbo-self-catalog/<*>_sources.yaml with start_at: callee
+#   (per the algorithm extension in taint.py). Each cmd_* function
+#   "taints" everything downstream of it with its entry-point label.
+# - Sinks are hypergumbo-internal wrapper functions
+#   (hypergumbo_core.safety_zones.*) declared in
+#   docs/hypergumbo-self-catalog/<zone>_sinks.yaml; each wrapper lives
+#   in a distinct safety zone.
+# - The zone-barrier sanitizer
+#   (hypergumbo_core.safety_zones._safety_zone_barrier) blocks BFS from
+#   descending through a wrapper into its internal open/json.dump
+#   calls — without it, every user_out write would also fire as a
+#   spurious host_fs reachability finding.
+#
+# The claims below verify TWO load-bearing safety properties:
+#
+# 1. Runtime CLI subcommands (cmd_sketch, cmd_run, cmd_slice, etc.)
+#    confine their filesystem activity to user_cache + user_out +
+#    tmp_artifact zones; they DO NOT reach host_fs, network,
+#    subprocess, install_artifact, or dev_zone.
+#
+# 2. Extras CLI subcommands have well-defined allowances. Each install
+#    flow declares the specific subset of zones it's permitted to reach.
+#    Dev-zone code is unreachable from every CLI entry-point.
+
+extra_catalogs:
+  sources:
+    - hypergumbo-self-catalog/runtime_cli_sources.yaml
+    - hypergumbo-self-catalog/install_gitleaks_sources.yaml
+    - hypergumbo-self-catalog/install_embeddings_sources.yaml
+    - hypergumbo-self-catalog/build_grammars_sources.yaml
+    - hypergumbo-self-catalog/install_rust_analyzer_sources.yaml
+    - hypergumbo-self-catalog/add_extras_sources.yaml
+  sinks:
+    - hypergumbo-self-catalog/user_cache_sinks.yaml
+    - hypergumbo-self-catalog/user_out_sinks.yaml
+    - hypergumbo-self-catalog/tmp_artifact_sinks.yaml
+    - hypergumbo-self-catalog/install_artifact_sinks.yaml
+    - hypergumbo-self-catalog/dev_zone_sinks.yaml
+  sanitizers:
+    - hypergumbo-self-catalog/zone_barrier_sanitizers.yaml
+
+claims:
+  # =========================================================================
+  # Runtime CLI subcommand surface (cmd_sketch / cmd_run / etc.)
+  # Confined to user_cache, user_out, tmp_artifact. Everything else
+  # is prohibited.
+  # =========================================================================
+  - id: runtime-cli-no-host-fs
+    text: |
+      Runtime CLI subcommands (cmd_sketch, cmd_run, cmd_slice,
+      cmd_search, cmd_routes, cmd_explain, cmd_symbols, cmd_compact,
+      cmd_io_boundaries, cmd_verify_claims, cmd_catalog,
+      cmd_test_coverage, cmd_dead_code_maybe, cmd_config,
+      cmd_cache_status, cmd_cache_clear) do not write to arbitrary
+      filesystem paths. All writes go through the safety_zones wrappers
+      (cache_write / user_out_write / tmp_artifact_write) in their
+      respective peer zones.
+    constraint:
+      taint_flow:
+        source_taint: runtime_cli_entry
+        prohibited_sink_zone: host_fs
+
+  - id: runtime-cli-no-network
+    text: |
+      Runtime CLI subcommands do not initiate network sends. Embeddings
+      downloads happen only via the install-embeddings extras subcommand
+      and downstream library calls — never from the analyze-my-code path.
+    constraint:
+      taint_flow:
+        source_taint: runtime_cli_entry
+        prohibited_sink_zone: network
+
+  - id: runtime-cli-no-subprocess
+    text: |
+      Runtime CLI subcommands do not shell out. All subprocess invocations
+      (curl, git, pip, rustup, gitleaks) happen only via extras /
+      build-time subcommands.
+    constraint:
+      taint_flow:
+        source_taint: runtime_cli_entry
+        prohibited_sink_zone: subprocess
+
+  - id: runtime-cli-no-install-artifact
+    text: |
+      Runtime CLI subcommands do not install software (no writes via the
+      install_artifact wrappers).
+    constraint:
+      taint_flow:
+        source_taint: runtime_cli_entry
+        prohibited_sink_zone: install_artifact
+
+  - id: runtime-cli-no-dev-zone
+    text: |
+      Runtime CLI subcommands do not transitively reach dev-zone code
+      paths (tracker sync, agent supervisor, repository mutation).
+      Hypergumbo's analyze-my-code path is separated from its
+      development tooling by package boundaries; this claim makes the
+      separation machine-verifiable.
+    constraint:
+      taint_flow:
+        source_taint: runtime_cli_entry
+        prohibited_sink_zone: dev_zone
+
+  # =========================================================================
+  # install-gitleaks (cmd_install_gitleaks / cmd_uninstall_gitleaks)
+  # Allowed: network (download), subprocess (extraction), install_artifact
+  #          (binary copy), tmp_artifact (extraction temp dir).
+  # Prohibited: host_fs (direct writes outside wrappers), dev_zone.
+  # =========================================================================
+  - id: install-gitleaks-no-host-fs
+    text: |
+      install-gitleaks writes ONLY through install_artifact / tmp_artifact
+      wrappers — never directly to arbitrary filesystem paths.
+    constraint:
+      taint_flow:
+        source_taint: install_gitleaks_entry
+        prohibited_sink_zone: host_fs
+
+  - id: install-gitleaks-no-dev-zone
+    text: |
+      install-gitleaks does not transitively reach dev-zone code paths.
+    constraint:
+      taint_flow:
+        source_taint: install_gitleaks_entry
+        prohibited_sink_zone: dev_zone
+
+  # =========================================================================
+  # install-embeddings
+  # Allowed: subprocess (pip), network (HF model download), tmp_artifact.
+  # Prohibited: host_fs, install_artifact (no binary copies), dev_zone.
+  # =========================================================================
+  - id: install-embeddings-no-host-fs
+    text: |
+      install-embeddings does not write directly to arbitrary filesystem
+      paths. The pip subprocess writes to site-packages on its own;
+      hypergumbo's code does not write outside its wrappers.
+    constraint:
+      taint_flow:
+        source_taint: install_embeddings_entry
+        prohibited_sink_zone: host_fs
+
+  - id: install-embeddings-no-install-artifact
+    text: |
+      install-embeddings does not copy install artifacts to ~/.local/bin
+      or similar (no install_artifact wrapper calls).
+    constraint:
+      taint_flow:
+        source_taint: install_embeddings_entry
+        prohibited_sink_zone: install_artifact
+
+  - id: install-embeddings-no-dev-zone
+    text: |
+      install-embeddings does not transitively reach dev-zone code paths.
+    constraint:
+      taint_flow:
+        source_taint: install_embeddings_entry
+        prohibited_sink_zone: dev_zone
+
+  # =========================================================================
+  # build-grammars
+  # Allowed: subprocess (git clone, pip install), tmp_artifact (build dir).
+  # Prohibited: host_fs, network (no direct network — git/pip handle it),
+  #             install_artifact, dev_zone.
+  # =========================================================================
+  - id: build-grammars-no-host-fs
+    text: |
+      build-grammars writes ONLY through tmp_artifact wrappers — the
+      build dir scaffolding goes through tmp_artifact_write, and the
+      install effect is via the pip subprocess.
+    constraint:
+      taint_flow:
+        source_taint: build_grammars_entry
+        prohibited_sink_zone: host_fs
+
+  - id: build-grammars-no-install-artifact
+    text: |
+      build-grammars does not directly copy install artifacts; pip
+      handles the install side via subprocess.
+    constraint:
+      taint_flow:
+        source_taint: build_grammars_entry
+        prohibited_sink_zone: install_artifact
+
+  - id: build-grammars-no-dev-zone
+    text: |
+      build-grammars does not transitively reach dev-zone code paths.
+    constraint:
+      taint_flow:
+        source_taint: build_grammars_entry
+        prohibited_sink_zone: dev_zone
+
+  # =========================================================================
+  # install-rust-analyzer
+  # Allowed: subprocess (rustup), network (rustup downloads).
+  # Prohibited: host_fs, install_artifact (rustup handles install),
+  #             tmp_artifact, dev_zone.
+  # =========================================================================
+  - id: install-rust-analyzer-no-host-fs
+    text: |
+      install-rust-analyzer delegates entirely to the rustup subprocess —
+      hypergumbo's code does not write to disk directly.
+    constraint:
+      taint_flow:
+        source_taint: install_rust_analyzer_entry
+        prohibited_sink_zone: host_fs
+
+  - id: install-rust-analyzer-no-install-artifact
+    text: |
+      install-rust-analyzer does not call any install_artifact wrappers
+      (rustup handles install side-effects).
+    constraint:
+      taint_flow:
+        source_taint: install_rust_analyzer_entry
+        prohibited_sink_zone: install_artifact
+
+  - id: install-rust-analyzer-no-dev-zone
+    text: |
+      install-rust-analyzer does not transitively reach dev-zone code paths.
+    constraint:
+      taint_flow:
+        source_taint: install_rust_analyzer_entry
+        prohibited_sink_zone: dev_zone
+
+  # =========================================================================
+  # add-extras / remove-extras (umbrella)
+  # Allowed: anything any individual install_* subcommand is allowed.
+  # Prohibited: host_fs (no direct writes outside wrappers), dev_zone.
+  # =========================================================================
+  - id: add-extras-no-host-fs
+    text: |
+      add-extras / remove-extras dispatch to install_* subcommands but
+      do not perform writes outside the wrapper functions themselves.
+    constraint:
+      taint_flow:
+        source_taint: add_extras_entry
+        prohibited_sink_zone: host_fs
+
+  - id: add-extras-no-dev-zone
+    text: |
+      add-extras / remove-extras do not transitively reach dev-zone code paths.
+    constraint:
+      taint_flow:
+        source_taint: add_extras_entry
+        prohibited_sink_zone: dev_zone

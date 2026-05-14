@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from .safety_zones import tmp_artifact_write
+
 
 @dataclass
 class GrammarSpec:
@@ -219,12 +221,16 @@ def build_grammar(
     (pkg_dir / module_name).mkdir()
 
     # Generate source files
-    (pkg_dir / module_name / "__init__.py").write_text(_generate_init_py())
-    (pkg_dir / module_name / "binding.c").write_text(
-        _generate_binding_c(spec.function_name)
+    tmp_artifact_write(
+        pkg_dir / module_name / "__init__.py", _generate_init_py(),
     )
-    (pkg_dir / "setup.py").write_text(
-        _generate_setup_py(spec.name, module_name, str(repo_dir), spec.scanner_type)
+    tmp_artifact_write(
+        pkg_dir / module_name / "binding.c",
+        _generate_binding_c(spec.function_name),
+    )
+    tmp_artifact_write(
+        pkg_dir / "setup.py",
+        _generate_setup_py(spec.name, module_name, str(repo_dir), spec.scanner_type),
     )
 
     # Build and install

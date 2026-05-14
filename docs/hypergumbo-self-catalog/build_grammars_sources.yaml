@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Layer-3 project-local catalog.
+taint_label: build_grammars_entry
+
+sources:
+  python:
+    - module: hypergumbo_core.cli
+      start_at: callee
+      functions:
+        - cmd_build_grammars

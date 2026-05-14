@@ -63,6 +63,17 @@ class TaintSource:
             (WI-guhok for Python; WI-gapam follow-up for tree-sitter langs).
         return_tainted: Whether the return (or read) value is tainted.
         argument_tainted: Indices of arguments that become tainted (optional).
+        start_at: BFS seed origin. Default ``"caller"`` (original semantics)
+            seeds at the function that *calls* a source — appropriate for
+            value-tainting sources like ``os.environ.get`` or
+            ``Fernet.decrypt``. ``"callee"`` seeds at the source-callee
+            symbol itself, which models reachability-from-entry semantics
+            for synthetic entry-point sources: a CLI handler like
+            ``cmd_sketch`` declared with ``start_at: callee`` taints every
+            symbol reachable downstream of itself, not every symbol
+            reachable downstream of its dispatcher. Project-local
+            catalogs declaring runtime/extras/dev CLI handlers as sources
+            use ``"callee"`` so reachability is precisely scoped.
     """
 
     taint_label: str
@@ -71,6 +82,7 @@ class TaintSource:
     kind: str  # "function", "method", or "attribute"
     return_tainted: bool = True
     argument_tainted: tuple[int, ...] = ()
+    start_at: str = "caller"  # "caller" or "callee"
 
     @property
     def qualified_name(self) -> str:
@@ -328,6 +340,12 @@ def _load_source_yaml(path: Path) -> tuple[str, list[TaintSource]]:
             module = entry.get("module", "")
             return_tainted = entry.get("return_tainted", True)
             arg_tainted = tuple(entry.get("argument_tainted", []))
+            start_at = entry.get("start_at", "caller")
+            if start_at not in {"caller", "callee"}:
+                raise ValueError(
+                    f"Invalid start_at={start_at!r} in {path}; "
+                    f"must be 'caller' or 'callee'."
+                )
 
             for func_name in entry.get("functions", []):
                 lang_sources.append(TaintSource(
@@ -337,6 +355,7 @@ def _load_source_yaml(path: Path) -> tuple[str, list[TaintSource]]:
                     kind="function",
                     return_tainted=return_tainted,
                     argument_tainted=arg_tainted,
+                    start_at=start_at,
                 ))
             for method_name in entry.get("methods", []):
                 lang_sources.append(TaintSource(
@@ -346,6 +365,7 @@ def _load_source_yaml(path: Path) -> tuple[str, list[TaintSource]]:
                     kind="method",
                     return_tainted=return_tainted,
                     argument_tainted=arg_tainted,
+                    start_at=start_at,
                 ))
         sources_by_lang[lang] = lang_sources
 
@@ -748,6 +768,73 @@ def _extract_callee_name(symbol_id: str) -> str:
     return ":".join(name_parts)
 
 
+def _extract_callee_language(symbol_id: str) -> str:
+    """Extract the language prefix from a symbol ID.
+
+    Symbol id format: ``{lang}:{path}:{line-range}:{name}:{kind}``.
+    Returns the language token. Used by sink/source matching to filter
+    cross-language pollution — without this filter, a sink declared in
+    elixir (``HTTPoison.get``) collides with every Python ``.get()`` call
+    via short-name indexing, producing thousands of false positives.
+    """
+    parts = symbol_id.split(":", 1)
+    return parts[0] if parts else ""
+
+
+def _extract_callee_module(symbol_id: str) -> str:
+    """Extract the callee module/path hint from a symbol ID.
+
+    Mirrors :func:`_extract_callee_name`'s parsing but returns the file
+    or module segment instead of the name. For unresolved externals
+    this is typically ``"external"`` (entirely ambiguous) or a module
+    path like ``"os.environ"`` / ``"subprocess"`` when the analyzer
+    pinned it down. For in-repo dsts it's the relative file path.
+
+    Used by sink-matching to filter short-name collisions: a sink
+    declared as ``multiprocessing.Queue.get`` should NOT match an edge
+    whose dst is ``python:external:0-0:get:unresolved`` because the
+    edge could equally be ``dict.get``, ``args.get``, etc.
+    """
+    parts = symbol_id.split(":")
+    if len(parts) < 5:
+        return ""
+    return parts[1] if len(parts) > 1 else ""
+
+
+def _sink_module_compatible(
+    sink_module: str, callee_module: str,
+) -> bool:
+    """Return True if a sink with declared module is compatible with the
+    callee module hint.
+
+    Rules:
+    - ``callee_module == "external"`` → True. The analyzer couldn't pin
+      the module down; we don't have enough info to disambiguate. Falls
+      back to short-name-only matching (legacy behavior).
+    - ``callee_module`` and ``sink_module`` share a prefix → True. E.g.,
+      callee path ``os.environ`` is compatible with sink module
+      ``os.environ`` or with ``os`` (parent module).
+    - Otherwise → False. Short-name collision; reject the match.
+
+    The "external" exemption is necessary because for some languages /
+    construct types the resolver can't recover the module, and a strict
+    rule would suppress LEGITIMATE sink findings on those calls.
+    """
+    if not sink_module or not callee_module:
+        return True
+    if callee_module == "external" or callee_module == "<external>":
+        return True
+    # Direct or prefix match.
+    if sink_module == callee_module:
+        return True
+    if (
+        callee_module.startswith(sink_module + ".")
+        or sink_module.startswith(callee_module + ".")
+    ):
+        return True
+    return False
+
+
 # Edge types that represent call-like relationships for taint propagation.
 # Includes direct calls and cross-language linker bridge edges (ADR-0017 §5).
 #
@@ -805,6 +892,56 @@ def _build_adjacency(
     return dict(forward), dict(reverse)
 
 
+def _build_sanitizer_index_multi(
+    sanitizers: list[TaintSanitizer],
+) -> dict[str, list[TaintSanitizer]]:
+    """Index sanitizers by callee name as a list, not a single entry.
+
+    One function may be declared as a sanitizer for several distinct
+    input_taint labels — the zone-barrier pattern in hypergumbo's
+    self-audit uses one barrier function per wrapper to sanitize every
+    entry-point label so a single call blocks BFS regardless of which
+    entry-point seeded the trace. Indexing as a flat dict would
+    overwrite all but one entry; the list-indexed version preserves
+    every (qualified_name → input_taint) declaration so the BFS
+    consumer can register sanitization for every applicable label.
+    """
+    index: dict[str, list[TaintSanitizer]] = defaultdict(list)
+    for san in sanitizers:
+        index[san.qualified_name].append(san)
+        index[san.short_name].append(san)
+        # Bare-method-name fallback (parity with the source/sink indexers)
+        # so unresolved edges that only have the leaf name still match.
+        if "." in san.qualified_name:
+            leaf = san.qualified_name.rsplit(".", 1)[-1]
+            if leaf != san.short_name:
+                index[leaf].append(san)
+    return index
+
+
+def _register_sanitizer_callers(
+    edges: list[dict],
+    sanitizer_by_callee: dict[str, list[TaintSanitizer]],
+    sanitizer_callers: "dict[str, dict[str, TaintSanitizer]]",
+) -> None:
+    """Populate sanitizer_callers from edges + multi-sanitizer index.
+
+    Each edge whose callee matches one or more sanitizers adds an entry
+    per matched sanitizer's input_taint label to the caller's sanitizer
+    dict — so a caller of a multi-label barrier picks up every label.
+    """
+    for edge in edges:
+        etype = edge.get("type", "")
+        if etype not in TAINT_CALL_EDGE_TYPES:
+            continue
+        callee_name = _extract_callee_name(edge["dst"])
+        matched_list = sanitizer_by_callee.get(callee_name)
+        if not matched_list:
+            continue
+        for matched in matched_list:
+            sanitizer_callers[edge["src"]][matched.input_taint] = matched
+
+
 def propagate_taint_structural(
     edges: list[dict],
     sources: list[TaintSource],
@@ -855,10 +992,7 @@ def propagate_taint_structural(
         if "." in sink.name:
             sink_by_callee[sink.name.rsplit(".", 1)[-1]] = sink
 
-    sanitizer_by_callee: dict[str, TaintSanitizer] = {}
-    for san in sanitizers:
-        sanitizer_by_callee[san.qualified_name] = san
-        sanitizer_by_callee[san.short_name] = san
+    sanitizer_by_callee = _build_sanitizer_index_multi(sanitizers)
 
     # Step 1: Find source call sites — which symbol IDs call taint sources?
     # A "source caller" is a node that has an outgoing call edge to a source.
@@ -885,32 +1019,39 @@ def propagate_taint_structural(
         if matched:
             sink_callers[edge["src"]] = (edge["dst"], matched)
 
-    # Step 3: Find sanitizer call sites
+    # Step 3: Find sanitizer call sites — multi-label-aware so one
+    # caller of a barrier function picks up every input_taint label it
+    # sanitizes.
     sanitizer_callers: dict[str, dict[str, TaintSanitizer]] = defaultdict(dict)
-    # Maps caller_symbol_id → {input_taint → TaintSanitizer}
-    for edge in edges:
-        etype = edge.get("type", "")
-        if etype not in TAINT_CALL_EDGE_TYPES:
-            continue
-        callee_name = _extract_callee_name(edge["dst"])
-        matched = sanitizer_by_callee.get(callee_name)
-        if matched:
-            sanitizer_callers[edge["src"]][matched.input_taint] = matched
+    _register_sanitizer_callers(edges, sanitizer_by_callee, sanitizer_callers)
 
     # Step 4: For each source, BFS forward to find reachable sinks
     # without passing through sanitizers.
     findings: list[TaintFlowFinding] = []
 
-    for caller_id, _source_callee_id, taint_source in source_callers:
+    for caller_id, source_callee_id, taint_source in source_callers:
         taint_label = taint_source.taint_label
 
-        # Phase 1: BFS from source caller, skip nodes that are sanitizers
-        # for this taint label. Sanitizer nodes are NOT added to the
+        # Choose BFS seed by source's start_at field. "caller" (default)
+        # preserves legacy semantics: BFS from the call site of the source
+        # function. "callee" seeds at the source callee itself — used by
+        # synthetic entry-point sources (CLI handlers declared in
+        # project-local catalogs) so the reachable set is exactly the
+        # downstream of that one entry point, not everything reachable
+        # from the dispatcher.
+        seed_id = (
+            source_callee_id
+            if taint_source.start_at == "callee"
+            else caller_id
+        )
+
+        # Phase 1: BFS from seed, skip nodes that are sanitizers for
+        # this taint label. Sanitizer nodes are NOT added to the
         # reachable set — they block taint propagation entirely.
         reachable: set[str] = set()
         sanitized_nodes: set[str] = set()
-        parent: dict[str, str | None] = {caller_id: None}
-        queue: deque[str] = deque([caller_id])
+        parent: dict[str, str | None] = {seed_id: None}
+        queue: deque[str] = deque([seed_id])
 
         while queue:
             node = queue.popleft()
@@ -918,10 +1059,11 @@ def propagate_taint_structural(
                 continue
 
             # Check if this node is a sanitizer for our taint label.
-            # The source caller is exempt — it must always be reachable
-            # as the taint origin.
+            # The seed node is exempt — it must always be reachable
+            # as the taint origin (whether seed is the caller or the
+            # callee per start_at).
             node_sanitizers = sanitizer_callers.get(node, {})
-            if taint_label in node_sanitizers and node != caller_id:
+            if taint_label in node_sanitizers and node != seed_id:
                 sanitized_nodes.add(node)
                 continue
 
@@ -936,10 +1078,10 @@ def propagate_taint_structural(
         for sink_node, (sink_callee_id, taint_sink) in sink_callers.items():
             if sink_node in reachable:
                 # Reconstruct path
-                path = _reconstruct_path(parent, caller_id, sink_node)
+                path = _reconstruct_path(parent, seed_id, sink_node)
                 findings.append(TaintFlowFinding(
                     taint_label=taint_label,
-                    source_symbol=caller_id,
+                    source_symbol=seed_id,
                     source_primitive=taint_source.name,
                     sink_symbol=sink_callee_id,
                     sink_primitive=taint_sink.name,
@@ -1076,13 +1218,7 @@ def propagate_taint_ddg(
         if "." in sink.name:
             sink_by_callee[sink.name.rsplit(".", 1)[-1]] = sink
 
-    sanitizer_by_callee: dict[str, TaintSanitizer] = {}
-    for san in sanitizers:
-        sanitizer_by_callee[san.qualified_name] = san
-        sanitizer_by_callee[san.short_name] = san
-        # Also index by bare method name for unresolved edge matching
-        if "." in san.qualified_name:
-            sanitizer_by_callee[san.qualified_name.rsplit(".", 1)[-1]] = san
+    sanitizer_by_callee = _build_sanitizer_index_multi(sanitizers)
 
     # Build call-graph adjacency for structural fallback
     forward_adj, _reverse_adj = _build_adjacency(call_edges)
@@ -1109,24 +1245,32 @@ def propagate_taint_ddg(
         if matched:
             sink_callers[edge["src"]] = (edge["dst"], matched)
 
-    # Step 3: Find sanitizer call sites
+    # Step 3: Find sanitizer call sites — multi-label-aware to keep
+    # parity with the structural pass.
     sanitizer_set: set[str] = set()
-    sanitizer_by_caller: dict[str, TaintSanitizer] = {}
+    sanitizer_by_caller: dict[str, list[TaintSanitizer]] = defaultdict(list)
     for edge in call_edges:
         etype = edge.get("type", "")
         if etype not in TAINT_CALL_EDGE_TYPES:
             continue
         callee_name = _extract_callee_name(edge["dst"])
-        matched = sanitizer_by_callee.get(callee_name)
-        if matched:
+        matched_list = sanitizer_by_callee.get(callee_name)
+        if matched_list:
             sanitizer_set.add(edge["src"])
-            sanitizer_by_caller[edge["src"]] = matched
+            for matched in matched_list:
+                sanitizer_by_caller[edge["src"]].append(matched)
 
     findings: list[TaintFlowFinding] = []
 
-    for caller_id, _source_callee_id, taint_source in source_callers:
+    for caller_id, source_callee_id, taint_source in source_callers:
         taint_label = taint_source.taint_label
-        source_has_ddg = caller_id in analyzed
+        # Seed selection mirrors the structural pass — see propagate_taint_structural.
+        seed_id = (
+            source_callee_id
+            if taint_source.start_at == "callee"
+            else caller_id
+        )
+        source_has_ddg = seed_id in analyzed
 
         # DDG-aware forward walk: track tainted variables per DDG edge
         tainted_at: set[tuple[str, str]] = set()  # (block_id, variable)
@@ -1135,13 +1279,13 @@ def propagate_taint_ddg(
             # Find DDG edges originating from the source call site's block
             # Mark all variables defined at the source call as tainted
             for edge in ddg_edges:
-                if edge.def_block == caller_id:
+                if edge.def_block == seed_id:
                     tainted_at.add((edge.def_block, edge.variable))
 
         # Structural BFS for reachability (used for mixed-coverage)
         reachable: set[str] = set()
-        parent: dict[str, str | None] = {caller_id: None}
-        queue: deque[str] = deque([caller_id])
+        parent: dict[str, str | None] = {seed_id: None}
+        queue: deque[str] = deque([seed_id])
 
         while queue:
             node = queue.popleft()
@@ -1149,9 +1293,9 @@ def propagate_taint_ddg(
                 continue  # pragma: no cover
 
             # Skip sanitizers (same as structural)
-            if node in sanitizer_set and node != caller_id:
-                san = sanitizer_by_caller.get(node)
-                if san and san.input_taint == taint_label:
+            if node in sanitizer_set and node != seed_id:
+                sans = sanitizer_by_caller.get(node, [])
+                if any(s.input_taint == taint_label for s in sans):
                     continue
 
             reachable.add(node)
@@ -1176,10 +1320,10 @@ def propagate_taint_ddg(
                 confidence = "approximate"
                 method = "ddg_mixed"
 
-            path = _reconstruct_path(parent, caller_id, sink_node)
+            path = _reconstruct_path(parent, seed_id, sink_node)
             findings.append(TaintFlowFinding(
                 taint_label=taint_label,
-                source_symbol=caller_id,
+                source_symbol=seed_id,
                 source_primitive=taint_source.name,
                 sink_symbol=sink_callee_id,
                 sink_primitive=taint_sink.name,

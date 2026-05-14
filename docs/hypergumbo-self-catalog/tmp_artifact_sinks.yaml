@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Layer-3 project-local catalog — tmp_artifact zone sinks.
+zone: tmp_artifact
+trust_level: untrusted
+
+sinks:
+  python:
+    - module: hypergumbo_core.safety_zones
+      functions:
+        - tmp_artifact_write

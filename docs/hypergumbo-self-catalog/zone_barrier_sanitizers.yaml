@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Layer-3 project-local catalog — zone-barrier sanitizers.
+#
+# Declares ``hypergumbo_core.safety_zones._safety_zone_barrier`` as a
+# sanitizer for every entry-point taint label. Every wrapper function
+# in ``safety_zones.py`` invokes the barrier exactly once at the top
+# of its body. This makes each wrapper a "sanitizer node" in the
+# structural-taint-pass BFS: the BFS records the wrapper as a zone sink
+# (correct) but does NOT propagate forward into the wrapper's internal
+# ``open`` / ``json.dump`` / ``Path.write_text`` calls — which would
+# otherwise spuriously fire a ``host_fs`` finding for every user_out /
+# user_cache / tmp_artifact write.
+#
+# The output_taint label is intentionally a single shared
+# ``trusted_zone_sink`` value — the structural pass doesn't track it
+# downstream (sanitizers terminate propagation), so the specific value
+# is only documentation.
+description: |
+  Zone-barrier sanitizers for the structural-taint pass — prevent
+  BFS descent through hypergumbo's safety_zones wrapper functions
+  into their internal stdlib write calls.
+transforms:
+  - input_taint: runtime_cli_entry
+    output_taint: trusted_zone_sink
+    functions:
+      python:
+        - hypergumbo_core.safety_zones._safety_zone_barrier
+  - input_taint: install_gitleaks_entry
+    output_taint: trusted_zone_sink
+    functions:
+      python:
+        - hypergumbo_core.safety_zones._safety_zone_barrier
+  - input_taint: install_embeddings_entry
+    output_taint: trusted_zone_sink
+    functions:
+      python:
+        - hypergumbo_core.safety_zones._safety_zone_barrier
+  - input_taint: build_grammars_entry
+    output_taint: trusted_zone_sink
+    functions:
+      python:
+        - hypergumbo_core.safety_zones._safety_zone_barrier
+  - input_taint: install_rust_analyzer_entry
+    output_taint: trusted_zone_sink
+    functions:
+      python:
+        - hypergumbo_core.safety_zones._safety_zone_barrier
+  - input_taint: add_extras_entry
+    output_taint: trusted_zone_sink
+    functions:
+      python:
+        - hypergumbo_core.safety_zones._safety_zone_barrier

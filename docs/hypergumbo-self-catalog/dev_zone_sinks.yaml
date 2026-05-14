@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Layer-3 project-local catalog — dev-zone sinks.
+#
+# Declares the dev-zone functions that runtime CLI subcommands must not
+# transitively reach. These are tracker / agent-supervisor / sync
+# internals that mutate dev infrastructure (commits, pushes, branch
+# creation, PR opening). Listing them as sinks in zone "dev_zone" gives
+# claim 4 (dev-zone unreachable from runtime CLI) a concrete tripwire.
+#
+# Note: hypergumbo-core does not import hypergumbo-tracker, so the call
+# graph already enforces separation by construction. The sink
+# declarations exist to make the claim machine-verifiable: a future
+# regression that adds e.g. `from hypergumbo_tracker.sync import ...`
+# inside `cmd_sketch` would fire this claim.
+zone: dev_zone
+trust_level: untrusted
+
+sinks:
+  python:
+    # hypergumbo-tracker sync internals (the auto-sync that pushes ops
+    # branches and creates PRs). These are the gateways between tracker
+    # state and the git remote / forgejo API.
+    - module: hypergumbo_tracker.sync
+      functions:
+        - sync_pending_ops
+        - push_ops_branch
+        - preflight_check
+        - resolve_remote
+        - create_or_update_pr
+      methods:
+        - SyncRunner.sync
+        - SyncRunner.push
+    # Tracker CLI dispatch (the entry point for `scripts/tracker` which
+    # invokes the sync internals above).
+    - module: hypergumbo_tracker.cli
+      functions:
+        - _maybe_auto_sync
+        - main

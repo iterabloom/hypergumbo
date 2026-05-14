@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Layer-3 project-local catalog. Each extras subcommand gets its own
+# entry-point label so verify-claims can grant per-subcommand
+# allowed-zone sets in docs/hypergumbo.claims.yaml.
+taint_label: install_gitleaks_entry
+
+sources:
+  python:
+    - module: hypergumbo_core.cli
+      start_at: callee
+      functions:
+        - cmd_install_gitleaks
+        - cmd_uninstall_gitleaks

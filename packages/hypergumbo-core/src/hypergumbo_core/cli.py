@@ -52,6 +52,12 @@ from .analyze.all_analyzers import run_all_analyzers
 from .analyze.base import is_exported_from_modifiers
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 from .linkers.registry import LinkerContext, run_all_linkers
+from .safety_zones import (
+    cache_write,
+    tmp_artifact_write,
+    user_out_open_json_dump,
+    user_out_write,
+)
 # Import linker modules to trigger @register_linker decoration (side effect imports)
 import hypergumbo_core.linkers.cgo as _cgo_linker  # noqa: F401
 import hypergumbo_core.linkers.containment as _containment_linker  # noqa: F401
@@ -830,8 +836,8 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 
         temp_4x_path = temp_dir / sketch_4x_filename
         temp_16x_path = temp_dir / sketch_16x_filename
-        temp_4x_path.write_text(sketch_4x)
-        temp_16x_path.write_text(sketch_16x)
+        tmp_artifact_write(temp_4x_path, sketch_4x)
+        tmp_artifact_write(temp_16x_path, sketch_16x)
 
         # Show helpful message with copy commands
         if cache_dir is not None:
@@ -857,7 +863,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
                 with_source=with_source,
             )
             sketch_cache_path = cache_dir / sketch_filename
-            sketch_cache_path.write_text(sketch)
+            cache_write(sketch_cache_path, sketch)
         except Exception:  # pragma: no cover - cache write errors shouldn't break sketch
             sketch_cache_path = None
 
@@ -1171,7 +1177,7 @@ def _handle_files_mode(
     if args.output:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(output_text)
+        user_out_write(output_path, output_text)
         print(f"[hypergumbo slice --files] Found {len(output_lines)} dependent files")
         print(f"  Output: {output_path}")
     else:
@@ -1491,7 +1497,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
 
     # Write output
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(output, indent=2, sort_keys=True))
+    user_out_open_json_dump(out_path, output)
 
     mode = "reverse" if args.reverse else "forward"
     print(f"[hypergumbo slice] Wrote {mode} slice to {out_path}")
@@ -3319,8 +3325,7 @@ def cmd_compact(args: argparse.Namespace) -> int:
 
     if out_path:
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(out_path, "w") as f:
-            json.dump(compact_map, f, indent=2, sort_keys=True)
+        user_out_open_json_dump(out_path, compact_map)
         print(f"Compact behavior map written to: {out_path}")
     else:
         print(json.dumps(compact_map, indent=2, sort_keys=True))
@@ -3705,6 +3710,144 @@ def _print_io_boundaries_by_file(
         print()
 
 
+def _build_python_ddg_for_verify_claims(
+    repo_root: Path,
+) -> tuple[list, set[str]]:
+    """Build aggregated DDG edges + symbol set for verify-claims taint analysis.
+
+    Walks the repo for Python source files, parses each with tree-sitter,
+    builds a CFG per function via ``build_function_cfg``, runs
+    ``solve_reaching_defs`` to extract DDG edges. Returns
+    ``(ddg_edges, ddg_symbols)`` ready to pass to
+    ``propagate_taint_ddg``.
+
+    Why this exists: ``propagate_taint_structural`` matches sinks by short
+    callee name, so ``dict.get`` collides with ``multiprocessing.Queue.get``
+    on per-entry-point safety claims (see docs/hypergumbo.claims.yaml).
+    The DDG-aware variant uses receiver-type information from the def/use
+    extractors (per ADR-0017 §1b) to disambiguate, eliminating the
+    false-positive flood.
+
+    Returns ``([], set())`` if tree-sitter / cfg-mapping isn't available
+    — the caller falls back to the structural pass in that case.
+    """
+    try:
+        import tree_sitter
+        from tree_sitter_language_pack import get_language
+        from .cfg import (
+            build_function_cfg,
+            load_cfg_mapping,
+            populate_def_use_for_cfg,
+            solve_reaching_defs,
+        )
+        # Force-import the Python def/use extractor so it self-registers.
+        # The decorator-registration in py_def_use only fires on first
+        # import; nothing else in the verify-claims path imports it.
+        import hypergumbo_lang_mainstream.py_def_use  # noqa: F401
+    except ImportError:  # pragma: no cover - tree-sitter is a hard dep but defend
+        return [], set()
+
+    mapping = load_cfg_mapping("python")
+    if mapping is None:  # pragma: no cover - python mapping always ships
+        return [], set()
+
+    try:
+        lang = get_language("python")
+    except Exception:  # pragma: no cover - language pack always provides python
+        return [], set()
+    parser = tree_sitter.Parser(lang)
+
+    ddg_edges: list = []
+    ddg_symbols: set[str] = set()
+
+    # Walk all .py files under repo_root. Skip the .venv / .git / .ci /
+    # __pycache__ tree-walk skips. Match the analyzer's exclude pattern
+    # at a coarse level — verify-claims should not pay the cost of
+    # analyzing third-party code.
+    skip_dirs = {
+        ".git", ".venv", "venv", ".tox", "__pycache__",
+        ".ci", "node_modules", ".mypy_cache", ".pytest_cache",
+        ".ruff_cache", "build", "dist", ".eggs",
+    }
+    for py_path in repo_root.rglob("*.py"):
+        # Skip anything under an excluded directory.
+        if any(part in skip_dirs for part in py_path.parts):
+            continue
+        try:
+            src = py_path.read_bytes()
+        except OSError:  # pragma: no cover - defensive
+            continue
+        # Tree-sitter is robust; if a parse exception ever fires we
+        # skip the file rather than abort the whole verify-claims run.
+        tree = parser.parse(src)
+        rel_path = py_path.relative_to(repo_root).as_posix()
+        # Visit every function_definition in the file.
+        _collect_python_function_ddg(
+            tree.root_node, src, mapping, rel_path,
+            ddg_edges, ddg_symbols,
+            build_function_cfg=build_function_cfg,
+            populate_def_use_for_cfg=populate_def_use_for_cfg,
+            solve_reaching_defs=solve_reaching_defs,
+        )
+
+    return ddg_edges, ddg_symbols
+
+
+def _collect_python_function_ddg(
+    node: Any,
+    src: bytes,
+    mapping: Any,
+    rel_path: str,
+    ddg_edges: list,
+    ddg_symbols: set[str],
+    *,
+    build_function_cfg: Any,
+    populate_def_use_for_cfg: Any,
+    solve_reaching_defs: Any,
+) -> None:
+    """Recurse a Python AST collecting per-function DDG edges.
+
+    Matches the symbol-id convention used by hypergumbo's Python analyzer:
+    ``python:<rel-path>:<start_line>-<end_line>:<name>:function`` (or
+    ``method`` when nested in a class). Approximate match — we don't
+    walk class context here — but the structural BFS over `raw_edges`
+    keys by the same short-id format, so the aggregated ``ddg_symbols``
+    set lines up well enough for propagate_taint_ddg's mixed-coverage
+    branch to fire on the right nodes.
+    """
+    if node.type == "function_definition":
+        name_node = node.child_by_field_name("name")
+        body_node = node.child_by_field_name("body")
+        if name_node is not None and body_node is not None:
+            name = src[name_node.start_byte:name_node.end_byte].decode(
+                "utf-8", errors="replace",
+            )
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            sym_id = (
+                f"python:{rel_path}:{start_line}-{end_line}"
+                f":{name}:function"
+            )
+            try:
+                cfg = build_function_cfg(body_node, src, mapping, sym_id)
+                populate_def_use_for_cfg(cfg, body_node, src, "python")
+                result = solve_reaching_defs(cfg)
+            except Exception:  # pragma: no cover - defensive
+                return  # bail on this function; continue tree walk implicitly skipped
+            if not result.bailed_out and result.ddg_edges:
+                ddg_edges.extend(result.ddg_edges)
+                ddg_symbols.add(sym_id)
+    # Recurse into children so we pick up nested function definitions.
+    for child in node.children:
+        _collect_python_function_ddg(
+            child, src, mapping, rel_path,
+            ddg_edges, ddg_symbols,
+            build_function_cfg=build_function_cfg,
+            populate_def_use_for_cfg=populate_def_use_for_cfg,
+            solve_reaching_defs=solve_reaching_defs,
+        )
+
+
 def cmd_verify_claims(args: argparse.Namespace) -> int:
     """Verify security claims against I/O boundary map and taint flow.
 
@@ -3865,10 +4008,14 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
 
-        # Collect all sources, sinks, sanitizers across languages
-        all_sources = []
-        all_sinks = []
-        all_sanitizers = []
+        # Build per-language source/sink/sanitizer tables. Running
+        # propagation per-language avoids cross-language short-name
+        # collisions (e.g., elixir HTTPoison.get matching every Python
+        # .get() call) that would otherwise flood the findings with
+        # tens of thousands of false positives on multi-language repos.
+        per_lang_sources: dict[str, list] = {}
+        per_lang_sinks: dict[str, list] = {}
+        per_lang_sanitizers: dict[str, list] = {}
         for lang in sorted(languages):
             src_count = len(taint_catalog.sources_for_language(lang))
             snk_count = len(taint_catalog.sinks_for_language(lang))
@@ -3876,14 +4023,45 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # Neither sources nor sinks for this language — taint-flow
                 # cannot meaningfully analyze it. Surface the gap.
                 unsupported_taint_languages.append(lang)
-            all_sources.extend(taint_catalog.sources_for_language(lang))
-            all_sinks.extend(taint_catalog.sinks_for_language(lang))
-            all_sanitizers.extend(taint_catalog.sanitizers_for_language(lang))
+                continue
+            per_lang_sources[lang] = taint_catalog.sources_for_language(lang)
+            per_lang_sinks[lang] = taint_catalog.sinks_for_language(lang)
+            per_lang_sanitizers[lang] = taint_catalog.sanitizers_for_language(lang)
 
-        if all_sources and all_sinks:
-            taint_findings = propagate_taint_structural(
-                raw_edges, all_sources, all_sinks, all_sanitizers,
+        if per_lang_sources and per_lang_sinks:
+            # Per-language propagation. For each language, filter edges
+            # to that language (both src and dst share the prefix) and
+            # run propagation with its sources/sinks. Findings aggregate
+            # across languages. Cross-language bridge edges (where src
+            # and dst differ in language) are handled by language-pair
+            # linkers separately; this taint pass focuses on
+            # within-language flow.
+            from .taint import propagate_taint_ddg
+            ddg_edges, ddg_symbols = _build_python_ddg_for_verify_claims(
+                repo_root,
             )
+            taint_findings = []
+            for lang in sorted(per_lang_sinks):
+                lang_prefix = f"{lang}:"
+                lang_edges = [
+                    e for e in raw_edges
+                    if e.get("src", "").startswith(lang_prefix)
+                    or e.get("dst", "").startswith(lang_prefix)
+                ]
+                lang_sources = per_lang_sources.get(lang, [])
+                lang_sinks = per_lang_sinks[lang]
+                lang_sans = per_lang_sanitizers.get(lang, [])
+                if not lang_sources or not lang_sinks:
+                    continue
+                if lang == "python" and ddg_edges:
+                    taint_findings.extend(propagate_taint_ddg(
+                        ddg_edges, lang_edges, lang_sources, lang_sinks,
+                        lang_sans, ddg_symbols=ddg_symbols,
+                    ))
+                else:
+                    taint_findings.extend(propagate_taint_structural(
+                        lang_edges, lang_sources, lang_sinks, lang_sans,
+                    ))
 
     # Verify claims
     verdicts = _verify(claims, bmap, taint_findings=taint_findings)
@@ -6565,7 +6743,7 @@ def _emit_handler_slices(
             "view": "slice",
             "feature": feature_dict,
         }
-        out_path.write_text(json.dumps(output, indent=2, sort_keys=True))
+        user_out_open_json_dump(out_path, output)
 
         entry["emitted"] = True
         entry["file"] = filename
@@ -6575,7 +6753,8 @@ def _emit_handler_slices(
         written.append(out_path)
 
     index_path = out_dir / "slice.handler.index.json"
-    index_path.write_text(
+    user_out_write(
+        index_path,
         json.dumps(
             {
                 "schema_version": behavior_map.get("schema_version", "0.1.0"),
@@ -7233,8 +7412,7 @@ def run_behavior_map(
                 tiered_map = format_tiered_behavior_map(
                     behavior_map, all_symbols, all_edges, target_tokens
                 )
-                with open(budget_path, "w") as f:
-                    json.dump(tiered_map, f, indent=2, sort_keys=True)
+                user_out_open_json_dump(budget_path, tiered_map)
                 generated_files.append(budget_path)
                 # Free memory between tiers (helps with large repos like tensorflow)
                 del tiered_map
@@ -7261,8 +7439,7 @@ def run_behavior_map(
     _log_memory("after cleanup")
 
     show_progress("Writing output", 95)
-    with open(out_path, "w") as f:
-        json.dump(behavior_map, f, indent=2, sort_keys=True)
+    user_out_open_json_dump(out_path, behavior_map)
     generated_files.append(out_path)
     _log_memory("after write")
 

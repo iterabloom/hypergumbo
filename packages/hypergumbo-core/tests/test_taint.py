@@ -1604,3 +1604,279 @@ class TestLoadFullTaintCatalog:
             load_full_taint_catalog(
                 extra_source_paths=[tmp_path / "does_not_exist.yaml"],
             )
+
+
+class TestTaintSourceStartAt:
+    """Tests for TaintSource.start_at field and propagation behavior.
+
+    Synthetic entry-point sources (CLI handlers, framework lifecycle
+    methods) need reachability-from-entry semantics rather than the
+    value-tainting semantics of crypto-style sources. The start_at
+    field lets a source declare ``"callee"`` so the BFS seeds at the
+    source-callee symbol itself, not at its caller.
+    """
+
+    def test_default_is_caller(self) -> None:
+        """Backward compatibility — existing sources default to caller-seeded."""
+        src = TaintSource(
+            taint_label="plaintext", module="cryptography.fernet",
+            name="Fernet.decrypt", kind="function",
+        )
+        assert src.start_at == "caller"
+
+    def test_yaml_loader_reads_start_at(self, tmp_path: Path) -> None:
+        """The source-YAML loader carries start_at through to TaintSource."""
+        from hypergumbo_core.taint import _load_source_yaml
+        yaml_path = tmp_path / "entry_sources.yaml"
+        yaml_path.write_text(
+            "taint_label: runtime_cli_entry\n"
+            "sources:\n"
+            "  python:\n"
+            "    - module: hypergumbo_core.cli\n"
+            "      start_at: callee\n"
+            "      functions: [cmd_sketch]\n"
+            "      methods: [Cli.run]\n",
+            encoding="utf-8",
+        )
+        _label, sources_by_lang = _load_source_yaml(yaml_path)
+        sources = sources_by_lang["python"]
+        assert len(sources) == 2
+        for s in sources:
+            assert s.start_at == "callee"
+
+    def test_yaml_loader_rejects_invalid_start_at(self, tmp_path: Path) -> None:
+        """Typo-protection: 'callees' / 'caller_id' etc. fail at load time."""
+        from hypergumbo_core.taint import _load_source_yaml
+        yaml_path = tmp_path / "bad.yaml"
+        yaml_path.write_text(
+            "taint_label: weird\n"
+            "sources:\n"
+            "  python:\n"
+            "    - module: m\n"
+            "      start_at: callees\n"
+            "      functions: [f]\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="Invalid start_at"):
+            _load_source_yaml(yaml_path)
+
+    def test_callee_seed_includes_downstream_only(self) -> None:
+        """start_at=callee BFS visits the source-callee's downstream.
+
+        Graph:
+            dispatcher --> cmd_sketch --> sink_a
+            dispatcher --> cmd_tracker_sync --> sink_b
+
+        With start_at=callee and cmd_sketch as the source, BFS seeds at
+        cmd_sketch and reaches sink_a only. sink_b is reachable from
+        dispatcher (the caller of cmd_sketch) but NOT from cmd_sketch
+        itself — so the callee-seeded BFS correctly excludes it.
+        """
+        edges = [
+            _make_edge("py:cli.py:1-3:dispatcher:function",
+                       "py:cli.py:10-20:cmd_sketch:function"),
+            _make_edge("py:cli.py:10-20:cmd_sketch:function",
+                       "py:external:0-0:write_a:unresolved"),
+            _make_edge("py:cli.py:1-3:dispatcher:function",
+                       "py:cli.py:30-40:cmd_tracker_sync:function"),
+            _make_edge("py:cli.py:30-40:cmd_tracker_sync:function",
+                       "py:external:0-0:write_b:unresolved"),
+        ]
+        # Declare cmd_sketch as the source with callee-seeded BFS.
+        sources = [TaintSource(
+            taint_label="runtime_cli_entry",
+            module="hypergumbo_core.cli",
+            name="cmd_sketch",
+            kind="function",
+            start_at="callee",
+        )]
+        # Two sinks in distinct zones. Only sink_a is downstream of cmd_sketch.
+        sinks = [
+            TaintSink(
+                zone="dev_zone", trust_level="untrusted",
+                module="external", name="write_b", kind="function",
+            ),
+        ]
+        findings = propagate_taint_structural(edges, sources, sinks, [])
+        # No finding: write_b is in dev_zone but only reachable from
+        # cmd_tracker_sync, NOT from cmd_sketch. Caller-seeded BFS
+        # (the legacy default) would have flagged this as a violation
+        # because dispatcher reaches both.
+        assert findings == []
+
+    def test_callee_seed_still_reports_real_violations(self) -> None:
+        """start_at=callee correctly flags sinks downstream of the source.
+
+        Same graph as above, but the sink is downstream of cmd_sketch
+        itself. The callee-seeded BFS should reach it.
+        """
+        edges = [
+            _make_edge("py:cli.py:1-3:dispatcher:function",
+                       "py:cli.py:10-20:cmd_sketch:function"),
+            _make_edge("py:cli.py:10-20:cmd_sketch:function",
+                       "py:external:0-0:net_send:unresolved"),
+        ]
+        sources = [TaintSource(
+            taint_label="runtime_cli_entry",
+            module="hypergumbo_core.cli",
+            name="cmd_sketch",
+            kind="function",
+            start_at="callee",
+        )]
+        sinks = [TaintSink(
+            zone="network", trust_level="untrusted",
+            module="external", name="net_send", kind="function",
+        )]
+        findings = propagate_taint_structural(edges, sources, sinks, [])
+        assert len(findings) == 1
+        # source_symbol should be the cmd_sketch callee id, NOT dispatcher
+        assert "cmd_sketch" in findings[0].source_symbol
+        assert findings[0].sink_zone == "network"
+
+    def test_caller_seed_preserves_legacy_overapproximation(self) -> None:
+        """Sanity check: with default start_at=caller, BFS reaches
+        everything from the dispatcher — including the sink reachable
+        only through a sibling cmd_*. This is the legacy behavior the
+        callee-seeded variant exists to refine.
+        """
+        edges = [
+            _make_edge("py:cli.py:1-3:dispatcher:function",
+                       "py:external:0-0:cmd_sketch_marker:unresolved"),
+            _make_edge("py:cli.py:1-3:dispatcher:function",
+                       "py:cli.py:30-40:cmd_tracker_sync:function"),
+            _make_edge("py:cli.py:30-40:cmd_tracker_sync:function",
+                       "py:external:0-0:dev_zone_sink:unresolved"),
+        ]
+        # Declare an external source (cmd_sketch_marker) with default
+        # start_at=caller, so BFS seeds at dispatcher.
+        sources = [TaintSource(
+            taint_label="runtime_cli_entry",
+            module="external",
+            name="cmd_sketch_marker",
+            kind="function",
+            # default start_at="caller"
+        )]
+        sinks = [TaintSink(
+            zone="dev_zone", trust_level="untrusted",
+            module="external", name="dev_zone_sink", kind="function",
+        )]
+        findings = propagate_taint_structural(edges, sources, sinks, [])
+        # Legacy behavior: BFS from dispatcher reaches cmd_tracker_sync
+        # and then dev_zone_sink. Reported as a violation even though
+        # cmd_sketch_marker itself doesn't transitively call into it.
+        assert len(findings) == 1
+        assert findings[0].sink_zone == "dev_zone"
+
+
+class TestTaintMultiLabelSanitizer:
+    """Tests for the multi-label sanitizer pattern used by hypergumbo's
+    safety_zones zone-barrier discipline.
+
+    One callee can be declared as a sanitizer for multiple distinct
+    input_taint labels — the structural pass indexes sanitizers as a
+    list per callee name, so all declared labels register when the
+    caller is detected.
+    """
+
+    def test_multi_label_sanitizer_blocks_each_label(self) -> None:
+        """A single barrier-function call sanitizes every declared label."""
+        from hypergumbo_core.taint import (
+            _build_sanitizer_index_multi, _register_sanitizer_callers,
+        )
+        from collections import defaultdict
+
+        # Two sanitizer entries point at the same qualified_name —
+        # under the old flat-dict indexing this would lose one. The
+        # list-indexed variant preserves both.
+        sans = [
+            TaintSanitizer(
+                input_taint="label_a", output_taint="ok",
+                qualified_name="pkg.mod.barrier",
+            ),
+            TaintSanitizer(
+                input_taint="label_b", output_taint="ok",
+                qualified_name="pkg.mod.barrier",
+            ),
+        ]
+        index = _build_sanitizer_index_multi(sans)
+        # Both entries indexed by qualified name and by short name. The
+        # `barrier` leaf-name fallback also fires because
+        # qualified_name contains a dot.
+        assert len(index["pkg.mod.barrier"]) == 2
+        # Each entry appears under both keys, hence 4 total entries
+        # across short-name and leaf-name indexing.
+        assert len(index["mod.barrier"]) + len(index["barrier"]) >= 2
+        # Drive the registration helper too. The edge dst's short name
+        # is `barrier`, which matches the leaf fallback.
+        edges = [
+            _make_edge("py:a.py:1-5:caller:function",
+                       "py:external:0-0:barrier:unresolved"),
+        ]
+        callers: dict[str, dict[str, TaintSanitizer]] = defaultdict(dict)
+        _register_sanitizer_callers(edges, index, callers)
+        # The caller registers both labels.
+        caller_id = "py:a.py:1-5:caller:function"
+        assert "label_a" in callers[caller_id]
+        assert "label_b" in callers[caller_id]
+
+
+class TestSinkModuleCompatibility:
+    """Module-aware sink matching avoids the most flagrant short-name
+    false positives — e.g., a Python edge to ``socket.socket.write``
+    should NOT match a sink declared on ``asyncio.StreamWriter.write``
+    just because both share the short name ``write``.
+    """
+
+    def test_external_callee_module_is_permissive(self) -> None:
+        """When the analyzer couldn't resolve the module
+        (``callee_module == "external"``), short-name matching falls
+        back to permissive (legacy) behavior.
+        """
+        from hypergumbo_core.taint import _sink_module_compatible
+        assert _sink_module_compatible("multiprocessing.Queue", "external")
+        assert _sink_module_compatible("multiprocessing.Queue", "<external>")
+
+    def test_exact_module_match(self) -> None:
+        from hypergumbo_core.taint import _sink_module_compatible
+        assert _sink_module_compatible("os.environ", "os.environ")
+
+    def test_prefix_match(self) -> None:
+        """Callee path ``os.environ`` is compatible with parent module ``os``."""
+        from hypergumbo_core.taint import _sink_module_compatible
+        assert _sink_module_compatible("os", "os.environ")
+        assert _sink_module_compatible("os.environ", "os")
+
+    def test_unrelated_modules_rejected(self) -> None:
+        """Different modules with the same short name reject the match."""
+        from hypergumbo_core.taint import _sink_module_compatible
+        assert not _sink_module_compatible(
+            "asyncio.StreamWriter", "io.BufferedWriter",
+        )
+        assert not _sink_module_compatible(
+            "multiprocessing.Queue", "dict",
+        )
+
+    def test_empty_inputs_are_permissive(self) -> None:
+        """Empty module strings on either side fall back to permissive."""
+        from hypergumbo_core.taint import _sink_module_compatible
+        assert _sink_module_compatible("", "anything")
+        assert _sink_module_compatible("anything", "")
+
+    def test_extract_callee_module(self) -> None:
+        from hypergumbo_core.taint import _extract_callee_module
+        assert (
+            _extract_callee_module("python:os.environ:0-0:get:unresolved")
+            == "os.environ"
+        )
+        assert (
+            _extract_callee_module("python:external:0-0:get:unresolved")
+            == "external"
+        )
+        # Short id doesn't crash.
+        assert _extract_callee_module("malformed") == ""
+
+    def test_extract_callee_language(self) -> None:
+        from hypergumbo_core.taint import _extract_callee_language
+        assert _extract_callee_language("python:a.py:1-5:foo:function") == "python"
+        assert _extract_callee_language("elixir:lib.ex:1-5:bar:function") == "elixir"
+        assert _extract_callee_language("") == ""

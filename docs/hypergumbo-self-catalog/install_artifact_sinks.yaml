@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Layer-3 project-local catalog — install_artifact zone sinks.
+#
+# Used by extras subcommands (install-gitleaks, install-rust-analyzer)
+# to land installed binaries under ~/.local/bin or similar. Distinct
+# from user_cache (cache writes), user_out (user-supplied paths), and
+# tmp_artifact (ephemeral /tmp/ writes).
+zone: install_artifact
+trust_level: untrusted
+
+sinks:
+  python:
+    - module: hypergumbo_core.safety_zones
+      functions:
+        - install_artifact_write_bytes
+        - install_artifact_copy

@@ -16,6 +16,105 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Added
 
+#### Per-entry-point safety claims + wrapper-function discipline (Phase 3)
+
+Phase 3 of the twin-goal cleanup plan. Lands the substrate for hypergumbo's
+own safety story: a per-entry-point taint-flow model that distinguishes
+what each CLI subcommand category is allowed to do, verified by
+``hypergumbo verify-claims docs/hypergumbo.claims.yaml``.
+
+**Algorithm extensions.** ``TaintSource.start_at`` (``"caller"`` default,
+``"callee"`` opt-in) makes the structural and DDG taint propagators seed
+BFS at the source-callee symbol itself rather than its caller. Synthetic
+entry-point sources (CLI handlers declared in the project-local catalog)
+use ``start_at: callee`` so reachability is precisely scoped to that one
+entry point's descendants. ``_sink_module_compatible`` filters short-name
+sink collisions when the edge's dst carries a module hint — ``socket.socket.write``
+no longer matches every ``.write()`` call. Sanitizers index as a LIST per
+callee name (was: flat dict-overwrite), preserving every (qualified_name →
+input_taint) declaration so multi-label barrier patterns work. Verify-claims
+runs taint propagation **per-language** to avoid cross-language pollution
+(an elixir HTTPoison.get sink was matching every Python ``.get()`` call,
+producing ~15K spurious findings on hypergumbo self-analysis).
+
+**CFG ↔ DDG bridge (ADR-0017 §1c follow-through).** The CFG builder's
+def/use extractors were registered via decorator but never invoked in
+production. New ``populate_def_use_for_cfg(cfg, body_node, src, language)``
+walks the AST in parallel with the CFG and applies the registered
+extractor to statement-level nodes. ``CfgNodeMapping.atomic_statements``
+(new field, populated from ``atomic_statement:`` in cfg_nodes YAMLs)
+tells the builder to stop decomposing statement-level nodes into bare
+identifiers — without this, every assignment was split into per-leaf
+CfgStatements and DDG produced zero edges. Python's
+``py_def_use._handle_expression_statement`` delegates to inner node
+handlers so the AST-built CFG path produces real defines/uses. Verify-claims
+now invokes ``build_function_cfg → populate_def_use_for_cfg →
+solve_reaching_defs`` for every Python function in the repo and passes
+the aggregated DDG to ``propagate_taint_ddg`` for the Python-language pass.
+
+**Wrapper-function discipline.** New
+``packages/hypergumbo-core/src/hypergumbo_core/safety_zones.py`` contains
+thin wrappers around fs-write primitives — ``cache_write`` /
+``user_out_write`` / ``user_out_open_json_dump`` / ``tmp_artifact_write`` /
+``cache_write_bytes`` / ``cache_save_npy`` / ``install_artifact_write_bytes`` /
+``install_artifact_copy``. Each wrapper has a distinct callee name so the
+project-local catalog can place it in its own peer zone (``user_cache``,
+``user_out``, ``tmp_artifact``, ``install_artifact``). Each wrapper also
+calls ``_safety_zone_barrier()`` once; the project-local catalog declares
+that barrier as a sanitizer for every entry-point taint label, so BFS
+stops at the wrapper without descending into its internal stdlib calls.
+The 15 raw fs-write sites in ``cli.py`` / ``build_grammars.py`` /
+``gitleaks.py`` / ``sketch_embeddings.py`` are migrated to the wrappers.
+
+**Project-local catalog** under ``docs/hypergumbo-self-catalog/``: six
+source YAMLs (one per entry-point category — runtime CLI plus
+install-gitleaks / install-embeddings / build-grammars /
+install-rust-analyzer / add-extras), five sink YAMLs (one per peer
+zone), one sanitizer YAML for the zone-barrier pattern, and a README
+documenting the layer-3 firewall (this directory is hypergumbo's own
+self-audit — NOT shipped to PyPI users). Loaded by ``verify-claims``
+via ``extra_catalogs:`` in the claims YAML.
+
+**Claims YAML** at ``docs/hypergumbo.claims.yaml`` with 18 per-entry-point
+taint-flow claims. Runtime CLI subcommands (cmd_sketch, cmd_run, etc.)
+are prohibited from reaching ``host_fs`` / ``network`` / ``subprocess`` /
+``install_artifact`` / ``dev_zone`` — all writes must go through the
+``safety_zones`` wrappers. Extras subcommands declare their specific
+allowed zones (install-gitleaks: install_artifact + tmp_artifact +
+subprocess + network; install-embeddings: subprocess + network; etc.).
+Dev-zone reachability prohibited from every CLI entry-point.
+
+**SECURITY.md generator.** New ``scripts/generate-security-md`` reads the
+claims YAML and produces the audited-IO-surface section of SECURITY.md
+between sentinel comment markers. Determinism contract: same input →
+byte-identical output. Vulnerability-reporting policy below the
+sentinels is preserved verbatim. ``--check`` mode for CI gate use.
+
+**Tests**: 6 new ``TestTaintSourceStartAt`` tests (algorithm extension);
+``TestTaintMultiLabelSanitizer`` + ``TestSinkModuleCompatibility``
+(matcher precision); ``TestPopulateDefUseForCfg`` (CFG/def-use bridge,
+including atomic_statement classification); ``test_safety_zones.py`` (9
+wrapper unit tests); ``test_generate_security_md.py`` (8 tests covering
+determinism, splice semantics, check-mode drift detection, error paths).
+
+**Known limitation**: the structural pass cannot disambiguate every
+short-name callee when the edge's dst is unresolved (``python:external:0-0:get:unresolved``).
+Verify-claims may report findings on common method names (``.run`` /
+``.replace`` / ``.chmod`` / ``.write``) reaching unwrapped primitives.
+SECURITY.md documents this as overapproximation: the load-bearing claims
+(dev-zone unreachability from runtime CLI, install zones not reached
+from runtime CLI) verify cleanly. Tighter wrappers (cache_rmtree,
+install_chmod, etc.) and dst-module-resolution improvements are
+follow-up work.
+
+**Stop-the-line repair**: ``packages/hypergumbo-core/src/hypergumbo_core/io_primitives/javascript.yaml``
+had ``methods: [on]`` for ``process.on``, but ``on`` is YAML 1.1 boolean
+``True`` — auto-derived TaintSource landed with ``name=True``, which
+crashed ``propagate_taint_structural`` at line 868 (``if "." in src.name``)
+the first time any source-side propagation fired. Quoted to ``[\"on\"]``;
+this latent bug existed before Phase 3 but only manifested once the
+per-entry-point source declarations exercised the propagation path.
+
 #### Canonical dampener stack — formulas pinned end-to-end (Phase 2b)
 
 - **`TestCanonicalDampenerStackPinned`** (4 tests in `test_ranking.py`) closes the two soft spots in dampener-formula coverage discovered during the Phase 2b walkthrough. (a) `_CANONICAL_DAMPENERS` tuple order is now pinned verbatim (eight names, `tier`→`file_kind`) — the comment at `ranking.py:1106` says "Order is load-bearing" and this test backs it up. (b) `apply_common_method_name_weights` formula `factor = max(floor, threshold/count)` now has exact-multiplier assertions at three collision counts (20 symbols → 0.5x, 50 symbols → 0.2x matching WI-luvaj's documented example, 15 symbols → 10/15); previously only the floor (`>= 0.1`) and monotonicity bounds were asserted. (c) `apply_sibling_impl_weights` exact `tail_factor=0.15` multiplier is pinned (7-member same-name group, symbols 4-7 each multiplied by 0.15); previously only top-K-unchanged and `< original` were asserted. (d) A new integration smoke test asserts `compute_dampened_centrality(...)` agrees with manual application of the eight dampeners in canonical order — catches the case where `_CANONICAL_DAMPENERS` is unchanged but the helper internally reordered stages. 100% coverage maintained. Lab notebook walkthrough at `~/hypergumbo_lab_notebook/dampener-walkthrough-20260514.md`. The other six dampeners (`tier`, `noise`, `utility`, `trivial_sink`, `generated`, `file_kind`) already had exact-multiplier assertions in their existing test classes.

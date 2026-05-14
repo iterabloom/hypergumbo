@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Layer-3 project-local catalog.
+# cmd_add_extras / cmd_remove_extras dispatch to every individual
+# install/uninstall subcommand. The "umbrella" entry-point gets its own
+# label so verify-claims can grant it the union of the individual
+# extras' allowances.
+taint_label: add_extras_entry
+
+sources:
+  python:
+    - module: hypergumbo_core.cli
+      start_at: callee
+      functions:
+        - cmd_add_extras
+        - cmd_remove_extras
