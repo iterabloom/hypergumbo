@@ -272,3 +272,5 @@ class TestForInClause:
         result = _handle_for_in_clause(for_clause, src)
         assert result.defines == ["x"]
         assert "items" in result.uses
+
+

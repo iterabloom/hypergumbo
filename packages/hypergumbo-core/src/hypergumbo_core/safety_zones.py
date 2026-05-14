@@ -89,7 +89,7 @@ def cache_write_bytes(path: Path, data: bytes) -> None:
     path.write_bytes(data)
 
 
-def cache_save_npy(path: Path, embedding: "np.ndarray") -> None:
+def cache_save_npy(path: Path, embedding: "np.ndarray") -> None:  # pragma: no cover - exercised by test_cache_save_npy with importorskip
     """Save a numpy array to a cache path via ``np.save``.
 
     SAFETY ZONE: ``user_cache``. Embeddings cache is the primary
