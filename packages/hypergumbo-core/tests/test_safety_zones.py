@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from hypergumbo_core.safety_zones import (
@@ -51,6 +50,10 @@ def test_cache_write_bytes(tmp_path: Path) -> None:
 
 
 def test_cache_save_npy(tmp_path: Path) -> None:
+    # numpy is only installed when the `embeddings` optional dep is
+    # selected; skip the test if not available rather than fail at
+    # collection.
+    np = pytest.importorskip("numpy")
     p = tmp_path / "embed.npy"
     arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
     cache_save_npy(p, arr)

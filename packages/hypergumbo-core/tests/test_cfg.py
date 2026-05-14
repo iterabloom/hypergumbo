@@ -2326,11 +2326,18 @@ class TestPopulateDefUseForCfg:
 
     def test_populate_fills_defines_and_uses(self) -> None:
         from hypergumbo_core.cfg import (
-            build_function_cfg, load_cfg_mapping,
-            populate_def_use_for_cfg, clear_cfg_mapping_cache,
+            build_function_cfg, get_def_use_extractor, load_cfg_mapping,
+            populate_def_use_for_cfg, register_def_use_extractor,
+            clear_cfg_mapping_cache,
         )
-        # Force import to register Python extractor.
-        import hypergumbo_lang_mainstream.py_def_use
+        # Force import to register Python extractor — and re-register
+        # if a sibling test cleared the registry, since the import is
+        # cached after the first time and won't re-fire the decorator.
+        if get_def_use_extractor("python") is None:
+            from hypergumbo_lang_mainstream.py_def_use import (
+                PythonDefUseExtractor,
+            )
+            register_def_use_extractor("python")(PythonDefUseExtractor)
         clear_cfg_mapping_cache()
         mapping = load_cfg_mapping("python")
         tree, src = self._parse_python(
