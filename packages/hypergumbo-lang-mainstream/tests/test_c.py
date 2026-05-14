@@ -2144,10 +2144,13 @@ class TestCStdioIdentifierRefs:
         by_name = {e.dst.split(":")[-2]: e for e in attrs}
         out_edge = by_name["stdio.stdout"]
         assert out_edge.meta is not None
-        assert out_edge.meta.get("io_boundary") == "ipc_send"
+        # Per WI-dutah (8de2f67015): stdio.stdout/stderr are logging,
+        # not IPC. stdio.stdin stays in ipc_recv since piped input can
+        # carry untrusted bytes.
+        assert out_edge.meta.get("io_boundary") == "logging"
         assert out_edge.meta.get("io_primitive") == "stdio.stdout"
         err_edge = by_name["stdio.stderr"]
-        assert err_edge.meta.get("io_boundary") == "ipc_send"
+        assert err_edge.meta.get("io_boundary") == "logging"
         in_edge = by_name["stdio.stdin"]
         assert in_edge.meta.get("io_boundary") == "ipc_recv"
         assert in_edge.meta.get("io_primitive") == "stdio.stdin"

@@ -810,6 +810,18 @@ def _compute_external_potential(
         if not dst_meta.get("external_boundary"):
             continue
 
+        # F3 Filter 1: unresolved-receiver skip.
+        # Per ADR-0028, ``Edge.is_resolved`` is False for edges whose dst
+        # symbol could not be resolved at analysis time — i.e., a
+        # speculative external target. These dominate the
+        # external_potential bucket on self-analysis (~4,521 chains on
+        # hypergumbo) and report low-signal "we don't know what this is"
+        # rather than "first-party code reaches an audited boundary."
+        # ``getattr`` with a True default keeps legacy edge objects
+        # (and pre-ADR-0028 mock edges) behaving as before.
+        if not getattr(edge, "is_resolved", True):
+            continue
+
         src_parts = edge.src.split(":")
         src_lang = src_parts[0] if src_parts else ""
         catalog = catalogs.get(src_lang)
@@ -831,8 +843,19 @@ def _compute_external_potential(
         else:
             module_hint = _extract_module_hint(edge.dst) or ""
             dst_name = dst_node.get("name") or _extract_callee_name(edge.dst)
+        # F3 Filter 3: composition fix. When the dst node's ``name``
+        # field already carries the module-qualified form (e.g.
+        # ``re.MULTILINE``) and the extracted module_hint is the same
+        # module (``re``), the naive prepend produces ``re.re.MULTILINE``.
+        # ``ast.ast.Name``, ``os.os.path``, ``datetime.datetime.now`` are
+        # the most reader-visible cases. Skip the prepend when the
+        # qualified form is already present.
         if module_hint and module_hint != "external":
-            primitive = f"{module_hint}.{dst_name}"
+            prefix = f"{module_hint}."
+            if dst_name.startswith(prefix):
+                primitive = dst_name
+            else:
+                primitive = f"{module_hint}.{dst_name}"
         else:
             primitive = dst_name
 

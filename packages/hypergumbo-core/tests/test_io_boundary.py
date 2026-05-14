@@ -2425,7 +2425,13 @@ class TestExternalPotentialBucket:
     the absence-of-catalog-hit isn't authoritative.
     """
 
-    def _mock_edge(self, src: str, dst: str, edge_type: str = "calls"):
+    def _mock_edge(
+        self,
+        src: str,
+        dst: str,
+        edge_type: str = "calls",
+        is_resolved: bool = True,
+    ):
         from dataclasses import dataclass
         from typing import Any, Dict, Optional
 
@@ -2435,8 +2441,11 @@ class TestExternalPotentialBucket:
             dst: str
             edge_type: str
             meta: Optional[Dict[str, Any]] = None
+            is_resolved: bool = True
 
-        return MockEdge(src=src, dst=dst, edge_type=edge_type)
+        return MockEdge(
+            src=src, dst=dst, edge_type=edge_type, is_resolved=is_resolved,
+        )
 
     def _boundary_node(
         self, dst_id: str, name: str, lang: str = "python", tier: int = 3,
@@ -2771,6 +2780,82 @@ class TestExternalPotentialBucket:
         assert d["primitive_counts"] == {
             "huggingface_hub.snapshot_download": 3,
         }
+
+    def test_external_potential_skips_unresolved_edge(self) -> None:
+        """F3 Filter 1: edges with is_resolved=False skip external_potential.
+
+        Per ADR-0028, ``Edge.is_resolved`` is False when the dst symbol
+        was not resolved at analysis time — these edges point at a
+        speculative external target and contribute heavily to
+        external_potential noise on self-analysis. Filter 1 skips them.
+        """
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        dst = "python:huggingface_hub:0-0:snapshot_download:unresolved"
+        edge = self._mock_edge(
+            src="python:/app/load.py:5-10:load_model:function",
+            dst=dst,
+            is_resolved=False,
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "snapshot_download")}
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": load_catalog("python")},
+            nodes_by_id=nodes_by_id,
+        )
+        # Filter 1 short-circuits before chain emission.
+        assert "external_potential" not in bmap.entries
+
+    def test_external_potential_resolved_edge_still_emits_chain(self) -> None:
+        """F3 Filter 1 sanity: is_resolved=True (default) still emits."""
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        dst = "python:huggingface_hub:0-0:snapshot_download:unresolved"
+        edge = self._mock_edge(
+            src="python:/app/load.py:5-10:load_model:function",
+            dst=dst,
+            is_resolved=True,
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "snapshot_download")}
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": load_catalog("python")},
+            nodes_by_id=nodes_by_id,
+        )
+        ext = bmap.entries.get("external_potential")
+        assert ext is not None and len(ext.chains) == 1
+
+    def test_external_potential_does_not_double_prepend_module_in_dst_name(
+        self,
+    ) -> None:
+        """F3 Filter 3: composition does not produce ``re.re.MULTILINE``.
+
+        When the dst node's ``name`` field already carries the qualified
+        form (``re.MULTILINE``) and the module_hint is ``re``, the prior
+        composition produced ``re.re.MULTILINE``. Filter 3 detects that
+        ``dst_name`` already starts with ``module_hint + "."`` and skips
+        the prepend.
+        """
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # dst node's name is the qualified form `re.MULTILINE`; module hint
+        # is `re` (extracted from the 2nd colon-separated field).
+        dst = "python:re:0-0:re.MULTILINE:unresolved"
+        edge = self._mock_edge(
+            src="python:/app/main.py:5-10:f:function",
+            dst=dst,
+        )
+        nodes_by_id = {dst: self._boundary_node(dst, "re.MULTILINE")}
+        bmap = compute_boundary_map(
+            [edge],
+            {"python": load_catalog("python")},
+            nodes_by_id=nodes_by_id,
+        )
+        ext = bmap.entries.get("external_potential")
+        assert ext is not None and len(ext.chains) == 1
+        assert ext.chains[0].primitive == "re.MULTILINE", (
+            f"Expected 're.MULTILINE', got {ext.chains[0].primitive!r}"
+        )
 
 
 class TestScalaCatalog:
@@ -3628,12 +3713,15 @@ class TestDstRefPreferredOverDstString:
         # Use a callable name that is NOT in the python catalog so
         # tag_io_boundaries leaves meta.io_boundary unset, falling
         # through to the _compute_external_potential branch.
+        # is_resolved=True so the F3 Filter 1 (skip unresolved) doesn't
+        # short-circuit the dst_ref branch we want to exercise. This
+        # test is about composition source-of-truth, not resolvability.
         edge = Edge.create(
             src="python:/app/main.py:1-1:caller:function",
             dst="python:WRONG_MODULE:0-0:wrong_name:unresolved",
             edge_type="calls",
             line=1,
-            is_resolved=False,
+            is_resolved=True,
             dst_ref=ExternalRef(
                 lang="python",
                 module_path="custom_pkg.subpkg",
