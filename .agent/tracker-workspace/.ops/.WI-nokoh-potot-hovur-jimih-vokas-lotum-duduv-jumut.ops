@@ -80,3 +80,10 @@
   clock: 9  # 8c03
   nonce: 8c03  # 8c03
   message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: blocked on Rust-analyzer backend + SCIP shim being operational; investigative."  # 8c03
+- op: discuss  # 9de3
+  at: '2026-05-14T17:56:50Z'  # 9de3
+  by: human  # 9de3
+  actor: jgstern  # 9de3
+  clock: 10  # 9de3
+  nonce: 9de3  # 9de3
+  message: "I don't think this is blocked any more?"  # 9de3

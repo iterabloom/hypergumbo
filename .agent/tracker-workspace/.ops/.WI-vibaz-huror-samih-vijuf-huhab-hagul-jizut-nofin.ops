@@ -18,3 +18,18 @@
     pr_ref:  # c807
     description: "WI-limas surfaced that cuda.py emits kind=\"kernel\" / \"device_function\" / \"host_device_function\" (cuda.py:137-148, _determine_function_kind), but none of those values exist in the canonical SYMBOL_KINDS registry post-ADR-0027 Phase 4b. The corresponding YAML rules in language-conventions.yaml ('global', 'device', 'host') were broken pre-WI-limas and are still broken (WI-limas deferred them).\n\nProposed shape: kind=\"function\" + meta[\"cuda_execution_space\"]=\"global\"/\"device\"/\"host_device\"/\"host\". \"function\" IS canonical. Then YAML rules in language-conventions.yaml migrate from 'symbol_kind: ^global$' to 'symbol_kind: ^function$' + meta_match: {cuda_execution_space: ^global$} (now possible via WI-limas's meta_match field).\n\nProducer side: cuda.py:_determine_function_kind returns the kind; rewrite to return (\"function\", execution_space_meta_value) tuple and have the caller populate meta. The producer is fairly small.\n\nTests: existing test_cuda_analyzer.py tests assert kind values directly; those need updating. Plus 3 new YAML pinning tests in TestLanguageConventionsMigratedRules.\n\nFiled as follow-up to WI-limas's narrow YAML migration scope."  # c807
     fields: {}  # c807
+- op: update  # a05d
+  at: '2026-05-14T09:59:13Z'  # a05d
+  by: agent  # a05d
+  actor: jgstern_agent  # a05d
+  clock: 2  # a05d
+  nonce: a05d  # a05d
+  set:  # a05d
+    status: done  # a05d
+- op: discuss  # 5abe
+  at: '2026-05-14T09:59:13Z'  # 5abe
+  by: agent  # 5abe
+  actor: jgstern_agent  # 5abe
+  clock: 3  # 5abe
+  nonce: 5abe  # 5abe
+  message: "_determine_function_kind now returns (kind, exec_space) tuple where kind is always canonical 'function' and exec_space lives on meta['cuda_execution_space']. language-conventions.yaml's 3 CUDA rules migrated to ^function$ + meta_match, with a 4th rule added for host_device (no YAML rule existed pre-fold). symbol_id discriminator preserved via exec_space string. Legacy meta['is_kernel'] flag retained for kernel_launch edge / GPU-entrypoint consumers. Tests updated: test_cuda_analyzer.py (_by_exec_space helper, 10 sites), BRANCHES_test_cuda.py (8 + 4 unit tests rewritten for tuple shape), test_framework_patterns.py (4 new pinning tests in TestLanguageConventionsMigratedRules + test_enrich_symbols_with_cuda_kernel updated). 10351 tests pass at 100% coverage. Merged in commit c61944805c."  # 5abe

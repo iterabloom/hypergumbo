@@ -1,0 +1,56 @@
+- op: create  # b3f4
+  at: '2026-05-14T10:13:09Z'  # b3f4
+  by: agent  # b3f4
+  actor: jgstern_agent  # b3f4
+  clock: 1  # b3f4
+  nonce: b3f4  # b3f4
+  data:  # b3f4
+    kind: work_item  # b3f4
+    title: "dst-module resolution for unresolved-external taint sinks"  # b3f4
+    status: todo_hard  # b3f4
+    priority: 3  # b3f4
+    parent:  # b3f4
+    tags:  # b3f4
+    - analysis_quality  # b3f4
+    isbefore: []  # b3f4
+    duplicate_of: []  # b3f4
+    not_duplicate_of: []  # b3f4
+    pr_ref:  # b3f4
+    description: "Phase 3 safety story shipped with documented overapproximation: when an edge's dst is unresolved (python:external:0-0:<name>:unresolved), short-name callees like .get / .run / .replace / .write match generically against any sink declared on that name. Concrete tightening for hypergumbo's own callsites landed via additional safety_zones wrappers (cache_rmtree, tmp_artifact_rmtree, install_artifact_chmod, install_artifact_unlink) — those callsites now have distinct, zone-tagged callees. The remaining systemic improvement: enrich the IR's external-edge construction so unresolved externals carry a receiver-type hint (the analyzer often knows the receiver's import or local-typed origin even when it can't pin the full target). Once edge.dst resolves to e.g. python:os.environ:0-0:get:unresolved instead of python:external:0-0:get:unresolved, _sink_module_compatible can reject the cross-language and cross-module short-name collisions that currently fall through its 'external' exemption. Per-language scope: starting with Python is the highest-volume win (most of the false-positive surface), Go/Rust would follow. See taint.py:_extract_callee_module, _sink_module_compatible (line 804+), SECURITY.md known-limitations section."  # b3f4
+    fields: {}  # b3f4
+- op: discuss  # d5f6
+  at: '2026-05-14T16:33:59Z'  # d5f6
+  by: agent  # d5f6
+  actor: jgstern_agent  # d5f6
+  clock: 2  # d5f6
+  nonce: d5f6  # d5f6
+  message: "Scoping clarification (interactive review with maintainer): the user pointed out the analyzer surface is ~122 source files across hypergumbo-lang-common, hypergumbo-lang-mainstream, and hypergumbo-lang-extended1, not ~30 as the original framing suggested. That makes 'touch every analyzer' effectively never the right shape. Realistic hybrid staging: (a) Python via per-analyzer enrichment (one file, leverages existing py_def_use.py / DDG infrastructure, captures the majority of FP surface on Python-heavy repos including hypergumbo's self-audit) — ~150-300 LOC; (b) all other languages via a centralized post-pass on the IR after analyzers run, which inspects unresolved edges, lifts a receiver-type hint from the source line referenced by edge.src.span, and rewrites edge.dst — analyzer-agnostic, lower precision than per-analyzer but applies uniformly. NOT 'touch all 100+ analyzers.' The original description's 'Python first / Go/Rust would follow' framing is consistent with (a) but didn't make (b) explicit as the long-tail strategy."  # d5f6
+- op: discuss  # bdca
+  at: '2026-05-14T16:44:33Z'  # bdca
+  by: agent  # bdca
+  actor: jgstern_agent  # bdca
+  clock: 3  # bdca
+  nonce: bdca  # bdca
+  message: "Correction (re ADR-0017 alignment): in the earlier scoping note I described 'Option 2 — centralized post-pass on source lines' as a cheap analyzer-agnostic alternative for long-tail languages. That framing sidesteps ADR-0017's architectural philosophy. ADR-0017 §1a explicitly argues the CFG builder is language-parameterized and that all per-language knowledge lives in YAML node mappings (§1d) and def/use extractors (§1c). A post-pass that recovers receiver types via regex/source-line lifting is a THIRD location for language-specific knowledge, outside the ADR's design. The ADR-aligned answer for languages without §1c extractors yet is 'write more §1c extractors when the next language matters enough,' not 'do post-hoc source-line lifting.' Option 2 should be re-classified as a stop-gap with an explicit architectural cost, not as a free long-tail strategy. Recommended path: Option 1 (Python via §1c-aligned enrichment of py.py's edge construction) only. If/when Go/Rust/JS-TS matter for FP volume on real-world repos, extend §1c rather than introducing post-pass surface. See ADR-0017 §1a (language-parameterized vs language-agnostic), §1c (per-language def/use extractors as the pluggable layer)."  # bdca
+- op: discuss  # 1744
+  at: '2026-05-14T17:19:29Z'  # 1744
+  by: agent  # 1744
+  actor: jgstern_agent  # 1744
+  clock: 4  # 1744
+  nonce: '1744'  # 1744
+  message: "Re-scoping after ADR-0017 drift sync (commit c8da981395). The earlier scoping framed this as 'enrich the Python def/use extractor.' That's wrong on reflection: unresolved-external edges are emitted by the language analyzer (e.g., py.py — the IR producer) at IR-construction time, not by the def/use extractor (py_def_use.py). The extractor operates on the CFG after the IR is already built. The correct shape is a new POST-DDG IR REFINEMENT PASS that runs between solve_reaching_defs and propagate_taint_ddg: for each unresolved external edge whose src is a method call, look up the receiver variable in the DDG, walk back to its definition, extract module-of-origin from the binding, rewrite edge.dst from python:external:0-0:get:unresolved to python:os.environ:0-0:get:unresolved. The new pass is a consumer of the DDG, structurally parallel to populate_def_use_for_cfg / solve_reaching_defs in cfg.py (or could live in taint.py). Scope cleanly bounded by ADR-0017's §1c accretion model: applies only to languages WITH a §1c extractor (Python, Rust, TypeScript today). For languages without an extractor there's no DDG to walk back through, so WI-dilih is structurally inapplicable — they remain at structural fallback, which is consistent with the ADR's overall per-language precision model. This kills the earlier 'Option 2 centralized post-pass on source lines' framing — that proposed adding receiver-resolution OUTSIDE the §1c accretion model, which is exactly what ADR-0017 §1a/§1c argues against. The ADR-aligned story is: any language that would benefit from WI-dilih is by definition a language where someone has already shipped (or could ship) a §1c extractor. Python is the first target; Rust/TS follow if/when their FP volume on real-world repos justifies."  # 1744
+- op: update  # 9f4c
+  at: '2026-05-14T19:13:04Z'  # 9f4c
+  by: agent  # 9f4c
+  actor: jgstern_agent  # 9f4c
+  clock: 5  # 9f4c
+  nonce: 9f4c  # 9f4c
+  set:  # 9f4c
+    status: done  # 9f4c
+- op: discuss  # 0a13
+  at: '2026-05-14T19:13:04Z'  # 0a13
+  by: agent  # 0a13
+  actor: jgstern_agent  # 0a13
+  clock: 6  # 0a13
+  nonce: 0a13  # 0a13
+  message: "Shipped in PR #3712 (commit 34cd15571f) as a post-DDG IR refinement pass per ADR-0017 §3a / §1c accretion model. New module hypergumbo_core.taint_refine: extract_python_imports (parses file-scope import shapes), extract_python_receiver_hints (walks DDG backward from x.method() receiver to its binding RHS, derives module-of-origin from import-rooted attribute chains or from-import aliases), refine_external_edges (rewrites python:external:0-0:NAME:unresolved -> python:<module>:0-0:NAME:unresolved before sink matching runs). Wired into _build_python_ddg_for_verify_claims and applied once per language in cmd_verify_claims's outer loop before either propagation pass. Scope cleanly bounded by the §1c accretion model — applies wherever a def/use extractor exists (Python today; Rust / TypeScript when their extractors land). Receivers the DDG cannot resolve (call-RHS bindings like x = requests.Session(), parameter receivers, closure captures) and languages without §1c extractors remain at the documented external-exemption fallback by design. SECURITY.md regenerated; ADR-0017 §3a updated in-place to reference the refinement and document residual unresolvable cases. Tests: 31 in test_taint_refine.py (imports, receiver hints, edge rewriter), 1 integration test for cmd_verify_claims plumb-through, 1 helper test for hints_by_caller flow. 100% coverage on the new module in isolation per scripts/check-package-coverage. The narrower 'Option 2 source-line lifting' framing from earlier discussion was rejected in favor of the per-§1c-extractor accretion model the ADR endorses."  # 0a13
