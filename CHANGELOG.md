@@ -32,6 +32,17 @@ ADR-0017 (Taint-Zone Dataflow Analysis) updated to reflect the six substrate ext
 
 ### Added
 
+#### Post-DDG IR refinement pass narrows the `_sink_module_compatible` overapproximation surface (WI-dilih)
+
+When the Python analyzer can't type-infer a method-call receiver (the canonical case is `x = os.environ; x.get(...)`), it emits the call as `python:external:0-0:get:unresolved`. `_sink_module_compatible` then exempts these `external`-module edges from the short-name-collision check — because a strict rule would suppress legitimate findings — and short-name matching falls through, conflating `dict.get` / `args.get` / `os.environ.get` / `multiprocessing.Queue.get` etc. WI-dilih's fix narrows this surface where the DDG can prove what the receiver was bound to.
+
+- **New module** `packages/hypergumbo-core/src/hypergumbo_core/taint_refine.py` houses the pass. It runs between `solve_reaching_defs` and the propagation step (structural or DDG-aware). For each `recv.method()` site in a function body it: (a) finds the DDG edge with `variable == recv, use_line == call_line` to learn `recv`'s reaching def, (b) walks the function AST to the assignment at `def_line`, (c) inspects the RHS for an import-rooted attribute chain or a `from`-import alias, (d) yields `(call_line, attr_name) → module_hint` for that call site.
+- **Edge rewriter** `refine_external_edges(edges, hints_by_caller)` produces a new edge list with each unresolved-external dst's module segment rewritten from `external` to the recovered path (`python:external:0-0:get:unresolved` → `python:os.environ:0-0:get:unresolved`). Idempotent on edges without an applicable hint, edges whose dst module is already specific, and edges in languages without a §1c extractor.
+- **Wired into verify-claims** via `_build_python_ddg_for_verify_claims`, which now returns `(ddg_edges, ddg_symbols, hints_by_caller)`. `cmd_verify_claims` invokes `refine_external_edges` on the per-language edge slice once per outer-loop iteration — before either `propagate_taint_ddg` or `propagate_taint_structural` runs — so the rewrite reaches both propagation paths.
+- **Scope** follows ADR-0017's §1c accretion model. The refinement pass is a §1c consumer: applies only where a def/use extractor exists (Python today; Rust / TypeScript when those extractors ship). Languages without a §1c extractor have no DDG to walk backwards through; their unresolved-external edges remain at the documented `external`-exemption fallback, consistent with the ADR's per-language precision framing. Receivers the DDG cannot resolve (call-RHS bindings, parameter receivers, closure captures) likewise stay unresolved — the pass does not invent hints.
+- **Tests**: `test_taint_refine.py` (19 tests across import extraction for all import shapes including aliased / dotted / from-import, receiver-hint extraction including the no-binding / call-RHS / unknown-root negative paths, and edge-rewriter cases covering rewrite / pass-through / metadata preservation / per-caller isolation / non-Python lang). `test_cli_verify_claims_ddg.py` gains an integration test confirming `hints_by_caller` flows through the helper end-to-end.
+- **ADR-0017 §3a** updated in-place: the `external`-exemption paragraph now references the refinement pass; a new paragraph documents its placement, scope, and the residual unresolvable cases.
+
 #### Safety-zone wrappers expanded to cover `rmtree` / `chmod` / `unlink` callsites
 
 Phase 3 / SECURITY.md documented that hypergumbo's structural taint analysis overapproximates short-name callees like `.rmtree`, `.chmod`, `.unlink` because the edge's dst resolves to `python:external:0-0:<name>:unresolved` and matches generically. The first concrete tightening: four new wrappers in `hypergumbo_core.safety_zones` give each of hypergumbo's own mutating callsites a distinct, zone-tagged callee.
@@ -43,7 +54,7 @@ Phase 3 / SECURITY.md documented that hypergumbo's structural taint analysis ove
 
 Self-catalog YAMLs (`user_cache_sinks.yaml`, `tmp_artifact_sinks.yaml`, `install_artifact_sinks.yaml`) updated in lockstep. `build_grammars.py`'s now-unused top-level `import shutil` removed (all writes route through `safety_zones`). Test file gains 4 new wrapper tests (`test_cache_rmtree`, `test_tmp_artifact_rmtree`, `test_install_artifact_chmod`, `test_install_artifact_unlink`).
 
-**Not in scope for this PR:** dst-module resolution of unresolved externals (e.g., resolving `python:external:0-0:get:unresolved` to a specific module by typing the receiver expression). That's a substantial dataflow extension to the IR's external-edge construction; remains documented overapproximation in SECURITY.md.
+**Companion work — dst-module resolution of unresolved externals.** The complementary fix landed separately as WI-dilih (post-DDG IR refinement pass): for receivers bound by file-scope imports or local module-attribute assignment, the analyzer now rewrites `python:external:0-0:get:unresolved` to the recovered module path before sink matching runs. See the WI-dilih entry above. Receivers the DDG cannot resolve (call-RHS bindings, parameter receivers, closure captures) remain at the documented overapproximation, and the wrapper-discipline pattern in this entry is the project-local complement to that residual.
 
 #### CUDA function kinds folded onto canonical `function` + execution-space meta (WI-vibaz)
 
@@ -148,15 +159,16 @@ including atomic_statement classification); ``test_safety_zones.py`` (9
 wrapper unit tests); ``test_generate_security_md.py`` (8 tests covering
 determinism, splice semantics, check-mode drift detection, error paths).
 
-**Known limitation**: the structural pass cannot disambiguate every
-short-name callee when the edge's dst is unresolved (``python:external:0-0:get:unresolved``).
-Verify-claims may report findings on common method names (``.run`` /
-``.replace`` / ``.chmod`` / ``.write``) reaching unwrapped primitives.
-SECURITY.md documents this as overapproximation: the load-bearing claims
-(dev-zone unreachability from runtime CLI, install zones not reached
-from runtime CLI) verify cleanly. Tighter wrappers (cache_rmtree,
-install_chmod, etc.) and dst-module-resolution improvements are
-follow-up work.
+**Known limitation**: short-name sink matching still overapproximates
+for receivers that no §1c-extractor DDG can resolve — call-return
+bindings (``x = requests.Session(); x.get(...)``), parameter receivers,
+closure captures. Verify-claims may report findings on common method
+names (``.run`` / ``.replace`` / ``.chmod`` / ``.write``) at those
+sites. SECURITY.md documents the residual surface; the load-bearing
+claims (dev-zone unreachability from runtime CLI, install zones not
+reached from runtime CLI) verify cleanly. Receivers bound by file-scope
+imports or local assignment to module attributes are now resolved by
+the post-DDG IR refinement pass (see WI-dilih entry below).
 
 **Stop-the-line repair**: ``packages/hypergumbo-core/src/hypergumbo_core/io_primitives/javascript.yaml``
 had ``methods: [on]`` for ``process.on``, but ``on`` is YAML 1.1 boolean

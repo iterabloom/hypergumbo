@@ -776,6 +776,72 @@ def test_verify_claims_python_ddg_path_fires(tmp_path: Path) -> None:
     assert rc in (0, 1)
 
 
+def test_verify_claims_invokes_refine_external_edges(tmp_path: Path) -> None:
+    """WI-dilih: when the analyzed path contains Python source whose
+    DDG can resolve a method-call receiver to a module, the per-language
+    propagation loop invokes ``refine_external_edges`` on the Python
+    edge slice before propagation (covers cli.py:4101).
+
+    The .py fixture has an `os.environ` assignment followed by a
+    ``.get()`` call, so ``hints_by_caller`` is non-empty and the
+    refinement is wired through.
+    """
+    (tmp_path / "mod.py").write_text(
+        "import os\n"
+        "def f():\n"
+        "    x = os.environ\n"
+        "    return x.get('FOO')\n",
+        encoding="utf-8",
+    )
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:mod.py:2-4:f:function", "name": "f",
+             "kind": "function", "language": "python", "path": "mod.py",
+             "span": {"start_line": 2, "end_line": 4}},
+        ],
+        edges=[
+            {"src": "python:mod.py:2-4:f:function",
+             "dst": "python:external:0-0:get:unresolved",
+             "type": "calls", "confidence": 0.4, "line": 4},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    claims = {
+        "claims": [{
+            "id": "TF-REFINE",
+            "text": "untrusted input must not reach host_fs",
+            "constraint": {
+                "taint_flow": {
+                    "source_taint": "untrusted_input",
+                    "prohibited_sink_zone": "host_fs",
+                },
+            },
+        }],
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    from hypergumbo_core.cfg import (
+        get_def_use_extractor, register_def_use_extractor,
+    )
+    if get_def_use_extractor("python") is None:
+        from hypergumbo_lang_mainstream.py_def_use import (
+            PythonDefUseExtractor,
+        )
+        register_def_use_extractor("python")(PythonDefUseExtractor)
+
+    rc = cmd_verify_claims(args)
+    assert rc in (0, 1)
+
+
 def test_verify_claims_skips_language_with_only_sinks(
     tmp_path: Path, capsys,
 ) -> None:

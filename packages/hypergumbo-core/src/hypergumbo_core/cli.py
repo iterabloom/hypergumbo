@@ -3712,24 +3712,33 @@ def _print_io_boundaries_by_file(
 
 def _build_python_ddg_for_verify_claims(
     repo_root: Path,
-) -> tuple[list, set[str]]:
-    """Build aggregated DDG edges + symbol set for verify-claims taint analysis.
+) -> tuple[list, set[str], dict[str, dict[tuple[int, str], str]]]:
+    """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
     Walks the repo for Python source files, parses each with tree-sitter,
     builds a CFG per function via ``build_function_cfg``, runs
-    ``solve_reaching_defs`` to extract DDG edges. Returns
-    ``(ddg_edges, ddg_symbols)`` ready to pass to
-    ``propagate_taint_ddg``.
+    ``solve_reaching_defs`` to extract DDG edges, and runs the WI-dilih
+    post-DDG IR refinement pass to derive ``(caller_id → {(line, attr):
+    module_hint})`` hints used to rewrite unresolved-external edge dsts.
+    Returns ``(ddg_edges, ddg_symbols, hints_by_caller)`` ready to pass
+    to ``refine_external_edges`` and ``propagate_taint_ddg``.
 
     Why this exists: ``propagate_taint_structural`` matches sinks by short
     callee name, so ``dict.get`` collides with ``multiprocessing.Queue.get``
     on per-entry-point safety claims (see docs/hypergumbo.claims.yaml).
     The DDG-aware variant uses receiver-type information from the def/use
     extractors (per ADR-0017 §1b) to disambiguate, eliminating the
-    false-positive flood.
+    false-positive flood. The refinement pass goes further: when the
+    Python analyzer emitted ``python:external:0-0:NAME:unresolved``
+    because it couldn't pin a receiver, the DDG plus file-scope imports
+    are often enough to rewrite that to e.g.
+    ``python:os.environ:0-0:NAME:unresolved``, letting
+    ``_sink_module_compatible`` reject the cross-module short-name
+    collision that previously fell through its ``external`` exemption.
 
-    Returns ``([], set())`` if tree-sitter / cfg-mapping isn't available
-    — the caller falls back to the structural pass in that case.
+    Returns ``([], set(), {})`` if tree-sitter / cfg-mapping isn't
+    available — the caller falls back to the structural pass in that
+    case.
     """
     try:
         import tree_sitter
@@ -3740,25 +3749,30 @@ def _build_python_ddg_for_verify_claims(
             populate_def_use_for_cfg,
             solve_reaching_defs,
         )
+        from .taint_refine import (
+            extract_python_imports,
+            extract_python_receiver_hints,
+        )
         # Force-import the Python def/use extractor so it self-registers.
         # The decorator-registration in py_def_use only fires on first
         # import; nothing else in the verify-claims path imports it.
         import hypergumbo_lang_mainstream.py_def_use  # noqa: F401
     except ImportError:  # pragma: no cover - tree-sitter is a hard dep but defend
-        return [], set()
+        return [], set(), {}
 
     mapping = load_cfg_mapping("python")
     if mapping is None:  # pragma: no cover - python mapping always ships
-        return [], set()
+        return [], set(), {}
 
     try:
         lang = get_language("python")
     except Exception:  # pragma: no cover - language pack always provides python
-        return [], set()
+        return [], set(), {}
     parser = tree_sitter.Parser(lang)
 
     ddg_edges: list = []
     ddg_symbols: set[str] = set()
+    hints_by_caller: dict[str, dict[tuple[int, str], str]] = {}
 
     # Walk all .py files under repo_root. Skip the .venv / .git / .ci /
     # __pycache__ tree-walk skips. Match the analyzer's exclude pattern
@@ -3781,16 +3795,23 @@ def _build_python_ddg_for_verify_claims(
         # skip the file rather than abort the whole verify-claims run.
         tree = parser.parse(src)
         rel_path = py_path.relative_to(repo_root).as_posix()
+        # File-scope imports feed the WI-dilih refinement: the receiver
+        # hints derived per-function need access to the module-bind /
+        # from-import maps visible at the file's top level.
+        module_imports, imports = extract_python_imports(tree.root_node, src)
         # Visit every function_definition in the file.
         _collect_python_function_ddg(
             tree.root_node, src, mapping, rel_path,
-            ddg_edges, ddg_symbols,
+            ddg_edges, ddg_symbols, hints_by_caller,
+            module_imports=module_imports,
+            imports=imports,
             build_function_cfg=build_function_cfg,
             populate_def_use_for_cfg=populate_def_use_for_cfg,
             solve_reaching_defs=solve_reaching_defs,
+            extract_python_receiver_hints=extract_python_receiver_hints,
         )
 
-    return ddg_edges, ddg_symbols
+    return ddg_edges, ddg_symbols, hints_by_caller
 
 
 def _collect_python_function_ddg(
@@ -3800,12 +3821,16 @@ def _collect_python_function_ddg(
     rel_path: str,
     ddg_edges: list,
     ddg_symbols: set[str],
+    hints_by_caller: dict[str, dict[tuple[int, str], str]],
     *,
+    module_imports: dict[str, str],
+    imports: dict[str, tuple[str, str]],
     build_function_cfg: Any,
     populate_def_use_for_cfg: Any,
     solve_reaching_defs: Any,
+    extract_python_receiver_hints: Any,
 ) -> None:
-    """Recurse a Python AST collecting per-function DDG edges.
+    """Recurse a Python AST collecting per-function DDG edges and refinement hints.
 
     Matches the symbol-id convention used by hypergumbo's Python analyzer:
     ``python:<rel-path>:<start_line>-<end_line>:<name>:function`` (or
@@ -3814,6 +3839,10 @@ def _collect_python_function_ddg(
     keys by the same short-id format, so the aggregated ``ddg_symbols``
     set lines up well enough for propagate_taint_ddg's mixed-coverage
     branch to fire on the right nodes.
+
+    For each function with a non-empty DDG, also runs the WI-dilih
+    refinement pass to derive ``{(call_line, attr_name) → module_hint}``
+    entries and stores them in ``hints_by_caller[sym_id]``.
     """
     if node.type == "function_definition":
         name_node = node.child_by_field_name("name")
@@ -3837,14 +3866,22 @@ def _collect_python_function_ddg(
             if not result.bailed_out and result.ddg_edges:
                 ddg_edges.extend(result.ddg_edges)
                 ddg_symbols.add(sym_id)
+                fn_hints = extract_python_receiver_hints(
+                    body_node, src, module_imports, imports, result.ddg_edges,
+                )
+                if fn_hints:
+                    hints_by_caller[sym_id] = fn_hints
     # Recurse into children so we pick up nested function definitions.
     for child in node.children:
         _collect_python_function_ddg(
             child, src, mapping, rel_path,
-            ddg_edges, ddg_symbols,
+            ddg_edges, ddg_symbols, hints_by_caller,
+            module_imports=module_imports,
+            imports=imports,
             build_function_cfg=build_function_cfg,
             populate_def_use_for_cfg=populate_def_use_for_cfg,
             solve_reaching_defs=solve_reaching_defs,
+            extract_python_receiver_hints=extract_python_receiver_hints,
         )
 
 
@@ -4037,8 +4074,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             # linkers separately; this taint pass focuses on
             # within-language flow.
             from .taint import propagate_taint_ddg
-            ddg_edges, ddg_symbols = _build_python_ddg_for_verify_claims(
-                repo_root,
+            from .taint_refine import refine_external_edges
+            ddg_edges, ddg_symbols, hints_by_caller = (
+                _build_python_ddg_for_verify_claims(repo_root)
             )
             taint_findings = []
             for lang in sorted(per_lang_sinks):
@@ -4053,6 +4091,16 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 lang_sans = per_lang_sanitizers.get(lang, [])
                 if not lang_sources or not lang_sinks:
                     continue
+                # WI-dilih: rewrite python:external:0-0:NAME:unresolved
+                # dsts to module-resolved form before either propagation
+                # pass runs. Refinement is per-§1c-extractor; today only
+                # Python contributes hints, but the call is unconditional
+                # because refine_external_edges is a no-op when no hints
+                # exist for the language's edges.
+                if lang == "python" and hints_by_caller:
+                    lang_edges = refine_external_edges(
+                        lang_edges, hints_by_caller,
+                    )
                 if lang == "python" and ddg_edges:
                     taint_findings.extend(propagate_taint_ddg(
                         ddg_edges, lang_edges, lang_sources, lang_sinks,

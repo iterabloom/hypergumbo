@@ -818,7 +818,14 @@ def _sink_module_compatible(
 
     The "external" exemption is necessary because for some languages /
     construct types the resolver can't recover the module, and a strict
-    rule would suppress LEGITIMATE sink findings on those calls.
+    rule would suppress LEGITIMATE sink findings on those calls. The
+    surface is narrowed by the post-DDG IR refinement pass
+    (:mod:`hypergumbo_core.taint_refine` — WI-dilih), which rewrites
+    ``external`` to a real module path when the DDG can prove the
+    receiver's binding. After refinement, ``external`` only remains for
+    receivers no DDG-resolution can recover (call-RHS bindings,
+    parameter receivers, closure captures) and for languages without a
+    §1c def/use extractor.
     """
     if not sink_module or not callee_module:
         return True

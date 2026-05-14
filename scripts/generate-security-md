@@ -163,17 +163,29 @@ def _render_claims_section(claims_data: dict) -> list[str]:
     lines.append("### Known limitations")
     lines.append("")
     lines.append(
-        "The structural taint analysis cannot disambiguate every "
-        "short-name callee — when an edge's dst is unresolved to a "
-        "specific module (e.g., ``python:external:0-0:get:unresolved``), "
-        "sink-matching is necessarily over-approximate. Verify-claims "
-        "may report findings on common method names "
+        "Short-name sink matching is necessarily over-approximate at "
+        "receivers the DDG cannot resolve — call-RHS bindings "
+        "(``x = requests.Session(); x.get(...)``), parameter receivers, "
+        "and closure captures. At those sites verify-claims may report "
+        "findings on common method names "
         "(``.get`` / ``.run`` / ``.replace`` / ``.write``) "
-        "that are real reachability through generic primitives the "
-        "wrappers don't cover. Treat these as documented overapproximation "
-        "rather than genuine safety regressions; the load-bearing claims "
-        "(dev-zone unreachability from runtime CLI, install zones not "
-        "reached from runtime CLI) verify cleanly."
+        "that reach generic primitives the wrappers don't cover. Treat "
+        "these as documented overapproximation rather than genuine "
+        "safety regressions; the load-bearing claims (dev-zone "
+        "unreachability from runtime CLI, install zones not reached "
+        "from runtime CLI) verify cleanly."
+    )
+    lines.append("")
+    lines.append(
+        "The surface above is narrower than it was: the post-DDG IR "
+        "refinement pass (``hypergumbo_core.taint_refine``) rewrites "
+        "``python:external:0-0:NAME:unresolved`` dsts to a module-resolved "
+        "form (e.g., ``python:os.environ:0-0:NAME:unresolved``) when the "
+        "data-dependence graph can prove what the receiver was bound to "
+        "— typically receivers bound by file-scope imports or by local "
+        "assignment to a module attribute. Sink-matching then runs "
+        "against the resolved module, so the ``external``-module "
+        "exemption only applies to the residual unresolvable cases above."
     )
     lines.append("")
     lines.append(
@@ -184,11 +196,10 @@ def _render_claims_section(claims_data: dict) -> list[str]:
         "(``cache_rmtree`` / ``tmp_artifact_rmtree`` / "
         "``install_artifact_chmod`` / ``install_artifact_unlink``) so "
         "the structural pass gets a distinct, zone-tagged callee per "
-        "site. Resolving short-name calls to specific modules "
-        "(``dst-module resolution``) — the broader fix that would shrink "
-        "the overapproximation surface generally — is a separate "
-        "dataflow extension to the IR's external-edge construction and "
-        "is not implemented."
+        "site. The wrapper discipline and the refinement pass are "
+        "complementary: the refinement narrows the residual surface "
+        "across the codebase generally; the wrappers eliminate it "
+        "deterministically at hypergumbo's own mutation sites."
     )
     lines.append("")
     return lines
