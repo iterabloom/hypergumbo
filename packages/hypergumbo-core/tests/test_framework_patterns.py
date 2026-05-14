@@ -1543,6 +1543,85 @@ class TestLanguageConventionsMigratedRules:
         ]
         assert "build_rule" in concepts
 
+    # WI-vibaz: CUDA function fold. cuda.py emits kind="function" +
+    # meta["cuda_execution_space"]; language-conventions.yaml's three
+    # CUDA rules migrated from registry-absent bare-kind symbol_kinds
+    # (^global$ / ^device$ / ^host$) to ^function$ + meta_match.
+
+    def test_cuda_gpu_kernel_post_fold(self) -> None:
+        """CUDA __global__ kernel: kind="function" + cuda_execution_space="global"."""
+        pat = self._load()
+        sym = Symbol(
+            id="cuda:k.cu:1:vectorAdd:global",
+            name="vectorAdd",
+            kind="function",
+            language="cuda",
+            path="k.cu",
+            span=Span(1, 5, 0, 0),
+            meta={"cuda_execution_space": "global", "is_kernel": True},
+        )
+        concepts = [
+            r["concept"] for p in pat.patterns for r in p.matches_all(sym)
+        ]
+        assert "gpu_kernel" in concepts
+
+    def test_cuda_gpu_function_post_fold(self) -> None:
+        """CUDA __device__: kind="function" + cuda_execution_space="device"."""
+        pat = self._load()
+        sym = Symbol(
+            id="cuda:d.cu:1:square:device",
+            name="square",
+            kind="function",
+            language="cuda",
+            path="d.cu",
+            span=Span(1, 3, 0, 0),
+            meta={"cuda_execution_space": "device"},
+        )
+        concepts = [
+            r["concept"] for p in pat.patterns for r in p.matches_all(sym)
+        ]
+        assert "gpu_function" in concepts
+
+    def test_cuda_host_device_function_post_fold(self) -> None:
+        """CUDA __host__ __device__: kind="function" + cuda_execution_space="host_device".
+
+        Picks up the new gpu_function rule keyed on host_device — pre-WI-
+        vibaz there was no host_device YAML rule at all, since the
+        producer had its own bare-kind 'host_device_function' that no
+        rule referenced.
+        """
+        pat = self._load()
+        sym = Symbol(
+            id="cuda:hd.cu:1:add:host_device",
+            name="add",
+            kind="function",
+            language="cuda",
+            path="hd.cu",
+            span=Span(1, 3, 0, 0),
+            meta={"cuda_execution_space": "host_device"},
+        )
+        concepts = [
+            r["concept"] for p in pat.patterns for r in p.matches_all(sym)
+        ]
+        assert "gpu_function" in concepts
+
+    def test_cuda_host_function_post_fold(self) -> None:
+        """CUDA __host__-only: kind="function" + cuda_execution_space="host"."""
+        pat = self._load()
+        sym = Symbol(
+            id="cuda:h.cu:1:initData:host",
+            name="initData",
+            kind="function",
+            language="cuda",
+            path="h.cu",
+            span=Span(1, 3, 0, 0),
+            meta={"cuda_execution_space": "host"},
+        )
+        concepts = [
+            r["concept"] for p in pat.patterns for r in p.matches_all(sym)
+        ]
+        assert "host_function" in concepts
+
 
 class TestLoadFrameworkPatterns:
     """Tests for load_framework_patterns function."""
@@ -10410,15 +10489,20 @@ class TestLanguageConventionPatterns:
         assert result["concept"] == "build_macro"
 
     def test_enrich_symbols_with_cuda_kernel(self) -> None:
-        """enrich_symbols enriches CUDA kernel with gpu_kernel concept."""
+        """enrich_symbols enriches CUDA kernel with gpu_kernel concept.
+
+        WI-vibaz: post-fold, CUDA kernels emit kind="function" with
+        meta["cuda_execution_space"]="global"; language-conventions.yaml's
+        gpu_kernel rule matches that shape.
+        """
         symbol = Symbol(
             id="cuda:kernel.cu:1-50:compute:global",
             name="compute",
-            kind="global",
+            kind="function",
             language="cuda",
             path="kernel.cu",
             span=Span(1, 50, 0, 500),
-            meta={},
+            meta={"cuda_execution_space": "global"},
         )
 
         # Use real language-conventions patterns

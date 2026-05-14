@@ -16,6 +16,14 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Added
 
+#### CUDA function kinds folded onto canonical `function` + execution-space meta (WI-vibaz)
+
+- `cuda.py:_determine_function_kind` now returns a `(kind, execution_space)` pair where `kind` is always canonical `"function"` and the GPU/CPU execution space (`"global"` / `"device"` / `"host_device"` / `"host"`) lives on `Symbol.meta["cuda_execution_space"]`. Pre-WI-vibaz it returned registry-absent bare strings (`"kernel"` / `"device_function"` / `"host_device_function"`) which broke the YAML rules in `language-conventions.yaml`.
+- `language-conventions.yaml`'s three CUDA rules migrate from `symbol_kind: "^global$"` / `"^device$"` / `"^host$"` (pre-WI-vibaz, these never matched the producer output) to `symbol_kind: "^function$"` + `meta_match: {cuda_execution_space: ...}`. A new fourth rule covers `host_device` (`__host__ __device__` functions), which had no YAML rule at all pre-fold.
+- `symbol_id` discriminator keeps the execution-space string (or literal `"function"` when no `__global__`/`__device__`/`__host__` attribute applies) so the post-fold ids stay unique without re-introducing registry-absent kind names.
+- Legacy `meta["is_kernel"]` flag preserved on `__global__` symbols since downstream consumers (kernel_launch edges, GPU-entry-point detection) key on it directly.
+- Tests updated in lockstep: `test_cuda_analyzer.py` (10 sites), `BRANCHES_test_cuda.py` (8 sites + the unit tests for `_determine_function_kind` rewritten for the tuple shape), and four new pinning tests in `TestLanguageConventionsMigratedRules` for the migrated rules.
+
 #### Android XML components folded onto canonical `component` kind (WI-razus)
 
 - `xml_config.py:_process_android_application` now emits `kind="component"` for AndroidManifest `<activity>` / `<service>` / `<receiver>` / `<provider>` elements (previously each emitted the bare element name, none of which were in the canonical `SYMBOL_KINDS` registry). The original element name lives on `meta["component_type"]` (already populated pre-fold), so consumers can still distinguish the four shapes.

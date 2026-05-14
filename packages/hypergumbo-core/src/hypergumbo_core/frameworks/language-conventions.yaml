@@ -17,20 +17,40 @@ language: multi
 
 patterns:
   # ====== CUDA (GPU Computing) ======
+  # WI-vibaz: cuda.py emits kind="function" with meta["cuda_execution_space"]
+  # = "global" | "device" | "host_device" | "host" per the ADR-0027 fold;
+  # the four rules below filter on the meta key. The pre-WI-vibaz rules
+  # keyed on bare ``^global$`` / ``^device$`` / ``^host$`` symbol_kinds
+  # silently no-op'd because the producer was emitting registry-absent
+  # "kernel" / "device_function" / "host_device_function" kinds.
+  #
   # CUDA global kernels are GPU entry points - critical for understanding GPU code
   - concept: gpu_kernel
-    symbol_kind: "^global$"
+    symbol_kind: "^function$"
     language: "^cuda$"
+    meta_match:
+      cuda_execution_space: "^global$"
 
   # CUDA device functions run on GPU but are called from kernels
   - concept: gpu_function
-    symbol_kind: "^device$"
+    symbol_kind: "^function$"
     language: "^cuda$"
+    meta_match:
+      cuda_execution_space: "^device$"
+
+  # CUDA __host__ __device__ — callable from both CPU and GPU
+  - concept: gpu_function
+    symbol_kind: "^function$"
+    language: "^cuda$"
+    meta_match:
+      cuda_execution_space: "^host_device$"
 
   # CUDA host functions run on CPU
   - concept: host_function
-    symbol_kind: "^host$"
+    symbol_kind: "^function$"
     language: "^cuda$"
+    meta_match:
+      cuda_execution_space: "^host$"
 
   # ====== WGSL (WebGPU Shaders) ======
   # Vertex shaders are GPU entry points

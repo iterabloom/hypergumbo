@@ -134,18 +134,33 @@ def _get_cuda_attributes(node: "tree_sitter.Node") -> tuple[bool, bool, bool]:
     return is_global, is_device, is_host
 
 
-def _determine_function_kind(is_global: bool, is_device: bool, is_host: bool) -> str:
-    """Determine the function kind based on CUDA attributes."""
+def _determine_function_kind(
+    is_global: bool, is_device: bool, is_host: bool,
+) -> tuple[str, str | None]:
+    """Determine the function kind based on CUDA attributes.
+
+    Returns a (canonical_kind, cuda_execution_space) pair per WI-vibaz's
+    ADR-0027 fold: every CUDA function is canonically a Python-style
+    ``function`` symbol; the GPU/CPU execution space lives on
+    ``Symbol.meta["cuda_execution_space"]``. The legacy bare kinds
+    ``kernel`` / ``device_function`` / ``host_device_function`` were
+    never in the canonical ``SYMBOL_KINDS`` registry, so the
+    pre-WI-vibaz YAML rules in ``language-conventions.yaml`` (keyed on
+    ``^global$`` / ``^device$`` / ``^host$``) silently no-op'd against
+    the producer output. After the fold, those rules switch to
+    ``^function$`` + ``meta_match: {cuda_execution_space: ...}`` and
+    actually match.
+    """
     if is_global:
-        return "kernel"
+        return "function", "global"
     elif is_device and is_host:
-        return "host_device_function"
+        return "function", "host_device"
     elif is_device:
-        return "device_function"
+        return "function", "device"
     elif is_host:
-        return "function"  # pragma: no cover - __host__ alone is rare
+        return "function", "host"  # pragma: no cover - __host__ alone is rare
     else:
-        return "function"  # No CUDA attributes = regular function
+        return "function", None  # No CUDA attributes = regular function
 
 
 def _get_enclosing_cuda_function(
@@ -189,15 +204,38 @@ def _extract_cuda_symbols(
             func_name = _get_function_name(node, source)
             if func_name:
                 is_global, is_device, is_host = _get_cuda_attributes(node)
-                kind = _determine_function_kind(is_global, is_device, is_host)
-
-                start_line = node.start_point[0] + 1
-                end_line = node.end_point[0] + 1
-                symbol_id = make_symbol_id("cuda", rel_path, start_line, end_line, func_name, kind)
+                # WI-vibaz: canonical fold — every CUDA function is
+                # kind="function"; GPU/CPU execution space lives on
+                # meta["cuda_execution_space"]. The symbol_id discriminator
+                # is the same string as the meta value when present, or
+                # the literal "function" when no __global__/__device__/
+                # __host__ attribute applies — preserving id uniqueness
+                # without re-introducing registry-absent kind names.
+                kind, exec_space = _determine_function_kind(is_global, is_device, is_host)
+                discriminator = exec_space if exec_space else kind
+                symbol_id = make_symbol_id(
+                    "cuda",
+                    rel_path,
+                    node.start_point[0] + 1,
+                    node.end_point[0] + 1,
+                    func_name,
+                    discriminator,
+                )
 
                 # Extract signature
                 signature = _extract_cuda_signature(node, source)
 
+                meta: dict | None = None
+                if exec_space is not None:
+                    meta = {"cuda_execution_space": exec_space}
+                    if is_global:
+                        # Preserve the legacy `is_kernel` flag — downstream
+                        # consumers (kernel_launch edges, GPU-entry-point
+                        # detection) key on it directly.
+                        meta["is_kernel"] = True
+
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
                 sym = Symbol(
                     id=symbol_id,
                     stable_id=None,
@@ -216,7 +254,7 @@ def _extract_cuda_symbols(
                     ),
                     origin=PASS_ID,
                     signature=signature,
-                    meta={"is_kernel": is_global} if is_global else None,
+                    meta=meta,
                 )
                 symbols.append(sym)
                 symbol_registry[func_name.lower()] = sym

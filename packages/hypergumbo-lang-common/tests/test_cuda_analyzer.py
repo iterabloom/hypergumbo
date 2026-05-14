@@ -7,6 +7,10 @@ Tests verify that the analyzer correctly extracts:
 - Host/device functions (__host__ __device__)
 - Kernel launches (<<<grid, block>>>)
 - CUDA API calls
+
+WI-vibaz: CUDA functions fold to canonical kind="function" with
+``meta["cuda_execution_space"]`` = "global" / "device" / "host_device"
+/ "host". Helpers below filter by that meta key.
 """
 
 from hypergumbo_core.analyze.base import AnalysisResult
@@ -17,6 +21,14 @@ from hypergumbo_lang_common.cuda import (
     analyze_cuda_files,
     find_cuda_files,
 )
+
+
+def _by_exec_space(symbols, space: str):
+    """Return CUDA symbols whose meta["cuda_execution_space"] matches."""
+    return [
+        s for s in symbols
+        if s.kind == "function" and s.meta and s.meta.get("cuda_execution_space") == space
+    ]
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
@@ -37,7 +49,7 @@ __global__ void vectorAdd(float* A, float* B, float* C, int N) {
     result = analyze_cuda_files(tmp_path)
 
     assert not result.skipped
-    kernels = [s for s in result.symbols if s.kind == "kernel"]
+    kernels = _by_exec_space(result.symbols, "global")
     assert len(kernels) >= 1
     assert kernels[0].name == "vectorAdd"
     assert kernels[0].language == "cuda"
@@ -52,7 +64,7 @@ __device__ float square(float x) {
 """)
     result = analyze_cuda_files(tmp_path)
 
-    device_funcs = [s for s in result.symbols if s.kind == "device_function"]
+    device_funcs = _by_exec_space(result.symbols, "device")
     assert len(device_funcs) >= 1
     assert device_funcs[0].name == "square"
 
@@ -66,7 +78,7 @@ __host__ __device__ float add(float a, float b) {
 """)
     result = analyze_cuda_files(tmp_path)
 
-    funcs = [s for s in result.symbols if s.kind == "host_device_function"]
+    funcs = _by_exec_space(result.symbols, "host_device")
     assert len(funcs) >= 1
     assert funcs[0].name == "add"
 
@@ -88,7 +100,7 @@ int main() {
     result = analyze_cuda_files(tmp_path)
 
     # Should have kernel and main function
-    kernels = [s for s in result.symbols if s.kind == "kernel"]
+    kernels = _by_exec_space(result.symbols, "global")
     assert len(kernels) >= 1
     assert kernels[0].name == "myKernel"
 
@@ -168,7 +180,7 @@ def test_span_information(tmp_path):
 """)
     result = analyze_cuda_files(tmp_path)
 
-    kernels = [s for s in result.symbols if s.kind == "kernel"]
+    kernels = _by_exec_space(result.symbols, "global")
     assert len(kernels) >= 1
 
     # Check span
@@ -196,9 +208,12 @@ __device__ float helper() { return 1.0f; }
     result = analyze_cuda_files(tmp_path)
 
     assert len(result.symbols) >= 3
-    kinds = {s.kind for s in result.symbols}
-    assert "kernel" in kinds
-    assert "device_function" in kinds
+    exec_spaces = {
+        s.meta.get("cuda_execution_space") for s in result.symbols
+        if s.meta and s.meta.get("cuda_execution_space") is not None
+    }
+    assert "global" in exec_spaces
+    assert "device" in exec_spaces
 
 def test_shared_memory_detection(tmp_path):
     """Test detection of __shared__ memory declarations."""
@@ -211,7 +226,7 @@ __global__ void sharedMem() {
 """)
     result = analyze_cuda_files(tmp_path)
 
-    kernels = [s for s in result.symbols if s.kind == "kernel"]
+    kernels = _by_exec_space(result.symbols, "global")
     assert len(kernels) >= 1
     # Shared memory usage could be tracked in meta
 
@@ -228,7 +243,7 @@ __global__ void addKernel(int *a, int *b, int *c) {
 }
 """)
         result = analyze_cuda_files(tmp_path)
-        kernels = [s for s in result.symbols if s.kind == "kernel" and s.name == "addKernel"]
+        kernels = [s for s in _by_exec_space(result.symbols, "global") if s.name == "addKernel"]
         assert len(kernels) == 1
         assert kernels[0].signature is not None
         assert "int *a" in kernels[0].signature or "int * a" in kernels[0].signature
@@ -242,7 +257,7 @@ __device__ float square(float x) {
 }
 """)
         result = analyze_cuda_files(tmp_path)
-        funcs = [s for s in result.symbols if s.kind == "device_function" and s.name == "square"]
+        funcs = [s for s in _by_exec_space(result.symbols, "device") if s.name == "square"]
         assert len(funcs) == 1
         assert funcs[0].signature is not None
         assert "float x" in funcs[0].signature
@@ -256,6 +271,6 @@ __global__ void emptyKernel() {
 }
 """)
         result = analyze_cuda_files(tmp_path)
-        kernels = [s for s in result.symbols if s.kind == "kernel" and s.name == "emptyKernel"]
+        kernels = [s for s in _by_exec_space(result.symbols, "global") if s.name == "emptyKernel"]
         assert len(kernels) == 1
         assert kernels[0].signature == "()"

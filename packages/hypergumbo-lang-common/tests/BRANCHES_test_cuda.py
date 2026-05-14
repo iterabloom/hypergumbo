@@ -41,27 +41,47 @@ class TestCudaHelperFunctions:
         assert edge_id_1.startswith("edge:sha256:")
 
 class TestDetermineFunctionKind:
-    """Branch coverage for function kind determination."""
+    """Branch coverage for function kind determination.
+
+    WI-vibaz: _determine_function_kind now returns a (kind, execution_space)
+    tuple where kind is always the canonical "function" and the execution
+    space ("global" / "device" / "host_device" / "host") goes on
+    meta["cuda_execution_space"]. Pre-WI-vibaz it returned the registry-
+    absent bare strings "kernel" / "device_function" /
+    "host_device_function" / "function".
+    """
 
     def test_global_kernel(self) -> None:
-        """Test __global__ is identified as kernel."""
-        kind = _determine_function_kind(is_global=True, is_device=False, is_host=False)
-        assert kind == "kernel"
+        """Test __global__ is identified as kernel execution space."""
+        kind, exec_space = _determine_function_kind(
+            is_global=True, is_device=False, is_host=False,
+        )
+        assert kind == "function"
+        assert exec_space == "global"
 
     def test_device_function(self) -> None:
-        """Test __device__ is identified as device function."""
-        kind = _determine_function_kind(is_global=False, is_device=True, is_host=False)
-        assert kind == "device_function"
+        """Test __device__ is identified as device execution space."""
+        kind, exec_space = _determine_function_kind(
+            is_global=False, is_device=True, is_host=False,
+        )
+        assert kind == "function"
+        assert exec_space == "device"
 
     def test_host_device_function(self) -> None:
-        """Test __host__ __device__ is identified as host_device_function."""
-        kind = _determine_function_kind(is_global=False, is_device=True, is_host=True)
-        assert kind == "host_device_function"
+        """Test __host__ __device__ is identified as host_device execution space."""
+        kind, exec_space = _determine_function_kind(
+            is_global=False, is_device=True, is_host=True,
+        )
+        assert kind == "function"
+        assert exec_space == "host_device"
 
     def test_regular_function(self) -> None:
-        """Test no attributes is identified as regular function."""
-        kind = _determine_function_kind(is_global=False, is_device=False, is_host=False)
+        """Test no attributes is identified as regular function (no exec space)."""
+        kind, exec_space = _determine_function_kind(
+            is_global=False, is_device=False, is_host=False,
+        )
         assert kind == "function"
+        assert exec_space is None
 
 class TestKernelExtraction:
     """Branch coverage for kernel function extraction."""
@@ -79,7 +99,10 @@ __global__ void vectorAdd(float *a, float *b, float *c, int n) {
         result = analyze_cuda_files(tmp_path)
         assert not result.skipped
 
-        kernels = [s for s in result.symbols if s.kind == "kernel"]
+        kernels = [
+            s for s in result.symbols
+            if s.kind == "function" and s.meta and s.meta.get("cuda_execution_space") == "global"
+        ]
         assert len(kernels) == 1
         assert kernels[0].name == "vectorAdd"
         assert kernels[0].meta is not None
@@ -97,7 +120,10 @@ __global__ void kernel2(int *data) {
 }
 """)
         result = analyze_cuda_files(tmp_path)
-        kernels = [s for s in result.symbols if s.kind == "kernel"]
+        kernels = [
+            s for s in result.symbols
+            if s.kind == "function" and s.meta and s.meta.get("cuda_execution_space") == "global"
+        ]
         names = [k.name for k in kernels]
         assert "kernel1" in names
         assert "kernel2" in names
@@ -113,7 +139,10 @@ __device__ float helper(float x) {
 }
 """)
         result = analyze_cuda_files(tmp_path)
-        device_funcs = [s for s in result.symbols if s.kind == "device_function"]
+        device_funcs = [
+            s for s in result.symbols
+            if s.kind == "function" and s.meta and s.meta.get("cuda_execution_space") == "device"
+        ]
         assert len(device_funcs) == 1
         assert device_funcs[0].name == "helper"
 
@@ -125,7 +154,11 @@ __host__ __device__ int shared_func(int x) {
 }
 """)
         result = analyze_cuda_files(tmp_path)
-        hd_funcs = [s for s in result.symbols if s.kind == "host_device_function"]
+        hd_funcs = [
+            s for s in result.symbols
+            if s.kind == "function"
+            and s.meta and s.meta.get("cuda_execution_space") == "host_device"
+        ]
         assert len(hd_funcs) == 1
         assert hd_funcs[0].name == "shared_func"
 
@@ -142,7 +175,12 @@ void initData(float *data, int n) {
 }
 """)
         result = analyze_cuda_files(tmp_path)
-        funcs = [s for s in result.symbols if s.kind == "function"]
+        # Regular host function (no __global__/__device__/__host__) — no
+        # cuda_execution_space meta is set.
+        funcs = [
+            s for s in result.symbols
+            if s.kind == "function" and (not s.meta or s.meta.get("cuda_execution_space") is None)
+        ]
         assert len(funcs) == 1
         assert funcs[0].name == "initData"
 
@@ -264,7 +302,10 @@ void launchKernel() {
         assert not result.skipped
 
         # Should find both kernels and launch edges
-        kernels = [s for s in result.symbols if s.kind == "kernel"]
+        kernels = [
+            s for s in result.symbols
+            if s.kind == "function" and s.meta and s.meta.get("cuda_execution_space") == "global"
+        ]
         assert len(kernels) >= 1
 
 class TestFunctionSignatures:
@@ -278,7 +319,10 @@ __global__ void process(float* input, float* output, int size) {
 }
 """)
         result = analyze_cuda_files(tmp_path)
-        kernels = [s for s in result.symbols if s.kind == "kernel"]
+        kernels = [
+            s for s in result.symbols
+            if s.kind == "function" and s.meta and s.meta.get("cuda_execution_space") == "global"
+        ]
         assert len(kernels) == 1
         assert kernels[0].signature is not None
         # Signature should contain params
