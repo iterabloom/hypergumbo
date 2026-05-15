@@ -16,6 +16,16 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Added
 
+#### Convention-based view-template linker for Laravel Blade (WI-hokaj)
+
+WI-hokaj closes out the four-item series (WI-mifif / WI-dajom / WI-hogik / WI-hokaj), bringing convention-based `renders` edge coverage to Rails, Django, Phoenix, Spring MVC, and Laravel. `LaravelStrategy(ExplicitStringStrategy)` parallels Spring as the second ExplicitStringStrategy consumer, but with Laravel-specific path resolution.
+
+- Action gating: class file lives under `app/Http/Controllers/` (Laravel's conventional directory; off-path classes are skipped) AND the class transitively extends `Controller` (covers `Illuminate\Routing\Controller`, the app's `App\Http\Controllers\Controller` shorthand, and deeper chains via `_transitive_bases`).
+- View-name extraction: tree-sitter PHP re-parses controller source files, walking method bodies for `function_call_expression` whose function name is `view` (→ `view_helper_call` pattern) and `scoped_call_expression` matching `View::make` (→ `view_facade_make` pattern). Non-string first arguments block resolution.
+- Path mapping: dotted view names map to slash-separated directories. `view('admin.users.show')` → `resources/views/admin/users/show.blade.php`; `.blade.php` is probed first, then plain `.php` as a fallback.
+
+23 new tests cover the `view()` helper, `View::make()` facade, dot-to-slash mapping across nested directories, single top-level view names, action gating (path + base class + transitive base), missing templates, non-string view arguments, view calls outside any tracked method, multi-method classes (the LIFO walker reaches later methods first; one symbol exercises the name-mismatch continue path), unrelated function and scoped calls that aren't `view`/`View::make`, missing source files, non-PHP symbols, and multiple view calls in a single method (conditional render shape). 100% coverage on the new file.
+
 #### Convention-based view-template linker for Spring MVC (WI-hogik)
 
 WI-hogik adds the third sister consumer of the WI-mifif shared core (and the first ExplicitStringStrategy consumer beyond Django). New module `view_template_spring.py` registers `SpringStrategy(ExplicitStringStrategy)`, which:
