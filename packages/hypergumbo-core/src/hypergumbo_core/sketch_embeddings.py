@@ -1420,11 +1420,18 @@ def _get_cache_dir(repo_root: Path) -> Path:
 def _get_results_cache_dir(repo_root: Path) -> Path:
     """Get or create the results cache directory for current repo state.
 
-    Cache structure:
-        ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/
+    Cache structure (WI-panih):
+        ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/<analyzer_identity>/
 
-    Results are cached per-state because they depend on the entire repo
-    contents. The state hash changes when any file is modified.
+    The fourth segment (``<analyzer_identity>``) keys on the analyzer
+    surface that produces the cached output — ``__version__`` plus a
+    content hash of every installed ``hypergumbo_*`` package's
+    ``.py`` files. Without it, released-stable and dev-editable
+    installs (or RCT arms, or post-lang-upgrade runs) share a cache
+    entry and poison each other's results on the same source tree.
+
+    Results are cached per-(repo, state, analyzer) because they depend
+    on the entire repo contents AND on the specific analyzer running.
 
     Args:
         repo_root: Repository root path.
@@ -1432,10 +1439,19 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     Returns:
         Path to the results cache directory for current state.
     """
+    from .analyzer_identity import compute_analyzer_identity_hash
+
     fingerprint = _get_repo_fingerprint(repo_root)
     state_hash = _get_repo_state_hash(repo_root)
+    analyzer_identity = compute_analyzer_identity_hash()
     cache_base = _get_xdg_cache_base()
-    cache_dir = cache_base / fingerprint / "results" / state_hash
+    cache_dir = (
+        cache_base
+        / fingerprint
+        / "results"
+        / state_hash
+        / analyzer_identity
+    )
 
     # Create the full path including parent directories
     cache_dir.mkdir(parents=True, exist_ok=True)

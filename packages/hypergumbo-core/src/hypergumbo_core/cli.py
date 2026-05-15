@@ -410,7 +410,7 @@ def _discover_input_file(repo_root: Path) -> Optional[Path]:
     """Auto-discover behavior map file from cache or repo root.
 
     Search order:
-    1. Cache directory: ~/.cache/hypergumbo/<fingerprint>/results/<state>/
+    1. Cache directory: ~/.cache/hypergumbo/<fingerprint>/results/<state>/<analyzer_identity>/
     2. Repo root: <repo>/hypergumbo.results.json
 
     This enables seamless workflow where 'hypergumbo run .' (which caches results)
@@ -884,7 +884,11 @@ def cmd_sketch(args: argparse.Namespace) -> int:
                 artifacts.append(sketch_cache_path)
 
             # Check for embeddings directory
-            fingerprint_dir = cache_dir.parent.parent  # Go from results/<hash> to fingerprint
+            # WI-panih: cache_dir is
+            # `<fingerprint>/results/<state_hash>/<analyzer_identity>`,
+            # so the walk back to `<fingerprint>` is three parents
+            # (was two before the analyzer-identity segment landed).
+            fingerprint_dir = cache_dir.parent.parent.parent
             embed_dir = fingerprint_dir / "embeddings"
             if embed_dir.exists() and any(embed_dir.iterdir()):  # pragma: no cover
                 embeddings_dir = embed_dir  # only when embeddings cached
@@ -5447,8 +5451,10 @@ After running, use search/explain/slice to query the results:
   hypergumbo slice --entry main         # Extract subgraph from main()
 
 Cache location:
-  ~/.cache/hypergumbo/<repo-fingerprint>/results/<state-hash>/
-  Results are cached per repo state and auto-invalidated when files change."""
+  ~/.cache/hypergumbo/<repo-fingerprint>/results/<state-hash>/<analyzer-identity>/
+  Results are cached per repo state AND per analyzer identity (so
+  dev edits and stable releases don't poison each other's cache).
+  Auto-invalidated when files change."""
 
     p_run = sub.add_parser(
         "run",

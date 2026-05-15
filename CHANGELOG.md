@@ -16,6 +16,18 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Changed
 
+#### Results cache key now includes analyzer identity (WI-panih, P2 RCT pin-blocker)
+
+The `_get_repo_state_hash` cache key (`packages/hypergumbo-core/src/hypergumbo_core/sketch_embeddings.py`) captured the analyzed tree's state (HEAD SHA + tracked-file diff + untracked-file mtimes) but did not capture the analyzer's identity. The cache path was `~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/hypergumbo.results.json`, so any two hypergumbo installs analyzing the same source tree shared a cache entry — whichever wrote first won, the other silently read stale results computed by a different analyzer. Three failure modes were triggered today (not theoretical): stable + dev coexistence, wheel-pin RCT cross-arm poisoning, and lang-package partial upgrades that don't bump `hypergumbo_core.__version__`.
+
+New module `analyzer_identity.py` exposes `compute_analyzer_identity_hash() -> str` (16-char hex), computed as `sha256(__version__ || sorted(<pkg>=<content_hash> per installed hypergumbo_* package))`. Per-package content hash walks each module's `__path__` for `.py` files in sorted relative-path order, hashing `(rel_path, file_content_bytes)` pairs; `__pycache__` is skipped deterministically. Walking via `importlib.metadata.distributions()` is robust to pipx, pip, editable installs, and virtualenv layouts. Memoized per-process for milliseconds-level overhead.
+
+Cache path becomes `~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/<analyzer_identity>/hypergumbo.results.json`. The `cli.py:887` `fingerprint_dir = cache_dir.parent.parent` walk-back-to-fingerprint becomes `.parent.parent.parent` (one more level since the analyzer-identity segment landed). `test_masking.find_latest_behavior_map` walks `<state_hash>/<analyzer_identity>/` instead of `<state_hash>/` for the cached behavior map.
+
+Existing self-analysis dogfooding still benefits from the cache: warm-cache hit when analyzer identity is unchanged. Acceptance tests cover hash stability across calls in one process, hash change when a tracked package's `.py` file content changes, the all-installed-hypergumbo-packages-included invariant, `__pycache__` skip determinism, path-order stability, the empty-package boundary case, and the cache-path layout assertion. Three documentation strings updated (cache layout in two help epilogs + the discovery docstring).
+
+Out of scope: cache eviction policy for the larger key space (file a follow-up if disk-pressure surfaces); cross-machine cache sharing (per-host by design); migration step for pre-fix cache entries (they'll never be hit under the new key shape and natural cleanup reaches them).
+
 #### `hypergumbo run`: `--gzip` and `--no-sketch-fan-out` flags for large-repo output (WI-kojob)
 
 The UAT 4.1.0 master report §5 UX-C measured 90-95% gzip-reducibility on raw `hypergumbo run` JSON across large repos (airflow 320MB → 18MB, kafka 572MB → 34MB, chatwoot 81MB → 4.5MB, containerd 53MB → 3.7MB). For agents and downstream tools consuming the JSON, the uncompressed payload was awkward to ship around.

@@ -99,7 +99,13 @@ class TestFindLatestBehaviorMap:
     """Tests for behavior map cache discovery."""
 
     def test_finds_newest_result(self, tmp_path: Path) -> None:
-        """Should return the most recently modified behavior map."""
+        """Should return the most recently modified behavior map.
+
+        WI-panih: cache layout is
+        ``<fingerprint>/results/<state>/<analyzer_identity>/``;
+        the walk must descend two directory levels under
+        ``<fingerprint>/results``.
+        """
         import time
 
         with patch(
@@ -109,15 +115,15 @@ class TestFindLatestBehaviorMap:
             "hypergumbo_core.sketch_embeddings._get_xdg_cache_base",
             return_value=tmp_path,
         ):
-            # Create two state dirs
-            old_dir = tmp_path / "abc123" / "results" / "old"
+            # Create two state/analyzer dirs
+            old_dir = tmp_path / "abc123" / "results" / "old" / "analyzer1"
             old_dir.mkdir(parents=True)
             old_file = old_dir / "hypergumbo.results.json"
             old_file.write_text("{}")
 
             time.sleep(0.05)
 
-            new_dir = tmp_path / "abc123" / "results" / "new"
+            new_dir = tmp_path / "abc123" / "results" / "new" / "analyzer1"
             new_dir.mkdir(parents=True)
             new_file = new_dir / "hypergumbo.results.json"
             new_file.write_text("{}")
@@ -152,6 +158,40 @@ class TestFindLatestBehaviorMap:
 
             result = find_latest_behavior_map(tmp_path / "repo")
             assert result is None
+
+    def test_skips_non_directories_under_results(self, tmp_path: Path) -> None:
+        """WI-panih: tolerate stray files at the <state_hash> and
+        <analyzer_identity> directory levels.
+
+        A stray file (e.g. ``.DS_Store`` on macOS) would otherwise
+        crash the walk. The discovery treats them as no-results.
+        """
+        with patch(
+            "hypergumbo_core.sketch_embeddings._get_repo_fingerprint",
+            return_value="abc123",
+        ), patch(
+            "hypergumbo_core.sketch_embeddings._get_xdg_cache_base",
+            return_value=tmp_path,
+        ):
+            results_dir = tmp_path / "abc123" / "results"
+            results_dir.mkdir(parents=True)
+            # Stray file at the <state_hash> level.
+            (results_dir / ".DS_Store").write_text("")
+
+            # Valid state_hash subdir with a stray file at the
+            # <analyzer_identity> level.
+            state_dir = results_dir / "state1"
+            state_dir.mkdir()
+            (state_dir / "stray-file").write_text("")
+
+            # And a legitimate analyzer subdir with a JSON.
+            analyzer_dir = state_dir / "analyzer-real"
+            analyzer_dir.mkdir()
+            real = analyzer_dir / "hypergumbo.results.json"
+            real.write_text("{}")
+
+            result = find_latest_behavior_map(tmp_path / "repo")
+            assert result == real
 
 
 def _make_behavior_map(

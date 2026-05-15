@@ -45,9 +45,11 @@ DEFAULT_THRESHOLD_SECONDS = 0.1
 def find_latest_behavior_map(repo_root: Path) -> Path | None:
     """Find the most recent cached behavior map for a repository.
 
-    Searches ``~/.cache/hypergumbo/<fingerprint>/results/*/`` for the
-    newest ``hypergumbo.results.json``.  Uses the same fingerprinting
-    as ``sketch_embeddings._get_repo_fingerprint``.
+    Searches ``~/.cache/hypergumbo/<fingerprint>/results/*/*/`` for
+    the newest ``hypergumbo.results.json``. The two glob segments
+    are ``<state_hash>/<analyzer_identity>`` per WI-panih's cache
+    layout. Uses the same fingerprinting as
+    ``sketch_embeddings._get_repo_fingerprint``.
 
     A slightly stale behavior map is acceptable — graph structure
     evolves slowly between commits.
@@ -66,16 +68,22 @@ def find_latest_behavior_map(repo_root: Path) -> Path | None:
     newest: Path | None = None
     newest_mtime = 0.0
 
+    # Walk <state_hash>/<analyzer_identity>/hypergumbo.results.json.
     for state_dir in results_dir.iterdir():
-        candidate = state_dir / "hypergumbo.results.json"
-        if candidate.is_file():
-            try:
-                mtime = candidate.stat().st_mtime
-                if mtime > newest_mtime:
-                    newest = candidate
-                    newest_mtime = mtime
-            except OSError:  # pragma: no cover
+        if not state_dir.is_dir():
+            continue
+        for analyzer_dir in state_dir.iterdir():
+            if not analyzer_dir.is_dir():
                 continue
+            candidate = analyzer_dir / "hypergumbo.results.json"
+            if candidate.is_file():
+                try:
+                    mtime = candidate.stat().st_mtime
+                    if mtime > newest_mtime:
+                        newest = candidate
+                        newest_mtime = mtime
+                except OSError:  # pragma: no cover
+                    continue
 
     return newest
 
