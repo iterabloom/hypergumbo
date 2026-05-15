@@ -62,18 +62,6 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand catego
 
 New `django-third-party-dispatch` linker (Django-framework-gated companion to the always-on `django-orm-dispatch`) emits `dispatches_to` edges from Python subclasses of four well-known third-party bases — HierarkeyForm, django-filter `FilterSet` / `WagtailFilterSet`, DRF `Serializer` family, and Wagtail `Page` — to their framework-called override methods. Edges carry `meta["framework_dispatch"]="django_third_party"`; unqualified short-name matches colliding with in-tree classes drop to `confidence=0.5` + `meta["disambiguation_fallback"]=True`. Contributes ~38 method-edges across pretix + bakerydemo + lutris (`ModelAdmin` excluded because `django-orm-dispatch` already covers it).
 
-#### Solidity `contract` kind registered canonically
-
-`SYMBOL_KINDS` gains `SymbolKindSpec("contract", AXIS_LANGUAGE_CONSTRUCT)`. Smart-contract declarations are a top-level construct (sibling to `class` / `interface` / `struct`), not a relabel; the Solidity analyzer already emitted `kind="contract"` — this PR registers it canonically. Companion producer-side folds for CUDA / Android XML are bundled under the ADR-0027 / ADR-0028 closure subsection in Changed.
-
-#### Canonical dampener stack — formulas pinned end-to-end
-
-Four new tests pin soft spots in dampener coverage: the `_CANONICAL_DAMPENERS` tuple stage order (eight names, `tier`→`file_kind`), `apply_common_method_name_weights` multipliers at three collision counts, the `apply_sibling_impl_weights` 7-member group tail factor, and an integration check that `compute_dampened_centrality` agrees with manual stage-by-stage application — catching the case where the tuple is unchanged but the helper internally reorders stages.
-
-#### RCT-consumer public-API surface pinned via introspection test
-
-Nine introspection tests pin the four monkey-patch surfaces the four-arm bundle RCT depends on (`ranking.rank_symbols` parameter list, eight RCT-critical `Edge` dataclass fields, ten `run_behavior_map` parameters with stable defaults, the `_LINKER_SUBCATEGORIES` tuple). Variants (`mgumbo` perturbing `Edge.confidence`, `dgumbo` disabling linker subcategories) attach by import path + signature, so a signature change that preserves behavior still breaks them. Failure messages name the specific RCT dependency so contributors see it before `sed`-to-passing; source-comment markers at each definition site provide the in-tree breadcrumb.
-
 #### IO-boundary noise reduction — F3 Filters 1 / 2 / 3
 
 Three filters in `_compute_external_potential` reduce chain volume:
@@ -84,13 +72,17 @@ Three filters in `_compute_external_potential` reduce chain volume:
 
 `test_c.py::TestCStdioIdentifierRefs::test_io_boundary_tags_emitted_edges` updated to the post-reclassification `logging` value for `stdio.stdout` / `stdio.stderr` (missed in 8de2f67015).
 
-#### `io-boundaries --json` envelope `schema_version`
-
-`IO_BOUNDARIES_SCHEMA_VERSION = "1.0"` ships as the inaugural wire-contract version for the `hypergumbo io-boundaries --json` envelope (a separate contract from the behavior-map envelope). Locked top-level keys: `schema_version`, `total_io_edges`, `boundaries`, `unsupported_languages`; bumping rules (minor for additive, major for renames / removals / type changes) live in the module docstring. `TestIoBoundariesEnvelopeSchema` loud-fails on silent drift.
-
 #### Other
 
 - **`hypergumbo_core.axis_meta_keys` — canonical registry for `Symbol.meta` / `Edge.meta` keys.** Structural sibling of `symbol_kinds.py` / `evidence_types.py`. Seeded with the keys empirically observed across producer code (fold residues, ADR-0023 protocol / bridge / dispatch vocabularies, dataflow access modes, common Symbol.meta annotations). Property test enforces no duplicates, valid axes, no name collisions with typed fields. Drift detection (subscript-access AST walker) is a separate follow-on.
+
+- **Solidity `contract` kind registered canonically.** `SYMBOL_KINDS` gains `SymbolKindSpec("contract", AXIS_LANGUAGE_CONSTRUCT)` — a top-level construct sibling to `class` / `interface` / `struct`. The Solidity analyzer already emitted `kind="contract"`; this registers it canonically. CUDA / Android XML companion folds live under the ADR-0027 / ADR-0028 closure subsection in Changed.
+
+- **Canonical dampener stack pinned end-to-end.** Four tests pin the `_CANONICAL_DAMPENERS` tuple stage order (`tier`→`file_kind`, eight names), `apply_common_method_name_weights` multipliers at three collision counts, the `apply_sibling_impl_weights` 7-member group tail factor, and an integration check that `compute_dampened_centrality` agrees with manual stage-by-stage application — catching internal-reorder regressions a tuple-identity check would miss.
+
+- **RCT-consumer public-API surface pinned via introspection tests.** Nine tests pin the four monkey-patch surfaces the four-arm bundle RCT depends on: `ranking.rank_symbols` parameter list, eight RCT-critical `Edge` dataclass fields, ten `run_behavior_map` parameters with stable defaults, the `_LINKER_SUBCATEGORIES` tuple. Variants (`mgumbo` / `dgumbo`) attach by import path + signature; failure messages name the RCT dependency, with source-comment markers at each definition site.
+
+- **`io-boundaries --json` envelope `schema_version`.** `IO_BOUNDARIES_SCHEMA_VERSION = "1.0"` ships as the inaugural wire-contract version (separate from the behavior-map envelope). Locked top-level keys: `schema_version`, `total_io_edges`, `boundaries`, `unsupported_languages`; bumping rules live in the module docstring; `TestIoBoundariesEnvelopeSchema` loud-fails on silent drift.
 
 ### Changed
 
@@ -177,13 +169,10 @@ Cross-codebase setups (TS clients calling a gRPC server in a separate-language r
 
 Extends the ADR-0006 Return-Type Registry program to Kotlin and C# (Java + Go shipped 2026-04-09). Kotlin strips the nullable `?` suffix so methods returning `User?` propagate `User` into `var_types` (was dropped, breaking chained-receiver resolution on every nullable getter). C# unwraps the async wrapper types `Task<T>` / `ValueTask<T>` / `IAsyncEnumerable<T>` to the inner `T` so `var x = await SomeAsync()` binds to the awaited type; bare wrapper-only returns stay None.
 
-#### FFI bridge coverage — N-API template forms
+#### FFI bridge coverage — N-API templates + PyO3
 
-The N-API linker only matched function-argument forms of `Napi::Function::New` / `InstanceMethod` / `StaticMethod`. Adds the template-argument forms (`Napi::Function::New<F>(env)`, `InstanceMethod<&C::M>("name")`, etc.) and `InstanceAccessor` property bindings used by modern node-addon-api projects (sharp, canvas). `better-sqlite3` uses the legacy V8 direct API (`v8::FunctionTemplate::New`) and would need a separate linker.
-
-#### FFI bridge coverage — PyO3
-
-Two coordinated fixes re-enable Python→Rust FFI chain tracing on canonical PyO3 crates (Robyn measured 4/~100 methods detected pre-fix). `rust.py` propagates annotations from the enclosing `impl` block to every method declared inside (`#[pymethods] impl Foo { fn bar() {} }` now puts `pymethods` into `bar`'s `meta["annotations"]`); `pyffi.py`'s `_find_pyo3_symbols` now recognises path-qualified marker spellings like `#[pyo3::pyfunction]` by comparing the terminal `::` segment against `_PYO3_ANNOTATIONS`.
+- **N-API template forms.** The N-API linker only matched function-argument forms of `Napi::Function::New` / `InstanceMethod` / `StaticMethod`. Adds the template-argument forms (`Napi::Function::New<F>(env)`, `InstanceMethod<&C::M>("name")`, etc.) and `InstanceAccessor` property bindings used by modern node-addon-api projects (sharp, canvas). `better-sqlite3` uses the legacy V8 direct API (`v8::FunctionTemplate::New`) and would need a separate linker.
+- **PyO3 — `#[pymethods] impl` propagation + path-qualified spellings.** Two coordinated fixes re-enable Python→Rust FFI chain tracing on canonical PyO3 crates (Robyn measured 4/~100 methods detected pre-fix). `rust.py` propagates annotations from the enclosing `impl` block to every method declared inside (`#[pymethods] impl Foo { fn bar() {} }` now puts `pymethods` into `bar`'s `meta["annotations"]`); `pyffi.py`'s `_find_pyo3_symbols` recognises path-qualified marker spellings like `#[pyo3::pyfunction]` by comparing the terminal `::` segment against `_PYO3_ANNOTATIONS`.
 
 #### Framework pattern matching — `Pattern.meta_match`
 
