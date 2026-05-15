@@ -36,7 +36,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, Sequence, Tuple
+from typing import Iterable, Iterator, Optional, Sequence, Tuple
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult
@@ -85,21 +85,24 @@ class TemplateStrategy(ABC):
 
 
 class MethodNameStrategy(TemplateStrategy):
-    """Template paths derived from class + method naming.
+    """Template paths derived from container + action naming.
 
-    Used by Rails (existing), Phoenix (WI-dajom), and Django CBV defaults like
-    ``DetailView`` / ``ListView``. Concrete subclasses provide:
+    Used by Rails (existing), Phoenix (WI-dajom), and any framework where
+    the action's owning container (Ruby class, Elixir module, Python class)
+    plus the action's name determines the template path by convention.
 
-    * :meth:`is_action_class` — predicate over class Symbols.
-    * :meth:`is_action_method` — predicate over method-name strings.
-    * :meth:`candidates_for` — given a class name and method Symbol, return
-      the ordered list of template candidates to probe.
+    Concrete subclasses provide:
 
-    The default ``detection_pattern`` matches the original ``view_template.py``
-    Rails behavior; subclasses may override on a per-emission basis by
-    constructing a different ``TemplateRenderEmission`` in
-    :meth:`candidates_for` and yielding directly from a custom
-    :meth:`find_emissions`.
+    * :meth:`is_action_class` — predicate over container Symbols.
+    * :meth:`is_action_method` — predicate over the action's short name.
+    * :meth:`candidates_for` — given a container name and action Symbol,
+      return the ordered list of template candidates to probe.
+
+    The default :meth:`extract_class_method` matches the original Rails
+    behavior: it expects a Symbol with ``kind="method"`` and a name shaped
+    ``ClassName#method_name``. Per-language strategies override it to express
+    other shapes (e.g. Phoenix's ``Module.function`` on ``kind="function"``
+    symbols).
     """
 
     detection_pattern: str = _DEFAULT_DETECTION_PATTERN
@@ -115,6 +118,19 @@ class MethodNameStrategy(TemplateStrategy):
         self, class_name: str, method: Symbol, ctx: LinkerContext
     ) -> Iterable[TemplateCandidate]: ...
 
+    def extract_class_method(self, sym: Symbol) -> Optional[Tuple[str, str]]:
+        """Return ``(container_name, short_action_name)`` for an action Symbol.
+
+        Default behavior (Rails-shaped): require ``kind="method"`` symbols
+        whose names split on ``"#"`` into a container + method name. Return
+        ``None`` for symbols that don't fit. Override for languages with a
+        different naming convention.
+        """
+        if sym.kind != "method" or "#" not in sym.name:
+            return None
+        class_part, method_part = sym.name.rsplit("#", 1)
+        return class_part, method_part
+
     def find_emissions(self, ctx: LinkerContext) -> Iterator[TemplateRenderEmission]:
         action_class_names: set[str] = set()
         for sym in ctx.symbols:
@@ -125,9 +141,10 @@ class MethodNameStrategy(TemplateStrategy):
             return
 
         for sym in ctx.symbols:
-            if sym.kind != "method" or "#" not in sym.name:
+            extracted = self.extract_class_method(sym)
+            if extracted is None:
                 continue
-            class_part, method_part = sym.name.rsplit("#", 1)
+            class_part, method_part = extracted
             if class_part not in action_class_names:
                 continue
             if not self.is_action_method(method_part):

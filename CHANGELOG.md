@@ -16,6 +16,20 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Added
 
+#### Convention-based view-template linker for Phoenix (WI-dajom)
+
+WI-dajom adds the second sister consumer of the WI-mifif shared core. New module `view_template_phoenix.py` registers `PhoenixStrategy(MethodNameStrategy)`, which handles both Phoenix 1.x and 1.7+ template layouts:
+
+- **Phoenix 1.x**: `MyAppWeb.UserController.show` → `lib/my_app_web/templates/user/show.html.{eex,heex,leex}` (also `.text.eex`, `.json.eex`, `.xml.eex`).
+- **Phoenix 1.7+**: co-located templates under `lib/my_app_web/controllers/user_html/show.html.heex`. The parallel `MyAppWeb.UserHTML.show` (function-component shape) shares the same template directory.
+- **Namespaced controllers**: `MyAppWeb.Admin.UserController.show` → `lib/my_app_web/templates/admin/user/show.html.eex` (1.x) and `lib/my_app_web/controllers/admin/user_html/show.html.heex` (1.7+). Sub-namespaces become nested directories under `templates/` or `controllers/`.
+
+The Elixir analyzer emits modules with `kind="module"` and full dotted names (`MyAppWeb.UserController`) and functions with `kind="function"` and names like `MyAppWeb.UserController.show` — distinct from Rails's `ClassName#method_name` shape. To accommodate this, the shared core's `MethodNameStrategy` learned a new `extract_class_method(sym) -> Optional[tuple[str, str]]` hook (default behavior preserves the Rails `"#"` split). PhoenixStrategy overrides the hook to split on the final `"."`, drop `defp` (private) functions via the `modifiers` field, and exclude the Plug callback functions `init` / `call` / `action` which aren't render targets.
+
+LiveView modules (`*_live.ex`) are out of scope: they embed templates inline, not as separate files. The action-class predicate rejects modules whose names don't end in `Controller` or `HTML`, so LiveView and GenServer modules are silently ignored.
+
+21 new tests cover both layout shapes, namespaced controllers, all six template extensions, missing templates, non-Phoenix modules, and the action-method filter (private/init/call/action exclusions). 100% coverage on the new file and on the refactored core hook.
+
 #### Convention-based view-template linker shared core + Django strategies (WI-mifif)
 
 The `view_template.py` linker (Rails) used to be the only producer of `renders` edges in the codebase; its docstring claimed "Future: Django, Laravel, Phoenix, Spring" but no equivalent existed. WI-mifif extracts the probe-and-emit core into `_view_template_core.py` and adds a Django strategy as the first sister consumer, setting up two abstract bases that the remaining sister items will build against.
