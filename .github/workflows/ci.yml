@@ -310,7 +310,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # generate-architecture --check inspects recent commit window
+          fetch-depth: 50  # generate-architecture --check inspects RECENT_COMMIT_WINDOW=5; 50 is defensive headroom (~13 MB saved vs depth=0)
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
