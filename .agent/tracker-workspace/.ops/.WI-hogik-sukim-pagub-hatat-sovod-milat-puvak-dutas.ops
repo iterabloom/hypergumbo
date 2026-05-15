@@ -42,3 +42,18 @@
   nonce: fd4f  # fd4f
   set:  # fd4f
     status: todo_soft  # fd4f
+- op: update  # a3d8
+  at: '2026-05-15T07:08:13Z'  # a3d8
+  by: agent  # a3d8
+  actor: jgstern_agent  # a3d8
+  clock: 5  # a3d8
+  nonce: a3d8  # a3d8
+  set:  # a3d8
+    status: done  # a3d8
+- op: discuss  # dda9
+  at: '2026-05-15T07:08:13Z'  # dda9
+  by: agent  # dda9
+  actor: jgstern_agent  # dda9
+  clock: 6  # dda9
+  nonce: dda9  # dda9
+  message: "Merged in dev as b113aeea10. SpringStrategy(ExplicitStringStrategy) gates on @Controller + mapping annotation; tree-sitter Java re-parses controllers for string-literal and ModelAndView first-arg returns; redirect:/forward: directives suppressed; templates probed under src/main/resources/templates/ and src/main/webapp/WEB-INF/views/ with Thymeleaf/JSP/FreeMarker/Velocity extensions. 20 new tests, 100% coverage. WI-hokaj is independent of this and can proceed against the shared core."  # dda9

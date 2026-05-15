@@ -42,3 +42,18 @@
   nonce: 8a87  # 8a87
   set:  # 8a87
     status: todo_soft  # 8a87
+- op: update  # 52a3
+  at: '2026-05-15T06:36:48Z'  # 52a3
+  by: agent  # 52a3
+  actor: jgstern_agent  # 52a3
+  clock: 5  # 52a3
+  nonce: 52a3  # 52a3
+  set:  # 52a3
+    status: done  # 52a3
+- op: discuss  # b1f8
+  at: '2026-05-15T06:36:48Z'  # b1f8
+  by: agent  # b1f8
+  actor: jgstern_agent  # b1f8
+  clock: 6  # b1f8
+  nonce: b1f8  # b1f8
+  message: "Merged in dev as 5d12965980. PhoenixStrategy extends MethodNameStrategy with new extract_class_method hook for Elixir's Module.function shape; covers Phoenix 1.x (lib/my_app_web/templates/user/show.html.{eex,heex,leex}) and 1.7+ (lib/my_app_web/controllers/user_html/show.html.heex) layouts including namespaced controllers and the UserHTML function-component shape. 21 new tests, 100% coverage. WI-hogik and WI-hokaj independent of this; both can proceed against the shared core."  # b1f8

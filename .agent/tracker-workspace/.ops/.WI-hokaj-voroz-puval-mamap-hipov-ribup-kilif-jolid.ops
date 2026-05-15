@@ -42,3 +42,18 @@
   nonce: 8fba  # 8fba
   set:  # 8fba
     status: todo_soft  # 8fba
+- op: update  # d460
+  at: '2026-05-15T07:25:22Z'  # d460
+  by: agent  # d460
+  actor: jgstern_agent  # d460
+  clock: 5  # d460
+  nonce: d460  # d460
+  set:  # d460
+    status: done  # d460
+- op: discuss  # ec14
+  at: '2026-05-15T07:25:22Z'  # ec14
+  by: agent  # ec14
+  actor: jgstern_agent  # ec14
+  clock: 6  # ec14
+  nonce: ec14  # ec14
+  message: "Merged in dev as 4faa3cc82b. LaravelStrategy(ExplicitStringStrategy) gates on app/Http/Controllers/ path + Controller transitive base; tree-sitter PHP re-parses controllers for view() calls and View::make() scoped calls; dotted view names map to slash-separated directories under resources/views/ with .blade.php (primary) and .php (fallback) extensions. 23 new tests, 100% coverage. WI-mifif series complete: Rails (existing) + Django + Phoenix + Spring + Laravel all render renders-edges through the shared _view_template_core probe-and-emit loop."  # ec14
