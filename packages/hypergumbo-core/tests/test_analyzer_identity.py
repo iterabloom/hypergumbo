@@ -190,6 +190,116 @@ def test_hash_package_py_files_empty_package_yields_known_hash(
     assert _hash_package_py_files(_fake_module(str(pkg))) == expected
 
 
+def test_discovery_skips_distributions_that_fail_to_import():
+    """Covers the ``if module is None: continue`` defensive branch.
+
+    A distribution whose metadata lists it as installed but whose
+    import fails (broken extension, namespace package, etc.) is
+    silently skipped — we don't crash the cache-path constructor.
+    """
+    # Inject a fake hypergumbo distribution that fails to import.
+    from importlib.metadata import distributions as real_distributions
+
+    real_dists = list(real_distributions())
+
+    class _FakeMetadata:
+        def get(self, key, default=None):
+            return "hypergumbo-broken" if key == "Name" else default
+
+    class _FakeDist:
+        metadata = _FakeMetadata()
+
+    fake_dists = [*real_dists, _FakeDist()]
+
+    with patch.object(analyzer_identity, "distributions", return_value=fake_dists):
+        # `hypergumbo-broken` will fail _try_import since the module
+        # `hypergumbo_broken` doesn't exist.
+        reset_cache_for_testing()
+        # Should not raise.
+        h = compute_analyzer_identity_hash()
+        assert len(h) == 16
+
+
+def test_discovery_skips_distributions_with_empty_path_attr():
+    """Covers the ``if not paths: continue`` defensive branch.
+
+    Single-file modules without ``__path__`` (or with an empty one)
+    contribute nothing to the analyzer identity and are skipped.
+    """
+    from importlib.metadata import distributions as real_distributions
+
+    real_dists = list(real_distributions())
+
+    class _FakeMetadata:
+        def get(self, key, default=None):
+            return "hypergumbo-pathless" if key == "Name" else default
+
+    class _FakeDist:
+        metadata = _FakeMetadata()
+
+    fake_module = SimpleNamespace(__path__=[])  # empty paths
+
+    with patch.object(
+        analyzer_identity, "distributions",
+        return_value=[*real_dists, _FakeDist()],
+    ), patch.object(
+        analyzer_identity, "_try_import", return_value=fake_module,
+    ):
+        reset_cache_for_testing()
+        h = compute_analyzer_identity_hash()
+        assert len(h) == 16
+
+
+def test_discovery_skips_namespace_overlap(tmp_path: Path):
+    """Covers the ``if any(p in seen_paths for p in paths): continue``
+    defensive branch.
+
+    If a second distribution reports a ``__path__`` that overlaps
+    one we've already hashed (namespace package case), skip it to
+    avoid double-counting.
+    """
+    from importlib.metadata import distributions as real_distributions
+
+    real_dists = list(real_distributions())
+    import hypergumbo_core as hg_core
+
+    # The fake "distribution" claims hypergumbo_core's own path.
+    overlapping_path = list(hg_core.__path__)
+
+    class _FakeMetadata:
+        def get(self, key, default=None):
+            return "hypergumbo-overlap" if key == "Name" else default
+
+    class _FakeDist:
+        metadata = _FakeMetadata()
+
+    fake_module = SimpleNamespace(__path__=overlapping_path)
+
+    def fake_try_import(name):
+        if name == "hypergumbo_overlap":
+            return fake_module
+        return __import__(name)
+
+    with patch.object(
+        analyzer_identity, "distributions",
+        return_value=[*real_dists, _FakeDist()],
+    ), patch.object(
+        analyzer_identity, "_try_import", side_effect=fake_try_import,
+    ):
+        reset_cache_for_testing()
+        h = compute_analyzer_identity_hash()
+        assert len(h) == 16
+
+
+def test_hash_package_py_files_skips_nonexistent_path(tmp_path: Path):
+    """Covers the ``if not pkg_path.exists(): continue`` branch."""
+    nonexistent = tmp_path / "ghost"
+    # Don't create it.
+    h = _hash_package_py_files(_fake_module(str(nonexistent)))
+    # Empty walk → empty-input sha256 prefix.
+    assert h == hashlib.sha256(b"").hexdigest()[:16]
+
+
 def test_results_cache_dir_includes_analyzer_identity_segment(tmp_path: Path):
     """The cache path returned by `_get_results_cache_dir` ends with
     the analyzer_identity_hash as its deepest segment.
