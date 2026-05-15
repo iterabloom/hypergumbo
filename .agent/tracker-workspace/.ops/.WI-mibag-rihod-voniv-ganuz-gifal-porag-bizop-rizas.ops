@@ -26,3 +26,18 @@
   clock: 2  # d57d
   nonce: d57d  # d57d
   message: "Post-ADR-0028 hint (fully landed): edge.is_resolved == False (ir.py:399) is a cleaner discriminator than evidence-type or edge-type set membership for distinguishing 'external potential' (unresolved external dst) from resolved IO. Both fix directions in the original spec — (a) fold external_potential into per-primitive buckets when any hint can be extracted, or (b) hide behind a --show-external-potential flag — are now expressible in terms of the sibling field rather than ad-hoc heuristics. Optional follow-on: the runtime-coherence partition (ADR-0023 §3) can flag repos where external_potential dominance correlates with a specific (src.kind, dst.kind) partition, which may reveal a missing linker rather than a presentation issue."  # d57d
+- op: update  # 7b52
+  at: '2026-05-15T00:13:38Z'  # 7b52
+  by: agent  # 7b52
+  actor: jgstern_agent  # 7b52
+  clock: 3  # 7b52
+  nonce: 7b52  # 7b52
+  set:  # 7b52
+    status: done  # 7b52
+- op: discuss  # 2f49
+  at: '2026-05-15T00:13:38Z'  # 2f49
+  by: agent  # 2f49
+  actor: jgstern_agent  # 2f49
+  clock: 4  # 2f49
+  nonce: 2f49  # 2f49
+  message: "Shipped in PR #3723. Added --show-external-potential flag to hypergumbo io-boundaries; bucket suppressed from default text output (replaced with one-line summary), but always present in JSON; --boundary external_potential also bypasses the suppression. Picked option (b) hide-by-default per the tracker's two-option spec — folding would have required a heuristic mapping from unresolved-receiver dst kind to specific IO primitives, which the existing F3 filters already explored without finding a reliable signal. Five new tests + two updated; 100% coverage; 12184 tests pass."  # 2f49

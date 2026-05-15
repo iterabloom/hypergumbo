@@ -51,3 +51,18 @@
   nonce: ffc7  # ffc7
   set:  # ffc7
     status: todo_soft  # ffc7
+- op: update  # 3d23
+  at: '2026-05-15T06:01:58Z'  # 3d23
+  by: agent  # 3d23
+  actor: jgstern_agent  # 3d23
+  clock: 6  # 3d23
+  nonce: 3d23  # 3d23
+  set:  # 3d23
+    status: done  # 3d23
+- op: discuss  # 709d
+  at: '2026-05-15T06:01:58Z'  # 709d
+  by: agent  # 709d
+  actor: jgstern_agent  # 709d
+  clock: 7  # 709d
+  nonce: 709d  # 709d
+  message: "Merged in dev as b12a1e3882. Shared core (_view_template_core.py) extracted with MethodNameStrategy + ExplicitStringStrategy abstract bases; Rails refactored as thin RailsStrategy subclass (all 43 existing tests pass); Django strategy adds render() call detection, template_name class-attribute detection, and DetailView/ListView/CreateView/UpdateView/DeleteView/FormView model-derived defaults. 100% coverage on all three changed modules. WI-dajom, WI-hogik, WI-hokaj unblocked."  # 709d

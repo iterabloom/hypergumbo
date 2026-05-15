@@ -21,3 +21,18 @@
     fields:  # 1bfb
       statement: "When an item's status is set to 'deleted', all isbefore data referencing the item must be cleared automatically: (a) the deleted item's own isbefore list, and (b) any isbefore entry in any other item across any tier that points at the deleted item. After deletion, no item across any tier carries a dangling isbefore reference to the deleted ID."  # 1bfb
       root_cause: "tracker delete is implemented as a thin wrapper around 'tracker update --status deleted' (cli.py:1113-1114); no sweep of inbound isbefore references happens. Dangling references persist in compiled state and .ops files. ready() filters via resolved_statuses so semantics work for that query path, but show, deps, raw YAML inspection, and any non-resolved-status-aware future tooling all see and treat the dangling references as live data."  # 1bfb
+- op: update  # 8f5d
+  at: '2026-05-15T01:28:45Z'  # 8f5d
+  by: agent  # 8f5d
+  actor: jgstern_agent  # 8f5d
+  clock: 2  # 8f5d
+  nonce: 8f5d  # 8f5d
+  set:  # 8f5d
+    status: satisfied  # 8f5d
+- op: discuss  # 2abd
+  at: '2026-05-15T01:28:45Z'  # 2abd
+  by: agent  # 2abd
+  actor: jgstern_agent  # 2abd
+  clock: 3  # 2abd
+  nonce: 2abd  # 2abd
+  message: "Shipped in PR #3725. _cmd_delete now resolves canonical ID, bundles status flip + own-isbefore clear into one set_fields op, walks every tier finding inbound isbefore holders, emits remove_fields ops for each. CLI surfaces 'Cleared N inbound isbefore references.' notice (empty for leaf-case). JSON gains inbound_isbefore_cleared field. Positive evidence: 3 new tests (inbound sweep, own-list clear, leaf-case quiet) + 4 existing delete tests pass; 12192 tests overall; 100% coverage."  # 2abd

@@ -18,3 +18,18 @@
     pr_ref:  # 67c4
     description: "From hg-uat-v4.0.0 directed-validation campaign (2026-05-03), master report\n§ DQ-03 / UX-01.\nMaster report: ~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v4.0.0/lab-notebook/master-report.md\n\n## Symptom\n\nEvery `hypergumbo run` invocation in the UAT campaign (all 8 rounds across\nPython / Go / Java / Rust / C++ / JVM repos) emitted recurring stderr\nwarnings for languages and grammar surfaces the target repo does not contain:\n\n- **Circom warning** — printed every run regardless of whether the repo has\n  any Circom files. Suppressing if no `*.circom` source is present would\n  eliminate every round's stderr noise except legitimate `partial_install`\n  warnings.\n- **DEPENDENCY-linker TOML warning** — fires on Go (round 02), JVM (round 08),\n  and Rust (round 06) repos that don't use TOML manifests. The warning text\n  enumerates `Cargo.toml`, `pyproject.toml` but not `go.mod`,\n  `package.json`, `pom.xml`, `build.gradle`, etc. — language-aware gating\n  would eliminate the misfires.\n- **CGO / LUA_FFI / RUBY_FFI warnings** — round 06 surfaced three of these\n  on a Rust repo. Same fix shape: gate on consumer-side language presence.\n\n## Fix scope\n\nPer-warning, gate the emission on the relevant language / framework actually\nbeing present in the analysis profile (already discovered in the profile\nphase). The profile data is available; the warnings just don't consult it.\n\n## Verdict-level impact\n\nNone — these don't affect graph correctness. But they make the\nagent-experience and human-experience of `hypergumbo run` noticeably worse\nthan necessary, especially in CI logs.\n\n## Acceptance\n\nRunning `hypergumbo run` on a pure-Go repo (e.g. alertmanager) produces\nempty stderr modulo legitimate `partial_install_warnings` — no Circom,\nno TOML-manifest, no CGO/LUA_FFI/RUBY_FFI warnings."  # 67c4
     fields: {}  # 67c4
+- op: update  # 9d67
+  at: '2026-05-14T23:42:40Z'  # 9d67
+  by: agent  # 9d67
+  actor: jgstern_agent  # 9d67
+  clock: 2  # 9d67
+  nonce: 9d67  # 9d67
+  set:  # 9d67
+    status: done  # 9d67
+- op: discuss  # 3b1b
+  at: '2026-05-14T23:42:40Z'  # 3b1b
+  by: agent  # 3b1b
+  actor: jgstern_agent  # 3b1b
+  clock: 3  # 3b1b
+  nonce: 3b1b  # 3b1b
+  message: "Shipped in PR #3722. Two false-positive warnings eliminated: (1) Circom skip warning gated on .circom file presence in tree, (2) DEPENDENCY/toml_dependencies partial-install warning suppressed when neither Rust nor Python detected (via new per-requirement language-relevance gate in partial_install_warnings.py). CGO/LUA_FFI/RUBY_FFI were already gated correctly by WI-zamoz. Four new tests; 100% coverage; full 12179-test suite passes."  # 3b1b
