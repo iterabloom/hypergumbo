@@ -57,6 +57,31 @@ def get_git_commit_sha() -> str | None:
     return None
 
 
+# How many recent commits reachable from HEAD are accepted by ``--check``.
+# The doc's recorded SHA gets "stale" the moment the doc-regeneration
+# commit lands (HEAD moves past the SHA the doc was generated against),
+# so strict equality with HEAD is unworkable. A small window absorbs the
+# doc-update commit plus a couple of follow-on quick fixes without
+# letting the doc rot indefinitely.
+RECENT_COMMIT_WINDOW = 5
+
+
+def get_recent_commit_shas(n: int = RECENT_COMMIT_WINDOW) -> list[str]:
+    """Return up to ``n`` most recent commit SHAs reachable from HEAD, short-form."""
+    try:
+        result = subprocess.run(
+            ["git", "log", f"-n{n}", "--format=%H"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+        )
+        if result.returncode == 0:
+            return [line[:12] for line in result.stdout.splitlines() if line]
+    except Exception:
+        pass
+    return []
+
+
 def get_hypergumbo_version() -> str:
     """Get the hypergumbo package version from pyproject.toml.
 
@@ -1478,32 +1503,42 @@ def main() -> int:
             print("Run: ./scripts/generate-architecture")
             return 1
 
-        # Light check: verify file exists and has auto-generated markers
-        # Full content comparison is not reliable across environments because
-        # hypergumbo output can vary by Python version, tree-sitter builds, etc.
+        # Strict freshness check via the recorded commit SHA.
+        # We don't byte-compare regenerated content (as generate-schema does)
+        # because architecture generation runs hypergumbo on itself, and the
+        # output varies by Python version and tree-sitter build — not
+        # reproducible in CI without installing the tool. Instead, the doc
+        # records the HEAD it was generated against; we require that SHA to
+        # be one of the RECENT_COMMIT_WINDOW most recent commits reachable
+        # from HEAD. That window absorbs the doc-regeneration commit itself
+        # (which moves HEAD past the recorded SHA) while still failing once
+        # the doc rots past a small number of follow-on commits.
         content = output_path.read_text(encoding="utf-8")
         if "Auto-generated" not in content:
             print("ERROR: docs/ARCHITECTURE.md doesn't appear to be auto-generated")
             return 1
-        if not re.search(r"commit:\s+[0-9a-f]{6,}", content):
+        sha_match = re.search(r"commit:\s+([0-9a-f]{6,})", content)
+        if not sha_match:
             print("ERROR: docs/ARCHITECTURE.md is missing commit hash")
             return 1
+        doc_sha = sha_match.group(1)
 
-        # Check for commit SHA drift (warn-only, not a hard failure)
-        # This helps detect when docs may be stale relative to code changes
-        current_sha = get_git_commit_sha()
-        if current_sha:
-            sha_match = re.search(r"commit:\s*(\w+)", content)
-            if sha_match:
-                doc_sha = sha_match.group(1)
-                if doc_sha != current_sha:
-                    print(f"WARNING: docs generated at commit {doc_sha}, current HEAD is {current_sha}")
-                    print("Consider regenerating: ./scripts/generate-architecture")
-            else:
-                print("WARNING: could not extract commit SHA from ARCHITECTURE.md")
+        recent = get_recent_commit_shas()
+        if not recent:
+            print("ERROR: could not enumerate recent commits (git log failed)")
+            return 1
 
-        print("OK: docs/ARCHITECTURE.md exists and appears valid")
-        return 0
+        if doc_sha in recent:
+            print(f"OK: docs/ARCHITECTURE.md recorded commit {doc_sha} "
+                  f"is within the last {len(recent)} commits")
+            return 0
+
+        print(f"ERROR: docs/ARCHITECTURE.md is out of date")
+        print(f"  recorded commit: {doc_sha}")
+        print(f"  HEAD: {recent[0]}")
+        print(f"  last {len(recent)} commits: {', '.join(recent)}")
+        print("Run: ./scripts/generate-architecture")
+        return 1
 
     generated = generate_architecture_md()
     output_path.write_text(generated, encoding="utf-8")
