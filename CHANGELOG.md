@@ -16,6 +16,19 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Added
 
+#### Convention-based view-template linker for Spring MVC (WI-hogik)
+
+WI-hogik adds the third sister consumer of the WI-mifif shared core (and the first ExplicitStringStrategy consumer beyond Django). New module `view_template_spring.py` registers `SpringStrategy(ExplicitStringStrategy)`, which:
+
+- Gates on action methods: enclosing class has `@Controller` (NOT `@RestController` — those return JSON, not views) and the method itself has at least one mapping annotation (`@RequestMapping`, `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping`, `@PatchMapping`).
+- Extracts view names from method bodies by tree-sitter re-parsing Java source files. Two return shapes are recognized: a plain string literal (`return "users/show";` → `return_string` pattern) and `new ModelAndView("users/show", model)` (→ `model_and_view_first_arg` pattern; first non-literal arg blocks resolution).
+- Skips view-resolver directives: returns starting with `"redirect:"` or `"forward:"` are not template paths.
+- Probes template roots in priority order: `src/main/resources/templates/<view>.{html,ftlh,ftl,vm}` (Thymeleaf / FreeMarker / Velocity) and `src/main/webapp/WEB-INF/views/<view>.{jsp,html}` (JSP). The first existing file becomes a template Symbol; multiple matches across roots all emit edges.
+
+The Java analyzer captures class and method `@Annotation` metadata in `sym.meta["decorators"]` as a list of `{name, args, kwargs}` dicts but does not emit return-statement expressions into the IR. To recover string return values, the linker re-parses controller source files with tree-sitter Java (`tree_sitter_language_pack.get_language("java")`), walking `return_statement` nodes inside `method_declaration` bodies by matched short-name and span containment.
+
+20 new tests cover string-literal returns under all four template-root combinations (Thymeleaf `.html`, JSP, FreeMarker `.ftl`), `ModelAndView` first-arg extraction, redirect / forward suppression, `@RestController` skip, mapping-annotation gating, action-class gating (mixed controllers + helpers in a single file exercise the `enclosing not in controller_classes` path), non-string returns / non-ModelAndView object_creation / bare returns / unparseable source / missing source. 100% coverage on the new file.
+
 #### Convention-based view-template linker for Phoenix (WI-dajom)
 
 WI-dajom adds the second sister consumer of the WI-mifif shared core. New module `view_template_phoenix.py` registers `PhoenixStrategy(MethodNameStrategy)`, which handles both Phoenix 1.x and 1.7+ template layouts:
