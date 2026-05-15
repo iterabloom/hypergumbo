@@ -236,6 +236,20 @@ else
     exit 1
 fi
 
+# Check CONCEPTS.md freshness — concept-vocabulary registry mapping
+# every concept string to (producers, consumers, status). Drift surfaces
+# when framework YAMLs or linker sources change.
+echo -n "  Concepts vocabulary (freshness)... "
+if ./scripts/generate-concepts --check >/dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC}"
+else
+    echo -e "${RED}✗${NC}"
+    echo ""
+    echo -e "${RED}docs/CONCEPTS.md is out of date. Run:${NC}"
+    echo "  ./scripts/generate-concepts"
+    exit 1
+fi
+
 # Check README sync (meta-package must match root)
 echo -n "  README sync... "
 if [ -f "packages/hypergumbo/README.md" ] && [ -f "README.md" ]; then

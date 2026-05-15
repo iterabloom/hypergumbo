@@ -330,6 +330,8 @@ jobs:
         run: ./scripts/generate-schema --check
       - name: Verify ARCHITECTURE.md is up-to-date
         run: ./scripts/generate-architecture --check
+      - name: Verify SECURITY.md audited-IO section is up-to-date
+        run: ./scripts/generate-security-md --check
 
   # Build grammars once, cache wheels for pytest job (saves ~1 minute)
   build-grammars:
