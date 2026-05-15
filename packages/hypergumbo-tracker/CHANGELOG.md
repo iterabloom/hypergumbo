@@ -9,6 +9,14 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Fixed
 
+#### `tracker delete` now sweeps dangling isbefore references (INV-vudit)
+
+Deleting a tracker item (via `tracker delete` or any path that flips `status=deleted`) previously left dangling `isbefore` references in place: (a) the deleted item's own `isbefore` list stayed populated, and (b) any other item across any tier that had the deleted ID in its `isbefore` list kept that reference. `TrackerSet.ready()` filtered these out at query time via `resolved_statuses`, so the `ready` path was semantically correct, but `tracker show`, `tracker deps`, and any future tooling that walked `isbefore` without checking the target's status would treat the deleted ID as a real dependency.
+
+`_cmd_delete` now resolves the deleted ID to its canonical form, walks every tier to find items holding the ID in their `isbefore` lists, clears the deleted item's own `isbefore` list, and emits `remove_fields={"isbefore": [deleted_id]}` ops for each inbound holder. The status flip itself is bundled into the same `set_fields` op as the self-isbefore clear so the entire transition lands together. The CLI surfaces a human-readable count notice (`Cleared N inbound isbefore references.`) when any inbound references were swept; nothing is printed when the deleted item was a leaf. The JSON output gains an `inbound_isbefore_cleared` field.
+
+Three new tests in `TestDeleteCommand`: inbound-reference sweep across `WI-a.isbefore = [WI-b]` → delete `WI-b`, deleted item's own list cleared, leaf-case stays quiet (no inbound notice).
+
 #### `tracker tags rename` no longer rejects renames FROM legacy-format old tags (WI-hohov)
 
 `_cmd_tags_rename` (`cli.py:1283`) was structurally broken when the OLD endpoint violated `_TAG_NAME_RE` (the snake_case validator). The per-item update loop succeeded — every item got the new tag and lost the legacy one — but the trailing catalog edit called `setdefault(old, TagCatalogEntry(...))`, leaving a regex-violating key in the catalog dict. `save_catalog`'s validator then raised, the rename verb exited non-zero, and the catalog audit trail never landed. Users hitting this either abandoned the rename (legacy tags persist) or fell back to a per-item loop (no audit trail, 21× the error noise). Hit empirically during the BVT-discipline tag migration on 2026-05-07 when renaming `for-deep-bakeoff` → `for_deep_bakeoff` and `for-uat-bakeoff` → `for_uat_bakeoff` across 21 items.

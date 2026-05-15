@@ -2784,6 +2784,133 @@ class TestDeleteCommand:
     def test_delete_in_mutation_commands(self) -> None:
         assert "delete" in _MUTATION_COMMANDS
 
+    @staticmethod
+    def _add_item_with_isbefore(
+        ops_dir: Path,
+        item_id: str,
+        isbefore: list[str],
+    ) -> None:
+        """Write a create-op for an item whose isbefore list is non-empty."""
+        isbefore_yaml = "[" + ", ".join(repr(x) for x in isbefore) + "]"
+        ops_content = textwrap.dedent(f"""\
+            - op: create
+              at: "2026-01-01T00:00:00Z"
+              by: agent
+              actor: test_agent
+              clock: 1
+              nonce: a1b2
+              data:
+                kind: work_item
+                title: "Item {item_id}"
+                status: todo_hard
+                priority: 2
+                isbefore: {isbefore_yaml}
+        """)
+        (ops_dir / f".{item_id}.ops").write_text(ops_content)
+
+    def test_delete_sweeps_inbound_isbefore_references(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        """INV-vudit: deleting an item must clear every inbound isbefore ref.
+
+        ``A.isbefore = [B]`` says "A must finish before B can start". When
+        B is deleted, leaving A's isbefore unchanged keeps a dangling
+        reference visible in ``tracker show`` / ``tracker deps`` and
+        any future tooling that doesn't filter on resolved_statuses.
+        After delete, no item across any tier should carry B in its
+        isbefore list.
+        """
+        tracker_root = _setup_tracker(tmp_path)
+        ops = tracker_root / "tracker-workspace" / ".ops"
+        self._add_item_with_isbefore(ops, "WI-a", isbefore=["WI-b"])
+        _add_item(ops, "WI-b")
+
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "delete", "WI-b",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+        # CLI surface: a notice naming the count.
+        out = capsys.readouterr().out
+        assert "deleted" in out
+        assert "inbound isbefore" in out or "isbefore reference" in out
+
+        # State surface: WI-a no longer carries WI-b in isbefore.
+        capsys.readouterr()
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "show", "WI-a",
+            ])
+        a_out = capsys.readouterr().out
+        assert "WI-b" not in a_out
+
+    def test_delete_clears_own_isbefore_list(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        """INV-vudit: the deleted item's own isbefore list is cleared too.
+
+        The references the deleted item carries are dead weight; they
+        pollute ``tracker show <deleted-item>`` output and any tooling
+        that walks .ops history.
+        """
+        tracker_root = _setup_tracker(tmp_path)
+        ops = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops, "WI-target")
+        self._add_item_with_isbefore(ops, "WI-doomed", isbefore=["WI-target"])
+
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "delete", "WI-doomed",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+        # State surface: WI-doomed's own isbefore is empty.
+        capsys.readouterr()
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "show", "WI-doomed",
+            ])
+        doomed_out = capsys.readouterr().out
+        assert "WI-target" not in doomed_out
+
+    def test_delete_with_no_inbound_refs_emits_no_count_line(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        """INV-vudit: when nothing points at the deleted item, the
+        notice doesn't fire (avoids cluttering output for the common
+        case).
+        """
+        tracker_root = _setup_tracker(tmp_path)
+        ops = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops, "WI-alone")
+
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "delete", "WI-alone",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+        out = capsys.readouterr().out
+        # Standard "deleted" line is still present.
+        assert "deleted" in out
+        # But the inbound-isbefore notice is not — nothing was pointing at it.
+        assert "inbound isbefore" not in out
+
 
 # ---------------------------------------------------------------------------
 # Tier movement commands

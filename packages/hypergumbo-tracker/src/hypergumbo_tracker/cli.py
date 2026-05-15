@@ -1110,12 +1110,69 @@ def _cmd_unstealth(args: argparse.Namespace, ts: TrackerSet) -> int:
 
 
 def _cmd_delete(args: argparse.Namespace, ts: TrackerSet) -> int:
-    """Handle 'delete' subcommand — set item status to deleted (human only)."""
-    ts.update(args.item_id, set_fields={"status": "deleted"})
+    """Handle 'delete' subcommand — set item status to deleted (human only).
+
+    INV-vudit: also sweep dangling isbefore references. Two cleanup
+    actions per the invariant:
+
+    1. The deleted item's own ``isbefore`` list is cleared — once the
+       item is deleted those references are dead weight that
+       pollutes ``tracker show <deleted-item>`` and any tooling that
+       walks .ops history.
+    2. Every other item across every tier that has the deleted ID in
+       its ``isbefore`` list has that reference removed. Otherwise
+       ``tracker show <Y>`` / ``tracker deps <Y>`` display a deleted
+       blocker and any future tooling that doesn't filter on
+       ``resolved_statuses`` treats the deleted ID as a real
+       dependency.
+
+    Resolve the canonical ID before the inbound sweep so the lookup
+    works whether the caller passed a prefix, alias, or full ID.
+    """
+    # Resolve to the canonical ID up-front: the inbound sweep below
+    # has to match the literal string stored in other items' isbefore
+    # lists, and ``ts.update`` is the only thing that knows how to
+    # turn a prefix/alias into the full ID.
+    full_id, _store, _t = ts._resolve_id(args.item_id)
+
+    # Find any item across any tier whose isbefore contains full_id.
+    # Walk every tier explicitly (not just the default scope) since
+    # the dangling reference can live in any tier.
+    inbound_holders: list[str] = []
+    for tier in Tier:
+        for item in ts.list_items(tier=tier):
+            if full_id in item.isbefore:
+                inbound_holders.append(item.id)
+
+    # Clear the deleted item's own isbefore list at the same time as
+    # the status flip so the entire transition lands as one
+    # set_fields op.
+    target_item = next(
+        (i for i in ts.list_items() if i.id == full_id), None,
+    )
+    set_fields: dict[str, Any] = {"status": "deleted"}
+    if target_item is not None and target_item.isbefore:
+        set_fields["isbefore"] = []
+    ts.update(full_id, set_fields=set_fields)
+
+    # Sweep inbound references. Each holder gets one remove_fields op
+    # touching only its isbefore list. The auto-sync threshold
+    # batches these into the same window as the delete itself unless
+    # the run independently crosses the line limit.
+    for holder_id in inbound_holders:
+        ts.update(holder_id, remove_fields={"isbefore": [full_id]})
+
     if args.json:
-        print(json.dumps({"ok": True}))
+        print(json.dumps({
+            "ok": True,
+            "inbound_isbefore_cleared": len(inbound_holders),
+        }))
     else:
         print("deleted")
+        if inbound_holders:
+            n = len(inbound_holders)
+            ref_word = "reference" if n == 1 else "references"
+            print(f"Cleared {n} inbound isbefore {ref_word}.")
     return EXIT_SUCCESS
 
 
