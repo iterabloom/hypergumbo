@@ -143,6 +143,22 @@ def user_out_open_json_dump(path: Path, obj: Any) -> None:
         json.dump(obj, f, indent=2, sort_keys=True)
 
 
+def user_out_open_json_dump_gzip(path: Path, obj: Any) -> None:
+    """``gzip.open + json.dump`` in one call. Same semantics as
+    :func:`user_out_open_json_dump` but writes a gzipped JSON payload.
+
+    SAFETY ZONE: ``user_out``. Used by ``cmd_run`` when ``--gzip`` is
+    set, on both the main output and the budget-tier outputs. The
+    inner JSON encoding is identical to the uncompressed path
+    (``indent=2, sort_keys=True``) so ``gunzip <out>.json.gz`` produces
+    byte-identical content to the uncompressed path's output.
+    """
+    _safety_zone_barrier()
+    import gzip
+    with gzip.open(path, "wt") as f:
+        json.dump(obj, f, indent=2, sort_keys=True)
+
+
 def tmp_artifact_write(path: Path, content: str) -> None:
     """Write content to an ephemeral path under ``/tmp/`` or a tempdir.
 

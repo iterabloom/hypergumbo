@@ -940,6 +940,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     max_handler_slices = getattr(
         args, "max_handler_slices", _DEFAULT_MAX_HANDLER_SLICES
     )
+    gzip_output = getattr(args, "gzip_output", False)
+    no_sketch_fan_out = getattr(args, "no_sketch_fan_out", False)
 
     # Detect and filter locale documentation directories
     _setup_locale_filtering(repo_root, locale)
@@ -960,6 +962,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         progress=show_progress,
         enable_handler_slices=enable_handler_slices,
         max_handler_slices=max_handler_slices,
+        gzip_output=gzip_output,
+        no_sketch_fan_out=no_sketch_fan_out,
     )
 
     # Output summary (always at the end)
@@ -5425,12 +5429,16 @@ Examples:
 Side-outputs alongside --out:
   In addition to the path you pass, `run` writes:
     <stem>.4k.json / .16k.json / .64k.json   compact-tier previews at the same
-                                              prefix as --out (see --budgets)
+                                              prefix as --out (see --budgets
+                                              or --no-sketch-fan-out)
     <stem>.slices/                            a subdirectory of per-route
                                               handler slices and an index
                                               (see --no-handler-slices,
                                               --max-handler-slices)
-  Suppress everything with: --budgets none --no-handler-slices
+  Suppress everything with: --no-sketch-fan-out --no-handler-slices
+  (Equivalent: --budgets none --no-handler-slices.)
+  Compress all JSON outputs with: --gzip --out foo.json.gz (raw JSON is
+  ~95% gzip-reducible on large repos).
 
 After running, use search/explain/slice to query the results:
   hypergumbo sketch .                   # Auto-discovers cached results
@@ -5454,11 +5462,13 @@ Cache location:
         default=None,
         help="Output JSON path (default: ~/.cache/hypergumbo/<repo>/<state>/). "
              "Side-outputs are written alongside: compact-tier previews "
-             "(<stem>.{4k,16k,64k}.json — see --budgets) at the same prefix, "
-             "and a <stem>.slices/ subdirectory of per-route handler slices "
+             "(<stem>.{4k,16k,64k}.json — see --budgets or "
+             "--no-sketch-fan-out) at the same prefix, and a "
+             "<stem>.slices/ subdirectory of per-route handler slices "
              "(see --no-handler-slices, --max-handler-slices). Pass "
-             "`--budgets none --no-handler-slices` to get exactly one output "
-             "file. See the epilog for the full layout.",
+             "`--no-sketch-fan-out --no-handler-slices` to get exactly "
+             "one output file. Pair with `--gzip` to write gzipped "
+             "JSON. See the epilog for the full layout.",
     )
     p_run.add_argument(
         "--max-tier",
@@ -5586,6 +5596,33 @@ Cache location:
              f"{_DEFAULT_MAX_HANDLER_SLICES}). Overflow handlers are listed in "
              f"the ``<out-stem>.slices/slice.handler.index.json`` companion "
              f"file with pointers to re-derive on demand.",
+    )
+    # WI-kojob: large repos produce 300MB-500MB raw JSON outputs that
+    # gzip to ~5% of their uncompressed size (airflow 320MB → 18MB,
+    # kafka 572MB → 34MB). `--gzip` writes the main output and any
+    # budget-tier outputs as `.gz`; pair with `--out foo.json.gz`.
+    p_run.add_argument(
+        "--gzip",
+        action="store_true",
+        dest="gzip_output",
+        default=False,
+        help="Write the main output and any budget-tier outputs as "
+             "gzipped JSON. Pair with `--out foo.json.gz`. Downstream "
+             "tools like `zcat foo.json.gz | jq .` round-trip cleanly.",
+    )
+    # WI-kojob: `--no-sketch-fan-out` is an explicit named alias for
+    # `--budgets none` — surfaced in argparse so it shows up in --help
+    # alongside `--no-handler-slices` (the symmetric side-output
+    # suppressor).
+    p_run.add_argument(
+        "--no-sketch-fan-out",
+        action="store_true",
+        dest="no_sketch_fan_out",
+        default=False,
+        help="Skip emission of the precomputed sketch-tier preview "
+             "files (`<stem>.{4k,16k,64k}.json`). Equivalent to "
+             "`--budgets none`; wins over an explicit `--budgets ...` "
+             "value.",
     )
     p_run.set_defaults(func=cmd_run)
 
@@ -6974,6 +7011,8 @@ def run_behavior_map(
     progress: bool = True,
     enable_handler_slices: bool = True,
     max_handler_slices: int = _DEFAULT_MAX_HANDLER_SLICES,
+    gzip_output: bool = False,
+    no_sketch_fan_out: bool = False,
 ) -> list[Path]:
     """
     Run the behavior_map analysis for a repo and write JSON to out_path.
@@ -7528,6 +7567,15 @@ def run_behavior_map(
     # Ensure parent directory exists (even if caller gives nested paths later)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # WI-kojob: `--no-sketch-fan-out` is an explicit named flag that
+    # collapses to the same effect as `budgets=none`. The named form
+    # is more discoverable in --help and reads cleanly in scripts; it
+    # wins over any explicit `budgets=...` value because the user's
+    # intent ("don't fan out") is more specific than the budgets
+    # detail.
+    if no_sketch_fan_out:
+        budgets = "none"
+
     # Generate budget-tiered output files BEFORE compact mode
     # (budget files are always based on full analysis, not compact)
     if budgets != "none":
@@ -7537,15 +7585,37 @@ def run_behavior_map(
         else:
             budget_specs = [b.strip() for b in budgets.split(",") if b.strip()]
 
+        # WI-kojob: when gzipping, the user's out_path ends in `.gz`
+        # (e.g. `output.json.gz`). `generate_tier_filename` splits on
+        # the last extension, which would produce `output.json.4k.gz`
+        # instead of the natural `output.4k.json.gz`. Compute the
+        # budget filename from the un-suffixed stem, then re-append
+        # `.gz` so the on-disk layout reads as
+        # `<stem>.<tier>.json.gz`.
+        if gzip_output and str(out_path).endswith(".gz"):
+            budget_base = str(out_path)[: -len(".gz")]
+        else:
+            budget_base = str(out_path)
+
         # Generate each budget file from full behavior map
         for budget_spec in budget_specs:
             try:
                 target_tokens = parse_tier_spec(budget_spec)
-                budget_path = Path(generate_tier_filename(str(out_path), budget_spec))
+                budget_path = Path(generate_tier_filename(budget_base, budget_spec))
+                if gzip_output:
+                    budget_path = Path(str(budget_path) + ".gz")
                 tiered_map = format_tiered_behavior_map(
                     behavior_map, all_symbols, all_edges, target_tokens
                 )
-                user_out_open_json_dump(budget_path, tiered_map)
+                # WI-kojob: gzip budget tiers when the main output is
+                # gzipped. Keeps the on-disk layout consistent: all
+                # artifacts produced by one invocation share the same
+                # compression mode.
+                if gzip_output:
+                    from .safety_zones import user_out_open_json_dump_gzip
+                    user_out_open_json_dump_gzip(budget_path, tiered_map)
+                else:
+                    user_out_open_json_dump(budget_path, tiered_map)
                 generated_files.append(budget_path)
                 # Free memory between tiers (helps with large repos like tensorflow)
                 del tiered_map
@@ -7572,7 +7642,11 @@ def run_behavior_map(
     _log_memory("after cleanup")
 
     show_progress("Writing output", 95)
-    user_out_open_json_dump(out_path, behavior_map)
+    if gzip_output:
+        from .safety_zones import user_out_open_json_dump_gzip
+        user_out_open_json_dump_gzip(out_path, behavior_map)
+    else:
+        user_out_open_json_dump(out_path, behavior_map)
     generated_files.append(out_path)
     _log_memory("after write")
 

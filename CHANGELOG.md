@@ -16,6 +16,18 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Changed
 
+#### `hypergumbo run`: `--gzip` and `--no-sketch-fan-out` flags for large-repo output (WI-kojob)
+
+The UAT 4.1.0 master report §5 UX-C measured 90-95% gzip-reducibility on raw `hypergumbo run` JSON across large repos (airflow 320MB → 18MB, kafka 572MB → 34MB, chatwoot 81MB → 4.5MB, containerd 53MB → 3.7MB). For agents and downstream tools consuming the JSON, the uncompressed payload was awkward to ship around.
+
+Two new flags on `hypergumbo run`:
+
+- `--gzip` writes the main output and any budget-tier outputs as gzipped JSON. Pairs with `--out foo.json.gz` for a literal-path UX. The inner JSON encoding is identical to the uncompressed path (`indent=2, sort_keys=True`), so `gunzip foo.json.gz` produces byte-identical content. Budget tiers (`<stem>.4k.json.gz` etc.) are gzipped consistently when the main output is.
+
+- `--no-sketch-fan-out` is an explicit named alias for `--budgets none` — surfaced in `--help` alongside `--no-handler-slices` (the symmetric side-output suppressor). Skips emission of the precomputed sketch-tier preview files entirely. Wins over an explicit `--budgets ...` value because the named flag captures the more specific user intent. The `--out OUT` help text and the run-command epilog both updated to point at the new flag and the gzip incantation.
+
+New safety-zone helper `user_out_open_json_dump_gzip` in `safety_zones.py`. Five new tests cover: gzipped main output round-trips through `gunzip + json.loads`; budget tiers gzipped when main is; `--no-sketch-fan-out` suppresses budget files; the named flag wins over `--budgets default`; both flags combine to produce a single gzipped output file. 100% coverage on changed source.
+
 #### `hypergumbo io-boundaries`: hide `external_potential` bucket from default text output (WI-mibag)
 
 DEEP reflect across deep-20260510-054430 showed the `external_potential` bucket dominating io-boundaries text output across six repos: kafka (76,015 of total), airflow (28,912 of ~30,000), prometheus (9,464 / ~93%), containerd (12,343), kserve (6,397), nestjs (94% of total). The bucket itself remains useful (it surfaces "first-party code reaches into untrusted territory" as a first-class signal), but its display volume drowns the per-primitive view that the same output is supposed to make readable.

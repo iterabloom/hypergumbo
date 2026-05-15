@@ -359,3 +359,149 @@ def test_run_behavior_map_normalizes_linker_absolute_paths(tmp_path):
     assert len(linker_nodes) == 1
     assert linker_nodes[0]["path"] == "linker_generated.py"
 
+
+
+
+# ---------------------------------------------------------------------------
+# WI-kojob: --gzip and --no-sketch-fan-out flags
+# ---------------------------------------------------------------------------
+
+
+def test_run_behavior_map_gzip_output_writes_gzipped_json(tmp_path):
+    """WI-kojob: gzip_output=True writes a gzipped JSON to the given path.
+
+    `gunzip + json.loads` round-trips: the inner payload is the same
+    behavior-map dict that would have been written uncompressed.
+    """
+    import gzip
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "app.py").write_text("def main(): pass\n")
+
+    out_path = tmp_path / "output.json.gz"
+    run_behavior_map(
+        repo_root=repo_root,
+        out_path=out_path,
+        budgets="none",
+        gzip_output=True,
+        include_sketch_precomputed=False,
+    )
+
+    assert out_path.is_file()
+    # The file is valid gzip.
+    with gzip.open(out_path, "rt") as f:
+        data = json.load(f)
+    assert "nodes" in data
+    assert "edges" in data
+    assert data.get("schema_version") == SCHEMA_VERSION
+
+
+def test_run_behavior_map_gzip_output_also_gzips_budget_tiers(tmp_path):
+    """WI-kojob: when gzip_output=True, budget-tier files are also gzipped.
+
+    Default budgets emit `<stem>.{4k,16k,64k}.json`; with gzip they become
+    `<stem>.{4k,16k,64k}.json.gz`, each independently valid gzip.
+    """
+    import gzip
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "app.py").write_text("def main(): pass\n")
+
+    out_path = tmp_path / "output.json.gz"
+    run_behavior_map(
+        repo_root=repo_root,
+        out_path=out_path,
+        budgets="default",
+        gzip_output=True,
+        include_sketch_precomputed=False,
+    )
+
+    for spec in ("4k", "16k", "64k"):
+        budget = tmp_path / f"output.{spec}.json.gz"
+        assert budget.is_file(), f"{spec} budget file missing"
+        with gzip.open(budget, "rt") as f:
+            tier = json.load(f)
+        assert "schema_version" in tier
+
+
+def test_run_behavior_map_no_sketch_fan_out_skips_budget_files(tmp_path):
+    """WI-kojob: no_sketch_fan_out=True suppresses budget-tier emission.
+
+    Equivalent to `budgets='none'` but expressed as a dedicated flag —
+    matches the CLI ergonomic the UAT campaign requested.
+    """
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "app.py").write_text("def main(): pass\n")
+
+    out_path = tmp_path / "output.json"
+    run_behavior_map(
+        repo_root=repo_root,
+        out_path=out_path,
+        no_sketch_fan_out=True,
+        include_sketch_precomputed=False,
+    )
+
+    # Main file present.
+    assert out_path.is_file()
+    # No budget files.
+    for spec in ("4k", "16k", "64k"):
+        budget = tmp_path / f"output.{spec}.json"
+        assert not budget.exists(), (
+            f"{spec} budget should be suppressed by no_sketch_fan_out=True"
+        )
+
+
+def test_run_behavior_map_no_sketch_fan_out_overrides_default_budgets(tmp_path):
+    """WI-kojob: no_sketch_fan_out wins over budgets=default.
+
+    A user who passes both flags wants no sketch fan-out; the named flag
+    is the more specific signal.
+    """
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "app.py").write_text("def main(): pass\n")
+
+    out_path = tmp_path / "output.json"
+    run_behavior_map(
+        repo_root=repo_root,
+        out_path=out_path,
+        budgets="default",
+        no_sketch_fan_out=True,
+        include_sketch_precomputed=False,
+    )
+
+    for spec in ("4k", "16k", "64k"):
+        budget = tmp_path / f"output.{spec}.json"
+        assert not budget.exists()
+
+
+def test_run_behavior_map_gzip_and_no_sketch_fan_out_combine(tmp_path):
+    """WI-kojob: --gzip + --no-sketch-fan-out together produce one gzipped file."""
+    import gzip
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "app.py").write_text("def main(): pass\n")
+
+    out_path = tmp_path / "output.json.gz"
+    run_behavior_map(
+        repo_root=repo_root,
+        out_path=out_path,
+        gzip_output=True,
+        no_sketch_fan_out=True,
+        include_sketch_precomputed=False,
+    )
+
+    assert out_path.is_file()
+    # No budget files (gzipped or not).
+    for spec in ("4k", "16k", "64k"):
+        for suffix in (".json", ".json.gz"):
+            budget = tmp_path / f"output.{spec}{suffix}"
+            assert not budget.exists()
+    # Main file is gzipped.
+    with gzip.open(out_path, "rt") as f:
+        data = json.load(f)
+    assert "nodes" in data
