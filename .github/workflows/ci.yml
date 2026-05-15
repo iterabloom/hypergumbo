@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 50
       - name: Detect code changes
         id: filter
         run: |
@@ -232,7 +232,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 50
+      - name: Ensure PR base reachable (dynamic deepen)
+        # Self-healing: progressively deepen the shallow clone until the PR
+        # base SHA is reachable. Common case (95% of PRs, ≤3 commits) finds
+        # base immediately at depth=50 with zero extra fetches. Rare deep
+        # outliers (release PRs accumulating 100s of commits) deepen
+        # transparently, avoiding human intervention.
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          for attempt in 1 2 3 4; do
+            if git cat-file -e "$base" 2>/dev/null; then break; fi
+            case $attempt in
+              1) echo "Base $base not at depth=50; deepening +200..." ; git fetch --deepen=200 origin || true ;;
+              2) echo "Still unreachable; deepening +1000..." ; git fetch --deepen=1000 origin || true ;;
+              3) echo "Still unreachable; unshallowing..." ; git fetch --unshallow origin || true ;;
+              4) echo "❌ Base $base unreachable after full fetch (force-push to base branch?)." ; exit 1 ;;
+            esac
+          done
       - name: Check DCO sign-off
         run: |
           base="${{ github.event.pull_request.base.sha }}"
@@ -370,7 +387,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 50
+      - name: Ensure PR base reachable (dynamic deepen)
+        # See dco job for rationale on self-healing deepen strategy.
+        if: github.event_name == 'pull_request'
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          for attempt in 1 2 3 4; do
+            if git cat-file -e "$base" 2>/dev/null; then break; fi
+            case $attempt in
+              1) echo "Base $base not at depth=50; deepening +200..." ; git fetch --deepen=200 origin || true ;;
+              2) echo "Still unreachable; deepening +1000..." ; git fetch --deepen=1000 origin || true ;;
+              3) echo "Still unreachable; unshallowing..." ; git fetch --unshallow origin || true ;;
+              4) echo "❌ Base $base unreachable after full fetch (force-push to base branch?)." ; exit 1 ;;
+            esac
+          done
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -789,7 +820,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 50
+      - name: Ensure PR base reachable (dynamic deepen)
+        # See dco job for rationale on self-healing deepen strategy.
+        if: github.event_name == 'pull_request'
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          for attempt in 1 2 3 4; do
+            if git cat-file -e "$base" 2>/dev/null; then break; fi
+            case $attempt in
+              1) echo "Base $base not at depth=50; deepening +200..." ; git fetch --deepen=200 origin || true ;;
+              2) echo "Still unreachable; deepening +1000..." ; git fetch --deepen=1000 origin || true ;;
+              3) echo "Still unreachable; unshallowing..." ; git fetch --unshallow origin || true ;;
+              4) echo "❌ Base $base unreachable after full fetch (force-push to base branch?)." ; exit 1 ;;
+            esac
+          done
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
