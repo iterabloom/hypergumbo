@@ -5,7 +5,7 @@ Popular language analyzers for hypergumbo.
 
 ## Supported Languages
 
-Python, JavaScript/TypeScript, Java, C, C++, C#, Go, Rust, Ruby, PHP, Swift, Kotlin, Scala, Bash, SQL, HTML, CSS, Dockerfile, Lua, Perl, JSON, YAML, XML, TOML, Markdown, Make, CMake, Groovy, PowerShell, Objective-C, INI, Properties, Requirements, Gitignore
+See [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md) for the full list.
 
 ## Installation
 

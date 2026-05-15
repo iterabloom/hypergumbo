@@ -10,10 +10,17 @@ as an opt-in alternative to `rust.py`, not a replacement.
 
 ## Status
 
-Slice A: pure-Python translation surface from parsed SCIP `Index` bytes to
-`(symbols, edges)`. No live `rust-analyzer` invocation yet — that arrives
-in Slice B alongside analyzer-registry wiring and the opt-in flag
-(`HYPERGUMBO_RUST_ANALYZER` env var or `--backend rust-analyzer` CLI flag).
+Shipped end-to-end. Activate with the `--backend rust-analyzer` root flag
+(also settable via `HYPERGUMBO_RUST_ANALYZER=1`). Install with
+`pipx install 'hypergumbo[rust-analyzer]'`, or
+`pipx inject hypergumbo hypergumbo-lang-rust-analyzer` when `hypergumbo` is
+already installed.
+
+When `--backend rust-analyzer` is requested but the integration package or
+the `rust-analyzer` binary is missing/broken (the binary is smoke-tested
+with `rust-analyzer --version`), the CLI exits non-zero with a pointer to
+the install or to `rustup component add rust-analyzer`, rather than
+silently falling through to the tree-sitter `rust.py` analyzer.
 
 ## Why SCIP, not LSP
 

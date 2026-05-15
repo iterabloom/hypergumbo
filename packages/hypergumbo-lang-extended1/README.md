@@ -5,7 +5,7 @@ Specialized and emerging language analyzers for hypergumbo.
 
 ## Supported Languages
 
-Zig, Odin, Nim, Agda, Lean, COBOL, Apex, Solidity, Verilog, VHDL, Ada, D, Pascal, Pony, Janet, Fennel, Gleam, Hack, Haxe, GDScript, Luau, V, Wolfram, LLVM IR, Cap'n Proto, Smithy, Jsonnet, KDL, Prisma, Twig, SPARQL, Tcl, Fish, BibTeX, BitBake
+See [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md) for the full list.
 
 ## Installation
 

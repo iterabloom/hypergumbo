@@ -5,7 +5,7 @@ Domain-specific language analyzers for hypergumbo.
 
 ## Supported Languages
 
-Haskell, OCaml, Elixir, Erlang, Clojure, F#, Julia, R, MATLAB, Fortran, Dart, Vue, Svelte, Astro, SCSS, GraphQL, Proto, Thrift, Nix, HCL, LaTeX, RST, Robot, Puppet, Starlark, Meson, CUDA, GLSL, HLSL, WGSL, Elm, PureScript, Racket, Scheme, Common Lisp
+See [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md) for the full list.
 
 ## Installation
 
