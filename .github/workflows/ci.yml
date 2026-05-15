@@ -309,6 +309,8 @@ jobs:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # generate-architecture --check inspects recent commit window
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
