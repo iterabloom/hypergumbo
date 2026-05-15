@@ -3543,12 +3543,38 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         # consumers. Empty list when every detected language has a catalog.
         output["unsupported_languages"] = unsupported_languages
         print(json.dumps(output, indent=2, sort_keys=True))
-    elif getattr(args, "by_file", False):
-        _print_io_boundaries_by_file(filtered_entries, nodes_by_id, repo_root)
-        _print_unsupported_languages_notice(unsupported_languages)
+        return 0
+
+    # WI-mibag: text-output suppression of the `external_potential`
+    # bucket. The bucket can dominate on large repos (kafka had 76K
+    # chains of 76K total) and drown out the per-primitive signal —
+    # but it remains useful, so JSON callers still get everything and
+    # users can opt back in via `--show-external-potential` or by
+    # targeting the bucket with `--boundary external_potential`.
+    show_ep = getattr(args, "show_external_potential", False)
+    ep_targeted = (boundary_filter == "external_potential")
+    ep_suppressed_count = 0
+    display_entries = filtered_entries
+    if not show_ep and not ep_targeted and "external_potential" in filtered_entries:
+        ep_suppressed_count = len(
+            filtered_entries["external_potential"].chains,
+        )
+        display_entries = {
+            k: v for k, v in filtered_entries.items()
+            if k != "external_potential"
+        }
+
+    if getattr(args, "by_file", False):
+        _print_io_boundaries_by_file(display_entries, nodes_by_id, repo_root)
     else:
-        _print_io_boundaries_by_type(filtered_entries, nodes_by_id, bmap, repo_root)
-        _print_unsupported_languages_notice(unsupported_languages)
+        _print_io_boundaries_by_type(display_entries, nodes_by_id, bmap, repo_root)
+    if ep_suppressed_count:
+        print(
+            f"  external_potential: {ep_suppressed_count} chain(s) "
+            f"suppressed (pass --show-external-potential to include "
+            f"them, or use --boundary external_potential).",
+        )
+    _print_unsupported_languages_notice(unsupported_languages)
 
     return 0
 
@@ -6415,6 +6441,24 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         help=(
             "Include I/O boundary chains originating from test files "
             "(default: production-only)"
+        ),
+    )
+    # WI-mibag: the `external_potential` bucket dominates display on
+    # large repos (kafka: 76K of 76K; airflow: 28K of ~30K). Suppress
+    # it from the default text-output view; JSON output continues to
+    # include it unconditionally for downstream tools / agents.
+    # `--boundary external_potential` overrides the suppression too
+    # since targeted filtering is its own opt-in.
+    p_io.add_argument(
+        "--show-external-potential",
+        action="store_true",
+        dest="show_external_potential",
+        default=False,
+        help=(
+            "Include the `external_potential` bucket in text output "
+            "(hidden by default since it tends to dominate the per-"
+            "primitive view; JSON output and `--boundary "
+            "external_potential` always include it)."
         ),
     )
     p_io.set_defaults(func=cmd_io_boundaries)

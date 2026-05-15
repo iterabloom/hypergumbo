@@ -43,6 +43,7 @@ def _make_args(tmp_path, bmap, **overrides):
     args.by_file = False
     args.boundary = None
     args.primitive = None
+    args.show_external_potential = False
     for k, v in overrides.items():
         setattr(args, k, v)
     return args
@@ -359,8 +360,11 @@ def test_cmd_io_boundaries_renders_external_potential_section(
     assert chain["dst_classification_unreliable"] is False
 
     # Text mode: external_potential boundary type appears in the
-    # by-type rendering, with the standard tier annotation.
-    args2 = _make_args(tmp_path, bmap)
+    # by-type rendering when `--show-external-potential` is passed,
+    # with the standard tier annotation. (WI-mibag: hidden from the
+    # default text view to keep the per-primitive signal readable;
+    # this test exercises the explicit-opt-in path.)
+    args2 = _make_args(tmp_path, bmap, show_external_potential=True)
     rc = cmd_io_boundaries(args2)
     assert rc == 0
     text = capsys.readouterr().out
@@ -412,12 +416,146 @@ def test_cmd_io_boundaries_external_potential_unreliable_annotation(
     chain = data["boundaries"]["external_potential"]["chains"][0]
     assert chain["dst_classification_unreliable"] is True
 
-    # Text: the [unreliable] marker is present.
-    args2 = _make_args(tmp_path, bmap)
+    # Text: the [unreliable] marker is present in the
+    # external_potential section when --show-external-potential is
+    # passed (WI-mibag: hidden by default).
+    args2 = _make_args(tmp_path, bmap, show_external_potential=True)
     rc = cmd_io_boundaries(args2)
     assert rc == 0
     text = capsys.readouterr().out
     assert "[unreliable]" in text
+
+
+def _make_external_potential_bmap():
+    """Behavior map with one external_potential chain (Python).
+
+    Used by the WI-mibag default-hide tests below.
+    """
+    return _make_behavior_map(
+        nodes=[
+            {
+                "id": "python:src/load.py:1-5:load:function",
+                "name": "load", "kind": "function", "language": "python",
+                "path": "src/load.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "supply_chain": {"tier": 1, "tier_name": "first_party"},
+            },
+            {
+                "id": "python:huggingface_hub:0-0:snapshot_download:unresolved",
+                "name": "snapshot_download", "kind": "external_symbol",
+                "language": "python", "path": "<external>",
+                "span": {"start_line": 0, "end_line": 0,
+                         "start_col": 0, "end_col": 0},
+                "meta": {"external_boundary": True},
+                "supply_chain": {"tier": 3, "tier_name": "external_dep"},
+            },
+        ],
+        edges=[
+            {
+                "src": "python:src/load.py:1-5:load:function",
+                "dst": "python:huggingface_hub:0-0:snapshot_download:unresolved",
+                "type": "calls", "confidence": 0.9,
+            },
+        ],
+    )
+
+
+def test_external_potential_hidden_by_default_in_by_type_text_output(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-mibag: external_potential bucket is hidden from the default
+    by-type text output and replaced by a one-line summary.
+
+    The bucket dominates display on large repos (kafka had 76K chains
+    of 76K total). It remains useful as a signal — exposed via JSON
+    output, the `--show-external-potential` flag, or `--boundary
+    external_potential`.
+    """
+    args = _make_args(tmp_path, _make_external_potential_bmap())
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    text = capsys.readouterr().out
+    # The bucket header doesn't appear in the default text output.
+    # We use a strict check: no "external_potential: N call(s)" header line.
+    # (The summary line has different wording so this check is precise.)
+    assert "external_potential: 1 call" not in text
+    # The summary line IS present, naming the count and the flag.
+    assert "external_potential" in text
+    assert "--show-external-potential" in text
+
+
+def test_external_potential_shown_with_explicit_flag(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-mibag: `--show-external-potential` opts back in."""
+    args = _make_args(
+        tmp_path, _make_external_potential_bmap(),
+        show_external_potential=True,
+    )
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    text = capsys.readouterr().out
+    assert "external_potential: 1 call" in text
+    assert "snapshot_download" in text
+
+
+def test_external_potential_shown_when_boundary_filter_targets_it(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-mibag: `--boundary external_potential` shows it without the
+    explicit `--show-external-potential` flag.
+
+    Targeted filtering is its own opt-in — making users pass two
+    flags to inspect this bucket would be a UX papercut.
+    """
+    args = _make_args(
+        tmp_path, _make_external_potential_bmap(),
+        boundary="external_potential",
+    )
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    text = capsys.readouterr().out
+    assert "external_potential: 1 call" in text
+    assert "snapshot_download" in text
+
+
+def test_external_potential_always_present_in_json_output(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-mibag: JSON output continues to include external_potential
+    unconditionally so downstream tools and agents can consume it.
+
+    The default-hide is purely a text-output presentation choice.
+    """
+    args = _make_args(
+        tmp_path, _make_external_potential_bmap(),
+        json_output=True,
+    )
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert "external_potential" in data["boundaries"]
+    assert len(data["boundaries"]["external_potential"]["chains"]) == 1
+
+
+def test_external_potential_hidden_by_default_in_by_file_text_output(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-mibag: the `--by-file` text view also hides external_potential
+    by default. (Otherwise the bucket dominates the per-file rollup the
+    same way it dominates the per-bucket view.)
+    """
+    args = _make_args(
+        tmp_path, _make_external_potential_bmap(), by_file=True,
+    )
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    text = capsys.readouterr().out
+    # The per-file printer does not surface chain primitives when the
+    # only chain is external_potential and we've suppressed it; the
+    # summary still surfaces the count.
+    assert "snapshot_download" not in text
+    assert "--show-external-potential" in text
 
 
 def test_cmd_io_boundaries_no_io_calls(tmp_path: Path, capsys) -> None:

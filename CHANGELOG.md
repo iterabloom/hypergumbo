@@ -16,6 +16,14 @@ Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence
 
 ### Changed
 
+#### `hypergumbo io-boundaries`: hide `external_potential` bucket from default text output (WI-mibag)
+
+DEEP reflect across deep-20260510-054430 showed the `external_potential` bucket dominating io-boundaries text output across six repos: kafka (76,015 of total), airflow (28,912 of ~30,000), prometheus (9,464 / ~93%), containerd (12,343), kserve (6,397), nestjs (94% of total). The bucket itself remains useful (it surfaces "first-party code reaches into untrusted territory" as a first-class signal), but its display volume drowns the per-primitive view that the same output is supposed to make readable.
+
+Added `--show-external-potential` flag to `hypergumbo io-boundaries`. Default behavior: the bucket is suppressed from both `by-type` and `by-file` text output and replaced with a one-line summary showing the suppressed count and how to surface them. `--show-external-potential` opts back in; `--boundary external_potential` also bypasses the suppression (targeted filtering is its own opt-in). JSON output continues to include the bucket unconditionally so downstream tools and agents can consume it.
+
+Five new tests cover the default-hide path (by-type, by-file), the explicit-opt-in flag, the boundary-filter override, and the JSON-always-present invariant. Two existing tests (`test_cmd_io_boundaries_renders_external_potential_section`, `test_cmd_io_boundaries_external_potential_unreliable_annotation`) updated to pass `show_external_potential=True` on their text-mode assertions since they test the rendering format, not the default-hide behavior. The F3 PR-A `edge.is_resolved` filter (which empirically cut ~4,521 chains on hypergumbo self-analysis) is the upstream noise reducer; this fix is the display-side complement.
+
 #### Language-gate Circom and DEPENDENCY/TOML partial-install warnings on irrelevant repos (WI-ruman)
 
 UAT campaign 4.0.0 observed two false-positive stderr warnings on every `hypergumbo run`:
