@@ -14,6 +14,34 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 Phase 4b lands the final cuts of two concept-axis migrations: 111 `Edge.evidence_type` and 71 `Symbol.kind` endpoint_shape values are removed from their registries, completing the ADR-0027 / ADR-0028 program. Thirteen linker slices adopt a new disambiguation-fallback contract (`confidence ≤ 0.5` + `meta["disambiguation_fallback"]=True` on ambiguous simple-name resolutions), closing the cross-linker invariant. A new L4 fallback-coherence linter and pre-commit hook enforce the contract statically, and the L3 producer-coherence linter learns to see through inline ternaries, f-strings, and Constant sentinels. Nine bugfixes span release tooling, supply-chain tier classification, JS/TS access-mode coverage, framework-linker gating, and `--backend rust-analyzer` install advice.
 
+### Added
+
+#### Convention-based view-template linker shared core + Django strategies (WI-mifif)
+
+The `view_template.py` linker (Rails) used to be the only producer of `renders` edges in the codebase; its docstring claimed "Future: Django, Laravel, Phoenix, Spring" but no equivalent existed. WI-mifif extracts the probe-and-emit core into `_view_template_core.py` and adds a Django strategy as the first sister consumer, setting up two abstract bases that the remaining sister items will build against.
+
+New module `_view_template_core.py` exposes:
+
+- `TemplateCandidate(path, language)` — a single repo-relative candidate template + its language label.
+- `TemplateRenderEmission(action_symbol_id, line, detection_pattern, candidates)` — a potential renders-edge with ordered candidates.
+- `TemplateStrategy` — abstract base; concrete strategies yield emissions.
+- `MethodNameStrategy` — template paths derived from class + method naming (Rails, Phoenix, Django CBV defaults). Subclasses implement `is_action_class`, `is_action_method`, and `candidates_for`.
+- `ExplicitStringStrategy` — template paths named by string literals (Django `render()` / `template_name`, Spring return value, Laravel `view()`). Subclasses implement `find_string_sites` and `string_to_candidates(string_value, action_symbol, ctx)`. The action_symbol parameter lets per-framework path resolution see which view file the string came from.
+- `link_via_strategies(ctx, strategies)` — the shared probe-and-emit driver: filters candidates by filesystem existence, deduplicates template symbols, deduplicates (action, template) edges across strategies, and emits with `evidence_type="naming_convention"`, `confidence=0.85`, `meta["detection_pattern"]=<strategy-supplied>`.
+
+`view_template.py` (Rails) refactored as a thin `RailsStrategy(MethodNameStrategy)` subclass. All 43 existing Rails tests pass unchanged.
+
+New module `view_template_django.py` registers two Django strategies:
+
+- `DjangoExplicitStringStrategy(ExplicitStringStrategy)` — finds `render(request, "<template>", ctx)` call sites and class-body `template_name = "<template>"` assignments by parsing Python source files heuristically scoped to Django view paths (`views.py`, `views/*.py`, `views_*.py`). Emits `detection_pattern="render_call"` and `detection_pattern="template_name_attribute"` respectively. Resolves under `<app>/templates/<template>` (Django's standard `APP_DIRS` lookup) and project-level `templates/<template>`.
+- `DjangoCBVDefaultStrategy(TemplateStrategy)` — finds classes that transitively extend `DetailView` / `ListView` / `CreateView` / `UpdateView` / `DeleteView` / `FormView` and derives the default template from the class's `model = <Name>` attribute (`UserDetailView` + `model = User` → `users/user_detail.html`). Emits `detection_pattern="cbv_default_template"`.
+
+Why re-parse Python source inside the linker: the Python analyzer captures `base_classes` in symbol meta but does not emit call-site string arguments or class-body attribute values into the IR. To keep the IR small and avoid coupling analyzer schema to per-framework linker needs, the Django linker uses stdlib `ast` to re-parse files whose paths match the Django-view heuristic. Scope is bounded so a repo with no Django views pays only a path-filter cost.
+
+96 new tests cover: shared-core dedup/probe behavior, Rails regression, Django render-call detection (in functions, methods, with module-qualified `render`, edge cases like one-arg calls or non-string args), template_name attribute detection (with multi-target and non-Name target negative paths), CBV model-derived defaults across all six suffix variants (`_detail`, `_list`, `_form`, `_confirm_delete`), camelCase model name handling, multi-class files, files at the repo root, and unparseable / missing sources. 100% coverage on all three changed modules.
+
+Sister items: `WI-dajom` (Phoenix, MethodNameStrategy), `WI-hogik` (Spring MVC, ExplicitStringStrategy), `WI-hokaj` (Laravel Blade, ExplicitStringStrategy) build against the now-extracted core in follow-up PRs without re-touching the shared infrastructure.
+
 ### Changed
 
 #### Results cache key now includes analyzer identity (WI-panih, P2 RCT pin-blocker)
