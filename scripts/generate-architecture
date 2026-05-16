@@ -60,10 +60,12 @@ def get_git_commit_sha() -> str | None:
 # How many recent commits reachable from HEAD are accepted by ``--check``.
 # The doc's recorded SHA gets "stale" the moment the doc-regeneration
 # commit lands (HEAD moves past the SHA the doc was generated against),
-# so strict equality with HEAD is unworkable. A small window absorbs the
-# doc-update commit plus a couple of follow-on quick fixes without
-# letting the doc rot indefinitely.
-RECENT_COMMIT_WINDOW = 5
+# so strict equality with HEAD is unworkable. The window absorbs the
+# doc-update commit plus follow-on changes that don't materially affect
+# the self-analysis (typos, comment fixes, README edits, small refactors)
+# without letting the doc rot indefinitely. At ``dev``'s commit cadence,
+# 15 commits ≈ ~3 days of headroom.
+RECENT_COMMIT_WINDOW = 15
 
 
 def get_recent_commit_shas(n: int = RECENT_COMMIT_WINDOW) -> list[str]:
