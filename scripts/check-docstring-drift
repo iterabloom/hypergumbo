@@ -1,0 +1,527 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Module-docstring drift checker — co-change scan over .py source trees.
+
+This script implements the mechanical passes of the stratum-6
+docstring-staleness audit (see
+``.agent/agent_playbooks_protocols_sops_skills/docstring-staleness-audit-playbook.md``).
+It produces a ranked candidate list of files where the module
+docstring is likely to have drifted from the surrounding code.
+
+Three sub-checks are available:
+
+1. **Co-change scan** (default, ``--co-change``). For each ``.py``
+   file under ``packages/*/src/``, AST-parse to find the module
+   docstring extent (``node.lineno..node.end_lineno`` — explicitly
+   NOT line 1, which is occupied by the SPDX header on every file
+   and would conflate the SPDX mass-edit with docstring edits),
+   then ``git blame`` both regions and take the youngest
+   ``committer-time`` in each. Flag files where the body has been
+   touched recently but the docstring hasn't.
+
+2. **Tracker-ID cross-ref** (``--tracker-refs``). Extract ``WI-`` /
+   ``INV-`` / ``BUG-`` IDs from docstrings and inline comments,
+   cross-reference each against ``scripts/tracker --json show <ID>``
+   to learn its status. Flag references that frame done /
+   satisfied / wont_do items as "deferred", "not yet", "future",
+   "will land".
+
+3. **Phase-marker grep** (``--phase-markers``). Plain regex over
+   docstrings + comments for strings like ``Two-pass``,
+   ``Phase 2b``, ``Slice B``, ``not yet implemented``,
+   ``deferred to``, ``arrives in``, ``will ship``, ``TODO`` /
+   ``FIXME`` / ``XXX``. Intersection with the closed-tracker-ID
+   set from check #2 is the highest-signal subset.
+
+``--all`` runs all three. Default scope is ``packages/*/src``; pass
+positional path arguments to narrow.
+
+The semantic-review step (the fourth pass in the playbook) cannot
+be a script — it needs LLM judgment per file. This script produces
+the candidate pool the semantic step operates on.
+
+Exit codes
+----------
+- 0: no candidates flagged
+- 1: candidates flagged (drift suspected, review recommended)
+- 2: usage / configuration error
+
+Usage
+-----
+Run with no args to do a co-change scan over the default scope::
+
+    scripts/check-docstring-drift
+
+Pass ``--all`` to run all three sub-checks, ``--json`` for
+machine-readable output, ``--window``/``--min-delta`` to tune
+co-change thresholds.
+"""
+from __future__ import annotations
+
+import argparse
+import ast
+import datetime as dt
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+
+# Default co-change thresholds (calibrated against the 2026-05-15
+# stratum-6 audit on hypergumbo itself; see the playbook for the
+# calibration story).
+DEFAULT_BODY_AGE_DAYS = 120
+DEFAULT_MIN_DELTA_DAYS = 90
+
+DEFAULT_SCOPE = ("packages/hypergumbo-core/src",
+                 "packages/hypergumbo-lang-mainstream/src",
+                 "packages/hypergumbo-lang-common/src",
+                 "packages/hypergumbo-lang-extended1/src",
+                 "packages/hypergumbo-lang-rust-analyzer/src",
+                 "packages/hypergumbo-tracker/src")
+
+TRACKER_ID_RE = re.compile(r"\b(WI|INV|BUG)-[a-z0-9]+(?:-[a-z]+){0,7}")
+
+# Phrases that frame work as still-pending; intersected with closed
+# tracker IDs in --phase-markers mode.  Case-insensitive.
+PHASE_MARKER_RE = re.compile(
+    r"\b(Slice [A-Z]|Phase [0-9]\w*"
+    r"|not yet (?:implemented|wired|shipped|ready|supported|invoked|hooked)"
+    r"|arrives in (?:Slice|Phase|WI)"
+    r"|will (?:ship|land|arrive)"
+    r"|once .{0,30}? (?:lands|ships)"
+    r"|when .{0,30}? (?:lands|ships)"
+    r"|deferred to"
+    r"|TODO|FIXME|XXX)\b",
+    re.IGNORECASE,
+)
+
+
+# ---------------------------------------------------------------------------
+# Co-change scan
+# ---------------------------------------------------------------------------
+
+
+def docstring_lines(path: str) -> tuple[int, int] | None:
+    """Return ``(start, end)`` lines of the module-level docstring, 1-indexed.
+
+    Returns ``None`` if the file has no module-level docstring.
+    """
+    try:
+        src = pathlib.Path(path).read_text()
+        tree = ast.parse(src)
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return None
+    if not tree.body:
+        return None
+    node = tree.body[0]
+    if (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    ):
+        return node.lineno, node.end_lineno
+    return None
+
+
+def file_line_count(path: str) -> int:
+    """Return the number of lines in ``path``."""
+    with open(path, "rb") as f:
+        return sum(1 for _ in f)
+
+
+def youngest_commit_ts(path: str, start: int, end: int) -> int | None:
+    """Return the youngest committer-time in lines ``start..end`` of ``path``."""
+    if start > end:
+        return None
+    try:
+        out = subprocess.check_output(
+            ["git", "blame", "-L", f"{start},{end}", "--porcelain", path],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return None
+    times: list[int] = []
+    for line in out.splitlines():
+        if line.startswith("committer-time "):
+            times.append(int(line.split()[1]))
+    return max(times) if times else None
+
+
+def iter_python_files(scope_dirs: tuple[str, ...]) -> list[str]:
+    """Yield .py files under each scope directory, skipping caches."""
+    result: list[str] = []
+    for d in scope_dirs:
+        if not os.path.isdir(d):
+            continue
+        for dp, _, fn in os.walk(d):
+            if "__pycache__" in dp or "/.venv/" in dp:
+                continue
+            for f in fn:
+                if f.endswith(".py"):
+                    result.append(os.path.join(dp, f))
+    return sorted(result)
+
+
+def co_change_scan(
+    scope_dirs: tuple[str, ...],
+    *,
+    window_days: int,
+    min_delta_days: int,
+    now_ts: int | None = None,
+) -> dict:
+    """Return a dict with flagged + all-row co-change results."""
+    if now_ts is None:
+        now_ts = int(dt.datetime.now().timestamp())
+    rows: list[dict] = []
+    skipped_no_docstring = 0
+    skipped_no_body = 0
+    for p in iter_python_files(scope_dirs):
+        ds = docstring_lines(p)
+        if ds is None:
+            skipped_no_docstring += 1
+            continue
+        ds_start, ds_end = ds
+        total = file_line_count(p)
+        body_start = ds_end + 1
+        if body_start > total:
+            skipped_no_body += 1
+            continue
+        ds_ts = youngest_commit_ts(p, ds_start, ds_end)
+        body_ts = youngest_commit_ts(p, body_start, total)
+        if ds_ts is None or body_ts is None:
+            continue
+        ds_age = (now_ts - ds_ts) // 86400
+        body_age = (now_ts - body_ts) // 86400
+        delta = ds_age - body_age
+        rows.append({
+            "path": p,
+            "ds_end": ds_end,
+            "ds_ts": ds_ts,
+            "body_ts": body_ts,
+            "ds_age_days": ds_age,
+            "body_age_days": body_age,
+            "delta_days": delta,
+        })
+    rows.sort(key=lambda r: r["delta_days"], reverse=True)
+    flagged = [r for r in rows
+               if r["body_age_days"] <= window_days
+               and r["delta_days"] >= min_delta_days]
+    return {
+        "scanned": len(rows),
+        "skipped_no_docstring": skipped_no_docstring,
+        "skipped_no_body": skipped_no_body,
+        "window_days": window_days,
+        "min_delta_days": min_delta_days,
+        "flagged": flagged,
+        "rows": rows,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tracker-ID cross-ref
+# ---------------------------------------------------------------------------
+
+
+def extract_tracker_ids(scope_dirs: tuple[str, ...]) -> dict[str, list[tuple[str, int]]]:
+    """Map each unique tracker-ID prefix to a list of (path, line) hits."""
+    hits: dict[str, list[tuple[str, int]]] = {}
+    for p in iter_python_files(scope_dirs):
+        try:
+            with open(p, encoding="utf-8") as f:
+                for lineno, line in enumerate(f, start=1):
+                    for m in TRACKER_ID_RE.finditer(line):
+                        hits.setdefault(m.group(0), []).append((p, lineno))
+        except (OSError, UnicodeDecodeError):
+            continue
+    return hits
+
+
+def tracker_status(tracker_id: str, repo_root: str) -> tuple[str | None, str | None]:
+    """Return ``(status, title)`` for *tracker_id* via ``scripts/tracker``."""
+    tracker_script = os.path.join(repo_root, "scripts", "tracker")
+    if not os.path.isfile(tracker_script):
+        return None, None
+    try:
+        out = subprocess.check_output(
+            [tracker_script, "--json", "show", tracker_id],
+            cwd=repo_root,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None, None
+    try:
+        d = json.loads(out)
+    except json.JSONDecodeError:
+        return None, None
+    return d.get("status"), d.get("title")
+
+
+# Statuses that mean "the work is done / decided not to do", so a
+# docstring referring to the ID as future-tense is suspicious.
+CLOSED_STATUSES = {"done", "satisfied", "wont_do"}
+
+
+# Words near a tracker-ID hit that indicate a forward-looking framing.
+# (Conservative — keeps false positives manageable.)
+FORWARD_FRAMING_RE = re.compile(
+    r"\b(deferred|pending|future|upcoming|when .{0,30}? (?:lands|ships)"
+    r"|once .{0,30}? (?:lands|ships)|will (?:land|ship|arrive)"
+    r"|not yet|arrives in|TODO|FIXME)\b",
+    re.IGNORECASE,
+)
+
+
+def cross_reference_tracker(
+    hits: dict[str, list[tuple[str, int]]],
+    repo_root: str,
+) -> list[dict]:
+    """For each tracker-ID hit, look up status and flag forward-framed refs."""
+    flagged: list[dict] = []
+    cache: dict[str, tuple[str | None, str | None]] = {}
+    for tid, locations in hits.items():
+        if tid not in cache:
+            cache[tid] = tracker_status(tid, repo_root)
+        status, title = cache[tid]
+        if status not in CLOSED_STATUSES:
+            continue
+        # For each location, inspect the line context for a forward-framing word.
+        for path, lineno in locations:
+            try:
+                with open(path, encoding="utf-8") as f:
+                    lines = f.readlines()
+            except (OSError, UnicodeDecodeError):
+                continue
+            start = max(0, lineno - 2)
+            end = min(len(lines), lineno + 1)
+            context = "".join(lines[start:end])
+            if FORWARD_FRAMING_RE.search(context):
+                flagged.append({
+                    "tracker_id": tid,
+                    "status": status,
+                    "title": title,
+                    "path": path,
+                    "line": lineno,
+                    "context": context.strip(),
+                })
+    return flagged
+
+
+# ---------------------------------------------------------------------------
+# Phase-marker grep
+# ---------------------------------------------------------------------------
+
+
+def phase_marker_grep(scope_dirs: tuple[str, ...]) -> list[dict]:
+    """Return phase-marker hits across the scope directories."""
+    results: list[dict] = []
+    for p in iter_python_files(scope_dirs):
+        try:
+            with open(p, encoding="utf-8") as f:
+                for lineno, line in enumerate(f, start=1):
+                    m = PHASE_MARKER_RE.search(line)
+                    if m:
+                        results.append({
+                            "path": p,
+                            "line": lineno,
+                            "marker": m.group(0),
+                            "text": line.rstrip(),
+                        })
+        except (OSError, UnicodeDecodeError):
+            continue
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Report formatting
+# ---------------------------------------------------------------------------
+
+
+def format_co_change_text(report: dict, top_n: int) -> str:
+    """Human-readable co-change report."""
+    lines = []
+    lines.append(
+        f"# Co-change scan ({report['scanned']} files; "
+        f"skipped {report['skipped_no_docstring']} w/o docstring, "
+        f"{report['skipped_no_body']} all-docstring)"
+    )
+    lines.append(
+        f"# Threshold: body_age <= {report['window_days']} AND "
+        f"delta >= {report['min_delta_days']}"
+    )
+    lines.append("")
+    lines.append(
+        f"## Flagged: {len(report['flagged'])} files"
+    )
+    lines.append("")
+    for r in report["flagged"]:
+        ds_date = dt.datetime.fromtimestamp(r["ds_ts"]).strftime("%Y-%m-%d")
+        body_date = dt.datetime.fromtimestamp(r["body_ts"]).strftime("%Y-%m-%d")
+        lines.append(
+            f"{r['delta_days']:>4}d  body={r['body_age_days']:>3}d  "
+            f"ds={r['ds_age_days']:>4}d  ds={ds_date}  body={body_date}  "
+            f"{r['path']}"
+        )
+    if top_n > 0 and report["rows"]:
+        lines.append("")
+        lines.append(f"## Top {min(top_n, len(report['rows']))} by delta (all rows)")
+        lines.append("")
+        for r in report["rows"][:top_n]:
+            ds_date = dt.datetime.fromtimestamp(r["ds_ts"]).strftime("%Y-%m-%d")
+            body_date = dt.datetime.fromtimestamp(r["body_ts"]).strftime("%Y-%m-%d")
+            lines.append(
+                f"{r['delta_days']:>4}d  body={r['body_age_days']:>3}d  "
+                f"ds={r['ds_age_days']:>4}d  ds={ds_date}  body={body_date}  "
+                f"{r['path']}"
+            )
+    return "\n".join(lines)
+
+
+def format_tracker_text(flagged: list[dict]) -> str:
+    """Human-readable tracker-ref report."""
+    if not flagged:
+        return "## Tracker-ref cross-ref: no forward-framed closed-ID refs found"
+    lines = [f"## Tracker-ref cross-ref: {len(flagged)} forward-framed refs"
+             " to closed items", ""]
+    for hit in flagged:
+        lines.append(
+            f"  {hit['tracker_id']} ({hit['status']}): {hit['path']}:{hit['line']}"
+        )
+        lines.append(f"    {hit['context']}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def format_phase_marker_text(hits: list[dict]) -> str:
+    """Human-readable phase-marker report (summary only)."""
+    lines = [f"## Phase-marker grep: {len(hits)} hits (review against tracker IDs)",
+             ""]
+    for h in hits[:30]:
+        lines.append(f"  {h['path']}:{h['line']}  [{h['marker']}]")
+    if len(hits) > 30:
+        lines.append(f"  ...and {len(hits) - 30} more")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def _repo_root() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            text=True,
+        ).strip()
+    except subprocess.CalledProcessError:
+        return os.getcwd()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="check-docstring-drift",
+        description="Module-docstring drift checker (stratum-6 staleness audit, "
+        "mechanical passes).",
+    )
+    parser.add_argument(
+        "paths", nargs="*",
+        help="Optional directories to scan (default: packages/*/src).",
+    )
+    parser.add_argument(
+        "--co-change", action="store_true",
+        help="Run the co-change scan (default if no mode flag is passed).",
+    )
+    parser.add_argument(
+        "--tracker-refs", action="store_true",
+        help="Cross-reference tracker IDs in docstrings against tracker status.",
+    )
+    parser.add_argument(
+        "--phase-markers", action="store_true",
+        help="Grep for phase / pending markers in docstrings + comments.",
+    )
+    parser.add_argument(
+        "--all", action="store_true",
+        help="Run all three sub-checks.",
+    )
+    parser.add_argument(
+        "--window", type=int, default=DEFAULT_BODY_AGE_DAYS,
+        help=f"Body-age window in days for co-change "
+        f"(default: {DEFAULT_BODY_AGE_DAYS}).",
+    )
+    parser.add_argument(
+        "--min-delta", type=int, default=DEFAULT_MIN_DELTA_DAYS,
+        help=f"Minimum delta in days to flag for co-change "
+        f"(default: {DEFAULT_MIN_DELTA_DAYS}).",
+    )
+    parser.add_argument(
+        "--top", type=int, default=30,
+        help="Show top-N rows by delta in addition to the flagged set "
+        "(default: 30; 0 disables).",
+    )
+    parser.add_argument(
+        "--json", action="store_true",
+        help="Emit a machine-readable JSON report instead of text.",
+    )
+    args = parser.parse_args()
+
+    # If no mode flag, default to --co-change.
+    if not (args.co_change or args.tracker_refs or args.phase_markers or args.all):
+        args.co_change = True
+    if args.all:
+        args.co_change = True
+        args.tracker_refs = True
+        args.phase_markers = True
+
+    repo_root = _repo_root()
+    scope: tuple[str, ...]
+    if args.paths:
+        scope = tuple(args.paths)
+    else:
+        scope = tuple(os.path.join(repo_root, p) for p in DEFAULT_SCOPE)
+
+    report: dict = {}
+    exit_code = 0
+
+    if args.co_change:
+        report["co_change"] = co_change_scan(
+            scope,
+            window_days=args.window,
+            min_delta_days=args.min_delta,
+        )
+        if report["co_change"]["flagged"]:
+            exit_code = 1
+
+    if args.tracker_refs:
+        hits = extract_tracker_ids(scope)
+        report["tracker_refs"] = cross_reference_tracker(hits, repo_root)
+        if report["tracker_refs"]:
+            exit_code = 1
+
+    if args.phase_markers:
+        report["phase_markers"] = phase_marker_grep(scope)
+        if report["phase_markers"]:
+            # Don't fail solely on phase markers — too noisy.
+            pass
+
+    if args.json:
+        print(json.dumps(report, indent=2, default=str))
+        return exit_code
+
+    sections = []
+    if args.co_change:
+        sections.append(format_co_change_text(report["co_change"], args.top))
+    if args.tracker_refs:
+        sections.append(format_tracker_text(report["tracker_refs"]))
+    if args.phase_markers:
+        sections.append(format_phase_marker_text(report["phase_markers"]))
+    print("\n\n".join(sections))
+    return exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -509,6 +509,24 @@ PLAYBOOKS = [
      "with evidence and artifacts — do not promise future action, act now, (4) update item "
      "status if warranted. Anti-patterns: drive-by acknowledgments, replying in the same turn "
      "as starting a new feature branch, promising to investigate next session instead of now."),
+
+    ("docstring-staleness-audit-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/docstring-staleness-audit-playbook.md",
+     "Four-step audit for drift in module docstrings under packages/*/src/. Step 1: run "
+     "scripts/check-docstring-drift (co-change git-blame scan over module-docstring vs body, "
+     "tracker-ID status cross-ref, phase-marker grep — all configurable via flags). Step 2: "
+     "interpret the ranked candidate pool (two known measurement artifacts: the SPDX-header "
+     "floor at line 1 — handled by starting blame at node.lineno not line 1 — and the package-"
+     "reorg ceiling where files moved without --follow show the reorg date as their max age). "
+     "Step 3: spawn parallel general-purpose sub-agents (not Explore — it only reads excerpts), "
+     "one per candidate, with a 200-word-cap prompt asking each to compare its file's module "
+     "docstring against current code and quote contradictions. Step 4: severity triage — "
+     "A: wrong API ref; B: factually wrong claim; C: silent omission; D: minor drift. Bundle "
+     "A+B+D in one docs(comments) PR (small text edits removing false claims), bundle C "
+     "separately (needs new prose). Calibrated thresholds: --window=120 body-age, --min-delta=90 "
+     "delta. Invoke after a major ADR closure, schema-version bump, pass-count change, or "
+     "subcommand consolidation. Anti-pattern: auditing a dirty tree. Always regenerate "
+     "docs/ARCHITECTURE.md before pushing to stay within the verify-generated 15-commit window."),
 ]
 
 

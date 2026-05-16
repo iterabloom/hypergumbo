@@ -450,6 +450,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `bakeoff-map` | bakeoff-map - Chronicle and map hypergumbo bakeoff artifacts. |
 | `build-scip-proto` | Regenerate packages/hypergumbo-core/src/hypergumbo_core/scip/_generated/scip_pb2.py |
 | `check-audit-findings` | Pre-commit lint: every audit-findings doc under ``docs/audits/`` parses |
+| `check-docstring-drift` | Module-docstring drift checker — co-change scan over .py source trees. |
 | `check-edge-type-drift` | Pre-commit lint: ``*EDGE_TYPE*`` sets in packages/ must be subsets |
 | `check-edge-type-runtime-coherence` | Runtime coherence check for the ADR-0023 edge-type axis. |
 | `check-evidence-type-drift` | Pre-commit lint: ``*EVIDENCE_TYPE*`` sets in packages/ must be |
@@ -798,7 +799,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 8f1d9289ab76
+  commit: ded830bda84c
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
