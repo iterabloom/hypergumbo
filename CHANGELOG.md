@@ -10,6 +10,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+> **User-facing view:** see [docs/RELEASE-NOTES-5.X.md](docs/RELEASE-NOTES-5.X.md)
+> for the reader-friendly summary of what's changed. This file (CHANGELOG.md)
+> remains the implementer log.
+
 ### Summary
 
 - **Closes the ADR-0027 / ADR-0028 concept-axis program.** 111 `Edge.evidence_type` and 71 `Symbol.kind` endpoint_shape values retire from their registries.
