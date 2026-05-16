@@ -23,3 +23,20 @@
     fields:  # a5aa
       statement: "Every entry point with an asserted 'no direct host_fs writes' claim must route every fs-write primitive (write_text, mkdir, unlink, chmod, copy2, rmtree, replace) through a safety_zones.py wrapper. Adding a new fs-write primitive without a corresponding wrapper is a regression of the safety-claims contract."  # a5aa
       root_cause: "safety_zones.py exports wrappers for write_text/rmtree/copy2/chmod/unlink but not mkdir. build_grammars.py:219-220 and gitleaks.py:237 call Path.mkdir directly. verify-claims correctly flags these as unsanitized host_fs flows from cmd_build_grammars and cmd_install_gitleaks entry points."  # a5aa
+- op: update  # 48ff
+  at: '2026-05-16T11:18:34Z'  # 48ff
+  by: agent  # 48ff
+  actor: jgstern_agent  # 48ff
+  clock: 2  # 48ff
+  nonce: 48ff  # 48ff
+  set:  # 48ff
+    status: needs_human_review  # 48ff
+  add:  # 48ff
+    duplicate_of: [INV-zudak-bolaz-sunis-dopoh-gosot-hutoh-kagos-garuz]  # 48ff
+- op: discuss  # 86af
+  at: '2026-05-16T11:18:34Z'  # 86af
+  by: agent  # 86af
+  actor: jgstern_agent  # 86af
+  clock: 3  # 86af
+  nonce: 86af  # 86af
+  message: "Duplicate of INV-zudak (created 28 seconds later, same finding — mkdir wrapper-gap in build_grammars + gitleaks — cleaner underscored tag convention). Auto-sync retry artifact during round-1 circuit-breaker recovery. Requesting human to set status=deleted; canonical work continues on INV-zudak."  # 86af

@@ -22,3 +22,20 @@
     fields:  # efc4
       statement: "The sketch's structure-tree section must only contain real filesystem paths. Synthetic boundary placeholders ('<external>', '<unresolved>', etc.) must be excluded from the file-tree renderer regardless of source surface."  # efc4
       root_cause: "sketch.py::_collect_important_files Step 4 (lines 3131-3138) iterates all symbols without filtering external_symbol nodes (1561 of them on hypergumbo self-analysis, all with path='<external>'). Path('<external>').parts == ('<external>',) so it passes is_root_level_file."  # efc4
+- op: update  # 50ec
+  at: '2026-05-16T11:18:29Z'  # 50ec
+  by: agent  # 50ec
+  actor: jgstern_agent  # 50ec
+  clock: 2  # 50ec
+  nonce: 50ec  # 50ec
+  set:  # 50ec
+    status: needs_human_review  # 50ec
+  add:  # 50ec
+    duplicate_of: [INV-kalif-nihon-kufih-tazoz-nobos-vahif-hilop-lamik]  # 50ec
+- op: discuss  # 08ef
+  at: '2026-05-16T11:18:29Z'  # 08ef
+  by: agent  # 08ef
+  actor: jgstern_agent  # 08ef
+  clock: 3  # 08ef
+  nonce: 08ef  # 08ef
+  message: "Duplicate of INV-kalif (created 6 seconds later, same finding, cleaner underscored tag convention). Auto-sync retry artifact during round-1 circuit-breaker recovery. Requesting human to set status=deleted; canonical work continues on INV-kalif."  # 08ef

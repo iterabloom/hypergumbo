@@ -1,0 +1,25 @@
+- op: create  # 602f
+  at: '2026-05-16T19:18:52Z'  # 602f
+  by: agent  # 602f
+  actor: jgstern_agent  # 602f
+  clock: 1  # 602f
+  nonce: 602f  # 602f
+  data:  # 602f
+    kind: invariant  # 602f
+    title: "Language profile double-counts shell scripts as both 'bash' and 'shell' due to alias key duplication"  # 602f
+    status: violated  # 602f
+    priority: 2  # 602f
+    parent:  # 602f
+    tags:  # 602f
+    - profile  # 602f
+    - taxonomy  # 602f
+    - self_analysis  # 602f
+    - dogfooding  # 602f
+    isbefore: []  # 602f
+    duplicate_of: []  # 602f
+    not_duplicate_of: []  # 602f
+    pr_ref:  # 602f
+    description: "**Found via self-analysis dogfooding on 2026-05-16 (round 8).**\n\n**Symptom.** Hypergumbo's `profile.languages` reports the same file set under two language keys:\n\n```json\n\"bash\":  {\"files\": 10, \"loc\": 2669},\n\"shell\": {\"files\": 10, \"loc\": 2669}\n```\n\nIdentical counts. Sanity check on disk:\n\n```bash\n$ find . \\( -path './.venv' -o -path '*/node_modules' -o -path './.git' -o -path './.agent' \\) -prune -o -type f -name \"*.sh\" -print | wc -l\n10\n```\n\nSo there are 10 shell scripts. Hypergumbo enumerates them twice, once for each key.\n\n**Root cause.** `packages/hypergumbo-core/src/hypergumbo_core/taxonomy.py:758-776`:\n\n```python\ndef get_language_extensions() -> dict[str, list[str]]:\n    result = {}\n    for name, spec in LANGUAGES.items():\n        result[name] = list(spec.extensions)\n    # Add aliases for backward compatibility\n    for alias, canonical in _LANGUAGE_ALIASES.items():\n        if canonical in LANGUAGES:\n            result[alias] = list(LANGUAGES[canonical].extensions)\n    return result\n```\n\nThe alias `\"shell\"` → `\"bash\"` ends up as a top-level key in `LANGUAGE_EXTENSIONS` with the SAME extension patterns. Then `profile.py:_detect_languages` (line 762):\n\n```python\nfor lang, patterns in LANGUAGE_EXTENSIONS.items():\n    files = set(find_files(repo_root, patterns, excludes=excludes))\n    if files:\n        loc = sum(_count_loc(f) for f in files) if count_loc else 0\n        languages[lang] = LanguageStats(files=len(files), loc=loc)\n```\n\niterates BOTH `bash` and `shell` independently with identical patterns, producing identical stats.\n\nThe codebase already acknowledges the dual-naming issue (taxonomy.py:749 has a literal comment \"profile.py uses 'shell' but taxonomy uses 'bash'\") but the alias resolution is \"duplicate the entry,\" not \"normalize to canonical.\"\n\n**Invariant statement.** Each language must appear exactly once in `profile.languages`. Aliases must resolve to the canonical name, not produce duplicate entries with identical stats. (Generalizes beyond shell: any future alias entry will inherit this bug.)\n\n**Severity.** Medium. Misleads downstream consumers reading the profile — an agent counting \"total languages used\" will overcount, and any language-prevalence ratio derived from the dict (e.g., for sketch-budget allocation) will be skewed by the duplicate.\n\n**Fix proposal.** Two viable approaches:\n\n1. **Drop aliases from the iteration.** In `_detect_languages`, iterate only canonical names; preserve aliases as a separate read-only resolution table. Smallest diff.\n\n2. **De-duplicate in `get_language_extensions()`.** Don't add alias keys to the returned dict at all; expose `_LANGUAGE_ALIASES` separately for callers that need to resolve.\n\nRecommended: (2) — fixes at the source, prevents future regressions when other aliases are added.\n\n**Test gap.** Add a property test asserting `set(profile.languages.keys()).isdisjoint(_LANGUAGE_ALIASES.keys())`. This catches every future alias bug at PR time.\n\n**Cross-references.**\n\n- `packages/hypergumbo-core/src/hypergumbo_core/taxonomy.py:749-753` (alias declaration)\n- `packages/hypergumbo-core/src/hypergumbo_core/taxonomy.py:758-776` (alias double-key insertion)\n- `packages/hypergumbo-core/src/hypergumbo_core/profile.py:762-768` (consumer of LANGUAGE_EXTENSIONS)\n- INV-piroh (filed round 5) — sibling profile/schema bug"  # 602f
+    fields:  # 602f
+      statement: "Each language must appear exactly once in profile.languages. Aliases must resolve to canonical names, not produce duplicate entries with identical stats."  # 602f
+      root_cause: "taxonomy.py:758-776 — get_language_extensions() inserts alias keys ('shell' with bash's extensions) as top-level entries. profile.py:_detect_languages then iterates LANGUAGE_EXTENSIONS.items() processing both 'bash' and 'shell' independently, finding the same 10 .sh files for each."  # 602f
