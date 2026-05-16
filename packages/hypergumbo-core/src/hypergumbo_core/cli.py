@@ -6656,10 +6656,10 @@ def _classify_symbols(
         symbol.is_generated_file = classification.is_generated
         # WI-zimum: fold in modifier-derived export signal. The analyzer
         # may have already set Symbol.is_exported at extraction time
-        # (WI-gipag: Python __all__, future: TS/JS export keyword);
-        # this step additionally picks up modifier-based signals for
-        # Go ("exported"), Rust ("pub"/"pub(...)"), and languages that
-        # emit "public" via visibility_from_modifiers.
+        # (WI-gipag: Python __all__; WI-nimug / WI-zimum Phase 2b: TS/JS
+        # ``export`` keyword); this step additionally picks up modifier-
+        # based signals for Go ("exported"), Rust ("pub"/"pub(...)"),
+        # and languages that emit "public" via visibility_from_modifiers.
         symbol.is_exported = (
             symbol.is_exported
             or is_exported_from_modifiers(symbol.modifiers)
