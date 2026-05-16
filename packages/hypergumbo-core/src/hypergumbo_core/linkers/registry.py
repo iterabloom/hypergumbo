@@ -1,23 +1,63 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Linker registry for dynamic dispatch.
 
-This module provides a registration system for cross-language linkers,
-enabling loop-based dispatch in run_behavior_map() instead of
-many repetitive code blocks.
+This module provides a registration system for cross-language
+linkers (Tier 2 edge-recovery passes), enabling loop-based dispatch
+in run_behavior_map() instead of many repetitive code blocks.
+
+Subcategory taxonomy (ADR-0003-ext)
+-----------------------------------
+Every linker belongs to one of four subcategories. The categorization
+is declared in each linker module's top-level docstring (per the
+``generate-architecture`` lint) and pinned by ``_LINKER_SUBCATEGORIES``:
+
+- **Protocol** — framework-agnostic over-the-wire shapes
+  (HTTP, WebSocket, message queues, SQL).
+- **Bridge** — language-pair FFI (JNI, wasm_bindgen, Tauri IPC,
+  cgo, napi, Lua FFI, Ruby FFI, PyFFI / ctypes / cffi / PyO3).
+- **Framework** — framework-specific dispatch (gRPC, GraphQL,
+  React/Vue components, DI resolution, ORM, view-template).
+- **Infrastructure** — graph-structural utilities (containment,
+  inheritance, module imports, method-call recovery).
 
 How It Works
 ------------
-1. Each linker module calls `register_linker()` at import time
-2. The registry stores linker functions by name
-3. `run_behavior_map()` iterates over `get_all_linkers()`
-4. Each linker is called uniformly via `run_linker()` with LinkerContext
+1. Each linker module calls ``register_linker()`` at import time.
+   Registration optionally includes:
+   - ``priority``: orders execution; lower runs first
+   - ``activation``: a ``LinkerActivation`` declaring when the
+     linker should run (``always``, ``frameworks=...``,
+     ``language_pairs=...``). Per ADR-0003, framework-gated
+     linkers stay dormant when their framework isn't detected.
+   - ``requirements``: language presence the linker depends on,
+     consumed by ``partial_install_warnings`` to surface "linker X
+     ran with only some of its requirements met" diagnostics.
+2. The registry stores linker functions by name.
+3. ``run_all_linkers()`` groups linkers by priority and dispatches
+   each priority cohort to a ``ThreadPoolExecutor`` so independent
+   linkers run in parallel. A shared ``parsed_trees`` cross-linker
+   parse cache (per-language) avoids re-parsing the same files.
+4. Each linker is called uniformly via ``run_linker()`` with
+   LinkerContext.
+5. A post-pass (``_connect_synthetic_to_enclosing``) wires synthetic
+   nodes minted by linkers into their enclosing real symbols.
+
+Synthetic-symbol vocabulary
+---------------------------
+``SYNTHETIC_FRAMEWORK_ROLES`` enumerates the canonical
+``meta["framework_role"]`` values that linkers may attach to
+synthetic Symbol nodes (e.g., a synthetic "Tauri IPC handler" node).
+This vocabulary replaced the old ``SYNTHETIC_KINDS`` set after
+ADR-0027's Phase-4b kind-vs-framework-role axis split.
 
 Why This Design
 ---------------
 - Adding a new linker requires only creating the linker file
 - No need to edit cli.py imports or run_behavior_map()
-- Linkers can specify their own ordering priority
+- Linkers can specify their own ordering priority and gating
 - Consistent interface for all linkers despite different needs
+- Parallel within-priority dispatch keeps wall time bounded even
+  as the linker set grows
 
 LinkerContext
 -------------
@@ -31,7 +71,12 @@ In a linker module:
 
     from .registry import register_linker, LinkerContext, LinkerResult
 
-    @register_linker("ipc", priority=50)
+    @register_linker(
+        "ipc",
+        priority=50,
+        activation=LinkerActivation(frameworks={"tauri"}),
+        requirements=LinkerRequirement(...),
+    )
     def link_ipc(ctx: LinkerContext) -> LinkerResult:
         repo_root = ctx.repo_root
         # ... do linking ...

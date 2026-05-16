@@ -13,15 +13,31 @@ Path classification uses pattern matching on file paths to identify:
   Python, JavaScript/TypeScript, Go, Rust, Java/Kotlin, Swift, etc.
 - Example code: Matches common example/demo directory conventions
 
-Symbol kind filtering uses a predefined set of kinds that represent
-infrastructure rather than meaningful code (dependencies, file nodes,
-build targets, etc.).
+Symbol-kind filtering uses two parallel sets and a dual-shape
+predicate, reflecting the ADR-0027 Phase-4b axis split between
+``Symbol.kind`` (the language-construct axis) and
+``Symbol.meta["framework_role"]`` (the framework-dispatch axis):
+
+- ``EXCLUDED_KINDS``: language-construct labels to suppress in
+  centrality / compact output (``dependency``, ``file``, ``package``,
+  build/config shapes, etc.).
+- ``EXCLUDED_FRAMEWORK_ROLES``: framework roles attached to otherwise-
+  canonical ``method`` / ``function`` symbols that should be
+  suppressed (e.g., framework-dispatched event subscribers folded out
+  of the old ``kind="event_subscriber"`` shape by Wave 5 of ADR-0027).
+- ``is_excluded_kind(symbol)``: the public predicate consumers should
+  call. Matches either ``symbol.kind in EXCLUDED_KINDS`` or
+  ``symbol.meta.get("framework_role") in EXCLUDED_FRAMEWORK_ROLES``,
+  so it handles pre-fold and post-fold producer shapes uniformly.
 
 Why This Design
 ---------------
 Centralizing these filters ensures consistent behavior across all
 output modes. Previously, compact.py and ranking.py had duplicate
-implementations of is_test_path with different pattern sets.
+implementations of is_test_path with different pattern sets. The
+dual-shape predicate lets producers migrate from ad-hoc
+``kind="<framework-role>"`` to canonical kind + ``meta`` without
+forcing every consumer to switch in the same release.
 """
 
 from __future__ import annotations

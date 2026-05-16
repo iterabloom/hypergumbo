@@ -14,18 +14,32 @@ Uses tree-sitter-toml to parse TOML files and extract:
 
 The analyzer produces Symbols for:
 - Tables and nested tables
-- Dependencies (Rust crates, Python packages)
-- Binary targets ([[bin]])
+- Dependencies (Rust crates, Python packages). Dev / build /
+  optional / extras dependencies all fold to ``kind="dependency"``
+  with ``meta["dependency_scope"]`` discriminating (per WI-limas /
+  ADR-0027 audit-findings 0006).
+- Cargo array-of-tables targets: ``[[bin]]``, ``[[test]]``,
+  ``[[example]]``, ``[[bench]]``
 - Library configuration ([lib])
 - Workspaces ([workspace])
-- Project metadata ([project] in pyproject.toml)
+- Project metadata ([project] / [package])
+- Script entry points (pyproject ``[project.scripts]`` /
+  ``[project.gui-scripts]``), emitted as ``kind="file"`` +
+  ``meta["entry_role"]="script"``
+
+The analyzer also emits ``defines_target`` edges from the manifest
+file to the inferred target paths for ``[[bin]]`` / ``[[test]]`` /
+``[[example]]`` / ``[[bench]]`` entries and for pyproject script
+entry points.
 
 Why This Design
 ---------------
 - TOML is used extensively for Rust (Cargo.toml), Python (pyproject.toml),
   and other configuration files
-- Extracting dependencies helps understand project structure
-- Binary/library targets help understand build outputs
+- Extracting dependencies (with scope metadata) helps understand
+  project structure and supply-chain surface
+- Cargo target extraction surfaces build outputs and test entry points
+- ``defines_target`` edges feed cross-language entry-point linking
 - Workspace detection identifies monorepo structures
 """
 

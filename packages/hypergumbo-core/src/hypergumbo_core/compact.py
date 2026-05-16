@@ -1,36 +1,63 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Compact output mode with coverage-based truncation and residual summarization.
+"""Compact output mode: budget-aware symbol selection + residual summarization.
 
-This module provides LLM-friendly output formatting that:
-1. Selects symbols by centrality coverage (not arbitrary count)
-2. Summarizes omitted items with semantic flavor (not just counts)
-3. Uses bag-of-words analysis on symbol names for cheap extractive summarization
+This module produces LLM-friendly output by selecting a subset of
+symbols / edges / files that fit a target token (or coverage) budget,
+then summarizing what was omitted so a downstream LLM can decide
+whether to request expansion.
 
-How It Works
-------------
-Traditional JSON output assumes unlimited consumer memory. LLMs have context
-limits and need bounded, prioritized input with lossy summaries.
+Selection algorithm families
+----------------------------
+The module exposes several selection algorithms; the CLI surface picks
+between them based on the requested output mode:
 
-Coverage-based truncation selects the *fewest* symbols needed to capture a
-target percentage of total centrality mass. This is more semantic than "top N"
-because it adapts to the codebase's centrality distribution:
-- Concentrated codebases (few important symbols): fewer items needed
-- Flat codebases (importance spread out): more items needed
+- ``select_by_coverage`` — selects the *fewest* symbols needed to
+  capture a target percentage of total centrality mass. Adapts to
+  the codebase's centrality distribution (concentrated codebases
+  need fewer items; flat codebases need more).
+- ``select_by_tokens`` — token-budget tier mode. Emits multiple
+  successively-larger views (``DEFAULT_TIERS`` = 4k / 16k / 64k by
+  default; configurable via ``--tier``). ``format_tiered_behavior_map``
+  + ``generate_tier_filename`` materialize the multi-tier output.
+- ``select_by_connectivity`` — UnionFind / frontier algorithm that
+  prefers component-bridging edges, so the included subgraph is
+  connected rather than a disjoint top-N. Seeded with
+  ``CROSS_CUTTING_EDGE_TYPES`` (canonicalized via the ADR-0023 §6
+  fold so ``http_calls`` / ``grpc_calls`` / ``graphql_calls`` /
+  ``routes_to`` / ``di_resolves`` / ``message_queue`` etc. all map
+  to ``calls`` / ``dispatches_to`` / ``event_publishes``).
+- Language-proportional selection (``min_per_language``) + under-
+  represented-language seeding so a Rust + JS repo doesn't produce a
+  Rust-only sketch when the budget is tight.
 
-Residual summarization extracts "flavor" from omitted items using:
+Pre- and post-selection passes
+------------------------------
+- Entrypoints are force-included above the confidence threshold (0.7)
+  before budget enforcement, then capped to keep the entry-point
+  bucket from dominating.
+- Filters: test / example / external-boundary symbols are dropped
+  via ``selection.filters`` (consuming ``EXCLUDED_KINDS`` /
+  ``EXCLUDED_FRAMEWORK_ROLES`` via the ``is_excluded_kind`` dual-shape
+  predicate, per ADR-0027 Phase 3 Wave 5).
+- Name-deduplication for repeated-symbol cases.
+- Post-selection victim removal enforces the final budget, guarded by
+  ``_VICTIM_REMOVAL_EXCLUDE_DAMPENERS`` so structurally-important
+  symbols aren't dropped by accident.
+
+Residual summarization
+----------------------
+Omitted items are summarized with cheap extractive signals:
 - Word frequency on symbol names (bag-of-words)
 - File path pattern analysis
 - Kind distribution (functions, classes, methods)
 
-Why Bag-of-Words
-----------------
-Symbol names are information-dense. Words like "test", "handler", "parse",
-"config" reveal what categories of code are being omitted. This gives LLMs
-enough context to decide whether to request expansion.
-
 Example output:
     {
+      "view": "tiered",
       "included": {"count": 47, "coverage": 0.82},
+      "included_edges_count": 312,
+      "tiers": {"4k": ..., "16k": ..., "64k": ...},
+      "max_centrality": 0.94,
       "omitted": {
         "count": 1200,
         "centrality_sum": 0.18,
@@ -40,8 +67,11 @@ Example output:
       }
     }
 
-An LLM seeing this knows: "The omitted stuff is mostly test code and vendor
-dependencies. I can probably ignore it for production code questions."
+Why Bag-of-Words
+----------------
+Symbol names are information-dense. Words like "test", "handler",
+"parse", "config" reveal what categories of code are being omitted.
+This gives LLMs enough context to decide whether to request expansion.
 """
 from __future__ import annotations
 

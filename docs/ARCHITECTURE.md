@@ -490,7 +490,12 @@ Per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md), the first line o
 ```python
 from .registry import register_linker, LinkerContext, LinkerResult
 
-@register_linker("ipc", priority=50)
+@register_linker(
+"ipc",
+priority=50,
+activation=LinkerActivation(frameworks={"tauri"}),
+requirements=LinkerRequirement(...),
+)
 def link_ipc(ctx: LinkerContext) -> LinkerResult:
 repo_root = ctx.repo_root
 # ... do linking ...
@@ -510,7 +515,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes.
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
-- **`hypergumbo_core.compact`**: Compact output mode with coverage-based truncation and residual sum...
+- **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.dataflow`**: YAML-driven dataflow classification for edges (ADR-0015).
 - **`hypergumbo_core.datamodels`**: Data model detection for code analysis.
 - **`hypergumbo_core.discovery`**: File discovery with exclude patterns, locale handling, and extensio...
@@ -793,7 +798,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: ff272031c74b
+  commit: 8f1d9289ab76
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

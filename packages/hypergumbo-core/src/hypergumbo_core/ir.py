@@ -12,7 +12,15 @@ Key IR Classes
 - **Symbol**: Code elements (functions, classes) with location, identity hashes
   (stable_id, shape_id), and quality scores
 - **Edge**: Relationships between symbols with confidence, evidence tracking,
-  and edge_key for deduplication across passes
+  and edge_key for deduplication across passes. Edges carry a structured
+  ``dst_ref: Optional[ExternalRef]`` sibling alongside the legacy ``dst``
+  colon-encoded id; consumers prefer ``dst_ref`` and fall back to
+  colon-splitting ``dst`` for pre-0.7.2 cached JSON.
+- **ExternalRef**: Frozen ``(lang, module_path, name)`` triple naming a
+  call target outside the producer's translation unit. Aliased imports
+  bind ``name`` to the imported symbol, not the local alias.
+- **UsageContext**: Per-call-site discrimination for resolved call edges
+  (e.g., direct vs reflective, decorator-wrapped, framework-mediated).
 
 Provenance Fields
 -----------------

@@ -1,12 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """JavaScript/TypeScript/Svelte analysis pass using tree-sitter.
 
-This analyzer uses tree-sitter to parse JS/TS/Svelte files and extract:
+This analyzer uses tree-sitter to parse JS/TS/Svelte/Vue files and
+extract:
 - Function and class declarations (symbols)
 - Import/require statements (edges)
 - Function call relationships (edges)
 - Method call relationships (edges)
 - Object instantiation relationships (edges)
+- Inheritance: ``extends`` / ``implements`` (edges)
+- Decorator application: ``decorated_by`` (edges)
+- TypeScript type references — type alias / interface signatures —
+  emitted as ``type_ref`` edges (refactoring blast radius)
+
+Cross-file call edges populate ``Edge.dst_ref`` with the canonical
+``(lang, module_path, name)`` triple resolved through the per-file
+import scope's ``named_import_originals`` map, so renamed imports
+(``import { foo as bar }``) attribute to ``foo``, not ``bar``.
 
 Rich Metadata (ADR-0003)
 ------------------------
@@ -46,8 +56,8 @@ Why This Design
 - Optional dependency keeps base install lightweight
 - Graceful degradation ensures CLI still works without tree-sitter
 - Tree-sitter provides accurate parsing even for complex syntax
-- Two-pass allows cross-file call resolution
-- Svelte support reuses existing TS/JS parsing infrastructure
+- Three-pass allows cross-file call resolution and usage-context capture
+- Svelte / Vue support reuses existing TS/JS parsing infrastructure
 - Uses iterative traversal to avoid RecursionError on deeply nested code
 """
 from __future__ import annotations

@@ -6,11 +6,38 @@ users share it (e.g., pasting into LLM chat windows). It uses gitleaks, an
 open-source (MIT licensed) secret scanner.
 
 Key design decisions:
-- Install is opt-in: user must run `hypergumbo install-gitleaks`
-- Scan is opt-out: once installed, scans run by default (use --no-secret-scan to skip)
-- Always nag: if not installed, every run suggests installing
-- Always warn: even with gitleaks, disclaimer that it's best-effort
-- Graceful degradation: if gitleaks fails, warn but don't block output
+- Install is opt-in: user must run ``hypergumbo install-gitleaks`` or
+  ``hypergumbo add-extras`` (the umbrella that also installs grammars,
+  embeddings, and rust-analyzer).
+- Scan is opt-out: once installed, scans run by default (use
+  ``--no-secret-scan`` to skip).
+- Always nag: if not installed, every run suggests installing.
+- Always warn: even with gitleaks, disclaimer that it's best-effort.
+- Graceful degradation: if gitleaks fails, warn but don't block output.
+
+Public surface
+--------------
+- ``install_gitleaks`` / ``uninstall_gitleaks``: download / remove the
+  binary from the hypergumbo-managed install location. The latter is
+  symmetric with the former — components installed outside this module
+  (system package, hand-copied binary) are left alone.
+- ``scan_content`` / ``scan_content_cached``: scan a string of output
+  for secrets. The cached path (WI-julir, UAT 2026-04-13 BUG-20) keys
+  on a content hash and short-circuits repeated scans of identical
+  output; useful when ``hypergumbo`` is invoked in tight CI loops.
+- ``is_gitleaks_available``: existence check + smoke test.
+- ``get_install_nag``: the message printed when the scan would run but
+  the binary is missing.
+
+Filesystem discipline
+---------------------
+All fs-write operations route through ``hypergumbo_core.safety_zones``
+wrappers (``install_artifact_write_bytes`` / ``install_artifact_chmod``
+/ ``install_artifact_unlink`` / ``install_artifact_copy`` /
+``cache_write``). The wrappers tag each write with its trust zone
+(``install_artifact`` / ``user_cache``) so the per-entry-point taint
+catalog can verify zone reachability claims without short-name sink
+overapproximation (Unreleased CHANGELOG / safety-claims work).
 
 The goal is safety by default without requiring a PhD to configure.
 """

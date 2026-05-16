@@ -12,6 +12,18 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
 - Instantiation: new ClassName() (edges)
 - Native method declarations for JNI bridge detection
 
+Per-file scope threading includes both regular ``imports`` and
+``static_imports`` (``import static pkg.Type.member;``), so call
+resolution can canonicalize unqualified method references to the
+imported owner.
+
+Structured external targets
+---------------------------
+Cross-file / cross-package call edges populate ``Edge.dst_ref`` with
+the canonical ``(lang, module_path, name)`` triple resolved through
+the static-import scope (WI-tihup). Aliased / starred imports bind
+``name`` to the imported symbol, not any local alias.
+
 Rich Metadata Extraction (ADR-0003)
 -----------------------------------
 Symbols include rich metadata in the `meta` field:
@@ -48,8 +60,11 @@ How It Works
 1. Check if tree-sitter and tree-sitter-java are available
 2. If not available, return empty result (not an error, just no Java analysis)
 3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls/inheritance and resolve against global symbol registry
+   - Pass 1: Parse all files, extract all symbols into global registry,
+     populate per-file import / static-import scope
+   - Pass 2: Detect calls/inheritance, resolve against global symbol
+     registry, attach canonical ``dst_ref`` for cross-translation-unit
+     edges
 4. Detect method calls, inheritance, and instantiation patterns
 
 Why This Design

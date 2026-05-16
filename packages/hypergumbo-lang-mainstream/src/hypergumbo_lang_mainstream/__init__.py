@@ -1,11 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Hypergumbo mainstream language analyzers.
 
-This package provides analyzers for the most widely-used programming languages
-in industry, including Python, JavaScript, Java, Go, Rust, and more.
+This package provides analyzers for the most widely-used programming
+languages in industry — Python, JavaScript/TypeScript, Java, Go, Rust,
+C, C++, C#, Ruby, PHP, Swift, Kotlin, Scala — plus the scripting and
+shell languages (Bash, Lua, Perl, PowerShell, Groovy), Objective-C,
+SQL, and the web markup / styling family (HTML, CSS, Markdown).
 
-These are languages that most developers will encounter regularly, representing
-the core of modern software development stacks.
+It also bundles the high-volume *non-language* config-file analyzers
+that share the same tree-sitter machinery and IR — JSON, YAML/Ansible,
+XML, TOML, INI, properties, gitignore, requirements — plus build-system
+descriptors (Dockerfile, Make, CMake), cross-language manifest target
+extraction, Jupyter notebooks, and the Play framework's routes DSL.
+
+See `docs/LANGUAGES.md` for the authoritative inventory.
 """
 
 __version__ = "5.0.1"
@@ -36,7 +44,7 @@ ANALYZER_MODULES = [
     "hypergumbo_lang_mainstream.powershell",
     "hypergumbo_lang_mainstream.groovy",
 
-    # JVM ecosystem
+    # Apple platforms (Objective-C)
     "hypergumbo_lang_mainstream.objc",
 
     # Web and markup
