@@ -5,7 +5,7 @@
 - Date: 2026-05-02
 - Supersedes: —
 - Superseded by: —
-- Related: ADR-0024 (the axis-declaration template instantiated here), ADR-0023 (the worked example whose four-phase migration shape this ADR mirrors and whose Open Question #2 explicitly anticipated this ADR), ADR-0015 (Dataflow Access Modes — the precedent for sibling fields and `meta` keys carrying per-edge structured metadata), tracker item `WI-turin-pajuk-vahuk-vaput-damoj-livif-vadob-gitob` (the deep audit whose verdict produced this ADR; the cluster taxonomy in §3 below is that audit's output), ADR-0027 (the sibling axis declaration for `Symbol.kind` surfaced by the same Adjacent Concept Sweep)
+- Related: ADR-0024 (the axis-declaration template instantiated here), ADR-0023 (the worked example whose four-phase migration shape this ADR mirrors and whose Open Question #2 explicitly anticipated this ADR), ADR-0015 (Dataflow Access Modes — the precedent for sibling fields and `meta` keys carrying per-edge structured metadata), tracker item `WI-turin-pajuk-vahuk-vaput-damoj-livif-vadob-gitob` (the deep audit whose verdict produced this ADR; the cluster taxonomy in §3 below is that audit's output), ADR-0027 (the sibling axis declaration for `Symbol.kind` surfaced by the same Adjacent Concept Sweep), [`docs/MIGRATION-5.X-CONCEPT-AXES.md`](../MIGRATION-5.X-CONCEPT-AXES.md) (per-value rename tables for JSON consumers post-closure)
 
 ## Context
 
