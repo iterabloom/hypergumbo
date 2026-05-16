@@ -234,6 +234,59 @@ hypergumbo catalog
 hypergumbo io-boundaries
 ```
 
+### Trace View Rendering Across Frameworks
+
+Hypergumbo emits `renders` edges from controllers to templates for Rails, Django, Phoenix, Spring MVC, and Laravel Blade.
+
+```bash
+# Get the JSON behavior map
+hypergumbo run --out hg.json
+
+# Extract every renders edge
+jq '.edges[] | select(.edge_type=="renders")' hg.json
+```
+
+Or, in a sliced view from a controller method:
+
+```bash
+hypergumbo slice --entry "UserController.show"
+```
+
+### Trace Python ↔ Rust FFI (PyO3)
+
+For projects using PyO3 with `#[pymethods] impl Foo`, hypergumbo now propagates the annotation to every method inside the impl block. Combine with reverse-slice to find what Python code reaches a given Rust method:
+
+```bash
+hypergumbo slice --reverse --entry "my_crate::my_struct::method_name"
+```
+
+### Diagnose Noisy `io-boundaries` Output
+
+On large repos the `external_potential` bucket (calls hypergumbo can't statically resolve) often dwarfs the resolved buckets. As of the 5.x line it's suppressed from text output by default.
+
+```bash
+# Default — clean text output, no external_potential
+hypergumbo io-boundaries
+
+# Opt back in if you want to see it
+hypergumbo io-boundaries --show-external-potential
+
+# Or filter to that bucket explicitly
+hypergumbo io-boundaries --boundary external_potential
+
+# JSON output is always complete
+hypergumbo io-boundaries --json
+```
+
+### Cross-Language gRPC: TypeScript Client ↔ Proto Server in a Different Repo
+
+When a TS client calls a gRPC server whose code lives in a separate-language repo, the linker emits `calls` edges from unmatched TS stubs directly to the proto service Symbol, marked unresolved.
+
+```bash
+# Find all gRPC stub→service calls (including cross-codebase fallback)
+jq '.edges[] | select(.evidence_type=="ast_call_direct") | select(.meta.protocol=="grpc")' hg.json
+```
+
 ---
 
 ## Large Codebases

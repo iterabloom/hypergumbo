@@ -42,6 +42,27 @@ For git repositories, the state hash combines:
 
 This provides fast detection of changes without reading file contents.
 
+### Analyzer Identity (Changes with Toolchain)
+
+The cache path also includes an **analyzer-identity segment** so that two hypergumbo installs running against the same source tree do not poison each other's cache. Without this segment, whichever process wrote first would win — a real problem for:
+
+- **Stable + dev coexistence** — running released `hypergumbo` and an in-tree development build side by side.
+- **RCT cross-arm comparisons** — bakeoff routines holding multiple wheel-pinned arms in parallel.
+- **Partial lang-package upgrades** — bumping `hypergumbo-lang-mainstream` but not `hypergumbo-core` (the meta-version doesn't change, but the analyzer behavior does).
+
+The analyzer-identity hash is a 16-character hex digest over:
+
+1. `hypergumbo_core.__version__`
+2. Per-package content hashes of every installed `hypergumbo_*` distribution (walked via `importlib.metadata.distributions()` and memoized for the process lifetime)
+
+Cache path now reads:
+
+```
+~/.cache/hypergumbo/<repo_fingerprint>/results/<analyzer_identity>/<state_hash>/
+```
+
+**Out of scope:** eviction sizing for the larger key space, cross-machine sharing, and migration of pre-fix cache entries — those will fall through as misses on first access and be rewritten under the new path.
+
 ### Why Two Tiers?
 
 **Embeddings are expensive but content-stable.** A function's embedding depends only on its source code, not on the overall repository state. If you modify `file_a.py`, the embedding for `file_b.py` doesn't need to be recomputed.
