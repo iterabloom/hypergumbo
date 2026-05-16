@@ -1,0 +1,25 @@
+- op: create  # 8790
+  at: '2026-05-16T08:38:17Z'  # 8790
+  by: agent  # 8790
+  actor: jgstern_agent  # 8790
+  clock: 1  # 8790
+  nonce: '8790'  # 8790
+  data:  # 8790
+    kind: invariant  # 8790
+    title: "Path.mkdir callsites in build_grammars + gitleaks bypass safety_zones wrapper discipline"  # 8790
+    status: violated  # 8790
+    priority: 2  # 8790
+    parent:  # 8790
+    tags:  # 8790
+    - taint_flow  # 8790
+    - io_boundary  # 8790
+    - self_analysis  # 8790
+    - dogfooding  # 8790
+    isbefore: []  # 8790
+    duplicate_of: []  # 8790
+    not_duplicate_of: []  # 8790
+    pr_ref:  # 8790
+    description: "**Found via self-analysis dogfooding on 2026-05-16.** `hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml` reports 7/18 claims violated; this item covers the genuine wrapper-gap subset.\n\n**Violation.** Two `Path.mkdir` callsites bypass the `safety_zones.py` wrapper discipline:\n\n- `packages/hypergumbo-core/src/hypergumbo_core/build_grammars.py:219-220` — `pkg_dir.mkdir(parents=True)` and `(pkg_dir / module_name).mkdir()`\n- `packages/hypergumbo-core/src/hypergumbo_core/gitleaks.py:237` — `GITLEAKS_INSTALL_DIR.mkdir(parents=True, exist_ok=True)`\n\nThese produce host_fs taint flows reported as `cmd_build_grammars → mkdir` (6 flows for build-grammars) and contribute to the install-gitleaks violations.\n\n**Root cause.** `safety_zones.py` currently exports wrappers for `write_text`, `rmtree`, `copy2`, `chmod`, `unlink` but NOT for `mkdir`. The claim YAML at `docs/hypergumbo.claims.yaml` for `build-grammars-no-host-fs` literally asserts \"scaffolding goes through tmp_artifact_write\" — but `tmp_artifact_write` only covers `write_text`; `mkdir` is unwrapped.\n\n**Fix proposal.**\n\n1. Add `tmp_artifact_mkdir(path, **kwargs)` and `install_artifact_mkdir(path, **kwargs)` wrappers to `packages/hypergumbo-core/src/hypergumbo_core/safety_zones.py`, each calling `_safety_zone_barrier()` for sanitizer treatment.\n2. Migrate the three callsites above.\n3. Update `docs/hypergumbo-self-catalog/sanitizers/` to register the new wrappers as sanitizers for `tmp_artifact` / `install_artifact` zones.\n4. Re-run `hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml` and confirm build-grammars and install-gitleaks `mkdir` violations clear.\n\n**Invariant.** Every entry point with an asserted \"no direct host_fs writes\" claim must route every fs-write primitive (write_text, mkdir, unlink, chmod, copy2, rmtree, replace) through a `safety_zones.py` wrapper. Adding a new fs-write primitive without a corresponding wrapper is a regression of the safety-claims contract."  # 8790
+    fields:  # 8790
+      statement: "Every entry point with an asserted 'no direct host_fs writes' claim must route every fs-write primitive (write_text, mkdir, unlink, chmod, copy2, rmtree, replace) through a safety_zones.py wrapper."  # 8790
+      root_cause: "safety_zones.py lacks mkdir wrappers. build_grammars.py:219-220 and gitleaks.py:237 call Path.mkdir directly, producing unsanitized host_fs flows from cmd_build_grammars and cmd_install_gitleaks entry points."  # 8790

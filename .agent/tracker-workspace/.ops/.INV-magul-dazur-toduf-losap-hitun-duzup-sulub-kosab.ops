@@ -1,0 +1,24 @@
+- op: create  # 817d
+  at: '2026-05-16T08:59:19Z'  # 817d
+  by: agent  # 817d
+  actor: jgstern_agent  # 817d
+  clock: 1  # 817d
+  nonce: 817d  # 817d
+  data:  # 817d
+    kind: invariant  # 817d
+    title: "Cache shard key is polluted by tracker .ops file churn; subcommands miss warm cache on identical analysis state"  # 817d
+    status: violated  # 817d
+    priority: 2  # 817d
+    parent:  # 817d
+    tags:  # 817d
+    - cache  # 817d
+    - self_analysis  # 817d
+    - dogfooding  # 817d
+    isbefore: []  # 817d
+    duplicate_of: []  # 817d
+    not_duplicate_of: []  # 817d
+    pr_ref:  # 817d
+    description: "**Found via self-analysis dogfooding on 2026-05-16 (round 2).**\n\n**Symptom.** Running `hypergumbo run .` followed 27 minutes later by `hypergumbo slice --entry hypergumbo_core/cli.py` triggered a full fresh analysis (88s) on the slice command. The two commands landed in different cache shards under `~/.cache/hypergumbo/473332f2ea511777/results/`:\n\n- `run` → `d13c7f61848d8324`\n- `slice` → `b95b74980df42541`\n\nThe outer repo-fingerprint segment matches; the middle `<state_hash>` segment differs.\n\n**Root cause.** `_get_repo_state_hash()` in `packages/hypergumbo-core/src/hypergumbo_core/sketch_embeddings.py:1278-1376` derives the state hash from:\n\n1. `git rev-parse HEAD`\n2. `sha256(git diff HEAD)[:8]` (working-tree mutations vs HEAD)\n3. `sha256(<path>:<size>:<mtime> for each git ls-files --others --exclude-standard)[:8]` (untracked files)\n\nComponents 2 and 3 both pick up tracker `.ops` file churn under `.agent/tracker/.ops/` (git-tracked → flips diff hash) and `.agent/tracker-workspace/.ops/` (mostly untracked → flips untracked-listing hash). Every `tracker show` / `tracker count-todos` / `tracker check-messages` / hook fire writes a new `.ops` entry. Between two `hypergumbo` invocations these are guaranteed to mutate. Confirmed at scene: `~/.cache/hypergumbo/473332f2ea511777/results/` has 70+ shard subdirectories all from the same repo HEAD.\n\n**Invariant violation.** Cache shard MUST be stable across hypergumbo subcommands invoked on identical analysis-relevant repo state. Mutations to agent-state directories (tracker `.ops`) which do not affect the behavior map output must not invalidate the cache.\n\n**Distinct from WI-ribag.** That item is about post-cache-hit recomputation cost (centrality / per-file embeddings recomputed even when JSON is cached). This is a cache-key purity bug. The two compound: miss the cache because of tracker churn, then pay the WI-ribag recomputation tax on the fresh run.\n\n**Fix proposal.**\n\nOption A (conservative, targeted). Exclude the tracker bookkeeping paths from both inputs in `_get_repo_state_hash()`:\n```python\ndiff_out = subprocess.check_output(\n    [\"git\", \"diff\", \"HEAD\", \"--\", \":!.agent/tracker/.ops\", \":!.agent/tracker-workspace/.ops\"],\n    cwd=repo_root, text=True\n)\n# similarly add pathspec exclusions to the git ls-files --others call\n```\nPrecedent: AGENTS.md \"History Filtering\" already documents this exclusion pattern for `git log`.\n\nOption B (more principled). Intersect both the diff and the untracked listing with the existing `source_extensions` set used by the non-git fallback path at line 1341. Non-source files (`.md`, `.json`, `.log`, governance configs, lab notebook scribbles) wouldn't invalidate analysis caches. Bigger semantic change — repos where docs/configs ARE analysis inputs (rare but possible) would behave differently.\n\nRecommended: A first (small, well-targeted), then consider B in a follow-up if more cache-key noise is found.\n\n**Tests.** Add a test that mutates `.agent/tracker-workspace/.ops/` between two `_get_repo_state_hash(repo_root)` calls and asserts the hash is unchanged. Place under `packages/hypergumbo-core/tests/`.\n\n**Cross-references.**\n- `packages/hypergumbo-core/src/hypergumbo_core/sketch_embeddings.py:1278-1376, 1421-1456`\n- Callers: `cli.py:434, 720, 1361, 7103`, `sketch.py:5879`\n- Related: `WI-ribag` (distinct compounding bug)"  # 817d
+    fields:  # 817d
+      statement: "Cache shard MUST be stable across hypergumbo subcommands invoked on identical analysis-relevant repo state. Mutations to agent-state directories (tracker .ops) that do not affect behavior map output must not invalidate the cache."  # 817d
+      root_cause: "_get_repo_state_hash() in sketch_embeddings.py:1278-1376 incorporates git diff HEAD content and the untracked file listing into the hash. Tracker .ops files under .agent/tracker/.ops/ (git-tracked, flips diff hash) and .agent/tracker-workspace/.ops/ (untracked, flips ls-files-others hash) churn on every tracker operation and hook fire. Two hypergumbo invocations seconds apart hash to different shards. Distinct from WI-ribag."  # 817d

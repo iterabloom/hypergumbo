@@ -1,0 +1,21 @@
+- op: create  # 0467
+  at: '2026-05-16T08:38:20Z'  # 0467
+  by: agent  # 0467
+  actor: jgstern_agent  # 0467
+  clock: 1  # 0467
+  nonce: '0467'  # 0467
+  data:  # 0467
+    kind: work_item  # 0467
+    title: "README.md:149 verify-claims invocation uses positional form; CLI requires --claims flag"  # 0467
+    status: todo_hard  # 0467
+    priority: 3  # 0467
+    parent:  # 0467
+    tags:  # 0467
+    - docs  # 0467
+    - dogfooding  # 0467
+    isbefore: []  # 0467
+    duplicate_of: []  # 0467
+    not_duplicate_of: []  # 0467
+    pr_ref:  # 0467
+    description: "**Found via self-analysis dogfooding on 2026-05-16.**\n\n`README.md` shows two different `verify-claims` invocation patterns:\n\n- **Line 31:** `hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml` (correct — uses `--claims` named flag)\n- **Line 149:** `hypergumbo verify-claims claims.yaml \\` (incorrect — uses positional argument)\n\nThe actual CLI at `packages/hypergumbo-core/src/hypergumbo_core/cli.py:6538` has `required=True` on `--claims` and does NOT accept positional. Running `hypergumbo verify-claims claims.yaml` fails with:\n\n```\nhypergumbo verify-claims: error: the following arguments are required: --claims\n```\n\n**Audit of other docs (all confirmed CORRECT):**\n\n- `docs/USE-CASES.md` lines 159, 220, 345 — `--claims`\n- `docs/adr/0016-io-boundary-analysis.md:240` — `--claims`\n- `docs/example-output.md:502` — `--claims`\n- `docs/hypergumbo-spec.md` — named flag only\n- `.agent/agent_playbooks_protocols_sops_skills/self-analysis-dogfooding-playbook.md` — does not contain the positional form\n\n**Fix.** Single-line edit at `README.md:149` to add `--claims` flag. The README block at lines 146-155 also extends across multiple example flags so the indentation may need re-flow.\n\n**Alternative.** Make the CLI accept a positional argument as a fallback (kept compatible with `--claims`). This would be a CLI ergonomics improvement (the positional form is shorter, and the existing precedent — `hypergumbo run [path]`, `hypergumbo slice --entry X` — mixes positional and named freely). However: `verify-claims` already takes an optional positional `path` for the repo-root, so adding `claims` as a positional would be ambiguous. Recommend the docs-only fix.\n\n**Out of scope.** This item does not regenerate SECURITY.md — see sibling tracker items on verify-claims violation classes."  # 0467
+    fields: {}  # 0467

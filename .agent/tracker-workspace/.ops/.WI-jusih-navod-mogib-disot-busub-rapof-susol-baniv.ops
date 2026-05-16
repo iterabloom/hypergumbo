@@ -35,3 +35,10 @@
   nonce: abe1  # abe1
   set:  # abe1
     status: done  # abe1
+- op: discuss  # 9815
+  at: '2026-05-15T07:41:38Z'  # 9815
+  by: agent  # 9815
+  actor: jgstern_agent  # 9815
+  clock: 4  # 9815
+  nonce: '9815'  # 9815
+  message: "Data pass complete (2026-05-15). Report: `~/hypergumbo_lab_notebook/wi-jusih-data-pass-20260515/report.md`.\n\nAll five candidate names landed in bucket A (ship in α-conservative allow-list). Rescue counts across pretix + bakerydemo + lutris-website, with the inheritance.py:175-194 same-name fallback filtered out (zero already-covered for every candidate):\n\n- HierarkeyForm: 17 net rescues (pretix only)\n- FilterSet: 34 (pretix 29, bakerydemo 5)\n- Serializer / ModelSerializer / HyperlinkedModelSerializer (DRF family): 82 (pretix 47, lutris 35)\n- Page (Wagtail): 13 (bakerydemo)\n- ModelAdmin (Django admin): 29 (lutris)\n- Combined: 175 net rescues across three modest repos\n\nFalse-positive risk across 15 non-Django Python repos (~5 200 .py files): 0/15 extends-pattern collisions for every candidate.\n\nApplicationRecord excluded up front (Rails 5+ host apps generate it in-tree; existing short-name fallback already rescues).\n\nPer the cascade rule for bucket-A verdicts, filed implementation tracker item WI-jifib-nuzah-koliv-bozig-higuk-birol-zarom-likan with the recommended envelope (framework-activation-gated allow-list, INV-zuhub discipline, single-module home, property-test maintenance). Closing this DQ-1 umbrella decision."  # 9815

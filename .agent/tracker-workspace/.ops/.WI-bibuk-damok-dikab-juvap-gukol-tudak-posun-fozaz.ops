@@ -1,0 +1,22 @@
+- op: create  # 41a8
+  at: '2026-05-16T08:38:19Z'  # 41a8
+  by: agent  # 41a8
+  actor: jgstern_agent  # 41a8
+  clock: 1  # 41a8
+  nonce: 41a8  # 41a8
+  data:  # 41a8
+    kind: work_item  # 41a8
+    title: "subprocess->host_fs zone collapse in AUTO_SINK_ZONE_MAP makes 'subprocess allowed, host_fs prohibited' claims structurally unsatisfiable"  # 41a8
+    status: todo_hard  # 41a8
+    priority: 2  # 41a8
+    parent:  # 41a8
+    tags:  # 41a8
+    - taint_flow  # 41a8
+    - self_analysis  # 41a8
+    - dogfooding  # 41a8
+    isbefore: []  # 41a8
+    duplicate_of: []  # 41a8
+    not_duplicate_of: []  # 41a8
+    pr_ref:  # 41a8
+    description: "**Found via self-analysis dogfooding on 2026-05-16.** `hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml` reports 7/18 claims violated; this item covers the \"claim too strict\" subset where the asserted unreachability is structurally unsatisfiable.\n\n**Violation pattern.** Claims like `install-embeddings-no-host-fs`, `install-rust-analyzer-no-host-fs`, `build-grammars-no-host-fs` allow the `subprocess` zone (per the claim YAML `# Allowed: subprocess (pip)…`) but prohibit `host_fs`. Yet `AUTO_SINK_ZONE_MAP` at `packages/hypergumbo-core/src/hypergumbo_core/taint.py:511-519` maps:\n\n```python\n\"subprocess\": (\"host_fs\", \"untrusted\"),\n```\n\nThis collapses `subprocess` flows into the `host_fs` zone. Every legitimate `subprocess.run([...pip..., ...])` in `cmd_install_embeddings` (cli.py:2911), `install_rust_analyzer` (rust_analyzer_install.py:111/140/202), `gitleaks.py:275`, and `build_grammars.py:168` therefore triggers the host_fs violation by construction.\n\n**Counts on self-analysis.**\n- install-embeddings: 17 flows (all `subprocess.run`)\n- install-rust-analyzer: 16 flows (all `subprocess.run`)\n- build-grammars: ~5 flows from `subprocess.run` (1 from real mkdir gap — see sibling tracker item)\n- install-gitleaks: 4 flows (interaction with `platform.system` short-name issue — see sibling tracker item)\n\n**Root cause.** The auto-zone map was designed to consolidate \"anything that escapes the process boundary\" into one host-side zone. But subprocess-launched programs are not the same trust surface as direct fs-writes — pip writes to site-packages, rustup writes to ~/.rustup, gitleaks downloads its own binary; none of these are arbitrary-path writes from hypergumbo's perspective.\n\n**Two fix paths to evaluate.**\n\n1. **Separate the zones.** Split `subprocess` into its own zone (e.g., `subprocess_artifact`). Re-author claims to read `prohibits: [host_fs]; allows: [subprocess_artifact, install_artifact, tmp_artifact]`. Cleanest semantically; requires a wave of claim-YAML updates and a new zone definition.\n\n2. **Reword claims.** Change \"no host_fs\" to \"no direct fs_write sinks outside wrappers\" (i.e., specify the sink kind, not the zone). Smallest blast radius; preserves the current `AUTO_SINK_ZONE_MAP` collapse but makes the claim language match the algorithm.\n\nOption (1) is more honest about the trust model and gives `SECURITY.md` a clearer story. Option (2) is the fast unblock if a SECURITY.md regeneration is needed before (1) lands.\n\n**Recommended:** ADR or design note before code change — this is an axis/zone-vocabulary decision per ADR-0024's axis-declaration template. The subprocess zone is currently invisible as an axis value.\n\n**Cross-references.**\n\n- `docs/hypergumbo.claims.yaml` lines 115-256 — claim definitions\n- `packages/hypergumbo-core/src/hypergumbo_core/taint.py:511-519` — `AUTO_SINK_ZONE_MAP`\n- `SECURITY.md` is auto-generated from these claims; regeneration today would publish false-positive violation lines."  # 41a8
+    fields: {}  # 41a8

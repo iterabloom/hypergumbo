@@ -1,0 +1,23 @@
+- op: create  # a2f8
+  at: '2026-05-16T03:29:43Z'  # a2f8
+  by: agent  # a2f8
+  actor: jgstern_agent  # a2f8
+  clock: 1  # a2f8
+  nonce: a2f8  # a2f8
+  data:  # a2f8
+    kind: work_item  # a2f8
+    title: "Shared _load_behavior_map() helper + consumer-side .gz handling"  # a2f8
+    status: todo_soft  # a2f8
+    priority: 2  # a2f8
+    parent:  # a2f8
+    tags:  # a2f8
+    - cli  # a2f8
+    - dx  # a2f8
+    - consistency  # a2f8
+    - bug  # a2f8
+    isbefore: []  # a2f8
+    duplicate_of: []  # a2f8
+    not_duplicate_of: []  # a2f8
+    pr_ref:  # a2f8
+    description: "**Problem.** `hypergumbo run --gzip` (WI-kojob, Unreleased) emits the main behavior-map JSON and all budget-tier side-outputs as `.gz` files *instead of* plain JSON. The producer is uniform across all artifacts (main output + every `<stem>.{4k,16k,64k}.json.gz` budget tier), but the consumer side is patchy:\n\n- **11 sites in `packages/hypergumbo-core/src/hypergumbo_core/cli.py`** read a behavior-map via `json.loads(input_path.read_text())` with no `.gz` awareness. Affected subcommands include `compact --input`, `io-boundaries --input`, `slice --input`, `verify-claims`, `search`, `explain`, `symbols`, `test-coverage`, and others.\n- **`scripts/bakeoff-deep`** is the only consumer already wired up — has its own `read_hg_json()` / `find_hg_json()` helpers and a retroactive `compress` subcommand.\n- **`scripts/bakeoff-broad`, `scripts/bakeoff-broad-reflect`, `scripts/bakeoff-deep-reflect`, `scripts/analyze-artifacts`, `scripts/bakeoff-map`** have zero `.gz` handling.\n\nUser-visible failure: `hypergumbo run --gzip --out hg.json.gz` followed by `hypergumbo compact --input hg.json.gz` dumps gzip bytes into `json.loads` and explodes. The help-text example `hypergumbo compact --input hg.json` works only on the plain form.\n\n**Root-cause framing.** No shared library-level behavior-map loader exists. Each consumer rolls its own `read_text()` call. Bakeoff-deep noticed the gap and fixed it locally; nobody else got the memo.\n\n**Proposed fix (structural, per ADR-0008).** Add a shared `_load_behavior_map(path: Path) -> dict` helper in `hypergumbo_core` (location TBD — likely `hypergumbo_core.io` or co-located with `safety_zones.user_out_open_json_dump`). Helper handles `.gz` transparently by suffix detection. Route all 11 in-tree `cli.py` `read_text()` sites through it. Wire the four scripts without `.gz` handling through the same helper (or, if scripts can't easily import from the library, a thin shell equivalent).\n\n**Acceptance criteria.**\n- Shared `_load_behavior_map(path)` helper exists in a shared module. Single source of truth.\n- All 11 in-tree `cli.py` consumers route through it (delete every raw `json.loads(input_path.read_text())` on a behavior-map path).\n- `bakeoff-broad`, `bakeoff-broad-reflect`, `bakeoff-deep-reflect`, `analyze-artifacts`, `bakeoff-map` accept `.gz` input.\n- `bakeoff-deep`'s local helpers either get migrated to the shared one or stay as-is with a comment pointing at the library equivalent (defensible since bakeoff-deep needs raw-vs-gz preference logic the library may not).\n- Property test: every `--input <path>` subcommand round-trips against both `.json` and `.json.gz` fixtures (parametrize on suffix).\n- USE-CASES.md (or wherever the new `--gzip` usage lands — see WI-kojob follow-up docs) acknowledges support is symmetric across producer/consumer.\n\n**Until this lands.** Release-as-is is acceptable provided release notes / changelog frame `--gzip` as producer-side-only — users must manually `gunzip` (or use the bakeoff-deep helpers) before re-feeding output to another `hypergumbo` invocation.\n\n**Related.** Producer flag introduced under WI-kojob (`packages/hypergumbo-core/src/hypergumbo_core/cli.py:5611-5623, 7599-7660`). bakeoff-deep helpers at `scripts/bakeoff-deep:273-302`."  # a2f8
+    fields: {}  # a2f8

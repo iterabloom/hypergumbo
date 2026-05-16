@@ -1,0 +1,22 @@
+- op: create  # 867b
+  at: '2026-05-16T06:49:04Z'  # 867b
+  by: agent  # 867b
+  actor: jgstern_agent  # 867b
+  clock: 1  # 867b
+  nonce: 867b  # 867b
+  data:  # 867b
+    kind: work_item  # 867b
+    title: "Audit-findings front-matter Status: lines drifted from per-row YAML status post-closure"  # 867b
+    status: todo_soft  # 867b
+    priority: 3  # 867b
+    parent:  # 867b
+    tags:  # 867b
+    - docs  # 867b
+    - consistency  # 867b
+    - concept_audit  # 867b
+    isbefore: []  # 867b
+    duplicate_of: []  # 867b
+    not_duplicate_of: []  # 867b
+    pr_ref:  # 867b
+    description: "**Problem.** Each audit file under `docs/audits/` records row resolution status in two places:\n\n1. A human-readable `Status:` line in the front-matter at the top of the file.\n2. A per-row `status:` field inside the YAML `audit_verdicts` block lower in the file.\n\nThe ADR-0027 / ADR-0028 closure shipped at `SCHEMA_VERSION` 0.6.0 / 0.7.0 (CHANGELOG: \"91 audit-findings rows advance PRELIM_RESOLVED → RESOLVED\"). The per-row YAML `status:` fields were updated to `RESOLVED` as part of that work. **The front-matter `Status:` lines were not.**\n\nSo a reader of, e.g., `docs/audits/0005-symbol-kind-cluster-b-file-shape.md` sees a contradiction:\n\n- Top of file: `- Status: Mixed — 6 CANONICAL rows RESOLVED via Wave 6 PR 1 ... 11 FOLD/DEPRECATE-NO-FOLD rows now PRELIM_RESOLVED via Wave 6 PR 3 ...`\n- YAML verdicts block below: each of those 11 rows now carries `status: RESOLVED`.\n\n**Affected files** (10, per the audit-findings cited in the CHANGELOG closure entry):\n\n- `docs/audits/0005-symbol-kind-cluster-b-file-shape.md`\n- `docs/audits/0006-symbol-kind-cluster-g-build-config-shape.md`\n- `docs/audits/0007-symbol-kind-cluster-h-long-tail.md`\n- `docs/audits/0008-evidence-type-cluster-b-resolution-status.md`\n- `docs/audits/0009-symbol-kind-cluster-c-apex-peer.md`\n- `docs/audits/0010-symbol-kind-cluster-e-edge-label-kinds.md`\n- `docs/audits/0011-symbol-kind-cluster-f-component-refs.md`\n- `docs/audits/0012-evidence-type-cluster-d-call-construct.md`\n- `docs/audits/0013-symbol-kind-cluster-d-framework-roles.md`\n- `docs/audits/0014-evidence-type-cluster-c-framework-dispatch.md`\n\n**Proposed fix (mechanical, doc-only).** Update each front-matter `Status:` line to reflect \"all rows RESOLVED\" at the appropriate `SCHEMA_VERSION` (0.6.0 for Symbol.kind audits, 0.7.0 for evidence_type audits), with a short tail noting the closure wave / PR pointer if useful. Per-row YAML `status:` fields stay as-is — they're already correct.\n\n**Acceptance criteria.**\n- All 10 audit files' front-matter `Status:` lines describe RESOLVED state consistent with their YAML `status:` fields.\n- No grep hit for `PRELIM_RESOLVED` in `docs/audits/000{5,6,7,8,9},001{0,1,2,3,4}-*.md` *unless* it's in a fold-target description (the row-level status field is the canonical \"is this resolved\" signal; any PRELIM_RESOLVED claim outside the YAML row should be revised).\n- No new tooling needed.\n\n**Why low priority.** No user-facing harm — JSON consumers reading the registries see the correct (post-closure) state, and the per-row YAML status is the canonical signal. The contradiction is an internal-only cosmetic inconsistency that will eventually confuse someone doing an audit-findings review.\n\n**Surfaced during.** PR 5 of the 5.x doc sweep (`docs(spec, adr): reflect ADR-0027/0028 closure in spec + ADR Related links`, commit `d09af102a6`). PR 5 intentionally left audit files alone to avoid scope creep."  # 867b
+    fields: {}  # 867b

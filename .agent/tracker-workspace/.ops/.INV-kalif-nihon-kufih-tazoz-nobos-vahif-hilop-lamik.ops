@@ -1,0 +1,24 @@
+- op: create  # 7c63
+  at: '2026-05-16T08:36:49Z'  # 7c63
+  by: agent  # 7c63
+  actor: jgstern_agent  # 7c63
+  clock: 1  # 7c63
+  nonce: 7c63  # 7c63
+  data:  # 7c63
+    kind: invariant  # 7c63
+    title: "Sketch <external> placeholder leaks into structure tree at project root"  # 7c63
+    status: violated  # 7c63
+    priority: 2  # 7c63
+    parent:  # 7c63
+    tags:  # 7c63
+    - sketch  # 7c63
+    - self_analysis  # 7c63
+    - dogfooding  # 7c63
+    isbefore: []  # 7c63
+    duplicate_of: []  # 7c63
+    not_duplicate_of: []  # 7c63
+    pr_ref:  # 7c63
+    description: "**Found via self-analysis dogfooding on 2026-05-16.**\n\nWhen `hypergumbo .` is run on its own repo, the sketch's `## Structure` section includes `├── <external>` as a tree entry at the project-root level, between real files (`.yamllint.yaml` and `conftest.py`). Reproduction:\n\n```bash\nhypergumbo . -t 8000 > /tmp/sketch.md\ngrep -n '<external>' /tmp/sketch.md\n# 48:├── <external>\n```\n\n**Root cause.** `packages/hypergumbo-core/src/hypergumbo_core/sketch.py::_collect_important_files` Step 4 \"Source files (maximize root directory coverage)\" at lines 3131-3138 iterates `for sym in symbols` with no filter for `external_symbol` nodes. There are 1,561 such nodes on hypergumbo self-analysis, all sharing `path=\"<external>\"` and `meta.external_boundary=True` (per WI-sikur / WI-fozoh).\n\n`Path(\"<external>\").parts == (\"<external>\",)`, so:\n- `to_relative(\"<external>\")` returns it unchanged (not an absolute path)\n- `get_root_dir` returns `\"<external>\"` and `is_root_level_file` returns `True`\n- `add_file` accepts it as a root-level file (within `max_root_files=5`)\n- The tree renderer prints `├── <external>` at line 48 of the sketch\n\n**Fix proposal.** Add `is_external_boundary` from `ir.py:726` to sketch.py imports, then filter at the top of `_collect_important_files` (~line 3030):\n\n```python\nsymbols = [s for s in symbols if not is_external_boundary(s)]\n```\n\nPrecedent for this pattern: `compact.py:1400-1405` and `cli.py:1561` already use `is_external_boundary` to exclude boundary nodes from similar surface aggregations.\n\n**Tests.** Extend `TestCollectImportantFiles` at `packages/hypergumbo-core/tests/test_sketch.py:4546` with a mixed-symbol fixture asserting `<external>` is not in `important_files`. No existing test in `test_sketch.py` references `external_boundary` or `<external>` — coverage gap.\n\n**Invariant.** The sketch's structure-tree section must only contain real filesystem paths. Synthetic boundary placeholders (`<external>`, `<unresolved>`, etc.) must be excluded from the file-tree renderer regardless of source surface."  # 7c63
+    fields:  # 7c63
+      statement: "The sketch's structure-tree section must only contain real filesystem paths. Synthetic boundary placeholders ('<external>', '<unresolved>', etc.) must be excluded from the file-tree renderer regardless of source surface."  # 7c63
+      root_cause: "sketch.py::_collect_important_files Step 4 (lines 3131-3138) iterates all symbols without filtering external_symbol nodes (1561 of them on hypergumbo self-analysis, all with path='<external>'). Path('<external>').parts == ('<external>',) so it passes is_root_level_file."  # 7c63
