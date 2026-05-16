@@ -248,7 +248,7 @@ class Symbol:
     shape_id: Optional[str]    # structural implementation fingerprint
     canonical_name: str        # 🟪 code: Optional[str] = None
     fingerprint: str           # 🟪 code: Optional[str] = None
-    kind: str                  # function, class, module, etc.
+    kind: str                  # language construct only (function/class/module/method/...): per ADR-0027 the kind axis names the source-language syntactic construct; framework-role / dispatch / entrypoint facts live in meta (see Multi-value field axes below)
     name: str
     path: str
     language: str
@@ -299,6 +299,8 @@ Per ADR-0024 the multi-value type fields on the core dataclasses each declare an
 
 Future axis declarations (possible `supply_chain.tier`, `Edge.meta` key vocabularies if any meta-key promotes per ADR-0024 fold-residue rule 3) follow the same template; the same `axis_drift.find_drift` and `producer_coherence.find_producer_coherence_violations` infrastructure power their drift gates.
 
+**Adding a new multi-value field.** The contributor workflow for declaring a new axis (open ADR; land four artifacts — registry module, drift linter, property test, by-axis view) and the filing convention for axis-conformance verdicts (audit-findings file at `docs/audits/<NN>-<topic>.md`, NOT a new ADR) are documented in [AGENTS.md](../AGENTS.md) under "Axis declaration for multi-value fields" and "ADR vs audit-findings filing convention", with the canonical template in [ADR-0024](adr/0024-axis-declaration-template.md).
+
 ### Identity field semantics
 
 * `id` (location-based): `{lang}:{file}:{start_line}-{end_line}:{name}:{kind}` for symbols defined in source files; `{lang}:{module_hint}:0-0:{name}:{kind}` for synthetic nodes that have no real source location (external module references, unresolved import targets, boundary placeholders).
@@ -307,13 +309,13 @@ Future axis declarations (possible `supply_chain.tier`, `Edge.meta` key vocabula
   - Changes when code moves to different file/line (file-path shape) or when import resolution changes (module-hint shape)
   - Purpose: Reproducible slicing, deterministic diffs
 * `stable_id` (semantic, optional): Interface identity (signature-based), **not implementation identity**
-  - 🟩 **For typed languages or annotated Python**: `sha256({kind}:{normalized_signature}:{visibility}:{decorators}:{containing_module_stable_id})`
+  - 🟨 **For typed languages or annotated Python**: `sha256({kind}:{normalized_signature}:{visibility}:{decorators}:{containing_module_stable_id})`
     - `normalized_signature`: Canonical type signature (param types, return type, type params), normalized per-language (strip FQN prefixes, normalize generic type params by position: `T,U` → `$0,$1`). Normalization is language-scoped — cross-language collision is structurally prevented by `containing_module_stable_id`. A cross-language canonical mapping table may be layered on top if a use case emerges (see ADR-0014 §3). Four normalization families: types-first (Java, C#, Dart, Groovy), names-first (Kotlin, Scala, Swift, Rust, TS, Python), PHP-specific, Go-specific.
     - `visibility`: public, private, protected (if language has concept)
     - `decorators`: Sorted, comma-joined decorator/annotation names
     - `containing_module_stable_id`: Recursive stable_id of parent module/class
     - **Excludes**: Implementation details, docstrings, comments
-    - Implemented for 12 analyzers: Java, C#, Kotlin, Scala, Swift, Rust, Go, PHP, Groovy, JS/TS, Python, Dart
+    - Implemented for 12 analyzers — **methods and constructors only**: Java, C#, Kotlin, Scala, Swift, Rust, Go, PHP, Groovy, JS/TS, Python, Dart. Top-level functions, fields, and class/interface symbols on these analyzers fall back to the untyped tier below. Coverage roadmap in ADR-0014 status line.
   - 🟩 **For untyped code**: `sha256({kind}:{parameter_count}:{arity_flags}:{decorator_presence}:{containing_module_stable_id})`
     - `arity_flags`: has_defaults, has_varargs, has_kwargs (structural signature info)
     - `decorator_presence`: Sorted list of decorator names (e.g., `["property", "staticmethod"]`)
@@ -321,15 +323,23 @@ Future axis declarations (possible `supply_chain.tier`, `Edge.meta` key vocabula
   - Purpose: Track symbols across refactors (renames, moves, documentation changes)
   - **Does NOT change** when: Renaming, moving between files, changing implementation, adding comments
   - **DOES change** when: Signature changes (param types, arity), visibility changes, decorators added/removed
-* 🟩 `shape_id` (optional): Structural implementation fingerprint
+* 🟨 `shape_id` (optional): Structural implementation fingerprint
   - `sha256(ast_structure)` excluding literals/identifiers
   - Purpose: Detect structural changes (control flow, nesting) without caring about variable names
   - Use case: "Implementation changed but signature stayed same"
   - 🟩 Python: implemented via `_compute_shape_id()` using Python's `ast` module
-  - 🟩 Tree-sitter languages: implemented via generic CST walker in `TreeSitterAnalyzer.compute_shape_id()`. Two wiring paths: (1) analyzers that populate `node_for_symbol` get automatic shape_id computation in the base class `analyze()` method, (2) analyzers that call `compute_shape_id(node)` directly at symbol construction time. Currently 39 tree-sitter analyzers compute shape_id (19 mainstream, 19 extended1, 1 common).
+  - 🟩 Tree-sitter languages: implemented via generic CST walker in `TreeSitterAnalyzer.compute_shape_id()`. Two wiring paths: (1) analyzers that populate `node_for_symbol` get automatic shape_id computation in the base class `analyze()` method, (2) analyzers that call `compute_shape_id(node)` directly at symbol construction time.
+  - Coverage: ~41 of ~70 code-language analyzers — 20 mainstream (via `node_for_symbol`, direct `compute_shape_id()`, or Python's `ast` override) + 19 extended1 + 1 common (HLSL). Remaining gaps are niche languages (13 extended1 without, 10 common without, Dart not yet wired). See ADR-0014 status line for the live coverage table.
 * `fingerprint` (content hash): `sha256(source_bytes)`
   - Changes when implementation changes
   - Purpose: Detect modifications
+
+**Route and entry-point stable_id variants** (ADR-0014 §4). Symbols that name framework endpoints rather than language constructs use distinct, smaller-input hash bases so the same route or entry hashes identically across analyzers and frameworks:
+
+* **HTTP route symbols**: `sha256("route:{method}:{path}")` — e.g., `("GET", "/users/{id}")`. Same route across FastAPI, Express, and Rails produces the same `stable_id`.
+* **Entry-point symbols**: `sha256("entry:{entry_type}:{name}")` — e.g., `("cli_command", "migrate")`, `("main_function", "main")`.
+
+Use the route/entry formula when a symbol's identity is defined by its framework role, not by its file or signature.
 
 **Example**:
 ```python
@@ -349,7 +359,7 @@ def authenticate(username: str, password: str) -> User:
 ### Identity and provenance scheme versioning
 
 The exact algorithms for identity and provenance fields are governed by scheme identifiers in the output:
-* `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`
+* `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`. Current value: `hypergumbo-stableid-v2` (the formulas above). The v1→v2 bump (ADR-0014 §5) added `containing_module_stable_id` to the hash basis; consumers diffing pre-v2 outputs will see different `stable_id` values for every symbol even when nothing semantic changed. There is no in-place migration — outputs from a v1-era hypergumbo must be re-analyzed against current hypergumbo to compare.
 * `shape_id_scheme`: identifies the algorithm used to compute `shape_id`
 * `repo_fingerprint_scheme`: identifies the algorithm used to compute `analysis_runs[].repo_fingerprint`
 
@@ -421,13 +431,15 @@ Detects message send/receive patterns across process boundaries using string lit
 
 **Supported patterns:**
 
-| Framework | Send Pattern | Receive Pattern | Evidence Type |
-|-----------|-------------|-----------------|---------------|
-| Electron | `ipcRenderer.send("channel")` | `ipcMain.on("channel")` | `ipc_electron` |
-| Electron | `ipcMain.handle("channel")` | `ipcRenderer.invoke("channel")` | `ipc_electron` |
-| WebSocket | `ws.send({type: "X"})` | `ws.on("message", ...)` with type check | `ipc_websocket` |
-| ⬜ Guacamole | `tunnel.sendMessage("opcode", ...)` | `oninstruction` handlers | `ipc_guacamole` |
-| Node EventEmitter | `emitter.emit("event")` | `emitter.on("event")` | `ipc_eventemitter` |
+Per ADR-0023 / audit-findings 0002, all five patterns emit the same canonical edge type `event_publishes`; the framework-specific dispatch fact lives in `meta["channel_kind"]` (the per-pattern evidence_type values `ipc_electron` / `ipc_websocket` / `ipc_guacamole` / `ipc_eventemitter` were retired per ADR-0028).
+
+| Framework | Send Pattern | Receive Pattern | meta["channel_kind"] |
+|-----------|-------------|-----------------|----------------------|
+| Electron | `ipcRenderer.send("channel")` | `ipcMain.on("channel")` | `ipc` |
+| Electron | `ipcMain.handle("channel")` | `ipcRenderer.invoke("channel")` | `ipc` |
+| WebSocket | `ws.send({type: "X"})` | `ws.on("message", ...)` with type check | `websocket` |
+| ⬜ Guacamole | `tunnel.sendMessage("opcode", ...)` | `oninstruction` handlers | `ipc` |
+| Node EventEmitter | `emitter.emit("event")` | `emitter.on("event")` | `ipc` |
 
 **Detection algorithm:**
 1. Parse AST for known send/receive function patterns
@@ -722,7 +734,7 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 "supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "matches ^src/"}
 ```
 
-**Node kinds:** `file`, `module`, `function` (function/method), `class`, `endpoint` (HTTP route, IPC handler, CLI entrypoint).
+**Node kinds:** `file`, `module`, `function` (function/method), `class`, plus the rest of the canonical language-construct vocabulary (`method`, `interface`, `struct`, `enum`, `trait`, `contract`, …). Per ADR-0027, `Symbol.kind` names the source-language syntactic construct **only**; framework-endpoint participation (HTTP route, IPC handler, CLI entrypoint, etc.) is queried from `entrypoints[]` (see [§8](#8-entrypoint-detection)) and from `meta.concepts` on the node, not from `kind` itself. The pre-closure `endpoint` kind was retired in the SCHEMA_VERSION 0.6.0 fold (audit-findings 0009).
 
 ### edges[] — relationships
 
@@ -742,24 +754,38 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 **Meta fields**:
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
 - `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
+- `protocol` (optional): Wire protocol for cross-language linker edges — `"http"`, `"grpc"`, `"graphql"`, etc. Set by Protocol-subcategory linkers (see [§7](#7-linkers)).
+- `bridge_kind` (optional): FFI/bridge mechanism for Bridge-subcategory linker edges — `"native"` (JNI), `"wasm_bindgen"`, `"tauri_ipc"`, etc.
+- `channel_kind` (optional): Channel discriminator for `event_publishes` edges — `"ipc"`, `"websocket"`, `"queue"`, `"message_bus"`, `"crdt"`. See [§7 IPC/Message Channel Detection](#ipcmessage-channel-detection).
+- `framework_dispatch` (optional): Framework-dispatch convention name when the inference was driven by a framework rather than language semantics (e.g., `"django_third_party"`, `"phoenix_view"`). Replaces the per-framework `evidence_type` peers retired in ADR-0028 (audit-findings 0008/0012).
+- `call_construct` / `receiver` / `resolution_quality` (optional): For Cluster-27C call-shape facts on `ast_call`-family edges. The `call_construct` value names the syntactic shape (`attribute_access`, `dynamic_lookup`, …); `receiver` records the resolved or short-name receiver; `resolution_quality` records whether the receiver type was inferred precisely, by name only, or not at all.
+- `io_boundary` (optional, ADR-0016): IO category this call reaches, drawn from the controlled vocabulary `fs_read` / `fs_write` / `net_send` / `net_recv` / `ipc_send` / `ipc_recv` / `env_read` / `env_write` / `subprocess` / `browser_storage_read` / `browser_storage_write`. Stamped on every call edge whose target is (or transitively reaches) a primitive in `io_primitives/*.yaml`. Used by `hypergumbo io-boundaries` and `hypergumbo slice --io-boundary` (see [§11 Slicing behavior](#11-slicing-behavior)). Value `unknown_dynamic` indicates the call target is computed at runtime.
+- `io_primitive` (optional, ADR-0016): Fully-qualified primitive name (e.g., `"pathlib.Path.read_text"`) when `io_boundary` is set. Used for fine-grained provenance — exactly which built-in primitive this edge funnels through.
+- `taint_labels` (optional, ADR-0017): List of active taint tags on this edge (e.g., `["plaintext", "host_secret"]`). Populated only when `verify-claims` runs taint propagation.
+- `taint_sanitized_by` (optional, ADR-0017): Name of the sanitizer that transformed taint on this edge (e.g., `"aes_gcm_encrypt"`). Present only when a sanitizer-categorized call sits on this edge.
 
-**Evidence types** (machine-readable, see [§12](#12-confidence-scoring) for scoring algorithm):
-* `ast_call_direct` — Direct function call in AST
-* `ast_call_method` — Method call with receiver
-* `ast_getattr_call` — Call via getattr/dynamic lookup
+**Evidence types** (machine-readable, see [§12](#12-confidence-scoring) for scoring algorithm). Per ADR-0028, `Edge.evidence_type` names the **inference pathway** by which the analyzer concluded the edge exists — not the framework dispatch, not the resolution status, not the call surface form. Resolution status is read from `Edge.is_resolved` (sibling field); framework dispatch is read from `meta["framework_dispatch"]`; call-construct facts are read from `meta["call_construct"]` / `meta["receiver"]` / `meta["resolution_quality"]`.
+
+* `ast_call` — Call resolved from AST surface form (canonical for what was previously `ast_call_direct` / `ast_call_method` / `ast_getattr_call`; the syntactic shape moves into `meta["call_construct"]`)
+* `ast_call_direct` — Direct function call in AST (retained for back-compat where the call_construct is unambiguous)
+* `ast_call_method` — Method call with receiver (retained for back-compat; canonical fold target is `ast_call` + `meta["call_construct"]="attribute_access"`)
+* `ast_getattr_call` — Call via getattr/dynamic lookup (retained for back-compat; canonical fold target is `ast_call` + `meta["call_construct"]="dynamic_lookup"`)
 * `import_static` — Static import statement
 * `import_dynamic` — Dynamic import (importlib, require with variable)
 * `script_src` — HTML script tag src attribute
 * `script_inline` — Inline script content
+* `naming_convention` — Edge inferred from filesystem/string conventions rather than from a call site (view-template linker family, JNI native-method matching, …)
+
+The axis is open: the registry at `packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py` is the live source of truth. See [§6 Multi-value field axes](#multi-value-field-axes).
 
 **quality.reason** remains for human debugging but is NOT relied upon for programmatic logic.
 
-**Edge types:**
+**Edge types** — per ADR-0023, `Edge.edge_type` names the **relationship** that produced the edge (canonical: `calls`, `imports`, `renders`, `event_publishes`, …), not the endpoint shape. Evidence-type and meta-key facts are queried separately (see Evidence types above and Meta fields above):
+
 * `calls` — function/method invocation
 * `imports` — module/symbol import
 * `defines_target` — definition relationship
-* ✅ `renders` — template rendering (Rails controller → view template)
-* `script_src` — script tag src attribute
+* ✅ `renders` — template rendering (Rails / Django / Phoenix / Spring MVC / Laravel Blade controllers → view templates)
 * `implements` — class implements interface (Java, TypeScript, Go via `var _ Interface = &Struct{}`)
 * `extends` — class extends base class
 * JNI Java native method → C implementation: canonical `calls` + `meta["bridge_kind"] = "native"` (see [§7 JNI bridge detection](#java-jni-cross-language-detection)); pre-WI-mifor-vabul this was a distinct edge_type `native_bridge`, retained as a deprecated registry entry until Phase 4b'
@@ -955,7 +981,17 @@ Entry sources (HTTP routes, CLI mains, IPC handlers, etc.) are detected by the p
 
 ### Dataflow slicing (ADR-0015)
 
-🟩 `--dataflow` flag restricts BFS to data-dependency chains. Forward slices follow write/mutate edges; reverse slices follow read edges. Edges without `access_mode` metadata are still followed (graceful degradation). Access modes (`read`, `write`, `mutate`, `delete`) are stamped automatically by Tier 1 (YAML-driven AST classification for 104 tree-sitter analyzers + Python `ast` module) and explicitly by Tier 2 (10 linkers). YAML patterns shipped for 20 languages (Python, JavaScript, TypeScript, Rust, Go, Java, Kotlin, C, C++, C#, Dart, Elixir, Erlang, Haskell, Lua, Perl, PHP, Ruby, Scala, Swift).
+🟩 `--dataflow` flag restricts BFS to data-dependency chains. Access modes (`read`, `write`, `mutate`, `delete`) are stamped automatically by Tier 1 (YAML-driven AST classification for 104 tree-sitter analyzers + Python `ast` module) and explicitly by Tier 2 (10 linkers). YAML patterns shipped for 20 languages (Python, JavaScript, TypeScript, Rust, Go, Java, Kotlin, C, C++, C#, Dart, Elixir, Erlang, Haskell, Lua, Perl, PHP, Ruby, Scala, Swift).
+
+**Forward-slice admission rule (ADR-0015 §6, "option 1"):** an edge enters the forward slice when **any** of the three rules below holds. The rules are ordered for clarity, not precedence — `OR` semantics apply.
+
+1. **Writer-source.** Edge originates from a node whose `access_mode` is `write` or `mutate` (the writer "sources" data downstream).
+2. **One-hop downstream-read terminal.** Edge terminates at a read site one hop downstream of an admitted writer — captures the immediate read of newly-written state and stops there to avoid the whole-program closure.
+3. **Graceful degradation.** Edges with no `access_mode` annotation are admitted unconditionally so that linker coverage gaps don't silently truncate slices.
+
+Option 2 (symmetric `dst_mode` OR-check) was evaluated and deferred per ADR-0015 §6.1 on empirical evidence (the `SliceResult.admission_stats.would_admit_dst_reader` telemetry counter measured zero additional admissions on the audit corpus); option 3 (full dataflow) is deferred indefinitely. The telemetry counter stays live so the decision is re-evaluable.
+
+Reverse slices follow read edges (no per-edge admission rule — every read edge backward is admitted).
 
 ### Slice identity and reproducibility
 
@@ -996,8 +1032,26 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 * **Auto-derived from `io_primitives/*.yaml`.** Each IO primitive in a write-side category becomes a taint sink at `trust_level: untrusted` in a matching trust zone: `fs_write` → `host_fs`, `net_send` → `network`, `subprocess` → `host_fs`, `env_write` → `host_env`, `ipc_send` → `ipc`, `browser_storage_write` → `browser_storage`. Each IO primitive in a read-side sensitive category becomes a taint source: `env_read` → label `host_secret`, `net_recv` → label `untrusted_input`, `ipc_recv` → label `untrusted_input`. The read-side categories `fs_read` and `browser_storage_read` are intentionally absent from the auto-source map — sensitivity of a file or browser-storage read depends on what is stored, so the default is quiet and project-local catalogs (see `taint_sources/`) can opt in entries relevant to the threat model. The auto-derivation covers every language with an io_primitives catalog (Python, Rust, Go, Java, JavaScript/TypeScript, and the rest), and includes attribute-kind primitives such as `os.environ`, `sys.argv`, `process.env`, `os.Stdout`, and `System.out` via `module_attr_ref` edges emitted by the Python AST analyzer (WI-guhok) and, for tree-sitter languages, the `emit_module_attribute_refs` helper wired into Go / JS / TypeScript / Java analyzers (WI-lozug PRs 1–3). Tree-sitter Rust (`std::env::consts::OS`) and C (bare `stdout` / `stderr` / `stdin` identifiers) are pending: Rust's scoped-path grammar needs a cross-language helper extension tracked as WI-vipur (also covering C++ `std::cout` / `std::cerr` / `std::cin`, Groovy, Kotlin); C's bare-identifier stdio globals need either an io_boundary identifier-reference matching mode or a c.yaml shape change, tracked as WI-gotuv. The `rust-analyzer` optional backend is unaffected by the tree-sitter gap and continues to resolve Rust semantics fully.
 * **YAML-declared domain-specific labels and sanitizer transforms.** Files under `taint_sources/`, `taint_sinks/`, `taint_sanitizers/` alongside `taint.py` carry entries the auto-layer cannot express — cryptographic labels (`plaintext` from decryption, `key_material` from key generation in `taint_sources/crypto.yaml` and `taint_sources/key_material.yaml`) and sanitizer transforms (encryption: `plaintext` → `ciphertext`, `key_material` → `derived_key` in `taint_sanitizers/encryption.yaml`). YAML entries that match an auto-derived entry by `(module, name, kind)` replace the auto default — this is the mechanism by which a user catalog can swap a sink into a sanitizer, raise `trust_level` for a sink that is safe in context, or introduce a new trust zone for a project-specific sink.
 
-**Built-in trust zones:** `host_fs`, `network`, `host_env`, `ipc`, `browser_storage`, plus `relay` (used in the PlazaFlow worked example).
+**Trust-zone layering.** The trust-zone vocabulary has two layers:
+
+* **Built-in (5 zones, auto-derived).** Sourced from `AUTO_SINK_ZONE_MAP` in `taint.py`, derived from `io_primitives/*.yaml` boundary categories: `host_fs` (from `fs_write` + `subprocess`), `network` (from `net_send`), `host_env` (from `env_write`), `ipc` (from `ipc_send`), `browser_storage` (from `browser_storage_write`). These are the only zones a freshly-installed `hypergumbo verify-claims` knows about with no project configuration.
+* **Project-local (open set).** Projects contribute additional zones through YAML files passed via `--taint-sinks` or `extra_catalogs:`. Two worked examples ship with the repo: PlazaFlow uses `relay`, `compute_host`, `persistent_storage` (see ADR-0017 §"PlazaFlow context"); hypergumbo's own self-claims use `dev_zone`, `install_artifact`, `tmp_artifact`, `user_cache`, `user_out` (see `docs/hypergumbo-self-catalog/`). User-defined zones are first-class — `verify-claims` constraints reference them identically to built-in zones.
+
 **Built-in taint labels:** `host_secret`, `untrusted_input`, `plaintext`, `key_material`, `ciphertext`, `derived_key`.
+
+**Verdict vocabulary (ADR-0017 §6).** `verify-claims` reports each taint-flow constraint with one of five verdicts:
+
+| Verdict | Meaning |
+|---------|---------|
+| **Confirmed** | No taint-flow path exists from source to prohibited sink. |
+| **Confirmed (sanitized)** | Paths exist, but every source→sink path passes through an allowed sanitizer. |
+| **Violated** | Taint flows from source to sink without sanitization — exact path reported. |
+| **Inconclusive (no DDG)** | A critical path segment (source, sink, or sanitizer function — see ADR-0017 §3c) lacks DDG coverage (language not supported, bail-out, or budget cap). |
+| **Inconclusive (opaque)** | Path crosses an opaque boundary (native code without source). |
+
+Pass-through functions without DDG coverage do **not** force "Inconclusive" — their function summaries (above) carry argument-to-return flow regardless of intraprocedural coverage. "Inconclusive (no DDG)" is reserved for gaps on *critical* path segments. CLI exit code is 1 on any `Violated` verdict; `Inconclusive` verdicts exit 0 but are surfaced in the report.
+
+**IO-boundary slice (ADR-0016).** `hypergumbo slice --io-boundary <category>` filters slicing to call chains that reach the named IO boundary (`fs_read`, `net_send`, …). With `--reverse` the slice walks backward from boundary primitives to find every callsite that funnels into them. Boundary categories match the `meta["io_boundary"]` vocabulary documented in [§9](#9-behavior-map-json).
 
 **Project-local catalog extension (WI-votan).** `verify-claims` accepts three repeatable flags — `--taint-sources PATH`, `--taint-sinks PATH`, `--taint-sanitizers PATH` — where each PATH is either a single YAML file or a directory of YAMLs (globbed as `*.yaml` in sorted order). The claims YAML may carry the same paths under a top-level `extra_catalogs:` key with `sources:` / `sinks:` / `sanitizers:` sub-lists; entries given relative paths resolve against the claims-file directory so a repo can keep its extra catalogs beside the claims document. The public helper `load_full_taint_catalog(extra_source_paths, extra_sink_paths, extra_sanitizer_paths)` stacks three layers: (1) auto-derived from `io_primitives/*.yaml`, (2) built-in YAML shipped in `taint_sources/` / `taint_sinks/` / `taint_sanitizers/`, (3) user-supplied extras. User source and sink entries whose `(module, name, kind)` triple matches a lower-layer entry replace it; user sanitizer entries concatenate. `verify-claims` prints a one-line summary to stderr when any extra catalog paths were loaded so users know their override took effect. This is the supported way for a repo to raise `trust_level` on a sink that is safe in context, declare a sanitizer so tainted data can legitimately reach a sink, add a domain-specific taint source label, or introduce a new trust zone beyond the built-in `host_fs`, `network`, `host_env`, `ipc`, `browser_storage`, `relay`.
 
@@ -1362,6 +1416,8 @@ Tier and Role compose for analysis decisions:
 
 ## 16) Testing & quality bar
 
+**Related ADRs.** [ADR-0002](adr/0002-test-dependency-handling.md) defines the test-dependency policy: tests assume their dependencies work and may not use `pytest.mark.skipif` or module-level skip as escape hatches; missing dependencies are a build failure, not a test skip. [ADR-0011](adr/0011-scoped-coverage-and-green-baseline.md) defines the 100%-coverage rule with the green-baseline `last-green-sha.txt` marker so coverage is enforced *scoped to changed source files* against the last passing build. [ADR-0009](adr/0009-feature-focused-bakeoff.md) defines the BROAD / DEEP bakeoff regime that evaluates hypergumbo against real-world repos beyond fixture-based unit tests.
+
 ### Test fixtures
 
 * 🟩 Small controlled fixtures in `tests/fixtures/*` for property testing
@@ -1464,7 +1520,7 @@ This section documents known limitations and risks of the current analysis syste
 |------------|--------|-------|
 | Best-effort analysis | Medium | AST-based analysis cannot resolve all calls (dynamic dispatch, reflection, eval). Confidence scores communicate uncertainty; machine-readable evidence types enable transparency. |
 | Re-export resolution incomplete | Low | Imports through re-exporting modules may not fully resolve. See [details below](#re-export-resolution). |
-| Import tracking partial | Low | Only Python and Go fully utilize import tracking for cross-file disambiguation. See [details below](#import-tracking-for-disambiguation). |
+| Import tracking partial | Low | ~30 analyzers now use import tracking for cross-file disambiguation (ADR-0007 Phase 1, 2, and 3A High+Medium complete); long-tail niche languages still pending. See [details below](#import-tracking-for-disambiguation). |
 | ID collisions in edge cases | Low | Location-based IDs can collide for identically-named symbols at same line. Content hash appended if collision detected. |
 | Confidence scores are heuristics | Medium | Scores are calibrated heuristics, not ground truth. Evidence types show reasoning; `--confidence-threshold` allows filtering. |
 | Schema changes may break consumers | Medium | Semantic versioning from day 1; schema compatibility contract in [Appendix C](#appendix-c-schema-compatibility-contract); migration guides for breaking changes. |
@@ -1500,7 +1556,7 @@ from app import crud    # Track: crud refers to app.crud
 crud.create_user()      # Resolve: app.crud.create_user()
 ```
 
-Currently, only Python and Go fully utilize import tracking for disambiguation. See **ADR-0007** for the roadmap to extend this to 30 additional analyzers with meaningful import semantics.
+Per ADR-0007, import tracking has rolled out broadly: Phase 1 (JS/TS, Kotlin), Phase 2 (Rust, C#, Ruby, Elixir, Swift, PHP, Scala, Dart), and Phase 3A High+Medium (13 + 7 analyzers) are all shipped — ~30 analyzers in total. Python and Go were already correct; Java was already partial and is now improved. Remaining gaps are long-tail niche languages (Lean is the only Phase 3A item still blocked). See [ADR-0007](adr/0007-import-tracking-for-call-resolution.md) for the live phase table.
 
 ## 19) Autonomous governance (ADR-0008)
 
@@ -1531,6 +1587,12 @@ Each AI coding tool has a different hook mechanism. Adapter scripts provide a co
 - **Cursor:** `.agent/hooks/cursor/stop.sh` (stop hook with ASK output)
 - **Codex CLI:** `.agent/hooks/codex-cli/notify.sh` (notification only; limited enforcement)
 
+Transcript-aware playbook injection (lazy loading of the per-task playbook into the agent's context) and per-turn heartbeat / respawn supervision are layered on top of these adapters per [ADR-0018](adr/0018-transcript-sync-and-playbook-injection.md).
+
+### Empirical evaluation: bakeoff loops
+
+The structural / coverage / 100% tests in [§16](#16-testing--quality-bar) verify analyzer correctness on fixtures; they don't measure usefulness on real codebases. Two complementary bakeoff loops fill that gap per [ADR-0009](adr/0009-feature-focused-bakeoff.md): **BROAD** mode (`scripts/bakeoff-broad`) iterates linker / framework / call-graph coverage on a wide cohort to find missed edges; **DEEP** mode (`scripts/bakeoff-deep`) evaluates feature usefulness — slice quality, supply-chain-tier accuracy, centrality ranking — on larger repos. Both loops produce reflective artifacts that feed back into tracker items and analyzer/linker improvements.
+
 ### Structured Tracker (ADR-0013)
 
 🟩 The markdown-based governance files (invariant ledger, work items) are superseded by a YAML-backed structured tracker ([ADR-0013](adr/0013-structured-tracker.md)). The tracker provides append-only op-logs that are git-merge-safe, causally ordered via Lamport clocks, and support field-level access control. It ships as an independent package (`hypergumbo-tracker`, licensed MPL-2.0) usable in any project — see [the tracker README](../packages/hypergumbo-tracker/README.md) for standalone adoption.
@@ -1550,7 +1612,7 @@ For detailed designs, see [roadmap-details.md](future/roadmap-details.md) and [R
 
 | Item | Horizon | Status |
 |------|---------|--------|
-| AST-based type inference improvements | Near-term | Method-scoped tracking (medium effort), generic handling (high effort). See ADR-0006. |
+| Return-Type Registry pre-pass (INV-dihos) | Near-term | Cross-cutting global registry so `var_types` can chain method-call results through the registered return type of the callee. Five-phase rollout: Phase 1 Java + Go, Phase 2 Kotlin + C#, Phase 3 Rust + C++ + Scala, Phase 4 typed Python, Phase 5 cross-linker (type_hierarchy.py / dataflow.py). See [ADR-0006](adr/0006-variable-type-inference.md). |
 | Additional linkers | Near-term | 🟩 Constant propagation for dynamic routes (Python). 🟩 Middleware chain linker (same-file chaining). 🟪 Proxy detection. |
 | Additional output views | Near-term | 🟪 `ir_export.json`, `context_bundle.json`, `sarif.json`, flow specs. |
 | Testing & CI enhancements | Near-term | 🟪 Longitudinal analysis, integration test markers. |
@@ -1687,6 +1749,15 @@ This appendix defines the **technical contract** for output consumers: which fie
 
 **4. Changing confidence semantics:**
 - Example: Redefining what evidence types mean or changing the scoring algorithm
+
+### Algorithm-identification fields and `stable_id_scheme` v1→v2
+
+`stable_id_scheme`, `shape_id_scheme`, and `repo_fingerprint_scheme` (top-level fields in the behavior map) identify the algorithm used to compute the corresponding hash. They are **not** schema-version fields; the schema-version is `schema_version` and changes independently.
+
+* Current value: `stable_id_scheme = "hypergumbo-stableid-v2"`.
+* **v1 → v2 transition (per ADR-0014 §5):** v2 added `containing_module_stable_id` to the typed-tier hash basis. Every `stable_id` value produced by v2 differs from the v1 value for the same symbol, even when nothing semantic changed. Consumers diffing a v1 output against a v2 output will see a wholesale change in every `stable_id` field. There is no in-place migration. The recommended workflow is to re-analyze any pre-v2 cache against current hypergumbo before comparing.
+
+Bumping a scheme identifier is not by itself a major-version event — the output format is unchanged, only the value distribution. Consumers that store `stable_id` values across analyses must check the scheme identifier and bail or re-analyze when it differs from the cached one.
 
 ### Future Additions (examples of backward-compatible changes)
 

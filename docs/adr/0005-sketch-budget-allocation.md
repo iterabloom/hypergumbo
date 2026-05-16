@@ -95,9 +95,9 @@ This rebalancing addresses the problem where a 32k `--with-source` sketch would 
 | Data Models | Centrality (most-referenced models first) |
 | Source Files | Symbol importance density = Σ(in-degrees) / LOC |
 | Key Symbols | Two-phase: coverage-first, then centrality × tier weight |
-| Additional Files | Hybrid: semantic similarity + file mention centrality |
+| Additional Files | README-first hybrid round-robin across (a) README links in document order, (b) semantic similarity to the project's 5W1H embedding, (c) symbol-mention centrality |
 | Source Content | Same as Source Files (top density first) |
-| Additional File Content | Same as Additional Files (top semantic+centrality first) |
+| Additional File Content | Same as Additional Files (top of README-first hybrid round-robin first) |
 
 *Entry Point confidence reflects detection reliability. Current detectors use decorator/annotation patterns (0.95). Future work may add manifest-based detection (0.99) and naming-convention heuristics (0.70-0.85).
 
