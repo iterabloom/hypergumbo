@@ -8,8 +8,9 @@ dependencies (sentence-transformers, torch) aren't available.
 
 The main entry points are:
 - extract_readme_description_embedding(): Extract project description from README
-- rank_files_by_embedding_similarity(): Rank Additional Files by semantic relevance
+- embed_file_for_semantic_ranking(): Embed a single file for downstream ranking
 - batch_embed_files(): Batch embed files with caching
+- compute_5w1h_similarity(): Score a file against the 5W1H rubric
 
 These functions fall back gracefully when sentence-transformers isn't installed.
 """

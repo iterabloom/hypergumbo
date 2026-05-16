@@ -30,9 +30,12 @@ Usage
 In cli.py after analysis:
 
     from .partial_install_warnings import check_partial_install_warnings
-    warnings = check_partial_install_warnings(profile, linker_ctx)
-    for warning in warnings:
-        print(f"Warning: {warning}", file=sys.stderr)
+    check_partial_install_warnings(profile, linker_ctx, emit_warnings=True)
+
+The default ``emit_warnings=True`` emits each finding via
+``warnings.warn(..., UserWarning, stacklevel=2)`` (which the
+Python warnings module routes to stderr). Pass ``emit_warnings=False``
+to suppress emission and iterate over the returned list instead.
 """
 
 from __future__ import annotations

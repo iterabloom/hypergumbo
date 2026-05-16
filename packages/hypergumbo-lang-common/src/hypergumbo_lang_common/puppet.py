@@ -17,12 +17,15 @@ Symbols Extracted
 - **Defined types**: Custom resource types (define)
 - **Resources**: Resource declarations (package, service, file, etc.)
 - **Nodes**: Node definitions
-- **Includes**: Include statements
+
+Include statements emit only edges, not Symbols (per audit-findings
+0010 Cluster E sub-case (b) fold).
 
 Edges Extracted
 ---------------
-- **includes_class**: Links include statements to class definitions
+- **includes_class**: Links the manifest file to included class definitions
 - **requires_resource**: Links resource dependencies
+- **notifies_resource**: Links ``notify`` resource relationships
 
 Why This Design
 ---------------

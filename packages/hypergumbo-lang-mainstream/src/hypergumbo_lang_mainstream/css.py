@@ -14,11 +14,15 @@ Uses tree-sitter-css to parse CSS files and extract:
 - @font-face declarations
 
 The analyzer produces Symbols for:
-- import: @import rules
 - variable: CSS custom properties (--var-name)
 - keyframes: @keyframes animations
 - media: @media query breakpoints
 - font_face: @font-face declarations
+- class_selector: ``.class-name`` selectors
+- id_selector: ``#id-name`` selectors
+
+``@import`` rules are emitted as ``imports`` Edges only (no per-import
+Symbol, per audit-findings 0010 Cluster E sub-case (b) fold).
 
 Why This Design
 ---------------

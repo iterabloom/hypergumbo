@@ -2,10 +2,14 @@
 """JSON configuration analysis pass using tree-sitter-json.
 
 This analyzer parses JSON configuration files and extracts:
-- package.json: dependencies, devDependencies, scripts, workspaces
-- tsconfig.json: compiler references, paths
+- package.json: dependencies, devDependencies, scripts, ``bin``,
+  ``main``, and ``exports`` entry points (emitted as
+  ``defines_target`` edges)
+- tsconfig.json: project ``references``
 - composer.json: PHP dependencies
-- Various tool configs (.eslintrc.json, .prettierrc, etc.)
+
+Generic JSON files (tool configs like ``.eslintrc.json``,
+``.prettierrc``, etc.) are intentionally not extracted — too noisy.
 
 If tree-sitter-json is not installed, the analyzer
 gracefully degrades and returns an empty result.

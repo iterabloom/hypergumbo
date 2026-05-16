@@ -29,10 +29,11 @@ How It Works
 ------------
 1. Check if tree-sitter and language grammars are available
 2. If not available, return empty result with skip reason
-3. Two-pass analysis:
+3. Three-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
-4. For Svelte files, extract <script> blocks and parse as TS/JS
+   - Pass 3: Extract usage contexts for resolved call edges
+4. For Svelte / Vue files, extract <script> blocks and parse as TS/JS
 
 Svelte Support
 --------------

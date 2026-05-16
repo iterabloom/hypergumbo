@@ -12,9 +12,9 @@ Constructs detected:
 - Variables (vars: section)
 - Include/import references (include_tasks, import_tasks, include_role)
 
-Two-pass analysis:
-- Pass 1: Extract symbols (playbooks, tasks, handlers, variables)
-- Pass 2: Extract reference edges (includes, imports)
+Single-pass per file: symbols and reference edges (includes,
+imports) are extracted together (see ``AnsibleAnalyzer`` class
+docstring for rationale).
 """
 
 from __future__ import annotations

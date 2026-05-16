@@ -40,7 +40,7 @@ Availability check
 "can the rust-analyzer backend activate?" — it's called by the
 ``--check`` flag, by the ``hypergumbo add-extras --check`` umbrella
 (WI-huham → WI-josif), and by WI-nohah's graceful-degrade fall-through
-logic when WI-duzul's registry wiring lands.
+logic in the rust-analyzer backend (WI-duzul).
 """
 from __future__ import annotations
 

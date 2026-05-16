@@ -18,9 +18,10 @@ How It Works
 ------------
 1. Check if tree-sitter and tree-sitter-php are available
 2. If not available, return empty result (not an error, just no PHP analysis)
-3. Two-pass analysis:
+3. Three-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
+   - Pass 3: Extract usage contexts and emit Laravel route Symbols
 4. Detect function calls, method calls, static calls, and instantiation
 
 Why This Design

@@ -2,10 +2,14 @@
 """XML configuration analysis pass using tree-sitter-xml.
 
 This analyzer parses XML configuration files and extracts:
-- Maven pom.xml: dependencies, plugins, modules, parent relationships
-- Android Manifest: activities, services, permissions, intent-filters
-- Android Layout: views with IDs, resource references
-- Generic XML: element structure for configuration files
+- Maven pom.xml: project identity, dependencies, ``<mainClass>``
+  entry points (emitted as ``defines_target`` edges)
+- Android Manifest: activities, services, receivers, providers,
+  permissions, intent-filters (all emitted as ``kind="component"``
+  symbols with ``meta["component_type"]``)
+
+Other XML shapes (Android layouts, generic XML configuration) are
+intentionally not extracted — too noisy relative to the signal.
 
 If tree-sitter-xml is not installed, the analyzer
 gracefully degrades and returns an empty result.

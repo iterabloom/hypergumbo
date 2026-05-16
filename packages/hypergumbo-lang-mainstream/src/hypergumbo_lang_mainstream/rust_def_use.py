@@ -20,7 +20,7 @@ via the ``early_return_on_error`` semantic hook). The extractor treats
 the Ok-side binding as a simple ``let`` define.
 
 Hard patterns (borrow alias tracking, ``ref``/``ref mut`` in match arms,
-macro invocation analysis) are deferred to Phase 2b (WI-bifog).
+macro invocation analysis) were addressed in Phase 2b (WI-bifog).
 """
 from __future__ import annotations
 
