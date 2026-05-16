@@ -28,6 +28,21 @@ Hypergumbo includes language analyzers for dozens of languages and file formats.
 
 Analyzers are distributed across three packages: `hypergumbo-lang-mainstream`, `hypergumbo-lang-common`, and `hypergumbo-lang-extended1`. Installing the `hypergumbo` meta-package includes all three.
 
+## Recent capability improvements
+
+These improvements live within already-supported languages — no new languages are added; existing analyzers do more.
+
+- **Kotlin** — Receiver-type inference strips the nullable `?` suffix so methods returning `User?` propagate `User` into `var_types`. Chained-receiver resolution on nullable getters no longer drops methods.
+- **C#** — Receiver-type inference unwraps async wrapper types `Task<T>` / `ValueTask<T>` / `IAsyncEnumerable<T>` so `var x = await SomeAsync()` binds to the awaited type. Bare wrapper-only returns stay `None`. Both extensions follow ADR-0006's Return-Type Registry program (Java + Go shipped earlier).
+- **JavaScript / TypeScript** — `access_mode` annotation coverage extended to `return` / `throw` / `yield` / `await` / `update_expression` contexts. `--dataflow` slices on TypeScript repos are useful again. Bare-Node and Apollo standalone HTTP routes detected (see [FRAMEWORKS.md](FRAMEWORKS.md)).
+- **Rust** — PyO3 `#[pymethods] impl Foo { fn bar() {} }` propagates the annotation to every method declared inside; path-qualified spellings like `#[pyo3::pyfunction]` are recognized. Python → Rust FFI chain tracing now finds the canonical ~100-method PyO3 surface. Aliased `use` imports get proper canonical `Edge.dst_ref` instead of the historical 6-segment dst fabrication.
+- **C / C++ (Node-API)** — Template forms `Napi::Function::New<F>(env)`, `InstanceMethod<&C::M>("name")`, and `InstanceAccessor` property bindings match alongside the function-argument forms. Sharp, canvas, and similar modern node-addon-api projects benefit.
+- **Python** — `verify-claims` resolves more method-call receivers through a post-DDG IR refinement pass. Eight zone-tagged fs-write wrappers in `hypergumbo_core.safety_zones` provide a discipline pattern downstream Python projects can adopt.
+- **Elixir** — Phoenix test files at `test/<context>/<thing>_test.exs` classify as `supply_chain.tier=1` with `is_test=True` (previously conflated with vendored code at tier=2).
+- **Solidity** — `contract` is now a canonical `Symbol.kind` (previously emitted but unregistered).
+- **CUDA / Android XML** — Producer-side folds onto canonical kind + `meta` discriminator: CUDA emits `kind="function"` + `meta["cuda_execution_space"]`; Android XML emits `kind="component"` + `meta["component_type"]`. See [MIGRATION-5.X-CONCEPT-AXES.md](MIGRATION-5.X-CONCEPT-AXES.md) for the mapping detail.
+- **Ansible** — `include_tasks` / `import_tasks` with Jinja-templated paths fan out to real target files instead of leaving a single unresolved edge.
+
 ## How Analyzers Work
 
 Each analyzer follows the same pattern:

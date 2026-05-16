@@ -58,6 +58,44 @@ See `packages/hypergumbo-core/src/hypergumbo_core/frameworks/*.yaml` for the ful
 ### Cross-language
 - CLI patterns (Python, Go, JS, Ruby, Rust), GraphQL, Library Exports
 
+## Notable detection capabilities
+
+### View-template rendering (5 frameworks)
+
+`renders` edges connect controllers / handlers to their rendered templates.
+
+- **Rails** — `app/views/<controller>/<action>.{erb,haml,...}` derived from class+method naming.
+- **Django** — explicit `render(request, "<template>", ctx)` calls; class-based view `template_name`; CBV defaults (`DetailView` / `ListView` / `CreateView` / `UpdateView` / `DeleteView` / `FormView`) deriving template from `model = <Name>`.
+- **Phoenix** — 1.x `lib/<app>_web/templates/<ctx>/<action>.html.{eex,heex,leex}`, 1.7+ co-located `controllers/<ctx>_html/<action>.html.heex`, and `MyAppWeb.UserHTML.show` function components. LiveView inline templates are out of scope.
+- **Spring MVC** — `@Controller` (NOT `@RestController`) methods returning view-name strings or `ModelAndView("users/show", model)`. Probes Thymeleaf / FreeMarker / Velocity at `src/main/resources/templates/`, then JSP at `src/main/webapp/WEB-INF/views/`. `redirect:` / `forward:` skipped.
+- **Laravel Blade** — `view(...)` and `View::make(...)` in `app/Http/Controllers/`; dotted view names map to directory paths; `.blade.php` probed before plain `.php`.
+
+Shared core: `packages/hypergumbo-core/src/hypergumbo_core/linkers/_view_template_core.py`.
+
+### HTTP route detection — new shapes
+
+- **Bare-Node HTTP** — `http.createServer`, `https.createServer`, `http2.createServer`, including destructured `createServer(...)`. New `frameworks/node-http.yaml` (always-loaded).
+- **Apollo standalone GraphQL** — `startStandaloneServer`, `runHttpQuery`, `executeHTTPGraphQLRequest` in `frameworks/graphql.yaml`. Calling function gets `framework_role='route'`.
+
+### Django third-party dispatch
+
+A Django-framework-gated companion to the always-on `django_orm_dispatch`. Emits `dispatches_to` edges from Python subclasses of HierarkeyForm, django-filter `FilterSet` / `WagtailFilterSet`, DRF `Serializer` family, and Wagtail `Page` → the framework-called override methods.
+
+## Pattern authoring — `Pattern.meta_match`
+
+Framework YAML rule authors: a new optional field `meta_match: dict[str, str]` is the canonical post-ADR-0027 form for rules that previously hardcoded bare-`Symbol.kind` regexes. Each key must be present on `Symbol.meta` and its `str()`-coerced value must match the regex. Multiple keys AND together and can combine with `symbol_kind` / `framework_role` matchers.
+
+Example (from `config-conventions.yaml`):
+
+```yaml
+- name: cargo_dev_dependency
+  symbol_kind: dependency
+  meta_match:
+    dependency_scope: "^dev$"
+```
+
+Replaces what used to be `symbol_kind: devDependency` before the ADR-0027 fold. 11 rules migrated across `config-conventions.yaml` and `language-conventions.yaml`.
+
 ---
 
 ## Comprehensive Framework List by Language

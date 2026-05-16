@@ -57,16 +57,40 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | swift_objc | Bridge | Swift ↔ Objective-C interop via `@objc` annotations, `NSObject` subclasses, `#selector()`, bridging headers. |
 | tauri_ipc | Bridge | TypeScript / JavaScript `invoke()` call sites ↔ Rust functions annotated with `#[tauri::command]`. |
 | type_hierarchy | Framework | Interface / abstract-class methods → concrete implementations via `dispatches_to` edges. Polymorphic dispatch resolution. |
-| view_template | Framework | Rails-style controller / action → rendered template by convention. |
+| view_template | Framework | Convention-based controller → template rendering across 5 frameworks: Rails (`app/views/<ctrl>/<action>.{erb,haml,...}`), Django (`render(...)` calls + class-based view `template_name`), Phoenix (1.x `lib/<app>_web/templates/...` + 1.7+ co-located `controllers/<ctx>_html/...`), Spring MVC (`@Controller` returning view-name strings; Thymeleaf / FreeMarker / Velocity / JSP), Laravel Blade (`view(...)` / `View::make(...)` → `.blade.php`). Per-framework strategy lives in `linkers/_view_template_core.py`. |
+| django_third_party_dispatch | Framework | Django-framework-gated companion to `django_orm_dispatch`. `dispatches_to` edges from Python subclasses of HierarkeyForm, django-filter `FilterSet` / `WagtailFilterSet`, DRF `Serializer` family, and Wagtail `Page` → the framework-called override methods. |
 | vue_component | Infrastructure | Vue `import` paths → `.vue` component files, establishing composition edges. |
 | vue_template_method | Framework | Vue template event-handler directives → script methods via `handler_expression` metadata matching within the same file. |
 | wasm_bindgen | Bridge | JavaScript / TypeScript imports from a wasm-pack `pkg/` directory ↔ Rust functions annotated with `#[wasm_bindgen]`. |
 | websocket | Protocol | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket — senders ↔ receivers by event name. |
 | yjs_crdt | Framework | Yjs shared-type reactive data flow — writers → observers via `crdt_publishes` edges. |
 
-**Count:** 45 linkers — Protocol 13, Bridge 10, Framework 16, Infrastructure 6.
+**Count:** 46 linkers — Protocol 13, Bridge 10, Framework 17, Infrastructure 6.
 
 Subcategory assignments above are the initial baseline per ADR-0003-ext Appendix B; borderline cases (e.g., `grpc` is framework-specific in protocol but cross-language in use) are documented in that ADR's appendix and will be refined as the subcategory vocabulary matures.
+
+## Disambiguation-fallback contract (cross-linker)
+
+When a linker resolves a simple name (e.g. `User`) to a structurally
+ambiguous target — multiple in-tree classes with that name, two `.proto`
+services declaring the same short-name service, a method name colliding
+across implementations — the resulting `Edge` carries:
+
+- `Edge.confidence ≤ 0.5`
+- `Edge.meta["disambiguation_fallback"] = True`
+
+13 linkers currently implement this contract:
+`django_orm_dispatch`, `airflow_framework_dispatch`, `jackson_dispatch`,
+`kafka_streams_dispatch`, `grpc`, `subprocess_cli`, `route_handler`,
+`method_call_recovery`, the FFI bridges (`cgo`, `napi`, `lua_ffi`,
+`ruby_ffi`, `jni`, `pyffi`), `interface_dispatch`, `go_cobra`,
+`annotation_convention`, `di_resolution`, `orm`, `database_query`,
+`react_component`. A static linter (`scripts/check-fallback-coherence`)
+pins the contract at every linker emission site.
+
+**For consumers of the JSON output:** filtering on `confidence > 0.5`
+reliably excludes ambiguous-resolution edges; querying on
+`meta.get("disambiguation_fallback")` finds them when wanted.
 
 ## How Linkers Work
 
