@@ -45,3 +45,11 @@
   clock: 4  # 9918
   nonce: '9918'  # 9918
   message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: narrow conditional (Verilog repo with same-named module/non-module collision); author flagged decision pending between targeted fix and refactor escalation."  # 9918
+- op: update  # a3c0
+  at: '2026-05-17T19:20:19Z'  # a3c0
+  by: agent  # a3c0
+  actor: jgstern_agent  # a3c0
+  clock: 5  # a3c0
+  nonce: a3c0  # a3c0
+  set:  # a3c0
+    parent: INV-fosab-tijim-jival-hilof-halaz-divin-pakot-jigub  # a3c0

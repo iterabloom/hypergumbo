@@ -34,3 +34,11 @@
   clock: 3  # 2553
   nonce: '2553'  # 2553
   message: "Fixed in PR #3591 (merged). Implementation matches the tracker spec: register_symbol now stores multi-value lists (mirroring go.py:3998); the architecture-of-entity lookup at vhdl.py kind-prefers entities via 'next((c for c in candidates if c.kind == \"entity\"), None)' and falls back to the existing vhdl:external:{name}:entity synthetic ID at confidence 0.70 when no entity matches. resolver_class switched to ListNameResolver to match the dict[str, list[Symbol]] shape (vhdl does not call resolver.lookup itself, but the type contract is now honest). Test: test_architecture_with_entity_package_name_collision_prefers_entity reproduces the package + entity same-name collision and asserts implements → entity at confidence 0.90. Pattern is now in place for BUG-04 (WI-milak) to reuse on the larger Rust surface. Side-finding: verilog.py:211/:243 has the identical kind-blind insert + lookup shape — three analogous occurrences (rust BUG-04, vhdl WI-morud, verilog) crosses the tracker's escalation threshold for considering a shared kind-segregated multi-value dict utility instead of per-analyzer fixes; will file a follow-up tracker item."  # 2553
+- op: update  # 71ca
+  at: '2026-05-17T19:20:20Z'  # 71ca
+  by: agent  # 71ca
+  actor: jgstern_agent  # 71ca
+  clock: 4  # 71ca
+  nonce: 71ca  # 71ca
+  set:  # 71ca
+    parent: INV-fosab-tijim-jival-hilof-halaz-divin-pakot-jigub  # 71ca

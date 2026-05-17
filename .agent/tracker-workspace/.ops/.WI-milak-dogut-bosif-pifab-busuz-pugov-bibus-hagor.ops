@@ -67,3 +67,11 @@
   clock: 7  # 6579
   nonce: '6579'  # 6579
   message: "Validated via UAT round-01 of hg-uat-v5.0.1 (~/hypergumbo_lab_notebook/bakeoff_artifacts/hg-uat-v5.0.1/lab-notebook/round-01-candle/). Verdict: moved. Mechanism: matches.\n\n15/15 sampled 'impl Module for X' blocks resolve to rust:candle-core/src/lib.rs:148-150:Module:trait rather than the same-named candle-kernels Module struct. Forward probe (kind-segregated trait preference) confirmed on the two trait/struct collisions present in candle (Module, SchedulerConfig). The kind-segregated multi-value index from PR #3597 produces the documented trait>struct/enum preference end-to-end. See master-report §3.1."  # 6579
+- op: update  # c9ba
+  at: '2026-05-17T19:20:20Z'  # c9ba
+  by: agent  # c9ba
+  actor: jgstern_agent  # c9ba
+  clock: 8  # c9ba
+  nonce: c9ba  # c9ba
+  set:  # c9ba
+    parent: INV-fosab-tijim-jival-hilof-halaz-divin-pakot-jigub  # c9ba

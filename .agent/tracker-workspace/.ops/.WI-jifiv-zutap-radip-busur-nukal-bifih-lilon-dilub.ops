@@ -35,3 +35,11 @@
   clock: 3  # f1cc
   nonce: f1cc  # f1cc
   message: "Fixed in PR #3650 (commit f48cddb7b0). Pre-fix shape was structurally identical to WI-milak / BUG-04: single-value command_by_name dict keyed on bare command function name, used to resolve subprocess.run([\"myapp\", \"<sub>\"]) → CLI command symbols. Multi-binary projects (pyproject.toml [project.scripts] entries with overlapping subcommand names) collapsed onto whichever symbol was iterated last. Fix: dict[str, list[Symbol]] + deterministic-by-id fallback + confidence=0.5 + meta[\"disambiguation_fallback\"]=True; Edge.create moves to canonical meta=kwarg IfExp form so the L4 walker can statically gate the conformance. 2 new property tests (collision-drops-to-fallback, no-collision-preserves-base-confidence). Smart-test green (3025 tests). check-package-coverage green at 100% across all packages."  # f1cc
+- op: update  # f14e
+  at: '2026-05-17T19:24:54Z'  # f14e
+  by: agent  # f14e
+  actor: jgstern_agent  # f14e
+  clock: 4  # f14e
+  nonce: f14e  # f14e
+  set:  # f14e
+    parent: INV-fosab-tijim-jival-hilof-halaz-divin-pakot-jigub  # f14e

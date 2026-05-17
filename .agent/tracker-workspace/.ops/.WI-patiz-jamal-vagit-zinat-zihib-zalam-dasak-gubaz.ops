@@ -35,3 +35,11 @@
   clock: 3  # c0bf
   nonce: c0bf  # c0bf
   message: "Fixed in PR #3651 (commit fe5697ef72). Second instance of the BUG-04/05 shape in the same link_grpc function whose Go method-mapping bug WI-kunoz / BUG-05 fixed in PR #3598. service_sym_by_name was a single-value dict[str, str] keyed on bare proto service short name; the routes_to lookup and the bridge dispatches_to (grpc_server/servicer → grpc_service) both consulted it. Two .proto files declaring the same service in different packages (containerd-style versioned-monorepo shape) collapsed cross-package edges onto one surviving service symbol.\n\nFix: (1) GrpcPattern gains a package field, _scan_proto_file propagates the proto package declaration. (2) grpc_service Symbols carry meta[\"proto_package\"]=<package> when the .proto declares one. (3) service_sym_by_name and service_by_normalized become dict[str, list[Symbol]]. (4) routes_to uses rpc.package as a precision disambiguator (unique package match → confidence=0.90 precision; missing/ambiguous → confidence=0.5 + disambiguation_fallback). (5) Bridge dispatches_to has no impl-side package metadata; multi-candidate normalized matches always drop to fallback. (6) Single-candidate (no collision) stays precision in both paths.\n\n6 new property tests under TestINVZuhubConformanceForServiceLookup (cross-package routes via package, cross-package bridge fallback, single-service bridge regression guard, proto_package meta presence/absence, no-package collision fallback). All existing 60+ grpc-linker tests stay green. L4 fallback-coherence walker passes (both new fallback emit-sites use the canonical IfExp form on is_fallback / route_is_fallback). Smart-test green (3025 tests). Empirical re-confirmation candidate on containerd-style multi-package proto repos for the next BVT cycle."  # c0bf
+- op: update  # afff
+  at: '2026-05-17T19:24:55Z'  # afff
+  by: agent  # afff
+  actor: jgstern_agent  # afff
+  clock: 4  # afff
+  nonce: afff  # afff
+  set:  # afff
+    parent: INV-fosab-tijim-jival-hilof-halaz-divin-pakot-jigub  # afff

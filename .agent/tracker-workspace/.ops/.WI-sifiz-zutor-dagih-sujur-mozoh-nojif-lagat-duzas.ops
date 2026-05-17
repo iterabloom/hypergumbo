@@ -33,3 +33,11 @@
   clock: 3  # 6ae6
   nonce: 6ae6  # 6ae6
   message: "Closed in PR #3667 (merged at bf761dbf35). c_lookup (ctypes/cffi) and pyo3_lookup both switched to multi-value. pyo3_lookup de-duplicates per key on sym.id so bare-function symbols (full_name == short_name) appear once per key; cross-impl short-name collisions (e.g. PyTokenizer::encode vs PyParser::encode both indexed under 'encode') drop to fallback. stdlib-then-resolved and non-stdlib c_lookup branches carry the fallback flag symmetrically. +4 property tests (c single, c multi, c stdlib+multi, pyo3 single bare-function, pyo3 multi-impl short collision). Coverage 100%, L4 gate clean."  # 6ae6
+- op: update  # 61dc
+  at: '2026-05-17T19:24:55Z'  # 61dc
+  by: agent  # 61dc
+  actor: jgstern_agent  # 61dc
+  clock: 4  # 61dc
+  nonce: 61dc  # 61dc
+  set:  # 61dc
+    parent: INV-fosab-tijim-jival-hilof-halaz-divin-pakot-jigub  # 61dc

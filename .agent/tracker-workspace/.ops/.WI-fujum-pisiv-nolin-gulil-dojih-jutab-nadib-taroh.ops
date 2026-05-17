@@ -35,3 +35,11 @@
   clock: 3  # c93b
   nonce: c93b  # c93b
   message: "Already fixed by prior work — closing as done. Audit hypothesis was correct (two NestJS modules with same-short-name classes would collide), but both in-scope lookups in di_resolution.py are already multi-value with INV-zuhub disambiguation_fallback discipline:\n\n1. `impl_by_short: dict[str, list[Symbol]]` at line 584 (in `_create_di_edges`) — closed by WI-bojok PR2 (commit 2d86cbdf17, 2026-05-11), per the emit-all-matches dispatches_to conformance pattern.\n\n2. `syms_by_name: dict[str, list[Symbol]]` at line 661 (in `_create_di_registers_edges`) — closed by WI-harim (commit 6199c54008, 2026-05-11), per the references-family conformance. Module and provider lookups both use multi-candidate; deterministic-by-id when collisions; `min(binding.confidence, 0.5)` cap; `meta[\"disambiguation_fallback\"] = True` set on the edge.\n\nLine numbers in the original audit description (638-648) correspond to the pre-WI-harim layout. WI-fujum was filed 2026-05-09; WI-harim shipped 2026-05-11. Clerical sequencing — the audit predated the fix by ~2 days. Fully resolved by sibling sprint work; no separate PR needed. Sibling audit items (WI-jifiv subprocess_cli, WI-rusuh route_handler, WI-patiz grpc) remain open."  # c93b
+- op: update  # 35d7
+  at: '2026-05-17T19:24:55Z'  # 35d7
+  by: agent  # 35d7
+  actor: jgstern_agent  # 35d7
+  clock: 4  # 35d7
+  nonce: 35d7  # 35d7
+  set:  # 35d7
+    parent: INV-fosab-tijim-jival-hilof-halaz-divin-pakot-jigub  # 35d7
