@@ -1,0 +1,24 @@
+- op: create  # 4ee8
+  at: '2026-05-17T02:53:38Z'  # 4ee8
+  by: agent  # 4ee8
+  actor: jgstern_agent  # 4ee8
+  clock: 1  # 4ee8
+  nonce: 4ee8  # 4ee8
+  data:  # 4ee8
+    kind: work_item  # 4ee8
+    title: "features[] is documented in spec as 'named slices' with full schema but always empty (schema.py:101 hardcoded [], no producer)"  # 4ee8
+    status: todo_soft  # 4ee8
+    priority: 3  # 4ee8
+    parent:  # 4ee8
+    tags:  # 4ee8
+    - schema  # 4ee8
+    - docs  # 4ee8
+    - dead_field  # 4ee8
+    - self_analysis  # 4ee8
+    - dogfooding  # 4ee8
+    isbefore: []  # 4ee8
+    duplicate_of: []  # 4ee8
+    not_duplicate_of: []  # 4ee8
+    pr_ref:  # 4ee8
+    description: "**Found via self-analysis dogfooding on 2026-05-16 (round 12).**\n\n**Symptom.** The behavior-map JSON's top-level `features[]` field is always empty. On hypergumbo's self-analysis:\n\n```json\n\"features\": []\n```\n\nThe producer is `packages/hypergumbo-core/src/hypergumbo_core/schema.py:101`:\n\n```python\ndef create_empty_behavior_map() -> dict:\n    return {\n        ...\n        \"features\": [],\n        ...\n    }\n```\n\nAnd no code anywhere appends to it.\n\n**Why this is a problem.** The spec documents `features[]` as a first-class top-level field with full schema:\n\n`docs/hypergumbo-spec.md:798-802`:\n\n> ### features[] — named slices\n>\n> Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`, a `query` object (method, entrypoint, hops, max_files, exclude_tests), `limits_hit[]`, and `summary`. See `docs/schema.json` for the full structure.\n>\n> **Feature ID:** Stable identifier based on query spec: `sha256(json.dumps(query, sort_keys=True))`. Same query on same code → same feature ID → enables diff across commits.\n\n`docs/hypergumbo-spec.md:1701` also notes:\n\n> `features[]`: Array of objects, each with `id`, `name`, `entry_nodes[]`\n\n`docs/schema.json:99` declares the JSON-Schema entry for `features`.\n\nSo spec/schema commit to a feature, but the producer commits nothing. Slice output IS produced by `hypergumbo slice` (we observed it in Round 10's exploration) — but slices go to separate files (e.g., `slice.entry_name.json`) with `view: \"slice\"`, not into `behavior_map.features`.\n\n**Severity.** Low-medium. Consumers reading the spec see a documented schema and write code expecting it to populate (e.g., \"diff features across commits\"). On every real behavior map they get an empty array. Same pattern as WI-fanun (fingerprint declared, mostly null).\n\n**Fix proposal — two viable approaches.**\n\n1. **Populate features[] on `hypergumbo run`.** Run the default set of feature-extractions (e.g., one per entrypoint) and embed their slices into `behavior_map.features`. Existing slice machinery is reusable. Larger scope.\n\n2. **Document the gap and remove the field.** Update spec + schema + producer to drop `features[]` entirely. If users want feature/slice output, they invoke `hypergumbo slice` explicitly. Smaller change; closes the documentation-rot loop.\n\nRecommended: **2 for now, 1 as future work.** Drop the empty field from the schema and remove the spec section, OR rewrite the section to say \"Features are produced by `hypergumbo slice` and stored in separate slice JSON files; the behavior_map does not embed features by default.\"\n\n**Test gap.** Add a schema-conformance test that asserts `behavior_map[\"features\"] == []` (codifying current behavior) AND a doc-test that fails if a `## features[]` section exists in `hypergumbo-spec.md` claiming it's populated.\n\n**Cross-references.**\n\n- `packages/hypergumbo-core/src/hypergumbo_core/schema.py:87-105` — empty initializer\n- `docs/hypergumbo-spec.md:798-802` — the spec section\n- `docs/hypergumbo-spec.md:1701` — array-typed declaration\n- `docs/schema.json:99` — JSON-Schema declaration\n- `WI-fanun-...` (filed round 9) — same pattern (`fingerprint` field declared but mostly null)\n- `WI-luvig-...` (filed round 7) — same pattern (`canonical_name` declared but null on mainstream-analyzer source)"  # 4ee8
+    fields: {}  # 4ee8
