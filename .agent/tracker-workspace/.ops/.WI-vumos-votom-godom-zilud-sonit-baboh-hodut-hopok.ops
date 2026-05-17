@@ -1,0 +1,22 @@
+- op: create  # ec95
+  at: '2026-05-17T04:53:28Z'  # ec95
+  by: agent  # ec95
+  actor: jgstern_agent  # ec95
+  clock: 1  # ec95
+  nonce: ec95  # ec95
+  data:  # ec95
+    kind: work_item  # ec95
+    title: "io-boundaries tier tag visually attaches to caller, but describes boundary destination (cli.py:3707-3709)"  # ec95
+    status: todo_hard  # ec95
+    priority: 3  # ec95
+    parent:  # ec95
+    tags:  # ec95
+    - analysis_quality  # ec95
+    - dogfood_round16  # ec95
+    - io_boundaries  # ec95
+    isbefore: []  # ec95
+    duplicate_of: []  # ec95
+    not_duplicate_of: []  # ec95
+    pr_ref:  # ec95
+    description: "**Found via self-analysis dogfooding on 2026-05-17 (round 16).**\n\n**Symptom.** `hypergumbo io-boundaries` text output displays a `[tier-N name]` annotation next to each I/O CALLER. The annotation describes the *destination boundary's* supply-chain tier (e.g., os.environ is in stdlib → tier-3 external_dep). But visually it appears at the end of a line dominated by the *caller's* path, leading the reader to attribute the tier to the caller — which is wrong.\n\n**Example (from hypergumbo's self-analysis):**\n\n```\nenv_read: 44 call(s)\n  os.environ (26)\n    <- pytest_configure (conftest.py:76)  [tier-3 external_dep]\n    <- _log_memory (packages/hypergumbo-core/.../cli.py:377)  [tier-3 external_dep]\n    <- main (packages/hypergumbo-core/.../cli.py:7713)  [tier-3 external_dep]\n```\n\nA reader naturally parses this as \"`_log_memory` is tier-3 external_dep\" — which is false. `_log_memory`'s actual `supply_chain.tier_name` in the data is `first_party`. The `[tier-3 external_dep]` tag actually describes `os.environ` (the boundary destination), but visually it's attached to the caller line.\n\n**Verification.** From `/tmp/r16-self.json`:\n\n```python\nn = next(n for n in d['nodes'] if 'cli.py' in (n.get('path') or '') and n.get('name') == 'main')\n# n['supply_chain'] == {'tier': 1, 'tier_name': 'first_party', ...}\n```\n\nYet io-boundaries shows `<- main (...) [tier-3 external_dep]`.\n\n**Root cause.** `packages/hypergumbo-core/src/hypergumbo_core/cli.py:3700-3719`:\n\n```python\nfor chain in chains_by_prim[prim]:\n    caller = _format_io_caller(chain.io_edge_src, nodes_by_id, repo_root)\n    # Surface dst supply-chain tier so the user can tell apart\n    # \"first-party calls first-party I/O\" from \"first-party\n    # calls a tier-3 wrapper that may reach the network.\"\n    tier_tag = \"\"\n    if chain.dst_external_boundary and chain.dst_tier_name:\n        tier_tag = f\"  [tier-{chain.dst_tier} {chain.dst_tier_name}]\"\n    ...\n    print(f\"      <- {caller}{tier_tag}{unreliable_tag}\")\n```\n\nIntent (per the comment): help the user distinguish first-party→first-party I/O from first-party→tier-3-wrapper I/O. **The data is correct.** The presentation is the problem: the tag prints right after the caller's path, with no syntactic marker that it describes the boundary destination rather than the caller.\n\n**Fix options.**\n\n1. **Restate the tag's referent inline:**\n   ```\n   <- _log_memory (cli.py:377)  [calls tier-3 external_dep]\n   ```\n\n2. **Move the tag to the boundary-destination line above:**\n   ```\n   os.environ (26)  [tier-3 external_dep]\n     <- _log_memory (cli.py:377)\n     <- main (cli.py:7713)\n   ```\n   This is cleaner — the destination's tier is uniform across all its callers anyway, so per-caller repetition is redundant.\n\n3. **Show BOTH tiers** explicitly when they differ:\n   ```\n   <- _log_memory (cli.py:377) [first_party → tier-3 external_dep]\n   ```\n   Most actionable — surfaces the boundary crossing as a property of the chain, not of one endpoint.\n\nOption (2) is shortest and least repetitive. Option (3) carries the most information.\n\n**Severity.** Low — UX/display ambiguity, no data error. But it's a real misread risk for security-claim review workflows where the user is trying to spot first-party→external-stdlib boundary crossings.\n\n**Cross-references.**\n- INV-tisid (supply chain tier confusion) — related family but distinct surface (that one is about workspace test dirs getting wrong tier; this is about display ambiguity of a correct tier).\n- INV-magul (cache shard pollution) — unrelated, just nearby in the io-boundaries pipeline.\n\n**Notebook reference.** `~/hypergumbo_lab_notebook/notebookjournal_05162026_0438.md` Round 16 section (to be appended)."  # ec95
+    fields: {}  # ec95

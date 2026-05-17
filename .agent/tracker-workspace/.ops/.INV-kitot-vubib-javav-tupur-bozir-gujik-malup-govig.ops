@@ -1,0 +1,31 @@
+- op: create  # 1ed3
+  at: '2026-05-17T04:36:27Z'  # 1ed3
+  by: agent  # 1ed3
+  actor: jgstern_agent  # 1ed3
+  clock: 1  # 1ed3
+  nonce: 1ed3  # 1ed3
+  data:  # 1ed3
+    kind: invariant  # 1ed3
+    title: "Python analyzer silently drops BOM-prefixed files (py.py:1081,2082 use read_text() without utf-8-sig)"  # 1ed3
+    status: violated  # 1ed3
+    priority: 2  # 1ed3
+    parent:  # 1ed3
+    tags:  # 1ed3
+    - analysis_quality  # 1ed3
+    - dogfood_round15  # 1ed3
+    - python_analyzer  # 1ed3
+    isbefore: []  # 1ed3
+    duplicate_of: []  # 1ed3
+    not_duplicate_of: []  # 1ed3
+    pr_ref:  # 1ed3
+    description: "**Found via self-analysis dogfooding on 2026-05-17 (round 15).**\n\n**Symptom.** Python files with a UTF-8 BOM (`\\xef\\xbb\\xbf`) are silently dropped from analysis. The Python `ast` module rejects BOM-prefixed source as a `SyntaxError`, which `py.py:2088` catches and returns `None`. The file vanishes — no node in the result graph, no entry in `limits.failed_files`, no warning.\n\n**Reproduction.**\n\n```bash\nmkdir -p /tmp/r15bom\nprintf '\\xef\\xbb\\xbfdef boom():\\n    pass\\n' > /tmp/r15bom/x.py\nhypergumbo run --out /tmp/r15bom.json --no-sketch-fan-out --no-handler-slices /tmp/r15bom\n\npython3 -c \"\nimport json\nd = json.load(open('/tmp/r15bom.json'))\nprint('total nodes:', len(d.get('nodes', [])))\n\"\n# total nodes: 0\n```\n\nRemove the BOM, re-run:\n\n```bash\nsed -i '1s/^\\xef\\xbb\\xbf//' /tmp/r15bom/x.py\nhypergumbo run --out /tmp/r15bom2.json --no-sketch-fan-out --no-handler-slices /tmp/r15bom\n# total nodes: 1   (function boom)\n```\n\n**Root cause.** Two call sites in `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py`:\n\n```python\n# py.py:2082\nsource = py_file.read_text()           # <- no encoding= → defaults to utf-8 (NOT utf-8-sig)\ntree = ast.parse(source, filename=str(py_file))\n```\n\n```python\n# py.py:1081\nsource = candidate.read_text()         # <- same bug, in module-discovery path\nmod = ast.parse(source)\n```\n\n`Path.read_text()` with the default UTF-8 codec does NOT strip BOM — the BOM character (U+FEFF) is read into `source` as the first character. `ast.parse()` then raises `SyntaxError` because U+FEFF is not a valid start-of-program token.\n\n**Why this matters.**\n\n1. BOM-prefixed Python files are common: Windows Notepad, some IDEs, files saved through `chardet`-aware tools. Python's own interpreter accepts BOM (`python3 file_with_bom.py` runs fine — the lexer special-cases it). Hypergumbo's analyzer is stricter than Python itself.\n\n2. The drop is SILENT — no log, no warning, no entry in `limits.failed_files[]` (see related INV for that broader issue). An agent reviewing hypergumbo's JSON output has no way to know a file was dropped.\n\n3. The fix is one character: change `read_text()` to `read_text(encoding=\"utf-8-sig\")`. The `utf-8-sig` codec silently strips a leading BOM if present and otherwise behaves identically to UTF-8.\n\n**Fix.**\n\n```python\n# py.py:2082\nsource = py_file.read_text(encoding=\"utf-8-sig\")\n```\n\n```python\n# py.py:1081\nsource = candidate.read_text(encoding=\"utf-8-sig\")\n```\n\nAdd a regression test: a single .py file with a leading BOM produces a function-kind node.\n\n**Severity.** Medium — silent data loss on a common encoding scenario. Files saved by Windows tools, AWS/Azure code editors with default UTF-8-with-BOM settings, or any tool that adds BOM are invisibly missing from analysis.\n\n**Cross-references.**\n- INV-runos (Properties analyzer non-UTF-8 handling) — same family of \"encoding handling\" but distinct surface (.properties vs .py, Latin-1 vs UTF-8-BOM)\n- The companion INV being filed alongside this one — \"limits.failed_files[] never populated by Python analyzer\" — covers the broader spec contract violation. Fixing this BOM bug removes ONE trigger but does not satisfy the broader item (real SyntaxErrors in user code still go unrecorded).\n\n**Notebook reference.** `~/hypergumbo_lab_notebook/notebookjournal_05162026_0438.md` Round 15 section (to be appended)."  # 1ed3
+    fields:  # 1ed3
+      statement: "Python source files with a UTF-8 BOM must be analyzed normally. Currently py.py:1081 and py.py:2082 use Path.read_text() without encoding='utf-8-sig'; the BOM character reaches ast.parse() which raises SyntaxError; the SyntaxError is caught and the file is silently dropped (returns None at py.py:2088-2089). Python's own interpreter accepts BOM-prefixed source — the analyzer is stricter than Python itself. Verified: a 1-line BOM-prefixed file produces 0 nodes; the same file with BOM stripped produces 1 function node."  # 1ed3
+      root_cause: "Path.read_text() defaults to encoding='utf-8' which does NOT strip BOM (U+FEFF as the first character). The utf-8-sig codec silently strips a leading BOM and otherwise behaves identically to UTF-8. Fix: change py.py:1081 and py.py:2082 to read_text(encoding='utf-8-sig'). Add regression test: 1-line BOM-prefixed .py file produces a function-kind Symbol."  # 1ed3
+- op: discuss  # ef90
+  at: '2026-05-17T04:37:15Z'  # ef90
+  by: agent  # ef90
+  actor: jgstern_agent  # ef90
+  clock: 2  # ef90
+  nonce: ef90  # ef90
+  message: "Companion item: INV-buhur (limits.failed_files never populated). Fixing this BOM bug removes ONE trigger of failed_files emptiness; real user SyntaxErrors will still go unrecorded until INV-buhur is also addressed. These are related but distinct — independent fixes, can land in either order."  # ef90

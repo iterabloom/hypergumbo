@@ -1,0 +1,54 @@
+- op: create  # f174
+  at: '2026-05-17T04:37:00Z'  # f174
+  by: agent  # f174
+  actor: jgstern_agent  # f174
+  clock: 1  # f174
+  nonce: f174  # f174
+  data:  # f174
+    kind: invariant  # f174
+    title: "limits.failed_files[] never populated by Python analyzer despite spec, infrastructure, and tests all existing"  # f174
+    status: violated  # f174
+    priority: 2  # f174
+    parent:  # f174
+    tags:  # f174
+    - analysis_quality  # f174
+    - dogfood_round15  # f174
+    - python_analyzer  # f174
+    - spec_violation  # f174
+    isbefore: []  # f174
+    duplicate_of: []  # f174
+    not_duplicate_of: []  # f174
+    pr_ref:  # f174
+    description: "**Found via self-analysis dogfooding on 2026-05-17 (round 15).**\n\n**Symptom.** When the Python analyzer drops a file (SyntaxError, UnicodeDecodeError, or otherwise unparseable), the file is NOT recorded in `limits.failed_files[]` despite the spec explicitly mandating this, the data structure existing, and unit tests specifically testing this case.\n\n**Spec requirement** (`docs/hypergumbo-spec.md:1480-1487`):\n\n```\n🟩 Output: Add to limits.failed_files[]:\n  {\n    \"path\": \"malformed.py\",\n    \"reason\": \"SyntaxError: invalid syntax (line 42)\",\n    \"analyzer\": \"python-ast-v1\"\n  }\n```\n\n**Infrastructure exists.**\n\n`packages/hypergumbo-core/src/hypergumbo_core/limits.py`:\n- Line 95: `failed_files: List[FailedFile] = field(default_factory=list)`\n- Line 108: `def add_failed_file(self, path, reason, analyzer): self.failed_files.append(FailedFile(...))`\n- Line 177: serialized to JSON as `failed_files` key on output\n\n**Tests exist** (`packages/hypergumbo-core/tests/test_limits.py:34-37`):\n\n```python\nassert len(d[\"failed_files\"]) == 1\nassert d[\"failed_files\"][0][\"path\"] == \"broken.py\"\nassert \"SyntaxError\" in d[\"failed_files\"][0][\"reason\"]\nassert d[\"failed_files\"][0][\"analyzer\"] == \"python-ast-v1\"\n```\n\nThe tests directly exercise the `python-ast-v1` SyntaxError case — but they call `add_failed_file` directly, never via the actual Python analyzer code path.\n\n**Reality.** No producer calls `add_failed_file` from the Python analyzer. `py.py:2088-2089`:\n\n```python\nexcept (SyntaxError, UnicodeDecodeError):\n    return None    # silent drop, no failed_files entry\n```\n\n**Reproduction.**\n\n```bash\nmkdir -p /tmp/r15se\ncat > /tmp/r15se/broken.py << 'EOF'\ndef good():\n    return 1\ndef broken(:\n    return \"syntax error\"\nEOF\nhypergumbo run --out /tmp/r15se.json --no-sketch-fan-out --no-handler-slices /tmp/r15se\n\npython3 -c \"\nimport json\nd = json.load(open('/tmp/r15se.json'))\nprint('failed_files:', d['limits']['failed_files'])\nprint('total nodes:', len(d['nodes']))\n\"\n# failed_files: []\n# total nodes: 0\n```\n\nA file with a SyntaxError silently disappears. The agent or user reading the JSON has no way to know the file even existed, let alone why it was dropped.\n\n**Member of \"dead schema field\" cluster.** Same shape as:\n- WI-fanun (Symbol.fingerprint null on 99.7% of nodes)\n- WI-bujim (features[] documented but always empty)\n- WI-lonoz (Edge.quality always None)\n- WI-luvig (canonical_name docstring oversells)\n\nThis case has tests passing (the unit test calls `add_failed_file` directly), so it's even more deceptive than the others — coverage shows the code is exercised, but it's never exercised by the production code path.\n\n**Root cause.** The Python analyzer's exception handler at `py.py:2088-2089` returns None instead of plumbing the file path + error message back into a `Limits` instance. To fix, the analyzer needs a path to record the failure — either by being passed a `Limits` instance, by returning a tagged value the caller interprets, or by raising a recoverable exception type the orchestrator catches and routes to `add_failed_file`.\n\n**Severity.** Medium — spec contract violation + dead infrastructure + tested-but-unused API. An agent or downstream tool using the JSON cannot detect partially-analyzed repos.\n\n**Cross-references.**\n- INV-kitot (companion INV being filed in this round) — Python BOM dropping. Fixing INV-kitot removes ONE trigger of failed_files emptiness; this INV is about the broader \"no trigger ever populates failed_files\".\n- WI-fanun, WI-bujim, WI-lonoz, WI-luvig — dead schema field cluster, similar shape.\n- Whether OTHER analyzers (TS, Go, Rust, etc.) also fail to populate `failed_files` should be checked — this finding is Python-specific but the pattern may be cross-cutting.\n\n**Notebook reference.** `~/hypergumbo_lab_notebook/notebookjournal_05162026_0438.md` Round 15 section (to be appended)."  # f174
+    fields:  # f174
+      statement: "When the Python analyzer drops a file (SyntaxError, UnicodeDecodeError), the file MUST be recorded in limits.failed_files[] per docs/hypergumbo-spec.md:1480-1487. Currently the analyzer silently returns None at py.py:2088-2089, so failed_files is always empty even when files were dropped. Verified: feeding a SyntaxError file produces 0 nodes AND failed_files=[]."  # f174
+      root_cause: "py.py:2088 catches (SyntaxError, UnicodeDecodeError) and returns None without communicating the failure to the Limits accumulator. The limits.py:108 add_failed_file API exists, test_limits.py:34-37 specifically tests the SyntaxError+python-ast-v1 case via direct API call, but no production code path wires the analyzer's exception to add_failed_file. Fix: route Python analyzer parse failures into Limits.add_failed_file. Verify by checking other analyzers (TS, Go, Rust) for the same gap."  # f174
+- op: discuss  # 962a
+  at: '2026-05-17T04:37:15Z'  # 962a
+  by: agent  # 962a
+  actor: jgstern_agent  # 962a
+  clock: 2  # 962a
+  nonce: 962a  # 962a
+  message: "Companion item: INV-kitot (Python BOM drop). The BOM case is one trigger of this broader issue; fixing INV-kitot does not satisfy this INV (real syntax errors in user code still go unrecorded). Worth checking whether other language analyzers (TS, Go, Rust, Java, C++, Ruby) have the same gap — likely yes; this finding is Python-specific but the pattern may be cross-cutting."  # 962a
+- op: discuss  # bb13
+  at: '2026-05-17T04:42:42Z'  # bb13
+  by: agent  # bb13
+  actor: jgstern_agent  # bb13
+  clock: 3  # bb13
+  nonce: bb13  # bb13
+  message: "SCOPE EXPANSION (2026-05-17 verification): the gap is NOT Python-specific. Verified that add_failed_file() has ZERO production callers anywhere in the codebase. Three drop-site patterns confirmed:\n\n1. **Tree-sitter analyzers (universal — affects C, C++, Java, JS/TS, Go, Rust, Ruby, Kotlin, C#, Swift, ~15+ others):** analyze/base.py:2096-2100 catches OSError on read_bytes(), bumps files_skipped, continues. Single base-class location — one fix covers all TreeSitterAnalyzer subclasses.\n\n2. **Python analyzer:** py.py:2088 catches (SyntaxError, UnicodeDecodeError), returns None; caller at py.py:3404 bumps files_skipped. Distinct from #1 because ast.parse raises on syntax errors (tree-sitter doesn't — it emits ERROR nodes).\n\n3. **Linkers:** ipc.py:467, go_cobra.py:185, phoenix_ipc.py:248, xml_config.py:586, r_lang.py:483, csharp.py:1555+ etc. all bump files_skipped on OSError without recording.\n\n23 production files increment files_skipped. cli.py:7574-7575 then sets a generic 'some files skipped during analysis' on limits.partial_results_reason — losing all per-file granularity.\n\nEmpirical confirmation: a BOM-prefixed .py file (Python-path drop) and a permission-denied .go file (tree-sitter-path drop) both produce: failed_files=[], partial_results_reason='some files skipped during analysis'.\n\nRecommended fix scope:\n- Python analyzer (py.py:3398-3404): plumb path+reason to limits, not just a count\n- TreeSitterAnalyzer base (base.py:2096-2100): same — pass Limits in, record there\n- Linkers: same pattern\n- Single-source helper in limits.py would be cleanest."  # bb13
+- op: update  # 141f
+  at: '2026-05-17T04:44:18Z'  # 141f
+  by: agent  # 141f
+  actor: jgstern_agent  # 141f
+  clock: 4  # 141f
+  nonce: 141f  # 141f
+  set:  # 141f
+    priority: 1  # 141f
+- op: discuss  # 9498
+  at: '2026-05-17T04:44:18Z'  # 9498
+  by: agent  # 9498
+  actor: jgstern_agent  # 9498
+  clock: 5  # 9498
+  nonce: '9498'  # 9498
+  message: "Bumped P2 → P1 after scope expansion: universal gap across tree-sitter analyzers + Python + linkers, not Python-specific. Spec contract violated codebase-wide with dead infrastructure (zero production callers of add_failed_file)."  # 9498

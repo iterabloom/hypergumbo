@@ -1,0 +1,21 @@
+- op: create  # b7fa
+  at: '2026-05-17T04:52:59Z'  # b7fa
+  by: agent  # b7fa
+  actor: jgstern_agent  # b7fa
+  clock: 1  # b7fa
+  nonce: b7fa  # b7fa
+  data:  # b7fa
+    kind: work_item  # b7fa
+    title: "hypergumbo routes within-file display order is unstable (cli.py:1779 missing inner sort)"  # b7fa
+    status: todo_hard  # b7fa
+    priority: 3  # b7fa
+    parent:  # b7fa
+    tags:  # b7fa
+    - analysis_quality  # b7fa
+    - dogfood_round16  # b7fa
+    isbefore: []  # b7fa
+    duplicate_of: []  # b7fa
+    not_duplicate_of: []  # b7fa
+    pr_ref:  # b7fa
+    description: "**Found via self-analysis dogfooding on 2026-05-17 (round 16).**\n\n**Symptom.** `hypergumbo routes` produces different within-file orderings depending on which behavior-map input it's fed, even when both inputs represent the same logical routes. This breaks diffability — comparing `routes` output before/after a refactor (or full vs compact) shows spurious reordering.\n\n**Reproduction.**\n\n```bash\nhypergumbo run --out /tmp/full.json --no-sketch-fan-out --no-handler-slices .\nhypergumbo compact --input /tmp/full.json --out /tmp/compact.json\n\nhypergumbo routes --input /tmp/full.json    | grep -E \"^  \\[\"\nhypergumbo routes --input /tmp/compact.json | grep -E \"^  \\[\"\n```\n\nObserved on hypergumbo's own codebase (8 routes in `packages/hypergumbo-tracker/src/hypergumbo_tracker/serve.py`):\n\n**Full input order:**\n```\n[POST] /api/items -> _api_add_item (line 141)\n[GET]  /api/items/{item_id} -> _api_get_item (line 119)\n[GET]  /api/items -> _api_list_items (line 110)\n[GET]  /api/ready -> _api_ready (line 132)\n[GET]  /health -> _health (line 101)\n[WS]   /ws -> _ws_handler (line 215)\n[POST] /api/items/{item_id}/discuss -> _api_discuss_item (line 190)\n[POST] /api/items/{item_id}/update -> _api_update_item (line 171)\n```\n\n**Compact input order (same routes, same data):**\n```\n[GET]  /api/ready -> _api_ready (line 132)\n[POST] /api/items -> _api_add_item (line 141)\n[POST] /api/items/{item_id}/update -> _api_update_item (line 171)\n[GET]  /health -> _health (line 101)\n[WS]   /ws -> _ws_handler (line 215)\n[POST] /api/items/{item_id}/discuss -> _api_discuss_item (line 190)\n[GET]  /api/items/{item_id} -> _api_get_item (line 119)\n[GET]  /api/items -> _api_list_items (line 110)\n```\n\nEach run is deterministic given a particular input; the variation is across-input only.\n\n**Root cause.** `packages/hypergumbo-core/src/hypergumbo_core/cli.py:1776-1779`:\n\n```python\nfor file_path in sorted(routes_by_path.keys()):     # OUTER: sorted by file\n    file_routes = routes_by_path[file_path]\n    print(f\"{file_path}:\")\n    for route in file_routes:                       # INNER: NO sort\n        ...\n```\n\nThe outer loop sorts by file_path, but the inner loop iterates `file_routes` in node-insertion order. Since `compact` filters and reorders nodes (selecting 100 by centrality), the within-file route order shifts.\n\n**Fix.** Sort `file_routes` by a stable key — `(span.start_line, method, route_path)` is the natural choice:\n\n```python\ndef _route_sort_key(route):\n    span = route.get(\"span\", {})\n    line = span.get(\"start_line\", 0)\n    meta = route.get(\"meta\", {}) or {}\n    # extract method and route_path (already computed inline; refactor to helper)\n    return (line, ...)\n\nfor route in sorted(file_routes, key=_route_sort_key):\n    ...\n```\n\nRegression test: assert the routes output for a fixed input is byte-identical across two passes through `compact` (or another reorderer).\n\n**Severity.** Low — same data, different display. But it makes diffing two `routes` runs noisy and reduces confidence that hypergumbo's text output is deterministic.\n\n**Cross-references.**\n- INV-popop (route stable_id collisions across 6 analyzers) — different surface (identity, not display).\n- This is an example of \"first-party non-determinism\" — output depends on input traversal order rather than semantic content.\n\n**Notebook reference.** `~/hypergumbo_lab_notebook/notebookjournal_05162026_0438.md` Round 16 section (to be appended)."  # b7fa
+    fields: {}  # b7fa
