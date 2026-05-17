@@ -25,3 +25,12 @@
     fields:  # caa4
       statement: "Every function definition emitted by the AST as a FunctionDef or AsyncFunctionDef node, at any nesting depth, must be emitted as a Symbol by the Python analyzer. Every call to a bare name that resolves to a nested function defined in an enclosing scope must be emitted as a 'calls' edge with that nested function's Symbol as the dst."  # caa4
       root_cause: "py.py AST visitor emits Symbols only for module-level and class-level FunctionDef nodes; doesn't recurse into function bodies for nested FunctionDef. Independently, the call-resolver matches bare names against module-scope only, no awareness of enclosing-function scope. Concrete validation case: _collect_important_files in sketch.py:2991-3229 defines 4 inner functions and calls them ~12 times; 0 of those inner functions are Symbols and 0 of those calls are edges on self-analysis baseline."  # caa4
+- op: update  # 014a
+  at: '2026-05-17T07:41:37Z'  # 014a
+  by: agent  # 014a
+  actor: jgstern_agent  # 014a
+  clock: 2  # 014a
+  nonce: 014a  # 014a
+  set: {}  # 014a
+  add:  # 014a
+    isbefore: [WI-hahor-lavup-fopub-suvas-zunus-sajij-harup-rijib]  # 014a

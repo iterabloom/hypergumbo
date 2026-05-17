@@ -22,3 +22,10 @@
     fields:  # 817d
       statement: "Cache shard MUST be stable across hypergumbo subcommands invoked on identical analysis-relevant repo state. Mutations to agent-state directories (tracker .ops) that do not affect behavior map output must not invalidate the cache."  # 817d
       root_cause: "_get_repo_state_hash() in sketch_embeddings.py:1278-1376 incorporates git diff HEAD content and the untracked file listing into the hash. Tracker .ops files under .agent/tracker/.ops/ (git-tracked, flips diff hash) and .agent/tracker-workspace/.ops/ (untracked, flips ls-files-others hash) churn on every tracker operation and hook fire. Two hypergumbo invocations seconds apart hash to different shards. Distinct from WI-ribag."  # 817d
+- op: discuss  # 4ae4
+  at: '2026-05-17T07:42:03Z'  # 4ae4
+  by: agent  # 4ae4
+  actor: jgstern_agent  # 4ae4
+  clock: 2  # 4ae4
+  nonce: 4ae4  # 4ae4
+  message: "Cross-item review 2026-05-17: forms a cache-correctness cluster with INV-padum (7.9 GB unbounded growth) and WI-ribag (warm-cache sketch slow). INV-padum's description already calls out the coupling — this item's cache-miss rate × INV-padum's no-eviction = the observed bloat. WI-ribag is a separate axis (cache-hit but recomputation cost: centrality + per-file embeddings not in same cache layer). Fixing this item alone reduces INV-padum growth rate but does not bound it; fixing WI-ribag is orthogonal. Recommend tackling this first because it propagates the most pain into the others."  # 4ae4

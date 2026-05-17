@@ -22,3 +22,10 @@
     fields:  # f27d
       statement: "Every Symbol emitted by an analyzer or linker MUST carry a non-empty origin field matching the producer's versioned PASS_ID. The same convention that holds for analyzer-emitted symbols (python-v1, go-v1, etc., per Symbol docstring at ir.py:204-359) extends to linker-emitted synthesis symbols."  # f27d
       root_cause: "Each affected linker correctly defines PASS_ID = make_pass_id('<name>') and uses it to stamp Edge.origin on emitted edges, but the parallel post-construction stamp on Symbol.origin (and Symbol.origin_run_id) is omitted in 19 of 21 linker files. Only linkers/message_queue.py:466-470 and linkers/database_query.py:413-414 do it correctly. Affected: annotation_convention, crypto_flow, graphql, grpc, http, ipc, js_module, message_dispatch, openapi, phoenix_ipc, solidity_abi, subprocess_cli, swift_objc, tauri_ipc, _view_template_core, vue_component, wasm_bindgen, websocket, yjs_crdt."  # f27d
+- op: discuss  # a46a
+  at: '2026-05-17T07:42:17Z'  # a46a
+  by: agent  # a46a
+  actor: jgstern_agent  # a46a
+  clock: 2  # a46a
+  nonce: a46a  # a46a
+  message: "Cross-item review 2026-05-17: umbrella for the 19-of-21 linker-files missing Symbol.origin stamp. Per-file sibling items already filed on the corpus: INV-mopif (HTTP linker — kind=function bug surfaces origin='' as a symptom), INV-ronuf (WebSocket linker — phantom file-kind Symbols share the missing origin + missing stable_id), WI-higap (edge-side analog: 425 edges with empty origin_run_id, plus 1 edge with both origin AND origin_run_id empty from the same JS module linker file). When this lands, expect those three sibling items' origin-empty symptoms to clear; their other symptoms (wrong kind, phantom node, missing run_id) remain separate fixes."  # a46a

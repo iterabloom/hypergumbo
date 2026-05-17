@@ -22,3 +22,19 @@
     fields:  # 031b
       statement: "Entrypoint detection must recognize executable scripts in any language hypergumbo supports, not just Python. Currently entrypoints.py only emits main_function (Python def main()), library_export (Python __all__), and http_route (Python framework routes). On hypergumbo's self-analysis: 64 entrypoints, 100% Python, ZERO bash/TS/JS/HTML. The repo has ~50 bash scripts + 7+ TS files + HTML + service worker that are all real entry points but get no recognition."  # 031b
       root_cause: "entrypoints.py has no code paths for shebang detection (#!/usr/bin/env bash), executable-permission detection, or conventional-directory heuristics (scripts/, .githooks/, bin/). It also has no HTML entry-point or TS/JS standalone-script-module detection. The detection is keyed entirely on Python-specific patterns. Fix: add (a) shell_script entrypoint kind for shebang+executable files, (b) html_entry for index.html and similar SPA roots, (c) script_module for TS/JS files with top-level code and no inbound imports. Regression test: 2-file repo (one bash script, one Python file) produces ≥2 entrypoints. Downstream impact: dead-code-maybe FP rate (92.6%→39.5% across seed variation), slice traversal from scripts, io-boundaries reachability annotation."  # 031b
+- op: update  # f012
+  at: '2026-05-17T07:41:36Z'  # f012
+  by: agent  # f012
+  actor: jgstern_agent  # f012
+  clock: 2  # f012
+  nonce: f012  # f012
+  set: {}  # f012
+  add:  # f012
+    isbefore: [WI-vuton-buvik-libug-kajan-tavim-bolun-nisij-gabos]  # f012
+- op: discuss  # d36d
+  at: '2026-05-17T07:41:50Z'  # d36d
+  by: agent  # d36d
+  actor: jgstern_agent  # d36d
+  clock: 3  # d36d
+  nonce: d36d  # d36d
+  message: "Cross-item review 2026-05-17: added isbefore → WI-vuton. The 92.6% dead-code candidate rate documented in WI-vuton with --seeds entrypoints is materially caused by this item — non-Python scripts (50 bash, several TS, html, service-worker) are absent from the entrypoint set, so all their callees look unreachable. Re-baseline WI-vuton's FP rate after this lands before triaging WI-vuton's polymorphic-dispatch and lifecycle-method heuristics."  # d36d

@@ -23,3 +23,10 @@
     fields:  # 8790
       statement: "Every entry point with an asserted 'no direct host_fs writes' claim must route every fs-write primitive (write_text, mkdir, unlink, chmod, copy2, rmtree, replace) through a safety_zones.py wrapper."  # 8790
       root_cause: "safety_zones.py lacks mkdir wrappers. build_grammars.py:219-220 and gitleaks.py:237 call Path.mkdir directly, producing unsanitized host_fs flows from cmd_build_grammars and cmd_install_gitleaks entry points."  # 8790
+- op: discuss  # 6da9
+  at: '2026-05-17T07:42:35Z'  # 6da9
+  by: agent  # 6da9
+  actor: jgstern_agent  # 6da9
+  clock: 2  # 6da9
+  nonce: 6da9  # 6da9
+  message: "Cross-item review 2026-05-17: forms the verify-claims-2026-05-16 triad with WI-dozon and WI-bibuk — three disjoint subsets of the same 7/18 violations from the self-analysis run. This item: genuine wrapper-gap subset (real bug — Path.mkdir not yet covered by safety_zones). WI-dozon: short-name-collision FP subset (str.replace, platform.system — taint_refine scope expansion). WI-bibuk: claim-too-strict subset (subprocess→host_fs zone collapse — claim YAML and/or AUTO_SINK_ZONE_MAP need revision). All three should clear together for the 'verify-claims --claims docs/hypergumbo.claims.yaml passes' invariant; landing only one risks claims appearing to pass while the structural gap remains."  # 6da9

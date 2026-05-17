@@ -25,3 +25,10 @@
     fields:  # 141f
       statement: "hypergumbo cache must have a bounded retention policy (per-repo entry count and/or total bytes cap, with automatic eviction of oldest entries on overflow). The cache-status subcommand must report per-repo breakdown so users can identify bloat sources."  # 141f
       root_cause: "cli.py::cmd_cache_status reports only aggregate stats. No code path evicts old cache entries. Combined with INV-magul (cache shard key churned by tracker .ops mutations), every run creates a new cache entry without cleaning up previous ones. On hypergumbo's own dev machine after 3 days of agent-driven workflow: 76 cache entries x ~104 MB each = 7.9 GB for ONE repo. Growth rate ~2.6 GB/day."  # 141f
+- op: discuss  # f741
+  at: '2026-05-17T07:42:04Z'  # f741
+  by: agent  # f741
+  actor: jgstern_agent  # f741
+  clock: 2  # f741
+  nonce: f741  # f741
+  message: "Cross-item review 2026-05-17: cache-correctness cluster — see INV-magul for the upstream cache-miss driver and WI-ribag for the parallel warm-cache recomputation cost. The 'no eviction' axis (this item) and the 'spurious cache misses' axis (INV-magul) are independently fixable: INV-magul reduces growth rate; this item bounds the steady-state size."  # f741
