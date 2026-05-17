@@ -24,3 +24,10 @@
     fields:  # af97
       statement: "For each source file analyzed by the Python analyzer, exactly one canonical Symbol must represent that file in the behavior map (file-kind or module-kind, by design choice). That canonical Symbol must be the source of 'contains' edges to every top-level function, class, and module-level variable defined in that file."  # af97
       root_cause: "Two producers emit Symbols for the same Python file: (1) orchestrator_file_symbol_synthesis emits kind=file (analyze/base.py:375-385); (2) python-ast-v1 emits kind=module. The two coexist without coordination. On self-analysis: 332 paths have both kinds, 466 have file-only, 4 have module-only. Containment-linker only emits class->method edges (17464 of 18022); module->function and module->class containment edges are missing, leaving module-kind nodes structurally orphan even when they exist."  # af97
+- op: discuss  # 862c
+  at: '2026-05-17T06:05:01Z'  # 862c
+  by: agent  # 862c
+  actor: jgstern_agent  # 862c
+  clock: 2  # 862c
+  nonce: 862c  # 862c
+  message: "RELATED FACET (2026-05-17 R19 dig): The Python file+module double-representation found here has a TypeScript analog with different shape. js-module-linker (js_module.py:746-781) creates a file-kind Symbol for a TS path ONLY when that path is the TARGET of a resolved import. Result on htrac-frontend:\n\n- ws-client.ts (imported by 4 files): gets file+module kinds — same redundancy as Python\n- main.ts (no incoming imports): gets only module kind\n- vite.config.ts (no incoming imports): gets only module kind\n\nSo the TS behavior is INCONSISTENT WITH ITSELF (some files double-represented, others single-represented) and with Python (Python is uniformly double). Whatever fix is chosen for INV-hojus (collapse to one kind, or formalize the dual representation), the TS path should be updated together so the rule applies uniformly across languages.\n\nSeparately, INV-judod (filed R18) covers the TS import-edge gap that's adjacent to this file-kind-creation logic."  # 862c
