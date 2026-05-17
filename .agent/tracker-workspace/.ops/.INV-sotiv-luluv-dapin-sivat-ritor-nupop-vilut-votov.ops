@@ -1,0 +1,25 @@
+- op: create  # adbc
+  at: '2026-05-17T06:41:50Z'  # adbc
+  by: agent  # adbc
+  actor: jgstern_agent  # adbc
+  clock: 1  # adbc
+  nonce: adbc  # adbc
+  data:  # adbc
+    kind: invariant  # adbc
+    title: "Symbol.stable_id never populated for kind in {variable, module, export, dependency, project, interface, type} and 99.4% of kind=file: 1981 of 32253 nodes (6.1%) silently lack stable_id on hypergumbo self-analysis"  # adbc
+    status: violated  # adbc
+    priority: 2  # adbc
+    parent:  # adbc
+    tags:  # adbc
+    - self_analysis  # adbc
+    - dogfooding  # adbc
+    - identity_fields  # adbc
+    - dead_schema_field  # adbc
+    isbefore: []  # adbc
+    duplicate_of: []  # adbc
+    not_duplicate_of: []  # adbc
+    pr_ref:  # adbc
+    description: ""  # adbc
+    fields:  # adbc
+      statement: "If Symbol.stable_id is a declared identity field, every kind that participates in cross-run identification should populate it. Today it is None on 100% of kind=variable (1487), kind=module (385), kind=dependency (81), kind=export (18), kind=project (7), kind=interface (2), kind=type (1), and 99.4% of kind=file (804 of 809) — even though kind=variable receives 408 inbound edges and kind=module/file/dependency/export are referenced as edge targets throughout the IR."  # adbc
+      root_cause: "The Python AST analyzer emits variable Symbols via a minimal builder (py.py module-level constant emit path) that does not call _compute_stable_id; module/file/project/dependency/export/interface/type Symbols are synthesized in ir.py and the orchestrator path, neither of which currently invokes the stable-id formula. Result: identity fields stable_id, shape_id, fingerprint, canonical_name, meta are all None on 100% of variable Symbols — the most-stripped-down node class in the IR, despite being a legitimate edge target."  # adbc

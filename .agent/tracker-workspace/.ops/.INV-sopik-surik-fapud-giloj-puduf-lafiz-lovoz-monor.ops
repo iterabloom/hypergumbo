@@ -40,3 +40,11 @@
   clock: 3  # 86af
   nonce: 86af  # 86af
   message: "Duplicate of INV-zudak (created 28 seconds later, same finding — mkdir wrapper-gap in build_grammars + gitleaks — cleaner underscored tag convention). Auto-sync retry artifact during round-1 circuit-breaker recovery. Requesting human to set status=deleted; canonical work continues on INV-zudak."  # 86af
+- op: update  # 9245
+  at: '2026-05-17T07:03:43Z'  # 9245
+  by: human  # 9245
+  actor: jgstern  # 9245
+  clock: 4  # 9245
+  nonce: '9245'  # 9245
+  set:  # 9245
+    status: deleted  # 9245

@@ -1,0 +1,47 @@
+- op: create  # 75a8
+  at: '2026-05-17T07:09:06Z'  # 75a8
+  by: human  # 75a8
+  actor: jgstern  # 75a8
+  clock: 1  # 75a8
+  nonce: 75a8  # 75a8
+  data:  # 75a8
+    kind: work_item  # 75a8
+    title: "test1"  # 75a8
+    status: todo_hard  # 75a8
+    priority: 2  # 75a8
+    parent:  # 75a8
+    tags: []  # 75a8
+    isbefore: []  # 75a8
+    duplicate_of: []  # 75a8
+    not_duplicate_of: []  # 75a8
+    pr_ref:  # 75a8
+    description: ""  # 75a8
+    fields: {}  # 75a8
+- op: update  # d395
+  at: '2026-05-17T07:09:41Z'  # d395
+  by: human  # d395
+  actor: jgstern  # d395
+  clock: 2  # d395
+  nonce: d395  # d395
+  set: {}  # d395
+  add:  # d395
+    tags: [test-with-hyphen]  # d395
+- op: update  # c832
+  at: '2026-05-17T07:10:12Z'  # c832
+  by: human  # c832
+  actor: jgstern  # c832
+  clock: 3  # c832
+  nonce: c832  # c832
+  set: {}  # c832
+  add:  # c832
+    tags: [test_with_und]  # c832
+- op: update  # c754
+  at: '2026-05-17T07:13:17Z'  # c754
+  by: human  # c754
+  actor: jgstern  # c754
+  clock: 4  # c754
+  nonce: c754  # c754
+  set:  # c754
+    status: deleted  # c754
+  remove:  # c754
+    tags: [test-with-hyphen, test_with_und]  # c754

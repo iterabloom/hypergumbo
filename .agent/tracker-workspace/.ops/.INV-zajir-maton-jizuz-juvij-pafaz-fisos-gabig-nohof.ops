@@ -39,3 +39,11 @@
   clock: 3  # 08ef
   nonce: 08ef  # 08ef
   message: "Duplicate of INV-kalif (created 6 seconds later, same finding, cleaner underscored tag convention). Auto-sync retry artifact during round-1 circuit-breaker recovery. Requesting human to set status=deleted; canonical work continues on INV-kalif."  # 08ef
+- op: update  # 0feb
+  at: '2026-05-17T06:57:04Z'  # 0feb
+  by: human  # 0feb
+  actor: jgstern  # 0feb
+  clock: 4  # 0feb
+  nonce: 0feb  # 0feb
+  set:  # 0feb
+    status: deleted  # 0feb

@@ -1,0 +1,25 @@
+- op: create  # abd6
+  at: '2026-05-17T06:41:30Z'  # abd6
+  by: agent  # abd6
+  actor: jgstern_agent  # abd6
+  clock: 1  # abd6
+  nonce: abd6  # abd6
+  data:  # abd6
+    kind: invariant  # abd6
+    title: "Pass-ID naming mismatch between hypergumbo catalog (-ts-v1) and AnalysisRun.pass (-v1): 40 catalog names absent in runs, 99 run names absent in catalog"  # abd6
+    status: violated  # abd6
+    priority: 2  # abd6
+    parent:  # abd6
+    tags:  # abd6
+    - self_analysis  # abd6
+    - dogfooding  # abd6
+    - schema_consistency  # abd6
+    - dead_schema_field  # abd6
+    isbefore: []  # abd6
+    duplicate_of: []  # abd6
+    not_duplicate_of: []  # abd6
+    pr_ref:  # abd6
+    description: ""  # abd6
+    fields:  # abd6
+      statement: "A pass advertised by 'hypergumbo catalog' and the AnalysisRun.pass field recorded after a run should use the same identifier so consumers (users, tooling, audits) can join the two views. Currently, 40 of the catalog's pass names use a '-ts-v1' suffix that no AnalysisRun ever produces, while 99 actually-run passes (including every linker and infrastructure pass) never appear in the catalog at all."  # abd6
+      root_cause: "cli.py 'catalog' command renders display names from a separate registry (e.g. 'csharp-ts-v1', 'cpp-ts-v1') while the analyzer dispatch code stamps AnalysisRun.pass with the underlying pass id ('csharp-v1', 'cpp-v1'). The catalog also filters to source-file analyzer passes and explicitly omits linkers + infrastructure passes (containment-linker-v1, di-resolution-v1, dependency-linker-v1, http-linker-v1, subprocess-linker-v1, etc.), even though those passes appear in every AnalysisRuns list."  # abd6

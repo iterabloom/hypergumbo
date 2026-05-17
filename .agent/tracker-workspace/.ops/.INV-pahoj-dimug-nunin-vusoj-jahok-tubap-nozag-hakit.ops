@@ -1,0 +1,26 @@
+- op: create  # f9ea
+  at: '2026-05-17T07:24:06Z'  # f9ea
+  by: agent  # f9ea
+  actor: jgstern_agent  # f9ea
+  clock: 1  # f9ea
+  nonce: f9ea  # f9ea
+  data:  # f9ea
+    kind: invariant  # f9ea
+    title: "TUI tag-edit modal bypasses _TAG_NAME_RE validation that CLI 'tracker add --tag' enforces; hyphenated tags persist on items but never enter the catalog"  # f9ea
+    status: violated  # f9ea
+    priority: 2  # f9ea
+    parent:  # f9ea
+    tags:  # f9ea
+    - self_analysis  # f9ea
+    - dogfooding  # f9ea
+    - schema_consistency  # f9ea
+    - tracker_tui  # f9ea
+    - enforcement_gap  # f9ea
+    isbefore: []  # f9ea
+    duplicate_of: []  # f9ea
+    not_duplicate_of: []  # f9ea
+    pr_ref:  # f9ea
+    description: ""  # f9ea
+    fields:  # f9ea
+      statement: "Tag-name validation must apply uniformly to every code path that attaches a tag to an item. The documented rule (and the error-message contract) is ^[a-z_][a-z0-9_]*$ — kebab-case rejected, snake_case required. Today, the regex is enforced in the CLI 'tracker add --tag' / 'tracker update --add-tag' paths (which trigger a catalog save) but NOT in the TUI's tag-edit modal, which routes through trackerset.update() and never calls touch_tags() or save_catalog(). Result: a user can create 'analysis-quality' from the TUI, the tag lands in the item's .ops log, but the tag catalog never registers it. Item-side queries (tracker list --tag analysis-quality) find it; catalog-side surfaces (tracker tags list, rename, deprecate, describe) cannot operate on it."  # f9ea
+      root_cause: "Two flows attach tags to items but only one validates them. (1) CLI cli.py:461-467 (and analog at :662-668 for update) build the item write kwargs and afterwards call _warn_deprecated_tags(...) and downstream touch_tags(), which in turn calls save_catalog(); save_catalog() at tag_catalog.py:290 runs every catalog name through _TAG_NAME_RE.match(), so invalid names abort with ValueError. (2) TUI tui.py:1239-1249 reads the tag input string, splits on comma, and at tui.py:4124-4130 hands the list directly to self._tracker_set.update(); trackerset.update() (trackerset.py:375) writes the op log entry but never invokes touch_tags() or any tag-name validator. The TUI's exception handler at tui.py:4133 catches only ItemNotFoundError/LockedFieldError/PermissionError, so even if validation were added downstream and raised, the TUI would have to be taught to handle it. The fix is to add tag-name validation either inside trackerset.update() (uniform enforcement, catches every caller including a future API) or as a pre-check in the TUI tag-edit modal (cheaper, but only patches one caller)."  # f9ea

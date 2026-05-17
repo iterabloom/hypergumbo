@@ -1,0 +1,25 @@
+- op: create  # cee3
+  at: '2026-05-17T06:41:52Z'  # cee3
+  by: agent  # cee3
+  actor: jgstern_agent  # cee3
+  clock: 1  # cee3
+  nonce: cee3  # cee3
+  data:  # cee3
+    kind: invariant  # cee3
+    title: "AnalysisRun.repo_fingerprint is None on 100% of 133 runs on hypergumbo self-analysis: declared in schema, never populated by any producer"  # cee3
+    status: violated  # cee3
+    priority: 3  # cee3
+    parent:  # cee3
+    tags:  # cee3
+    - self_analysis  # cee3
+    - dogfooding  # cee3
+    - dead_schema_field  # cee3
+    - wire_bloat  # cee3
+    isbefore: []  # cee3
+    duplicate_of: []  # cee3
+    not_duplicate_of: []  # cee3
+    pr_ref:  # cee3
+    description: ""  # cee3
+    fields:  # cee3
+      statement: "AnalysisRun.repo_fingerprint should identify the analyzed repository state at the time of the run, enabling cross-run identity ('was this the same repo, was it modified?'). Today it is None on 100% of 133 AnalysisRuns on hypergumbo's own behavior map."  # cee3
+      root_cause: "The field is declared in the AnalysisRun dataclass and serialized into every analysis_runs[] entry, but no producer in the analyzer pipeline writes a non-None value. Same dead-field pattern as WI-fanun (Symbol.fingerprint), WI-bujim (features[]), WI-lonoz (Edge.quality) — schema field declared but no code path populates."  # cee3

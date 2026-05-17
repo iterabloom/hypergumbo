@@ -1,0 +1,24 @@
+- op: create  # 949f
+  at: '2026-05-17T06:42:42Z'  # 949f
+  by: agent  # 949f
+  actor: jgstern_agent  # 949f
+  clock: 1  # 949f
+  nonce: 949f  # 949f
+  data:  # 949f
+    kind: invariant  # 949f
+    title: "AnalysisRun.config_fingerprint inconsistent: 130/133 runs share one truncated hash, 3 runs (thrift-v1, proto-v1, starlark-v1) emit empty string"  # 949f
+    status: violated  # 949f
+    priority: 4  # 949f
+    parent:  # 949f
+    tags:  # 949f
+    - self_analysis  # 949f
+    - dogfooding  # 949f
+    - non_determinism  # 949f
+    isbefore: []  # 949f
+    duplicate_of: []  # 949f
+    not_duplicate_of: []  # 949f
+    pr_ref:  # 949f
+    description: ""  # 949f
+    fields:  # 949f
+      statement: "config_fingerprint should be either consistently populated across all AnalysisRuns or consistently absent. Today 130 runs report 'sha256:44136fa355b3678a' (a 16-hex truncation of the empty-config hash) while 3 specific runs (thrift-v1, proto-v1, starlark-v1) emit the empty string '' instead. The 3 affected passes all have files_analyzed=0, but so do 110 other passes that DO populate the field correctly — so the trigger is not 'no files'."  # 949f
+      root_cause: "Some pass-finalization paths take a different code branch that fails to compute or stamp config_fingerprint. Likely a missing call in thrift/proto/starlark-specific dispatch in the analyze pipeline. The truncation to 16 hex on the 130 populated runs (sha256 normally renders as 64 hex chars) suggests a deliberate compact representation, but the inconsistent empty-string branch is unintentional."  # 949f

@@ -1,0 +1,20 @@
+- op: create  # 1d58
+  at: '2026-05-17T07:13:45Z'  # 1d58
+  by: agent  # 1d58
+  actor: jgstern_agent  # 1d58
+  clock: 1  # 1d58
+  nonce: 1d58  # 1d58
+  data:  # 1d58
+    kind: work_item  # 1d58
+    title: "Test hyphenated tag enforcement R20 probe"  # 1d58
+    status: todo_soft  # 1d58
+    priority: 4  # 1d58
+    parent:  # 1d58
+    tags:  # 1d58
+    - has-hyphen  # 1d58
+    isbefore: []  # 1d58
+    duplicate_of: []  # 1d58
+    not_duplicate_of: []  # 1d58
+    pr_ref:  # 1d58
+    description: ""  # 1d58
+    fields: {}  # 1d58

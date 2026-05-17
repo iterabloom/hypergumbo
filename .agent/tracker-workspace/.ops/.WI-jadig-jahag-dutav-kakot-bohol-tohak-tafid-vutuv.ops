@@ -1,0 +1,23 @@
+- op: create  # 8df1
+  at: '2026-05-17T06:41:49Z'  # 8df1
+  by: agent  # 8df1
+  actor: jgstern_agent  # 8df1
+  clock: 1  # 8df1
+  nonce: 8df1  # 8df1
+  data:  # 8df1
+    kind: work_item  # 8df1
+    title: "AnalysisRun dispatch is not pre-filtered by file presence: 113/133 runs analyzed 0 files yet consumed 12.7s wall-clock (13.3% of analyze time) on hypergumbo self-analysis"  # 8df1
+    status: todo_hard  # 8df1
+    priority: 2  # 8df1
+    parent:  # 8df1
+    tags:  # 8df1
+    - self_analysis  # 8df1
+    - dogfooding  # 8df1
+    - perf  # 8df1
+    - wire_bloat  # 8df1
+    isbefore: []  # 8df1
+    duplicate_of: []  # 8df1
+    not_duplicate_of: []  # 8df1
+    pr_ref:  # 8df1
+    description: ""  # 8df1
+    fields: {}  # 8df1
