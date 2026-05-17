@@ -1,0 +1,24 @@
+- op: create  # a3d0
+  at: '2026-05-17T09:04:03Z'  # a3d0
+  by: agent  # a3d0
+  actor: jgstern_agent  # a3d0
+  clock: 1  # a3d0
+  nonce: a3d0  # a3d0
+  data:  # a3d0
+    kind: work_item  # a3d0
+    title: "Phase A: URL-folding refactor — per-idiom YAML substrate + hybrid engine (extract existing JS/TS template-literal + Elm String.join)"  # a3d0
+    status: todo_soft  # a3d0
+    priority: 3  # a3d0
+    parent: INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon  # a3d0
+    tags:  # a3d0
+    - cross_language_linkers  # a3d0
+    - analysis_quality  # a3d0
+    - http_linker  # a3d0
+    - url_folding  # a3d0
+    - refactor  # a3d0
+    isbefore: []  # a3d0
+    duplicate_of: []  # a3d0
+    not_duplicate_of: []  # a3d0
+    pr_ref:  # a3d0
+    description: "**Parent.** INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon. See parent for the refined closure criterion and the full Phase A→D plan.\n\n**Goal.** Behavior-preserving refactor that establishes the per-idiom YAML + hybrid engine substrate. After this lands, adding URL folding for a new language is a YAML entry + fixture, not a new Python scanner function.\n\n**Scope.**\n\n1. **Create `packages/hypergumbo-core/src/hypergumbo_core/url_folding/` directory** with:\n   - `__init__.py` — registry loader (reads all `*.yaml` siblings)\n   - `string_interpolation.yaml` — captures the existing JS/TS template-literal pattern from WI-sijoh (`_fold_template_literal` at `packages/hypergumbo-core/src/hypergumbo_core/linkers/http.py:434`)\n   - `array_join.yaml` — captures the existing Elm `String.join` pattern from WI-rosan (`_fold_elm_string_join` at `http.py:1167`)\n   - `SCOPE.md` — empty stub at this phase, used in later phases for explicit opt-outs.\n\n2. **Generalize the two existing folders into engines:**\n   - `_fold_template_literal(template, module_consts)` → `fold_string_interpolation(template, module_consts, placeholder_pattern)`. The JS/TS scanner becomes the first caller, passing `r'\\$\\{([a-zA-Z_][a-zA-Z0-9_]*)\\}'`.\n   - `_fold_elm_string_join(parts)` → `fold_array_join(parts, separator)`. Elm scanner passes `\"/\"`.\n\n3. **YAML schema** (proposed; refine in PR):\n   ```yaml\n   idiom: string_interpolation\n   engine: fold_string_interpolation\n   languages:\n     javascript:\n       call_site_regex: '<existing JS regex from http.py:687-941>'\n       template_group: 1\n       placeholder_pattern: '\\$\\{([a-zA-Z_][a-zA-Z0-9_]*)\\}'\n     typescript:\n       # same as javascript\n   ```\n\n4. **Dispatch layer in `http.py`.** Add an `_apply_url_folding_yaml(language, content, module_consts)` helper that loads the YAML registry, finds entries for `language`, and dispatches matches to the named engine. Per-language scanners (`_scan_javascript_file`, `_scan_elm_file`) call this helper instead of their inline regex-match-and-fold blocks.\n\n5. **Property test** (`packages/hypergumbo-core/tests/test_url_folding.py`):\n   - Asserts every `active_route_language` (queryable via the route-detector registry) is either covered by a YAML entry under `url_folding/` OR listed in `SCOPE.md`. Fails on omissions.\n   - Parametrized over the union of languages currently in `_scan_*_file` functions — Python, JS, TS, Go, Ruby, Java, Elm. Some of these stay literal-only at Phase A (Python/Go/Ruby/Java/TS as a placeholder) — those get SCOPE.md entries.\n\n**Acceptance.**\n\n- All existing tests in `packages/hypergumbo-core/tests/test_http_*.py` and `test_linkers_http*.py` pass unchanged. No edge-count or confidence shifts on any fixture.\n- New property test passes.\n- WI-sijoh (JS/TS template-literal) and WI-rosan (Elm String.join) regression fixtures still pass (they exercise the same folding behaviour, now via the YAML+engine path).\n- `url_folding/__init__.py` and the engine module are 100% covered.\n\n**Out of scope (deferred to later phases).**\n\n- Adding NEW language coverage (Python f-strings, Kotlin, etc.) — those are Phase B.\n- New idioms (printf_format, string_concat) — Phases C/D.\n- Migration of Go/Java/Python literal-only scanners to YAML — they get SCOPE.md entries marking them literal-only; later phases promote them to full idiom coverage.\n\n**Cross-references.**\n\n- INV-miloj-tagum (parent / closure criterion)\n- WI-rosan (closed) — original Elm String.join folder, becomes a YAML entry here\n- WI-sijoh (closed) — original JS/TS template-literal folder, becomes a YAML entry here\n- ADR-0003-ext (linker subcategory restoration) — http-linker is a Protocol-subcategory linker\n- `packages/hypergumbo-core/src/hypergumbo_core/framework_patterns.py` — analog pattern: declarative YAML loader for frameworks, design reference for `url_folding/__init__.py`"  # a3d0
+    fields: {}  # a3d0

@@ -1,0 +1,32 @@
+- op: create  # de50
+  at: '2026-05-17T08:46:36Z'  # de50
+  by: agent  # de50
+  actor: jgstern_agent  # de50
+  clock: 1  # de50
+  nonce: de50  # de50
+  data:  # de50
+    kind: work_item  # de50
+    title: "Gate question for WI-burud: do proc-macro-expanded symbols surface via 'rust-analyzer scip' (default flags)?"  # de50
+    status: todo_soft  # de50
+    priority: 4  # de50
+    parent:  # de50
+    tags:  # de50
+    - rust_analyzer  # de50
+    - analysis_quality  # de50
+    - cross_language_linkers  # de50
+    - someday  # de50
+    isbefore: []  # de50
+    duplicate_of: []  # de50
+    not_duplicate_of: []  # de50
+    pr_ref:  # de50
+    description: "**Gate question for WI-burud.** Before scoping WI-burud (upgrade Rust-touching linkers to consume rust-analyzer symbols when present), confirm whether `rust-analyzer scip` — invoked the way hypergumbo invokes it (no extra flags; see `packages/hypergumbo-lang-rust-analyzer/src/hypergumbo_lang_rust_analyzer/invoke.py:139` → `cmd = [resolved, \"scip\", str(workspace)]`) — surfaces proc-macro-expanded symbols in the IR. If yes, WI-burud yields strictly better edges on rust-analyzer-enabled runs for `wasm_bindgen.py` / `napi.py` / `tauri_ipc.py`. If no, WI-burud delivers nothing for these three linkers (the SCIP output is macro-blind in the same way tree-sitter is), and the per-macro pattern code is the only path forward.\n\nEither way the hand-written linker patterns *stay* — tree-sitter users see no macro expansion ever, so the fallback is load-bearing. This item only determines WI-burud's expected value.\n\n**Why this exists despite WI-mirus-pupas being closed wont_do.** WI-mirus-pupas (closed 2026-05-17) was filed in April with a premise that turned out invalid — its \"byte-identical SCIP\" baseline from WI-ronot couldn't be retrospectively validated against rust-analyzer's now-known silent-fall-through behaviour (see WI-todon for the underlying diagnostic gap). The proc-macro question itself is real; only the original investigation framing collapsed. This item re-poses the question with a smaller, faster, more decisive test.\n\n**Cheapest decisive test.**\n\n1. Make a throwaway 10-15 line crate using `#[derive(clap::Parser)]`:\n   ```rust\n   use clap::Parser;\n   #[derive(Parser)]\n   struct Args { #[arg(long)] name: String, #[arg(long)] count: u32 }\n   fn main() { let args = Args::parse(); println!(\"{}, {}\", args.name, args.count); }\n   ```\n2. Run `hypergumbo run --backend rust-analyzer --out /tmp/clap-test.json .` on the crate.\n3. Inspect resulting nodes:\n   - If we see Symbols for `<Args as Parser>::parse`, `<Args as CommandFactory>::command`, or similar trait-impl method synthesised by the derive — **proc-macros surface in SCIP. Conclusion: WI-burud is worth doing for these linkers.**\n   - If we see only `struct Args { ... }`, `main`, and source-level symbols — **proc-macros do NOT surface in SCIP. Conclusion: WI-burud's expected linker-improvement value drops to ~0 for wasm_bindgen / napi / tauri_ipc.**\n4. Bonus check (~5 min extra): grep the SCIP `index.scip` file directly (before translation) for known clap-derive symbol names like `clap::Parser` to distinguish \"rust-analyzer surfaced them but our SCIP→IR translator dropped them\" from \"rust-analyzer never surfaced them at all.\" If the former, the gap is in our translator, not in rust-analyzer — different fix.\n\n**Cost:** ~30 minutes including write-up. No bakeoff infra needed.\n\n**Required artifact:** lab notebook entry recording the test result + a `tracker discuss` note on this item AND on WI-burud carrying the conclusion.\n\n**Acceptance.** Either (a) \"yes, macro-expanded symbols surface — WI-burud retains expected value\" closes this as `done`, or (b) \"no, macros not surfaced — WI-burud's value for these three linkers is ~0, decide whether to drop them from WI-burud's scope\" closes this as `done` with the scope-revision recommendation recorded.\n\n**Related.**\n\n- WI-burud-fadub-lahis-farod-pohik-hogip-fukum-disup (parent / downstream) — the work this gates.\n- WI-mirus-pupas (closed wont_do 2026-05-17) — superseded predecessor with a stale premise.\n- WI-ronot (closed 2026-04-17) — original ripgrep test; result now suspect because it predates the silent-fall-through finding.\n- WI-todon (filed 2026-05-17) — upstream diagnostic-gap bug. Independent of this item — even without WI-todon's fix, the test described here is reliable because it's small enough that rust-analyzer won't OOM, and we can read `origin=\"scip\"` on the edges to confirm engagement."  # de50
+    fields: {}  # de50
+- op: update  # 1ff0
+  at: '2026-05-17T08:46:47Z'  # 1ff0
+  by: agent  # 1ff0
+  actor: jgstern_agent  # 1ff0
+  clock: 2  # 1ff0
+  nonce: 1ff0  # 1ff0
+  set: {}  # 1ff0
+  add:  # 1ff0
+    isbefore: [WI-burud-fadub-lahis-farod-pohik-hogip-fukum-disup]  # 1ff0

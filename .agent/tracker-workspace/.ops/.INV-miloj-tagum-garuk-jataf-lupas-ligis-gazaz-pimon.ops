@@ -28,3 +28,18 @@
   clock: 2  # a75c
   nonce: a75c  # a75c
   message: "Tier 2 verification: both currently-filed instance items (WI-rosan Elm let-bound + String.join, WI-sijoh JS/TS template literals) are shipped and bakeoff-validated. However, the invariant's closure criterion ('every language whose route-detector is active also has a URL-folding extractor that passes a corpus-wide composed-URL recovery test') is NOT met — this item's description explicitly anticipates Python f-strings, Go fmt.Sprintf, Kotlin/Ruby/Scala interpolation, and Java String.format/StringBuilder as 'future instances (not filed; no signal yet)'. Status correctly remains needs_human_review until either (a) sibling items are filed for those languages and resolved, or (b) a deliberate scope decision is recorded documenting which languages are intentionally left at literal-only extraction."  # a75c
+- op: discuss  # e4b3
+  at: '2026-05-17T09:03:33Z'  # e4b3
+  by: agent  # e4b3
+  actor: jgstern_agent  # e4b3
+  clock: 3  # e4b3
+  nonce: e4b3  # e4b3
+  message: "Cross-item review 2026-05-17: human direction received — pursue option (a) of the closure criterion (every active route-detector language gets URL folding) via a per-idiom YAML / hybrid-engine design. Refined closure criterion below replaces the original (a/b) phrasing; original remains in the description as authored.\n\nREFINED CLOSURE CRITERION: Either (a) every language whose route detector is active has a YAML entry under packages/hypergumbo-core/src/hypergumbo_core/url_folding/ for at least one composition idiom, OR (b) that language is listed in url_folding/SCOPE.md as intentionally literal-only with a one-line justification. Enforced by a property test parametrized over active_route_languages — fails if neither condition holds.\n\nDESIGN OVERVIEW. Per-idiom YAML files (not per-language) because the math is ~5 idioms × ~10 languages, and idioms are the durable structure. Hybrid engine — YAML declares language-specific call-site regexes and points at a Python engine; existing _fold_template_literal and _fold_elm_string_join generalize and stay as engines. Phased migration as four child WIs filed under this umbrella with isbefore chain A→B→C→D:\n\n- Phase A (refactor, no new languages): extract engines, YAML the existing JS/TS template-literal and Elm String.join.\n- Phase B (string_interpolation expansion): Python f-strings, Kotlin, Ruby, Scala, Swift.\n- Phase C (printf_format idiom): Go fmt.Sprintf, Java String.format, Python %/.format.\n- Phase D (string_concat idiom): JS, Java, Python, Go, Ruby operator concatenation.\n\nINV closes as satisfied once Phase A ships the property test AND a non-trivial subset of phases B-D ship OR an explicit SCOPE.md entry exists for each uncovered active route-language."  # e4b3
+- op: update  # f218
+  at: '2026-05-17T09:03:34Z'  # f218
+  by: agent  # f218
+  actor: jgstern_agent  # f218
+  clock: 4  # f218
+  nonce: f218  # f218
+  set:  # f218
+    status: violated  # f218
