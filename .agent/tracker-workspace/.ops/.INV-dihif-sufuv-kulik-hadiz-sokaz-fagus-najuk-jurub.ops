@@ -1,0 +1,26 @@
+- op: create  # 3d61
+  at: '2026-05-17T02:01:52Z'  # 3d61
+  by: agent  # 3d61
+  actor: jgstern_agent  # 3d61
+  clock: 1  # 3d61
+  nonce: 3d61  # 3d61
+  data:  # 3d61
+    kind: invariant  # 3d61
+    title: "hypergumbo explain leaks absolute paths in 'module level' caller entries (relative form is right next to it)"  # 3d61
+    status: violated  # 3d61
+    priority: 3  # 3d61
+    parent:  # 3d61
+    tags:  # 3d61
+    - explain  # 3d61
+    - path_handling  # 3d61
+    - reproducibility  # 3d61
+    - self_analysis  # 3d61
+    - dogfooding  # 3d61
+    isbefore: []  # 3d61
+    duplicate_of: []  # 3d61
+    not_duplicate_of: []  # 3d61
+    pr_ref:  # 3d61
+    description: "**Found via self-analysis dogfooding on 2026-05-16 (round 10).**\n\n**Symptom.** `hypergumbo explain _collect_important_files` produces output that includes module-level caller entries with **absolute paths** instead of repo-relative paths:\n\n```\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/tests/test_sketch.py (packages/hypergumbo-core/tests/test_sketch.py:8)\n```\n\nThe relative-path form is right next to it inside the parens (`(packages/hypergumbo-core/tests/test_sketch.py:8)`), so the producer has both forms available — it just leaks the absolute one as the primary label.\n\nSame pattern appears in the \"Source for X\" section header further down:\n\n```\nSource for /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/tests/test_sketch.py (module level) (packages/hypergumbo-core/tests/test_sketch.py:8):\n```\n\nBoth entries refer to the same usage — `_collect_important_files` is referenced at the module-level `from hypergumbo_core.sketch import (...` in test_sketch.py.\n\n**Why this is a problem.**\n\n1. **Reproducibility.** An explain output containing `/home/jgstern_agent/...` is only meaningful to the author who ran it. Paste it into a PR or share with a teammate and the absolute path is meaningless (and leaks the homedir layout).\n\n2. **Inconsistency.** Every OTHER caller entry uses the relative form (`TestCollectImportantFiles.test_X (packages/...:LINE)`). Only the module-level caller leaks absolute paths. The fix point is narrow.\n\n3. **Path comparison breaks.** Tools that diff explain output across two checkouts at different paths will see false changes purely from the absolute-path leak.\n\n**Distinct from prior items.** This is real-path leakage, not sentinel-placeholder leakage. INV-kalif (filed round 1) is about `<external>` appearing in the sketch's structure tree. Both are \"path field leaks something users shouldn't see\" but the producers and fixes are different.\n\n**Severity.** Low-medium. Cosmetic for single-user use; problematic for sharing and reproducibility.\n\n**Root cause (hypothesis).** The explain producer for the \"module level\" caller is using `Symbol.id` (which seems to be the absolute path on the boundary case where the caller isn't a function/method/class) instead of `Symbol.path` (which is relative). Verifiable with one line of git blame on the explain output formatter.\n\n**Fix proposal.**\n\nIn the explain output formatter, when emitting the \"module level\" caller label, use the relative path. Search for the formatter location:\n\n```bash\ngrep -rn '\"module level\"\\|module_level\\|/home/' packages/hypergumbo-core/src/hypergumbo_core/cli.py\n```\n\nLikely in the `cmd_explain` handler or a helper. The fix is one substitution.\n\n**Test gap.** Property test for explain output: assert that no line of the rendered output contains an absolute path beginning with `/` followed by a user-home-like prefix. The fixture would run explain against a tmp-dir repo and check the rendered output.\n\n**Cross-references.**\n\n- `packages/hypergumbo-core/src/hypergumbo_core/cli.py` — `cmd_explain` formatter\n- `INV-kalif-...` (filed round 1) — sibling \"path-field leaks into rendered output\" but with `<external>` sentinel, not absolute paths\n- `INV-ronuf-...` (filed round 6) — websocket linker uses absolute paths in its synthesized `id` field; if explain trusts `Symbol.id` for path display this is the upstream cause"  # 3d61
+    fields:  # 3d61
+      statement: "No rendered explain output line may contain a user-machine-absolute path (e.g., /home/USER/repo/...). All path references in explain output must be repo-relative, consistent with how every other caller/callee entry is rendered."  # 3d61
+      root_cause: "The explain producer for the 'module level' caller uses Symbol.id (which appears absolute on the boundary case where the caller isn't a function/method/class) instead of Symbol.path (which is relative). Two occurrences observed on _collect_important_files self-analysis explain output: line 265 in the callers list and line 1560 in the 'Source for X' header. Every other caller entry uses the relative form, so the fix point is narrow."  # 3d61
