@@ -1,0 +1,24 @@
+- op: create  # b199
+  at: '2026-05-17T02:55:38Z'  # b199
+  by: agent  # b199
+  actor: jgstern_agent  # b199
+  clock: 1  # b199
+  nonce: b199  # b199
+  data:  # b199
+    kind: work_item  # b199
+    title: "sketch progress output uses line-feed instead of carriage-return: '2>&1' redirect captures 165+ lines of progress noise contaminating sketch.md"  # b199
+    status: todo_soft  # b199
+    priority: 3  # b199
+    parent:  # b199
+    tags:  # b199
+    - sketch  # b199
+    - ux  # b199
+    - progress  # b199
+    - self_analysis  # b199
+    - dogfooding  # b199
+    isbefore: []  # b199
+    duplicate_of: []  # b199
+    not_duplicate_of: []  # b199
+    pr_ref:  # b199
+    description: "**Found via self-analysis dogfooding on 2026-05-16 (round 12).**\n\n**Symptom.** Running `hypergumbo sketch -t 8000 . > /tmp/sketch.md 2>&1` produces a file whose first ~165 lines are accumulated progress-bar text, not sketch content:\n\n```\n[  2%] Indexing files... ETA 1s    [  5%] Detecting profile... ETA 1s    [ 10%] Running analyzers...\nETA 6s    [ 48%] Resolving symbol references... ETA 34s    [ 50%] Enriching symbols... ETA 32s    [ 55%]\nRunning linkers... ETA 28s    [ 60%] Classifying symbols... ETA 32s    [ 65%] Ranking symbols... ETA 30s\n[ 70%] Computing metrics... ETA 24s    [ 75%] Detecting entrypoints... ETA 19s    [ 80%] Pre-computing\nsketch data... ETA 15s    [ 95%] Writing output... ETA 4s    [100%] Complete in 87.0s\n[  5%] Loading cached profile... ETA 1664s    [ 10%] Loading cached README... ETA 1138s    [ 15%]\nBuilding structure... ETA 717s    [ 20%] Detecting frameworks... ETA 506s    [ 25%] Analyzing tests...\nETA 379s    [ 45%] Loading cached config... ETA 155s    [ 70%] Loading cached analysis... ETA 54s\n[ 80%] Ranking symbols... ETA 34s    [ 90%] Embedding additional files... ETA 15s\n[ 95%] Computing centrality: 0/276 ETA 7s    [ 95%] Computing centrality: 1/276 ETA 7s    ...\n[ 95%] Computing centrality: 276/276 ETA 1s    [100%] Formatting output...    [100%] Complete in 145.9s\n```\n\nThe progress messages are stuck together with `    ` (4 spaces) as separators, not `\\r` (carriage return). In a real terminal session you might see partial in-place updates depending on stderr buffering; with `2>&1` redirection or any piped output you get **165 lines of accumulated progress text contaminating the markdown file**.\n\n**The actual sketch content starts after this noise.** A pipeline like:\n\n```bash\nhypergumbo sketch . > sketch.md 2>&1\ngit add sketch.md\n```\n\nCommits 165 lines of progress noise into the sketch.\n\n**Two distinct UX failures.**\n\n1. **`2>&1` capture corrupts output.** Stderr-based progress should remain on stderr, and the user shouldn't have to remember to `2>/dev/null` to get a clean sketch. The natural shell pattern (`>`) doesn't capture stderr; the bug is that `2>&1` (often added by mistake or by scripts) destroys the output. A safer design: write progress to a dedicated progress fd (3) that the user opts into, OR detect non-TTY stderr and suppress.\n\n2. **The `\\r` vs newline mechanism.** When progress IS shown on a TTY, it should use `\\r` to overwrite the previous line. The fact that 276 \"Computing centrality: N/276\" lines accumulate (visible in the non-TTY capture) suggests the producer is writing them with at least one literal space/newline-equivalent between them. A real `\\r` redraw would leave only ONE line visible at any moment, and the captured stream would show overwritten content, not stuck-together lines.\n\n**Test (manual verification of #2).** Run `hypergumbo sketch . 2>&1 | tr '\\r' '\\n' | head -30` and `hypergumbo sketch . 2>&1 | head -30`. If both show the same multi-line accumulation, `\\r` isn't being emitted. If only the first shows multi-line output, `\\r` is working in the TTY case but the redirect-capture mechanism isn't behaving as expected.\n\n**Severity.** Low-medium UX. Easy to work around (`2>/dev/null` or `2>>progress.log`), but unobvious for a first-time user. Sketch is the default subcommand, so this is a first-contact UX issue.\n\n**Fix proposal.**\n\n1. **Detect non-TTY stderr.** If `sys.stderr.isatty()` is False, suppress progress entirely (or emit at most one line per pass: `\"[hypergumbo] Indexing... done (1.2s)\"`).\n\n2. **Use proper `\\r` for TTY progress.** Each progress update should be `\\r<text>` with no trailing newline; the next update overwrites. End-of-pass clears with `\\r\\033[K` (clear-to-end-of-line) before printing the final summary line with `\\n`.\n\n3. **Optional: add `--quiet` / `--no-progress` flag.** Document it. Useful in CI.\n\n**Cross-references.**\n\n- `packages/hypergumbo-core/src/hypergumbo_core/cli.py` — sketch command + progress callback\n- `WI-dubum-...` (filed round 10) — sibling explain UX issue (output ordering)\n- `WI-nijum-...` (filed round 2) — sibling UX issue (sketch \"Generated N\" missing noun)"  # b199
+    fields: {}  # b199

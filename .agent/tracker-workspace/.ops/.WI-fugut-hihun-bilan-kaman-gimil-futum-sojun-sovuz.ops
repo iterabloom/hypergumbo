@@ -1,0 +1,24 @@
+- op: create  # 3588
+  at: '2026-05-17T02:55:32Z'  # 3588
+  by: agent  # 3588
+  actor: jgstern_agent  # 3588
+  clock: 1  # 3588
+  nonce: '3588'  # 3588
+  data:  # 3588
+    kind: work_item  # 3588
+    title: "test-coverage 'Test-Dense' column mislabels test-call-edge count as 'tests' and suggests 'may indicate redundant tests' (wrong recommendation)"  # 3588
+    status: todo_soft  # 3588
+    priority: 3  # 3588
+    parent:  # 3588
+    tags:  # 3588
+    - test_coverage  # 3588
+    - ux  # 3588
+    - mislabeling  # 3588
+    - self_analysis  # 3588
+    - dogfooding  # 3588
+    isbefore: []  # 3588
+    duplicate_of: []  # 3588
+    not_duplicate_of: []  # 3588
+    pr_ref:  # 3588
+    description: "**Found via self-analysis dogfooding on 2026-05-16 (round 12).**\n\n**Symptom.** `hypergumbo test-coverage` includes a \"Test-Dense\" section whose column header overpromises and whose interpretation hint is misleading:\n\n```\nTest-Dense (highest test density - may indicate redundant tests)\n------------------------------------------------\n  731.00 t/LOC  (2193 tests,   3 LOC)  packages/hypergumbo-core/src/hypergumbo_core/discovery.py:467-469  _has_glob_chars()\n  405.33 t/LOC  (1216 tests,   3 LOC)  packages/hypergumbo-core/src/hypergumbo_core/discovery.py:659-661  get_file_index()\n  371.33 t/LOC  (1114 tests,   3 LOC)  packages/hypergumbo-core/src/hypergumbo_core/linkers/_text_filters.py:55-57  reset_active_parse_cache()\n  ...\n```\n\n`_has_glob_chars()` is a 3-LOC utility function. The \"2193 tests\" number is **not** 2193 tests targeting it — it's the count of call edges from test files transitively reaching it. The function is widely USED in test code (every test that exercises a glob path eventually calls it), not widely TESTED.\n\n**What the columns actually measure** (verified by tracing through the call-graph data):\n\n| Column | Label says | Actually counts |\n|---|---|---|\n| `t/LOC` | \"test density\" | call-edge count from test files / LOC |\n| `(N tests,...)` | \"N tests\" | N call edges from test files |\n\n**Why this matters.**\n\n1. **The column header `\"Test-Dense (highest test density — may indicate redundant tests)\"` makes a confidently wrong suggestion.** \"May indicate redundant tests\" implies the user should consider removing tests. But the right interpretation of a high t/LOC is \"this function is widely used in the test corpus\" — exactly the OPPOSITE of redundant; it's load-bearing. Following the hint would delete the wrong code.\n\n2. **The \"tests\" word is misleading on its own.** Even without the redundant-test hint, a user reading \"2193 tests\" alongside \"_has_glob_chars (3 LOC)\" reasonably concludes there are 2193 test functions targeting this 3-line utility. The right number — 2193 test-originated call edges — describes a real thing but not what the label promises.\n\n3. **Comparison to pytest-cov.** pytest-cov reports \"hits\" for line-level execution counts; it never claims hits == tests. Hypergumbo's wording crosses that line. The underlying number isn't wrong, just mislabeled.\n\n**Severity.** Low-medium. The metric is informative if relabeled, but the current framing actively misleads. A user following the hint to \"remove redundant tests\" would target the most-used utilities — exactly the opposite of what they should target.\n\n**Fix proposal.**\n\nThree small changes to `cmd_test_coverage` output:\n\n1. **Rename the column.** `tests` → `test_call_edges` (or `t_calls`); `t/LOC` → `t_calls/LOC` or `test_call_density`.\n\n2. **Reword the section header.** Replace `\"Test-Dense (highest test density — may indicate redundant tests)\"` with something like:\n   ```\n   Most-Called from Tests (functions reached most often by test code)\n   ```\n   And drop the \"redundant tests\" suggestion entirely. If the intent is to surface candidates for test simplification, the right metric isn't this one — it's \"tests that exercise the same code paths\" (which would need a different analysis).\n\n3. **Add a one-line footnote** explaining that the number counts call edges, not test functions:\n   ```\n   (Counts inbound calls from test files. Heavy use ≠ redundant tests.)\n   ```\n\n**Severity caveat.** The underlying number — \"this function is called from N call sites in test code\" — IS a real signal (used differently, it could flag hot helpers in test setup). The bug is the framing.\n\n**Test gap.** Add a snapshot test on the test-coverage output asserting the column header doesn't contain the substring \"redundant tests.\" Codifies the fix.\n\n**Cross-references.**\n\n- `packages/hypergumbo-core/src/hypergumbo_core/cli.py` — `cmd_test_coverage` (output formatter)\n- `WI-soraj-...` (filed round 8) — sibling: ambiguous metric semantics (`total_files`)\n- `WI-vuton-...` (filed round 11) — sibling: dead-code metrics; same family of \"tool output overstates what it knows\""  # 3588
+    fields: {}  # 3588

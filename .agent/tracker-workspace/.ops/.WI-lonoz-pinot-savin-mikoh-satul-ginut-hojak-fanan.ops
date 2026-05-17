@@ -1,0 +1,24 @@
+- op: create  # d290
+  at: '2026-05-17T03:05:12Z'  # d290
+  by: agent  # d290
+  actor: jgstern_agent  # d290
+  clock: 1  # d290
+  nonce: d290  # d290
+  data:  # d290
+    kind: work_item  # d290
+    title: "Edge.quality field declared on every edge but always None (96864/96864 = 100% null on self-analysis)"  # d290
+    status: todo_soft  # d290
+    priority: 4  # d290
+    parent:  # d290
+    tags:  # d290
+    - schema  # d290
+    - dead_field  # d290
+    - edge  # d290
+    - self_analysis  # d290
+    - dogfooding  # d290
+    isbefore: []  # d290
+    duplicate_of: []  # d290
+    not_duplicate_of: []  # d290
+    pr_ref:  # d290
+    description: "**Found via self-analysis dogfooding on 2026-05-16 (round 13).**\n\n**Symptom.** On hypergumbo's self-analysis, **every edge** has `quality: None`:\n\n```python\n>>> from collections import Counter\n>>> Counter(e.get('quality') for e in baseline['edges'])\nCounter({None: 96864})\n```\n\n100% of edges. Across all edge types (calls, contains, imports, instantiates, references, dispatches_to, decorated_by, extends, uses, event_publishes, module_exports, depends_on_manifest, depends_on, script_src). Across all origins (python-ast-v1, containment-linker-v1, type-hierarchy-v1, decorator-dispatch-linker-v1, …). The field is declared on the Edge dataclass and serialized into every output, but no producer ever sets a non-None value.\n\n**Why this is a problem.** The `quality` field is documented in the Edge schema as one of several identity/provenance hooks (alongside `origin`, `origin_run_id`, `origin_run_signature`, `confidence`, `is_resolved`). A consumer reading the schema reasonably expects `quality` to indicate something — confidence subtier, resolution quality, evidence strength, etc.\n\nIn practice, the field is informationally identical to \"omitted.\" Costs:\n- Wire size: ~5 bytes × 96,864 edges = ~470 KB of `\"quality\": null,` per behavior map\n- Cognitive: consumers must learn that `quality` is reserved-but-unused versus genuinely informative\n- Schema rot: the longer the field sits empty, the harder it gets to populate (downstream tools have learned to ignore it)\n\nSame pattern as several other findings filed this session:\n- `WI-fanun-...` (round 9): Symbol.fingerprint null on 99.7% of nodes\n- `WI-bujim-...` (round 12): top-level features[] always empty\n- `WI-luvig-...` (round 7): Symbol.canonical_name oversells its scope in docs\n\n**Severity.** Low. Doesn't break consumers, but it's wire-format clutter and schema-trust erosion.\n\n**Fix proposal — two viable approaches.**\n\n1. **Populate `quality`.** If the field is meant to carry e.g. \"high\", \"medium\", \"low\" derived from confidence buckets, write the producer that computes it. Lowest-friction definition: derive from confidence (≥ 0.85 → \"high\", 0.5–0.85 → \"medium\", < 0.5 → \"low\"). Or model resolution-pathway quality from meta. Larger refactor, makes the field useful.\n\n2. **Document the gap or drop the field.** Either:\n   - Add a one-line spec note: \"`quality` is reserved; currently always null.\"\n   - Remove from the Edge dataclass and from to_dict() output.\n\nRecommended: **2 for now, 1 as future work.** If no concrete use case exists, dropping the field is honest. If there's a planned use (e.g., scheduled for a phase 4c per ADR-XXXX), document and keep.\n\n**Test gap.** Add a property test that asserts either `edge.quality is None for all edges` (codifying current state, fails when a producer starts populating) OR `edge.quality in {None, \"high\", \"medium\", \"low\"}` (if populated). Pick one consistent contract.\n\n**Cross-references.**\n\n- `packages/hypergumbo-core/src/hypergumbo_core/ir.py` — Edge dataclass (quality field declaration)\n- `WI-fanun-...` (round 9) — fingerprint dead-field pattern\n- `WI-bujim-...` (round 12) — features[] dead-field pattern\n- `WI-luvig-...` (round 7) — canonical_name docstring oversells\n- `WI-soraj-...` (round 8) — total_files ambiguous semantic, sibling \"schema field semantic gap\""  # d290
+    fields: {}  # d290
