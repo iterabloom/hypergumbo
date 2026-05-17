@@ -1,0 +1,21 @@
+- op: create  # a32f
+  at: '2026-05-17T04:34:24Z'  # a32f
+  by: agent  # a32f
+  actor: jgstern_agent  # a32f
+  clock: 1  # a32f
+  nonce: a32f  # a32f
+  data:  # a32f
+    kind: work_item  # a32f
+    title: "hypergumbo --help usage-line metavar stale: omits config, dead-code-maybe, verify-claims, cache-status, cache-clear"  # a32f
+    status: todo_hard  # a32f
+    priority: 3  # a32f
+    parent:  # a32f
+    tags:  # a32f
+    - analysis-quality  # a32f
+    - dogfood-round15  # a32f
+    isbefore: []  # a32f
+    duplicate_of: []  # a32f
+    not_duplicate_of: []  # a32f
+    pr_ref:  # a32f
+    description: "**Found via self-analysis dogfooding on 2026-05-17 (round 15).**\n\n**Symptom.** `hypergumbo --help` usage line shows only 20 of 25 registered subcommands:\n\n```\nusage: hypergumbo [-h] [--version] [--debug]\n                  [--backend {tree-sitter,rust-analyzer}]\n                  {sketch,run,slice,search,routes,explain,catalog,test-coverage,symbols,compact,io-boundaries,add-extras,remove-extras,build-grammars,install-gitleaks,uninstall-gitleaks,install-embeddings,uninstall-embeddings,install-rust-analyzer,uninstall-rust-analyzer}\n                  ...\n```\n\nMissing from this line: `config`, `dead-code-maybe`, `verify-claims`, `cache-status`, `cache-clear`. All five are registered subparsers (cli.py:6515, 6232, 6531, 6043, 6064 respectively) and appear correctly in the `--help` body via the custom HelpFormatter.\n\n**Verified working subcommands not in usage line.**\n\n```\n$ hypergumbo config --help    # functional\n$ hypergumbo dead-code-maybe --help    # functional\n$ hypergumbo verify-claims --help    # functional\n$ hypergumbo cache-status --help    # functional\n$ hypergumbo cache-clear --help    # functional\n```\n\n**Root cause.** `packages/hypergumbo-core/src/hypergumbo_core/cli.py:6606-6612` hardcodes the metavar string:\n\n```python\nsub.metavar = (\n    \"{sketch,run,slice,search,routes,explain,catalog,test-coverage,\"\n    \"symbols,compact,io-boundaries,add-extras,remove-extras,\"\n    \"build-grammars,install-gitleaks,uninstall-gitleaks,\"\n    \"install-embeddings,uninstall-embeddings,\"\n    \"install-rust-analyzer,uninstall-rust-analyzer}\"\n)\n```\n\nWhen `config`, `dead-code-maybe`, `verify-claims`, `cache-status`, `cache-clear` were added later (via `sub.add_parser(...)` and `_set_subparser_group(...)`), this hardcoded metavar was not updated. The body of `--help` uses the custom HelpFormatter (`_format_action`) which iterates `subactions` and is therefore consistent — only the usage line is stale.\n\n**Fix.** Build the metavar dynamically from registered subparsers in declared group/suborder. Adding a unit test that asserts every registered subparser name appears in `sub.metavar` (or in the dynamically-built version) would prevent regression.\n\n**Severity.** Low — body shows them. But the usage line is the FIRST thing a user sees, and a quick `--help | head` would miss those 5 subcommands. Also a maintenance hazard: each new subcommand must remember to update this manually.\n\n**Cross-references.** None — independent finding from yesterday's items.\n\n**Notebook reference.** `~/hypergumbo_lab_notebook/notebookjournal_05162026_0438.md` Round 15 section (to be appended)."  # a32f
+    fields: {}  # a32f

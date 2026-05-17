@@ -24,3 +24,10 @@
     fields:  # 3d61
       statement: "No rendered explain output line may contain a user-machine-absolute path (e.g., /home/USER/repo/...). All path references in explain output must be repo-relative, consistent with how every other caller/callee entry is rendered."  # 3d61
       root_cause: "The explain producer for the 'module level' caller uses Symbol.id (which appears absolute on the boundary case where the caller isn't a function/method/class) instead of Symbol.path (which is relative). Two occurrences observed on _collect_important_files self-analysis explain output: line 265 in the callers list and line 1560 in the 'Source for X' header. Every other caller entry uses the relative form, so the fix point is narrow."  # 3d61
+- op: discuss  # 1a93
+  at: '2026-05-17T03:55:06Z'  # 1a93
+  by: agent  # 1a93
+  actor: jgstern_agent  # 1a93
+  clock: 2  # 1a93
+  nonce: 1a93  # 1a93
+  message: "Root cause identified in round 14: orchestrator_file_symbol_synthesis (analyze/base.py:375-385) stamps absolute paths into Symbol.name on file-kind nodes; the explain formatter renders Symbol.name (not Symbol.id as I'd guessed) — that's where the leak surfaces. Root-cause INV-vaguj-bodik-gazis-... is filed with --isbefore INV-dihif. Close this item once INV-vaguj is satisfied AND a fresh self-analysis confirms no absolute paths in explain output."  # 1a93
