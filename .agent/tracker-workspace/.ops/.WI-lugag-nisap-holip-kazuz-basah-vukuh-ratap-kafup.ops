@@ -1,0 +1,43 @@
+- op: create  # 587a
+  at: '2026-05-17T09:05:48Z'  # 587a
+  by: agent  # 587a
+  actor: jgstern_agent  # 587a
+  clock: 1  # 587a
+  nonce: 587a  # 587a
+  data:  # 587a
+    kind: work_item  # 587a
+    title: "Phase C: URL folding — printf_format idiom (Go fmt.Sprintf + Java String.format + Python %/.format)"  # 587a
+    status: todo_soft  # 587a
+    priority: 4  # 587a
+    parent: INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon  # 587a
+    tags:  # 587a
+    - cross_language_linkers  # 587a
+    - analysis_quality  # 587a
+    - http_linker  # 587a
+    - url_folding  # 587a
+    - printf_format  # 587a
+    isbefore:  # 587a
+    - WI-mogan-sapod-dubaz-tukop-kaziv-bolom-dudup-gibid  # 587a
+    duplicate_of: []  # 587a
+    not_duplicate_of: []  # 587a
+    pr_ref:  # 587a
+    description: "**Parent.** INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon. **Blocked by:** Phase B (WI-mogan).\n\n**Goal.** New idiom: positional `printf`-family format strings. Covers Go `fmt.Sprintf`, Java `String.format`, Python `%`/`.format`. This is the second-most-common URL composition shape after string interpolation and is the dominant idiom in Go.\n\n**New engine.** `fold_printf_format(template, args, module_consts)` — given a format template (e.g., `\"/users/%s/items/%d\"`) and the positional argument list at the call site, substitute resolved module-constants where possible. The folder must:\n\n1. Tokenize the template into literal segments and placeholder slots.\n2. For each placeholder, take the corresponding positional argument from the call site.\n3. If the argument is a module-constant identifier (resolved via the same module-constants table the string_interpolation engine uses), substitute the constant's value.\n4. If the argument is an unresolved identifier, mark the URL as `url_type=\"variable\"` and keep the template literal in `raw_url`.\n5. Mixed cases (some args resolve, others don't) produce a partially-folded URL with the unresolved slots kept as placeholders in `url_path` and a flag indicating partial resolution.\n\n**New YAML.** `url_folding/printf_format.yaml`:\n\n```yaml\nidiom: printf_format\nengine: fold_printf_format\nlanguages:\n  go:\n    call_site_regex: '\\b(?:http\\.Get|http\\.NewRequest|client\\.Do)\\(\\s*fmt\\.Sprintf\\(\\s*\"([^\"]+)\"\\s*,\\s*([^)]+)\\)'\n    template_group: 1\n    args_group: 2\n    placeholder_pattern: '%[sdvqxXbofeg]'\n  java:\n    call_site_regex: '\\b(?:HttpRequest\\.newBuilder|webClient\\.get)\\([^)]*String\\.format\\(\\s*\"([^\"]+)\"\\s*,\\s*([^)]+)\\)'\n    template_group: 1\n    args_group: 2\n    placeholder_pattern: '%[sdxXobfeg]|%[0-9]+\\$[sdx]'\n  python:\n    call_site_regex: '\\b(?:requests|httpx)\\.(?:get|post|put|delete|patch)\\(\\s*\"([^\"]+)\"\\s*%\\s*\\(?([^)]+)\\)?'\n    template_group: 1\n    args_group: 2\n    placeholder_pattern: '%\\(?[a-zA-Z_][a-zA-Z0-9_]*\\)?[sd]'\n```\n\nPython's `\"...\" % (...)` and `\"...\".format(...)` are both in scope — each gets its own `call_site_regex` entry under the `python:` key (YAML schema should support a list of regex variants per language).\n\n**Fixtures.** Per language, exercise:\n- Single literal argument\n- Multiple literal arguments\n- Module-constant identifier argument(s)\n- Unresolved variable argument(s)\n- Mixed (some resolved, some unresolved)\n- Named placeholders (Python `%(name)s`, Java `%1$s`)\n\n**Acceptance.**\n\n- Property test (from Phase A) confirms `go`, `java`, `python` appear in at least one idiom YAML (Phase B already covers Python via string_interpolation; this adds the second idiom).\n- Per-language fixture round-trip works.\n- Bakeoff signal: alertmanager has 19 Notifier.Notify variants in Go; check whether any of them use `fmt.Sprintf`-built URLs and confirm folding lands edges. (If no Go HTTP corpus hits, that's OK — file a bakeoff cohort gap.)\n\n**Out of scope.**\n\n- C `sprintf` — rare in HTTP clients; defer until evidence surfaces.\n- Locale-aware format specifiers (`%n$`, `%.2f`) — placeholder pattern handles them but folding only substitutes simple string args at this phase.\n\n**Cross-references.**\n\n- INV-miloj-tagum (parent)\n- Phase B WI-mogan (predecessor)"  # 587a
+    fields: {}  # 587a
+- op: update  # 1453
+  at: '2026-05-17T09:05:59Z'  # 1453
+  by: agent  # 1453
+  actor: jgstern_agent  # 1453
+  clock: 2  # 1453
+  nonce: '1453'  # 1453
+  set: {}  # 1453
+  remove:  # 1453
+    isbefore: [WI-mogan-sapod-dubaz-tukop-kaziv-bolom-dudup-gibid]  # 1453
+- op: update  # 4074
+  at: '2026-05-17T09:07:07Z'  # 4074
+  by: agent  # 4074
+  actor: jgstern_agent  # 4074
+  clock: 3  # 4074
+  nonce: '4074'  # 4074
+  set: {}  # 4074
+  add:  # 4074
+    isbefore: [WI-vaguk-supun-vihoz-kolaz-hanin-jubum-vuvig-zusoz]  # 4074

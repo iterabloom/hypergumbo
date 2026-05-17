@@ -1,0 +1,24 @@
+- op: create  # 6d6d
+  at: '2026-05-17T09:06:29Z'  # 6d6d
+  by: agent  # 6d6d
+  actor: jgstern_agent  # 6d6d
+  clock: 1  # 6d6d
+  nonce: 6d6d  # 6d6d
+  data:  # 6d6d
+    kind: work_item  # 6d6d
+    title: "Phase D: URL folding — string_concat idiom (operator-based concatenation in JS + Java + Python + Go + Ruby)"  # 6d6d
+    status: todo_soft  # 6d6d
+    priority: 4  # 6d6d
+    parent: INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon  # 6d6d
+    tags:  # 6d6d
+    - cross_language_linkers  # 6d6d
+    - analysis_quality  # 6d6d
+    - http_linker  # 6d6d
+    - url_folding  # 6d6d
+    - string_concat  # 6d6d
+    isbefore: []  # 6d6d
+    duplicate_of: []  # 6d6d
+    not_duplicate_of: []  # 6d6d
+    pr_ref:  # 6d6d
+    description: "**Parent.** INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon. **Blocked by:** Phase C (WI-lugag).\n\n**Goal.** New idiom: operator-based string concatenation. Covers JS/TS `+`, Java `+`, Python `+`, Go `+`, Ruby `+`/`<<`. Less elegant than templating but very common in older code and in languages without first-class interpolation.\n\n**New engine.** `fold_string_concat(call_site_ast_or_match, module_consts)` — walk the concatenation chain, resolve each operand against the module-constants table, substitute and concatenate. Operands are:\n- String literals (kept verbatim)\n- Module-constant identifiers (substituted)\n- Unresolved identifiers (kept as variable markers)\n- Method calls like `id.toString()` (unresolved — record as variable)\n\n**Why this is structurally different from the prior idioms.** String interpolation and printf-format are *single-call-site* patterns — one regex match captures a complete template. String concatenation is a *chain* (`a + \"/\" + b + \"/\" + c`) where the operands are scattered across an arbitrary tree of `+` operators. Plain regex won't work cleanly; the engine likely needs lightweight per-language AST traversal or a more aggressive regex that captures the entire chain greedily and post-parses operand-by-operand.\n\nRecommend: regex-based \"greedy chain capture\" approach first (cheaper, language-agnostic), with a property test asserting it doesn't over-greedily eat past a semicolon / line-end / closing paren. If that yields too many false positives, escalate to per-language AST.\n\n**New YAML.** `url_folding/string_concat.yaml`:\n\n```yaml\nidiom: string_concat\nengine: fold_string_concat\nlanguages:\n  javascript:\n    call_site_regex: '\\b(?:fetch|axios\\.\\w+)\\(\\s*((?:\"[^\"]*\"|''[^'']*''|`[^`]*`|[a-zA-Z_][a-zA-Z0-9_.]*)\\s*(?:\\+\\s*(?:\"[^\"]*\"|''[^'']*''|`[^`]*`|[a-zA-Z_][a-zA-Z0-9_.]*)\\s*)+)\\)'\n    chain_group: 1\n  python:\n    call_site_regex: '\\b(?:requests|httpx)\\.\\w+\\(\\s*((?:\"[^\"]*\"|''[^'']*''|[a-zA-Z_][a-zA-Z0-9_.]*)\\s*(?:\\+\\s*(?:\"[^\"]*\"|''[^'']*''|[a-zA-Z_][a-zA-Z0-9_.]*)\\s*)+)\\)'\n    chain_group: 1\n  java:\n    # similar\n  go:\n    # similar\n  ruby:\n    # also handle `<<` operator\n```\n\nThe regex shape is repetitive across languages because the chain syntax is similar — a future refactor could factor it into a shared regex template, but defer until pattern is proven.\n\n**Fixtures.** Per language, exercise:\n- Two-operand chain (`base + path`)\n- Three-operand chain with literal middle (`base + \"/users/\" + id`)\n- Long chain (5+ operands)\n- Mixed resolved + unresolved operands\n- Chain interleaved with method calls (`base + id.toString() + \"/items\"`) — should mark unresolved\n- Adjacent non-concat code that shouldn't be eaten by the regex\n\n**Caveat for Ruby.** Ruby's `<<` operator on strings is in-place mutation, semantically different from `+`. For URL building both work the same way (operand becomes a string), so YAML lists both in the regex alternation. Document this in the YAML.\n\n**Acceptance.**\n\n- Property test from Phase A confirms each new language is YAML-covered.\n- Per-language fixture round-trip.\n- False-positive check: feed the linker a synthetic file with non-URL string concatenation (`message = \"Hello, \" + name`) and confirm zero spurious HTTP-client edges.\n- Bakeoff signal: any older Python or Java HTTP-client codebase should show edge-count uptick.\n\n**Out of scope.**\n\n- C/C++ `std::string` concatenation — defer.\n- Multi-line string concatenation (chain spans line breaks) — chain_group regex doesn't cross newlines at this phase; document the limitation.\n\n**Cross-references.**\n\n- INV-miloj-tagum (parent)\n- Phase C WI-lugag (predecessor)\n\n**Note on closure.** After Phase D ships, the four most common URL-composition idioms are YAML-covered. INV-miloj-tagum can close as `satisfied` if every active route-language has at least one idiom entry, OR a SCOPE.md opt-out. Phase D is likely the natural close point unless a fifth idiom (StringBuilder, path-DSL) surfaces from corpus signal."  # 6d6d
+    fields: {}  # 6d6d

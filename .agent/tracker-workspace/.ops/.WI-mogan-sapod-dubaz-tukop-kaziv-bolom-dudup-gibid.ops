@@ -1,0 +1,33 @@
+- op: create  # a10e
+  at: '2026-05-17T09:05:18Z'  # a10e
+  by: agent  # a10e
+  actor: jgstern_agent  # a10e
+  clock: 1  # a10e
+  nonce: a10e  # a10e
+  data:  # a10e
+    kind: work_item  # a10e
+    title: "Phase B: URL folding — string_interpolation idiom expansion (Python f-strings + Kotlin + Ruby + Scala + Swift)"  # a10e
+    status: todo_soft  # a10e
+    priority: 4  # a10e
+    parent: INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon  # a10e
+    tags:  # a10e
+    - cross_language_linkers  # a10e
+    - analysis_quality  # a10e
+    - http_linker  # a10e
+    - url_folding  # a10e
+    - string_interpolation  # a10e
+    isbefore: []  # a10e
+    duplicate_of: []  # a10e
+    not_duplicate_of: []  # a10e
+    pr_ref:  # a10e
+    description: "**Parent.** INV-miloj-tagum-garuk-jataf-lupas-ligis-gazaz-pimon. **Blocked by:** Phase A (WI-mugog) — the substrate must exist before this phase adds languages to it.\n\n**Goal.** Extend the `string_interpolation` idiom YAML to cover all languages with sigil-based template substitution: Python f-strings, Kotlin string templates, Ruby `\"#{}\"`, Scala s-strings, Swift `\"\\(...)\"`. No new engine code — all five reuse `fold_string_interpolation` from Phase A.\n\n**Per-language additions to `url_folding/string_interpolation.yaml`.**\n\n| Language | Template syntax | Placeholder regex |\n|---|---|---|\n| python | `f\"...\"` / `f'...'` | `\\{([a-zA-Z_][a-zA-Z0-9_]*)\\}` |\n| kotlin | `\"...$var...\"` / `\"...${var}...\"` | `\\$\\{?([a-zA-Z_][a-zA-Z0-9_]*)\\}?` |\n| ruby | `\"...#{var}...\"` | `#\\{([a-zA-Z_][a-zA-Z0-9_]*)\\}` |\n| scala | `s\"...$var...\"` / `s\"...${var}...\"` | `\\$\\{?([a-zA-Z_][a-zA-Z0-9_]*)\\}?` |\n| swift | `\"...\\(var)...\"` | `\\\\\\(([a-zA-Z_][a-zA-Z0-9_]*)\\)` |\n\nEach language also needs a `call_site_regex` matching its idiomatic HTTP-client invocations (`requests.get(f\"...\")`, `httpx.get(f\"...\")`, `client.get(\"...\")` in Kotlin Ktor, etc.). The call-site catalog can grow incrementally — start with the dominant library per language.\n\n**Fixtures.** One synthetic HTTP-client fixture per language under `packages/hypergumbo-core/tests/fixtures/url_folding/string_interpolation/<lang>/` exercising:\n- Literal URL (control)\n- Single-variable interpolation against a module constant\n- Multi-variable interpolation against module constants\n- Variable that doesn't resolve to a module constant (should fall back gracefully — record what \"gracefully\" means in each case; likely `url_type=\"variable\"` with the raw template kept)\n\n**Acceptance.**\n\n- For each of the five languages, the property test from Phase A passes (the language appears in `string_interpolation.yaml`).\n- Per-language fixture round-trip: HTTP-client call site + same-module URL constant → folded URL surfaces in `HttpLinkResult`.\n- No regression on JS/TS or Elm fixtures (still covered by Phase A's YAML entries).\n- Bakeoff signal: on the alertmanager corpus (already known to exercise Elm), confirm zero regression. If we have any Python/Kotlin/Ruby HTTP-client corpora available, run those and record edge-count deltas in the PR description.\n\n**Out of scope.**\n\n- Languages without sigil-based interpolation (Go, Java, C, C++) — those are Phase C (printf_format) or Phase D (string_concat).\n- Multi-statement interpolation (e.g., `let path = \"${a}/${b}\"; client.get(path)`) — same scope-resolution problem the existing JS/TS folder already handles via `_extract_module_constants`. Reuse that machinery.\n\n**Cross-references.**\n\n- INV-miloj-tagum (parent)\n- Phase A WI-mugog (predecessor / engine source)"  # a10e
+    fields: {}  # a10e
+- op: update  # 7c70
+  at: '2026-05-17T09:05:59Z'  # 7c70
+  by: agent  # 7c70
+  actor: jgstern_agent  # 7c70
+  clock: 2  # 7c70
+  nonce: 7c70  # 7c70
+  set: {}  # 7c70
+  add:  # 7c70
+    isbefore: [WI-lugag-nisap-holip-kazuz-basah-vukuh-ratap-kafup]  # 7c70
