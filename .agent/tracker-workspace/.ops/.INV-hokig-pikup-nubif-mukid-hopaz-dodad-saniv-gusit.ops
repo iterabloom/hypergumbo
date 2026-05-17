@@ -24,3 +24,12 @@
     fields:  # 2718
       statement: "Within a single analysis run, every layer that counts or enumerates files for a given language must apply the same exclude policy. profile.languages[L].files and the count of files analyzed by the language-L analyzer pass must agree (modulo files the analyzer rejected for parse errors, which should be reported in limits.failed_files)."  # 2718
       root_cause: "profile.languages applies DEFAULT_EXCLUDES (which excludes .agent, .pytest_cache, etc.) via discovery.find_files when enumerating files. The bash analyzer pass enumerates files through a different code path that does NOT apply the same exclude list, so it ends up analyzing .sh files inside .agent/hooks/, .pytest_cache/, etc. Likely generalizes beyond bash to any analyzer that does its own file enumeration."  # 2718
+- op: update  # 1da0
+  at: '2026-05-17T22:55:01Z'  # 1da0
+  by: agent  # 1da0
+  actor: jgstern_agent  # 1da0
+  clock: 2  # 1da0
+  nonce: 1da0  # 1da0
+  set: {}  # 1da0
+  add:  # 1da0
+    tags: [cross_language_parity]  # 1da0

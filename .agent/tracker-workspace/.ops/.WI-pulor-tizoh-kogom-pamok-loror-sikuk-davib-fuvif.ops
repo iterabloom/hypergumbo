@@ -30,3 +30,12 @@
   clock: 2  # 9205
   nonce: '9205'  # 9205
   message: "CLAIM CORRECTION (2026-05-17 deeper dig): This item conflates two claims. Verified on May 17 self-analysis:\n\nCLAIM 1 (still correct): bash function Symbols have lines_of_code=None.\n  ALL 153 bash functions have lines_of_code=None despite span being populated (start_line/end_line are set). LOC could be trivially computed as end_line-start_line+1 but isn't.\n\nCLAIM 2 (NOT TRUE on current dev): 'no intra-script call edges captured'.\n  211 intra-script bash call edges exist on May 17 self-analysis (211 same-file bash→bash calls + 77 cross-script bash→bash calls = 288 total bash inbound 'calls' edges). pass() in scripts/release-check has 1 inbound call edge from <module:release-check>. So the bash analyzer DOES emit intra-script call edges.\n\nThe dead-code-maybe FP rate (functions appearing 'potentially dead' with ? LOC) has a different root cause: INV-tajap (Entrypoint detection is Python-only; bash modules never appear as entrypoints, so call-graph BFS from entrypoints can't reach any bash function).\n\nSuggested item refactor: change title/scope to ONLY the LOC=None claim. The dead-code FP visibility is downstream of INV-tajap, not this item."  # 9205
+- op: update  # 8f19
+  at: '2026-05-17T22:55:02Z'  # 8f19
+  by: agent  # 8f19
+  actor: jgstern_agent  # 8f19
+  clock: 3  # 8f19
+  nonce: 8f19  # 8f19
+  set: {}  # 8f19
+  add:  # 8f19
+    tags: [cross_language_parity]  # 8f19

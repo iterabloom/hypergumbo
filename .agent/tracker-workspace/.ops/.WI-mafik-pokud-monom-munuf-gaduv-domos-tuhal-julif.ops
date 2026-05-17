@@ -56,3 +56,12 @@
   clock: 6  # 401b
   nonce: 401b  # 401b
   message: "Stripped 'Scope collision worth resolving before start' section (now stale — decision recorded in WI-nigah's 2026-05-14 rewrite). Replaced with a one-line 'Boundary with WI-nigah' note at the top of the Current state section to preserve the cross-reference without the dead deliberation."  # 401b
+- op: update  # 7d46
+  at: '2026-05-17T22:55:02Z'  # 7d46
+  by: agent  # 7d46
+  actor: jgstern_agent  # 7d46
+  clock: 7  # 7d46
+  nonce: 7d46  # 7d46
+  set: {}  # 7d46
+  add:  # 7d46
+    tags: [cross_language_parity]  # 7d46

@@ -38,3 +38,12 @@
   clock: 3  # d36d
   nonce: d36d  # d36d
   message: "Cross-item review 2026-05-17: added isbefore → WI-vuton. The 92.6% dead-code candidate rate documented in WI-vuton with --seeds entrypoints is materially caused by this item — non-Python scripts (50 bash, several TS, html, service-worker) are absent from the entrypoint set, so all their callees look unreachable. Re-baseline WI-vuton's FP rate after this lands before triaging WI-vuton's polymorphic-dispatch and lifecycle-method heuristics."  # d36d
+- op: update  # 066b
+  at: '2026-05-17T22:54:52Z'  # 066b
+  by: agent  # 066b
+  actor: jgstern_agent  # 066b
+  clock: 4  # 066b
+  nonce: 066b  # 066b
+  set: {}  # 066b
+  add:  # 066b
+    tags: [cross_language_parity]  # 066b
