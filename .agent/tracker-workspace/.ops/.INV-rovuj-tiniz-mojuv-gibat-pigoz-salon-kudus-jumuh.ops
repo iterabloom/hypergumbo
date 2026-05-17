@@ -108,3 +108,36 @@
   set: {}  # 5857
   add:  # 5857
     tags: [someday]  # 5857
+- op: update  # a1fc
+  at: '2026-05-17T18:58:52Z'  # a1fc
+  by: agent  # a1fc
+  actor: jgstern_agent  # a1fc
+  clock: 14  # a1fc
+  nonce: a1fc  # a1fc
+  set:  # a1fc
+    status: satisfied  # a1fc
+- op: discuss  # bf3a
+  at: '2026-05-17T18:58:52Z'  # bf3a
+  by: agent  # bf3a
+  actor: jgstern_agent  # bf3a
+  clock: 15  # bf3a
+  nonce: bf3a  # bf3a
+  message: "Migrated holding→satisfied 2026-05-17. Mitigations PR #2058 (1/sqrt(N) ambiguous-confidence scaling) and PR #2059 (inline method qualification + same-class preference + path_hint matching) shipped and verified live in code: symbol_resolution.py:227,272,595,872 apply the scaling at every ambiguous lookup path; symbol_resolution.py:423-528 accept and use caller_path; cpp.py:837 threads resolved receiver type into path_hint. Practical effect on the original shaka-packager signal: Packager::Initialize 15-class ambiguity yields confidence ≈ 0.18, below the default 0.5 edge-filter threshold — false positives are emitted but filtered from slices and rankings. The original strict invariant statement was too absolutist relative to the multi-fidelity design (spec §5, ADR-0012); the low-fidelity tree-sitter pass is expected to produce calibrated-ambiguous resolutions, which is exactly what the mitigations enforce. Refined statement applied in a separate update. holding status retired per AGENTS.md deprecation."  # bf3a
+- op: update  # 327f
+  at: '2026-05-17T18:58:59Z'  # 327f
+  by: agent  # 327f
+  actor: jgstern_agent  # 327f
+  clock: 16  # 327f
+  nonce: 327f  # 327f
+  set:  # 327f
+    fields:  # 327f
+      statement: "C++ method calls on receivers must either (a) resolve to the correct class via available type info / namespace prefix / caller_path same-class preference, OR (b) carry confidence ≤ CONFIDENCE_AMBIGUOUS / sqrt(N) so high-ambiguity matches are filtered out of slices and rankings by the default edge-confidence threshold. The tree-sitter pass produces (a) when context permits and (b) otherwise; a future clangd-backed high-fidelity pass would produce (a) for additional cross-file cases (out of scope per ADR-0012)."  # 327f
+- op: update  # c6f0
+  at: '2026-05-17T19:00:51Z'  # c6f0
+  by: agent  # c6f0
+  actor: jgstern_agent  # c6f0
+  clock: 17  # c6f0
+  nonce: c6f0  # c6f0
+  set: {}  # c6f0
+  remove:  # c6f0
+    tags: [someday]  # c6f0

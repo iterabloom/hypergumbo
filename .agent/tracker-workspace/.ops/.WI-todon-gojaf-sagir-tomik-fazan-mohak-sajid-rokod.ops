@@ -30,3 +30,28 @@
   set: {}  # c0e6
   add:  # c0e6
     isbefore: [WI-vovad-gufuz-numas-tijat-fubig-ratob-nuduz-luruk]  # c0e6
+- op: update  # d64a
+  at: '2026-05-17T18:22:24Z'  # d64a
+  by: agent  # d64a
+  actor: jgstern_agent  # d64a
+  clock: 3  # d64a
+  nonce: d64a  # d64a
+  set: {}  # d64a
+  add:  # d64a
+    isbefore: [WI-burud-fadub-lahis-farod-pohik-hogip-fukum-disup]  # d64a
+- op: update  # 6cb0
+  at: '2026-05-17T18:22:25Z'  # 6cb0
+  by: agent  # 6cb0
+  actor: jgstern_agent  # 6cb0
+  clock: 4  # 6cb0
+  nonce: 6cb0  # 6cb0
+  set: {}  # 6cb0
+  add:  # 6cb0
+    isbefore: [WI-nokoh-potot-hovur-jimih-vokas-lotum-duduv-jumut]  # 6cb0
+- op: discuss  # b746
+  at: '2026-05-17T18:22:36Z'  # b746
+  by: agent  # b746
+  actor: jgstern_agent  # b746
+  clock: 5  # b746
+  nonce: b746  # b746
+  message: "Cross-item review 2026-05-17: wired isbefore links to the three rust-analyzer downstream items — WI-vovad (BROAD bakeoff cohort), WI-burud (linker upgrade), WI-nokoh (SCIP shim generalization). The common thread: each one needs to TRUST that '--backend rust-analyzer' actually engaged rust-analyzer. WI-vovad's bakeoff comparison data is meaningless if RA silently fell through; WI-burud's conditional 'consume rust-analyzer symbols when present' code path can't tell 'absent because tree-sitter-only' from 'absent because silent fall-through'; WI-nokoh replicating to other languages would replicate the silent-failure mode N times. WI-totub (proc-macro precondition) is NOT linked here because its description explicitly notes the test is small enough that rust-analyzer won't OOM AND it manually performs the engagement check by inspecting edge origins — independent of this item."  # b746
