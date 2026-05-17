@@ -176,3 +176,29 @@
   set: {}  # 0b16
   add:  # 0b16
     tags: [someday]  # 0b16
+- op: update  # 0e3c
+  at: '2026-05-17T19:44:18Z'  # 0e3c
+  by: agent  # 0e3c
+  actor: jgstern_agent  # 0e3c
+  clock: 23  # 0e3c
+  nonce: 0e3c  # 0e3c
+  set:  # 0e3c
+    status: violated  # 0e3c
+  remove:  # 0e3c
+    tags: [someday]  # 0e3c
+- op: discuss  # 4838
+  at: '2026-05-17T19:44:18Z'  # 4838
+  by: agent  # 4838
+  actor: jgstern_agent  # 4838
+  clock: 24  # 4838
+  nonce: '4838'  # 4838
+  message: "Status hygiene migration 2026-05-17. Executing the directed-but-never-applied 2026-03-16 human direction in the discussion thread: status holding (deprecated per AGENTS.md) → violated; priority already at P4 per same direction; someday tag removed because the directed priority lowering subsumes it (remaining patterns — lazy routes via React.lazy + dynamic import, route loader/action detection — are 'lower priority but real work,' not deferred-indefinitely). The two most common Route-component patterns are now covered per the discussion's framing; this is incremental scope reduction, not full closure. Reopen as a fresh item if any of the remaining patterns surface in bakeoff or UAT signal."  # 4838
+- op: update  # d105
+  at: '2026-05-17T20:51:51Z'  # d105
+  by: agent  # d105
+  actor: jgstern_agent  # d105
+  clock: 25  # d105
+  nonce: d105  # d105
+  set:  # d105
+    fields:  # d105
+      root_cause: "Route detection has shipped four expansions since the original 2026-03-10 framing: JSX <Route path> detection (PR #2127), createBrowserRouter/createRoutesFromElements object configs with nested children (PR #2261), loader_ref/action_ref linking (PR #2295), and React.lazy() component detection (PR #2299). As of 2026-05-17 code review, the invariant is violated by five residual gaps: (1) <Route index> JSX shorthand without a path attribute is filtered out at js_ts.py:1011; (2) {index: true, ...} object-config sibling of (1) is filtered out at js_ts.py:1163; (3) v5 <Route render={...}> prop pattern is not recognized at js_ts.py:1008 (only element/component attrs handled); (4) <Route path={someVar}> JSX expression paths are silently skipped at js_ts.py:992-993 (attr_value only set from string nodes); (5) {path: someVar, ...} object-config dynamic paths emit FALSE-POSITIVE Route nodes with the identifier text as the bogus path at js_ts.py:1138-1140. Gap (5) is qualitatively worse than the silent-skip gaps because it produces junk entries in routes.txt rather than missing entries. Gaps (1)+(2) are the same v6 idiom in two syntactic surfaces and should be addressed together. Gaps (3)+(4) are corner cases in older or expression-built configs."  # d105

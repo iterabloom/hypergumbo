@@ -29,3 +29,11 @@
   clock: 2  # 21d9
   nonce: 21d9  # 21d9
   message: "Cross-item review 2026-05-17: edge-side analog of INV-sopon (Symbol-side missing-origin family). Per INV-sopon's per-file sibling enumeration, the 1 edge with BOTH origin AND origin_run_id empty (sw-register.ts → navigator.serviceWorker module_attr_ref) most likely comes from js-module-linker-v1's PASS_ID not being threaded to the edge constructor in that specific code path — the same shape as the Symbol-side omission in 19/21 linkers. Fix this and the parallel Symbol-side fix together for coherence."  # 21d9
+- op: update  # 8015
+  at: '2026-05-17T20:14:14Z'  # 8015
+  by: agent  # 8015
+  actor: jgstern_agent  # 8015
+  clock: 3  # 8015
+  nonce: '8015'  # 8015
+  set:  # 8015
+    parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # 8015

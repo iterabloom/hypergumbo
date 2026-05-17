@@ -31,3 +31,11 @@
   clock: 2  # 091a
   nonce: 091a  # 091a
   message: "Cross-item review 2026-05-17: HTTP linker bugs cluster — this item (wrong kind=function for call sites + verb-prefixed names) co-occurs with INV-bovif (http-linker-v1 producing 0 edges from its own origin on self-analysis, schema 0.2→0.8 migration regression) and INV-sopon (this linker is one of the 19/21 missing the Symbol.origin stamp, explaining the origin='' here). The three are not duplicates: this item's wrong-kind bug stays even after INV-sopon (origin) and INV-bovif (edge emission) ship. But all three together describe the current state of http-linker-v1 — recommend coordinated fix so the linker reaches a coherent end-state in one pass rather than three half-fixes."  # 091a
+- op: update  # ee2b
+  at: '2026-05-17T20:14:15Z'  # ee2b
+  by: agent  # ee2b
+  actor: jgstern_agent  # ee2b
+  clock: 3  # ee2b
+  nonce: ee2b  # ee2b
+  set:  # ee2b
+    parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # ee2b

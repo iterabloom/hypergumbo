@@ -29,3 +29,11 @@
   clock: 2  # a46a
   nonce: a46a  # a46a
   message: "Cross-item review 2026-05-17: umbrella for the 19-of-21 linker-files missing Symbol.origin stamp. Per-file sibling items already filed on the corpus: INV-mopif (HTTP linker — kind=function bug surfaces origin='' as a symptom), INV-ronuf (WebSocket linker — phantom file-kind Symbols share the missing origin + missing stable_id), WI-higap (edge-side analog: 425 edges with empty origin_run_id, plus 1 edge with both origin AND origin_run_id empty from the same JS module linker file). When this lands, expect those three sibling items' origin-empty symptoms to clear; their other symptoms (wrong kind, phantom node, missing run_id) remain separate fixes."  # a46a
+- op: update  # aede
+  at: '2026-05-17T20:14:14Z'  # aede
+  by: agent  # aede
+  actor: jgstern_agent  # aede
+  clock: 3  # aede
+  nonce: aede  # aede
+  set:  # aede
+    parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # aede

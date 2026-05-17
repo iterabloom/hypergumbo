@@ -22,3 +22,11 @@
     fields:  # 561a
       statement: "stable_id must distinguish distinct symbols within the same compilation unit. Symbol.stable_id docstring promises 'Semantic identity hash (survives renames/moves)'. Collision rate of 91% on a real codebase means stable_id identifies only the symbol's category, not the symbol itself, for the vast majority of nodes."  # 561a
       root_cause: "py.py:1526 _compute_stable_id hashes only 5 inputs: kind, param_count, arity_flags, decorators, containing_stable_id. Two @dataclass classes in the same module share all 5 inputs, so their stable_ids collide. Methods inside those classes cascade-collide because containing_stable_id resolves to the same colliding class hash. Confirmed by 4 distinct to_dict methods on Symbol/Edge/Span/AnalysisRun all sharing one stable_id. WI-jagus added containing_module to the formula but did not address the formula's intrinsic coarseness."  # 561a
+- op: update  # 8f65
+  at: '2026-05-17T20:14:15Z'  # 8f65
+  by: agent  # 8f65
+  actor: jgstern_agent  # 8f65
+  clock: 2  # 8f65
+  nonce: 8f65  # 8f65
+  set:  # 8f65
+    parent: INV-zadum-rukig-zasum-sinaj-rozij-dadin-mutus-sakir  # 8f65

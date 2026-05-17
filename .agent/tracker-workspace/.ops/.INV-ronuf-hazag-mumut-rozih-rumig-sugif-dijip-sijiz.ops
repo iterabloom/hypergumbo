@@ -21,3 +21,11 @@
     fields:  # 6289
       statement: "Each file path must have exactly one Symbol with kind='file'. Linkers must not synthesize phantom file Symbols when the language analyzer has already produced one. When a linker DOES synthesize a Symbol, it must set language correctly (from file extension), use relative paths, and stamp origin and stable_id per the existing analyzer convention."  # 6289
       root_cause: "packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py:553-556 constructs Symbol(kind='file', language='javascript', stable_id=None) without checking whether the language analyzer has already produced a file Symbol for the path. Produces 3 duplicate file nodes on hypergumbo self-analysis (test_websocket.py, serve.py, ws-client.ts). The .ts file gets language='javascript' (wrong). WI-fozoh's 732-dup fix addressed analyzer-side duplication; linker-side phantom creation slipped through."  # 6289
+- op: update  # 8dfd
+  at: '2026-05-17T20:14:14Z'  # 8dfd
+  by: agent  # 8dfd
+  actor: jgstern_agent  # 8dfd
+  clock: 2  # 8dfd
+  nonce: 8dfd  # 8dfd
+  set:  # 8dfd
+    parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # 8dfd

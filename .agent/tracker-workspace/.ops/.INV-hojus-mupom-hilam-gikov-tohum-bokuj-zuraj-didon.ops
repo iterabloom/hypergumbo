@@ -31,3 +31,11 @@
   clock: 2  # 862c
   nonce: 862c  # 862c
   message: "RELATED FACET (2026-05-17 R19 dig): The Python file+module double-representation found here has a TypeScript analog with different shape. js-module-linker (js_module.py:746-781) creates a file-kind Symbol for a TS path ONLY when that path is the TARGET of a resolved import. Result on htrac-frontend:\n\n- ws-client.ts (imported by 4 files): gets file+module kinds — same redundancy as Python\n- main.ts (no incoming imports): gets only module kind\n- vite.config.ts (no incoming imports): gets only module kind\n\nSo the TS behavior is INCONSISTENT WITH ITSELF (some files double-represented, others single-represented) and with Python (Python is uniformly double). Whatever fix is chosen for INV-hojus (collapse to one kind, or formalize the dual representation), the TS path should be updated together so the rule applies uniformly across languages.\n\nSeparately, INV-judod (filed R18) covers the TS import-edge gap that's adjacent to this file-kind-creation logic."  # 862c
+- op: update  # 24d5
+  at: '2026-05-17T20:14:14Z'  # 24d5
+  by: agent  # 24d5
+  actor: jgstern_agent  # 24d5
+  clock: 3  # 24d5
+  nonce: 24d5  # 24d5
+  set:  # 24d5
+    parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # 24d5
