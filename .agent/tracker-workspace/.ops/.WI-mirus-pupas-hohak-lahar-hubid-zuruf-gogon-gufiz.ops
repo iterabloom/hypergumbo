@@ -19,3 +19,18 @@
     pr_ref:  # 81ab
     description: "Follow-up to WI-ronot (closed 2026-04-17). On ripgrep, enabling procMacro.enable + procMacro.attributes.enable + cargo.buildScripts.enable produced a BYTE-IDENTICAL SCIP symbol set — proc-macros are loaded but not surfaced as SCIP symbols. Caveat: ripgrep has modest proc-macro usage.\n\nGate question (needs human review before we spend time): is it worth re-testing this on proc-macro-heavy crates (a clap-Parser-based CLI, a wasm_bindgen-heavy app, a tauri app) before committing to keep per-macro pattern code in wasm_bindgen.py / napi.py / tauri_ipc.py linkers? If rust-analyzer's behavior turns out to depend on proc-macro density, the linker story simplifies materially on some corpora. If not, we've confirmed the ripgrep result generalises and can stop checking.\n\nCost of investigation: ~1-2 hours. Install rust-analyzer on 2-3 proc-macro-heavy crates, run with/without procMacro.enable, diff the symbol sets. Same methodology as WI-ronot.\n\nWhy low-priority-needs-review rather than todo_soft: the ripgrep result is already informative enough to proceed with the current linker design; the open question is whether we should additionally verify the generalisation before closing this line of inquiry."  # 81ab
     fields: {}  # 81ab
+- op: update  # cea5
+  at: '2026-05-17T08:36:25Z'  # cea5
+  by: agent  # cea5
+  actor: jgstern_agent  # cea5
+  clock: 2  # cea5
+  nonce: cea5  # cea5
+  set:  # cea5
+    status: wont_do  # cea5
+- op: discuss  # 202e
+  at: '2026-05-17T08:36:25Z'  # 202e
+  by: agent  # 202e
+  actor: jgstern_agent  # 202e
+  clock: 3  # 202e
+  nonce: 202e  # 202e
+  message: "Closed as wont_do 2026-05-17 — premise gone stale. This item was filed in April after WI-ronot's ripgrep test produced a byte-identical SCIP symbol set when toggling procMacro flags. At the time we assumed rust-analyzer was engaging on both runs. The May 10 perf experiment (~/hypergumbo_lab_notebook/notebookjournal_05102026_0400.md §3) discovered that rust-analyzer can silently fall through to tree-sitter when it crashes (e.g., wasmtime SIGKILL from memory pressure), in which case TWO failed runs would produce identical output telling us nothing about the procMacro flags. We cannot retrospectively validate the original WI-ronot result without re-running with an engagement check (no archived artifact). Separately, the May 10 experiment also empirically established that rust-analyzer DOES engage and emit origin=scip edges on candle (200K LOC, +174% edges vs tree-sitter) — so we already have proof that the backend produces non-tree-sitter information on real Rust code, which is what the downstream WI-burud / linker-upgrade work actually needed. The procMacro flag toggle is no longer on the critical path. Will refile if a downstream item surfaces a specific need to know proc-macro behaviour."  # 202e

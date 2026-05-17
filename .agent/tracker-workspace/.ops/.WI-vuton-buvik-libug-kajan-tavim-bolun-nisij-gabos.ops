@@ -31,3 +31,10 @@
   set: {}  # b751
   add:  # b751
     isbefore: [WI-hahor-lavup-fopub-suvas-zunus-sajij-harup-rijib]  # b751
+- op: discuss  # dac9
+  at: '2026-05-17T07:43:54Z'  # dac9
+  by: agent  # dac9
+  actor: jgstern_agent  # dac9
+  clock: 3  # dac9
+  nonce: dac9  # dac9
+  message: "Cross-item review 2026-05-17: INV-tajap (entrypoint detection Python-only) was added as a predecessor isbefore. The 92.6% candidate rate noted here with --seeds entrypoints is partly a downstream of INV-tajap — 50+ bash scripts, several TS files, and the service-worker.js never enter the seed set, so all functions reachable only from those entrypoints look unreachable. Re-baseline this item's FP rate after INV-tajap ships before scoping the polymorphic-dispatch and lifecycle-method heuristics; the heuristics may still be needed but the residual will be smaller and easier to characterise."  # dac9

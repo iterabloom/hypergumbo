@@ -22,3 +22,10 @@
     fields:  # bff0
       statement: "Hypergumbo's own behavior map output must validate against the schema documented at docs/schema.json. Consumers using the documented schema to validate hypergumbo output (the public contract) must succeed on hypergumbo's own JSON."  # bff0
       root_cause: "Two distinct contract gaps: (a) packages/hypergumbo-core/src/hypergumbo_core/linkers/js_module.py:811 hardcodes line=0 on module_exports edges, violating schema's Edge.line minimum: 1 constraint. (b) Three top-level keys (entrypoints, sketch_precomputed, usage_contexts) are produced by the CLI but not declared in docs/schema.json's BehaviorMap.properties. No CI gate currently asserts schema conformance of produced output."  # bff0
+- op: discuss  # f309
+  at: '2026-05-17T07:44:23Z'  # f309
+  by: agent  # f309
+  actor: jgstern_agent  # f309
+  clock: 2  # f309
+  nonce: f309  # f309
+  message: "Cross-item review 2026-05-17: sub-issue (b) — three undeclared top-level keys (entrypoints, sketch_precomputed, usage_contexts) — intersects with the dead-schema-field cluster. entrypoints is then constrained by INV-tajap (Python-only detection). sketch_precomputed is a sketch-build optimization payload. usage_contexts is a per-ADR-0003-ext output. Whether to add these to docs/schema.json depends on whether they're contracted output or internal — pick before treating this as a doc-only fix. Sub-issue (a) (line=0 from js-module-linker) is independent of (b) and ships fine alone."  # f309

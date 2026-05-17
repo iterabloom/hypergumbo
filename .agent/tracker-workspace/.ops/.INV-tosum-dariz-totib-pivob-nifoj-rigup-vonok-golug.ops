@@ -23,3 +23,10 @@
     fields:  # 602f
       statement: "Each language must appear exactly once in profile.languages. Aliases must resolve to canonical names, not produce duplicate entries with identical stats."  # 602f
       root_cause: "taxonomy.py:758-776 — get_language_extensions() inserts alias keys ('shell' with bash's extensions) as top-level entries. profile.py:_detect_languages then iterates LANGUAGE_EXTENSIONS.items() processing both 'bash' and 'shell' independently, finding the same 10 .sh files for each."  # 602f
+- op: discuss  # ecae
+  at: '2026-05-17T07:44:10Z'  # ecae
+  by: agent  # ecae
+  actor: jgstern_agent  # ecae
+  clock: 2  # ecae
+  nonce: ecae  # ecae
+  message: "Cross-item review 2026-05-17: bash/shell-analysis cluster — this item (alias key duplication: bash + shell as separate top-level keys), INV-hokig (profile.languages vs analyzer-pass file-count disagreement, 10 vs 41), WI-pulor (bash analyzer lines_of_code=None + no intra-script call edges), and INV-tajap (entrypoint detection has no shebang/.sh logic at all) together describe hypergumbo's incomplete bash analysis surface. Fixing this item is the simplest of the four (single normalization in taxonomy.py:758-776) and partially clears WI-soraj's 3-file-count ambiguity. The other three are independent."  # ecae

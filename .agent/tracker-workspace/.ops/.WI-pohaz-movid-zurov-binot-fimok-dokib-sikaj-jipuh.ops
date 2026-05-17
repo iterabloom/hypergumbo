@@ -18,3 +18,13 @@
     pr_ref:  # 1d58
     description: ""  # 1d58
     fields: {}  # 1d58
+- op: update  # 9b41
+  at: '2026-05-17T07:49:44Z'  # 9b41
+  by: human  # 9b41
+  actor: jgstern  # 9b41
+  clock: 2  # 9b41
+  nonce: 9b41  # 9b41
+  set:  # 9b41
+    status: deleted  # 9b41
+  remove:  # 9b41
+    tags: [has-hyphen]  # 9b41

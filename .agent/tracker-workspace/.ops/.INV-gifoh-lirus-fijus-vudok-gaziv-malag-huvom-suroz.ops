@@ -23,3 +23,10 @@
     fields:  # df1a
       statement: "All hypergumbo outputs that report 'test coverage %' on the same input data must use the same methodology and produce the same number. Different metrics may exist, but they must use distinct labels."  # df1a
       root_cause: "test-coverage subcommand and sketch use different counting methodologies. Subcommand likely counts functions with direct inbound test->src call edges (2336/4016 = 58.2%). Sketch likely counts functions transitively reachable from any test code (3705/4016 = 92%). Same field name ('coverage'/'tested'), same denominator, different numerator. Neither output documents its methodology."  # df1a
+- op: discuss  # 95fe
+  at: '2026-05-17T07:44:35Z'  # 95fe
+  by: agent  # 95fe
+  actor: jgstern_agent  # 95fe
+  clock: 2  # 95fe
+  nonce: 95fe  # 95fe
+  message: "Cross-item review 2026-05-17: test-coverage-output coherence cluster with WI-fugut (Test-Dense column mislabels test-call-edge count as 'tests' and recommends 'may indicate redundant tests'). Both items boil down to the test-coverage subcommand using a definition of 'test' that's not documented and differs from what reasonable consumers expect. Fixing this item (sketch vs subcommand divergence) and WI-fugut (column header wording + interpretation hint) together gives the subcommand a coherent vocabulary; fixing only one leaves an internal contradiction."  # 95fe

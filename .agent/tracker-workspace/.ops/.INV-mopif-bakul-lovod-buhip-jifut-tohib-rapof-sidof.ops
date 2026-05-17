@@ -24,3 +24,10 @@
     fields:  # c500
       statement: "Symbols with kind='function' must represent function/method/closure definitions, not call sites. Symbol.name must be a valid identifier (matches the language's identifier pattern). HTTP call sites should be represented via Edges from the calling function to a route/external_symbol Symbol, not as synthetic Symbol nodes."  # c500
       root_cause: "The HTTP linker (linkers/http.py) creates Symbol(kind='function', name=<VERB> <URL>) for every detected fetch/requests/axios call site. On hypergumbo self-analysis this produces 18 such nodes including production case 'GET event.request' from packages/htrac-frontend/public/service-worker.js:54. The name field contains spaces and dots (non-identifier characters), and kind='function' is wrong (these are calls, not function definitions). Also missing origin stamp (origin=''), overlapping with INV-sopon."  # c500
+- op: discuss  # 091a
+  at: '2026-05-17T07:44:10Z'  # 091a
+  by: agent  # 091a
+  actor: jgstern_agent  # 091a
+  clock: 2  # 091a
+  nonce: 091a  # 091a
+  message: "Cross-item review 2026-05-17: HTTP linker bugs cluster — this item (wrong kind=function for call sites + verb-prefixed names) co-occurs with INV-bovif (http-linker-v1 producing 0 edges from its own origin on self-analysis, schema 0.2→0.8 migration regression) and INV-sopon (this linker is one of the 19/21 missing the Symbol.origin stamp, explaining the origin='' here). The three are not duplicates: this item's wrong-kind bug stays even after INV-sopon (origin) and INV-bovif (edge emission) ship. But all three together describe the current state of http-linker-v1 — recommend coordinated fix so the linker reaches a coherent end-state in one pass rather than three half-fixes."  # 091a
