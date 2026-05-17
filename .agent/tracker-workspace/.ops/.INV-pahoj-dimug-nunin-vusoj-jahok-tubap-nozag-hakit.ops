@@ -24,3 +24,19 @@
     fields:  # f9ea
       statement: "Tag-name validation must apply uniformly to every code path that attaches a tag to an item. The documented rule (and the error-message contract) is ^[a-z_][a-z0-9_]*$ — kebab-case rejected, snake_case required. Today, the regex is enforced in the CLI 'tracker add --tag' / 'tracker update --add-tag' paths (which trigger a catalog save) but NOT in the TUI's tag-edit modal, which routes through trackerset.update() and never calls touch_tags() or save_catalog(). Result: a user can create 'analysis-quality' from the TUI, the tag lands in the item's .ops log, but the tag catalog never registers it. Item-side queries (tracker list --tag analysis-quality) find it; catalog-side surfaces (tracker tags list, rename, deprecate, describe) cannot operate on it."  # f9ea
       root_cause: "Two flows attach tags to items but only one validates them. (1) CLI cli.py:461-467 (and analog at :662-668 for update) build the item write kwargs and afterwards call _warn_deprecated_tags(...) and downstream touch_tags(), which in turn calls save_catalog(); save_catalog() at tag_catalog.py:290 runs every catalog name through _TAG_NAME_RE.match(), so invalid names abort with ValueError. (2) TUI tui.py:1239-1249 reads the tag input string, splits on comma, and at tui.py:4124-4130 hands the list directly to self._tracker_set.update(); trackerset.update() (trackerset.py:375) writes the op log entry but never invokes touch_tags() or any tag-name validator. The TUI's exception handler at tui.py:4133 catches only ItemNotFoundError/LockedFieldError/PermissionError, so even if validation were added downstream and raised, the TUI would have to be taught to handle it. The fix is to add tag-name validation either inside trackerset.update() (uniform enforcement, catches every caller including a future API) or as a pre-check in the TUI tag-edit modal (cheaper, but only patches one caller)."  # f9ea
+- op: update  # d8e2
+  at: '2026-05-17T22:38:01Z'  # d8e2
+  by: agent  # d8e2
+  actor: jgstern_agent  # d8e2
+  clock: 2  # d8e2
+  nonce: d8e2  # d8e2
+  set: {}  # d8e2
+  add:  # d8e2
+    isbefore: [WI-fanus-pakon-migiv-lotas-fifid-tikud-juzol-zubav]  # d8e2
+- op: discuss  # 96e5
+  at: '2026-05-17T22:38:03Z'  # 96e5
+  by: agent  # 96e5
+  actor: jgstern_agent  # 96e5
+  clock: 3  # 96e5
+  nonce: '96e5'  # 96e5
+  message: "Wiring isbefore WI-fanus: INV-pahoj is the TUI-bypass mechanism that produces exactly the dash/underscore dupes WI-fanus Part 1 lists (analysis-quality vs analysis_quality, ci-infrastructure vs ci_infrastructure, etc.). If WI-fanus runs first, the bypass reaccumulates new dupes and cleanup must be redone. Fix the producer (INV-pahoj) before the cleanup (WI-fanus)."  # 96e5

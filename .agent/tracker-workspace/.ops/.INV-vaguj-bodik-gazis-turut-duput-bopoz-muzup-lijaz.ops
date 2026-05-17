@@ -26,3 +26,18 @@
     fields:  # 34b0
       statement: "No Symbol may have a 'name' field containing an absolute filesystem path. The 'name' field of a file-kind Symbol must be either the bare filename or the repo-relative path (matching Symbol.path). The 'span' of a file-kind Symbol must reflect the actual file extent, not a hardcoded 1-1 sentinel."  # 34b0
       root_cause: "analyze/base.py:375-385 (orchestrator_file_symbol_synthesis) constructs file-kind Symbols with name=path where path is reconstructed from an absolute endpoint string, AND with span=Span(start_line=1, end_line=1) hardcoded. The path field later gets normalized to relative form downstream but name doesn't. The span never gets updated. Result: 798/809 file-kind Python Symbols have absolute names; 800/809 have 1-1 spans on self-analysis."  # 34b0
+- op: update  # c8b7
+  at: '2026-05-17T22:53:18Z'  # c8b7
+  by: agent  # c8b7
+  actor: jgstern_agent  # c8b7
+  clock: 2  # c8b7
+  nonce: c8b7  # c8b7
+  set:  # c8b7
+    parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # c8b7
+- op: discuss  # 0ca8
+  at: '2026-05-17T22:53:18Z'  # 0ca8
+  by: agent  # 0ca8
+  actor: jgstern_agent  # 0ca8
+  clock: 3  # 0ca8
+  nonce: 0ca8  # 0ca8
+  message: "Reparented to INV-dajaf (META: Symbol identity must be honest across the pipeline). INV-vaguj is a textbook representation-stage violation per INV-dajaf's table: orchestrator producer stamps wrong-shape identity claim into Symbol.name (absolute path) and Symbol.span (1-1 sentinel) on 798+800 nodes. Sibling of INV-hojus, INV-ronuf, INV-mopif which are already correctly parented. Plain missed connection caught during docket-wide review."  # 0ca8

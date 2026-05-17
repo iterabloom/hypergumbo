@@ -49,3 +49,19 @@
   set: {}  # 362c
   remove:  # 362c
     tags: [dead_schema_field]  # 362c
+- op: update  # b2dc
+  at: '2026-05-17T22:37:58Z'  # b2dc
+  by: agent  # b2dc
+  actor: jgstern_agent  # b2dc
+  clock: 5  # b2dc
+  nonce: b2dc  # b2dc
+  set: {}  # b2dc
+  add:  # b2dc
+    isbefore: [INV-magul-dazur-toduf-losap-hitun-duzup-sulub-kosab]  # b2dc
+- op: discuss  # 79f5
+  at: '2026-05-17T22:37:59Z'  # 79f5
+  by: agent  # 79f5
+  actor: jgstern_agent  # 79f5
+  clock: 6  # 79f5
+  nonce: 79f5  # 79f5
+  message: "Wiring isbefore INV-magul: implementing the spec-defined repo_fingerprint algorithm (docs/hypergumbo-spec.md:378-384) as a shared function creates the migration path that fixes INV-magul's cache-shard pollution as a side effect — both consume the same underlying repo-state hash. This structural relation was already documented in this item's prose; now it's reflected in the dependency graph."  # 79f5
