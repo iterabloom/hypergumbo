@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.8.0"
+      "const": "0.9.0"
     },
     "confidence_model": {
       "type": "string",
@@ -128,6 +128,76 @@
               }
             }
           }
+        }
+      }
+    },
+    "entrypoints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Entrypoint"
+      },
+      "description": "Detected program entrypoints"
+    },
+    "usage_contexts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/UsageContext"
+      },
+      "description": "Concept-tagged call/usage sites (per ADR-0003-ext usage_context_patterns)"
+    },
+    "sketch_precomputed": {
+      "type": "object",
+      "description": "Precomputed sketch payload (vocabulary, centrality, readme description, config info). Optional; omitted when --no-sketch-precomputed. Each sub-field is nullable because small repos may not surface a README, license, or any centrality signal.",
+      "properties": {
+        "centrality_scores": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "File-path \u2192 centrality score"
+        },
+        "config_info": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Aggregated license / config string"
+        },
+        "readme_description": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Extracted README description"
+        },
+        "vocabulary": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Repo-derived vocabulary terms"
         }
       }
     }
@@ -995,6 +1065,82 @@
         "execution_id",
         "pass",
         "version"
+      ]
+    },
+    "Entrypoint": {
+      "type": "object",
+      "description": "A detected program entrypoint (main function, CLI verb, HTTP route, etc.). Produced by `detect_entrypoints()`.",
+      "properties": {
+        "symbol_id": {
+          "type": "string",
+          "description": "ID of the Symbol that is the entrypoint"
+        },
+        "kind": {
+          "type": "string",
+          "description": "Entrypoint category \u2014 e.g. main_function, cli_command, http_route, framework_handler"
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable label for the entrypoint"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Detection confidence"
+        }
+      },
+      "required": [
+        "symbol_id",
+        "kind"
+      ]
+    },
+    "UsageContext": {
+      "type": "object",
+      "description": "Concept-tagged usage site (per ADR-0003-ext usage_context_patterns) \u2014 e.g. a Flask `@app.route` call or a Django ORM filter.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable hash ID for this usage site"
+        },
+        "context_name": {
+          "type": "string",
+          "description": "Name of the function/decorator/sentinel at this site (e.g. 'Route', 'session.query')"
+        },
+        "kind": {
+          "type": "string",
+          "description": "Usage kind \u2014 call, data_value, export, macro"
+        },
+        "path": {
+          "type": "string",
+          "description": "Source file path (relative to repo root)"
+        },
+        "position": {
+          "type": "string",
+          "description": "Position descriptor \u2014 e.g. args[0], view_func, default (per ADR-0003-ext positional vocabulary)"
+        },
+        "span": {
+          "$ref": "#/$defs/Span"
+        },
+        "symbol_ref": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Resolved Symbol ID if available, otherwise null"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Per-pattern metadata payload (e.g. {route_path, methods, view_name} for a Flask route)"
+        }
+      },
+      "required": [
+        "id",
+        "kind"
       ]
     },
     "UsagePatternSpec": {

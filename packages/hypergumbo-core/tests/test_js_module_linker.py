@@ -313,6 +313,11 @@ class TestLinkJsModules:
         assert len(exports_edges) == 1
         assert exports_edges[0].src == module_file.id
         assert exports_edges[0].dst == helper_fn.id
+        # INV-piroh: line must be >= 1 (schema constraint) and reflect
+        # the exported symbol's own definition line, not a hardcoded
+        # sentinel zero. helper_fn was created with start_line=5.
+        assert exports_edges[0].line == helper_fn.span.start_line
+        assert exports_edges[0].line >= 1
 
     def test_resolves_directory_import(self, repo_root: Path) -> None:
         """./lib import resolves to lib/index.js."""

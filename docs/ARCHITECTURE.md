@@ -16,9 +16,9 @@ for focused LLM context.
 hypergumbo analyzed its own source code and found:
 - **274** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 52 core, 4 CLI, 32 tracker)
 - **6094** symbols (functions, classes, methods)
-- **65122** edges by type:
-  - calls: 45035
-  - imports: 9626
+- **65134** edges by type:
+  - calls: 45045
+  - imports: 9628
   - instantiates: 6960
   - contains: 1305
   - module_attr_ref: 985
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 6094 Symbols + 65122 Edges + UsageContexts             │
+│  Output: 6094 Symbols + 65134 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -456,6 +456,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-evidence-type-drift` | Pre-commit lint: ``*EVIDENCE_TYPE*`` sets in packages/ must be |
 | `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
 | `check-producer-axis-coherence` | Pre-commit lint: literal-string keyword arguments to ``Edge.create``, |
+| `check-schema-conformance` | Validate hypergumbo's own behavior-map output against ``docs/schema.json``. |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
 | `dead-code-prospector-run.py` | Lightweight one-shot dead-code-maybe prospecting run. |
@@ -800,7 +801,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d155abd7ced8
+  commit: 976d50ceb473
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

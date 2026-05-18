@@ -349,6 +349,14 @@ jobs:
         run: ./scripts/generate-architecture --check
       - name: Verify SECURITY.md audited-IO section is up-to-date
         run: ./scripts/generate-security-md --check
+      - name: Schema conformance gate (INV-piroh, warning-only)
+        # Validates self-analysis behavior_map against docs/schema.json.
+        # Mode is `warning` during the foundation phase: tolerates the
+        # baseline tracked in .ci/schema-conformance-baseline.json, but
+        # loud-fails on any positive delta so silent regressions can't
+        # accumulate. Promotes to --mode=fail in Wave 3 once the
+        # remaining INV-rugok members close.
+        run: ./scripts/check-schema-conformance --mode=warning
 
   # Build grammars once, cache wheels for pytest job (saves ~1 minute)
   build-grammars:

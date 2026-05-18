@@ -804,11 +804,23 @@ def link_js_modules(
                     resolved_str, symbols_by_file.get(rel_path, [])
                 )
                 for file_sym in file_symbols:
+                    # INV-piroh: Edge.line is constrained to minimum=1 in
+                    # docs/schema.json. The module_exports edge is
+                    # synthesized ("this module exports this symbol")
+                    # with no specific source line where the relationship
+                    # is expressed; use the exported symbol's own start
+                    # line as the meaningful anchor. Falls back to 1 for
+                    # the synthetic file-kind Symbol case (span = (1,1)).
+                    export_line = (
+                        file_sym.span.start_line
+                        if file_sym.span and file_sym.span.start_line >= 1
+                        else 1
+                    )
                     new_edges.append(Edge.create(
                         src=mod_sym.id,
                         dst=file_sym.id,
                         edge_type="module_exports",
-                        line=0,
+                        line=export_line,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="module_export_heuristic",

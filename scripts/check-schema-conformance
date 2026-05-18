@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Validate hypergumbo's own behavior-map output against ``docs/schema.json``.
+
+Per INV-piroh, hypergumbo's documented public contract is the schema at
+``docs/schema.json``. Self-analysis must validate clean against it. This
+script is the CI gate that catches drift.
+
+## Modes
+
+* ``--mode=warning`` (default, foundation phase) — tolerate the
+  existing baseline violation count tracked in ``.ci/schema-conformance-baseline.json``.
+  Loud-fail (exit 1) on any **positive delta** so silent regressions
+  cannot accumulate while we're still draining the docket. Fixed
+  violations (negative delta) are reported and the baseline can be
+  tightened with ``--update-baseline``.
+* ``--mode=fail`` (post Wave-3 ratchet) — fail on any violations
+  regardless of baseline. Promote to this mode once
+  ``INV-bovif`` / ``INV-tofur`` / ``WI-bujim`` schema-drift members
+  close per the burndown plan.
+
+## Inputs
+
+Default: run ``hypergumbo run .`` in-process and validate the output
+JSON. Override with ``--input <path>`` to validate a pre-existing JSON
+file (faster for iterating on the gate itself).
+
+## Baseline
+
+``.ci/schema-conformance-baseline.json`` shape:
+```
+{
+    "violation_count": <int>,
+    "violation_fingerprints": [<sorted list of "type::path" strings>]
+}
+```
+Run with ``--update-baseline`` to refresh after intentionally accepting
+new gaps or after fixing some. The file is checked into git so CI and
+local runs agree on the same number.
+
+## Exit codes
+
+* 0 — no positive delta (warning mode) / no violations (fail mode).
+* 1 — positive delta detected (warning mode) / any violations (fail mode).
+* 2 — environment / setup error (jsonschema missing, schema file
+  missing, hypergumbo failed to run). Never blocks commits on these.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess  # nosec B404 - invokes our own hypergumbo CLI
+import sys
+import tempfile
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SCHEMA_PATH = REPO_ROOT / "docs" / "schema.json"
+BASELINE_PATH = REPO_ROOT / ".ci" / "schema-conformance-baseline.json"
+
+
+def _load_jsonschema():
+    """Import ``jsonschema``, or exit 2 with a friendly message."""
+    try:
+        import jsonschema  # type: ignore[import-not-found]
+        return jsonschema
+    except ImportError as exc:  # pragma: no cover — env-specific
+        print(
+            f"check-schema-conformance: cannot import jsonschema: {exc}",
+            file=sys.stderr,
+        )
+        print(
+            "Install with: pip install jsonschema~=4.26.0",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+
+def _run_hypergumbo_against_repo(repo_root: Path) -> Path:
+    """Run ``hypergumbo run`` against ``repo_root`` and return the JSON path.
+
+    Uses a tempfile so concurrent invocations (CI vs. local) don't
+    clobber each other. Exits 2 if hypergumbo itself fails — that's an
+    environment problem, not a schema-conformance failure.
+    """
+    out_dir = Path(tempfile.mkdtemp(prefix="schema-conformance-"))
+    out_path = out_dir / "hypergumbo.results.json"
+    proc = subprocess.run(  # nosec B603 B607 - well-known CLI entrypoint, no shell
+        [sys.executable, "-m", "hypergumbo", "run", str(repo_root),
+         "--out", str(out_path)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0 or not out_path.exists():  # pragma: no cover
+        print(
+            "check-schema-conformance: hypergumbo run failed "
+            f"(exit={proc.returncode})",
+            file=sys.stderr,
+        )
+        print(proc.stderr[:2000], file=sys.stderr)
+        sys.exit(2)
+    return out_path
+
+
+def _fingerprint_error(err) -> str:
+    """Compact, location-agnostic fingerprint for a validation error.
+
+    Format: ``<validator>::<path-without-array-indices>``. Stripping
+    array indices keeps the fingerprint stable across runs where an
+    error appears at edges[N] for different N's, so the baseline doesn't
+    churn on every analysis-run permutation.
+    """
+    path_parts = [
+        str(p) if isinstance(p, str) else "[]"
+        for p in err.absolute_path
+    ]
+    path = ".".join(path_parts) or "<root>"
+    return f"{err.validator}::{path}"
+
+
+def _collect_violations(data, schema, jsonschema_mod) -> list[str]:
+    """Return sorted, deduplicated fingerprints of validation errors."""
+    validator = jsonschema_mod.Draft202012Validator(schema)
+    fingerprints = {_fingerprint_error(e) for e in validator.iter_errors(data)}
+    return sorted(fingerprints)
+
+
+def _load_baseline() -> tuple[int, list[str]]:
+    """Return (count, fingerprints). Missing file → (0, [])."""
+    if not BASELINE_PATH.exists():
+        return 0, []
+    try:
+        raw = json.loads(BASELINE_PATH.read_text())
+    except json.JSONDecodeError as exc:  # pragma: no cover — defensive
+        print(
+            f"check-schema-conformance: baseline file invalid: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return (
+        int(raw.get("violation_count", 0)),
+        list(raw.get("violation_fingerprints", [])),
+    )
+
+
+def _save_baseline(fingerprints: list[str]) -> None:
+    """Write a new baseline file."""
+    BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    BASELINE_PATH.write_text(
+        json.dumps(
+            {
+                "violation_count": len(fingerprints),
+                "violation_fingerprints": fingerprints,
+            },
+            indent=2,
+        ) + "\n",
+    )
+
+
+def _report_delta(
+    current: list[str], baseline_fps: list[str], baseline_count: int,
+) -> tuple[list[str], list[str]]:
+    """Compute (new_violations, fixed_violations)."""
+    current_set = set(current)
+    baseline_set = set(baseline_fps)
+    new = sorted(current_set - baseline_set)
+    fixed = sorted(baseline_set - current_set)
+    return new, fixed
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Validate hypergumbo's own behavior-map output against "
+            "docs/schema.json. INV-piroh / Wave-3 schema-drift gate."
+        ),
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["warning", "fail"],
+        default="warning",
+        help=(
+            "warning: fail only on positive delta vs baseline "
+            "(default, foundation phase). fail: fail on any violations "
+            "(post Wave-3 ratchet)."
+        ),
+    )
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=None,
+        help=(
+            "Pre-existing behavior-map JSON to validate. If omitted, "
+            "runs `hypergumbo run .` to produce one."
+        ),
+    )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help=(
+            "Write the current violation set to "
+            f"{BASELINE_PATH.relative_to(REPO_ROOT)} and exit 0."
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    if not SCHEMA_PATH.exists():  # pragma: no cover — defensive
+        print(
+            f"check-schema-conformance: schema not found at {SCHEMA_PATH}",
+            file=sys.stderr,
+        )
+        return 2
+
+    jsonschema_mod = _load_jsonschema()
+    schema = json.loads(SCHEMA_PATH.read_text())
+
+    if args.input is not None:
+        if not args.input.exists():
+            print(
+                f"check-schema-conformance: input file not found: {args.input}",
+                file=sys.stderr,
+            )
+            return 2
+        data_path = args.input
+    else:
+        data_path = _run_hypergumbo_against_repo(REPO_ROOT)
+
+    data = json.loads(data_path.read_text())
+    current = _collect_violations(data, schema, jsonschema_mod)
+
+    if args.update_baseline:
+        _save_baseline(current)
+        print(
+            f"Updated {BASELINE_PATH.relative_to(REPO_ROOT)}: "
+            f"{len(current)} violation fingerprint(s) recorded.",
+        )
+        return 0
+
+    baseline_count, baseline_fps = _load_baseline()
+    new, fixed = _report_delta(current, baseline_fps, baseline_count)
+
+    print(
+        f"Schema conformance (mode={args.mode}): "
+        f"new={len(new)} fixed={len(fixed)} "
+        f"baseline={baseline_count} current={len(current)}",
+    )
+
+    if fixed:
+        print()
+        print(f"Fixed violations ({len(fixed)}):")
+        for fp in fixed:
+            print(f"  - {fp}")
+        print(
+            "Run with --update-baseline to tighten the gate.",
+        )
+
+    if new:
+        print()
+        print(f"NEW violations ({len(new)}):")
+        for fp in new:
+            print(f"  + {fp}")
+
+    if args.mode == "fail":
+        if current:
+            print()
+            print(
+                "FAIL: schema conformance is at fail-on-violation mode "
+                f"and {len(current)} violation(s) remain.",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
+
+    # warning mode: loud-fail on positive delta only
+    if new:
+        print()
+        print(
+            "FAIL: positive violation delta detected. Either fix the "
+            "new violations or, if intentional, run with "
+            "--update-baseline (requires reviewer approval).",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())
