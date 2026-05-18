@@ -47,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.symbol_indexes import SymbolByName
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -207,8 +208,22 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
         return analysis
 
     def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
-        """Register symbols by lowercase name for case-insensitive Verilog lookup."""
-        global_symbols[symbol.name.lower()] = symbol
+        """Register Verilog symbols multi-value, case-insensitive (WI-sofaf).
+
+        Pre-fix (INV-paroh): a single-value ``dict[str, Symbol]`` keyed on
+        the lowercased symbol name overwrote on every collision. A
+        ``module Foo`` followed by an ``interface Foo`` would land on the
+        interface (last-write-wins); the inverse insert order would land
+        on the module. ``extract_edges_from_file``'s instantiation
+        resolution then routed to whichever survived, which is wrong in
+        the interface-wins case.
+
+        Post-fix: store every candidate per lowercase key as a list. The
+        downstream lookup builds a :class:`SymbolByName` (case-insensitive)
+        and applies ``prefer_kind="module"`` to land on the module
+        deterministically regardless of insert order.
+        """
+        global_symbols.setdefault(symbol.name.lower(), []).append(symbol)
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -219,6 +234,14 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract module instantiation edges from a Verilog file."""
         edges: list[Edge] = []
+
+        # WI-sofaf / INV-paroh: build a kind-aware index so module
+        # instantiations resolve to ``module`` candidates even when a
+        # same-named interface / package / primitive coexists.
+        sym_index = SymbolByName(case_insensitive=True)
+        for candidates in global_symbols.values():
+            for sym in candidates:
+                sym_index.add(sym)
 
         # Build module_by_pos for parent walking
         module_by_pos: dict[tuple[int, int], str] = {}
@@ -239,19 +262,33 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
                     module_type, _instance_name = inst_info
                     start_line = node.start_point[0] + 1
 
-                    if module_type.lower() in global_symbols:
-                        dst_id = global_symbols[module_type.lower()].id
+                    resolved = sym_index.lookup_one(module_type, prefer_kind="module")
+                    edge_meta: Optional[dict] = None
+                    if resolved is not None:
+                        dst_sym, is_fallback = resolved
+                        dst_id = dst_sym.id
+                        # INV-zuhub fallback contract: when multiple
+                        # candidates matched, mark the edge as a
+                        # disambiguation fallback with confidence ≤ 0.5
+                        # so downstream consumers can demote it.
+                        if is_fallback:
+                            confidence = 0.50
+                            edge_meta = {"disambiguation_fallback": True}
+                        else:
+                            confidence = 0.90
                     else:
                         dst_id = f"verilog:external:{module_type}:module"
+                        confidence = 0.70
 
                     edge = Edge.create(
                         src=current_module_id,
                         dst=dst_id,
                         edge_type="instantiates",
                         line=start_line,
-                        confidence=0.90 if module_type.lower() in global_symbols else 0.70,
+                        confidence=confidence,
                         origin=PASS_ID,
                         evidence_type="verilog_instantiation",
+                        meta=edge_meta,
                     )
                     edges.append(edge)
 
