@@ -40,3 +40,18 @@
   clock: 3  # 96e5
   nonce: '96e5'  # 96e5
   message: "Wiring isbefore WI-fanus: INV-pahoj is the TUI-bypass mechanism that produces exactly the dash/underscore dupes WI-fanus Part 1 lists (analysis-quality vs analysis_quality, ci-infrastructure vs ci_infrastructure, etc.). If WI-fanus runs first, the bypass reaccumulates new dupes and cleanup must be redone. Fix the producer (INV-pahoj) before the cleanup (WI-fanus)."  # 96e5
+- op: update  # fb3a
+  at: '2026-05-18T05:29:03Z'  # fb3a
+  by: agent  # fb3a
+  actor: jgstern_agent  # fb3a
+  clock: 4  # fb3a
+  nonce: fb3a  # fb3a
+  set:  # fb3a
+    status: satisfied  # fb3a
+- op: discuss  # 6532
+  at: '2026-05-18T05:29:03Z'  # 6532
+  by: agent  # 6532
+  actor: jgstern_agent  # 6532
+  clock: 5  # 6532
+  nonce: '6532'  # 6532
+  message: "Fixed in PR #3788 (merge d155abd7ce). Centralized _TAG_NAME_RE validation inside trackerset.add() and trackerset.update() so every non-CLI caller (TUI tag-edit modal, serve.py, future APIs) gets uniform enforcement matching the CLI add/update paths. TUI _on_edit_item now catches the resulting ValueError. remove_fields[\"tags\"] is intentionally exempt so WI-fanus cleanup can drain historically-bad tags. +11 tests covering hyphenated, uppercase, leading-digit, non-string, passthrough, and TUI error-surfacing cases. Unblocks WI-fanus."  # 6532

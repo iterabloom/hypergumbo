@@ -36,3 +36,18 @@
   clock: 3  # fd76
   nonce: fd76  # fd76
   message: "Cross-item review 2026-05-17: cross-reference to INV-tofur (AnalysisRun.repo_fingerprint is None on 100% of runs). That item turned out to be a producer gap for a spec-defined algorithm at docs/hypergumbo-spec.md:378-384, not a vestigial field. The spec's algorithm uses content-bytes-per-dirty-file (git_head + sha256(content_bytes) per dirty file), which is STABLE across mtime-only changes. By contrast, _get_repo_state_hash() at sketch_embeddings.py:1278-1376 (the function this item is about) uses git diff HEAD blob hash + path:size:mtime per untracked file — and the path:size:mtime branch is exactly what makes tracker .ops file churn pollute the cache shard, because every 'tracker show'/'tracker discuss' touches .ops file mtimes without changing content.\n\nCoupling opportunity: if INV-tofur is implemented by extracting a shared compute_repo_fingerprint(repo_root, dirty_files) function per the spec's content-hash algorithm, the cache layer in sketch_embeddings.py can migrate to call it. The migration fixes THIS item as a side effect because content hashes don't pick up mtime jitter the way path:size:mtime does.\n\nThis is a coordinated-fix opportunity, not a hard dependency: either item is fixable in isolation, but landing both together (via the shared function) is the structural fix that closes both with one architectural decision. Recorded on both items for symmetric findability."  # fd76
+- op: update  # 3ff9
+  at: '2026-05-18T06:30:07Z'  # 3ff9
+  by: agent  # 3ff9
+  actor: jgstern_agent  # 3ff9
+  clock: 4  # 3ff9
+  nonce: 3ff9  # 3ff9
+  set:  # 3ff9
+    status: satisfied  # 3ff9
+- op: discuss  # 49b0
+  at: '2026-05-18T06:30:07Z'  # 49b0
+  by: agent  # 49b0
+  actor: jgstern_agent  # 49b0
+  clock: 5  # 49b0
+  nonce: 49b0  # 49b0
+  message: "Closed as side effect of INV-tofur (PR #3789). The root cause was sketch_embeddings._get_repo_state_hash using path:size:mtime for its non-git cache shard key, which picked up tracker .ops mtime jitter. The function now delegates to compute_repo_fingerprint, which uses content hashing — mtime changes no longer affect the cache key. Existing cache entries become unreachable on the algorithm switch (one-time miss, absorbed naturally as the cache repopulates under the new key). Verified by the existing test_state_hash_changes_with_file_modifications + new test_mtime_only_change_does_not_change_fingerprint property tests."  # 49b0

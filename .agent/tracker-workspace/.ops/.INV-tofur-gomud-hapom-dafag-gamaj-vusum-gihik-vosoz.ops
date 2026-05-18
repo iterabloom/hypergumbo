@@ -80,3 +80,27 @@
   clock: 8  # 13c7
   nonce: 13c7  # 13c7
   message: "Reparented to META INV-rugok (Spec/schema/implementation drift). INV-tofur is example (b) — repo_fingerprint algorithm fully spec'd at docs/hypergumbo-spec.md:378-384 but no producer implements it (100% null on 133 runs). The existing isbefore link to INV-magul (shared-function refactor opportunity) is preserved."  # 13c7
+- op: update  # 7c60
+  at: '2026-05-18T06:30:06Z'  # 7c60
+  by: agent  # 7c60
+  actor: jgstern_agent  # 7c60
+  clock: 9  # 7c60
+  nonce: 7c60  # 7c60
+  set:  # 7c60
+    status: satisfied  # 7c60
+- op: discuss  # 0c08
+  at: '2026-05-18T06:30:06Z'  # 0c08
+  by: agent  # 0c08
+  actor: jgstern_agent  # 0c08
+  clock: 10  # 0c08
+  nonce: 0c08  # 0c08
+  message: "Fixed in PR #3789 (merge 976d50ceb4). New packages/hypergumbo-core/src/hypergumbo_core/repo_fingerprint.py implements the spec algorithm at docs/hypergumbo-spec.md:378-384: git branch hashes git_head + sorted([(path, sha256(content_bytes)) for each dirty file]); non-git branch hashes sorted([(path, sha256(content_bytes)) for each source file]). Stamped post-collection at cli.command_run so all 83 AnalysisRun.create call sites inherit the value without per-site wiring. Self-analysis dogfood: 133/133 runs now carry a non-null 64-char hex repo_fingerprint matching the declared hypergumbo-repofp-v1 scheme. +20 tests covering determinism, content sensitivity, mtime insensitivity, untracked-file inclusion, sort order invariance, empty-dir handling, git-vs-non-git divergence, rename/delete parsing, non-source-file exclusion, excluded-directory exclusion, subdirectory walk, empty-repo case, and end-to-end stamping in the behavior-map output. Marking with awaits_bakeoff_validation tag for the optional cache-migration verification."  # 0c08
+- op: update  # 91e1
+  at: '2026-05-18T06:30:06Z'  # 91e1
+  by: agent  # 91e1
+  actor: jgstern_agent  # 91e1
+  clock: 11  # 91e1
+  nonce: '91e1'  # 91e1
+  set: {}  # 91e1
+  add:  # 91e1
+    tags: [awaits_bakeoff_validation]  # 91e1

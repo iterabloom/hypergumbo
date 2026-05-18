@@ -37,3 +37,18 @@
   nonce: aede  # aede
   set:  # aede
     parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # aede
+- op: update  # 571b
+  at: '2026-05-18T08:33:39Z'  # 571b
+  by: agent  # 571b
+  actor: jgstern_agent  # 571b
+  clock: 4  # 571b
+  nonce: 571b  # 571b
+  set:  # 571b
+    status: satisfied  # 571b
+- op: discuss  # 7f56
+  at: '2026-05-18T08:33:39Z'  # 7f56
+  by: agent  # 7f56
+  actor: jgstern_agent  # 7f56
+  clock: 5  # 7f56
+  nonce: 7f56  # 7f56
+  message: "Closed by PR #3791 (merge f9f20be3d8). 12 of 19 originally-listed linkers needed fixing — AST inspection found 6 already correct (ipc, phoenix_ipc, vue_component, swift_objc, websocket, js_module, grpc). 5 needed both origin + origin_run_id stamps (graphql, http, openapi, solidity_abi, subprocess_cli); 7 needed only origin_run_id (annotation_convention, crypto_flow, message_dispatch, tauri_ipc, _view_template_core, wasm_bindgen, yjs_crdt). New tests/test_linker_origin_invariant.py enforces the invariant structurally (AST scan, catches future 22nd linker) + runtime (3 representatives). Self-analysis dogfood: 95 previously-empty-origin Symbols (18 http + 77 subprocess) now stamped with correct PASS_ID. Only the documented external_symbol exception remains empty-origin. Last Foundations item — Wave 2 (Identity META INV-dajaf) is now unblocked."  # 7f56
