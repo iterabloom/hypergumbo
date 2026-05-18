@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Audit-findings 0013: Symbol.kind Cluster 27D — Framework Roles
 
-- Date: 2026-05-05 (filed); 2026-05-06 corrections (WI-nitil)
+- Date: 2026-05-05 (filed); 2026-05-06 corrections (WI-nitil); 2026-05-18 amendment (INV-mopif — `http_client` fold-target harmonisation)
 - Status: All rows PRELIM_RESOLVED — Phase 3 producer migration complete across all 33 in-scope rows. Wave 5 of WI-runod (six PRs across Codeberg #3572 and selfh #162-#166) shipped the framework_role fold for active producers; WI-nitil corrected four assignment-form misses (gRPC + MQ) and added three previously-unregistered values (`grpc_service`, `grpc_servicer`, `grpc_client`); the `phoenix_ipc.py` f-string-form Symbol.kind producer (selfh PR #174) closed the final f-string blind spot. Empirical re-grep finds zero live `Symbol(kind=<value>)` producers across all rows. Values remain on `endpoint_shape` through the Phase 4a deprecation window per ADR-0027 §"Phase 4".
 - 2026-05-06 corrections (WI-nitil): the original literal-grep diagnostic test (`grep -rn 'kind=["\047]<value>["\047]'`) only catches kwarg-form producers like `Symbol(kind="mq_publisher", ...)` and missed assignment-form producers like `kind = "mq_publisher" if ... else "mq_subscriber"` followed by `Symbol(kind=kind, ...)`. Re-sweep with a broader pattern (`kind\s*=\s*["\047]<value>["\047]`) found four assignment-form producers — `grpc_server` and `grpc_stub` at `linkers/grpc.py:660,663`, `mq_publisher` and `mq_subscriber` at `linkers/message_queue.py:410`. Those four rows are corrected to UNRESOLVED below. The other five originally-PRELIM_RESOLVED rows (`ipc_subscriber`, `websocket_emitter`, `websocket_listener`, `rpc`, `service`) re-verified as zero-producer; they retain PRELIM_RESOLVED. Three additional values emitted by the same `linkers/grpc.py` block but absent from the registry — `grpc_service`, `grpc_servicer`, `grpc_client` — are added as new verdict rows below. The L3 producer-coherence linter only flags literal-string kwargs (`Symbol(kind="literal", ...)`) and so cannot catch the assignment-form gap; closing that gap is tracked as a follow-on linter improvement.
 - Closes: WI-habut-diziv-jahuv-gimub-kipus-rosaj-nukol-gujil (Cluster 27D, ADR-0027 Phase 3) at the verdict-table layer. Producer-side migration ships piecewise as per-framework sub-PRs (Wave 5 of WI-runod schedule), each carrying its own `awaits_bakeoff_validation` tag.
@@ -295,12 +295,12 @@ verdicts:
     rationale: "Framework participation. Fold: kind=function/method + meta['framework_role']='graphql_client'. Producer: linkers/graphql.py."
   - value: http_client
     verdict: FOLD
-    fold_target: function
+    fold_target: call_site
     status: RESOLVED
     diagnostic_test:
       cmd: "grep -rn '\\bkind=[\"\\047]http_client[\"\\047]' packages/ | grep -v 'test_\\|symbol_kinds.py'"
       expect: empty
-    rationale: "Framework participation (HTTP client call site). Fold: kind=function/method + meta['framework_role']='http_client'. Producer: linkers/http.py."
+    rationale: "Framework participation (HTTP client call site). Fold: kind=call_site + meta['call_kind']='http' + meta['framework_role']='http_client'. Producer: linkers/http.py. **2026-05-18 amendment (INV-mopif)**: the original 2026-05-05 verdict listed fold_target=function, which was internally inconsistent with audit-findings 0010 sub-case (a) — the latter had already added call_site to AXIS_LANGUAGE_CONSTRUCT (symbol_kinds.py:156) precisely for the 'call expression as syntactic construct' shape and migrated abi_call / function_call / subprocess_call / db_query onto it. The function fold gave http_client Symbols names like 'GET event.request' (non-identifier) and made hypergumbo dead-code-maybe flag live fetch() calls as dead functions (the production service-worker.js:54 case INV-mopif filed). Harmonised fold preserves both meta keys: call_kind names the syntactic-construct specialisation (sibling of db_query/subprocess/abi); framework_role names the framework-participation residue (audit-0013 convention). The two carry orthogonal information."
   - value: route_mount
     verdict: FOLD
     fold_target: function

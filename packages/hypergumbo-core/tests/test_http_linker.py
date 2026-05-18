@@ -23,6 +23,103 @@ from hypergumbo_core.linkers.http import (
 )
 
 
+class TestINVMopifCallSiteFold:
+    """INV-mopif: HTTP client Symbols must be ``kind="call_site"``, not ``"function"``.
+
+    Resolves an audit-internal inconsistency in audit-findings 0013, which
+    assigned ``fold_target: function`` to the ``http_client`` row even
+    though the same audit's rationale describes the producer as a "HTTP
+    client *call site*". Audit-findings 0010 sub-case (a) already set the
+    precedent (``abi_call`` → ``kind="call_site"`` + ``meta["call_kind"]``);
+    these tests pin the harmonised fold for ``http_client``. Sister
+    producers ``database_query`` (``meta["call_kind"]="db_query"``),
+    ``subprocess_cli`` (``meta["call_kind"]="subprocess"``), and
+    ``solidity_abi`` (``meta["call_kind"]="abi"``) ship the same shape.
+    """
+
+    def _make_call(
+        self,
+        tmp_path: Path,
+        method: str = "GET",
+        url: str = "/api/users",
+    ) -> HttpClientCall:
+        """Build an HttpClientCall whose file_path is under ``tmp_path``.
+
+        ``_create_client_symbol`` calls ``rel_path = Path(call.file_path)
+        .relative_to(root)`` and raises ``ValueError`` otherwise, so the
+        ``file_path`` must live under ``root``.
+        """
+        return HttpClientCall(
+            file_path=str(tmp_path / "src" / "client.js"),
+            line=1,
+            method=method,
+            url=url,
+            language="javascript",
+            url_type="literal",
+        )
+
+    def test_create_client_symbol_emits_call_site_kind(self, tmp_path: Path) -> None:
+        """INV-mopif: ``kind`` is ``"call_site"``, not ``"function"``.
+
+        ``call_site`` is on ``AXIS_LANGUAGE_CONSTRUCT`` (``symbol_kinds.py:156``)
+        and exists precisely for this shape. ``function`` previously caused
+        dead-code analysis to flag live ``fetch()`` calls because nothing
+        in source ever calls a Symbol whose name is ``"GET event.request"``.
+        """
+        sym = _create_client_symbol(self._make_call(tmp_path), tmp_path)
+        assert sym.kind == "call_site"
+
+    def test_create_client_symbol_stamps_call_kind_http(self, tmp_path: Path) -> None:
+        """INV-mopif: ``meta["call_kind"]="http"`` per audit 0010's pattern.
+
+        ``call_kind`` is the per-row specialisation key for ``call_site``
+        Symbols, paralleling ``"db_query"`` / ``"subprocess"`` / ``"abi"``
+        used by the sister linkers.
+        """
+        sym = _create_client_symbol(self._make_call(tmp_path), tmp_path)
+        assert (sym.meta or {}).get("call_kind") == "http"
+
+    def test_create_client_symbol_preserves_framework_role(self, tmp_path: Path) -> None:
+        """Audit-0013 fold residue ``meta["framework_role"]="http_client"``
+        stays — ``call_kind`` and ``framework_role`` carry orthogonal info
+        (syntactic-construct specialisation vs. framework-participation).
+        """
+        sym = _create_client_symbol(self._make_call(tmp_path), tmp_path)
+        assert (sym.meta or {}).get("framework_role") == "http_client"
+
+    def test_create_client_symbol_keeps_call_metadata(self, tmp_path: Path) -> None:
+        """Existing ``meta`` keys (``http_method``, ``url_path``, ``raw_url``,
+        ``url_type``) are untouched by the kind harmonisation."""
+        sym = _create_client_symbol(
+            self._make_call(tmp_path, "POST", "/api/login"), tmp_path
+        )
+        meta = sym.meta or {}
+        assert meta["http_method"] == "POST"
+        assert meta["url_path"] == "/api/login"
+        assert meta["raw_url"] == "/api/login"
+        assert meta["url_type"] == "literal"
+
+    def test_link_http_emits_call_site_kind_end_to_end(self, tmp_path: Path) -> None:
+        """End-to-end: ``link_http`` produces only ``call_site`` client Symbols.
+
+        Pins the harmonisation at the public entry-point so a producer-side
+        regression (e.g. a future framework_role-only fold) cannot silently
+        re-introduce ``kind="function"`` on call sites.
+        """
+        (tmp_path / "client.js").write_text('fetch("/api/users");\n')
+        result = link_http(tmp_path, [])
+        http_clients = [
+            s for s in result.symbols
+            if (s.meta or {}).get("framework_role") == "http_client"
+        ]
+        assert len(http_clients) >= 1
+        for s in http_clients:
+            assert s.kind == "call_site", (
+                f"http_client Symbol must use kind='call_site' (INV-mopif), "
+                f"got kind={s.kind!r}"
+            )
+
+
 class TestExtractPathFromUrl:
     """Tests for URL path extraction."""
 
@@ -607,11 +704,15 @@ class TestLinkHttp:
 
         result = link_http(tmp_path, [route_symbol])
 
-        # Should create an http_client symbol for the fetch call
+        # Should create an http_client call-site symbol for the fetch call.
+        # INV-mopif: kind is "call_site" (per audit 0010's precedent),
+        # not "function" (the audit-0013 fold target was inconsistent with
+        # 0010's call-site treatment).
         assert len(result.symbols) >= 1
         client_sym = result.symbols[0]
-        assert client_sym.kind == "function"
+        assert client_sym.kind == "call_site"
         assert (client_sym.meta or {}).get("framework_role") == "http_client"
+        assert (client_sym.meta or {}).get("call_kind") == "http"
         assert client_sym.meta["url_path"] == "/api/users"
 
     def test_empty_when_no_routes(self, tmp_path):

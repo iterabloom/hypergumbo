@@ -1317,15 +1317,39 @@ def _scan_elm_file(file_path: Path, content: str) -> list[HttpClientCall]:
 
 
 def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
-    """Create a symbol for an HTTP client call."""
+    """Create a Symbol for an HTTP client call site.
+
+    INV-mopif / audit-findings 0013 amendment
+    -----------------------------------------
+    Emits ``kind="call_site"`` rather than ``kind="function"``. The
+    original Wave 5 fold (audit-findings 0013) mapped the deprecated
+    ``kind="http_client"`` to ``kind="function" + meta["framework_role"]``,
+    but the producer is naming a **call site**, not a function definition
+    — a fold-target inconsistency with sister audit-findings 0010
+    sub-case (a), which had already added ``call_site`` to
+    ``AXIS_LANGUAGE_CONSTRUCT`` precisely for this shape and migrated
+    ``abi_call`` / ``function_call`` / ``subprocess_call`` / ``db_query``
+    onto it. The harmonised fold preserves both audit's residue keys:
+
+    * ``meta["call_kind"]="http"`` — audit-0010 precedent, names the
+      call-site specialisation (sibling of ``"db_query"`` /
+      ``"subprocess"`` / ``"abi"``).
+    * ``meta["framework_role"]="http_client"`` — audit-0013 precedent,
+      names the framework-participation role. The two meta keys carry
+      orthogonal information.
+
+    Downstream consequences of the harmonisation: ``hypergumbo
+    dead-code-maybe`` no longer flags the production
+    ``service-worker.js:54`` fetch as a "dead function"; consumers
+    enumerating callable kinds (``{"function", "method"}``) stop
+    encountering pseudo-function names like ``"GET event.request"``.
+    """
     rel_path = Path(call.file_path).relative_to(root) if root else Path(call.file_path)
 
-    # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
-    # Fold to canonical kind="function" + meta["framework_role"].
     return Symbol(
         id=f"{rel_path}::http_client::{call.line}",
         name=f"{call.method} {call.url}",
-        kind="function",
+        kind="call_site",
         path=call.file_path,
         span=Span(
             start_line=call.line,
@@ -1343,6 +1367,7 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
             "raw_url": call.url,
             "url_type": call.url_type,
             "framework_role": "http_client",
+            "call_kind": "http",
         },
     )
 
