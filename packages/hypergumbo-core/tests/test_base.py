@@ -9,6 +9,7 @@ Tests the shared infrastructure used by all tree-sitter analyzers:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -1719,3 +1720,147 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
     def test_returns_empty_when_no_dangling(self) -> None:
         """No edges → no synthesis."""
         assert synthesize_file_symbols_for_dangling_edges([], []) == []
+
+
+class TestSynthesizeFileSymbolsHonorIdentity:
+    """INV-vaguj: file-Symbol identity (``name`` and ``span``) must be honest.
+
+    ``orchestrator_file_symbol_synthesis`` historically stamped two
+    correlated lies into its file-kind Symbols: ``name`` reflected whatever
+    path was packed into the dangling endpoint id (often absolute from an
+    analyzer that hadn't normalised yet), and ``span`` was hardcoded
+    ``start_line=1, end_line=1`` regardless of the file's actual extent.
+
+    The fix takes a ``repo_root`` argument:
+
+    1. **name / path normalisation** — paths under ``repo_root`` strip to
+       repo-relative form, so a 3179-line ``packages/.../cli.py`` no longer
+       ships as ``name="/home/.../cli.py"`` with ``path="packages/.../cli.py"``.
+    2. **span end_line** — when the file is readable under ``repo_root``,
+       ``end_line`` becomes the actual newline count. Unreadable files
+       keep ``end_line=1`` (a valid value matching the schema, not the
+       invariant-violating sentinel ``-1`` the tracker originally proposed).
+
+    The legacy (``repo_root=None``) call form preserves the prior shape,
+    so the older ``TestSynthesizeFileSymbolsForDanglingEdges`` cases that
+    pre-date this fix continue to pass without modification.
+    """
+
+    def test_absolute_path_in_endpoint_normalises_to_relative(
+        self, tmp_path: Path
+    ) -> None:
+        """An endpoint built with an absolute path lands as relative ``name``+``path``."""
+        # Simulate an analyzer that emitted an absolute path in its file-id.
+        target = tmp_path / "src" / "main.py"
+        target.parent.mkdir(parents=True)
+        target.write_text("print('hi')\n")
+        abs_file_id = make_file_id("python", str(target))
+        caller = _make_caller_symbol()
+        edge = Edge.create(
+            src=abs_file_id, dst=caller.id, edge_type="imports", line=1,
+        )
+
+        new_syms = synthesize_file_symbols_for_dangling_edges(
+            [caller], [edge], repo_root=tmp_path,
+        )
+
+        assert len(new_syms) == 1
+        sym = new_syms[0]
+        assert sym.path == "src/main.py", (
+            f"path should be repo-relative, got {sym.path!r}"
+        )
+        assert sym.name == "src/main.py", (
+            f"name should mirror relative path, got {sym.name!r}"
+        )
+        assert not Path(sym.name).is_absolute(), (
+            f"name {sym.name!r} must not be an absolute filesystem path"
+        )
+
+    def test_span_end_line_matches_file_line_count(
+        self, tmp_path: Path
+    ) -> None:
+        """``span.end_line`` reflects the file's real extent, not a hardcoded 1."""
+        target = tmp_path / "long.py"
+        target.write_text("\n".join(f"line {i}" for i in range(1, 43)) + "\n")
+        # 42 lines.
+        file_id = make_file_id("python", str(target))
+        caller = _make_caller_symbol()
+        edge = Edge.create(
+            src=file_id, dst=caller.id, edge_type="imports", line=1,
+        )
+
+        new_syms = synthesize_file_symbols_for_dangling_edges(
+            [caller], [edge], repo_root=tmp_path,
+        )
+
+        sym = new_syms[0]
+        assert sym.span.start_line == 1
+        assert sym.span.end_line == 42, (
+            f"end_line should be the file's line count (42), got {sym.span.end_line}"
+        )
+
+    def test_unreadable_file_keeps_default_end_line(
+        self, tmp_path: Path
+    ) -> None:
+        """File missing under ``repo_root`` → ``end_line`` stays at 1 (schema-valid sentinel)."""
+        # No file at this path — synthesiser still must produce something.
+        file_id = make_file_id("python", "missing/ghost.py")
+        caller = _make_caller_symbol()
+        edge = Edge.create(
+            src=file_id, dst=caller.id, edge_type="imports", line=1,
+        )
+
+        new_syms = synthesize_file_symbols_for_dangling_edges(
+            [caller], [edge], repo_root=tmp_path,
+        )
+
+        sym = new_syms[0]
+        assert sym.span.end_line == 1
+        # Schema requires end_line >= 0; -1 would violate INV-piroh's gate.
+        assert sym.span.end_line >= 0
+
+    def test_repo_root_none_preserves_legacy_behaviour(self) -> None:
+        """Existing call sites without ``repo_root`` keep the pre-fix shape.
+
+        Backwards compat for tests / consumers that never had repo_root in
+        scope. New orchestrator code path passes it; old call sites continue
+        to produce hardcoded 1-1 spans with name=path. This preserves the
+        existing six tests above without forcing a rewrite cascade.
+        """
+        caller = _make_caller_symbol()
+        edge = Edge.create(
+            src=make_file_id("python", "src/main.py"),
+            dst=caller.id,
+            edge_type="imports",
+            line=1,
+        )
+
+        new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
+
+        assert new_syms[0].name == "src/main.py"
+        assert new_syms[0].path == "src/main.py"
+        assert new_syms[0].span.end_line == 1
+
+    def test_dart_colon_path_unchanged_under_repo_root(
+        self, tmp_path: Path
+    ) -> None:
+        """Synthetic dart paths (``dart:io``) aren't filesystem paths; they pass through."""
+        # `dart:io` is not under repo_root and is not a real path; the
+        # synthesiser must not break it by trying to relativise.
+        caller = _make_caller_symbol(
+            "dart:lib/app.dart:1-3:main:function",
+            language="dart",
+            path="lib/app.dart",
+        )
+        file_id = "dart:dart:io:1-1:file:file"
+        edge = Edge.create(
+            src=file_id, dst=caller.id, edge_type="imports", line=1,
+        )
+
+        new_syms = synthesize_file_symbols_for_dangling_edges(
+            [caller], [edge], repo_root=tmp_path,
+        )
+
+        assert new_syms[0].path == "dart:io"
+        assert new_syms[0].name == "dart:io"
+        assert new_syms[0].span.end_line == 1  # no file to count

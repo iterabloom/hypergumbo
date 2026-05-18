@@ -192,7 +192,9 @@ def run_all_analyzers(
     # here at the orchestrator chokepoint covers every analyzer in one
     # place and obviates per-analyzer fixes.
     all_symbols.extend(
-        synthesize_file_symbols_for_dangling_edges(all_symbols, all_edges)
+        synthesize_file_symbols_for_dangling_edges(
+            all_symbols, all_edges, repo_root=repo_root,
+        )
     )
 
     # Normalize paths: some analyzers produce absolute paths instead of

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 from hypergumbo_core.cli import run_behavior_map
@@ -61,6 +62,47 @@ def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
     assert len(fps) == 1, f"runs produced divergent fingerprints: {fps}"
 
     assert data["repo_fingerprint_scheme"] == "hypergumbo-repofp-v1"
+
+
+def test_run_behavior_map_no_symbol_has_absolute_path_in_name(tmp_path):
+    """INV-vaguj: no Symbol may have an absolute filesystem path in its ``name``.
+
+    The orchestrator's ``synthesize_file_symbols_for_dangling_edges``
+    historically stamped whatever path a dangling endpoint id carried into
+    ``Symbol.name``. When analyzers leaked absolute paths in their
+    edge endpoint ids (most did), the resulting file-kind Symbols ended up
+    with ``name="/home/.../foo.py"`` while ``path`` was normalised to
+    relative. INV-dihif's user-visible explain leak is a downstream
+    consequence.
+
+    Property: after running the full pipeline, no Symbol has a ``name``
+    that ``Path(name).is_absolute()`` reports as True.
+    """
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    # A few files in nested dirs so that imports/cross-file edges generate
+    # dangling file-id endpoints — that's the codepath that triggers the
+    # synthesiser.
+    (repo_root / "src").mkdir()
+    (repo_root / "src" / "a.py").write_text("from . import b\n\ndef f(): return b.g()\n")
+    (repo_root / "src" / "b.py").write_text("def g(): return 1\n")
+    (repo_root / "src" / "__init__.py").write_text("")
+
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path,
+        include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    offenders = [
+        n for n in data["nodes"]
+        if isinstance(n.get("name"), str) and Path(n["name"]).is_absolute()
+    ]
+    assert not offenders, (
+        f"INV-vaguj violation: {len(offenders)} Symbol(s) have absolute paths "
+        f"in their name field. Sample: {offenders[0]}"
+    )
 
 
 def test_run_behavior_map_classifies_supply_chain_tiers(tmp_path):

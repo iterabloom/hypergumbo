@@ -325,6 +325,7 @@ _FILE_ID_SUFFIX = ":1-1:file:file"
 def synthesize_file_symbols_for_dangling_edges(
     symbols: list[Symbol],
     edges: list[Edge],
+    repo_root: "Optional[Path]" = None,
 ) -> list[Symbol]:
     """Synthesize real file Symbols for any ``make_file_id``-shape dangling edge endpoint.
 
@@ -342,10 +343,37 @@ def synthesize_file_symbols_for_dangling_edges(
     those edges land on real producer-side Symbols and never enter the
     boundary pipeline.
 
+    INV-vaguj
+    ---------
+    When ``repo_root`` is provided, two identity claims on each synthesised
+    Symbol become honest:
+
+    * **``name``/``path``** — paths under ``repo_root`` strip to repo-relative
+      form. Analyzers that leaked absolute paths into the dangling endpoint
+      id no longer poison the synthesised ``Symbol.name`` with a leading
+      ``/home/.../`` prefix (downstream the ``Symbol.path`` normalisation
+      loop in ``all_analyzers`` already handled ``.path``, but never
+      ``.name`` — the two values drifted, which is the root cause of
+      INV-dihif's user-visible explain leak).
+    * **``span.end_line``** — when the file is readable under ``repo_root``,
+      reflects the file's actual line count, not the hardcoded ``1``. A
+      3179-line ``cli.py`` ships with ``span.end_line=3179`` instead of
+      ``span.end_line=1``. Unreadable files retain ``end_line=1`` (a
+      schema-valid value; the tracker-proposed sentinel ``-1`` would
+      violate the INV-piroh schema gate's ``minimum=0`` constraint on
+      ``Span.end_line``).
+
+    When ``repo_root`` is ``None`` (legacy call form retained for unit
+    tests that pre-date this fix), the pre-INV-vaguj shape is preserved:
+    ``name = path = <whatever-was-in-the-endpoint>`` and ``end_line = 1``.
+
     Args:
         symbols: All Symbols collected from analyzers (mutated only via
             return value — this function is non-destructive).
         edges: All Edges collected from analyzers.
+        repo_root: Repository root. When provided, paths normalise to
+            repo-relative and ``span.end_line`` reflects each file's
+            actual line count.
 
     Returns:
         List of new Symbols (one per previously-dangling
@@ -354,6 +382,9 @@ def synthesize_file_symbols_for_dangling_edges(
     """
     existing_ids = {s.id for s in symbols}
     synthesized: dict[str, Symbol] = {}
+    root_prefix: Optional[str] = None
+    if repo_root is not None:
+        root_prefix = str(repo_root).replace("\\", "/").rstrip("/") + "/"
 
     for edge in edges:
         for endpoint in (edge.src, edge.dst):
@@ -372,13 +403,38 @@ def synthesize_file_symbols_for_dangling_edges(
                 continue
             language = head[:colon]
             path = head[colon + 1 :]
+
+            # INV-vaguj: strip the repo_root prefix so absolute paths
+            # leaked by upstream analyzers don't surface in ``name``.
+            end_line = 1
+            if root_prefix is not None:
+                normed = path.replace("\\", "/")
+                if normed.startswith(root_prefix):
+                    path = normed[len(root_prefix):]
+                # INV-vaguj: stamp the file's real line count when we can
+                # read it; otherwise keep the schema-valid sentinel of 1.
+                try:
+                    file_text = (repo_root / path).read_text(
+                        encoding="utf-8", errors="ignore",
+                    )
+                    line_count = file_text.count("\n")
+                    if file_text and not file_text.endswith("\n"):
+                        line_count += 1
+                    if line_count >= 1:
+                        end_line = line_count
+                except (OSError, ValueError):
+                    pass
+
             synthesized[endpoint] = Symbol(
                 id=endpoint,
                 name=path,
                 kind="file",
                 language=language,
                 path=path,
-                span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+                span=Span(
+                    start_line=1, start_col=0,
+                    end_line=end_line, end_col=0,
+                ),
                 origin="orchestrator_file_symbol_synthesis",
                 origin_run_id="",
             )
