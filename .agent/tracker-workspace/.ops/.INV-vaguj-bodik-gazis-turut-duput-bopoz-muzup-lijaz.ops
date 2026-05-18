@@ -41,3 +41,34 @@
   clock: 3  # 0ca8
   nonce: 0ca8  # 0ca8
   message: "Reparented to INV-dajaf (META: Symbol identity must be honest across the pipeline). INV-vaguj is a textbook representation-stage violation per INV-dajaf's table: orchestrator producer stamps wrong-shape identity claim into Symbol.name (absolute path) and Symbol.span (1-1 sentinel) on 798+800 nodes. Sibling of INV-hojus, INV-ronuf, INV-mopif which are already correctly parented. Plain missed connection caught during docket-wide review."  # 0ca8
+- op: update  # e6f7
+  at: '2026-05-18T08:50:01Z'  # e6f7
+  by: agent  # e6f7
+  actor: jgstern_agent  # e6f7
+  clock: 4  # e6f7
+  nonce: e6f7  # e6f7
+  set: {}  # e6f7
+  add:  # e6f7
+    tags: [awaits_bakeoff_validation]  # e6f7
+- op: discuss  # d4a2
+  at: '2026-05-18T08:50:01Z'  # d4a2
+  by: agent  # d4a2
+  actor: jgstern_agent  # d4a2
+  clock: 5  # d4a2
+  nonce: d4a2  # d4a2
+  message: "Tagging for BROAD bakeoff validation per the validation-discipline playbook — PR description carries quantitative improvement claim (798 → 0 absolute-name file Symbols; 800 → 9 hardcoded-1-1-span file Symbols on self-analysis dogfood)."  # d4a2
+- op: update  # 3c38
+  at: '2026-05-18T09:01:12Z'  # 3c38
+  by: agent  # 3c38
+  actor: jgstern_agent  # 3c38
+  clock: 6  # 3c38
+  nonce: 3c38  # 3c38
+  set:  # 3c38
+    status: satisfied  # 3c38
+- op: discuss  # 2426
+  at: '2026-05-18T09:01:12Z'  # 2426
+  by: agent  # 2426
+  actor: jgstern_agent  # 2426
+  clock: 7  # 2426
+  nonce: '2426'  # 2426
+  message: "Closed by PR #3794 (merge 7a28107df8). Synthesiser at analyze/base.py:325-386 now takes a repo_root argument; paths under repo_root normalise to relative form for both Symbol.name and Symbol.path; span.end_line reflects actual file line count (3179-line cli.py → end_line=3179). Self-analysis post-fix: 0 Symbols with absolute-path names (was 798); 9/812 file-kind Symbols still have span 1-1 (was 800/809; remaining 9 are real 1-line files or synthetic boundaries). Sibling tracker INV-dihif (explain absolute-path leak) closes as downstream consequence."  # 2426

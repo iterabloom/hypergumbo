@@ -30,3 +30,34 @@
   nonce: 8f65  # 8f65
   set:  # 8f65
     parent: INV-zadum-rukig-zasum-sinaj-rozij-dadin-mutus-sakir  # 8f65
+- op: update  # 9745
+  at: '2026-05-18T10:17:42Z'  # 9745
+  by: agent  # 9745
+  actor: jgstern_agent  # 9745
+  clock: 3  # 9745
+  nonce: '9745'  # 9745
+  set: {}  # 9745
+  add:  # 9745
+    tags: [awaits_bakeoff_validation]  # 9745
+- op: discuss  # 6640
+  at: '2026-05-18T10:29:06Z'  # 6640
+  by: agent  # 6640
+  actor: jgstern_agent  # 6640
+  clock: 4  # 6640
+  nonce: '6640'  # 6640
+  message: "Merged as PR #3797, dev SHA 9f943e55fcc6."  # 6640
+- op: update  # d310
+  at: '2026-05-18T10:29:27Z'  # d310
+  by: agent  # d310
+  actor: jgstern_agent  # d310
+  clock: 5  # d310
+  nonce: d310  # d310
+  set:  # d310
+    status: pending_validation  # d310
+- op: discuss  # d23d
+  at: '2026-05-18T10:29:27Z'  # d23d
+  by: agent  # d23d
+  actor: jgstern_agent  # d23d
+  clock: 6  # d23d
+  nonce: d23d  # d23d
+  message: "Fixed in PR #3797. _compute_stable_id now folds class body shape (sorted method/field/base names) into the hash for ClassDef nodes; bumps STABLE_ID_SCHEME v2 -> v3. Secondary fix: isinstance broadened to include AsyncFunctionDef. 10 property tests pin the contract. Full pytest 14475/14475 passed, 100% coverage held. Awaits BROAD bakeoff to validate the quantitative claim (91% collision rate -> much lower) on self-analysis."  # d23d

@@ -31,3 +31,18 @@
   clock: 2  # 1a93
   nonce: 1a93  # 1a93
   message: "Root cause identified in round 14: orchestrator_file_symbol_synthesis (analyze/base.py:375-385) stamps absolute paths into Symbol.name on file-kind nodes; the explain formatter renders Symbol.name (not Symbol.id as I'd guessed) — that's where the leak surfaces. Root-cause INV-vaguj-bodik-gazis-... is filed with --isbefore INV-dihif. Close this item once INV-vaguj is satisfied AND a fresh self-analysis confirms no absolute paths in explain output."  # 1a93
+- op: update  # 5e85
+  at: '2026-05-18T09:01:21Z'  # 5e85
+  by: agent  # 5e85
+  actor: jgstern_agent  # 5e85
+  clock: 3  # 5e85
+  nonce: '5e85'  # 5e85
+  set:  # 5e85
+    status: satisfied  # 5e85
+- op: discuss  # bf7a
+  at: '2026-05-18T09:01:21Z'  # bf7a
+  by: agent  # bf7a
+  actor: jgstern_agent  # bf7a
+  clock: 4  # bf7a
+  nonce: bf7a  # bf7a
+  message: "Closed as downstream consequence of INV-vaguj (PR #3794, merge 7a28107df8). My round-10 hypothesis was that explain uses Symbol.id; INV-vaguj's round-14 verification found explain renders Symbol.name, which had been receiving an absolute-path stamp from analyze/base.py:375-385 (the WI-ramuv synthesiser). Fixing the name field at the producer site eliminates the symptom. New property test in test_run_behavior_map.py asserts no Symbol has an absolute-path name end-to-end; self-analysis dogfood confirms 0/812 file-kind Symbols carry absolute names."  # bf7a
