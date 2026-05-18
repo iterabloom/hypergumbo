@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **274** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 52 core, 4 CLI, 32 tracker)
-- **6094** symbols (functions, classes, methods)
-- **65134** edges by type:
-  - calls: 45045
-  - imports: 9628
-  - instantiates: 6960
-  - contains: 1305
-  - module_attr_ref: 985
+- **275** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 53 core, 4 CLI, 32 tracker)
+- **6116** symbols (functions, classes, methods)
+- **65388** edges by type:
+  - calls: 45198
+  - imports: 9682
+  - instantiates: 6986
+  - contains: 1312
+  - module_attr_ref: 1000
   - dispatches_to: 555
-  - other: 656
+  - other: 655
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 6094 Symbols + 65134 Edges + UsageContexts             │
+│  Output: 6116 Symbols + 65388 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -264,9 +264,9 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 4884.9 | ir.py |
-| `Span` | class | 4130.1 | ir.py |
-| `run_behavior_map` | function | 2725.9 | cli.py |
+| `Symbol` | class | 4905.7 | ir.py |
+| `Span` | class | 4144.8 | ir.py |
+| `run_behavior_map` | function | 2751.6 | cli.py |
 | `LinkerContext` | class | 1914.8 | registry.py |
 | `TrackerApp` | class | 1872.3 | tui.py |
 | `load_framework_patterns` | function | 1569.0 | framework_patterns.py |
@@ -457,6 +457,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
 | `check-producer-axis-coherence` | Pre-commit lint: literal-string keyword arguments to ``Edge.create``, |
 | `check-schema-conformance` | Validate hypergumbo's own behavior-map output against ``docs/schema.json``. |
+| `check-schema-coverage` | Corpus-driven schema-coverage gate (WI-luzuh). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
 | `dead-code-prospector-run.py` | Lightweight one-shot dead-code-maybe prospecting run. |
@@ -554,6 +555,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.sketch_embeddings`**: Embedding-based utilities for sketch generation.
 - **`hypergumbo_core.slice`**: Graph slicing for LLM context extraction.
 - **`hypergumbo_core.supply_chain`**: Supply chain classification for code analysis.
+- **`hypergumbo_core.symbol_indexes`**: Multi-value Symbol-name indexes for analyzers and linkers (WI-sofaf).
 - **`hypergumbo_core.symbol_kinds`**: Canonical registry of Symbol.kind values in hypergumbo's behavior map.
 - **`hypergumbo_core.symbol_resolution`**: Unified symbol resolution with pluggable matching strategies.
 - **`hypergumbo_core.taint`**: Taint catalog loading and taint-flow propagation (ADR-0017 Phases 1...
@@ -801,7 +803,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 976d50ceb473
+  commit: 83631cab94ed
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
