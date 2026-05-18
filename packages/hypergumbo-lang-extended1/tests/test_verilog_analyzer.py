@@ -72,6 +72,53 @@ endmodule
     assert len(inst_edges) >= 1
 
 
+def test_module_instantiation_fallback_when_names_collide_across_files(tmp_path):
+    """WI-sofaf / INV-paroh: two files each declare ``module driver`` (the
+    same module name); the instantiation site can't disambiguate by
+    kind (both are ``module``), so ``SymbolByName.lookup_one`` returns
+    ``is_fallback=True``. The resulting edge must carry
+    ``confidence=0.50`` and ``meta["disambiguation_fallback"]=True``
+    per the INV-zuhub ambiguous-resolution contract.
+
+    This pins the fallback branch end-to-end (the unit test in
+    ``test_symbol_indexes.TestLookupOne`` covers the helper; this test
+    covers the verilog integration applying the contract to ``Edge``).
+    """
+    (tmp_path / "a.v").write_text("""
+module counter (input clk, output [7:0] count);
+endmodule
+""")
+    (tmp_path / "b.v").write_text("""
+module counter (input clk, output [7:0] count);
+endmodule
+""")
+    (tmp_path / "top.v").write_text("""
+module top;
+    wire clk;
+    wire [7:0] out;
+    counter u1 (.clk(clk), .count(out));
+endmodule
+""")
+    result = analyze_verilog_files(tmp_path)
+
+    inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+    assert len(inst_edges) >= 1, "Expected at least one instantiates edge"
+
+    # The driver instantiation should be marked as a disambiguation fallback.
+    fallback_edges = [
+        e for e in inst_edges
+        if e.meta and e.meta.get("disambiguation_fallback") is True
+    ]
+    assert len(fallback_edges) >= 1, (
+        "Expected the ambiguous driver instantiation to carry "
+        "meta['disambiguation_fallback']=True"
+    )
+    assert fallback_edges[0].confidence == 0.50, (
+        f"Expected confidence=0.50 on fallback edge, got "
+        f"{fallback_edges[0].confidence}"
+    )
+
+
 def test_analyze_wire_and_reg(tmp_path):
     """Test detection of wire and reg declarations."""
     verilog_file = tmp_path / "signals.v"
