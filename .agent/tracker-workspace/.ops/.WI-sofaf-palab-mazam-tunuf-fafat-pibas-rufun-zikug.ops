@@ -29,3 +29,25 @@
   clock: 2  # 0b0f
   nonce: 0b0f  # 0b0f
   message: "Filed 2026-05-17 to implement Path B-thin per the decision recorded on INV-paroh. Scope summary: ~20-30 LOC helper + verilog migration (closes INV-paroh) + optional retrofit of 4-6 of the 8 currently-closed audit-cohort sites whose existing shapes match the helper's API. Stays bespoke: route_handler (compound keys), grpc (dual shapes). Total estimated effort: 4-6 hours including tests, depending on retrofit appetite. Implementation guidance is in the description's 'Scope' section."  # 0b0f
+- op: discuss  # dbb5
+  at: '2026-05-18T19:08:19Z'  # dbb5
+  by: agent  # dbb5
+  actor: jgstern_agent  # dbb5
+  clock: 3  # dbb5
+  nonce: dbb5  # dbb5
+  message: "Merged as PR #3800, dev SHA fe8d36a88a3d."  # dbb5
+- op: update  # 8f97
+  at: '2026-05-18T19:08:41Z'  # 8f97
+  by: agent  # 8f97
+  actor: jgstern_agent  # 8f97
+  clock: 4  # 8f97
+  nonce: 8f97  # 8f97
+  set:  # 8f97
+    status: done  # 8f97
+- op: discuss  # a8b4
+  at: '2026-05-18T19:08:41Z'  # a8b4
+  by: agent  # a8b4
+  actor: jgstern_agent  # a8b4
+  clock: 5  # a8b4
+  nonce: a8b4  # a8b4
+  message: "Fixed in PR #3800 (merge fe8d36a88a). SymbolByName helper at hypergumbo_core/symbol_indexes.py + verilog migration. 22 unit tests + 1 fallback integration test. Out-of-scope cases (route_handler RailsIndex, grpc dual-shape) documented in module docstring. 8521/8521 passed; coverage held at 100%."  # a8b4

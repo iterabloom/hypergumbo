@@ -69,3 +69,18 @@
   clock: 7  # dc29
   nonce: dc29  # dc29
   message: "Decision recorded 2026-05-17: Path B-thin selected over Path A.\n\nPath A (targeted ~10-LOC verilog-only fix mirroring WI-morud's VHDL fix) was the easier ship but doesn't carry forward. Path B-thin (a small SymbolByName helper + verilog migration + optional retrofit of 4-6 done audit-cohort sites) was chosen because the per-instance cost of rediscovering and re-fixing this anti-pattern compounds linearly in the number of future analyzers, and hypergumbo's spec anticipates additional analyzers (someday queue has 5+ language candidates plus dialect coverage gaps in existing languages).\n\nThe stakes that pushed toward Path B-thin (per the dedicated stakes analysis in this thread):\n(1) Future-instance prevention — N future analyzers means N hours of duplicate fix-the-same-shape work without the helper; bounded one-time cost with the helper.\n(2) WI-morud's escalation rule has fired 8 times by now (3 BUG-04-lineage + 5 audit-cohort); always choosing Path A when the rule fires erodes the rule's credibility as a guide.\n(3) INV-zuhub fallback-edge contract enforcement becomes automatic at the lookup-result layer instead of per-linker.\n(4) Code-level documentation (importable helper) reaches future analyzer authors at write time, where text-based escalation rules in tracker descriptions don't.\n\nImplementation work tracked at WI-sofaf-palab-mazam-tunuf-fafat-pibas-rufun-zikug (sibling under INV-fosab; isbefore link set: WI-sofaf blocks INV-paroh because the helper has to land before verilog can use it). INV-paroh closes when WI-sofaf's verilog migration ships.\n\nPath B-elaborate (subsuming route_handler's compound-key index and grpc's dual-shape indexes) was NOT chosen — those shapes are genuinely beyond a shared utility's scope and forcing them in would be premature abstraction."  # dc29
+- op: update  # 3303
+  at: '2026-05-18T19:08:42Z'  # 3303
+  by: agent  # 3303
+  actor: jgstern_agent  # 3303
+  clock: 8  # 3303
+  nonce: '3303'  # 3303
+  set:  # 3303
+    status: satisfied  # 3303
+- op: discuss  # cd6b
+  at: '2026-05-18T19:08:42Z'  # cd6b
+  by: agent  # cd6b
+  actor: jgstern_agent  # cd6b
+  clock: 9  # cd6b
+  nonce: cd6b  # cd6b
+  message: "Closed as downstream consequence of WI-sofaf PR #3800. SymbolByName with prefer_kind='module' and case_insensitive=True resolves verilog's module-instantiation lookups even when a same-named interface/package coexists. TestVerilogScenario pins the contract; an end-to-end test in test_verilog_analyzer.py pins the fallback branch."  # cd6b

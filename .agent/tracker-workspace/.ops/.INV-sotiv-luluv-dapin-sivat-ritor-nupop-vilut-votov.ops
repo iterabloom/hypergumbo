@@ -40,3 +40,18 @@
   set: {}  # 2098
   add:  # 2098
     tags: [awaits_bakeoff_validation]  # 2098
+- op: update  # fe2a
+  at: '2026-05-18T18:24:59Z'  # fe2a
+  by: agent  # fe2a
+  actor: jgstern_agent  # fe2a
+  clock: 4  # fe2a
+  nonce: fe2a  # fe2a
+  set:  # fe2a
+    status: pending_validation  # fe2a
+- op: discuss  # 6bbd
+  at: '2026-05-18T18:24:59Z'  # 6bbd
+  by: agent  # 6bbd
+  actor: jgstern_agent  # 6bbd
+  clock: 5  # 6bbd
+  nonce: 6bbd  # 6bbd
+  message: "Fixed in PR #3799 (merge 7985926d5b). Added eight kind-specific stable_id factories (make_{file,module,dependency,variable,export,project,interface,type}_stable_id) + populate_kind_stable_ids backstop wired into analyze.all_analyzers. Producers keep precedence. 18 property tests; 14493/14493 passed; coverage held. Additive only — STABLE_ID_SCHEME stays at v3. Awaits BROAD bakeoff to confirm 6.1% missing-stable_id rate -> 0% on self-analysis."  # 6bbd
