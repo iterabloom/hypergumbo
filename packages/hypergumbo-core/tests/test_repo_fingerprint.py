@@ -152,6 +152,27 @@ class TestGitBranch:
         fp_yx = compute_repo_fingerprint(git_repo)
         assert fp_xy == fp_yx
 
+    def test_rename_handled_without_double_counting(
+        self, git_repo: Path,
+    ) -> None:
+        """`git status --porcelain -z` emits renames as a status code
+        plus *two* path records (new then old). The dirty-files parser
+        must skip the second record to avoid hashing a missing path."""
+        _git(git_repo, "mv", "a.py", "renamed.py")
+        fp = compute_repo_fingerprint(git_repo)
+        assert isinstance(fp, str) and len(fp) == 64
+
+    def test_deleted_file_does_not_break_fingerprint(
+        self, git_repo: Path,
+    ) -> None:
+        """Deleted files (status code `D`) have no content to hash; the
+        parser must skip them rather than trying to read the missing
+        path. Without this guard the function would crash on any repo
+        with staged or working-tree deletions."""
+        (git_repo / "a.py").unlink()
+        fp = compute_repo_fingerprint(git_repo)
+        assert isinstance(fp, str) and len(fp) == 64
+
 
 # ---------------------------------------------------------------------------
 # Non-git branch
@@ -193,6 +214,65 @@ class TestNonGitBranch:
         fp2 = compute_repo_fingerprint(tmp_path)
         assert fp1 == fp2
         assert len(fp1) == 64
+
+    def test_non_source_files_excluded(self, tmp_path: Path) -> None:
+        """Files whose suffix isn't in _SOURCE_EXTENSIONS (e.g. .txt,
+        .json, hypergumbo's own output) must not affect the fingerprint
+        — otherwise running hypergumbo into a sibling output directory
+        re-pollutes the cache key on every invocation."""
+        (tmp_path / "src.py").write_text("print('src')\n")
+        fp_before = compute_repo_fingerprint(tmp_path)
+        (tmp_path / "output.json").write_text('{"x": 1}\n')
+        (tmp_path / "readme.txt").write_text("notes\n")
+        fp_after = compute_repo_fingerprint(tmp_path)
+        assert fp_before == fp_after
+
+    def test_excluded_directories_skipped(self, tmp_path: Path) -> None:
+        """Files inside excluded directories (.git, __pycache__,
+        node_modules, .venv, venv) must not contribute to the
+        fingerprint — these are cache/build artifacts, not analyzer
+        inputs."""
+        (tmp_path / "src.py").write_text("print('src')\n")
+        fp_before = compute_repo_fingerprint(tmp_path)
+        # Drop a source-extension file inside an excluded dir.
+        pycache = tmp_path / "__pycache__"
+        pycache.mkdir()
+        (pycache / "junk.py").write_text("print('junk')\n")
+        fp_after = compute_repo_fingerprint(tmp_path)
+        assert fp_before == fp_after
+
+    def test_subdirectories_walked_without_directory_being_hashed(
+        self, tmp_path: Path,
+    ) -> None:
+        """The walk must recurse into subdirectories (so nested source
+        files contribute) without trying to read the directory itself
+        as a file (``not p.is_file()`` branch)."""
+        sub = tmp_path / "subdir"
+        sub.mkdir()
+        (sub / "nested.py").write_text("print('nested')\n")
+        fp = compute_repo_fingerprint(tmp_path)
+        # The fingerprint changes when nested file content changes —
+        # proves the walk found it inside the subdir.
+        (sub / "nested.py").write_text("print('changed')\n")
+        fp_changed = compute_repo_fingerprint(tmp_path)
+        assert fp != fp_changed
+
+
+# ---------------------------------------------------------------------------
+# Git branch — empty-repo edge case (no commits yet)
+# ---------------------------------------------------------------------------
+
+
+class TestGitBranchEmptyRepo:
+    def test_no_commits_yet_does_not_crash(self, tmp_path: Path) -> None:
+        """``git rev-parse HEAD`` fails on a freshly-initialized repo
+        with no commits. ``_git_head`` returns an empty string in that
+        case; the fingerprint is computed without a HEAD component but
+        must still be a valid 64-char hex digest."""
+        _git(tmp_path, "init", "-q")
+        (tmp_path / "untracked.py").write_text("print('hi')\n")
+        fp = compute_repo_fingerprint(tmp_path)
+        assert isinstance(fp, str) and len(fp) == 64
 
 
 # ---------------------------------------------------------------------------
