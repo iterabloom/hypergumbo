@@ -357,6 +357,18 @@ jobs:
         # accumulate. Promotes to --mode=fail in Wave 3 once the
         # remaining INV-rugok members close.
         run: ./scripts/check-schema-conformance --mode=warning
+      - name: Schema coverage gate (WI-luzuh, warning-only)
+        # Catches schema-drift regressions in the ~80 % of producer
+        # surface that self-analysis never exercises (Rust / Go /
+        # Solidity / Swift / framework-pattern linkers, etc.). Runs
+        # hypergumbo against tests/fixtures/schema-coverage-corpus/
+        # (~5 s wall time) and reports new uncovered registry values
+        # vs the baseline at .ci/schema-coverage-baseline.json.
+        # Warning-only during the corpus-build phase: tolerates the
+        # current uncovered set, loud-fails on positive delta. Each
+        # fixture-adding PR ratchets the baseline down. Promotes to
+        # --mode=fail once the baseline drains to [].
+        run: ./scripts/check-schema-coverage --mode=warning
 
   # Build grammars once, cache wheels for pytest job (saves ~1 minute)
   build-grammars:

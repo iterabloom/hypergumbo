@@ -1,0 +1,347 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Corpus-driven schema-coverage gate (WI-luzuh).
+
+Replaces the schema-conformance gate's silent-blindness to drift in the
+~80 % of canonical registry values that hypergumbo's own self-analysis
+never produces. Instead of dogfooding hypergumbo against its own repo
+(3.5 min wall time on CI, ~20 % registry coverage), this gate runs
+hypergumbo against a curated fixture corpus at
+``tests/fixtures/schema-coverage-corpus/`` and asserts that the corpus
+exercises every canonical value in three registries:
+
+* ``EDGE_TYPES``        (``edge_types.py``)
+* ``SYMBOL_KINDS``      (``symbol_kinds.py``)
+* ``EVIDENCE_TYPES``    (``evidence_types.py``)
+
+Coverage gaps are tolerated only up to a baseline tracked in
+``.ci/schema-coverage-baseline.json``. The baseline can only shrink
+over time (the ratchet): every PR that covers a new value drops it
+from the baseline, after which subsequent PRs that break coverage of
+that value fail the gate.
+
+## Modes
+
+* ``--mode=warning`` (default, foundation phase) — tolerate the
+  baseline; loud-fail (exit 1) on any **positive delta** (new
+  uncovered values).
+* ``--mode=fail`` (target state) — fail on any uncovered value
+  regardless of baseline. Switch to this once the baseline drains
+  to ``[]``.
+
+## Flags
+
+* ``--update-baseline`` — write the current uncovered set to the
+  baseline file. Use after a PR intentionally covers more values, or
+  the rare PR that deliberately accepts a new gap (visible diff in
+  code review).
+* ``--input <json>`` — validate a pre-existing behavior-map JSON file
+  instead of running hypergumbo. Faster for iterating on the gate.
+* ``--corpus <dir>`` — override the corpus directory.
+
+## Exit codes
+
+* 0 — no positive delta (warning mode) / no uncovered values
+  (fail mode).
+* 1 — positive delta detected (warning mode) / uncovered values
+  exist (fail mode).
+* 2 — environment / setup error (registry import failed, hypergumbo
+  run failed, baseline file invalid). Never blocks commits on these.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess  # nosec B404 - invokes our own hypergumbo CLI
+import sys
+import tempfile
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_CORPUS = REPO_ROOT / "tests" / "fixtures" / "schema-coverage-corpus"
+BASELINE_PATH = REPO_ROOT / ".ci" / "schema-coverage-baseline.json"
+
+
+def _load_registries() -> tuple[set[str], set[str], set[str]]:
+    """Return (kinds, edge_types, evidence_types). Exit 2 on import failure."""
+    # Inject the source path so the registries import cleanly even when the
+    # caller hasn't pip-installed the package.
+    src_path = REPO_ROOT / "packages" / "hypergumbo-core" / "src"
+    if str(src_path) not in sys.path:
+        sys.path.insert(0, str(src_path))
+    try:
+        from hypergumbo_core.edge_types import EDGE_TYPES
+        from hypergumbo_core.evidence_types import EVIDENCE_TYPES
+        from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
+    except ImportError as exc:  # pragma: no cover — env-specific
+        print(
+            f"check-schema-coverage: cannot import registries: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return (
+        {spec.name for spec in SYMBOL_KINDS},
+        {spec.name for spec in EDGE_TYPES},
+        {spec.name for spec in EVIDENCE_TYPES},
+    )
+
+
+def _run_hypergumbo_against_corpus(corpus: Path) -> Path:
+    """Run ``hypergumbo run`` against ``corpus`` and return the JSON path.
+
+    Exits 2 if hypergumbo itself fails — that's an environment problem.
+    """
+    if not corpus.is_dir():
+        print(
+            f"check-schema-coverage: corpus dir not found: {corpus}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    out_dir = Path(tempfile.mkdtemp(prefix="schema-coverage-"))
+    out_path = out_dir / "corpus.results.json"
+    # --no-sketch-fan-out skips the embedding download that needs the HF Hub
+    # — the gate only consumes Symbol / Edge metadata, so the sketch isn't
+    # needed and removing it makes the run deterministic across machines
+    # (no offline-fallback noise) and ~30 % faster.
+    proc = subprocess.run(  # nosec B603 B607 - well-known CLI entrypoint, no shell
+        [
+            sys.executable, "-m", "hypergumbo_core", "run", str(corpus),
+            "--out", str(out_path),
+            "--no-sketch-fan-out",
+        ],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0 or not out_path.exists():  # pragma: no cover
+        print(
+            "check-schema-coverage: hypergumbo run failed "
+            f"(exit={proc.returncode})",
+            file=sys.stderr,
+        )
+        print(proc.stderr[:2000], file=sys.stderr)
+        sys.exit(2)
+    return out_path
+
+
+def _observed_values(output: dict) -> tuple[set[str], set[str], set[str]]:
+    """Extract observed (kinds, edge_types, evidence_types) from output."""
+    nodes = output.get("nodes", [])
+    edges = output.get("edges", [])
+    kinds = {n["kind"] for n in nodes if "kind" in n}
+    edge_types: set[str] = set()
+    evidence_types: set[str] = set()
+    for e in edges:
+        if "type" in e:
+            edge_types.add(e["type"])
+        meta = e.get("meta") or {}
+        if isinstance(meta, dict) and "evidence_type" in meta:
+            evidence_types.add(meta["evidence_type"])
+    return kinds, edge_types, evidence_types
+
+
+def _load_baseline() -> dict:
+    """Return {kinds, edge_types, evidence_types} lists. Missing file → empty sets."""
+    if not BASELINE_PATH.exists():
+        return {
+            "uncovered_kinds": [],
+            "uncovered_edge_types": [],
+            "uncovered_evidence_types": [],
+        }
+    try:
+        return json.loads(BASELINE_PATH.read_text())
+    except json.JSONDecodeError as exc:  # pragma: no cover — defensive
+        print(
+            f"check-schema-coverage: baseline file invalid: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+
+def _save_baseline(
+    kinds: list[str],
+    edge_types: list[str],
+    evidence_types: list[str],
+) -> None:
+    """Write a new baseline file with sorted, deduplicated uncovered values."""
+    BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    body = {
+        "uncovered_kinds": sorted(set(kinds)),
+        "uncovered_edge_types": sorted(set(edge_types)),
+        "uncovered_evidence_types": sorted(set(evidence_types)),
+    }
+    BASELINE_PATH.write_text(json.dumps(body, indent=2) + "\n")
+
+
+def _report_axis(
+    label: str,
+    registry: set[str],
+    observed: set[str],
+    baseline: set[str],
+) -> tuple[list[str], list[str]]:
+    """Compute (new_uncovered, newly_covered) and print a report line."""
+    uncovered = registry - observed
+    new_uncovered = sorted(uncovered - baseline)
+    newly_covered = sorted(baseline - uncovered)
+    pct = 100 * len(observed & registry) / max(1, len(registry))
+    print(
+        f"  {label}: covered {len(observed & registry)}/{len(registry)} "
+        f"({pct:.1f}%); baseline-tolerated {len(baseline)}; "
+        f"new uncovered {len(new_uncovered)}; newly covered "
+        f"{len(newly_covered)}"
+    )
+    return new_uncovered, newly_covered
+
+
+def main(argv: "list[str] | None" = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Corpus-driven schema-coverage gate (WI-luzuh). "
+            "Validates that the fixture corpus exercises every canonical "
+            "registry value, modulo a baseline of intentionally-deferred "
+            "values."
+        ),
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["warning", "fail"],
+        default="warning",
+        help=(
+            "warning: fail on positive delta vs baseline "
+            "(default, foundation phase). fail: fail on any uncovered "
+            "value (target state)."
+        ),
+    )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help=(
+            "Rewrite the baseline file with the current uncovered set. "
+            "Use after intentionally covering more values."
+        ),
+    )
+    parser.add_argument(
+        "--input",
+        type=Path,
+        help=(
+            "Pre-existing behavior-map JSON to validate instead of "
+            "running hypergumbo. Faster for iterating on the gate itself."
+        ),
+    )
+    parser.add_argument(
+        "--corpus",
+        type=Path,
+        default=DEFAULT_CORPUS,
+        help=f"Corpus directory (default: {DEFAULT_CORPUS}).",
+    )
+    args = parser.parse_args(argv)
+
+    registry_kinds, registry_edges, registry_ev = _load_registries()
+
+    if args.input is not None:
+        if not args.input.is_file():
+            print(
+                f"check-schema-coverage: --input not found: {args.input}",
+                file=sys.stderr,
+            )
+            return 2
+        out_path = args.input
+    else:
+        out_path = _run_hypergumbo_against_corpus(args.corpus)
+
+    output = json.loads(out_path.read_text())
+    obs_kinds, obs_edges, obs_ev = _observed_values(output)
+
+    baseline = _load_baseline()
+    baseline_kinds = set(baseline.get("uncovered_kinds", []))
+    baseline_edges = set(baseline.get("uncovered_edge_types", []))
+    baseline_ev = set(baseline.get("uncovered_evidence_types", []))
+
+    print(
+        f"check-schema-coverage: corpus output has "
+        f"{len(output.get('nodes', []))} nodes / "
+        f"{len(output.get('edges', []))} edges"
+    )
+
+    new_k, fixed_k = _report_axis(
+        "Symbol.kind         ", registry_kinds, obs_kinds, baseline_kinds,
+    )
+    new_e, fixed_e = _report_axis(
+        "Edge.type           ", registry_edges, obs_edges, baseline_edges,
+    )
+    new_v, fixed_v = _report_axis(
+        "Edge.evidence_type  ", registry_ev, obs_ev, baseline_ev,
+    )
+
+    current_uncovered_kinds = sorted(registry_kinds - obs_kinds)
+    current_uncovered_edges = sorted(registry_edges - obs_edges)
+    current_uncovered_ev = sorted(registry_ev - obs_ev)
+
+    if args.update_baseline:
+        _save_baseline(
+            current_uncovered_kinds,
+            current_uncovered_edges,
+            current_uncovered_ev,
+        )
+        print(
+            f"check-schema-coverage: baseline updated → {BASELINE_PATH} "
+            f"(uncovered: {len(current_uncovered_kinds)} kinds / "
+            f"{len(current_uncovered_edges)} edge_types / "
+            f"{len(current_uncovered_ev)} evidence_types)"
+        )
+        return 0
+
+    if args.mode == "fail":
+        total_uncovered = (
+            len(current_uncovered_kinds)
+            + len(current_uncovered_edges)
+            + len(current_uncovered_ev)
+        )
+        if total_uncovered:
+            print(
+                f"FAIL ({args.mode}): {total_uncovered} uncovered "
+                "registry values across all axes.",
+                file=sys.stderr,
+            )
+            return 1
+        print("OK (fail mode): all registry values covered.")
+        return 0
+
+    # warning mode
+    total_new = len(new_k) + len(new_e) + len(new_v)
+    total_fixed = len(fixed_k) + len(fixed_e) + len(fixed_v)
+    if total_new > 0:
+        print(
+            f"FAIL (warning mode): {total_new} new uncovered values vs "
+            "baseline.",
+            file=sys.stderr,
+        )
+        if new_k:
+            print(f"  new uncovered Symbol.kind: {new_k}", file=sys.stderr)
+        if new_e:
+            print(f"  new uncovered Edge.type: {new_e}", file=sys.stderr)
+        if new_v:
+            print(
+                f"  new uncovered Edge.evidence_type: {new_v}",
+                file=sys.stderr,
+            )
+        print(
+            "  Hint: run with --update-baseline if the new gap is intentional.",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        f"OK (warning mode): no new uncovered values. "
+        f"{total_fixed} newly covered."
+    )
+    if total_fixed > 0:
+        print(
+            "  Hint: run with --update-baseline to shrink the baseline."
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
