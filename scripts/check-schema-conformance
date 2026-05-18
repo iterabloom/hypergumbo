@@ -86,8 +86,14 @@ def _run_hypergumbo_against_repo(repo_root: Path) -> Path:
     """
     out_dir = Path(tempfile.mkdtemp(prefix="schema-conformance-"))
     out_path = out_dir / "hypergumbo.results.json"
+    # Invoke via ``hypergumbo_core`` rather than the ``hypergumbo`` meta
+    # package — CI's verify-generated job installs the language /
+    # tracker packages directly without the meta wrapper, so the
+    # ``python -m hypergumbo`` entrypoint may not exist. The core
+    # package always does, and exposes the same ``cli:main`` that the
+    # meta package's console_script points at.
     proc = subprocess.run(  # nosec B603 B607 - well-known CLI entrypoint, no shell
-        [sys.executable, "-m", "hypergumbo", "run", str(repo_root),
+        [sys.executable, "-m", "hypergumbo_core", "run", str(repo_root),
          "--out", str(out_path)],
         cwd=repo_root,
         capture_output=True,
