@@ -278,5 +278,6 @@
     "variable_match",
     "verilog_instantiation",
     "vhdl_architecture"
-  ]
+  ],
+  "schema_conformance_violations": []
 }

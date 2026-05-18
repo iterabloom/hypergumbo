@@ -289,3 +289,179 @@ class TestMissingInputFile:
         result = _run_gate(bogus)
         assert result.returncode == 2, result.stdout + result.stderr
         assert "not found" in result.stderr.lower()
+
+
+# Fingerprints the synthetic JSON in this file produces because
+# ``_make_output_with_observed_values`` / ``_make_schema_invalid_output``
+# don't populate the schema's full set of ``required`` keys on root /
+# nodes / edges. Tests fold these into their baselines so the tests can
+# focus on the conformance behaviour they're actually asserting (the
+# extra ``minimum::edges.[].line`` violation in some tests, etc.).
+_SYNTHETIC_OUTPUT_BASELINE_CONFORMANCE = [
+    "required::<root>",
+    "required::edges.[]",
+    "required::nodes.[]",
+]
+
+
+def _coverage_tolerant_baseline_dict() -> dict:
+    """Build a baseline that tolerates ALL registry values as uncovered.
+
+    Conformance-fold tests assert behaviour about
+    ``schema_conformance_violations``; they don't care about coverage.
+    Using a "tolerate every registry value" baseline lets the synthetic
+    JSON (which only emits e.g. ``kind="function"``) not flag any coverage
+    delta — the test can then layer its own
+    ``schema_conformance_violations`` field on top and check only that
+    axis.
+
+    Pulls live registry contents via ``hypergumbo_core`` so the helper
+    stays in sync with whatever's currently canonical.
+    """
+    src_path = REPO_ROOT_REAL / "packages" / "hypergumbo-core" / "src"
+    if str(src_path) not in sys.path:
+        sys.path.insert(0, str(src_path))
+    from hypergumbo_core.edge_types import EDGE_TYPES
+    from hypergumbo_core.evidence_types import EVIDENCE_TYPES
+    from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
+    return {
+        "uncovered_kinds": sorted({spec.name for spec in SYMBOL_KINDS}),
+        "uncovered_edge_types": sorted({spec.name for spec in EDGE_TYPES}),
+        "uncovered_evidence_types": sorted({spec.name for spec in EVIDENCE_TYPES}),
+    }
+
+
+def _make_schema_invalid_output() -> dict:
+    """Build a corpus output JSON that violates ``docs/schema.json``.
+
+    Concrete violation: ``Edge.line`` has ``minimum=1`` in the schema, so
+    an edge with ``line=0`` produces a ``minimum`` validator error. This
+    is the same shape of violation INV-piroh originally caught
+    (`linkers/js_module.py:811`'s hardcoded ``line=0``).
+    """
+    return {
+        "nodes": [{"id": "x:0", "kind": "function"}],
+        "edges": [
+            {
+                "id": "e:bad",
+                "type": "calls",
+                "src": "x:0",
+                "dst": "x:0",
+                "line": 0,  # violates minimum=1
+            }
+        ],
+    }
+
+
+class TestSchemaConformanceFold:
+    """Schema-conformance validation folded into the corpus gate.
+
+    Per the INV-piroh → WI-luzuh consolidation (2026-05-18):
+    ``check-schema-coverage`` runs ``jsonschema.Draft202012Validator
+    .iter_errors`` against the corpus output and tracks violation
+    fingerprints alongside the coverage baseline. The corpus's tiny size
+    (10 fixture files) means the conformance check costs microseconds on
+    top of the ~5s corpus run — versus the 3.5min self-analysis cost the
+    INV-piroh gate paid for the same validation. Mode semantics match
+    the existing coverage gate: ``warning`` fails on positive violation
+    delta vs the baseline; ``fail`` fails on any violation regardless of
+    baseline; ``--update-baseline`` rewrites the baseline's conformance
+    section.
+    """
+
+    def test_clean_output_passes_warning_mode(self, tmp_path: Path) -> None:
+        """No schema violations + empty conformance baseline → exit 0."""
+        observed = _make_output_with_observed_values(
+            kinds=["function"], edge_types=["calls"], evidence_types=["ast_call_direct"],
+        )
+        input_json = tmp_path / "obs.json"
+        input_json.write_text(json.dumps(observed))
+
+        baseline = _coverage_tolerant_baseline_dict()
+        baseline["schema_conformance_violations"] = list(_SYNTHETIC_OUTPUT_BASELINE_CONFORMANCE)
+        with _BaselineSwap(baseline):
+            r = _run_gate(input_json)
+            assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_new_violation_warning_mode_fails(self, tmp_path: Path) -> None:
+        """A new conformance violation absent from baseline → exit 1."""
+        input_json = tmp_path / "obs.json"
+        input_json.write_text(json.dumps(_make_schema_invalid_output()))
+
+        baseline = _coverage_tolerant_baseline_dict()
+        baseline["schema_conformance_violations"] = list(_SYNTHETIC_OUTPUT_BASELINE_CONFORMANCE)
+        with _BaselineSwap(baseline):
+            r = _run_gate(input_json)
+            assert r.returncode == 1, r.stdout + r.stderr
+            assert (
+                "conformance" in (r.stdout + r.stderr).lower()
+                or "violation" in (r.stdout + r.stderr).lower()
+            )
+
+    def test_baseline_tolerated_violation_warning_mode_passes(
+        self, tmp_path: Path
+    ) -> None:
+        """A violation already in baseline.conformance_violations → exit 0."""
+        input_json = tmp_path / "obs.json"
+        input_json.write_text(json.dumps(_make_schema_invalid_output()))
+
+        baseline = _coverage_tolerant_baseline_dict()
+        baseline["schema_conformance_violations"] = [
+            "minimum::edges.[].line",
+            *_SYNTHETIC_OUTPUT_BASELINE_CONFORMANCE,
+        ]
+        with _BaselineSwap(baseline):
+            r = _run_gate(input_json)
+            assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_fail_mode_rejects_baseline_tolerated_violation(
+        self, tmp_path: Path
+    ) -> None:
+        """``--mode=fail`` rejects violations regardless of baseline."""
+        input_json = tmp_path / "obs.json"
+        input_json.write_text(json.dumps(_make_schema_invalid_output()))
+
+        baseline = _coverage_tolerant_baseline_dict()
+        baseline["schema_conformance_violations"] = [
+            "minimum::edges.[].line",
+            *_SYNTHETIC_OUTPUT_BASELINE_CONFORMANCE,
+        ]
+        with _BaselineSwap(baseline):
+            r = _run_gate(input_json, "--mode=fail")
+            assert r.returncode == 1, r.stdout + r.stderr
+
+    def test_update_baseline_records_violations(self, tmp_path: Path) -> None:
+        """``--update-baseline`` writes current violations into the baseline."""
+        input_json = tmp_path / "obs.json"
+        input_json.write_text(json.dumps(_make_schema_invalid_output()))
+
+        baseline_path = REPO_ROOT_REAL / ".ci" / "schema-coverage-baseline.json"
+        baseline = _coverage_tolerant_baseline_dict()
+        baseline["schema_conformance_violations"] = list(_SYNTHETIC_OUTPUT_BASELINE_CONFORMANCE)
+        with _BaselineSwap(baseline):
+            r = _run_gate(input_json, "--update-baseline")
+            assert r.returncode == 0, r.stdout + r.stderr
+            data = json.loads(baseline_path.read_text())
+            assert "schema_conformance_violations" in data
+            assert any(
+                "minimum" in fp for fp in data["schema_conformance_violations"]
+            ), data["schema_conformance_violations"]
+
+    def test_fixed_violation_reports_newly_resolved(self, tmp_path: Path) -> None:
+        """A baseline-tolerated violation that no longer occurs → reported as fixed."""
+        observed = _make_output_with_observed_values(
+            kinds=["function"], edge_types=["calls"], evidence_types=["ast_call_direct"],
+        )
+        input_json = tmp_path / "obs.json"
+        input_json.write_text(json.dumps(observed))
+
+        baseline = _coverage_tolerant_baseline_dict()
+        baseline["schema_conformance_violations"] = [
+            "minimum::edges.[].line",
+            *_SYNTHETIC_OUTPUT_BASELINE_CONFORMANCE,
+        ]
+        with _BaselineSwap(baseline):
+            r = _run_gate(input_json)
+            assert r.returncode == 0, r.stdout + r.stderr
+            # Hint to user that the baseline can be tightened.
+            assert "newly" in r.stdout.lower() or "fixed" in r.stdout.lower()

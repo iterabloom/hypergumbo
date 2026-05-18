@@ -16,12 +16,12 @@ for focused LLM context.
 hypergumbo analyzed its own source code and found:
 - **275** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 53 core, 4 CLI, 32 tracker)
 - **6116** symbols (functions, classes, methods)
-- **65388** edges by type:
-  - calls: 45198
-  - imports: 9682
+- **65407** edges by type:
+  - calls: 45213
+  - imports: 9685
   - instantiates: 6986
   - contains: 1312
-  - module_attr_ref: 1000
+  - module_attr_ref: 1001
   - dispatches_to: 555
   - other: 655
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 6116 Symbols + 65388 Edges + UsageContexts             │
+│  Output: 6116 Symbols + 65407 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -456,7 +456,6 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-evidence-type-drift` | Pre-commit lint: ``*EVIDENCE_TYPE*`` sets in packages/ must be |
 | `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
 | `check-producer-axis-coherence` | Pre-commit lint: literal-string keyword arguments to ``Edge.create``, |
-| `check-schema-conformance` | Validate hypergumbo's own behavior-map output against ``docs/schema.json``. |
 | `check-schema-coverage` | Corpus-driven schema-coverage gate (WI-luzuh). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
@@ -803,7 +802,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 83631cab94ed
+  commit: ae2bd46461d3
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

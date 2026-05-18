@@ -61,6 +61,64 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CORPUS = REPO_ROOT / "tests" / "fixtures" / "schema-coverage-corpus"
 BASELINE_PATH = REPO_ROOT / ".ci" / "schema-coverage-baseline.json"
+SCHEMA_PATH = REPO_ROOT / "docs" / "schema.json"
+
+
+def _load_jsonschema():
+    """Import ``jsonschema`` or exit 2.
+
+    Kept as a function (not a module-top import) so the rest of the
+    script's tests don't pay the cost when running offline / without the
+    optional dep installed.
+    """
+    try:
+        import jsonschema  # noqa: F401
+        return jsonschema
+    except ImportError as exc:  # pragma: no cover — env-specific
+        print(
+            f"check-schema-coverage: cannot import jsonschema: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+
+def _fingerprint_violation(err) -> str:
+    """Compact, location-agnostic fingerprint for a validation error.
+
+    Format: ``<validator>::<path-without-array-indices>``. Stripping
+    array indices keeps the fingerprint stable across runs where an
+    error appears at edges[N] for different N's, so the baseline doesn't
+    churn on every analysis-run permutation. Mirrors the shape the
+    retired ``check-schema-conformance`` used pre-fold (INV-piroh).
+    """
+    path_parts = [
+        str(p) if isinstance(p, str) else "[]"
+        for p in err.absolute_path
+    ]
+    path = ".".join(path_parts) or "<root>"
+    return f"{err.validator}::{path}"
+
+
+def _collect_conformance_violations(output: dict) -> list[str]:
+    """Run jsonschema validation; return sorted-deduped fingerprints.
+
+    Per the INV-piroh fold into this gate (2026-05-18): the same
+    ``Draft202012Validator.iter_errors`` pass the retired schema-
+    conformance gate used, now run on the corpus output instead of
+    self-analysis output. Corpus run takes ~5s vs. self-analysis 3.5min;
+    the conformance check itself is microseconds on top.
+    """
+    if not SCHEMA_PATH.exists():  # pragma: no cover — defensive
+        print(
+            f"check-schema-coverage: schema not found at {SCHEMA_PATH}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    jsonschema_mod = _load_jsonschema()
+    schema = json.loads(SCHEMA_PATH.read_text())
+    validator = jsonschema_mod.Draft202012Validator(schema)
+    fingerprints = {_fingerprint_violation(e) for e in validator.iter_errors(output)}
+    return sorted(fingerprints)
 
 
 def _load_registries() -> tuple[set[str], set[str], set[str]]:
@@ -164,6 +222,7 @@ def _save_baseline(
     kinds: list[str],
     edge_types: list[str],
     evidence_types: list[str],
+    conformance_violations: "list[str] | None" = None,
 ) -> None:
     """Write a new baseline file with sorted, deduplicated uncovered values."""
     BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -171,6 +230,7 @@ def _save_baseline(
         "uncovered_kinds": sorted(set(kinds)),
         "uncovered_edge_types": sorted(set(edge_types)),
         "uncovered_evidence_types": sorted(set(evidence_types)),
+        "schema_conformance_violations": sorted(set(conformance_violations or [])),
     }
     BASELINE_PATH.write_text(json.dumps(body, indent=2) + "\n")
 
@@ -254,9 +314,15 @@ def main(argv: "list[str] | None" = None) -> int:
     output = json.loads(out_path.read_text())
     obs_kinds, obs_edges, obs_ev = _observed_values(output)
 
+    # INV-piroh fold (2026-05-18): jsonschema-validate the corpus output
+    # against docs/schema.json. Empty conformance baseline expected for a
+    # well-formed corpus; positive delta is a producer regression.
+    conformance_current = _collect_conformance_violations(output)
+
     baseline = _load_baseline()
     baseline_kinds = set(baseline.get("uncovered_kinds", []))
     baseline_edges = set(baseline.get("uncovered_edge_types", []))
+    baseline_conformance = set(baseline.get("schema_conformance_violations", []))
     baseline_ev = set(baseline.get("uncovered_evidence_types", []))
 
     print(
@@ -275,6 +341,17 @@ def main(argv: "list[str] | None" = None) -> int:
         "Edge.evidence_type  ", registry_ev, obs_ev, baseline_ev,
     )
 
+    # Conformance delta — same fingerprint vocabulary the retired
+    # check-schema-conformance gate used (INV-piroh).
+    new_conformance = sorted(set(conformance_current) - baseline_conformance)
+    fixed_conformance = sorted(baseline_conformance - set(conformance_current))
+    print(
+        f"  Schema conformance  : violations {len(conformance_current)}; "
+        f"baseline-tolerated {len(baseline_conformance)}; "
+        f"new violations {len(new_conformance)}; "
+        f"newly resolved {len(fixed_conformance)}"
+    )
+
     current_uncovered_kinds = sorted(registry_kinds - obs_kinds)
     current_uncovered_edges = sorted(registry_edges - obs_edges)
     current_uncovered_ev = sorted(registry_ev - obs_ev)
@@ -284,12 +361,14 @@ def main(argv: "list[str] | None" = None) -> int:
             current_uncovered_kinds,
             current_uncovered_edges,
             current_uncovered_ev,
+            conformance_violations=conformance_current,
         )
         print(
             f"check-schema-coverage: baseline updated → {BASELINE_PATH} "
             f"(uncovered: {len(current_uncovered_kinds)} kinds / "
             f"{len(current_uncovered_edges)} edge_types / "
-            f"{len(current_uncovered_ev)} evidence_types)"
+            f"{len(current_uncovered_ev)} evidence_types / "
+            f"{len(conformance_current)} schema violations)"
         )
         return 0
 
@@ -299,19 +378,21 @@ def main(argv: "list[str] | None" = None) -> int:
             + len(current_uncovered_edges)
             + len(current_uncovered_ev)
         )
-        if total_uncovered:
+        if total_uncovered or conformance_current:
             print(
                 f"FAIL ({args.mode}): {total_uncovered} uncovered "
-                "registry values across all axes.",
+                f"registry values + {len(conformance_current)} "
+                "schema-conformance violations.",
                 file=sys.stderr,
             )
             return 1
-        print("OK (fail mode): all registry values covered.")
+        print("OK (fail mode): all registry values covered, schema clean.")
         return 0
 
     # warning mode
     total_new = len(new_k) + len(new_e) + len(new_v)
-    total_fixed = len(fixed_k) + len(fixed_e) + len(fixed_v)
+    total_fixed = len(fixed_k) + len(fixed_e) + len(fixed_v) + len(fixed_conformance)
+    failed = False
     if total_new > 0:
         print(
             f"FAIL (warning mode): {total_new} new uncovered values vs "
@@ -327,14 +408,25 @@ def main(argv: "list[str] | None" = None) -> int:
                 f"  new uncovered Edge.evidence_type: {new_v}",
                 file=sys.stderr,
             )
+        failed = True
+    if new_conformance:
+        print(
+            f"FAIL (warning mode): {len(new_conformance)} new schema-"
+            "conformance violations vs baseline.",
+            file=sys.stderr,
+        )
+        for fp in new_conformance:
+            print(f"  + {fp}", file=sys.stderr)
+        failed = True
+    if failed:
         print(
             "  Hint: run with --update-baseline if the new gap is intentional.",
             file=sys.stderr,
         )
         return 1
     print(
-        f"OK (warning mode): no new uncovered values. "
-        f"{total_fixed} newly covered."
+        f"OK (warning mode): no new uncovered values, no new schema "
+        f"violations. {total_fixed} newly covered/resolved."
     )
     if total_fixed > 0:
         print(

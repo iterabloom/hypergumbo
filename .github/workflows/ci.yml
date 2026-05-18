@@ -349,25 +349,20 @@ jobs:
         run: ./scripts/generate-architecture --check
       - name: Verify SECURITY.md audited-IO section is up-to-date
         run: ./scripts/generate-security-md --check
-      - name: Schema conformance gate (INV-piroh, warning-only)
-        # Validates self-analysis behavior_map against docs/schema.json.
-        # Mode is `warning` during the foundation phase: tolerates the
-        # baseline tracked in .ci/schema-conformance-baseline.json, but
-        # loud-fails on any positive delta so silent regressions can't
-        # accumulate. Promotes to --mode=fail in Wave 3 once the
-        # remaining INV-rugok members close.
-        run: ./scripts/check-schema-conformance --mode=warning
-      - name: Schema coverage gate (WI-luzuh, warning-only)
-        # Catches schema-drift regressions in the ~80 % of producer
-        # surface that self-analysis never exercises (Rust / Go /
-        # Solidity / Swift / framework-pattern linkers, etc.). Runs
-        # hypergumbo against tests/fixtures/schema-coverage-corpus/
-        # (~5 s wall time) and reports new uncovered registry values
-        # vs the baseline at .ci/schema-coverage-baseline.json.
-        # Warning-only during the corpus-build phase: tolerates the
-        # current uncovered set, loud-fails on positive delta. Each
-        # fixture-adding PR ratchets the baseline down. Promotes to
-        # --mode=fail once the baseline drains to [].
+      - name: Schema coverage + conformance gate (WI-luzuh, warning-only)
+        # Folded gate (INV-piroh + WI-luzuh, consolidated 2026-05-18):
+        # runs hypergumbo against tests/fixtures/schema-coverage-corpus/
+        # (~5 s wall time, replacing INV-piroh's 3.5 min self-analysis)
+        # and reports BOTH new uncovered registry values AND new
+        # jsonschema-conformance violations vs the baseline at
+        # .ci/schema-coverage-baseline.json. Self-analysis covered ~20 %
+        # of the canonical registries and produced its own conformance
+        # baseline; the corpus exercises ~14-18 % of the registries
+        # today but produces 0 conformance violations because it's
+        # well-formed by construction. Coverage baseline ratchets down
+        # as fixtures grow; conformance baseline starts empty and
+        # loud-fails on any new violation. Promotes to --mode=fail when
+        # the coverage baseline drains to [].
         run: ./scripts/check-schema-coverage --mode=warning
 
   # Build grammars once, cache wheels for pytest job (saves ~1 minute)
