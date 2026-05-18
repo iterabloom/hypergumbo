@@ -338,8 +338,12 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
             for file_path in _find_elixir_files(ctx.repo_root):
                 try:
                     source = file_path.read_bytes()
-                except (OSError, IOError):
+                except (OSError, IOError) as e:
                     files_skipped += 1
+                    run.record_failed_file(
+                        str(file_path.relative_to(ctx.repo_root)),
+                        f"{type(e).__name__}: {e}",
+                    )
                     continue
 
                 sites = detect_otp_call_sites(source)
@@ -420,8 +424,12 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
             for file_path in _find_erlang_files(ctx.repo_root):
                 try:
                     source = file_path.read_bytes()
-                except (OSError, IOError):
+                except (OSError, IOError) as e:
                     files_skipped += 1
+                    run.record_failed_file(
+                        str(file_path.relative_to(ctx.repo_root)),
+                        f"{type(e).__name__}: {e}",
+                    )
                     continue
 
                 sites = detect_erlang_otp_call_sites(source)

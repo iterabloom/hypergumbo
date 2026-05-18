@@ -134,9 +134,20 @@ class AnalysisRun:
     files_analyzed: int = 0
     files_skipped: int = 0
     skipped_passes: List[Dict[str, str]] = field(default_factory=list)
+    failed_files: List[Dict[str, str]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     started_at: str = ""
     duration_ms: int = 0
+
+    def record_failed_file(self, path: str, reason: str) -> None:
+        """Record a per-file failure for later drain into limits.failed_files.
+
+        The `analyzer` field on the resulting FailedFile is auto-stamped from
+        self.pass_id at drain time (see all_analyzers.collect_analyzer_result),
+        so producer sites only need to supply path + reason — they cannot get
+        the analyzer name wrong by accident.
+        """
+        self.failed_files.append({"path": path, "reason": reason})
 
     @classmethod
     def create(
@@ -185,6 +196,7 @@ class AnalysisRun:
             "files_analyzed": self.files_analyzed,
             "files_skipped": self.files_skipped,
             "skipped_passes": self.skipped_passes,
+            "failed_files": self.failed_files,
             "warnings": self.warnings,
             "started_at": self.started_at,
             "duration_ms": self.duration_ms,

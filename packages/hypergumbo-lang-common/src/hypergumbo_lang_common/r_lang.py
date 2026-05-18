@@ -432,6 +432,7 @@ class RAnalyzer(TreeSitterAnalyzer):
         files_analyzed = 0
         files_skipped = 0
         warnings_list: list[str] = []
+        failed_files_list: list[dict[str, str]] = []
 
         symbols: list[Symbol] = []
         edges: list[Edge] = []
@@ -482,6 +483,7 @@ class RAnalyzer(TreeSitterAnalyzer):
             except Exception as e:  # pragma: no cover
                 files_skipped += 1  # pragma: no cover
                 warnings_list.append(f"Failed to parse {r_path}: {e}")  # pragma: no cover
+                failed_files_list.append({"path": str(r_path.relative_to(repo_root)), "reason": f"{type(e).__name__}: {e}"})  # pragma: no cover
 
         # Create resolver from global registry
         resolver = NameResolver(global_symbol_registry)
@@ -507,6 +509,7 @@ class RAnalyzer(TreeSitterAnalyzer):
         run.files_skipped = files_skipped
         run.duration_ms = duration_ms
         run.warnings = warnings_list
+        run.failed_files = failed_files_list
 
         return AnalysisResult(
             symbols=symbols,

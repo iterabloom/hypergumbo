@@ -393,6 +393,7 @@ class DockerfileAnalyzer(TreeSitterAnalyzer):
             except Exception as e:  # pragma: no cover
                 files_skipped += 1  # pragma: no cover
                 warnings_list.append(f"Failed to parse {dockerfile_path}: {e}")  # pragma: no cover
+                run.record_failed_file(str(dockerfile_path.relative_to(repo_root)), f"{type(e).__name__}: {e}")  # pragma: no cover
 
         run.files_analyzed = files_analyzed
         run.files_skipped = files_skipped

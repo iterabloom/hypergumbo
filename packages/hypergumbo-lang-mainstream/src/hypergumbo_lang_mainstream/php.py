@@ -1046,7 +1046,8 @@ def _analyze_php_file(
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
-    except (OSError, IOError):
+    except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
+        run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
         return [], [], False
 
     symbols = _extract_symbols(tree, source, file_path, run)
@@ -1138,8 +1139,12 @@ class PHPAnalyzer(TreeSitterAnalyzer):
                 symbols = _extract_symbols(tree, source, file_path, run)
                 all_symbols.extend(symbols)
                 files_analyzed += 1
-            except (OSError, IOError):
+            except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
                 files_skipped += 1
+                run.record_failed_file(
+                    str(file_path.relative_to(repo_root)),
+                    f"{type(e).__name__}: {e}",
+                )
 
         # Build global symbol registries
         global_symbols: dict[str, Symbol] = {}

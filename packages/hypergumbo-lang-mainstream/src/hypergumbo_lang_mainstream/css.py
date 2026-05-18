@@ -429,8 +429,9 @@ class CSSAnalyzer(TreeSitterAnalyzer):
                     tree.root_node, symbols, edges, rel_path, source, file_symbol_id
                 )
 
-            except (OSError, IOError):  # pragma: no cover
+            except (OSError, IOError) as e:  # pragma: no cover
                 files_skipped += 1  # pragma: no cover
+                run.record_failed_file(str(css_file), f"{type(e).__name__}: {e}")  # pragma: no cover
                 continue  # pragma: no cover
 
         run.files_analyzed = files_analyzed

@@ -181,8 +181,12 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
     for file_path in _find_go_files(ctx.repo_root):
         try:
             source = file_path.read_bytes()
-        except (OSError, IOError):  # pragma: no cover
+        except (OSError, IOError) as e:  # pragma: no cover
             files_skipped += 1
+            run.record_failed_file(
+                str(file_path.relative_to(ctx.repo_root)),
+                f"{type(e).__name__}: {e}",
+            )
             continue
 
         # Cheap pre-filter: both the anchor "cobra.Command{" and the

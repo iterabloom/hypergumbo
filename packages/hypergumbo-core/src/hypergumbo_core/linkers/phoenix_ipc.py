@@ -244,8 +244,12 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
                 ))
 
             files_analyzed += 1
-        except (OSError, IOError):
+        except (OSError, IOError) as e:
             files_skipped += 1
+            run.record_failed_file(
+                str(file_path.relative_to(repo_root)),
+                f"{type(e).__name__}: {e}",
+            )
 
     # Group patterns by event
     send_by_event: dict[str, list[PhoenixPattern]] = {}

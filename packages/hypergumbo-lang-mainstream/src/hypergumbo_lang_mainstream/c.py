@@ -979,8 +979,12 @@ class CAnalyzer(TreeSitterAnalyzer):
 
             try:
                 source = source_file.read_bytes()
-            except OSError:
+            except OSError as e:  # pragma: no cover - IO errors hard to trigger in tests
                 files_skipped += 1
+                run.record_failed_file(
+                    str(source_file.relative_to(repo_root)),
+                    f"{type(e).__name__}: {e}",
+                )
                 continue
 
             tree = parser.parse(source)

@@ -56,6 +56,14 @@ def test_run_skips_syntax_error_files(tmp_path: Path) -> None:
     assert len(data["nodes"]) == 1
     assert data["nodes"][0]["name"] == "works"
 
+    # INV-buhur: the dropped file MUST be recorded in limits.failed_files so
+    # consumers can detect partially-analyzed repos.
+    failed = data["limits"]["failed_files"]
+    py_failed = [f for f in failed if f["analyzer"] == "python-ast-v1"]
+    assert len(py_failed) == 1
+    assert py_failed[0]["path"].endswith("bad.py")
+    assert "SyntaxError" in py_failed[0]["reason"]
+
 
 def test_run_skips_unicode_error_files(tmp_path: Path) -> None:
     """Files with encoding errors should be skipped, not crash analysis."""
@@ -75,6 +83,13 @@ def test_run_skips_unicode_error_files(tmp_path: Path) -> None:
     data = json.loads(out_path.read_text())
     assert len(data["nodes"]) == 1
     assert data["nodes"][0]["name"] == "works"
+
+    # INV-buhur: the dropped UTF-8 file MUST be recorded in failed_files.
+    failed = data["limits"]["failed_files"]
+    py_failed = [f for f in failed if f["analyzer"] == "python-ast-v1"]
+    assert len(py_failed) == 1
+    assert py_failed[0]["path"].endswith("bad.py")
+    assert "UnicodeDecodeError" in py_failed[0]["reason"]
 
 
 def test_run_detects_python_class(tmp_path: Path) -> None:

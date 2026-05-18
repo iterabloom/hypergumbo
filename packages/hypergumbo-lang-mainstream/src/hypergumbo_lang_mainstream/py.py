@@ -2064,7 +2064,7 @@ def _extract_file_analysis(
     py_file: Path,
     repo_root: Path | None = None,
     source_roots: list[Path] | None = None,
-) -> FileAnalysis | None:
+) -> tuple[FileAnalysis | None, str | None]:
     """Extract symbols and imports from a single file.
 
     Args:
@@ -2076,7 +2076,10 @@ def _extract_file_analysis(
                      ``[packages/A/src, packages/B/src]``). Used for correct
                      module name calculation.
 
-    Returns None if the file cannot be parsed.
+    Returns (analysis, None) on success, or (None, reason) when the file
+    cannot be parsed — the second tuple element carries the
+    "<ExceptionType>: <msg>" reason so the orchestrator can route it into
+    limits.failed_files (INV-buhur).
     """
     try:
         source = py_file.read_text()
@@ -2085,8 +2088,8 @@ def _extract_file_analysis(
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=SyntaxWarning)
             tree = ast.parse(source, filename=str(py_file))
-    except (SyntaxError, UnicodeDecodeError):
-        return None
+    except (SyntaxError, UnicodeDecodeError) as e:
+        return None, f"{type(e).__name__}: {e}"
 
     symbols = []
     symbol_by_name: dict[str, Symbol] = {}
@@ -2524,7 +2527,7 @@ def _extract_file_analysis(
         tree=tree,
         usage_contexts=usage_contexts,
         source=source,
-    )
+    ), None
 
 
 def _extract_edges(
@@ -3352,7 +3355,7 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
     Note: For cross-file call detection, use analyze_python() instead.
     This function only detects intra-file calls for backwards compatibility.
     """
-    file_analysis = _extract_file_analysis(py_file)
+    file_analysis, _ = _extract_file_analysis(py_file)
     if file_analysis is None:
         return AnalysisResult(symbols=[], edges=[], usage_contexts=[])
 
@@ -3397,11 +3400,18 @@ def analyze_python(
     file_analyses: dict[Path, FileAnalysis] = {}
     files_skipped = 0
     for py_file in find_python_files(repo_root, max_files=max_files):
-        analysis = _extract_file_analysis(py_file, repo_root, source_roots)
+        analysis, fail_reason = _extract_file_analysis(py_file, repo_root, source_roots)
         if analysis is not None:
             file_analyses[py_file] = analysis
         else:
             files_skipped += 1
+            # INV-buhur: record the dropped file so consumers can detect
+            # partially-analyzed repos. Path is repo-relative when possible.
+            try:
+                rel = str(py_file.relative_to(repo_root))
+            except ValueError:  # pragma: no cover  # defensive: should always be under repo_root
+                rel = str(py_file)
+            run.record_failed_file(rel, fail_reason or "parse failure")
 
     # Build global symbol table: (module_name, symbol_name) -> Symbol
     global_symbols: dict[tuple[str, str], Symbol] = {}

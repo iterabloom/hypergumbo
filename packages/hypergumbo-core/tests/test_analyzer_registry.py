@@ -741,6 +741,74 @@ class TestCollectAnalyzerResult:
         assert limits.skipped_passes[0]["pass"] == "lean-ts-v1"
         assert "grammar not available" in limits.skipped_passes[0]["reason"]
 
+    def test_drains_failed_files_into_limits(self) -> None:
+        """Per-run failed_files drain into limits.failed_files, stamped with pass_id (INV-buhur)."""
+        from hypergumbo_core.ir import AnalysisRun, Symbol, UsageContext
+        from hypergumbo_core.limits import Limits
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "python-ast-v1"}
+        run.pass_id = "python-ast-v1"
+        run.failed_files = [
+            {"path": "broken.py", "reason": "SyntaxError: line 3"},
+            {"path": "bad-utf8.py", "reason": "UnicodeDecodeError"},
+        ]
+
+        result = AnalysisResult(
+            symbols=[],
+            edges=[],
+            usage_contexts=[],
+            run=run,
+            skipped=False,
+        )
+
+        analysis_runs: list[dict] = []
+        all_symbols: list[Symbol] = []
+        all_edges: list = []
+        all_usage_contexts: list[UsageContext] = []
+        limits = Limits()
+
+        collect_analyzer_result(
+            result, analysis_runs, all_symbols, all_edges, all_usage_contexts, limits
+        )
+
+        assert len(limits.failed_files) == 2
+        assert limits.failed_files[0].path == "broken.py"
+        assert limits.failed_files[0].reason == "SyntaxError: line 3"
+        assert limits.failed_files[0].analyzer == "python-ast-v1"
+        assert limits.failed_files[1].path == "bad-utf8.py"
+        assert limits.failed_files[1].analyzer == "python-ast-v1"
+
+    def test_drains_failed_files_from_partially_skipped_result(self) -> None:
+        """failed_files drain even when result.skipped=True — partial-skip analyzers may have already recorded entries before bailing."""
+        from hypergumbo_core.ir import AnalysisRun, Symbol, UsageContext
+        from hypergumbo_core.limits import Limits
+
+        run = MagicMock(spec=AnalysisRun)
+        run.pass_id = "ipc-linker-v1"
+        run.failed_files = [{"path": "main.ts", "reason": "OSError: permission denied"}]
+
+        result = AnalysisResult(
+            run=run,
+            skipped=True,
+            skip_reason="bailed mid-scan",
+        )
+
+        analysis_runs: list[dict] = []
+        all_symbols: list[Symbol] = []
+        all_edges: list = []
+        all_usage_contexts: list[UsageContext] = []
+        limits = Limits()
+
+        collect_analyzer_result(
+            result, analysis_runs, all_symbols, all_edges, all_usage_contexts, limits
+        )
+
+        assert len(limits.skipped_passes) == 1
+        assert len(limits.failed_files) == 1
+        assert limits.failed_files[0].path == "main.ts"
+        assert limits.failed_files[0].analyzer == "ipc-linker-v1"
+
 
 # ---------------------------------------------------------------------------
 # Path normalization in run_all_analyzers (facade)
@@ -892,6 +960,54 @@ class TestRunAllAnalyzersPathNormalization:
 
         # Path outside repo_root should be left as-is
         assert symbols[0].path == "/usr/include/stdlib.h"
+
+    def test_absolute_failed_file_paths_are_relativized(self) -> None:
+        """failed_files paths are normalized the same way symbol/uc paths are (INV-buhur).
+
+        Helper functions that record failures (e.g. csharp/kotlin/go's
+        _extract_symbols_from_file) may not have repo_root in scope and emit
+        absolute paths; the orchestrator normalizes for consistency.
+        """
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun
+
+        repo_root = Path("/home/user/myrepo")
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "test-v1"}
+        run.pass_id = "test-v1"
+        run.failed_files = [
+            {"path": "/home/user/myrepo/src/Broken.cs", "reason": "OSError"},
+            {"path": "already/relative.py", "reason": "SyntaxError"},
+            {"path": "/elsewhere/outside.go", "reason": "OSError"},
+        ]
+
+        result = AnalysisResult(
+            symbols=[],
+            edges=[],
+            usage_contexts=[],
+            run=run,
+            skipped=False,
+        )
+
+        @register_analyzer("test_failed_path")
+        def analyze_test(root: Path) -> AnalysisResult:
+            return result
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, _, _, _, limits, _, _ = facade_run_all(repo_root)
+
+        assert len(limits.failed_files) == 3
+        # Absolute path under repo_root → relative.
+        assert limits.failed_files[0].path == "src/Broken.cs"
+        # Already-relative path → unchanged.
+        assert limits.failed_files[1].path == "already/relative.py"
+        # Absolute path outside repo_root → unchanged.
+        assert limits.failed_files[2].path == "/elsewhere/outside.go"
 
 
 class TestRunAllAnalyzersTruncatedFiles:

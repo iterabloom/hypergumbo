@@ -599,7 +599,8 @@ def _extract_symbols_from_file(
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
-    except (OSError, IOError):
+    except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
+        run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
         return FileAnalysis()
 
     analysis = FileAnalysis()

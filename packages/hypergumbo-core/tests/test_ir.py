@@ -119,6 +119,42 @@ def test_analysis_run_has_warnings() -> None:
     assert isinstance(run.warnings, list)
 
 
+def test_analysis_run_has_failed_files() -> None:
+    """AnalysisRun should have a failed_files list (INV-buhur)."""
+    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+
+    assert hasattr(run, "failed_files")
+    assert isinstance(run.failed_files, list)
+    assert run.failed_files == []
+
+
+def test_analysis_run_record_failed_file_appends_entry() -> None:
+    """record_failed_file appends a {path, reason} dict to failed_files (INV-buhur)."""
+    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+
+    run.record_failed_file("broken.py", "SyntaxError: invalid syntax (line 42)")
+
+    assert len(run.failed_files) == 1
+    assert run.failed_files[0] == {
+        "path": "broken.py",
+        "reason": "SyntaxError: invalid syntax (line 42)",
+    }
+
+
+def test_analysis_run_to_dict_includes_failed_files() -> None:
+    """AnalysisRun.to_dict should include failed_files in serialized output."""
+    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+    run.record_failed_file("a.py", "SyntaxError")
+    run.record_failed_file("b.py", "UnicodeDecodeError")
+
+    d = run.to_dict()
+
+    assert "failed_files" in d
+    assert len(d["failed_files"]) == 2
+    assert d["failed_files"][0]["path"] == "a.py"
+    assert d["failed_files"][1]["path"] == "b.py"
+
+
 def test_analysis_run_to_dict_includes_new_fields() -> None:
     """AnalysisRun.to_dict should include all spec fields."""
     run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")

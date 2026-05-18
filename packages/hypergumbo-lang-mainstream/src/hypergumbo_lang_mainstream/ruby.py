@@ -2760,8 +2760,12 @@ class RubyAnalyzer(TreeSitterAnalyzer):
         for rb_file in all_rb_files:
             try:
                 source = rb_file.read_bytes()
-            except OSError:
+            except OSError as e:  # pragma: no cover - IO errors hard to trigger in tests
                 files_skipped += 1
+                run.record_failed_file(
+                    str(rb_file.relative_to(repo_root)),
+                    f"{type(e).__name__}: {e}",
+                )
                 continue
             tree = parser.parse(source)
             rel_path = str(rb_file.relative_to(repo_root))

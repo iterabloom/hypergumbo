@@ -498,6 +498,14 @@ class TestTreeSitterAnalyzerErrorHandling:
         assert result.run.files_analyzed == 1
         assert result.run.files_skipped == 1
 
+        # INV-buhur: skipped files MUST also be recorded in run.failed_files so
+        # the orchestrator can drain them into limits.failed_files for honest
+        # partial-result reporting. Bumping files_skipped without recording
+        # which files were dropped silently loses per-file granularity.
+        assert len(result.run.failed_files) == 1
+        assert result.run.failed_files[0]["path"].endswith("bad.stub")
+        assert "mock read error" in result.run.failed_files[0]["reason"]
+
 
 class TestTreeSitterAnalyzerLanguagePack:
     """Tests for language-pack grammar mode."""

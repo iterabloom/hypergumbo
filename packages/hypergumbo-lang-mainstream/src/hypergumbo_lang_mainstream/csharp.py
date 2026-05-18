@@ -590,7 +590,8 @@ def _extract_symbols_from_file(
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
-    except (OSError, IOError):  # pragma: no cover - IO errors hard to trigger in tests
+    except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
+        run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
         return FileAnalysis()
 
     # Extract using aliases for disambiguation

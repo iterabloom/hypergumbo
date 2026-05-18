@@ -88,6 +88,16 @@ def collect_analyzer_result(
         all_edges.extend(result.edges)
         all_usage_contexts.extend(getattr(result, "usage_contexts", []))
 
+    # Drain per-run failed_files into the cross-analyzer Limits (runs in
+    # both the skipped and non-skipped branches: a partial-skip analyzer
+    # may still have recorded files before bailing).
+    for ff in getattr(result.run, "failed_files", []):
+        limits.add_failed_file(
+            path=ff["path"],
+            reason=ff["reason"],
+            analyzer=result.run.pass_id,
+        )
+
 
 def run_all_analyzers(
     repo_root: Path,
@@ -198,6 +208,13 @@ def run_all_analyzers(
         normed = normalize_path(uc.path)
         if normed.startswith(root_prefix):
             uc.path = normed[len(root_prefix):]
+    # INV-buhur: producers that record failures from deep helper functions
+    # may not have repo_root in scope, so they may emit absolute paths.
+    # Normalize here for consistency with sym.path / uc.path treatment.
+    for ff in limits.failed_files:
+        normed = normalize_path(ff.path)
+        if normed.startswith(root_prefix):
+            ff.path = normed[len(root_prefix):]
 
     # Clear global callback to avoid leaking state
     set_global_on_file_skipped(None)

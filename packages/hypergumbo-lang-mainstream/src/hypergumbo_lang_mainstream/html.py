@@ -96,8 +96,12 @@ def analyze_html(
         try:
             content = html_file.read_text(errors="ignore")
             files_analyzed += 1
-        except (OSError, IOError):  # pragma: no cover
+        except (OSError, IOError) as e:  # pragma: no cover
             files_skipped += 1
+            run.record_failed_file(
+                str(html_file.relative_to(repo_root)),
+                f"{type(e).__name__}: {e}",
+            )
             continue
 
         # Count lines for span info

@@ -1983,8 +1983,12 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             populate_docstrings_from_tree(tree.root_node, source, symbols)
             all_symbols.extend(symbols)
             files_analyzed += 1
-        except (OSError, IOError):
+        except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
             files_skipped += 1
+            run.record_failed_file(
+                str(file_path.relative_to(repo_root)),
+                f"{type(e).__name__}: {e}",
+            )
 
     # Build global symbol registries
     global_symbols: dict[str, Symbol] = {}
