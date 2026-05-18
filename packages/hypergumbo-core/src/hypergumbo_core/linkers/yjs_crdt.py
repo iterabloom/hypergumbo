@@ -413,6 +413,7 @@ def link_yjs_crdt(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={
                         "yjs_api": write.api,
                         "channel": write.channel,
@@ -441,6 +442,7 @@ def link_yjs_crdt(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={
                         "yjs_api": read.api,
                         "channel": read.channel,

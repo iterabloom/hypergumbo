@@ -222,6 +222,10 @@ def link_via_strategies(
     Returns:
         LinkerResult with new ``renders`` edges and ``kind=template`` symbols.
     """
+    # Create the AnalysisRun up front so its execution_id can be stamped onto
+    # every synthesised template Symbol (INV-sopon).
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
     new_edges: list[Edge] = []
     new_symbols: list[Symbol] = []
     seen_templates: set[str] = set()
@@ -250,6 +254,7 @@ def link_via_strategies(
                                 start_line=1, end_line=1, start_col=0, end_col=0
                             ),
                             origin=PASS_ID,
+                            origin_run_id=run.execution_id,
                         )
                     )
 
@@ -271,5 +276,4 @@ def link_via_strategies(
                     )
                 )
 
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
     return LinkerResult(symbols=new_symbols, edges=new_edges, run=run)

@@ -299,6 +299,7 @@ def link_crypto_flow(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={
                         "crypto_api": write.api,
                         "channel": write.channel,
@@ -327,6 +328,7 @@ def link_crypto_flow(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={
                         "crypto_api": read.api,
                         "channel": read.channel,

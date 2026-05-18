@@ -274,6 +274,7 @@ def link_message_dispatch(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={
                         "dispatch_api": write.api,
                         "channel": write.channel,
@@ -302,6 +303,7 @@ def link_message_dispatch(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={
                         "dispatch_api": read.api,
                         "channel": read.channel,

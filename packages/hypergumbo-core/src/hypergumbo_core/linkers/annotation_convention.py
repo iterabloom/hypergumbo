@@ -200,6 +200,7 @@ def link_annotations(
                         start_col=0, end_col=0,
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={
                         "hg_annotation": "publishes",
                         "channel": channel,
@@ -230,6 +231,7 @@ def link_annotations(
                             start_col=0, end_col=0,
                         ),
                         origin=PASS_ID,
+                        origin_run_id=run.execution_id,
                         meta={
                             "hg_annotation": "subscribes",
                             "channel": channel,
@@ -278,6 +280,7 @@ def link_annotations(
                     start_col=0, end_col=0,
                 ),
                 origin=PASS_ID,
+                origin_run_id=run.execution_id,
                 meta={"hg_annotation": "route", "route_spec": route.argument, "framework_role": "route"},
                 supply_chain_tier=1,
                 supply_chain_reason="@hg:route annotation",
@@ -322,6 +325,7 @@ def link_annotations(
                     start_col=0, end_col=0,
                 ),
                 origin=PASS_ID,
+                origin_run_id=run.execution_id,
                 meta={
                     "hg_annotation": "dispatches",
                     "channel": target_name,

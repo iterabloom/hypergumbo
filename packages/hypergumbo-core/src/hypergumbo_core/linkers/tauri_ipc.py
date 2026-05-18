@@ -645,6 +645,7 @@ def link_tauri_ipc(
                     language="typescript",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={
                         "tauri_command": cmd_name,
                         "framework_role": "ipc_publisher",
@@ -768,6 +769,7 @@ def link_tauri_ipc(
                             start_col=0, end_col=0,
                         ),
                         origin=PASS_ID,
+                        origin_run_id=run.execution_id,
                         meta={
                             "tauri_command": cmd_name,
                             "framework_role": "ipc_caller",
@@ -862,6 +864,7 @@ def link_tauri_ipc(
                             language="rust",
                             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                             origin=PASS_ID,
+                            origin_run_id=run.execution_id,
                             meta={
                                 "tauri_event": event_name,
                                 "framework_role": "event_publisher",
@@ -887,6 +890,7 @@ def link_tauri_ipc(
                             language="typescript",
                             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                             origin=PASS_ID,
+                            origin_run_id=run.execution_id,
                             meta={
                                 "tauri_event": event_name,
                                 "framework_role": "event_subscriber",

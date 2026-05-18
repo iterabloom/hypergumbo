@@ -293,6 +293,9 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
         OpenApiLinkResult with symbols and edges
     """
     start_time = time.time()
+    # Create the AnalysisRun up front so its execution_id is available to
+    # stamp every synthesised Symbol (INV-sopon).
+    run = AnalysisRun.create(PASS_ID, PASS_VERSION)
     result_symbols: list[Symbol] = []
     result_edges: list[Edge] = []
     files_analyzed = 0
@@ -325,6 +328,8 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
             path=op.file_path,
             span=Span(start_line=op.line, end_line=op.line, start_col=0, end_col=0),
             signature=f"{op.method} {op.path}",
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
             meta={
                 "http_method": op.method,
                 "path": op.path,
@@ -392,8 +397,8 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                     )
                     result_edges.append(edge)
 
-    # Create analysis run
-    run = AnalysisRun.create(PASS_ID, PASS_VERSION)
+    # Finalise analysis run statistics (run itself was created above so
+    # its execution_id could be stamped onto each Symbol).
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
 

@@ -215,6 +215,8 @@ def link_solidity_abi(
                 start_col=0,
                 end_col=0,
             ),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
             supply_chain_tier=2,
             meta={"call_kind": "abi"},
         )

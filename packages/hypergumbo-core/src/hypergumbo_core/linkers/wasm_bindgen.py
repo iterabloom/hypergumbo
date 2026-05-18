@@ -269,6 +269,7 @@ def link_wasm_bindgen(
                     language="typescript",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={
                         "wasm_export": import_name,
                         "compilation_target": "wasm",
@@ -406,6 +407,7 @@ def _create_wasm_load_edges(
                     language="wasm",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={"compilation_target": "wasm"},
                     supply_chain_tier=2,
                     supply_chain_reason="WASM module loaded dynamically",
