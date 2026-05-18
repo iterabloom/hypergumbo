@@ -23,3 +23,18 @@
     fields:  # 104c
       statement: "Each distinct executable script must produce exactly one entrypoint entry. If both an 'if __name__ == \"__main__\"' block and a main() function are present and the block calls the function, the entrypoint should point at the function (canonical real entrypoint) with the module-level main-guard noted as supporting evidence in metadata or similar."  # 104c
       root_cause: "The entrypoint detector flags both __main__ blocks (kind=main_function, label='Python script (if __name__ == \"__main__\")', on module Symbol) and main() functions (kind=main_function, label='Python main()', on function Symbol) as entrypoints independently, with no deduplication step that recognizes 'the module main-guard calls this main() function, emit one entry not two.'"  # 104c
+- op: update  # 0b1d
+  at: '2026-05-17T22:59:10Z'  # 0b1d
+  by: agent  # 0b1d
+  actor: jgstern_agent  # 0b1d
+  clock: 2  # 0b1d
+  nonce: 0b1d  # 0b1d
+  set:  # 0b1d
+    parent: INV-tolaj-hafol-palot-pasav-rinah-virut-valal-gupat  # 0b1d
+- op: discuss  # 27c7
+  at: '2026-05-17T22:59:10Z'  # 27c7
+  by: agent  # 27c7
+  actor: jgstern_agent  # 27c7
+  clock: 3  # 27c7
+  nonce: 27c7  # 27c7
+  message: "Reparented to META INV-tolaj (File-set membership reconciliation). INV-hosuh is the ad-hoc-deduplication mechanism: entrypoint detection emits one entry per signal rather than per script (17 entries from 11 distinct scripts on self-analysis)."  # 27c7

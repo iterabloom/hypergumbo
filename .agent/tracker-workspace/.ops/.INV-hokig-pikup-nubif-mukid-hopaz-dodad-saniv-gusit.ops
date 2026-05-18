@@ -33,3 +33,18 @@
   set: {}  # 1da0
   add:  # 1da0
     tags: [cross_language_parity]  # 1da0
+- op: update  # b4e5
+  at: '2026-05-17T22:59:09Z'  # b4e5
+  by: agent  # b4e5
+  actor: jgstern_agent  # b4e5
+  clock: 3  # b4e5
+  nonce: b4e5  # b4e5
+  set:  # b4e5
+    parent: INV-tolaj-hafol-palot-pasav-rinah-virut-valal-gupat  # b4e5
+- op: discuss  # cbbe
+  at: '2026-05-17T22:59:09Z'  # cbbe
+  by: agent  # cbbe
+  actor: jgstern_agent  # cbbe
+  clock: 4  # cbbe
+  nonce: cbbe  # cbbe
+  message: "Reparented to META INV-tolaj (File-set membership reconciliation). INV-hokig is the pass-policy-divergence mechanism: profile and analyzer apply different excludes; surfaces most visibly for bash (10 vs 41). Also retains cross_language_parity tag — the disagreement is amplified by uneven language coverage."  # cbbe

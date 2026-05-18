@@ -23,3 +23,18 @@
     fields:  # 921c
       statement: "Framework linkers must produce relationship edges, not just symbol nodes — connecting framework concepts (mq_publisher → mq_subscriber, route → handler, db_query → caller) is their entire purpose. Currently event-sourcing-linker-v1, http-linker-v1, graphql-resolver-linker-v1, and database-query-linker-v1 each scan 310-817 files in 2-3 seconds and produce 0 edges from their own origin. Compared to Apr 23 baseline (schema 0.2.2): event-sourcing dropped 34→0 edges, http-linker 22→0, graphql-resolver 19→0, database-query 35→0. message-queue and websocket linkers still produce edges correctly."  # 921c
       root_cause: "Hypothesized: between schema 0.2.2 (Apr 23) and schema 0.8.0 (May 16), the data model refactor merged 13 framework-specific node kinds (db_query, http_client, mq_publisher, event_publisher, etc.) into a smaller set (function with meta.framework_role, call_site with meta.call_kind). The 4 broken linkers had their NODE-emission paths migrated to the new shape but their EDGE-construction code still targets old kind names that no longer exist. message-queue-linker and websocket-linker apparently received the full migration. Fix: audit each of the 4 broken linkers (event_sourcing.py, http.py, graphql_resolver.py, database_query.py) against message_queue.py and websocket.py to find the missing edge-construction update. Verify by re-running self-analysis and confirming non-zero edge counts from each linker origin."  # 921c
+- op: update  # b5c3
+  at: '2026-05-17T22:58:37Z'  # b5c3
+  by: agent  # b5c3
+  actor: jgstern_agent  # b5c3
+  clock: 2  # b5c3
+  nonce: b5c3  # b5c3
+  set:  # b5c3
+    parent: INV-rugok-bunid-nijaf-nigig-togap-pahul-zonih-vipip  # b5c3
+- op: discuss  # 85d9
+  at: '2026-05-17T22:58:37Z'  # 85d9
+  by: agent  # 85d9
+  actor: jgstern_agent  # 85d9
+  clock: 3  # 85d9
+  nonce: 85d9  # 85d9
+  message: "Reparented to META INV-rugok (Spec/schema/implementation drift). INV-bovif is example (c) — schema 0.2 → 0.8 migration left 4 framework linkers' edge-construction code targeting deleted kind names; no migration-conformance audit caught it."  # 85d9

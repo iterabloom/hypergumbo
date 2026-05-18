@@ -46,3 +46,18 @@
   set: {}  # ff80
   remove:  # ff80
     tags: [dead_field]  # ff80
+- op: update  # 725c
+  at: '2026-05-17T22:58:37Z'  # 725c
+  by: agent  # 725c
+  actor: jgstern_agent  # 725c
+  clock: 5  # 725c
+  nonce: 725c  # 725c
+  set:  # 725c
+    parent: INV-rugok-bunid-nijaf-nigig-togap-pahul-zonih-vipip  # 725c
+- op: discuss  # 5dae
+  at: '2026-05-17T22:58:37Z'  # 5dae
+  by: agent  # 5dae
+  actor: jgstern_agent  # 5dae
+  clock: 6  # 5dae
+  nonce: 5dae  # 5dae
+  message: "Reparented to META INV-rugok (Spec/schema/implementation drift). WI-bujim is example (b) — features[] spec-declared with sub-shape but hardcoded [] with no producer; no gate catches the orphaned declaration."  # 5dae

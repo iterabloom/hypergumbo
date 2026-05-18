@@ -30,3 +30,18 @@
   clock: 2  # ecae
   nonce: ecae  # ecae
   message: "Cross-item review 2026-05-17: bash/shell-analysis cluster — this item (alias key duplication: bash + shell as separate top-level keys), INV-hokig (profile.languages vs analyzer-pass file-count disagreement, 10 vs 41), WI-pulor (bash analyzer lines_of_code=None + no intra-script call edges), and INV-tajap (entrypoint detection has no shebang/.sh logic at all) together describe hypergumbo's incomplete bash analysis surface. Fixing this item is the simplest of the four (single normalization in taxonomy.py:758-776) and partially clears WI-soraj's 3-file-count ambiguity. The other three are independent."  # ecae
+- op: update  # ef58
+  at: '2026-05-17T22:59:09Z'  # ef58
+  by: agent  # ef58
+  actor: jgstern_agent  # ef58
+  clock: 3  # ef58
+  nonce: ef58  # ef58
+  set:  # ef58
+    parent: INV-tolaj-hafol-palot-pasav-rinah-virut-valal-gupat  # ef58
+- op: discuss  # 4b30
+  at: '2026-05-17T22:59:09Z'  # 4b30
+  by: agent  # 4b30
+  actor: jgstern_agent  # 4b30
+  clock: 4  # 4b30
+  nonce: 4b30  # 4b30
+  message: "Reparented to META INV-tolaj (File-set membership reconciliation). INV-tosum is the taxonomy-aliasing mechanism: bash/shell as alias keys produces double-counting."  # 4b30

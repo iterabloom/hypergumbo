@@ -29,3 +29,18 @@
   clock: 2  # f309
   nonce: f309  # f309
   message: "Cross-item review 2026-05-17: sub-issue (b) — three undeclared top-level keys (entrypoints, sketch_precomputed, usage_contexts) — intersects with the dead-schema-field cluster. entrypoints is then constrained by INV-tajap (Python-only detection). sketch_precomputed is a sketch-build optimization payload. usage_contexts is a per-ADR-0003-ext output. Whether to add these to docs/schema.json depends on whether they're contracted output or internal — pick before treating this as a doc-only fix. Sub-issue (a) (line=0 from js-module-linker) is independent of (b) and ships fine alone."  # f309
+- op: update  # bd5f
+  at: '2026-05-17T22:58:37Z'  # bd5f
+  by: agent  # bd5f
+  actor: jgstern_agent  # bd5f
+  clock: 3  # bd5f
+  nonce: bd5f  # bd5f
+  set:  # bd5f
+    parent: INV-rugok-bunid-nijaf-nigig-togap-pahul-zonih-vipip  # bd5f
+- op: discuss  # 06d3
+  at: '2026-05-17T22:58:37Z'  # 06d3
+  by: agent  # 06d3
+  actor: jgstern_agent  # 06d3
+  clock: 4  # 06d3
+  nonce: 06d3  # 06d3
+  message: "Reparented to META INV-rugok (Spec/schema/implementation drift). INV-piroh is the canonical example of gap (a) — hypergumbo's own behavior map fails schema validation and no CI gate currently catches it."  # 06d3

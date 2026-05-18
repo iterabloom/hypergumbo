@@ -29,3 +29,18 @@
   clock: 2  # c405
   nonce: c405  # c405
   message: "Cross-item review 2026-05-17: the 3-file-count ambiguity here has identified upstream causes: INV-tosum (bash/shell alias duplication accounts for ~10 of the 1119/863 gap), INV-hokig (profile.languages vs analyzer-pass exclude-policy inconsistency), and INV-hojus (file-kind vs module-kind double representation explains part of the 809 file-symbol count). This item is the right place to define the documented semantics; the upstream items address the producers."  # c405
+- op: update  # bd89
+  at: '2026-05-17T22:59:10Z'  # bd89
+  by: agent  # bd89
+  actor: jgstern_agent  # bd89
+  clock: 3  # bd89
+  nonce: bd89  # bd89
+  set:  # bd89
+    parent: INV-tolaj-hafol-palot-pasav-rinah-virut-valal-gupat  # bd89
+- op: discuss  # 2e06
+  at: '2026-05-17T22:59:10Z'  # 2e06
+  by: agent  # 2e06
+  actor: jgstern_agent  # 2e06
+  clock: 4  # 2e06
+  nonce: '2e06'  # 2e06
+  message: "Reparented to META INV-tolaj (File-set membership reconciliation). WI-soraj is the semantic-ambiguity surface: 3 different total_files values is the reporting-layer manifestation of all three underlying mechanisms (alias, policy divergence, dedup)."  # 2e06

@@ -21,3 +21,18 @@
     pr_ref:  # 8df1
     description: ""  # 8df1
     fields: {}  # 8df1
+- op: update  # 9ef6
+  at: '2026-05-17T22:59:23Z'  # 9ef6
+  by: agent  # 9ef6
+  actor: jgstern_agent  # 9ef6
+  clock: 2  # 9ef6
+  nonce: 9ef6  # 9ef6
+  set:  # 9ef6
+    parent: INV-manov-lifot-dotoz-zosud-ponas-visum-ritit-sipuz  # 9ef6
+- op: discuss  # a82d
+  at: '2026-05-17T22:59:24Z'  # a82d
+  by: agent  # a82d
+  actor: jgstern_agent  # a82d
+  clock: 3  # a82d
+  nonce: a82d  # a82d
+  message: "Reparented to META INV-manov (Lifecycle discipline for derived artifacts). 113/133 runs analyzed 0 files but consumed 12.7s wall-clock — dispatched work without a file-presence pre-filter. Candidate policy: short-circuit when no file matches the pass's language."  # a82d

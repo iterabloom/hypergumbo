@@ -65,3 +65,18 @@
   clock: 6  # 79f5
   nonce: 79f5  # 79f5
   message: "Wiring isbefore INV-magul: implementing the spec-defined repo_fingerprint algorithm (docs/hypergumbo-spec.md:378-384) as a shared function creates the migration path that fixes INV-magul's cache-shard pollution as a side effect — both consume the same underlying repo-state hash. This structural relation was already documented in this item's prose; now it's reflected in the dependency graph."  # 79f5
+- op: update  # c43d
+  at: '2026-05-17T22:59:07Z'  # c43d
+  by: agent  # c43d
+  actor: jgstern_agent  # c43d
+  clock: 7  # c43d
+  nonce: c43d  # c43d
+  set:  # c43d
+    parent: INV-rugok-bunid-nijaf-nigig-togap-pahul-zonih-vipip  # c43d
+- op: discuss  # 13c7
+  at: '2026-05-17T22:59:08Z'  # 13c7
+  by: agent  # 13c7
+  actor: jgstern_agent  # 13c7
+  clock: 8  # 13c7
+  nonce: 13c7  # 13c7
+  message: "Reparented to META INV-rugok (Spec/schema/implementation drift). INV-tofur is example (b) — repo_fingerprint algorithm fully spec'd at docs/hypergumbo-spec.md:378-384 but no producer implements it (100% null on 133 runs). The existing isbefore link to INV-magul (shared-function refactor opportunity) is preserved."  # 13c7

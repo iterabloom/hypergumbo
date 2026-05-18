@@ -27,3 +27,18 @@
   clock: 2  # 94b7
   nonce: 94b7  # 94b7
   message: "Tier 2 verification (post-ADR-0027/0028 closure): the L3 producer-coherence and L4 fallback-coherence linters that landed in the [Unreleased] cycle enforce emit-site conformance (consumers must use canonical registry values), NOT dataclass field introduction. WI-busij's scope — pre-commit detection when a new multi-value field is added to ir.py/datamodels.py without an axis-declaration ADR — remains distinct and unbuilt. Trigger condition (c) from this item's 'When to land' section ('ADR-0027/ADR-0028/a future axis ADR ships with new multi-value fields') has now fired twice without WI-busij landing, but no drift has escaped (the registries+drift linters caught what they were supposed to catch). So the preventive-automation argument is not strengthened by recent history. Recommend leaving as-is; pick up if/when an actual incident surfaces."  # 94b7
+- op: update  # f76f
+  at: '2026-05-17T22:59:08Z'  # f76f
+  by: agent  # f76f
+  actor: jgstern_agent  # f76f
+  clock: 3  # f76f
+  nonce: f76f  # f76f
+  set:  # f76f
+    parent: INV-rugok-bunid-nijaf-nigig-togap-pahul-zonih-vipip  # f76f
+- op: discuss  # 6c3c
+  at: '2026-05-17T22:59:08Z'  # 6c3c
+  by: agent  # 6c3c
+  actor: jgstern_agent  # 6c3c
+  clock: 4  # 6c3c
+  nonce: 6c3c  # 6c3c
+  message: "Reparented to META INV-rugok (Spec/schema/implementation drift). WI-busij is the closest existing partial fix — pre-commit detection of new multi-value field additions. Its scope is one narrow case (field-add to core dataclasses) but its shape is exactly what this META asks for at the broader spec/schema/code level. Implementation of WI-busij becomes one piece of the META's closure."  # 6c3c

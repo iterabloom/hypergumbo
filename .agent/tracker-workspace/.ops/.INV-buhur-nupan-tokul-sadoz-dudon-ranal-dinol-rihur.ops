@@ -52,3 +52,18 @@
   clock: 5  # 9498
   nonce: '9498'  # 9498
   message: "Bumped P2 → P1 after scope expansion: universal gap across tree-sitter analyzers + Python + linkers, not Python-specific. Spec contract violated codebase-wide with dead infrastructure (zero production callers of add_failed_file)."  # 9498
+- op: update  # 8f84
+  at: '2026-05-18T04:35:42Z'  # 8f84
+  by: agent  # 8f84
+  actor: jgstern_agent  # 8f84
+  clock: 6  # 8f84
+  nonce: 8f84  # 8f84
+  set:  # 8f84
+    status: satisfied  # 8f84
+- op: discuss  # 56d7
+  at: '2026-05-18T04:35:42Z'  # 56d7
+  by: agent  # 56d7
+  actor: jgstern_agent  # 56d7
+  clock: 7  # 56d7
+  nonce: 56d7  # 56d7
+  message: "Wired in PR #3785 (merge commit 5c37faacb6). 29 producer sites in 18 files: tree-sitter base (covers ~30 lang analyzers), 4 linkers (ipc/otp/phoenix_ipc/go_cobra), Python AST (SyntaxError + UnicodeDecodeError via _extract_file_analysis tuple return), and 13 per-language analyzers (csharp/kotlin/java/php/ruby/go/c/html/js_ts × 3 + cmake/css/dockerfile/json_config/make/r_lang/toml_config/xml_config). AnalysisRun grows failed_files: list[dict] + record_failed_file() helper; collect_analyzer_result drains into Limits.failed_files auto-stamping analyzer=run.pass_id. run_all_analyzers normalizes absolute paths (helper functions don't always have repo_root in scope). Reproduction confirmed: failed_files now contains broken.py with 'SyntaxError: invalid syntax (broken.py, line 3)'. All 5 packages 100% coverage in isolation via check-package-coverage."  # 56d7

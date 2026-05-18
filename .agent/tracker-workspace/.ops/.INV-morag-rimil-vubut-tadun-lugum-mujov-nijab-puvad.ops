@@ -23,3 +23,18 @@
     fields:  # abd6
       statement: "A pass advertised by 'hypergumbo catalog' and the AnalysisRun.pass field recorded after a run should use the same identifier so consumers (users, tooling, audits) can join the two views. Currently, 40 of the catalog's pass names use a '-ts-v1' suffix that no AnalysisRun ever produces, while 99 actually-run passes (including every linker and infrastructure pass) never appear in the catalog at all."  # abd6
       root_cause: "cli.py 'catalog' command renders display names from a separate registry (e.g. 'csharp-ts-v1', 'cpp-ts-v1') while the analyzer dispatch code stamps AnalysisRun.pass with the underlying pass id ('csharp-v1', 'cpp-v1'). The catalog also filters to source-file analyzer passes and explicitly omits linkers + infrastructure passes (containment-linker-v1, di-resolution-v1, dependency-linker-v1, http-linker-v1, subprocess-linker-v1, etc.), even though those passes appear in every AnalysisRuns list."  # abd6
+- op: update  # 9250
+  at: '2026-05-17T22:59:08Z'  # 9250
+  by: agent  # 9250
+  actor: jgstern_agent  # 9250
+  clock: 2  # 9250
+  nonce: '9250'  # 9250
+  set:  # 9250
+    parent: INV-rugok-bunid-nijaf-nigig-togap-pahul-zonih-vipip  # 9250
+- op: discuss  # dcac
+  at: '2026-05-17T22:59:08Z'  # dcac
+  by: agent  # dcac
+  actor: jgstern_agent  # dcac
+  clock: 3  # dcac
+  nonce: dcac  # dcac
+  message: "Reparented to META INV-rugok (Spec/schema/implementation drift). INV-morag is example (d) — catalog suffix -ts-v1 vs runtime suffix -v1 disagree; 40+99 names asymmetric. No name-agreement check at CI."  # dcac
