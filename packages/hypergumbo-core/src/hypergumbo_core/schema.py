@@ -70,7 +70,7 @@ from typing import Any, Dict
 
 SCHEMA_VERSION = "0.9.0"
 CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
-STABLE_ID_SCHEME = "hypergumbo-stableid-v2"
+STABLE_ID_SCHEME = "hypergumbo-stableid-v3"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v1"
 REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v1"
 

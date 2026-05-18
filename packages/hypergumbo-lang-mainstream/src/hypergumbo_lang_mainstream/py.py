@@ -1501,7 +1501,9 @@ def _extract_starlette_usage_contexts(
     return contexts
 
 
-def _extract_py_decorator_names(node: ast.FunctionDef | ast.ClassDef) -> str:
+def _extract_py_decorator_names(
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
+) -> str:
     """Extract sorted, comma-joined decorator names from an AST node.
 
     Walks the decorator list and extracts plain names (stripping module
@@ -1523,38 +1525,91 @@ def _extract_py_decorator_names(node: ast.FunctionDef | ast.ClassDef) -> str:
     return ",".join(sorted(names))
 
 
+def _extract_class_body_sig(node: ast.ClassDef) -> str:
+    """Body shape signature for a ClassDef: sorted methods, fields, bases.
+
+    INV-fusus: the un-tiebroken untyped formula
+    ``{kind}:{param_count}:{arity_flags}:{decorators}:{containing}`` is
+    identical for any pair of ``@dataclass`` classes in the same module —
+    a 91% collision rate on hypergumbo's own self-analysis. Folding a
+    body-shape signature in restores intra-module identity discrimination
+    while preserving both halves of the ``Symbol.stable_id`` docstring
+    promise:
+
+    * Survives renames — the class's own name is not in the body sig.
+    * Survives moves — no line numbers, paths, or column offsets appear.
+
+    Two classes with byte-for-byte identical bodies still produce the
+    same hash; that is semantic identity, not an artifact. Consumers
+    needing absolute uniqueness should join on ``(stable_id,
+    canonical_name)`` per the ``Symbol`` docstring contract.
+    """
+    method_names: list[str] = []
+    field_names: list[str] = []
+    for stmt in node.body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            method_names.append(stmt.name)
+        elif isinstance(stmt, ast.AnnAssign):
+            if isinstance(stmt.target, ast.Name):
+                field_names.append(stmt.target.id)
+        elif isinstance(stmt, ast.Assign):
+            for tgt in stmt.targets:
+                if isinstance(tgt, ast.Name):
+                    field_names.append(tgt.id)
+    base_names: list[str] = []
+    for base in node.bases:
+        if isinstance(base, ast.Name):
+            base_names.append(base.id)
+        elif isinstance(base, ast.Attribute):
+            base_names.append(base.attr)
+    return (
+        f"methods={','.join(sorted(method_names))}|"
+        f"fields={','.join(sorted(field_names))}|"
+        f"bases={','.join(sorted(base_names))}"
+    )
+
+
 def _compute_stable_id(
-    node: ast.FunctionDef | ast.ClassDef,
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
     containing_stable_id: str = "",
 ) -> str:
     """Compute stable_id based on signature (survives renames/moves).
 
     Returns:
-    sha256({kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id})
+    sha256({kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id}:{body_sig})
 
     arity_flags: has_defaults, has_varargs, has_kwargs
     decorators: sorted list of decorator names
     containing_stable_id: stable_id of the enclosing class/module (ADR-0014 §5)
+    body_sig: for ClassDef, sorted method/field/base names (INV-fusus);
+              empty string for functions
     """
-    kind = "function" if isinstance(node, ast.FunctionDef) else "class"
+    is_function = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    kind = "function" if is_function else "class"
 
-    # Extract signature info for functions
-    if isinstance(node, ast.FunctionDef):
+    if is_function:
         args = node.args
         param_count = len(args.args) + len(args.posonlyargs) + len(args.kwonlyargs)
         has_defaults = len(args.defaults) > 0 or len(args.kw_defaults) > 0
         has_varargs = args.vararg is not None
         has_kwargs = args.kwarg is not None
         arity_flags = f"{has_defaults},{has_varargs},{has_kwargs}"
+        body_sig = ""
     else:
         # Classes don't have parameters in the same way
         param_count = 0
         arity_flags = "False,False,False"
+        body_sig = _extract_class_body_sig(node)
 
     decorators_str = _extract_py_decorator_names(node)
 
-    # Build signature string and hash (ADR-0014 §5: includes containing_stable_id)
-    sig = f"{kind}:{param_count}:{arity_flags}:{decorators_str}:{containing_stable_id}"
+    # Build signature string and hash
+    # ADR-0014 §5: includes containing_stable_id
+    # INV-fusus: body_sig tiebreaker for ClassDef
+    sig = (
+        f"{kind}:{param_count}:{arity_flags}:{decorators_str}:"
+        f"{containing_stable_id}:{body_sig}"
+    )
     hash_val = hashlib.sha256(sig.encode()).hexdigest()[:16]
     return f"sha256:{hash_val}"
 

@@ -166,6 +166,33 @@ The `containing_stable_id` component is computed recursively: a method's `stable
 
 **Hash stability impact:** Adding `containing_module_stable_id` to Python's formula changes all existing `stable_id` values. This requires bumping `STABLE_ID_SCHEME` from `hypergumbo-stableid-v1` to `hypergumbo-stableid-v2`.
 
+### 5a. class_body_sig: same-module class identity discrimination (INV-fusus)
+
+Self-analysis dogfooding on 2026-05-16 found that the §5 formula (with `containing_module_stable_id` empty for top-level classes) still produced a 91% collision rate across 29,367 `stable_id`-bearing nodes on hypergumbo's own codebase. Five `@dataclass` classes in `ir.py` — `Symbol`, `Edge`, `Span`, `AnalysisRun`, `ExternalRef` — shared one `stable_id` because the only inputs that varied across them were the class's *own name* (excluded by design — `survives renames`) and the class's *contents* (not yet in the formula). Methods cascaded into a second 5,500-node collision group.
+
+The fix extends the Python `_compute_stable_id` formula by one component for `ClassDef` nodes only:
+
+```
+class_body_sig = "methods={sorted_method_names}|fields={sorted_field_names}|bases={sorted_base_names}"
+```
+
+Folded in as:
+
+```
+sha256({kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id}:{class_body_sig})
+```
+
+This preserves both halves of the `Symbol.stable_id` docstring promise:
+
+* **Survives renames.** The class's own name is not in `class_body_sig`.
+* **Survives moves.** No line numbers, paths, or column offsets appear.
+
+Two classes with byte-for-byte identical bodies still produce the same `stable_id`; that is *semantic identity*, not an artifact. Consumers needing absolute uniqueness should join on `(stable_id, canonical_name)` per the Symbol docstring contract — that's the documented escape hatch, and it's what the typed tier (§3) eventually makes redundant for type-bearing languages.
+
+**Hash stability impact:** Bumps `STABLE_ID_SCHEME` from `hypergumbo-stableid-v2` to `hypergumbo-stableid-v3`. All Python class and method `stable_id` values change.
+
+**Out of scope:** Same-shape top-level functions in the same module (e.g. two parameterless functions with no decorator) still collide. They were not part of the INV-fusus measurement and addressing them would require either a body-content hash (changes "survives renames" semantics for functions) or absorbing them into the typed tier. Leaving for §3 / Phase 3.
+
 ### 6. Grammar version stability contract
 
 **Pin build-from-source grammars to specific commits.** Replace `git clone --depth 1` in `scripts/build-source-grammars` with `git clone` + `git checkout <commit-sha>`. Track the commit SHA in a version file or as constants in the script. This is actionable immediately, independent of this ADR.
@@ -186,6 +213,11 @@ The `containing_stable_id` component is computed recursively: a method's `stable
 - Fix Hack/Smithy `stable_id` field order inconsistency
 - Add `containing_module_stable_id` to Python's `_compute_stable_id()`
 - Bump `STABLE_ID_SCHEME` to `v2`
+
+**Phase 0+ (INV-fusus, 2026-05-18) — class body signature for Python:**
+- Add `class_body_sig` component to Python `_compute_stable_id` for `ClassDef` nodes (§5a)
+- Broaden `_compute_stable_id`'s `isinstance(node, ast.FunctionDef)` check to include `ast.AsyncFunctionDef` so async functions get correct `param_count` / `arity_flags` instead of falling through the class branch
+- Bump `STABLE_ID_SCHEME` to `v3`
 
 **Phase 1 — shape_id generalization:**
 - Implement generic CST walker in `TreeSitterAnalyzer`
