@@ -411,6 +411,104 @@ class TestWriteRouting:
         assert "status" not in item.locked_fields
 
 
+class TestTagNameValidation:
+    """INV-pahoj: tag-name validation must apply uniformly across every code
+    path that attaches a tag to an item. Validates against the same
+    ``_TAG_NAME_RE = ^[a-z_][a-z0-9_]*$`` the CLI ``tracker add --tag`` path
+    enforces (via ``tag_catalog.save_catalog``)."""
+
+    def test_add_rejects_hyphenated_tag(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        with pytest.raises(ValueError, match="analysis-quality"):
+            tracker_set.add(
+                "invariant", "Bad Add", fields=_INV_FIELDS,
+                tags=["analysis-quality"],
+            )
+
+    def test_add_rejects_uppercase_tag(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        with pytest.raises(ValueError, match="BadTag"):
+            tracker_set.add(
+                "invariant", "Bad Add", fields=_INV_FIELDS,
+                tags=["BadTag"],
+            )
+
+    def test_add_rejects_leading_digit_tag(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        with pytest.raises(ValueError, match="1bad"):
+            tracker_set.add(
+                "invariant", "Bad Add", fields=_INV_FIELDS,
+                tags=["1bad"],
+            )
+
+    def test_add_accepts_valid_snake_case_tags(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        item_id = tracker_set.add(
+            "invariant", "Good Add", fields=_INV_FIELDS,
+            tags=["snake_case", "another_good", "lower9"],
+        )
+        item = tracker_set.get(item_id)
+        assert set(item.tags) == {"snake_case", "another_good", "lower9"}
+
+    def test_update_set_rejects_hyphenated_tag(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        item_id = tracker_set.add("invariant", "Existing", fields=_INV_FIELDS)
+        with pytest.raises(ValueError, match="ci-infrastructure"):
+            tracker_set.update(
+                item_id, set_fields={"tags": ["ci-infrastructure"]},
+            )
+
+    def test_update_add_rejects_hyphenated_tag(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        item_id = tracker_set.add("invariant", "Existing", fields=_INV_FIELDS)
+        with pytest.raises(ValueError, match="dash-tag"):
+            tracker_set.update(
+                item_id, add_fields={"tags": ["dash-tag"]},
+            )
+
+    def test_update_add_rejects_non_string_tag(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        item_id = tracker_set.add("invariant", "Existing", fields=_INV_FIELDS)
+        with pytest.raises(ValueError, match="must be a string"):
+            tracker_set.update(
+                item_id, add_fields={"tags": [123]},  # type: ignore[list-item]
+            )
+
+    def test_update_remove_allows_invalid_tag_for_cleanup(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        """Invalid tags already on items (from before this fix) must be
+        removable so cleanup like WI-fanus can proceed."""
+        item_id = tracker_set.add("invariant", "Existing", fields=_INV_FIELDS)
+        tracker_set.update(
+            item_id, remove_fields={"tags": ["legacy-bad-tag"]},
+        )
+
+    def test_update_accepts_valid_tag(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        item_id = tracker_set.add("invariant", "Existing", fields=_INV_FIELDS)
+        tracker_set.update(item_id, add_fields={"tags": ["good_tag"]})
+        item = tracker_set.get(item_id)
+        assert "good_tag" in item.tags
+
+    def test_update_non_tag_fields_unaffected(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        """Validation only applies to tag fields; other fields pass through."""
+        item_id = tracker_set.add("invariant", "Existing", fields=_INV_FIELDS)
+        tracker_set.update(item_id, set_fields={"priority": 1})
+        item = tracker_set.get(item_id)
+        assert item.priority == 1
+
+
 # ---------------------------------------------------------------------------
 # count_todos (scope-aware)
 # ---------------------------------------------------------------------------

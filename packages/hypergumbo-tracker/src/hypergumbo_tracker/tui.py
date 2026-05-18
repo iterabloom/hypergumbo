@@ -4130,7 +4130,10 @@ class TrackerApp(App):
             )
             self.notify(f"Updated: {item_id}")
             self._reload_after_write(item_id)
-        except (ItemNotFoundError, LockedFieldError, PermissionError) as e:
+        except (
+            ItemNotFoundError, LockedFieldError, PermissionError,
+            ValueError,
+        ) as e:
             self.notify(str(e), severity="error")
 
     def action_set_parent(self) -> None:

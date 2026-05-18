@@ -4116,6 +4116,35 @@ class TestOnEditItemCallbackBranches:
                     remove_fields=None,
                 )
 
+    async def test_invalid_tag_value_error_is_caught(
+        self, tmp_path: Path,
+    ) -> None:
+        """INV-pahoj: when ``trackerset.update`` rejects a kebab-case tag,
+        the TUI's edit-item handler must catch ``ValueError`` and surface
+        it as a user notification rather than letting it propagate."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(
+                ts, "update",
+                side_effect=ValueError("tag name 'bad-tag' does not match ..."),
+            ), patch.object(app, "notify") as notify_mock:
+                app._on_edit_item(item.id, {
+                    "set_fields": {},
+                    "add_fields": {"tags": ["bad-tag"]},
+                    "remove_fields": {},
+                })
+                await pilot.pause()
+                notify_mock.assert_called_once()
+                args, kwargs = notify_mock.call_args
+                assert "bad-tag" in args[0]
+                assert kwargs.get("severity") == "error"
+
 
 def _mock_resolve_ids_passthrough(
     raw_ids: list[str], on_resolved: Any,

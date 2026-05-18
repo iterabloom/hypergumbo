@@ -45,10 +45,35 @@ from hypergumbo_tracker.store import (
     _serialize_op,
     compile_ops,
 )
+from hypergumbo_tracker.tag_catalog import _TAG_NAME_RE
 
 
 # Maximum reconciliation attempts per item before giving up
 _MAX_RECONCILE_ATTEMPTS = 3
+
+
+def _validate_tag_names(tags: Any) -> None:
+    """Reject tag names that don't match ``^[a-z_][a-z0-9_]*$``.
+
+    Enforces the same rule the CLI ``tracker add --tag`` / ``--add-tag``
+    paths get for free via ``tag_catalog.save_catalog``. Centralized here
+    so non-CLI callers (TUI, ``serve.py``, future APIs) cannot smuggle
+    hyphenated or otherwise out-of-spec names into ``.ops`` logs — see
+    INV-pahoj for the bypass this closes. ``remove`` paths intentionally
+    skip this check so historically-bad tags remain cleanable.
+    """
+    if tags is None:
+        return
+    for name in tags:
+        if not isinstance(name, str):
+            raise ValueError(
+                f"tag name {name!r} must be a string matching "
+                f"{_TAG_NAME_RE.pattern}",
+            )
+        if not _TAG_NAME_RE.match(name):
+            raise ValueError(
+                f"tag name {name!r} does not match {_TAG_NAME_RE.pattern}",
+            )
 
 
 class TierMovementError(Exception):
@@ -367,6 +392,7 @@ class TrackerSet:
         **kwargs: Any,
     ) -> str:
         """Route add() to the specified tier's Store. Default: workspace."""
+        _validate_tag_names(kwargs.get("tags"))
         store = self._tier_stores[tier]
         item_id = store.add(kind=kind, title=title, **kwargs)
         self._cache_upsert_item(tier, store, item_id)
@@ -374,6 +400,10 @@ class TrackerSet:
 
     def update(self, item_id: str, **kwargs: Any) -> None:
         """Resolve item to its tier, delegate update to that Store."""
+        set_fields = kwargs.get("set_fields") or {}
+        add_fields = kwargs.get("add_fields") or {}
+        _validate_tag_names(set_fields.get("tags"))
+        _validate_tag_names(add_fields.get("tags"))
         full_id, store, t = self._resolve_id(item_id)
         store.update(full_id, **kwargs)
         self._cache_upsert_item(t, store, full_id)
