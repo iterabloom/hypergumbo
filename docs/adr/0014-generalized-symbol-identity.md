@@ -166,6 +166,29 @@ The `containing_stable_id` component is computed recursively: a method's `stable
 
 **Hash stability impact:** Adding `containing_module_stable_id` to Python's formula changes all existing `stable_id` values. This requires bumping `STABLE_ID_SCHEME` from `hypergumbo-stableid-v1` to `hypergumbo-stableid-v2`.
 
+### 5b. Kind-specific stable_id factories + orchestrator backstop (INV-sotiv)
+
+Self-analysis on hypergumbo's own codebase showed that 1,981 of 32,253 Symbols (6.1%) had `stable_id=None`: 100% of `kind="variable"` (1,487), 100% of `kind="module"` (385), 100% of `kind="dependency"` (81), 100% of `kind="export"` (18), 100% of `kind="project"` (7), 100% of `kind="interface"` (2), 100% of `kind="type"` (1), and 99.4% of `kind="file"` (804 of 809). The §5 `_compute_stable_id` formula only covers function / method / class symbols emitted by the Python AST analyzer; module-level constants from the Python AST minimal builder, file-kind Symbols synthesised at the orchestrator and tree-sitter analyzer levels, and module / dependency / export / interface / type Symbols from ~12 analyzers (`xml_config`, `toml_config`, `bash`, `csharp`, `groovy`, `wasm_bindgen`, etc.) all leave the field at the dataclass default of `None`.
+
+The fix adds eight kind-specific factory functions in `hypergumbo_core.analyze.base` modelled on the existing `make_route_stable_id` / `make_entry_stable_id` family (§4):
+
+| Kind | Formula |
+|---|---|
+| `file` | `sha256("file:{language}:{path}")[:16]` |
+| `module` | `sha256("module:{language}:{name}")[:16]` |
+| `dependency` | `sha256("dependency:{language}:{name}")[:16]` |
+| `variable` | `sha256("variable:{language}:{path}:{name}")[:16]` |
+| `export` | `sha256("export:{language}:{path}:{name}")[:16]` |
+| `project` | `sha256("project:{name}")[:16]` |
+| `interface` | `sha256("interface:{language}:{name}")[:16]` |
+| `type` | `sha256("type:{language}:{name}")[:16]` |
+
+Each formula is the cheapest expression of identity for the kind: files are path-identified, modules / dependencies / interfaces / types are lang-namespaced-name-identified, variables / exports are file-scoped `(path, name)`-identified, and projects are bare-name-identified. The language namespace separates same-name cross-language symbols (`io` in Python vs Dart, `requests` in Python vs npm).
+
+The orchestrator pass `populate_kind_stable_ids(symbols)` runs in `analyze.all_analyzers` after path normalisation. It walks every Symbol and, for any Symbol with `stable_id=None` and a kind in the factory table, stamps the kind-specific value. Symbols whose producers already computed a `stable_id` (functions / methods / classes via `_compute_stable_id`, routes via `make_route_stable_id`, typed-tier via `make_typed_stable_id`) keep precedence — the backstop never overrides a non-`None` value. Kinds not in the factory table are left untouched (so the contract degrades gracefully when new kinds are introduced).
+
+**Hash stability impact:** Additive only — no existing `stable_id` value changes. `STABLE_ID_SCHEME` stays at `v3` (the §5a class-body-signature bump). Consumers that were branching on `stable_id is None` for the affected kinds now see deterministic values; that is the intended contract.
+
 ### 5a. class_body_sig: same-module class identity discrimination (INV-fusus)
 
 Self-analysis dogfooding on 2026-05-16 found that the §5 formula (with `containing_module_stable_id` empty for top-level classes) still produced a 91% collision rate across 29,367 `stable_id`-bearing nodes on hypergumbo's own codebase. Five `@dataclass` classes in `ir.py` — `Symbol`, `Edge`, `Span`, `AnalysisRun`, `ExternalRef` — shared one `stable_id` because the only inputs that varied across them were the class's *own name* (excluded by design — `survives renames`) and the class's *contents* (not yet in the formula). Methods cascaded into a second 5,500-node collision group.
@@ -218,6 +241,11 @@ Two classes with byte-for-byte identical bodies still produce the same `stable_i
 - Add `class_body_sig` component to Python `_compute_stable_id` for `ClassDef` nodes (§5a)
 - Broaden `_compute_stable_id`'s `isinstance(node, ast.FunctionDef)` check to include `ast.AsyncFunctionDef` so async functions get correct `param_count` / `arity_flags` instead of falling through the class branch
 - Bump `STABLE_ID_SCHEME` to `v3`
+
+**Phase 0++ (INV-sotiv, 2026-05-18) — kind-specific stable_id factories + backstop:**
+- Add `make_{file,module,dependency,variable,export,project,interface,type}_stable_id` factories in `analyze.base` (§5b)
+- Add `populate_kind_stable_ids` backstop in `analyze.base`; call from `analyze.all_analyzers` after path normalisation
+- Additive only — `STABLE_ID_SCHEME` stays at `v3`
 
 **Phase 1 — shape_id generalization:**
 - Implement generic CST walker in `TreeSitterAnalyzer`

@@ -21,7 +21,7 @@ from ..discovery import set_global_on_file_skipped
 from ..ir import Edge, Symbol, UsageContext
 from ..limits import Limits
 from ..paths import normalize_path
-from .base import synthesize_file_symbols_for_dangling_edges
+from .base import populate_kind_stable_ids, synthesize_file_symbols_for_dangling_edges
 from .registry import (
     RegisteredAnalyzer,
     clear_registry,
@@ -217,6 +217,13 @@ def run_all_analyzers(
         normed = normalize_path(ff.path)
         if normed.startswith(root_prefix):
             ff.path = normed[len(root_prefix):]
+
+    # INV-sotiv: fill missing Symbol.stable_id for the kinds whose producers
+    # don't compute one (variable / module / dependency / export / project /
+    # interface / type, plus orchestrator-synthesized files). Runs after path
+    # normalisation so the file-path identity component is repo-relative.
+    # Producers that already computed a stable_id keep priority.
+    populate_kind_stable_ids(all_symbols)
 
     # Clear global callback to avoid leaking state
     set_global_on_file_skipped(None)

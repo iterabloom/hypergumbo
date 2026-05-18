@@ -531,6 +531,138 @@ def make_entry_stable_id(entry_type: str, name: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
+def _short_sha256(payload: str) -> str:
+    """Return the canonical ``sha256:{16-hex}`` form used by `_compute_stable_id`."""
+    return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
+
+
+def make_file_stable_id(language: str, path: str) -> str:
+    """INV-sotiv: stable identity for ``kind="file"`` Symbols.
+
+    Identity formula: ``sha256("file:{language}:{path}")[:16]``. Path is the
+    repo-relative file path (set by ``all_analyzers``' normalisation pass).
+    Two files at the same path but in different languages (rare — typically
+    the language is determined by the file's extension) get distinct
+    stable_ids; the path itself is the dominant identity component.
+    """
+    return _short_sha256(f"file:{language}:{path}")
+
+
+def make_module_stable_id(language: str, name: str) -> str:
+    """INV-sotiv: stable identity for ``kind="module"`` Symbols.
+
+    Identity formula: ``sha256("module:{language}:{name}")[:16]``. The
+    language namespace prevents a Python ``io`` module from sharing a
+    stable_id with a Dart ``io`` library.
+    """
+    return _short_sha256(f"module:{language}:{name}")
+
+
+def make_dependency_stable_id(language: str, name: str) -> str:
+    """INV-sotiv: stable identity for ``kind="dependency"`` Symbols.
+
+    Identity formula: ``sha256("dependency:{language}:{name}")[:16]``. The
+    language namespace separates `requests` (Python PyPI) from `requests`
+    (a JS npm package with the same name).
+    """
+    return _short_sha256(f"dependency:{language}:{name}")
+
+
+def make_variable_stable_id(language: str, path: str, name: str) -> str:
+    """INV-sotiv: stable identity for ``kind="variable"`` Symbols.
+
+    Identity formula: ``sha256("variable:{language}:{path}:{name}")[:16]``.
+    Variables of the same name in different files get distinct stable_ids
+    because the file path is the dominant identity component for a
+    module-level binding.
+    """
+    return _short_sha256(f"variable:{language}:{path}:{name}")
+
+
+def make_export_stable_id(language: str, path: str, name: str) -> str:
+    """INV-sotiv: stable identity for ``kind="export"`` Symbols.
+
+    Identity formula: ``sha256("export:{language}:{path}:{name}")[:16]``.
+    Exports are file-scoped, so ``(path, name)`` is the natural identity.
+    Bash function exports, Python ``__all__`` entries, and JS named
+    exports all use this shape.
+    """
+    return _short_sha256(f"export:{language}:{path}:{name}")
+
+
+def make_project_stable_id(name: str) -> str:
+    """INV-sotiv: stable identity for ``kind="project"`` Symbols.
+
+    Identity formula: ``sha256("project:{name}")[:16]``. Projects are
+    repo-level and language-agnostic, so the bare name suffices.
+    """
+    return _short_sha256(f"project:{name}")
+
+
+def make_interface_stable_id(language: str, name: str) -> str:
+    """INV-sotiv: stable identity for ``kind="interface"`` Symbols.
+
+    Identity formula: ``sha256("interface:{language}:{name}")[:16]``. A
+    C# ``IRepository`` and a TypeScript ``IRepository`` get distinct
+    stable_ids via the language namespace.
+    """
+    return _short_sha256(f"interface:{language}:{name}")
+
+
+def make_type_stable_id(language: str, name: str) -> str:
+    """INV-sotiv: stable identity for ``kind="type"`` Symbols.
+
+    Identity formula: ``sha256("type:{language}:{name}")[:16]``. Used for
+    named type declarations (Rust ``type`` aliases, TypeScript ``type``
+    statements, etc.).
+    """
+    return _short_sha256(f"type:{language}:{name}")
+
+
+# Mapping from Symbol.kind to the factory function used by
+# populate_kind_stable_ids. Kinds NOT present here either have producers
+# that compute their own stable_id (function, method, class, route, etc.)
+# or are absent from INV-sotiv's measured-gap set and remain at None
+# until a future invariant adds them.
+_KIND_STABLE_ID_FACTORIES = {
+    "file": lambda s: make_file_stable_id(s.language, s.path),
+    "module": lambda s: make_module_stable_id(s.language, s.name),
+    "dependency": lambda s: make_dependency_stable_id(s.language, s.name),
+    "variable": lambda s: make_variable_stable_id(s.language, s.path, s.name),
+    "export": lambda s: make_export_stable_id(s.language, s.path, s.name),
+    "project": lambda s: make_project_stable_id(s.name),
+    "interface": lambda s: make_interface_stable_id(s.language, s.name),
+    "type": lambda s: make_type_stable_id(s.language, s.name),
+}
+
+
+def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
+    """INV-sotiv backstop: fill missing ``Symbol.stable_id`` by kind.
+
+    Runs at the orchestrator chokepoint (``analyze.all_analyzers`` after
+    path normalisation) and mutates ``symbols`` in place. For every
+    Symbol whose ``stable_id`` is still ``None``, dispatches on
+    ``Symbol.kind`` to a kind-specific factory and stamps the result.
+
+    Producers that already computed a ``stable_id`` (functions, methods,
+    classes via ``_compute_stable_id``; routes via ``make_route_stable_id``;
+    typed-tier symbols via ``make_typed_stable_id``; etc.) keep priority
+    — this backstop never overrides a non-``None`` value.
+
+    Kinds not in ``_KIND_STABLE_ID_FACTORIES`` are left untouched.
+    Self-analysis on hypergumbo's own codebase confirmed that the eight
+    covered kinds account for all the previously-``None`` Symbols; new
+    kinds would surface here and need their own factory entry.
+    """
+    for sym in symbols:
+        if sym.stable_id is not None:
+            continue
+        factory = _KIND_STABLE_ID_FACTORIES.get(sym.kind)
+        if factory is None:
+            continue
+        sym.stable_id = factory(sym)
+
+
 def make_typed_stable_id(
     kind: str,
     normalized_signature: str,
