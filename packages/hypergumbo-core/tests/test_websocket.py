@@ -317,10 +317,142 @@ class TestHelperFunctions:
         id = _make_symbol_id("src/app.js", 10, "connection", "endpoint")
         assert id == "websocket:src/app.js:10:connection:endpoint"
 
+    def test_language_for_file_extension_unknown_falls_back_to_pattern_type(self) -> None:
+        """Vue/Svelte files (and other unknown extensions) fall back to pattern_type.
+
+        ``find_js_ts_files`` walks ``*.vue`` / ``*.svelte`` paths but neither
+        extension is in the canonical ``_EXTENSION_TO_LANGUAGE`` map. The
+        fallback in ``_language_for_file`` covers those cases: Python-side
+        Django Channels / FastAPI paths return ``"python"``, every other
+        unknown extension defaults to ``"javascript"``.
+        """
+        from hypergumbo_core.linkers.websocket import _language_for_file
+
+        assert _language_for_file("App.vue", "socketio") == "javascript"
+        assert _language_for_file("App.svelte", "ws") == "javascript"
+        assert _language_for_file("handler", "django_channels") == "python"
+        assert _language_for_file("handler", "fastapi") == "python"
+
     def test_make_file_id(self) -> None:
-        """Should generate valid file IDs."""
-        id = _make_file_id("src/app.js")
-        assert id == "websocket:src/app.js:1-1:file:file"
+        """Should generate canonical make_file_id-shape IDs (INV-ronuf).
+
+        The WS linker historically used a ``websocket:``-prefixed id that did
+        not match the canonical analyze/orchestrator shape, producing phantom
+        shadow file Symbols. After INV-ronuf the WS linker mints canonical
+        ``{language}:{path}:1-1:file:file`` ids so dedup with analyzer and
+        orchestrator file Symbols works naturally.
+        """
+        id = _make_file_id("javascript", "src/app.js")
+        assert id == "javascript:src/app.js:1-1:file:file"
+
+
+class TestINVRonufNoPhantomFileSymbols:
+    """INV-ronuf property tests: WS linker must not create phantom file Symbols.
+
+    The invariant has three clauses (from the tracker statement):
+
+    1. Each file path has exactly one file-kind Symbol across all producers.
+    2. When the WS linker DOES synthesize a file Symbol, the id matches the
+       canonical ``make_file_id`` shape so cross-producer dedup works.
+    3. Synthesized Symbols have language derived from the file extension
+       (``.ts`` → ``typescript``, not ``javascript``), and a non-None
+       ``stable_id`` to satisfy the schema gate.
+    """
+
+    def test_file_symbols_use_canonical_make_file_id_shape(self, tmp_path: Path) -> None:
+        """INV-ronuf clause 2: id matches canonical ``make_file_id`` shape."""
+        from hypergumbo_core.analyze.base import make_file_id
+        (tmp_path / "sender.js").write_text("socket.emit('e', data);")
+        (tmp_path / "receiver.js").write_text("socket.on('e', handler);")
+        result = link_websocket(tmp_path)
+        file_syms = [s for s in result.symbols if s.kind == "file"]
+        assert len(file_syms) >= 1
+        for s in file_syms:
+            assert s.id.endswith(":1-1:file:file"), f"non-canonical id {s.id!r}"
+            assert not s.id.startswith("websocket:"), (
+                f"websocket-prefixed id {s.id!r} causes phantom-Symbol duplication"
+            )
+            assert s.id == make_file_id(s.language, s.path), (
+                f"id {s.id!r} does not reconstruct from (language, path)"
+            )
+
+    def test_typescript_file_gets_typescript_language(self, tmp_path: Path) -> None:
+        """INV-ronuf clause 3: ``.ts`` files get ``language='typescript'``.
+
+        Previously the WS linker used ``get_language(pattern_type)`` which
+        returned ``'javascript'`` for any non-Python pattern, mis-attributing
+        every ``.ts`` file. Now language is derived from the file extension.
+        """
+        (tmp_path / "sender.ts").write_text("socket.emit('e', data);")
+        (tmp_path / "receiver.ts").write_text("socket.on('e', handler);")
+        result = link_websocket(tmp_path)
+        ts_file_syms = [
+            s for s in result.symbols if s.kind == "file" and s.path.endswith(".ts")
+        ]
+        assert len(ts_file_syms) >= 1
+        for s in ts_file_syms:
+            assert s.language == "typescript", (
+                f"expected typescript for {s.path!r}, got {s.language!r}"
+            )
+
+    def test_synthesized_file_symbols_have_stable_id(self, tmp_path: Path) -> None:
+        """INV-ronuf clause 3: synthesized file Symbols stamp ``stable_id``.
+
+        Schema gate (INV-piroh) requires non-None ``stable_id`` for every
+        Symbol; the WS linker previously left it ``None``.
+        """
+        (tmp_path / "sender.js").write_text("socket.emit('e', data);")
+        (tmp_path / "receiver.js").write_text("socket.on('e', handler);")
+        result = link_websocket(tmp_path)
+        file_syms = [s for s in result.symbols if s.kind == "file"]
+        assert len(file_syms) >= 1
+        for s in file_syms:
+            assert s.stable_id is not None, f"{s.id!r} has stable_id=None"
+
+    def test_skips_phantom_when_existing_symbol_id_present(self, tmp_path: Path) -> None:
+        """INV-ronuf clause 1: skip synthesis when canonical id pre-exists.
+
+        Simulates the production case: an analyzer (or the orchestrator's
+        dangling-synth) has already emitted a file Symbol for a path. The
+        WS linker must reuse that Symbol via canonical-id collision, not
+        emit a duplicate.
+        """
+        from hypergumbo_core.analyze.base import make_file_id
+        (tmp_path / "client.js").write_text("socket.emit('e', data);")
+        (tmp_path / "server.js").write_text("socket.on('e', handler);")
+        existing_client_id = make_file_id("javascript", str(tmp_path / "client.js"))
+        result = link_websocket(
+            tmp_path, existing_symbol_ids={existing_client_id}
+        )
+        client_files = [
+            s for s in result.symbols if s.kind == "file" and "client.js" in s.path
+        ]
+        assert len(client_files) == 0, (
+            f"WS linker emitted phantom file Symbol for client.js despite "
+            f"existing canonical id; got {[s.id for s in client_files]!r}"
+        )
+
+    def test_dedup_against_existing_preserves_edge_resolution(self, tmp_path: Path) -> None:
+        """INV-ronuf: dedup'd edges still reference the existing Symbol id.
+
+        When the WS linker skips synthesis because an existing canonical id
+        is present, the edges it emits must still target that canonical id
+        (so they resolve to the existing Symbol, not dangle).
+        """
+        from hypergumbo_core.analyze.base import make_file_id
+        (tmp_path / "client.js").write_text("socket.emit('e', data);")
+        (tmp_path / "server.js").write_text("socket.on('e', handler);")
+        existing_client_id = make_file_id("javascript", str(tmp_path / "client.js"))
+        existing_server_id = make_file_id("javascript", str(tmp_path / "server.js"))
+        result = link_websocket(
+            tmp_path,
+            existing_symbol_ids={existing_client_id, existing_server_id},
+        )
+        publish_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
+        assert len(publish_edges) >= 1
+        for e in publish_edges:
+            assert e.src == existing_client_id
+            assert e.dst == existing_server_id
 
 
 class TestLinkWebSocket:

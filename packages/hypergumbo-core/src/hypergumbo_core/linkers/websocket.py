@@ -70,10 +70,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from ..analyze.base import make_file_id, make_file_stable_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
-from ._text_filters import read_masked_source
+from ._text_filters import language_from_path, read_masked_source
 
 PASS_ID = make_pass_id("websocket-linker")
 
@@ -240,9 +241,34 @@ def _make_symbol_id(path: str, line: int, event: str, kind: str) -> str:
     return f"websocket:{path}:{line}:{event}:{kind}"
 
 
-def _make_file_id(path: str) -> str:
-    """Generate ID for a file node."""
-    return f"websocket:{path}:1-1:file:file"
+def _make_file_id(language: str, path: str) -> str:
+    """Generate ID for a file node using the canonical ``make_file_id`` shape.
+
+    INV-ronuf: historically this returned ``websocket:{path}:1-1:file:file``,
+    which never collided with the orchestrator's canonical
+    ``{language}:{path}:1-1:file:file`` shape — every WS-emitted file Symbol
+    became a phantom shadow of the analyzer/orchestrator-emitted one.
+    Using the canonical shape lets ``ctx.symbols``-based dedup (and the
+    orchestrator's dangling-edge synthesizer) collapse them naturally.
+    """
+    return make_file_id(language, path)
+
+
+def _language_for_file(file_path: str, pattern_type: str) -> str:
+    """Resolve a file's language, preferring extension over ``pattern_type``.
+
+    INV-ronuf clause 3: a ``.ts`` file with Socket.io patterns must be
+    recorded as ``typescript``, not ``javascript``. Falls back to the
+    pattern_type-derived language only when the extension is unknown
+    (e.g., Django Channels handler in a path without a recognised
+    extension, or a synthetic test path).
+    """
+    by_ext = language_from_path(Path(file_path))
+    if by_ext is not None:
+        return by_ext
+    if pattern_type in ("fastapi", "django_channels"):
+        return "python"
+    return "javascript"
 
 
 def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
@@ -442,7 +468,10 @@ def _detect_python_patterns(file_path: Path) -> list[WebSocketPattern]:
     return patterns
 
 
-def link_websocket(repo_root: Path) -> WebSocketLinkResult:
+def link_websocket(
+    repo_root: Path,
+    existing_symbol_ids: "set[str] | None" = None,
+) -> WebSocketLinkResult:
     """Detect WebSocket patterns and create linking edges.
 
     Scans all JavaScript/TypeScript and Python files for WebSocket patterns and creates:
@@ -450,8 +479,21 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
     - message_send edges for emit/send calls
     - message_receive edges for on/onmessage handlers
 
+    INV-ronuf
+    ---------
+    File-kind Symbols are synthesized only for paths whose canonical
+    ``make_file_id`` is **not** already present in ``existing_symbol_ids``
+    (which the linker registry wires up from ``LinkerContext.symbols``).
+    When the orchestrator's dangling-edge synthesizer or a language
+    analyzer has already produced a canonical file Symbol, the WS linker
+    reuses that id via canonical-shape match rather than emitting a
+    parallel shadow node. When ``existing_symbol_ids`` is ``None`` (the
+    legacy direct-call form retained for unit tests), the linker emits
+    file Symbols for every path it discovers.
+
     Returns a WebSocketLinkResult with edges, symbols, and run info.
     """
+    existing_ids = existing_symbol_ids or set()
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
@@ -489,12 +531,6 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
         elif pattern.type == "endpoint":
             endpoints.append(pattern)
 
-    # Helper to determine language from pattern type
-    def get_language(pattern_type: str) -> str:
-        if pattern_type in ("fastapi", "django_channels"):
-            return "python"
-        return "javascript"
-
     # ADR-0027 Phase 3 / audit-findings 0013: Symbol.kind="websocket_endpoint"
     # is a framework-role leak (Test 4: mechanism vs. category). Fold to the
     # canonical Cluster A construct kind="function" + meta["framework_role"]
@@ -523,7 +559,7 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
             id=_make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint"),
             name=f"ws:{ep.event}",
             kind="function",
-            language=get_language(ep.pattern_type),
+            language=_language_for_file(ep.file_path, ep.pattern_type),
             path=ep.file_path,
             span=Span(start_line=ep.line, end_line=ep.line, start_col=0, end_col=0),
             origin=PASS_ID,
@@ -547,18 +583,30 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
         files_with_patterns[ep.file_path] = ep.pattern_type
 
     # Create file symbols for all files with WebSocket patterns
-    # These enable slice traversal of websocket_message edges
+    # These enable slice traversal of websocket_message edges.
+    #
+    # INV-ronuf: skip synthesis when the canonical id is already present in
+    # ``existing_ids`` (i.e., an analyzer or the orchestrator's dangling-
+    # edge synthesizer has already minted a file Symbol for this path).
+    # Synthesized Symbols use the canonical ``make_file_id`` shape, derive
+    # ``language`` from the file extension, and stamp ``stable_id`` via
+    # ``make_file_stable_id`` to satisfy the INV-piroh schema gate.
     for file_path, pattern_type in files_with_patterns.items():
+        language = _language_for_file(file_path, pattern_type)
+        file_id = _make_file_id(language, file_path)
+        if file_id in existing_ids:
+            continue
         file_name = Path(file_path).name
         symbols.append(Symbol(
-            id=_make_file_id(file_path),
+            id=file_id,
             name=file_name,
             kind="file",
-            language=get_language(pattern_type),
+            language=language,
             path=file_path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            stable_id=make_file_stable_id(language, file_path),
         ))
 
     # Pattern types that use "message" as a synthetic placeholder for
@@ -607,8 +655,14 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
                     # dataflow fields (assigning edge.meta afterward
                     # would wipe access_mode/dest_access_mode — INV-forim).
                     edge = Edge.create(
-                        src=_make_file_id(send_pat.file_path),
-                        dst=_make_file_id(recv_pat.file_path),
+                        src=_make_file_id(
+                            _language_for_file(send_pat.file_path, send_pat.pattern_type),
+                            send_pat.file_path,
+                        ),
+                        dst=_make_file_id(
+                            _language_for_file(recv_pat.file_path, recv_pat.pattern_type),
+                            recv_pat.file_path,
+                        ),
                         edge_type="event_publishes",
                         line=send_pat.line,
                         evidence_type=evidence_type,
@@ -639,7 +693,10 @@ def link_websocket(repo_root: Path) -> WebSocketLinkResult:
     # + meta["framework_dispatch"]=<framework_name>.
     for ep in endpoints:
         edges.append(Edge.create(
-            src=_make_file_id(ep.file_path),
+            src=_make_file_id(
+                _language_for_file(ep.file_path, ep.pattern_type),
+                ep.file_path,
+            ),
             dst=_make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint"),
             edge_type="references",
             line=ep.line,
@@ -679,8 +736,13 @@ def websocket_linker(ctx: LinkerContext) -> LinkerResult:
     """WebSocket linker for registry-based dispatch.
 
     This wraps link_websocket() to use the LinkerContext/LinkerResult interface.
+
+    INV-ronuf: feeds ``ctx.symbols``-derived ids to ``link_websocket`` so
+    file-Symbol synthesis dedupes against analyzer/orchestrator output via
+    canonical ``make_file_id`` shape collision.
     """
-    result = link_websocket(ctx.repo_root)
+    existing_ids = {s.id for s in ctx.symbols}
+    result = link_websocket(ctx.repo_root, existing_symbol_ids=existing_ids)
 
     return LinkerResult(
         symbols=result.symbols,
