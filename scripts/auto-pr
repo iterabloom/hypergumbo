@@ -205,6 +205,13 @@ GOVERNANCE_MODE=false
 # WI-mokak: full tracker item ID whose discussion thread should receive a
 # post-merge entry citing the durable PR number + dev SHA. Empty = no-op.
 TRACKER_ID=""
+# Flag-form title/description (alternative to positional $1/$2). Empty
+# string means "not provided" — do_pr falls back to positional, then to
+# commit message. Both forms are supported; flag form wins over positional
+# for the same slot. Mixing is allowed: `--title X "positional desc"`
+# binds title from the flag and desc from the positional.
+TITLE_FLAG=""
+DESC_FLAG=""
 
 # ------------------------------------------------------------------
 # WI-miriz: AUTOPR_LAST_RESULT.json sentinel
@@ -1160,8 +1167,36 @@ do_pr() {
 	fi
 	LOCAL_SHA="$(git rev-parse HEAD)"
 
-	TITLE="${1:-$(git log -1 --pretty=%s)}"
-	DESC="${2:-$(git log -1 --pretty=%b)}"
+	# Resolution per slot: flag form (TITLE_FLAG / DESC_FLAG) wins; any
+	# slot the flag form skipped is filled by the next available
+	# positional (left-to-right); any slot the positionals didn't reach
+	# falls back to the commit subject / body.
+	#
+	# So `--title X "desc"` resolves title from the flag and treats the
+	# single positional as the description (rather than ignoring it
+	# because the title slot was already taken). Symmetrically,
+	# `--description Y "title"` binds the positional to title.
+	#
+	# Flag form was added because the historical positional-only
+	# contract silently produced PRs with title `--title` whenever an
+	# agent invoked `auto-pr --title X --description Y`: the unknown
+	# flags fell through the global parser's `*)` and became positional
+	# $1=`--title`, $2=`X`.
+	if [[ -n "$TITLE_FLAG" ]]; then
+		TITLE="$TITLE_FLAG"
+		if [[ -n "$DESC_FLAG" ]]; then
+			DESC="$DESC_FLAG"
+		else
+			DESC="${1:-$(git log -1 --pretty=%b)}"
+		fi
+	else
+		TITLE="${1:-$(git log -1 --pretty=%s)}"
+		if [[ -n "$DESC_FLAG" ]]; then
+			DESC="$DESC_FLAG"
+		else
+			DESC="${2:-$(git log -1 --pretty=%b)}"
+		fi
+	fi
 
 	# Title must be single line; description keeps newlines
 	TITLE="${TITLE//$'\n'/ }"
@@ -1758,6 +1793,29 @@ while [[ $# -gt 0 ]]; do
 		TRACKER_ID="$2"
 		shift 2
 		;;
+	--title)
+		# Alternative to positional $1. Mirrors --tracker-id's
+		# require-value-or-fail discipline so callers cannot silently
+		# end up with `--title` literally as the PR title (the bug this
+		# flag was added to fix). An empty value or another flag as
+		# value rejects loudly.
+		if [[ -z "${2:-}" ]] || [[ "${2}" == --* ]]; then
+			echo "❌ --title requires a value (PR title text)" >&2
+			exit 1
+		fi
+		TITLE_FLAG="$2"
+		shift 2
+		;;
+	--description)
+		# Alternative to positional $2. Same require-value-or-fail
+		# discipline as --title / --tracker-id.
+		if [[ -z "${2:-}" ]] || [[ "${2}" == --* ]]; then
+			echo "❌ --description requires a value (PR body text)" >&2
+			exit 1
+		fi
+		DESC_FLAG="$2"
+		shift 2
+		;;
 	*)
 		break
 		;;
@@ -1840,6 +1898,8 @@ help | --help | -h)
 	echo "  --tracker-id ID     Full tracker item ID (WI-*, INV-*, etc). On successful merge,"
 	echo "                      appends a discussion entry to that item citing the PR number and"
 	echo "                      merged dev SHA. Missing flag is a no-op."
+	echo "  --title TEXT        PR title. Alternative to positional \$1; flag form wins if both."
+	echo "  --description TEXT  PR description. Alternative to positional \$2; flag form wins if both."
 	echo ""
 	echo "Commands:"
 	echo "  (default)       Push branch as PR (uses fast-forward merge by default)"
