@@ -28,6 +28,41 @@ def test_run_behavior_map_writes_behavior_map_json(tmp_path):
     assert isinstance(data["edges"], list)
 
 
+def test_run_behavior_map_stamps_repo_fingerprint_on_every_run(tmp_path):
+    """INV-tofur: every AnalysisRun in the output must carry a non-null
+    repo_fingerprint matching the declared top-level scheme. Acceptance
+    criterion from the tracker: self-analysis dogfood must show
+    `analysis_runs[*].repo_fingerprint` non-null on every run."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    # One source file ensures at least the python-ast analyzer runs and
+    # contributes an AnalysisRun to the output.
+    (repo_root / "a.py").write_text("def f(): pass\n")
+
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path,
+        include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    runs = data["analysis_runs"]
+    assert runs, "expected at least one AnalysisRun in output"
+    for run in runs:
+        fp = run.get("repo_fingerprint")
+        assert isinstance(fp, str) and len(fp) == 64, (
+            f"AnalysisRun pass={run.get('pass')!r} has invalid "
+            f"repo_fingerprint={fp!r}"
+        )
+    # All runs must share the same fingerprint — they analyzed the same
+    # snapshot, so any divergence means a producer leaked its own value
+    # before the orchestrator stamp, or the stamp skipped some runs.
+    fps = {run["repo_fingerprint"] for run in runs}
+    assert len(fps) == 1, f"runs produced divergent fingerprints: {fps}"
+
+    assert data["repo_fingerprint_scheme"] == "hypergumbo-repofp-v1"
+
+
 def test_run_behavior_map_classifies_supply_chain_tiers(tmp_path):
     """Nodes should have supply_chain tier classification based on path."""
     repo_root = tmp_path / "repo"

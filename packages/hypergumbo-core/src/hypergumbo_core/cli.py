@@ -7420,6 +7420,19 @@ def run_behavior_map(
     all_nodes = [s.to_dict() for s in ranked_symbols]
     all_edge_dicts = [e.to_dict() for e in all_edges]
 
+    # INV-tofur: stamp the spec-defined repo_fingerprint into every
+    # AnalysisRun. Producers (~83 AnalysisRun.create call sites across
+    # analyzers + linkers) don't carry repo_root, so we compute once at
+    # the orchestrator chokepoint and stamp the result. Per spec
+    # docs/hypergumbo-spec.md:378-384 the fingerprint identifies the
+    # exact code snapshot analyzed; see repo_fingerprint.py for the
+    # algorithm.
+    from .repo_fingerprint import compute_repo_fingerprint
+    _repo_fp = compute_repo_fingerprint(repo_root)
+    for _run_dict in analysis_runs:
+        if _run_dict.get("repo_fingerprint") is None:
+            _run_dict["repo_fingerprint"] = _repo_fp
+
     behavior_map["analysis_runs"] = analysis_runs
     behavior_map["nodes"] = all_nodes
     behavior_map["edges"] = all_edge_dicts

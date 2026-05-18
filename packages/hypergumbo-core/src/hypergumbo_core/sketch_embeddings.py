@@ -1276,104 +1276,24 @@ def _get_repo_fingerprint(repo_root: Path) -> str:
 
 
 def _get_repo_state_hash(repo_root: Path) -> str:
-    """Generate a hash of the current repo state including uncommitted changes.
+    """Generate a 16-char hash of the current repo state.
 
-    For git repos: HEAD SHA + hash of diff output + untracked source files
-    For non-git: hash of (filepath, size, mtime) tuples for all source files
+    Returns the first 16 hex chars of the spec-defined repo_fingerprint
+    (``repo_fingerprint.compute_repo_fingerprint``). The truncated form
+    keeps cache-dir names short while inheriting the spec algorithm's
+    content-hash semantics — content change → hash change, mtime-only
+    change → hash stable.
 
-    This is fast because it doesn't read file contents for unchanged files.
-
-    Args:
-        repo_root: Repository root path.
-
-    Returns:
-        A 16-character hex state hash string.
+    INV-magul: this used to use path:size:mtime, which picked up tracker
+    ``.ops`` mtime jitter and polluted the cache between unrelated
+    analysis runs. Migrating to ``compute_repo_fingerprint`` fixes that
+    as a side effect (content hashing ignores mtime). Existing cache
+    entries become unreachable on the algorithm switch — a one-time
+    miss the cache layer absorbs naturally; the next run repopulates
+    under the new key. See INV-tofur and ``docs/hypergumbo-spec.md:378-384``.
     """
-    import hashlib
-
-    # Check if this is a git repo
-    git_dir = repo_root / ".git"
-    if git_dir.exists():
-        state_parts = []
-
-        # Get current HEAD SHA
-        returncode, stdout, _ = _run_git_command(["rev-parse", "HEAD"], cwd=repo_root)
-        if returncode == 0 and stdout.strip():
-            state_parts.append(stdout.strip())
-
-        # Get diff of tracked files (staged + unstaged changes)
-        returncode, stdout, _ = _run_git_command(
-            ["diff", "HEAD"], cwd=repo_root, timeout=30
-        )
-        if returncode == 0:
-            # Hash the diff output
-            diff_hash = hashlib.sha256(stdout.encode()).hexdigest()[:8]
-            state_parts.append(f"diff:{diff_hash}")
-
-        # Get untracked source files (sorted for determinism)
-        returncode, stdout, _ = _run_git_command(
-            ["ls-files", "--others", "--exclude-standard"], cwd=repo_root, timeout=30
-        )
-        if returncode == 0 and stdout.strip():
-            # Include mtime of untracked files for change detection
-            untracked_info = []
-            for line in sorted(stdout.strip().split("\n")):
-                file_path = repo_root / line
-                if file_path.exists() and file_path.is_file():
-                    try:
-                        stat = file_path.stat()
-                        untracked_info.append(f"{line}:{stat.st_size}:{stat.st_mtime}")
-                    except OSError:  # pragma: no cover
-                        pass
-            if untracked_info:
-                untracked_hash = hashlib.sha256(
-                    "\n".join(untracked_info).encode()
-                ).hexdigest()[:8]
-                state_parts.append(f"untracked:{untracked_hash}")
-
-        if state_parts:
-            combined = ":".join(state_parts)
-            return hashlib.sha256(combined.encode()).hexdigest()[:16]
-
-    # Non-git fallback: hash (path, size, mtime) for all source files
-    # This is slower but works for any directory
-    file_info = []
-    source_extensions = {
-        ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rs", ".rb",
-        ".c", ".cpp", ".h", ".hpp", ".cs", ".php", ".swift", ".kt", ".scala",
-    }
-    from hypergumbo_core.discovery import get_file_index
-    file_index = get_file_index()
-    if file_index is not None and file_index.repo_root == repo_root:
-        source_files_iter = sorted(
-            f for ext in source_extensions for f in file_index.by_extension(ext)
-        )
-    else:
-        source_files_iter = sorted(
-            f for f in repo_root.rglob("*")
-            if f.is_file() and f.suffix in source_extensions
-        )
-    for f in source_files_iter:
-        if file_index is None:
-            # Only need path filtering when not using the index (index
-            # already excludes node_modules, __pycache__, etc.)
-            rel_parts = f.relative_to(repo_root).parts
-            if any(p.startswith(".") or p in ("node_modules", "venv", "__pycache__")
-                   for p in rel_parts):
-                continue
-            try:
-                stat = f.stat()
-                rel_path = str(f.relative_to(repo_root))
-                file_info.append(f"{rel_path}:{stat.st_size}:{stat.st_mtime}")
-            except OSError:  # pragma: no cover
-                pass
-
-    if file_info:
-        combined = "\n".join(file_info)
-        return hashlib.sha256(combined.encode()).hexdigest()[:16]
-
-    # Empty directory fallback
-    return hashlib.sha256(str(repo_root.resolve()).encode()).hexdigest()[:16]
+    from .repo_fingerprint import compute_repo_fingerprint
+    return compute_repo_fingerprint(repo_root)[:16]
 
 
 def _get_xdg_cache_base() -> Path:

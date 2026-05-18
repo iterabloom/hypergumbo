@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **273** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 51 core, 4 CLI, 32 tracker)
-- **6080** symbols (functions, classes, methods)
-- **65026** edges by type:
-  - calls: 44957
-  - imports: 9612
-  - instantiates: 6959
+- **274** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 52 core, 4 CLI, 32 tracker)
+- **6094** symbols (functions, classes, methods)
+- **65122** edges by type:
+  - calls: 45035
+  - imports: 9626
+  - instantiates: 6960
   - contains: 1305
-  - module_attr_ref: 984
+  - module_attr_ref: 985
   - dispatches_to: 555
-  - other: 654
+  - other: 656
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 6080 Symbols + 65026 Edges + UsageContexts             │
+│  Output: 6094 Symbols + 65122 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -266,9 +266,9 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 4884.9 | ir.py |
 | `Span` | class | 4130.1 | ir.py |
-| `run_behavior_map` | function | 2712.3 | cli.py |
+| `run_behavior_map` | function | 2725.9 | cli.py |
 | `LinkerContext` | class | 1914.8 | registry.py |
-| `TrackerApp` | class | 1866.8 | tui.py |
+| `TrackerApp` | class | 1872.3 | tui.py |
 | `load_framework_patterns` | function | 1569.0 | framework_patterns.py |
 | `main` | function | 1452.1 | cli.py |
 | `clear_pattern_cache` | function | 1073.5 | framework_patterns.py |
@@ -538,6 +538,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.producer_coherence`**: Producer-side axis-coherence linter for Edge / Symbol constructors.
 - **`hypergumbo_core.profile`**: Repo profile detection - language and framework heuristics.
 - **`hypergumbo_core.ranking`**: Symbol and file ranking utilities for hypergumbo output.
+- **`hypergumbo_core.repo_fingerprint`**: Repository fingerprint: spec-defined hash of analyzed code state.
 - **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
 - **`hypergumbo_core.rust_analyzer_install`**: Installer + availability helpers for the ``rust-analyzer`` binary (...
 - **`hypergumbo_core.safety_zones`**: Hypergumbo's internal write wrappers — declare each write's safety ...
@@ -799,7 +800,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: e3c5ba498296
+  commit: d155abd7ced8
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
