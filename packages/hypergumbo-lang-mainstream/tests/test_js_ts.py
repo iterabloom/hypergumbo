@@ -8357,6 +8357,177 @@ class TestSpaBootstrapUsageContext:
         assert len(bootstrap_ctx) == 1
 
 
+class TestHttpHandlerUsageContext:
+    """INV-rolul: tests for HTTP/GraphQL server handler call detection
+    via UsageContext.
+
+    The JS/TS analyzer must emit ``kind="call"`` UsageContexts for the
+    function-name set targeted by ``frameworks/graphql.yaml`` and
+    ``frameworks/node-http.yaml`` ``usage: kind: "^call$"`` patterns
+    (WI-tisam). Without these UCs, the YAML patterns never fire
+    end-to-end on real consumers even though their unit tests
+    (synthesise-UC-then-feed-matcher) pass.
+    """
+
+    def test_start_standalone_server(self, tmp_path: Path) -> None:
+        """Apollo v4 startStandaloneServer(...) emits a call UC."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "index.ts").write_text(
+            "import { ApolloServer } from '@apollo/server';\n"
+            "import { startStandaloneServer } from '@apollo/server/standalone';\n"
+            "\n"
+            "const server = new ApolloServer({ typeDefs: '', resolvers: {} });\n"
+            "const { url } = await startStandaloneServer(server, { listen: { port: 4000 } });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ucs = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "startStandaloneServer"
+        ]
+        assert len(ucs) == 1
+        ctx = ucs[0]
+        # symbol_ref should point to the file pseudo-node (INV-kokaj).
+        module_sym = next(
+            s for s in result.symbols
+            if s.kind == "file" and s.language in ("javascript", "typescript")
+        )
+        assert ctx.symbol_ref == module_sym.id
+
+    def test_run_http_query(self, tmp_path: Path) -> None:
+        """Apollo v3 runHttpQuery(...) emits a call UC."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "handler.ts").write_text(
+            "import { runHttpQuery } from 'apollo-server-core';\n"
+            "\n"
+            "export async function handle(req: any) {\n"
+            "  const res = await runHttpQuery([req], { method: 'POST' });\n"
+            "  return res;\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ucs = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "runHttpQuery"
+        ]
+        assert len(ucs) == 1
+
+    def test_execute_http_graphql_request(self, tmp_path: Path) -> None:
+        """Apollo v4 executeHTTPGraphQLRequest(...) emits a call UC."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "handler.ts").write_text(
+            "import { executeHTTPGraphQLRequest } from '@apollo/server';\n"
+            "\n"
+            "export async function handle(req: any) {\n"
+            "  return await executeHTTPGraphQLRequest({ httpGraphQLRequest: req });\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ucs = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "executeHTTPGraphQLRequest"
+        ]
+        assert len(ucs) == 1
+
+    def test_http_createserver_qualified(self, tmp_path: Path) -> None:
+        """Node stdlib http.createServer(...) emits a call UC keyed 'http.createServer'."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text(
+            "import http from 'node:http';\n"
+            "\n"
+            "const server = http.createServer((req, res) => {\n"
+            "  res.end('hello');\n"
+            "});\n"
+            "server.listen(3000);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ucs = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "http.createServer"
+        ]
+        assert len(ucs) == 1
+
+    def test_https_createserver_qualified(self, tmp_path: Path) -> None:
+        """Node stdlib https.createServer(...) emits a call UC."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text(
+            "import https from 'node:https';\n"
+            "import fs from 'node:fs';\n"
+            "\n"
+            "const opts = { key: fs.readFileSync('k.pem'), cert: fs.readFileSync('c.pem') };\n"
+            "const server = https.createServer(opts, (req, res) => res.end('hi'));\n"
+            "server.listen(8443);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ucs = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "https.createServer"
+        ]
+        assert len(ucs) == 1
+
+    def test_http2_createserver_qualified(self, tmp_path: Path) -> None:
+        """Node stdlib http2.createServer(...) emits a call UC."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server.js").write_text(
+            "import http2 from 'node:http2';\n"
+            "\n"
+            "const server = http2.createServer((req, res) => res.end('hi'));\n"
+            "server.listen(8443);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ucs = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "http2.createServer"
+        ]
+        assert len(ucs) == 1
+
+    def test_bare_createserver_destructured(self, tmp_path: Path) -> None:
+        """Destructured ``import { createServer } from 'http'`` → bare
+        ``createServer(...)`` emits a call UC keyed 'createServer'."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server.ts").write_text(
+            "import { createServer } from 'node:http';\n"
+            "\n"
+            "const server = createServer((req, res) => {\n"
+            "  res.end('hi');\n"
+            "});\n"
+            "server.listen(3000);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ucs = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name == "createServer"
+        ]
+        assert len(ucs) == 1
+
+    def test_no_uc_for_unrelated_calls(self, tmp_path: Path) -> None:
+        """Calls outside the HTTP handler set do NOT produce these UCs."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "util.ts").write_text(
+            "function doStuff() { return 42; }\n"
+            "const x = doStuff();\n"
+            "console.log(x);\n"
+        )
+        result = analyze_javascript(tmp_path)
+        http_handler_names = {
+            "startStandaloneServer", "runHttpQuery", "executeHTTPGraphQLRequest",
+            "createServer", "http.createServer", "https.createServer",
+            "http2.createServer", "Http.createServer",
+        }
+        ucs = [
+            c for c in result.usage_contexts
+            if c.kind == "call" and c.context_name in http_handler_names
+        ]
+        assert len(ucs) == 0
+
+
 class TestTypeReferenceEdges:
     """Tests for TypeScript type-level reference edges."""
 

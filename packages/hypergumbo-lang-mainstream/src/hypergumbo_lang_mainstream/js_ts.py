@@ -2119,6 +2119,107 @@ def _extract_app_bootstrap_contexts(
     return contexts
 
 
+# HTTP / GraphQL server handler function names. These are module-level
+# calls that start an HTTP listener or process an HTTP/GraphQL request.
+# The framework_patterns YAML in graphql.yaml and node-http.yaml target
+# these names via ``usage: kind: "^call$"`` (WI-tisam).
+#
+# INV-rolul scope: this set closes the WI-tisam end-to-end gap. Other
+# JS/TS framework YAMLs whose kind=call patterns are still not reachable
+# from the analyzer's UC-emission pipeline (adonisjs, mcp, restify,
+# fastify.route, web_audio.*) remain documented as INV-rolul follow-ups.
+_HTTP_HANDLER_NAMES: frozenset[str] = frozenset({
+    # Apollo Server v4 standalone HTTP listener
+    "startStandaloneServer",
+    # Apollo Server v3 / v4 underlying HTTP-request entrypoints
+    "runHttpQuery",
+    "executeHTTPGraphQLRequest",
+    # Node.js HTTP server module (destructured-import shape:
+    # ``import { createServer } from 'http'`` then bare ``createServer(...)``)
+    "createServer",
+})
+
+# Qualified forms for Node stdlib HTTP servers. Maps ``receiver.method`` →
+# context_name; the receiver may be ``http`` / ``https`` / ``http2`` (the
+# Node modules) or ``Http`` (TypeScript-typed import alias).
+_HTTP_HANDLER_QUALIFIED: dict[str, str] = {
+    "http.createServer": "http.createServer",
+    "https.createServer": "https.createServer",
+    "http2.createServer": "http2.createServer",
+    "Http.createServer": "Http.createServer",
+}
+
+
+def _extract_http_handler_contexts(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    module_symbol: Symbol,
+    line_offset: int = 0,
+) -> list[UsageContext]:
+    """Extract UsageContext records for HTTP/GraphQL server-handler calls.
+
+    Detects module-level calls to functions like ``startStandaloneServer``
+    (Apollo v4), ``runHttpQuery`` / ``executeHTTPGraphQLRequest`` (Apollo
+    v3/v4), the Node stdlib ``http.createServer`` family, and bare
+    ``createServer`` (destructured-import shape). Each emits a
+    ``kind="call"`` UsageContext whose ``context_name`` matches the
+    source-text callee form. ``graphql.yaml`` and ``node-http.yaml`` then
+    route these UCs through ``match_usage_patterns`` to assign route
+    concepts to the calling module.
+
+    Closes the WI-tisam end-to-end gap (INV-rolul scope).
+    """
+    contexts: list[UsageContext] = []
+    seen_names: set[str] = set()  # dedupe repeated calls in one file
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call_expression":
+            continue
+
+        callee = node.children[0] if node.children else None
+        if callee is None:
+            continue  # pragma: no cover
+
+        context_name: str | None = None
+
+        if callee.type == "identifier":
+            name = _node_text(callee, source)
+            if name in _HTTP_HANDLER_NAMES:
+                context_name = name
+        elif callee.type == "member_expression":
+            qualified = _node_text(callee, source)
+            if qualified in _HTTP_HANDLER_QUALIFIED:
+                context_name = _HTTP_HANDLER_QUALIFIED[qualified]
+
+        if context_name is None or context_name in seen_names:
+            continue
+
+        seen_names.add(context_name)
+
+        span = Span(
+            start_line=node.start_point[0] + 1 + line_offset,
+            end_line=node.end_point[0] + 1 + line_offset,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        )
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=context_name,
+            position="caller",
+            path=str(file_path),
+            span=span,
+            symbol_ref=module_symbol.id,
+            metadata={
+                "http_handler_function": context_name,
+            },
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
 def _resolve_base_class_js(
     base_name: str,
     child_sym: Symbol,
@@ -4801,6 +4902,16 @@ def _analyze_javascript_impl(
                 pf.tree, pf.source, pf.path, file_mod_sym, pf.line_offset,
             )
             all_usage_contexts.extend(bootstrap_contexts)
+
+            # INV-rolul: HTTP/GraphQL server-handler calls
+            # (startStandaloneServer, runHttpQuery, executeHTTPGraphQLRequest,
+            # http.createServer family, bare createServer). Closes the
+            # WI-tisam end-to-end gap where graphql.yaml / node-http.yaml
+            # YAML usage:kind:call patterns had no UC producer feeding them.
+            http_handler_contexts = _extract_http_handler_contexts(
+                pf.tree, pf.source, pf.path, file_mod_sym, pf.line_offset,
+            )
+            all_usage_contexts.extend(http_handler_contexts)
 
     # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
     # Build multi-value class lookup for disambiguation (INV-015)
