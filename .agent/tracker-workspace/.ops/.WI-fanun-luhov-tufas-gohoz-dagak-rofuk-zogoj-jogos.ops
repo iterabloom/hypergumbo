@@ -54,3 +54,18 @@
   clock: 5  # ee9f
   nonce: ee9f  # ee9f
   message: "PR-ready. Per the user's design call, populated source-code Symbol.fingerprint via centralized helper rather than touching every analyzer. New hypergumbo_core/fingerprint.py with compute_symbol_fingerprint (Python ast + tree-sitter walk; comments filtered; dedent fallback for indented method snippets) plus a single orchestrator post-pass at cli.py:7286. Wire format declared via new schema.symbol_fingerprint_scheme = 'hypergumbo-symbol-fp-v1'. Self-analysis on packages/hypergumbo-tracker confirms 3072 methods + 568 classes + 430 functions + 122 variables + 80 files + 29 modules + 13 bash functions now carry structural fingerprints; external_symbol / call_site-with-span-0-0 / regex-only-analyzer symbols stay null. Existing manifest producers (toml-v1, json-v1, wgsl-v1) untouched via the 'skip if fingerprint is not None' guard. Awaits bakeoff validation of the broader-corpus claim: source-code Symbol fingerprint population goes from ~0% to a high percentage on hypergumbo's full self-analysis."  # ee9f
+- op: update  # 7f3a
+  at: '2026-05-19T04:28:33Z'  # 7f3a
+  by: agent  # 7f3a
+  actor: jgstern_agent  # 7f3a
+  clock: 6  # 7f3a
+  nonce: 7f3a  # 7f3a
+  set:  # 7f3a
+    status: done  # 7f3a
+- op: discuss  # 724f
+  at: '2026-05-19T04:28:33Z'  # 724f
+  by: agent  # 724f
+  actor: jgstern_agent  # 724f
+  clock: 7  # 724f
+  nonce: 724f  # 724f
+  message: "Fixed in PR #3812. Node-level Symbol.fingerprint half closed by populating source-code Symbols via centralized helper (no analyzer changes). 3072 methods + 568 classes + 430 functions + 122 variables + 80 files + 29 modules + 13 bash functions on packages/hypergumbo-tracker self-analysis now carry hgfp1: structural fingerprints. The analysis_run.repo_fingerprint half (the original 0/133 -> 100% claim) was already closed by INV-tofur in PR #3789. WI-fanun is now wholly resolved."  # 724f

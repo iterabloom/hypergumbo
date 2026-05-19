@@ -39,3 +39,34 @@
   nonce: 24d5  # 24d5
   set:  # 24d5
     parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # 24d5
+- op: discuss  # d9f8
+  at: '2026-05-19T05:23:48Z'  # d9f8
+  by: agent  # d9f8
+  actor: jgstern_agent  # d9f8
+  clock: 4  # d9f8
+  nonce: d9f8  # d9f8
+  message: "Merged as PR #3813, dev SHA 5fd921e92a95."  # d9f8
+- op: update  # 8028
+  at: '2026-05-19T05:24:18Z'  # 8028
+  by: agent  # 8028
+  actor: jgstern_agent  # 8028
+  clock: 5  # 8028
+  nonce: '8028'  # 8028
+  set:  # 8028
+    status: satisfied  # 8028
+- op: discuss  # ac8d
+  at: '2026-05-19T05:24:18Z'  # ac8d
+  by: agent  # ac8d
+  actor: jgstern_agent  # ac8d
+  clock: 6  # ac8d
+  nonce: ac8d  # ac8d
+  message: "Closed in PR #3813. Python analyzer now emits file pseudo-node as kind='file' with canonical file-id shape (python:{path}:1-1:file:file), letting the orchestrator file-symbol synthesizer dedup against it via existing_ids. Property test in test_python_ast_analysis.py::TestInvHojusFileCanonicalKind pins: (a) no Python path carries kind='module', (b) no Python path has both kinds, (c) analyzer-emitted file pseudo-nodes use canonical file-id shape. file joined module in containment.py CONTAINER_KINDS, slice.py _CONTAINER_KINDS, linker registry.py find_enclosing_symbol defaults (kind_priority shares file-level slot), and orm.py kinds default. Cross-language facet (TS/bash/perl/php/powershell still emit <module:filename> synthetic kind='module' wrappers) tracked as follow-up."  # ac8d
+- op: update  # 6846
+  at: '2026-05-19T05:24:32Z'  # 6846
+  by: agent  # 6846
+  actor: jgstern_agent  # 6846
+  clock: 7  # 6846
+  nonce: '6846'  # 6846
+  set: {}  # 6846
+  add:  # 6846
+    tags: [awaits_bakeoff_validation]  # 6846

@@ -1,0 +1,40 @@
+- op: create  # b365
+  at: '2026-05-19T05:26:00Z'  # b365
+  by: agent  # b365
+  actor: jgstern_agent  # b365
+  clock: 1  # b365
+  nonce: b365  # b365
+  data:  # b365
+    kind: invariant  # b365
+    title: "Apply file-canonical rule to js_ts/bash/perl/php/powershell — cross-language sibling of INV-hojus"  # b365
+    status: violated  # b365
+    priority: 3  # b365
+    parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # b365
+    tags:  # b365
+    - schema  # b365
+    - duplicate_representation  # b365
+    - cross_language_parity  # b365
+    isbefore: []  # b365
+    duplicate_of: []  # b365
+    not_duplicate_of: []  # b365
+    pr_ref:  # b365
+    description: "**Sibling of INV-hojus (closed PR #3813).** The INV-hojus discussion explicitly noted this cross-language facet:\n\n> The TS behavior is INCONSISTENT WITH ITSELF (some files double-represented, others single-represented) and with Python (Python is uniformly double). Whatever fix is chosen for INV-hojus (collapse to one kind, or formalize the dual representation), the TS path should be updated together so the rule applies uniformly across languages.\n\n**Scope.** Apply the same fix pattern from PR #3813 to:\n\n| Analyzer | Site | Pattern |\n|---|---|---|\n| `js_ts.py:2867-2869` | `<module:filename>` synthetic for JS/TS files | kind='module' |\n| `js_ts.py:4678`, `:4763` | Phase 2 `mod_sym_name` references | string-name lookup |\n| `bash.py:184-186` | bash module pseudo-node | kind='module' |\n| `bash.py:324` | call-site mod_sym_name | string-name lookup |\n| `perl.py:205-207` | perl module pseudo-node | kind='module' |\n| `perl.py:236` | nested perl module | kind='module' |\n| `perl.py:327` | call-site mod_sym_name | string-name lookup |\n| `php.py:741-743` | php module pseudo-node | kind='module' |\n| `php.py:1170` | call-site mod_sym_name | string-name lookup |\n| `powershell.py:359-361` | powershell module pseudo-node | kind='module' |\n| `powershell.py:398` | call-site mod_sym_name | string-name lookup |\n\n**Fix pattern (from PR #3813):**\n\n1. Change Symbol.id to file-canonical shape (`{lang}:{path}:1-1:file:file` via `make_file_id`)\n2. Change kind from 'module' to 'file'\n3. Change name from '<module:filename>' to the repo-relative path\n4. Test updates: filter on `kind=='file' and language==<lang>` instead of `kind=='module'`\n\n**Why each language is its own PR.** Each analyzer has its own test fixtures and downstream linker assumptions. Bundling all 5 risks compounding test breakage that's hard to diagnose. Recommend 5 sequential PRs: js_ts (largest), then bash, perl, php, powershell.\n\n**Estimated effort.** ~1-2 hours per language. js_ts.py is the most complex (TypeScript adds wrinkles; `js_module.py` linker also creates kind='file' Symbols for some TS paths per INV-hojus discussion — these may interact). Bash/perl/php/powershell are simpler — fewer downstream linker dependencies.\n\n**Cross-references.**\n- INV-hojus (closed PR #3813): Python-only fix; this item is the sibling\n- INV-dajaf (META): Identity must be honest across pipeline; representation stage members\n- INV-vaguj (closed): orchestrator file-symbol synthesizer name normalization (prerequisite)"  # b365
+    fields:  # b365
+      statement: "Apply INV-hojus's file-canonical rule uniformly across all analyzers that emit synthetic '<module:filename>' kind='module' pseudo-nodes: js_ts.py (JavaScript + TypeScript), bash.py, perl.py, php.py, powershell.py. Each currently emits the same anti-pattern (kind='module' Symbol with name '<module:filename>') that was collapsed for Python in INV-hojus / PR #3813."  # b365
+      root_cause: "Six analyzers (py.py, js_ts.py, bash.py, perl.py, php.py, powershell.py) historically emitted synthetic kind='module' Symbols as a file-anchor for module-level edges. INV-hojus closed py.py only. The other 5 still emit the dual-representation: every analyzed file with module-level executable code gets BOTH a kind='module' Symbol (analyzer-emitted) AND a kind='file' Symbol (orchestrator synthesizer when any edge targets the file id), violating the 'exactly one canonical Symbol per file' invariant per language."  # b365
+- op: update  # f609
+  at: '2026-05-19T05:47:33Z'  # f609
+  by: agent  # f609
+  actor: jgstern_agent  # f609
+  clock: 2  # f609
+  nonce: f609  # f609
+  set: {}  # f609
+  add:  # f609
+    isbefore: [INV-judod-sigod-fijig-ririb-zufup-todup-butok-rakok, WI-pulor-tizoh-kogom-pamok-loror-sikuk-davib-fuvif, WI-zolot-fojun-lujan-sojig-lobak-puhis-digif-podiv, INV-tajap-lahih-hikob-zudiz-davuz-vavah-tovur-kukad]  # f609
+- op: discuss  # 524c
+  at: '2026-05-19T05:47:41Z'  # 524c
+  by: agent  # 524c
+  actor: jgstern_agent  # 524c
+  clock: 3  # 524c
+  nonce: 524c  # 524c
+  message: "Added isbefore links to Wave 6 cross-language items per plan analysis: INV-judod (shares js_ts.py), WI-pulor (shares bash.py), WI-zolot (downstream consumer of TS module pseudo-node shape), INV-tajap (cross-language entrypoint detection consumes file-canonical shape). Wiring this ordering into the tracker so 'tracker ready' enforces INV-kokaj-first sequencing — otherwise those items would write the kind='module' anti-pattern that INV-kokaj then has to migrate. Plan source: ~/.claude/plans/valiant-juggling-hamming.md (plan was written before INV-kokaj was filed)."  # 524c
