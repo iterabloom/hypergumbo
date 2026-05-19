@@ -22,6 +22,12 @@ When ``sym.name`` has no separator (e.g., proto RPCs where
 ``name="BidiHello"``), falls back to ``sym.canonical_name``
 (e.g., ``hello.HelloService.BidiHello``).  This handles proto
 service→rpc containment and nested message containment.
+This phase is reachable only for niche-language analyzers (proto,
+capnp, fish, etc.) that emit unqualified ``name`` plus a
+``canonical_name``. Mainstream-analyzer languages (Python, JS/TS,
+Go, Rust, Java, C++, Ruby) leave ``canonical_name=None`` by design
+because ``name`` already encodes the parent, so containment falls
+through to span_overlap when naming convention doesn't match.
 
 **Phase 2 — Span-based fallback** (confidence=0.9):
 When neither naming convention nor canonical_name produces a parent,

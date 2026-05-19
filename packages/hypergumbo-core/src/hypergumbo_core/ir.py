@@ -235,7 +235,16 @@ class Symbol:
         origin_run_signature: Run signature for grouping by analyzer config
         stable_id: Semantic identity hash (survives renames/moves)
         shape_id: Structural implementation fingerprint
-        canonical_name: Fully qualified name (e.g., 'mymodule.MyClass.method')
+        canonical_name: Set only when ``name`` is unqualified but a
+            fully-qualified path is known (e.g., proto RPCs, nested capnp
+            messages, niche-language symbols). For mainstream-analyzer
+            languages where ``name`` already encodes the parent
+            (Python's ``ClassName.method``, Java's ``Class.method``, etc.),
+            this field is deliberately ``None`` and consumers should fall
+            back to ``name`` for fully-qualified identifiers. Populated by
+            niche-language analyzers (nix, r_lang, hlsl, asm, capnp, ada,
+            fish, verilog, powershell, css, wgsl), the yjs_crdt and
+            wasm_bindgen linkers, and the external-boundary synthesis path.
         fingerprint: Content hash of source bytes (sha256)
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict for language-specific information
