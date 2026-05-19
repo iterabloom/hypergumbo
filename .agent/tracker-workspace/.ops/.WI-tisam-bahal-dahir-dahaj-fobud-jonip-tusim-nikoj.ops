@@ -43,3 +43,10 @@
   clock: 4  # 5820
   nonce: '5820'  # 5820
   message: "Shipped via PR (commit 44ca9f2). Added node-http.yaml (bare http.createServer / https / http2 / destructured) + Apollo startStandaloneServer/runHttpQuery/executeHTTPGraphQLRequest patterns to graphql.yaml. 6 new tests; 100% coverage. apollo-server routes.txt count delta pending bakeoff validation."  # 5820
+- op: discuss  # 29a7
+  at: '2026-05-19T16:17:16Z'  # 29a7
+  by: agent  # 29a7
+  actor: jgstern_agent  # 29a7
+  clock: 5  # 29a7
+  nonce: 29a7  # 29a7
+  message: "Cohort validation 2026-05-19: NO_MOVE on apollo-server.\n\nMini-trial: hypergumbo run /home/jgstern_agent/ALL_REPOS/whole_bunch_of_repos/apollo-server (current dev, 28s, 3860 nodes). `hypergumbo routes` output: \"No API routes found in the behavior map. The behavior map contains other endpoint-shaped symbols: 150 graphql_resolver, 14 event_subscriber, 1 mq_publisher, 7 http_client.\" Same as pre-fix.\n\nRoot cause of the no_move: the WI-tisam YAML patterns (node-http.yaml createServer + graphql.yaml startStandaloneServer/runHttpQuery/executeHTTPGraphQLRequest) require `usage.kind == \"call\"`. apollo-server's UsageContext distribution has 0 call-kind UCs (all 89 are kind=library_export). The patterns are structurally incapable of firing on the apollo-server repo because apollo-server is the LIBRARY that DEFINES these functions, not a consumer that CALLS them.\n\nThe fix likely works on apollo-server CONSUMER apps (which import startStandaloneServer and call it), but apollo-server itself is the wrong validation target.\n\nKeeping awaits_bakeoff_validation tag per playbook (no_move parent stays tagged). Regression sub-item to follow."  # 29a7

@@ -60,3 +60,20 @@
   clock: 6  # f195
   nonce: f195  # f195
   message: "Dogfood validation, 2026-05-19 self-analysis (verify script /tmp/inv-validation/verify_dogfood.py). Verdict: **no_move** on the primary quantitative claim ('3 → 0 phantom file Symbols on self-analysis'). Pre-fix count: 3. Post-fix count: still 3 (ws-client.ts, test_websocket.py, serve.py each show 2 file-kind Symbols — one from the language analyzer/orchestrator synthesizer, one from websocket-linker-v1). PR #3805 DID fix the two derived bugs (wrong language attribution + missing stable_id — both correct post-fix) but the dedup-against-existing logic isn't catching the duplicate file-Symbol case in production. Regression sub-item filed: WI-hifol-savam-silol-mudup-vihip-dilaz-tilat-lurih (P1, todo_soft, parented). Keeping awaits_bakeoff_validation tag stripped per playbook (no_move parent stays tagged, regression child gets the work to investigate)."  # f195
+- op: discuss  # 9aa3
+  at: '2026-05-19T08:59:22Z'  # 9aa3
+  by: agent  # 9aa3
+  actor: jgstern_agent  # 9aa3
+  clock: 7  # 9aa3
+  nonce: 9aa3  # 9aa3
+  message: "Re-applying state change after auto-pr rebase clobber (per output-capture-long-running-playbook hazard).\n\nRoot cause of the 2026-05-19 no_move identified and fixed by WI-hifol (PR #3819, commit c926c2e5e3, merged to dev).\n\nWebSocketPattern.file_path was populated from absolute Path objects yielded by find_js_ts_files / find_python_files, so _make_file_id(language, pattern.file_path) produced ids embedding /home/.../packages/.../file.py — while the orchestrator's synthesize_file_symbols_for_dangling_edges and the language analyzers emit canonical ids embedding repo-relative paths because analyze/all_analyzers.py::run_all_analyzers normalizes every Symbol path before linkers run. The two id shapes never collided so dedup-against-ctx.symbols silently missed every cross-producer case; the post-linker path-normalization sweep at cli.py:7244-7247 fixed Symbol.path but not Symbol.id.\n\nFix: linkers/websocket.py::link_websocket now mirrors the orchestrator's exact normalization algorithm (forward-slash + repo_root prefix-strip, NO symlink resolution) on every pattern.file_path after pattern collection. Verified by self-analysis dogfood (2026-05-19): 3 -> 0 websocket-origin duplicate file Symbols.\n\nStatus moved to satisfied. awaits_bakeoff_validation tag stripped. INV-zadum and INV-dajaf METAs can both close now (all 11/11 children either satisfied or downstream-closed)."  # 9aa3
+- op: update  # 58af
+  at: '2026-05-19T08:59:22Z'  # 58af
+  by: agent  # 58af
+  actor: jgstern_agent  # 58af
+  clock: 8  # 58af
+  nonce: 58af  # 58af
+  set:  # 58af
+    status: satisfied  # 58af
+  remove:  # 58af
+    tags: [awaits_bakeoff_validation]  # 58af

@@ -60,3 +60,10 @@
   clock: 6  # 5b08
   nonce: 5b08  # 5b08
   message: "Stripping tag under Phase 2 anomaly cleanup (extended sweep). Verdict: D-stale — post-fix measurements on target repos are explicit in the 2026-05-15T08:30:16Z closing entry: 'Pretix smoke test produced 8 dispatches_to edges from SettingsForm-rooted classes (clean/save overrides)... 27 DRF Serializer edges + 0 FilterSet edges (pretix FilterSets declarative-only) + 0 Page edges (no Wagtail). Lutris-website produced 3 additional DRF Serializer edges.' AC-1 satisfied; AC-2 partially satisfied with documented coverage gap (no Wagtail target in cohort, FilterSet declarative-only in pretix). The empirical evidence is in-thread; a fresh cohort run would re-measure pretix + lutris-website and reproduce the same numbers."  # 5b08
+- op: discuss  # d9ea
+  at: '2026-05-19T16:15:26Z'  # d9ea
+  by: human  # d9ea
+  actor: jgstern  # d9ea
+  clock: 7  # d9ea
+  nonce: d9ea  # d9ea
+  message: "Above you wrote \"a follow-up bug should be filed for the framework detector's recursive manifest scan not following `-r` includes (only matches files literally named requirements.txt, missing requirements/base.txt layouts that bakerydemo and many django apps use)\" -- please ensure such a follow-up item exists in the tracker."  # d9ea

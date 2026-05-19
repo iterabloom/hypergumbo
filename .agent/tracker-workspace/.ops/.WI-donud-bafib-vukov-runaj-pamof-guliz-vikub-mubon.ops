@@ -1,0 +1,27 @@
+- op: create  # e8df
+  at: '2026-05-19T16:17:22Z'  # e8df
+  by: agent  # e8df
+  actor: jgstern_agent  # e8df
+  clock: 1  # e8df
+  nonce: e8df  # e8df
+  data:  # e8df
+    kind: work_item  # e8df
+    title: "WI-tisam validation: rerun routes test on apollo-server consumer apps (not apollo-server library)"  # e8df
+    status: todo_soft  # e8df
+    priority: 3  # e8df
+    parent: WI-tisam-bahal-dahir-dahaj-fobud-jonip-tusim-nikoj  # e8df
+    tags:  # e8df
+    - analysis_quality  # e8df
+    isbefore: []  # e8df
+    duplicate_of: []  # e8df
+    not_duplicate_of: []  # e8df
+    pr_ref:  # e8df
+    description: ""  # e8df
+    fields: {}  # e8df
+- op: discuss  # deec
+  at: '2026-05-19T16:17:33Z'  # deec
+  by: agent  # deec
+  actor: jgstern_agent  # deec
+  clock: 2  # deec
+  nonce: deec  # deec
+  message: "Filed during WI-tisam cohort validation (2026-05-19). apollo-server is a library — 0 call-kind UCs, all 89 UCs are kind=library_export. WI-tisam's YAML patterns (createServer / startStandaloneServer / runHttpQuery / executeHTTPGraphQLRequest) all require usage.kind==\"call\" and so cannot fire on the library repo.\n\nNext: identify an apollo-server consumer app (any open-source Node project using apollo-server's startStandaloneServer or runHttpQuery), clone it, rerun hypergumbo, check routes.txt for non-empty output.\n\nCandidates to consider:\n  - Apollo's official examples repo (apollographql/docs-examples)\n  - A real-world Apollo consumer (search github for \"import { startStandaloneServer }\")\n\nUntil this regression child closes, the original WI-tisam claim is unvalidated."  # deec
