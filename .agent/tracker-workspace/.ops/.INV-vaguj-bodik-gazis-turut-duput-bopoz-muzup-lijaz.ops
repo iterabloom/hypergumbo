@@ -72,3 +72,19 @@
   clock: 7  # 2426
   nonce: '2426'  # 2426
   message: "Closed by PR #3794 (merge 7a28107df8). Synthesiser at analyze/base.py:325-386 now takes a repo_root argument; paths under repo_root normalise to relative form for both Symbol.name and Symbol.path; span.end_line reflects actual file line count (3179-line cli.py → end_line=3179). Self-analysis post-fix: 0 Symbols with absolute-path names (was 798); 9/812 file-kind Symbols still have span 1-1 (was 800/809; remaining 9 are real 1-line files or synthetic boundaries). Sibling tracker INV-dihif (explain absolute-path leak) closes as downstream consequence."  # 2426
+- op: update  # 8922
+  at: '2026-05-19T07:10:02Z'  # 8922
+  by: agent  # 8922
+  actor: jgstern_agent  # 8922
+  clock: 8  # 8922
+  nonce: '8922'  # 8922
+  set: {}  # 8922
+  remove:  # 8922
+    tags: [awaits_bakeoff_validation]  # 8922
+- op: discuss  # 0635
+  at: '2026-05-19T07:10:02Z'  # 0635
+  by: agent  # 0635
+  actor: jgstern_agent  # 0635
+  clock: 9  # 0635
+  nonce: '0635'  # 0635
+  message: "Stripping tag under Phase 2 anomaly cleanup (process-validation-queue-with-bakeoffs-and-uat playbook). Verdict: D-stale — empirical validation is already in this thread's 2026-05-18T09:01:12Z closing entry: 'Self-analysis post-fix: 0 Symbols with absolute-path names (was 798); 9/812 file-kind Symbols still have span 1-1 (was 800/809; remaining 9 are real 1-line files or synthetic boundaries).' The 798→0 / 800→9 deltas measured on the self-analysis dogfood ARE the bakeoff signal for this claim. Cohort re-run would only re-measure the same self-analysis property. No cohort needed."  # 0635

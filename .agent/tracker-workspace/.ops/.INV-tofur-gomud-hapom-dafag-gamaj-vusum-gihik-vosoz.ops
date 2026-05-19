@@ -104,3 +104,19 @@
   set: {}  # 91e1
   add:  # 91e1
     tags: [awaits_bakeoff_validation]  # 91e1
+- op: update  # 50bf
+  at: '2026-05-19T07:10:31Z'  # 50bf
+  by: agent  # 50bf
+  actor: jgstern_agent  # 50bf
+  clock: 12  # 50bf
+  nonce: 50bf  # 50bf
+  set: {}  # 50bf
+  remove:  # 50bf
+    tags: [awaits_bakeoff_validation]  # 50bf
+- op: discuss  # 5bb0
+  at: '2026-05-19T07:10:31Z'  # 5bb0
+  by: agent  # 5bb0
+  actor: jgstern_agent  # 5bb0
+  clock: 13  # 5bb0
+  nonce: 5bb0  # 5bb0
+  message: "Stripping tag under Phase 2 anomaly cleanup. Verdict: D-stale on primary claim. The primary quantitative claim ('AnalysisRun.repo_fingerprint null on 100% of 133 runs') is self-validated by the closing entry: '133/133 runs now carry a non-null 64-char hex repo_fingerprint matching the declared hypergumbo-repofp-v1 scheme.' That delta is the bakeoff signal for the field-population claim. The tag was originally applied 'for the optional cache-migration verification' (closing entry's own words) — i.e. for an OPTIONAL secondary claim, not the primary one. The optional cache-migration verification (would INV-magul's cache-shard pollution clear when the cache layer migrates to repo_fingerprint?) is a SEPARATE decision that can be re-tagged on a dedicated tracker item if/when the cache migration is pursued. Stripping now to clear the primary claim from the queue."  # 5bb0

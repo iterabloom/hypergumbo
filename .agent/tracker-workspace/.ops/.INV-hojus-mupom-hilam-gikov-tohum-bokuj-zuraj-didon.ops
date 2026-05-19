@@ -70,3 +70,19 @@
   set: {}  # 6846
   add:  # 6846
     tags: [awaits_bakeoff_validation]  # 6846
+- op: update  # 6357
+  at: '2026-05-19T07:10:11Z'  # 6357
+  by: agent  # 6357
+  actor: jgstern_agent  # 6357
+  clock: 8  # 6357
+  nonce: '6357'  # 6357
+  set: {}  # 6357
+  remove:  # 6357
+    tags: [awaits_bakeoff_validation]  # 6357
+- op: discuss  # cb11
+  at: '2026-05-19T07:10:11Z'  # cb11
+  by: agent  # cb11
+  actor: jgstern_agent  # cb11
+  clock: 9  # cb11
+  nonce: cb11  # cb11
+  message: "Stripping tag under Phase 2 anomaly cleanup. Verdict: D-stale via property test. The claim 'no Python path carries both kind=file and kind=module Symbols' is a B-shape property, not an aggregate-metric claim. The property test TestInvHojusFileCanonicalKind in test_python_ast_analysis.py pins the invariant structurally on every analyzer run (CI green) — strictly stronger than a one-shot cohort measurement. The closing entry's hoped-for 'cohort signal' is a side hope, not the primary claim; future bakeoffs will surface that signal naturally without queue tracking. Per playbook: B-shape with a load-time invariant + property test is the preferred resolution."  # cb11

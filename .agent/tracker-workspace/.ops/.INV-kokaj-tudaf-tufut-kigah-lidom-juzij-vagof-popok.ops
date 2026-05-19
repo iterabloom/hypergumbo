@@ -38,3 +38,43 @@
   clock: 3  # 524c
   nonce: 524c  # 524c
   message: "Added isbefore links to Wave 6 cross-language items per plan analysis: INV-judod (shares js_ts.py), WI-pulor (shares bash.py), WI-zolot (downstream consumer of TS module pseudo-node shape), INV-tajap (cross-language entrypoint detection consumes file-canonical shape). Wiring this ordering into the tracker so 'tracker ready' enforces INV-kokaj-first sequencing — otherwise those items would write the kind='module' anti-pattern that INV-kokaj then has to migrate. Plan source: ~/.claude/plans/valiant-juggling-hamming.md (plan was written before INV-kokaj was filed)."  # 524c
+- op: discuss  # 6c9b
+  at: '2026-05-19T06:47:49Z'  # 6c9b
+  by: agent  # 6c9b
+  actor: jgstern_agent  # 6c9b
+  clock: 4  # 6c9b
+  nonce: 6c9b  # 6c9b
+  message: "Merged as PR #3815, dev SHA 398f2e195494."  # 6c9b
+- op: update  # 9a93
+  at: '2026-05-19T06:48:06Z'  # 9a93
+  by: agent  # 9a93
+  actor: jgstern_agent  # 9a93
+  clock: 5  # 9a93
+  nonce: 9a93  # 9a93
+  set:  # 9a93
+    status: satisfied  # 9a93
+  add:  # 9a93
+    tags: [awaits_bakeoff_validation]  # 9a93
+- op: discuss  # 840d
+  at: '2026-05-19T06:48:06Z'  # 840d
+  by: agent  # 840d
+  actor: jgstern_agent  # 840d
+  clock: 6  # 840d
+  nonce: 840d  # 840d
+  message: "Shipped via PRs ce80aaf2 (production fix) + 398f2e19 (schema-coverage baseline refresh). All 5 cross-language analyzers (JS/TS, Bash, Perl, PHP, PowerShell) now emit the file pseudo-node via make_file_id(lang, path) with kind='file' and name=<repo-relative path>. Perl package_statement Symbols keep kind='module' (real namespacing, not per-file anchors). Bakeoff validation tag added because the elimination of analyzer-emitted kind='module' file-anchor Symbols across 5 languages is the cross-language analog of INV-hojus's 332-paths-with-both-kinds reduction — bakeoff-broad cycle should pick this up via structural-graph coverage signals."  # 840d
+- op: update  # 3703
+  at: '2026-05-19T07:10:20Z'  # 3703
+  by: agent  # 3703
+  actor: jgstern_agent  # 3703
+  clock: 7  # 3703
+  nonce: '3703'  # 3703
+  set: {}  # 3703
+  remove:  # 3703
+    tags: [awaits_bakeoff_validation]  # 3703
+- op: discuss  # 4cbb
+  at: '2026-05-19T07:10:20Z'  # 4cbb
+  by: agent  # 4cbb
+  actor: jgstern_agent  # 4cbb
+  clock: 8  # 4cbb
+  nonce: 4cbb  # 4cbb
+  message: "Stripping tag under Phase 2 anomaly cleanup. Verdict: D-stale via property test (same call as sibling INV-hojus). The claim 'no cross-language analyzer emits kind=module file-anchor Symbols' is a B-shape property. The property test TestInvKokajFileCanonicalKind in test_inv_kokaj_cross_lang_file_canonical.py pins the invariant for all 5 covered languages structurally on every analyzer run. The closing entry's 'bakeoff-broad cycle should pick this up via structural-graph coverage signals' is a side hope, not the primary claim. Property-test enforcement strictly dominates a one-shot cohort measurement for shape claims."  # 4cbb
