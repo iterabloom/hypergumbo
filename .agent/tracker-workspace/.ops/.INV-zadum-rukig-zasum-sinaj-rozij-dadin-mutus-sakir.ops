@@ -23,3 +23,18 @@
     fields:  # 314e
       statement: "When a Symbol is written into the graph, the identity fields attached to it (stable_id, fingerprint, canonical_name) must either uniquely identify the Symbol within its compilation unit AND carry the scope they are documented to cover, OR be explicitly marked as not applicable to the Symbol kind. Half-populated identity fields, formulas with high collision rates, and docstrings that oversell field coverage are violated forms."  # 314e
       root_cause: "No coherent write-side identity contract exists. _compute_stable_id has too-coarse inputs (INV-fusus: 91% collision rate) and too-narrow kind gates (INV-sotiv: 7 kinds + 99.4% of files never get one). Symbol.fingerprint is declared at the top-level schema but only manifest analyzers populate it (WI-fanun: 0.3% on source-code symbols). Symbol.canonical_name docstring claims fully-qualified names but mainstream analyzers leave it None because their name field is already qualified (WI-luvig: docs oversell). These are facets of one architectural question — which identity fields claim what kind of identity, for which Symbol kinds, with what guarantees — that has never been settled in one place."  # 314e
+- op: update  # ed83
+  at: '2026-05-19T20:56:30Z'  # ed83
+  by: agent  # ed83
+  actor: jgstern_agent  # ed83
+  clock: 2  # ed83
+  nonce: ed83  # ed83
+  set:  # ed83
+    status: satisfied  # ed83
+- op: discuss  # c27b
+  at: '2026-05-19T20:56:30Z'  # c27b
+  by: agent  # c27b
+  actor: jgstern_agent  # c27b
+  clock: 3  # c27b
+  nonce: c27b  # c27b
+  message: "All 4 children closed: INV-fusus (Python stable_id collision fix, satisfied), INV-sotiv (stable_id population for all kinds, satisfied), WI-fanun (fingerprint scope docstring, done), WI-luvig (canonical_name docstring, done). Symbol-write identity contract — stable_id / fingerprint / canonical_name — now claims what it documents across the audited write-side surface. Empirical evidence: 91% Python stable_id collision dropped to 0% on self-analysis (INV-fusus); missing-stable_id rate dropped from 6.1% (1981/32253 nodes) to within instrumented kinds (INV-sotiv); fingerprint and canonical_name docstrings rewritten to match actual producer behavior (WI-fanun/WI-luvig)."  # c27b

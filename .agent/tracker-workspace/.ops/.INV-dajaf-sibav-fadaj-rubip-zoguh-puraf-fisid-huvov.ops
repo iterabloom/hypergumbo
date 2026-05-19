@@ -22,3 +22,18 @@
     fields:  # 4475
       statement: "Symbol identity must be honest about its uncertainty across the analysis pipeline. At each stage — write, read, edge, provenance, representation — the system must either produce an unambiguous identity claim OR mark the claim as uncertain with calibrated metadata so downstream stages can filter, rank, or surface honestly. Silent collapses (single-value dicts with overwrite, hash collisions with no signal, missing producer stamps, accidental duplicate Symbol nodes for one thing) are violated forms."  # 4475
       root_cause: "Each pipeline stage historically implemented its own identity logic without coordinating with the others. Write-side stable_id formulas have over-coarse inputs (INV-fusus) and narrow kind coverage (INV-sotiv); read-side lookups silently overwrite on name collisions (INV-fosab); edge-side fallback edges historically did not flag their uncertainty (INV-zuhub); provenance fields are partially populated (INV-sopon, WI-higap); representation occasionally double-counts (INV-hojus, INV-ronuf, INV-mopif). These look like independent bugs but solving one without considering its neighbors risks shipping a fix that the next stage cannot trust or build on. The cross-stage coupling makes this an architectural axis, not a bug list."  # 4475
+- op: update  # 1a1b
+  at: '2026-05-19T20:56:31Z'  # 1a1b
+  by: agent  # 1a1b
+  actor: jgstern_agent  # 1a1b
+  clock: 2  # 1a1b
+  nonce: 1a1b  # 1a1b
+  set:  # 1a1b
+    status: satisfied  # 1a1b
+- op: discuss  # 44ab
+  at: '2026-05-19T20:56:31Z'  # 44ab
+  by: agent  # 44ab
+  actor: jgstern_agent  # 44ab
+  clock: 3  # 44ab
+  nonce: 44ab  # 44ab
+  message: "All 10 children closed. Sub-METAs: INV-fosab (kind-segregated registry, satisfied) and INV-zadum (write-side identity contract, satisfied). Atomic children all satisfied/done: INV-vaguj (orchestrator path/span fix), INV-sopon (linker origin stamp across 19/21 files), INV-hojus (Python file/module double-representation), INV-kokaj (cross-language file-canonical sibling), INV-mopif (HTTP linker verb-prefixed function names), INV-ronuf (websocket phantom file Symbols), INV-zuhub (linker simple-name fallback confidence calibration), WI-higap (Edge.origin_run_id provenance). Symbol identity is now honest about its uncertainty across write / read / edge / provenance / representation. File_id-shape identity family closed across audited linkers (websocket, js_module, vue_component) per sibling tasks INV-ronuf, INV-movor, INV-bahov."  # 44ab

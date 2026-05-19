@@ -44,3 +44,12 @@
   clock: 4  # c4c7
   nonce: c4c7  # c4c7
   message: "WI-tisam scope closed in PR #3826 (merged 2026-05-19). New _extract_http_handler_contexts() in js_ts.py emits kind=call UCs for the WI-tisam target name set: startStandaloneServer, runHttpQuery, executeHTTPGraphQLRequest, {http,https,http2,Http}.createServer, bare createServer. graphql.yaml and node-http.yaml YAML patterns now fire end-to-end on apollo-server-style consumers (WI-donud unblocked). Eight pin tests in TestHttpHandlerUsageContext.\n\nBroader INV-rolul invariant scope remains open for these still-unfixed JS/TS framework YAMLs (filed as follow-up children):\n- adonisjs.yaml: Route.method/.middleware/Route.group call patterns\n- mcp.yaml: server.{tool,resource,prompt,setRequestHandler} patterns\n- restify.yaml: restify.createServer / server.METHOD / restify.plugins.* patterns\n- fastify.yaml: fastify/app/server.route (the non-METHOD variant)\n- web_audio.yaml: AudioContext + create*/connect/etc.\n\nCross-language audit (Python / Go / Java / Ruby / Rust analyzers exhibit the same analyzer-vs-YAML drift?) also remains as a follow-up."  # c4c7
+- op: update  # af3a
+  at: '2026-05-19T20:33:06Z'  # af3a
+  by: agent  # af3a
+  actor: jgstern_agent  # af3a
+  clock: 5  # af3a
+  nonce: af3a  # af3a
+  set: {}  # af3a
+  add:  # af3a
+    tags: [awaits_bakeoff_validation]  # af3a
