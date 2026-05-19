@@ -292,6 +292,10 @@ jobs:
           # are transitive through requests; pinning here keeps the audit
           # step scanning a fixed version regardless of runner baseline.
           pip install "urllib3>=2.7.0"
+          # CVE-2026-45409: idna — fix in 3.15. Transitive through requests;
+          # the self-hosted runner's baseline ships idna 3.11. Mirrors the
+          # requests / pygments / urllib3 pin pattern above.
+          pip install "idna>=3.15"
       - name: Run pip-audit (dependency vulnerabilities)
         run: |
           # CVE-2025-71176: pytest /tmp/pytest-of-{user} TOCTOU on UNIX.
