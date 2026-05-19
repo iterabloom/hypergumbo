@@ -58,6 +58,7 @@
     "media",
     "message",
     "mixin",
+    "module",
     "namespace",
     "node",
     "object",
