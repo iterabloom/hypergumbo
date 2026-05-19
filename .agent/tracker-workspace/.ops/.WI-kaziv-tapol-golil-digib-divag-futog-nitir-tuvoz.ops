@@ -21,3 +21,19 @@
     pr_ref:  # 4d10
     description: "Clear the `awaits_bakeoff_validation` tags on WI-tihup and WI-mafik using `./scripts/bakeoff-broad cycle` on the prospector corpus.\n\nExpected signal:\n- Modest gains on Rust / JS-TS / Java repos as the closed import-resolution gaps unlock cross-language linker / io-boundary matches.\n- Reduced dead-code FP volume on repos that use static imports (Java), dot imports (Go), aliased named imports (JS/TS), or stdlib gems (Ruby).\n- New per-edge `dst_ref` field visible in behavior maps.\n\nWorkflow:\n1. Run `./scripts/bakeoff-broad cycle` (the run+diagnose+reflect cohort form).\n2. Aggregate via `./scripts/bakeoff-deep-reflect aggregate` — this also automatically strips the `awaits_bakeoff_validation` tag when results land.\n3. Capture verdict (moved / no_move / inconclusive) per the bakeoff-validation-tagging-discipline playbook.\n4. If `moved`: strip tag manually (auto-strip should handle it). If `no_move`: file an untagged regression sub-item. If `inconclusive`: keep tag and re-evaluate after the next cohort.\n\nBlocks the rest of Phase 2 because the bakeoff signal is the basis for prioritizing which un-audited languages to retrofit next.\n\nTrigger: when the user / human operator wants Phase 2 to proceed. Until then, this stays `needs_human_review` to avoid the agent burning bakeoff cycles speculatively."  # 4d10
     fields: {}  # 4d10
+- op: update  # d279
+  at: '2026-05-19T07:11:42Z'  # d279
+  by: agent  # d279
+  actor: jgstern_agent  # d279
+  clock: 2  # d279
+  nonce: d279  # d279
+  set: {}  # d279
+  remove:  # d279
+    tags: [awaits_bakeoff_validation]  # d279
+- op: discuss  # 0eee
+  at: '2026-05-19T07:11:42Z'  # 0eee
+  by: agent  # 0eee
+  actor: jgstern_agent  # 0eee
+  clock: 3  # 0eee
+  nonce: 0eee  # 0eee
+  message: "Stripping tag under Phase 2 anomaly cleanup. Verdict: E-misapplied. This item is itself the bakeoff-validation WIRING task for WI-tihup + WI-mafik — its description is 'Bakeoff-validate WI-tihup + WI-mafik via BROAD cycle' with a 4-step workflow. It carries no own quantitative claim. The validation queue should track items whose fixes carry quantitative claims awaiting empirical confirmation, not the meta-orchestrator of validation work itself. Status stays needs_human_review (separate concern). When the user wants Phase 2 of the WI-nigah parent cohort to proceed, this item drives that work; tag was confusing because the item commands validation rather than awaiting it."  # 0eee

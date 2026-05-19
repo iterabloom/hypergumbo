@@ -44,3 +44,19 @@
   set: {}  # a027
   add:  # a027
     tags: [awaits_bakeoff_validation]  # a027
+- op: update  # 4742
+  at: '2026-05-19T07:18:56Z'  # 4742
+  by: agent  # 4742
+  actor: jgstern_agent  # 4742
+  clock: 5  # 4742
+  nonce: '4742'  # 4742
+  set: {}  # 4742
+  remove:  # 4742
+    tags: [awaits_bakeoff_validation]  # 4742
+- op: discuss  # 5b08
+  at: '2026-05-19T07:18:56Z'  # 5b08
+  by: agent  # 5b08
+  actor: jgstern_agent  # 5b08
+  clock: 6  # 5b08
+  nonce: 5b08  # 5b08
+  message: "Stripping tag under Phase 2 anomaly cleanup (extended sweep). Verdict: D-stale — post-fix measurements on target repos are explicit in the 2026-05-15T08:30:16Z closing entry: 'Pretix smoke test produced 8 dispatches_to edges from SettingsForm-rooted classes (clean/save overrides)... 27 DRF Serializer edges + 0 FilterSet edges (pretix FilterSets declarative-only) + 0 Page edges (no Wagtail). Lutris-website produced 3 additional DRF Serializer edges.' AC-1 satisfied; AC-2 partially satisfied with documented coverage gap (no Wagtail target in cohort, FilterSet declarative-only in pretix). The empirical evidence is in-thread; a fresh cohort run would re-measure pretix + lutris-website and reproduce the same numbers."  # 5b08

@@ -69,3 +69,19 @@
   clock: 7  # 724f
   nonce: 724f  # 724f
   message: "Fixed in PR #3812. Node-level Symbol.fingerprint half closed by populating source-code Symbols via centralized helper (no analyzer changes). 3072 methods + 568 classes + 430 functions + 122 variables + 80 files + 29 modules + 13 bash functions on packages/hypergumbo-tracker self-analysis now carry hgfp1: structural fingerprints. The analysis_run.repo_fingerprint half (the original 0/133 -> 100% claim) was already closed by INV-tofur in PR #3789. WI-fanun is now wholly resolved."  # 724f
+- op: update  # f337
+  at: '2026-05-19T07:18:39Z'  # f337
+  by: agent  # f337
+  actor: jgstern_agent  # f337
+  clock: 8  # f337
+  nonce: f337  # f337
+  set: {}  # f337
+  remove:  # f337
+    tags: [awaits_bakeoff_validation]  # f337
+- op: discuss  # 7cea
+  at: '2026-05-19T07:18:39Z'  # 7cea
+  by: agent  # 7cea
+  actor: jgstern_agent  # 7cea
+  clock: 9  # 7cea
+  nonce: 7cea  # 7cea
+  message: "Stripping tag under Phase 2 anomaly cleanup (extended sweep). Verdict: D-stale — post-fix self-analysis measurement is already in the 2026-05-19T04:28:33Z closing entry: '3072 methods + 568 classes + 430 functions + 122 variables + 80 files + 29 modules + 13 bash functions on packages/hypergumbo-tracker self-analysis now carry hgfp1: structural fingerprints.' Note also references that the analysis_run.repo_fingerprint half (the original 0/133 → 100% claim) was closed by INV-tofur in PR #3789. Both halves of the original 99.7%-null claim are empirically resolved in-thread. Bakeoff would only re-measure self-analysis or hypergumbo-tracker self-analysis; the signal is already at hand."  # 7cea

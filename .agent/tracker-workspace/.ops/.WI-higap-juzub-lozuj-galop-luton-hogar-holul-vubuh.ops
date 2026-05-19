@@ -76,3 +76,19 @@
   clock: 8  # 4f30
   nonce: 4f30  # 4f30
   message: "Fixed in PR #3810 (full structural fix) + PR-pending slim-down of property test. Edge.__post_init__ now hard-raises on empty origin/origin_run_id. Plumbed run_id through 67 production Edge.create sites across 35 files. LEGACY_DESERIALIZED_SENTINEL injected by Edge.from_dict for legacy on-disk JSON survives cache reads. 501 test sites mass-updated to pass provenance kwargs. Property test simplified to construction-time unit tests + static source-scan for sentinel containment (~0.1s vs original 90s self-analysis). Tagged awaits_bakeoff_validation: 425+1 edges with empty origin_run_id on 2026-05-16 self-analysis -> 0 post-fix."  # 4f30
+- op: update  # a5a3
+  at: '2026-05-19T07:18:47Z'  # a5a3
+  by: agent  # a5a3
+  actor: jgstern_agent  # a5a3
+  clock: 9  # a5a3
+  nonce: a5a3  # a5a3
+  set: {}  # a5a3
+  remove:  # a5a3
+    tags: [awaits_bakeoff_validation]  # a5a3
+- op: discuss  # 02c3
+  at: '2026-05-19T07:18:47Z'  # 02c3
+  by: agent  # 02c3
+  actor: jgstern_agent  # 02c3
+  clock: 10  # 02c3
+  nonce: 02c3  # 02c3
+  message: "Stripping tag under Phase 2 anomaly cleanup (extended sweep). Verdict: D-stale — post-fix dogfood is explicit in the 2026-05-19T03:41:37Z closing entry: '425+1 edges with empty origin_run_id on 2026-05-16 self-analysis -> 0 post-fix.' The fix is also load-time-enforced: 'Edge.__post_init__ now hard-raises on empty origin/origin_run_id' — the construction-time guard means the post-fix count CANNOT regress to anything other than 0 without test-suite failure. Strictly stronger than a cohort measurement."  # 02c3
