@@ -7369,7 +7369,7 @@ def run_behavior_map(
         # unchanged. Forward-compatible.
         _NOISE_KINDS = frozenset({
             # Documentation / config
-            "section", "table", "table_array", "code_block",
+            "section", "table_array", "code_block",
             "link", "paragraph", "label",
             "setting",
             # CSS structural (degree-0 in behavior maps)
@@ -7387,10 +7387,20 @@ def run_behavior_map(
         # resolution.
         _CSS_LANGUAGES = frozenset({"css", "scss", "sass", "less"})
 
+        # INV-bovif: `kind="table"` is overloaded between TOML/INI/properties
+        # `[section]` headers (config noise) and SQL `CREATE TABLE` entities
+        # (first-class schema constructs). Filter only the config-language
+        # producers; SQL tables pass through so the database_query linker
+        # can link query call-sites to schema tables. Same shape as the
+        # `_CSS_LANGUAGES` carve-out above.
+        _TABLE_NOISE_LANGUAGES = frozenset({"toml", "ini", "properties"})
+
         def _is_noise(sym: "Symbol") -> bool:
             if sym.kind in _NOISE_KINDS:
                 return True
             if sym.kind == "variable" and sym.language in _CSS_LANGUAGES:
+                return True
+            if sym.kind == "table" and sym.language in _TABLE_NOISE_LANGUAGES:
                 return True
             # Wave 6 PR 3 fold per audit-findings 0005: ``script`` now
             # emits as ``kind="file"`` + ``meta["entry_role"]="script"``.

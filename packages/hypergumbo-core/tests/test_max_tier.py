@@ -485,13 +485,19 @@ class TestDocKindFiltering:
     def test_default_excludes_doc_kinds(
         self, repo_with_docs: Path, tmp_path: Path
     ) -> None:
-        """By default, documentation kinds (section, etc.) are excluded."""
+        """By default, documentation kinds (section, etc.) are excluded.
+
+        Note: `table` is not in this set because INV-bovif disambiguated it
+        per-language — TOML/INI tables are noise (config sections), SQL
+        tables are first-class entities. The per-language carve-out is
+        tested in TestSqlTableSurvivesNoiseFilter below.
+        """
         out_path = tmp_path / "results.json"
         run_behavior_map(
             repo_with_docs, out_path, include_sketch_precomputed=False
         )
         data = json.loads(out_path.read_text())
-        doc_kinds = {"section", "table", "table_array", "code_block",
+        doc_kinds = {"section", "table_array", "code_block",
                      "link", "paragraph", "label", "heading",
                      "setting", "config"}
         for node in data["nodes"]:
@@ -661,6 +667,91 @@ class TestConfigNoiseFiltering:
         # At least one of the config-metadata kinds should be present
         assert kinds & {"pattern", "script", "requirement"}, (
             "With include_docs=True, pattern/script/requirement nodes should be present"
+        )
+
+
+class TestSqlTableSurvivesNoiseFilter:
+    """INV-bovif: ``kind="table"`` must NOT be unconditionally treated as noise.
+
+    The original ``_NOISE_KINDS`` filter included ``"table"`` to suppress
+    TOML/INI ``[section]`` table headers. But the SQL analyzer (``sql.py``)
+    emits the same ``kind="table"`` literal for ``CREATE TABLE`` constructs —
+    first-class schema entities, not config noise.
+
+    The fix carves out SQL tables via a language guard, mirroring the
+    existing CSS-variable carve-out (``variable`` is noise in CSS but real
+    in Python/Go/YAML).
+
+    Downstream consumer of this carve-out: the ``database_query`` linker
+    looks up ``ctx.symbols`` filtered by ``kind="table"`` to build edges
+    from query call-sites to schema tables.
+    """
+
+    @pytest.fixture()
+    def repo_with_sql_and_toml(self, tmp_path: Path) -> Path:
+        """Create a repo with a SQL CREATE TABLE and a TOML [section] table."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        # SQL schema file (produces kind=table for users)
+        (repo / "schema.sql").write_text(
+            "CREATE TABLE users (\n"
+            "    id BIGINT PRIMARY KEY,\n"
+            "    email VARCHAR(255) UNIQUE NOT NULL\n"
+            ");\n"
+        )
+        # TOML config file (produces kind=table for [tool.example] — config noise)
+        (repo / "pyproject.toml").write_text(
+            "[tool.example]\n"
+            "key = \"value\"\n"
+            "\n"
+            "[tool.other]\n"
+            "flag = true\n"
+        )
+        # A Python file so the repo has real code (not strictly required but
+        # keeps the pipeline well-fed).
+        (repo / "app.py").write_text(
+            "def main():\n"
+            "    pass\n"
+        )
+        return repo
+
+    def test_sql_table_survives_default_filter(
+        self, repo_with_sql_and_toml: Path, tmp_path: Path
+    ) -> None:
+        """SQL ``CREATE TABLE`` symbols reach the output under default filter."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(
+            repo_with_sql_and_toml, out_path, include_sketch_precomputed=False
+        )
+        data = json.loads(out_path.read_text())
+        sql_tables = [
+            n for n in data["nodes"]
+            if n["kind"] == "table" and n.get("language") == "sql"
+        ]
+        assert len(sql_tables) == 1, (
+            "SQL CREATE TABLE must produce a kind='table' node in the default "
+            f"output. Got {len(sql_tables)} SQL-language table nodes. "
+            f"All kind=table nodes: {[n['name'] + '@' + str(n.get('language')) for n in data['nodes'] if n['kind'] == 'table']}"
+        )
+        assert sql_tables[0]["name"] == "users"
+
+    def test_toml_table_still_filtered_by_default(
+        self, repo_with_sql_and_toml: Path, tmp_path: Path
+    ) -> None:
+        """TOML ``[section]`` tables remain filtered (config noise)."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(
+            repo_with_sql_and_toml, out_path, include_sketch_precomputed=False
+        )
+        data = json.loads(out_path.read_text())
+        toml_tables = [
+            n for n in data["nodes"]
+            if n["kind"] == "table" and n.get("language") == "toml"
+        ]
+        assert toml_tables == [], (
+            "TOML [section] tables must remain filtered as config noise "
+            f"under the default include_docs=False. Got: "
+            f"{[n['name'] for n in toml_tables]}"
         )
 
 
