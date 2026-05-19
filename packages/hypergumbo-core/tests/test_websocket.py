@@ -416,11 +416,16 @@ class TestINVRonufNoPhantomFileSymbols:
         dangling-synth) has already emitted a file Symbol for a path. The
         WS linker must reuse that Symbol via canonical-id collision, not
         emit a duplicate.
+
+        WI-hifol: production analyzer/synthesizer emit repo-relative paths
+        in their canonical ids (paths are normalized in
+        ``analyze/all_analyzers.py`` before linkers run); this test
+        mirrors that by passing a repo-relative existing id.
         """
         from hypergumbo_core.analyze.base import make_file_id
         (tmp_path / "client.js").write_text("socket.emit('e', data);")
         (tmp_path / "server.js").write_text("socket.on('e', handler);")
-        existing_client_id = make_file_id("javascript", str(tmp_path / "client.js"))
+        existing_client_id = make_file_id("javascript", "client.js")
         result = link_websocket(
             tmp_path, existing_symbol_ids={existing_client_id}
         )
@@ -442,8 +447,8 @@ class TestINVRonufNoPhantomFileSymbols:
         from hypergumbo_core.analyze.base import make_file_id
         (tmp_path / "client.js").write_text("socket.emit('e', data);")
         (tmp_path / "server.js").write_text("socket.on('e', handler);")
-        existing_client_id = make_file_id("javascript", str(tmp_path / "client.js"))
-        existing_server_id = make_file_id("javascript", str(tmp_path / "server.js"))
+        existing_client_id = make_file_id("javascript", "client.js")
+        existing_server_id = make_file_id("javascript", "server.js")
         result = link_websocket(
             tmp_path,
             existing_symbol_ids={existing_client_id, existing_server_id},
@@ -453,6 +458,81 @@ class TestINVRonufNoPhantomFileSymbols:
         for e in publish_edges:
             assert e.src == existing_client_id
             assert e.dst == existing_server_id
+
+    def test_skips_phantom_when_repo_relative_canonical_id_present(self, tmp_path: Path) -> None:
+        """WI-hifol: dedup against repo-relative canonical ids (production).
+
+        The orchestrator's dangling-symbol synthesizer and the language
+        analyzers normalize ``Symbol.path`` to be repo-relative before
+        linkers run (see ``analyze/all_analyzers.py``). Their file Symbol
+        ids therefore embed repo-relative paths. The WS linker discovered
+        files via ``Path`` objects (absolute) and constructed file ids
+        with absolute paths — so canonical-shape dedup against the
+        orchestrator's pre-existing repo-relative ids silently missed,
+        emitting a duplicate file Symbol per path. The fix is for the WS
+        linker to embed repo-relative paths in its ids and Symbol.path
+        fields.
+        """
+        from hypergumbo_core.analyze.base import make_file_id
+        (tmp_path / "client.js").write_text("socket.emit('e', data);")
+        (tmp_path / "server.js").write_text("socket.on('e', handler);")
+        existing_client_id = make_file_id("javascript", "client.js")
+        result = link_websocket(
+            tmp_path, existing_symbol_ids={existing_client_id}
+        )
+        client_files = [
+            s for s in result.symbols if s.kind == "file" and "client.js" in s.path
+        ]
+        assert len(client_files) == 0, (
+            f"WS linker emitted phantom file Symbol for client.js despite "
+            f"existing repo-relative canonical id; got "
+            f"{[s.id for s in client_files]!r}. This is the production "
+            f"dedup-miss documented in WI-hifol."
+        )
+
+    def test_file_symbol_paths_are_repo_relative(self, tmp_path: Path) -> None:
+        """WI-hifol: file Symbol paths are repo-relative, not absolute.
+
+        Post-fix, every WS-emitted file Symbol must store ``path`` as a
+        repo-relative string (matching what the orchestrator emits). This
+        is a stronger invariant than the existing canonical-shape test
+        because it pins the path representation, not just the id format.
+        """
+        (tmp_path / "client.js").write_text("socket.emit('e', data);")
+        (tmp_path / "server.js").write_text("socket.on('e', handler);")
+        result = link_websocket(tmp_path)
+        file_syms = [s for s in result.symbols if s.kind == "file"]
+        assert len(file_syms) >= 1
+        for s in file_syms:
+            assert not Path(s.path).is_absolute(), (
+                f"WS file Symbol has absolute path {s.path!r}; expected "
+                f"repo-relative"
+            )
+            # The id must embed the same repo-relative path as Symbol.path.
+            assert f":{s.path}:" in s.id, (
+                f"WS file Symbol id {s.id!r} does not embed the repo-relative "
+                f"path {s.path!r}"
+            )
+
+    def test_edge_endpoints_use_repo_relative_paths(self, tmp_path: Path) -> None:
+        """WI-hifol: edge src/dst ids embed repo-relative paths.
+
+        Edge endpoints are constructed with ``_make_file_id`` from
+        ``pattern.file_path``. If those carry absolute paths, edges
+        dangle against the orchestrator's repo-relative file Symbols.
+        """
+        (tmp_path / "sender.js").write_text("socket.emit('chat', message);")
+        (tmp_path / "receiver.js").write_text("socket.on('chat', handler);")
+        result = link_websocket(tmp_path)
+        publish_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
+        assert len(publish_edges) >= 1
+        for e in publish_edges:
+            assert not e.src.startswith(("javascript:/", "typescript:/", "python:/")), (
+                f"Edge src embeds absolute path: {e.src!r}"
+            )
+            assert not e.dst.startswith(("javascript:/", "typescript:/", "python:/")), (
+                f"Edge dst embeds absolute path: {e.dst!r}"
+            )
 
 
 class TestLinkWebSocket:

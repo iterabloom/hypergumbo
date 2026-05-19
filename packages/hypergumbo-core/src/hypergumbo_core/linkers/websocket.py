@@ -514,6 +514,27 @@ def link_websocket(
         if patterns:
             files_analyzed += 1
 
+    # WI-hifol: normalize pattern.file_path values to repo-relative strings
+    # using the SAME prefix-strip algorithm as the orchestrator's path
+    # normalizer (analyze/all_analyzers.py::run_all_analyzers, ~line 204).
+    # Pattern collection uses Path objects from find_*_files which yield
+    # absolute paths. The orchestrator's file-symbol synthesis and language
+    # analyzers emit ids with repo-relative paths (paths are normalized
+    # before linkers run), so the WS linker must match that convention or
+    # canonical-shape dedup silently misses every cross-producer collision.
+    # We mirror the orchestrator's exact algorithm (forward-slash + prefix
+    # strip, NO symlink resolution) so resulting paths are byte-equivalent.
+    from ..paths import normalize_path as _norm_path
+    _ws_root_prefix = _norm_path(str(repo_root)).rstrip("/") + "/"
+    for pattern in all_patterns:
+        normed = _norm_path(pattern.file_path)
+        if normed.startswith(_ws_root_prefix):
+            pattern.file_path = normed[len(_ws_root_prefix):]
+        else:  # pragma: no cover
+            # find_*_files only yields paths under repo_root, so this branch
+            # is structurally unreachable in production; keep as defense.
+            pattern.file_path = normed
+
     # Group patterns by event for matching
     sends: dict[str, list[WebSocketPattern]] = {}
     receives: dict[str, list[WebSocketPattern]] = {}
