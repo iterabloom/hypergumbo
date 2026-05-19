@@ -37,3 +37,42 @@
   nonce: '8015'  # 8015
   set:  # 8015
     parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # 8015
+- op: update  # 8d9d
+  at: '2026-05-19T03:14:54Z'  # 8d9d
+  by: agent  # 8d9d
+  actor: jgstern_agent  # 8d9d
+  clock: 4  # 8d9d
+  nonce: 8d9d  # 8d9d
+  set:  # 8d9d
+    status: in_progress  # 8d9d
+  add:  # 8d9d
+    tags: [awaits_bakeoff_validation]  # 8d9d
+- op: discuss  # 20cd
+  at: '2026-05-19T03:14:54Z'  # 20cd
+  by: agent  # 20cd
+  actor: jgstern_agent  # 20cd
+  clock: 5  # 20cd
+  nonce: 20cd  # 20cd
+  message: "PR-ready. Fix scope grew from 4 surface sites (decorator_dispatch, enclosure, json_config, base.py emit_module_attribute_refs) to 67 production Edge.create sites across 35 files when the user chose the full structural fix path. Edge.__post_init__ now hard-raises on empty origin/origin_run_id. LEGACY_DESERIALIZED_SENTINEL added so Edge.from_dict survives legacy on-disk JSON. Property test asserts hypergumbo's own self-analysis emits zero edges with empty provenance and zero sentinel-carrying production edges. Awaits bakeoff validation of the quantitative claim: 425+1 edges with empty origin_run_id on 2026-05-16 self-analysis -> 0 post-fix."  # 20cd
+- op: discuss  # 148a
+  at: '2026-05-19T03:39:15Z'  # 148a
+  by: agent  # 148a
+  actor: jgstern_agent  # 148a
+  clock: 6  # 148a
+  nonce: 148a  # 148a
+  message: "Merged as PR #3810, dev SHA 02bb30b7ac77."  # 148a
+- op: update  # 4166
+  at: '2026-05-19T03:41:37Z'  # 4166
+  by: agent  # 4166
+  actor: jgstern_agent  # 4166
+  clock: 7  # 4166
+  nonce: '4166'  # 4166
+  set:  # 4166
+    status: done  # 4166
+- op: discuss  # 4f30
+  at: '2026-05-19T03:41:37Z'  # 4f30
+  by: agent  # 4f30
+  actor: jgstern_agent  # 4f30
+  clock: 8  # 4f30
+  nonce: 4f30  # 4f30
+  message: "Fixed in PR #3810 (full structural fix) + PR-pending slim-down of property test. Edge.__post_init__ now hard-raises on empty origin/origin_run_id. Plumbed run_id through 67 production Edge.create sites across 35 files. LEGACY_DESERIALIZED_SENTINEL injected by Edge.from_dict for legacy on-disk JSON survives cache reads. 501 test sites mass-updated to pass provenance kwargs. Property test simplified to construction-time unit tests + static source-scan for sentinel containment (~0.1s vs original 90s self-analysis). Tagged awaits_bakeoff_validation: 425+1 edges with empty origin_run_id on 2026-05-16 self-analysis -> 0 post-fix."  # 4f30

@@ -103,6 +103,26 @@ class TestPythonFingerprint:
         assert fp is not None
         assert fp.startswith("hgfp1:")
 
+    def test_attribute_access_is_part_of_fingerprint(self) -> None:
+        """ast.Attribute leaf — renaming the attribute changes the fingerprint."""
+        a = b"def f():\n    return x.foo\n"
+        b = b"def f():\n    return x.bar\n"
+        fp_a = compute_symbol_fingerprint("python", _span(1, 2), a)
+        fp_b = compute_symbol_fingerprint("python", _span(1, 2), b)
+        assert fp_a is not None
+        assert fp_b is not None
+        assert fp_a != fp_b
+
+    def test_class_name_is_part_of_fingerprint(self) -> None:
+        """ast.ClassDef leaf — renaming the class changes the fingerprint."""
+        a = b"class Foo:\n    pass\n"
+        b = b"class Bar:\n    pass\n"
+        fp_a = compute_symbol_fingerprint("python", _span(1, 2), a)
+        fp_b = compute_symbol_fingerprint("python", _span(1, 2), b)
+        assert fp_a is not None
+        assert fp_b is not None
+        assert fp_a != fp_b
+
 
 class TestTreeSitterFingerprint:
     """Tree-sitter languages use the language pack."""
@@ -187,6 +207,30 @@ class TestStampOrchestrator:
         sym = _sym("definitely_unsupported", "a.weird", 1, 1)
         stamp_symbol_fingerprints([sym], tmp_path)
         assert sym.fingerprint is None
+
+    def test_negative_read_result_is_cached(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When a file read fails, the second symbol on the same path
+        shouldn't trigger a second I/O attempt."""
+        attempt_count = 0
+        original_read = Path.read_bytes
+
+        def counting_read(self: Path, *args, **kwargs):
+            nonlocal attempt_count
+            if self.name == "missing.py":
+                attempt_count += 1
+                raise OSError("simulated read failure")
+            return original_read(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_bytes", counting_read)
+        sym1 = _sym("python", "missing.py", 1, 1, name="f")
+        sym2 = _sym("python", "missing.py", 2, 2, name="g")
+        stamp_symbol_fingerprints([sym1, sym2], tmp_path)
+        assert sym1.fingerprint is None
+        assert sym2.fingerprint is None
+        # Negative cached — second lookup skipped the read.
+        assert attempt_count == 1
 
     def test_caches_source_reads(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,

@@ -37,3 +37,20 @@
   clock: 3  # 531b
   nonce: 531b  # 531b
   message: "Fresh measurement 2026-05-18 (post-INV-tofur) on hypergumbo's own self-analysis with `--no-sketch-fan-out`:\n\n**analysis_runs[*].repo_fingerprint: 138/138 (100%) populated.** Fully fixed by INV-tofur (PR #3789, 2026-05-18). The 2026-05-16 round-9 data (0/133) is now stale. Sample value: `b1b47bc32e0b4113...` Verified on 32,564-node self-analysis.\n\n**nodes[*].fingerprint: still essentially null on source-code symbols.** Breakdown by kind (non-null/total):\n- method:            0 / 17,552\n- function:          3 / 6,171     (the 3 are wgsl-v1 producer, see below)\n- class:             0 / 4,282\n- external_symbol:   0 / 1,579\n- variable:          0 / 1,499\n- file:              0 / 816       (note: file count grew from 466 to 816 post-INV-vaguj and INV-sopon's orchestrator work)\n- module:            0 / 393\n- call_site:         0 / 130\n- dependency:       81 / 81        (toml-v1 producer)\n- project:           7 / 7         (toml-v1 producer)\n- function (wgsl):   3 / 3         (wgsl-v1 producer — NEW finding, not in original round-9 list)\n\nProducer summary: toml-v1 (manifest-derived nodes) + wgsl-v1 (WGSL function nodes) are the only producers stamping fingerprint. Same scope as round 9 plus the wgsl-v1 entry that wasn't in the original survey.\n\n**Implication for this item:** The analysis_runs half is closed; remaining scope is symbol-level fingerprints on source-code nodes. Option B (document scope) should be amended to enumerate the wgsl-v1 producer alongside toml-v1, and the property test should tolerate `kind=function AND origin=wgsl-v1` as a valid non-null case.\n\n**Title becomes mildly inaccurate:** the \"99.7% of nodes / 100% of analysis_runs\" framing now reads as \"99.7% of nodes / 0% of analysis_runs\"; should be retitled to focus on the node-level scope only when implementing."  # 531b
+- op: update  # 9118
+  at: '2026-05-19T04:05:08Z'  # 9118
+  by: agent  # 9118
+  actor: jgstern_agent  # 9118
+  clock: 4  # 9118
+  nonce: '9118'  # 9118
+  set:  # 9118
+    status: in_progress  # 9118
+  add:  # 9118
+    tags: [awaits_bakeoff_validation]  # 9118
+- op: discuss  # ee9f
+  at: '2026-05-19T04:05:08Z'  # ee9f
+  by: agent  # ee9f
+  actor: jgstern_agent  # ee9f
+  clock: 5  # ee9f
+  nonce: ee9f  # ee9f
+  message: "PR-ready. Per the user's design call, populated source-code Symbol.fingerprint via centralized helper rather than touching every analyzer. New hypergumbo_core/fingerprint.py with compute_symbol_fingerprint (Python ast + tree-sitter walk; comments filtered; dedent fallback for indented method snippets) plus a single orchestrator post-pass at cli.py:7286. Wire format declared via new schema.symbol_fingerprint_scheme = 'hypergumbo-symbol-fp-v1'. Self-analysis on packages/hypergumbo-tracker confirms 3072 methods + 568 classes + 430 functions + 122 variables + 80 files + 29 modules + 13 bash functions now carry structural fingerprints; external_symbol / call_site-with-span-0-0 / regex-only-analyzer symbols stay null. Existing manifest producers (toml-v1, json-v1, wgsl-v1) untouched via the 'skip if fingerprint is not None' guard. Awaits bakeoff validation of the broader-corpus claim: source-code Symbol fingerprint population goes from ~0% to a high percentage on hypergumbo's full self-analysis."  # ee9f
