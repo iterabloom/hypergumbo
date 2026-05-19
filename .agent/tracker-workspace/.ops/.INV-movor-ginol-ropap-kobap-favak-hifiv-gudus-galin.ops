@@ -1,0 +1,23 @@
+- op: create  # f54e
+  at: '2026-05-19T08:12:05Z'  # f54e
+  by: agent  # f54e
+  actor: jgstern_agent  # f54e
+  clock: 1  # f54e
+  nonce: f54e  # f54e
+  data:  # f54e
+    kind: invariant  # f54e
+    title: "js_module linker creates duplicate file Symbols on TypeScript paths (same shape as INV-ronuf/WI-hifol)"  # f54e
+    status: violated  # f54e
+    priority: 2  # f54e
+    parent:  # f54e
+    tags:  # f54e
+    - analysis_quality  # f54e
+    - cross_language_parity  # f54e
+    isbefore: []  # f54e
+    duplicate_of: []  # f54e
+    not_duplicate_of: []  # f54e
+    pr_ref:  # f54e
+    description: ""  # f54e
+    fields:  # f54e
+      statement: "Every file path has exactly one file-kind Symbol across all producers (analyzers and linkers). The js_module linker violates this on 5 .ts paths on hypergumbo self-analysis (origins={'javascript-v1', 'js-module-linker-v1'}), generalizing the INV-ronuf shape from websocket to js_module."  # f54e
+      root_cause: "js_module linker constructs file Symbol ids embedding absolute paths from Path objects yielded by its file-walk helper, while the JavaScript analyzer + orchestrator file-symbol synthesizer emit canonical ids with repo-relative paths (normalized in analyze/all_analyzers.py before linkers run). Canonical-shape dedup misses the cross-producer collision; both Symbols persist; the post-linker path normalization at cli.py:7244-7247 fixes Symbol.path but not Symbol.id."  # f54e

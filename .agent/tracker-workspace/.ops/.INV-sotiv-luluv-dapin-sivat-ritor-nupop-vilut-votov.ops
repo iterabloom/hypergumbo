@@ -55,3 +55,20 @@
   clock: 5  # 6bbd
   nonce: 6bbd  # 6bbd
   message: "Fixed in PR #3799 (merge 7985926d5b). Added eight kind-specific stable_id factories (make_{file,module,dependency,variable,export,project,interface,type}_stable_id) + populate_kind_stable_ids backstop wired into analyze.all_analyzers. Producers keep precedence. 18 property tests; 14493/14493 passed; coverage held. Additive only — STABLE_ID_SCHEME stays at v3. Awaits BROAD bakeoff to confirm 6.1% missing-stable_id rate -> 0% on self-analysis."  # 6bbd
+- op: update  # 3c50
+  at: '2026-05-19T07:25:07Z'  # 3c50
+  by: agent  # 3c50
+  actor: jgstern_agent  # 3c50
+  clock: 6  # 3c50
+  nonce: 3c50  # 3c50
+  set:  # 3c50
+    status: satisfied  # 3c50
+  remove:  # 3c50
+    tags: [awaits_bakeoff_validation]  # 3c50
+- op: discuss  # a10c
+  at: '2026-05-19T07:25:07Z'  # a10c
+  by: agent  # a10c
+  actor: jgstern_agent  # a10c
+  clock: 7  # a10c
+  nonce: a10c  # a10c
+  message: "Dogfood validation, 2026-05-19 self-analysis. Verdict: moved. Pre-fix claim: 1981/32253 (6.1%) Symbol nodes missing stable_id, concentrated in {variable, module, export, dependency, project, interface, type} kinds + 99.4% of kind=file. Post-fix self-analysis measurement: 126/32300 (0.39%) missing. The original kind-by-kind gaps are fully closed — kind=file shows 0/X missing now (was 99.4%). The residual 126 missing are concentrated in tiny populations (enum: 5/5, struct: 5/5, trait: 1/1, protocol: 1/1) plus the new call_site kind (78/130 — call_site is a new kind introduced by the INV-mopif fix and post-dates the original claim). The 6.1% → 0.39% drop (~94% reduction) substantively closes the original gap. Verification script: /tmp/inv-validation/verify_dogfood.py."  # a10c

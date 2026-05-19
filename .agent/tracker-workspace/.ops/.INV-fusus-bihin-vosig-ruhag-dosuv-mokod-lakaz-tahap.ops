@@ -61,3 +61,20 @@
   clock: 6  # d23d
   nonce: d23d  # d23d
   message: "Fixed in PR #3797. _compute_stable_id now folds class body shape (sorted method/field/base names) into the hash for ClassDef nodes; bumps STABLE_ID_SCHEME v2 -> v3. Secondary fix: isinstance broadened to include AsyncFunctionDef. 10 property tests pin the contract. Full pytest 14475/14475 passed, 100% coverage held. Awaits BROAD bakeoff to validate the quantitative claim (91% collision rate -> much lower) on self-analysis."  # d23d
+- op: update  # 436b
+  at: '2026-05-19T07:24:57Z'  # 436b
+  by: agent  # 436b
+  actor: jgstern_agent  # 436b
+  clock: 7  # 436b
+  nonce: 436b  # 436b
+  set:  # 436b
+    status: satisfied  # 436b
+  remove:  # 436b
+    tags: [awaits_bakeoff_validation]  # 436b
+- op: discuss  # 0323
+  at: '2026-05-19T07:24:58Z'  # 0323
+  by: agent  # 0323
+  actor: jgstern_agent  # 0323
+  clock: 8  # 0323
+  nonce: '0323'  # 0323
+  message: "Dogfood validation, 2026-05-19 self-analysis. Verdict: moved. Pre-fix claim: 91% collision rate on @dataclass classes (all @dataclass classes in same module collide). Post-fix self-analysis measurement: 4282 Python class nodes, 0 missing stable_id, 3642 unique stable_ids, 811 classes in collision groups, 18.94% overall collision rate. The remaining 18.94% are structurally-identical-but-semantically-distinct test classes — e.g. 49x classes named TestAdaAnalysisUnavailable / TestAsmAnalysisUnavailable / TestCapnpAnalysisUnavailable (per-language fallback tests with identical structure), 36x TestAnalysisRun (literally same name, different modules). These are a different shape of collision (semantic distinctness with no structural signal) — the @dataclass bug from the original claim is fully resolved. Verification script: /tmp/inv-validation/verify_dogfood.py. Following up: structurally-identical-but-different-modules class collision could be filed as a separate item if desired, but isn't the original INV-fusus bug."  # 0323

@@ -56,3 +56,20 @@
   clock: 5  # 8b85
   nonce: 8b85  # 8b85
   message: "Fixed by PR (pending): harmonised audit-findings 0013 fold-target for http_client from 'function' to 'call_site', matching the precedent audit-findings 0010 sub-case (a) set for abi_call. linkers/http.py:1319-1347 now emits kind='call_site' + meta['call_kind']='http' + meta['framework_role']='http_client'. The 18 misclassified http_client Symbols on self-analysis (1 production at packages/htrac-frontend/public/service-worker.js:54 plus 17 test fixtures) now correctly identify as call sites, not function definitions. hypergumbo dead-code-maybe stops flagging the production fetch(event.request) as dead. Audit-findings 0013 amended with a 2026-05-18 row note documenting the harmonisation rationale and the internal-inconsistency-resolution path. Quantitative claim: 18 → 0 misclassified kind='function' http_client Symbols; awaits bakeoff to confirm no broader regressions (e.g., centrality weighting, slice filters)."  # 8b85
+- op: update  # fd84
+  at: '2026-05-19T07:25:16Z'  # fd84
+  by: agent  # fd84
+  actor: jgstern_agent  # fd84
+  clock: 6  # fd84
+  nonce: fd84  # fd84
+  set:  # fd84
+    status: satisfied  # fd84
+  remove:  # fd84
+    tags: [awaits_bakeoff_validation]  # fd84
+- op: discuss  # 1a7f
+  at: '2026-05-19T07:25:16Z'  # 1a7f
+  by: agent  # 1a7f
+  actor: jgstern_agent  # 1a7f
+  clock: 7  # 1a7f
+  nonce: 1a7f  # 1a7f
+  message: "Dogfood validation, 2026-05-19 self-analysis. Verdict: moved (clean reclassification, exact count match). Pre-fix claim: 18 misclassified kind=function http_client Symbols with verb-prefixed URL names. Post-fix self-analysis measurement: 0 function-kind Symbols with verb-prefixed names (GET_/POST_/PUT_/DELETE_/PATCH_/HEAD_/OPTIONS_); 0 function-kind Symbols with 'http' in origin; 130 new call_site nodes, exactly 18 with 'http' in meta. The 18 nodes were reclassified from kind=function → kind=call_site with meta['call_kind']='http' — and the count is identical, demonstrating no nodes were lost or duplicated in transit. Verification script: /tmp/inv-validation/verify_dogfood.py."  # 1a7f

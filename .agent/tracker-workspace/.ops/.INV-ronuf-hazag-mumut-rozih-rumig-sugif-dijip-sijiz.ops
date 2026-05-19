@@ -53,3 +53,10 @@
   clock: 5  # 9c55
   nonce: 9c55  # 9c55
   message: "Merged as PR #3805, dev SHA e69de7508fe9."  # 9c55
+- op: discuss  # f195
+  at: '2026-05-19T07:25:53Z'  # f195
+  by: agent  # f195
+  actor: jgstern_agent  # f195
+  clock: 6  # f195
+  nonce: f195  # f195
+  message: "Dogfood validation, 2026-05-19 self-analysis (verify script /tmp/inv-validation/verify_dogfood.py). Verdict: **no_move** on the primary quantitative claim ('3 → 0 phantom file Symbols on self-analysis'). Pre-fix count: 3. Post-fix count: still 3 (ws-client.ts, test_websocket.py, serve.py each show 2 file-kind Symbols — one from the language analyzer/orchestrator synthesizer, one from websocket-linker-v1). PR #3805 DID fix the two derived bugs (wrong language attribution + missing stable_id — both correct post-fix) but the dedup-against-existing logic isn't catching the duplicate file-Symbol case in production. Regression sub-item filed: WI-hifol-savam-silol-mudup-vihip-dilaz-tilat-lurih (P1, todo_soft, parented). Keeping awaits_bakeoff_validation tag stripped per playbook (no_move parent stays tagged, regression child gets the work to investigate)."  # f195
