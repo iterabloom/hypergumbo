@@ -772,16 +772,20 @@ const x = require(name);
         assert by_name["baz"].is_exported is False
 
     def test_module_symbol_not_exported(self, tmp_path: Path) -> None:
-        """The synthetic <module:app.js> pseudo-node is never flagged."""
+        """The synthetic file pseudo-node is never flagged (INV-kokaj
+        renamed kind from 'module' to 'file')."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text(
             "export function foo() { return 1; }\n",
         )
         result = analyze_javascript(tmp_path)
-        modules = [s for s in result.symbols if s.kind == "module"]
-        assert len(modules) >= 1
-        for m in modules:
+        file_syms = [
+            s for s in result.symbols
+            if s.kind == "file" and s.language in ("javascript", "typescript")
+        ]
+        assert len(file_syms) >= 1
+        for m in file_syms:
             assert m.is_exported is False
 
     def test_no_exports_means_nothing_flagged(self, tmp_path: Path) -> None:
@@ -794,7 +798,7 @@ const x = require(name);
         )
         result = analyze_javascript(tmp_path)
         for s in result.symbols:
-            if s.kind != "module":
+            if s.kind != "file":
                 assert s.is_exported is False
 
     def test_typescript_exports_class(self, tmp_path: Path) -> None:
@@ -7595,7 +7599,8 @@ class TestNormalizeJstsSignature:
 
 class TestJsTsTopLevelCallEdges:
     """Top-level code (outside any function) should produce call edges
-    attributed to a <module:filename> symbol (INV-jahom)."""
+    attributed to the file pseudo-node (INV-jahom; updated for INV-kokaj
+    to use kind='file' instead of kind='module')."""
 
     @pytest.fixture(autouse=True)
     def skip_if_no_tree_sitter(self) -> None:
@@ -7603,19 +7608,36 @@ class TestJsTsTopLevelCallEdges:
         pytest.importorskip("tree_sitter_javascript")
 
     def test_module_symbol_created(self, tmp_path: Path) -> None:
-        """Every JS file gets a <module:filename> symbol."""
+        """Every JS file gets a kind='file' Symbol with the canonical
+        file-id shape (INV-kokaj cross-language sibling of INV-hojus).
+        ``analyze_javascript`` returns absolute paths in ids; the
+        cli-level relativize-paths pass strips them downstream."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "index.js").write_text("const x = 1;\n")
         result = analyze_javascript(tmp_path)
 
-        mod_syms = [s for s in result.symbols if s.kind == "module"]
-        assert len(mod_syms) == 1
-        assert mod_syms[0].name == "<module:index.js>"
+        file_syms = [
+            s for s in result.symbols
+            if s.kind == "file" and s.language == "javascript"
+        ]
+        assert len(file_syms) == 1
+        # repo_root threading normalises ``name`` to the relative path.
+        assert file_syms[0].name == "index.js"
+        # id keeps the absolute path until cli-level relativisation runs.
+        assert file_syms[0].id.startswith("javascript:")
+        assert file_syms[0].id.endswith(":1-1:file:file")
+        assert "index.js" in file_syms[0].id
+        # No legacy kind='module' Symbol for the file pseudo-node.
+        mod_syms = [
+            s for s in result.symbols
+            if s.kind == "module" and s.language == "javascript"
+        ]
+        assert len(mod_syms) == 0
 
     def test_toplevel_direct_call_produces_edge(self, tmp_path: Path) -> None:
         """A top-level call like `helper()` should create a calls edge
-        from <module:main.js> to helper."""
+        from the file pseudo-node to helper."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "helper.js").write_text("function helper() { return 1; }\n")
@@ -7625,18 +7647,17 @@ class TestJsTsTopLevelCallEdges:
         result = analyze_javascript(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        # The top-level call helper() in main.js should produce an edge
-        # from <module:main.js> → helper
         module_call_edges = [
             e for e in call_edges
-            if "<module:main.js>" in e.src
+            if e.src.startswith("javascript:")
+            and e.src.endswith("/main.js:1-1:file:file")
         ]
         assert len(module_call_edges) >= 1
         assert any("helper" in e.dst for e in module_call_edges)
 
     def test_toplevel_method_call_produces_edge(self, tmp_path: Path) -> None:
         """Top-level method call like `app.listen(3000)` should be attributed
-        to the module symbol."""
+        to the file pseudo-node."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """\
@@ -7650,14 +7671,18 @@ app.listen(3000);
         result = analyze_javascript(tmp_path)
 
         # The new Server() instantiation at top-level should be attributed
-        # to <module:app.js>
+        # to the file pseudo-node.
         inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
-        module_inst = [e for e in inst_edges if "<module:app.js>" in e.src]
+        module_inst = [
+            e for e in inst_edges
+            if e.src.startswith("javascript:")
+            and e.src.endswith("/app.js:1-1:file:file")
+        ]
         assert len(module_inst) >= 1
 
     def test_toplevel_new_expression_produces_edge(self, tmp_path: Path) -> None:
         """Top-level `new Foo()` should produce an instantiates edge
-        from the module symbol."""
+        from the file pseudo-node."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = "class Foo {}\nconst f = new Foo();\n"
@@ -7665,12 +7690,16 @@ app.listen(3000);
         result = analyze_javascript(tmp_path)
 
         inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
-        module_inst = [e for e in inst_edges if "<module:index.js>" in e.src]
+        module_inst = [
+            e for e in inst_edges
+            if e.src.startswith("javascript:")
+            and e.src.endswith("/index.js:1-1:file:file")
+        ]
         assert len(module_inst) == 1
 
     def test_call_inside_function_still_uses_function(self, tmp_path: Path) -> None:
         """Calls inside a named function should still be attributed to that
-        function, not the module symbol (regression check)."""
+        function, not the file pseudo-node (regression check)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """\
@@ -7681,10 +7710,13 @@ function main() { helper(); }
         result = analyze_javascript(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        # The call should be from main → helper, NOT from <module:app.js>
-        main_calls = [e for e in call_edges if "main" in e.src and "module" not in e.src]
+        # The call should be from main → helper, NOT from the file pseudo-node.
+        main_calls = [e for e in call_edges if ":main:" in e.src and "file:file" not in e.src]
         assert len(main_calls) >= 1
-        module_calls = [e for e in call_edges if "<module:app.js>" in e.src]
+        module_calls = [
+            e for e in call_edges
+            if e.src.endswith("/app.js:1-1:file:file")
+        ]
         assert len(module_calls) == 0
 
     def test_esm_toplevel_call(self, tmp_path: Path) -> None:
@@ -7701,7 +7733,9 @@ function main() { helper(); }
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         module_calls = [
-            e for e in call_edges if "<module:index.js>" in e.src
+            e for e in call_edges
+            if e.src.startswith("javascript:")
+            and e.src.endswith("/index.js:1-1:file:file")
         ]
         assert len(module_calls) >= 1
         assert any("setup" in e.dst for e in module_calls)
@@ -8169,7 +8203,11 @@ class TestSpaBootstrapUsageContext:
         ctx = bootstrap_ctx[0]
         assert ctx.context_name == "createRoot"
         # symbol_ref should point to the module symbol
-        module_sym = next(s for s in result.symbols if s.kind == "module")
+        # INV-kokaj: file pseudo-node is now kind="file" (was "module").
+        module_sym = next(
+            s for s in result.symbols
+            if s.kind == "file" and s.language in ("javascript", "typescript")
+        )
         assert ctx.symbol_ref == module_sym.id
 
     def test_reactdom_render_react17(self, tmp_path: Path) -> None:
@@ -8191,7 +8229,11 @@ class TestSpaBootstrapUsageContext:
         assert len(bootstrap_ctx) == 1
         ctx = bootstrap_ctx[0]
         assert ctx.context_name == "ReactDOM.render"
-        module_sym = next(s for s in result.symbols if s.kind == "module")
+        # INV-kokaj: file pseudo-node is now kind="file" (was "module").
+        module_sym = next(
+            s for s in result.symbols
+            if s.kind == "file" and s.language in ("javascript", "typescript")
+        )
         assert ctx.symbol_ref == module_sym.id
 
     def test_hydrate_root_ssr(self, tmp_path: Path) -> None:
@@ -8289,7 +8331,11 @@ class TestSpaBootstrapUsageContext:
             if c.kind == "call" and c.context_name == "app.whenReady"
         ]
         assert len(bootstrap_ctx) == 1
-        module_sym = next(s for s in result.symbols if s.kind == "module")
+        # INV-kokaj: file pseudo-node is now kind="file" (was "module").
+        module_sym = next(
+            s for s in result.symbols
+            if s.kind == "file" and s.language in ("javascript", "typescript")
+        )
         assert bootstrap_ctx[0].symbol_ref == module_sym.id
 
     def test_electron_app_on_ready(self, tmp_path: Path) -> None:

@@ -172,7 +172,11 @@ class PerlAnalyzer(TreeSitterAnalyzer):
     lang = "perl"
     file_patterns: ClassVar[list[str]] = ["*.pl", "*.pm", "*.t"]
     language_pack_name = "perl"
-    create_file_symbols = True
+    # INV-kokaj: extract_symbols_from_file now emits the canonical file
+    # pseudo-node explicitly (with the file's actual end_line) so the
+    # base-class auto-emitted Symbol (span=1-1) would duplicate it under
+    # the same id.
+    create_file_symbols = False
 
     def analyze(
         self, repo_root: Path, max_files: Optional[int] = None
@@ -198,13 +202,17 @@ class PerlAnalyzer(TreeSitterAnalyzer):
         analysis = FileAnalysis()
         package_name = "main"
 
-        # Create module-level symbol for top-level code attribution
-        module_name = file_path.name
+        # INV-kokaj: emit the file pseudo-node as kind="file" with the
+        # canonical file-id shape so the orchestrator file-symbol synthesizer
+        # dedups against it (existing_ids check). Distinct from the
+        # ``package_statement`` Symbols below — those keep kind="module"
+        # because Perl packages are real namespacing constructs (not
+        # file pseudo-nodes). Only the per-file anchor changes shape.
         end_line = tree.root_node.end_point[0] + 1
         module_symbol = Symbol(
-            id=make_symbol_id("perl", rel_path, 1, end_line, f"<module:{module_name}>", "module"),
-            name=f"<module:{module_name}>",
-            kind="module",
+            id=make_file_id("perl", rel_path),
+            name=rel_path,
+            kind="file",
             language="perl",
             path=rel_path,
             span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
@@ -323,9 +331,10 @@ class PerlAnalyzer(TreeSitterAnalyzer):
         package_name = self._file_package_names.get(rel_path, "main")
         run_id = run.execution_id
 
-        # Find module symbol for top-level call attribution
-        mod_sym_name = f"<module:{file_path.name}>"
-        module_symbol: Symbol | None = global_symbols.get(mod_sym_name)
+        # INV-kokaj: look up the file pseudo-node by its new canonical
+        # name (the rel_path the Pass 1 emitter stamped) for top-level
+        # call attribution.
+        module_symbol: Symbol | None = global_symbols.get(rel_path)
 
         for node in iter_tree(tree.root_node):
             # Handle use statements

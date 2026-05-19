@@ -530,22 +530,34 @@ three() { echo 3; }
 
 class TestBashTopLevelCallEdges:
     """Top-level code (outside any function) should produce call edges
-    attributed to a <module:filename> symbol."""
+    attributed to the file pseudo-node (INV-kokaj: kind='file', not
+    kind='module' anymore)."""
 
-    def test_module_symbol_created(self, tmp_path: Path) -> None:
-        """Every bash file gets a <module:filename> symbol."""
+    def test_file_symbol_created(self, tmp_path: Path) -> None:
+        """Every bash file gets a kind='file' Symbol with the canonical
+        file-id shape (INV-kokaj cross-language sibling of INV-hojus)."""
         from hypergumbo_lang_mainstream.bash import analyze_bash
 
         (tmp_path / "script.sh").write_text("#!/bin/bash\necho hello\n")
         result = analyze_bash(tmp_path)
 
-        mod_syms = [s for s in result.symbols if s.kind == "module"]
-        assert len(mod_syms) == 1
-        assert mod_syms[0].name == "<module:script.sh>"
+        file_syms = [
+            s for s in result.symbols
+            if s.kind == "file" and s.language == "bash"
+        ]
+        assert len(file_syms) == 1
+        assert file_syms[0].name == "script.sh"
+        assert file_syms[0].id == "bash:script.sh:1-1:file:file"
+        # No legacy kind='module' Symbol for the file pseudo-node.
+        mod_syms = [
+            s for s in result.symbols
+            if s.kind == "module" and s.language == "bash"
+        ]
+        assert len(mod_syms) == 0
 
     def test_toplevel_call_produces_edge(self, tmp_path: Path) -> None:
         """A top-level call like `helper` should create a calls edge
-        from <module:main.sh> to helper."""
+        from the file pseudo-node to helper."""
         from hypergumbo_lang_mainstream.bash import analyze_bash
 
         (tmp_path / "main.sh").write_text("""#!/bin/bash
@@ -559,13 +571,14 @@ helper
         result = analyze_bash(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        module_calls = [e for e in call_edges if "<module:main.sh>" in e.src]
+        file_id = "bash:main.sh:1-1:file:file"
+        module_calls = [e for e in call_edges if e.src == file_id]
         assert len(module_calls) >= 1
         assert any("helper" in e.dst for e in module_calls)
 
     def test_call_inside_function_still_uses_function(self, tmp_path: Path) -> None:
         """Calls inside a function should still be attributed to that
-        function, not the module symbol."""
+        function, not the file pseudo-node."""
         from hypergumbo_lang_mainstream.bash import analyze_bash
 
         (tmp_path / "main.sh").write_text("""#!/bin/bash
@@ -581,13 +594,15 @@ function main() {
         result = analyze_bash(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        main_calls = [e for e in call_edges if "main" in e.src and "module" not in e.src]
+        main_calls = [e for e in call_edges if ":main:" in e.src and "file:file" not in e.src]
         assert len(main_calls) >= 1
-        module_calls = [e for e in call_edges if "<module:main.sh>" in e.src]
+        file_id = "bash:main.sh:1-1:file:file"
+        module_calls = [e for e in call_edges if e.src == file_id]
         assert len(module_calls) == 0
 
     def test_toplevel_cross_file_call(self, tmp_path: Path) -> None:
-        """Top-level cross-file call should be attributed to module symbol."""
+        """Top-level cross-file call should be attributed to the file
+        pseudo-node."""
         from hypergumbo_lang_mainstream.bash import analyze_bash
 
         (tmp_path / "lib.sh").write_text("#!/bin/bash\nfunction do_work() { echo work; }\n")
@@ -595,7 +610,8 @@ function main() {
         result = analyze_bash(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        module_calls = [e for e in call_edges if "<module:main.sh>" in e.src]
+        file_id = "bash:main.sh:1-1:file:file"
+        module_calls = [e for e in call_edges if e.src == file_id]
         assert len(module_calls) >= 1
         assert any("do_work" in e.dst for e in module_calls)
 

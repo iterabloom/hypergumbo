@@ -177,13 +177,21 @@ class BashAnalyzer(TreeSitterAnalyzer):
         """
         analysis = FileAnalysis()
 
-        # Create module-level symbol for top-level code attribution
-        module_name = file_path.name
+        # INV-kokaj: emit the file pseudo-node as kind="file" with the
+        # canonical file-id shape so the orchestrator file-symbol synthesizer
+        # dedups against it (existing_ids check). Before this fix, every
+        # bash file emitted TWO Symbols for the same path — kind="module"
+        # here AND kind="file" from the synthesizer when any edge targeted
+        # the file id. File-kind is the cross-language canonical for
+        # "this file" (see analyze.base.make_file_id); this Symbol provides
+        # an enclosing scope for module-level edges (function calls outside
+        # any function definition) so the script remains reachable in slice
+        # traversal.
         end_line = tree.root_node.end_point[0] + 1
         module_symbol = Symbol(
-            id=make_symbol_id("bash", rel_path, 1, end_line, f"<module:{module_name}>", "module"),
-            name=f"<module:{module_name}>",
-            kind="module",
+            id=make_file_id("bash", rel_path),
+            name=rel_path,
+            kind="file",
             language="bash",
             path=rel_path,
             span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
@@ -294,8 +302,13 @@ class BashAnalyzer(TreeSitterAnalyzer):
 
         Exports and aliases are file-local; only functions can be called
         from other files via 'source' + function-name invocation.
+
+        INV-kokaj: ``file`` joins ``function`` so the file pseudo-node
+        (formerly ``kind="module"``) remains reachable from the global
+        registry — Pass 2 looks up the file Symbol by name to attribute
+        top-level calls (calls outside any function definition) to it.
         """
-        if symbol.kind in ("function", "module"):
+        if symbol.kind in ("function", "file"):
             global_symbols[symbol.name] = symbol
 
     def extract_edges_from_file(
@@ -320,9 +333,10 @@ class BashAnalyzer(TreeSitterAnalyzer):
         _caller_path = str(file_path)
         file_id = make_file_id("bash", rel_path)
 
-        # Find module symbol for top-level call attribution
-        mod_sym_name = f"<module:{file_path.name}>"
-        module_symbol: Symbol | None = global_symbols.get(mod_sym_name)
+        # INV-kokaj: look up the file pseudo-node by its new canonical
+        # name (the rel_path the Pass 1 emitter stamped) for top-level
+        # call attribution.
+        module_symbol: Symbol | None = global_symbols.get(rel_path)
 
         def _get_enclosing_function(node: "tree_sitter.Node") -> Optional[Symbol]:
             """Walk up the tree to find enclosing function."""

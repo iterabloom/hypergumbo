@@ -685,10 +685,13 @@ helper();
         result = analyze_php(tmp_path)
 
         assert result.run is not None
-        # Top-level call is now attributed to <module:filename> symbol
+        # INV-kokaj: top-level call is attributed to the file pseudo-node
+        # (kind="file", canonical file-id shape) instead of the legacy
+        # <module:filename> kind="module" wrapper.
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
-        assert "<module:" in call_edges[0].src
+        assert call_edges[0].src.endswith(":1-1:file:file")
+        assert call_edges[0].src.startswith("php:")
 
     def test_nested_class_method(self, tmp_path: Path) -> None:
         """Handles nested method calls."""

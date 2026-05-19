@@ -82,6 +82,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     find_child_by_field,
     iter_tree,
+    make_file_id,
     make_route_stable_id,
     make_typed_stable_id,
     node_text as _node_text,
@@ -2839,6 +2840,7 @@ def _extract_symbols(
     lang: str,
     run: AnalysisRun,
     line_offset: int = 0,
+    repo_root: Optional[Path] = None,
 ) -> list[Symbol]:
     """Extract symbols from a parsed tree (pass 1).
 
@@ -2851,11 +2853,23 @@ def _extract_symbols(
         lang: Language (javascript or typescript)
         run: Analysis run for provenance
         line_offset: Line offset for Svelte script blocks
+        repo_root: Repository root for path normalisation. When provided,
+            the file pseudo-node Symbol's ``name`` is the repo-relative
+            path (INV-kokaj mirror of INV-vaguj). Tests calling this
+            helper directly may pass ``None``.
     """
     symbols: list[Symbol] = []
 
-    # Create module-level symbol for top-level code attribution
-    module_name = file_path.name
+    # INV-kokaj: emit the file pseudo-node as kind="file" with the
+    # canonical file-id shape so the orchestrator file-symbol synthesizer
+    # dedups against it (existing_ids check). Before this fix, every
+    # JS/TS file emitted both a kind="module" Symbol (here) and a
+    # kind="file" Symbol (from the synthesizer when edges targeted the
+    # file id). File-kind is the cross-language canonical for "this file"
+    # (see analyze.base.make_file_id). The Symbol provides an enclosing
+    # scope for module-level edges (route calls, bootstrap calls,
+    # attribute reads on ``process``/``window``/``document``) so files
+    # without explicit functions remain reachable in slice traversal.
     end_line = tree.root_node.end_point[0] + 1 + line_offset
     module_span = Span(
         start_line=1 + line_offset,
@@ -2863,10 +2877,16 @@ def _extract_symbols(
         start_col=0,
         end_col=0,
     )
+    file_name = str(file_path)
+    if repo_root is not None:
+        try:
+            file_name = str(file_path.relative_to(repo_root))
+        except ValueError:  # pragma: no cover - defensive
+            pass
     module_symbol = Symbol(
-        id=_make_symbol_id(str(file_path), 1 + line_offset, end_line, f"<module:{module_name}>", "module", lang),
-        name=f"<module:{module_name}>",
-        kind="module",
+        id=make_file_id(lang, str(file_path)),
+        name=file_name,
+        kind="file",
         language=lang,
         path=str(file_path),
         span=module_span,
@@ -3399,14 +3419,15 @@ def _mark_exported_symbols(
     get flagged when only the class is exported — class members stay
     un-exported unless the class was the only thing exported, in which case
     they are still un-exported here (the class symbol is the public
-    API entry point). Modules themselves remain un-exported — the field
-    is about individual declarations, not the module pseudo-node.
+    API entry point). The file pseudo-node remains un-exported — the
+    field is about individual declarations, not the per-file anchor
+    (INV-kokaj renamed kind from "module" to "file").
     """
     exported_names = _collect_exported_names(root, source)
     if not exported_names:
         return
     for sym in symbols:
-        if sym.kind == "module":
+        if sym.kind == "file":
             continue
         short = sym.name.rsplit(".", 1)[-1] if "." in sym.name else sym.name
         if short in exported_names and "." not in sym.name:
@@ -4333,8 +4354,13 @@ def _extract_symbols_and_edges(
         elif sym.kind == "class":
             global_classes[sym.name] = sym
 
-    # Find module symbol for top-level call attribution
-    mod_sym = next((s for s in symbols if s.kind == "module"), None)
+    # INV-kokaj: find the file pseudo-node (kind="file") for top-level
+    # call attribution. Filtered by language because non-JS/TS file
+    # Symbols may appear in this list when called from polyglot wrappers.
+    mod_sym = next(
+        (s for s in symbols if s.kind == "file" and s.language == lang),
+        None,
+    )
     edges = _extract_edges(tree, source, file_path, lang, run, global_symbols, global_methods, global_classes,
                            module_symbol=mod_sym)
     return symbols, edges
@@ -4563,7 +4589,7 @@ def _analyze_javascript_impl(
                 namespace_imports=ns_imports, named_imports=nm_imports,
                 named_import_originals=nm_originals,
             ))
-            symbols = _extract_symbols(tree, source, file_path, lang, run)
+            symbols = _extract_symbols(tree, source, file_path, lang, run, repo_root=repo_root)
             populate_docstrings_from_tree(tree.root_node, source, symbols)
             all_symbols.extend(symbols)
             files_analyzed += 1
@@ -4598,7 +4624,7 @@ def _analyze_javascript_impl(
                     named_imports=nm_imports,
                     named_import_originals=nm_originals,
                 ))
-                symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+                symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset, repo_root=repo_root)
                 populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
                 all_symbols.extend(symbols)
 
@@ -4634,7 +4660,7 @@ def _analyze_javascript_impl(
                     named_imports=nm_imports,
                     named_import_originals=nm_originals,
                 ))
-                symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+                symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset, repo_root=repo_root)
                 populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
                 all_symbols.extend(symbols)
 
@@ -4674,9 +4700,14 @@ def _analyze_javascript_impl(
     class_resolver = NameResolver(global_classes)
     all_edges: list[Edge] = []
     for pf in parsed_files:
-        # Look up module symbol for this file (top-level call attribution)
-        mod_sym_name = f"<module:{pf.path.name}>"
-        file_mod_sym = global_symbols.get(mod_sym_name)
+        # INV-kokaj: look up the file pseudo-node by its new canonical
+        # name (the repo-relative path the Pass 1 emitter stamped). Fall
+        # back to absolute path for repo_root-less callers.
+        try:
+            pf_name = str(pf.path.relative_to(repo_root))
+        except ValueError:  # pragma: no cover - defensive
+            pf_name = str(pf.path)
+        file_mod_sym = global_symbols.get(pf_name)
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, pf.lang, run,
             global_symbols, global_methods, global_classes, pf.line_offset,
@@ -4760,8 +4791,11 @@ def _analyze_javascript_impl(
         all_usage_contexts.extend(library_contexts)
 
         # SPA bootstrap calls (createRoot, ReactDOM.render, hydrateRoot, etc.)
-        mod_sym_name = f"<module:{pf.path.name}>"
-        file_mod_sym = global_symbols.get(mod_sym_name)
+        try:
+            pf_name = str(pf.path.relative_to(repo_root))
+        except ValueError:  # pragma: no cover - defensive
+            pf_name = str(pf.path)
+        file_mod_sym = global_symbols.get(pf_name)
         if file_mod_sym is not None:
             bootstrap_contexts = _extract_app_bootstrap_contexts(
                 pf.tree, pf.source, pf.path, file_mod_sym, pf.line_offset,

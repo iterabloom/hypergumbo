@@ -46,6 +46,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     iter_tree,
+    make_file_id,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -730,17 +731,33 @@ def _extract_symbols(
     source: bytes,
     file_path: Path,
     run: AnalysisRun,
+    repo_root: Optional[Path] = None,
 ) -> list[Symbol]:
-    """Extract symbols from a parsed PHP tree (pass 1)."""
+    """Extract symbols from a parsed PHP tree (pass 1).
+
+    When ``repo_root`` is provided, the file pseudo-node Symbol's ``name``
+    is the repo-relative path (mirror of INV-vaguj's name-normalisation
+    for the analyzer-side producer). Otherwise ``name`` falls back to
+    ``str(file_path)`` for tests that call this helper directly.
+    """
     symbols: list[Symbol] = []
 
-    # Create module-level symbol for top-level code attribution
-    module_name = file_path.name
+    # INV-kokaj: emit the file pseudo-node as kind="file" with the
+    # canonical file-id shape so the orchestrator file-symbol synthesizer
+    # dedups against it (existing_ids check). Before this fix, every PHP
+    # file emitted both a kind="module" Symbol (here) and a kind="file"
+    # Symbol (from the synthesizer when edges targeted the file id).
     end_line = tree.root_node.end_point[0] + 1
+    file_name = str(file_path)
+    if repo_root is not None:
+        try:
+            file_name = str(file_path.relative_to(repo_root))
+        except ValueError:  # pragma: no cover - defensive
+            pass
     module_symbol = Symbol(
-        id=make_symbol_id("php", str(file_path), 1, end_line, f"<module:{module_name}>", "module"),
-        name=f"<module:{module_name}>",
-        kind="module",
+        id=make_file_id("php", str(file_path)),
+        name=file_name,
+        kind="file",
         language="php",
         path=str(file_path),
         span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
@@ -1136,7 +1153,7 @@ class PHPAnalyzer(TreeSitterAnalyzer):
                 parsed_files.append(_ParsedFile(
                     path=file_path, tree=tree, source=source, use_aliases=use_aliases
                 ))
-                symbols = _extract_symbols(tree, source, file_path, run)
+                symbols = _extract_symbols(tree, source, file_path, run, repo_root=repo_root)
                 all_symbols.extend(symbols)
                 files_analyzed += 1
             except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
@@ -1167,8 +1184,15 @@ class PHPAnalyzer(TreeSitterAnalyzer):
         class_resolver = NameResolver(global_classes)
         all_edges: list[Edge] = []
         for pf in parsed_files:
-            mod_sym_name = f"<module:{pf.path.name}>"
-            file_mod_sym = global_symbols.get(mod_sym_name)
+            # INV-kokaj: look up the file pseudo-node by its new
+            # canonical name (the repo-relative path the Pass 1 emitter
+            # stamped). Fall back to absolute path for repo_root-less
+            # callers (legacy single-file analysis).
+            try:
+                pf_name = str(pf.path.relative_to(repo_root))
+            except ValueError:  # pragma: no cover - defensive
+                pf_name = str(pf.path)
+            file_mod_sym = global_symbols.get(pf_name)
             edges = _extract_edges(
                 pf.tree, pf.source, pf.path, run,
                 global_symbols, global_methods, global_classes,

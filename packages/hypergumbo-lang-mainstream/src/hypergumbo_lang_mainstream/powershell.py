@@ -352,13 +352,20 @@ class PowerShellAnalyzer(TreeSitterAnalyzer):
         analysis = FileAnalysis()
         symbol_registry: dict[str, Symbol] = {}
 
-        # Create module-level symbol for top-level code attribution
-        module_name = file_path.name
+        # INV-kokaj: emit the file pseudo-node as kind="file" with the
+        # canonical file-id shape so the orchestrator file-symbol synthesizer
+        # dedups against it (existing_ids check). Edges in this analyzer
+        # already source from make_file_id("powershell", file_path) (see
+        # the dot-source and module-import edge emitters above), so before
+        # this fix the analyzer-emitted kind="module" Symbol was orphaned
+        # — edges targeted a different id that the synthesizer then
+        # created. This Symbol provides an enclosing scope for top-level
+        # call attribution in Pass 2.
         end_line = tree.root_node.end_point[0] + 1
         module_sym = Symbol(
-            id=make_symbol_id("powershell", rel_path, 1, end_line, f"<module:{module_name}>", "module"),
-            name=f"<module:{module_name}>",
-            kind="module",
+            id=make_file_id("powershell", rel_path),
+            name=rel_path,
+            kind="file",
             language="powershell",
             path=rel_path,
             span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
@@ -395,8 +402,9 @@ class PowerShellAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract import and call edges from a PowerShell file."""
         edges: list[Edge] = []
-        mod_sym_name = f"<module:{file_path.name}>"
-        module_symbol = global_symbols.get(mod_sym_name)
+        # INV-kokaj: file pseudo-node is now keyed by rel_path in the
+        # global registry (kind="file", name=rel_path).
+        module_symbol = global_symbols.get(rel_path)
         _extract_powershell_edges(
             tree, source, rel_path, edges, local_symbols, resolver,
             module_symbol=module_symbol,
