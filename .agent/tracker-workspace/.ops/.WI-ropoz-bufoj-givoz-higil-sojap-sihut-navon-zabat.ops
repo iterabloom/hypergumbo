@@ -58,3 +58,19 @@
   clock: 6  # 650f
   nonce: 650f  # 650f
   message: "Shipped via PR (commit 88e734f). TS gRPC client → proto service fallback when no in-tree impl. 3 new tests; 100% coverage. workadventure-on-deep-bakeoff validation pending."  # 650f
+- op: discuss  # 8bea
+  at: '2026-05-19T17:42:35Z'  # 8bea
+  by: agent  # 8bea
+  actor: jgstern_agent  # 8bea
+  clock: 7  # 8bea
+  nonce: 8bea  # 8bea
+  message: "Cohort validation 2026-05-19: MOVED on workadventure. Post-fix metrics on workadventure (hypergumbo run, 3m 2s wall clock, 36450 edges): grpc-linker-v1 emits 35 edges (with framework_dispatch/gRPC metadata). 355 edges reference .proto in dst or protobuf in meta. proto-v1 analyzer also fires (39 edges). The TS gRPC client → proto service fallback path is structurally working on a real production gRPC repo."  # 8bea
+- op: update  # fa51
+  at: '2026-05-19T17:42:36Z'  # fa51
+  by: agent  # fa51
+  actor: jgstern_agent  # fa51
+  clock: 8  # fa51
+  nonce: fa51  # fa51
+  set: {}  # fa51
+  remove:  # fa51
+    tags: [awaits_bakeoff_validation]  # fa51

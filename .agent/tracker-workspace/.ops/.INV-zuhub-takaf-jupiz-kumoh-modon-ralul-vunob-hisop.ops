@@ -74,3 +74,20 @@
   nonce: '87e8'  # 87e8
   set:  # 87e8
     parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # 87e8
+- op: discuss  # 26ef
+  at: '2026-05-19T17:41:49Z'  # 26ef
+  by: agent  # 26ef
+  actor: jgstern_agent  # 26ef
+  clock: 9  # 26ef
+  nonce: 26ef  # 26ef
+  message: "Cohort validation 2026-05-19: MOVED. Acceptance criteria all hold: scripts/check-fallback-coherence passes (linter is L4 pre-commit gate). 26 test files reference disambiguation_fallback (test_kafka_streams_dispatch_linker, test_jackson_dispatch_linker, test_django_orm_dispatch_linker, test_lua_ffi_linker, test_airflow_framework_dispatch_linker, test_rubyffi_linker, test_pyffi_linker, test_route_handler_linker, test_symbol_indexes, test_fallback_coherence, plus 16 more). The property tests + drift linter together pin the INV-zuhub invariant at L1 (axis) + L3 (producer) + L4 (fallback-coherence)."  # 26ef
+- op: update  # f13e
+  at: '2026-05-19T17:41:49Z'  # f13e
+  by: agent  # f13e
+  actor: jgstern_agent  # f13e
+  clock: 10  # f13e
+  nonce: f13e  # f13e
+  set:  # f13e
+    status: satisfied  # f13e
+  remove:  # f13e
+    tags: [awaits_bakeoff_validation]  # f13e

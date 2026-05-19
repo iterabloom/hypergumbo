@@ -103,3 +103,19 @@
   set: {}  # 5059
   add:  # 5059
     tags: [awaits_bakeoff_validation]  # 5059
+- op: discuss  # f998
+  at: '2026-05-19T17:42:15Z'  # f998
+  by: agent  # f998
+  actor: jgstern_agent  # f998
+  clock: 13  # f998
+  nonce: f998  # f998
+  message: "Cohort validation 2026-05-19: MOVED on Robyn (PyO3). Post-fix metrics on Robyn (hypergumbo run, 12s wall clock, 2847 nodes, 5037 edges): 413 pyffi-origin edges, 110 Rust Symbols with PyO3 marker in meta. Cross-language Python→Rust IO trace via io-boundaries confirms: 3 Rust .rs IO calls (Server::start at src/server.rs:84) properly reachable from Python entry points (examples/agents.py, examples/mcp.py, robyn/__main__.py, integration_tests/cors_app.py, etc.). The pyffi linker fires; PyO3 attribute spellings (bare + path-qualified) are recognized; Rust IO primitives surface in the io-boundaries map."  # f998
+- op: update  # 06ad
+  at: '2026-05-19T17:42:15Z'  # 06ad
+  by: agent  # 06ad
+  actor: jgstern_agent  # 06ad
+  clock: 14  # 06ad
+  nonce: 06ad  # 06ad
+  set: {}  # 06ad
+  remove:  # 06ad
+    tags: [awaits_bakeoff_validation]  # 06ad

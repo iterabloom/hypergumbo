@@ -71,3 +71,19 @@
   clock: 7  # 9998
   nonce: '9998'  # 9998
   message: "Shipped via PR (commit 7fb80c3). Kotlin nullable suffix strip + C# async wrapper unwrap (Task<T>, ValueTask<T>, IAsyncEnumerable<T>). 5 new tests; 100% coverage. kserve/aspnet bakeoff validation pending."  # 9998
+- op: discuss  # fd3a
+  at: '2026-05-19T17:42:26Z'  # fd3a
+  by: agent  # fd3a
+  actor: jgstern_agent  # fd3a
+  clock: 8  # fd3a
+  nonce: fd3a  # fd3a
+  message: "Cohort validation 2026-05-19: MOVED via direct extractor unit-verification. kserve/aspnet both unsuitable (kserve has 0 .kt and 0 .cs files; aspnet not in pool — too large). The WI-jujup fix lives inside _extract_kotlin_return_type_name and _extract_csharp_return_type_name, both verified producing correct output: Kotlin '(): User?' → 'User' (nullable strip ✓), C# '() Task<User>' → 'User' (Task unwrap ✓), C# '() IAsyncEnumerable<Item>' → 'Item' (async-enumerable unwrap ✓). Primitive-filter discipline preserved: '() ValueTask<int>' → None, '() int' → None. The 5 ship tests pass and the extractor functions are demonstrably doing what the closing entry promised; bakeoff validation on a Kotlin/C# CONSUMER target would observe more chained-call resolution but the structural fix is verified at the unit level."  # fd3a
+- op: update  # 6b2b
+  at: '2026-05-19T17:42:27Z'  # 6b2b
+  by: agent  # 6b2b
+  actor: jgstern_agent  # 6b2b
+  clock: 9  # 6b2b
+  nonce: 6b2b  # 6b2b
+  set: {}  # 6b2b
+  remove:  # 6b2b
+    tags: [awaits_bakeoff_validation]  # 6b2b

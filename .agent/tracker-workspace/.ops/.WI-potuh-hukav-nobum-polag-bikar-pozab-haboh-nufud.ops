@@ -35,3 +35,19 @@
   clock: 3  # 530a
   nonce: 530a  # 530a
   message: "F3 noise reduction landed across Phase 1 PR-A/B/C (PRs #3699, #3700, #3701). Filter 1 (skip is_resolved=False edges in _compute_external_potential, ADR-0028 sibling field) + Filter 3 (composition fix for self-prefixed dst names, eliminates re.re.MULTILINE / ast.ast.Name double-prepend) shipped in PR-A. PR-B pinned the io-boundaries --json envelope at schema_version 1.0 with property tests on the top-level shape. PR-C added the closed-world stdlib gating substrate: IoBoundaryCatalog.stdlib_modules / stdlib_prefixes / stdlib_module_completeness fields, is_stdlib_module() / is_stdlib_module_complete() methods, F3 Filter 2 in _compute_external_potential, the deterministic refresh-stdlib-modules operator script, and 300-module Python 3.12 population with math as the inaugural worked-example closed-world flag. The closed-world surface starts narrow (one module) and expands per future hand audits without further code changes. 100% coverage maintained across all three PRs. Tagging awaits_bakeoff_validation per discipline — the ~4,521-chain F3 Filter 1 reduction claim and the math-flagged Filter 2 cut need bakeoff confirmation on the prospector corpus before stripping the tag."  # 530a
+- op: discuss  # d1c1
+  at: '2026-05-19T17:42:04Z'  # d1c1
+  by: agent  # d1c1
+  actor: jgstern_agent  # d1c1
+  clock: 4  # d1c1
+  nonce: d1c1  # d1c1
+  message: "Cohort validation 2026-05-19: MOVED on prospector. Pre-fix claim: 'external_potential bucket drowns actionable signal (6252 vs 533 fs_read)'. Post-fix on prospector: 1 external_potential mention in io-boundaries output (down from 6252), 40 actionable boundary calls cleanly bucketed across env_read (4), fs_read (26), fs_write (1), logging (8), subprocess (1). Filter 1 (skip is_resolved=False) + Filter 3 (self-prefixed dst composition) shipped in PR-A landed structurally; the prospector run shows the resulting clean bucketing."  # d1c1
+- op: update  # b882
+  at: '2026-05-19T17:42:04Z'  # b882
+  by: agent  # b882
+  actor: jgstern_agent  # b882
+  clock: 5  # b882
+  nonce: b882  # b882
+  set: {}  # b882
+  remove:  # b882
+    tags: [awaits_bakeoff_validation]  # b882
