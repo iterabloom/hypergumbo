@@ -438,3 +438,128 @@ class TestVueComponentLinker:
         assert linker.activation.should_run(set(), {"vue"})
         # Should not run without vue
         assert not linker.activation.should_run(set(), {"python"})
+
+
+class TestInvBahovCanonicalFileIdReuse:
+    """INV-bahov: vue_component linker must emit canonical file Symbol ids
+    and dedup against pre-existing canonical Symbols emitted by upstream
+    producers (analyzers and the orchestrator's
+    ``synthesize_file_symbols_for_dangling_edges``).
+
+    Sibling family of INV-ronuf (websocket, WI-hifol PR #3819) and INV-movor
+    (js_module, PR #3823). Each test mirrors the INV-movor pin pattern in
+    ``test_js_module_linker.py::TestInvMovorCanonicalFileIdReuse``.
+    """
+
+    def test_canonical_file_id_shape(self, tmp_path: Path) -> None:
+        """Emitted file Symbol id matches ``make_file_id`` shape
+        (``vue:{path}:1-1:file:file``), not the legacy
+        ``vue:{path}:component_file:1:{name}``."""
+        from hypergumbo_core.analyze.base import make_file_id
+
+        (tmp_path / "App.vue").write_text("<template><Header/></template>")
+        (tmp_path / "Header.vue").write_text("<template><h1>Hi</h1></template>")
+
+        app_ref = _sym(
+            "vue:App.vue:component_ref:1:Header", "Header", "component_ref",
+            path="App.vue", meta={"import_path": "./Header.vue"},
+        )
+        raw_edge = _edge(app_ref.id, "./Header.vue")
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[app_ref],
+            edges=[raw_edge],
+        )
+        result = link_vue_components(ctx)
+
+        file_symbols = [s for s in result.symbols if s.kind == "file"]
+        assert len(file_symbols) >= 1
+        for sym in file_symbols:
+            expected = make_file_id("vue", sym.path)
+            assert sym.id == expected, (
+                f"vue_component file Symbol id {sym.id!r} does not match "
+                f"canonical make_file_id shape {expected!r}"
+            )
+
+    def test_skips_when_canonical_file_symbol_already_present(
+        self, tmp_path: Path
+    ) -> None:
+        """When a canonical kind=file Symbol already exists for a path
+        (emitted by an upstream producer), the linker must NOT mint a
+        parallel shadow Symbol — it reuses the existing one."""
+        from hypergumbo_core.analyze.base import make_file_id, make_file_stable_id
+
+        (tmp_path / "App.vue").write_text("<template><Header/></template>")
+        (tmp_path / "Header.vue").write_text("<template><h1>Hi</h1></template>")
+
+        # Pre-existing canonical Symbol (as emitted by the orchestrator's
+        # synthesize_file_symbols_for_dangling_edges or by an analyzer).
+        existing_header_file = Symbol(
+            id=make_file_id("vue", "Header.vue"),
+            stable_id=make_file_stable_id("vue", "Header.vue"),
+            name="Header.vue",
+            kind="file",
+            language="vue",
+            path="Header.vue",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="upstream-producer",
+            origin_run_id="upstream-run",
+            meta={},
+        )
+        app_ref = _sym(
+            "vue:App.vue:component_ref:1:Header", "Header", "component_ref",
+            path="App.vue", meta={"import_path": "./Header.vue"},
+        )
+        raw_edge = _edge(app_ref.id, "./Header.vue")
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[existing_header_file, app_ref],
+            edges=[raw_edge],
+        )
+        result = link_vue_components(ctx)
+
+        # The linker must not emit a duplicate Symbol for Header.vue.
+        emitted_for_header = [
+            s for s in result.symbols
+            if s.kind == "file" and s.path == "Header.vue"
+        ]
+        assert len(emitted_for_header) == 0, (
+            f"vue_component emitted {len(emitted_for_header)} duplicate "
+            "file Symbol(s) for Header.vue despite an existing canonical "
+            "Symbol in ctx.symbols"
+        )
+
+        # The resolved import edge must point at the existing canonical id.
+        resolved = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(resolved) == 1
+        assert resolved[0].dst == existing_header_file.id
+
+    def test_stable_id_uses_canonical_helper(self, tmp_path: Path) -> None:
+        """Emitted Symbol.stable_id matches ``make_file_stable_id`` output,
+        not the legacy literal that reused ``sym_id`` as stable_id."""
+        from hypergumbo_core.analyze.base import make_file_stable_id
+
+        (tmp_path / "App.vue").write_text("<template><Card/></template>")
+        (tmp_path / "Card.vue").write_text("<template><div/></template>")
+
+        app_ref = _sym(
+            "vue:App.vue:component_ref:1:Card", "Card", "component_ref",
+            path="App.vue", meta={"import_path": "./Card.vue"},
+        )
+        raw_edge = _edge(app_ref.id, "./Card.vue")
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[app_ref],
+            edges=[raw_edge],
+        )
+        result = link_vue_components(ctx)
+
+        card = next(
+            (s for s in result.symbols if s.kind == "file" and s.path == "Card.vue"),
+            None,
+        )
+        assert card is not None
+        assert card.stable_id == make_file_stable_id("vue", "Card.vue")

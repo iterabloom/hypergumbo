@@ -36,6 +36,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..analyze.base import make_file_id, make_file_stable_id
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -113,19 +114,6 @@ def _resolve_import_path(
     return None
 
 
-def _make_component_file_id(rel_path: str) -> str:
-    """Create a stable symbol ID for a .vue component file.
-
-    Args:
-        rel_path: Path relative to repo root (e.g., 'src/components/Header.vue')
-
-    Returns:
-        Symbol ID in format 'vue:{path}:component_file:1:{name}'
-    """
-    name = Path(rel_path).stem  # Header.vue -> Header
-    return f"vue:{rel_path}:component_file:1:{name}"
-
-
 @register_linker(
     "vue-components",
     priority=25,
@@ -172,8 +160,21 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
     for sym in ctx.symbols:
         symbol_path_map[sym.id] = sym.path
 
-    # Track created component_file symbols to avoid duplicates
+    # Track component_file symbols already returned to avoid duplicates
+    # within this run. Keyed on rel_path.
     file_symbol_cache: dict[str, Symbol] = {}
+
+    # INV-bahov: cross-producer canonical-id lookup. When the orchestrator's
+    # file-symbol synthesizer or the Vue analyzer has already emitted a
+    # canonical kind="file" Symbol for a given path, this linker must reuse
+    # that Symbol rather than minting a parallel shadow node. Sibling of the
+    # INV-ronuf (websocket, WI-hifol) and INV-movor (js_module) fixes.
+    existing_file_symbol_by_canonical_id: dict[str, Symbol] = {}
+    for sym in ctx.symbols:
+        if sym.kind == "file" and sym.language == "vue":
+            existing_file_symbol_by_canonical_id[
+                make_file_id("vue", sym.path)
+            ] = sym
 
     # Collect all .vue file paths involved (for creating file symbols)
     vue_file_paths: set[str] = set()
@@ -182,15 +183,28 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
             vue_file_paths.add(sym.path)
 
     def get_or_create_file_symbol(rel_path: str) -> Symbol:
-        """Get or create a component_file symbol for a .vue file."""
+        """Get or create a canonical-shape file Symbol for a .vue file.
+
+        INV-bahov: emits the canonical ``make_file_id`` shape
+        (``vue:{path}:1-1:file:file``) rather than the legacy
+        ``:component_file:1:{name}`` literal so id-equality dedup works
+        cross-producer against the orchestrator's file-symbol synthesizer
+        and against the Vue analyzer. When a canonical Symbol already
+        exists in ``ctx.symbols`` for this path, reuse it.
+        """
         if rel_path in file_symbol_cache:
             return file_symbol_cache[rel_path]
 
-        sym_id = _make_component_file_id(rel_path)
+        sym_id = make_file_id("vue", rel_path)
+        existing = existing_file_symbol_by_canonical_id.get(sym_id)
+        if existing is not None:
+            file_symbol_cache[rel_path] = existing
+            return existing
+
         name = Path(rel_path).stem
         sym = Symbol(
             id=sym_id,
-            stable_id=sym_id,
+            stable_id=make_file_stable_id("vue", rel_path),
             name=name,
             kind="file",
             language="vue",
