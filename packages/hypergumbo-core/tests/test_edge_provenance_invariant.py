@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -35,14 +36,17 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _run_self_analysis(tmp_path: Path) -> dict:
-    """Run hypergumbo on its own source and return the parsed behavior map."""
+    """Run hypergumbo on its own source and return the parsed behavior map.
+
+    Uses ``sys.executable -m hypergumbo_core.cli`` rather than the
+    ``hypergumbo`` console script so CI runners without the installed
+    entrypoint on ``PATH`` still pick up the in-tree module.
+    """
     out_path = tmp_path / "behavior-map.json"
     result = subprocess.run(
-        [  # noqa: S607
-            "hypergumbo", "run", str(REPO_ROOT),
-            "--no-sketch-fan-out",
-            "--out", str(out_path),
-        ],
+        [sys.executable, "-m", "hypergumbo_core", "run", str(REPO_ROOT),
+         "--no-sketch-fan-out",
+         "--out", str(out_path)],
         check=False,
         capture_output=True,
         timeout=600,
