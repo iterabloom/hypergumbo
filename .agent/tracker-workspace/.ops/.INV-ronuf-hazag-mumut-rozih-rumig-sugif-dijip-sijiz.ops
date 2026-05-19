@@ -29,3 +29,27 @@
   nonce: 8dfd  # 8dfd
   set:  # 8dfd
     parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # 8dfd
+- op: update  # 16a2
+  at: '2026-05-18T21:34:12Z'  # 16a2
+  by: agent  # 16a2
+  actor: jgstern_agent  # 16a2
+  clock: 3  # 16a2
+  nonce: 16a2  # 16a2
+  set:  # 16a2
+    status: pending_validation  # 16a2
+  add:  # 16a2
+    tags: [awaits_bakeoff_validation]  # 16a2
+- op: discuss  # 8c7e
+  at: '2026-05-18T21:34:12Z'  # 8c7e
+  by: agent  # 8c7e
+  actor: jgstern_agent  # 8c7e
+  clock: 4  # 8c7e
+  nonce: 8c7e  # 8c7e
+  message: "Fixed by PR (pending): linkers/websocket.py now uses canonical make_file_id shape and derives language from file extension via _text_filters.language_from_path, with dedup against ctx.symbols. The 3 duplicate file Symbols on self-analysis (test_websocket.py, serve.py, ws-client.ts) should drop to 0. Quantitative claim: 3 → 0 phantom file Symbols on self-analysis; awaits bakeoff to confirm no broader regressions."  # 8c7e
+- op: discuss  # 9c55
+  at: '2026-05-18T21:43:20Z'  # 9c55
+  by: agent  # 9c55
+  actor: jgstern_agent  # 9c55
+  clock: 5  # 9c55
+  nonce: 9c55  # 9c55
+  message: "Merged as PR #3805, dev SHA e69de7508fe9."  # 9c55

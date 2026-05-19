@@ -22,3 +22,39 @@
     pr_ref:  # 3baa
     description: "## Problem\n\n`scripts/check-schema-conformance --mode=warning` runs `hypergumbo run .` against the full hypergumbo repo (~3.5 min wall time on the self-hosted runner) and validates the resulting JSON against `docs/schema.json` via `jsonschema.Draft202012Validator.iter_errors(data)`. This was the cheapest expression of \"validate self-analysis output\" at INV-piroh's foundation-phase landing (PR #3790), but it has two structural problems:\n\n1. **Wall-time cost.** Every PR pays 3.5 min for a check that catches one class of bug. The actual jsonschema validation step costs single-digit seconds; the rest is `hypergumbo run .` itself.\n\n2. **Coverage hole that the cost suggests doesn't exist.** Hypergumbo is pure Python. Self-analysis never exercises:\n   - The Rust analyzer's stable_id formulas (`make_typed_stable_id` typed-tier branch for Rust)\n   - The Go memberlist linker, the Phoenix view-template linker, the Rails route-handler stable_id formula, NestJS controller dispatch, Spring MVC view-template, Laravel Blade, etc.\n   - Framework patterns in any non-Python language\n\nRough estimate: ~80% of the `evidence_type` enum values in `edge_types.py` and ~70% of the framework patterns in `framework_patterns.yaml` are never produced by self-analysis. The gate is silently blind to drift in those producers.\n\n## Proposed approach\n\nReplace the self-analysis subject with a schema-rule-driven fixture corpus designed at `tests/fixtures/schema-coverage-corpus/`. The corpus is intentional — every file exists to trigger a specific producer code path. Files don't need to be runnable, import-able, or even syntactically complete across the whole tree; they need to be parse-able by the relevant analyzer and trigger one or more schema-relevant outputs.\n\nCoverage axes the corpus must hit:\n\n- Every `Symbol.kind` enum value (~12)\n- Every `Edge.evidence_type` enum value (~111 after ADR-0027/0028 closure)\n- Every `Edge.edge_type` value (~20)\n- Every entry in `framework_patterns.yaml` that produces edges\n- Sketch / supply-chain / metrics / entrypoints output shapes (one fixture each)\n- Each language with a registered analyzer (≥1 file per language with code that emits at least one Symbol)\n\nStatic cross-check: `scripts/check-schema-coverage` (new) iterates the registries (`edge_types.py`, `framework_patterns.yaml`, analyzer registry) and asserts the corpus's analysis output contains at least one instance of each registered value. Fail-loud when a new producer lands without a fixture entry. This is the maintenance-drift firewall — without it, the corpus would silently rot.\n\n## Measurement-first step (recommended)\n\nBefore committing to the migration, measure the coverage hole the current self-analysis gate has. Run hypergumbo on itself, collect the set of `evidence_type` values, `Symbol.kind` values, and framework patterns produced, and compute the delta vs the registries. That measurement IS the quantitative argument for the migration. Lab notebook entry; the number bounds the upside.\n\n## Suggested wave / sequencing\n\nCould land before OR after the INV-piroh fail-mode ratchet (Wave 3). The corpus's per-PR runtime is ~5-15s, so a hybrid model also works: small fixture every PR + nightly self-analysis for \"real-world interaction\" coverage of cross-pass behavior.\n\n## Acceptance\n\n- `scripts/check-schema-coverage` exists, fails-loud on new producers without fixture entries\n- `tests/fixtures/schema-coverage-corpus/` covers ≥95% of `evidence_type` + `Symbol.kind` + framework-patterns registries (measured by the static check)\n- CI gate `Schema conformance gate (INV-piroh, warning-only)` switches to `--input <corpus-analysis-output>`\n- Per-PR wall time for the gate drops to ≤30s\n- Lab notebook entry quantifies the coverage delta (before vs after)\n\n## Out of scope\n\n- Removing the self-analysis path entirely. Keep it as a nightly job for \"integration smoke\" — corpus tests can't easily exercise cross-pass behavior (e.g., file-symbol synthesis depending on dangling edges from many analyzers). Hybrid model.\n- Adding `--mode=fail` (Wave 3 promotion) — orthogonal.\n- Replacing other dogfooding runs (`bakeoff-broad`, `bakeoff-deep`) — they have different purposes (feature quality measurement, not schema validation).\n\n## Related\n\n- INV-piroh (the schema gate, currently warning-only — this is an efficiency improvement, not a sub-invariant)\n- ADR-0014 (stable_id schemes — corpus must exercise route / entry / typed / per-kind factories)\n- ADR-0027 / ADR-0028 (concept axes — corpus must exercise every `evidence_type` value in `edge_types.py`)\n- `scripts/check-edge-type-drift` (existing static drift check — pattern to extend for the corpus coverage check)"  # 3baa
     fields: {}  # 3baa
+- op: discuss  # 825b
+  at: '2026-05-18T20:57:36Z'  # 825b
+  by: agent  # 825b
+  actor: jgstern_agent  # 825b
+  clock: 2  # 825b
+  nonce: 825b  # 825b
+  message: "Merged as PR #3804, dev SHA ffabf6d67347."  # 825b
+- op: update  # 1298
+  at: '2026-05-18T20:58:29Z'  # 1298
+  by: agent  # 1298
+  actor: jgstern_agent  # 1298
+  clock: 3  # 1298
+  nonce: '1298'  # 1298
+  set:  # 1298
+    status: in_progress  # 1298
+- op: discuss  # aa02
+  at: '2026-05-18T20:58:29Z'  # aa02
+  by: agent  # aa02
+  actor: jgstern_agent  # aa02
+  clock: 4  # aa02
+  nonce: aa02  # aa02
+  message: "Foundation phase landed in PR #3803. scripts/check-schema-coverage runs hypergumbo against tests/fixtures/schema-coverage-corpus/ (10 fixture files, ~5s wall time) and asserts every canonical registry value appears in output, modulo baseline at .ci/schema-coverage-baseline.json. Ratchet mechanism: baseline shrinks via --update-baseline; positive delta in warning mode = CI fail. Initial baseline records 119 uncovered Symbol.kind, 44 uncovered Edge.type, 111 uncovered Edge.meta.evidence_type. Wired into verify-generated CI job. Side finding: Solidity emits kind='modifier' not in SYMBOL_KINDS — real axis-drift invisible to self-analysis; separate follow-up. Status stays in_progress — remaining WI-luzuh work (grow corpus, ratchet baseline, eventually promote to fail mode) is incremental."  # aa02
+- op: discuss  # 2bfb
+  at: '2026-05-18T23:32:30Z'  # 2bfb
+  by: agent  # 2bfb
+  actor: jgstern_agent  # 2bfb
+  clock: 5  # 2bfb
+  nonce: 2bfb  # 2bfb
+  message: "INV-piroh retirement (2026-05-18): folded jsonschema conformance check into check-schema-coverage. Per-PR CI step drops from 3.5min (self-analysis) to ~5s (corpus). Conformance baseline starts empty; any future producer regression that introduces a schema violation loud-fails immediately. scripts/check-schema-conformance and .ci/schema-conformance-baseline.json retire. Coverage ratchet path unchanged — corpus continues growing toward 0-baseline state, after which the gate flips to --mode=fail."  # 2bfb
+- op: discuss  # 573a
+  at: '2026-05-18T23:40:42Z'  # 573a
+  by: agent  # 573a
+  actor: jgstern_agent  # 573a
+  clock: 6  # 573a
+  nonce: 573a  # 573a
+  message: "Merged as PR #3807, dev SHA 50a196f0a4ac."  # 573a

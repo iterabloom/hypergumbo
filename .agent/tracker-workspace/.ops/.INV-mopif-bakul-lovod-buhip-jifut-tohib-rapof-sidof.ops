@@ -39,3 +39,20 @@
   nonce: ee2b  # ee2b
   set:  # ee2b
     parent: INV-dajaf-sibav-fadaj-rubip-zoguh-puraf-fisid-huvov  # ee2b
+- op: update  # 527f
+  at: '2026-05-18T22:36:11Z'  # 527f
+  by: agent  # 527f
+  actor: jgstern_agent  # 527f
+  clock: 4  # 527f
+  nonce: 527f  # 527f
+  set:  # 527f
+    status: pending_validation  # 527f
+  add:  # 527f
+    tags: [awaits_bakeoff_validation]  # 527f
+- op: discuss  # 8b85
+  at: '2026-05-18T22:36:11Z'  # 8b85
+  by: agent  # 8b85
+  actor: jgstern_agent  # 8b85
+  clock: 5  # 8b85
+  nonce: 8b85  # 8b85
+  message: "Fixed by PR (pending): harmonised audit-findings 0013 fold-target for http_client from 'function' to 'call_site', matching the precedent audit-findings 0010 sub-case (a) set for abi_call. linkers/http.py:1319-1347 now emits kind='call_site' + meta['call_kind']='http' + meta['framework_role']='http_client'. The 18 misclassified http_client Symbols on self-analysis (1 production at packages/htrac-frontend/public/service-worker.js:54 plus 17 test fixtures) now correctly identify as call sites, not function definitions. hypergumbo dead-code-maybe stops flagging the production fetch(event.request) as dead. Audit-findings 0013 amended with a 2026-05-18 row note documenting the harmonisation rationale and the internal-inconsistency-resolution path. Quantitative claim: 18 → 0 misclassified kind='function' http_client Symbols; awaits bakeoff to confirm no broader regressions (e.g., centrality weighting, slice filters)."  # 8b85
