@@ -1,0 +1,55 @@
+- op: create  # 1995
+  at: '2026-05-19T19:18:24Z'  # 1995
+  by: agent  # 1995
+  actor: jgstern_agent  # 1995
+  clock: 1  # 1995
+  nonce: '1995'  # 1995
+  data:  # 1995
+    kind: invariant  # 1995
+    title: "vue_component linker emits non-canonical file Symbol ids (sibling of INV-ronuf / INV-movor)"  # 1995
+    status: violated  # 1995
+    priority: 2  # 1995
+    parent:  # 1995
+    tags:  # 1995
+    - analysis_quality  # 1995
+    - cross_language_parity  # 1995
+    - protocol_linkers  # 1995
+    isbefore: []  # 1995
+    duplicate_of: []  # 1995
+    not_duplicate_of: []  # 1995
+    pr_ref:  # 1995
+    description: ""  # 1995
+    fields:  # 1995
+      statement: "Every file path has exactly one file-kind Symbol across all producers (analyzers and linkers). The vue_component linker violates this by emitting kind=\"file\" Symbols with id shape 'vue:{rel_path}:component_file:1:{name}' (legacy '_make_component_file_id') while the orchestrator's synthesize_file_symbols_for_dangling_edges emits canonical 'vue:{rel_path}:1-1:file:file' (make_file_id) for the same path. Two id shapes never collide; id-equality dedup misses every cross-producer case. Same structural shape as INV-ronuf (websocket, fixed by WI-hifol PR #3819) and INV-movor (js_module, fixed by PR #3823)."  # 1995
+      root_cause: "vue_component.py:_make_component_file_id returns f'vue:{rel_path}:component_file:1:{name}', a legacy id shape preserved across earlier audit work. No dedup against existing canonical file Symbols (no equivalent of WI-hifol's existing_symbol_ids or INV-movor's existing_file_symbol_by_canonical_id map). The fix is the exact INV-movor pattern: import make_file_id + make_file_stable_id from analyze.base, replace _make_component_file_id with make_file_id(lang='vue', path=rel_path), use make_file_stable_id for stable_id, and add a pre-pass map to skip Symbol emission when a canonical id already exists in ctx.symbols. Hypergumbo self-analysis has no .vue files so dogfood magnitude is 0 here; per-repo magnitude is bakeoff-validation territory."  # 1995
+- op: discuss  # f598
+  at: '2026-05-19T19:18:45Z'  # f598
+  by: agent  # f598
+  actor: jgstern_agent  # f598
+  clock: 2  # f598
+  nonce: f598  # f598
+  message: "Filed during cross-linker audit (task #74, 2026-05-19) after INV-movor PR #3823 merged. The audit method:\n\n1. `grep -ln 'kind=\"file\"' linkers/*.py` → 4 candidates (websocket, js_module, vue_component, route_handler).\n2. For each, inspect Symbol() construction:\n   - websocket.py — uses `_make_file_id` wrapper around canonical, dedups via `existing_symbol_ids`. ✅ Fixed by WI-hifol (PR #3819).\n   - js_module.py — uses canonical `make_file_id` directly, dedups via `existing_file_symbol_by_canonical_id`. ✅ Fixed by INV-movor (PR #3823).\n   - **vue_component.py — uses legacy `_make_component_file_id`, NO dedup against existing canonicals.** ❌ This invariant.\n   - route_handler.py — consumes module_file kind but doesn't construct file Symbols. ✅ N/A.\n\nOther patterns inspected:\n- `grpc.py::_make_symbol_id(file_path, line, name, kind)` — endpoint/call_site ids embedding file_path; not file-id namespace. ✅ Safe shape.\n- `swift_objc.py::_make_symbol_id` — same pattern. ✅ Safe shape.\n- `websocket.py::_make_symbol_id` — endpoint id; WI-hifol normalized inputs. ✅ Safe shape.\n\n**Fix scope (parallel to INV-movor PR #3823):**\n\n```python\n# vue_component.py\nfrom ..analyze.base import make_file_id, make_file_stable_id\n\n# replace _make_component_file_id with:\n# sym_id = make_file_id(\"vue\", rel_path)\n# stable_id = make_file_stable_id(\"vue\", rel_path)\n\n# in link_vue_components (around get_or_create_file_symbol):\n# Pre-pass map keyed on canonical id\nexisting_file_symbol_by_canonical_id: dict[str, Symbol] = {}\nfor sym in ctx.symbols:\n    if sym.kind == \"file\" and sym.language == \"vue\":\n        existing_file_symbol_by_canonical_id[make_file_id(\"vue\", sym.path)] = sym\n\n# in get_or_create_file_symbol:\nsym_id = make_file_id(\"vue\", rel_path)\nexisting = existing_file_symbol_by_canonical_id.get(sym_id)\nif existing is not None:\n    file_symbol_cache[rel_path] = existing\nelse:\n    # ... emit Symbol with canonical id + canonical stable_id\n```\n\n**Expected test coverage (parallel to TestInvMovorCanonicalFileIdReuse):**\n- `test_canonical_file_id_shape` — emitted Symbol id matches `vue:{path}:1-1:file:file`.\n- `test_skips_when_canonical_file_symbol_already_present` — no duplicate when canonical exists in input.\n- `test_stable_id_uses_canonical_helper` — uses `make_file_stable_id(\"vue\", path)`.\n\n**Test fixture update:** Search for any tests pinning `vue:{path}:component_file:1:{name}` and migrate to canonical.\n\n**Quantitative claim:** Magnitude TBD — hypergumbo self-analysis has no .vue files so dogfood is 0 here. Bakeoff validation on a Vue-heavy repo (Chatwoot has 1093 Vue component nodes per vue_component.py's docstring) would surface duplicate counts."  # f598
+- op: update  # 60ce
+  at: '2026-05-19T20:04:17Z'  # 60ce
+  by: agent  # 60ce
+  actor: jgstern_agent  # 60ce
+  clock: 3  # 60ce
+  nonce: 60ce  # 60ce
+  set:  # 60ce
+    status: satisfied  # 60ce
+- op: discuss  # 94df
+  at: '2026-05-19T20:04:17Z'  # 94df
+  by: agent  # 94df
+  actor: jgstern_agent  # 94df
+  clock: 4  # 94df
+  nonce: 94df  # 94df
+  message: "Fixed in PR #3825 (merged 2026-05-19). vue_component linker now imports make_file_id + make_file_stable_id from analyze.base, removes _make_component_file_id, uses canonical 'vue:{path}:1-1:file:file' for emitted file Symbols, and pre-pass existing_file_symbol_by_canonical_id ensures cross-producer dedup against orchestrator-synthesized canonicals. Three pin tests in TestInvBahovCanonicalFileIdReuse. Closes the file_id-shape identity family along with INV-ronuf (WI-hifol) and INV-movor (#3823). Vue-heavy bakeoff validation (Chatwoot, 1093 Vue component nodes) is the remaining empirical step; tagging awaits_bakeoff_validation."  # 94df
+- op: update  # c538
+  at: '2026-05-19T20:04:25Z'  # c538
+  by: agent  # c538
+  actor: jgstern_agent  # c538
+  clock: 5  # c538
+  nonce: c538  # c538
+  set: {}  # c538
+  add:  # c538
+    tags: [awaits_bakeoff_validation]  # c538

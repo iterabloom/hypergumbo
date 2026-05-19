@@ -28,3 +28,18 @@
   clock: 2  # 3b81
   nonce: 3b81  # 3b81
   message: "Filed during WI-hifol dogfood validation on 2026-05-19 self-analysis. After WI-hifol's WS-linker fix shipped (PR #3819, commit c926c2e5e3), INV-ronuf's quantitative claim moved 3 -> 0 (WS-origin duplicate file Symbols). The same self-analysis run revealed the IDENTICAL structural shape in js_module-linker-v1:\n\n5 paths with duplicate file-kind Symbols (origins = {javascript-v1, js-module-linker-v1}):\n  packages/htrac-frontend/src/components/item-detail.ts\n  packages/htrac-frontend/src/components/item-list.ts\n  packages/htrac-frontend/src/components/tracker-app.ts\n  packages/htrac-frontend/src/sw-register.ts\n  packages/htrac-frontend/src/ws-client.ts\n\nFix pattern (per WI-hifol PR #3819): in the js_module linker's link_*() top-level, after collecting patterns/files, normalize each file_path via paths.normalize_path + prefix-strip against repo_root to mirror the orchestrator's algorithm byte-for-byte. Same five-line pattern that fixed websocket.\n\nStructural Fix Protocol cross-linker audit recommended: every linker that constructs file-kind Symbol ids from Path objects yielded by file-walk helpers needs the same path-normalization treatment. Audit list:\n  - websocket (fixed by WI-hifol PR #3819)\n  - js_module (this invariant)\n  - <audit remaining linkers in packages/hypergumbo-core/src/hypergumbo_core/linkers/>\n\nQuantitative claim: js_module duplicate file Symbols on self-analysis: 5 -> 0 expected after fix."  # 3b81
+- op: update  # 522c
+  at: '2026-05-19T19:18:08Z'  # 522c
+  by: agent  # 522c
+  actor: jgstern_agent  # 522c
+  clock: 3  # 522c
+  nonce: 522c  # 522c
+  set:  # 522c
+    status: satisfied  # 522c
+- op: discuss  # 9782
+  at: '2026-05-19T19:18:08Z'  # 9782
+  by: agent  # 9782
+  actor: jgstern_agent  # 9782
+  clock: 4  # 9782
+  nonce: '9782'  # 9782
+  message: "Shipped via PR #3823 (merged at 4549106aec). linkers/js_module.py now uses make_file_id(lang, rel_path) for emitted file Symbol ids (canonical :1-1:file:file shape), make_file_stable_id for stable_id, and a pre-pass existing_file_symbol_by_canonical_id map for cross-producer dedup against orchestrator-synthesized canonical file Symbols. _make_module_file_id helper removed. Dogfood: 5 → 0 duplicate file Symbols on htrac-frontend .ts paths in hypergumbo self-analysis; js-module-linker-v1 now emits 0 file Symbols total (every resolved import target reuses existing canonical). Three new tests in TestInvMovorCanonicalFileIdReuse pin the fix. Full suite: 2552 passed; 100% coverage. Test fixture in test_route_handler_linker.py:2143 updated from legacy id to canonical."  # 9782
