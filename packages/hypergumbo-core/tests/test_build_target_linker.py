@@ -40,6 +40,8 @@ def _make_edge(
         src=src, dst=dst, edge_type=edge_type, line=line,
         confidence=1.0, origin=make_pass_id("test"),
         meta=meta,
+
+        origin_run_id="test",
     )
 
 

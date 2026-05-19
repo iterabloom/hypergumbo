@@ -277,6 +277,8 @@ def _extract_glsl_edges(
     local_symbols: dict[str, Symbol],
     edges: list[Edge],
     resolver: "NameResolver",
+    *,
+    run_id: str,
 ) -> None:
     """Extract call edges from GLSL AST tree (pass 2).
 
@@ -311,6 +313,7 @@ def _extract_glsl_edges(
                     confidence=confidence,
                     origin=PASS_ID,
                     evidence_type="static",
+                    origin_run_id=run_id,
                 )
                 edges.append(edge)
 
@@ -355,7 +358,7 @@ class GlslAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract call edges from a GLSL file."""
         edges: list[Edge] = []
-        _extract_glsl_edges(tree, source, local_symbols, edges, resolver)
+        _extract_glsl_edges(tree, source, local_symbols, edges, resolver, run_id=run.execution_id)
         return edges
 
 

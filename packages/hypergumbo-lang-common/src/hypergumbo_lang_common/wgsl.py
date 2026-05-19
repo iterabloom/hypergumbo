@@ -348,6 +348,8 @@ def _extract_wgsl_edges(
     local_symbols: dict[str, Symbol],
     edges: list[Edge],
     resolver: "NameResolver",
+    *,
+    run_id: str,
 ) -> None:
     """Extract call edges from WGSL AST tree (pass 2).
 
@@ -389,6 +391,7 @@ def _extract_wgsl_edges(
                     confidence=confidence,
                     origin=PASS_ID,
                     evidence_type="static",
+                    origin_run_id=run_id,
                 )
                 edges.append(edge)
 
@@ -433,7 +436,7 @@ class WgslAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract call edges from a WGSL file."""
         edges: list[Edge] = []
-        _extract_wgsl_edges(tree, source, local_symbols, edges, resolver)
+        _extract_wgsl_edges(tree, source, local_symbols, edges, resolver, run_id=run.execution_id)
         return edges
 
 

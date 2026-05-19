@@ -4912,7 +4912,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
 
     if seeds_mode in ("entrypoints", "all"):
         from .entrypoints import detect_entrypoints
-        from .ir import Symbol, Edge, Span
+        from .ir import LEGACY_DESERIALIZED_SENTINEL, Symbol, Edge, Span
 
         # Convert dict nodes/edges to IR objects for detect_entrypoints
         ir_nodes = []
@@ -4936,6 +4936,10 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
 
         ir_edges = []
         for e in edges:
+            # WI-higap: this path reconstructs Edges from a previously-saved
+            # behavior map. Preserve the original origin / origin_run_id where
+            # available, falling back to the deserialization sentinel for
+            # legacy maps that pre-date producer fixes.
             ir_edges.append(Edge(
                 id=e.get("id", ""),
                 src=e.get("src", ""),
@@ -4943,6 +4947,8 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 edge_type=e.get("type", "calls"),
                 line=e.get("line", 0),
                 confidence=e.get("confidence", 0.85),
+                origin=e.get("origin") or LEGACY_DESERIALIZED_SENTINEL,
+                origin_run_id=e.get("origin_run_id") or LEGACY_DESERIALIZED_SENTINEL,
             ))
 
         min_conf = getattr(args, "min_confidence", 0.0)

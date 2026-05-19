@@ -34,7 +34,7 @@ def _sym(id: str, path: str) -> Symbol:
 
 
 def _edge(src: str, dst: str) -> Edge:
-    return Edge(id="e1", src=src, dst=dst, edge_type="calls", line=1)
+    return Edge(id="e1", src=src, dst=dst, edge_type="calls", line=1, origin="test", origin_run_id="test")
 
 
 class TestRelativizeIRPaths:

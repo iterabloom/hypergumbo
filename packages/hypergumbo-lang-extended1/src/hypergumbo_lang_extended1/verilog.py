@@ -289,6 +289,7 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
                         origin=PASS_ID,
                         evidence_type="verilog_instantiation",
                         meta=edge_meta,
+                        origin_run_id=run.execution_id,
                     )
                     edges.append(edge)
 

@@ -230,7 +230,8 @@ def _extract_symbols_from_file(
 
 
 def _extract_edges_from_file(
-    rel_path: str, source_bytes: bytes, tree: "tree_sitter.Tree", labels: set[str]
+    rel_path: str, source_bytes: bytes, tree: "tree_sitter.Tree", labels: set[str],
+    *, run_id: str,
 ) -> list[Edge]:
     """Extract edges from a parsed LaTeX file."""
     edges = []
@@ -259,6 +260,7 @@ def _extract_edges_from_file(
                     line=node.start_point[0] + 1,
                     origin=PASS_ID,
                     evidence_type="ast_ref",
+                    origin_run_id=run_id,
                 )
             )
             edges[-1].meta = {"ref_type": "label"}
@@ -285,6 +287,7 @@ def _extract_edges_from_file(
                             line=node.start_point[0] + 1,
                             origin=PASS_ID,
                             evidence_type="ast_cite",
+                            origin_run_id=run_id,
                         )
                     )
                     edges[-1].meta = {"ref_type": "citation"}
@@ -308,6 +311,7 @@ def _extract_edges_from_file(
                     line=node.start_point[0] + 1,
                     origin=PASS_ID,
                     evidence_type="ast_include",
+                    origin_run_id=run_id,
                 )
             )
             edges[-1].meta = {"include_type": node.type}
@@ -335,6 +339,7 @@ def _extract_edges_from_file(
                             line=node.start_point[0] + 1,
                             origin=PASS_ID,
                             evidence_type="ast_package",
+                            origin_run_id=run_id,
                         )
                     )
                     edges[-1].meta = {"import_type": "package"}
@@ -397,7 +402,7 @@ class LatexAnalyzer(TreeSitterAnalyzer):
         # Build labels set from global symbols
         labels = {sym.name for sym in global_symbols.values()
                   if isinstance(sym, Symbol) and sym.kind == "label"}
-        return _extract_edges_from_file(rel_path, source, tree, labels)
+        return _extract_edges_from_file(rel_path, source, tree, labels, run_id=run.execution_id)
 
     def analyze(self, repo_root: Path, max_files=None) -> AnalysisResult:
         """Override analyze to use custom file discovery."""
@@ -453,7 +458,7 @@ class LatexAnalyzer(TreeSitterAnalyzer):
         # Pass 2: Extract edges
         for file_path, (source_bytes, tree) in file_trees.items():
             rel_path = str(file_path.relative_to(repo_root))
-            file_edges = _extract_edges_from_file(rel_path, source_bytes, tree, labels)
+            file_edges = _extract_edges_from_file(rel_path, source_bytes, tree, labels, run_id=run.execution_id)
             edges.extend(file_edges)
 
         # Update run stats

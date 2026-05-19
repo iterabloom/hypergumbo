@@ -144,6 +144,8 @@ def _process_css_tree(
     rel_path: str,
     source: bytes,
     file_symbol_id: str,
+    *,
+    run_id: str,
 ) -> None:
     """Process a CSS AST tree and extract symbols using iterative traversal."""
     for node in iter_tree(root_node):
@@ -163,6 +165,7 @@ def _process_css_tree(
                         line=start_line,
                         confidence=1.0,
                         origin=PASS_ID,
+                        origin_run_id=run_id,
                     )
                 )
 
@@ -427,6 +430,8 @@ class CSSAnalyzer(TreeSitterAnalyzer):
                 # Process the tree
                 _process_css_tree(
                     tree.root_node, symbols, edges, rel_path, source, file_symbol_id
+                ,
+                    run_id=run.execution_id,
                 )
 
             except (OSError, IOError) as e:  # pragma: no cover

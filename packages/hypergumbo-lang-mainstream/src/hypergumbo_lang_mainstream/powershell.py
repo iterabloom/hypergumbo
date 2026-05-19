@@ -188,6 +188,8 @@ def _process_import_module(
     source: bytes,
     file_path: str,
     edges: list[Edge],
+    *,
+    run_id: str,
 ) -> None:
     """Process Import-Module command to extract module name."""
     elements_node = find_child_by_type(node, "command_elements")
@@ -201,6 +203,8 @@ def _process_import_module(
                         dst=f"powershell:?:?:{module_text}:module",
                         edge_type="imports",
                         line=node.start_point[0] + 1,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
                     ))
                     return
 
@@ -210,6 +214,8 @@ def _process_using_command(
     source: bytes,
     file_path: str,
     edges: list[Edge],
+    *,
+    run_id: str,
 ) -> None:
     """Process 'using' command to extract module imports."""
     elements_node = find_child_by_type(node, "command_elements")
@@ -226,6 +232,8 @@ def _process_using_command(
                 dst=f"powershell:?:?:{module_name}:module",
                 edge_type="imports",
                 line=node.start_point[0] + 1,
+                origin=PASS_ID,
+                origin_run_id=run_id,
             ))
 
 
@@ -293,9 +301,9 @@ def _extract_powershell_edges(
                 command_name = node_text(command_name_node, source).strip()
 
                 if command_name.lower() == "import-module":
-                    _process_import_module(node, source, file_path, edges)
+                    _process_import_module(node, source, file_path, edges, run_id=run_id)
                 elif command_name.lower() == "using":
-                    _process_using_command(node, source, file_path, edges)
+                    _process_using_command(node, source, file_path, edges, run_id=run_id)
                 else:
                     # Check if inside a function, fall back to module symbol
                     caller = _find_enclosing_function_powershell(node, source, local_symbols) or module_symbol

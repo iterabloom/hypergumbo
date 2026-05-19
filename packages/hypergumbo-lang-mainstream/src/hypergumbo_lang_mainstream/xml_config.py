@@ -146,6 +146,8 @@ def _process_maven_dependency(
     symbols: list[Symbol],
     edges: list[Edge],
     project_id: Optional[str],
+    *,
+    run_id: str,
 ) -> None:
     """Extract Maven dependency information."""
     group_id = None
@@ -210,6 +212,7 @@ def _process_maven_dependency(
                 confidence=0.95,
                 origin=PASS_ID,
                 evidence_type="static",
+                origin_run_id=run_id,
             )
             edges.append(edge)
 
@@ -245,6 +248,8 @@ def _process_maven_pom(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    *,
+    run_id: str,
 ) -> None:
     """Process Maven pom.xml file."""
     # Find the project element
@@ -308,7 +313,7 @@ def _process_maven_pom(
     # Process dependencies
     for deps_elem in _find_child_elements(project_node, source, "dependencies"):
         for dep_elem in _find_child_elements(deps_elem, source, "dependency"):
-            _process_maven_dependency(dep_elem, source, rel_path, symbols, edges, project_id)
+            _process_maven_dependency(dep_elem, source, rel_path, symbols, edges, project_id, run_id=run_id)
 
     # Extract <mainClass> from plugin configurations.
     # Appears in maven-jar-plugin (archive/manifest/mainClass),
@@ -327,6 +332,7 @@ def _process_maven_pom(
                     line=line,
                     confidence=1.0,
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
             )
 
@@ -577,7 +583,7 @@ class XmlAnalyzer(TreeSitterAnalyzer):
 
                 # Process based on type
                 if xml_type == "maven":
-                    _process_maven_pom(tree.root_node, source, rel_path, symbols, edges)
+                    _process_maven_pom(tree.root_node, source, rel_path, symbols, edges, run_id=run.execution_id)
                 elif xml_type == "android_manifest":
                     _process_android_manifest(tree.root_node, source, rel_path, symbols, edges)
                 # Generic XML and layouts are not extracted (too noisy)

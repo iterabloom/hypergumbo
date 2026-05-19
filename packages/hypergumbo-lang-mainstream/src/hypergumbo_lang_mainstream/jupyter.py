@@ -48,7 +48,7 @@ from typing import Iterator
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 
 PASS_ID = make_pass_id("jupyter")
 
@@ -159,6 +159,8 @@ def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -
 def _analyze_notebook_file(
     nb_path: Path,
     repo_root: Path,
+    *,
+    run_id: str,
 ) -> tuple[list[Symbol], list[Edge]]:
     """Analyze a single notebook file.
 
@@ -301,6 +303,7 @@ def _analyze_notebook_file(
                         line=call_line,
                         origin=PASS_ID,
                         evidence_type="ast_call_direct",
+                        origin_run_id=run_id,
                     )
                     edges.append(edge)
 
@@ -333,11 +336,14 @@ def analyze_jupyter(
     Returns:
         AnalysisResult with symbols, edges, and provenance.
     """
+    # WI-higap: create run so Edge constructions can stamp origin_run_id.
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
 
     for nb_path in _find_notebook_files(repo_root, max_files=max_files):
-        symbols, edges = _analyze_notebook_file(nb_path, repo_root)
+        symbols, edges = _analyze_notebook_file(nb_path, repo_root, run_id=run.execution_id)
         all_symbols.extend(symbols)
         all_edges.extend(edges)
 
@@ -345,4 +351,5 @@ def analyze_jupyter(
         symbols=all_symbols,
         edges=all_edges,
         usage_contexts=[],
+        run=run,
     )

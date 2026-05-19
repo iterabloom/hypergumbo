@@ -353,6 +353,8 @@ class TestFindThirdPartySubclasses:
         )
         edge = Edge.create(
             src=wrapper.id, dst=base.id, edge_type="extends", line=1,
+
+            origin="test", origin_run_id="test",
         )
         subs = _find_third_party_subclasses(
             [wrapper, base], edges=[edge],

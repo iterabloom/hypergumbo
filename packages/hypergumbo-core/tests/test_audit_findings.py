@@ -1062,7 +1062,7 @@ verdicts:
     (pkg_dir / "leak.py").write_text(
         'from foo import Edge\n'
         'def emit():\n'
-        '    return Edge(evidence_type="same_string_xyz", id="x")\n'
+        '    return Edge(evidence_type="same_string_xyz", id="x", origin="test", origin_run_id="test")\n'
     )
 
     errors = find_zero_producer_violations(tmp_path, [findings])

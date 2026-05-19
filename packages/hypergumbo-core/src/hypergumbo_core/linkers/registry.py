@@ -683,14 +683,20 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
         detected_frameworks=ctx.detected_frameworks,
         detected_languages=ctx.detected_languages,
     )
-    enclosure_edges = _connect_synthetic_to_enclosing(enclosure_ctx, all_linker_symbols)
+    from ..ir import PASS_VERSION, AnalysisRun, make_pass_id
+    enclosure_pass_id = make_pass_id("enclosure-linker")
+    enclosure_run = AnalysisRun.create(  # nosec B106 - pass_id is not a password
+        pass_id=enclosure_pass_id,
+        version=PASS_VERSION,
+    )
+    enclosure_edges = _connect_synthetic_to_enclosing(
+        enclosure_ctx,
+        all_linker_symbols,
+        pass_id=enclosure_pass_id,
+        run_id=enclosure_run.execution_id,
+    )
     if enclosure_edges:
-        from ..ir import PASS_VERSION, AnalysisRun, make_pass_id
-        run = AnalysisRun.create(  # nosec B106 - pass_id is not a password
-            pass_id=make_pass_id("enclosure-linker"),
-            version=PASS_VERSION,
-        )
-        results.append(("enclosure", LinkerResult(edges=enclosure_edges, run=run)))
+        results.append(("enclosure", LinkerResult(edges=enclosure_edges, run=enclosure_run)))
 
     return results
 
@@ -749,6 +755,9 @@ def _is_synthetic_node(sym: "Symbol") -> bool:
 def _connect_synthetic_to_enclosing(
     ctx: LinkerContext,
     linker_symbols: list["Symbol"],
+    *,
+    pass_id: str,
+    run_id: str,
 ) -> list["Edge"]:
     """Connect synthetic nodes to their enclosing functions.
 
@@ -827,7 +836,8 @@ def _connect_synthetic_to_enclosing(
             edge_type="uses",
             line=sym.span.start_line,
             confidence=0.9,
-            origin="enclosure-linker-v1",
+            origin=pass_id,
+            origin_run_id=run_id,
             evidence_type="enclosing_scope",
         ))
 

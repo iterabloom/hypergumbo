@@ -1541,6 +1541,7 @@ class Helper {
         # Extract edges with imports
         edges = _extract_edges_from_file(
             caller_file, parser, local_symbols, global_symbols, imports, run
+        ,
         )
 
         # Verify edges were created (imports dict is being passed through)

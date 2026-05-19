@@ -137,6 +137,8 @@ def _process_dockerfile_tree(
     edges: list[Edge],
     stage_registry: dict[str, str],
     stage_counter: list[int],
+    *,
+    run_id: str,
 ) -> None:
     """Process Dockerfile AST tree to extract symbols and edges.
 
@@ -197,6 +199,7 @@ def _process_dockerfile_tree(
                     confidence=0.95,
                     origin=PASS_ID,
                     evidence_type="dockerfile_from",
+                    origin_run_id=run_id,
                 )
                 edges.append(edge)
 
@@ -309,6 +312,7 @@ def _process_dockerfile_tree(
                         confidence=0.95,
                         origin=PASS_ID,
                         evidence_type="dockerfile_copy_from",
+                        origin_run_id=run_id,
                     )
                     edges.append(edge)
 
@@ -388,6 +392,8 @@ class DockerfileAnalyzer(TreeSitterAnalyzer):
                     edges,
                     stage_registry,
                     stage_counter,
+
+                    run_id=run.execution_id,
                 )
 
             except Exception as e:  # pragma: no cover

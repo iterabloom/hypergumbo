@@ -58,6 +58,8 @@ class TestBuildInheritanceMaps:
             line=1,
             origin="java-v1",
             evidence_type="ast_extends",
+
+            origin_run_id="test",
         )
 
         parent_to_children, interface_to_impls = build_inheritance_maps(
@@ -96,6 +98,8 @@ class TestBuildInheritanceMaps:
             line=1,
             origin="java-v1",
             evidence_type="ast_implements",
+
+            origin_run_id="test",
         )
 
         parent_to_children, interface_to_impls = build_inheritance_maps(
@@ -159,6 +163,8 @@ class TestFindImplementingMethods:
             line=1,
             origin="java-v1",
             evidence_type="ast_extends",
+
+            origin_run_id="test",
         )
 
         parent_to_children, _ = build_inheritance_maps(
@@ -230,6 +236,8 @@ class TestLinkTypeHierarchy:
             line=1,
             origin="java-v1",
             evidence_type="ast_extends",
+
+            origin_run_id="test",
         )
 
         symbols = [parent_class, parent_method, child_class, child_method]
@@ -299,6 +307,8 @@ class TestLinkTypeHierarchy:
             line=1,
             origin="java-v1",
             evidence_type="ast_implements",
+
+            origin_run_id="test",
         )
 
         symbols = [interface, interface_method, impl_class, impl_method]
@@ -368,6 +378,8 @@ class TestLinkTypeHierarchy:
             line=1,
             origin="java-v1",
             evidence_type="ast_extends",
+
+            origin_run_id="test",
         )
 
         symbols = [parent_class, parent_method, child_class, child_method]
@@ -452,6 +464,8 @@ class TestLinkTypeHierarchy:
             line=1,
             origin="java-v1",
             evidence_type="ast_extends",
+
+            origin_run_id="test",
         )
         extends_edge2 = Edge.create(
             src=square_class.id,
@@ -460,6 +474,8 @@ class TestLinkTypeHierarchy:
             line=1,
             origin="java-v1",
             evidence_type="ast_extends",
+
+            origin_run_id="test",
         )
 
         symbols = [
@@ -568,6 +584,8 @@ class TestLinkTypeHierarchy:
                 line=10,
                 origin="go-v1",
                 evidence_type="ast_implements",
+
+                origin_run_id="test",
             )
             for c in concretes
         ]
@@ -778,6 +796,8 @@ class TestEdgeCases:
             line=1,
             origin="test",
             evidence_type="test",
+
+            origin_run_id="test",
         )
 
         ctx = LinkerContext(
@@ -903,6 +923,8 @@ class TestDuplicateHandling:
             line=1,
             origin="java-v1",
             evidence_type="ast_implements",
+
+            origin_run_id="test",
         )
         implements_edge2 = Edge.create(
             src=impl_class.id,
@@ -911,6 +933,8 @@ class TestDuplicateHandling:
             line=2,  # Different line to make unique edge
             origin="java-v1",
             evidence_type="ast_implements",
+
+            origin_run_id="test",
         )
 
         symbols = [interface, interface_method, impl_class, impl_method]
@@ -984,6 +1008,8 @@ class TestTestFileConfidencePenalty:
         )
         extends_edge = Edge.create(
             src=child.id, dst=parent.id, edge_type="extends", line=1,
+
+            origin="test", origin_run_id="test",
         )
         ctx = LinkerContext(
             symbols=[parent, parent_method, child, child_method],
@@ -1038,6 +1064,8 @@ class TestTestFileConfidencePenalty:
             )
             edge = Edge.create(
                 src=cls.id, dst=parent.id, edge_type="implements", line=1,
+
+                origin="test", origin_run_id="test",
             )
             impl_symbols.append(cls)
             impl_methods.append(method)
@@ -1091,6 +1119,8 @@ class TestTestFileConfidencePenalty:
         )
         extends_edge = Edge.create(
             src=child.id, dst=parent.id, edge_type="extends", line=1,
+
+            origin="test", origin_run_id="test",
         )
         ctx = LinkerContext(
             symbols=[parent, parent_method, child, child_method],
@@ -1133,6 +1163,8 @@ class TestTestFileConfidencePenalty:
         )
         extends_edge = Edge.create(
             src=test_child.id, dst=parent.id, edge_type="extends", line=1,
+
+            origin="test", origin_run_id="test",
         )
         ctx = LinkerContext(
             symbols=[parent, parent_method, test_child, test_method],
@@ -1217,6 +1249,8 @@ class TestPerLanguageConcreteExtendsDispatch:
             edges.append(Edge.create(
                 src=cs.id, dst=parent_s.id, edge_type="extends",
                 line=1, origin=f"{lang}-v1", evidence_type="ast_extends",
+
+                origin_run_id="test",
             ))
         ctx = LinkerContext(
             repo_root="/app", symbols=symbols, edges=edges,
@@ -1309,6 +1343,8 @@ class TestPerLanguageConcreteExtendsDispatch:
         implements_edge = Edge.create(
             src=impl_struct.id, dst=iface.id, edge_type="implements",
             line=10, origin="go-v1", evidence_type="ast_implements",
+
+            origin_run_id="test",
         )
         ctx = LinkerContext(
             repo_root="/app",
@@ -1371,11 +1407,15 @@ class TestPerLanguageConcreteExtendsDispatch:
         extends_edge = Edge.create(
             src="java:/app/UNKNOWN.java:1-5:Ghost:class",
             dst=parent.id, edge_type="extends", line=1,
+
+            origin="test", origin_run_id="test",
         )
         # The actual child is wired via a second normal extends edge
         # so the test still produces *some* dispatch graph state.
         normal_extends = Edge.create(
             src=child.id, dst=parent.id, edge_type="extends", line=1,
+
+            origin="test", origin_run_id="test",
         )
         ctx = LinkerContext(
             repo_root="/app",
@@ -1474,8 +1514,8 @@ class TestSkipLevelDispatch:
         c_foo = self._make_method("C.foo")
 
         edges = [
-            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1),
-            Edge.create(src=c.id, dst=b.id, edge_type="extends", line=1),
+            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=c.id, dst=b.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         ctx = LinkerContext(
             repo_root="/app", symbols=[a, a_foo, b, c, c_foo], edges=edges,
@@ -1495,8 +1535,8 @@ class TestSkipLevelDispatch:
         c_foo = self._make_method("C.foo")
 
         edges = [
-            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1),
-            Edge.create(src=c.id, dst=b.id, edge_type="extends", line=1),
+            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=c.id, dst=b.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         ctx = LinkerContext(
             repo_root="/app", symbols=[a, a_foo, b, b_foo, c, c_foo], edges=edges,
@@ -1521,10 +1561,10 @@ class TestSkipLevelDispatch:
         d = self._make_class("D")
         d_foo = self._make_method("D.foo")
         edges = [
-            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1),
-            Edge.create(src=c.id, dst=a.id, edge_type="extends", line=1),
-            Edge.create(src=d.id, dst=b.id, edge_type="extends", line=1),
-            Edge.create(src=d.id, dst=c.id, edge_type="extends", line=1),
+            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=c.id, dst=a.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=d.id, dst=b.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=d.id, dst=c.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         ctx = LinkerContext(
             repo_root="/app", symbols=[a, a_foo, b, c, d, d_foo], edges=edges,
@@ -1542,7 +1582,7 @@ class TestSkipLevelDispatch:
         a_foo = self._make_method("A.foo")
         b = self._make_class("B")
         b_foo = self._make_method("B.foo")
-        edges = [Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1)]
+        edges = [Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1, origin="test", origin_run_id="test")]
         ctx = LinkerContext(
             repo_root="/app", symbols=[a, a_foo, b, b_foo], edges=edges,
         )
@@ -1588,8 +1628,8 @@ class TestSkipLevelDispatch:
             origin="go-v1", origin_run_id="test",
         )
         edges = [
-            Edge.create(src=bar_impl.id, dst=ibar.id, edge_type="implements", line=1),
-            Edge.create(src=ibar.id, dst=ifoo.id, edge_type="extends", line=1),
+            Edge.create(src=bar_impl.id, dst=ibar.id, edge_type="implements", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=ibar.id, dst=ifoo.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         ctx = LinkerContext(
             repo_root="/app",
@@ -1647,8 +1687,8 @@ class TestSkipLevelDispatch:
             origin="go-v1", origin_run_id="test",
         )
         edges = [
-            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1),
-            Edge.create(src=c.id, dst=b.id, edge_type="extends", line=1),
+            Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=c.id, dst=b.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         ctx = LinkerContext(
             repo_root="/app", symbols=[a, a_foo, b, c, c_foo], edges=edges,
@@ -1719,10 +1759,10 @@ class TestSkipLevelDispatch:
             origin="typescript-v1", origin_run_id="test",
         )
         edges = [
-            Edge.create(src=impl.id, dst=i3.id, edge_type="implements", line=1),
-            Edge.create(src=i3.id, dst=i2.id, edge_type="extends", line=1),
-            Edge.create(src=i2.id, dst=i1.id, edge_type="extends", line=1),
-            Edge.create(src=i1.id, dst=i0.id, edge_type="extends", line=1),
+            Edge.create(src=impl.id, dst=i3.id, edge_type="implements", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=i3.id, dst=i2.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=i2.id, dst=i1.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=i1.id, dst=i0.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         ctx = LinkerContext(
             repo_root="/app",
@@ -1778,8 +1818,8 @@ class TestSkipLevelDispatch:
             origin="typescript-v1", origin_run_id="test",
         )
         edges = [
-            Edge.create(src=impl.id, dst=ibar.id, edge_type="implements", line=1),
-            Edge.create(src=ibar.id, dst=ifoo.id, edge_type="extends", line=1),
+            Edge.create(src=impl.id, dst=ibar.id, edge_type="implements", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=ibar.id, dst=ifoo.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         ctx = LinkerContext(
             repo_root="/app",

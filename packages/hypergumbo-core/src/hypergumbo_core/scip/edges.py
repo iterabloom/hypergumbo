@@ -82,6 +82,7 @@ def scip_index_to_edges(
     index: scip_pb2.Index,
     *,
     resolve_symbol: Optional[Callable[[str], Optional[str]]] = None,
+    run_id: str,
 ) -> List[Edge]:
     """Emit hypergumbo ``Edge`` objects from a parsed SCIP ``Index``.
 
@@ -129,6 +130,7 @@ def scip_index_to_edges(
                             "scip_dst_symbol": dst_raw,
                             "scip_relationship_flag": flag_name,
                         },
+                        origin_run_id=run_id,
                     ))
     return out
 

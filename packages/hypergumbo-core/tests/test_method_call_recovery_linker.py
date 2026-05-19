@@ -55,6 +55,8 @@ def _edge(src: str, dst: str, edge_type: str, line: int = 10,
         line=line,
         origin="test",
         evidence_type=evidence_type,
+
+        origin_run_id="test",
     )
 
 

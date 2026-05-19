@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, make_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -70,6 +70,8 @@ def analyze_blade(
     repo_root: Path, max_files: int | None = None
 ) -> AnalysisResult:
     """Analyze Blade template files for sections, components, and layout inheritance."""
+    # WI-higap: create run so Edge constructions can stamp origin_run_id.
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
@@ -126,7 +128,7 @@ def analyze_blade(
                     line=line_num,
                     confidence=0.85,
                     origin=PASS_ID,
-                    origin_run_id="",
+                    origin_run_id=run.execution_id,
                     evidence_type="extends",
                     meta={"template": name},
                 ))
@@ -145,4 +147,4 @@ def analyze_blade(
                     origin_run_id="",
                 ))
 
-    return AnalysisResult(symbols=symbols, edges=edges, usage_contexts=[])
+    return AnalysisResult(symbols=symbols, edges=edges, usage_contexts=[], run=run)

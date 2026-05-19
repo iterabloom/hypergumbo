@@ -76,6 +76,8 @@ def make_edge(
         edge_type=edge_type,
         line=1,
         confidence=confidence,
+
+        origin="test", origin_run_id="test",
     )
 
 

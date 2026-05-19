@@ -2730,6 +2730,8 @@ def _extract_edges_from_file(
             node_kinds=("selector_expression",),
             object_field_names=("operand",),
             property_field_names=("field",),
+            pass_id=PASS_ID,
+            run_id=run.execution_id,
             call_node_kinds=("call_expression",),
             call_function_field_names=("function",),
         )
@@ -3327,6 +3329,7 @@ def _extract_go_routes(
                                                         origin=PASS_ID,
                                                         evidence_type="closure_wrapper",
                                                         confidence=0.85,
+                                                        origin_run_id=run.execution_id,
                                                     ))
 
                                 route_sym = Symbol(
@@ -3445,6 +3448,7 @@ def _extract_go_routes(
                                                         origin=PASS_ID,
                                                         evidence_type="closure_wrapper",
                                                         confidence=0.85,
+                                                        origin_run_id=run.execution_id,
                                                     ))
 
                                 route_sym = Symbol(

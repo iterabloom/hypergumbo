@@ -222,6 +222,7 @@ def _extract_hlsl_edges(
                 confidence=confidence,
                 origin=PASS_ID,
                 evidence_type="static",
+                origin_run_id=run_id,
             )
             edges.append(edge)
 

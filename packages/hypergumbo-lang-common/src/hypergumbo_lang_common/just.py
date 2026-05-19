@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -68,9 +68,12 @@ def find_just_files(
 
 @register_analyzer("just", supports_max_files=True)
 def analyze_just(
-    repo_root: Path, max_files: int | None = None
+    repo_root: Path, max_files: int | None = None,
 ) -> AnalysisResult:
     """Analyze justfiles for recipes, variables, and dependencies."""
+    # WI-higap: create run so Edge constructions can stamp origin_run_id.
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+    run_id = run.execution_id
     symbols: list[Symbol] = []
     edges: list[Edge] = []
 
@@ -157,6 +160,7 @@ def analyze_just(
                                 line=line_num,
                                 origin=PASS_ID,
                                 evidence_type="recipe_dependency",
+                                origin_run_id=run_id,
                             ))
 
-    return AnalysisResult(symbols=symbols, edges=edges, usage_contexts=[])
+    return AnalysisResult(symbols=symbols, edges=edges, usage_contexts=[], run=run)

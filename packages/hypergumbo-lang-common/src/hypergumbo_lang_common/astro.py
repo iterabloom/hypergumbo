@@ -213,7 +213,7 @@ class _AstroFileExtractor:
                             line=line_num,
                             confidence=0.85,
                             origin=PASS_ID,
-                            origin_run_id="",
+                            origin_run_id=self._execution_id,
                             evidence_type="import",
                             meta={
                                 "import_name": default_import,

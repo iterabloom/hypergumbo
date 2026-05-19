@@ -245,6 +245,8 @@ def test_edge_has_edge_key() -> None:
         dst="python:b.py:3-4:bar:function",
         edge_type="calls",
         line=5,
+
+        origin="test", origin_run_id="test",
     )
 
     assert hasattr(edge, "edge_key")
@@ -264,12 +266,16 @@ def test_edge_id_unique_per_line() -> None:
         dst="python:b.py:3-4:bar:function",
         edge_type="calls",
         line=10,
+
+        origin="test", origin_run_id="test",
     )
     edge2 = Edge.create(
         src="python:a.py:1-2:foo:function",
         dst="python:b.py:3-4:bar:function",
         edge_type="calls",
         line=20,
+
+        origin="test", origin_run_id="test",
     )
 
     # Different lines MUST produce different IDs
@@ -294,18 +300,24 @@ def test_deduplicate_edges_collapses_same_key() -> None:
         dst="ruby:b.rb:3-4:Baz#qux:method",
         edge_type="calls",
         line=10,
+
+        origin="test", origin_run_id="test",
     )
     edge2 = Edge.create(
         src="ruby:a.rb:1-2:Foo#bar:method",
         dst="ruby:b.rb:3-4:Baz#qux:method",
         edge_type="calls",
         line=20,
+
+        origin="test", origin_run_id="test",
     )
     edge3 = Edge.create(
         src="ruby:a.rb:1-2:Foo#bar:method",
         dst="ruby:c.rb:5-6:Other#func:method",
         edge_type="calls",
         line=15,
+
+        origin="test", origin_run_id="test",
     )
 
     result = deduplicate_edges([edge1, edge2, edge3])
@@ -325,12 +337,16 @@ def test_deduplicate_edges_removes_self_loops() -> None:
         dst="python:b.py:3-4:bar:function",
         edge_type="calls",
         line=10,
+
+        origin="test", origin_run_id="test",
     )
     self_loop = Edge.create(
         src="python:a.py:1-2:foo:function",
         dst="python:a.py:1-2:foo:function",
         edge_type="calls",
         line=20,
+
+        origin="test", origin_run_id="test",
     )
 
     result = deduplicate_edges([normal, self_loop], remove_self_loops=True)
@@ -341,7 +357,7 @@ def test_deduplicate_edges_removes_self_loops() -> None:
 def test_deduplicate_edges_handles_none_edge_key() -> None:
     """Edges with edge_key=None must not collapse into a single edge.
 
-    Regression test: Edge() constructor (not Edge.create()) defaults
+    Regression test: Edge( origin="test", origin_run_id="test") constructor (not Edge.create( origin="test", origin_run_id="test")) defaults
     edge_key to None.  When multiple such edges existed, only the first
     survived deduplication because None was treated as a valid dedup key.
     This silently dropped ALL routes_to edges from the route-handler linker.
@@ -356,6 +372,8 @@ def test_deduplicate_edges_handles_none_edge_key() -> None:
         edge_type="routes_to",
         line=10,
         # edge_key deliberately not set (None) — matches real bug
+
+        origin="test", origin_run_id="test",
     )
     edge_b = Edge(
         id="edge:route2->handler2",
@@ -363,6 +381,8 @@ def test_deduplicate_edges_handles_none_edge_key() -> None:
         dst="go:server.go:40-50:createUser:method",
         edge_type="routes_to",
         line=11,
+
+        origin="test", origin_run_id="test",
     )
     edge_c = Edge(
         id="edge:dockerfile->stage",
@@ -370,6 +390,8 @@ def test_deduplicate_edges_handles_none_edge_key() -> None:
         dst="docker:Dockerfile:10-10:stage2:stage",
         edge_type="depends_on",
         line=1,
+
+        origin="test", origin_run_id="test",
     )
 
     result = deduplicate_edges([edge_a, edge_b, edge_c])
@@ -391,6 +413,8 @@ def test_deduplicate_edges_none_key_still_deduplicates_true_duplicates() -> None
         dst="go:server.go:20-30:listUsers:method",
         edge_type="routes_to",
         line=10,
+
+        origin="test", origin_run_id="test",
     )
     edge_a_dup = Edge(
         id="edge:route1->handler1:line15",
@@ -398,6 +422,8 @@ def test_deduplicate_edges_none_key_still_deduplicates_true_duplicates() -> None
         dst="go:server.go:20-30:listUsers:method",
         edge_type="routes_to",
         line=15,
+
+        origin="test", origin_run_id="test",
     )
 
     result = deduplicate_edges([edge_a, edge_a_dup])
@@ -416,12 +442,16 @@ def test_deduplicate_edges_preserves_different_types() -> None:
         dst="python:b.py:3-4:bar:function",
         edge_type="calls",
         line=10,
+
+        origin="test", origin_run_id="test",
     )
     imports_edge = Edge.create(
         src="python:a.py:1-2:foo:function",
         dst="python:b.py:3-4:bar:function",
         edge_type="imports",
         line=10,
+
+        origin="test", origin_run_id="test",
     )
 
     result = deduplicate_edges([calls_edge, imports_edge])
@@ -435,6 +465,8 @@ def test_edge_has_quality() -> None:
         dst="python:b.py:3-4:bar:function",
         edge_type="calls",
         line=5,
+
+        origin="test", origin_run_id="test",
     )
     edge.quality = {"score": 0.85, "reason": "Direct AST call"}
 
@@ -450,6 +482,8 @@ def test_edge_has_evidence_lang() -> None:
         edge_type="calls",
         line=5,
         evidence_lang="python",
+
+        origin="test", origin_run_id="test",
     )
 
     assert edge.evidence_lang == "python"
@@ -464,6 +498,8 @@ def test_edge_has_evidence_spans() -> None:
         edge_type="calls",
         line=5,
         evidence_spans=evidence_spans,
+
+        origin="test", origin_run_id="test",
     )
 
     assert edge.evidence_spans == evidence_spans
@@ -479,6 +515,8 @@ def test_edge_to_dict_includes_new_fields() -> None:
         line=5,
         evidence_lang="python",
         evidence_spans=evidence_spans,
+
+        origin="test", origin_run_id="test",
     )
     edge.quality = {"score": 0.85, "reason": "Direct AST call"}
     d = edge.to_dict()
@@ -496,6 +534,8 @@ def test_edge_with_custom_meta() -> None:
         dst="ipc:receiver.ts:20:receive:my-channel",
         edge_type="message_send",
         line=10,
+
+        origin="test", origin_run_id="test",
     )
     edge.meta = {"channel": "my-channel"}
     d = edge.to_dict()
@@ -522,6 +562,8 @@ def test_edge_create_access_mode_kwargs() -> None:
         access_mode="write",
         dest_access_mode="read",
         channel="awareness.cursor",
+
+        origin="test", origin_run_id="test",
     )
     assert edge.meta is not None
     assert edge.meta["access_mode"] == "write"
@@ -540,6 +582,8 @@ def test_edge_create_access_mode_merges_with_existing_meta() -> None:
         access_mode="write",
         dest_access_mode="read",
         channel="user.created",
+
+        origin="test", origin_run_id="test",
     )
     assert edge.meta is not None
     assert edge.meta["topic"] == "user.created"
@@ -555,6 +599,8 @@ def test_edge_create_access_mode_none_omitted() -> None:
         dst="py:src/b.py:20:g:function",
         edge_type="calls",
         line=10,
+
+        origin="test", origin_run_id="test",
     )
     # meta should be None when no meta or access_mode kwargs are passed
     assert edge.meta is None
@@ -568,6 +614,8 @@ def test_edge_create_partial_access_mode() -> None:
         edge_type="calls",
         line=10,
         access_mode="write",
+
+        origin="test", origin_run_id="test",
     )
     assert edge.meta is not None
     assert edge.meta["access_mode"] == "write"
@@ -585,6 +633,8 @@ def test_edge_create_invalid_access_mode_raises() -> None:
             edge_type="calls",
             line=10,
             access_mode="bogus",
+
+            origin="test", origin_run_id="test",
         )
 
 
@@ -598,6 +648,8 @@ def test_edge_create_invalid_dest_access_mode_raises() -> None:
             edge_type="calls",
             line=10,
             dest_access_mode="bogus",
+
+            origin="test", origin_run_id="test",
         )
 
 
@@ -611,6 +663,8 @@ def test_edge_access_mode_survives_to_dict() -> None:
         access_mode="write",
         dest_access_mode="read",
         channel="config.db_url",
+
+        origin="test", origin_run_id="test",
     )
     d = edge.to_dict()
     assert d["meta"]["access_mode"] == "write"
@@ -627,6 +681,8 @@ def test_edge_create_backward_compatible() -> None:
         line=10,
         origin="python_analyzer",
         meta={"some_key": "some_value"},
+
+        origin_run_id="test",
     )
     assert edge.meta == {"some_key": "some_value"}
     assert "access_mode" not in edge.meta
@@ -1206,7 +1262,7 @@ class TestCreateBoundaryNodes:
         """When all edges resolve, no boundary nodes are created."""
         s1 = self._make_symbol("python:a.py:1-1:foo:function")
         s2 = self._make_symbol("python:b.py:1-1:bar:function")
-        e = Edge.create(src=s1.id, dst=s2.id, edge_type="calls", line=1)
+        e = Edge.create(src=s1.id, dst=s2.id, edge_type="calls", line=1, origin="test", origin_run_id="test")
         result, remap = create_boundary_nodes([s1, s2], [e])
         assert result == []
         assert remap == {}
@@ -1223,6 +1279,8 @@ class TestCreateBoundaryNodes:
         e = Edge.create(
             src=s1.id, dst="go:fmt:0-0:Errorf:unresolved",
             edge_type="calls", line=5,
+
+            origin="test", origin_run_id="test",
         )
         result, remap = create_boundary_nodes([s1], [e])
         assert len(result) == 1
@@ -1246,6 +1304,8 @@ class TestCreateBoundaryNodes:
         e = Edge.create(
             src="external:lib:0-0:helper:unresolved", dst=s1.id,
             edge_type="calls", line=1,
+
+            origin="test", origin_run_id="test",
         )
         result, _ = create_boundary_nodes([s1], [e])
         assert len(result) == 1
@@ -1257,8 +1317,8 @@ class TestCreateBoundaryNodes:
         s1 = self._make_symbol("python:a.py:1-1:foo:function")
         s2 = self._make_symbol("python:b.py:1-1:bar:function")
         dangling_id = "go:fmt:0-0:Println:unresolved"
-        e1 = Edge.create(src=s1.id, dst=dangling_id, edge_type="calls", line=1)
-        e2 = Edge.create(src=s2.id, dst=dangling_id, edge_type="calls", line=2)
+        e1 = Edge.create(src=s1.id, dst=dangling_id, edge_type="calls", line=1, origin="test", origin_run_id="test")
+        e2 = Edge.create(src=s2.id, dst=dangling_id, edge_type="calls", line=2, origin="test", origin_run_id="test")
         result, _ = create_boundary_nodes([s1, s2], [e1, e2])
         assert len(result) == 1
         assert result[0].id == dangling_id
@@ -1273,10 +1333,14 @@ class TestCreateBoundaryNodes:
         e1 = Edge.create(
             src=s1.id, dst="python:urllib.request:0-0:urlopen:unresolved",
             edge_type="calls", line=1,
+
+            origin="test", origin_run_id="test",
         )
         e2 = Edge.create(
             src=s1.id, dst="python:urllib.parse:0-0:urlopen:unresolved",
             edge_type="calls", line=2,
+
+            origin="test", origin_run_id="test",
         )
         result, _ = create_boundary_nodes([s1], [e1, e2])
         assert len(result) == 2
@@ -1290,6 +1354,8 @@ class TestCreateBoundaryNodes:
         e = Edge.create(
             src=s1.id, dst="lua:?:0-0:ngx.log:unresolved",
             edge_type="calls", line=1,
+
+            origin="test", origin_run_id="test",
         )
         result, _ = create_boundary_nodes([s1], [e])
         assert result[0].path == "<external>"
@@ -1300,6 +1366,8 @@ class TestCreateBoundaryNodes:
         e = Edge.create(
             src=s1.id, dst="rust:std:0-0:println:unresolved",
             edge_type="calls", line=1,
+
+            origin="test", origin_run_id="test",
         )
         result, _ = create_boundary_nodes([s1], [e])
         assert result[0].span.start_line == 0
@@ -1311,6 +1379,8 @@ class TestCreateBoundaryNodes:
         e = Edge.create(
             src=s1.id, dst="go:github.com/pkg/errors:0-0:package:package",
             edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
         result, _ = create_boundary_nodes([s1], [e])
         assert len(result) == 1
@@ -1320,8 +1390,8 @@ class TestCreateBoundaryNodes:
     def test_sorted_output_deterministic(self):
         """Boundary nodes are returned in sorted order for reproducibility."""
         s1 = self._make_symbol("python:a.py:1-1:foo:function")
-        e1 = Edge.create(src=s1.id, dst="z:z:0-0:z:unresolved", edge_type="calls", line=1)
-        e2 = Edge.create(src=s1.id, dst="a:a:0-0:a:unresolved", edge_type="calls", line=2)
+        e1 = Edge.create(src=s1.id, dst="z:z:0-0:z:unresolved", edge_type="calls", line=1, origin="test", origin_run_id="test")
+        e2 = Edge.create(src=s1.id, dst="a:a:0-0:a:unresolved", edge_type="calls", line=2, origin="test", origin_run_id="test")
         result, _ = create_boundary_nodes([s1], [e1, e2])
         assert len(result) == 2
         assert result[0].id < result[1].id
@@ -1340,11 +1410,15 @@ class TestCreateBoundaryNodes:
             src="python:packages/foo/A.py:1-1:file:file",
             dst="python:click:0-0:click:unresolved",
             edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
         e2 = Edge.create(
             src="python:packages/bar/B.py:1-1:file:file",
             dst="python:click:0-0:click:unresolved",
             edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
         result, remap = create_boundary_nodes([], [e1, e2])
         # Two boundary nodes: 1 collapsed "file" boundary covering both
@@ -1381,6 +1455,8 @@ class TestCreateBoundaryNodes:
         e = Edge.create(
             src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
             edge_type="imports", line=3,
+
+            origin="test", origin_run_id="test",
         )
         manifest = DependencyManifest(entries={
             "github.com/go-kit/log": {"direct": True},
@@ -1400,6 +1476,8 @@ class TestCreateBoundaryNodes:
         e = Edge.create(
             src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
             edge_type="imports", line=3,
+
+            origin="test", origin_run_id="test",
         )
         manifest = DependencyManifest(entries={
             "github.com/go-kit/log": {"direct": True},
@@ -1417,6 +1495,8 @@ class TestCreateBoundaryNodes:
         e = Edge.create(
             src=s1.id, dst="go:github.com/beorn7/perp:0-0:package:package",
             edge_type="imports", line=3,
+
+            origin="test", origin_run_id="test",
         )
         manifest = DependencyManifest(entries={
             "github.com/beorn7/perp": {"direct": False},
@@ -1433,6 +1513,8 @@ class TestCreateBoundaryNodes:
         e = Edge.create(
             src=s1.id, dst="go:encoding/json:0-0:Marshal:unresolved",
             edge_type="calls", line=5,
+
+            origin="test", origin_run_id="test",
         )
         manifest = DependencyManifest(entries={
             "github.com/foo/bar": {"direct": True},
@@ -1447,6 +1529,8 @@ class TestCreateBoundaryNodes:
         e = Edge.create(
             src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
             edge_type="imports", line=3,
+
+            origin="test", origin_run_id="test",
         )
         result, _ = create_boundary_nodes([s1], [e])
         assert len(result) == 1
@@ -1461,6 +1545,8 @@ class TestCreateBoundaryNodes:
             src=s1.id,
             dst="go:github.com/go-kit/log/level:0-0:package:package",
             edge_type="imports", line=3,
+
+            origin="test", origin_run_id="test",
         )
         manifest = DependencyManifest(entries={
             "github.com/go-kit/log": {"direct": True},
@@ -1480,6 +1566,8 @@ class TestCreateBoundaryNodes:
         e = Edge.create(
             src=s1.id, dst="lua:redis:0-0:get:unresolved",
             edge_type="calls", line=5,
+
+            origin="test", origin_run_id="test",
         )
         manifest = DependencyManifest(entries={
             "github.com/go-kit/log": {"direct": True},
@@ -1498,6 +1586,8 @@ class TestCreateBoundaryNodes:
             src=s1.id,
             dst="java:com.fasterxml.jackson.core.JsonParser:0-0:parse:unresolved",
             edge_type="calls", line=5,
+
+            origin="test", origin_run_id="test",
         )
         manifest = DependencyManifest(entries={
             "com.fasterxml.jackson.core": {"direct": True},
@@ -1516,6 +1606,8 @@ class TestCreateBoundaryNodes:
             src=s1.id,
             dst="kotlin:io.ktor.server.core:0-0:embeddedServer:unresolved",
             edge_type="calls", line=5,
+
+            origin="test", origin_run_id="test",
         )
         manifest = DependencyManifest(entries={
             "io.ktor": {"direct": True},
@@ -1533,6 +1625,8 @@ class TestCreateBoundaryNodes:
             src=s1.id,
             dst="java:com.unknown.lib.Foo:0-0:bar:unresolved",
             edge_type="calls", line=5,
+
+            origin="test", origin_run_id="test",
         )
         manifest = DependencyManifest(entries={
             "com.fasterxml.jackson.core": {"direct": True},
@@ -1563,7 +1657,7 @@ class TestApplyExternalIdRemap:
         from hypergumbo_core.ir import apply_external_id_remap
 
         s1 = self._make_real("python:a.py:1-1:foo:function")
-        e = Edge.create(src=s1.id, dst="other", edge_type="calls", line=1)
+        e = Edge.create(src=s1.id, dst="other", edge_type="calls", line=1, origin="test", origin_run_id="test")
         result = apply_external_id_remap([e], {})
         assert result == [e]
 
@@ -1574,6 +1668,8 @@ class TestApplyExternalIdRemap:
         e = Edge.create(
             src=s1.id, dst="python:click:0-0:click:unresolved",
             edge_type="calls", line=5,
+
+            origin="test", origin_run_id="test",
         )
         canonical = "python:<external>:0-0:click:unresolved"
         result = apply_external_id_remap(
@@ -1591,6 +1687,8 @@ class TestApplyExternalIdRemap:
             src="python:packages/foo/A.py:1-1:file:file",
             dst="python:click:0-0:click:unresolved",
             edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
         canonical_file = "python:<external>:0-0:file:file"
         canonical_click = "python:<external>:0-0:click:unresolved"
@@ -1612,11 +1710,15 @@ class TestApplyExternalIdRemap:
             src="python:packages/foo/A.py:1-1:file:file",
             dst="python:click:0-0:click:unresolved",
             edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
         e2 = Edge.create(
             src="python:packages/bar/B.py:1-1:file:file",
             dst="python:click:0-0:click:unresolved",
             edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
         canonical_file = "python:<external>:0-0:file:file"
         canonical_click = "python:<external>:0-0:click:unresolved"
@@ -1647,6 +1749,8 @@ class TestApplyExternalIdRemap:
                 src=src_id,
                 dst="python:click:0-0:click:unresolved",
                 edge_type="imports", line=1,
+
+                origin="test", origin_run_id="test",
             ))
         result = apply_external_id_remap(edges, remap)
         assert len(result) == 1
@@ -1662,11 +1766,15 @@ class TestApplyExternalIdRemap:
             src="python:packages/foo/A.py:1-1:file:file",
             dst="python:click:0-0:click:unresolved",
             edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
         e2 = Edge.create(
             src="python:packages/foo/A.py:1-1:file:file",
             dst="python:click:0-0:click:unresolved",
             edge_type="imports", line=2,
+
+            origin="test", origin_run_id="test",
         )
         canonical_file = "python:<external>:0-0:file:file"
         canonical_click = "python:<external>:0-0:click:unresolved"
@@ -1933,7 +2041,7 @@ def test_external_ref_to_dict_round_trip() -> None:
 
 def test_edge_dst_ref_defaults_to_none() -> None:
     """Edge.dst_ref defaults to None when not provided (~90% case)."""
-    e = Edge.create(src="s", dst="d", edge_type="calls", line=1)
+    e = Edge.create(src="s", dst="d", edge_type="calls", line=1, origin="test", origin_run_id="test")
     assert e.dst_ref is None
     # Serialized form omits the key when None (additive schema, back-compat).
     assert "dst_ref" not in e.to_dict()
@@ -1942,7 +2050,7 @@ def test_edge_dst_ref_defaults_to_none() -> None:
 def test_edge_dst_ref_serializes_when_present() -> None:
     """Populated dst_ref serializes as nested dict."""
     ref = ExternalRef(lang="python", module_path="urllib.request", name="urlopen")
-    e = Edge.create(src="s", dst="d", edge_type="calls", line=1, dst_ref=ref)
+    e = Edge.create(src="s", dst="d", edge_type="calls", line=1, dst_ref=ref, origin="test", origin_run_id="test")
     d = e.to_dict()
     assert d["dst_ref"] == {
         "lang": "python",

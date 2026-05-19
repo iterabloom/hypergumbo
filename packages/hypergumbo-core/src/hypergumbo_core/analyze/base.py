@@ -1367,6 +1367,8 @@ def emit_module_attribute_refs(
     node_kinds: tuple[str, ...],
     object_field_names: tuple[str, ...],
     property_field_names: tuple[str, ...],
+    pass_id: str,
+    run_id: str,
     call_node_kinds: tuple[str, ...] = ("call_expression", "call",),
     call_function_field_names: tuple[str, ...] = ("function", "callee",),
     scoped_path: bool = False,
@@ -1510,6 +1512,8 @@ def emit_module_attribute_refs(
             edge_type="module_attr_ref",
             line=node.start_point[0] + 1,
             confidence=0.85,
+            origin=pass_id,
+            origin_run_id=run_id,
             evidence_type="module_attribute_reference",
         ))
 

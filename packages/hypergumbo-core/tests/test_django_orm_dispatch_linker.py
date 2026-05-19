@@ -367,6 +367,8 @@ class TestTransitiveSubclassWalk:
         )
         edge = Edge.create(
             src=order.id, dst=logged.id, edge_type="extends", line=1,
+
+            origin="test", origin_run_id="test",
         )
         ctx = _ctx([order, logged, save], edges=[edge])
         result = link_django_orm_dispatch(ctx)
@@ -387,6 +389,8 @@ class TestTransitiveSubclassWalk:
         )
         edge = Edge.create(
             src=custom.id, dst=hierarkey.id, edge_type="extends", line=1,
+
+            origin="test", origin_run_id="test",
         )
         ctx = _ctx([custom, hierarkey, clean], edges=[edge])
         result = link_django_orm_dispatch(ctx)
@@ -412,10 +416,14 @@ class TestTransitiveSubclassWalk:
         edges = [
             Edge.create(
                 src=order.id, dst=logged.id, edge_type="extends", line=1,
+
+                origin="test", origin_run_id="test",
             ),
             Edge.create(
                 src=logged.id, dst=abstract.id,
                 edge_type="extends", line=1,
+
+                origin="test", origin_run_id="test",
             ),
         ]
         ctx = _ctx([order, logged, abstract, delete], edges=edges)

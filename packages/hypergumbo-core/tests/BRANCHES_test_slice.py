@@ -49,6 +49,8 @@ def make_edge(
         edge_type=edge_type,
         line=1,
         confidence=confidence,
+
+        origin="test", origin_run_id="test",
     )
 
 
@@ -165,6 +167,8 @@ class TestSliceGraph:
                 edge_type="imports",
                 line=1,
                 confidence=0.3,  # Low confidence
+
+                origin="test", origin_run_id="test",
             ),
         ]
 
@@ -197,6 +201,8 @@ class TestSliceGraph:
                 edge_type="references",  # Not an import edge
                 line=1,
                 confidence=1.0,
+
+                origin="test", origin_run_id="test",
             ),
         ]
 

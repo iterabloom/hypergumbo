@@ -242,6 +242,8 @@ def make_edge(src_id: str, dst_id: str) -> Edge:
         edge_type="calls",
         line=1,
         confidence=0.9,
+
+        origin="test", origin_run_id="test",
     )
 
 

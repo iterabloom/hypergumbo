@@ -401,7 +401,7 @@ class TestTransitiveCallbackInterface:
             "LeafImpl.process",
             path="src/main/java/com/example/Leaf.java", span=(10, 12),
         )
-        edges = [Edge.create(src=leaf.id, dst=base.id, edge_type="extends", line=1)]
+        edges = [Edge.create(src=leaf.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test")]
         result_edges = self._link([leaf, base, proc], edges=edges)
         assert proc.id in {e.dst for e in result_edges}
 
@@ -424,8 +424,8 @@ class TestTransitiveCallbackInterface:
             path="src/main/java/com/example/Leaf.java", span=(10, 12),
         )
         edges = [
-            Edge.create(src=leaf.id, dst=mid.id, edge_type="extends", line=1),
-            Edge.create(src=mid.id, dst=base.id, edge_type="extends", line=1),
+            Edge.create(src=leaf.id, dst=mid.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=mid.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         result_edges = self._link([leaf, mid, base, apply], edges=edges)
         assert apply.id in {e.dst for e in result_edges}
@@ -453,10 +453,10 @@ class TestTransitiveCallbackInterface:
             path="src/main/java/com/example/Leaf.java", span=(5, 6),
         )
         edges = [
-            Edge.create(src=leaf.id, dst=left.id, edge_type="extends", line=1),
-            Edge.create(src=leaf.id, dst=right.id, edge_type="extends", line=1),
-            Edge.create(src=left.id, dst=base.id, edge_type="extends", line=1),
-            Edge.create(src=right.id, dst=base.id, edge_type="extends", line=1),
+            Edge.create(src=leaf.id, dst=left.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=leaf.id, dst=right.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=left.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=right.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         result_edges = self._link([leaf, left, right, base, test_method], edges=edges)
         edges_to_test = [e for e in result_edges if e.dst == test_method.id]

@@ -155,6 +155,8 @@ def _process_toml_tree(
     content: str,
     is_cargo: bool,
     is_pyproject: bool,
+    *,
+    run_id: str,
 ) -> None:
     """Process a TOML AST tree iteratively and extract symbols and edges."""
     for node in iter_tree(root):
@@ -236,7 +238,7 @@ def _process_toml_tree(
             elif is_pyproject and table_name in (
                 "project.scripts", "project.gui-scripts",
             ):
-                _extract_pyproject_scripts(node, rel_path, symbols, edges, content)
+                _extract_pyproject_scripts(node, rel_path, symbols, edges, content, run_id=run_id)
 
         elif node.type == "table_array_element":
             table_name = _extract_table_name(node)
@@ -313,6 +315,7 @@ def _process_toml_tree(
                         line=start_line,
                         confidence=1.0,
                         origin=PASS_ID,
+                        origin_run_id=run_id,
                     )
                 )
 
@@ -391,6 +394,8 @@ class TomlAnalyzer(TreeSitterAnalyzer):
                 _process_toml_tree(
                     tree.root_node, symbols, edges, rel_path, content,
                     is_cargo, is_pyproject,
+
+                    run_id=run.execution_id,
                 )
 
             except (OSError, IOError) as e:  # pragma: no cover
@@ -575,6 +580,8 @@ def _python_entry_point_to_path(entry_point: str) -> tuple[str, str] | None:
 def _extract_pyproject_scripts(
     table_node, rel_path: str, symbols: list[Symbol],
     edges: list[Edge], content: str,
+    *,
+    run_id: str,
 ):
     """Extract CLI entry points from a pyproject.toml scripts table.
 
@@ -657,5 +664,6 @@ def _extract_pyproject_scripts(
                                     "target_function": target_func,
                                     "target_path": target_path,
                                 },
+                                origin_run_id=run_id,
                             )
                         )

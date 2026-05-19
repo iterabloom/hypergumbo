@@ -56,7 +56,7 @@ class TestAnalyzeBlade:
         content = "@extends('layouts.app')\n@section('title')\nHello\n@endsection\n@yield('footer')"
         (tmp_path / "page.blade.php").write_text(content)
         result = analyze_blade(tmp_path)
-        # 2 Symbols (section, yield) + 1 Edge (extends_template — see WI-kunag)
+        # 2 Symbols (section, yield) + 1 Edge (extends_template — see WI-kunag, origin="test", origin_run_id="test")
         assert len(result.symbols) == 2
         assert any(e.edge_type == "extends_template" for e in result.edges)
 

@@ -140,6 +140,8 @@ def reassign_rust_stable_ids(
 def translate_scip_to_hg(
     scip_bytes: bytes,
     source_reader: SourceReader,
+    *,
+    run_id: str = "",
 ) -> tuple[List[Symbol], List[Edge]]:
     """Parse *scip_bytes* and return ``(symbols, edges)`` with parity.
 
@@ -164,7 +166,17 @@ def translate_scip_to_hg(
     symbols = reassign_rust_stable_ids(
         scip_index_to_symbols(index), source_reader,
     )
+    # WI-higap: if no run_id is supplied (legacy callers), create a local
+    # run so Edge.__post_init__ enforcement passes. Callers that want
+    # provenance to flow into a parent run can pass run_id explicitly.
+    if not run_id:
+        from hypergumbo_core.ir import AnalysisRun, PASS_VERSION, make_pass_id
+        _scip_run = AnalysisRun.create(
+            pass_id=make_pass_id("rust-scip-translate"),
+            version=PASS_VERSION,
+        )
+        run_id = _scip_run.execution_id
     edges: List[Edge] = []
-    edges.extend(scip_index_to_edges(index))
-    edges.extend(scip_index_to_call_edges(index))
+    edges.extend(scip_index_to_edges(index, run_id=run_id))
+    edges.extend(scip_index_to_call_edges(index, run_id=run_id))
     return symbols, edges

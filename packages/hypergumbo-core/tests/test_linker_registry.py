@@ -1077,6 +1077,8 @@ class TestLinkerPipelineAccumulation:
             new_edge = Edge.create(
                 src="a", dst="b", edge_type="implements",
                 line=1, confidence=1.0,
+
+                origin="test", origin_run_id="test",
             )
             return LinkerResult(edges=[new_edge])
 

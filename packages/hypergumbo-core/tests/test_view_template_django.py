@@ -353,7 +353,7 @@ class TestModelDerivedDefaults:
             "users/views.py", "MyDetail", ["BaseDetail"], start=1, end=10
         )
         edges = [
-            Edge.create(src=my_detail.id, dst=base_detail.id, edge_type="extends", line=1),
+            Edge.create(src=my_detail.id, dst=base_detail.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         ctx = LinkerContext(
             repo_root=tmp_path,

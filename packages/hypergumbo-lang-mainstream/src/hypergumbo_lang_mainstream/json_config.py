@@ -160,6 +160,7 @@ def _process_dependencies(
     symbols: list[Symbol],
     edges: list[Edge],
     project_id: Optional[str],
+    run_id: str,
     dep_type: str = "dependency",
 ) -> None:
     """Extract npm dependencies from a dependencies object."""
@@ -220,6 +221,7 @@ def _process_dependencies(
                         line=start_line,
                         confidence=0.95,
                         origin=PASS_ID,
+                        origin_run_id=run_id,
                         evidence_type="static",
                     )
                     edges.append(edge)
@@ -283,6 +285,7 @@ def _process_bin(
     rel_path: str,
     symbols: list[Symbol],
     pkg_name: Optional[str],
+    run_id: str,
     edges: Optional[list[Edge]] = None,
 ) -> None:
     """Extract npm bin entries from a bin object or string.
@@ -333,6 +336,7 @@ def _process_bin(
                         line=start_line,
                         confidence=1.0,
                         origin=PASS_ID,
+                        origin_run_id=run_id,
                     )
                 )
         return
@@ -388,6 +392,7 @@ def _process_bin(
                             line=start_line,
                             confidence=1.0,
                             origin=PASS_ID,
+                            origin_run_id=run_id,
                         )
                     )
 
@@ -399,6 +404,7 @@ def _process_main_entry(
     symbols: list[Symbol],
     edges: list[Edge],
     pkg_name: Optional[str],
+    run_id: str,
 ) -> None:
     """Extract the package.json "main" field as a defines_target edge.
 
@@ -450,6 +456,7 @@ def _process_main_entry(
             line=start_line,
             confidence=1.0,
             origin=PASS_ID,
+            origin_run_id=run_id,
         )
     )
 
@@ -510,6 +517,7 @@ def _process_exports(
     symbols: list[Symbol],
     edges: list[Edge],
     pkg_name: Optional[str],
+    run_id: str,
 ) -> None:
     """Extract package.json "exports" field as defines_target edges.
 
@@ -567,6 +575,7 @@ def _process_exports(
                     line=start_line,
                     confidence=1.0,
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
             )
         return
@@ -628,6 +637,7 @@ def _process_exports(
                 line=start_line,
                 confidence=1.0,
                 origin=PASS_ID,
+                origin_run_id=run_id,
             )
         )
 
@@ -638,6 +648,7 @@ def _process_package_json(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     """Process package.json file."""
     # Find the root object
@@ -696,12 +707,12 @@ def _process_package_json(
     # Process dependencies
     deps_node = _find_object_key(obj_node, source, "dependencies")
     if deps_node:
-        _process_dependencies(deps_node, source, rel_path, symbols, edges, project_id, "dependency")
+        _process_dependencies(deps_node, source, rel_path, symbols, edges, project_id, run_id, "dependency")
 
     # Process devDependencies
     dev_deps_node = _find_object_key(obj_node, source, "devDependencies")
     if dev_deps_node:
-        _process_dependencies(dev_deps_node, source, rel_path, symbols, edges, project_id, "devDependency")
+        _process_dependencies(dev_deps_node, source, rel_path, symbols, edges, project_id, run_id, "devDependency")
 
     # Process scripts
     scripts_node = _find_object_key(obj_node, source, "scripts")
@@ -711,17 +722,17 @@ def _process_package_json(
     # Process bin entries (CLI executables)
     bin_node = _find_object_key(obj_node, source, "bin")
     if bin_node:
-        _process_bin(bin_node, source, rel_path, symbols, pkg_name, edges)
+        _process_bin(bin_node, source, rel_path, symbols, pkg_name, run_id, edges)
 
     # Process main entry (Node.js/Electron app entry point)
     main_node = _find_object_key(obj_node, source, "main")
     if main_node:
-        _process_main_entry(main_node, source, rel_path, symbols, edges, pkg_name)
+        _process_main_entry(main_node, source, rel_path, symbols, edges, pkg_name, run_id)
 
     # Process exports (library entry points)
     exports_node = _find_object_key(obj_node, source, "exports")
     if exports_node:
-        _process_exports(exports_node, source, rel_path, symbols, edges, pkg_name)
+        _process_exports(exports_node, source, rel_path, symbols, edges, pkg_name, run_id)
 
 
 def _process_tsconfig(
@@ -730,6 +741,7 @@ def _process_tsconfig(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     """Process tsconfig.json file."""
     # Find the root object
@@ -795,6 +807,7 @@ def _process_tsconfig(
                             line=ref_start,
                             confidence=0.95,
                             origin=PASS_ID,
+                            origin_run_id=run_id,
                             evidence_type="static",
                             meta={"reference_path": ref_path},
                         )
@@ -807,6 +820,7 @@ def _process_composer_json(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     """Process composer.json file."""
     # Find the root object
@@ -856,12 +870,12 @@ def _process_composer_json(
     # Process require (production dependencies)
     require_node = _find_object_key(obj_node, source, "require")
     if require_node:
-        _process_dependencies(require_node, source, rel_path, symbols, edges, project_id, "dependency")
+        _process_dependencies(require_node, source, rel_path, symbols, edges, project_id, run_id, "dependency")
 
     # Process require-dev (dev dependencies)
     require_dev_node = _find_object_key(obj_node, source, "require-dev")
     if require_dev_node:
-        _process_dependencies(require_dev_node, source, rel_path, symbols, edges, project_id, "devDependency")
+        _process_dependencies(require_dev_node, source, rel_path, symbols, edges, project_id, run_id, "devDependency")
 
 
 def _detect_json_type(path: Path) -> str:
@@ -930,6 +944,10 @@ def _analyze_json_impl(repo_root: Path) -> AnalysisResult:
             skip_reason=f"Failed to initialize parser: {e}",
         )
 
+    # Create run before processing so Edge construction can stamp
+    # origin_run_id (WI-higap: enforced by Edge.__post_init__).
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
     json_files = list(find_json_files(repo_root))
 
     for json_path in json_files:
@@ -945,11 +963,11 @@ def _analyze_json_impl(repo_root: Path) -> AnalysisResult:
 
             # Process based on type
             if json_type == "package_json":
-                _process_package_json(tree.root_node, source, rel_path, symbols, edges)
+                _process_package_json(tree.root_node, source, rel_path, symbols, edges, run.execution_id)
             elif json_type == "tsconfig":
-                _process_tsconfig(tree.root_node, source, rel_path, symbols, edges)
+                _process_tsconfig(tree.root_node, source, rel_path, symbols, edges, run.execution_id)
             elif json_type == "composer":
-                _process_composer_json(tree.root_node, source, rel_path, symbols, edges)
+                _process_composer_json(tree.root_node, source, rel_path, symbols, edges, run.execution_id)
             # Generic JSON files are not extracted (too noisy)
 
         except Exception as e:  # pragma: no cover
@@ -959,7 +977,6 @@ def _analyze_json_impl(repo_root: Path) -> AnalysisResult:
 
     duration_ms = int((time.time() - start_time) * 1000)
 
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
     run.duration_ms = duration_ms

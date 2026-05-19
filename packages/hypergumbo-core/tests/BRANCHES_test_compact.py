@@ -46,6 +46,8 @@ def make_edge(src: str, dst: str, edge_type: str = "calls") -> Edge:
         dst=dst,
         edge_type=edge_type,
         line=1,
+
+        origin="test", origin_run_id="test",
     )
 
 

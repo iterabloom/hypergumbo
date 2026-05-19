@@ -344,6 +344,8 @@ assignments:
             dst="py:a.py:5:f:function",
             edge_type="calls",
             line=5,
+
+            origin="test", origin_run_id="test",
         )
 
         # RHS call_expression at cols 4-7 falls inside "right" child
@@ -380,6 +382,8 @@ assignments:
             dst="py:a.py:5:x:variable",
             edge_type="assigns",
             line=5,
+
+            origin="test", origin_run_id="test",
         )
 
         # LHS identifier at cols 0-1; make it the deepest node by listing it last
@@ -412,6 +416,8 @@ assignments:
             access_mode="write",
             dest_access_mode="read",
             channel="user.created",
+
+            origin="test", origin_run_id="test",
         )
 
         tree = self._make_mock_tree({5: "assignment"})
@@ -434,6 +440,8 @@ assignments:
             dst="py:a.py:10:g:function",
             edge_type="calls",
             line=10,
+
+            origin="test", origin_run_id="test",
         )
 
         tree = self._make_mock_tree({10: "call_expression"})
@@ -462,6 +470,8 @@ assignments:
             dst="py:a.py:3:x:variable",
             edge_type="assigns",
             line=3,
+
+            origin="test", origin_run_id="test",
         )
 
         # LHS identifier is the deepest node (listed last)
@@ -498,6 +508,8 @@ assignments:
             dst="py:a.py:3:f:function",
             edge_type="calls",
             line=3,
+
+            origin="test", origin_run_id="test",
         )
 
         # RHS call is the deepest node (listed last)
@@ -533,6 +545,8 @@ deletions:
             dst="py:a.py:7:x:variable",
             edge_type="calls",
             line=7,
+
+            origin="test", origin_run_id="test",
         )
 
         tree = self._make_mock_tree({7: "delete_statement"})
@@ -554,6 +568,8 @@ deletions:
             dst="py:a.py:1:g:function",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         tree = self._make_mock_tree({1: "call_expression"})
         result = annotate_dataflow([edge], tree, b"f()", config)
@@ -580,9 +596,9 @@ returns:
 
         edges = [
             Edge.create(src="py:a.py:1:scope:fn", dst="py:a.py:1:f:fn",
-                        edge_type="calls", line=1),
+                        edge_type="calls", line=1, origin="test", origin_run_id="test"),
             Edge.create(src="py:a.py:3:scope:fn", dst="py:a.py:3:y:var",
-                        edge_type="calls", line=3),
+                        edge_type="calls", line=3, origin="test", origin_run_id="test"),
         ]
         tree = self._make_mock_tree({1: "return_statement", 3: "delete_statement"})
         result = annotate_dataflow(edges, tree, b"return f()\n\ndel y", config)
@@ -611,6 +627,8 @@ returns:
             dst="py:a.py:5:f:function",
             edge_type="calls",
             line=5,
+
+            origin="test", origin_run_id="test",
         )
 
         tree = self._make_mock_tree({5: "return_statement"})
@@ -660,12 +678,16 @@ library_patterns:
             dst="go:a.go:1:Set:method",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         get_edge = Edge.create(
             src="go:a.go:2:caller:function",
             dst="go:a.go:2:Get:method",
             edge_type="calls",
             line=2,
+
+            origin="test", origin_run_id="test",
         )
 
         tree = self._make_mock_tree(
@@ -710,6 +732,8 @@ library_patterns:
             dst="go:a.go:1:Set:method",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         tree = self._make_mock_tree({1: "expression_statement"})
         # Same line matches both .Get( and .Set( — write must win.
@@ -744,6 +768,8 @@ library_patterns:
             dst="go:a.go:1:Set:method",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         tree = self._make_mock_tree({1: "expression_statement"})
         source = b's.Set(s.Get("k"))\n'
@@ -786,6 +812,8 @@ library_patterns:
             dst="go:a.go:5:Set:method",
             edge_type="calls",
             line=5,
+
+            origin="test", origin_run_id="test",
         )
         tree = self._make_positional_tree(
             line=5,
@@ -837,6 +865,8 @@ assignments:
             dst="go:a.go:5:compute:function",
             edge_type="calls",
             line=5,
+
+            origin="test", origin_run_id="test",
         )
 
         # Build a tree where a `short_var_declaration` and a trailing
@@ -947,6 +977,8 @@ assignments:
             dst="py:a.py:5:f:fn",
             edge_type="calls",
             line=5,
+
+            origin="test", origin_run_id="test",
         )
 
         # Flat mock without child_by_field_name — position can't be resolved
@@ -975,7 +1007,7 @@ assignments:
         config = load_dataflow_config(yaml_file)
 
         edge = Edge.create(src="py:a.py:5:x:var", dst="py:a.py:5:f:fn",
-                           edge_type="calls", line=5)
+                           edge_type="calls", line=5, origin="test", origin_run_id="test")
 
         # Create tree with child_by_field_name but no start_byte on nodes
         tree = MagicMock(spec=[])
@@ -1015,7 +1047,7 @@ assignments:
         config = load_dataflow_config(yaml_file)
 
         edge = Edge.create(src="py:a.py:5:x:var", dst="py:a.py:5:f:fn",
-                           edge_type="calls", line=5)
+                           edge_type="calls", line=5, origin="test", origin_run_id="test")
 
         # Tree with child_by_field_name returning child without start_byte
         tree = MagicMock(spec=[])
@@ -1071,7 +1103,7 @@ assignments:
         config = load_dataflow_config(yaml_file)
 
         edge = Edge.create(src="py:a.py:5:x:var", dst="py:a.py:5:f:fn",
-                           edge_type="calls", line=5)
+                           edge_type="calls", line=5, origin="test", origin_run_id="test")
 
         # Tree where deepest node is outside both children's byte ranges
         tree = MagicMock(spec=[])
@@ -1143,6 +1175,8 @@ assignments:
             dst="py:a.py:99:g:function",
             edge_type="calls",
             line=99,
+
+            origin="test", origin_run_id="test",
         )
         tree = self._make_mock_tree({1: "assignment"})
         result = annotate_dataflow([edge], tree, b"x = 1", config)
@@ -1912,6 +1946,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:f:function",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
@@ -1926,6 +1962,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:x:variable",
             edge_type="assigns",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
@@ -1940,6 +1978,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:f:function",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
@@ -1954,6 +1994,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:x:variable",
             edge_type="assigns",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
@@ -1968,6 +2010,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:f:function",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
@@ -1982,6 +2026,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:2:g:function",
             edge_type="calls",
             line=2,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
@@ -1996,6 +2042,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:x:variable",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
@@ -2024,6 +2072,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:append:method",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         config = DataflowConfig(
             language="python",
@@ -2057,6 +2107,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:append:method",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         config = DataflowConfig(
             language="python",
@@ -2086,6 +2138,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:write:method",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         config = DataflowConfig(
             language="python",
@@ -2112,6 +2166,8 @@ class TestAnnotateDataflowAst:
             line=1,
             access_mode="write",
             dest_access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         # Should preserve original
@@ -2131,6 +2187,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:g:function",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], None)
         assert len(result) == 1
@@ -2145,6 +2203,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:f:function",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is None or "access_mode" not in result[0].meta
@@ -2158,6 +2218,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:get_items:function",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
@@ -2172,6 +2234,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:collection:variable",
             edge_type="references",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
@@ -2186,6 +2250,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:1:open:function",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None
@@ -2200,6 +2266,8 @@ class TestAnnotateDataflowAst:
             dst="py:a.py:2:f:function",
             edge_type="calls",
             line=2,
+
+            origin="test", origin_run_id="test",
         )
         result = annotate_dataflow_ast([edge], tree)
         assert result[0].meta is not None

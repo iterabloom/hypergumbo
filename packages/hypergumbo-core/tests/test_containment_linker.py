@@ -238,6 +238,8 @@ class TestContainmentLinker:
             line=3,
             confidence=0.95,
             origin="test",
+
+            origin_run_id="test",
         )
 
         ctx = LinkerContext(
@@ -1119,6 +1121,8 @@ class TestCanonicalNameContainment:
         existing_edge = Edge.create(
             src=svc.id, dst=rpc.id, edge_type="contains",
             line=5, confidence=1.0, origin="test",
+
+            origin_run_id="test",
         )
 
         ctx = LinkerContext(

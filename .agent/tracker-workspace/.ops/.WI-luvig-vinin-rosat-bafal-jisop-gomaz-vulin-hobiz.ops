@@ -28,3 +28,25 @@
   nonce: 8b1e  # 8b1e
   set:  # 8b1e
     parent: INV-zadum-rukig-zasum-sinaj-rozij-dadin-mutus-sakir  # 8b1e
+- op: discuss  # 5f48
+  at: '2026-05-19T00:45:52Z'  # 5f48
+  by: agent  # 5f48
+  actor: jgstern_agent  # 5f48
+  clock: 3  # 5f48
+  nonce: 5f48  # 5f48
+  message: "Merged as PR #3809, dev SHA ffa1ba598de0."  # 5f48
+- op: update  # e0a2
+  at: '2026-05-19T00:46:27Z'  # e0a2
+  by: agent  # e0a2
+  actor: jgstern_agent  # e0a2
+  clock: 4  # e0a2
+  nonce: e0a2  # e0a2
+  set:  # e0a2
+    status: done  # e0a2
+- op: discuss  # 641c
+  at: '2026-05-19T00:46:27Z'  # 641c
+  by: agent  # 641c
+  actor: jgstern_agent  # 641c
+  clock: 5  # 641c
+  nonce: 641c  # 641c
+  message: "Fixed in PR #3809. Docstring rewritten to honestly enumerate the field's actual producers (10 niche-language analyzers + 2 linkers + external-boundary synthesis) and clarify that mainstream-analyzer languages leave canonical_name=None by design because name already encodes the parent. Added paragraph to containment-linker module docstring noting Phase 1.5 is reachable only for niche analyzers. Audit-then-rewrite per the playbook."  # 641c

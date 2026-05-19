@@ -14,6 +14,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 > for the reader-friendly summary of what's changed. This file (CHANGELOG.md)
 > remains the implementer log.
 
+### Changed (post-5.0.1)
+
+- **WI-higap: enforced `Edge.origin` / `Edge.origin_run_id` are non-empty at construction.** `Edge.__post_init__` now hard-raises `ValueError` if either provenance field is empty, preventing silent regressions where a future producer constructs edges without stamping `(pass_id, run.execution_id)`. The original WI-higap claim (425 edges with empty `origin_run_id`, 1 edge with both empty) was the visible symptom on hypergumbo's self-analysis; the structural sweep covered 67 production Edge construction sites across 35 files (full `_extract_edges` / `_extract_import_edges` plumbing in `py.py`; centralised `_emit` plumbing in `manifest_targets.py`; threaded `run_id` through helpers in `json_config.py`, `latex.py`, `scip/{edges,calls}.py`, and 25 niche-language analyzers). `Edge.from_dict()` injects a `LEGACY_DESERIALIZED_SENTINEL` value for empty fields in legacy on-disk JSON so cache reads still work; a new property test in `test_edge_provenance_invariant.py` asserts hypergumbo's own self-analysis emits zero edges with empty provenance and zero edges carrying the sentinel (sentinel may only appear via deserialization, never from a producer).
+
 ### Summary
 
 - **Closes the ADR-0027 / ADR-0028 concept-axis program.** 111 `Edge.evidence_type` and 71 `Symbol.kind` endpoint_shape values retire from their registries.

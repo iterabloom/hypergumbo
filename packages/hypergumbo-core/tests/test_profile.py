@@ -2654,7 +2654,7 @@ def _make_edge(src: str, dst: str, edge_type: str = "imports"):
     """Helper to create a minimal Edge for testing."""
     from hypergumbo_core.ir import Edge
 
-    return Edge(id=f"e-{src}-{dst}", src=src, dst=dst, edge_type=edge_type, line=1)
+    return Edge(id=f"e-{src}-{dst}", src=src, dst=dst, edge_type=edge_type, line=1, origin="test", origin_run_id="test")
 
 
 def _make_symbol(sym_id: str, path: str, language: str = "python"):

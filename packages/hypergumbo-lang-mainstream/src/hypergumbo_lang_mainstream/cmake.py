@@ -116,6 +116,8 @@ def _process_cmake_tree(
     symbols: list[Symbol],
     edges: list[Edge],
     target_registry: dict[str, str],
+    *,
+    run_id: str,
 ) -> None:
     """Process CMake AST tree to extract symbols and edges.
 
@@ -246,6 +248,7 @@ def _process_cmake_tree(
                             confidence=confidence,
                             origin=PASS_ID,
                             evidence_type="cmake_target_link",
+                            origin_run_id=run_id,
                         )
                         edges.append(edge)
 
@@ -446,6 +449,8 @@ class CMakeAnalyzer(TreeSitterAnalyzer):
                     symbols,
                     edges,
                     target_registry,
+
+                    run_id=run.execution_id,
                 )
 
             except Exception as e:  # pragma: no cover

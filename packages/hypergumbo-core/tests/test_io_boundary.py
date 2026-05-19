@@ -3633,6 +3633,8 @@ class TestStdlibModulesAndFilter2:
                 module_path=module_path,
                 name=name,
             ),
+
+            origin="test", origin_run_id="test",
         )
 
     def _boundary_node(self, dst_id: str, name: str) -> dict:
@@ -4170,6 +4172,8 @@ class TestDstRefPreferredOverDstString:
                 module_path="urllib.request",
                 name="urlopen",
             ),
+
+            origin="test", origin_run_id="test",
         )
         count = tag_io_boundaries([edge], {"python": catalog})
         assert count == 1
@@ -4200,6 +4204,8 @@ class TestDstRefPreferredOverDstString:
                 module_path="custom_pkg.subpkg",
                 name="custom_func",
             ),
+
+            origin="test", origin_run_id="test",
         )
         # nodes_by_id must mark the dst as an external boundary node
         # for _compute_external_potential to consider the edge. The

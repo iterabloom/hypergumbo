@@ -75,6 +75,8 @@ def _make_unresolved_edge(
         is_resolved=False,
         confidence=0.50,
         origin="go-v1",
+
+        origin_run_id="test",
     )
 
 
@@ -324,6 +326,8 @@ class TestCgoLinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.85,
             origin="go-v1",
+
+            origin_run_id="test",
         )
 
         result = link_cgo(

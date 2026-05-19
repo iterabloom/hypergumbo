@@ -422,6 +422,8 @@ class TestLinkJsModules:
             edge_type="calls",
             line=5,
             origin="js-ts-v1",
+
+            origin_run_id="test",
         )
 
         result = link_js_modules(
@@ -618,6 +620,8 @@ class TestLinkerRegistryIntegration:
             edge_type="imports",
             line=1,
             origin="js-ts-v1",
+
+            origin_run_id="test",
         )
 
         ctx = LinkerContext(
@@ -659,6 +663,8 @@ class TestLinkerRegistryIntegration:
             edge_type="imports",
             line=1,
             origin="test",
+
+            origin_run_id="test",
         )
         call_edge = Edge.create(
             src="javascript:file.js:1-1:file.js:file",
@@ -666,6 +672,8 @@ class TestLinkerRegistryIntegration:
             edge_type="calls",
             line=5,
             origin="test",
+
+            origin_run_id="test",
         )
         import_non_module = Edge.create(
             src="javascript:file.js:1-1:file.js:file",
@@ -673,6 +681,8 @@ class TestLinkerRegistryIntegration:
             edge_type="imports",
             line=1,
             origin="test",
+
+            origin_run_id="test",
         )
 
         ctx = LinkerContext(
@@ -741,6 +751,8 @@ class TestEdgeCases:
             edge_type="imports",
             line=1,
             origin="js-ts-v1",
+
+            origin_run_id="test",
         )
 
         result = link_js_modules(
@@ -779,6 +791,8 @@ class TestEdgeCases:
             edge_type="imports",
             line=1,
             origin="js-ts-v1",
+
+            origin_run_id="test",
         )
 
         result = link_js_modules(

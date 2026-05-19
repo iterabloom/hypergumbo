@@ -1889,10 +1889,10 @@ class TestConnectivityBasedRanking:
         # route_b calls 1 helper (1 edge)
         # route_c calls 3 helpers (3 edges)
         edges = [
-            Edge.create(src=route_b.id, dst=helper1.id, edge_type="calls", line=2),
-            Edge.create(src=route_c.id, dst=helper1.id, edge_type="calls", line=2),
-            Edge.create(src=route_c.id, dst=helper2.id, edge_type="calls", line=3),
-            Edge.create(src=route_c.id, dst=helper3.id, edge_type="calls", line=4),
+            Edge.create(src=route_b.id, dst=helper1.id, edge_type="calls", line=2, origin="test", origin_run_id="test"),
+            Edge.create(src=route_c.id, dst=helper1.id, edge_type="calls", line=2, origin="test", origin_run_id="test"),
+            Edge.create(src=route_c.id, dst=helper2.id, edge_type="calls", line=3, origin="test", origin_run_id="test"),
+            Edge.create(src=route_c.id, dst=helper3.id, edge_type="calls", line=4, origin="test", origin_run_id="test"),
         ]
 
         entrypoints = detect_entrypoints(nodes, edges)
@@ -1925,7 +1925,7 @@ class TestConnectivityBasedRanking:
 
         # route_connected calls helper multiple times (simulated by multiple edges)
         edges = [
-            Edge.create(src=route_connected.id, dst=helper.id, edge_type="calls", line=i)
+            Edge.create(src=route_connected.id, dst=helper.id, edge_type="calls", line=i, origin="test", origin_run_id="test")
             for i in range(10)  # 10 outgoing edges
         ]
 
@@ -1951,7 +1951,7 @@ class TestConnectivityBasedRanking:
         nodes = routes + [helper]
 
         # Only first route has edges
-        edges = [Edge.create(src=routes[0].id, dst=helper.id, edge_type="calls", line=1)]
+        edges = [Edge.create(src=routes[0].id, dst=helper.id, edge_type="calls", line=1, origin="test", origin_run_id="test")]
 
         entrypoints = detect_entrypoints(nodes, edges)
 
@@ -1976,8 +1976,8 @@ class TestConnectivityBasedRanking:
         # route_caller calls route_callee (route_callee has incoming edge, not outgoing)
         # route_caller also calls other
         edges = [
-            Edge.create(src=route_caller.id, dst=route_callee.id, edge_type="calls", line=1),
-            Edge.create(src=route_caller.id, dst=other.id, edge_type="calls", line=2),
+            Edge.create(src=route_caller.id, dst=route_callee.id, edge_type="calls", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=route_caller.id, dst=other.id, edge_type="calls", line=2, origin="test", origin_run_id="test"),
         ]
 
         entrypoints = detect_entrypoints(nodes, edges)
@@ -2027,15 +2027,15 @@ class TestConnectivityBasedRanking:
 
         edges = [
             # compiler_main calls tryMain (1 direct edge)
-            Edge.create(src=compiler_main.id, dst=try_main.id, edge_type="calls", line=5),
+            Edge.create(src=compiler_main.id, dst=try_main.id, edge_type="calls", line=5, origin="test", origin_run_id="test"),
             # tryMain calls 50 helpers (high transitive reach)
             *[
-                Edge.create(src=try_main.id, dst=h.id, edge_type="calls", line=25 + i)
+                Edge.create(src=try_main.id, dst=h.id, edge_type="calls", line=25 + i, origin="test", origin_run_id="test")
                 for i, h in enumerate(helpers)
             ],
             # utility_main calls 10 helpers directly (moderate direct reach)
             *[
-                Edge.create(src=utility_main.id, dst=helpers[i].id, edge_type="calls", line=5 + i)
+                Edge.create(src=utility_main.id, dst=helpers[i].id, edge_type="calls", line=5 + i, origin="test", origin_run_id="test")
                 for i in range(10)
             ],
         ]
@@ -2696,9 +2696,9 @@ class TestConnectivityFallback:
 
         # processData calls helper and run; it's the most connected
         edges = [
-            Edge.create(src=func_a.id, dst=func_b.id, edge_type="calls", line=1),
-            Edge.create(src=func_a.id, dst=func_c.id, edge_type="calls", line=2),
-            Edge.create(src=func_c.id, dst=func_b.id, edge_type="calls", line=3),
+            Edge.create(src=func_a.id, dst=func_b.id, edge_type="calls", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=func_a.id, dst=func_c.id, edge_type="calls", line=2, origin="test", origin_run_id="test"),
+            Edge.create(src=func_c.id, dst=func_b.id, edge_type="calls", line=3, origin="test", origin_run_id="test"),
         ]
 
         entrypoints = detect_entrypoints([func_a, func_b, func_c], edges)
@@ -2720,7 +2720,7 @@ class TestConnectivityFallback:
         )
         # helper has more connections but main has concept metadata
         edges = [
-            Edge.create(src=func_helper.id, dst=func_main.id, edge_type="calls", line=1),
+            Edge.create(src=func_helper.id, dst=func_main.id, edge_type="calls", line=1, origin="test", origin_run_id="test"),
         ]
 
         entrypoints = detect_entrypoints([func_main, func_helper], edges)
@@ -2740,8 +2740,8 @@ class TestConnectivityFallback:
         func = make_symbol("process", kind="function", path="lib.rs",
                            language="rust", start_line=1, end_line=10)
         edges = [
-            Edge.create(src=func.id, dst="other:1", edge_type="calls", line=1),
-            Edge.create(src=func.id, dst="other:2", edge_type="calls", line=2),
+            Edge.create(src=func.id, dst="other:1", edge_type="calls", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=func.id, dst="other:2", edge_type="calls", line=2, origin="test", origin_run_id="test"),
         ]
 
         entrypoints = detect_entrypoints([func], edges)
@@ -2763,7 +2763,7 @@ class TestConnectivityFallback:
             symbols.append(sym)
             # Each function calls the next one
             if i > 0:
-                edges.append(Edge.create(src=sym.id, dst=symbols[i - 1].id, edge_type="calls", line=i))
+                edges.append(Edge.create(src=sym.id, dst=symbols[i - 1].id, edge_type="calls", line=i, origin="test", origin_run_id="test"))
 
         entrypoints = detect_entrypoints(symbols, edges)
 
@@ -2780,8 +2780,8 @@ class TestConnectivityFallback:
 
         # Both have outgoing edges
         edges = [
-            Edge.create(src=struct_sym.id, dst="other:1", edge_type="extends", line=1),
-            Edge.create(src=func_sym.id, dst="other:2", edge_type="calls", line=1),
+            Edge.create(src=struct_sym.id, dst="other:1", edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=func_sym.id, dst="other:2", edge_type="calls", line=1, origin="test", origin_run_id="test"),
         ]
 
         entrypoints = detect_entrypoints([struct_sym, func_sym], edges)
@@ -2802,8 +2802,8 @@ class TestConnectivityFallback:
 
         # Both have equal connectivity
         edges = [
-            Edge.create(src=test_func.id, dst="other:1", edge_type="calls", line=1),
-            Edge.create(src=prod_func.id, dst="other:2", edge_type="calls", line=1),
+            Edge.create(src=test_func.id, dst="other:1", edge_type="calls", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=prod_func.id, dst="other:2", edge_type="calls", line=1, origin="test", origin_run_id="test"),
         ]
 
         entrypoints = detect_entrypoints([test_func, prod_func], edges)
@@ -3494,10 +3494,10 @@ class TestApplicationLibraryExportDemotion:
         # Give both exports outgoing edges so they get connectivity boost
         # (without boost, 0.80 * 0.1 = 0.08 < threshold and both are filtered)
         edges = [
-            Edge.create(src=telemetry_export.id, dst=helper1.id, edge_type="calls", line=1),
-            Edge.create(src=telemetry_export.id, dst=helper2.id, edge_type="calls", line=2),
-            Edge.create(src=api_export.id, dst=helper1.id, edge_type="calls", line=1),
-            Edge.create(src=api_export.id, dst=helper2.id, edge_type="calls", line=2),
+            Edge.create(src=telemetry_export.id, dst=helper1.id, edge_type="calls", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=telemetry_export.id, dst=helper2.id, edge_type="calls", line=2, origin="test", origin_run_id="test"),
+            Edge.create(src=api_export.id, dst=helper1.id, edge_type="calls", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=api_export.id, dst=helper2.id, edge_type="calls", line=2, origin="test", origin_run_id="test"),
         ]
 
         entrypoints = detect_entrypoints(nodes, edges)

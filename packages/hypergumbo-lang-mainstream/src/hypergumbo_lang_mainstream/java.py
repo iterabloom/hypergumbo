@@ -2163,6 +2163,8 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             node_kinds=("field_access",),
             object_field_names=("object",),
             property_field_names=("field",),
+            pass_id=PASS_ID,
+            run_id=run.execution_id,
             call_node_kinds=("__never_match_java__",),
             call_function_field_names=("__unused__",),
         )

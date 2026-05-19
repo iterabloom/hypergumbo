@@ -3251,6 +3251,8 @@ def test_cmd_slice_files_mode(tmp_path: Path, capsys) -> None:
             edge_type="calls",
             line=3,
             confidence=0.9,
+
+            origin="test", origin_run_id="test",
         ),
         # test_func_a calls func_a
         Edge(
@@ -3260,6 +3262,8 @@ def test_cmd_slice_files_mode(tmp_path: Path, capsys) -> None:
             edge_type="calls",
             line=3,
             confidence=0.9,
+
+            origin="test", origin_run_id="test",
         ),
     ]
 
@@ -3318,6 +3322,8 @@ def test_cmd_slice_files_mode_max_hops_none(tmp_path: Path, capsys) -> None:
             src="python:b.py:1-5:func_b:function",
             dst="python:a.py:1-5:func_a:function",
             edge_type="calls", line=3, confidence=0.9,
+
+            origin="test", origin_run_id="test",
         ),
     ]
 
@@ -3497,6 +3503,8 @@ def test_cmd_slice_files_mode_bfs_visited_skip(tmp_path: Path) -> None:
             dst="python:a.py:1-5:func_a:function",
             edge_type="calls",
             line=2,
+
+            origin="test", origin_run_id="test",
         ),
         # func_c calls func_a
         Edge(
@@ -3505,6 +3513,8 @@ def test_cmd_slice_files_mode_bfs_visited_skip(tmp_path: Path) -> None:
             dst="python:a.py:1-5:func_a:function",
             edge_type="calls",
             line=2,
+
+            origin="test", origin_run_id="test",
         ),
         # func_d calls func_b
         Edge(
@@ -3513,6 +3523,8 @@ def test_cmd_slice_files_mode_bfs_visited_skip(tmp_path: Path) -> None:
             dst="python:b.py:1-5:func_b:function",
             edge_type="calls",
             line=2,
+
+            origin="test", origin_run_id="test",
         ),
         # func_d also calls func_c (creating diamond)
         Edge(
@@ -3521,6 +3533,8 @@ def test_cmd_slice_files_mode_bfs_visited_skip(tmp_path: Path) -> None:
             dst="python:c.py:1-5:func_c:function",
             edge_type="calls",
             line=3,
+
+            origin="test", origin_run_id="test",
         ),
     ]
 
@@ -3580,6 +3594,8 @@ def test_cmd_slice_files_mode_stdout_output(tmp_path: Path, capsys) -> None:
             dst="python:helper.py:1-5:helper:function",
             edge_type="calls",
             line=2,
+
+            origin="test", origin_run_id="test",
         ),
     ]
 

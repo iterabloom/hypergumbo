@@ -220,6 +220,8 @@ def _extract_symbols_and_edges(
                         dst=method_sym.id,
                         edge_type="contains",
                         line=method_sym.span.start_line,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
                     ))
 
         elif node.type == "enum":
@@ -248,6 +250,8 @@ def _extract_symbols_and_edges(
                                         dst=f"capnp:{import_path}:1-1:file:file",
                                         edge_type="imports",
                                         line=node.start_point[0] + 1,
+                                        origin=PASS_ID,
+                                        origin_run_id=run_id,
                                     ))
 
     return symbols, edges

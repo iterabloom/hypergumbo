@@ -103,6 +103,8 @@ def _make_call_edge(
         evidence_type="function_call",
         confidence=0.50,
         origin="python-v1",
+
+        origin_run_id="test",
     )
 
 
@@ -335,6 +337,8 @@ class TestPyFFILinkerPyO3:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(
@@ -395,6 +399,8 @@ class TestPyFFILinkerPyO3:
             evidence_type="method_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(
@@ -466,6 +472,8 @@ class TestPyFFILinkerPyO3:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(
@@ -503,6 +511,8 @@ class TestPyFFILinkerPyO3:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(
@@ -827,6 +837,8 @@ class TestPyFFILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.85,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(
@@ -858,6 +870,8 @@ class TestPyFFILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(
@@ -889,6 +903,8 @@ class TestPyFFILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(
@@ -920,6 +936,8 @@ class TestPyFFILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
         edge2 = Edge.create(
             src=py_func.id,
@@ -929,6 +947,8 @@ class TestPyFFILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(
@@ -961,6 +981,8 @@ class TestPyFFILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(
@@ -991,6 +1013,8 @@ class TestPyFFILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(
@@ -1153,6 +1177,8 @@ class TestPyO3PythonStyleNameMatching:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(tmp_path, [py_func], [], [rust_func], [call_edge])
@@ -1420,6 +1446,8 @@ class TestPyO3CrateNameAnnotation:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(tmp_path, [py_func], [], [rust_func], [call_edge])
@@ -1560,6 +1588,8 @@ class TestInvZuhubPyFFIFallback:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(tmp_path, [py_func], [], [rust_func], [call_edge])
@@ -1609,6 +1639,8 @@ class TestInvZuhubPyFFIFallback:
             evidence_type="function_call",
             confidence=0.50,
             origin="python-v1",
+
+            origin_run_id="test",
         )
 
         result = link_pyffi(tmp_path, [py_func], [], [rust_a, rust_b], [call_edge])

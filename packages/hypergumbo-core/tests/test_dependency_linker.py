@@ -60,6 +60,8 @@ def test_link_rust_dependencies():
         line=3,
         confidence=0.95,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -118,6 +120,8 @@ def test_link_python_dependencies():
         line=2,
         confidence=0.95,
         origin="python-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -158,6 +162,8 @@ def test_no_match_different_dependencies():
         line=3,
         confidence=0.95,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -193,6 +199,8 @@ def test_multiple_files_import_same_dependency():
         line=3,
         confidence=0.95,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     import_edge2 = Edge(
@@ -203,6 +211,8 @@ def test_multiple_files_import_same_dependency():
         line=5,
         confidence=0.95,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -254,6 +264,8 @@ def test_run_metadata():
         line=3,
         confidence=0.95,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -292,6 +304,8 @@ def test_rust_underscore_crate_name():
         line=3,
         confidence=0.95,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -328,6 +342,8 @@ def test_python_submodule_import():
         line=2,
         confidence=0.95,
         origin="python-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -364,6 +380,8 @@ def test_ignores_non_import_edges():
         line=10,
         confidence=0.9,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -400,6 +418,8 @@ def test_ignores_non_dependency_toml_symbols():
         line=3,
         confidence=0.95,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -436,6 +456,8 @@ def test_ignores_unsupported_language_imports():
         line=3,
         confidence=0.95,
         origin="go-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -472,6 +494,8 @@ def test_deduplicates_same_file_same_dependency():
         line=3,
         confidence=0.95,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     import_edge2 = Edge(
@@ -482,6 +506,8 @@ def test_deduplicates_same_file_same_dependency():
         line=4,
         confidence=0.95,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -519,6 +545,8 @@ def test_rust_import_no_namespace():
         line=3,
         confidence=0.95,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -555,6 +583,8 @@ def test_python_simple_import():
         line=2,
         confidence=0.95,
         origin="python-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(
@@ -591,6 +621,8 @@ def test_rust_bare_crate_import():
         line=3,
         confidence=0.95,
         origin="rust-v1",
+
+        origin_run_id="test",
     )
 
     result = link_dependencies(

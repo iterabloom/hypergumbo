@@ -76,6 +76,11 @@ def _is_test_path(path: str) -> bool:
 )
 def link_middleware_chain(ctx: LinkerContext) -> LinkerResult:
     """Create middleware_chain edges between consecutive middleware symbols."""
+    run = AnalysisRun.create(
+        pass_id=PASS_ID,
+        version=PASS_VERSION,
+    )
+
     # Collect middleware symbols grouped by file
     middleware_by_file: dict[str, list[Symbol]] = {}
     for sym in ctx.symbols:
@@ -106,13 +111,11 @@ def link_middleware_chain(ctx: LinkerContext) -> LinkerResult:
                 evidence_type="ast_call_direct",
                 confidence=0.70,
                 meta={"framework_dispatch": "middleware_chain"},
+                origin_run_id=run.execution_id,
             )
             edges.append(edge)
 
-    run = AnalysisRun.create(
-        pass_id=PASS_ID,
-        version=PASS_VERSION,
-    )
+
 
     if edges:
         logger.info(

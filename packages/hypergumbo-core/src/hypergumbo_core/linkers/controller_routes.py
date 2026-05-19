@@ -128,6 +128,11 @@ def _span_size(span) -> int:
 )
 def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
     """Create contains_routes edges from controllers to their route methods."""
+    run = AnalysisRun.create(
+        pass_id=PASS_ID,
+        version=PASS_VERSION,
+    )
+
     controllers_by_file: dict[str, list[Symbol]] = {}
     routes_by_file: dict[str, list[Symbol]] = {}
 
@@ -165,13 +170,11 @@ def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
                 evidence_type="ast_call_direct",
                 confidence=0.80,
                 meta={"framework_dispatch": "controller_routes"},
+                origin_run_id=run.execution_id,
             )
             edges.append(edge)
 
-    run = AnalysisRun.create(
-        pass_id=PASS_ID,
-        version=PASS_VERSION,
-    )
+
 
     if edges:
         logger.info(

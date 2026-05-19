@@ -966,6 +966,8 @@ class TestSliceEdgeCases:
             dst="python:nonexistent.py:1-5:missing:function",
             edge_type="calls",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
 
         nodes = [sym_a]
@@ -1035,6 +1037,8 @@ class TestSliceEdgeCases:
             line=1,
             evidence_type="ast_import",
             confidence=0.95,
+
+            origin="test", origin_run_id="test",
         )
 
         nodes = [func, file_node, module_node]
@@ -1111,6 +1115,8 @@ class TestSliceEdgeCases:
             line=1,
             evidence_type="ast_import",
             confidence=0.95,
+
+            origin="test", origin_run_id="test",
         )
         import_json = Edge.create(
             src=utils_file.id,
@@ -1119,6 +1125,8 @@ class TestSliceEdgeCases:
             line=1,
             evidence_type="ast_import",
             confidence=0.95,
+
+            origin="test", origin_run_id="test",
         )
 
         nodes = [main_func, main_file, helper_func, utils_file, os_module, json_module]
@@ -1364,7 +1372,7 @@ class TestRankSliceNodes:
         caller.supply_chain_tier = 1
 
         # Edge from caller to external
-        edge = Edge.create(caller.id, external.id, "calls", 10, confidence=0.9)
+        edge = Edge.create(caller.id, external.id, "calls", 10, confidence=0.9, origin="test", origin_run_id="test")
 
         # Create a slice result with these nodes
         result = SliceResult(
@@ -1394,8 +1402,8 @@ class TestRankSliceNodes:
         caller = make_symbol("caller", path="src/other.py")
 
         # Both test and prod are called by caller equally
-        edge1 = Edge.create(caller.id, test_sym.id, "calls", 5, confidence=0.9)
-        edge2 = Edge.create(caller.id, prod_sym.id, "calls", 6, confidence=0.9)
+        edge1 = Edge.create(caller.id, test_sym.id, "calls", 5, confidence=0.9, origin="test", origin_run_id="test")
+        edge2 = Edge.create(caller.id, prod_sym.id, "calls", 6, confidence=0.9, origin="test", origin_run_id="test")
 
         result = SliceResult(
             entry_nodes=[caller.id],
@@ -1426,9 +1434,9 @@ class TestRankSliceNodes:
 
         # Test file has more incoming edges (2 vs 1)
         edges = [
-            Edge.create(caller1.id, test_sym.id, "calls", 5, confidence=0.9),
-            Edge.create(caller2.id, test_sym.id, "calls", 6, confidence=0.9),
-            Edge.create(caller1.id, prod_sym.id, "calls", 7, confidence=0.9),
+            Edge.create(caller1.id, test_sym.id, "calls", 5, confidence=0.9, origin="test", origin_run_id="test"),
+            Edge.create(caller2.id, test_sym.id, "calls", 6, confidence=0.9, origin="test", origin_run_id="test"),
+            Edge.create(caller1.id, prod_sym.id, "calls", 7, confidence=0.9, origin="test", origin_run_id="test"),
         ]
 
         result = SliceResult(
@@ -1767,8 +1775,8 @@ class TestReverseSliceClassExpansion:
         prod_caller = make_symbol("api_handler", path="src/api.py")
 
         edges = [
-            Edge.create(test_caller.id, target.id, "calls", 10, confidence=0.9),
-            Edge.create(prod_caller.id, target.id, "calls", 20, confidence=0.9),
+            Edge.create(test_caller.id, target.id, "calls", 10, confidence=0.9, origin="test", origin_run_id="test"),
+            Edge.create(prod_caller.id, target.id, "calls", 20, confidence=0.9, origin="test", origin_run_id="test"),
         ]
 
         # In a reverse slice from target, both callers would be in the result
@@ -2872,6 +2880,8 @@ class TestDataflowSlice:
         edge = Edge.create(
             src=writer.id, dst=reader.id, edge_type="data_flows_to", line=10,
             access_mode="write", dest_access_mode="read", channel="config.key",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
         result = slice_graph([writer, reader], [edge], query)
@@ -2885,6 +2895,8 @@ class TestDataflowSlice:
         edge = Edge.create(
             src=mutator.id, dst=reader.id, edge_type="calls", line=10,
             access_mode="mutate",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="mutator", dataflow=True, max_hops=3)
         result = slice_graph([mutator, reader], [edge], query)
@@ -2897,6 +2909,8 @@ class TestDataflowSlice:
         edge = Edge.create(
             src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
         result = slice_graph([func_a, func_b], [edge], query)
@@ -2910,6 +2924,8 @@ class TestDataflowSlice:
         edge = Edge.create(
             src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
             access_mode="delete",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
         result = slice_graph([func_a, func_b], [edge], query)
@@ -2921,6 +2937,8 @@ class TestDataflowSlice:
         func_b = make_symbol("func_b", path="src/b.py")
         edge = Edge.create(
             src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
         result = slice_graph([func_a, func_b], [edge], query)
@@ -2934,6 +2952,8 @@ class TestDataflowSlice:
         edge = Edge.create(
             src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="func_a", dataflow=False, max_hops=3)
         result = slice_graph([func_a, func_b], [edge], query)
@@ -2959,6 +2979,8 @@ class TestDataflowSlice:
         edge = Edge.create(
             src=reader.id, dst=writer.id, edge_type="calls", line=10,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="writer", dataflow=True, reverse=True, max_hops=3)
         result = slice_graph([writer, reader], [edge], query)
@@ -2973,6 +2995,8 @@ class TestDataflowSlice:
         edge = Edge.create(
             src=other_writer.id, dst=writer.id, edge_type="calls", line=10,
             access_mode="write",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="writer", dataflow=True, reverse=True, max_hops=3)
         result = slice_graph([writer, other_writer], [edge], query)
@@ -2985,6 +3009,8 @@ class TestDataflowSlice:
         func_b = make_symbol("func_b", path="src/b.py")
         edge = Edge.create(
             src=func_b.id, dst=func_a.id, edge_type="calls", line=10,
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="func_a", dataflow=True, reverse=True, max_hops=3)
         result = slice_graph([func_a, func_b], [edge], query)
@@ -3011,11 +3037,15 @@ class TestDataflowOneHopDownstreamRead:
         write_edge = Edge.create(
             src=writer.id, dst=sink.id, edge_type="calls", line=10,
             access_mode="write",
+
+            origin="test", origin_run_id="test",
         )
         # writer → reader via read (downstream read from writer)
         read_edge = Edge.create(
             src=writer.id, dst=reader.id, edge_type="calls", line=11,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
         result = slice_graph(
@@ -3041,16 +3071,22 @@ class TestDataflowOneHopDownstreamRead:
         self_write = Edge.create(
             src=writer.id, dst=writer.id, edge_type="calls", line=5,
             access_mode="write",
+
+            origin="test", origin_run_id="test",
         )
         # writer → reader via read (one-hop terminal)
         read_edge = Edge.create(
             src=writer.id, dst=reader.id, edge_type="calls", line=10,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         # reader → downstream via write (would normally extend BFS)
         downstream_edge = Edge.create(
             src=reader.id, dst=downstream.id, edge_type="calls", line=20,
             access_mode="write",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
         result = slice_graph(
@@ -3076,6 +3112,8 @@ class TestDataflowOneHopDownstreamRead:
         edge = Edge.create(
             src=non_writer.id, dst=target.id, edge_type="calls", line=10,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="non_writer", dataflow=True, max_hops=3)
         result = slice_graph([non_writer, target], [edge], query)
@@ -3093,20 +3131,28 @@ class TestDataflowOneHopDownstreamRead:
         # a → b via write
         e_ab = Edge.create(
             src=a.id, dst=b.id, edge_type="calls", line=1, access_mode="write",
+
+            origin="test", origin_run_id="test",
         )
         # b → c via mutate (so b is also a writer)
         e_bc = Edge.create(
             src=b.id, dst=c.id, edge_type="calls", line=2, access_mode="mutate",
+
+            origin="test", origin_run_id="test",
         )
         # a → reader_a via read (one-hop terminal admission for a)
         e_a_ra = Edge.create(
             src=a.id, dst=reader_a.id, edge_type="calls", line=3,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         # b → reader_b via read (one-hop terminal admission for b)
         e_b_rb = Edge.create(
             src=b.id, dst=reader_b.id, edge_type="calls", line=4,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="a", dataflow=True, max_hops=5)
         result = slice_graph(
@@ -3128,10 +3174,14 @@ class TestDataflowOneHopDownstreamRead:
         write_edge = Edge.create(
             src=writer.id, dst=sink.id, edge_type="calls", line=10,
             access_mode="write",
+
+            origin="test", origin_run_id="test",
         )
         read_edge = Edge.create(
             src=writer.id, dst=low_reader.id, edge_type="calls", line=11,
             access_mode="read", confidence=0.2,
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(
             entrypoint="writer", dataflow=True, max_hops=3, min_confidence=0.5,
@@ -3154,11 +3204,15 @@ class TestDataflowOneHopDownstreamRead:
         write_edge = Edge.create(
             src=writer.id, dst=sink.id, edge_type="calls", line=10,
             access_mode="write",
+
+            origin="test", origin_run_id="test",
         )
         # An import edge tagged with read access_mode (rare but legal)
         import_read = Edge.create(
             src=writer.id, dst=imported_mod.id, edge_type="imports", line=1,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(
             entrypoint="writer", dataflow=True, max_hops=3,
@@ -3184,6 +3238,8 @@ class TestDataflowOneHopDownstreamRead:
         read_edge = Edge.create(
             src=writer.id, dst=sink.id, edge_type="calls", line=1,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(
             entrypoint="writer", dataflow=True, reverse=True, max_hops=3,
@@ -3211,6 +3267,8 @@ class TestAdmissionStatsTelemetry:
         func_b = make_symbol("func_b", path="src/b.py")
         edge = Edge.create(
             src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="func_a", dataflow=False, max_hops=3)
         result = slice_graph([func_a, func_b], [edge], query)
@@ -3224,6 +3282,8 @@ class TestAdmissionStatsTelemetry:
         edge = Edge.create(
             src=writer.id, dst=target.id, edge_type="calls", line=10,
             access_mode="write",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
         result = slice_graph([writer, target], [edge], query)
@@ -3240,10 +3300,14 @@ class TestAdmissionStatsTelemetry:
         write_edge = Edge.create(
             src=writer.id, dst=sink.id, edge_type="calls", line=10,
             access_mode="write",
+
+            origin="test", origin_run_id="test",
         )
         read_edge = Edge.create(
             src=writer.id, dst=reader.id, edge_type="calls", line=11,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
         result = slice_graph(
@@ -3259,6 +3323,8 @@ class TestAdmissionStatsTelemetry:
         func_b = make_symbol("func_b", path="src/b.py")
         edge = Edge.create(
             src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
         result = slice_graph([func_a, func_b], [edge], query)
@@ -3273,6 +3339,8 @@ class TestAdmissionStatsTelemetry:
         edge = Edge.create(
             src=non_writer.id, dst=target.id, edge_type="calls", line=10,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="non_writer", dataflow=True, max_hops=3)
         result = slice_graph([non_writer, target], [edge], query)
@@ -3286,6 +3354,8 @@ class TestAdmissionStatsTelemetry:
         edge = Edge.create(
             src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
             access_mode="delete",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
         result = slice_graph([func_a, func_b], [edge], query)
@@ -3306,6 +3376,8 @@ class TestAdmissionStatsTelemetry:
             src=func_a.id, dst=func_b.id, edge_type="calls", line=10,
             access_mode="delete",
             dest_access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="func_a", dataflow=True, max_hops=3)
         result = slice_graph([func_a, func_b], [edge], query)
@@ -3327,6 +3399,8 @@ class TestAdmissionStatsTelemetry:
             src=writer.id, dst=target.id, edge_type="calls", line=10,
             access_mode="write",
             dest_access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
         result = slice_graph([writer, target], [edge], query)
@@ -3340,6 +3414,8 @@ class TestAdmissionStatsTelemetry:
         edge = Edge.create(
             src=reader.id, dst=writer.id, edge_type="calls", line=10,
             access_mode="read",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(
             entrypoint="writer", dataflow=True, reverse=True, max_hops=3,
@@ -3354,6 +3430,8 @@ class TestAdmissionStatsTelemetry:
         edge = Edge.create(
             src=other.id, dst=writer.id, edge_type="calls", line=10,
             access_mode="write",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(
             entrypoint="writer", dataflow=True, reverse=True, max_hops=3,
@@ -3377,6 +3455,8 @@ class TestAdmissionStatsTelemetry:
         edge = Edge.create(
             src=writer.id, dst=target.id, edge_type="calls", line=10,
             access_mode="write",
+
+            origin="test", origin_run_id="test",
         )
         query = SliceQuery(entrypoint="writer", dataflow=True, max_hops=3)
         result = slice_graph([writer, target], [edge], query)

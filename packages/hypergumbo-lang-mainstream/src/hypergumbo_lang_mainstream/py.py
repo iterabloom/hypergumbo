@@ -1919,6 +1919,8 @@ def _extract_import_edges(
     importing_module: str,
     global_symbols: dict[tuple[str, str], Symbol],
     resolver: "SymbolResolver | None" = None,
+    *,
+    run_id: str,
 ) -> list[Edge]:
     """Extract import edges from AST.
 
@@ -1972,6 +1974,8 @@ def _extract_import_edges(
                         evidence_type="ast_import",
                         confidence=0.95,
                         dst_ref=dst_ref,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
                     ))
 
         # Handle 'import X' and 'import X as Y' style imports
@@ -1991,6 +1995,8 @@ def _extract_import_edges(
                         module_path=module_name,
                         name=module_name,
                     ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 ))
 
     return edges
@@ -2593,6 +2599,8 @@ def _extract_edges(
     module_imports: dict[str, str] | None = None,
     resolver: "SymbolResolver | None" = None,
     _sym_by_path_name: dict[tuple[str, str], Symbol] | None = None,
+    *,
+    run_id: str,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -2648,6 +2656,8 @@ def _extract_edges(
                 line=name_node.lineno,
                 confidence=0.80,
                 evidence_type="function_reference",
+                origin=PASS_ID,
+                origin_run_id=run_id,
             ))
 
     def _emit_module_attr_refs(
@@ -2694,6 +2704,8 @@ def _extract_edges(
                     line=sub.lineno,
                     confidence=0.85,
                     evidence_type="module_attribute_reference",
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 ))
 
     # Helper to extract edges from a code block (function body, module level, etc.)
@@ -2744,6 +2756,7 @@ def _extract_edges(
                     node, caller_symbol, local_symbols, imports, global_symbols,
                     module_imports, var_types, edges, resolver,
                     sym_by_path_name=_sym_by_path_name,
+                    run_id=run_id,
                 )
                 # Function references in call arguments: map(transform, items)
                 for arg in node.args:
@@ -2898,6 +2911,8 @@ def _extract_edges(
                     line=line,
                     evidence_type="ast_decorator",
                     confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 ))
             else:
                 # Emit unresolved edge for decorators we can't resolve
@@ -2921,6 +2936,8 @@ def _extract_edges(
                         evidence_type="ast_decorator",
                         is_resolved=False,
                         confidence=0.50,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
                     ))
 
             # Check for Django signal receiver decorator: @receiver(signal, ...)
@@ -2988,6 +3005,8 @@ def _extract_edges(
                     evidence_type="ast_decorator",
                     confidence=0.90,
                     meta={"framework_dispatch": "django_signal"},
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 ))
             elif isinstance(signal_node, ast.Name):
                 # Unresolved signal - emit edge anyway for visibility
@@ -3001,6 +3020,8 @@ def _extract_edges(
                     is_resolved=False,
                     confidence=0.50,
                     meta={"framework_dispatch": "django_signal"},
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 ))
 
     # Pre-collect class field types for self.field.method() resolution (INV-014).
@@ -3165,6 +3186,8 @@ def _process_call(
     edges: list[Edge],
     resolver: "SymbolResolver | None" = None,
     sym_by_path_name: dict[tuple[str, str], Symbol] | None = None,
+    *,
+    run_id: str,
 ) -> None:
     """Process a single call expression and emit appropriate edges.
 
@@ -3280,6 +3303,8 @@ def _process_call(
                 line=call_node.lineno,
                 evidence_type="ast_new",
                 confidence=0.95,
+                origin=PASS_ID,
+                origin_run_id=run_id,
             ))
         else:
             edges.append(Edge.create(
@@ -3288,6 +3313,8 @@ def _process_call(
                 edge_type="calls",
                 line=call_node.lineno,
                 evidence_type=evidence_type,
+                origin=PASS_ID,
+                origin_run_id=run_id,
             ))
     else:
         # Emit unresolved edge for attribute calls with known module context
@@ -3313,6 +3340,8 @@ def _process_call(
                     dst_ref=ExternalRef(
                         lang="python", module_path=module_name, name=attr_name
                     ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 ))
             # Case: imported_name.method() where imported_name not resolved
             elif receiver_name in imports:
@@ -3332,6 +3361,8 @@ def _process_call(
                         module_path=module_name,
                         name=f"{original_name}.{attr_name}",
                     ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 ))
             # Case: local_var.method() where type cannot be inferred.
             # Emit unresolved edge using the attribute name so that IO
@@ -3348,6 +3379,8 @@ def _process_call(
                     is_resolved=False,
                     confidence=0.40,
                     meta={"call_construct": "method", "resolution_quality": "type_inferred"},
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 ))
         elif isinstance(func, ast.Attribute):
             # WI-zigah: multi-segment chain like `urllib.request.urlopen(x)`
@@ -3375,6 +3408,8 @@ def _process_call(
                         dst_ref=ExternalRef(
                             lang="python", module_path=submodule, name=callee
                         ),
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
                     ))
         elif isinstance(func, ast.Name):
             # WI-zigah: bare call like `urlopen(x)` after
@@ -3397,6 +3432,8 @@ def _process_call(
                     dst_ref=ExternalRef(
                         lang="python", module_path=module_name, name=original_name
                     ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 ))
 
 
@@ -3414,10 +3451,13 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
     if file_analysis is None:
         return AnalysisResult(symbols=[], edges=[], usage_contexts=[])
 
-    # For single-file analysis, only detect local calls
+    # For single-file analysis, only detect local calls.
+    # WI-higap: create a run so Edge constructions have a valid origin_run_id.
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
     edges = _extract_edges(
         file_analysis.tree, file_analysis.symbol_by_name, {}, {},
-        file_analysis.module_imports
+        file_analysis.module_imports,
+        run_id=run.execution_id,
     )
     return AnalysisResult(
         symbols=file_analysis.symbols,
@@ -3529,14 +3569,13 @@ def analyze_python(
             symbol.origin_run_id = run.execution_id
         all_symbols.extend(analysis.symbols)
 
-        # Extract call edges
+        # Extract call edges (WI-higap: run_id plumbed at construction so
+        # Edge.__post_init__ enforcement passes without orchestrator backfill).
         call_edges = _extract_edges(
             analysis.tree, analysis.symbol_by_name, analysis.imports, global_symbols,
             analysis.module_imports, resolver, _sym_by_path_name,
+            run_id=run.execution_id,
         )
-        for edge in call_edges:
-            edge.origin = PASS_ID
-            edge.origin_run_id = run.execution_id
         # ADR-0015: annotate edges with access_mode from Python AST context.
         # Pass source + python.yaml config so library_patterns (e.g. .append,
         # .write, .send → write) can fall back when the AST positional walk
@@ -3551,11 +3590,9 @@ def analyze_python(
 
         # Extract import edges
         import_edges = _extract_import_edges(
-            analysis.tree, str(py_file), module_name, global_symbols, resolver
+            analysis.tree, str(py_file), module_name, global_symbols, resolver,
+            run_id=run.execution_id,
         )
-        for edge in import_edges:
-            edge.origin = PASS_ID
-            edge.origin_run_id = run.execution_id
         all_edges.extend(import_edges)
 
         # Collect usage contexts (v1.1.x)

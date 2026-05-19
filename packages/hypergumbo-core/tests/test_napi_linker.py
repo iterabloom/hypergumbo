@@ -119,6 +119,8 @@ class TestNAPILinkerCAPI:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -166,6 +168,8 @@ class TestNAPILinkerCAPI:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -211,6 +215,8 @@ class TestNAPILinkerNodeAddonAPI:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -261,6 +267,8 @@ class TestNAPILinkerNodeAddonAPI:
             evidence_type="method_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -309,6 +317,8 @@ class TestNAPILinkerNodeAddonAPI:
             evidence_type="method_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -362,6 +372,8 @@ class TestNAPILinkerTemplateForms:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -410,6 +422,8 @@ class TestNAPILinkerTemplateForms:
             evidence_type="method_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -457,6 +471,8 @@ class TestNAPILinkerTemplateForms:
             evidence_type="method_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -505,6 +521,8 @@ class TestNAPILinkerTemplateForms:
             evidence_type="property_access",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -572,6 +590,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -611,6 +631,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.85,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -647,6 +669,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
         edge2 = Edge.create(
             src=js_sym.id,
@@ -656,6 +680,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -692,6 +718,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -718,6 +746,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -753,6 +783,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -792,6 +824,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
         edge2 = Edge.create(
             src=js_sym.id,
@@ -801,6 +835,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -841,6 +877,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -877,6 +915,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -923,6 +963,8 @@ class TestNAPILinkerEdgeCases:
             evidence_type="function_call",
             confidence=0.50,
             origin="ts-v1",
+
+            origin_run_id="test",
         )
 
         result = link_napi(
@@ -1040,6 +1082,8 @@ class TestNAPILinkerRegistry:
             evidence_type="function_call",
             confidence=0.50,
             origin="js-v1",
+
+            origin_run_id="test",
         )
 
         ctx = LinkerContext(
@@ -1085,6 +1129,8 @@ class TestInvZuhubNapiFallback:
             dst="javascript:index.js:0-0:add:unresolved",
             edge_type="calls", line=3, evidence_type="function_call",
             confidence=0.50, origin="js-v1",
+
+            origin_run_id="test",
         )
         result = link_napi(
             repo_root=tmp_path,
@@ -1151,6 +1197,8 @@ class TestInvZuhubNapiFallback:
             dst="javascript:index.js:0-0:add:unresolved",
             edge_type="calls", line=3, evidence_type="function_call",
             confidence=0.50, origin="js-v1",
+
+            origin_run_id="test",
         )
         result = link_napi(
             repo_root=tmp_path,

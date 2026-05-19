@@ -273,6 +273,7 @@ def link_via_strategies(
                         evidence_type="naming_convention",
                         confidence=0.85,
                         meta={"detection_pattern": emission.detection_pattern},
+                        origin_run_id=run.execution_id,
                     )
                 )
 

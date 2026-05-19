@@ -852,6 +852,9 @@ class TestEmitModuleAttributeRefs:
             node_kinds=("member_expression",),
             object_field_names=("object",),
             property_field_names=("property",),
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         assert len(edges) == 1
         assert edges[0].edge_type == "module_attr_ref"
@@ -877,6 +880,9 @@ class TestEmitModuleAttributeRefs:
             node_kinds=("member_expression",),
             object_field_names=("object",),
             property_field_names=("property",),
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         assert edges == []
 
@@ -898,6 +904,9 @@ class TestEmitModuleAttributeRefs:
             node_kinds=("member_expression",),
             object_field_names=("object",),
             property_field_names=("property",),
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         assert edges == []
 
@@ -926,6 +935,9 @@ class TestEmitModuleAttributeRefs:
             node_kinds=("member_expression",),
             object_field_names=("object",),
             property_field_names=("property",),
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         # Exactly one edge: process.env (the outer .PATH's base is a
         # member_expression, not an identifier, so it does not match).
@@ -949,6 +961,9 @@ class TestEmitModuleAttributeRefs:
             node_kinds=("member_expression",),
             object_field_names=("object",),
             property_field_names=("property",),
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         dsts = {e.dst for e in edges}
         assert "javascript:process:0-0:process.env:attribute" in dsts
@@ -973,6 +988,9 @@ class TestEmitModuleAttributeRefs:
             node_kinds=("member_expression",),
             object_field_names=("object",),
             property_field_names=("property",),
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         assert len(edges) == 1
         assert edges[0].dst == "javascript:process:0-0:process.env:attribute"
@@ -994,6 +1012,9 @@ class TestEmitModuleAttributeRefs:
             node_kinds=("member_expression",),
             object_field_names=("object",),
             property_field_names=("property",),
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         assert edges == []
 
@@ -1016,6 +1037,9 @@ class TestEmitModuleAttributeRefs:
             node_kinds=("never_matches_this",),
             object_field_names=("object",),
             property_field_names=("property",),
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         assert edges == []
 
@@ -1038,6 +1062,9 @@ class TestEmitModuleAttributeRefs:
             node_kinds=("member_expression",),
             object_field_names=("does_not_exist", "object"),
             property_field_names=("also_does_not_exist", "property"),
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         assert len(edges) == 1
 
@@ -1058,6 +1085,9 @@ class TestEmitModuleAttributeRefs:
             node_kinds=("member_expression",),
             object_field_names=("does_not_exist",),
             property_field_names=("also_does_not_exist",),
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         assert edges == []
 
@@ -1090,6 +1120,9 @@ class TestEmitModuleAttributeRefs:
             call_function_field_names=(
                 "nonexistent_field", "also_nonexistent",
             ),
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         # Fallback: without callee-detection, process.exit is treated
         # as a plain attribute read and emitted.
@@ -1136,6 +1169,9 @@ class TestEmitModuleAttributeRefsScopedPath:
             call_node_kinds=("call_expression",),
             call_function_field_names=("function",),
             scoped_path=True,
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         dsts = [e.dst for e in edges]
         assert any(
@@ -1164,6 +1200,9 @@ class TestEmitModuleAttributeRefsScopedPath:
             call_node_kinds=("call_expression",),
             call_function_field_names=("function",),
             scoped_path=True,
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         dsts = [e.dst for e in edges]
         assert not any("std.env.var" in d for d in dsts), dsts
@@ -1186,6 +1225,9 @@ class TestEmitModuleAttributeRefsScopedPath:
             object_field_names=("path",),
             property_field_names=("name",),
             scoped_path=True,
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         assert edges == []
 
@@ -1208,6 +1250,9 @@ class TestEmitModuleAttributeRefsScopedPath:
             object_field_names=("path",),
             property_field_names=("name",),
             scoped_path=True,
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         dsts = [e.dst for e in edges]
         assert any("std.env.consts" in d for d in dsts), dsts
@@ -1231,6 +1276,9 @@ class TestEmitModuleAttributeRefsScopedPath:
             object_field_names=("does_not_exist_anywhere",),
             property_field_names=("name",),
             scoped_path=True,
+
+            pass_id="test-pass",
+            run_id="test-run",
         )
         assert edges == []
 
@@ -1612,6 +1660,8 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
             dst=caller.id,
             edge_type="imports",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
 
         new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
@@ -1635,6 +1685,8 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
             dst=make_file_id("typescript", "lib/utils.ts"),
             edge_type="imports",
             line=5,
+
+            origin="test", origin_run_id="test",
         )
 
         new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
@@ -1658,6 +1710,8 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
             dst="html:index.html:5-10:button:tag",
             edge_type="contains",
             line=5,
+
+            origin="test", origin_run_id="test",
         )
 
         new_syms = synthesize_file_symbols_for_dangling_edges([existing], [edge])
@@ -1670,8 +1724,8 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
         caller_b = _make_caller_symbol("python:b.py:1-3:b:function", path="b.py")
         file_id = make_file_id("python", "common.py")
         edges = [
-            Edge.create(src=file_id, dst=caller_a.id, edge_type="imports", line=1),
-            Edge.create(src=file_id, dst=caller_b.id, edge_type="imports", line=1),
+            Edge.create(src=file_id, dst=caller_a.id, edge_type="imports", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=file_id, dst=caller_b.id, edge_type="imports", line=1, origin="test", origin_run_id="test"),
         ]
 
         new_syms = synthesize_file_symbols_for_dangling_edges(
@@ -1690,6 +1744,8 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
             dst="python:requests:0-0:get:unresolved",
             edge_type="calls",
             line=12,
+
+            origin="test", origin_run_id="test",
         )
 
         new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
@@ -1708,6 +1764,8 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
         file_id = "dart:dart:io:1-1:file:file"
         edge = Edge.create(
             src=file_id, dst=caller.id, edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
 
         new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
@@ -1758,6 +1816,8 @@ class TestSynthesizeFileSymbolsHonorIdentity:
         caller = _make_caller_symbol()
         edge = Edge.create(
             src=abs_file_id, dst=caller.id, edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
 
         new_syms = synthesize_file_symbols_for_dangling_edges(
@@ -1787,6 +1847,8 @@ class TestSynthesizeFileSymbolsHonorIdentity:
         caller = _make_caller_symbol()
         edge = Edge.create(
             src=file_id, dst=caller.id, edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
 
         new_syms = synthesize_file_symbols_for_dangling_edges(
@@ -1808,6 +1870,8 @@ class TestSynthesizeFileSymbolsHonorIdentity:
         caller = _make_caller_symbol()
         edge = Edge.create(
             src=file_id, dst=caller.id, edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
 
         new_syms = synthesize_file_symbols_for_dangling_edges(
@@ -1833,6 +1897,8 @@ class TestSynthesizeFileSymbolsHonorIdentity:
             dst=caller.id,
             edge_type="imports",
             line=1,
+
+            origin="test", origin_run_id="test",
         )
 
         new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
@@ -1855,6 +1921,8 @@ class TestSynthesizeFileSymbolsHonorIdentity:
         file_id = "dart:dart:io:1-1:file:file"
         edge = Edge.create(
             src=file_id, dst=caller.id, edge_type="imports", line=1,
+
+            origin="test", origin_run_id="test",
         )
 
         new_syms = synthesize_file_symbols_for_dangling_edges(

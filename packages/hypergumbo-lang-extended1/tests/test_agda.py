@@ -258,6 +258,7 @@ open import Data.List renaming (map to listMap)
         resolver = NameResolver({})
         edges, aliases = _extract_edges_from_file(
             tree, source, "Example.agda", [], resolver, "test-run"
+        ,
         )
 
         # Should have import edge

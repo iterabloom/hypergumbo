@@ -152,6 +152,11 @@ def _span_size(span) -> int:
 )
 def link_router_routes(ctx: LinkerContext) -> LinkerResult:
     """Create registers_routes edges from routers to nested route symbols."""
+    run = AnalysisRun.create(
+        pass_id=PASS_ID,
+        version=PASS_VERSION,
+    )
+
     routers_by_file: dict[str, list[Symbol]] = {}
     routes_by_file: dict[str, list[Symbol]] = {}
 
@@ -189,13 +194,11 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
                 evidence_type="ast_call_direct",
                 confidence=0.80,
                 meta={"mechanism": "route_registration", "framework_dispatch": "router_routes"},
+                origin_run_id=run.execution_id,
             )
             edges.append(edge)
 
-    run = AnalysisRun.create(
-        pass_id=PASS_ID,
-        version=PASS_VERSION,
-    )
+
 
     if edges:
         logger.info(

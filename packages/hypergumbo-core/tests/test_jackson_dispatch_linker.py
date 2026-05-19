@@ -608,7 +608,7 @@ class TestTransitiveBeanMarkerBase:
             path="src/main/java/com/example/Leaf.java",
             span=(10, 12), signature="()",
         )
-        edges = [Edge.create(src=leaf.id, dst=base.id, edge_type="extends", line=1)]
+        edges = [Edge.create(src=leaf.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test")]
         result_edges = self._link([leaf, base, get_url], edges=edges)
         assert get_url.id in {e.dst for e in result_edges}
 
@@ -632,8 +632,8 @@ class TestTransitiveBeanMarkerBase:
             span=(10, 12), signature="()",
         )
         edges = [
-            Edge.create(src=leaf.id, dst=mid.id, edge_type="extends", line=1),
-            Edge.create(src=mid.id, dst=base.id, edge_type="extends", line=1),
+            Edge.create(src=leaf.id, dst=mid.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=mid.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         result_edges = self._link([leaf, mid, base, get_x], edges=edges)
         assert get_x.id in {e.dst for e in result_edges}
@@ -662,10 +662,10 @@ class TestTransitiveBeanMarkerBase:
             span=(5, 6), signature="()",
         )
         edges = [
-            Edge.create(src=leaf.id, dst=left.id, edge_type="extends", line=1),
-            Edge.create(src=leaf.id, dst=right.id, edge_type="extends", line=1),
-            Edge.create(src=left.id, dst=base.id, edge_type="extends", line=1),
-            Edge.create(src=right.id, dst=base.id, edge_type="extends", line=1),
+            Edge.create(src=leaf.id, dst=left.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=leaf.id, dst=right.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=left.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=right.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         result_edges = self._link([leaf, left, right, base, get_x], edges=edges)
         # Exactly one edge to LeafConfig.getX (no double-emit through diamond).

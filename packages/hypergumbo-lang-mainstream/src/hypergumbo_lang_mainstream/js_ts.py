@@ -4721,6 +4721,8 @@ def _analyze_javascript_impl(
             node_kinds=("member_expression",),
             object_field_names=("object",),
             property_field_names=("property",),
+            pass_id=PASS_ID,
+            run_id=run.execution_id,
             call_node_kinds=("call_expression",),
             call_function_field_names=("function",),
         )

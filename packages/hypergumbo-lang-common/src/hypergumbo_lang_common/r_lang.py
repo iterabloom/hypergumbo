@@ -137,6 +137,8 @@ def _extract_r_symbols(
     symbols: list[Symbol],
     edges: list[Edge],
     symbol_registry: dict[str, Symbol],
+    *,
+    run_id: str,
 ) -> None:
     """Extract symbols and per-file edges from R AST tree (pass 1).
 
@@ -245,6 +247,7 @@ def _extract_r_symbols(
                                                 "package": pkg_name,
                                                 "import_form": func_name,
                                             },
+                                            origin_run_id=run_id,
                                         ))
                                     break  # Only first argument is package name
                 elif func_name == "source":
@@ -319,6 +322,8 @@ def _extract_r_edges(
     local_symbols: dict[str, Symbol],
     resolver: NameResolver,
     loaded_packages: set[str] | None = None,
+    *,
+    run_id: str,
 ) -> None:
     """Extract edges from R AST tree (pass 2).
 
@@ -390,6 +395,7 @@ def _extract_r_edges(
                     confidence=confidence,
                     origin=PASS_ID,
                     evidence_type="static" if not path_hint else "qualified_call",
+                    origin_run_id=run_id,
                 )
                 edges.append(edge)
 
@@ -449,6 +455,10 @@ class RAnalyzer(TreeSitterAnalyzer):
                 skip_reason=f"Failed to initialize parser: {e}",
             )
 
+        # WI-higap: create run before edge construction so Edge.__post_init__
+        # validates origin_run_id at producer time.
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
         r_files = list(find_r_files(repo_root))
 
         # Store parsed trees for pass 2: (rel_path, source, tree, loaded_packages)
@@ -471,6 +481,8 @@ class RAnalyzer(TreeSitterAnalyzer):
                     symbols,
                     edges,
                     global_symbol_registry,
+
+                    run_id=run.execution_id,
                 )
                 populate_docstrings_from_tree(tree.root_node, source, symbols[before:])
 
@@ -500,11 +512,12 @@ class RAnalyzer(TreeSitterAnalyzer):
                 local_symbols,
                 resolver,
                 loaded_packages,
+
+                run_id=run.execution_id,
             )
 
         duration_ms = int((time.time() - start_time) * 1000)
 
-        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
         run.files_analyzed = files_analyzed
         run.files_skipped = files_skipped
         run.duration_ms = duration_ms

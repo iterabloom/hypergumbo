@@ -695,7 +695,7 @@ class TestEdgeCases:
             end=3,
         )
         edges = [
-            Edge.create(src=klass.id, dst=base.id, edge_type="extends", line=1),
+            Edge.create(src=klass.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         ctx = LinkerContext(
             repo_root=tmp_path, symbols=[klass, base, method], edges=edges

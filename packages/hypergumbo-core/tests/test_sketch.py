@@ -2663,7 +2663,7 @@ class TestComputeCentrality:
                    path="/app.py", span=Span(2, 1, 2, 10)),
         ]
         edges = [
-            Edge.create(src="a", dst="b", edge_type="calls", line=1, confidence=1.0),
+            Edge.create(src="a", dst="b", edge_type="calls", line=1, confidence=1.0, origin="test", origin_run_id="test"),
         ]
 
         centrality = compute_centrality(symbols, edges)
@@ -3053,7 +3053,7 @@ class TestFormatSymbols:
         # Many edges pointing to core
         edges = [
             Edge.create(src=f"caller{i}", dst="core", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i in range(10)
         ]
 
@@ -3088,11 +3088,11 @@ class TestFormatSymbols:
         # So first-party should win
         edges = [
             Edge.create(src=f"caller{i}", dst="external", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i in range(5)
         ] + [
             Edge.create(src=f"caller_fp{i}", dst="first_party", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i in range(3)
         ]
 
@@ -3126,9 +3126,9 @@ class TestFormatSymbols:
         # Create edges making the tier-3 symbol more central
         edges = [
             Edge.create(src="x", dst="tier3", edge_type="calls",
-                        line=1, confidence=1.0),
+                        line=1, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="y", dst="tier3", edge_type="calls",
-                        line=2, confidence=1.0),
+                        line=2, confidence=1.0, origin="test", origin_run_id="test"),
         ]
 
         result = _format_symbols(symbols, edges, repo_root, first_party_priority=False)
@@ -3158,11 +3158,11 @@ class TestFormatSymbols:
         # Both have calls, but bundled has more
         edges = [
             Edge.create(src=f"caller{i}", dst="bundled", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i in range(100)  # High centrality
         ] + [
             Edge.create(src="caller_fp", dst="first_party", edge_type="calls",
-                        line=1, confidence=1.0)
+                        line=1, confidence=1.0, origin="test", origin_run_id="test")
         ]
 
         result = _format_symbols([bundled_sym, first_party_sym], edges, repo_root)
@@ -3197,11 +3197,11 @@ class TestFormatSymbols:
         # multiplies migration's score down enough that domain wins.
         edges = [
             Edge.create(src=f"caller{i}", dst="migration", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i in range(10)
         ] + [
             Edge.create(src=f"d_caller{i}", dst="domain", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i in range(3)
         ]
         result = _format_symbols([migration_sym, domain_sym], edges, repo_root)
@@ -3239,11 +3239,11 @@ class TestFormatSymbols:
         )
         edges = [
             Edge.create(src=f"caller{i}", dst="generated", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i in range(20)
         ] + [
             Edge.create(src=f"d_caller{i}", dst="domain", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i in range(3)
         ]
         result = _format_symbols([generated_sym, domain_sym], edges, repo_root)
@@ -3275,7 +3275,7 @@ class TestFormatSymbols:
         ]
         edges = [
             Edge.create(src=f"caller{i}", dst="exec0", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i in range(4)
         ]
         unique_sym = Symbol(
@@ -3285,7 +3285,7 @@ class TestFormatSymbols:
         )
         edges += [
             Edge.create(src=f"u_caller{i}", dst="unique", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i in range(2)
         ]
         result = _format_symbols(execute_syms + [unique_sym], edges, repo_root)
@@ -3338,11 +3338,11 @@ class TestFormatSymbols:
         ]
         edges = [
             Edge.create(src=c.id, dst="target_a", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i, c in enumerate(a_callers)
         ] + [
             Edge.create(src=c.id, dst="target_b", edge_type="calls",
-                        line=i, confidence=1.0)
+                        line=i, confidence=1.0, origin="test", origin_run_id="test")
             for i, c in enumerate(b_callers)
         ]
         result = _format_symbols(
@@ -3405,18 +3405,18 @@ class TestFormatSymbols:
         # Give all symbols some centrality
         edges = [
             Edge.create(src="caller1", dst="analyze_rust", edge_type="calls",
-                        line=1, confidence=1.0),
+                        line=1, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="caller2", dst="analyze_go", edge_type="calls",
-                        line=2, confidence=1.0),
+                        line=2, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="caller3", dst="analyze_java", edge_type="calls",
-                        line=3, confidence=1.0),
+                        line=3, confidence=1.0, origin="test", origin_run_id="test"),
             # Utility functions called from their respective analyze functions
             Edge.create(src="analyze_rust", dst="rust_node_text", edge_type="calls",
-                        line=10, confidence=1.0),
+                        line=10, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="analyze_go", dst="go_node_text", edge_type="calls",
-                        line=10, confidence=1.0),
+                        line=10, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="analyze_java", dst="java_node_text", edge_type="calls",
-                        line=10, confidence=1.0),
+                        line=10, confidence=1.0, origin="test", origin_run_id="test"),
         ]
 
         result = _format_symbols(symbols, edges, repo_root, max_symbols=100)
@@ -3458,11 +3458,11 @@ class TestFormatSymbols:
 
         edges = [
             Edge.create(src="caller", dst="func_a", edge_type="calls",
-                        line=1, confidence=1.0),
+                        line=1, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="caller", dst="func_b", edge_type="calls",
-                        line=2, confidence=1.0),
+                        line=2, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="caller", dst="func_c", edge_type="calls",
-                        line=3, confidence=1.0),
+                        line=3, confidence=1.0, origin="test", origin_run_id="test"),
         ]
 
         result = _format_symbols(symbols, edges, repo_root, max_symbols=100)
@@ -3499,17 +3499,17 @@ class TestFormatSymbols:
 
         edges = [
             Edge.create(src="caller1", dst="analyze_rust", edge_type="calls",
-                        line=1, confidence=1.0),
+                        line=1, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="caller2", dst="analyze_go", edge_type="calls",
-                        line=2, confidence=1.0),
+                        line=2, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="caller3", dst="analyze_java", edge_type="calls",
-                        line=3, confidence=1.0),
+                        line=3, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="analyze_rust", dst="rust_helper", edge_type="calls",
-                        line=10, confidence=1.0),
+                        line=10, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="analyze_go", dst="go_helper", edge_type="calls",
-                        line=10, confidence=1.0),
+                        line=10, confidence=1.0, origin="test", origin_run_id="test"),
             Edge.create(src="analyze_java", dst="java_helper", edge_type="calls",
-                        line=10, confidence=1.0),
+                        line=10, confidence=1.0, origin="test", origin_run_id="test"),
         ]
 
         result = _format_symbols(symbols, edges, repo_root, max_symbols=100)
@@ -3538,7 +3538,7 @@ class TestFormatSymbols:
                 )
 
         edges = [
-            Edge.create(src=f"analyze_{f}", dst=f"{f}_{u}", edge_type="calls", line=10, confidence=1.0)
+            Edge.create(src=f"analyze_{f}", dst=f"{f}_{u}", edge_type="calls", line=10, confidence=1.0, origin="test", origin_run_id="test")
             for u in ["_helper", "_format", "_parse"]
             for f in ["rust", "go", "java"]
         ]
@@ -3613,15 +3613,15 @@ class TestFormatSymbols:
 
         # 80 edges into sink (0 out), 20 edges into connector + 10 out
         edges = [
-            Edge.create(src=c.id, dst=sink.id, edge_type="calls", line=1, confidence=0.9)
+            Edge.create(src=c.id, dst=sink.id, edge_type="calls", line=1, confidence=0.9, origin="test", origin_run_id="test")
             for c in callers
         ]
         edges += [
-            Edge.create(src=c.id, dst=connector.id, edge_type="calls", line=1, confidence=0.9)
+            Edge.create(src=c.id, dst=connector.id, edge_type="calls", line=1, confidence=0.9, origin="test", origin_run_id="test")
             for c in callers[:20]
         ]
         edges += [
-            Edge.create(src=connector.id, dst=d.id, edge_type="calls", line=1, confidence=0.9)
+            Edge.create(src=connector.id, dst=d.id, edge_type="calls", line=1, confidence=0.9, origin="test", origin_run_id="test")
             for d in callees
         ]
 
@@ -6648,7 +6648,7 @@ class TestEstimateTestCoverage:
             path="tests/test_app.py", span=Span(1, 5, 0, 0)
         )
         # Edge: test calls prod1 (main)
-        edge = Edge(id="e1", src="test1", dst="prod1", edge_type="calls", line=3)
+        edge = Edge(id="e1", src="test1", dst="prod1", edge_type="calls", line=3, origin="test", origin_run_id="test")
 
         result = _estimate_test_coverage([prod_sym, prod_sym2, test_sym], [edge])
 
@@ -6724,8 +6724,8 @@ class TestEstimateTestCoverage:
         )
 
         # Edges: test -> helper -> core (transitive chain)
-        edge1 = Edge(id="e1", src="test1", dst="helper", edge_type="calls", line=3)
-        edge2 = Edge(id="e2", src="helper", dst="core", edge_type="calls", line=4)
+        edge1 = Edge(id="e1", src="test1", dst="helper", edge_type="calls", line=3, origin="test", origin_run_id="test")
+        edge2 = Edge(id="e2", src="helper", dst="core", edge_type="calls", line=4, origin="test", origin_run_id="test")
 
         result = _estimate_test_coverage(
             [helper_sym, core_sym, unreachable_sym, test_sym],
@@ -6763,10 +6763,10 @@ class TestEstimateTestCoverage:
 
         # Diamond: test -> A, test -> B, A -> C, B -> C
         edges = [
-            Edge(id="e1", src="test1", dst="a", edge_type="calls", line=1),
-            Edge(id="e2", src="test1", dst="b", edge_type="calls", line=2),
-            Edge(id="e3", src="a", dst="c", edge_type="calls", line=3),
-            Edge(id="e4", src="b", dst="c", edge_type="calls", line=4),
+            Edge(id="e1", src="test1", dst="a", edge_type="calls", line=1, origin="test", origin_run_id="test"),
+            Edge(id="e2", src="test1", dst="b", edge_type="calls", line=2, origin="test", origin_run_id="test"),
+            Edge(id="e3", src="a", dst="c", edge_type="calls", line=3, origin="test", origin_run_id="test"),
+            Edge(id="e4", src="b", dst="c", edge_type="calls", line=4, origin="test", origin_run_id="test"),
         ]
 
         result = _estimate_test_coverage([sym_a, sym_b, sym_c, test_sym], edges)
@@ -6957,9 +6957,9 @@ class TestLanguageProportionalSelection:
 
         # Create mock edges (some cross-language calls)
         edges = [
-            Edge(id="e1", src="kt0", dst="kt1", edge_type="call", line=1),
-            Edge(id="e2", src="kt1", dst="kt2", edge_type="call", line=2),
-            Edge(id="e3", src="py0", dst="py1", edge_type="call", line=1),
+            Edge(id="e1", src="kt0", dst="kt1", edge_type="call", line=1, origin="test", origin_run_id="test"),
+            Edge(id="e2", src="kt1", dst="kt2", edge_type="call", line=2, origin="test", origin_run_id="test"),
+            Edge(id="e3", src="py0", dst="py1", edge_type="call", line=1, origin="test", origin_run_id="test"),
         ]
 
         # Group symbols by file

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the INV-zuhub fallback-coherence linter.
 
-The linter asserts: every ``Edge.create(...)`` call site in
+The linter asserts: every ``Edge.create(..., origin="test", origin_run_id="test")`` call site in
 ``packages/.../linkers/`` that sets
 ``meta["disambiguation_fallback"] = True`` must also set
 ``confidence`` to a statically-resolvable value <= 0.5.
@@ -59,7 +59,7 @@ def test_no_fallback_coherence_violations_in_linkers():
 
 
 def test_constructor_names_includes_edge_and_dotted_create():
-    """Both ``Edge(...)`` and ``Edge.create(...)`` are recognized."""
+    """Both ``Edge(..., origin="test", origin_run_id="test")`` and ``Edge.create(..., origin="test", origin_run_id="test")`` are recognized."""
     assert "Edge" in CONSTRUCTOR_NAMES
     assert "Edge.create" in CONSTRUCTOR_NAMES
 
@@ -131,7 +131,7 @@ def test_call_without_meta_flag_is_clean(tmp_path: Path):
         tmp_path,
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'confidence=0.95)\n',
+        'confidence=0.95, origin="test", origin_run_id="test")\n',
     )
     assert find_fallback_coherence_violations(tmp_path) == ()
 
@@ -143,7 +143,7 @@ def test_literal_low_confidence_with_flag_is_clean(tmp_path: Path):
         tmp_path,
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'confidence=0.5, meta={"disambiguation_fallback": True})\n',
+        'confidence=0.5, meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     assert find_fallback_coherence_violations(tmp_path) == ()
 
@@ -155,7 +155,7 @@ def test_literal_high_confidence_with_flag_is_violation(tmp_path: Path):
         tmp_path,
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'confidence=0.9, meta={"disambiguation_fallback": True})\n',
+        'confidence=0.9, meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -169,7 +169,7 @@ def test_missing_confidence_with_flag_is_violation(tmp_path: Path):
         tmp_path,
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'meta={"disambiguation_fallback": True})\n',
+        'meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -187,7 +187,7 @@ def test_function_local_ternary_resolves_through_assignment(tmp_path: Path):
         '    confidence = 0.5 if is_fallback else 0.95\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
         'line=1, confidence=confidence, '
-        'meta={"disambiguation_fallback": True} if is_fallback else None)\n',
+        'meta={"disambiguation_fallback": True} if is_fallback else None, origin="test", origin_run_id="test")\n',
     )
     # The True branch of the meta ternary sets the flag; the True
     # branch of the confidence ternary is 0.5; the contract is
@@ -208,7 +208,7 @@ def test_function_local_ternary_with_high_confidence_branch_is_violation(tmp_pat
         '    confidence = 0.7 if is_fallback else 0.95\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
         'line=1, confidence=confidence, '
-        'meta={"disambiguation_fallback": True} if is_fallback else None)\n',
+        'meta={"disambiguation_fallback": True} if is_fallback else None, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -225,7 +225,7 @@ def test_unresolvable_confidence_name_is_violation(tmp_path: Path):
         'def make(conf_param):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
         'line=1, confidence=conf_param, '
-        'meta={"disambiguation_fallback": True})\n',
+        'meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -241,7 +241,7 @@ def test_call_via_function_call_in_confidence_is_violation(tmp_path: Path):
         'def make():\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
         'line=1, confidence=compute(), '
-        'meta={"disambiguation_fallback": True})\n',
+        'meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -249,13 +249,13 @@ def test_call_via_function_call_in_confidence_is_violation(tmp_path: Path):
 
 
 def test_bare_edge_constructor_is_also_checked(tmp_path: Path):
-    """``Edge(...)`` (no ``.create``) is also a constructor call site
+    """``Edge(..., origin="test", origin_run_id="test")`` (no ``.create``) is also a constructor call site
     per :data:`CONSTRUCTOR_NAMES`."""
     _linker(
         tmp_path,
         "demo",
         'Edge(id="x", src="a", dst="b", edge_type="calls", line=1, '
-        'confidence=0.9, meta={"disambiguation_fallback": True})\n',
+        'confidence=0.9, meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -285,7 +285,7 @@ def test_meta_via_name_reference_resolves_to_flag_dict(tmp_path: Path):
         'def make():\n'
         '    edge_meta = {"disambiguation_fallback": True}\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, confidence=0.9, meta=edge_meta)\n',
+        'line=1, confidence=0.9, meta=edge_meta, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -303,7 +303,7 @@ def test_meta_via_name_reference_unresolvable_is_silent(tmp_path: Path):
         "demo",
         'def make(some_dict_var):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, confidence=0.9, meta=some_dict_var)\n',
+        'line=1, confidence=0.9, meta=some_dict_var, origin="test", origin_run_id="test")\n',
     )
     assert find_fallback_coherence_violations(tmp_path) == ()
 
@@ -317,7 +317,7 @@ def test_meta_dict_with_other_keys_alongside_flag_is_checked(tmp_path: Path):
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
         'confidence=0.9, '
-        'meta={"disambiguation_fallback": True, "protocol": "grpc"})\n',
+        'meta={"disambiguation_fallback": True, "protocol": "grpc"}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -330,7 +330,7 @@ def test_meta_flag_set_to_false_is_silent(tmp_path: Path):
         tmp_path,
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'confidence=0.9, meta={"disambiguation_fallback": False})\n',
+        'confidence=0.9, meta={"disambiguation_fallback": False}, origin="test", origin_run_id="test")\n',
     )
     assert find_fallback_coherence_violations(tmp_path) == ()
 
@@ -345,7 +345,7 @@ def test_meta_inline_ternary_with_flag_in_true_branch(tmp_path: Path):
         'def make(is_fallback):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
         'line=1, confidence=0.5, '
-        'meta={"disambiguation_fallback": True} if is_fallback else None)\n',
+        'meta={"disambiguation_fallback": True} if is_fallback else None, origin="test", origin_run_id="test")\n',
     )
     assert find_fallback_coherence_violations(tmp_path) == ()
 
@@ -357,7 +357,7 @@ def test_negative_literal_confidence_resolves(tmp_path: Path):
         tmp_path,
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'confidence=-0.5, meta={"disambiguation_fallback": True})\n',
+        'confidence=-0.5, meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     assert find_fallback_coherence_violations(tmp_path) == ()
 
@@ -371,7 +371,7 @@ def test_negative_unresolvable_unaryop_is_unresolvable(tmp_path: Path):
         'def make():\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
         'line=1, confidence=-compute(), '
-        'meta={"disambiguation_fallback": True})\n',
+        'meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -384,7 +384,7 @@ def test_integer_confidence_one_resolves(tmp_path: Path):
         tmp_path,
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'confidence=1, meta={"disambiguation_fallback": True})\n',
+        'confidence=1, meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -398,7 +398,7 @@ def test_boolean_confidence_does_not_resolve_to_float(tmp_path: Path):
         tmp_path,
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'confidence=True, meta={"disambiguation_fallback": True})\n',
+        'confidence=True, meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -411,7 +411,7 @@ def test_string_confidence_does_not_resolve_to_float(tmp_path: Path):
         tmp_path,
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'confidence="high", meta={"disambiguation_fallback": True})\n',
+        'confidence="high", meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -425,9 +425,9 @@ def test_multiple_violations_in_same_file_are_all_reported(tmp_path: Path):
         tmp_path,
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'confidence=0.9, meta={"disambiguation_fallback": True})\n'
+        'confidence=0.9, meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n'
         'Edge.create(src="c", dst="d", edge_type="references", line=2, '
-        'confidence=0.7, meta={"disambiguation_fallback": True})\n',
+        'confidence=0.7, meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 2
@@ -447,7 +447,7 @@ def test_function_local_assignment_with_multiple_writes_is_unresolvable(tmp_path
         '        confidence = 0.3\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
         'line=1, confidence=confidence, '
-        'meta={"disambiguation_fallback": True})\n',
+        'meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -462,13 +462,13 @@ def test_meta_dict_value_non_bool_constant_is_not_a_flag_set(tmp_path: Path):
         tmp_path,
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'confidence=0.9, meta={"disambiguation_fallback": "yes"})\n',
+        'confidence=0.9, meta={"disambiguation_fallback": "yes"}, origin="test", origin_run_id="test")\n',
     )
     assert find_fallback_coherence_violations(tmp_path) == ()
 
 
 def test_attribute_call_bare_attr_matches_constructor_name(tmp_path: Path):
-    """``module.Edge(...)`` — the attribute call's final ``attr`` is
+    """``module.Edge(..., origin="test", origin_run_id="test")`` — the attribute call's final ``attr`` is
     ``Edge`` which is in the constructor set's bare-attribute path.
     Exercises the ``func.attr in CONSTRUCTOR_NAMES`` branch (line 136)
     which triggers regardless of the receiver. Distinct from
@@ -481,7 +481,7 @@ def test_attribute_call_bare_attr_matches_constructor_name(tmp_path: Path):
         "demo",
         'imported_module.Edge(id="x", src="a", dst="b", '
         'edge_type="calls", line=1, confidence=0.9, '
-        'meta={"disambiguation_fallback": True})\n',
+        'meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -496,7 +496,7 @@ def test_ifexp_with_non_float_branch_is_unresolvable(tmp_path: Path):
         "demo",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
         'confidence=0.5 if True else "high", '
-        'meta={"disambiguation_fallback": True})\n',
+        'meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -514,7 +514,7 @@ def test_inline_conditional_confidence_with_matching_predicate(tmp_path: Path):
         'def make(is_fallback):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
         'line=1, confidence=0.5 if is_fallback else 0.95, '
-        'meta={"disambiguation_fallback": True} if is_fallback else None)\n',
+        'meta={"disambiguation_fallback": True} if is_fallback else None, origin="test", origin_run_id="test")\n',
     )
     assert find_fallback_coherence_violations(tmp_path) == ()
 
@@ -529,7 +529,7 @@ def test_inline_conditional_confidence_mismatched_predicate_checks_all(tmp_path:
         'def make(is_fallback, other_flag):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
         'line=1, confidence=0.5 if other_flag else 0.95, '
-        'meta={"disambiguation_fallback": True} if is_fallback else None)\n',
+        'meta={"disambiguation_fallback": True} if is_fallback else None, origin="test", origin_run_id="test")\n',
     )
     violations = find_fallback_coherence_violations(tmp_path)
     assert len(violations) == 1
@@ -549,7 +549,7 @@ def test_name_resolved_to_non_ifexp_under_conditional_meta(tmp_path: Path):
         '    confidence = 0.5\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
         'line=1, confidence=confidence, '
-        'meta={"disambiguation_fallback": True} if is_fallback else None)\n',
+        'meta={"disambiguation_fallback": True} if is_fallback else None, origin="test", origin_run_id="test")\n',
     )
     assert find_fallback_coherence_violations(tmp_path) == ()
 
@@ -567,7 +567,7 @@ def test_nested_function_scope_isolated(tmp_path: Path):
         '    confidence = 0.3\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
         'line=1, confidence=confidence, '
-        'meta={"disambiguation_fallback": True})\n',
+        'meta={"disambiguation_fallback": True}, origin="test", origin_run_id="test")\n',
     )
     # outer's confidence resolves to 0.3 from its own assignment.
     assert find_fallback_coherence_violations(tmp_path) == ()

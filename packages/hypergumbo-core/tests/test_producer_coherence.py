@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the L3 producer-side axis-coherence linter.
 
-The L3 linter walks producer call sites (Edge.create / Edge() /
+The L3 linter walks producer call sites (Edge.create / Edge( origin="test", origin_run_id="test") /
 Symbol.create / Symbol()) and verifies that literal-string keyword
 arguments to axis-bearing parameters are in the corresponding
 canonical registry. F-string arguments are advisory (Phase-3 fold
@@ -84,7 +84,7 @@ def test_literal_in_registry_is_clean(tmp_path: Path):
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'evidence_type="ast_call_direct")\n',
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -100,7 +100,7 @@ def test_literal_not_in_registry_is_strict_violation(tmp_path: Path):
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'evidence_type="brand_new_label")\n',
+        'evidence_type="brand_new_label", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -119,7 +119,7 @@ def test_fstring_emit_is_advisory_not_strict(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'name = "django"\n'
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'evidence_type=f"{name}_dispatch")\n',
+        'evidence_type=f"{name}_dispatch", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -140,7 +140,7 @@ def test_fstring_with_literal_prefix_surfaces_prefix(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'edge_type = "extends"\n'
         'Edge.create(src="a", dst="b", edge_type=edge_type, line=1, '
-        'evidence_type=f"ast_{edge_type}")\n',
+        'evidence_type=f"ast_{edge_type}", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -161,7 +161,7 @@ def test_module_constant_resolution(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         '_MY_EVIDENCE = "brand_new_label"\n'
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'evidence_type=_MY_EVIDENCE)\n',
+        'evidence_type=_MY_EVIDENCE, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -182,7 +182,7 @@ def test_unresolvable_name_is_silently_skipped(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make_edge(some_arg):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=some_arg)\n',
+        'line=1, evidence_type=some_arg, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -200,7 +200,7 @@ def test_test_files_are_excluded_by_default(tmp_path: Path):
     _write(
         tmp_path / "packages" / "demo" / "tests" / "test_demo.py",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'evidence_type="brand_new_label")\n',
+        'evidence_type="brand_new_label", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -212,11 +212,11 @@ def test_test_files_are_excluded_by_default(tmp_path: Path):
 
 
 def test_bare_constructor_call_matches(tmp_path: Path):
-    """Bare ``Edge(...)`` (no `.create`) should also be inspected."""
+    """Bare ``Edge(..., origin="test", origin_run_id="test")`` (no `.create`) should also be inspected."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'Edge(id="x", src="a", dst="b", edge_type="calls", line=1, '
-        'evidence_type="brand_new_label")\n',
+        'evidence_type="brand_new_label", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -270,7 +270,7 @@ def test_call_without_keyword_is_skipped(tmp_path: Path):
     to validate."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
-        'Edge.create(src="a", dst="b", edge_type="calls", line=1)\n',
+        'Edge.create(src="a", dst="b", edge_type="calls", line=1, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -300,7 +300,7 @@ def test_assignment_form_literal_in_registry_is_clean(tmp_path: Path):
         'def make():\n'
         '    label = "ast_call_direct"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -320,7 +320,7 @@ def test_assignment_form_literal_not_in_registry_is_strict(tmp_path: Path):
         'def make():\n'
         '    label = "brand_new_label"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -340,7 +340,7 @@ def test_assignment_form_ternary_both_in_registry_is_clean(tmp_path: Path):
         'def make(x):\n'
         '    label = "ast_call_direct" if x else "naming_convention"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -358,7 +358,7 @@ def test_assignment_form_ternary_one_unregistered_is_strict(tmp_path: Path):
         'def make(x):\n'
         '    label = "ast_call_direct" if x else "brand_new_label"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -381,7 +381,7 @@ def test_assignment_form_if_else_chain_one_unregistered_is_strict(tmp_path: Path
         '    else:\n'
         '        label = "brand_new_label"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -402,7 +402,7 @@ def test_assignment_form_unresolvable_rhs_is_silent(tmp_path: Path):
         'def make(x):\n'
         '    label = compute_label(x)\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -426,7 +426,7 @@ def test_assignment_form_nested_function_scope_isolated(tmp_path: Path):
         '        return label\n'
         '    label = "ast_call_direct"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -447,7 +447,7 @@ def test_assignment_form_nested_if_block_resolves(tmp_path: Path):
         '    if x:\n'
         '        label = "brand_new_label"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -467,7 +467,7 @@ def test_assignment_form_annassign_resolves(tmp_path: Path):
         'def make():\n'
         '    label: str = "brand_new_label"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -486,7 +486,7 @@ def test_assignment_form_function_param_is_silent(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(label):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -507,7 +507,7 @@ def test_assignment_form_ternary_one_branch_unresolvable_is_silent(tmp_path: Pat
         'def make(x):\n'
         '    label = "ast_call_direct" if x else compute_label(x)\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -530,7 +530,7 @@ def test_assignment_form_annassign_without_value_is_skipped(tmp_path: Path):
         '    label: str\n'
         '    label = "brand_new_label"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -565,13 +565,13 @@ def test_emitted_symbol_kinds_returns_literal_kwarg_emit_sites(tmp_path: Path):
 
 def test_emitted_evidence_types_returns_literal_kwarg_emit_sites(tmp_path: Path):
     """find_emitted_evidence_types maps {evidence_type: (file:line, ...)}
-    and catches literal-kwarg emits at Edge(...) call sites."""
+    and catches literal-kwarg emits at Edge(..., origin="test", origin_run_id="test") call sites."""
     _write_producer(
         tmp_path,
         'from foo import Edge\n'
         'def link():\n'
         '    return Edge(src="a", dst="b", evidence_type="brand_inference", '
-        'edge_type="calls")\n',
+        'edge_type="calls", origin="test", origin_run_id="test")\n',
     )
     sites = find_emitted_evidence_types(tmp_path)
     assert "brand_inference" in sites
@@ -580,12 +580,12 @@ def test_emitted_evidence_types_returns_literal_kwarg_emit_sites(tmp_path: Path)
 
 def test_emitted_edge_types_returns_literal_kwarg_emit_sites(tmp_path: Path):
     """find_emitted_edge_types maps {edge_type: (file:line, ...)} and
-    catches literal-kwarg emits at Edge(...) call sites."""
+    catches literal-kwarg emits at Edge(..., origin="test", origin_run_id="test") call sites."""
     _write_producer(
         tmp_path,
         'from foo import Edge\n'
         'def link():\n'
-        '    return Edge(src="a", dst="b", edge_type="brand_relation")\n',
+        '    return Edge(src="a", dst="b", edge_type="brand_relation", origin="test", origin_run_id="test")\n',
     )
     sites = find_emitted_edge_types(tmp_path)
     assert "brand_relation" in sites
@@ -672,7 +672,7 @@ def test_assignment_form_module_constant_still_takes_precedence(tmp_path: Path):
         'def make():\n'
         '    label = "brand_new_label"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -704,7 +704,7 @@ def test_inline_ternary_resolves_when_both_branches_in_registry(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(cond):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type="ast_call_direct" if cond else "naming_convention")\n',
+        'line=1, evidence_type="ast_call_direct" if cond else "naming_convention", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -722,7 +722,7 @@ def test_inline_ternary_one_branch_outside_registry_is_strict(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(cond):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type="ast_call_direct" if cond else "brand_new_label")\n',
+        'line=1, evidence_type="ast_call_direct" if cond else "brand_new_label", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -741,7 +741,7 @@ def test_inline_ternary_both_branches_same_literal_resolves_as_literal(tmp_path:
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(cond):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type="ast_call_direct" if cond else "ast_call_direct")\n',
+        'line=1, evidence_type="ast_call_direct" if cond else "ast_call_direct", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -761,7 +761,7 @@ def test_emitted_literal_values_excludes_test_files(tmp_path: Path):
     _write(
         tmp_path / "packages" / "demo" / "tests" / "test_demo.py",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'evidence_type="test_only_value")\n',
+        'evidence_type="test_only_value", origin="test", origin_run_id="test")\n',
     )
     sites = find_emitted_literal_values(
         tmp_path,
@@ -779,7 +779,7 @@ def test_inline_ternary_one_branch_unresolvable_falls_to_unresolvable(tmp_path: 
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(cond):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type="ast_call_direct" if cond else helper())\n',
+        'line=1, evidence_type="ast_call_direct" if cond else helper(), origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -806,7 +806,7 @@ def test_assignment_form_none_sentinel_then_literal_resolves(tmp_path: Path):
         '    else:\n'
         '        label = "naming_convention"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -828,7 +828,7 @@ def test_assignment_form_only_non_string_constants_falls_to_unresolvable(tmp_pat
         '    label = None\n'
         '    label = 42\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -853,7 +853,7 @@ def test_fstring_expand_mode_silently_accepts_resolvable(tmp_path: Path):
         'def make(cond):\n'
         '    edge_type = "extends" if cond else "implements"\n'
         '    return Edge.create(src="a", dst="b", edge_type=edge_type, '
-        'line=1, evidence_type=f"ast_{edge_type}")\n',
+        'line=1, evidence_type=f"ast_{edge_type}", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -874,7 +874,7 @@ def test_fstring_expand_mode_strict_when_expansion_outside_registry(tmp_path: Pa
         'def make(cond):\n'
         '    edge_type = "extends" if cond else "brand_new_relation"\n'
         '    return Edge.create(src="a", dst="b", edge_type=edge_type, '
-        'line=1, evidence_type=f"ast_{edge_type}")\n',
+        'line=1, evidence_type=f"ast_{edge_type}", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -896,7 +896,7 @@ def test_fstring_expand_mode_falls_back_to_advisory_when_unexpandable(tmp_path: 
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(prefix):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=f"{prefix}_call")\n',
+        'line=1, evidence_type=f"{prefix}_call", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -918,7 +918,7 @@ def test_fstring_strict_mode_flags_unexpandable_as_strict(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(prefix):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=f"{prefix}_call")\n',
+        'line=1, evidence_type=f"{prefix}_call", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -939,7 +939,7 @@ def test_fstring_strict_mode_silently_accepts_resolvable_in_registry(tmp_path: P
         'def make():\n'
         '    edge_type = "extends"\n'
         '    return Edge.create(src="a", dst="b", edge_type=edge_type, '
-        'line=1, evidence_type=f"ast_{edge_type}")\n',
+        'line=1, evidence_type=f"ast_{edge_type}", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -960,7 +960,7 @@ def test_fstring_expand_with_format_spec_falls_through(tmp_path: Path):
         'def make():\n'
         '    x = "foo"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=f"{x:>5}")\n',
+        'line=1, evidence_type=f"{x:>5}", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -980,7 +980,7 @@ def test_fstring_expand_with_conversion_falls_through(tmp_path: Path):
         'def make():\n'
         '    x = "foo"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=f"{x!r}")\n',
+        'line=1, evidence_type=f"{x!r}", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -1010,7 +1010,7 @@ def test_fstring_expand_cartesian_cap_bails_to_advisory(tmp_path: Path):
         f'    {branches_a}\n'
         f'    {branches_b}\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=f"{a}_{b}")\n',
+        'line=1, evidence_type=f"{a}_{b}", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -1033,7 +1033,7 @@ def test_fstring_advisory_mode_preserves_pre_ext_b_behavior(tmp_path: Path):
         'def make():\n'
         '    edge_type = "extends"\n'
         '    return Edge.create(src="a", dst="b", edge_type=edge_type, '
-        'line=1, evidence_type=f"ast_{edge_type}")\n',
+        'line=1, evidence_type=f"ast_{edge_type}", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -1056,7 +1056,7 @@ def test_fstring_expand_with_constant_inner_resolves(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make():\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=f"{1}_call")\n',
+        'line=1, evidence_type=f"{1}_call", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -1081,7 +1081,7 @@ def test_variable_form_silent_default_preserves_existing_behavior(tmp_path: Path
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(label):\n'  # function param — unresolvable
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -1100,7 +1100,7 @@ def test_variable_form_advisory_mode_surfaces_function_param(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(label):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -1125,7 +1125,7 @@ def test_variable_form_strict_mode_flags_function_param(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make(label):\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -1147,7 +1147,7 @@ def test_variable_form_strict_mode_flags_function_call_result(tmp_path: Path):
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def make():\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=compute())\n',
+        'line=1, evidence_type=compute(), origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -1167,7 +1167,7 @@ def test_variable_form_strict_mode_does_not_flag_literal(tmp_path: Path):
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'Edge.create(src="a", dst="b", edge_type="calls", line=1, '
-        'evidence_type="ast_call_direct")\n',
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,
@@ -1188,7 +1188,7 @@ def test_variable_form_strict_does_not_flag_resolvable_assignment(tmp_path: Path
         'def make():\n'
         '    label = "ast_call_direct"\n'
         '    return Edge.create(src="a", dst="b", edge_type="calls", '
-        'line=1, evidence_type=label)\n',
+        'line=1, evidence_type=label, origin="test", origin_run_id="test")\n',
     )
     result = find_producer_coherence_violations(
         tmp_path,

@@ -213,12 +213,12 @@ def test_edge_is_resolved_default_is_true():
     case is `is_resolved=True` (~90% of edges have well-determined
     dsts). Producers explicitly set `is_resolved=False` only in the
     unresolved case."""
-    e = Edge.create("a", "b", "calls", 1)
+    e = Edge.create("a", "b", "calls", 1, origin="test", origin_run_id="test")
     assert e.is_resolved is True
 
 
 def test_edge_is_resolved_round_trip_true():
-    e = Edge.create("a", "b", "calls", 1, is_resolved=True)
+    e = Edge.create("a", "b", "calls", 1, is_resolved=True, origin="test", origin_run_id="test")
     d = e.to_dict()
     assert d["is_resolved"] is True
     e2 = Edge.from_dict(d)
@@ -227,7 +227,7 @@ def test_edge_is_resolved_round_trip_true():
 
 def test_edge_is_resolved_round_trip_false():
     """Phase-3 Cluster B producers set this when dst is unresolved."""
-    e = Edge.create("a", "b", "calls", 1, is_resolved=False)
+    e = Edge.create("a", "b", "calls", 1, is_resolved=False, origin="test", origin_run_id="test")
     d = e.to_dict()
     assert d["is_resolved"] is False
     e2 = Edge.from_dict(d)

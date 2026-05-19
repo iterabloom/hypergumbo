@@ -2455,6 +2455,8 @@ class TestTransitiveStructEmbedding:
         edge = Edge.create(
             src=leaf_struct.id, dst=base_struct.id,
             edge_type="extends", line=1,
+
+            origin="test", origin_run_id="test",
         )
         result = link_grpc(
             tmp_path,
@@ -2509,8 +2511,8 @@ class TestTransitiveStructEmbedding:
             origin="go-v1", origin_run_id="test",
         )
         edges = [
-            Edge.create(src=leaf_struct.id, dst=mid_struct.id, edge_type="extends", line=1),
-            Edge.create(src=mid_struct.id, dst=base_struct.id, edge_type="extends", line=1),
+            Edge.create(src=leaf_struct.id, dst=mid_struct.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=mid_struct.id, dst=base_struct.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         result = link_grpc(
             tmp_path,
@@ -2569,10 +2571,10 @@ class TestTransitiveStructEmbedding:
             origin="go-v1", origin_run_id="test",
         )
         edges = [
-            Edge.create(src=leaf_struct.id, dst=left_struct.id, edge_type="extends", line=1),
-            Edge.create(src=leaf_struct.id, dst=right_struct.id, edge_type="extends", line=1),
-            Edge.create(src=left_struct.id, dst=base_struct.id, edge_type="extends", line=1),
-            Edge.create(src=right_struct.id, dst=base_struct.id, edge_type="extends", line=1),
+            Edge.create(src=leaf_struct.id, dst=left_struct.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=leaf_struct.id, dst=right_struct.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=left_struct.id, dst=base_struct.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=right_struct.id, dst=base_struct.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         result = link_grpc(
             tmp_path,

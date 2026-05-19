@@ -35,6 +35,8 @@ def _cls(
 def _edge(src: Symbol, dst: Symbol, edge_type: str = "extends") -> Edge:
     return Edge.create(
         src=src.id, dst=dst.id, edge_type=edge_type, line=1,
+
+        origin="test", origin_run_id="test",
     )
 
 
@@ -140,6 +142,8 @@ class TestCollectTransitiveBaseNames:
             Edge.create(
                 src=a.id, dst="python:nowhere:1-2:Missing:class",
                 edge_type="extends", line=1,
+
+                origin="test", origin_run_id="test",
             ),
         ]
         sym_by_id = {a.id: a}

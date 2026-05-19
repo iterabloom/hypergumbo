@@ -80,6 +80,8 @@ def _make_implements_edge(impl_id: str, iface_id: str) -> Edge:
     """Create an implements edge (impl -> interface)."""
     return Edge.create(
         src=impl_id, dst=iface_id, edge_type="implements", line=1,
+
+        origin="test", origin_run_id="test",
     )
 
 
@@ -87,6 +89,8 @@ def _make_extends_edge(child_id: str, parent_id: str) -> Edge:
     """Create an extends edge (child -> parent)."""
     return Edge.create(
         src=child_id, dst=parent_id, edge_type="extends", line=1,
+
+        origin="test", origin_run_id="test",
     )
 
 

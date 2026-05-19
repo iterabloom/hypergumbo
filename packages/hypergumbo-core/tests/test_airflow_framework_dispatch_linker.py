@@ -268,6 +268,8 @@ class TestLinkAirflowFrameworkDispatch:
         m = _method_sym("MyOperator.execute")
         prior = Edge.create(
             src=cls.id, dst=m.id, edge_type="dispatches_to", line=1,
+
+            origin="test", origin_run_id="test",
         )
         ctx = _ctx([cls, m], edges=[prior])
         assert link_airflow_framework_dispatch(ctx).edges == []
@@ -296,6 +298,8 @@ class TestLinkAirflowFrameworkDispatch:
         prior = Edge.create(
             src=leaf.id, dst=intermediate.id,
             edge_type="extends", line=100,
+
+            origin="test", origin_run_id="test",
         )
         ctx = _ctx([leaf, intermediate, method], edges=[prior])
         result = link_airflow_framework_dispatch(ctx)
@@ -321,9 +325,13 @@ class TestLinkAirflowFrameworkDispatch:
         edges = [
             Edge.create(
                 src=leaf.id, dst=mid1.id, edge_type="extends", line=1,
+
+                origin="test", origin_run_id="test",
             ),
             Edge.create(
                 src=mid1.id, dst=mid2.id, edge_type="extends", line=1,
+
+                origin="test", origin_run_id="test",
             ),
         ]
         ctx = _ctx([leaf, mid1, mid2, method], edges=edges)

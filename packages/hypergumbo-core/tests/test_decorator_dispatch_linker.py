@@ -49,7 +49,7 @@ def _sym(
 
 def _edge(src_id: str, dst_id: str, edge_type: str = "calls") -> Edge:
     """Helper to create an Edge."""
-    return Edge.create(src=src_id, dst=dst_id, edge_type=edge_type, line=1)
+    return Edge.create(src=src_id, dst=dst_id, edge_type=edge_type, line=1, origin="test", origin_run_id="test")
 
 
 class TestFindDecoratedSymbols:

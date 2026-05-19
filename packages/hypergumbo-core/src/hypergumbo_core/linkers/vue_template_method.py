@@ -83,6 +83,9 @@ def link_vue_template_methods(
     Returns:
         LinkerResult with new template_calls edges.
     """
+    # WI-higap: create run before edge loop so Edge.__post_init__ validates.
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
     # Index JS/TS handler-kind symbols by (normalized_path, name).
     methods_by_file: dict[str, dict[str, Symbol]] = defaultdict(dict)
     for sym in symbols:
@@ -115,14 +118,12 @@ def link_vue_template_methods(
             edge_type="template_calls",
             line=sym.span.start_line if sym.span else 0,
             origin=PASS_ID,
-            origin_run_id="",
+            origin_run_id=run.execution_id,
             evidence_type="ast_call_direct",
             confidence=0.90,
             meta={"framework_dispatch": "vue_event_handler"},
         )
         new_edges.append(edge)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     return LinkerResult(
         symbols=[],

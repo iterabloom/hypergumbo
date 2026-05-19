@@ -44,6 +44,8 @@ def _make_edge(src_id: str, dst_id: str, idx: int = 0) -> Edge:
         dst=dst_id,
         edge_type="references",
         line=1,
+
+        origin="test", origin_run_id="test",
     )
 
 

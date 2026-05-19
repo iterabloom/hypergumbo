@@ -233,7 +233,7 @@ import Header from './Header.astro';
 <Header/>
 """)
         result = analyze_astro(tmp_path)
-        # Component-ref `imports` Edge (Cluster F audit-findings 0011) has
+        # Component-ref `imports` Edge (Cluster F audit-findings 0011, origin="test", origin_run_id="test") has
         # meta.component_name and dst=import_path. WI-kunag adds a separate
         # frontmatter `imports` Edge whose meta carries import_name; this
         # test still asserts the component-ref edge specifically.

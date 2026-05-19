@@ -126,6 +126,8 @@ def _process_make_tree(
     symbols: list[Symbol],
     edges: list[Edge],
     target_registry: dict[str, str],
+    *,
+    run_id: str,
 ) -> None:
     """Process Makefile AST tree to extract symbols and edges.
 
@@ -248,6 +250,7 @@ def _process_make_tree(
                                 confidence=confidence,
                                 origin=PASS_ID,
                                 evidence_type="make_prerequisite",
+                                origin_run_id=run_id,
                             )
                             edges.append(edge)
 
@@ -299,6 +302,7 @@ def _process_make_tree(
                     origin=PASS_ID,
                     evidence_type="include",
                     meta={"include_file": include_file},
+                    origin_run_id=run_id,
                 ))
 
 
@@ -379,6 +383,8 @@ class MakeAnalyzer(TreeSitterAnalyzer):
                     symbols,
                     edges,
                     target_registry,
+
+                    run_id=run.execution_id,
                 )
 
             except Exception as e:  # pragma: no cover

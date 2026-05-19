@@ -293,6 +293,7 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
                         confidence=confidence,
                         origin=PASS_ID,
                         evidence_type="vhdl_architecture",
+                        origin_run_id=run.execution_id,
                     )
                     edges.append(edge)
 

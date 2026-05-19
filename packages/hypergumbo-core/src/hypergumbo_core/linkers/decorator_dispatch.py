@@ -143,6 +143,11 @@ def link_decorator_dispatch(ctx: LinkerContext) -> LinkerResult:
     # Find dispatch sites
     dispatch_sites = _find_dispatch_sites(ctx.symbols, DISPATCH_DECORATOR_PATTERNS)
 
+    run = AnalysisRun.create(
+        pass_id=PASS_ID,
+        version=PASS_VERSION,
+    )
+
     # Create edges: dispatch_site → each handler in the same family
     edges: list[Edge] = []
     for site_sym, dec_name in dispatch_sites:
@@ -154,16 +159,12 @@ def link_decorator_dispatch(ctx: LinkerContext) -> LinkerResult:
                 edge_type="dispatches_to",
                 line=site_sym.span.start_line if site_sym.span else 0,
                 origin=PASS_ID,
+                origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 confidence=0.70,
                 meta={"framework_dispatch": "registry_dispatch"},
             )
             edges.append(edge)
-
-    run = AnalysisRun.create(
-        pass_id=PASS_ID,
-        version=PASS_VERSION,
-    )
 
     if edges:
         logger.info(

@@ -398,6 +398,8 @@ def _extract_nix_edges(
     rel_path: str,
     local_symbols: dict[str, Symbol],
     resolver: "NameResolver",
+    *,
+    run_id: str,
 ) -> list[Edge]:
     """Extract edges from Nix AST tree (pass 2).
 
@@ -432,6 +434,7 @@ def _extract_nix_edges(
                         confidence=0.80,
                         origin=PASS_ID,
                         evidence_type="static",
+                        origin_run_id=run_id,
                     )
                     edges.append(edge)
             else:
@@ -458,6 +461,7 @@ def _extract_nix_edges(
                             confidence=confidence,
                             origin=PASS_ID,
                             evidence_type="static",
+                            origin_run_id=run_id,
                         ))
 
     return edges
@@ -502,6 +506,8 @@ class NixAnalyzer(TreeSitterAnalyzer):
         """Extract import and call edges from a Nix file."""
         return _extract_nix_edges(
             tree.root_node, source, rel_path, local_symbols, resolver,
+
+            run_id=run.execution_id,
         )
 
 

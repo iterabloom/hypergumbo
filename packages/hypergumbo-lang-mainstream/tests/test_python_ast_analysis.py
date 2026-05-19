@@ -4888,7 +4888,7 @@ class TestSuffixBasedModuleMatching:
             crud.create_item()    # Method call on imported module
 
         Where the directory structure is backend/app/crud.py.
-        This is Case 2e in py.py's _process_call().
+        This is Case 2e in py.py's _process_call(run_id="test").
         """
         # Create a nested directory structure like FastAPI template
         backend = tmp_path / "backend"

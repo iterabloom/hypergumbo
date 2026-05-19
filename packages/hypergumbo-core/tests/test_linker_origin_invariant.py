@@ -90,7 +90,7 @@ def _stamps_symbol_attr(module_name: str, attr: str) -> bool:
        ``_view_template_core.py``.
 
     A plain text search would conflate these with the unrelated
-    ``Edge.create(origin=PASS_ID)`` calls that every linker already makes —
+    ``Edge.create(origin=PASS_ID, origin_run_id="test")`` calls that every linker already makes —
     AST inspection narrows the check to Symbol-side stamping only.
     """
     src = (LINKERS_DIR / f"{module_name}.py").read_text()

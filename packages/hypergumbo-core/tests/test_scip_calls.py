@@ -65,7 +65,7 @@ def _idx(*docs):
 
 
 def test_empty_index_emits_no_edges() -> None:
-    assert scip_index_to_call_edges(scip_pb2.Index()) == []
+    assert scip_index_to_call_edges(scip_pb2.Index(), run_id="test") == []
 
 
 def test_ref_inside_definition_emits_edge() -> None:
@@ -85,7 +85,7 @@ def test_ref_inside_definition_emits_edge() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=DEFINITION_ROLE, range=[30, 0, 35, 0]),
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc))
+    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
     assert isinstance(edge, Edge)
     assert edge.src == caller
     assert edge.dst == callee
@@ -105,7 +105,7 @@ def test_ref_outside_any_definition_is_dropped() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[1, 0, 5]),
         ],
     )
-    assert scip_index_to_call_edges(_idx(doc)) == []
+    assert scip_index_to_call_edges(_idx(doc), run_id="test") == []
 
 
 def test_innermost_definition_wins_when_nested() -> None:
@@ -127,7 +127,7 @@ def test_innermost_definition_wins_when_nested() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[15, 4, 8]),
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc))
+    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
     assert edge.src == inner
 
 
@@ -146,7 +146,7 @@ def test_single_line_definition_and_ref() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[10, 5, 8]),
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc))
+    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
     assert edge.src == caller
 
 
@@ -160,7 +160,7 @@ def test_definition_occurrence_itself_does_not_emit_edge() -> None:
             scip_pb2.Occurrence(symbol=caller, symbol_roles=DEFINITION_ROLE, range=[0, 0, 5, 0]),
         ],
     )
-    assert scip_index_to_call_edges(_idx(doc)) == []
+    assert scip_index_to_call_edges(_idx(doc), run_id="test") == []
 
 
 def test_self_reference_is_dropped() -> None:
@@ -174,7 +174,7 @@ def test_self_reference_is_dropped() -> None:
             scip_pb2.Occurrence(symbol=foo, symbol_roles=0, range=[5, 4, 8]),
         ],
     )
-    assert scip_index_to_call_edges(_idx(doc)) == []
+    assert scip_index_to_call_edges(_idx(doc), run_id="test") == []
 
 
 def test_tie_break_picks_first_definition_in_document_order() -> None:
@@ -194,7 +194,7 @@ def test_tie_break_picks_first_definition_in_document_order() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 0, 4]),
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc))
+    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
     assert edge.src == a
 
 
@@ -214,7 +214,7 @@ def test_multiple_refs_in_same_definition_emit_multiple_edges() -> None:
             scip_pb2.Occurrence(symbol=y, symbol_roles=0, range=[10, 0, 4]),
         ],
     )
-    result = scip_index_to_call_edges(_idx(doc))
+    result = scip_index_to_call_edges(_idx(doc), run_id="test")
     dsts = sorted(e.dst for e in result)
     assert dsts == [x, y]
 
@@ -238,7 +238,7 @@ def test_multiple_documents_scoped_independently() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 0, 4]),
         ],
     )
-    result = scip_index_to_call_edges(_idx(doc_a, doc_b))
+    result = scip_index_to_call_edges(_idx(doc_a, doc_b), run_id="test")
     assert len(result) == 1
     assert result[0].src == caller
 
@@ -260,7 +260,7 @@ def test_resolve_symbol_rewrites_endpoints() -> None:
     )
     mapping = {caller: "python:mod.py:1-21:foo:method",
                callee: "python:mod.py:30-35:bar:method"}
-    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=lambda s: mapping.get(s))
+    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=lambda s: mapping.get(s), run_id="test")
     assert edge.src == mapping[caller]
     assert edge.dst == mapping[callee]
 
@@ -279,11 +279,15 @@ def test_resolve_symbol_none_for_either_endpoint_drops_edge() -> None:
     assert scip_index_to_call_edges(
         _idx(doc),
         resolve_symbol=lambda s: "resolved" if s == caller else None,
+
+        run_id="test",
     ) == []
     # Resolve callee but not caller → drop
     assert scip_index_to_call_edges(
         _idx(doc),
         resolve_symbol=lambda s: "resolved" if s == callee else None,
+
+        run_id="test",
     ) == []
 
 
@@ -302,7 +306,7 @@ def test_edge_meta_carries_scip_provenance() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0x08, range=[5, 0, 4]),  # ReadAccess
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc))
+    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
     assert edge.meta is not None
     assert edge.meta["scip_src_symbol"] == caller
     assert edge.meta["scip_dst_symbol"] == callee
@@ -326,7 +330,7 @@ def test_definition_with_malformed_range_is_ignored() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 0, 4]),
         ],
     )
-    [edge] = scip_index_to_call_edges(_idx(doc))
+    [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
     assert edge.src == caller
     assert edge.dst == callee
 
@@ -342,4 +346,4 @@ def test_occurrence_with_unsupported_range_length_skipped() -> None:
             scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 0]),
         ],
     )
-    assert scip_index_to_call_edges(_idx(doc)) == []
+    assert scip_index_to_call_edges(_idx(doc), run_id="test") == []

@@ -701,6 +701,10 @@ def link_routes_to_handlers(
             rails_index = _RailsIndex.build(symbol_by_name)
             break
 
+    # WI-higap: create the run BEFORE the edge loop so Edge.__post_init__
+    # can validate origin_run_id at construction.
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
     new_edges: list[Edge] = []
     routes_linked = 0
 
@@ -775,6 +779,7 @@ def link_routes_to_handlers(
                     if handler_is_fallback
                     else handler_meta
                 ),
+                origin_run_id=run.execution_id,
             )
             new_edges.append(edge)
             routes_linked += 1
@@ -817,10 +822,10 @@ def link_routes_to_handlers(
                         if la_is_fallback
                         else la_meta_base
                     ),
+                    origin_run_id=run.execution_id,
                 )
                 new_edges.append(la_edge)
 
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
     run.files_analyzed = len(routes)  # Using this field to track routes processed
 
     return RouteHandlerResult(edges=new_edges, run=run)

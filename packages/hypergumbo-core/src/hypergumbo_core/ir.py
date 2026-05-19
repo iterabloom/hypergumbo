@@ -54,6 +54,22 @@ All analyzers and linkers use this as their version string, ensuring
 cache signatures correctly invalidate on release.  Single source of truth.
 """
 
+LEGACY_DESERIALIZED_SENTINEL: str = "<legacy-deserialized>"
+"""WI-higap deserialization sentinel.
+
+``Edge.__post_init__`` hard-raises on empty ``origin`` / ``origin_run_id``,
+which protects fresh-construction paths from silently dropping provenance.
+But legacy behavior-map JSON predating WI-higap producer fixes carries empty
+strings for these fields on the 67 production sites that hadn't yet been
+migrated. ``Edge.from_dict`` swaps in this sentinel during deserialization
+so loading old artifacts off disk (caches, ``hypergumbo explain``, sketch
+comparisons) doesn't crash.
+
+A property test asserts that production hypergumbo runs never emit this
+sentinel — it surfaces only when reading older data, never on the
+producer side.
+"""
+
 
 def make_pass_id(name: str) -> str:
     """Return the canonical pass ID for an analyzer or linker.
@@ -483,6 +499,27 @@ class Edge:
     quality: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
 
+    def __post_init__(self) -> None:
+        # WI-higap: hard-raise on empty provenance fields. Every edge must
+        # declare which pass produced it (origin) and during which analysis
+        # run instance (origin_run_id) so the run-side AnalysisRun row can
+        # be joined back to its emitted edges. Loose construction lets
+        # silent provenance regressions accumulate (cf. the 425 edges with
+        # empty origin_run_id observed on 2026-05-16 self-analysis).
+        if not self.origin:
+            raise ValueError(
+                f"Edge.origin must be non-empty (edge_type={self.edge_type!r}, "
+                f"src={self.src!r}, dst={self.dst!r}). Producers must stamp "
+                "their pass_id; see WI-higap and the existing AnalysisRun "
+                "pattern in linkers/analyzers.",
+            )
+        if not self.origin_run_id:
+            raise ValueError(
+                f"Edge.origin_run_id must be non-empty (origin={self.origin!r}, "
+                f"edge_type={self.edge_type!r}). Stamp from AnalysisRun.create()"
+                "'s execution_id at the producer; see WI-higap.",
+            )
+
     @classmethod
     def create(
         cls,
@@ -588,7 +625,16 @@ class Edge:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Edge":
-        """Reconstruct an Edge from its dict representation (e.g., from cached results)."""
+        """Reconstruct an Edge from its dict representation (e.g., from cached results).
+
+        WI-higap: ``__post_init__`` hard-raises on empty ``origin`` /
+        ``origin_run_id``. Deserialization of legacy behavior-map JSON that
+        predates WI-higap-era producer fixes must not crash — we inject a
+        sentinel so the Edge is constructable. A property test
+        (``tests/test_edge_provenance_invariant.py``) asserts that
+        production hypergumbo runs never *emit* the sentinel; it appears
+        only when reading older artifacts off disk.
+        """
         meta = d.get("meta", {})
         dst_ref_raw = d.get("dst_ref")
         return cls(
@@ -599,8 +645,8 @@ class Edge:
             line=d.get("line", 0),
             edge_key=d.get("edge_key"),
             confidence=d.get("confidence", 0.85),
-            origin=d.get("origin", ""),
-            origin_run_id=d.get("origin_run_id", ""),
+            origin=d.get("origin") or LEGACY_DESERIALIZED_SENTINEL,
+            origin_run_id=d.get("origin_run_id") or LEGACY_DESERIALIZED_SENTINEL,
             origin_run_signature=d.get("origin_run_signature"),
             evidence_type=meta.get("evidence_type", "ast_call_direct"),
             evidence_lang=meta.get("evidence_lang"),

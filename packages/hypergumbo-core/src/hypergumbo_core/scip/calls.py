@@ -125,6 +125,7 @@ def scip_index_to_call_edges(
     index: scip_pb2.Index,
     *,
     resolve_symbol: Optional[Callable[[str], Optional[str]]] = None,
+    run_id: str,
 ) -> List[Edge]:
     """Emit hypergumbo ``Edge`` objects for SCIP non-Definition Occurrences.
 
@@ -182,5 +183,6 @@ def scip_index_to_call_edges(
                     "scip_dst_symbol": occ.symbol,
                     "symbol_roles": int(occ.symbol_roles),
                 },
+                origin_run_id=run_id,
             ))
     return out

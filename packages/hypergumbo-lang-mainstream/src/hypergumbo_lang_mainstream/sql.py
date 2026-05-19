@@ -393,6 +393,8 @@ def _extract_sql_edges(
     symbols: list[Symbol],
     edges: list[Edge],
     resolver: "NameResolver",
+    *,
+    run_id: str,
 ) -> None:
     """Extract edges from SQL AST tree (pass 2)."""
     _caller_path = rel_path
@@ -424,6 +426,7 @@ def _extract_sql_edges(
                                     confidence=confidence,
                                     origin=PASS_ID,
                                     evidence_type="sql_foreign_key",
+                                    origin_run_id=run_id,
                                 )
                                 edges.append(edge)
 
@@ -469,6 +472,8 @@ class SqlAnalyzer(TreeSitterAnalyzer):
         _extract_sql_edges(
             tree.root_node, source, rel_path,
             file_symbols, edges, resolver,
+
+            run_id=run.execution_id,
         )
         return edges
 

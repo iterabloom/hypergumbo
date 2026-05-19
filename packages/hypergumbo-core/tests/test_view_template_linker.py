@@ -591,6 +591,8 @@ class TestTransitiveControllerBase:
         method = _make_method("LeafController", "index")
         edge = Edge.create(
             src=leaf_ctl.id, dst=app_ctl.id, edge_type="extends", line=1,
+
+            origin="test", origin_run_id="test",
         )
         ctx = LinkerContext(
             repo_root=tmp_path,
@@ -633,8 +635,8 @@ class TestTransitiveControllerBase:
         )
         method = _make_method("LeafController", "show")
         edges = [
-            Edge.create(src=leaf_ctl.id, dst=mid_ctl.id, edge_type="extends", line=1),
-            Edge.create(src=mid_ctl.id, dst=app_ctl.id, edge_type="extends", line=1),
+            Edge.create(src=leaf_ctl.id, dst=mid_ctl.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=mid_ctl.id, dst=app_ctl.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         ctx = LinkerContext(
             repo_root=tmp_path,
@@ -684,10 +686,10 @@ class TestTransitiveControllerBase:
         )
         method = _make_method("LeafController", "edit")
         edges = [
-            Edge.create(src=leaf_ctl.id, dst=left_ctl.id, edge_type="extends", line=1),
-            Edge.create(src=leaf_ctl.id, dst=right_ctl.id, edge_type="extends", line=1),
-            Edge.create(src=left_ctl.id, dst=app_ctl.id, edge_type="extends", line=1),
-            Edge.create(src=right_ctl.id, dst=app_ctl.id, edge_type="extends", line=1),
+            Edge.create(src=leaf_ctl.id, dst=left_ctl.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=leaf_ctl.id, dst=right_ctl.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=left_ctl.id, dst=app_ctl.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
+            Edge.create(src=right_ctl.id, dst=app_ctl.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
         ]
         ctx = LinkerContext(
             repo_root=tmp_path,

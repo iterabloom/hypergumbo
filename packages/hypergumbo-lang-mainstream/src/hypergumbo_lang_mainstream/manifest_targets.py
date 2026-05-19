@@ -97,6 +97,7 @@ def _emit(
     language: str,
     *,
     target_function: str | None = None,
+    run_id: str,
 ) -> None:
     """Create a build-target Symbol and its ``defines_target`` Edge."""
     sym_id = make_symbol_id("manifest", rel_path, line, line, name, kind)
@@ -134,6 +135,7 @@ def _emit(
         confidence=1.0,
         origin=PASS_ID,
         meta=edge_meta,
+        origin_run_id=run_id,
     ))
 
 
@@ -152,6 +154,7 @@ def _extract_gradle(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     for m in _GRADLE_MAIN_RE.finditer(content):
         line = content[:m.start()].count("\n") + 1
@@ -159,7 +162,7 @@ def _extract_gradle(
         # Could be Java or Kotlin — try .java first (more common in Gradle)
         target = _class_to_path(class_name, ".java")
         _emit(symbols, edges, rel_path, class_name.rsplit(".", 1)[-1],
-              "binary", line, target, "gradle")
+              "binary", line, target, "gradle", run_id=run_id)
 
 
 # C#: <StartupObject>Namespace.Program</StartupObject>
@@ -173,13 +176,14 @@ def _extract_csproj(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     for m in _CSPROJ_STARTUP_RE.finditer(content):
         line = content[:m.start()].count("\n") + 1
         class_name = m.group(1)
         target = _class_to_path(class_name, ".cs")
         _emit(symbols, edges, rel_path, class_name.rsplit(".", 1)[-1],
-              "binary", line, target, "csproj")
+              "binary", line, target, "csproj", run_id=run_id)
 
 
 # Dart: executables:\n  command_name: script_name
@@ -198,6 +202,7 @@ def _extract_dart(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     section_match = _DART_EXEC_SECTION_RE.search(content)
     if not section_match:
@@ -214,7 +219,7 @@ def _extract_dart(
         line = line_offset + rest[:m.start()].count("\n") + 1
         target = f"bin/{script_name}.dart"
         _emit(symbols, edges, rel_path, cmd_name, "binary", line,
-              target, "dart")
+              target, "dart", run_id=run_id)
 
 
 # Swift: .executableTarget(name: "AppName"
@@ -228,13 +233,14 @@ def _extract_swift(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     for m in _SWIFT_EXEC_RE.finditer(content):
         line = content[:m.start()].count("\n") + 1
         name = m.group(1)
         target = f"Sources/{name}/main.swift"
         _emit(symbols, edges, rel_path, name, "binary", line,
-              target, "swift")
+              target, "swift", run_id=run_id)
 
 
 # Haskell: executable <name> \n ... main-is: <file> \n ... hs-source-dirs: <dir>
@@ -257,6 +263,7 @@ def _extract_cabal(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     for m in _CABAL_EXEC_RE.finditer(content):
         exe_name = m.group(1)
@@ -277,7 +284,7 @@ def _extract_cabal(
 
         target = f"{src_dir}/{main_file}" if src_dir else main_file
         _emit(symbols, edges, rel_path, exe_name, "binary", line,
-              target, "haskell")
+              target, "haskell", run_id=run_id)
 
 
 # Elixir: escript: [main_module: MyApp.CLI]
@@ -291,6 +298,7 @@ def _extract_elixir(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     m = _ELIXIR_ESCRIPT_RE.search(content)
     if m:
@@ -298,7 +306,7 @@ def _extract_elixir(
         module = m.group(1)
         target = _elixir_module_to_path(module)
         _emit(symbols, edges, rel_path, module, "binary", line,
-              target, "elixir", target_function="main")
+              target, "elixir", target_function="main", run_id=run_id)
 
 
 # Ruby: spec.executables = ["name"] or %w[name1 name2]
@@ -315,6 +323,7 @@ def _extract_gemspec(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     line = 1
     names: list[str] = []
@@ -335,7 +344,7 @@ def _extract_gemspec(
         # Modern gems use exe/, older use bin/
         target = f"exe/{name}"
         _emit(symbols, edges, rel_path, name, "binary", line,
-              target, "ruby")
+              target, "ruby", run_id=run_id)
 
 
 # Scala: mainClass := Some("com.example.Main")
@@ -349,13 +358,14 @@ def _extract_sbt(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     for m in _SCALA_MAIN_RE.finditer(content):
         line = content[:m.start()].count("\n") + 1
         class_name = m.group(1)
         target = _class_to_path(class_name, ".scala")
         _emit(symbols, edges, rel_path, class_name.rsplit(".", 1)[-1],
-              "binary", line, target, "scala")
+              "binary", line, target, "scala", run_id=run_id)
 
 
 # OCaml: (executable (name main) ...)
@@ -374,20 +384,21 @@ def _extract_dune(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     for m in _DUNE_EXEC_RE.finditer(content):
         line = content[:m.start()].count("\n") + 1
         name = m.group(1)
         target = f"{name}.ml"
         _emit(symbols, edges, rel_path, name, "binary", line,
-              target, "ocaml")
+              target, "ocaml", run_id=run_id)
 
     for m in _DUNE_EXECS_RE.finditer(content):
         line = content[:m.start()].count("\n") + 1
         for name in m.group(1).split():
             target = f"{name}.ml"
             _emit(symbols, edges, rel_path, name, "binary", line,
-                  target, "ocaml")
+                  target, "ocaml", run_id=run_id)
 
 
 # Zig: b.addExecutable(.{ .name = "app", .root_source_file = b.path("src/main.zig") })
@@ -408,6 +419,7 @@ def _extract_zig(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     seen: set[str] = set()
     for m in _ZIG_EXEC_NEW_RE.finditer(content):
@@ -418,7 +430,7 @@ def _extract_zig(
         line = content[:m.start()].count("\n") + 1
         name = Path(path).stem
         _emit(symbols, edges, rel_path, name, "binary", line,
-              path, "zig")
+              path, "zig", run_id=run_id)
 
     for m in _ZIG_EXEC_OLD_RE.finditer(content):
         path = m.group(1)
@@ -428,7 +440,7 @@ def _extract_zig(
         line = content[:m.start()].count("\n") + 1
         name = Path(path).stem
         _emit(symbols, edges, rel_path, name, "binary", line,
-              path, "zig")
+              path, "zig", run_id=run_id)
 
 
 # Nim: bin = @["myapp", "other"]
@@ -442,6 +454,7 @@ def _extract_nimble(
     rel_path: str,
     symbols: list[Symbol],
     edges: list[Edge],
+    run_id: str,
 ) -> None:
     m = _NIM_BIN_RE.search(content)
     if not m:
@@ -451,7 +464,7 @@ def _extract_nimble(
     for name in names:
         target = f"src/{name}.nim"
         _emit(symbols, edges, rel_path, name, "binary", line,
-              target, "nim")
+              target, "nim", run_id=run_id)
 
 
 # ---------------------------------------------------------------------------
@@ -509,7 +522,7 @@ def _analyze_manifest_targets(repo_root: Path) -> AnalysisResult:
             except OSError:  # pragma: no cover
                 continue
             rel_path = str(fpath.relative_to(repo_root))
-            extractor(content, rel_path, symbols, edges)
+            extractor(content, rel_path, symbols, edges, run.execution_id)
 
     run.wall_time = time.monotonic() - t0
     return AnalysisResult(symbols=symbols, edges=edges, run=run)

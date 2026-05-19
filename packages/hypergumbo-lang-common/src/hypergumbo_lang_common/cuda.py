@@ -266,6 +266,8 @@ def _extract_cuda_edges(
     edges: list[Edge],
     local_symbols: dict[str, Symbol],
     resolver: NameResolver,
+    *,
+    run_id: str,
 ) -> None:
     """Extract edges from CUDA AST tree (pass 2).
 
@@ -321,6 +323,7 @@ def _extract_cuda_edges(
                         origin=PASS_ID,
                         evidence_type="ast_call_direct",
                         meta={"framework_dispatch": "cuda_kernel_launch"},
+                        origin_run_id=run_id,
                     )
                 else:
                     edge = Edge.create(
@@ -331,6 +334,7 @@ def _extract_cuda_edges(
                         confidence=confidence,
                         origin=PASS_ID,
                         evidence_type="ast_call_direct",
+                        origin_run_id=run_id,
                     )
                 edges.append(edge)
 
@@ -375,7 +379,7 @@ class CudaAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract call and kernel launch edges from a CUDA file."""
         edges: list[Edge] = []
-        _extract_cuda_edges(tree.root_node, source, edges, local_symbols, resolver)
+        _extract_cuda_edges(tree.root_node, source, edges, local_symbols, resolver, run_id=run.execution_id)
         return edges
 
 

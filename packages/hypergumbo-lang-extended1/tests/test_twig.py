@@ -129,7 +129,7 @@ Hello World
         make_twig_file(tmp_path, "template.twig", "{{ include('partials/header.twig') }}")
         result = analyze_twig(tmp_path)
         # Cluster E sub-case (b) per audit-findings 0010: include Symbol was
-        # dropped; the includes_template Edge (form='function') carries it.
+        # dropped; the includes_template Edge (form='function', origin="test", origin_run_id="test") carries it.
         edge = next(
             (e for e in result.edges if e.edge_type == "includes_template"
              and (e.meta or {}).get("form") == "function"),

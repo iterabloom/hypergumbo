@@ -65,7 +65,7 @@ def _idx_with_relationship(
 
 
 def test_empty_index_emits_no_edges() -> None:
-    assert scip_index_to_edges(scip_pb2.Index()) == []
+    assert scip_index_to_edges(scip_pb2.Index(), run_id="test") == []
 
 
 def test_symbol_without_relationships_emits_no_edges() -> None:
@@ -75,14 +75,14 @@ def test_symbol_without_relationships_emits_no_edges() -> None:
             symbols=[scip_pb2.SymbolInformation(symbol=_sym("foo"))],
         )
     ])
-    assert scip_index_to_edges(idx) == []
+    assert scip_index_to_edges(idx, run_id="test") == []
 
 
 def test_is_implementation_produces_implements_edge() -> None:
     src = _sym("Impl")
     dst = _sym("Trait")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_implementation=True)
-    [e] = scip_index_to_edges(idx)
+    [e] = scip_index_to_edges(idx, run_id="test")
     assert isinstance(e, Edge)
     assert e.src == src
     assert e.dst == dst
@@ -94,7 +94,7 @@ def test_is_type_definition_produces_has_type_edge() -> None:
     src = _sym("x")
     dst = _sym("int")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_type_definition=True)
-    [e] = scip_index_to_edges(idx)
+    [e] = scip_index_to_edges(idx, run_id="test")
     assert e.edge_type == "has_type"
 
 
@@ -102,7 +102,7 @@ def test_is_reference_produces_references_edge() -> None:
     src = _sym("a")
     dst = _sym("b")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_reference=True)
-    [e] = scip_index_to_edges(idx)
+    [e] = scip_index_to_edges(idx, run_id="test")
     assert e.edge_type == "references"
 
 
@@ -110,7 +110,7 @@ def test_is_definition_produces_defined_by_edge() -> None:
     src = _sym("alias")
     dst = _sym("canonical")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_definition=True)
-    [e] = scip_index_to_edges(idx)
+    [e] = scip_index_to_edges(idx, run_id="test")
     assert e.edge_type == "defined_by"
 
 
@@ -127,7 +127,7 @@ def test_multiple_flags_on_one_relationship_fan_out() -> None:
         is_implementation=True,
         is_type_definition=True,
     )
-    result = scip_index_to_edges(idx)
+    result = scip_index_to_edges(idx, run_id="test")
     edge_types = sorted(e.edge_type for e in result)
     assert edge_types == ["has_type", "implements"]
 
@@ -145,7 +145,7 @@ def test_multiple_relationships_each_emit_edges() -> None:
         )],
     )
     idx = scip_pb2.Index(documents=[doc])
-    result = scip_index_to_edges(idx)
+    result = scip_index_to_edges(idx, run_id="test")
     assert len(result) == 2
     dsts = {e.dst for e in result}
     assert dsts == {_sym("A"), _sym("B")}
@@ -155,13 +155,13 @@ def test_relationship_with_no_flags_produces_no_edges() -> None:
     # Protobuf allows all-false relationships — skip them.
     src = _sym("x")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=_sym("y"))
-    assert scip_index_to_edges(idx) == []
+    assert scip_index_to_edges(idx, run_id="test") == []
 
 
 def test_self_reference_relationship_is_dropped() -> None:
     sym = _sym("self")
     idx = _idx_with_relationship(src_symbol=sym, rel_symbol=sym, is_reference=True)
-    assert scip_index_to_edges(idx) == []
+    assert scip_index_to_edges(idx, run_id="test") == []
 
 
 def test_multiple_documents_each_contribute() -> None:
@@ -180,7 +180,7 @@ def test_multiple_documents_each_contribute() -> None:
         )],
     )
     idx = scip_pb2.Index(documents=[d1, d2])
-    result = scip_index_to_edges(idx)
+    result = scip_index_to_edges(idx, run_id="test")
     assert len(result) == 2
     types = {e.edge_type for e in result}
     assert types == {"implements", "has_type"}
@@ -201,7 +201,7 @@ def test_resolve_symbol_rewrites_both_endpoints() -> None:
     def resolve(scip_symbol: str) -> "str | None":
         return mapping.get(scip_symbol)
 
-    [e] = scip_index_to_edges(idx, resolve_symbol=resolve)
+    [e] = scip_index_to_edges(idx, resolve_symbol=resolve, run_id="test")
     assert e.src == mapping[src]
     assert e.dst == mapping[dst]
 
@@ -215,6 +215,8 @@ def test_resolve_symbol_returning_none_for_src_skips_edge() -> None:
     result = scip_index_to_edges(
         idx,
         resolve_symbol=lambda s: None if s == src else "python:resolved:1-1:x:class",
+
+        run_id="test",
     )
     assert result == []
 
@@ -227,6 +229,8 @@ def test_resolve_symbol_returning_none_for_dst_skips_edge() -> None:
     result = scip_index_to_edges(
         idx,
         resolve_symbol=lambda s: None if s == dst else "python:resolved:1-1:x:class",
+
+        run_id="test",
     )
     assert result == []
 
@@ -240,7 +244,7 @@ def test_edge_carries_scip_evidence_type_and_origin() -> None:
     src = _sym("s")
     dst = _sym("d")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_implementation=True)
-    [e] = scip_index_to_edges(idx)
+    [e] = scip_index_to_edges(idx, run_id="test")
     assert e.origin == "scip"
     assert e.evidence_type.startswith("scip_")
     assert e.confidence > 0.0
@@ -250,7 +254,7 @@ def test_edge_meta_includes_scip_endpoints() -> None:
     src = _sym("s")
     dst = _sym("d")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_implementation=True)
-    [e] = scip_index_to_edges(idx)
+    [e] = scip_index_to_edges(idx, run_id="test")
     assert e.meta is not None
     assert e.meta.get("scip_src_symbol") == src
     assert e.meta.get("scip_dst_symbol") == dst

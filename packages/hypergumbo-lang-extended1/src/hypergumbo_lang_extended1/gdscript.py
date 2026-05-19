@@ -252,6 +252,7 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                                         line=node.start_point[0] + 1,
                                         confidence=0.9,
                                         origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
                                     ))
                                     break
                     else:
@@ -267,6 +268,7 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                                         line=node.start_point[0] + 1,
                                         confidence=0.85 * result.confidence,
                                         origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
                                     ))
                                 else:
                                     edges.append(make_unresolved_edge(

@@ -1247,6 +1247,8 @@ def _extract_edges_from_tree(
         node_kinds=("qualified_identifier",),
         object_field_names=("scope",),
         property_field_names=("name",),
+        pass_id=PASS_ID,
+        run_id=run.execution_id,
         call_node_kinds=("call_expression",),
         call_function_field_names=("function",),
         scoped_path=True,
