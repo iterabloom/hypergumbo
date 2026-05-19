@@ -1,0 +1,31 @@
+- op: create  # 4eca
+  at: '2026-05-19T18:08:53Z'  # 4eca
+  by: agent  # 4eca
+  actor: jgstern_agent  # 4eca
+  clock: 1  # 4eca
+  nonce: 4eca  # 4eca
+  data:  # 4eca
+    kind: invariant  # 4eca
+    title: "JS/TS analyzer must emit kind=call UCs for every framework_patterns YAML-targeted name"  # 4eca
+    status: violated  # 4eca
+    priority: 2  # 4eca
+    parent:  # 4eca
+    tags:  # 4eca
+    - protocol_linkers  # 4eca
+    - analysis_quality  # 4eca
+    - cross_language_parity  # 4eca
+    isbefore: []  # 4eca
+    duplicate_of: []  # 4eca
+    not_duplicate_of: []  # 4eca
+    pr_ref:  # 4eca
+    description: ""  # 4eca
+    fields:  # 4eca
+      statement: "When a framework YAML pattern (frameworks/*.yaml) declares 'usage: kind: \"^call$\", name: \"^X$\"', the JS/TS analyzer MUST emit a UsageContext with kind=call and context_name=X for every call site of X in source. Otherwise the pattern is structurally non-firing end-to-end despite passing unit tests."  # 4eca
+      root_cause: "js_ts.py only emits kind=call UCs for a fixed allowlist _APP_BOOTSTRAP_NAMES + _APP_BOOTSTRAP_QUALIFIED (~10 names: createRoot, hydrate, ReactDOM.*, app.*). All other framework YAML patterns that target kind=call have inputs but JS/TS never produces matching UCs. The unit test pattern (manually construct UC, feed to match_usage_patterns) hides the gap — it tests the matcher in isolation but not the UC-emission pipeline."  # 4eca
+- op: discuss  # 9350
+  at: '2026-05-19T18:09:17Z'  # 9350
+  by: agent  # 9350
+  actor: jgstern_agent  # 9350
+  clock: 2  # 9350
+  nonce: '9350'  # 9350
+  message: "Filed during WI-donud validation of WI-tisam fix (2026-05-19). The unit-test/E2E split is the core failure mode: every JS/TS framework_patterns YAML pattern that targets `kind=call` will silently no-op end-to-end unless either:\n\n(a) the target name is in `_APP_BOOTSTRAP_NAMES` / `_APP_BOOTSTRAP_QUALIFIED` (`js_ts.py:2006-2030`), OR\n(b) the target name has a dedicated extractor (`_extract_express_usage_contexts`, `_extract_hapi_usage_contexts`, `_extract_nextjs_usage_contexts`, `_extract_app_bootstrap_contexts`).\n\n**Empirical evidence (WI-donud, 2026-05-19):**\n- apollo-server smoke-test consumer (calls `startStandaloneServer`): 0 UCs total, routes.txt empty\n- apollo-server integration-testsuite consumer (calls `runHttpQuery`): 1 UC, library_export, routes.txt empty\n- apollo-server library itself (2026-05-19 mini-trial): 89 UCs, all library_export, 0 call-UCs\n\n**Affected WI-tisam patterns (graphql.yaml + node-http.yaml):**\n- startStandaloneServer\n- runHttpQuery\n- executeHTTPGraphQLRequest\n- http.createServer / https.createServer / http2.createServer (qualified)\n\n**Potential cross-pattern impact (audit needed):** other YAML files in `packages/hypergumbo-core/src/hypergumbo_core/frameworks/` may have similar dead patterns. Need a structural audit: for each YAML pattern with `usage.kind: \"^call$\"` and `name: \"<X>\"`, verify `<X>` is reachable from the JS/TS UC-emission pipeline. If not, file as a sub-item or extend coverage.\n\n**Detection mechanism candidate:** a pre-commit / CI lint that walks every frameworks/*.yaml file with `usage.kind: call`, extracts the target names, and asserts each name appears in some js_ts.py extractor's emission set. The lint catches drift between YAML pattern declarations and analyzer UC emission. Mirrors the spirit of `check-edge-type-drift` for a different axis.\n\n**Acceptance:**\n1. JS/TS analyzer emits `kind=call` UCs for every name targeted by a framework YAML pattern (audit + extend coverage).\n2. End-to-end test fixture per pattern category: real source with the call → assert routes.txt / framework_role population.\n3. CI lint enforcing the YAML-pattern → analyzer-emission registry pairing.\n\n**Cross-language parity:** Python/Go/Java analyzers have analogous UC pipelines. Audit each language's analyzer for the same drift between YAML pattern declarations and UC emission. File sub-items per language as discovered.\n\n**Related work:**\n- WI-tisam (parent — adds YAML patterns but doesn't update extractor)\n- WI-donud (regression child — validate WI-tisam on consumer app; this invariant is its blocking root cause)"  # 9350

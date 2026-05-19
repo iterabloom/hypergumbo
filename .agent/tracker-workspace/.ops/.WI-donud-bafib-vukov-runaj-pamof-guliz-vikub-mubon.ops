@@ -25,3 +25,25 @@
   clock: 2  # deec
   nonce: deec  # deec
   message: "Filed during WI-tisam cohort validation (2026-05-19). apollo-server is a library — 0 call-kind UCs, all 89 UCs are kind=library_export. WI-tisam's YAML patterns (createServer / startStandaloneServer / runHttpQuery / executeHTTPGraphQLRequest) all require usage.kind==\"call\" and so cannot fire on the library repo.\n\nNext: identify an apollo-server consumer app (any open-source Node project using apollo-server's startStandaloneServer or runHttpQuery), clone it, rerun hypergumbo, check routes.txt for non-empty output.\n\nCandidates to consider:\n  - Apollo's official examples repo (apollographql/docs-examples)\n  - A real-world Apollo consumer (search github for \"import { startStandaloneServer }\")\n\nUntil this regression child closes, the original WI-tisam claim is unvalidated."  # deec
+- op: discuss  # c526
+  at: '2026-05-19T18:08:43Z'  # c526
+  by: agent  # c526
+  actor: jgstern_agent  # c526
+  clock: 3  # c526
+  nonce: c526  # c526
+  message: "Validated on apollo-server smoke-test consumer (real `startStandaloneServer` caller). Verdict: STILL NO_MOVE, root cause is deeper structural.\n\n**Setup:** Found a real Apollo consumer locally at `/home/jgstern_agent/ALL_REPOS/whole_bunch_of_repos/apollo-server/smoke-test/`. The `smoke-test.mjs` and `nodenext/src/smoke-test.ts` both call `startStandaloneServer(s, { listen: { port: 0 } })`. `hypergumbo run` succeeds in 5s, produces 33 nodes including `external_symbol: startStandaloneServer` and `function: smokeTest`. `hypergumbo explain startStandaloneServer` correctly identifies smokeTest as the caller. Call edge is recorded:\n\n    typescript:nodenext/src/smoke-test.ts:18-43:smokeTest:function\n      --calls--> typescript:@apollo/server/standalone:0-0:startStandaloneServer:unresolved\n\nBut `hypergumbo routes` still returns \"No API routes found\".\n\n**Root cause:** `usage_contexts` top-level list is empty (length 0). WI-tisam's YAML patterns in graphql.yaml require `usage.kind == \"call\"`, but the JS/TS analyzer only emits `kind=call` UCs for a fixed allowlist `_APP_BOOTSTRAP_NAMES` in `js_ts.py:2006-2017`: createRoot, hydrateRoot, render, hydrate, createBrowserRouter, createHashRouter, createMemoryRouter (plus a `_APP_BOOTSTRAP_QUALIFIED` dict for ReactDOM.* and app.whenReady/on/once).\n\nWI-tisam's targets (`startStandaloneServer`, `runHttpQuery`, `executeHTTPGraphQLRequest`, `createServer`) are NOT in that allowlist. So `match_usage_patterns()` iterates over an empty (or library_export-only) UC list and finds nothing to match.\n\n**Why WI-tisam's unit tests pass anyway:** `test_framework_patterns.py::TestBareNodeHttpAndApolloStandaloneRoutes` manually constructs a `UsageContext.create(kind=\"call\", ...)` and feeds it to `match_usage_patterns()`. The unit test bypasses the end-to-end UC-emission gap. So `framework_patterns.match_usage_patterns()` works correctly in isolation, but the upstream UC-emission pipeline never feeds it the right inputs.\n\n**Diagnostic data:**\n- smoke-test consumer: 33 nodes, 14 edges (7 imports + 6 calls + 1 contains), 0 UCs total\n- integration-testsuite consumer (also real apollo-server caller): 1 UC total, all library_export, zero call-kind\n- Re-confirms apollo-server-the-library has only library_export UCs (matches my 2026-05-19 mini-trial finding)\n\n**Two-part follow-up fix:**\n1. Extend the JS/TS analyzer to emit `kind=call` UCs for WI-tisam's targets. Cleanest approach: new `_extract_http_handler_contexts()` parallel to `_extract_app_bootstrap_contexts()`, with `_HTTP_HANDLER_NAMES = frozenset({\"startStandaloneServer\", \"runHttpQuery\", \"executeHTTPGraphQLRequest\"})` and `_HTTP_HANDLER_QUALIFIED = {\"http.createServer\", \"https.createServer\", \"http2.createServer\"}`. Wire into `_extract_javascript_typescript_with_existing` analyzer entrypoint.\n2. Add end-to-end test: real .ts source containing `startStandaloneServer(server, {})` → assert routes.txt non-empty after analysis. Pin the wiring permanently so it can never regress to \"unit-tests-pass-but-e2e-broken\" again.\n\nFiling the broader structural invariant (analyzer-pattern UC contract) as a separate item. This WI-donud item closes when the JS/TS analyzer extractor is shipped AND smoke-test routes.txt count goes from 0 → at least 1."  # c526
+- op: update  # e64d
+  at: '2026-05-19T18:09:32Z'  # e64d
+  by: agent  # e64d
+  actor: jgstern_agent  # e64d
+  clock: 4  # e64d
+  nonce: e64d  # e64d
+  set:  # e64d
+    status: todo_hard  # e64d
+- op: discuss  # 14b1
+  at: '2026-05-19T18:09:32Z'  # 14b1
+  by: agent  # 14b1
+  actor: jgstern_agent  # 14b1
+  clock: 5  # 14b1
+  nonce: 14b1  # 14b1
+  message: "Blocked on INV-rolul (JS/TS kind=call UC emission gap). The 'wrong target' diagnosis from 2026-05-19 was incomplete — the fix is end-to-end NO_MOVE on real consumers too because JS/TS analyzer emits zero call-UCs for WI-tisam's target names. Bumped to todo_hard per structural-fix-protocol (analogue check across languages required before closure)."  # 14b1

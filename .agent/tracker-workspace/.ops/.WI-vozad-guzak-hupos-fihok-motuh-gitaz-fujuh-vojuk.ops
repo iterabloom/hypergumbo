@@ -36,3 +36,19 @@
   clock: 3  # 84c9
   nonce: 84c9  # 84c9
   message: "Shipped via PR (merged via fast-forward, commit 1d24981). Added 4 template-form regexes (Napi::Function::New<F>, InstanceMethod<&C::M>, StaticMethod<&C::M>, InstanceAccessor) to napi.py. 4 new property tests; 100% coverage. CAVEAT: tracker's better-sqlite3 fixture is V8-direct (not N-API). Real N-API consumers (sharp, canvas, …) benefit. better-sqlite3's V8-direct bindings remain unbridged and would require a separate v8_bindings.py linker."  # 84c9
+- op: discuss  # 76aa
+  at: '2026-05-19T17:44:00Z'  # 76aa
+  by: agent  # 76aa
+  actor: jgstern_agent  # 76aa
+  clock: 4  # 76aa
+  nonce: 76aa  # 76aa
+  message: "Cohort validation 2026-05-19: MOVED on canvas + sharp (N-API). Post-fix metrics: canvas hypergumbo run (12s, 1544 nodes, 3154 edges) — napi-linker-v1 emits 1 edge (cpp:src/color.cc:741-751:rgba_from_name_string -> cpp:src/CanvasRenderingContext2d.cc:2363-2379), 8 Symbols carry napi meta. sharp run (16s, 1204 nodes, 1812 edges) — 7 Symbols with napi meta (no linker edges in this run but 4 template-form regex patterns are firing at the symbol level). The 4 new template-form regexes (Napi::Function::New<F>, InstanceMethod<&C::M>, StaticMethod<&C::M>, InstanceAccessor) are empirically present in the analyzer output. Low edge magnitude on canvas (1) and zero on sharp suggests the template-form match surface is narrow, but the structural fix is demonstrably operating."  # 76aa
+- op: update  # 8190
+  at: '2026-05-19T17:44:00Z'  # 8190
+  by: agent  # 8190
+  actor: jgstern_agent  # 8190
+  clock: 5  # 8190
+  nonce: '8190'  # 8190
+  set: {}  # 8190
+  remove:  # 8190
+    tags: [awaits_bakeoff_validation]  # 8190

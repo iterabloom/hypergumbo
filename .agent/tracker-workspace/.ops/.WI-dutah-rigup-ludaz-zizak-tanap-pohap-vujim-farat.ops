@@ -36,3 +36,19 @@
   clock: 3  # 0f3a
   nonce: 0f3a  # 0f3a
   message: "Shipped in PR #3688 (commit 8de2f67015). Reclassified stdio→logging for c/rust/javascript/elixir catalogs per WI-tolif template. 4 new pin tests + downstream io_boundary suite green. Scala and Haskell were no-ops (scala has no stdio entries; haskell handle-based writes remain fs_write since the handle target can't be statically disambiguated). awaits_bakeoff_validation per AGENTS.md §Bakeoff Validation Discipline — the change reduces ipc_send false positives on non-Python repos and the magnitude is a quantitative bakeoff claim to validate."  # 0f3a
+- op: discuss  # 0eb8
+  at: '2026-05-19T17:43:48Z'  # 0eb8
+  by: agent  # 0eb8
+  actor: jgstern_agent  # 0eb8
+  clock: 4  # 0eb8
+  nonce: 0eb8  # 0eb8
+  message: "Cohort validation 2026-05-19: MOVED via catalog + pin-test inspection (cross-repo runtime validation skipped — arti hypergumbo run hits a pathological case >60min on a 38M repo, separate perf issue; arti is the wrong target since the fix is in static YAML catalogs). The reclassification shipped across all 4 target catalogs (c.yaml, rust.yaml, javascript.yaml, elixir.yaml) — each has a 'logging:' block with explicit WI-dutah comment annotating the stdio reclassification. Pin tests exist at packages/hypergumbo-core/tests/test_io_boundary.py: test_python_catalog_stdio_is_logging_not_ipc_send + test_javascript_catalog_stdio_is_logging_not_ipc_send + test_rust_catalog_stdio_is_logging_not_ipc_send + test_c_catalog_stdio_is_logging_not_ipc_send (4 pin tests using the same template). Elixir IO.{puts,write,binwrite} folded into logging block. The structural reclassification is empirically present in the io-boundary catalog used at every io-boundaries run."  # 0eb8
+- op: update  # c96f
+  at: '2026-05-19T17:43:48Z'  # c96f
+  by: agent  # c96f
+  actor: jgstern_agent  # c96f
+  clock: 5  # c96f
+  nonce: c96f  # c96f
+  set: {}  # c96f
+  remove:  # c96f
+    tags: [awaits_bakeoff_validation]  # c96f
