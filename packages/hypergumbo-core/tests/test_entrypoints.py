@@ -1434,11 +1434,14 @@ class TestSemanticEntryDetection:
         assert "Python CLI" in cli_eps[0].label
 
     def test_main_guard_entrypoint_detection(self) -> None:
-        """Python modules with main guard (if __name__ == '__main__') are detected as entrypoints."""
+        """Python files with main guard (if __name__ == '__main__') are detected as entrypoints.
+
+        INV-hojus: the carrier is the file-kind pseudo-node, not module-kind.
+        """
         sym = Symbol(
-            id="python:script.py:1-50:<module:script.py>:module",
-            name="<module:script.py>",
-            kind="module",
+            id="python:script.py:1-1:file:file",
+            name="script.py",
+            kind="file",
             path="script.py",
             language="python",
             span=Span(1, 50, 0, 0),

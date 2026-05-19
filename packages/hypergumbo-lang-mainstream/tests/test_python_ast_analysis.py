@@ -3354,10 +3354,16 @@ class TestPythonSignatureExtraction:
 
 
 class TestModulePseudoNode:
-    """Tests for <module> pseudo-node creation for script-only files."""
+    """Tests for the file pseudo-node emission for script-only files.
 
-    def test_module_node_created_for_script_with_calls(self, tmp_path: Path) -> None:
-        """Script files with function calls get a module pseudo-node."""
+    INV-hojus: the Python analyzer emits kind="file" Symbols for files
+    with module-level executable code (collapsed from the previous
+    kind="module" double-representation). The kind="module" kind no
+    longer appears for any Python path.
+    """
+
+    def test_file_node_created_for_script_with_calls(self, tmp_path: Path) -> None:
+        """Script files with function calls get a file pseudo-node."""
         py_file = tmp_path / "script.py"
         py_file.write_text(
             "import os\n"
@@ -3369,14 +3375,17 @@ class TestModulePseudoNode:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
-        assert len(modules) == 1
-        assert modules[0]["name"] == "<module:script.py>"
-        assert modules[0]["span"]["start_line"] == 1
-        assert modules[0]["span"]["end_line"] == 3
+        files = [n for n in data["nodes"] if n["kind"] == "file" and n["language"] == "python"]
+        assert len(files) == 1
+        assert files[0]["name"] == "script.py"
+        assert files[0]["span"]["start_line"] == 1
+        assert files[0]["span"]["end_line"] == 3
+        # INV-hojus invariant: kind="module" is no longer emitted for Python.
+        modules = [n for n in data["nodes"] if n["kind"] == "module" and n["language"] == "python"]
+        assert len(modules) == 0
 
-    def test_module_node_created_for_script_with_if_main(self, tmp_path: Path) -> None:
-        """Scripts with if __name__ == '__main__' get a module pseudo-node."""
+    def test_file_node_created_for_script_with_if_main(self, tmp_path: Path) -> None:
+        """Scripts with if __name__ == '__main__' get a file pseudo-node."""
         py_file = tmp_path / "main.py"
         py_file.write_text(
             "import sys\n"
@@ -3392,12 +3401,13 @@ class TestModulePseudoNode:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
-        assert len(modules) == 1
-        assert modules[0]["name"] == "<module:main.py>"
+        files = [n for n in data["nodes"] if n["kind"] == "file" and n["language"] == "python"]
+        assert len(files) == 1
+        assert files[0]["name"] == "main.py"
 
-    def test_no_module_node_for_pure_definitions(self, tmp_path: Path) -> None:
-        """Files with only imports/defs don't get a module pseudo-node."""
+    def test_no_file_pseudo_node_for_pure_definitions(self, tmp_path: Path) -> None:
+        """Files with only imports/defs don't get an analyzer-emitted
+        file pseudo-node (no module-level executable code to anchor)."""
         py_file = tmp_path / "lib.py"
         py_file.write_text(
             "import os\n"
@@ -3413,11 +3423,23 @@ class TestModulePseudoNode:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        # No module-kind Symbols (INV-hojus invariant — never for Python).
+        modules = [n for n in data["nodes"] if n["kind"] == "module" and n["language"] == "python"]
         assert len(modules) == 0
+        # Analyzer didn't emit one. The orchestrator file-symbol
+        # synthesizer may still create one if any edge targets the
+        # file id (e.g. import edges); the analyzer-side invariant
+        # being checked here is "no anchor when no module-level code".
+        analyzer_emitted = [
+            n for n in data["nodes"]
+            if n["kind"] == "file"
+            and n["language"] == "python"
+            and n["origin"] != "orchestrator_file_symbol_synthesis"
+        ]
+        assert len(analyzer_emitted) == 0
 
-    def test_module_node_created_for_assignment(self, tmp_path: Path) -> None:
-        """Files with module-level assignments get a module pseudo-node."""
+    def test_file_node_created_for_assignment(self, tmp_path: Path) -> None:
+        """Files with module-level assignments get a file pseudo-node."""
         py_file = tmp_path / "config.py"
         py_file.write_text(
             "import os\n"
@@ -3428,12 +3450,15 @@ class TestModulePseudoNode:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
-        assert len(modules) == 1
-        assert modules[0]["name"] == "<module:config.py>"
+        files = [n for n in data["nodes"] if n["kind"] == "file" and n["language"] == "python"]
+        assert len(files) == 1
+        assert files[0]["name"] == "config.py"
 
-    def test_no_module_node_for_docstring_only(self, tmp_path: Path) -> None:
-        """Files with only docstring don't get a module pseudo-node."""
+    def test_no_analyzer_emitted_file_node_for_docstring_only(self, tmp_path: Path) -> None:
+        """Files with only docstring don't get an analyzer-emitted file
+        pseudo-node (no module-level executable code to anchor). The
+        orchestrator synthesizer may still create one for the import
+        edge — that's a separate producer."""
         py_file = tmp_path / "empty.py"
         py_file.write_text(
             '"""This module does nothing."""\n'
@@ -3445,11 +3470,17 @@ class TestModulePseudoNode:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
-        assert len(modules) == 0
+        analyzer_emitted = [
+            n for n in data["nodes"]
+            if n["kind"] == "file"
+            and n["language"] == "python"
+            and n["origin"] != "orchestrator_file_symbol_synthesis"
+        ]
+        assert len(analyzer_emitted) == 0
 
-    def test_no_module_node_for_pass_only(self, tmp_path: Path) -> None:
-        """Files with only pass statements don't get a module pseudo-node."""
+    def test_no_analyzer_emitted_file_node_for_pass_only(self, tmp_path: Path) -> None:
+        """Files with only pass statements don't get an analyzer-emitted
+        file pseudo-node."""
         py_file = tmp_path / "stub.py"
         py_file.write_text(
             '"""Stub module."""\n'
@@ -3460,11 +3491,17 @@ class TestModulePseudoNode:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
-        assert len(modules) == 0
+        analyzer_emitted = [
+            n for n in data["nodes"]
+            if n["kind"] == "file"
+            and n["language"] == "python"
+            and n["origin"] != "orchestrator_file_symbol_synthesis"
+        ]
+        assert len(analyzer_emitted) == 0
 
-    def test_no_module_node_for_type_annotation_only(self, tmp_path: Path) -> None:
-        """Files with only type annotations don't get a module pseudo-node."""
+    def test_no_analyzer_emitted_file_node_for_type_annotation_only(self, tmp_path: Path) -> None:
+        """Files with only type annotations don't get an analyzer-emitted
+        file pseudo-node."""
         py_file = tmp_path / "types.py"
         py_file.write_text(
             '"""Type stubs."""\n'
@@ -3476,8 +3513,98 @@ class TestModulePseudoNode:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
-        assert len(modules) == 0
+        analyzer_emitted = [
+            n for n in data["nodes"]
+            if n["kind"] == "file"
+            and n["language"] == "python"
+            and n["origin"] != "orchestrator_file_symbol_synthesis"
+        ]
+        assert len(analyzer_emitted) == 0
+
+
+class TestInvHojusFileCanonicalKind:
+    """INV-hojus: Python files are represented by kind="file" Symbols only.
+
+    Invariant: no Python source path emits kind="module" Symbols, and any
+    file pseudo-node uses the file-canonical id shape — collapsing the
+    pre-INV-hojus dual-representation where every script-style Python file
+    got BOTH a kind="module" anchor and a kind="file" synthesized node.
+    """
+
+    def test_no_module_kind_for_any_python_path(self, tmp_path: Path) -> None:
+        """Across a small mixed-content repo, no Python path receives a
+        kind="module" Symbol from any producer."""
+        # Cover every emission branch that previously produced module-kind:
+        # script-with-calls, script-with-main-guard, library-style (no
+        # module-level code), pure-import file.
+        (tmp_path / "script_with_calls.py").write_text(
+            "import os\nprint('go')\nx = os.getcwd()\n"
+        )
+        (tmp_path / "script_with_main.py").write_text(
+            "import sys\n\ndef main(): pass\n\nif __name__ == '__main__':\n    main()\n"
+        )
+        (tmp_path / "library.py").write_text(
+            "import os\n\ndef helper(): return os.getcwd()\n\nclass C: pass\n"
+        )
+        (tmp_path / "config.py").write_text("CONFIG = {'debug': True}\n")
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        offending = [
+            n for n in data["nodes"]
+            if n["kind"] == "module" and n["language"] == "python"
+        ]
+        assert offending == [], (
+            f"INV-hojus violated: {len(offending)} Python Symbols still "
+            f"carry kind='module'. Names: {[n['name'] for n in offending][:5]}"
+        )
+
+    def test_no_double_representation_for_any_python_path(self, tmp_path: Path) -> None:
+        """No Python path may have both a kind='file' and a kind='module'
+        Symbol — the double-representation case that motivated INV-hojus."""
+        (tmp_path / "executable.py").write_text(
+            "import os\nprint('side effect')\nCONFIG = os.environ\n"
+        )
+        (tmp_path / "library.py").write_text("def helper(): pass\n")
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        kinds_by_path: dict[str, set[str]] = {}
+        for n in data["nodes"]:
+            if n["language"] != "python":
+                continue
+            if n["kind"] not in ("file", "module"):
+                continue
+            kinds_by_path.setdefault(n["path"], set()).add(n["kind"])
+
+        doubles = {p: ks for p, ks in kinds_by_path.items() if len(ks) > 1}
+        assert doubles == {}, (
+            f"INV-hojus violated: {len(doubles)} Python paths still have "
+            f"both file-kind and module-kind Symbols: {doubles}"
+        )
+
+    def test_file_pseudo_node_uses_canonical_file_id_shape(self, tmp_path: Path) -> None:
+        """Analyzer-emitted file pseudo-nodes share the same id shape as
+        the orchestrator file-symbol synthesizer (``{lang}:{path}:1-1:file:file``)
+        so dedup converges on a single canonical id per path."""
+        (tmp_path / "a.py").write_text("import os\nprint('go')\n")
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        file_nodes = [
+            n for n in data["nodes"]
+            if n["kind"] == "file" and n["language"] == "python" and n["path"] == "a.py"
+        ]
+        # Exactly one canonical file Symbol per path.
+        assert len(file_nodes) == 1, f"Expected 1 file Symbol for a.py, got {len(file_nodes)}"
+        # Canonical id shape: python:{path}:1-1:file:file
+        assert file_nodes[0]["id"] == "python:a.py:1-1:file:file"
 
 
 class TestModuleQualifiedCalls:
@@ -3898,7 +4025,8 @@ class TestVariableMethodCalls:
         assert process_edge["confidence"] == 0.40
 
     def test_module_level_module_qualified_call(self, tmp_path: Path) -> None:
-        """Module-level code with module.func() calls should emit edges from <module> node."""
+        """Module-level code with module.func() calls should emit edges
+        from the file pseudo-node (INV-hojus collapsed module→file)."""
         # Create a utility module
         utils_file = tmp_path / "utils.py"
         utils_file.write_text(
@@ -3918,18 +4046,23 @@ class TestVariableMethodCalls:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        # Should have a <module> pseudo-node
-        module_nodes = [n for n in data["nodes"] if n["kind"] == "module"]
-        assert len(module_nodes) == 1
-        assert module_nodes[0]["name"] == "<module:script.py>"
+        # Should have a file pseudo-node for script.py
+        file_nodes = [
+            n for n in data["nodes"]
+            if n["kind"] == "file"
+            and n["language"] == "python"
+            and n["name"] == "script.py"
+        ]
+        assert len(file_nodes) == 1
+        script_file_id = file_nodes[0]["id"]
 
-        # Should have a call edge from <module:script.py> to utils.configure
+        # Should have a call edge from the script.py file node to utils.configure
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
         module_call_edge = next(
-            (e for e in call_edges if "<module:script.py>" in e["src"] and "configure" in e["dst"]),
+            (e for e in call_edges if e["src"] == script_file_id and "configure" in e["dst"]),
             None
         )
-        assert module_call_edge is not None, "Expected call edge from <module> to configure"
+        assert module_call_edge is not None, "Expected call edge from file pseudo-node to configure"
 
     def test_local_class_instantiation_with_method_call(self, tmp_path: Path) -> None:
         """Local class instantiation followed by method call should resolve."""
@@ -5182,7 +5315,10 @@ class TestIfNameMainDetection:
         data = json.loads(out_path.read_text())
 
         # Find the module symbol
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        modules = [
+            n for n in data["nodes"]
+            if n["kind"] == "file" and n["language"] == "python"
+        ]
         assert len(modules) == 1, "Should have exactly one module symbol"
 
         module = modules[0]
@@ -5209,7 +5345,10 @@ class TestIfNameMainDetection:
         data = json.loads(out_path.read_text())
 
         # Find the module symbol
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        modules = [
+            n for n in data["nodes"]
+            if n["kind"] == "file" and n["language"] == "python"
+        ]
         assert len(modules) == 1
 
         module = modules[0]
@@ -5231,7 +5370,10 @@ class TestIfNameMainDetection:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        modules = [
+            n for n in data["nodes"]
+            if n["kind"] == "file" and n["language"] == "python"
+        ]
         assert len(modules) == 1
 
         meta = modules[0].get("meta") or {}
@@ -5251,7 +5393,10 @@ class TestIfNameMainDetection:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        modules = [
+            n for n in data["nodes"]
+            if n["kind"] == "file" and n["language"] == "python"
+        ]
         assert len(modules) == 1
 
         meta = modules[0].get("meta") or {}
@@ -5274,7 +5419,10 @@ class TestIfNameMainDetection:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        modules = [
+            n for n in data["nodes"]
+            if n["kind"] == "file" and n["language"] == "python"
+        ]
         assert len(modules) == 1
 
         meta = modules[0].get("meta") or {}
@@ -5297,7 +5445,10 @@ class TestIfNameMainDetection:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        modules = [
+            n for n in data["nodes"]
+            if n["kind"] == "file" and n["language"] == "python"
+        ]
         assert len(modules) == 1
 
         meta = modules[0].get("meta") or {}
@@ -5321,7 +5472,10 @@ class TestIfNameMainDetection:
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        modules = [n for n in data["nodes"] if n["kind"] == "module"]
+        modules = [
+            n for n in data["nodes"]
+            if n["kind"] == "file" and n["language"] == "python"
+        ]
         assert len(modules) == 1
 
         meta = modules[0].get("meta") or {}

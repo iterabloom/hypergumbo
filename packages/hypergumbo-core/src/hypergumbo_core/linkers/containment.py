@@ -94,6 +94,12 @@ CONTAINABLE_KINDS = frozenset({"method", "getter", "setter", "message"})
 CONTAINER_KINDS = frozenset({
     "class", "interface", "struct", "trait", "enum", "module",
     "message",
+    # INV-hojus: file-kind Symbols are the canonical file representation
+    # (orchestrator synthesis + py.py for Python with module-level code,
+    # js_module linker for TS, etc.). Including them here lets Phase 2's
+    # span-based fallback emit file → top-level-class contains edges,
+    # closing the structural-orphan gap noted on INV-hojus.
+    "file",
 })
 
 # Separators used in method names, ordered by specificity

@@ -252,11 +252,13 @@ def link_orm_queries(
             continue  # pragma: no cover — model_name came from model_lookup keys
         model_sym, is_fallback = resolved
 
-        # Find the enclosing function/method
+        # Find the enclosing function/method (INV-hojus: include file-kind
+        # so Python's file-canonical pseudo-node is reachable as fallback
+        # container for module-level model references)
         enclosing = ctx.find_enclosing_symbol(
             ref.file_path,
             ref.line,
-            kinds=("function", "method", "class", "module"),
+            kinds=("function", "method", "class", "module", "file"),
         )
         if enclosing is None:
             continue

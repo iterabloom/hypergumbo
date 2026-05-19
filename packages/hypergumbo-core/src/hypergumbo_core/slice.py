@@ -530,7 +530,10 @@ def slice_graph(
     # ``linkers.containment.CONTAINER_KINDS`` (which adds ``service``, ``message``
     # for proto IDL nesting) — slice expansion targets ``contains`` edges from
     # OOP-style class containers, not RPC service nodes. Forward-compatible.
-    _CONTAINER_KINDS = {"class", "interface", "module", "struct", "trait", "enum"}
+    # INV-hojus: ``file`` is the canonical "this file" Symbol (orchestrator
+    # synthesis + py.py for Python's executable-code files); include it so
+    # slice traversal can expand from a file node into its top-level members.
+    _CONTAINER_KINDS = {"class", "interface", "module", "struct", "trait", "enum", "file"}
 
     # Initialize with entry nodes
     for entry in entry_nodes:

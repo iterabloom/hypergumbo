@@ -2161,12 +2161,19 @@ def _extract_file_analysis(
     # the leading-underscore rule.
     module_all = _extract_module_all(tree)
 
-    # Create <module> pseudo-node for files with module-level executable code.
-    # This provides an enclosing scope for linker synthetic nodes at module level,
-    # enabling slice traversal for script-only files (no functions/classes).
+    # INV-hojus: emit the file pseudo-node as kind="file" with the
+    # canonical file-id shape so the orchestrator file-symbol synthesizer
+    # dedups against it (existing_ids check). Before this fix, every
+    # Python file with module-level code got TWO Symbols: a kind="module"
+    # node from here AND a kind="file" node from the synthesizer when any
+    # edge targeted the file id — 332 paths affected on self-analysis.
+    # File-kind is the cross-language canonical for "this file" (see
+    # ``analyze.base.make_file_id``); the synthesizer's INV-vaguj fix
+    # already established its identity claims (relative path, real
+    # end_line). This Symbol provides an enclosing scope for module-level
+    # edges so script-only files remain reachable in slice traversal.
     if _has_module_level_code(tree):
         end_line = _get_file_end_line(source)
-        module_name = py_file.name  # e.g., "producer_ccsr.py"
         module_span = Span(
             start_line=1,
             end_line=end_line,
@@ -2181,10 +2188,23 @@ def _extract_file_analysis(
         if _has_main_guard(tree):
             module_meta = {"concepts": [{"concept": "main_guard", "framework": "python"}]}
 
+        # Match the orchestrator synthesizer's convention: name=path (the
+        # repo-relative path when possible). The orchestrator's
+        # cli-level path normalize pass strips repo_root from ``.path``
+        # but not ``.name``, so the analyzer is responsible for emitting
+        # ``name`` already normalized (mirror of INV-vaguj for the
+        # analyzer-side producer).
+        file_name = str(py_file)
+        if repo_root is not None:
+            try:
+                file_name = str(py_file.relative_to(repo_root))
+            except ValueError:  # pragma: no cover - defensive
+                pass
+
         module_symbol = Symbol(
-            id=_make_symbol_id(str(py_file), 1, end_line, f"<module:{module_name}>", "module"),
-            name=f"<module:{module_name}>",
-            kind="module",
+            id=_make_file_id(str(py_file)),
+            name=file_name,
+            kind="file",
             language="python",
             path=str(py_file),
             span=module_span,
