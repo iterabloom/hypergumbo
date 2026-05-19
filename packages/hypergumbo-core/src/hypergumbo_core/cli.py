@@ -7281,6 +7281,13 @@ def run_behavior_map(
         all_edges = apply_external_id_remap(all_edges, id_remap)
     _log_memory("after boundary nodes")
 
+    # WI-fanun: stamp structural fingerprints on analyzer-produced source
+    # Symbols that don't already carry one (toml-v1, json-v1, wgsl-v1 keep
+    # their manifest-derived fingerprints unchanged). Centralised in
+    # hypergumbo_core.fingerprint so no analyzer change is required.
+    from .fingerprint import stamp_symbol_fingerprints
+    stamp_symbol_fingerprints(all_symbols, repo_root)
+
     # Apply supply chain classification to all symbols
     show_progress("Classifying symbols", 60)
     _classify_symbols(all_symbols, repo_root, package_roots)

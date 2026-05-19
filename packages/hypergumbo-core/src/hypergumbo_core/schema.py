@@ -73,6 +73,11 @@ CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v3"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v1"
 REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v1"
+# WI-fanun: scheme tag for Symbol.fingerprint on source-code Symbols.
+# Populated by the orchestrator post-pass in ``hypergumbo_core.fingerprint``
+# (manifest producers like toml-v1 / json-v1 / wgsl-v1 keep their own
+# scheme — this tag only describes the structural-AST fingerprints).
+SYMBOL_FINGERPRINT_SCHEME = "hypergumbo-symbol-fp-v1"
 
 
 def _now_iso_utc() -> str:
@@ -90,6 +95,7 @@ def new_behavior_map() -> Dict[str, Any]:
         "stable_id_scheme": STABLE_ID_SCHEME,
         "shape_id_scheme": SHAPE_ID_SCHEME,
         "repo_fingerprint_scheme": REPO_FINGERPRINT_SCHEME,
+        "symbol_fingerprint_scheme": SYMBOL_FINGERPRINT_SCHEME,
         "view": "behavior_map",
         "generated_at": _now_iso_utc(),
         "analysis_incomplete": False,
