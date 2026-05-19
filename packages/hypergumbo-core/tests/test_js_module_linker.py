@@ -1728,3 +1728,155 @@ class TestNonJsImportsSkipped:
         assert len(npm) == 0
         # No new edges either
         assert len(result.edges) == 0
+
+
+class TestInvMovorCanonicalFileIdReuse:
+    """INV-movor: js_module linker must emit file Symbols with the canonical
+    ``make_file_id`` shape (``{lang}:{path}:1-1:file:file``) so duplicate
+    file-kind Symbols never accumulate when both the orchestrator's
+    file-symbol synthesizer (``analyze/base.py::synthesize_file_symbols_for_dangling_edges``)
+    and this linker resolve the same path.
+
+    The legacy ``:module_file:1:{stem}`` id shape was a transitional
+    artifact (audit-findings 0005) that diverged from the canonical
+    shape introduced by INV-vaguj's orchestrator file synthesis. Two
+    producers emitting kind="file" Symbols at the same path with
+    different ids violates INV-dajaf (Identity META) — id equality is
+    the dedup key, so distinct id shapes cause silent duplication. The
+    websocket linker's WI-hifol fix (PR #3819) is the parallel
+    precedent on the same identity axis.
+    """
+
+    def test_canonical_file_id_shape(self, repo_root: Path) -> None:
+        """Emitted file Symbol id matches make_file_id shape, not legacy."""
+        from hypergumbo_core.analyze.base import make_file_id
+
+        app_path = str(repo_root / "src" / "app.js")
+        file_sym = Symbol(
+            id=f"javascript:{app_path}:1-1:file:file",
+            name="app.js",
+            kind="file",
+            language="javascript",
+            path=app_path,
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        import_edge = Edge.create(
+            src=file_sym.id,
+            dst="javascript:./utils:0-0:module:module",
+            edge_type="imports",
+            line=1,
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+            evidence_type="import_static",
+            confidence=0.95,
+        )
+
+        result = link_js_modules(
+            repo_root=repo_root,
+            symbols=[file_sym],
+            edges=[import_edge],
+        )
+
+        utils_rel = "src/utils.js"
+        expected_id = make_file_id("javascript", utils_rel)
+        emitted_file_syms = [s for s in result.symbols if s.kind == "file"]
+        assert len(emitted_file_syms) == 1
+        assert emitted_file_syms[0].id == expected_id
+        # Canonical id ends with :1-1:file:file, not the legacy :module_file:1:{stem}
+        assert emitted_file_syms[0].id.endswith(":1-1:file:file")
+        assert ":module_file:1:" not in emitted_file_syms[0].id
+
+    def test_skips_when_canonical_file_symbol_already_present(
+        self, repo_root: Path
+    ) -> None:
+        """Linker reuses existing canonical file Symbol; emits no duplicate."""
+        from hypergumbo_core.analyze.base import make_file_id
+
+        # Caller pre-existing canonical file Symbol for the IMPORT TARGET.
+        utils_rel = "src/utils.js"
+        existing_utils_id = make_file_id("javascript", utils_rel)
+        existing_utils_sym = Symbol(
+            id=existing_utils_id,
+            name="utils.js",
+            kind="file",
+            language="javascript",
+            path=utils_rel,
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        app_path = str(repo_root / "src" / "app.js")
+        app_sym = Symbol(
+            id=f"javascript:{app_path}:1-1:file:file",
+            name="app.js",
+            kind="file",
+            language="javascript",
+            path=app_path,
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        import_edge = Edge.create(
+            src=app_sym.id,
+            dst="javascript:./utils:0-0:module:module",
+            edge_type="imports",
+            line=1,
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+            evidence_type="import_static",
+            confidence=0.95,
+        )
+
+        result = link_js_modules(
+            repo_root=repo_root,
+            symbols=[existing_utils_sym, app_sym],
+            edges=[import_edge],
+        )
+
+        # The linker MUST NOT create a second file-kind Symbol for utils.js.
+        emitted_file_syms = [s for s in result.symbols if s.kind == "file"]
+        assert len(emitted_file_syms) == 0
+        # The imports edge must still wire correctly, targeting the existing id.
+        imports_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert len(imports_edges) == 1
+        assert imports_edges[0].dst == existing_utils_id
+
+    def test_stable_id_uses_canonical_helper(self, repo_root: Path) -> None:
+        """Emitted file Symbol's stable_id uses make_file_stable_id, not legacy."""
+        from hypergumbo_core.analyze.base import make_file_stable_id
+
+        app_path = str(repo_root / "src" / "app.js")
+        file_sym = Symbol(
+            id=f"javascript:{app_path}:1-1:file:file",
+            name="app.js",
+            kind="file",
+            language="javascript",
+            path=app_path,
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+        import_edge = Edge.create(
+            src=file_sym.id,
+            dst="javascript:./utils:0-0:module:module",
+            edge_type="imports",
+            line=1,
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+            evidence_type="import_static",
+            confidence=0.95,
+        )
+
+        result = link_js_modules(
+            repo_root=repo_root,
+            symbols=[file_sym],
+            edges=[import_edge],
+        )
+
+        emitted_file_syms = [s for s in result.symbols if s.kind == "file"]
+        assert len(emitted_file_syms) == 1
+        expected_stable = make_file_stable_id("javascript", "src/utils.js")
+        assert emitted_file_syms[0].stable_id == expected_stable

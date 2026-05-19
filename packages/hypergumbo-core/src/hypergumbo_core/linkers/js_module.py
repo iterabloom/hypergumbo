@@ -52,6 +52,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..analyze.base import make_file_id, make_file_stable_id
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -208,20 +209,6 @@ def _probe_file(base_path: Path) -> Path | None:
                 return index
 
     return None
-
-
-def _make_module_file_id(rel_path: str, lang: str) -> str:
-    """Create a stable symbol ID for a module_file symbol.
-
-    Args:
-        rel_path: Path relative to repo root.
-        lang: Language of the module (javascript or typescript).
-
-    Returns:
-        Symbol ID in format '{lang}:{path}:module_file:1:{stem}'
-    """
-    stem = Path(rel_path).stem
-    return f"{lang}:{rel_path}:module_file:1:{stem}"
 
 
 def _make_npm_package_id(package_name: str, lang: str) -> str:
@@ -662,8 +649,19 @@ def link_js_modules(
 
     # Build map: symbol_id -> path (for resolving src file location)
     path_by_id: dict[str, str] = {}
+    # INV-movor: cross-producer canonical-id lookup. When the orchestrator's
+    # file-symbol synthesizer (or a language analyzer) has already emitted a
+    # canonical kind="file" Symbol for a given (lang, path) pair, this linker
+    # must reuse that id rather than minting a parallel shadow node. The map
+    # is keyed on canonical ``make_file_id`` output so the lookup is O(1) and
+    # byte-equivalent to what downstream consumers see.
+    existing_file_symbol_by_canonical_id: dict[str, Symbol] = {}
     for sym in symbols:
         path_by_id[sym.id] = sym.path
+        if sym.kind == "file" and sym.language in _JS_LANGUAGES:
+            existing_file_symbol_by_canonical_id[
+                make_file_id(sym.language, sym.path)
+            ] = sym
 
     # Build map: normalized_file_path -> list of exportable symbols
     symbols_by_file: dict[str, list[Symbol]] = defaultdict(list)
@@ -753,32 +751,46 @@ def link_js_modules(
 
             resolved_str = str(resolved)
 
-            # Get or create module-file symbol. Wave 6 PR 3 fold per
-            # audit-findings 0005: kind="file" + meta["module_system"]
-            # ("esm" for .mjs/.ts/default, "commonjs" for .cjs). The ID
-            # suffix retains the legacy "module_file" literal to preserve
-            # stable_id contracts and existing test fixtures.
+            # Get or create module-file symbol.
+            #
+            # Wave 6 PR 3 fold per audit-findings 0005: kind="file" plus
+            # meta["module_system"] ("esm" for .mjs/.ts/default, "commonjs"
+            # for .cjs).
+            #
+            # INV-movor (this fix): emit the canonical ``make_file_id`` shape
+            # (``{lang}:{path}:1-1:file:file``) rather than the legacy
+            # ``:module_file:1:{stem}`` literal so id equality dedup works
+            # cross-producer against the orchestrator's file-symbol
+            # synthesizer. When a canonical file Symbol already exists in
+            # ``symbols`` for this (lang, path), reuse it — no new Symbol —
+            # and only annotate the imports edge against the existing id.
+            # Mirrors the websocket linker's INV-ronuf/WI-hifol pattern.
             if rel_path not in module_file_cache:
-                sym_id = _make_module_file_id(rel_path, lang)
-                ext = resolved.suffix.lower()
-                if ext == ".cjs":
-                    module_system = "commonjs"
+                sym_id = make_file_id(lang, rel_path)
+                existing = existing_file_symbol_by_canonical_id.get(sym_id)
+                if existing is not None:
+                    # Reuse the canonical Symbol from upstream producers.
+                    module_file_cache[rel_path] = existing
                 else:
-                    module_system = "esm"
-                mod_sym = Symbol(
-                    id=sym_id,
-                    stable_id=sym_id,
-                    name=resolved.stem,
-                    kind="file",
-                    language=lang,
-                    path=rel_path,
-                    span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    meta={"module_system": module_system},
-                )
-                module_file_cache[rel_path] = mod_sym
-                new_symbols.append(mod_sym)
+                    ext = resolved.suffix.lower()
+                    if ext == ".cjs":
+                        module_system = "commonjs"
+                    else:
+                        module_system = "esm"
+                    mod_sym = Symbol(
+                        id=sym_id,
+                        stable_id=make_file_stable_id(lang, rel_path),
+                        name=resolved.stem,
+                        kind="file",
+                        language=lang,
+                        path=rel_path,
+                        span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        meta={"module_system": module_system},
+                    )
+                    module_file_cache[rel_path] = mod_sym
+                    new_symbols.append(mod_sym)
 
             mod_sym = module_file_cache[rel_path]
 

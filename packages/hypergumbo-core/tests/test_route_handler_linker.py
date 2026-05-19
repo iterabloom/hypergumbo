@@ -2140,7 +2140,7 @@ class TestJSXRouteComponentLinking:
             origin_run_id="test-run",
         )
         handler = Symbol(
-            id="javascript:src/DropStage.tsx:module_file:1:DropStage",
+            id="javascript:src/DropStage.tsx:1-1:file:file",
             name="DropStage",
             kind="file",
             language="javascript",
