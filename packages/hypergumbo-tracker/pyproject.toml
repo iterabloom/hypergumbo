@@ -33,6 +33,9 @@ dependencies = [
   "pygments~=2.20.0",
   # CVE-2026-25645
   "requests~=2.33.0",
+  # CVE-2026-45409: idna pulled in transitively via requests. Constraint
+  # forces install of the patched 3.15+ line so pip-audit's CI gate passes.
+  "idna>=3.15",
 ]
 
 [project.optional-dependencies]
