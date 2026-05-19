@@ -373,3 +373,98 @@ def test_run_behavior_map_writes_slices_to_stem_slices_subdir(tmp_path: Path) ->
 def test_default_max_handler_slices_is_25() -> None:
     """Documented contract: default cap is 25 handlers."""
     assert _DEFAULT_MAX_HANDLER_SLICES == 25
+
+
+# ---------------------------------------------------------------------------
+# WI-bujim: features[] index population (option (c) — index-only, no inline content)
+# ---------------------------------------------------------------------------
+
+
+def test_emit_handler_slices_populates_behavior_map_features(tmp_path: Path) -> None:
+    """WI-bujim: each emitted handler slice contributes one entry to
+    behavior_map['features'] in the spec-compliant shape (id/name/entry_nodes/
+    node_ids/edge_ids/query/limits_hit). The full denormalized slice content
+    (inline nodes/edges/meta) stays in the per-slice files."""
+    h1 = _concept_handler("get_user", "src/api.py", "GET", "/users/{id}")
+    h2 = _concept_handler("create_user", "src/api.py", "POST", "/users")
+    symbols = [h1, h2]
+    bmap = _behavior_map(symbols, [])
+    bmap["features"] = []  # producer hardcodes this; mirror schema.py:101
+
+    _emit_handler_slices(bmap, symbols, [], tmp_path, tmp_path, enabled=True)
+
+    features = bmap["features"]
+    assert len(features) == 2, features
+    for entry in features:
+        # Spec-compliant shape per docs/hypergumbo-spec.md §features[]
+        assert entry["id"].startswith("sha256:"), entry
+        assert isinstance(entry["name"], str)
+        assert isinstance(entry["entry_nodes"], list)
+        assert isinstance(entry["node_ids"], list)
+        assert isinstance(entry["edge_ids"], list)
+        assert isinstance(entry["query"], dict)
+        assert "limits_hit" in entry
+        # WI-bujim (c): index-only. The denormalized inline content lives
+        # in slice.handler.<...>.json files, NOT in behavior_map['features'].
+        assert "nodes" not in entry, entry
+        assert "edges" not in entry, entry
+        assert "meta" not in entry, entry
+
+
+def test_emit_handler_slices_feature_id_matches_spec_formula(tmp_path: Path) -> None:
+    """WI-bujim: id is sha256(json.dumps(query, sort_keys=True)) per spec
+    line 802. Same query → same id (enables diff across commits)."""
+    import hashlib
+    import json as _json
+
+    h = _concept_handler("get_user", "src/api.py", "GET", "/users")
+    bmap = _behavior_map([h], [])
+    bmap["features"] = []
+
+    _emit_handler_slices(bmap, [h], [], tmp_path, tmp_path, enabled=True)
+
+    entry = bmap["features"][0]
+    expected = (
+        "sha256:"
+        + hashlib.sha256(
+            _json.dumps(entry["query"], sort_keys=True).encode()
+        ).hexdigest()
+    )
+    assert entry["id"] == expected
+
+
+def test_emit_handler_slices_disabled_does_not_touch_features(tmp_path: Path) -> None:
+    """WI-bujim: when --no-handler-slices is in effect, features[] is
+    left as-is (empty, in the default producer state)."""
+    h = _concept_handler("get_user", "src/api.py", "GET", "/users")
+    bmap = _behavior_map([h], [])
+    bmap["features"] = []
+
+    _emit_handler_slices(bmap, [h], [], tmp_path, tmp_path, enabled=False)
+
+    assert bmap["features"] == []
+
+
+def test_emit_handler_slices_overflow_handlers_not_in_features(tmp_path: Path) -> None:
+    """WI-bujim: handlers over the cap do not emit slice files and do not
+    appear in features[]. They still appear in the index file with
+    emitted=False so consumers can re-derive on demand."""
+    handlers = [
+        _concept_handler(f"handler_{i}", "src/api.py", "GET", f"/r{i}")
+        for i in range(5)
+    ]
+    bmap = _behavior_map(handlers, [])
+    bmap["features"] = []
+
+    _emit_handler_slices(
+        bmap, handlers, [], tmp_path, tmp_path,
+        max_handler_slices=2, enabled=True,
+    )
+
+    # Only the 2 emitted handlers contribute features[] entries.
+    assert len(bmap["features"]) == 2
+
+    # The remaining 3 still show in the index with emitted=False.
+    index = json.loads((tmp_path / "slice.handler.index.json").read_text())
+    not_emitted = [h for h in index["handlers"] if not h.get("emitted", False)]
+    assert len(not_emitted) == 3

@@ -801,6 +801,10 @@ Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`,
 
 **Feature ID:** Stable identifier based on query spec: `sha256(json.dumps(query, sort_keys=True))`. Same query on same code → same feature ID → enables diff across commits.
 
+**Index, not content (WI-bujim).** The `node_ids[]` and `edge_ids[]` arrays are graph-ID pointers into the top-level `nodes[]` and `edges[]` arrays, NOT inline denormalized symbols/edges. This keeps the behavior map agent-readable in a single file without duplicating slice content. Full denormalized slice payloads (with `nodes`, `edges`, and `meta` keys per feature) are written separately as `slice.handler.<METHOD>.<path>.json` files under the `<out-stem>.slices/` subdirectory, plus a `slice.handler.index.json` companion. Consumers wanting just the discovery view read `features[]`; consumers wanting per-handler portability read the individual slice files.
+
+**Producer (default).** `hypergumbo run` populates `features[]` from `_emit_handler_slices`: one entry per detected route handler, forward-slice with `exclude_tests=True` / `exclude_imports=True` / `hub_threshold=50`. Handlers over the cap (default 25) do not contribute to `features[]` but still appear in the index file with `emitted=False` so consumers can re-derive on demand. Other entrypoint kinds (CLI, main, websocket, etc.) are not yet wired in but follow the same shape when added.
+
 ### entrypoints[] — detected entry points
 
 🟩 Pre-computed, confidence-ranked array of execution entry points (HTTP routes, CLI commands, main functions, lifecycle hooks, etc.). Each entry references a node in the graph.

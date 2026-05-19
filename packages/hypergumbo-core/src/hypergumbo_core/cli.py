@@ -6910,6 +6910,14 @@ def _emit_handler_slices(
             e for e in behavior_map.get("edges", []) if e.get("id") in edge_ids_set
         ]
 
+        # WI-bujim: append the spec-shape entry to behavior_map["features"]
+        # (option (c) — index-only). Full denormalized slice content
+        # (inline nodes/edges/meta) lives in the per-slice file written
+        # below; features[] holds just IDs + query + summary so consumers
+        # can discover what slices exist via the behavior map alone, and
+        # diff across commits using the query-derived stable id.
+        behavior_map.setdefault("features", []).append(result.to_dict())
+
         feature_dict = result.to_dict()
         feature_dict["nodes"] = inline_nodes
         feature_dict["edges"] = inline_edges
