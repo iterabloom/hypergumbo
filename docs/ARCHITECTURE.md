@@ -14,14 +14,14 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **275** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 53 core, 4 CLI, 32 tracker)
-- **6116** symbols (functions, classes, methods)
-- **65407** edges by type:
-  - calls: 45213
-  - imports: 9685
-  - instantiates: 6986
-  - contains: 1312
-  - module_attr_ref: 1001
+- **276** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 54 core, 4 CLI, 32 tracker)
+- **5867** symbols (functions, classes, methods)
+- **65617** edges by type:
+  - calls: 45331
+  - imports: 9733
+  - instantiates: 6991
+  - contains: 1343
+  - module_attr_ref: 1009
   - dispatches_to: 555
   - other: 655
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 6116 Symbols + 65407 Edges + UsageContexts             │
+│  Output: 5867 Symbols + 65617 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -198,7 +198,7 @@ A code symbol (function, class, etc.) detected by analysis.
 - `origin_run_signature`: Run signature for grouping by analyzer config
 - `stable_id`: Semantic identity hash (survives renames/moves)
 - `shape_id`: Structural implementation fingerprint
-- `canonical_name`: Fully qualified name (e.g., 'mymodule.MyClass.method')
+- `canonical_name`: Set only when ``name`` is unqualified but a fully-qualified path is known (e.g., proto RPCs, nested capnp messages, niche-language symbols). For mainstream-analyzer languages where ``name`` already encodes the parent (Python's ``ClassName.method``, Java's ``Class.method``, etc.), this field is deliberately ``None`` and consumers should fall back to ``name`` for fully-qualified identifiers. Populated by niche-language analyzers (nix, r_lang, hlsl, asm, capnp, ada, fish, verilog, powershell, css, wgsl), the yjs_crdt and wasm_bindgen linkers, and the external-boundary synthesis path.
 - `fingerprint`: Content hash of source bytes (sha256)
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict for language-specific information
@@ -264,9 +264,9 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 4905.7 | ir.py |
-| `Span` | class | 4144.8 | ir.py |
-| `run_behavior_map` | function | 2751.6 | cli.py |
+| `Symbol` | class | 4913.6 | ir.py |
+| `Span` | class | 4151.1 | ir.py |
+| `run_behavior_map` | function | 2775.5 | cli.py |
 | `LinkerContext` | class | 1914.8 | registry.py |
 | `TrackerApp` | class | 1872.3 | tui.py |
 | `load_framework_patterns` | function | 1569.0 | framework_patterns.py |
@@ -276,6 +276,7 @@ These symbols have the highest bidirectional centrality
 | `match_patterns` | function | 873.0 | framework_patterns.py |
 | `TreeSitterAnalyzer` | class | 859.1 | base.py |
 | `Store` | class | 792.1 | store.py |
+| `Edge` | class | 743.7 | ir.py |
 
 ## Pattern System
 
@@ -525,6 +526,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.entrypoints`**: Entrypoint detection for code analysis using YAML-driven pattern ma...
 - **`hypergumbo_core.evidence_types`**: Canonical registry of Edge.evidence_type values in hypergumbo's beh...
 - **`hypergumbo_core.fallback_coherence`**: INV-zuhub fallback-coherence linter.
+- **`hypergumbo_core.fingerprint`**: Symbol-level content fingerprinting (WI-fanun).
 - **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-0003).
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
@@ -802,7 +804,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: ae2bd46461d3
+  commit: 3e21f105e1ea
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
