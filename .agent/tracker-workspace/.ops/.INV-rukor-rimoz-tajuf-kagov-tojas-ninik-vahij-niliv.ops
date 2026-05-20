@@ -1,0 +1,24 @@
+- op: create  # 7223
+  at: '2026-05-20T00:05:53Z'  # 7223
+  by: agent  # 7223
+  actor: jgstern_agent  # 7223
+  clock: 1  # 7223
+  nonce: '7223'  # 7223
+  data:  # 7223
+    kind: invariant  # 7223
+    title: "Edge.derived_from: list[str] — record which Symbols/Edges the linker consumed to construct this Edge"  # 7223
+    status: violated  # 7223
+    priority: 3  # 7223
+    parent: INV-dubam-rusok-nizot-zibor-dotuh-gasip-hahin-gujug  # 7223
+    tags:  # 7223
+    - schema  # 7223
+    - analysis_quality  # 7223
+    - explainability  # 7223
+    isbefore: []  # 7223
+    duplicate_of: []  # 7223
+    not_duplicate_of: []  # 7223
+    pr_ref:  # 7223
+    description: "## Empirical observation\n\nGiven an Edge in the behavior map, there is no field that records which Symbols the linker consumed to construct it. The information exists at construction time inside the linker — `link_X(ctx)` reads `ctx.symbols`, picks a subset, and builds an Edge — but it is not recorded.\n\nConsequence: to answer \"why does this edge exist?\" a consumer must re-implement the linker's selection logic. The behavior map carries the result of derivation but not the derivation itself.\n\n## What's needed\n\nAdd `Edge.derived_from: list[str]` populated with the Symbol IDs (or Edge IDs, for second-order linker chains) that the linker selected as inputs to this Edge's construction.\n\nConcretely, each linker's `Edge.create(...)` call site changes from:\n\n```python\nEdge.create(\n    src=mod_sym.id,\n    dst=target.id,\n    edge_type=\"imports\",\n    ...\n)\n```\n\nto:\n\n```python\nEdge.create(\n    src=mod_sym.id,\n    dst=target.id,\n    edge_type=\"imports\",\n    derived_from=[mod_sym.id, target.id, source_file_sym.id],\n    ...\n)\n```\n\nThe linker decides what counts as a derivation input. Typical inputs:\n- the source and destination Symbols (always)\n- any intermediate Symbol consulted during resolution (e.g., the file Symbol the linker resolved a relative import path against)\n- any Edge consumed during a higher-order traversal (e.g., a flow-linker that follows existing call edges)\n\n## Scope\n\nTouches every Edge construction site in linkers under `packages/hypergumbo-core/src/hypergumbo_core/linkers/`. Approximately 60 linker files, each with 1-5 Edge.create() call sites.\n\n## Tests\n\n- Property test: for every Edge with origin in a linker pass set, `derived_from` is non-empty.\n- Per-linker pin test: assert specific Edges produced by the linker fixture carry the expected derived_from list.\n\n## Why this matters\n\nWithout this, `hypergumbo explain --edge <id>` can only report the pass that emitted it, not why that pass chose to emit it. With this, the behavior map becomes a queryable derivation graph: given an unexpected edge, the consumer can walk derived_from to the contributing Symbols and see what evidence the linker had.\n\n## Related\n\nParent META: INV-dubam (PROV-compliant provenance). Sibling items: multi-source attribution (origin as list), pass dependency declaration (Pass.requires)."  # 7223
+    fields:  # 7223
+      statement: "Every Edge produced by a linker should record which Symbols (and possibly which Edges) the linker consumed as derivation inputs. Currently derivation chains are implicit in linker source code."  # 7223
+      root_cause: "Linker code reads ctx.symbols, decides selection logic, calls Edge.create() with src+dst+edge_type but never records the broader selection context. To answer 'why does this edge exist?' a consumer must re-read the linker source."  # 7223

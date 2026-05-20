@@ -61,3 +61,28 @@
   clock: 6  # 5dae
   nonce: 5dae  # 5dae
   message: "Reparented to META INV-rugok (Spec/schema/implementation drift). WI-bujim is example (b) — features[] spec-declared with sub-shape but hardcoded [] with no producer; no gate catches the orphaned declaration."  # 5dae
+- op: update  # 638d
+  at: '2026-05-19T22:54:29Z'  # 638d
+  by: agent  # 638d
+  actor: jgstern_agent  # 638d
+  clock: 7  # 638d
+  nonce: 638d  # 638d
+  set:  # 638d
+    status: done  # 638d
+    pr_ref: '3831'  # 638d
+- op: discuss  # 5df9
+  at: '2026-05-19T22:54:29Z'  # 5df9
+  by: agent  # 5df9
+  actor: jgstern_agent  # 5df9
+  clock: 8  # 5df9
+  nonce: 5df9  # 5df9
+  message: "Implemented option (c) — index-only embedding. PR #3831 merged. _emit_handler_slices now appends result.to_dict() to behavior_map['features'] before slice-file-specific mutations add inline nodes/edges/meta. Per-handler features[] entries hold spec-compliant id/name/entry_nodes/node_ids/edge_ids/query/limits_hit; node_ids/edge_ids are graph-ID pointers into top-level nodes[]/edges[], not duplicated content. Full denormalized slice payloads remain in <out-stem>.slices/slice.handler.<...>.json files for offline/portable consumption. Stable feature ID matches spec formula sha256(json.dumps(query, sort_keys=True)) via SliceResult.feature_id. Handlers over the cap (default 25) excluded from features[] but indexed elsewhere. Spec section §features[] updated to document the index-vs-content split. Four new pin tests in test_handler_slices.py. 4659 tests pass; 100% coverage."  # 5df9
+- op: update  # 61c8
+  at: '2026-05-19T22:54:34Z'  # 61c8
+  by: agent  # 61c8
+  actor: jgstern_agent  # 61c8
+  clock: 9  # 61c8
+  nonce: 61c8  # 61c8
+  set: {}  # 61c8
+  add:  # 61c8
+    tags: [awaits_bakeoff_validation]  # 61c8
