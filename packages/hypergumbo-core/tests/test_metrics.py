@@ -78,18 +78,46 @@ class TestComputeMetrics:
         # Should not crash, uses default or skips
         assert "avg_confidence" in metrics
 
-    def test_includes_file_count(self) -> None:
-        """Counts unique files analyzed."""
+    def test_total_files_equals_profile_sum(self) -> None:
+        """WI-soraj: total_files is the canonical sum of profile.languages[*].files.
+
+        The headline number consumers see (`metrics.total_files`) must
+        agree with `sum(profile.languages[L].files)`. Introspection
+        numbers (unique paths across all node symbols, count of
+        file-kind Symbols) live in `metrics.debug`.
+        """
+        nodes = [
+            {"id": "1", "language": "python", "path": "src/a.py", "kind": "function"},
+            {"id": "2", "language": "python", "path": "src/a.py", "kind": "function"},
+            {"id": "3", "language": "python", "path": "src/b.py", "kind": "file"},
+            {"id": "4", "language": "bash", "path": "scripts/x.sh", "kind": "file"},
+        ]
+        profile = {
+            "languages": {
+                "python": {"files": 5, "loc": 1234},
+                "bash": {"files": 3, "loc": 56},
+            },
+        }
+        metrics = compute_metrics(nodes=nodes, edges=[], profile=profile)
+
+        assert metrics["total_files"] == 8  # 5 python + 3 bash
+        assert metrics["debug"]["unique_paths_in_analysis"] == 3  # a.py, b.py, x.sh
+        assert metrics["debug"]["analyzed_file_symbols"] == 2  # b.py + x.sh
+
+    def test_total_files_without_profile_falls_back_to_unique_paths(self) -> None:
+        """When no profile is supplied, total_files falls back to the unique
+        node-path count (preserves the legacy semantics for callers that
+        compute metrics outside the full run_behavior_map pipeline)."""
         nodes = [
             {"id": "1", "language": "python", "path": "src/a.py"},
             {"id": "2", "language": "python", "path": "src/a.py"},
             {"id": "3", "language": "python", "path": "src/b.py"},
         ]
-        edges = []
-
-        metrics = compute_metrics(nodes=nodes, edges=edges)
+        metrics = compute_metrics(nodes=nodes, edges=[])
 
         assert metrics["total_files"] == 2
+        # Debug block is still populated so consumers can introspect.
+        assert metrics["debug"]["unique_paths_in_analysis"] == 2
 
     def test_groups_by_supply_chain_tier(self) -> None:
         """Groups node and edge counts by supply chain tier."""

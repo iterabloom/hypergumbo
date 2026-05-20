@@ -7472,7 +7472,9 @@ def run_behavior_map(
 
     # Compute metrics from analyzed nodes and edges
     show_progress("Computing metrics", 70)
-    behavior_map["metrics"] = compute_metrics(all_nodes, all_edge_dicts)
+    behavior_map["metrics"] = compute_metrics(
+        all_nodes, all_edge_dicts, profile=behavior_map.get("profile"),
+    )
 
     # Detect and store entrypoints (computed from symbols, persisted for convenience)
     show_progress("Detecting entrypoints", 75)

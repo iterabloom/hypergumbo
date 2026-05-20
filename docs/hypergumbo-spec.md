@@ -929,7 +929,15 @@ Penalties: test files (−50%), vendor/external deps (−70%), utility files (�
 
 ### metrics — optional counts
 
-Aggregate statistics: `total_nodes`, `total_edges`, `avg_confidence`, per-language breakdowns (`languages.*`), and per-tier breakdowns (`by_supply_chain_tier.*`). Each breakdown includes `nodes` and `edges` counts.
+Aggregate statistics: `total_nodes`, `total_edges`, `total_files`, `avg_confidence`, per-language breakdowns (`languages.*`), and per-tier breakdowns (`by_supply_chain_tier.*`). Each breakdown includes `nodes` and `edges` counts.
+
+**`total_files`** is the canonical "how many files in this repo?" answer: `sum(profile.languages[L].files)`. It agrees with `profile`'s per-language counts (which in turn agree with `analysis_runs[L].files_analyzed` for languages whose analyzer registered a canonical `find_files`).
+
+**`metrics.debug`** carries two non-canonical file counts for introspection:
+- `unique_paths_in_analysis` — distinct `node.path` values across every symbol kind. Excludes files that contributed no symbols (binary, unparseable, unsupported language), so it under-counts repos with many file types relative to `total_files`.
+- `analyzed_file_symbols` — count of `nodes[*]` with `kind == "file"`. Only analyzers that emit file pseudo-nodes contribute, so this can lag the true file count if some language analyzers don't yet stamp them.
+
+When the headline `total_files` is computed without a profile (e.g., by callers outside the full `run_behavior_map` pipeline), it falls back to `unique_paths_in_analysis` for backward compatibility — the same value still rides in `metrics.debug` so consumers can tell which definition they're looking at.
 
 ### supply_chain_summary — classification overview
 

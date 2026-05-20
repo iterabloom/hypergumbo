@@ -20,16 +20,27 @@ from typing import Any, Dict, List
 def compute_metrics(
     nodes: List[Dict[str, Any]],
     edges: List[Dict[str, Any]],
+    profile: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Compute metrics from nodes and edges.
 
     Args:
         nodes: List of node dicts (must have 'language', 'path' fields).
         edges: List of edge dicts (must have 'confidence', 'src' fields).
+        profile: Optional repo profile dict (the ``behavior_map["profile"]``
+            block). When supplied, ``total_files`` is set to
+            ``sum(profile["languages"][L]["files"])`` — the canonical
+            per-language file count (WI-soraj). When omitted,
+            ``total_files`` falls back to the unique-path count across
+            ``nodes`` (legacy semantics for callers outside the full
+            run_behavior_map pipeline).
 
     Returns:
         Metrics dict with total_nodes, total_edges, avg_confidence,
-        total_files, and per-language breakdowns.
+        total_files (see ``profile`` arg), per-language breakdowns, and
+        a ``debug`` sub-block exposing the two non-canonical file counts:
+        ``unique_paths_in_analysis`` (distinct ``node.path`` values) and
+        ``analyzed_file_symbols`` (count of ``kind == "file"`` nodes).
     """
     total_nodes = len(nodes)
     total_edges = len(edges)
@@ -38,9 +49,20 @@ def compute_metrics(
     confidences = [e.get("confidence", 0.0) for e in edges if "confidence" in e]
     avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
 
-    # Count unique files
-    files = {n.get("path") for n in nodes if n.get("path")}
-    total_files = len(files)
+    # WI-soraj: three distinct "file count" semantics. The canonical
+    # consumer-facing value is the profile-language sum (matches "files
+    # on disk after default-excludes" — agreed with analyzer enumeration
+    # via INV-hokig's per-language find_files delegation). The other two
+    # ride in metrics.debug for tooling that needs the introspection.
+    unique_paths = len({n.get("path") for n in nodes if n.get("path")})
+    file_kind_count = sum(1 for n in nodes if n.get("kind") == "file")
+    if profile is not None:
+        profile_languages = profile.get("languages") or {}
+        total_files = sum(
+            (stats or {}).get("files", 0) for stats in profile_languages.values()
+        )
+    else:
+        total_files = unique_paths
 
     # Group by language
     languages: Dict[str, Dict[str, int]] = {}
@@ -92,4 +114,8 @@ def compute_metrics(
         "avg_confidence": round(avg_confidence, 3),
         "languages": languages,
         "by_supply_chain_tier": by_supply_chain_tier,
+        "debug": {
+            "unique_paths_in_analysis": unique_paths,
+            "analyzed_file_symbols": file_kind_count,
+        },
     }
