@@ -168,7 +168,7 @@ def test_verify_claims_objc_catalog_bridging(tmp_path: Path, capsys) -> None:
             "id": "objc:src/Cleanup.m:1-5:Cleanup.run:method",
             "name": "Cleanup.run",
             "kind": "method",
-            "language": "objc",
+            "language": "objective-c",
             "path": "src/Cleanup.m",
             "span": {"start_line": 1, "end_line": 5},
         }],
