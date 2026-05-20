@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Pre-commit / CI lint: every str-typed field on a core dataclass
+must carry an explicit ``# axis: <category>`` declaration (WI-busij,
+ADR-0024 §"Open questions" Q2).
+
+Closes the WI-busij invariant: the prose rule "any PR that adds a
+multi-value field to a core dataclass must answer what axis the
+field occupies" gets a mechanical backstop. Without it the rule
+relied on author discipline, which the 2026-05-12 review confirmed
+was empirically insufficient — ADR-0027 and ADR-0028 both shipped
+without the creation-practice gate being exercised at PR time.
+
+What this script checks
+-----------------------
+For each ``@dataclass`` in
+``packages/hypergumbo-core/src/hypergumbo_core/ir.py`` and
+``datamodels.py``, every field whose annotation is ``str``,
+``Optional[str]``, ``str | None``, or ``Literal[...]`` of strings
+must carry a trailing-comment declaration:
+
+- ``# axis: <name>`` — references a registered axis. Currently
+  known: ``edge-type``, ``symbol-kind``, ``evidence-type``,
+  ``language``. The first three live in dedicated ``*_types.py``
+  registry modules; ``language`` is derived from the catalog
+  (analyzer/linker registrations' ``languages=[...]`` kwargs).
+- ``# axis: identity`` — unique-per-record (ids, hashes,
+  per-instance signatures).
+- ``# axis: bounded-enum`` — small fixed list (≤5 conventional)
+  documented in the dataclass docstring; no separate registry
+  needed.
+- ``# axis: free-text — <justification>`` — open-ended payload no
+  consumer branches on. The justification is mandatory; it raises
+  the friction enough to prevent drive-by use of this category as
+  a workaround.
+
+The ``# axis: pending WI-xxxxx`` deferral hatch from the original
+ADR-0024 §3 open question 2 was explicitly removed during the
+WI-busij design review — it duplicates the structural-fix protocol's
+``todo_hard`` circuit breaker and weakens the gate at the moment the
+design conversation should happen.
+
+Exit codes:
+    0 — no drift detected.
+    1 — drift detected; offenders printed to stdout, fix instructions
+        to stderr.
+    2 — could not import the linter module (likely packaging /
+        editable-install problem; do not block commits on this).
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Make the core package and language packages importable without
+# requiring an editable install (so the script can run in pre-commit
+# hooks that bypass the venv).
+for pkg in (
+    "hypergumbo-core",
+    "hypergumbo-lang-common",
+    "hypergumbo-lang-mainstream",
+    "hypergumbo-lang-extended1",
+    "hypergumbo-lang-rust-analyzer",
+):
+    sys.path.insert(0, str(REPO_ROOT / "packages" / pkg / "src"))
+
+try:
+    from hypergumbo_core.multi_value_field_axis import find_field_drift
+except ImportError as exc:  # pragma: no cover — defensive
+    print(
+        f"check-multi-value-field-axis-declaration: cannot import linter: {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+def main() -> int:
+    offenders = find_field_drift(REPO_ROOT)
+    if not offenders:
+        return 0
+
+    print("Multi-value field axis-declaration check failed:")
+    for line in offenders:
+        print(f"  {line}")
+    print(
+        "\nFix: add a `# axis: <category>` trailing comment to each "
+        "flagged field. See ADR-0024 §'Creation practice' and the "
+        "module docstring of "
+        "packages/hypergumbo-core/src/hypergumbo_core/multi_value_field_axis.py "
+        "for the four allowed categories and their semantics.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":  # pragma: no cover — script entrypoint
+    sys.exit(main())

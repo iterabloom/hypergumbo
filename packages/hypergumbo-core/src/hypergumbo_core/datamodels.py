@@ -88,11 +88,11 @@ class DataModel:
         framework: Framework that defined this model (if known).
     """
 
-    symbol_id: str
+    symbol_id: str  # axis: identity
     kind: DataModelKind
     confidence: float
-    label: str
-    framework: str = ""
+    label: str  # axis: free-text — human-readable label for display; consumers render, never branch on the value itself.
+    framework: str = ""  # axis: free-text — framework label like "Django", "Pydantic"; consumers display, never branch on the value itself.
 
     def to_dict(self) -> dict:
         """Serialize to dictionary."""

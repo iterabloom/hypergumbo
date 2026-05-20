@@ -192,26 +192,26 @@ class AnalysisRun:
     (toolchain).
     """
 
-    execution_id: str
-    pass_id: str
-    version: str
-    run_signature: str = ""
-    repo_fingerprint: Optional[str] = None
+    execution_id: str  # axis: identity
+    pass_id: str  # axis: pass-id
+    version: str  # axis: identity
+    run_signature: str = ""  # axis: identity
+    repo_fingerprint: Optional[str] = None  # axis: identity
     toolchain: Dict[str, str] = field(default_factory=dict)
-    config_fingerprint: str = ""
+    config_fingerprint: str = ""  # axis: identity
     files_analyzed: int = 0
     files_skipped: int = 0
     skipped_passes: List[Dict[str, str]] = field(default_factory=list)
     failed_files: List[Dict[str, str]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
-    started_at: str = ""
+    started_at: str = ""  # axis: free-text — ISO-8601 UTC timestamp; consumers display, never branch on the value.
     duration_ms: int = 0
     # INV-morag option A: real per-pass version (code-hash of the pass
     # module). Default "" because PR 1 introduces the field additively;
     # PR 2 propagates non-empty values to every registration site. Existing
     # producers that don't yet pass pass_version keep the empty default,
     # which is honest about "we don't know" rather than the fake "-v1".
-    pass_version: str = ""
+    pass_version: str = ""  # axis: identity
 
     def record_failed_file(self, path: str, reason: str) -> None:
         """Record a per-file failure for later drain into limits.failed_files.
@@ -354,23 +354,23 @@ class Symbol:
             Used by linkers for cross-language matching (e.g., JNI needs 'native').
     """
 
-    id: str
-    name: str
-    kind: str
-    language: str
-    path: str
+    id: str  # axis: identity
+    name: str  # axis: free-text — language identifier from source; consumers display/store/lookup, never branch on the value itself.
+    kind: str  # axis: symbol-kind
+    language: str  # axis: language
+    path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself.
     span: Span
-    origin: str = ""
-    origin_run_id: str = ""
-    origin_run_signature: Optional[str] = None
-    stable_id: Optional[str] = None
-    shape_id: Optional[str] = None
-    canonical_name: Optional[str] = None
-    fingerprint: Optional[str] = None
+    origin: str = ""  # axis: pass-id
+    origin_run_id: str = ""  # axis: identity
+    origin_run_signature: Optional[str] = None  # axis: identity
+    stable_id: Optional[str] = None  # axis: identity
+    shape_id: Optional[str] = None  # axis: identity
+    canonical_name: Optional[str] = None  # axis: free-text — fully-qualified name from source; consumers display, never branch on the value itself.
+    fingerprint: Optional[str] = None  # axis: identity
     quality: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
     supply_chain_tier: int = 1  # Default to first_party
-    supply_chain_reason: str = ""
+    supply_chain_reason: str = ""  # axis: free-text — natural-language explanation of the assigned tier; consumers display, never branch on the value itself.
     is_test_file: bool = False  # WI-rigun: independent of tier
     is_example_file: bool = False  # WI-jobuj: example/demo/sample/tutorial code
     is_config_file: bool = False  # WI-jobuj: dependency/build manifest
@@ -378,8 +378,8 @@ class Symbol:
     is_exported: bool = False  # WI-zimum: public API / externally reachable
     cyclomatic_complexity: Optional[int] = None
     lines_of_code: Optional[int] = None
-    signature: Optional[str] = None
-    docstring: Optional[str] = None
+    signature: Optional[str] = None  # axis: free-text — callable signature string in source-language grammar; consumers display, never branch on the value itself.
+    docstring: Optional[str] = None  # axis: free-text — natural-language summary from the source comment; consumers display/log/hash, never branch on the value itself.
     modifiers: List[str] = field(default_factory=list)
 
     # Keep line/end_line for backwards compatibility during transition
@@ -496,9 +496,9 @@ class ExternalRef:
             not of the target.
     """
 
-    lang: str
-    module_path: str
-    name: str
+    lang: str  # axis: language
+    module_path: str  # axis: free-text — module import path in source-language grammar; consumers display/lookup, never branch on the value itself.
+    name: str  # axis: free-text — symbol name at the definition site; consumers display/lookup, never branch on the value itself.
 
     def to_dict(self) -> Dict[str, str]:
         """Nested-dict form for JSON serialization."""
@@ -547,18 +547,18 @@ class Edge:
         meta: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
     """
 
-    id: str
-    src: str
-    dst: str
-    edge_type: str
+    id: str  # axis: identity
+    src: str  # axis: identity
+    dst: str  # axis: identity
+    edge_type: str  # axis: edge-type
     line: int
-    edge_key: Optional[str] = None
+    edge_key: Optional[str] = None  # axis: identity
     confidence: float = 0.85
-    origin: str = ""
-    origin_run_id: str = ""
-    origin_run_signature: Optional[str] = None
-    evidence_type: str = "ast_call_direct"
-    evidence_lang: Optional[str] = None
+    origin: str = ""  # axis: pass-id
+    origin_run_id: str = ""  # axis: identity
+    origin_run_signature: Optional[str] = None  # axis: identity
+    evidence_type: str = "ast_call_direct"  # axis: evidence-type
+    evidence_lang: Optional[str] = None  # axis: language
     evidence_spans: Optional[List[Dict[str, Any]]] = None
     is_resolved: bool = True
     dst_ref: Optional[ExternalRef] = None
@@ -809,13 +809,13 @@ class UsageContext:
         )
     """
 
-    id: str
-    kind: Literal["call", "data_value", "export", "macro"]
-    context_name: str
-    symbol_ref: Optional[str]  # None for inline handlers (lambdas, blocks)
-    position: str
+    id: str  # axis: identity
+    kind: Literal["call", "data_value", "export", "macro"]  # axis: bounded-enum
+    context_name: str  # axis: free-text — name of the function call or export name from source; consumers display/lookup, never branch on the value itself.
+    symbol_ref: Optional[str]  # axis: identity  (None for inline handlers — lambdas, blocks)
+    position: str  # axis: free-text — positional descriptor like "args[1]", ":get", "default"; consumer-facing display string parsed by humans, not branched on by code.
     metadata: Dict[str, Any]
-    path: str
+    path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself.
     span: Span
 
     @classmethod

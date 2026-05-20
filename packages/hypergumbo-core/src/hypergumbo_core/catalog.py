@@ -370,6 +370,58 @@ def get_default_catalog() -> Catalog:
     return build_catalog_from_registries()
 
 
+def all_known_pass_ids() -> frozenset[str]:
+    """Return the union of pass IDs across registered analyzers and linkers.
+
+    Single source of truth for "what passes does this codebase
+    declare?" — the answer is "the names of every ``@register_analyzer``
+    and ``@register_linker`` call site." Used by the WI-busij
+    multi-value-field-axis linter to resolve the ``# axis: pass-id``
+    annotation (covers ``AnalysisRun.pass_id``, ``Symbol.origin``,
+    ``Edge.origin``).
+
+    Known smuggling: ``Symbol.origin`` carries a small set of
+    synthesis-mechanism values (``inheritance``,
+    ``orchestrator_file_symbol_synthesis``, ``scip``) that aren't
+    pass IDs. The Symbol docstring documents this as a pending split
+    into a sibling ``synthesis_mechanism`` field. Until that ships,
+    those values are values-not-in-registry that a future consumer-
+    side check (Phase 2 of WI-busij) will surface as legitimate
+    drift, forcing the split.
+    """
+    from .analyze.registry import _ANALYZER_REGISTRY, ensure_discovered
+    from .linkers.registry import _LINKER_REGISTRY
+
+    ensure_discovered()
+    return frozenset(_ANALYZER_REGISTRY) | frozenset(_LINKER_REGISTRY)
+
+
+def all_known_languages() -> frozenset[str]:
+    """Return the union of language tags across registered analyzers and linkers.
+
+    Single source of truth for "what languages does this codebase know
+    about?" — the answer is "the union of ``languages=[...]`` kwargs on
+    every ``@register_analyzer`` / ``@register_linker`` call site." Used
+    by the WI-busij multi-value-field-axis linter to resolve the
+    ``# axis: language`` annotation; not a hand-maintained list.
+
+    Behaves as a lightweight axis declaration per ADR-0024 §4:
+    no separate registry module, no ``AXIS_*`` constants, no
+    ``*Spec`` dataclass — just a function that returns the legal
+    set, derived from data we already have.
+    """
+    from .analyze.registry import _ANALYZER_REGISTRY, ensure_discovered
+    from .linkers.registry import _LINKER_REGISTRY
+
+    ensure_discovered()
+    langs: set[str] = set()
+    for analyzer in _ANALYZER_REGISTRY.values():
+        langs.update(analyzer.languages)
+    for linker in _LINKER_REGISTRY.values():
+        langs.update(linker.languages)
+    return frozenset(langs)
+
+
 def suggest_passes_for_languages(detected_languages: set[str]) -> List[Pass]:
     """Suggest passes based on detected languages.
 
