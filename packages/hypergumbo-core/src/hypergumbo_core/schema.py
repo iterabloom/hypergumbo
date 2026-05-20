@@ -155,14 +155,14 @@ def _detect_tree_sitter_versions() -> tuple[str | None, Dict[str, str]]:
     """
     try:
         tree_sitter_version: str | None = importlib.metadata.version("tree-sitter")
-    except importlib.metadata.PackageNotFoundError:
-        tree_sitter_version = None
+    except importlib.metadata.PackageNotFoundError:  # pragma: no cover - tree-sitter is installed in dev/CI; defensive for non-tree-sitter installs
+        tree_sitter_version = None  # pragma: no cover
 
     grammars: Dict[str, str] = {}
     for dist in importlib.metadata.distributions():
         name = dist.metadata["Name"]
-        if not name:
-            continue
+        if not name:  # pragma: no cover - defensive: malformed dist metadata
+            continue  # pragma: no cover
         if name.startswith("tree-sitter-") or name == "tree-sitter-language-pack":
             grammars[name] = dist.version
 
