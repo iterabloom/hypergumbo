@@ -38,3 +38,18 @@
   clock: 3  # 27c7
   nonce: 27c7  # 27c7
   message: "Reparented to META INV-tolaj (File-set membership reconciliation). INV-hosuh is the ad-hoc-deduplication mechanism: entrypoint detection emits one entry per signal rather than per script (17 entries from 11 distinct scripts on self-analysis)."  # 27c7
+- op: update  # 4293
+  at: '2026-05-20T19:40:58Z'  # 4293
+  by: agent  # 4293
+  actor: jgstern_agent  # 4293
+  clock: 4  # 4293
+  nonce: '4293'  # 4293
+  set:  # 4293
+    status: satisfied  # 4293
+- op: discuss  # 2411
+  at: '2026-05-20T19:40:58Z'  # 2411
+  by: agent  # 2411
+  actor: jgstern_agent  # 2411
+  clock: 5  # 2411
+  nonce: '2411'  # 2411
+  message: "Fixed in PR merged 2026-05-20 (commit 9991335b1c). Post-detection dedup pass added in detect_entrypoints between the declaration dedup and route-label dedup: MAIN_FUNCTION entries are grouped by Symbol.path; when both a function-kind and module/file-kind entry exist for the same path, the function-kind entry wins (canonical real entrypoint). Scripts with only one of the two (e.g., __main__.py with no separate main(), or bare main() with no main-guard) keep their single entry. End-to-end verified on hypergumbo self-analysis: 17 → 11 main_function entries, matching the 11 distinct scripts on disk. Closes the third child of META INV-tolaj (Wave 4)."  # 2411

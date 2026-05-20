@@ -22,3 +22,18 @@
     fields:  # e4d7
       statement: "Hypergumbo runs multiple passes that each enumerate 'what's in the file set' or 'what's an entrypoint'. When two passes claim different cardinalities OR different members on identical input, exactly one of two things must be true: (a) the divergence is principled and documented (e.g., 'pass X counts source files only; pass Y counts all files including tests'), OR (b) the passes must reconcile to a shared set (single source of truth). Today, divergences exist silently — neither documented nor reconciled."  # e4d7
       root_cause: "Each pass implements its own file or entrypoint enumeration without consulting a shared source of truth. Three mechanisms produce the disagreements: (1) taxonomy aliasing collapses one set into two (bash/shell alias keys → INV-tosum); (2) inconsistent exclude policies across passes produce different counts on the same input (profile vs analyzer disagree → INV-hokig); (3) ad-hoc deduplication logic produces one entry per detection signal rather than one per script (entrypoints → INV-hosuh). The semantic-ambiguity case (3 different total_files values → WI-soraj) is the surface symptom of all three mechanisms at the reporting layer."  # e4d7
+- op: update  # 3e06
+  at: '2026-05-20T20:13:40Z'  # 3e06
+  by: agent  # 3e06
+  actor: jgstern_agent  # 3e06
+  clock: 2  # 3e06
+  nonce: '3e06'  # 3e06
+  set:  # 3e06
+    status: satisfied  # 3e06
+- op: discuss  # b2e1
+  at: '2026-05-20T20:13:40Z'  # b2e1
+  by: agent  # b2e1
+  actor: jgstern_agent  # b2e1
+  clock: 3  # b2e1
+  nonce: b2e1  # b2e1
+  message: "Member-driven close: all 4 children resolved (INV-tosum, INV-hokig, INV-hosuh satisfied; WI-soraj done). The META invariant — 'within a single analysis run, every layer that counts or enumerates files for a given language must apply the same exclude policy / enumeration strategy, and every consumer-facing file count must be reconcilable' — is now structurally enforced across four mechanism axes. (a) Taxonomy aliasing no longer double-counts (INV-tosum collapsed 'bash'/'shell' to canonical). (b) Profile enumeration agrees with analyzer enumeration via per-language find_files registration (INV-hokig). (c) Entrypoint detection emits one main_function per script via post-detection dedup (INV-hosuh). (d) The headline metrics.total_files is the canonical profile-language sum; non-canonical counts ride in metrics.debug (WI-soraj). Verified on hypergumbo self-analysis: profile.languages.bash.files (42) == analysis_runs[bash].files_analyzed (42); main_function entrypoints (11) == distinct executable scripts on disk (11); metrics.total_files (1179) == sum(profile.languages[*].files) (1179)."  # b2e1

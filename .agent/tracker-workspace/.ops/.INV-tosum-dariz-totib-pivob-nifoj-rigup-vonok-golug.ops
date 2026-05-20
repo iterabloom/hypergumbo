@@ -45,3 +45,18 @@
   clock: 4  # 4b30
   nonce: 4b30  # 4b30
   message: "Reparented to META INV-tolaj (File-set membership reconciliation). INV-tosum is the taxonomy-aliasing mechanism: bash/shell as alias keys produces double-counting."  # 4b30
+- op: update  # ca38
+  at: '2026-05-20T18:16:36Z'  # ca38
+  by: agent  # ca38
+  actor: jgstern_agent  # ca38
+  clock: 5  # ca38
+  nonce: ca38  # ca38
+  set:  # ca38
+    status: satisfied  # ca38
+- op: discuss  # d789
+  at: '2026-05-20T18:16:36Z'  # d789
+  by: agent  # d789
+  actor: jgstern_agent  # d789
+  clock: 6  # d789
+  nonce: d789  # d789
+  message: "Fixed in PR merged 2026-05-20 (commit 9046ecf7cb). Root cause: get_language_extensions() and get_analyzable_extensions() in taxonomy.py injected LANGUAGE_ALIASES as duplicate keys, causing profile.py:_detect_languages to enumerate the same .sh files twice ('bash' + 'shell'). Fix: dropped the alias-injection loops in both functions; aliases now resolved at lookup time via LANGUAGE_ALIASES.get(name, name) by the sole alias-aware caller (partial_install_warnings.py). Cross-language audit per Structural Fix Protocol confirmed the bug is isolated to taxonomy.py — _CATALOG_ALIASES (io_boundary.py) and _FRAMEWORK_ALIASES (framework_patterns.py) both use the safe .get(id, id) pattern. New invariants: property tests assert set(LANGUAGE_EXTENSIONS).isdisjoint(LANGUAGE_ALIASES) AND set(SOURCE_EXTENSIONS).isdisjoint(LANGUAGE_ALIASES); end-to-end test_inv_tosum_bash_not_double_counted runs run_behavior_map on a 2-file .sh fixture and asserts languages['bash']['files']==2 AND 'shell' not in languages. Closes the first child of META INV-tolaj (Wave 4)."  # d789
