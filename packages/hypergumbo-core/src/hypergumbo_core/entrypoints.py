@@ -1115,6 +1115,39 @@ def detect_entrypoints(
             deduped_entrypoints.extend(eps)
     unique_entrypoints = deduped_entrypoints
 
+    # INV-hosuh: collapse module-level main-guard + function-level main()
+    # in the same script to a single entry. The main-guard
+    # (kind=MAIN_FUNCTION on the module/file symbol, from the
+    # ``main_guard`` concept) and the main() function (kind=MAIN_FUNCTION
+    # on the function symbol, from the ``main_function`` concept) both
+    # fire for the same script when both are present. The function-level
+    # entry is the canonical "real" entrypoint; the main-guard marker is
+    # redundant once we have it. Scripts that have only one of the two
+    # (e.g., __main__.py with no separate main(), or a bare main() with
+    # no __main__ block) keep their single entry.
+    main_by_path: dict[str, list[Entrypoint]] = defaultdict(list)
+    non_main_eps: list[Entrypoint] = []
+    for ep in unique_entrypoints:
+        if ep.kind != EntrypointKind.MAIN_FUNCTION:
+            non_main_eps.append(ep)
+            continue
+        sym = symbol_lookup_for_dedup.get(ep.symbol_id)
+        if sym is None or not sym.path:  # pragma: no cover - defensive: entrypoints are built from nodes
+            non_main_eps.append(ep)
+            continue
+        main_by_path[sym.path].append(ep)
+    deduped_main_eps: list[Entrypoint] = []
+    for _path, eps in main_by_path.items():
+        if len(eps) <= 1:
+            deduped_main_eps.extend(eps)
+            continue
+        fn_eps = [
+            ep for ep in eps
+            if symbol_lookup_for_dedup[ep.symbol_id].kind == "function"
+        ]
+        deduped_main_eps.extend(fn_eps if fn_eps else eps)
+    unique_entrypoints = non_main_eps + deduped_main_eps
+
     # Route-label deduplication: multiple symbols (route symbol, handler
     # method, different registration sites) can produce HTTP_ROUTE entrypoints
     # with the same (method, path).  In prometheus, POST /-/quit appears 14x.

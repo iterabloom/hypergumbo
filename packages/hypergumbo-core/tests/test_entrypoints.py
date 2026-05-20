@@ -3597,6 +3597,85 @@ class TestDeclarationDedup:
         assert len(cmd_add_eps) == 1
 
 
+class TestInvHosuhMainFunctionDedup:
+    """INV-hosuh: scripts with both __main__ guard and main() function emit one entry."""
+
+    def test_main_guard_dropped_when_main_function_present(self) -> None:
+        """When the same script has both a module-level main_guard and a
+        function-level main_function, keep only the function entry."""
+        # Module-level main_guard (kind=module on the file itself)
+        module_sym = make_symbol(
+            "<module:scripts/foo.py>", path="scripts/foo.py", kind="module",
+            start_line=1, end_line=100,
+            meta={"concepts": [{"concept": "main_guard"}]},
+        )
+        # Function-level main() in the same script
+        main_fn = make_symbol(
+            "main", path="scripts/foo.py", kind="function",
+            start_line=50, end_line=70,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([module_sym, main_fn], [])
+
+        main_eps = [ep for ep in entrypoints if ep.kind.value == "main_function"]
+        assert len(main_eps) == 1
+        assert main_eps[0].symbol_id == main_fn.id
+
+    def test_main_guard_kept_when_no_main_function(self) -> None:
+        """When the script has only the main_guard (no separate main() function),
+        keep the module-level entry — this is the canonical entrypoint for
+        __main__.py-style scripts."""
+        module_sym = make_symbol(
+            "<module:scripts/bare.py>", path="scripts/bare.py", kind="module",
+            start_line=1, end_line=10,
+            meta={"concepts": [{"concept": "main_guard"}]},
+        )
+        entrypoints = detect_entrypoints([module_sym], [])
+
+        main_eps = [ep for ep in entrypoints if ep.kind.value == "main_function"]
+        assert len(main_eps) == 1
+        assert main_eps[0].symbol_id == module_sym.id
+
+    def test_main_function_kept_when_no_guard(self) -> None:
+        """A bare main() function (no __main__ block) still produces an entry."""
+        main_fn = make_symbol(
+            "main", path="scripts/lib.py", kind="function",
+            start_line=10, end_line=30,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([main_fn], [])
+
+        main_eps = [ep for ep in entrypoints if ep.kind.value == "main_function"]
+        assert len(main_eps) == 1
+        assert main_eps[0].symbol_id == main_fn.id
+
+    def test_distinct_scripts_each_keep_their_main(self) -> None:
+        """Two different scripts each with main_guard + main() keep one entry each."""
+        scripts = ["scripts/a.py", "scripts/b.py"]
+        symbols = []
+        for path in scripts:
+            symbols.append(make_symbol(
+                f"<module:{path}>", path=path, kind="module",
+                start_line=1, end_line=100,
+                meta={"concepts": [{"concept": "main_guard"}]},
+            ))
+            symbols.append(make_symbol(
+                "main", path=path, kind="function",
+                start_line=50, end_line=70,
+                meta={"concepts": [{"concept": "main_function"}]},
+            ))
+        entrypoints = detect_entrypoints(symbols, [])
+
+        main_eps = [ep for ep in entrypoints if ep.kind.value == "main_function"]
+        # One entry per script, both pointing at the function.
+        assert len(main_eps) == 2
+        paths = {ep.symbol_id.split(":")[1] for ep in main_eps}
+        assert paths == set(scripts)
+        for ep in main_eps:
+            # Each kept entry must be the function symbol, not the module.
+            assert ":function" in ep.symbol_id
+
+
 class TestRouteLabelDedup:
     """Tests for deduplication of HTTP_ROUTE entrypoints by (method, path)."""
 
