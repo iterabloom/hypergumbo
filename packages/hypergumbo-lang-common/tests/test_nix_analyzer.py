@@ -19,7 +19,7 @@ from hypergumbo_lang_common.nix import (
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
-    assert PASS_ID == "nix-v1"
+    assert PASS_ID == "nix"
     assert PASS_VERSION == __version__
 
 def test_analyze_function(tmp_path):

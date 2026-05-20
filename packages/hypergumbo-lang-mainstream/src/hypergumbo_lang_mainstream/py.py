@@ -1647,7 +1647,7 @@ def _compute_shape_id(node: ast.FunctionDef | ast.ClassDef) -> str:
     return f"sha256:{hash_val}"
 
 
-PASS_ID = make_pass_id("python-ast")
+PASS_ID = make_pass_id("python")
 
 
 def _compute_cyclomatic_complexity(node: ast.AST) -> int:

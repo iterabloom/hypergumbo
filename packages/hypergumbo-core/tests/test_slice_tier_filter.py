@@ -27,7 +27,7 @@ def make_symbol(
         language="python",
         path=path,
         span=span,
-        origin="python-ast-v1",
+        origin="python",
         origin_run_id="uuid:test",
     )
     sym.supply_chain_tier = supply_chain_tier
@@ -46,7 +46,7 @@ def make_edge(
         dst=dst.id,
         edge_type=edge_type,
         line=src.span.start_line,
-        origin="python-ast-v1",
+        origin="python",
         origin_run_id="uuid:test",
         confidence=confidence,
     )

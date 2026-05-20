@@ -303,7 +303,7 @@ void hello() {}
         result = analyze_d(temp_repo)
 
         assert result.run is not None
-        assert result.run.pass_id == "d-v1"
+        assert result.run.pass_id == "d"
         assert result.run.files_analyzed >= 1
 
 

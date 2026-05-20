@@ -16,7 +16,7 @@ from hypergumbo_core.linkers.dependency import (
 
 def test_pass_id():
     """Verify pass ID is set correctly."""
-    assert PASS_ID == "dependency-linker-v1"
+    assert PASS_ID == "dependency-linker"
 
 
 def test_link_rust_dependencies():
@@ -33,7 +33,7 @@ def test_link_rust_dependencies():
         path="Cargo.toml",
         language="toml",
         span=Span(start_line=5, start_col=0, end_line=5, end_col=15),
-        origin="toml-v1",
+        origin="toml",
     )
 
     # Create a Rust file ID symbol
@@ -48,7 +48,7 @@ def test_link_rust_dependencies():
         path="src/main.rs",
         language="rust",
         span=Span(start_line=1, start_col=0, end_line=100, end_col=0),
-        origin="rust-v1",
+        origin="rust",
     )
 
     # Create an import edge from the Rust file to serde
@@ -59,7 +59,7 @@ def test_link_rust_dependencies():
         edge_type="imports",
         line=3,
         confidence=0.95,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )
@@ -93,7 +93,7 @@ def test_link_python_dependencies():
         path="pyproject.toml",
         language="toml",
         span=Span(start_line=10, start_col=0, end_line=10, end_col=20),
-        origin="toml-v1",
+        origin="toml",
     )
 
     # Create a Python file ID symbol
@@ -108,7 +108,7 @@ def test_link_python_dependencies():
         path="src/app.py",
         language="python",
         span=Span(start_line=1, start_col=0, end_line=50, end_col=0),
-        origin="python-v1",
+        origin="python",
     )
 
     # Create an import edge from the Python file to requests
@@ -119,7 +119,7 @@ def test_link_python_dependencies():
         edge_type="imports",
         line=2,
         confidence=0.95,
-        origin="python-v1",
+        origin="python",
 
         origin_run_id="test",
     )
@@ -150,7 +150,7 @@ def test_no_match_different_dependencies():
         path="Cargo.toml",
         language="toml",
         span=Span(start_line=5, start_col=0, end_line=5, end_col=15),
-        origin="toml-v1",
+        origin="toml",
     )
 
     # Import a completely different crate
@@ -161,7 +161,7 @@ def test_no_match_different_dependencies():
         edge_type="imports",
         line=3,
         confidence=0.95,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )
@@ -188,7 +188,7 @@ def test_multiple_files_import_same_dependency():
         path="Cargo.toml",
         language="toml",
         span=Span(start_line=5, start_col=0, end_line=5, end_col=15),
-        origin="toml-v1",
+        origin="toml",
     )
 
     import_edge1 = Edge(
@@ -198,7 +198,7 @@ def test_multiple_files_import_same_dependency():
         edge_type="imports",
         line=3,
         confidence=0.95,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )
@@ -210,7 +210,7 @@ def test_multiple_files_import_same_dependency():
         edge_type="imports",
         line=5,
         confidence=0.95,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )
@@ -253,7 +253,7 @@ def test_run_metadata():
         path="Cargo.toml",
         language="toml",
         span=Span(start_line=5, start_col=0, end_line=5, end_col=15),
-        origin="toml-v1",
+        origin="toml",
     )
 
     import_edge = Edge(
@@ -263,7 +263,7 @@ def test_run_metadata():
         edge_type="imports",
         line=3,
         confidence=0.95,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )
@@ -293,7 +293,7 @@ def test_rust_underscore_crate_name():
         path="Cargo.toml",
         language="toml",
         span=Span(start_line=5, start_col=0, end_line=5, end_col=15),
-        origin="toml-v1",
+        origin="toml",
     )
 
     import_edge = Edge(
@@ -303,7 +303,7 @@ def test_rust_underscore_crate_name():
         edge_type="imports",
         line=3,
         confidence=0.95,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )
@@ -330,7 +330,7 @@ def test_python_submodule_import():
         path="pyproject.toml",
         language="toml",
         span=Span(start_line=10, start_col=0, end_line=10, end_col=20),
-        origin="toml-v1",
+        origin="toml",
     )
 
     # Import requests.adapters (submodule)
@@ -341,7 +341,7 @@ def test_python_submodule_import():
         edge_type="imports",
         line=2,
         confidence=0.95,
-        origin="python-v1",
+        origin="python",
 
         origin_run_id="test",
     )
@@ -368,7 +368,7 @@ def test_ignores_non_import_edges():
         path="Cargo.toml",
         language="toml",
         span=Span(start_line=5, start_col=0, end_line=5, end_col=15),
-        origin="toml-v1",
+        origin="toml",
     )
 
     # A calls edge, not an imports edge
@@ -379,7 +379,7 @@ def test_ignores_non_import_edges():
         edge_type="calls",
         line=10,
         confidence=0.9,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )
@@ -407,7 +407,7 @@ def test_ignores_non_dependency_toml_symbols():
         path="Cargo.toml",
         language="toml",
         span=Span(start_line=1, start_col=0, end_line=1, end_col=10),
-        origin="toml-v1",
+        origin="toml",
     )
 
     import_edge = Edge(
@@ -417,7 +417,7 @@ def test_ignores_non_dependency_toml_symbols():
         edge_type="imports",
         line=3,
         confidence=0.95,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )
@@ -444,7 +444,7 @@ def test_ignores_unsupported_language_imports():
         path="Cargo.toml",
         language="toml",
         span=Span(start_line=5, start_col=0, end_line=5, end_col=15),
-        origin="toml-v1",
+        origin="toml",
     )
 
     # A Go import (not Rust or Python)
@@ -455,7 +455,7 @@ def test_ignores_unsupported_language_imports():
         edge_type="imports",
         line=3,
         confidence=0.95,
-        origin="go-v1",
+        origin="go",
 
         origin_run_id="test",
     )
@@ -482,7 +482,7 @@ def test_deduplicates_same_file_same_dependency():
         path="Cargo.toml",
         language="toml",
         span=Span(start_line=5, start_col=0, end_line=5, end_col=15),
-        origin="toml-v1",
+        origin="toml",
     )
 
     # Same file imports serde twice
@@ -493,7 +493,7 @@ def test_deduplicates_same_file_same_dependency():
         edge_type="imports",
         line=3,
         confidence=0.95,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )
@@ -505,7 +505,7 @@ def test_deduplicates_same_file_same_dependency():
         edge_type="imports",
         line=4,
         confidence=0.95,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )
@@ -533,7 +533,7 @@ def test_rust_import_no_namespace():
         path="Cargo.toml",
         language="toml",
         span=Span(start_line=5, start_col=0, end_line=5, end_col=15),
-        origin="toml-v1",
+        origin="toml",
     )
 
     # Import like `use log;` without ::
@@ -544,7 +544,7 @@ def test_rust_import_no_namespace():
         edge_type="imports",
         line=3,
         confidence=0.95,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )
@@ -571,7 +571,7 @@ def test_python_simple_import():
         path="pyproject.toml",
         language="toml",
         span=Span(start_line=10, start_col=0, end_line=10, end_col=20),
-        origin="toml-v1",
+        origin="toml",
     )
 
     # Simple import like `import flask`
@@ -582,7 +582,7 @@ def test_python_simple_import():
         edge_type="imports",
         line=2,
         confidence=0.95,
-        origin="python-v1",
+        origin="python",
 
         origin_run_id="test",
     )
@@ -609,7 +609,7 @@ def test_rust_bare_crate_import():
         path="Cargo.toml",
         language="toml",
         span=Span(start_line=5, start_col=0, end_line=5, end_col=15),
-        origin="toml-v1",
+        origin="toml",
     )
 
     # Bare crate import: just "rust:log" with no :: or :
@@ -620,7 +620,7 @@ def test_rust_bare_crate_import():
         edge_type="imports",
         line=3,
         confidence=0.95,
-        origin="rust-v1",
+        origin="rust",
 
         origin_run_id="test",
     )

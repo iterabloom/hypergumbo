@@ -36,7 +36,7 @@ class TestRouteHandlerLinker:
                 "controller_action": "users#index",
                 "framework_role": "route",
             },
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -49,7 +49,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
             meta={"class": "UsersController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -77,7 +77,7 @@ class TestRouteHandlerLinker:
                 "controller_action": "admin/users#index",
                 "framework_role": "route",
             },
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -90,7 +90,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/admin/users_controller.rb",
             span=Span(start_line=10, end_line=15, start_col=2, end_col=5),
             meta={"class": "Admin::UsersController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -116,7 +116,7 @@ class TestRouteHandlerLinker:
                 "controller_action": "users#index",
                 "framework_role": "route",
             },
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -140,7 +140,7 @@ class TestRouteHandlerLinker:
                 # No controller_action,
                 "framework_role": "route",
             },
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -151,7 +151,7 @@ class TestRouteHandlerLinker:
             language="ruby",
             path="/app/controllers/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -169,7 +169,7 @@ class TestRouteHandlerLinker:
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"controller_action": "users#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -181,7 +181,7 @@ class TestRouteHandlerLinker:
             path="/app/config/routes.rb",
             span=Span(start_line=11, end_line=11, start_col=0, end_col=50),
             meta={"controller_action": "users#index", "framework_role": "route"},  # Same handler
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -192,7 +192,7 @@ class TestRouteHandlerLinker:
             language="ruby",
             path="/app/controllers/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -216,7 +216,7 @@ class TestRouteHandlerLinker:
                 "action": "index",
                 "framework_role": "route",
             },
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -227,7 +227,7 @@ class TestRouteHandlerLinker:
             language="elixir",
             path="/lib/app_web/controllers/user_controller.ex",
             span=Span(start_line=20, end_line=30, start_col=2, end_col=5),
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -254,7 +254,7 @@ class TestRouteHandlerLinker:
                 "action": "mount",
                 "framework_role": "route",
             },
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -265,7 +265,7 @@ class TestRouteHandlerLinker:
             language="elixir",
             path="/lib/app_web/live/dashboard_live.ex",
             span=Span(start_line=10, end_line=20, start_col=2, end_col=5),
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -298,7 +298,7 @@ class TestRouteHandlerLinker:
                 "action": "page",
                 "framework_role": "route",
             },
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -309,7 +309,7 @@ class TestRouteHandlerLinker:
             language="elixir",
             path="/lib/app_web/live/home_live.ex",
             span=Span(start_line=1, end_line=50, start_col=0, end_col=3),
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -337,7 +337,7 @@ class TestRouteHandlerLinker:
                 "action": "index",
                 "framework_role": "route",
             },
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -348,7 +348,7 @@ class TestRouteHandlerLinker:
             language="elixir",
             path="/lib/admin_live.ex",
             span=Span(start_line=1, end_line=30, start_col=0, end_col=3),
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -373,7 +373,7 @@ class TestRouteHandlerLinker:
                 "action": "mount",
                 "framework_role": "route",
             },
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -384,7 +384,7 @@ class TestRouteHandlerLinker:
             language="elixir",
             path="/lib/app_web/live/dash_live.ex",
             span=Span(start_line=10, end_line=20, start_col=2, end_col=5),
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -395,7 +395,7 @@ class TestRouteHandlerLinker:
             language="elixir",
             path="/lib/app_web/live/dash_live.ex",
             span=Span(start_line=1, end_line=50, start_col=0, end_col=3),
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -417,7 +417,7 @@ class TestRouteHandlerLinker:
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"controller_action": "users_index", "framework_role": "route"},  # No #
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -428,7 +428,7 @@ class TestRouteHandlerLinker:
             language="ruby",
             path="/app/controllers/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -445,7 +445,7 @@ class TestRouteHandlerLinker:
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"controller_action": "users#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -457,7 +457,7 @@ class TestRouteHandlerLinker:
             language="ruby",
             path="/app/controllers/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -474,7 +474,7 @@ class TestRouteHandlerLinker:
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"controller_action": "users#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -487,7 +487,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
             meta={"qualified_name": "UsersController#index"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -504,7 +504,7 @@ class TestRouteHandlerLinker:
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"controller_action": "users#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -517,7 +517,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
             meta={"class": "UsersController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -540,7 +540,7 @@ class TestRouteHandlerLinker:
             path="/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"controller_action": "users#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -553,7 +553,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/api/v1/accounts/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
             meta={"class": "Api::V1::Accounts::UsersController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -571,7 +571,7 @@ class TestRouteHandlerLinker:
             path="/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"controller_action": "users#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -584,7 +584,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/users_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
             meta={"class": "UsersController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -597,7 +597,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/api/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
             meta={"class": "Api::UsersController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -620,7 +620,7 @@ class TestRouteHandlerLinker:
             path="/config/routes.rb",
             span=Span(start_line=30, end_line=30, start_col=0, end_col=60),
             meta={"controller_action": "ip_pool_rules#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -633,7 +633,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/ip_pool_rules_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
             meta={"class": "IPPoolRulesController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -651,7 +651,7 @@ class TestRouteHandlerLinker:
             path="/config/routes.rb",
             span=Span(start_line=28, end_line=28, start_col=0, end_col=60),
             meta={"controller_action": "http_endpoints#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -663,7 +663,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/http_endpoints_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
             meta={"class": "HTTPEndpointsController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -681,7 +681,7 @@ class TestRouteHandlerLinker:
             path="/config/routes.rb",
             span=Span(start_line=50, end_line=50, start_col=0, end_col=60),
             meta={"controller_action": "api/v1/ip_addresses#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -693,7 +693,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/api/v1/ip_addresses_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
             meta={"class": "Api::V1::IPAddressesController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -717,7 +717,7 @@ class TestRouteHandlerLinker:
             path="/config/routes.rb",
             span=Span(start_line=60, end_line=60, start_col=0, end_col=60),
             meta={"controller_action": "ip_pools#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -729,7 +729,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/admin/ip_pools_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
             meta={"class": "Admin::IPPoolsController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -747,7 +747,7 @@ class TestRouteHandlerLinker:
             path="/config/routes.rb",
             span=Span(start_line=30, end_line=30, start_col=0, end_col=60),
             meta={"controller_action": "ip_pools#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -760,7 +760,7 @@ class TestRouteHandlerLinker:
             path="/app/controllers/ip_pools_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
             meta={"class": "IPPoolsController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -781,7 +781,7 @@ class TestRouteHandlerLinker:
                 "action": "index",
                 "framework_role": "route",
             },
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -793,7 +793,7 @@ class TestRouteHandlerLinker:
             language="elixir",
             path="/lib/app_web/controllers/user_controller.ex",
             span=Span(start_line=20, end_line=30, start_col=2, end_col=5),
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -814,7 +814,7 @@ class TestRouteHandlerLinker:
                 "action": "index",
                 "framework_role": "route",
             },
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -826,7 +826,7 @@ class TestRouteHandlerLinker:
             language="elixir",
             path="/lib/app_web/controllers/user_controller.ex",
             span=Span(start_line=20, end_line=30, start_col=2, end_col=5),
-            origin="elixir-v1",
+            origin="elixir",
             origin_run_id="test-run",
         )
 
@@ -848,7 +848,7 @@ class TestRouteHandlerLinker:
                 "controller_action": "UserController@index",
                 "framework_role": "route",
             },
-            origin="php-v1",
+            origin="php",
             origin_run_id="test-run",
         )
 
@@ -859,7 +859,7 @@ class TestRouteHandlerLinker:
             language="php",
             path="/app/Http/Controllers/UserController.php",
             span=Span(start_line=20, end_line=30, start_col=2, end_col=5),
-            origin="php-v1",
+            origin="php",
             origin_run_id="test-run",
         )
 
@@ -882,7 +882,7 @@ class TestRouteHandlerLinker:
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"controller_action": "users#index", "framework_role": "route"},  # Rails format, not Laravel
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -894,7 +894,7 @@ class TestRouteHandlerLinker:
             language="php",
             path="/app/Http/Controllers/UsersController.php",
             span=Span(start_line=20, end_line=30, start_col=2, end_col=5),
-            origin="php-v1",
+            origin="php",
             origin_run_id="test-run",
         )
 
@@ -918,7 +918,7 @@ class TestRouteHandlerLinker:
                 "handler_ref": "userController.list",
                 "framework_role": "route",
             },
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -930,7 +930,7 @@ class TestRouteHandlerLinker:
             language="javascript",
             path="/app/src/userController.js",
             span=Span(start_line=5, end_line=10, start_col=0, end_col=1),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -958,7 +958,7 @@ class TestRouteHandlerLinker:
                 "handler_ref": "handleRequest",  # Simple name, not qualified,
                 "framework_role": "route",
             },
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -969,7 +969,7 @@ class TestRouteHandlerLinker:
             language="javascript",
             path="/app/src/app.js",
             span=Span(start_line=15, end_line=20, start_col=0, end_col=1),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -994,7 +994,7 @@ class TestRouteHandlerLinker:
                 "handler_ref": "api.getUser",
                 "framework_role": "route",
             },
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -1006,7 +1006,7 @@ class TestRouteHandlerLinker:
             language="javascript",
             path="/app/src/routes/api.js",
             span=Span(start_line=5, end_line=10, start_col=0, end_col=1),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -1025,7 +1025,7 @@ class TestRouteHandlerLinker:
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"controller_action": "users#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -1036,7 +1036,7 @@ class TestRouteHandlerLinker:
             language="ruby",
             path="/app/controllers/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -1070,7 +1070,7 @@ class TestRouteHandlerLinker:
                 "view_name": "UserResource",
                 "framework_role": "route",
             },
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1081,7 +1081,7 @@ class TestRouteHandlerLinker:
             language="python",
             path="/app/resources.py",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=5),
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1112,7 +1112,7 @@ class TestRouteHandlerLinker:
                 "handler_ref": "python:/app/missing.py:1-1:Gone:class",
                 "framework_role": "route",
             },
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1134,7 +1134,7 @@ class TestLinkerEntryPoint:
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"controller_action": "users#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -1146,7 +1146,7 @@ class TestLinkerEntryPoint:
             path="/app/config/routes.rb",
             span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
             meta={"framework_role": "route", },  # No handler metadata
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -1157,7 +1157,7 @@ class TestLinkerEntryPoint:
             language="ruby",
             path="/app/models/user.rb",
             span=Span(start_line=5, end_line=10, start_col=0, end_col=3),
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -1182,7 +1182,7 @@ class TestLinkerEntryPoint:
             path="/app/config/routes.rb",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"controller_action": "users#index", "framework_role": "route"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -1193,7 +1193,7 @@ class TestLinkerEntryPoint:
             language="ruby",
             path="/app/controllers/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -1229,7 +1229,7 @@ class TestDjangoViewNameLinking:
                 "view_name": "list_users",
                 "framework_role": "route",
             },
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1240,7 +1240,7 @@ class TestDjangoViewNameLinking:
             language="python",
             path="/app/views.py",
             span=Span(start_line=20, end_line=30, start_col=0, end_col=5),
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1268,7 +1268,7 @@ class TestDjangoViewNameLinking:
                 "view_name": "UserListView",
                 "framework_role": "route",
             },
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1280,7 +1280,7 @@ class TestDjangoViewNameLinking:
             language="python",
             path="/app/views.py",
             span=Span(start_line=50, end_line=70, start_col=0, end_col=5),
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1304,7 +1304,7 @@ class TestDjangoViewNameLinking:
                 "view_name": "accounts.views.list_accounts",
                 "framework_role": "route",
             },
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1316,7 +1316,7 @@ class TestDjangoViewNameLinking:
             language="python",
             path="/app/accounts/views.py",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=5),
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1338,7 +1338,7 @@ class TestDjangoViewNameLinking:
                 "view_name": "nonexistent_view",
                 "framework_role": "route",
             },
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1350,7 +1350,7 @@ class TestDjangoViewNameLinking:
             language="python",
             path="/app/views.py",
             span=Span(start_line=20, end_line=30, start_col=0, end_col=5),
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1377,7 +1377,7 @@ class TestGoRouteHandlerLinking:
                 "handler_name": "listUsers",
                 "framework_role": "route",
             },
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1388,7 +1388,7 @@ class TestGoRouteHandlerLinking:
             language="go",
             path="/app/main.go",
             span=Span(start_line=20, end_line=30, start_col=0, end_col=1),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1416,7 +1416,7 @@ class TestGoRouteHandlerLinking:
                 "handler_name": "handlers.GetAPI",
                 "framework_role": "route",
             },
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1427,7 +1427,7 @@ class TestGoRouteHandlerLinking:
             language="go",
             path="/app/handlers/api.go",
             span=Span(start_line=5, end_line=15, start_col=0, end_col=1),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1452,7 +1452,7 @@ class TestGoRouteHandlerLinking:
                 "handler_name": "listUsers",
                 "framework_role": "route",
             },
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1469,7 +1469,7 @@ class TestGoRouteHandlerLinking:
                 "handler_name": "createUser",
                 "framework_role": "route",
             },
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1480,7 +1480,7 @@ class TestGoRouteHandlerLinking:
             language="go",
             path="/app/main.go",
             span=Span(start_line=20, end_line=30, start_col=0, end_col=1),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1491,7 +1491,7 @@ class TestGoRouteHandlerLinking:
             language="go",
             path="/app/main.go",
             span=Span(start_line=35, end_line=45, start_col=0, end_col=1),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1514,7 +1514,7 @@ class TestGoRouteHandlerLinking:
                 "handler_name": "controllers.GetUsers",
                 "framework_role": "route",
             },
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1526,7 +1526,7 @@ class TestGoRouteHandlerLinking:
             language="go",
             path="/app/internal/controllers/users.go",
             span=Span(start_line=5, end_line=15, start_col=0, end_col=1),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1552,7 +1552,7 @@ class TestGoRouteHandlerLinking:
             language="go",
             path="/app/routers.go",
             span=Span(start_line=50, end_line=60, start_col=0, end_col=1),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1570,7 +1570,7 @@ class TestGoRouteHandlerLinking:
                 "handler_name": "ArticleCreate",
                 "framework_role": "route",
             },
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1597,7 +1597,7 @@ class TestGoRouteHandlerLinking:
             language="javascript",
             path="/app/routes.js",
             span=Span(start_line=20, end_line=30, start_col=0, end_col=1),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -1614,7 +1614,7 @@ class TestGoRouteHandlerLinking:
                 "handler_ref": "getUsers",
                 "framework_role": "route",
             },
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -1638,7 +1638,7 @@ class TestGoRouteHandlerLinking:
             language="python",
             path="/app/views.py",
             span=Span(start_line=20, end_line=30, start_col=0, end_col=5),
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1657,7 +1657,7 @@ class TestGoRouteHandlerLinking:
                 "view_name": "list_users",
                 "framework_role": "route",
             },
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
         )
 
@@ -1689,7 +1689,7 @@ class TestGoRouteHandlerLinking:
                 "handler_field": "AlertGetAlertsHandler",
                 "framework_role": "route",
             },
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1701,7 +1701,7 @@ class TestGoRouteHandlerLinking:
             path="/api/v2/api.go",
             span=Span(start_line=150, end_line=165, start_col=0, end_col=1),
             meta={"class": "API"},
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1747,7 +1747,7 @@ class TestGoRouteHandlerLinking:
                 "handler_name": "api.query",
                 "framework_role": "route",
             },
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
         # The CORRECT target: API.query method on the *API type, in the
@@ -1759,7 +1759,7 @@ class TestGoRouteHandlerLinking:
             language="go",
             path="/repo/web/api/v1/api.go",
             span=Span(start_line=502, end_line=569, start_col=0, end_col=1),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
         # The WRONG target: an unrelated package-level function named query
@@ -1772,7 +1772,7 @@ class TestGoRouteHandlerLinking:
             language="go",
             path="/repo/cmd/promtool/unittest.go",
             span=Span(start_line=611, end_line=632, start_col=0, end_col=1),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1807,7 +1807,7 @@ class TestGoRouteHandlerLinking:
                 "handler_name": "missingHandler",
                 "framework_role": "route",
             },
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
         )
 
@@ -1839,7 +1839,7 @@ class TestLaravelSuffixMatchFallback:
                 "controller_action": "UserController@index",
                 "framework_role": "route",
             },
-            origin="php-v1",
+            origin="php",
             origin_run_id="test-run",
         )
 
@@ -1850,7 +1850,7 @@ class TestLaravelSuffixMatchFallback:
             language="php",
             path="/app/Http/Controllers/UserController.php",
             span=Span(start_line=10, end_line=20, start_col=2, end_col=5),
-            origin="php-v1",
+            origin="php",
             origin_run_id="test-run",
         )
 
@@ -1874,7 +1874,7 @@ class TestLaravelSuffixMatchFallback:
                 "controller_action": "OrderController@store",
                 "framework_role": "route",
             },
-            origin="php-v1",
+            origin="php",
             origin_run_id="test-run",
         )
 
@@ -1885,7 +1885,7 @@ class TestLaravelSuffixMatchFallback:
             language="php",
             path="/app/Http/Controllers/OrderController.php",
             span=Span(start_line=15, end_line=25, start_col=2, end_col=5),
-            origin="php-v1",
+            origin="php",
             origin_run_id="test-run",
         )
 
@@ -1916,7 +1916,7 @@ class TestLaravelSuffixMatchFallback:
                 "controller_action": "api/v1/statuses#destroy",
                 "framework_role": "route",
             },
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -1929,7 +1929,7 @@ class TestLaravelSuffixMatchFallback:
             path="/app/controllers/api/v1/statuses_controller.rb",
             span=Span(start_line=80, end_line=95, start_col=4, end_col=7),
             meta={"class": "StatusesController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -1960,7 +1960,7 @@ class TestLaravelSuffixMatchFallback:
                 "controller_action": "api/v1/statuses#destroy",
                 "framework_role": "route",
             },
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -1974,7 +1974,7 @@ class TestLaravelSuffixMatchFallback:
             path="/app/controllers/subscription_statuses_controller.rb",
             span=Span(start_line=10, end_line=20, start_col=4, end_col=7),
             meta={"class": "SubscriptionStatusesController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -2001,7 +2001,7 @@ class TestLaravelSuffixMatchFallback:
                 "controller_action": "api/v1/ip_addresses#index",
                 "framework_role": "route",
             },
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -2014,7 +2014,7 @@ class TestLaravelSuffixMatchFallback:
             path="/app/controllers/api/v1/ip_addresses_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
             meta={"class": "IPAddressesController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
 
@@ -2037,7 +2037,7 @@ class TestLaravelSuffixMatchFallback:
                 "controller_action": "UserController@index",
                 "framework_role": "route",
             },
-            origin="php-v1",
+            origin="php",
             origin_run_id="test-run",
         )
 
@@ -2049,7 +2049,7 @@ class TestLaravelSuffixMatchFallback:
             language="php",
             path="/app/Http/Controllers/AdminUserController.php",
             span=Span(start_line=10, end_line=20, start_col=2, end_col=5),
-            origin="php-v1",
+            origin="php",
             origin_run_id="test-run",
         )
 
@@ -2076,7 +2076,7 @@ class TestJSXRouteComponentLinking:
             path="src/App.tsx",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"route_path": "/users", "http_method": "GET", "handler_ref": "Users", "framework_role": "route"},
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         handler = Symbol(
@@ -2086,7 +2086,7 @@ class TestJSXRouteComponentLinking:
             language="javascript",
             path="src/Users.tsx",
             span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -2105,7 +2105,7 @@ class TestJSXRouteComponentLinking:
             path="src/App.tsx",
             span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
             meta={"route_path": "/drop", "http_method": "GET", "handler_ref": "DropStage", "framework_role": "route"},
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         handler = Symbol(
@@ -2115,7 +2115,7 @@ class TestJSXRouteComponentLinking:
             language="javascript",
             path="src/DropStage.tsx",
             span=Span(start_line=1, end_line=100, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -2136,7 +2136,7 @@ class TestJSXRouteComponentLinking:
             path="src/App.tsx",
             span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
             meta={"route_path": "/drop", "http_method": "GET", "handler_ref": "DropStage", "framework_role": "route"},
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         handler = Symbol(
@@ -2147,7 +2147,7 @@ class TestJSXRouteComponentLinking:
             path="src/DropStage.tsx",
             span=Span(start_line=1, end_line=100, start_col=0, end_col=0),
             meta={"module_system": "esm"},
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -2169,7 +2169,7 @@ class TestJSXRouteComponentLinking:
                   "handler_ref": "ContentCDN",
                   "framework_role": "route",
               },
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         handler = Symbol(
@@ -2179,7 +2179,7 @@ class TestJSXRouteComponentLinking:
             language="javascript",
             path="src/ContentCDN.js",
             span=Span(start_line=1, end_line=80, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -2198,7 +2198,7 @@ class TestJSXRouteComponentLinking:
             path="src/App.tsx",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta={"route_path": "/users", "http_method": "GET", "handler_ref": "Users", "framework_role": "route"},
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         func_handler = Symbol(
@@ -2208,7 +2208,7 @@ class TestJSXRouteComponentLinking:
             language="javascript",
             path="src/Users.tsx",
             span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         class_handler = Symbol(
@@ -2218,7 +2218,7 @@ class TestJSXRouteComponentLinking:
             language="javascript",
             path="src/UsersClass.tsx",
             span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -2262,7 +2262,7 @@ class TestReactRouterLoaderActionLinking:
             path="src/routes.tsx",
             span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
             meta=meta,
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -2274,7 +2274,7 @@ class TestReactRouterLoaderActionLinking:
             language="javascript",
             path=f"src/{name}.ts",
             span=Span(start_line=line, end_line=line + 20, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -2382,7 +2382,7 @@ class TestINVZuhubConformanceForRouteHandler:
                 "view_name": view_name,
                 "framework_role": "route",
             },
-            origin="py-v1",
+            origin="py",
             origin_run_id="test-run",
         )
 
@@ -2394,7 +2394,7 @@ class TestINVZuhubConformanceForRouteHandler:
             language="python",
             path=file_path,
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            origin="py-v1",
+            origin="py",
             origin_run_id="test-run",
         )
 
@@ -2444,7 +2444,7 @@ class TestINVZuhubConformanceForRouteHandler:
                 "handler_ref": "userController.list",
                 "framework_role": "route",
             },
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         fn_a = Symbol(
@@ -2454,7 +2454,7 @@ class TestINVZuhubConformanceForRouteHandler:
             language="javascript",
             path="userController.js",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         fn_b = Symbol(
@@ -2464,7 +2464,7 @@ class TestINVZuhubConformanceForRouteHandler:
             language="javascript",
             path="itemController.js",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -2496,7 +2496,7 @@ class TestINVZuhubConformanceForRouteHandler:
                 "controller_action": "users#index",
                 "framework_role": "route",
             },
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
         handler = Symbol(
@@ -2507,7 +2507,7 @@ class TestINVZuhubConformanceForRouteHandler:
             path="users_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=0, end_col=0),
             meta={"class": "UsersController"},
-            origin="ruby-v1",
+            origin="ruby",
             origin_run_id="test-run",
         )
         # Unrelated bare-name collision elsewhere in the codebase.
@@ -2557,7 +2557,7 @@ class TestINVZuhubConformanceForRouteHandler:
                 "loader_ref": "loadData",
                 "framework_role": "route",
             },
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         handler = Symbol(

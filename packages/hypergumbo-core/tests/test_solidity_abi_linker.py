@@ -343,7 +343,7 @@ class TestRegistryIntegration:
         # Ensure the module is imported (triggers @register_linker)
         import hypergumbo_core.linkers.solidity_abi
 
-        assert "solidity_abi" in list_registered()
+        assert "solidity-abi-linker" in list_registered()
 
     def test_linker_function_runs(self, tmp_path: Path) -> None:
         """The registered linker function produces results via LinkerContext."""

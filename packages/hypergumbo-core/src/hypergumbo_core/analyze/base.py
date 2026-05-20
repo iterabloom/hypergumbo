@@ -1608,7 +1608,7 @@ class TreeSitterAnalyzer:
     """Language identifier (e.g., "go", "rust", "python")."""
 
     pass_id: str = ""
-    """Pass identifier (e.g., "go-v1", "rust-v1")."""
+    """Pass identifier (e.g., "go", "rust" — no legacy "-v1" suffix per INV-morag PR 2)."""
 
     pass_version: str = ""
     """Version string (e.g., "hypergumbo-0.1.0")."""

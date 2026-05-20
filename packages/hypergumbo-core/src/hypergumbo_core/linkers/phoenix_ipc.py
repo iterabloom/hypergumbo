@@ -355,7 +355,7 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
 
 
 @register_linker(
-    "phoenix_ipc",
+    "phoenix-ipc-linker",
     priority=40,  # Run with other IPC linkers
     description="Phoenix Channels IPC linking (Elixir channels, LiveView)",
     activation=LinkerActivation(frameworks=["phoenix"]),

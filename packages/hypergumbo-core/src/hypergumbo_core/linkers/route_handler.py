@@ -841,7 +841,7 @@ def _check_routes_available(ctx: LinkerContext) -> int:
 
 
 @register_linker(
-    "route_handler",
+    "route-handler-linker",
     priority=60,  # After basic analysis, before HTTP client linking
     requirements=[
         LinkerRequirement(

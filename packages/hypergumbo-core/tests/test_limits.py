@@ -26,7 +26,7 @@ class TestLimits:
         limits.add_failed_file(
             path="broken.py",
             reason="SyntaxError: invalid syntax",
-            analyzer="python-ast-v1",
+            analyzer="python",
         )
 
         d = limits.to_dict()
@@ -34,7 +34,7 @@ class TestLimits:
         assert len(d["failed_files"]) == 1
         assert d["failed_files"][0]["path"] == "broken.py"
         assert "SyntaxError" in d["failed_files"][0]["reason"]
-        assert d["failed_files"][0]["analyzer"] == "python-ast-v1"
+        assert d["failed_files"][0]["analyzer"] == "python"
 
     def test_add_skipped_language(self) -> None:
         """Can add skipped languages."""
@@ -74,10 +74,10 @@ class TestLimits:
     def test_merge_limits(self) -> None:
         """Can merge limits from multiple analyzers."""
         limits1 = Limits()
-        limits1.add_failed_file("a.py", "error1", "python-ast-v1")
+        limits1.add_failed_file("a.py", "error1", "python")
 
         limits2 = Limits()
-        limits2.add_failed_file("b.js", "error2", "js-ts-v1")
+        limits2.add_failed_file("b.js", "error2", "js")
         limits2.add_skipped_language("go")
 
         merged = limits1.merge(limits2)
@@ -125,10 +125,10 @@ class TestFailedFile:
         ff = FailedFile(
             path="broken.py",
             reason="SyntaxError",
-            analyzer="python-ast-v1",
+            analyzer="python",
         )
         d = ff.to_dict()
 
         assert d["path"] == "broken.py"
         assert d["reason"] == "SyntaxError"
-        assert d["analyzer"] == "python-ast-v1"
+        assert d["analyzer"] == "python"

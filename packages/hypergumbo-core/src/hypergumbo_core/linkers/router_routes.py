@@ -146,7 +146,7 @@ def _span_size(span) -> int:
 
 
 @register_linker(
-    "router-routes",
+    "router-routes-linker",
     priority=56,
     description="Link router-concept symbols to their nested route registrations",
 )

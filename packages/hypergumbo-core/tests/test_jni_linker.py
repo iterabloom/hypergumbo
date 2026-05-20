@@ -93,7 +93,7 @@ class TestJniLinker:
             language="java",
             path=path,
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="java-v1",
+            origin="java",
             origin_run_id=run.execution_id,
             meta=meta,
             modifiers=modifiers if modifiers else [],
@@ -114,7 +114,7 @@ class TestJniLinker:
             language="c",
             path=path,
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="c-v1",
+            origin="c",
             origin_run_id=run.execution_id,
         )
 
@@ -252,7 +252,7 @@ class TestJniLinker:
         result = link_jni(java_symbols, c_symbols)
 
         assert result.run is not None
-        assert result.run.pass_id == "jni-linker-v1"
+        assert result.run.pass_id == "jni-linker"
 
     def test_edge_confidence(self) -> None:
         """Edge has appropriate confidence level."""
@@ -344,9 +344,9 @@ class TestJniLinkerRegistry:
         """JNI linker is registered in the linker registry."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("jni")
+        linker = get_linker("jni-linker")
         assert linker is not None
-        assert linker.name == "jni"
+        assert linker.name == "jni-linker"
         assert linker.priority == 10  # Early priority
         assert "JNI" in linker.description or "native" in linker.description.lower()
 
@@ -354,7 +354,7 @@ class TestJniLinkerRegistry:
         """JNI linker declares its requirements."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("jni")
+        linker = get_linker("jni-linker")
         assert linker is not None
         assert len(linker.requirements) == 2
 
@@ -376,7 +376,7 @@ class TestJniLinkerRegistry:
             language="java",
             path="Test.java",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="java-v1",
+            origin="java",
             origin_run_id=run.execution_id,
             modifiers=["native", "public"],
         )
@@ -387,7 +387,7 @@ class TestJniLinkerRegistry:
             language="c",
             path="native.c",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="c-v1",
+            origin="c",
             origin_run_id=run.execution_id,
         )
 
@@ -396,7 +396,7 @@ class TestJniLinkerRegistry:
             symbols=[java_sym, c_sym],
         )
 
-        result = run_linker("jni", ctx)
+        result = run_linker("jni-linker", ctx)
 
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "calls"
@@ -416,7 +416,7 @@ class TestJniLinkerRegistry:
             language="java",
             path="Test.java",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="java-v1",
+            origin="java",
             origin_run_id=run.execution_id,
             modifiers=["native"],
         )
@@ -429,7 +429,7 @@ class TestJniLinkerRegistry:
             language="c",
             path="native.c",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="c-v1",
+            origin="c",
             origin_run_id=run.execution_id,
         )
 
@@ -441,7 +441,7 @@ class TestJniLinkerRegistry:
         diagnostics = check_linker_requirements(ctx)
 
         # Find JNI linker diagnostics
-        jni_diag = next((d for d in diagnostics if d.linker_name == "jni"), None)
+        jni_diag = next((d for d in diagnostics if d.linker_name == "jni-linker"), None)
         assert jni_diag is not None
         assert jni_diag.all_met is True
         assert all(r.met for r in jni_diag.requirements)
@@ -461,7 +461,7 @@ class TestJniLinkerRegistry:
             language="c",
             path="native.c",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="c-v1",
+            origin="c",
             origin_run_id=run.execution_id,
         )
 
@@ -472,7 +472,7 @@ class TestJniLinkerRegistry:
 
         diagnostics = check_linker_requirements(ctx)
 
-        jni_diag = next((d for d in diagnostics if d.linker_name == "jni"), None)
+        jni_diag = next((d for d in diagnostics if d.linker_name == "jni-linker"), None)
         assert jni_diag is not None
         assert jni_diag.all_met is False
 
@@ -515,7 +515,7 @@ class TestJniLinkerEdgeCases:
                 language="java",
                 path="Test.java",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="java-v1",
+                origin="java",
                 origin_run_id=run.execution_id,
                 meta={"is_native": True},
             ),
@@ -538,7 +538,7 @@ class TestJniLinkerEdgeCases:
                 language="c",
                 path="native.c",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="c-v1",
+                origin="c",
                 origin_run_id=run.execution_id,
             ),
         ]
@@ -582,7 +582,7 @@ class TestJniLinkerEdgeCases:
                 language="java",
                 path="Test.java",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="java-v1",
+                origin="java",
                 origin_run_id=run.execution_id,
                 meta={"is_native": True},
             ),
@@ -597,7 +597,7 @@ class TestJniLinkerEdgeCases:
                 language="python",  # Not C!
                 path="native.py",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="python-v1",
+                origin="python",
                 origin_run_id=run.execution_id,
             ),
         ]
@@ -622,7 +622,7 @@ class TestJniLinkerEdgeCases:
                 language="python",  # Not Java!
                 path="test.py",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="python-v1",
+                origin="python",
                 origin_run_id=run.execution_id,
                 meta={"is_native": True},
             ),
@@ -636,7 +636,7 @@ class TestJniLinkerEdgeCases:
                 language="c",
                 path="native.c",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="c-v1",
+                origin="c",
                 origin_run_id=run.execution_id,
             ),
         ]
@@ -684,7 +684,7 @@ class TestJniLinkerEdgeCases:
                 language="java",
                 path="Test.java",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="java-v1",
+                origin="java",
                 origin_run_id=run.execution_id,
                 meta={"is_native": True},
             ),
@@ -699,7 +699,7 @@ class TestJniLinkerEdgeCases:
                 language="c",
                 path="native.c",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="c-v1",
+                origin="c",
                 origin_run_id=run.execution_id,
             ),
         ]
@@ -751,7 +751,7 @@ class TestJniLinkerEdgeCases:
                 language="java",
                 path="Test.java",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="java-v1",
+                origin="java",
                 origin_run_id=run.execution_id,
                 modifiers=["native", "public"],
             ),
@@ -766,7 +766,7 @@ class TestJniLinkerEdgeCases:
                 language="cpp",  # C++, not C
                 path="native.cpp",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="cpp-v1",
+                origin="cpp",
                 origin_run_id=run.execution_id,
             ),
         ]
@@ -797,7 +797,7 @@ class TestJniLinkerEdgeCases:
                 language="java",
                 path="DIDKit.java",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="java-v1",
+                origin="java",
                 origin_run_id=run.execution_id,
                 modifiers=["native", "public", "static"],
             ),
@@ -812,7 +812,7 @@ class TestJniLinkerEdgeCases:
                 language="rust",
                 path="lib/src/jni.rs",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="rust-v1",
+                origin="rust",
                 origin_run_id=run.execution_id,
             ),
         ]
@@ -838,7 +838,7 @@ class TestJniLinkerEdgeCases:
                 language="java",
                 path="com/spruceid/DIDKit.java",
                 span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-                origin="java-v1",
+                origin="java",
                 origin_run_id=run.execution_id,
                 modifiers=["native", "public", "static"],
             ),
@@ -852,7 +852,7 @@ class TestJniLinkerEdgeCases:
                 language="rust",
                 path="lib/src/jni.rs",
                 span=Span(start_line=5, end_line=20, start_col=0, end_col=0),
-                origin="rust-v1",
+                origin="rust",
                 origin_run_id=run.execution_id,
             ),
         ]
@@ -877,7 +877,7 @@ class TestJniLinkerEdgeCases:
             language="rust",
             path="lib/src/jni.rs",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="rust-v1",
+            origin="rust",
             origin_run_id=run.execution_id,
         )
 
@@ -913,7 +913,7 @@ class TestInvZuhubJniFallback:
             language="java",
             path="Test.java",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="java-v1",
+            origin="java",
             origin_run_id=run.execution_id,
             modifiers=["native"],
         )
@@ -927,7 +927,7 @@ class TestInvZuhubJniFallback:
             language="c",
             path=path,
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="c-v1",
+            origin="c",
             origin_run_id=run.execution_id,
         )
 

@@ -21,7 +21,7 @@ from hypergumbo_lang_extended1.vhdl import (
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
-    assert PASS_ID == "vhdl-v1"
+    assert PASS_ID == "vhdl"
     assert PASS_VERSION == __version__
 
 

@@ -431,7 +431,7 @@ class TestVueComponentLinker:
         """Linker activation requires vue framework or language."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("vue-components")
+        linker = get_linker("vue-component-linker")
         assert linker is not None
         # Should run when vue is detected
         assert linker.activation.should_run({"vue"}, {"vue"})

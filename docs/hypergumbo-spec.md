@@ -227,7 +227,7 @@ def link_jni(ctx: LinkerContext) -> LinkerResult:
 For multi-fidelity analysis (e.g., a pyright pass refining AST-extracted edges with type-resolved information), both tiers would converge on a single interface where passes receive the IR and return deltas:
 ```python
 class AnalysisPass(Protocol):
-    id: str              # e.g., "python-ast-v1"
+    id: str              # e.g., "python" (post-INV-morag-PR-2; legacy "-v1" suffix removed)
     version: str         # e.g., "hypergumbo-0.1.0"
     capabilities: list[str]  # e.g., ["python"]
 
@@ -267,12 +267,17 @@ class AnalysisRun:
     execution_id: str          # unique per run (uuid or hash of run_signature + started_at + repo_fingerprint)
     run_signature: str         # deterministic: hash of (pass_id, version, config_fingerprint, toolchain)
     repo_fingerprint: str      # hash of (git_head + dirty_files) or hash of (file_list + content_hashes)
-    pass_id: str               # e.g., "python-ast-v1" (serialized as "pass" in JSON output)
+    pass_id: str               # e.g., "python" (serialized as "pass" in JSON output).
+                               # INV-morag PR 2: legacy "-v1" / "-ts-v1" suffix removed.
+                               # Pass identity is now a stable opaque name; backend
+                               # (ast / tree-sitter / pattern) lives on the Pass
+                               # catalog entry's "backend" field, and per-pass
+                               # versioning lives in pass_version below.
     version: str               # e.g., "hypergumbo-0.1.0"
     pass_version: str          # INV-morag option A: code-hash of the pass module
-                               # (sha256:<hex>) — real per-pass version, not the
-                               # legacy fake "-v1" suffix in pass_id. Empty for
-                               # producers that have not yet opted in.
+                               # (sha256:<hex>) — real per-pass version. INV-morag
+                               # PR 2 (this version) populated this field at every
+                               # registration site automatically via the decorator.
     toolchain: Dict            # {"name": "python", "version": "3.11.0"}
     config_fingerprint: str    # sha256 of effective config
     files_analyzed: int
@@ -709,9 +714,11 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 
 **Output-specific note:** The IR field `pass_id` is serialized as `pass` in JSON output.
 
-**skipped_passes** (array, optional): Lists passes that could not run (e.g., `{"pass": "lean-ts-v1", "reason": "tree-sitter-lean grammar not available"}`). Each entry includes pass ID and reason.
+**skipped_passes** (array, optional): Lists passes that could not run (e.g., `{"pass": "lean", "reason": "tree-sitter-lean grammar not available"}`). Each entry includes pass ID and reason.
 
-**pass_version** (string, INV-morag option A): real per-pass version derived from `sha256(inspect.getsource(<pass module>))`. Replaces the fake `-v1` suffix in `pass_id` with a value that actually changes when the pass implementation changes. Empty string when the producer has not opted in. PR 2 of INV-morag will propagate non-empty values to every registration site and drop the `-v1` suffix from `pass_id` entirely.
+**pass_version** (string, INV-morag option A): real per-pass version derived from `sha256(inspect.getsource(<pass module>))`. Replaces the fake `-v1` suffix that previously lived inside `pass_id` with a value that actually changes when the pass implementation changes. INV-morag PR 2 propagated non-empty values to every registration site automatically via the `@register_analyzer` / `@register_linker` decorators and dropped the `-v1` / `-ts-v1` suffix from `pass_id` entirely.
+
+**pass_id format (INV-morag PR 2):** the catalog ID and the runtime `pass_id` now come from the same source — the analyzer/linker's `@register_*` decorator name — and never carry a `-v1` / `-ts-v1` / `-ast-v1` suffix. Backend identity (ast vs tree-sitter vs pattern) lives in the `Pass.backend` catalog field, not in the ID. The `scripts/check-pass-id-agreement` CI gate asserts this invariant.
 
 ### reproducibility_context — what's captured, what's explicitly not
 
@@ -1527,7 +1534,7 @@ Tier and Role compose for analysis decisions:
   {
     "path": "malformed.py",
     "reason": "SyntaxError: invalid syntax (line 42)",
-    "analyzer": "python-ast-v1"
+    "analyzer": "python"
   }
   ```
 

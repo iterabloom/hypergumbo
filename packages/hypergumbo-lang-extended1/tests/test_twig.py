@@ -182,7 +182,7 @@ Hello, {{ user.name }}!
         make_twig_file(tmp_path, "template.twig", "{% block content %}{% endblock %}")
         result = analyze_twig(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "twig-v1"
+        assert result.run.pass_id == "twig"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -199,7 +199,7 @@ Hello, {{ user.name }}!
         result = analyze_twig(tmp_path)
         block = next((s for s in result.symbols if s.kind == "block"), None)
         assert block is not None
-        assert block.origin == "twig-v1"
+        assert block.origin == "twig"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", "{% block content %}{% endblock %}")

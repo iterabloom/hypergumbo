@@ -344,7 +344,7 @@ class TestContainmentLinker:
         result = link_containment(ctx)
 
         assert result.run is not None
-        assert result.run.pass_id == "containment-linker-v1"
+        assert result.run.pass_id == "containment-linker"
 
     def test_edge_confidence(self) -> None:
         """Contains edges have high confidence since naming is deterministic."""

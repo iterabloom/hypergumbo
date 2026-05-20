@@ -221,13 +221,13 @@ class TestAnalyzeHaxe:
         result = analyze_haxe(tmp_path)
         func = next((s for s in result.symbols if "foo" in s.name), None)
         assert func is not None
-        assert func.origin == "haxe-v1"
+        assert func.origin == "haxe"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_haxe_file(tmp_path, "Test.hx", "class Test {}")
         result = analyze_haxe(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "haxe-v1"
+        assert result.run.pass_id == "haxe"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

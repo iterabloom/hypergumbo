@@ -38,7 +38,7 @@ class TestBuildInheritanceMaps:
             language="java",
             path="/app/Person.java",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         child = Symbol(
@@ -48,7 +48,7 @@ class TestBuildInheritanceMaps:
             language="java",
             path="/app/Employee.java",
             span=Span(start_line=1, end_line=20, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         extends_edge = Edge.create(
@@ -56,7 +56,7 @@ class TestBuildInheritanceMaps:
             dst=parent.id,
             edge_type="extends",
             line=1,
-            origin="java-v1",
+            origin="java",
             evidence_type="ast_extends",
 
             origin_run_id="test",
@@ -78,7 +78,7 @@ class TestBuildInheritanceMaps:
             language="java",
             path="/app/UserService.java",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         impl = Symbol(
@@ -88,7 +88,7 @@ class TestBuildInheritanceMaps:
             language="java",
             path="/app/UserServiceImpl.java",
             span=Span(start_line=1, end_line=50, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         implements_edge = Edge.create(
@@ -96,7 +96,7 @@ class TestBuildInheritanceMaps:
             dst=interface.id,
             edge_type="implements",
             line=1,
-            origin="java-v1",
+            origin="java",
             evidence_type="ast_implements",
 
             origin_run_id="test",
@@ -122,7 +122,7 @@ class TestFindImplementingMethods:
             language="java",
             path="/app/Parent.java",
             span=Span(start_line=1, end_line=20, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         parent_method = Symbol(
@@ -132,7 +132,7 @@ class TestFindImplementingMethods:
             language="java",
             path="/app/Parent.java",
             span=Span(start_line=5, end_line=10, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         child_class = Symbol(
@@ -142,7 +142,7 @@ class TestFindImplementingMethods:
             language="java",
             path="/app/Child.java",
             span=Span(start_line=1, end_line=30, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         child_method = Symbol(
@@ -152,7 +152,7 @@ class TestFindImplementingMethods:
             language="java",
             path="/app/Child.java",
             span=Span(start_line=10, end_line=20, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
 
@@ -161,7 +161,7 @@ class TestFindImplementingMethods:
             dst=parent_class.id,
             edge_type="extends",
             line=1,
-            origin="java-v1",
+            origin="java",
             evidence_type="ast_extends",
 
             origin_run_id="test",
@@ -195,7 +195,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Animal.java",
             span=Span(start_line=1, end_line=20, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         parent_method = Symbol(
@@ -205,7 +205,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Animal.java",
             span=Span(start_line=5, end_line=10, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         child_class = Symbol(
@@ -215,7 +215,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Dog.java",
             span=Span(start_line=1, end_line=30, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         child_method = Symbol(
@@ -225,7 +225,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Dog.java",
             span=Span(start_line=10, end_line=20, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
 
@@ -234,7 +234,7 @@ class TestLinkTypeHierarchy:
             dst=parent_class.id,
             edge_type="extends",
             line=1,
-            origin="java-v1",
+            origin="java",
             evidence_type="ast_extends",
 
             origin_run_id="test",
@@ -266,7 +266,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Service.java",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         interface_method = Symbol(
@@ -276,7 +276,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Service.java",
             span=Span(start_line=3, end_line=3, start_col=4, end_col=30),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         impl_class = Symbol(
@@ -286,7 +286,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/ServiceImpl.java",
             span=Span(start_line=1, end_line=50, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         impl_method = Symbol(
@@ -296,7 +296,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/ServiceImpl.java",
             span=Span(start_line=10, end_line=20, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
 
@@ -305,7 +305,7 @@ class TestLinkTypeHierarchy:
             dst=interface.id,
             edge_type="implements",
             line=1,
-            origin="java-v1",
+            origin="java",
             evidence_type="ast_implements",
 
             origin_run_id="test",
@@ -336,7 +336,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Parent.java",
             span=Span(start_line=1, end_line=20, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         parent_method = Symbol(
@@ -346,7 +346,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Parent.java",
             span=Span(start_line=5, end_line=10, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         child_class = Symbol(
@@ -356,7 +356,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Child.java",
             span=Span(start_line=1, end_line=30, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         # Child has a DIFFERENT method, not an override
@@ -367,7 +367,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Child.java",
             span=Span(start_line=10, end_line=20, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
 
@@ -376,7 +376,7 @@ class TestLinkTypeHierarchy:
             dst=parent_class.id,
             edge_type="extends",
             line=1,
-            origin="java-v1",
+            origin="java",
             evidence_type="ast_extends",
 
             origin_run_id="test",
@@ -403,7 +403,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Shape.java",
             span=Span(start_line=1, end_line=20, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         parent_method = Symbol(
@@ -413,7 +413,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Shape.java",
             span=Span(start_line=5, end_line=10, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         circle_class = Symbol(
@@ -423,7 +423,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Circle.java",
             span=Span(start_line=1, end_line=30, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         circle_method = Symbol(
@@ -433,7 +433,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Circle.java",
             span=Span(start_line=10, end_line=20, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         square_class = Symbol(
@@ -443,7 +443,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Square.java",
             span=Span(start_line=1, end_line=30, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         square_method = Symbol(
@@ -453,7 +453,7 @@ class TestLinkTypeHierarchy:
             language="java",
             path="/app/Square.java",
             span=Span(start_line=10, end_line=20, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
 
@@ -462,7 +462,7 @@ class TestLinkTypeHierarchy:
             dst=parent_class.id,
             edge_type="extends",
             line=1,
-            origin="java-v1",
+            origin="java",
             evidence_type="ast_extends",
 
             origin_run_id="test",
@@ -472,7 +472,7 @@ class TestLinkTypeHierarchy:
             dst=parent_class.id,
             edge_type="extends",
             line=1,
-            origin="java-v1",
+            origin="java",
             evidence_type="ast_extends",
 
             origin_run_id="test",
@@ -529,7 +529,7 @@ class TestLinkTypeHierarchy:
             language="go",
             path="/app/notify/notify.go",
             span=Span(start_line=60, end_line=70, start_col=0, end_col=1),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test",
         )
         iface_method = Symbol(
@@ -539,7 +539,7 @@ class TestLinkTypeHierarchy:
             language="go",
             path="/app/notify/notify.go",
             span=Span(start_line=62, end_line=62, start_col=4, end_col=50),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test",
         )
 
@@ -557,7 +557,7 @@ class TestLinkTypeHierarchy:
                 span=Span(
                     start_line=10, end_line=20, start_col=0, end_col=1,
                 ),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             )
             method = Symbol(
@@ -569,7 +569,7 @@ class TestLinkTypeHierarchy:
                 span=Span(
                     start_line=30, end_line=40, start_col=0, end_col=1,
                 ),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             )
             concretes.append(struct)
@@ -582,7 +582,7 @@ class TestLinkTypeHierarchy:
                 dst=iface.id,
                 edge_type="implements",
                 line=10,
-                origin="go-v1",
+                origin="go",
                 evidence_type="ast_implements",
 
                 origin_run_id="test",
@@ -638,7 +638,7 @@ class TestResolveMethodClassId:
             language="python",
             path="/app/mod.py",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="py-v1",
+            origin="py",
             origin_run_id="test",
         )
         assert _resolve_method_class_id(method, {}, {}) is None
@@ -660,7 +660,7 @@ class TestResolveMethodClassId:
             language="python",
             path="/app/mod.py",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="py-v1",
+            origin="py",
             origin_run_id="test",
         )
         # class_ids_by_name is empty — class "External" is not a known class
@@ -687,7 +687,7 @@ class TestResolveMethodClassId:
             language="go",
             path="/app/types.go",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test",
         )
         # Method defined in a different file than the struct
@@ -698,7 +698,7 @@ class TestResolveMethodClassId:
             language="go",
             path="/app/methods.go",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test",
         )
         class_symbols = {struct_a.id: struct_a}
@@ -786,7 +786,7 @@ class TestEdgeCases:
             language="java",
             path="/app/Foo.java",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         call_edge = Edge.create(
@@ -818,7 +818,7 @@ class TestEdgeCases:
             language="java",
             path="/app/Parent.java",
             span=Span(start_line=1, end_line=20, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         parent_method = Symbol(
@@ -828,7 +828,7 @@ class TestEdgeCases:
             language="java",
             path="/app/Parent.java",
             span=Span(start_line=5, end_line=10, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
 
@@ -860,7 +860,7 @@ class TestEdgeCases:
             edges=[],
         )
 
-        result = run_linker("type_hierarchy", ctx)
+        result = run_linker("type-hierarchy", ctx)
         assert result is not None
         assert result.edges == []
 
@@ -881,7 +881,7 @@ class TestDuplicateHandling:
             language="java",
             path="/app/Runnable.java",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         interface_method = Symbol(
@@ -891,7 +891,7 @@ class TestDuplicateHandling:
             language="java",
             path="/app/Runnable.java",
             span=Span(start_line=3, end_line=3, start_col=4, end_col=30),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         impl_class = Symbol(
@@ -901,7 +901,7 @@ class TestDuplicateHandling:
             language="java",
             path="/app/Worker.java",
             span=Span(start_line=1, end_line=50, start_col=0, end_col=1),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
         impl_method = Symbol(
@@ -911,7 +911,7 @@ class TestDuplicateHandling:
             language="java",
             path="/app/Worker.java",
             span=Span(start_line=10, end_line=20, start_col=4, end_col=5),
-            origin="java-v1",
+            origin="java",
             origin_run_id="test",
         )
 
@@ -921,7 +921,7 @@ class TestDuplicateHandling:
             dst=interface.id,
             edge_type="implements",
             line=1,
-            origin="java-v1",
+            origin="java",
             evidence_type="ast_implements",
 
             origin_run_id="test",
@@ -931,7 +931,7 @@ class TestDuplicateHandling:
             dst=interface.id,
             edge_type="implements",
             line=2,  # Different line to make unique edge
-            origin="java-v1",
+            origin="java",
             evidence_type="ast_implements",
 
             origin_run_id="test",
@@ -967,9 +967,9 @@ class TestLinkerRegistration:
         import hypergumbo_core.linkers.type_hierarchy as th_module
         importlib.reload(th_module)
 
-        linker = get_linker("type_hierarchy")
+        linker = get_linker("type-hierarchy")
         assert linker is not None
-        assert linker.name == "type_hierarchy"
+        assert linker.name == "type-hierarchy"
         assert "dispatch" in linker.description.lower() or "hierarchy" in linker.description.lower()
 
 
@@ -983,28 +983,28 @@ class TestTestFileConfidencePenalty:
             name="Service", kind="class", language="java",
             path="/app/Service.java",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         parent_method = Symbol(
             id="java:/app/Service.java:2-4:Service.process:method",
             name="Service.process", kind="method", language="java",
             path="/app/Service.java",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         child = Symbol(
             id="java:/app/ServiceImpl.java:1-5:ServiceImpl:class",
             name="ServiceImpl", kind="class", language="java",
             path="/app/ServiceImpl.java",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         child_method = Symbol(
             id="java:/app/ServiceImpl.java:2-4:ServiceImpl.process:method",
             name="ServiceImpl.process", kind="method", language="java",
             path="/app/ServiceImpl.java",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         extends_edge = Edge.create(
             src=child.id, dst=parent.id, edge_type="extends", line=1,
@@ -1034,14 +1034,14 @@ class TestTestFileConfidencePenalty:
             name="Notifier", kind="interface", language="java",
             path="/app/Notifier.java",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         parent_method = Symbol(
             id="java:/app/Notifier.java:2-4:Notifier.notify:method",
             name="Notifier.notify", kind="method", language="java",
             path="/app/Notifier.java",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         # Create 8 implementors — enough to clearly show 1/sqrt(N) scaling.
         impl_symbols: list[Symbol] = []
@@ -1053,14 +1053,14 @@ class TestTestFileConfidencePenalty:
                 name=f"Impl{i}", kind="class", language="java",
                 path=f"/app/Impl{i}.java",
                 span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-                origin="java-v1", origin_run_id="test",
+                origin="java", origin_run_id="test",
             )
             method = Symbol(
                 id=f"java:/app/Impl{i}.java:2-4:Impl{i}.notify:method",
                 name=f"Impl{i}.notify", kind="method", language="java",
                 path=f"/app/Impl{i}.java",
                 span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
-                origin="java-v1", origin_run_id="test",
+                origin="java", origin_run_id="test",
             )
             edge = Edge.create(
                 src=cls.id, dst=parent.id, edge_type="implements", line=1,
@@ -1094,28 +1094,28 @@ class TestTestFileConfidencePenalty:
             name="Base", kind="class", language="java",
             path="/app/Base.java",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         parent_method = Symbol(
             id="java:/app/Base.java:2-4:Base.run:method",
             name="Base.run", kind="method", language="java",
             path="/app/Base.java",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         child = Symbol(
             id="java:/app/Derived.java:1-5:Derived:class",
             name="Derived", kind="class", language="java",
             path="/app/Derived.java",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         child_method = Symbol(
             id="java:/app/Derived.java:2-4:Derived.run:method",
             name="Derived.run", kind="method", language="java",
             path="/app/Derived.java",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         extends_edge = Edge.create(
             src=child.id, dst=parent.id, edge_type="extends", line=1,
@@ -1138,28 +1138,28 @@ class TestTestFileConfidencePenalty:
             name="Service", kind="class", language="java",
             path="/app/Service.java",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         parent_method = Symbol(
             id="java:/app/Service.java:2-4:Service.process:method",
             name="Service.process", kind="method", language="java",
             path="/app/Service.java",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         test_child = Symbol(
             id="java:/test/ServiceTest.java:1-5:TestImpl:class",
             name="TestImpl", kind="class", language="java",
             path="/test/ServiceTest.java",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         test_method = Symbol(
             id="java:/test/ServiceTest.java:2-4:TestImpl.process:method",
             name="TestImpl.process", kind="method", language="java",
             path="/test/ServiceTest.java",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         extends_edge = Edge.create(
             src=test_child.id, dst=parent.id, edge_type="extends", line=1,
@@ -1328,21 +1328,21 @@ class TestPerLanguageConcreteExtendsDispatch:
             name="Notifier", kind="interface", language="go",
             path="/app/notify/notify.go",
             span=Span(start_line=60, end_line=70, start_col=0, end_col=1),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         iface_method = Symbol(
             id="go:/app/notify/notify.go:62-62:Notifier.Notify:method",
             name="Notifier.Notify", kind="method", language="go",
             path="/app/notify/notify.go",
             span=Span(start_line=62, end_line=62, start_col=4, end_col=50),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         impl_struct, impl_method = self._make_struct(
             "go", "discord", "Notifier", "Notify",
         )
         implements_edge = Edge.create(
             src=impl_struct.id, dst=iface.id, edge_type="implements",
-            line=10, origin="go-v1", evidence_type="ast_implements",
+            line=10, origin="go", evidence_type="ast_implements",
 
             origin_run_id="test",
         )
@@ -1382,25 +1382,25 @@ class TestPerLanguageConcreteExtendsDispatch:
             id="java:/app/P.java:1-5:P:class",
             name="P", kind="class", language="java", path="/app/P.java",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         parent_method = Symbol(
             id="java:/app/P.java:2-4:P.foo:method",
             name="P.foo", kind="method", language="java", path="/app/P.java",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         child = Symbol(
             id="java:/app/C.java:1-5:C:class",
             name="C", kind="class", language="java", path="/app/C.java",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         child_method = Symbol(
             id="java:/app/C.java:2-4:C.foo:method",
             name="C.foo", kind="method", language="java", path="/app/C.java",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
         # Edge src points to an ID that is NOT among symbols passed to
         # build_inheritance_maps — exercise the fallback branch.
@@ -1492,7 +1492,7 @@ class TestSkipLevelDispatch:
             id=f"java:{path}:1-50:{name}:class",
             name=name, kind="class", language="java",
             path=path, span=Span(1, 50, 0, 1),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
 
     def _make_method(self, qualified: str, *, span: tuple[int, int] = (5, 10)) -> Symbol:
@@ -1501,7 +1501,7 @@ class TestSkipLevelDispatch:
             id=f"java:/app/{cls}.java:{span[0]}-{span[1]}:{qualified}:method",
             name=qualified, kind="method", language="java",
             path=f"/app/{cls}.java", span=Span(span[0], span[1], 4, 5),
-            origin="java-v1", origin_run_id="test",
+            origin="java", origin_run_id="test",
         )
 
     def test_skip_level_grandparent_to_grandchild(self) -> None:
@@ -1600,32 +1600,32 @@ class TestSkipLevelDispatch:
             id="go:/app/foo.go:1-5:IFoo:interface",
             name="IFoo", kind="interface", language="go",
             path="/app/foo.go", span=Span(1, 5, 0, 1),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         ifoo_method = Symbol(
             id="go:/app/foo.go:2-3:IFoo.Foo:method",
             name="IFoo.Foo", kind="method", language="go",
             path="/app/foo.go", span=Span(2, 3, 4, 5),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         ibar = Symbol(
             id="go:/app/bar.go:1-5:IBar:interface",
             name="IBar", kind="interface", language="go",
             path="/app/bar.go", span=Span(1, 5, 0, 1),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         # IBar does NOT define Foo — only embeds IFoo.
         bar_impl = Symbol(
             id="go:/app/impl.go:1-10:BarImpl:struct",
             name="BarImpl", kind="struct", language="go",
             path="/app/impl.go", span=Span(1, 10, 0, 1),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         bar_impl_foo = Symbol(
             id="go:/app/impl.go:3-5:BarImpl.Foo:method",
             name="BarImpl.Foo", kind="method", language="go",
             path="/app/impl.go", span=Span(3, 5, 4, 5),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         edges = [
             Edge.create(src=bar_impl.id, dst=ibar.id, edge_type="implements", line=1, origin="test", origin_run_id="test"),
@@ -1659,32 +1659,32 @@ class TestSkipLevelDispatch:
             id="go:/app/a.go:1-5:A:struct",
             name="A", kind="struct", language="go",
             path="/app/a.go", span=Span(1, 5, 0, 1),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         a_foo = Symbol(
             id="go:/app/a.go:2-3:A.Foo:method",
             name="A.Foo", kind="method", language="go",
             path="/app/a.go", span=Span(2, 3, 4, 5),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         b = Symbol(
             id="go:/app/b.go:1-5:B:struct",
             name="B", kind="struct", language="go",
             path="/app/b.go", span=Span(1, 5, 0, 1),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         # B does NOT define Foo — Go method-on-embedded-A would still resolve to A.Foo.
         c = Symbol(
             id="go:/app/c.go:1-10:C:struct",
             name="C", kind="struct", language="go",
             path="/app/c.go", span=Span(1, 10, 0, 1),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         c_foo = Symbol(
             id="go:/app/c.go:3-5:C.Foo:method",
             name="C.Foo", kind="method", language="go",
             path="/app/c.go", span=Span(3, 5, 4, 5),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         edges = [
             Edge.create(src=b.id, dst=a.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
@@ -1720,43 +1720,43 @@ class TestSkipLevelDispatch:
             id="typescript:/app/I0.ts:1-5:I0:interface",
             name="I0", kind="interface", language="typescript",
             path="/app/I0.ts", span=Span(1, 5, 0, 1),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         i0_foo = Symbol(
             id="typescript:/app/I0.ts:2-3:I0.foo:method",
             name="I0.foo", kind="method", language="typescript",
             path="/app/I0.ts", span=Span(2, 3, 4, 5),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         i1 = Symbol(
             id="typescript:/app/I1.ts:1-5:I1:interface",
             name="I1", kind="interface", language="typescript",
             path="/app/I1.ts", span=Span(1, 5, 0, 1),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         i2 = Symbol(
             id="typescript:/app/I2.ts:1-5:I2:interface",
             name="I2", kind="interface", language="typescript",
             path="/app/I2.ts", span=Span(1, 5, 0, 1),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         i3 = Symbol(
             id="typescript:/app/I3.ts:1-5:I3:interface",
             name="I3", kind="interface", language="typescript",
             path="/app/I3.ts", span=Span(1, 5, 0, 1),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         impl = Symbol(
             id="typescript:/app/Impl.ts:1-10:Impl:class",
             name="Impl", kind="class", language="typescript",
             path="/app/Impl.ts", span=Span(1, 10, 0, 1),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         impl_foo = Symbol(
             id="typescript:/app/Impl.ts:3-5:Impl.foo:method",
             name="Impl.foo", kind="method", language="typescript",
             path="/app/Impl.ts", span=Span(3, 5, 4, 5),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         edges = [
             Edge.create(src=impl.id, dst=i3.id, edge_type="implements", line=1, origin="test", origin_run_id="test"),
@@ -1790,32 +1790,32 @@ class TestSkipLevelDispatch:
             id="typescript:/app/IFoo.ts:1-5:IFoo:interface",
             name="IFoo", kind="interface", language="typescript",
             path="/app/IFoo.ts", span=Span(1, 5, 0, 1),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         ifoo_foo = Symbol(
             id="typescript:/app/IFoo.ts:2-3:IFoo.foo:method",
             name="IFoo.foo", kind="method", language="typescript",
             path="/app/IFoo.ts", span=Span(2, 3, 4, 5),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         ibar = Symbol(
             id="typescript:/app/IBar.ts:1-5:IBar:interface",
             name="IBar", kind="interface", language="typescript",
             path="/app/IBar.ts", span=Span(1, 5, 0, 1),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         # IBar does not redefine foo — it inherits IFoo.foo via extends.
         impl = Symbol(
             id="typescript:/app/Impl.ts:1-10:Impl:class",
             name="Impl", kind="class", language="typescript",
             path="/app/Impl.ts", span=Span(1, 10, 0, 1),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         impl_foo = Symbol(
             id="typescript:/app/Impl.ts:3-5:Impl.foo:method",
             name="Impl.foo", kind="method", language="typescript",
             path="/app/Impl.ts", span=Span(3, 5, 4, 5),
-            origin="typescript-v1", origin_run_id="test",
+            origin="typescript", origin_run_id="test",
         )
         edges = [
             Edge.create(src=impl.id, dst=ibar.id, edge_type="implements", line=1, origin="test", origin_run_id="test"),

@@ -38,11 +38,12 @@ from __future__ import annotations
 import importlib
 import importlib.metadata
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterator
 
 from .base import AnalysisResult
+from ..ir import compute_pass_version
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,21 @@ class RegisteredAnalyzer:
         supports_max_files: Whether this analyzer accepts a max_files parameter
         capture_symbols_as: If set, store this analyzer's symbols under
             this key in captured_symbols dict for linkers (e.g., "java" for JNI)
+        description: Human-readable description of the analyzer (INV-morag PR 2)
+        pass_label: Display label for cmd_catalog output (INV-morag PR 2)
+        backend: Parsing backend identifier — e.g., "ast", "tree-sitter",
+            "regex", "pattern". Decoupled from pass_id so the ID stays stable
+            across backend swaps (INV-morag PR 2 / ADR-spec).
+        languages: Languages this analyzer handles (used by
+            suggest_passes_for_languages). Defaults to ``[name]`` when empty.
+        availability: ``"core"`` (always available) or ``"extra"`` (requires
+            optional deps like tree-sitter).
+        requires: Optional package requirement label (e.g.,
+            ``"tree-sitter-language-pack"``).
+        pass_version: Code-hash of the analyzer's module source, computed at
+            decoration time via :func:`hypergumbo_core.ir.compute_pass_version`
+            (INV-morag PR 1). Changes only when the pass implementation
+            changes; immune to unrelated package-version bumps.
     """
 
     name: str
@@ -75,6 +91,13 @@ class RegisteredAnalyzer:
     requires_symbols: list[str] | None = None
     supports_max_files: bool = False
     capture_symbols_as: str | None = None
+    description: str = ""
+    pass_label: str = ""
+    backend: str = ""
+    languages: list[str] = field(default_factory=list)
+    availability: str = "core"
+    requires: str | None = None
+    pass_version: str = ""
 
     def get_func(self) -> AnalyzerFunc:
         """Get the analyzer function, resolving from module for patchability.
@@ -104,27 +127,51 @@ _ANALYZER_REGISTRY: dict[str, RegisteredAnalyzer] = {}
 _discovered: bool = False
 
 
-def register_analyzer(
+def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag strings, not passwords; bandit flags any "pass*" name with "" default
     name: str,
     priority: int = 50,
     requires_symbols: list[str] | None = None,
     supports_max_files: bool = False,
     capture_symbols_as: str | None = None,
+    description: str = "",
+    pass_label: str = "",
+    backend: str = "",
+    languages: list[str] | None = None,
+    availability: str = "core",
+    requires: str | None = None,
 ) -> Callable[[AnalyzerFunc], AnalyzerFunc]:
     """Decorator to register an analyzer function.
 
     Args:
-        name: Unique identifier for this analyzer (e.g., "go", "rust")
+        name: Unique identifier for this analyzer (e.g., "go", "rust").
         priority: Execution order (lower = earlier). Default 50.
         requires_symbols: Other analyzers whose symbols this one needs.
         supports_max_files: Whether the analyzer accepts max_files parameter.
         capture_symbols_as: Key for storing symbols in captured_symbols dict.
+        description: Human-readable description (catalog display).
+        pass_label: Display label for cmd_catalog (INV-morag PR 2; defaults
+            to the analyzer name when empty).
+        backend: Parsing backend tag — ``"ast"``, ``"tree-sitter"``,
+            ``"regex"``, ``"pattern"``, etc. Decoupled from pass_id so
+            backend swaps don't churn the ID.
+        languages: Languages this analyzer handles (catalog suggestions).
+            Defaults to ``[name]``.
+        availability: ``"core"`` or ``"extra"``.
+        requires: Optional pip-package requirement label.
 
     Returns:
         Decorator that registers the function and returns it unchanged.
 
     Example:
-        @register_analyzer("go", priority=50)
+        @register_analyzer(
+            "go",
+            priority=50,
+            description="Go via tree-sitter",
+            backend="tree-sitter",
+            languages=["go"],
+            availability="extra",
+            requires="tree-sitter-language-pack",
+        )
         def analyze_go(repo_root: Path) -> AnalysisResult:
             ...
     """
@@ -139,6 +186,13 @@ def register_analyzer(
             requires_symbols=requires_symbols,
             supports_max_files=supports_max_files,
             capture_symbols_as=capture_symbols_as,
+            description=description,
+            pass_label=pass_label or name,
+            backend=backend,
+            languages=list(languages) if languages else [name],
+            availability=availability,
+            requires=requires,
+            pass_version=compute_pass_version(func),
         )
         return func
 

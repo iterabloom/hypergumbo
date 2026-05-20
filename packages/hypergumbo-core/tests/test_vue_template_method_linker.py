@@ -35,7 +35,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "handleDelete",
             },
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -46,7 +46,7 @@ class TestVueTemplateMethodLinker:
             language="javascript",
             path="/repo/src/App.vue",
             span=Span(start_line=25, end_line=30, start_col=4, end_col=5),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -76,7 +76,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "handleClick",
             },
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -87,7 +87,7 @@ class TestVueTemplateMethodLinker:
             language="javascript",
             path="/repo/src/B.vue",
             span=Span(start_line=25, end_line=30, start_col=4, end_col=5),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -113,7 +113,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "nonexistentMethod",
             },
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -124,7 +124,7 @@ class TestVueTemplateMethodLinker:
             language="javascript",
             path="/repo/src/App.vue",
             span=Span(start_line=25, end_line=30, start_col=4, end_col=5),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -149,7 +149,7 @@ class TestVueTemplateMethodLinker:
                 "element": "img",
                 "directive_type": "v-bind",
             },
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -160,7 +160,7 @@ class TestVueTemplateMethodLinker:
             language="javascript",
             path="/repo/src/App.vue",
             span=Span(start_line=25, end_line=30, start_col=4, end_col=5),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -186,7 +186,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "handleClick",
             },
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -197,7 +197,7 @@ class TestVueTemplateMethodLinker:
             language="javascript",
             path="/repo/src/App.vue",
             span=Span(start_line=25, end_line=30, start_col=4, end_col=5),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -224,7 +224,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "handleSave",
             },
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -240,7 +240,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "handleCancel",
             },
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -251,7 +251,7 @@ class TestVueTemplateMethodLinker:
             language="javascript",
             path="/repo/src/App.vue",
             span=Span(start_line=25, end_line=30, start_col=4, end_col=5),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -262,7 +262,7 @@ class TestVueTemplateMethodLinker:
             language="javascript",
             path="/repo/src/App.vue",
             span=Span(start_line=35, end_line=40, start_col=4, end_col=5),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -288,7 +288,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "close",
             },
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -299,7 +299,7 @@ class TestVueTemplateMethodLinker:
             language="javascript",
             path="/repo/src/components/Modal.vue",
             span=Span(start_line=50, end_line=55, start_col=4, end_col=5),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -321,7 +321,7 @@ class TestVueTemplateMethodLinker:
             path="src/App.vue",
             span=Span(start_line=5, end_line=5, start_col=2, end_col=20),
             meta={"import_path": "./Modal.vue"},
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -332,7 +332,7 @@ class TestVueTemplateMethodLinker:
             language="javascript",
             path="/repo/src/App.vue",
             span=Span(start_line=25, end_line=30, start_col=4, end_col=5),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -363,7 +363,7 @@ class TestLinkerRegistryIntegration:
             path="src/App.vue",
             span=Span(start_line=5, end_line=5, start_col=2, end_col=40),
             meta={"directive_type": "v-on", "handler_expression": "handleClick"},
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -375,7 +375,7 @@ class TestLinkerRegistryIntegration:
             path="src/App.vue",
             span=Span(start_line=8, end_line=8, start_col=2, end_col=30),
             meta={"directive_type": "v-if"},
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -386,7 +386,7 @@ class TestLinkerRegistryIntegration:
             language="javascript",
             path="/repo/src/App.vue",
             span=Span(start_line=20, end_line=25, start_col=4, end_col=5),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -411,7 +411,7 @@ class TestLinkerRegistryIntegration:
                 "directive_type": "v-on",
                 "handler_expression": "handleClick",
             },
-            origin="vue-v1",
+            origin="vue",
             origin_run_id="test-run",
         )
 
@@ -422,7 +422,7 @@ class TestLinkerRegistryIntegration:
             language="javascript",
             path="/repo/src/App.vue",
             span=Span(start_line=25, end_line=30, start_col=4, end_col=5),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 

@@ -37,7 +37,7 @@ def _py_function(
         language="python",
         path=path,
         span=Span(start_line=start, end_line=start + 5, start_col=0, end_col=0),
-        origin="python-v1",
+        origin="python",
     )
 
 
@@ -56,7 +56,7 @@ def _py_class(
         path=path,
         span=Span(start_line=start, end_line=end, start_col=0, end_col=0),
         meta={"base_classes": base_classes},
-        origin="python-v1",
+        origin="python",
     )
 
 
@@ -487,7 +487,7 @@ class TestRenderCallEdgeCases:
             language="python",
             path="app/views.py",
             span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
-            origin="python-v1",
+            origin="python",
         )
         ctx = LinkerContext(repo_root=tmp_path, symbols=[fn])
 
@@ -603,7 +603,7 @@ class TestCBVDefaultEdgeCases:
             language="python",
             path="app/views.py",
             span=Span(start_line=1, end_line=4, start_col=0, end_col=0),
-            origin="python-v1",
+            origin="python",
         )
         inner = Symbol(
             id="python:app/views.py:2-3:inner:function",
@@ -612,7 +612,7 @@ class TestCBVDefaultEdgeCases:
             language="python",
             path="app/views.py",
             span=Span(start_line=2, end_line=3, start_col=4, end_col=0),
-            origin="python-v1",
+            origin="python",
         )
         ctx = LinkerContext(repo_root=tmp_path, symbols=[outer, inner])
 
@@ -797,7 +797,7 @@ class TestPathHeuristicEdgeCases:
             language="ruby",
             path="app/controllers/users.rb",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="ruby-v1",
+            origin="ruby",
         )
         ctx = LinkerContext(repo_root=tmp_path, symbols=[ruby_sym])
         result = link_view_template_django(ctx)

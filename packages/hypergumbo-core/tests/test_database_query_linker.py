@@ -561,7 +561,7 @@ class TestDatabaseQueryLinker:
         result = link_database_queries(tmp_path, [])
 
         assert result.run is not None
-        assert result.run.pass_id == "database-query-linker-v1"
+        assert result.run.pass_id == "database-query-linker"
         assert result.run.files_analyzed >= 1
         assert result.run.duration_ms >= 0
 

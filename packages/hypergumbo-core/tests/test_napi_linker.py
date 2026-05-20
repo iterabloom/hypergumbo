@@ -39,7 +39,7 @@ def _make_js_symbol(
         language="javascript",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="js-v1",
+        origin="js",
         origin_run_id=run.execution_id,
     )
 
@@ -60,7 +60,7 @@ def _make_c_symbol(
         language="c",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="c-v1",
+        origin="c",
         origin_run_id=run.execution_id,
     )
 
@@ -81,7 +81,7 @@ def _make_cpp_symbol(
         language="cpp",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="cpp-v1",
+        origin="cpp",
         origin_run_id=run.execution_id,
     )
 
@@ -118,7 +118,7 @@ class TestNAPILinkerCAPI:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -167,7 +167,7 @@ class TestNAPILinkerCAPI:
             line=5,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -214,7 +214,7 @@ class TestNAPILinkerNodeAddonAPI:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -266,7 +266,7 @@ class TestNAPILinkerNodeAddonAPI:
             line=4,
             evidence_type="method_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -316,7 +316,7 @@ class TestNAPILinkerNodeAddonAPI:
             line=4,
             evidence_type="method_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -371,7 +371,7 @@ class TestNAPILinkerTemplateForms:
             line=2,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -421,7 +421,7 @@ class TestNAPILinkerTemplateForms:
             line=4,
             evidence_type="method_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -470,7 +470,7 @@ class TestNAPILinkerTemplateForms:
             line=4,
             evidence_type="method_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -520,7 +520,7 @@ class TestNAPILinkerTemplateForms:
             line=4,
             evidence_type="property_access",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -565,7 +565,7 @@ class TestNAPILinkerEdgeCases:
         )
 
         assert result.run is not None
-        assert result.run.pass_id == "napi-linker-v1"
+        assert result.run.pass_id == "napi-linker"
 
     def test_no_link_when_c_function_not_in_symbols(self, tmp_path: Path) -> None:
         """No edge when N-API exports a name but no matching C symbol exists."""
@@ -589,7 +589,7 @@ class TestNAPILinkerEdgeCases:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -630,7 +630,7 @@ class TestNAPILinkerEdgeCases:
             line=3,
             evidence_type="function_call",
             confidence=0.85,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -668,7 +668,7 @@ class TestNAPILinkerEdgeCases:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -679,7 +679,7 @@ class TestNAPILinkerEdgeCases:
             line=7,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -717,7 +717,7 @@ class TestNAPILinkerEdgeCases:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -745,7 +745,7 @@ class TestNAPILinkerEdgeCases:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -782,7 +782,7 @@ class TestNAPILinkerEdgeCases:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -823,7 +823,7 @@ class TestNAPILinkerEdgeCases:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -834,7 +834,7 @@ class TestNAPILinkerEdgeCases:
             line=4,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -876,7 +876,7 @@ class TestNAPILinkerEdgeCases:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -914,7 +914,7 @@ class TestNAPILinkerEdgeCases:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -951,7 +951,7 @@ class TestNAPILinkerEdgeCases:
             language="typescript",
             path="app.ts",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="ts-v1",
+            origin="ts",
             origin_run_id=AnalysisRun.create(pass_id="test", version="test").execution_id,
         )
 
@@ -962,7 +962,7 @@ class TestNAPILinkerEdgeCases:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="ts-v1",
+            origin="ts",
 
             origin_run_id="test",
         )
@@ -992,15 +992,15 @@ class TestNAPILinkerRegistry:
         """N-API linker is registered in the linker registry."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("napi")
+        linker = get_linker("napi-linker")
         assert linker is not None
-        assert linker.name == "napi"
+        assert linker.name == "napi-linker"
 
     def test_napi_linker_has_requirements(self) -> None:
         """N-API linker declares its requirements."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("napi")
+        linker = get_linker("napi-linker")
         assert linker is not None
         assert len(linker.requirements) >= 2
 
@@ -1012,7 +1012,7 @@ class TestNAPILinkerRegistry:
         """N-API linker activates for js+c, js+cpp, typescript+c, typescript+cpp pairs."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("napi")
+        linker = get_linker("napi-linker")
         assert linker is not None
 
         assert linker.activation.should_run(set(), {"javascript", "c"})
@@ -1036,7 +1036,7 @@ class TestNAPILinkerRegistry:
         )
 
         diagnostics = check_linker_requirements(ctx)
-        napi_diag = next((d for d in diagnostics if d.linker_name == "napi"), None)
+        napi_diag = next((d for d in diagnostics if d.linker_name == "napi-linker"), None)
         assert napi_diag is not None
         assert napi_diag.all_met is True
 
@@ -1053,7 +1053,7 @@ class TestNAPILinkerRegistry:
         )
 
         diagnostics = check_linker_requirements(ctx)
-        napi_diag = next((d for d in diagnostics if d.linker_name == "napi"), None)
+        napi_diag = next((d for d in diagnostics if d.linker_name == "napi-linker"), None)
         assert napi_diag is not None
         assert napi_diag.all_met is False
 
@@ -1081,7 +1081,7 @@ class TestNAPILinkerRegistry:
             line=3,
             evidence_type="function_call",
             confidence=0.50,
-            origin="js-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -1092,7 +1092,7 @@ class TestNAPILinkerRegistry:
             edges=[call_edge],
         )
 
-        result = run_linker("napi", ctx)
+        result = run_linker("napi-linker", ctx)
 
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "calls"
@@ -1128,7 +1128,7 @@ class TestInvZuhubNapiFallback:
             src=js_sym.id,
             dst="javascript:index.js:0-0:add:unresolved",
             edge_type="calls", line=3, evidence_type="function_call",
-            confidence=0.50, origin="js-v1",
+            confidence=0.50, origin="js",
 
             origin_run_id="test",
         )
@@ -1196,7 +1196,7 @@ class TestInvZuhubNapiFallback:
             src=js_sym.id,
             dst="javascript:index.js:0-0:add:unresolved",
             edge_type="calls", line=3, evidence_type="function_call",
-            confidence=0.50, origin="js-v1",
+            confidence=0.50, origin="js",
 
             origin_run_id="test",
         )

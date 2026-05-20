@@ -587,7 +587,7 @@ RESOLVER_REQUIREMENTS = [
 
 
 @register_linker(
-    "graphql_resolver",
+    "graphql-resolver-linker",
     priority=60,  # Run after analyzers have produced GraphQL symbols
     description="GraphQL resolver linking (resolvers to schema types/fields)",
     requirements=RESOLVER_REQUIREMENTS,

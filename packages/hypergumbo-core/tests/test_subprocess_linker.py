@@ -535,7 +535,7 @@ class TestLinkerRegistration:
 
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("subprocess")
+        linker = get_linker("subprocess-linker")
         assert linker is not None
         assert "subprocess" in linker.description.lower() or "cli" in linker.description.lower()
 

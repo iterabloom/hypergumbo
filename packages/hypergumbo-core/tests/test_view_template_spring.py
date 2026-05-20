@@ -47,7 +47,7 @@ def _java_class(
         path=path,
         span=Span(start_line=start, end_line=end, start_col=0, end_col=0),
         meta=meta or None,
-        origin="java-v1",
+        origin="java",
     )
 
 
@@ -70,7 +70,7 @@ def _java_method(
         path=path,
         span=Span(start_line=start, end_line=end, start_col=2, end_col=2),
         meta=meta or None,
-        origin="java-v1",
+        origin="java",
     )
 
 
@@ -719,7 +719,7 @@ class TestEdgeCases:
             path="app/controllers/users.rb",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
             meta={"decorators": [{"name": "Controller", "args": [], "kwargs": {}}]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         ctx = LinkerContext(repo_root=tmp_path, symbols=[ruby_sym])
         result = link_view_template_spring(ctx)

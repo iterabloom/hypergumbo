@@ -385,7 +385,7 @@ end Test;
         result = analyze_ada(temp_repo)
 
         assert result.run is not None
-        assert result.run.pass_id == "ada-v1"
+        assert result.run.pass_id == "ada"
         assert result.run.files_analyzed >= 1
 
 

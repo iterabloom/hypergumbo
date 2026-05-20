@@ -247,7 +247,7 @@ def link_swift_objc(root: Path) -> SwiftObjCLinkerResult:
 
 
 @register_linker(
-    "swift_objc",
+    "swift-objc-linker",
     priority=30,  # Run early, interop bridging is foundational
     description="Swift/Objective-C bridging (@objc, NSObject, bridging headers)",
     activation=LinkerActivation(language_pairs=[("swift", "objc")]),

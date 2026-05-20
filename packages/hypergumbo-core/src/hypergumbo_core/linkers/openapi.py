@@ -431,7 +431,7 @@ def _count_openapi_files(ctx: LinkerContext) -> bool:
 
 
 @register_linker(
-    "openapi",
+    "openapi-linker",
     priority=65,  # Run after route detection
     description="OpenAPI/Swagger spec to route handler linking",
     requirements=[

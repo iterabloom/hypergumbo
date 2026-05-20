@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **276** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 54 core, 4 CLI, 32 tracker)
-- **5873** symbols (functions, classes, methods)
-- **65753** edges by type:
-  - calls: 45421
-  - imports: 9764
-  - instantiates: 7003
+- **5878** symbols (functions, classes, methods)
+- **65824** edges by type:
+  - calls: 45463
+  - imports: 9788
+  - instantiates: 7005
   - contains: 1343
-  - module_attr_ref: 1010
+  - module_attr_ref: 1011
   - dispatches_to: 555
-  - other: 657
+  - other: 659
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 5873 Symbols + 65753 Edges + UsageContexts             │
+│  Output: 5878 Symbols + 65824 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -456,6 +456,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-edge-type-runtime-coherence` | Runtime coherence check for the ADR-0023 edge-type axis. |
 | `check-evidence-type-drift` | Pre-commit lint: ``*EVIDENCE_TYPE*`` sets in packages/ must be |
 | `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
+| `check-pass-id-agreement` | Pre-commit / CI lint: catalog pass IDs agree with runtime pass IDs. |
 | `check-producer-axis-coherence` | Pre-commit lint: literal-string keyword arguments to ``Edge.create``, |
 | `check-schema-coverage` | Corpus-driven schema-coverage gate (WI-luzuh). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
@@ -516,7 +517,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.axis_drift`**: Field-agnostic AST drift detector for axis-bearing canonical regist...
 - **`hypergumbo_core.axis_meta_keys`**: Canonical registry of ``Symbol.meta`` and ``Edge.meta`` key names.
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
-- **`hypergumbo_core.catalog`**: Catalog of available analysis passes.
+- **`hypergumbo_core.catalog`**: Catalog of available analysis passes (registry-derived).
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.dataflow`**: YAML-driven dataflow classification for edges (ADR-0015).
@@ -804,7 +805,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: b5cff2e45816
+  commit: e302390f4c99
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

@@ -203,13 +203,13 @@ git+https://github.com/user/repo.git@main
         result = analyze_requirements(tmp_path)
         req = next((s for s in result.symbols if s.kind == "requirement"), None)
         assert req is not None
-        assert req.origin == "requirements-v1"
+        assert req.origin == "requirements"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path, "requirements.txt", "flask")
         result = analyze_requirements(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "requirements-v1"
+        assert result.run.pass_id == "requirements"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

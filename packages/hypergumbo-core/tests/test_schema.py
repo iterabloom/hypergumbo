@@ -143,7 +143,7 @@ class TestSchemaValidation:
             language="python",
             path="/path/to/file.py",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=10),
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="uuid:12345",
             origin_run_signature="sha256:abc123",
             stable_id="sha256:stable123",
@@ -194,7 +194,7 @@ class TestSchemaValidation:
             dst="test::callee::10-15",
             edge_type="calls",
             line=3,
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="uuid:12345",
             evidence_type="ast_call_direct",
             confidence=0.95,
@@ -213,7 +213,7 @@ class TestSchemaValidation:
         schema = load_schema()
 
         run = AnalysisRun.create(
-            pass_id="python-ast-v1",
+            pass_id="python",
             version="0.1.0",
         )
         run.files_analyzed = 10

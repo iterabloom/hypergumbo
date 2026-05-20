@@ -695,7 +695,7 @@ class TestMessageQueueLinker:
         result = link_message_queues(tmp_path)
 
         assert result.run is not None
-        assert result.run.pass_id == "message-queue-linker-v1"
+        assert result.run.pass_id == "message-queue-linker"
         assert result.run.files_analyzed >= 1
         assert result.run.duration_ms >= 0
 

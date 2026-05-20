@@ -157,7 +157,7 @@ class TestIpcLinker:
             language="javascript",
             path=path,
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="javascript-ts-v1",
+            origin="javascript",
             origin_run_id=run.execution_id,
         )
 
@@ -210,7 +210,7 @@ ipcMain.handle('fetch-data', async (event, args) => {
         result = link_ipc(tmp_path)
 
         assert result.run is not None
-        assert result.run.pass_id == "ipc-linker-v1"
+        assert result.run.pass_id == "ipc-linker"
 
     def test_no_js_files(self, tmp_path: Path) -> None:
         """Handles directory with no JavaScript files."""
@@ -418,7 +418,7 @@ class TestIpcRunMetadata:
         result = link_ipc(tmp_path)
 
         assert result.run is not None
-        assert result.run.pass_id == "ipc-linker-v1"
+        assert result.run.pass_id == "ipc-linker"
 
     def test_run_tracks_files(self, tmp_path: Path) -> None:
         """Run tracks files analyzed."""
@@ -582,9 +582,9 @@ class TestIpcLinkerRegistration:
         import hypergumbo_core.linkers.ipc
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("ipc")
+        linker = get_linker("ipc-linker")
         assert linker is not None
-        assert linker.name == "ipc"
+        assert linker.name == "ipc-linker"
         assert linker.priority == 40
 
     def test_ipc_linker_returns_result(self, tmp_path: Path) -> None:

@@ -46,7 +46,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import AnalysisResult, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
-PASS_ID = make_pass_id("manifest-targets")
+PASS_ID = make_pass_id("manifest_targets")
 
 # All manifest file patterns to scan
 _MANIFEST_PATTERNS = [

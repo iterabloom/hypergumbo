@@ -298,7 +298,7 @@ end
         assert test_func is not None
         assert test_func.span.start_line == 1
         assert test_func.language == "julia"
-        assert test_func.origin == "julia-v1"
+        assert test_func.origin == "julia"
 
 class TestJuliaEdgeProperties:
     """Tests for edge property correctness."""

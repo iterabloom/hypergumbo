@@ -417,15 +417,15 @@ class TestReactComponentRegistry:
         from hypergumbo_core.linkers.registry import get_linker
         import hypergumbo_core.linkers.react_component
 
-        linker = get_linker("react_component")
+        linker = get_linker("react-component-linker")
         assert linker is not None
-        assert linker.name == "react_component"
+        assert linker.name == "react-component-linker"
 
     def test_activation_framework(self) -> None:
         from hypergumbo_core.linkers.registry import get_linker
         import hypergumbo_core.linkers.react_component
 
-        linker = get_linker("react_component")
+        linker = get_linker("react-component-linker")
         assert linker.activation.should_run({"react"}, set())
         assert not linker.activation.should_run({"vue"}, set())
         assert not linker.activation.should_run(set(), {"javascript", "typescript"})
@@ -434,7 +434,7 @@ class TestReactComponentRegistry:
         from hypergumbo_core.linkers.registry import get_linker
         import hypergumbo_core.linkers.react_component
 
-        linker = get_linker("react_component")
+        linker = get_linker("react-component-linker")
         assert len(linker.requirements) == 2
         req_names = {r.name for r in linker.requirements}
         assert "js_ts_files" in req_names
@@ -452,7 +452,7 @@ class TestReactComponentRegistry:
             detected_frameworks={"react"},
         )
         diagnostics = check_linker_requirements(ctx)
-        diag = next((d for d in diagnostics if d.linker_name == "react_component"), None)
+        diag = next((d for d in diagnostics if d.linker_name == "react-component-linker"), None)
         assert diag is not None
         assert diag.all_met
 
@@ -468,7 +468,7 @@ class TestReactComponentRegistry:
             detected_frameworks={"react"},
         )
         diagnostics = check_linker_requirements(ctx)
-        diag = next((d for d in diagnostics if d.linker_name == "react_component"), None)
+        diag = next((d for d in diagnostics if d.linker_name == "react-component-linker"), None)
         assert diag is not None
         assert not diag.all_met
 
@@ -486,7 +486,7 @@ class TestReactComponentRegistry:
             symbols=[app_sym, button_sym],
             detected_frameworks={"react"},
         )
-        result = run_linker("react_component", ctx)
+        result = run_linker("react-component-linker", ctx)
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "references"
         assert result.edges[0].meta.get("construct") == "jsx"

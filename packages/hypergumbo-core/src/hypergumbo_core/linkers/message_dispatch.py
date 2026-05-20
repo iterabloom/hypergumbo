@@ -341,7 +341,7 @@ def link_message_dispatch(
 
 
 @register_linker(
-    "message-dispatch",
+    "message-dispatch-linker",
     priority=87,  # Near Yjs and crypto-flow linkers
     activation=LinkerActivation(always=True),
     requirements=[],

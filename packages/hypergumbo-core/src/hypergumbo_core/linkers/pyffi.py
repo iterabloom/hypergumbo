@@ -511,7 +511,7 @@ PYFFI_REQUIREMENTS = [
 
 
 @register_linker(
-    "pyffi",
+    "pyffi-linker",
     priority=16,  # After cgo (15), before protocol linkers
     description="Python/C/C++/Rust FFI bridge - links ctypes/cffi/PyO3 calls to native implementations",
     requirements=PYFFI_REQUIREMENTS,

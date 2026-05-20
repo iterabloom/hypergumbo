@@ -1149,7 +1149,7 @@ def _resolve_unresolved_grpc_edges(
 
 
 @register_linker(
-    "grpc",
+    "grpc-linker",
     priority=30,  # Run after analyzers but before dependency linker
     description="gRPC/Protobuf RPC pattern linking across languages",
     requirements=GRPC_REQUIREMENTS,

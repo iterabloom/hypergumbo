@@ -337,7 +337,7 @@ NAPI_REQUIREMENTS = [
 
 
 @register_linker(
-    "napi",
+    "napi-linker",
     priority=13,  # After JNI (10), before cgo (15)
     description="Node.js N-API bridge - links JavaScript/TypeScript calls to C/C++ native addon functions",
     requirements=NAPI_REQUIREMENTS,

@@ -106,19 +106,19 @@ class TestLinkerActivationRegistry:
 
     def test_http_linker_always_runs(self) -> None:
         """HTTP linker should always run (protocol linker)."""
-        linker = _get_linker_by_name("http")
+        linker = _get_linker_by_name("http-linker")
         assert linker is not None
         assert linker.activation.always is True
 
     def test_grpc_linker_framework_activation(self) -> None:
         """gRPC linker should only run when gRPC framework detected."""
-        linker = _get_linker_by_name("grpc")
+        linker = _get_linker_by_name("grpc-linker")
         assert linker is not None
         assert "grpc" in linker.activation.frameworks or linker.activation.always
 
     def test_jni_linker_language_pair_activation(self) -> None:
         """JNI linker should only run when Java and C/C++/Rust present."""
-        linker = _get_linker_by_name("jni")
+        linker = _get_linker_by_name("jni-linker")
         assert linker is not None
         # Should have language_pairs for (java, c), (java, cpp), or (java, rust)
         has_java_native = any(
@@ -134,7 +134,7 @@ class TestShouldRunLinker:
     def test_should_run_protocol_linker(self) -> None:
         """Protocol linkers should always run."""
         assert should_run_linker(
-            "http",
+            "http-linker",
             detected_frameworks=set(),
             detected_languages={"python"},
         )
@@ -143,13 +143,13 @@ class TestShouldRunLinker:
         """Framework linkers should not run without framework."""
         # This test assumes grpc linker has framework activation
         result = should_run_linker(
-            "grpc",
+            "grpc-linker",
             detected_frameworks={"fastapi"},  # No gRPC
             detected_languages={"python"},
         )
         # If grpc has activation conditions, it should not run
         # If it's always=True, this test should be skipped
-        linker = _get_linker_by_name("grpc")
+        linker = _get_linker_by_name("grpc-linker")
         if linker and not linker.activation.always:
             assert not result
 

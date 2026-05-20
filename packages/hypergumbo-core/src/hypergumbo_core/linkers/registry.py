@@ -450,18 +450,30 @@ class RegisteredLinker:
     description: str = ""
     requirements: list[LinkerRequirement] = field(default_factory=list)
     activation: LinkerActivation = field(default_factory=lambda: LinkerActivation(always=True))
+    # INV-morag PR 2: catalog metadata co-located with registration.
+    pass_label: str = ""
+    backend: str = ""
+    languages: list[str] = field(default_factory=list)
+    availability: str = "core"
+    requires: str | None = None
+    pass_version: str = ""
 
 
 # Global registry of linkers
 _LINKER_REGISTRY: dict[str, RegisteredLinker] = {}
 
 
-def register_linker(
+def register_linker(  # nosec B107 — pass_label/backend defaults are tag strings, not passwords; bandit flags any "pass*" name with "" default
     name: str,
     priority: int = 50,
     description: str = "",
     requirements: list[LinkerRequirement] | None = None,
     activation: LinkerActivation | None = None,
+    pass_label: str = "",
+    backend: str = "",
+    languages: list[str] | None = None,
+    availability: str = "core",
+    requires: str | None = None,
 ) -> Callable[[LinkerFunc], LinkerFunc]:
     """Decorator to register a linker function.
 
@@ -489,6 +501,8 @@ def register_linker(
     """
 
     def decorator(func: LinkerFunc) -> LinkerFunc:
+        from ..ir import compute_pass_version
+
         _LINKER_REGISTRY[name] = RegisteredLinker(
             name=name,
             func=func,
@@ -496,6 +510,12 @@ def register_linker(
             description=description,
             requirements=requirements or [],
             activation=activation or LinkerActivation(always=True),
+            pass_label=pass_label or name,
+            backend=backend,
+            languages=list(languages) if languages else [],
+            availability=availability,
+            requires=requires,
+            pass_version=compute_pass_version(func),
         )
         return func
 

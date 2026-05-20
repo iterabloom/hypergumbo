@@ -208,13 +208,13 @@ SUMMARY = "Test"
         result = analyze_bitbake(tmp_path)
         var = next((s for s in result.symbols if s.kind == "variable"), None)
         assert var is not None
-        assert var.origin == "bitbake-v1"
+        assert var.origin == "bitbake"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_bitbake_file(tmp_path, "test.bb", "SUMMARY = \"Test\"")
         result = analyze_bitbake(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "bitbake-v1"
+        assert result.run.pass_id == "bitbake"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

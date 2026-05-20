@@ -25,7 +25,7 @@ def _make_sym(path: str, language: str = "typescript") -> Symbol:
         language=language,
         path=path,
         span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-        origin="test-v1",
+        origin="test",
         origin_run_id="uuid:test",
     )
 
@@ -232,7 +232,7 @@ class TestLinkAnnotations:
                 name="other", kind="function", language="typescript",
                 path="src/shared.ts",
                 span=Span(start_line=20, end_line=30, start_col=0, end_col=0),
-                origin="test-v1", origin_run_id="uuid:test",
+                origin="test", origin_run_id="uuid:test",
             ),
         ]
         # Should not crash or produce duplicates
@@ -299,7 +299,7 @@ class TestLinkDispatchAnnotations:
                 name="handle_join", kind="function", language="typescript",
                 path="src/handler.ts",
                 span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-                origin="test-v1", origin_run_id="uuid:test",
+                origin="test", origin_run_id="uuid:test",
             ),
         ]
         result = link_annotations(tmp_path, syms)
@@ -337,7 +337,7 @@ class TestLinkDispatchAnnotations:
                 name="process_msg", kind="function", language="typescript",
                 path="src/proc.ts",
                 span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-                origin="test-v1", origin_run_id="uuid:test",
+                origin="test", origin_run_id="uuid:test",
             ),
         ]
         result = link_annotations(tmp_path, syms)
@@ -370,7 +370,7 @@ class TestAnnotationConventionRegistry:
         """annotation-convention linker should be in the registry."""
         from hypergumbo_core.linkers.registry import get_all_linkers
         linkers = {l.name: l for l in get_all_linkers()}
-        assert "annotation-convention" in linkers
+        assert "annotation-convention-linker" in linkers
 
     def test_linker_runs_via_registry(self, tmp_path: Path) -> None:
         """Linker should produce results when run via registry."""
@@ -392,7 +392,7 @@ class TestAnnotationConventionRegistry:
             detected_languages={"typescript"},
         )
         results = run_all_linkers(ctx)
-        anno_results = [r for name, r in results if name == "annotation-convention"]
+        anno_results = [r for name, r in results if name == "annotation-convention-linker"]
         assert len(anno_results) == 1
         assert len(anno_results[0].edges) >= 1
 
@@ -511,7 +511,7 @@ class TestInvZuhubAnnotationDispatchesFallback:
                 name="handle_join", kind="function", language="typescript",
                 path="src/handler.ts",
                 span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-                origin="test-v1", origin_run_id="uuid:test",
+                origin="test", origin_run_id="uuid:test",
             ),
         ]
         result = link_annotations(tmp_path, syms)
@@ -548,14 +548,14 @@ class TestInvZuhubAnnotationDispatchesFallback:
                 name="handle_join", kind="function", language="typescript",
                 path="src/handler_a.ts",
                 span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-                origin="test-v1", origin_run_id="uuid:test",
+                origin="test", origin_run_id="uuid:test",
             ),
             Symbol(
                 id="typescript:src/handler_b.ts:1-1:handle_join:function",
                 name="handle_join", kind="function", language="typescript",
                 path="src/handler_b.ts",
                 span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-                origin="test-v1", origin_run_id="uuid:test",
+                origin="test", origin_run_id="uuid:test",
             ),
         ]
         result = link_annotations(tmp_path, syms)

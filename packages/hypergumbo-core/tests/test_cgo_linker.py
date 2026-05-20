@@ -33,7 +33,7 @@ def _make_go_symbol(
         language="go",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="go-v1",
+        origin="go",
         origin_run_id=run.execution_id,
     )
 
@@ -54,7 +54,7 @@ def _make_c_symbol(
         language="c",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="c-v1",
+        origin="c",
         origin_run_id=run.execution_id,
     )
 
@@ -74,7 +74,7 @@ def _make_unresolved_edge(
         evidence_type="method_call",
         is_resolved=False,
         confidence=0.50,
-        origin="go-v1",
+        origin="go",
 
         origin_run_id="test",
     )
@@ -171,7 +171,7 @@ class TestCgoLinkerBasic:
         result = link_cgo(go_symbols=[], c_symbols=[], edges=[])
 
         assert result.run is not None
-        assert result.run.pass_id == "cgo-linker-v1"
+        assert result.run.pass_id == "cgo-linker"
 
     def test_edge_confidence(self) -> None:
         """Edge has appropriate confidence level."""
@@ -279,7 +279,7 @@ class TestCgoLinkerEdgeCases:
             language="cpp",
             path="native.cpp",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="cpp-v1",
+            origin="cpp",
             origin_run_id=run.execution_id,
         )
 
@@ -325,7 +325,7 @@ class TestCgoLinkerEdgeCases:
             line=5,
             evidence_type="function_call",
             confidence=0.85,
-            origin="go-v1",
+            origin="go",
 
             origin_run_id="test",
         )
@@ -373,16 +373,16 @@ class TestCgoLinkerRegistry:
         """Cgo linker is registered in the linker registry."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("cgo")
+        linker = get_linker("cgo-linker")
         assert linker is not None
-        assert linker.name == "cgo"
+        assert linker.name == "cgo-linker"
         assert linker.priority == 15
 
     def test_cgo_linker_has_requirements(self) -> None:
         """Cgo linker declares its requirements."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("cgo")
+        linker = get_linker("cgo-linker")
         assert linker is not None
         assert len(linker.requirements) == 2
 
@@ -394,7 +394,7 @@ class TestCgoLinkerRegistry:
         """Cgo linker activates for go+c and go+cpp language pairs."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("cgo")
+        linker = get_linker("cgo-linker")
         assert linker is not None
 
         # Should activate when go and c are both present
@@ -420,7 +420,7 @@ class TestCgoLinkerRegistry:
             edges=[unresolved_edge],
         )
 
-        result = run_linker("cgo", ctx)
+        result = run_linker("cgo-linker", ctx)
 
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "calls"
@@ -440,7 +440,7 @@ class TestCgoLinkerRegistry:
         )
 
         diagnostics = check_linker_requirements(ctx)
-        cgo_diag = next((d for d in diagnostics if d.linker_name == "cgo"), None)
+        cgo_diag = next((d for d in diagnostics if d.linker_name == "cgo-linker"), None)
         assert cgo_diag is not None
         assert cgo_diag.all_met is True
 
@@ -458,7 +458,7 @@ class TestCgoLinkerRegistry:
         )
 
         diagnostics = check_linker_requirements(ctx)
-        cgo_diag = next((d for d in diagnostics if d.linker_name == "cgo"), None)
+        cgo_diag = next((d for d in diagnostics if d.linker_name == "cgo-linker"), None)
         assert cgo_diag is not None
         assert cgo_diag.all_met is False
 

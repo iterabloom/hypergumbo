@@ -327,5 +327,5 @@ message User {}
         result = analyze_proto(temp_repo)
 
         assert result.run is not None
-        assert result.run.pass_id == "proto-v1"
+        assert result.run.pass_id == "proto"
         assert result.run.files_analyzed >= 1

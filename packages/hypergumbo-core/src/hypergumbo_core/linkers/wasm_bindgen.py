@@ -484,7 +484,7 @@ WASM_BINDGEN_REQUIREMENTS = [
 
 
 @register_linker(
-    "wasm_bindgen",
+    "wasm-bindgen-linker",
     priority=14,  # Same tier as Tauri IPC
     description=(
         "wasm-bindgen bridge - links JavaScript/TypeScript imports "

@@ -263,7 +263,7 @@ def _create_inheritance_edges(
     return edges
 
 
-@register_linker("inheritance", priority=15)  # Before type_hierarchy (priority 20)
+@register_linker("inheritance-linker", priority=15)  # Before type_hierarchy (priority 20)
 def link_inheritance(ctx: LinkerContext) -> LinkerResult:
     """Create extends/implements edges from base_classes metadata.
 

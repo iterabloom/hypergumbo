@@ -1119,7 +1119,7 @@ def test_objc_io_boundaries_detected(tmp_path: Path, capsys) -> None:
                 "id": "objc:src/Manager.m:1-5:Manager.cleanup:method",
                 "name": "Manager.cleanup",
                 "kind": "method",
-                "language": "objective-c",
+                "language": "objc",
                 "path": "src/Manager.m",
                 "span": {"start_line": 1, "end_line": 5},
             },

@@ -369,7 +369,7 @@ class TestLuaAnalyzeFallback:
         assert "tree-sitter-lua" in result.skip_reason
         # Run should still be created for provenance tracking
         assert result.run is not None
-        assert result.run.pass_id == "lua-v1"
+        assert result.run.pass_id == "lua"
 
 
 class TestLuaSignatureExtraction:

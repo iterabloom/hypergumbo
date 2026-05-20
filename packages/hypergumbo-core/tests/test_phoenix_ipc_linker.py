@@ -277,7 +277,7 @@ end
         result = link_phoenix_ipc(tmp_path)
 
         assert result.run is not None
-        assert result.run.pass_id == "phoenix-ipc-linker-v1"
+        assert result.run.pass_id == "phoenix-ipc-linker"
 
     def test_no_elixir_files(self, tmp_path: Path) -> None:
         """Handles directory with no Elixir files."""
@@ -356,7 +356,7 @@ class TestPhoenixLinkerMetadata:
         result = link_phoenix_ipc(tmp_path)
 
         assert result.run is not None
-        assert result.run.pass_id == "phoenix-ipc-linker-v1"
+        assert result.run.pass_id == "phoenix-ipc-linker"
 
     def test_run_tracks_files(self, tmp_path: Path) -> None:
         """Run tracks files analyzed."""

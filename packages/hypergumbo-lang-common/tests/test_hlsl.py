@@ -191,7 +191,7 @@ float4 main() : SV_TARGET {
         result = analyze_hlsl(temp_repo)
 
         assert result.run is not None
-        assert result.run.pass_id == "hlsl-v1"
+        assert result.run.pass_id == "hlsl"
         assert result.run.files_analyzed >= 1
 
 

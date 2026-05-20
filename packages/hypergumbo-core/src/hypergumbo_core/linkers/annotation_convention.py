@@ -367,7 +367,7 @@ def link_annotations(
 
 
 @register_linker(
-    "annotation-convention",
+    "annotation-convention-linker",
     priority=90,  # Run after framework linkers
     activation=LinkerActivation(always=True),
     requirements=[],

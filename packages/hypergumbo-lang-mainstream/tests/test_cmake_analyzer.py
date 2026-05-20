@@ -22,7 +22,7 @@ from hypergumbo_lang_mainstream.cmake import (
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
-    assert PASS_ID == "cmake-v1"
+    assert PASS_ID == "cmake"
     assert PASS_VERSION == __version__
 
 def test_analyze_project(tmp_path):

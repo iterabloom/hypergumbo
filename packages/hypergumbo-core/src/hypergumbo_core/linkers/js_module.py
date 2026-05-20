@@ -909,7 +909,7 @@ def _count_js_import_edges(ctx: LinkerContext) -> int:
 
 
 @register_linker(
-    "js-modules",
+    "js-module-linker",
     priority=20,  # Before Vue component linker (25) since it handles JS imports
     description="JS/TS module import resolution",
     activation=LinkerActivation(

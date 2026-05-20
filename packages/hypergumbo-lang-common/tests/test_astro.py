@@ -303,7 +303,7 @@ import Counter from './Counter.astro';
         make_astro_file(tmp_path, "index.astro", "---\n---\n<h1>Hello</h1>")
         result = analyze_astro(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "astro-v1"
+        assert result.run.pass_id == "astro"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -331,7 +331,7 @@ import Header from './Header.astro';
             None,
         )
         assert edge is not None
-        assert edge.origin == "astro-v1"
+        assert edge.origin == "astro"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         # Cluster F per audit-findings 0011: edge src is now a file_id.

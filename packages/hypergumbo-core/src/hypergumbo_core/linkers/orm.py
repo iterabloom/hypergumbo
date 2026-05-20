@@ -307,7 +307,7 @@ def link_orm_queries(
 
 
 @register_linker(
-    "orm",
+    "orm-linker",
     priority=75,  # Run after framework patterns have enriched symbols
     description="ORM query linking (model accessor patterns to Model symbols)",
 )

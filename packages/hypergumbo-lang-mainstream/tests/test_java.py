@@ -588,7 +588,7 @@ class TestJavaInheritanceEdges:
             "class Child extends Base {\n    void go() {}\n}\n"
         )
 
-        run = AnalysisRun.create(pass_id="java-v1", version="1.0")
+        run = AnalysisRun.create(pass_id="java", version="1.0")
         symbols, edges, success = _analyze_java_file(java_file, run)
         assert success
 
@@ -610,7 +610,7 @@ class TestJavaInheritanceEdges:
             "}\n"
         )
 
-        run = AnalysisRun.create(pass_id="java-v1", version="1.0")
+        run = AnalysisRun.create(pass_id="java", version="1.0")
         symbols, edges, success = _analyze_java_file(java_file, run)
         assert success
 
@@ -773,7 +773,7 @@ class TestJavaAnalysisRun:
 
         assert result.run is not None
         assert result.run.files_analyzed == 3
-        assert result.run.pass_id == "java-v1"
+        assert result.run.pass_id == "java"
 
     def test_empty_repo(self, tmp_path: Path) -> None:
         """Handles repo with no Java files."""

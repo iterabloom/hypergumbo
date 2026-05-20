@@ -224,7 +224,7 @@ class TestLinkerActivationFromRegistry:
         # Import to trigger registration
         import hypergumbo_core.linkers.grpc
 
-        linker = _LINKER_REGISTRY.get("grpc")
+        linker = _LINKER_REGISTRY.get("grpc-linker")
         assert linker is not None
         # Should activate for grpc or protobuf frameworks
         assert linker.activation.frameworks == ["grpc", "protobuf"]
@@ -234,7 +234,7 @@ class TestLinkerActivationFromRegistry:
         """GraphQL linker should have framework-based activation."""
         import hypergumbo_core.linkers.graphql
 
-        linker = _LINKER_REGISTRY.get("graphql")
+        linker = _LINKER_REGISTRY.get("graphql-linker")
         assert linker is not None
         assert linker.activation.frameworks == ["graphql"]
         assert linker.activation.always is False
@@ -243,7 +243,7 @@ class TestLinkerActivationFromRegistry:
         """Phoenix IPC linker should have framework-based activation."""
         import hypergumbo_core.linkers.phoenix_ipc
 
-        linker = _LINKER_REGISTRY.get("phoenix_ipc")
+        linker = _LINKER_REGISTRY.get("phoenix-ipc-linker")
         assert linker is not None
         assert linker.activation.frameworks == ["phoenix"]
         assert linker.activation.always is False
@@ -252,7 +252,7 @@ class TestLinkerActivationFromRegistry:
         """JNI linker should have language-pair activation."""
         import hypergumbo_core.linkers.jni
 
-        linker = _LINKER_REGISTRY.get("jni")
+        linker = _LINKER_REGISTRY.get("jni-linker")
         assert linker is not None
         # Should activate when both java and c/cpp are present
         assert ("java", "c") in linker.activation.language_pairs
@@ -263,7 +263,7 @@ class TestLinkerActivationFromRegistry:
         """Swift/Objective-C linker should have language-pair activation."""
         import hypergumbo_core.linkers.swift_objc
 
-        linker = _LINKER_REGISTRY.get("swift_objc")
+        linker = _LINKER_REGISTRY.get("swift-objc-linker")
         assert linker is not None
         assert ("swift", "objc") in linker.activation.language_pairs
         assert linker.activation.always is False
@@ -272,7 +272,7 @@ class TestLinkerActivationFromRegistry:
         """HTTP linker (protocol) should always run."""
         import hypergumbo_core.linkers.http
 
-        linker = _LINKER_REGISTRY.get("http")
+        linker = _LINKER_REGISTRY.get("http-linker")
         assert linker is not None
         # Protocol linkers should have always=True
         assert linker.activation.always is True
@@ -281,7 +281,7 @@ class TestLinkerActivationFromRegistry:
         """WebSocket linker (protocol) should always run."""
         import hypergumbo_core.linkers.websocket
 
-        linker = _LINKER_REGISTRY.get("websocket")
+        linker = _LINKER_REGISTRY.get("websocket-linker")
         assert linker is not None
         assert linker.activation.always is True
 
@@ -289,6 +289,6 @@ class TestLinkerActivationFromRegistry:
         """Message queue linker (protocol) should always run."""
         import hypergumbo_core.linkers.message_queue
 
-        linker = _LINKER_REGISTRY.get("message_queue")
+        linker = _LINKER_REGISTRY.get("message-queue-linker")
         assert linker is not None
         assert linker.activation.always is True

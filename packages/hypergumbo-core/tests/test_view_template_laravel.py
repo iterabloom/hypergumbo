@@ -43,7 +43,7 @@ def _php_class(
         path=path,
         span=Span(start_line=start, end_line=end, start_col=0, end_col=0),
         meta=meta or None,
-        origin="php-v1",
+        origin="php",
     )
 
 
@@ -57,7 +57,7 @@ def _php_method(
         language="php",
         path=path,
         span=Span(start_line=start, end_line=end, start_col=2, end_col=2),
-        origin="php-v1",
+        origin="php",
     )
 
 
@@ -420,7 +420,7 @@ class TestEdgeCases:
             language="ruby",
             path="app/controllers/users.rb",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="ruby-v1",
+            origin="ruby",
         )
         ctx = LinkerContext(repo_root=tmp_path, symbols=[ruby_sym])
         result = link_view_template_laravel(ctx)

@@ -364,7 +364,7 @@ def link_crypto_flow(
 
 
 @register_linker(
-    "crypto-flow",
+    "crypto-flow-linker",
     priority=86,  # After framework linkers, near Yjs linker
     activation=LinkerActivation(always=True),
     requirements=[],

@@ -251,7 +251,7 @@ contract Token {}
         result = analyze_solidity(temp_repo)
 
         assert result.run is not None
-        assert result.run.pass_id == "solidity-v1"
+        assert result.run.pass_id == "solidity"
         assert result.run.duration_ms >= 0
 
 

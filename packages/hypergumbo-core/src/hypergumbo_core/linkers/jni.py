@@ -294,7 +294,7 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
 
 # Register the linker with the registry for unified dispatch
 @register_linker(
-    "jni",
+    "jni-linker",
     priority=10,  # Early priority - JNI linking should happen before other linkers
     description="Java/C/C++/Rust JNI bridge - links native method declarations to C/C++/Rust implementations",
     requirements=JNI_REQUIREMENTS,

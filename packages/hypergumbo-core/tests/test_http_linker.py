@@ -730,7 +730,7 @@ class TestLinkHttp:
         result = link_http(tmp_path, [])
 
         assert result.run is not None
-        assert result.run.pass_id == "http-linker-v1"
+        assert result.run.pass_id == "http-linker"
 
     def test_matches_wildcard_method_route(self, tmp_path):
         """Routes with no HTTP method match any client method."""

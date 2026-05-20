@@ -207,7 +207,7 @@ DEPENDENCY_REQUIREMENTS = [
 
 
 @register_linker(
-    "dependency",
+    "dependency-linker",
     priority=80,  # Run late, after all imports have been collected
     description="Dependency linking (imports to manifest declarations)",
     requirements=DEPENDENCY_REQUIREMENTS,

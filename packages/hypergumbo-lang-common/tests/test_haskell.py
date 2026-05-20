@@ -451,7 +451,7 @@ class TestHaskellAnalyzeFallback:
         assert "not available" in result.skip_reason
         # Run should still be created for provenance tracking
         assert result.run is not None
-        assert result.run.pass_id == "haskell-v1"
+        assert result.run.pass_id == "haskell"
 
 
 class TestHaskellSignatureExtraction:

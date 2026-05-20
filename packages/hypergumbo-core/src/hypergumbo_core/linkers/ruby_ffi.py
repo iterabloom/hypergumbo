@@ -360,7 +360,7 @@ RUBY_FFI_REQUIREMENTS = [
 
 
 @register_linker(
-    "ruby_ffi",
+    "ruby-ffi-linker",
     priority=17,  # After pyffi (16), before protocol linkers
     description="Ruby/C/C++ FFI bridge - links FFI gem attach_function and C extension rb_define_method to native implementations",
     requirements=RUBY_FFI_REQUIREMENTS,

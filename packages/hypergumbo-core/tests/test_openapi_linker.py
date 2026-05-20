@@ -360,7 +360,7 @@ paths:
         result = link_openapi(tmp_path, [])
 
         assert result.run is not None
-        assert result.run.pass_id == "openapi-linker-v1"
+        assert result.run.pass_id == "openapi-linker"
         assert result.run.files_analyzed == 1
 
 

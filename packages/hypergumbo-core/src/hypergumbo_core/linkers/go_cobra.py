@@ -153,7 +153,7 @@ def _find_go_files(repo_root: Path):
 
 
 @register_linker(
-    "go_cobra",
+    "go-cobra-linker",
     priority=45,
     description="Go spf13/cobra CLI command dispatch (RunE, PreRunE, etc.)",
     activation=LinkerActivation(always=True),

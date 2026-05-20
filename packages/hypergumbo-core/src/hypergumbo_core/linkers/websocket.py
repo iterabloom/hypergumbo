@@ -749,7 +749,7 @@ def link_websocket(
 
 
 @register_linker(
-    "websocket",
+    "websocket-linker",
     priority=50,
     description="WebSocket communication pattern linking (Socket.io, ws, Django Channels)",
 )

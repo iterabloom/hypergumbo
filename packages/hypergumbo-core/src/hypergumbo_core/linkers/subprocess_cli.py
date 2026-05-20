@@ -480,7 +480,7 @@ SUBPROCESS_REQUIREMENTS = [
 
 
 @register_linker(
-    "subprocess",
+    "subprocess-linker",
     priority=65,  # Run after framework patterns have identified CLI commands
     description="Subprocess-to-CLI linking (subprocess.run to Click/Typer commands)",
     requirements=SUBPROCESS_REQUIREMENTS,

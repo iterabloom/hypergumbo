@@ -205,7 +205,7 @@ class TestLinkJsModules:
             language=lang,
             path=path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -223,7 +223,7 @@ class TestLinkJsModules:
             dst=dst_id,
             edge_type="imports",
             line=line,
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
             evidence_type="import_static",
             confidence=0.95,
@@ -251,7 +251,7 @@ class TestLinkJsModules:
                 start_col=0,
                 end_col=0,
             ),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -421,7 +421,7 @@ class TestLinkJsModules:
             dst="javascript:someFunc:5-10:someFunc:function",
             edge_type="calls",
             line=5,
-            origin="js-ts-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -610,7 +610,7 @@ class TestLinkerRegistryIntegration:
             language="javascript",
             path=app_path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -619,7 +619,7 @@ class TestLinkerRegistryIntegration:
             dst="javascript:./utils:0-0:module:module",
             edge_type="imports",
             line=1,
-            origin="js-ts-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -641,7 +641,7 @@ class TestLinkerRegistryIntegration:
         from hypergumbo_core.linkers.js_module import link_js_module
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("js-modules")
+        linker = get_linker("js-module-linker")
         assert linker is not None
         activation = linker.activation
 
@@ -741,7 +741,7 @@ class TestEdgeCases:
             language="javascript",
             path=str(tmp_path / "file.js"),
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         # Import edge with dst that doesn't match module:module format
@@ -750,7 +750,7 @@ class TestEdgeCases:
             dst="javascript:/repo/other.js:1-10:Other:class",
             edge_type="imports",
             line=1,
-            origin="js-ts-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -781,7 +781,7 @@ class TestEdgeCases:
             language="javascript",
             path=app_path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         # Import ../outside.js goes above inner/ (the repo_root)
@@ -790,7 +790,7 @@ class TestEdgeCases:
             dst="javascript:../outside:0-0:module:module",
             edge_type="imports",
             line=1,
-            origin="js-ts-v1",
+            origin="js",
 
             origin_run_id="test",
         )
@@ -1224,7 +1224,7 @@ class TestAliasIntegration:
             language=lang,
             path=path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -1236,7 +1236,7 @@ class TestAliasIntegration:
             dst=f"{lang}:{module_path}:0-0:module:module",
             edge_type="imports",
             line=1,
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
             evidence_type="import_static",
             confidence=0.95,
@@ -1252,7 +1252,7 @@ class TestAliasIntegration:
             language=lang,
             path=path,
             span=Span(start_line=5, end_line=10, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -1568,7 +1568,7 @@ class TestMonorepoIntegration:
             language=lang,
             path=path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -1580,7 +1580,7 @@ class TestMonorepoIntegration:
             dst=f"{lang}:{module_path}:0-0:module:module",
             edge_type="imports",
             line=1,
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
             evidence_type="import_static",
             confidence=0.95,
@@ -1596,7 +1596,7 @@ class TestMonorepoIntegration:
             language=lang,
             path=path,
             span=Span(start_line=5, end_line=10, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -1759,7 +1759,7 @@ class TestInvMovorCanonicalFileIdReuse:
             language="javascript",
             path=app_path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         import_edge = Edge.create(
@@ -1767,7 +1767,7 @@ class TestInvMovorCanonicalFileIdReuse:
             dst="javascript:./utils:0-0:module:module",
             edge_type="imports",
             line=1,
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
             evidence_type="import_static",
             confidence=0.95,
@@ -1804,7 +1804,7 @@ class TestInvMovorCanonicalFileIdReuse:
             language="javascript",
             path=utils_rel,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
 
@@ -1816,7 +1816,7 @@ class TestInvMovorCanonicalFileIdReuse:
             language="javascript",
             path=app_path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         import_edge = Edge.create(
@@ -1824,7 +1824,7 @@ class TestInvMovorCanonicalFileIdReuse:
             dst="javascript:./utils:0-0:module:module",
             edge_type="imports",
             line=1,
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
             evidence_type="import_static",
             confidence=0.95,
@@ -1856,7 +1856,7 @@ class TestInvMovorCanonicalFileIdReuse:
             language="javascript",
             path=app_path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
         )
         import_edge = Edge.create(
@@ -1864,7 +1864,7 @@ class TestInvMovorCanonicalFileIdReuse:
             dst="javascript:./utils:0-0:module:module",
             edge_type="imports",
             line=1,
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id="test-run",
             evidence_type="import_static",
             confidence=0.95,

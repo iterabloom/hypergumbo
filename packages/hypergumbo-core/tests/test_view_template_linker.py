@@ -34,7 +34,7 @@ def _make_controller_class(name: str, base: str = "ApplicationController") -> Sy
         path=f"app/controllers/{name.lower()}.rb",
         span=Span(start_line=1, end_line=50, start_col=0, end_col=3),
         meta={"base_classes": [base]},
-        origin="ruby-v1",
+        origin="ruby",
     )
 
 
@@ -47,7 +47,7 @@ def _make_method(class_name: str, method_name: str, start: int = 5) -> Symbol:
         language="ruby",
         path=f"app/controllers/{class_name.lower()}.rb",
         span=Span(start_line=start, end_line=start + 5, start_col=2, end_col=5),
-        origin="ruby-v1",
+        origin="ruby",
     )
 
 
@@ -229,7 +229,7 @@ class TestLinkViewTemplates:
             language="ruby",
             path="app/controllers/admin/users_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
-            origin="ruby-v1",
+            origin="ruby",
         )
 
         result = link_view_templates(tmp_path, [controller, method], [])
@@ -279,7 +279,7 @@ class TestLinkViewTemplates:
             language="ruby",
             path="app/controllers/api/v2/accounts/reports_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
-            origin="ruby-v1",
+            origin="ruby",
         )
 
         result = link_view_templates(tmp_path, [controller, method], [])
@@ -321,7 +321,7 @@ class TestLinkViewTemplates:
             path="app/models/user.rb",
             span=Span(start_line=1, end_line=20, start_col=0, end_col=3),
             meta={"base_classes": ["ApplicationRecord"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         # Method on the model with # naming — should not trigger linking
         model_method = Symbol(
@@ -331,7 +331,7 @@ class TestLinkViewTemplates:
             language="ruby",
             path="app/models/user.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
-            origin="ruby-v1",
+            origin="ruby",
         )
 
         result = link_view_templates(
@@ -357,7 +357,7 @@ class TestLinkViewTemplates:
             language="ruby",
             path="app/controllers/users_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
-            origin="ruby-v1",
+            origin="ruby",
         )
 
         result = link_view_templates(tmp_path, [controller, class_method], [])
@@ -460,7 +460,7 @@ class TestLinkViewTemplates:
             language="ruby",
             path="app/controllers/api/users_controller.rb",
             span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
-            origin="ruby-v1",
+            origin="ruby",
         )
 
         result = link_view_templates(tmp_path, [controller, method], [])
@@ -578,7 +578,7 @@ class TestTransitiveControllerBase:
             path="app/controllers/application_controller.rb",
             span=Span(1, 30, 0, 3),
             meta={"base_classes": ["ActionController::Base"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         leaf_ctl = Symbol(
             id="ruby:app/controllers/leaf_controller.rb:1-50:LeafController:class",
@@ -586,7 +586,7 @@ class TestTransitiveControllerBase:
             path="app/controllers/leaf_controller.rb",
             span=Span(1, 50, 0, 3),
             meta={"base_classes": ["ApplicationController"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         method = _make_method("LeafController", "index")
         edge = Edge.create(
@@ -615,7 +615,7 @@ class TestTransitiveControllerBase:
             path="app/controllers/application_controller.rb",
             span=Span(1, 30, 0, 3),
             meta={"base_classes": ["ActionController::Base"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         mid_ctl = Symbol(
             id="ruby:app/controllers/secured_controller.rb:1-30:SecuredController:class",
@@ -623,7 +623,7 @@ class TestTransitiveControllerBase:
             path="app/controllers/secured_controller.rb",
             span=Span(1, 30, 0, 3),
             meta={"base_classes": ["ApplicationController"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         leaf_ctl = Symbol(
             id="ruby:app/controllers/leaf_controller.rb:1-50:LeafController:class",
@@ -631,7 +631,7 @@ class TestTransitiveControllerBase:
             path="app/controllers/leaf_controller.rb",
             span=Span(1, 50, 0, 3),
             meta={"base_classes": ["SecuredController"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         method = _make_method("LeafController", "show")
         edges = [
@@ -658,7 +658,7 @@ class TestTransitiveControllerBase:
             path="app/controllers/application_controller.rb",
             span=Span(1, 10, 0, 3),
             meta={"base_classes": ["ActionController::Base"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         left_ctl = Symbol(
             id="ruby:app/controllers/left_controller.rb:1-10:LeftController:class",
@@ -666,7 +666,7 @@ class TestTransitiveControllerBase:
             path="app/controllers/left_controller.rb",
             span=Span(1, 10, 0, 3),
             meta={"base_classes": ["ApplicationController"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         right_ctl = Symbol(
             id="ruby:app/controllers/right_controller.rb:1-10:RightController:class",
@@ -674,7 +674,7 @@ class TestTransitiveControllerBase:
             path="app/controllers/right_controller.rb",
             span=Span(1, 10, 0, 3),
             meta={"base_classes": ["ApplicationController"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         leaf_ctl = Symbol(
             id="ruby:app/controllers/leaf_controller.rb:1-10:LeafController:class",
@@ -682,7 +682,7 @@ class TestTransitiveControllerBase:
             path="app/controllers/leaf_controller.rb",
             span=Span(1, 10, 0, 3),
             meta={"base_classes": ["LeftController", "RightController"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         method = _make_method("LeafController", "edit")
         edges = [

@@ -906,7 +906,7 @@ def _create_subscriber_to_method_edges(
 
 
 @register_linker(
-    "event_sourcing",
+    "event-sourcing-linker",
     priority=55,  # Run after core linkers, with other event patterns
     description="Event sourcing linking (EventEmitter, Django signals, Spring events, Guava EventBus, Go channels)",
 )

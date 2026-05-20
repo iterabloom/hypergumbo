@@ -766,7 +766,7 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
 # ---------------------------------------------------------------------------
 
 @register_linker(
-    "di_resolution",
+    "di-resolution",
     priority=65,
     description=(
         "Creates di_resolves edges from interface methods to DI-bound "

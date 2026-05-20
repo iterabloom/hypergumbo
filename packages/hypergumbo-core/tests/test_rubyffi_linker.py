@@ -35,7 +35,7 @@ def _make_ruby_symbol(
         language="ruby",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="ruby-v1",
+        origin="ruby",
         origin_run_id=run.execution_id,
     )
 
@@ -56,7 +56,7 @@ def _make_c_symbol(
         language="c",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="c-v1",
+        origin="c",
         origin_run_id=run.execution_id,
     )
 
@@ -483,7 +483,7 @@ class TestRubyFFIEdgeCases:
         )
 
         assert result.run is not None
-        assert result.run.pass_id == "ruby-ffi-linker-v1"
+        assert result.run.pass_id == "ruby-ffi-linker"
 
     def test_cpp_symbols_also_linked(self, tmp_path: Path) -> None:
         """C++ functions are also matched via FFI gem."""
@@ -510,7 +510,7 @@ class TestRubyFFIEdgeCases:
             language="cpp",
             path="foo.cpp",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="cpp-v1",
+            origin="cpp",
             origin_run_id=run.execution_id,
         )
 
@@ -679,7 +679,7 @@ class TestRubyFFIEdgeCases:
             language="python",
             path=str(py_file),
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="py-v1",
+            origin="py",
             origin_run_id=AnalysisRun.create(pass_id="test", version="test").execution_id,
         )
         c_func = _make_c_symbol("compute", path="native.c")
@@ -725,15 +725,15 @@ class TestRubyFFIRegistry:
         """Ruby FFI linker is registered in the linker registry."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("ruby_ffi")
+        linker = get_linker("ruby-ffi-linker")
         assert linker is not None
-        assert linker.name == "ruby_ffi"
+        assert linker.name == "ruby-ffi-linker"
 
     def test_has_requirements(self) -> None:
         """Ruby FFI linker declares its requirements."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("ruby_ffi")
+        linker = get_linker("ruby-ffi-linker")
         assert linker is not None
         assert len(linker.requirements) >= 2
 
@@ -745,7 +745,7 @@ class TestRubyFFIRegistry:
         """Ruby FFI linker activates for ruby+c and ruby+cpp language pairs."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("ruby_ffi")
+        linker = get_linker("ruby-ffi-linker")
         assert linker is not None
 
         assert linker.activation.should_run(set(), {"ruby", "c"})
@@ -778,7 +778,7 @@ class TestRubyFFIRegistry:
             edges=[],
         )
 
-        result = run_linker("ruby_ffi", ctx)
+        result = run_linker("ruby-ffi-linker", ctx)
 
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "calls"
@@ -797,7 +797,7 @@ class TestRubyFFIRegistry:
         )
 
         diagnostics = check_linker_requirements(ctx)
-        diag = next((d for d in diagnostics if d.linker_name == "ruby_ffi"), None)
+        diag = next((d for d in diagnostics if d.linker_name == "ruby-ffi-linker"), None)
         assert diag is not None
         assert diag.all_met is True
 
@@ -814,7 +814,7 @@ class TestRubyFFIRegistry:
         )
 
         diagnostics = check_linker_requirements(ctx)
-        diag = next((d for d in diagnostics if d.linker_name == "ruby_ffi"), None)
+        diag = next((d for d in diagnostics if d.linker_name == "ruby-ffi-linker"), None)
         assert diag is not None
         assert diag.all_met is False
 

@@ -405,7 +405,7 @@ def _select_dispatch_targets(methods: list["Symbol"]) -> list["Symbol"]:
 
 
 @register_linker(
-    "jackson-dispatch",
+    "jackson-dispatch-linker",
     priority=21,
     description="Emit dispatches_to edges from Jackson/JavaBean serialization targets to their bean accessors (WI-gupah)",
 )

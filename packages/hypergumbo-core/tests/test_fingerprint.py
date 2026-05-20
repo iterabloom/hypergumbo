@@ -162,9 +162,9 @@ class TestStampOrchestrator:
         f = tmp_path / "a.py"
         f.write_text("def f(): pass\n")
         sym = _sym("python", "a.py", 1, 1)
-        sym.fingerprint = "preexisting-from-toml-v1"
+        sym.fingerprint = "preexisting-from-toml"
         stamp_symbol_fingerprints([sym], tmp_path)
-        assert sym.fingerprint == "preexisting-from-toml-v1"
+        assert sym.fingerprint == "preexisting-from-toml"
 
     def test_stamps_when_null(self, tmp_path: Path) -> None:
         f = tmp_path / "a.py"

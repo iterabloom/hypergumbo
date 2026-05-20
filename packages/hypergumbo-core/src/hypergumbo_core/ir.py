@@ -76,19 +76,19 @@ producer side.
 def make_pass_id(name: str) -> str:
     """Return the canonical pass ID for an analyzer or linker.
 
-    Analyzers: ``make_pass_id("go")`` → ``"go-v1"``
-    Linkers:   ``make_pass_id("containment-linker")`` → ``"containment-linker-v1"``
+    Analyzers: ``make_pass_id("go")`` → ``"go"``
+    Linkers:   ``make_pass_id("containment-linker")`` → ``"containment-linker"``
 
-    The ``-v1`` suffix is backend-neutral and provides an escape hatch
-    for future versioning if an analyzer's output format changes.
-
-    NOTE (INV-morag PR 1): the ``-v1`` suffix is a fake-versioning artifact;
-    real per-pass versioning lives in :func:`compute_pass_version` (a code-hash
-    of the pass module source). PR 2 of INV-morag will rename pass IDs to drop
-    the suffix entirely; for now ``make_pass_id`` is preserved so the rename
-    can be done as a separate reviewable PR.
+    INV-morag PR 2 dropped the legacy ``-v1`` suffix. Pass identity now
+    comes from a stable opaque name (the registration ``name`` argument);
+    versioning lives in :data:`AnalysisRun.pass_version` (a code-hash via
+    :func:`compute_pass_version`); backend identity lives in
+    :data:`RegisteredAnalyzer.backend` / :data:`RegisteredLinker.backend`;
+    display labels live in ``pass_label``. ``make_pass_id`` is preserved
+    as the canonical accessor so any future format change has one
+    well-known migration point.
     """
-    return f"{name}-v1"
+    return name
 
 
 def compute_pass_version(target: types.ModuleType | Callable[..., Any]) -> str:

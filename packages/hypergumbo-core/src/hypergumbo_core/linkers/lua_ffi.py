@@ -317,7 +317,7 @@ LUA_FFI_REQUIREMENTS = [
 
 
 @register_linker(
-    "lua_ffi",
+    "lua-ffi-linker",
     priority=17,  # After pyffi (16), before protocol linkers
     description="Lua FFI bridge - links LuaJIT ffi.C/ffi.load calls to C function implementations",
     requirements=LUA_FFI_REQUIREMENTS,

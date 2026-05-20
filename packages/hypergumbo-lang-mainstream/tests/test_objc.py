@@ -343,7 +343,7 @@ class TestObjCSymbolProperties:
         assert test_class is not None
         assert test_class.span.start_line == 1
         assert test_class.language == "objective-c"
-        assert test_class.origin == "objective-c-v1"
+        assert test_class.origin == "objc"
 
 class TestObjCEdgeProperties:
     """Tests for edge property correctness."""

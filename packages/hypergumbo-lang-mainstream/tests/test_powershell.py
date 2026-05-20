@@ -211,7 +211,7 @@ function Main { }
         result = analyze_powershell(temp_repo)
 
         assert result.run is not None
-        assert result.run.pass_id == "powershell-v1"
+        assert result.run.pass_id == "powershell"
         assert result.run.files_analyzed >= 1
 
     def test_empty_repo(self, temp_repo: Path) -> None:

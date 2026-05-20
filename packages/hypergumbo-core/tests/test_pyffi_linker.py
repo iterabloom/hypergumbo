@@ -35,7 +35,7 @@ def _make_python_symbol(
         language="python",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="python-v1",
+        origin="python",
         origin_run_id=run.execution_id,
     )
 
@@ -56,7 +56,7 @@ def _make_c_symbol(
         language="c",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="c-v1",
+        origin="c",
         origin_run_id=run.execution_id,
     )
 
@@ -83,7 +83,7 @@ def _make_rust_symbol(
         language="rust",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="rust-v1",
+        origin="rust",
         origin_run_id=run.execution_id,
         meta=meta,
     )
@@ -102,7 +102,7 @@ def _make_call_edge(
         line=line,
         evidence_type="function_call",
         confidence=0.50,
-        origin="python-v1",
+        origin="python",
 
         origin_run_id="test",
     )
@@ -336,7 +336,7 @@ class TestPyFFILinkerPyO3:
             line=2,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -398,7 +398,7 @@ class TestPyFFILinkerPyO3:
             line=3,
             evidence_type="method_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -471,7 +471,7 @@ class TestPyFFILinkerPyO3:
             line=2,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -510,7 +510,7 @@ class TestPyFFILinkerPyO3:
             line=2,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -557,7 +557,7 @@ class TestPyFFILinkerEdgeCases:
         )
 
         assert result.run is not None
-        assert result.run.pass_id == "pyffi-linker-v1"
+        assert result.run.pass_id == "pyffi-linker"
 
     def test_cpp_symbols_also_linked(self, tmp_path: Path) -> None:
         """C++ functions are also matched via ctypes."""
@@ -581,7 +581,7 @@ class TestPyFFILinkerEdgeCases:
             language="cpp",
             path="foo.cpp",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="cpp-v1",
+            origin="cpp",
             origin_run_id=run.execution_id,
         )
 
@@ -611,7 +611,7 @@ class TestPyFFILinkerEdgeCases:
             language="javascript",
             path=str(js_file),
             span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
-            origin="js-v1",
+            origin="js",
             origin_run_id=AnalysisRun.create(pass_id="test", version="test").execution_id,
         )
         c_func = _make_c_symbol("process", path="native.c")
@@ -836,7 +836,7 @@ class TestPyFFILinkerEdgeCases:
             line=5,
             evidence_type="function_call",
             confidence=0.85,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -869,7 +869,7 @@ class TestPyFFILinkerEdgeCases:
             line=5,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -902,7 +902,7 @@ class TestPyFFILinkerEdgeCases:
             line=5,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -935,7 +935,7 @@ class TestPyFFILinkerEdgeCases:
             line=5,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -946,7 +946,7 @@ class TestPyFFILinkerEdgeCases:
             line=8,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -980,7 +980,7 @@ class TestPyFFILinkerEdgeCases:
             line=2,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -1012,7 +1012,7 @@ class TestPyFFILinkerEdgeCases:
             line=2,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -1042,15 +1042,15 @@ class TestPyFFILinkerRegistry:
         """Python FFI linker is registered in the linker registry."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("pyffi")
+        linker = get_linker("pyffi-linker")
         assert linker is not None
-        assert linker.name == "pyffi"
+        assert linker.name == "pyffi-linker"
 
     def test_pyffi_linker_has_requirements(self) -> None:
         """Python FFI linker declares its requirements."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("pyffi")
+        linker = get_linker("pyffi-linker")
         assert linker is not None
         assert len(linker.requirements) >= 2
 
@@ -1062,7 +1062,7 @@ class TestPyFFILinkerRegistry:
         """Python FFI linker activates for python+c, python+cpp, python+rust pairs."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("pyffi")
+        linker = get_linker("pyffi-linker")
         assert linker is not None
 
         # Should activate when python and c are both present
@@ -1093,7 +1093,7 @@ class TestPyFFILinkerRegistry:
         )
 
         diagnostics = check_linker_requirements(ctx)
-        pyffi_diag = next((d for d in diagnostics if d.linker_name == "pyffi"), None)
+        pyffi_diag = next((d for d in diagnostics if d.linker_name == "pyffi-linker"), None)
         assert pyffi_diag is not None
         assert pyffi_diag.all_met is True
 
@@ -1110,7 +1110,7 @@ class TestPyFFILinkerRegistry:
         )
 
         diagnostics = check_linker_requirements(ctx)
-        pyffi_diag = next((d for d in diagnostics if d.linker_name == "pyffi"), None)
+        pyffi_diag = next((d for d in diagnostics if d.linker_name == "pyffi-linker"), None)
         assert pyffi_diag is not None
         assert pyffi_diag.all_met is False
 
@@ -1142,7 +1142,7 @@ class TestPyFFILinkerRegistry:
             edges=[],
         )
 
-        result = run_linker("pyffi", ctx)
+        result = run_linker("pyffi-linker", ctx)
 
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "calls"
@@ -1176,7 +1176,7 @@ class TestPyO3PythonStyleNameMatching:
             line=1,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -1445,7 +1445,7 @@ class TestPyO3CrateNameAnnotation:
             line=2,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -1587,7 +1587,7 @@ class TestInvZuhubPyFFIFallback:
             line=2,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )
@@ -1638,7 +1638,7 @@ class TestInvZuhubPyFFIFallback:
             line=2,
             evidence_type="function_call",
             confidence=0.50,
-            origin="python-v1",
+            origin="python",
 
             origin_run_id="test",
         )

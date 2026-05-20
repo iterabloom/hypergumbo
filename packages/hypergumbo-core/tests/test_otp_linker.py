@@ -764,7 +764,7 @@ class TestOTPLinkerMetadata:
         )
         result = otp_linker(ctx)
         assert result.run is not None
-        assert result.run.pass_id == "otp-linker-v1"
+        assert result.run.pass_id == "otp-linker"
 
     def test_edge_confidence_range(self, tmp_path: Path) -> None:
         """All edges have confidence between 0 and 1."""
@@ -1046,9 +1046,9 @@ class TestOTPLinkerRegistered:
 
         import hypergumbo_core.linkers.otp
 
-        linker = get_linker("otp")
+        linker = get_linker("otp-linker")
         assert linker is not None
-        assert linker.name == "otp"
+        assert linker.name == "otp-linker"
 
     def test_otp_linker_returns_linker_result(self, tmp_path: Path) -> None:
         """otp_linker function returns a LinkerResult with expected fields."""

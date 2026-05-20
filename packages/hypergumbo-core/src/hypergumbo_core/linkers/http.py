@@ -1604,7 +1604,7 @@ HTTP_REQUIREMENTS = [
 
 
 @register_linker(
-    "http",
+    "http-linker",
     priority=60,  # Run after analyzers have produced route symbols
     description="HTTP client-server linking (fetch, axios, requests to routes)",
     requirements=HTTP_REQUIREMENTS,

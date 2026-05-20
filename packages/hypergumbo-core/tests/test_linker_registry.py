@@ -854,7 +854,7 @@ class TestEnclosureLinker:
             language="python",
             path="test.py",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="test",
         )
 
@@ -866,7 +866,7 @@ class TestEnclosureLinker:
             language="python",
             path="test.py",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=0),
-            origin="grpc-linker-v1",
+            origin="grpc-linker",
             origin_run_id="test",
             meta={"framework_role": "grpc_stub"},
         )
@@ -903,7 +903,7 @@ class TestEnclosureLinker:
             language="python",
             path="test.py",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="test",
         )
 
@@ -915,7 +915,7 @@ class TestEnclosureLinker:
             language="python",
             path="test.py",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=0),
-            origin="other-linker-v1",
+            origin="other-linker",
             origin_run_id="test",
         )
 
@@ -943,7 +943,7 @@ class TestEnclosureLinker:
             language="python",
             path="test.py",
             span=Span(start_line=5, end_line=5, start_col=0, end_col=0),
-            origin="grpc-linker-v1",
+            origin="grpc-linker",
             origin_run_id="test",
             meta={"framework_role": "grpc_stub"},
         )
@@ -978,7 +978,7 @@ class TestEnclosureLinker:
             language="python",
             path="test.py",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="test",
         )
 
@@ -991,7 +991,7 @@ class TestEnclosureLinker:
             language="python",
             path="test.py",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=0),
-            origin="grpc-linker-v1",
+            origin="grpc-linker",
             origin_run_id="test",
             meta={"framework_role": "grpc_stub"},
         )
@@ -1026,7 +1026,7 @@ class TestEnclosureLinker:
             language="python",
             path="test.py",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="test",
         )
 
@@ -1039,7 +1039,7 @@ class TestEnclosureLinker:
             language="python",
             path="test.py",
             span=Span(start_line=15, end_line=15, start_col=0, end_col=0),
-            origin="some-linker-v1",
+            origin="some-linker",
             origin_run_id="test",
             meta={"framework_role": "some_other_role"},
         )

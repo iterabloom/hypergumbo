@@ -53,7 +53,7 @@ def make_edge(
         dst=dst.id,
         edge_type=edge_type,
         line=src.span.start_line,
-        origin="python-ast-v1",
+        origin="python",
         origin_run_id="uuid:test",
         confidence=confidence,
     )
@@ -1013,7 +1013,7 @@ class TestSliceEdgeCases:
             language="python",
             path="src/main.py",
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="uuid:test",
         )
 
@@ -1025,7 +1025,7 @@ class TestSliceEdgeCases:
             language="python",
             path="os",
             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="uuid:test",
         )
 
@@ -1067,7 +1067,7 @@ class TestSliceEdgeCases:
             language="python",
             path="src/main.py",
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="uuid:test",
         )
 
@@ -1080,7 +1080,7 @@ class TestSliceEdgeCases:
             language="python",
             path="src/utils.py",
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="uuid:test",
         )
 
@@ -1092,7 +1092,7 @@ class TestSliceEdgeCases:
             language="python",
             path="os",
             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="uuid:test",
         )
         json_module = Symbol(
@@ -1102,7 +1102,7 @@ class TestSliceEdgeCases:
             language="python",
             path="json",
             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
-            origin="python-ast-v1",
+            origin="python",
             origin_run_id="uuid:test",
         )
 

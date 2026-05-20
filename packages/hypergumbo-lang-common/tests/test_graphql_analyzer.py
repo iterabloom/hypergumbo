@@ -19,7 +19,7 @@ from hypergumbo_lang_common.graphql import (
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
-    assert PASS_ID == "graphql-v1"
+    assert PASS_ID == "graphql"
     assert PASS_VERSION == __version__
 
 def test_analyze_type(tmp_path):

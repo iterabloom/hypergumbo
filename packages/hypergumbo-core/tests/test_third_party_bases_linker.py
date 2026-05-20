@@ -497,7 +497,7 @@ class TestLinkThirdPartyDispatch:
 
 class TestFrameworkActivation:
     def test_linker_is_registered_with_django_activation(self) -> None:
-        reg = get_linker("django-third-party-dispatch")
+        reg = get_linker("django-third-party-dispatch-linker")
         assert reg is not None
         activation = reg.activation
         assert isinstance(activation, LinkerActivation)
@@ -507,14 +507,14 @@ class TestFrameworkActivation:
     def test_gate_blocks_non_django_repos(self) -> None:
         """AC-3: a repo without django detected must not run this linker."""
         assert should_run_linker(
-            "django-third-party-dispatch",
+            "django-third-party-dispatch-linker",
             detected_frameworks=set(),
             detected_languages={"python"},
         ) is False
 
     def test_gate_opens_when_django_detected(self) -> None:
         assert should_run_linker(
-            "django-third-party-dispatch",
+            "django-third-party-dispatch-linker",
             detected_frameworks={"django"},
             detected_languages={"python"},
         ) is True
@@ -523,7 +523,7 @@ class TestFrameworkActivation:
         """Even with a Python framework that ISN'T Django, the linker
         must remain closed (e.g., FastAPI repo)."""
         assert should_run_linker(
-            "django-third-party-dispatch",
+            "django-third-party-dispatch-linker",
             detected_frameworks={"fastapi", "celery"},
             detected_languages={"python"},
         ) is False

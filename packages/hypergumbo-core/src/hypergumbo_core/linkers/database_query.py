@@ -486,7 +486,7 @@ DATABASE_QUERY_REQUIREMENTS = [
 
 
 @register_linker(
-    "database_query",
+    "database-query-linker",
     priority=70,  # Run after SQL analyzer has produced table symbols
     description="Database query linking (SQL queries in code to schema tables)",
     requirements=DATABASE_QUERY_REQUIREMENTS,

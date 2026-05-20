@@ -78,7 +78,7 @@ def _resolve_target_path(
     return resolved
 
 
-@register_linker("build-target", priority=15)
+@register_linker("build-target-linker", priority=15)
 def link_build_targets(ctx: LinkerContext) -> LinkerResult:
     """Connect defines_target edges to main() functions.
 

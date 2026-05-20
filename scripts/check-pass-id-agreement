@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Pre-commit / CI lint: catalog pass IDs agree with runtime pass IDs.
+
+Closes the INV-morag invariant: the IDs that appear in
+``hypergumbo catalog`` output must equal the IDs that runtime
+``AnalysisRun.pass_id`` values use. Before INV-morag PR 2 the two
+sides drifted (hand-written catalog said ``"python-ast-v1"`` while
+runtime emitted ``"python-v1"``); after PR 2 both sides derive from
+the single ``_ANALYZER_REGISTRY`` + ``_LINKER_REGISTRY`` source of
+truth via :func:`hypergumbo_core.ir.make_pass_id`.
+
+What this script checks:
+
+1. **Registry → catalog.** Every registered analyzer / linker name
+   yields a pass with ``id == make_pass_id(name)`` in the
+   registry-derived catalog. (Trivially true post-PR 2; pinned here
+   so future refactors can't reintroduce the asymmetry.)
+2. **No legacy suffixes.** No catalog pass ID matches the patterns
+   ``*-v1``, ``*-ts-v1``, ``*-ast-v1``, or ``*-pattern-v1``. The
+   legacy suffix encoded backend identity inside the ID, which
+   PR 2 moved to a separate ``backend`` field.
+
+Exit codes:
+    0 — agreement holds.
+    1 — agreement broken; offenders printed.
+    2 — could not import the registry / catalog modules.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Add core + lang packages so registry discovery works without an
+# editable install.
+for pkg in (
+    "hypergumbo-core",
+    "hypergumbo-lang-common",
+    "hypergumbo-lang-mainstream",
+    "hypergumbo-lang-extended1",
+    "hypergumbo-lang-rust-analyzer",
+):
+    sys.path.insert(0, str(REPO_ROOT / "packages" / pkg / "src"))
+
+try:
+    # Side-effect imports: trigger registration for both registries.
+    from hypergumbo_core import cli  # noqa: F401
+    from hypergumbo_core.analyze.registry import (
+        _ANALYZER_REGISTRY,
+        ensure_discovered,
+    )
+    from hypergumbo_core.linkers.registry import _LINKER_REGISTRY
+    from hypergumbo_core.catalog import build_catalog_from_registries
+    from hypergumbo_core.ir import make_pass_id
+except ImportError as exc:  # pragma: no cover — defensive
+    print(
+        f"check-pass-id-agreement: cannot import core modules: {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+_LEGACY_SUFFIXES = ("-v1", "-ts-v1", "-ast-v1", "-pattern-v1")
+
+
+def main() -> int:
+    ensure_discovered()
+    catalog = build_catalog_from_registries()
+    catalog_ids = {p.id for p in catalog.passes}
+
+    offenders: list[str] = []
+
+    # Check 1: every registered name appears in catalog with matching ID.
+    for name in sorted(_ANALYZER_REGISTRY):
+        expected = make_pass_id(name)
+        if expected not in catalog_ids:
+            offenders.append(
+                f"analyzer {name!r}: runtime ID {expected!r} not in catalog"
+            )
+    for name in sorted(_LINKER_REGISTRY):
+        expected = make_pass_id(name)
+        if expected not in catalog_ids:
+            offenders.append(
+                f"linker {name!r}: runtime ID {expected!r} not in catalog"
+            )
+
+    # Check 2: no catalog ID carries a legacy version/backend suffix.
+    for pid in sorted(catalog_ids):
+        for sfx in _LEGACY_SUFFIXES:
+            if pid.endswith(sfx):
+                offenders.append(
+                    f"pass {pid!r}: legacy suffix {sfx!r} (move backend to "
+                    f"the 'backend' field; pass_version lives on AnalysisRun)"
+                )
+                break
+
+    if not offenders:
+        return 0
+
+    print("Pass-ID agreement check failed:")
+    for line in offenders:
+        print(f"  {line}")
+    print(
+        "\nFix: ensure every analyzer / linker is registered via "
+        "@register_analyzer / @register_linker and that pass IDs do not "
+        "carry the legacy -v1 / -ts-v1 / -ast-v1 suffix. See INV-morag "
+        "and docs/hypergumbo-spec.md §AnalysisRun.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":  # pragma: no cover - script entrypoint
+    sys.exit(main())

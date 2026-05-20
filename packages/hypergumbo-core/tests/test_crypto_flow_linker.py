@@ -23,7 +23,7 @@ def _make_ts_sym(path: str) -> Symbol:
         name="test", kind="function", language="typescript",
         path=path,
         span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-        origin="ts-v1", origin_run_id="uuid:test",
+        origin="ts", origin_run_id="uuid:test",
     )
 
 
@@ -34,7 +34,7 @@ def _make_rust_sym(path: str) -> Symbol:
         name="test", kind="function", language="rust",
         path=path,
         span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-        origin="rust-v1", origin_run_id="uuid:test",
+        origin="rust", origin_run_id="uuid:test",
     )
 
 
@@ -321,7 +321,7 @@ class TestLinkCryptoFlow:
             name="test", kind="function", language="python",
             path="src/test.py",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="py-v1", origin_run_id="uuid:test",
+            origin="py", origin_run_id="uuid:test",
         )
         result = link_crypto_flow(tmp_path, [py_sym])
         assert len(result.edges) == 0
@@ -362,7 +362,7 @@ class TestCryptoFlowRegistry:
         """crypto-flow linker should be in the registry."""
         from hypergumbo_core.linkers.registry import get_all_linkers
         linkers = {l.name: l for l in get_all_linkers()}
-        assert "crypto-flow" in linkers
+        assert "crypto-flow-linker" in linkers
 
     def test_linker_runs_via_registry(self, tmp_path: Path) -> None:
         """Linker should produce results when run via registry dispatch."""
@@ -383,6 +383,6 @@ class TestCryptoFlowRegistry:
             detected_languages={"typescript"},
         )
         results = run_all_linkers(ctx)
-        crypto_results = [r for name, r in results if name == "crypto-flow"]
+        crypto_results = [r for name, r in results if name == "crypto-flow-linker"]
         assert len(crypto_results) == 1
         assert len(crypto_results[0].edges) >= 1

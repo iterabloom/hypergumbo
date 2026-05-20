@@ -259,7 +259,7 @@ proc hello() =
         result = analyze_nim(temp_repo)
 
         assert result.run is not None
-        assert result.run.pass_id == "nim-v1"
+        assert result.run.pass_id == "nim"
         assert result.run.files_analyzed >= 1
 
 

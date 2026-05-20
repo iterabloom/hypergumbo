@@ -41,7 +41,7 @@ def _make_lua_symbol(
         language="lua",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="lua-v1",
+        origin="lua",
         origin_run_id=run.execution_id,
     )
 
@@ -62,7 +62,7 @@ def _make_c_symbol(
         language="c",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="c-v1",
+        origin="c",
         origin_run_id=run.execution_id,
     )
 
@@ -78,7 +78,7 @@ def _make_unresolved_edge(
         edge_type="call",
         line=line,
         confidence=0.5,
-        origin="lua-v1",
+        origin="lua",
         origin_run_id=run.execution_id,
     )
 
@@ -448,7 +448,7 @@ class TestLuaFFILinkerEdgeCases:
             edge_type="call",
             line=5,
             confidence=0.9,
-            origin="lua-v1",
+            origin="lua",
             origin_run_id=run.execution_id,
         )
 
@@ -475,7 +475,7 @@ class TestLuaFFILinkerEdgeCases:
             edge_type="call",
             line=5,
             confidence=0.5,
-            origin="lua-v1",
+            origin="lua",
             origin_run_id=run.execution_id,
         )
 
@@ -657,7 +657,7 @@ class TestLuaFFILinkerRegistry:
         import hypergumbo_core.linkers.lua_ffi
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("lua_ffi")
+        linker = get_linker("lua-ffi-linker")
         assert linker is not None
 
     def test_requirements_check(self) -> None:
@@ -665,7 +665,7 @@ class TestLuaFFILinkerRegistry:
         import hypergumbo_core.linkers.lua_ffi
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("lua_ffi")
+        linker = get_linker("lua-ffi-linker")
         assert linker is not None
         assert len(linker.requirements) == 2
 
@@ -679,7 +679,7 @@ class TestLuaFFILinkerRegistry:
         import hypergumbo_core.linkers.lua_ffi
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("lua_ffi")
+        linker = get_linker("lua-ffi-linker")
         assert linker is not None
         assert linker.activation is not None
         pairs = linker.activation.language_pairs
@@ -700,7 +700,7 @@ class TestLuaFFILinkerRegistry:
         lua_sym = _make_lua_symbol("main", path=str(lua_file))
         c_sym = _make_c_symbol("compute")
 
-        linker = get_linker("lua_ffi")
+        linker = get_linker("lua-ffi-linker")
         assert linker is not None
 
         ctx = LinkerContext(
@@ -718,7 +718,7 @@ class TestLuaFFILinkerRegistry:
         import hypergumbo_core.linkers.lua_ffi
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("lua_ffi")
+        linker = get_linker("lua-ffi-linker")
         assert linker is not None
 
         # Find the lua_files requirement
@@ -741,7 +741,7 @@ class TestLuaFFILinkerRegistry:
         import hypergumbo_core.linkers.lua_ffi
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("lua_ffi")
+        linker = get_linker("lua-ffi-linker")
         assert linker is not None
 
         c_req = next(r for r in linker.requirements if r.name == "c_functions")

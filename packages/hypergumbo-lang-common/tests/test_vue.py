@@ -405,7 +405,7 @@ export default {
         make_vue_file(tmp_path, "App.vue", "<template></template>")
         result = analyze_vue(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "vue-v1"
+        assert result.run.pass_id == "vue"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -428,7 +428,7 @@ export default {
             None,
         )
         assert edge is not None
-        assert edge.origin == "vue-v1"
+        assert edge.origin == "vue"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         # Cluster F per audit-findings 0011: component_ref Symbol dropped;

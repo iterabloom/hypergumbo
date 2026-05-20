@@ -866,7 +866,7 @@ IPC_REQUIREMENTS = [
 
 
 @register_linker(
-    "ipc",
+    "ipc-linker",
     priority=40,  # Run after analyzers
     description="Electron IPC and postMessage pattern linking",
     requirements=IPC_REQUIREMENTS,

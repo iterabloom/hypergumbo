@@ -182,7 +182,7 @@ def _find_parent(
 
 
 @register_linker(
-    "containment",
+    "containment-linker",
     priority=12,  # After analyzers (0), before inheritance (15)
     description="Creates contains edges from classes/interfaces to their methods",
 )

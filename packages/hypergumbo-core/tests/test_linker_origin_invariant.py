@@ -163,7 +163,7 @@ class TestSymbolOriginRuntime:
             language="typescript",
             path="src/routes.ts",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="typescript-v1",
+            origin="typescript",
             meta={"concept": {"path": "/api/users", "method": "GET"}},
         )
 
@@ -177,7 +177,7 @@ class TestSymbolOriginRuntime:
             language="python",
             path="cli.py",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="python-v1",
+            origin="python",
             meta={"framework_role": "cli_entrypoint"},
         )
 

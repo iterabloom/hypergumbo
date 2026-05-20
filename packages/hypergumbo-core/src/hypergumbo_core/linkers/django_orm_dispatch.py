@@ -277,7 +277,7 @@ def _build_method_index(
 
 
 @register_linker(
-    "django-orm-dispatch",
+    "django-orm-dispatch-linker",
     priority=22,
     description="Emit dispatches_to edges from Django Model/Manager/View/Form/Admin subclasses to their framework-called override methods (WI-nosug)",
 )

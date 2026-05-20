@@ -957,7 +957,7 @@ class TestPassId:
     """Verify PASS_ID constant."""
 
     def test_pass_id(self) -> None:
-        assert PASS_ID == "di-resolution-v1"
+        assert PASS_ID == "di-resolution"
 
 
 class TestBuildInterfaceImplMap:

@@ -122,7 +122,7 @@ def _span_size(span) -> int:
 
 
 @register_linker(
-    "controller-routes",
+    "controller-routes-linker",
     priority=56,
     description="Link controller-concept symbols to their nested route methods",
 )

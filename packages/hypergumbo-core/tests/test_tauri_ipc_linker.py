@@ -38,7 +38,7 @@ def _make_ts_symbol(
         language="typescript",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="ts-v1",
+        origin="ts",
         origin_run_id=run.execution_id,
     )
 
@@ -63,7 +63,7 @@ def _make_rust_symbol(
         language="rust",
         path=path,
         span=Span(start_line=start_line, end_line=end_line, start_col=0, end_col=0),
-        origin="rust-v1",
+        origin="rust",
         origin_run_id=run.execution_id,
         meta=meta,
     )
@@ -353,7 +353,7 @@ class TestTauriIPCLinkerEdgeCases:
         )
 
         assert result.run is not None
-        assert result.run.pass_id == "tauri-ipc-linker-v1"
+        assert result.run.pass_id == "tauri-ipc-linker"
 
     def test_nonexistent_ts_file_skipped(self, tmp_path: Path) -> None:
         """TS files that don't exist on disk are silently skipped."""
@@ -416,7 +416,7 @@ class TestTauriIPCLinkerEdgeCases:
             language="javascript",
             path=str(js_file),
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="js-v1",
+            origin="js",
             origin_run_id=run.execution_id,
         )
 
@@ -929,7 +929,7 @@ class TestTauriIPCSyntheticSymbols:
             edges=[],
         )
 
-        result = run_linker("tauri_ipc", ctx)
+        result = run_linker("tauri-ipc-linker", ctx)
         assert len(result.symbols) == 1
         assert result.symbols[0].kind == "function"
         assert (result.symbols[0].meta or {}).get("framework_role") == "ipc_publisher"
@@ -1739,7 +1739,7 @@ class TestTauriSpectaWrapperResolution:
             edges=[],
         )
 
-        result = run_linker("tauri_ipc", ctx)
+        result = run_linker("tauri-ipc-linker", ctx)
         caller_edges = [e for e in result.edges if e.edge_type == "caller_invokes"]
         assert len(caller_edges) == 1
 
@@ -1758,15 +1758,15 @@ class TestTauriIPCLinkerRegistry:
         """Tauri IPC linker is registered in the linker registry."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("tauri_ipc")
+        linker = get_linker("tauri-ipc-linker")
         assert linker is not None
-        assert linker.name == "tauri_ipc"
+        assert linker.name == "tauri-ipc-linker"
 
     def test_tauri_linker_has_requirements(self) -> None:
         """Tauri IPC linker declares its requirements."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("tauri_ipc")
+        linker = get_linker("tauri-ipc-linker")
         assert linker is not None
         assert len(linker.requirements) >= 2
 
@@ -1778,7 +1778,7 @@ class TestTauriIPCLinkerRegistry:
         """Tauri IPC linker activates for tauri framework."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("tauri_ipc")
+        linker = get_linker("tauri-ipc-linker")
         assert linker is not None
 
         assert linker.activation.should_run({"tauri"}, {"typescript", "rust"})
@@ -1788,7 +1788,7 @@ class TestTauriIPCLinkerRegistry:
         """Tauri IPC linker activates for typescript+rust pair even without framework."""
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("tauri_ipc")
+        linker = get_linker("tauri-ipc-linker")
         assert linker is not None
 
         assert linker.activation.should_run(set(), {"typescript", "rust"})
@@ -1813,7 +1813,7 @@ class TestTauriIPCLinkerRegistry:
 
         diagnostics = check_linker_requirements(ctx)
         tauri_diag = next(
-            (d for d in diagnostics if d.linker_name == "tauri_ipc"), None,
+            (d for d in diagnostics if d.linker_name == "tauri-ipc-linker"), None,
         )
         assert tauri_diag is not None
         assert tauri_diag.all_met is True
@@ -1833,7 +1833,7 @@ class TestTauriIPCLinkerRegistry:
 
         diagnostics = check_linker_requirements(ctx)
         tauri_diag = next(
-            (d for d in diagnostics if d.linker_name == "tauri_ipc"), None,
+            (d for d in diagnostics if d.linker_name == "tauri-ipc-linker"), None,
         )
         assert tauri_diag is not None
         assert tauri_diag.all_met is False
@@ -1854,7 +1854,7 @@ class TestTauriIPCLinkerRegistry:
 
         diagnostics = check_linker_requirements(ctx)
         tauri_diag = next(
-            (d for d in diagnostics if d.linker_name == "tauri_ipc"), None,
+            (d for d in diagnostics if d.linker_name == "tauri-ipc-linker"), None,
         )
         assert tauri_diag is not None
         assert tauri_diag.all_met is False
@@ -1878,7 +1878,7 @@ class TestTauriIPCLinkerRegistry:
             edges=[],
         )
 
-        result = run_linker("tauri_ipc", ctx)
+        result = run_linker("tauri-ipc-linker", ctx)
 
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "calls"
@@ -1906,7 +1906,7 @@ class TestSpectaObjectMethodWrappers:
             language="rust",
             path="src/lib.rs",
             span=Span(1, 10, 0, 0),
-            origin="rust-ts-v1",
+            origin="rust",
             origin_run_id=run.execution_id,
             meta={"annotations": [{"name": "tauri::command"}]},
         )
@@ -1923,7 +1923,7 @@ class TestSpectaObjectMethodWrappers:
             language="typescript",
             path=path,
             span=Span(1, 10, 0, 0),
-            origin="js-ts-v1",
+            origin="js",
             origin_run_id=run.execution_id,
         )
 
@@ -2271,7 +2271,7 @@ listen('vm-state-changed', (e) => update(e.payload));
             name="func", kind="function", language="python",
             path="src/app.py",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="py-v1", origin_run_id="uuid:test",
+            origin="py", origin_run_id="uuid:test",
         )
         rust_sym = _make_rust_symbol(
             "f", path="src-tauri/src/lib.rs",

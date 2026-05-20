@@ -67,7 +67,7 @@ def test_symbol_id_format(tmp_path: Path) -> None:
 
 def test_analysis_run_has_run_signature() -> None:
     """AnalysisRun should have run_signature field for deterministic fingerprint."""
-    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
 
     # run_signature should be deterministic based on pass+version+config
     assert hasattr(run, "run_signature")
@@ -77,7 +77,7 @@ def test_analysis_run_has_run_signature() -> None:
 
 def test_analysis_run_has_toolchain() -> None:
     """AnalysisRun should have toolchain dict with runtime info."""
-    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
 
     assert hasattr(run, "toolchain")
     assert isinstance(run.toolchain, dict)
@@ -88,7 +88,7 @@ def test_analysis_run_has_toolchain() -> None:
 
 def test_analysis_run_has_config_fingerprint() -> None:
     """AnalysisRun should have config_fingerprint for cache invalidation."""
-    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
 
     assert hasattr(run, "config_fingerprint")
     assert run.config_fingerprint is not None
@@ -97,7 +97,7 @@ def test_analysis_run_has_config_fingerprint() -> None:
 
 def test_analysis_run_has_repo_fingerprint() -> None:
     """AnalysisRun should have repo_fingerprint for cache keying."""
-    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
 
     assert hasattr(run, "repo_fingerprint")
     # Can be None if not set, but field must exist
@@ -105,7 +105,7 @@ def test_analysis_run_has_repo_fingerprint() -> None:
 
 def test_analysis_run_has_skipped_passes() -> None:
     """AnalysisRun should have skipped_passes list."""
-    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
 
     assert hasattr(run, "skipped_passes")
     assert isinstance(run.skipped_passes, list)
@@ -113,7 +113,7 @@ def test_analysis_run_has_skipped_passes() -> None:
 
 def test_analysis_run_has_warnings() -> None:
     """AnalysisRun should have warnings list."""
-    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
 
     assert hasattr(run, "warnings")
     assert isinstance(run.warnings, list)
@@ -121,7 +121,7 @@ def test_analysis_run_has_warnings() -> None:
 
 def test_analysis_run_has_failed_files() -> None:
     """AnalysisRun should have a failed_files list (INV-buhur)."""
-    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
 
     assert hasattr(run, "failed_files")
     assert isinstance(run.failed_files, list)
@@ -130,7 +130,7 @@ def test_analysis_run_has_failed_files() -> None:
 
 def test_analysis_run_record_failed_file_appends_entry() -> None:
     """record_failed_file appends a {path, reason} dict to failed_files (INV-buhur)."""
-    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
 
     run.record_failed_file("broken.py", "SyntaxError: invalid syntax (line 42)")
 
@@ -143,7 +143,7 @@ def test_analysis_run_record_failed_file_appends_entry() -> None:
 
 def test_analysis_run_to_dict_includes_failed_files() -> None:
     """AnalysisRun.to_dict should include failed_files in serialized output."""
-    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
     run.record_failed_file("a.py", "SyntaxError")
     run.record_failed_file("b.py", "UnicodeDecodeError")
 
@@ -157,7 +157,7 @@ def test_analysis_run_to_dict_includes_failed_files() -> None:
 
 def test_analysis_run_to_dict_includes_new_fields() -> None:
     """AnalysisRun.to_dict should include all spec fields."""
-    run = AnalysisRun.create(pass_id="python-ast-v1", version="0.5.0")
+    run = AnalysisRun.create(pass_id="python", version="0.5.0")
     d = run.to_dict()
 
     assert "run_signature" in d
@@ -1002,7 +1002,7 @@ def test_symbol_from_dict() -> None:
         "language": "python",
         "path": "src/api.py",
         "span": {"start_line": 10, "end_line": 20, "start_col": 0, "end_col": 30},
-        "origin": "python-ast-v1",
+        "origin": "python",
         "origin_run_id": "uuid:12345",
         "origin_run_signature": "sha256:abcdef",
         "stable_id": "stable:123",
@@ -1023,7 +1023,7 @@ def test_symbol_from_dict() -> None:
     assert symbol.path == "src/api.py"
     assert symbol.span.start_line == 10
     assert symbol.span.end_line == 20
-    assert symbol.origin == "python-ast-v1"
+    assert symbol.origin == "python"
     assert symbol.supply_chain_tier == 1
     assert symbol.supply_chain_reason == "first_party"
     assert symbol.cyclomatic_complexity == 5
@@ -1205,7 +1205,7 @@ def test_edge_from_dict() -> None:
         "type": "calls",
         "line": 3,
         "confidence": 0.95,
-        "origin": "python-ast-v1",
+        "origin": "python",
         "origin_run_id": "uuid:12345",
         "origin_run_signature": "sha256:abcdef",
         "quality": {"score": 0.9, "reason": "direct call"},
@@ -1224,7 +1224,7 @@ def test_edge_from_dict() -> None:
     assert edge.edge_type == "calls"
     assert edge.line == 3
     assert edge.confidence == 0.95
-    assert edge.origin == "python-ast-v1"
+    assert edge.origin == "python"
     assert edge.evidence_type == "ast_call_direct"
     assert edge.evidence_lang == "python"
 

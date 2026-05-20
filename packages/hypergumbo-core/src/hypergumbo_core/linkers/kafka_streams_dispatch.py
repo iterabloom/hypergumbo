@@ -313,7 +313,7 @@ def _expected_method_names(interfaces: list[str]) -> frozenset[str]:
 
 
 @register_linker(
-    "kafka-streams-dispatch",
+    "kafka-streams-dispatch-linker",
     priority=21,
     description=(
         "Emit dispatches_to edges from Kafka Streams callback impls "

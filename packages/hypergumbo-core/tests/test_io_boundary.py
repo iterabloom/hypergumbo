@@ -899,7 +899,7 @@ net_send:
 
     def test_objective_c_alias_loads_objc_catalog(self) -> None:
         """The 'objective-c' alias resolves to the 'objc' catalog."""
-        catalog = load_catalog("objective-c")
+        catalog = load_catalog("objc")
         assert len(catalog.primitives) > 0
         hit = catalog.lookup("removeItemAtPath:error:")
         assert hit is not None

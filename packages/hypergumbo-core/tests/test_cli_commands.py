@@ -51,7 +51,7 @@ def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
     (tmp_path / "app.js").write_text("function foo() {}")
 
     # Create mock result with symbols and edges
-    mock_run = AnalysisRun.create(pass_id="javascript-ts-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="javascript", version="test")
     mock_symbol = Symbol(
         id="javascript:app.js:1-1:foo:function",
         name="foo",
@@ -91,7 +91,7 @@ def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag for JS
-    mock_js_run = AnalysisRun.create(pass_id="javascript-ts-v1", version="test")
+    mock_js_run = AnalysisRun.create(pass_id="javascript", version="test")
     mock_js_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -101,7 +101,7 @@ def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
     )
 
     # Create mock result for PHP (not skipped, just empty)
-    mock_php_run = AnalysisRun.create(pass_id="php-v1", version="test")
+    mock_php_run = AnalysisRun.create(pass_id="php", version="test")
     mock_php_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -125,7 +125,7 @@ def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
     assert "skipped_passes" in data["limits"]
     # Check that JS is in the skipped list (there may be other skipped passes too)
     skipped_passes = [p["pass"] for p in data["limits"]["skipped_passes"]]
-    assert "javascript-ts-v1" in skipped_passes
+    assert "javascript" in skipped_passes
 
 
 def test_cmd_run_with_php_analyzer_skipped(tmp_path: Path) -> None:
@@ -135,7 +135,7 @@ def test_cmd_run_with_php_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="php-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="php", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -156,7 +156,7 @@ def test_cmd_run_with_php_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "php-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "php"]
     assert len(skipped) == 1
     assert "tree-sitter-php" in skipped[0]["reason"]
 
@@ -168,7 +168,7 @@ def test_cmd_run_with_c_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="c-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="c", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -189,7 +189,7 @@ def test_cmd_run_with_c_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "c-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "c"]
     assert len(skipped) == 1
     assert "tree-sitter-c" in skipped[0]["reason"]
 
@@ -201,7 +201,7 @@ def test_cmd_run_with_java_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="java-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="java", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -222,7 +222,7 @@ def test_cmd_run_with_java_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "java-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "java"]
     assert len(skipped) == 1
     assert "tree-sitter-java" in skipped[0]["reason"]
 
@@ -234,7 +234,7 @@ def test_cmd_run_with_elixir_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="elixir-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="elixir", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -255,7 +255,7 @@ def test_cmd_run_with_elixir_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "elixir-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "elixir"]
     assert len(skipped) == 1
     assert "tree-sitter-elixir" in skipped[0]["reason"]
 
@@ -267,7 +267,7 @@ def test_cmd_run_with_rust_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="rust-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="rust", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -288,7 +288,7 @@ def test_cmd_run_with_rust_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "rust-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "rust"]
     assert len(skipped) == 1
     assert "tree-sitter-rust" in skipped[0]["reason"]
 
@@ -300,7 +300,7 @@ def test_cmd_run_with_go_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="go-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="go", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -321,7 +321,7 @@ def test_cmd_run_with_go_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "go-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "go"]
     assert len(skipped) == 1
     assert "tree-sitter-go" in skipped[0]["reason"]
 
@@ -333,7 +333,7 @@ def test_cmd_run_with_ruby_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="ruby-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="ruby", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -354,7 +354,7 @@ def test_cmd_run_with_ruby_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "ruby-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "ruby"]
     assert len(skipped) == 1
     assert "tree-sitter-ruby" in skipped[0]["reason"]
 
@@ -366,7 +366,7 @@ def test_cmd_run_with_kotlin_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="kotlin-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="kotlin", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -387,7 +387,7 @@ def test_cmd_run_with_kotlin_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "kotlin-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "kotlin"]
     assert len(skipped) == 1
     assert "tree-sitter-kotlin" in skipped[0]["reason"]
 
@@ -399,7 +399,7 @@ def test_cmd_run_with_swift_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="swift-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="swift", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -420,7 +420,7 @@ def test_cmd_run_with_swift_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "swift-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "swift"]
     assert len(skipped) == 1
     assert "tree-sitter-swift" in skipped[0]["reason"]
 
@@ -432,7 +432,7 @@ def test_cmd_run_with_scala_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="scala-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="scala", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -453,7 +453,7 @@ def test_cmd_run_with_scala_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "scala-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "scala"]
     assert len(skipped) == 1
     assert "tree-sitter-scala" in skipped[0]["reason"]
 
@@ -465,7 +465,7 @@ def test_cmd_run_with_lua_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="lua-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="lua", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -486,7 +486,7 @@ def test_cmd_run_with_lua_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "lua-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "lua"]
     assert len(skipped) == 1
     assert "tree-sitter-lua" in skipped[0]["reason"]
 
@@ -498,7 +498,7 @@ def test_cmd_run_with_haskell_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="haskell-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="haskell", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -519,7 +519,7 @@ def test_cmd_run_with_haskell_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "haskell-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "haskell"]
     assert len(skipped) == 1
     assert "tree-sitter-haskell" in skipped[0]["reason"]
 
@@ -531,7 +531,7 @@ def test_cmd_run_with_ocaml_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
-    mock_run = AnalysisRun.create(pass_id="ocaml-v1", version="test")
+    mock_run = AnalysisRun.create(pass_id="ocaml", version="test")
     mock_result = AnalysisResult(
         symbols=[],
         edges=[],
@@ -552,7 +552,7 @@ def test_cmd_run_with_ocaml_analyzer_skipped(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "results.json").read_text())
     # Should have recorded skipped pass in limits
     assert "skipped_passes" in data["limits"]
-    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "ocaml-v1"]
+    skipped = [p for p in data["limits"]["skipped_passes"] if p["pass"] == "ocaml"]
     assert len(skipped) == 1
     assert "tree-sitter-ocaml" in skipped[0]["reason"]
 
@@ -590,7 +590,7 @@ JNIEXPORT void JNICALL Java_NativeLib_sayHello(JNIEnv *env, jobject obj) {
 
     # Should have JNI linker run
     runs = [r["pass"] for r in data["analysis_runs"]]
-    assert "jni-linker-v1" in runs
+    assert "jni-linker" in runs
 
     # Should have native bridge edge — post-ADR-0023 §6 Phase 3 the
     # JNI linker emits 'calls' + meta['bridge_kind']='native'.
@@ -1663,7 +1663,7 @@ def test_cmd_slice_inline_embeds_full_objects(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/main.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
             {
@@ -1673,7 +1673,7 @@ def test_cmd_slice_inline_embeds_full_objects(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/utils.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
         ],
@@ -1684,7 +1684,7 @@ def test_cmd_slice_inline_embeds_full_objects(tmp_path: Path, capsys) -> None:
                 "dst": "python:src/utils.py:1-5:callee:function",
                 "type": "calls",
                 "confidence": 0.85,
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
                 "meta": {},
             },
@@ -1745,7 +1745,7 @@ def test_cmd_slice_without_inline_has_ids_only(tmp_path: Path) -> None:
                 "language": "python",
                 "path": "src/main.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
         ],
@@ -1796,7 +1796,7 @@ def test_cmd_slice_flat_output(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/main.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
             {
@@ -1806,7 +1806,7 @@ def test_cmd_slice_flat_output(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/utils.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
         ],
@@ -1880,7 +1880,7 @@ def test_cmd_slice_group_by_module(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/main.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
             {
@@ -1890,7 +1890,7 @@ def test_cmd_slice_group_by_module(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/main.py",
                 "span": {"start_line": 10, "end_line": 15, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
             {
@@ -1900,7 +1900,7 @@ def test_cmd_slice_group_by_module(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/utils.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
         ],
@@ -1982,7 +1982,7 @@ def test_cmd_slice_group_by_module_implies_inline(tmp_path: Path) -> None:
                 "language": "python",
                 "path": "src/main.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
         ],
@@ -2031,7 +2031,7 @@ def test_cmd_slice_group_by_module_edges(tmp_path: Path) -> None:
                 "language": "python",
                 "path": "src/main.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
             {
@@ -2041,7 +2041,7 @@ def test_cmd_slice_group_by_module_edges(tmp_path: Path) -> None:
                 "language": "python",
                 "path": "src/main.py",
                 "span": {"start_line": 10, "end_line": 15, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
             {
@@ -2051,7 +2051,7 @@ def test_cmd_slice_group_by_module_edges(tmp_path: Path) -> None:
                 "language": "python",
                 "path": "src/utils.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
         ],
@@ -2121,7 +2121,7 @@ def test_cmd_slice_group_by_module_rejects_flat(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/main.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
         ],
@@ -2169,7 +2169,7 @@ def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/app.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
             },
             {
@@ -2179,7 +2179,7 @@ def test_cmd_slice_ambiguous_entry_error(tmp_path: Path, capsys) -> None:
                 "language": "typescript",
                 "path": "web/client.ts",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "origin": "typescript-ast-v1",
+                "origin": "typescript",
                 "origin_run_id": "test",
             },
         ],
@@ -2229,9 +2229,9 @@ def test_cmd_catalog_shows_all_passes(capsys, tmp_path, monkeypatch) -> None:
 
     out, _ = capsys.readouterr()
     assert "Available Passes:" in out
-    assert "python-ast-v1" in out
-    assert "html-pattern-v1" in out
-    assert "javascript-ts-v1" in out  # extras now shown by default
+    assert "python" in out
+    assert "html" in out
+    assert "javascript" in out  # extras now shown by default
     # v1.1.x: Show framework patterns instead of deprecated packs
     assert "Available Framework Patterns (v1.1.x):" in out
     assert "--frameworks" in out
@@ -2254,7 +2254,7 @@ def test_cmd_catalog_shows_suggestions(capsys, tmp_path, monkeypatch) -> None:
 
     out, _ = capsys.readouterr()
     assert "Suggested for current repo:" in out
-    assert "python-ast-v1" in out
+    assert "python" in out
 
 
 def test_cmd_catalog_skips_large_directory(capsys, tmp_path, monkeypatch) -> None:
@@ -2637,7 +2637,7 @@ def test_cmd_slice_smart_json_detection(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "main.py",
                 "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 0},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
                 "meta": {"concepts": [{"concept": "command", "framework": "click"}]},
             }
@@ -2686,7 +2686,7 @@ def test_cmd_slice_smart_json_detection_does_not_override_explicit_input(
                 "language": "python",
                 "path": "a.py",
                 "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 0},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
                 "meta": {"concepts": [{"concept": "command", "framework": "click"}]},
             }
@@ -2703,7 +2703,7 @@ def test_cmd_slice_smart_json_detection_does_not_override_explicit_input(
                 "language": "python",
                 "path": "b.py",
                 "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 0},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "origin_run_id": "test",
                 "meta": {"concepts": [{"concept": "command", "framework": "click"}]},
             }
@@ -2931,7 +2931,7 @@ def test_cmd_sketch_input_uses_cached_results(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "src/api.py",
                 "span": {"start_line": 10, "end_line": 20, "start_col": 0, "end_col": 0},
-                "origin": "python-ast-v1",
+                "origin": "python",
                 "supply_chain": {"tier": 1, "reason": "first_party"},
             }
         ],

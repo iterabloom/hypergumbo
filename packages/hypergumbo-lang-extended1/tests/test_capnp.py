@@ -271,5 +271,5 @@ struct User {}
         result = analyze_capnp(temp_repo)
 
         assert result.run is not None
-        assert result.run.pass_id == "capnp-v1"
+        assert result.run.pass_id == "capnp"
         assert result.run.files_analyzed >= 1

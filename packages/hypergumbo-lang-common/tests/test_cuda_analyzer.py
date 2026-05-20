@@ -32,7 +32,7 @@ def _by_exec_space(symbols, space: str):
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
-    assert PASS_ID == "cuda-v1"
+    assert PASS_ID == "cuda"
     assert PASS_VERSION == __version__
 
 def test_analyze_kernel_function(tmp_path):

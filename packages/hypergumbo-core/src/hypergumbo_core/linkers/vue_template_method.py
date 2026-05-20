@@ -142,7 +142,7 @@ def _count_template_directives(ctx: LinkerContext) -> int:
 
 
 @register_linker(
-    "vue-template-methods",
+    "vue-template-method-linker",
     priority=26,  # Right after vue-components (25)
     description="Vue template event handler to method binding",
     activation=LinkerActivation(

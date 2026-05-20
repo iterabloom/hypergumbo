@@ -276,7 +276,7 @@ SOLIDITY_ABI_REQUIREMENTS = [
 
 
 @register_linker(
-    "solidity_abi",
+    "solidity-abi-linker",
     priority=14,
     description=(
         "Solidity ABI bridge - links TypeScript/JavaScript ethers.js and "

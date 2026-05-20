@@ -344,7 +344,7 @@ GRAPHQL_REQUIREMENTS = [
 
 
 @register_linker(
-    "graphql",
+    "graphql-linker",
     priority=60,  # Run after analyzers have produced GraphQL symbols
     description="GraphQL client-schema linking (gql calls to operations)",
     requirements=GRAPHQL_REQUIREMENTS,

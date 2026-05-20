@@ -597,7 +597,7 @@ class TestWasmBindgenSyntheticSymbols:
         js_sym = _make_js_sym("main", path=str(ts_file))
 
         ctx = LinkerContext(repo_root=tmp_path, symbols=[js_sym, rust_sym])
-        result = run_linker("wasm_bindgen", ctx)
+        result = run_linker("wasm-bindgen-linker", ctx)
         assert len(result.symbols) == 1
         assert result.symbols[0].kind == "import"
         assert result.symbols[0].meta.get("compilation_target") == "wasm"
@@ -612,9 +612,9 @@ class TestWasmBindgenRegistry:
 
         import hypergumbo_core.linkers.wasm_bindgen
 
-        linker = get_linker("wasm_bindgen")
+        linker = get_linker("wasm-bindgen-linker")
         assert linker is not None
-        assert linker.name == "wasm_bindgen"
+        assert linker.name == "wasm-bindgen-linker"
 
     def test_activation_language_pair(self) -> None:
         """Activates for TypeScript/Rust and JavaScript/Rust pairs."""
@@ -622,7 +622,7 @@ class TestWasmBindgenRegistry:
 
         import hypergumbo_core.linkers.wasm_bindgen
 
-        linker = get_linker("wasm_bindgen")
+        linker = get_linker("wasm-bindgen-linker")
         assert linker.activation.should_run(set(), {"typescript", "rust"})
         assert linker.activation.should_run(set(), {"javascript", "rust"})
         assert not linker.activation.should_run(set(), {"python", "rust"})
@@ -633,7 +633,7 @@ class TestWasmBindgenRegistry:
 
         import hypergumbo_core.linkers.wasm_bindgen
 
-        linker = get_linker("wasm_bindgen")
+        linker = get_linker("wasm-bindgen-linker")
         assert len(linker.requirements) == 2
         req_names = {r.name for r in linker.requirements}
         assert "js_ts_files" in req_names
@@ -650,7 +650,7 @@ class TestWasmBindgenRegistry:
         ctx = LinkerContext(repo_root=Path("/test"), symbols=[js_sym, rust_sym])
         diagnostics = check_linker_requirements(ctx)
         wasm_diag = next(
-            (d for d in diagnostics if d.linker_name == "wasm_bindgen"), None,
+            (d for d in diagnostics if d.linker_name == "wasm-bindgen-linker"), None,
         )
         assert wasm_diag is not None
         assert wasm_diag.all_met
@@ -665,7 +665,7 @@ class TestWasmBindgenRegistry:
         ctx = LinkerContext(repo_root=Path("/test"), symbols=[js_sym])
         diagnostics = check_linker_requirements(ctx)
         wasm_diag = next(
-            (d for d in diagnostics if d.linker_name == "wasm_bindgen"), None,
+            (d for d in diagnostics if d.linker_name == "wasm-bindgen-linker"), None,
         )
         assert wasm_diag is not None
         assert not wasm_diag.all_met
@@ -685,7 +685,7 @@ class TestWasmBindgenRegistry:
             repo_root=tmp_path,
             symbols=[js_sym, rust_sym],
         )
-        result = run_linker("wasm_bindgen", ctx)
+        result = run_linker("wasm-bindgen-linker", ctx)
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "calls"
 
@@ -900,7 +900,7 @@ class TestWasmDynamicLoading:
             repo_root=tmp_path,
             symbols=[js_sym],
         )
-        result = run_linker("wasm_bindgen", ctx)
+        result = run_linker("wasm-bindgen-linker", ctx)
 
         wasm_load_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(wasm_load_edges) == 1

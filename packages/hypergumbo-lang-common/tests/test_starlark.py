@@ -224,7 +224,7 @@ py_binary(name = "app", srcs = ["app.py"])
         result = analyze_starlark(temp_repo)
 
         assert result.run is not None
-        assert result.run.pass_id == "starlark-v1"
+        assert result.run.pass_id == "starlark"
         assert result.run.files_analyzed >= 1
 
 

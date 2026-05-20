@@ -484,7 +484,7 @@ def link_yjs_crdt(
 
 
 @register_linker(
-    "yjs-crdt",
+    "yjs-crdt-linker",
     priority=85,  # After framework linkers, before annotation convention
     activation=LinkerActivation(always=True),
     requirements=[],

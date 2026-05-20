@@ -113,7 +113,7 @@ def _iter_implements_edges(edges: list[Edge]) -> list[Edge]:
 
 
 @register_linker(
-    "rust-trait-dispatch",
+    "rust-trait-dispatch-linker",
     priority=23,
     description="Emit dispatches_to edges from Rust trait symbols to the concrete methods of impl blocks that implement them (WI-kivut)",
 )

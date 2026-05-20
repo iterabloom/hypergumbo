@@ -48,7 +48,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
-PASS_ID = make_pass_id("html-pattern")
+PASS_ID = make_pass_id("html")
 
 # Regex to match <script src="..."> or <script src='...'>
 SCRIPT_SRC_PATTERN = re.compile(

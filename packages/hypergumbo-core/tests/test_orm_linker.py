@@ -575,9 +575,9 @@ class TestLinkerRegistration:
         from hypergumbo_core.linkers.registry import get_linker
         self._ensure_registered()
 
-        linker = get_linker("orm")
+        linker = get_linker("orm-linker")
         assert linker is not None
-        assert linker.name == "orm"
+        assert linker.name == "orm-linker"
 
     def test_linker_via_context(self, tmp_path: Path) -> None:
         """ORM linker works when invoked via registry context."""
@@ -605,6 +605,6 @@ class TestLinkerRegistration:
             repo_root=tmp_path,
             symbols=[user, view],
         )
-        result = run_linker("orm", ctx)
+        result = run_linker("orm-linker", ctx)
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "references"

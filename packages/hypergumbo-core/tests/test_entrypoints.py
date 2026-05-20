@@ -39,7 +39,7 @@ def make_symbol(
         language=language,
         path=path,
         span=span,
-        origin="python-ast-v1",
+        origin="python",
         origin_run_id="uuid:test",
         stable_id=stable_id,
         meta=meta,

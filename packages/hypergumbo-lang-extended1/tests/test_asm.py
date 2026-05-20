@@ -197,7 +197,7 @@ local_func:
         result = analyze_asm(temp_repo)
 
         assert result.run is not None
-        assert result.run.pass_id == "asm-v1"
+        assert result.run.pass_id == "asm"
         assert result.run.files_analyzed >= 1
 
 

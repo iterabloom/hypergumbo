@@ -214,7 +214,7 @@ def link_cgo(
 
 
 @register_linker(
-    "cgo",
+    "cgo-linker",
     priority=15,  # After JNI (10), before protocol linkers
     description="Go/C/C++ cgo bridge - links C.funcName() calls to C/C++ implementations",
     requirements=CGO_REQUIREMENTS,

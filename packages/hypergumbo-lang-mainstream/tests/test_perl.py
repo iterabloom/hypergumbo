@@ -292,7 +292,7 @@ sub run {
         make_perl_file(tmp_path, "test.pl", "sub main { }")
         result = analyze_perl(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "perl-v1"
+        assert result.run.pass_id == "perl"
         assert result.run.files_analyzed == 1
         assert result.run.duration_ms >= 0
 

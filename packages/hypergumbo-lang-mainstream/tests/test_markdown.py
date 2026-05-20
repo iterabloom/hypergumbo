@@ -223,13 +223,13 @@ some code
         result = analyze_markdown(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        assert section.origin == "markdown-v1"
+        assert section.origin == "markdown"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "# Title\n")
         result = analyze_markdown(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "markdown-v1"
+        assert result.run.pass_id == "markdown"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

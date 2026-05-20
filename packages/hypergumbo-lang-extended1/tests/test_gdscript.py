@@ -290,5 +290,5 @@ func _ready():
         result = analyze_gdscript(temp_repo)
 
         assert result.run is not None
-        assert result.run.pass_id == "gdscript-v1"
+        assert result.run.pass_id == "gdscript"
         assert result.run.files_analyzed >= 1

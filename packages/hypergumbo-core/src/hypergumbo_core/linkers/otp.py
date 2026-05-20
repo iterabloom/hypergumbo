@@ -304,7 +304,7 @@ def _extract_erlang_caller_module(
 
 
 @register_linker(
-    "otp",
+    "otp-linker",
     priority=40,
     description="OTP GenServer call/cast dispatch (Elixir/Erlang)",
     activation=LinkerActivation(always=True),

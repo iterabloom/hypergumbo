@@ -230,7 +230,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(tmp_path / "handler.go"),
                 span=Span(10, 12, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -240,7 +240,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(tmp_path / "handler.go"),
                 span=Span(14, 16, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             # Struct symbol with ttrpc service interface in base_classes
@@ -251,7 +251,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(tmp_path / "handler.go"),
                 span=Span(5, 8, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
                 meta={"base_classes": ["AgentServiceService"]},
             ),
@@ -316,7 +316,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(tmp_path / "mock.go"),
                 span=Span(10, 12, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -326,7 +326,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(tmp_path / "mock.go"),
                 span=Span(5, 8, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
                 meta={"base_classes": ["HealthService"]},
             ),
@@ -368,7 +368,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(go_file),
                 span=Span(7, 9, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             # Struct has BOTH Unimplemented embedding (in source) and ttrpc-like interface
@@ -379,7 +379,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(go_file),
                 span=Span(3, 5, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
                 meta={"base_classes": ["UnimplementedCacheServiceServer", "CacheServiceClient"]},
             ),
@@ -431,7 +431,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(tmp_path / "driver.go"),
                 span=Span(10, 15, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -441,7 +441,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(tmp_path / "driver.go"),
                 span=Span(17, 22, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -451,7 +451,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(tmp_path / "driver.go"),
                 span=Span(5, 8, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
                 meta={"base_classes": ["IdentityServer"]},
             ),
@@ -489,7 +489,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(tmp_path / "impl.go"),
                 span=Span(10, 12, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -499,7 +499,7 @@ class TestTtrpcPatterns:
                 language="go",
                 path=str(tmp_path / "impl.go"),
                 span=Span(5, 8, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
                 # Has both Unimplemented and a real interface
                 meta={"base_classes": ["UnimplementedNodeServer", "NodeServer"]},
@@ -832,7 +832,7 @@ service TestService {
         result = link_grpc(tmp_path)
 
         for symbol in result.symbols:
-            assert symbol.origin == "grpc-linker-v1"
+            assert symbol.origin == "grpc-linker"
 
 
 class TestGrpcEdgeProperties:
@@ -1535,7 +1535,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(go_file),
                 span=Span(7, 9, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -1545,7 +1545,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(go_file),
                 span=Span(11, 13, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
         ]
@@ -1600,7 +1600,7 @@ class TestGrpcProtoToGoImplementation:
                 language="python",
                 path="handler.py",
                 span=Span(1, 3, 0, 0),
-                origin="py-v1",
+                origin="py",
                 origin_run_id="test",
             ),
             Symbol(
@@ -1610,7 +1610,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(go_file),
                 span=Span(1, 3, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -1620,7 +1620,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(go_file),
                 span=Span(1, 3, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -1630,7 +1630,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(go_file),
                 span=Span(1, 3, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -1640,7 +1640,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(go_file),
                 span=Span(7, 9, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
         ]
@@ -1682,7 +1682,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(go_file),
                 span=Span(5, 7, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
         ]
@@ -1724,7 +1724,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(go_file),
                 span=Span(4, 4, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
         ]
@@ -1801,7 +1801,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(containers_file),
                 span=Span(6, 8, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -1811,7 +1811,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(leases_file),
                 span=Span(6, 8, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
         ]
@@ -1866,7 +1866,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(go_file),
                 span=Span(3, 5, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
         ]
@@ -1917,7 +1917,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(go_file),
                 span=Span(7, 9, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -1927,7 +1927,7 @@ class TestGrpcProtoToGoImplementation:
                 language="go",
                 path=str(go_file),
                 span=Span(15, 17, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
         ]
@@ -1991,7 +1991,7 @@ class TestGrpcNestedStructBraces:
                 language="go",
                 path=str(go_file),
                 span=Span(10, 12, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
         ]
@@ -2038,7 +2038,7 @@ class TestGrpcNestedStructBraces:
                 language="go",
                 path=str(go_file),
                 span=Span(10, 12, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
         ]
@@ -2089,7 +2089,7 @@ class TestGrpcNestedStructBraces:
                 language="go",
                 path=str(go_file),
                 span=Span(10, 12, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
             Symbol(
@@ -2099,7 +2099,7 @@ class TestGrpcNestedStructBraces:
                 language="go",
                 path=str(go_file),
                 span=Span(14, 16, 0, 0),
-                origin="go-v1",
+                origin="go",
                 origin_run_id="test",
             ),
         ]
@@ -2204,9 +2204,9 @@ class TestGrpcLinkerRegistration:
         import hypergumbo_core.linkers.grpc
         from hypergumbo_core.linkers.registry import get_linker
 
-        linker = get_linker("grpc")
+        linker = get_linker("grpc-linker")
         assert linker is not None
-        assert linker.name == "grpc"
+        assert linker.name == "grpc-linker"
         assert linker.priority == 30
 
     def test_grpc_linker_returns_result(self, tmp_path: Path) -> None:
@@ -2252,7 +2252,7 @@ class TestGrpcUnresolvedEdgeResolution:
             language="go",
             path=str(tmp_path / "pkg/pb/user_grpc.pb.go"),
             span=Span(100, 110, 0, 0),
-            origin="grpc-linker-v1",
+            origin="grpc-linker",
             origin_run_id="test",
             meta={"framework_role": "grpc_server"},
         )
@@ -2262,7 +2262,7 @@ class TestGrpcUnresolvedEdgeResolution:
             edges=[unresolved_edge],
             symbols=[],
         )
-        run = AnalysisRun.create("grpc-linker-v1", "test")
+        run = AnalysisRun.create("grpc-linker", "test")
 
         resolved = _resolve_unresolved_grpc_edges(ctx, [register_sym], run)
 
@@ -2293,7 +2293,7 @@ class TestGrpcUnresolvedEdgeResolution:
             edges=[unresolved_edge],
             symbols=[],
         )
-        run = AnalysisRun.create("grpc-linker-v1", "test")
+        run = AnalysisRun.create("grpc-linker", "test")
 
         resolved = _resolve_unresolved_grpc_edges(ctx, [], run)
 
@@ -2325,7 +2325,7 @@ class TestGrpcUnresolvedEdgeResolution:
             language="go",
             path=str(tmp_path / "frontend/pb/grpc.pb.go"),
             span=Span(100, 110, 0, 0),
-            origin="grpc-linker-v1",
+            origin="grpc-linker",
             origin_run_id="test",
             meta={"framework_role": "grpc_server"},
         )
@@ -2336,7 +2336,7 @@ class TestGrpcUnresolvedEdgeResolution:
             language="go",
             path=str(tmp_path / "checkout/pb/grpc.pb.go"),
             span=Span(100, 110, 0, 0),
-            origin="grpc-linker-v1",
+            origin="grpc-linker",
             origin_run_id="test",
             meta={"framework_role": "grpc_server"},
         )
@@ -2346,7 +2346,7 @@ class TestGrpcUnresolvedEdgeResolution:
             edges=[unresolved_edge],
             symbols=[],
         )
-        run = AnalysisRun.create("grpc-linker-v1", "test")
+        run = AnalysisRun.create("grpc-linker", "test")
 
         # Pass wrong_sym first to ensure we're not just picking first match
         resolved = _resolve_unresolved_grpc_edges(ctx, [wrong_sym, correct_sym], run)
@@ -2380,7 +2380,7 @@ class TestGrpcUnresolvedEdgeResolution:
             language="go",
             path=str(tmp_path / "pkg/pb/user_grpc.pb.go"),
             span=Span(100, 110, 0, 0),
-            origin="grpc-linker-v1",
+            origin="grpc-linker",
             origin_run_id="test",
             meta={"framework_role": "grpc_server"},
         )
@@ -2391,7 +2391,7 @@ class TestGrpcUnresolvedEdgeResolution:
             edges=[unresolved_edge],
             symbols=[register_sym],  # Symbol is in ctx.symbols
         )
-        run = AnalysisRun.create("grpc-linker-v1", "test")
+        run = AnalysisRun.create("grpc-linker", "test")
 
         # Empty linker_symbols, so ctx.symbols is the only source
         resolved = _resolve_unresolved_grpc_edges(ctx, [], run)
@@ -2435,7 +2435,7 @@ class TestTransitiveStructEmbedding:
             id="go:base.go:1-5:BaseHealthImpl:struct",
             name="BaseHealthImpl", kind="struct", language="go",
             path="base.go", span=Span(1, 5, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
             meta={"base_classes": ["HealthService"]},
         )
         # Leaf struct embeds the intermediate but not the framework type.
@@ -2443,14 +2443,14 @@ class TestTransitiveStructEmbedding:
             id="go:leaf.go:1-5:UserHealth:struct",
             name="UserHealth", kind="struct", language="go",
             path="leaf.go", span=Span(1, 5, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
             meta={"base_classes": ["BaseHealthImpl"]},
         )
         check = Symbol(
             id="go:leaf.go:10-12:UserHealth.Check:method",
             name="UserHealth.Check", kind="method", language="go",
             path="leaf.go", span=Span(10, 12, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         edge = Edge.create(
             src=leaf_struct.id, dst=base_struct.id,
@@ -2487,28 +2487,28 @@ class TestTransitiveStructEmbedding:
             id="go:base.go:1-5:BaseHealth:struct",
             name="BaseHealth", kind="struct", language="go",
             path="base.go", span=Span(1, 5, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
             meta={"base_classes": ["HealthService"]},
         )
         mid_struct = Symbol(
             id="go:mid.go:1-5:MidHealth:struct",
             name="MidHealth", kind="struct", language="go",
             path="mid.go", span=Span(1, 5, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
             meta={"base_classes": ["BaseHealth"]},
         )
         leaf_struct = Symbol(
             id="go:leaf.go:1-5:UserHealth:struct",
             name="UserHealth", kind="struct", language="go",
             path="leaf.go", span=Span(1, 5, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
             meta={"base_classes": ["MidHealth"]},
         )
         check = Symbol(
             id="go:leaf.go:10-12:UserHealth.Check:method",
             name="UserHealth.Check", kind="method", language="go",
             path="leaf.go", span=Span(10, 12, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         edges = [
             Edge.create(src=leaf_struct.id, dst=mid_struct.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
@@ -2540,35 +2540,35 @@ class TestTransitiveStructEmbedding:
             id="go:base.go:1-5:BaseHealth:struct",
             name="BaseHealth", kind="struct", language="go",
             path="base.go", span=Span(1, 5, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
             meta={"base_classes": ["HealthService"]},
         )
         left_struct = Symbol(
             id="go:left.go:1-5:LeftHealth:struct",
             name="LeftHealth", kind="struct", language="go",
             path="left.go", span=Span(1, 5, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
             meta={"base_classes": ["BaseHealth"]},
         )
         right_struct = Symbol(
             id="go:right.go:1-5:RightHealth:struct",
             name="RightHealth", kind="struct", language="go",
             path="right.go", span=Span(1, 5, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
             meta={"base_classes": ["BaseHealth"]},
         )
         leaf_struct = Symbol(
             id="go:leaf.go:1-5:UserHealth:struct",
             name="UserHealth", kind="struct", language="go",
             path="leaf.go", span=Span(1, 5, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
             meta={"base_classes": ["LeftHealth", "RightHealth"]},
         )
         check = Symbol(
             id="go:leaf.go:10-12:UserHealth.Check:method",
             name="UserHealth.Check", kind="method", language="go",
             path="leaf.go", span=Span(10, 12, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         edges = [
             Edge.create(src=leaf_struct.id, dst=left_struct.id, edge_type="extends", line=1, origin="test", origin_run_id="test"),
@@ -2603,14 +2603,14 @@ class TestTransitiveStructEmbedding:
             id="go:leaf.go:1-5:UserHealth:struct",
             name="UserHealth", kind="struct", language="go",
             path="leaf.go", span=Span(1, 5, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
             meta={"base_classes": ["HealthService"]},
         )
         check = Symbol(
             id="go:leaf.go:10-12:UserHealth.Check:method",
             name="UserHealth.Check", kind="method", language="go",
             path="leaf.go", span=Span(10, 12, 0, 0),
-            origin="go-v1", origin_run_id="test",
+            origin="go", origin_run_id="test",
         )
         result = link_grpc(tmp_path, existing_symbols=[leaf_struct, check])
         impl_edges = [e for e in result.edges if e.edge_type == "implements_rpc"]

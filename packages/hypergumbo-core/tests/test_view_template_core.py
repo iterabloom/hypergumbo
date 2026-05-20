@@ -34,7 +34,7 @@ def _method_symbol(name: str = "UsersController#index") -> Symbol:
         language="ruby",
         path="app/controllers/users_controller.rb",
         span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
-        origin="ruby-v1",
+        origin="ruby",
     )
 
 
@@ -271,7 +271,7 @@ class TestMethodNameStrategy:
             path="app/controllers/users_controller.rb",
             span=Span(start_line=1, end_line=50, start_col=0, end_col=3),
             meta={"base_classes": ["ApplicationController"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         method = _method_symbol(name="UsersController#index")
 
@@ -330,7 +330,7 @@ class TestMethodNameStrategy:
             path="app/controllers/users_controller.rb",
             span=Span(start_line=1, end_line=50, start_col=0, end_col=3),
             meta={"base_classes": ["ApplicationController"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         method = _method_symbol(name="UsersController#index")
 
@@ -357,7 +357,7 @@ class TestMethodNameStrategy:
             path="app/controllers/users_controller.rb",
             span=Span(start_line=1, end_line=50, start_col=0, end_col=3),
             meta={"base_classes": ["ApplicationController"]},
-            origin="ruby-v1",
+            origin="ruby",
         )
         action = _method_symbol(name="UsersController#index")
         non_action = _method_symbol(name="UsersController#_helper")

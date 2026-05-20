@@ -1,29 +1,39 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Catalog of available analysis passes.
+"""Catalog of available analysis passes (registry-derived).
 
-The catalog provides a registry of all analysis components available in
-hypergumbo. Each component is either:
-
-- **core**: Always available, included in base installation
-- **extra**: Requires optional dependencies (e.g., tree-sitter grammars)
+The catalog provides a discoverable view of all analysis passes available
+in hypergumbo. Every catalog entry corresponds to one registered analyzer
+or linker; the catalog is built from ``_ANALYZER_REGISTRY`` +
+``_LINKER_REGISTRY``, not a hand-written list.
 
 How It Works
 ------------
-The catalog is a static registry defined in code. Each Pass represents
-a single analyzer (e.g., python-ast-v1).
-
-Availability checking uses importlib to probe for optional dependencies
-without importing them, keeping the base install lightweight.
-
-The `suggest_passes_for_languages` function takes a set of detected language
-names and returns passes relevant to those languages.
+1. :func:`build_catalog_from_registries` triggers entry-point discovery
+   (``ensure_discovered()``) so all language packages have a chance to
+   register their analyzers/linkers.
+2. For each registered pass it constructs a :class:`Pass` whose ``id`` is
+   the registration name (no ``-v1`` / ``-ts-v1`` suffix — INV-morag PR 2).
+3. Catalog metadata (description, languages, availability, requires,
+   backend) is taken from the registry entry when the analyzer/linker
+   provides it via decorator kwargs; otherwise it falls back to
+   ``_PASS_METADATA`` below for entries that haven't migrated yet.
 
 Why This Design
 ---------------
-- Static registry avoids filesystem scanning or plugin discovery complexity
-- Core/extra distinction lets users see what's possible without installing
-  everything
-- Language-based suggestions enable "suggested passes" based on project content
+- **Single source of truth.** Pass IDs come from the same registries that
+  runtime code uses, so catalog and runtime can no longer drift.
+- **Self-describing modules.** When an analyzer module specifies metadata
+  on its ``@register_analyzer`` call, the data lives next to the function
+  it describes — the natural location.
+- **Transitional fallback.** ``_PASS_METADATA`` lets PR 2 ship the rename
+  + invariant without requiring a simultaneous edit of every analyzer
+  package; follow-up PRs push entries into individual decorator sites.
+
+INV-morag PR 2 invariant
+------------------------
+For every registered analyzer/linker ``name``,
+``make_pass_id(name) == <some Pass.id in get_default_catalog()>``.
+Asserted at CI by :file:`scripts/check-pass-id-agreement`.
 """
 from __future__ import annotations
 
@@ -37,11 +47,15 @@ class Pass:
     """An analysis pass that can be applied to source code.
 
     Attributes:
-        id: Unique identifier (e.g., 'python-ast-v1')
+        id: Unique identifier (e.g., 'python', 'javascript', 'websocket-linker')
         description: Human-readable description
         availability: 'core' (always available) or 'extra' (requires deps)
         requires: Optional package requirement for extras
         languages: Languages this pass handles (for suggestions)
+        backend: Parsing backend tag (INV-morag PR 2). Optional for older
+            catalog entries; empty string when unknown.
+        pass_label: Human-friendly display name. Falls back to ``id`` when
+            empty.
     """
 
     id: str
@@ -49,6 +63,8 @@ class Pass:
     availability: str  # 'core' or 'extra'
     requires: Optional[str] = None
     languages: List[str] = field(default_factory=list)
+    backend: str = ""
+    pass_label: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dict."""
@@ -59,6 +75,10 @@ class Pass:
         }
         if self.requires:
             d["requires"] = self.requires
+        if self.backend:
+            d["backend"] = self.backend
+        if self.pass_label and self.pass_label != self.id:
+            d["pass_label"] = self.pass_label
         return d
 
 
@@ -107,523 +127,247 @@ def is_available(p: Pass) -> bool:
 CONFIG_LANGUAGES = {"json", "yaml", "toml", "xml", "css", "markdown", "just", "mermaid"}
 
 
+# INV-morag PR 2 transitional metadata table.
+#
+# Keyed by registration ``name`` (the post-rename pass_id). When an analyzer
+# or linker's @register_analyzer / @register_linker call doesn't specify
+# description / languages / availability / requires / backend explicitly,
+# the catalog falls back to the entries here.
+#
+# Follow-up PRs (tracked as a separate item) push each entry into the
+# corresponding decorator call site, eventually emptying this dict.
+_TS_REQUIRES = "tree-sitter-language-pack"
+
+
+def _ts(description: str, languages: List[str], availability: str = "extra") -> Dict[str, Any]:
+    """Helper: tree-sitter-based pass metadata (most common case)."""
+    return {
+        "description": description,
+        "availability": availability,
+        "requires": _TS_REQUIRES,
+        "languages": languages,
+        "backend": "tree-sitter",
+    }
+
+
+_PASS_METADATA: Dict[str, Dict[str, Any]] = {
+    # ---- Core analyzers (no tree-sitter required) ----
+    "python": {
+        "description": "Python AST parser (classes, functions, imports)",
+        "availability": "core",
+        "languages": ["python"],
+        "backend": "ast",
+    },
+    "jupyter": {
+        "description": "Jupyter notebook code cell parser",
+        "availability": "core",
+        "languages": ["jupyter"],
+        "backend": "ast",
+    },
+    "blade": {
+        "description": "Laravel Blade template directives",
+        "availability": "core",
+        "languages": ["blade"],
+        "backend": "pattern",
+    },
+    "gnuplot": {
+        "description": "Gnuplot functions, variables, plot commands",
+        "availability": "core",
+        "languages": ["gnuplot"],
+        "backend": "pattern",
+    },
+    "handlebars": {
+        "description": "Handlebars partials and block helpers",
+        "availability": "core",
+        "languages": ["handlebars"],
+        "backend": "pattern",
+    },
+    "just": {
+        "description": "Justfile recipes and dependencies",
+        "availability": "core",
+        "languages": ["just"],
+        "backend": "pattern",
+    },
+    "mermaid": {
+        "description": "Mermaid diagram types and nodes",
+        "availability": "core",
+        "languages": ["mermaid"],
+        "backend": "pattern",
+    },
+    "qml": {
+        "description": "QML components, properties, signals",
+        "availability": "core",
+        "languages": ["qml"],
+        "backend": "pattern",
+    },
+    "html": {
+        "description": "HTML script tag parser",
+        "availability": "core",
+        "languages": ["html"],
+        "backend": "pattern",
+    },
+    # ---- Tree-sitter analyzers ----
+    "javascript": _ts("JS/TS/Svelte/Vue via tree-sitter", ["javascript", "typescript", "vue"]),
+    "php": _ts("PHP via tree-sitter", ["php"]),
+    "c": _ts("C via tree-sitter", ["c"]),
+    "cpp": _ts("C++ via tree-sitter", ["cpp"]),
+    "java": _ts("Java via tree-sitter", ["java"]),
+    "elixir": _ts("Elixir via tree-sitter", ["elixir"]),
+    "rust": _ts("Rust via tree-sitter", ["rust"]),
+    "go": _ts("Go via tree-sitter", ["go"]),
+    "ruby": _ts("Ruby via tree-sitter", ["ruby"]),
+    "kotlin": _ts("Kotlin via tree-sitter", ["kotlin"]),
+    "swift": _ts("Swift via tree-sitter", ["swift"]),
+    "scala": _ts("Scala via tree-sitter", ["scala"]),
+    "lua": _ts("Lua via tree-sitter", ["lua"]),
+    "dart": _ts("Dart via tree-sitter", ["dart"]),
+    "clojure": _ts("Clojure via tree-sitter", ["clojure"]),
+    "elm": _ts("Elm via tree-sitter", ["elm"]),
+    "erlang": _ts("Erlang via tree-sitter", ["erlang"]),
+    "haskell": _ts("Haskell via tree-sitter", ["haskell"]),
+    "agda": _ts("Agda proof assistant via tree-sitter", ["agda"]),
+    "lean": _ts("Lean 4 theorem prover via tree-sitter (build from source)", ["lean"]),
+    "wolfram": _ts("Wolfram Language via tree-sitter (build from source)", ["wolfram"]),
+    "ocaml": _ts("OCaml via tree-sitter", ["ocaml"]),
+    "solidity": _ts("Solidity smart contracts via tree-sitter", ["solidity"]),
+    "csharp": _ts("C# via tree-sitter", ["csharp"]),
+    "zig": _ts("Zig via tree-sitter", ["zig"]),
+    "groovy": _ts("Groovy via tree-sitter", ["groovy"]),
+    "julia": _ts("Julia via tree-sitter", ["julia"]),
+    "objc": _ts("Objective-C via tree-sitter", ["objc"]),
+    "hcl": _ts("HCL/Terraform via tree-sitter", ["hcl"]),
+    "fsharp": _ts("F# via tree-sitter", ["fsharp"]),
+    "perl": _ts("Perl via tree-sitter", ["perl"]),
+    "r": _ts("R via tree-sitter", ["r"]),
+    "bash": _ts("Bash/Shell via tree-sitter", ["bash"]),
+    "sql": _ts("SQL schema analysis via tree-sitter", ["sql"]),
+    "dockerfile": _ts("Dockerfile analysis via tree-sitter", ["dockerfile"]),
+    "cmake": _ts("CMake build system via tree-sitter", ["cmake"]),
+    "make": _ts("Makefile build system via tree-sitter", []),
+    "graphql": _ts("GraphQL schema via tree-sitter", ["graphql"]),
+    "nix": _ts("Nix expressions via tree-sitter", ["nix"]),
+    "cuda": _ts("CUDA GPU kernels via tree-sitter", ["cuda"]),
+    "verilog": _ts("Verilog/SystemVerilog via tree-sitter", ["verilog"]),
+    "vhdl": _ts("VHDL hardware design via tree-sitter", ["vhdl"]),
+    "glsl": _ts("GLSL shaders via tree-sitter", ["glsl"]),
+    "hlsl": _ts("HLSL DirectX shaders via tree-sitter", ["hlsl"]),
+    "wgsl": _ts("WGSL WebGPU shaders via tree-sitter", ["wgsl"]),
+    "fortran": _ts("Fortran via tree-sitter", ["fortran"]),
+    "cobol": _ts("COBOL via tree-sitter", ["cobol"]),
+    "latex": _ts("LaTeX via tree-sitter", ["latex"]),
+    "proto": _ts("Protocol Buffers via tree-sitter", ["proto"]),
+    "thrift": _ts("Apache Thrift via tree-sitter", ["thrift"]),
+    "capnp": _ts("Cap'n Proto via tree-sitter", ["capnp"]),
+    "powershell": _ts("PowerShell via tree-sitter", ["powershell"]),
+    "fish": _ts("Fish shell via tree-sitter", ["fish"]),
+    "gdscript": _ts("GDScript (Godot) via tree-sitter", ["gdscript"]),
+    "starlark": _ts("Starlark (Bazel/Buck) via tree-sitter", ["starlark"]),
+    "ada": _ts("Ada via tree-sitter", ["ada"]),
+    "d": _ts("D programming language via tree-sitter", ["d"]),
+    "nim": _ts("Nim via tree-sitter", ["nim"]),
+    "toml": _ts("TOML configuration files via tree-sitter", ["toml"]),
+    "css": _ts("CSS stylesheets via tree-sitter", ["css"]),
+    "json": _ts("JSON configuration files via tree-sitter", ["json"]),
+    "yaml_ansible": _ts("YAML/Ansible via tree-sitter", ["yaml"]),
+    "xml": _ts("XML configuration files via tree-sitter", ["xml"]),
+    # ---- Linkers ----
+    "websocket-linker": {
+        "description": "WebSocket communication patterns",
+        "availability": "core",
+        "languages": [],
+        "backend": "protocol",
+    },
+}
+
+
+def _metadata_for(name: str) -> Dict[str, Any]:
+    """Return fallback metadata for a registered analyzer/linker, or sensible defaults."""
+    return _PASS_METADATA.get(name, {})
+
+
+def build_catalog_from_registries() -> Catalog:
+    """Build the catalog from ``_ANALYZER_REGISTRY`` + ``_LINKER_REGISTRY``.
+
+    Triggers entry-point discovery so all language packages register before
+    the catalog is materialized. Per-pass metadata (description, languages,
+    availability, requires, backend) comes first from the registry entry
+    when the decorator specified it; otherwise from :data:`_PASS_METADATA`
+    as a transitional fallback.
+
+    Returns:
+        A :class:`Catalog` whose ``passes`` list mirrors the registries.
+        Pass IDs are the registration names (no ``-v1`` suffix per
+        INV-morag PR 2); ordering is analyzers-first (sorted by priority,
+        then name) then linkers (sorted by priority, then name).
+    """
+    # Local imports to avoid circular deps (analyze.registry imports from
+    # this package).
+    from .analyze.registry import _ANALYZER_REGISTRY, ensure_discovered
+    from .linkers.registry import _LINKER_REGISTRY
+
+    ensure_discovered()
+
+    passes: List[Pass] = []
+    seen: set[str] = set()
+
+    def _from_registered(name: str, reg_description: str, reg_languages: List[str],
+                         reg_availability: str, reg_requires: Optional[str],
+                         reg_backend: str, reg_pass_label: str) -> Pass:
+        # Registry default for availability is "core". For analyzers that
+        # haven't yet moved their metadata into the decorator call, the
+        # fallback dict knows better — most analyzers are actually "extra"
+        # via tree-sitter. Prefer the dict when the registry value is the
+        # default "core" sentinel AND the dict has an explicit entry.
+        fallback = _metadata_for(name)
+        if reg_availability == "core" and "availability" in fallback:
+            availability = fallback["availability"]
+        else:
+            availability = reg_availability
+        return Pass(
+            id=name,
+            description=reg_description or fallback.get("description", ""),
+            availability=availability,
+            requires=reg_requires if reg_requires is not None else fallback.get("requires"),
+            languages=list(reg_languages) if reg_languages else list(fallback.get("languages", [])),
+            backend=reg_backend or fallback.get("backend", ""),
+            pass_label=reg_pass_label or name,
+        )
+
+    # Analyzers first, sorted by priority then name for stable output.
+    for reg in sorted(_ANALYZER_REGISTRY.values(), key=lambda r: (r.priority, r.name)):
+        if reg.name in seen:  # pragma: no cover - registry uniqueness invariant
+            continue
+        passes.append(_from_registered(
+            name=reg.name,
+            reg_description=reg.description,
+            reg_languages=reg.languages,
+            reg_availability=reg.availability,
+            reg_requires=reg.requires,
+            reg_backend=reg.backend,
+            reg_pass_label=reg.pass_label,
+        ))
+        seen.add(reg.name)
+
+    for reg in sorted(_LINKER_REGISTRY.values(), key=lambda r: (r.priority, r.name)):
+        if reg.name in seen:  # pragma: no cover - cross-registry name collision (shouldn't happen)
+            continue
+        passes.append(_from_registered(
+            name=reg.name,
+            reg_description=reg.description,
+            reg_languages=reg.languages,
+            reg_availability=reg.availability,
+            reg_requires=reg.requires,
+            reg_backend=reg.backend,
+            reg_pass_label=reg.pass_label,
+        ))
+        seen.add(reg.name)
+
+    return Catalog(passes=passes)
+
+
 def get_default_catalog() -> Catalog:
-    """Return the default catalog with all known passes and packs."""
-    return Catalog(
-        passes=[
-            # Core passes (no tree-sitter required)
-            Pass(
-                id="python-ast-v1",
-                description="Python AST parser (classes, functions, imports)",
-                availability="core",
-                languages=["python"],
-            ),
-            Pass(
-                id="jupyter-ast-v1",
-                description="Jupyter notebook code cell parser",
-                availability="core",
-                languages=["jupyter"],
-            ),
-            Pass(
-                id="blade-v1",
-                description="Laravel Blade template directives",
-                availability="core",
-                languages=["blade"],
-            ),
-            Pass(
-                id="gnuplot-v1",
-                description="Gnuplot functions, variables, plot commands",
-                availability="core",
-                languages=["gnuplot"],
-            ),
-            Pass(
-                id="handlebars-v1",
-                description="Handlebars partials and block helpers",
-                availability="core",
-                languages=["handlebars"],
-            ),
-            Pass(
-                id="just-v1",
-                description="Justfile recipes and dependencies",
-                availability="core",
-                languages=["just"],
-            ),
-            Pass(
-                id="mermaid-v1",
-                description="Mermaid diagram types and nodes",
-                availability="core",
-                languages=["mermaid"],
-            ),
-            Pass(
-                id="qml-v1",
-                description="QML components, properties, signals",
-                availability="core",
-                languages=["qml"],
-            ),
-            Pass(
-                id="html-pattern-v1",
-                description="HTML script tag parser",
-                availability="core",
-                languages=["html"],
-            ),
-            Pass(
-                id="websocket-linker-v1",
-                description="WebSocket communication patterns",
-                availability="core",
-            ),
-            # Language analyzers (tree-sitter based)
-            Pass(
-                id="javascript-ts-v1",
-                description="JS/TS/Svelte/Vue via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["javascript", "typescript", "vue"],
-            ),
-            Pass(
-                id="php-ts-v1",
-                description="PHP via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["php"],
-            ),
-            Pass(
-                id="c-ts-v1",
-                description="C via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["c"],
-            ),
-            Pass(
-                id="cpp-ts-v1",
-                description="C++ via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["cpp"],
-            ),
-            Pass(
-                id="java-ts-v1",
-                description="Java via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["java"],
-            ),
-            Pass(
-                id="elixir-ts-v1",
-                description="Elixir via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["elixir"],
-            ),
-            Pass(
-                id="rust-ts-v1",
-                description="Rust via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["rust"],
-            ),
-            Pass(
-                id="go-ts-v1",
-                description="Go via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["go"],
-            ),
-            Pass(
-                id="ruby-ts-v1",
-                description="Ruby via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["ruby"],
-            ),
-            Pass(
-                id="kotlin-ts-v1",
-                description="Kotlin via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["kotlin"],
-            ),
-            Pass(
-                id="swift-ts-v1",
-                description="Swift via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["swift"],
-            ),
-            Pass(
-                id="scala-ts-v1",
-                description="Scala via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["scala"],
-            ),
-            Pass(
-                id="lua-ts-v1",
-                description="Lua via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["lua"],
-            ),
-            Pass(
-                id="dart-ts-v1",
-                description="Dart via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["dart"],
-            ),
-            Pass(
-                id="clojure-ts-v1",
-                description="Clojure via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["clojure"],
-            ),
-            Pass(
-                id="elm-ts-v1",
-                description="Elm via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["elm"],
-            ),
-            Pass(
-                id="erlang-ts-v1",
-                description="Erlang via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["erlang"],
-            ),
-            Pass(
-                id="haskell-ts-v1",
-                description="Haskell via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["haskell"],
-            ),
-            Pass(
-                id="agda-v1",
-                description="Agda proof assistant via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["agda"],
-            ),
-            Pass(
-                id="lean-v1",
-                description="Lean 4 theorem prover via tree-sitter (build from source)",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["lean"],
-            ),
-            Pass(
-                id="wolfram-v1",
-                description="Wolfram Language via tree-sitter (build from source)",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["wolfram"],
-            ),
-            Pass(
-                id="ocaml-ts-v1",
-                description="OCaml via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["ocaml"],
-            ),
-            Pass(
-                id="solidity-ts-v1",
-                description="Solidity smart contracts via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["solidity"],
-            ),
-            Pass(
-                id="csharp-ts-v1",
-                description="C# via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["csharp"],
-            ),
-            Pass(
-                id="zig-ts-v1",
-                description="Zig via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["zig"],
-            ),
-            Pass(
-                id="groovy-ts-v1",
-                description="Groovy via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["groovy"],
-            ),
-            Pass(
-                id="julia-ts-v1",
-                description="Julia via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["julia"],
-            ),
-            Pass(
-                id="objc-ts-v1",
-                description="Objective-C via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["objc"],
-            ),
-            Pass(
-                id="hcl-ts-v1",
-                description="HCL/Terraform via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["hcl"],
-            ),
-            Pass(
-                id="fsharp-ts-v1",
-                description="F# via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["fsharp"],
-            ),
-            Pass(
-                id="perl-ts-v1",
-                description="Perl via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["perl"],
-            ),
-            Pass(
-                id="r-ts-v1",
-                description="R via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["r"],
-            ),
-            Pass(
-                id="bash-v1",
-                description="Bash/Shell via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["bash"],
-            ),
-            # Build/config systems
-            Pass(
-                id="sql-v1",
-                description="SQL schema analysis via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["sql"],
-            ),
-            Pass(
-                id="dockerfile-v1",
-                description="Dockerfile analysis via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["dockerfile"],
-            ),
-            Pass(
-                id="cmake-v1",
-                description="CMake build system via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["cmake"],
-            ),
-            Pass(
-                id="make-v1",
-                description="Makefile build system via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-            ),
-            Pass(
-                id="graphql-v1",
-                description="GraphQL schema via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["graphql"],
-            ),
-            Pass(
-                id="nix-v1",
-                description="Nix expressions via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["nix"],
-            ),
-            # Hardware description
-            Pass(
-                id="cuda-v1",
-                description="CUDA GPU kernels via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["cuda"],
-            ),
-            Pass(
-                id="verilog-v1",
-                description="Verilog/SystemVerilog via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["verilog"],
-            ),
-            Pass(
-                id="vhdl-v1",
-                description="VHDL hardware design via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["vhdl"],
-            ),
-            # Shaders
-            Pass(
-                id="glsl-v1",
-                description="GLSL shaders via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["glsl"],
-            ),
-            Pass(
-                id="hlsl-v1",
-                description="HLSL DirectX shaders via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["hlsl"],
-            ),
-            Pass(
-                id="wgsl-v1",
-                description="WGSL WebGPU shaders via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["wgsl"],
-            ),
-            # Scientific/legacy
-            Pass(
-                id="fortran-v1",
-                description="Fortran via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["fortran"],
-            ),
-            Pass(
-                id="cobol-v1",
-                description="COBOL via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["cobol"],
-            ),
-            Pass(
-                id="latex-v1",
-                description="LaTeX via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["latex"],
-            ),
-            # RPC/serialization
-            Pass(
-                id="proto-v1",
-                description="Protocol Buffers via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["proto"],
-            ),
-            Pass(
-                id="thrift-v1",
-                description="Apache Thrift via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["thrift"],
-            ),
-            Pass(
-                id="capnp-v1",
-                description="Cap'n Proto via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["capnp"],
-            ),
-            # Scripting
-            Pass(
-                id="powershell-v1",
-                description="PowerShell via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["powershell"],
-            ),
-            Pass(
-                id="fish-v1",
-                description="Fish shell via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["fish"],
-            ),
-            # Game development
-            Pass(
-                id="gdscript-v1",
-                description="GDScript (Godot) via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["gdscript"],
-            ),
-            # Build systems
-            Pass(
-                id="starlark-v1",
-                description="Starlark (Bazel/Buck) via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["starlark"],
-            ),
-            # Systems programming
-            Pass(
-                id="ada-v1",
-                description="Ada via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["ada"],
-            ),
-            Pass(
-                id="d-v1",
-                description="D programming language via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["d"],
-            ),
-            Pass(
-                id="nim-v1",
-                description="Nim via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["nim"],
-            ),
-            # Config formats (optional - not suggested by default)
-            Pass(
-                id="toml-v1",
-                description="TOML configuration files via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["toml"],
-            ),
-            Pass(
-                id="css-v1",
-                description="CSS stylesheets via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["css"],
-            ),
-            Pass(
-                id="json-config-v1",
-                description="JSON configuration files via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["json"],
-            ),
-            Pass(
-                id="yaml-ansible-v1",
-                description="YAML/Ansible via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["yaml"],
-            ),
-            Pass(
-                id="xml-config-v1",
-                description="XML configuration files via tree-sitter",
-                availability="extra",
-                requires="tree-sitter-language-pack",
-                languages=["xml"],
-            ),
-        ],
-    )
+    """Return the default catalog (registry-derived, INV-morag PR 2)."""
+    return build_catalog_from_registries()
 
 
 def suggest_passes_for_languages(detected_languages: set[str]) -> List[Pass]:

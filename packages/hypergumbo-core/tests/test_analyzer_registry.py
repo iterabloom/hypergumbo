@@ -686,8 +686,8 @@ class TestCollectAnalyzerResult:
             origin_run_id="run1",
         )
         run = MagicMock(spec=AnalysisRun)
-        run.to_dict.return_value = {"pass": "test-v1"}
-        run.pass_id = "test-v1"
+        run.to_dict.return_value = {"pass": "test"}
+        run.pass_id = "test"
 
         result = AnalysisResult(
             symbols=[sym],
@@ -717,7 +717,7 @@ class TestCollectAnalyzerResult:
         from hypergumbo_core.limits import Limits
 
         run = MagicMock(spec=AnalysisRun)
-        run.pass_id = "lean-ts-v1"
+        run.pass_id = "lean"
 
         result = AnalysisResult(
             run=run,
@@ -738,7 +738,7 @@ class TestCollectAnalyzerResult:
         assert len(analysis_runs) == 0
         assert len(all_symbols) == 0
         assert len(limits.skipped_passes) == 1
-        assert limits.skipped_passes[0]["pass"] == "lean-ts-v1"
+        assert limits.skipped_passes[0]["pass"] == "lean"
         assert "grammar not available" in limits.skipped_passes[0]["reason"]
 
     def test_drains_failed_files_into_limits(self) -> None:
@@ -747,8 +747,8 @@ class TestCollectAnalyzerResult:
         from hypergumbo_core.limits import Limits
 
         run = MagicMock(spec=AnalysisRun)
-        run.to_dict.return_value = {"pass": "python-ast-v1"}
-        run.pass_id = "python-ast-v1"
+        run.to_dict.return_value = {"pass": "python"}
+        run.pass_id = "python"
         run.failed_files = [
             {"path": "broken.py", "reason": "SyntaxError: line 3"},
             {"path": "bad-utf8.py", "reason": "UnicodeDecodeError"},
@@ -775,9 +775,9 @@ class TestCollectAnalyzerResult:
         assert len(limits.failed_files) == 2
         assert limits.failed_files[0].path == "broken.py"
         assert limits.failed_files[0].reason == "SyntaxError: line 3"
-        assert limits.failed_files[0].analyzer == "python-ast-v1"
+        assert limits.failed_files[0].analyzer == "python"
         assert limits.failed_files[1].path == "bad-utf8.py"
-        assert limits.failed_files[1].analyzer == "python-ast-v1"
+        assert limits.failed_files[1].analyzer == "python"
 
     def test_drains_failed_files_from_partially_skipped_result(self) -> None:
         """failed_files drain even when result.skipped=True — partial-skip analyzers may have already recorded entries before bailing."""
@@ -785,7 +785,7 @@ class TestCollectAnalyzerResult:
         from hypergumbo_core.limits import Limits
 
         run = MagicMock(spec=AnalysisRun)
-        run.pass_id = "ipc-linker-v1"
+        run.pass_id = "ipc-linker"
         run.failed_files = [{"path": "main.ts", "reason": "OSError: permission denied"}]
 
         result = AnalysisResult(
@@ -807,7 +807,7 @@ class TestCollectAnalyzerResult:
         assert len(limits.skipped_passes) == 1
         assert len(limits.failed_files) == 1
         assert limits.failed_files[0].path == "main.ts"
-        assert limits.failed_files[0].analyzer == "ipc-linker-v1"
+        assert limits.failed_files[0].analyzer == "ipc-linker"
 
 
 # ---------------------------------------------------------------------------
@@ -834,7 +834,7 @@ class TestRunAllAnalyzersPathNormalization:
             language="java",
             path="/home/user/myrepo/src/Main.java",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="java-v1",
+            origin="java",
             origin_run_id="run1",
         )
         sym_relative = Symbol(
@@ -844,13 +844,13 @@ class TestRunAllAnalyzersPathNormalization:
             language="rust",
             path="src/lib.rs",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="rust-v1",
+            origin="rust",
             origin_run_id="run1",
         )
 
         run = MagicMock(spec=AnalysisRun)
-        run.to_dict.return_value = {"pass": "test-v1"}
-        run.pass_id = "test-v1"
+        run.to_dict.return_value = {"pass": "test"}
+        run.pass_id = "test"
 
         result = AnalysisResult(
             symbols=[sym_absolute, sym_relative],
@@ -895,8 +895,8 @@ class TestRunAllAnalyzersPathNormalization:
         )
 
         run = MagicMock(spec=AnalysisRun)
-        run.to_dict.return_value = {"pass": "test-v1"}
-        run.pass_id = "test-v1"
+        run.to_dict.return_value = {"pass": "test"}
+        run.pass_id = "test"
 
         result = AnalysisResult(
             symbols=[],
@@ -933,13 +933,13 @@ class TestRunAllAnalyzersPathNormalization:
             language="c",
             path="/usr/include/stdlib.h",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="c-v1",
+            origin="c",
             origin_run_id="run1",
         )
 
         run = MagicMock(spec=AnalysisRun)
-        run.to_dict.return_value = {"pass": "test-v1"}
-        run.pass_id = "test-v1"
+        run.to_dict.return_value = {"pass": "test"}
+        run.pass_id = "test"
 
         result = AnalysisResult(
             symbols=[sym],
@@ -976,8 +976,8 @@ class TestRunAllAnalyzersPathNormalization:
         repo_root = Path("/home/user/myrepo")
 
         run = MagicMock(spec=AnalysisRun)
-        run.to_dict.return_value = {"pass": "test-v1"}
-        run.pass_id = "test-v1"
+        run.to_dict.return_value = {"pass": "test"}
+        run.pass_id = "test"
         run.failed_files = [
             {"path": "/home/user/myrepo/src/Broken.cs", "reason": "OSError"},
             {"path": "already/relative.py", "reason": "SyntaxError"},
@@ -1030,8 +1030,8 @@ class TestRunAllAnalyzersTruncatedFiles:
         small.write_text("x = 1\n")
 
         run = MagicMock(spec=AnalysisRun)
-        run.to_dict.return_value = {"pass": "test-trunc-v1"}
-        run.pass_id = "test-trunc-v1"
+        run.to_dict.return_value = {"pass": "test-trunc"}
+        run.pass_id = "test-trunc"
 
         # Analyzer that calls find_files — the global callback should fire
         @register_analyzer("test_trunc")
@@ -1082,8 +1082,8 @@ class TestRunAllAnalyzersDependencyManifest:
         from hypergumbo_core.supply_chain import DependencyManifest
 
         run = MagicMock(spec=AnalysisRun)
-        run.to_dict.return_value = {"pass": "test-manifest-v1"}
-        run.pass_id = "test-manifest-v1"
+        run.to_dict.return_value = {"pass": "test-manifest"}
+        run.pass_id = "test-manifest"
 
         manifest = DependencyManifest(entries={
             "github.com/foo/bar": {"direct": True},
@@ -1114,8 +1114,8 @@ class TestRunAllAnalyzersDependencyManifest:
         from hypergumbo_core.ir import AnalysisRun
 
         run = MagicMock(spec=AnalysisRun)
-        run.to_dict.return_value = {"pass": "test-nomanifest-v1"}
-        run.pass_id = "test-nomanifest-v1"
+        run.to_dict.return_value = {"pass": "test-nomanifest"}
+        run.pass_id = "test-nomanifest"
 
         @register_analyzer("test_nomanifest")
         def analyze_test(root: Path) -> AnalysisResult:
@@ -1149,7 +1149,7 @@ class TestRunAllAnalyzersFileSymbolSynthesis:
             language="python",
             path="src/main.py",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            origin="py-v1",
+            origin="py",
             origin_run_id="run1",
         )
         dangling_file_id = make_file_id("python", "src/main.py")
@@ -1158,13 +1158,13 @@ class TestRunAllAnalyzersFileSymbolSynthesis:
             dst=caller.id,
             edge_type="imports_module",
             line=1,
-            origin="py-v1",
+            origin="py",
             origin_run_id="run1",
         )
 
         run = MagicMock(spec=AnalysisRun)
-        run.to_dict.return_value = {"pass": "py-v1"}
-        run.pass_id = "py-v1"
+        run.to_dict.return_value = {"pass": "py"}
+        run.pass_id = "py"
 
         result = AnalysisResult(
             symbols=[caller], edges=[edge], usage_contexts=[],
@@ -1206,7 +1206,7 @@ class TestRunAllAnalyzersFileSymbolSynthesis:
             language="lua",
             path="init.lua",
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="lua-v1",
+            origin="lua",
             origin_run_id="run1",
         )
         edge = Edge.create(
@@ -1214,13 +1214,13 @@ class TestRunAllAnalyzersFileSymbolSynthesis:
             dst="lua:init.lua:5-10:hello:function",
             edge_type="contains",
             line=5,
-            origin="lua-v1",
+            origin="lua",
             origin_run_id="run1",
         )
 
         run = MagicMock(spec=AnalysisRun)
-        run.to_dict.return_value = {"pass": "lua-v1"}
-        run.pass_id = "lua-v1"
+        run.to_dict.return_value = {"pass": "lua"}
+        run.pass_id = "lua"
 
         result = AnalysisResult(
             symbols=[existing_file_sym], edges=[edge], usage_contexts=[],
@@ -1238,4 +1238,4 @@ class TestRunAllAnalyzersFileSymbolSynthesis:
 
         file_syms = [s for s in symbols if s.id == file_id]
         assert len(file_syms) == 1
-        assert file_syms[0].origin == "lua-v1"  # producer's, not the synth's
+        assert file_syms[0].origin == "lua"  # producer's, not the synth's

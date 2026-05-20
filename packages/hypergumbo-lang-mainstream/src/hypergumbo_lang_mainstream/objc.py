@@ -45,7 +45,7 @@ from hypergumbo_core.analyze.registry import register_analyzer
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = make_pass_id("objective-c")
+PASS_ID = make_pass_id("objc")
 
 
 def _is_objc_tree_sitter_available_legacy() -> bool:  # pragma: no cover - replaced by TreeSitterAnalyzer

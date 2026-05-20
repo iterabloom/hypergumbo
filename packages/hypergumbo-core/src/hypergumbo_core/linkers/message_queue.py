@@ -547,7 +547,7 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
 
 
 @register_linker(
-    "message_queue",
+    "message-queue-linker",
     priority=55,  # Run after core linkers, with other messaging patterns
     description="Message queue linking (Kafka, RabbitMQ, SQS, Redis pub/sub)",
 )

@@ -288,7 +288,7 @@ class TestCAnalysisRun:
 
         assert result.run is not None
         assert result.run.files_analyzed == 3
-        assert result.run.pass_id == "c-v1"
+        assert result.run.pass_id == "c"
 
     def test_empty_repo(self, tmp_path: Path) -> None:
         """Handles repo with no C files."""

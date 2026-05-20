@@ -67,7 +67,7 @@ class StubAnalyzer(TreeSitterAnalyzer):
     """Minimal analyzer for testing the base class orchestration."""
 
     lang = "stub"
-    pass_id = "stub-v1"
+    pass_id = "stub"
     pass_version = "test-0.1.0"
     file_patterns: ClassVar[list[str]] = ["*.stub"]
     grammar_module = "tree_sitter_stub"
@@ -226,7 +226,7 @@ class LanguagePackAnalyzer(TreeSitterAnalyzer):
     """Analyzer that uses language_pack_name instead of grammar_module."""
 
     lang = "packtest"
-    pass_id = "packtest-v1"
+    pass_id = "packtest"
     pass_version = "test-0.1.0"
     file_patterns: ClassVar[list[str]] = ["*.pkt"]
     language_pack_name = "nim"  # Use a real language-pack name for testing
@@ -269,7 +269,7 @@ class TestTreeSitterAnalyzerBasic:
         assert result.edges == []
         assert result.usage_contexts == []
         assert result.run is not None
-        assert result.run.pass_id == "stub-v1"
+        assert result.run.pass_id == "stub"
         assert result.run.version == "test-0.1.0"
         assert result.run.files_analyzed == 0
         assert result.run.duration_ms >= 0
@@ -307,7 +307,7 @@ class TestTreeSitterAnalyzerBasic:
 
         sym = result.symbols[0]
         assert sym.language == "stub"
-        assert sym.origin == "stub-v1"
+        assert sym.origin == "stub"
         assert sym.kind == "function"
 
 
@@ -537,7 +537,7 @@ class TestTreeSitterAnalyzerGrammarModule:
 
         class GoStyleAnalyzer(TreeSitterAnalyzer):
             lang = "gostyle"
-            pass_id = "gostyle-v1"
+            pass_id = "gostyle"
             pass_version = "test-0.1.0"
             file_patterns: ClassVar[list[str]] = ["*.go"]
             grammar_module = "tree_sitter_go"

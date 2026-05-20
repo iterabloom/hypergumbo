@@ -34,7 +34,7 @@ def _ex_module(name: str, path: str | None = None) -> Symbol:
         language="elixir",
         path=path,
         span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
-        origin="elixir-v1",
+        origin="elixir",
     )
 
 
@@ -55,7 +55,7 @@ def _ex_function(
         path=path,
         span=Span(start_line=start, end_line=start + 3, start_col=0, end_col=0),
         modifiers=modifiers or [],
-        origin="elixir-v1",
+        origin="elixir",
     )
 
 

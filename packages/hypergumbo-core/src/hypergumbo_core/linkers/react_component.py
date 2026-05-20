@@ -331,7 +331,7 @@ REACT_COMPONENT_REQUIREMENTS = [
 
 
 @register_linker(
-    "react_component",
+    "react-component-linker",
     priority=42,  # After IPC (40), before HTTP (45)
     description=(
         "React component composition - links JSX element usage "

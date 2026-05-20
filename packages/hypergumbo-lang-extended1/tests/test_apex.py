@@ -398,13 +398,13 @@ public class Test {}
         result = analyze_apex(tmp_path)
         cls = next((s for s in result.symbols if s.kind == "class"), None)
         assert cls is not None
-        assert cls.origin == "apex-v1"
+        assert cls.origin == "apex"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_apex_file(tmp_path, "Test.cls", "public class Test {}")
         result = analyze_apex(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "apex-v1"
+        assert result.run.pass_id == "apex"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

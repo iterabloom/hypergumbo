@@ -118,7 +118,7 @@ def _short_name(symbol_name: str) -> str:
 
 
 @register_linker(
-    "go_memberlist",
+    "go-memberlist-linker",
     priority=45,
     description="Go hashicorp/memberlist cluster delegate callbacks",
     activation=LinkerActivation(always=True),

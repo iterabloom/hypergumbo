@@ -87,11 +87,11 @@ class TestEdgePostInitEnforcement:
             "dst": "d",
             "type": "calls",
             "line": 1,
-            "origin": "real-pass-v1",
+            "origin": "real-pass",
             "origin_run_id": "run-42",
         }
         e = Edge.from_dict(d)
-        assert e.origin == "real-pass-v1"
+        assert e.origin == "real-pass"
         assert e.origin_run_id == "run-42"
 
 

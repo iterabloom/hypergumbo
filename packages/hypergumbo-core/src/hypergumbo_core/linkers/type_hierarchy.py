@@ -555,7 +555,7 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
 
 # Register the linker
 @register_linker(
-    "type_hierarchy",
+    "type-hierarchy",
     priority=60,  # Run after analyzers, before final cleanup
     description="Creates dispatches_to edges for polymorphic method dispatch",
     activation=LinkerActivation(always=True),  # Run on all codebases

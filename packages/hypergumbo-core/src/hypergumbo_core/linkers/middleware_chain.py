@@ -70,7 +70,7 @@ def _is_test_path(path: str) -> bool:
 
 
 @register_linker(
-    "middleware-chain",
+    "middleware-chain-linker",
     priority=55,
     description="Chain consecutive middleware symbols in the same file",
 )

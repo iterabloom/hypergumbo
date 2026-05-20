@@ -559,7 +559,7 @@ class TestInheritanceLinker:
             language="go",
             path="/reader.go",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
             meta=None,
         )
@@ -570,7 +570,7 @@ class TestInheritanceLinker:
             language="go",
             path="/reader.go",
             span=Span(start_line=10, end_line=12, start_col=0, end_col=0),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
             meta={"base_classes": ["Reader"]},
         )
@@ -596,7 +596,7 @@ class TestInheritanceLinker:
             language="go",
             path="/models.go",
             span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
             meta=None,
         )
@@ -607,7 +607,7 @@ class TestInheritanceLinker:
             language="go",
             path="/models.go",
             span=Span(start_line=5, end_line=7, start_col=0, end_col=0),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
             meta={"base_classes": ["BaseModel"]},
         )
@@ -633,7 +633,7 @@ class TestInheritanceLinker:
             language="go",
             path="/io.go",
             span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
             meta=None,
         )
@@ -644,7 +644,7 @@ class TestInheritanceLinker:
             language="go",
             path="/io.go",
             span=Span(start_line=5, end_line=7, start_col=0, end_col=0),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
             meta=None,
         )
@@ -655,7 +655,7 @@ class TestInheritanceLinker:
             language="go",
             path="/file.go",
             span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
-            origin="go-v1",
+            origin="go",
             origin_run_id="test-run",
             meta={"base_classes": ["Reader", "Closer"]},
         )
@@ -681,7 +681,7 @@ class TestInheritanceLinker:
             language="scala",
             path="/Logging.scala",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="scala-v1",
+            origin="scala",
             origin_run_id="test-run",
             meta=None,
         )
@@ -692,7 +692,7 @@ class TestInheritanceLinker:
             language="scala",
             path="/UserService.scala",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="scala-v1",
+            origin="scala",
             origin_run_id="test-run",
             meta={"base_classes": ["Logging"]},
         )
@@ -718,7 +718,7 @@ class TestInheritanceLinker:
             language="objective-c",
             path="/MBProgressHUD.h",
             span=Span(start_line=10, end_line=15, start_col=0, end_col=0),
-            origin="objective-c-v1",
+            origin="objc",
             origin_run_id="test-run",
             meta=None,
         )
@@ -729,7 +729,7 @@ class TestInheritanceLinker:
             language="objective-c",
             path="/ViewController.m",
             span=Span(start_line=1, end_line=20, start_col=0, end_col=0),
-            origin="objective-c-v1",
+            origin="objc",
             origin_run_id="test-run",
             meta={"base_classes": ["UIViewController", "MBProgressHUDDelegate"]},
         )
@@ -756,7 +756,7 @@ class TestInheritanceLinker:
             language="scala",
             path="/traits.scala",
             span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
-            origin="scala-v1",
+            origin="scala",
             origin_run_id="test-run",
             meta=None,
         )
@@ -767,7 +767,7 @@ class TestInheritanceLinker:
             language="scala",
             path="/traits.scala",
             span=Span(start_line=5, end_line=10, start_col=0, end_col=0),
-            origin="scala-v1",
+            origin="scala",
             origin_run_id="test-run",
             meta={"base_classes": ["Serializable"]},
         )
@@ -800,7 +800,7 @@ class TestInheritanceLinker:
             language="rust",
             path="/candle-core/src/nn.rs",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="rust-v1",
+            origin="rust",
             origin_run_id="test-run",
             meta=None,
         )
@@ -811,7 +811,7 @@ class TestInheritanceLinker:
             language="rust",
             path="/candle-kernels/src/lib.rs",
             span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
-            origin="rust-v1",
+            origin="rust",
             origin_run_id="test-run",
             meta=None,
         )
@@ -822,7 +822,7 @@ class TestInheritanceLinker:
             language="rust",
             path="/candle-nn/src/layer_norm.rs",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            origin="rust-v1",
+            origin="rust",
             origin_run_id="test-run",
             meta={"base_classes": ["Module"]},
         )
@@ -850,7 +850,7 @@ class TestInheritanceLinker:
             language="rust",
             path="/candle-kernels/src/lib.rs",
             span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
-            origin="rust-v1",
+            origin="rust",
             origin_run_id="test-run",
             meta=None,
         )
@@ -861,7 +861,7 @@ class TestInheritanceLinker:
             language="rust",
             path="/candle-nn/src/layer_norm.rs",
             span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
-            origin="rust-v1",
+            origin="rust",
             origin_run_id="test-run",
             meta={"base_classes": ["Module"]},
         )
@@ -892,7 +892,7 @@ class TestInheritanceLinker:
             language="rust",
             path="/candle-core/src/nn.rs",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="rust-v1",
+            origin="rust",
             origin_run_id="test-run",
             meta=None,
         )
@@ -903,7 +903,7 @@ class TestInheritanceLinker:
             language="python",
             path="/candle-pyo3/py_src/foo.py",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
             meta={"base_classes": ["Module"]},
         )
@@ -931,7 +931,7 @@ class TestInheritanceLinker:
             language="python",
             path="/py/base.py",
             span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
             meta=None,
         )
@@ -942,7 +942,7 @@ class TestInheritanceLinker:
             language="rust",
             path="/rust/base.rs",
             span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
-            origin="rust-v1",
+            origin="rust",
             origin_run_id="test-run",
             meta=None,
         )
@@ -953,7 +953,7 @@ class TestInheritanceLinker:
             language="python",
             path="/py/child.py",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="python-v1",
+            origin="python",
             origin_run_id="test-run",
             meta={"base_classes": ["Base"]},
         )
@@ -979,7 +979,7 @@ class TestInheritanceLinker:
             language="scala",
             path="/base.scala",
             span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
-            origin="scala-v1",
+            origin="scala",
             origin_run_id="test-run",
             meta=None,
         )
@@ -990,7 +990,7 @@ class TestInheritanceLinker:
             language="scala",
             path="/logging.scala",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
-            origin="scala-v1",
+            origin="scala",
             origin_run_id="test-run",
             meta=None,
         )
@@ -1001,7 +1001,7 @@ class TestInheritanceLinker:
             language="scala",
             path="/user.scala",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
-            origin="scala-v1",
+            origin="scala",
             origin_run_id="test-run",
             meta={"base_classes": ["BaseService", "Logging"]},
         )

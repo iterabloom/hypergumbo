@@ -115,7 +115,7 @@ def _resolve_import_path(
 
 
 @register_linker(
-    "vue-components",
+    "vue-component-linker",
     priority=25,
     description="Vue component import resolution",
     activation=LinkerActivation(

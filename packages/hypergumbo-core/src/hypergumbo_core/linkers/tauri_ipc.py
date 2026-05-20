@@ -977,7 +977,7 @@ TAURI_IPC_REQUIREMENTS = [
 
 
 @register_linker(
-    "tauri_ipc",
+    "tauri-ipc-linker",
     priority=14,  # After NAPI (13), before cgo (15)
     description=(
         "Tauri IPC bridge - links TypeScript/JavaScript invoke() calls "
