@@ -269,6 +269,10 @@ class AnalysisRun:
     repo_fingerprint: str      # hash of (git_head + dirty_files) or hash of (file_list + content_hashes)
     pass_id: str               # e.g., "python-ast-v1" (serialized as "pass" in JSON output)
     version: str               # e.g., "hypergumbo-0.1.0"
+    pass_version: str          # INV-morag option A: code-hash of the pass module
+                               # (sha256:<hex>) — real per-pass version, not the
+                               # legacy fake "-v1" suffix in pass_id. Empty for
+                               # producers that have not yet opted in.
     toolchain: Dict            # {"name": "python", "version": "3.11.0"}
     config_fingerprint: str    # sha256 of effective config
     files_analyzed: int
@@ -706,6 +710,43 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 **Output-specific note:** The IR field `pass_id` is serialized as `pass` in JSON output.
 
 **skipped_passes** (array, optional): Lists passes that could not run (e.g., `{"pass": "lean-ts-v1", "reason": "tree-sitter-lean grammar not available"}`). Each entry includes pass ID and reason.
+
+**pass_version** (string, INV-morag option A): real per-pass version derived from `sha256(inspect.getsource(<pass module>))`. Replaces the fake `-v1` suffix in `pass_id` with a value that actually changes when the pass implementation changes. Empty string when the producer has not opted in. PR 2 of INV-morag will propagate non-empty values to every registration site and drop the `-v1` suffix from `pass_id` entirely.
+
+### reproducibility_context — what's captured, what's explicitly not
+
+Top-level block introduced in INV-morag (option B) that documents the level of reproducibility this behavior map asserts. Reproducibility is a spectrum, not a yes/no claim; this block captures the L2 level (direct dependencies + runtime identity) and explicitly disclaims higher levels.
+
+```json
+{
+  "reproducibility_context": {
+    "level": "L2",
+    "captured": {
+      "hypergumbo_version": "2.0.2",
+      "python_version": "3.12.3",
+      "python_implementation": "CPython",
+      "tree_sitter_version": "0.21.0",
+      "grammars": {
+        "tree-sitter-language-pack": "0.4.0",
+        "tree-sitter-python": "0.21.0",
+        ...
+      }
+    },
+    "not_captured": [
+      "Transitive Python package versions (only direct deps...)",
+      "OS version, kernel, libc, locale, timezone, environment variables.",
+      "Hardware (CPU model, microcode, ...). Floating-point determinism..."
+    ],
+    "implications": "Behavior maps with matching pass_versions, ..."
+  }
+}
+```
+
+**Levels:** L0 (source content), L1 (pass logic via `AnalysisRun.pass_version`), L2 (direct deps — captured here), L3 (transitive deps), L4 (OS / libc), L5 (hardware). Hypergumbo commits to L2 and disclaims L3-L5.
+
+**Cache correctness:** any change to a captured field invalidates the run signature. Diffs not explained by captured fields suggest a not_captured factor — file as a tracker item if isolatable.
+
+**Consumer guidance:** when comparing two behavior maps, attribute differences along this priority: (1) `pass_version` change → analyzer logic changed; (2) `grammars[*]` change → grammar upgrade; (3) `tree_sitter_version` / `python_version` change → runtime upgrade; (4) unexplained → likely a not_captured factor.
 
 ### profile — repo characteristics
 

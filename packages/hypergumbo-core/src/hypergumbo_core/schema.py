@@ -65,6 +65,8 @@ This module works with two other components to provide schema infrastructure:
 """
 from __future__ import annotations
 
+import importlib.metadata
+import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -108,5 +110,95 @@ def new_behavior_map() -> Dict[str, Any]:
         "metrics": {},
         "limits": {},
         "entrypoints": [],
+        "reproducibility_context": build_reproducibility_context(),
+    }
+
+
+# INV-morag option B: L2 reproducibility context.
+#
+# Reproducibility is a spectrum, not a yes/no claim. This block captures
+# the L2 level — direct dependencies and runtime identity — and explicitly
+# disclaims L3 (transitive pip packages), L4 (OS / libc / locale), and L5
+# (hardware / microcode). The "not_captured" array is the honest part: it
+# tells the consumer which factors may affect output reproducibility but
+# aren't recorded in the behavior map. A consumer observing unexplained
+# diffs between two behavior maps with matching captured fields should
+# suspect a not_captured factor.
+
+_REPRO_NOT_CAPTURED: tuple[str, ...] = (
+    "Transitive Python package versions (only direct deps like tree-sitter "
+    "library + grammar packages are captured; the full pip freeze is not).",
+    "OS version, kernel, libc, locale, timezone, environment variables.",
+    "Hardware (CPU model, microcode, instruction set extensions, "
+    "memory layout). Floating-point determinism is also not guaranteed.",
+)
+
+_REPRO_IMPLICATIONS: str = (
+    "Behavior maps with matching pass_versions, hypergumbo_version, "
+    "python_version, tree_sitter_version, and per-grammar versions should "
+    "be functionally identical up to OS-level and hardware variation. "
+    "Diffs that are not explained by these fields suggest a not_captured "
+    "factor (transitive deps, OS, hardware) — file as a tracker item if "
+    "you can isolate one."
+)
+
+
+def _detect_tree_sitter_versions() -> tuple[str | None, Dict[str, str]]:
+    """Best-effort introspection of installed tree-sitter library + grammars.
+
+    Returns (library_version_or_None, {grammar_pkg: version}). When the
+    library is not importable (hypergumbo can run without tree-sitter, e.g.
+    when only regex / AST analyzers are active), both halves are None / {}.
+    The hypergumbo behavior map is honest about absence: an empty
+    ``grammars`` block means "no tree-sitter-* packages were found on the
+    PYTHONPATH at run time" — not "this analysis didn't use any grammars".
+    """
+    try:
+        tree_sitter_version: str | None = importlib.metadata.version("tree-sitter")
+    except importlib.metadata.PackageNotFoundError:
+        tree_sitter_version = None
+
+    grammars: Dict[str, str] = {}
+    for dist in importlib.metadata.distributions():
+        name = dist.metadata["Name"]
+        if not name:
+            continue
+        if name.startswith("tree-sitter-") or name == "tree-sitter-language-pack":
+            grammars[name] = dist.version
+
+    return tree_sitter_version, grammars
+
+
+def build_reproducibility_context() -> Dict[str, Any]:
+    """Build the top-level ``reproducibility_context`` block (INV-morag B).
+
+    Captures the L2 reproducibility level (hypergumbo version, Python
+    interpreter version, tree-sitter library + grammar versions when
+    available) and documents the L3-L5 factors that are explicitly NOT
+    captured. The ``implications`` text tells the consumer what level of
+    diff-attribution they can expect from these fields alone.
+
+    See the module-level commentary and INV-morag's tracker description for
+    the design rationale.
+    """
+    from . import __version__ as _hypergumbo_version
+
+    ts_version, grammars = _detect_tree_sitter_versions()
+
+    captured: Dict[str, Any] = {
+        "hypergumbo_version": _hypergumbo_version,
+        "python_version": platform.python_version(),
+        "python_implementation": platform.python_implementation(),
+    }
+    if ts_version is not None:
+        captured["tree_sitter_version"] = ts_version
+    if grammars:
+        captured["grammars"] = dict(sorted(grammars.items()))
+
+    return {
+        "level": "L2",
+        "captured": captured,
+        "not_captured": list(_REPRO_NOT_CAPTURED),
+        "implications": _REPRO_IMPLICATIONS,
     }
 

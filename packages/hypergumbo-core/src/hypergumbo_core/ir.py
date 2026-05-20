@@ -30,11 +30,13 @@ Provenance Fields
 - origin_run_signature: Links nodes/edges to their creating run's signature
 """
 import hashlib
+import inspect
 import platform
+import types
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 from . import __version__
 
@@ -79,8 +81,58 @@ def make_pass_id(name: str) -> str:
 
     The ``-v1`` suffix is backend-neutral and provides an escape hatch
     for future versioning if an analyzer's output format changes.
+
+    NOTE (INV-morag PR 1): the ``-v1`` suffix is a fake-versioning artifact;
+    real per-pass versioning lives in :func:`compute_pass_version` (a code-hash
+    of the pass module source). PR 2 of INV-morag will rename pass IDs to drop
+    the suffix entirely; for now ``make_pass_id`` is preserved so the rename
+    can be done as a separate reviewable PR.
     """
     return f"{name}-v1"
+
+
+def compute_pass_version(target: types.ModuleType | Callable[..., Any]) -> str:
+    """Compute a stable per-pass version derived from the pass module source.
+
+    Args:
+        target: A module or a callable whose module is hashed. When given a
+                callable, the callable's defining module is hashed (so
+                hashing a registration site's analyzer function yields the
+                same result as hashing the module that defines it).
+
+    Returns:
+        A string of the form ``"sha256:<64 hex chars>"`` that changes
+        whenever the pass module's source code changes, and does NOT change
+        when unrelated package code (e.g., a sibling analyzer in a different
+        module, or a docstring edit elsewhere) is bumped.
+
+    Rationale (INV-morag option A):
+        The legacy pass-ID suffix ``-v1`` was a fake-versioning artifact —
+        it bumped with the package release whether or not the pass logic
+        changed, so caches and reproducibility comparisons couldn't tell
+        "this analyzer's behavior changed" from "this analyzer's package
+        version bumped." Hashing the module source replaces that fake
+        signal with a real one.
+
+        Module-level hashing was chosen over function-level for two reasons:
+        (1) most analyzers depend on helper functions and module-level
+        constants in the same file; (2) hashing just the registered function
+        misses changes in those helpers, leading to stale cache hits.
+        Cross-module helper changes (e.g., to ``analyze.base``) are still
+        missed — those are covered by the surrounding package version,
+        which lives in ``AnalysisRun.version``.
+    """
+    if inspect.ismodule(target):
+        module = target
+    else:
+        module = inspect.getmodule(target)
+        if module is None:  # pragma: no cover — defensive
+            raise ValueError(  # pragma: no cover
+                f"Cannot resolve module for {target!r} — pass_version "
+                "requires a module-bound callable."
+            )
+    source = inspect.getsource(module)
+    return "sha256:" + hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -154,6 +206,12 @@ class AnalysisRun:
     warnings: List[str] = field(default_factory=list)
     started_at: str = ""
     duration_ms: int = 0
+    # INV-morag option A: real per-pass version (code-hash of the pass
+    # module). Default "" because PR 1 introduces the field additively;
+    # PR 2 propagates non-empty values to every registration site. Existing
+    # producers that don't yet pass pass_version keep the empty default,
+    # which is honest about "we don't know" rather than the fake "-v1".
+    pass_version: str = ""
 
     def record_failed_file(self, path: str, reason: str) -> None:
         """Record a per-file failure for later drain into limits.failed_files.
@@ -166,13 +224,14 @@ class AnalysisRun:
         self.failed_files.append({"path": path, "reason": reason})
 
     @classmethod
-    def create(
+    def create(  # nosec B107 — pass_version is a code-hash, not a password; bandit B107 false-positives on any "pass*" name with default ""
         cls,
         pass_id: str,
         version: str,
         config_fingerprint: Optional[str] = None,
         toolchain: Optional[Dict[str, str]] = None,
         repo_fingerprint: Optional[str] = None,
+        pass_version: str = "",
     ) -> "AnalysisRun":
         """Create a new AnalysisRun with a unique execution_id.
 
@@ -182,6 +241,11 @@ class AnalysisRun:
             config_fingerprint: Hash of effective config (defaults to empty config hash)
             toolchain: Runtime info dict (defaults to current Python runtime)
             repo_fingerprint: Hash of repo state for cache keying (optional)
+            pass_version: Real per-pass version (INV-morag option A) — typically
+                computed via :func:`compute_pass_version` at registration time.
+                Default "" preserves back-compat for producers that haven't
+                opted in yet; the field is honest about "unknown" rather than
+                the legacy fake ``-v1``.
         """
         tc = toolchain if toolchain is not None else _get_python_toolchain()
         cfg_fp = config_fingerprint if config_fingerprint else _default_config_fingerprint()
@@ -198,6 +262,7 @@ class AnalysisRun:
             skipped_passes=[],
             warnings=[],
             started_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            pass_version=pass_version,
         )
 
     def to_dict(self) -> dict:
@@ -216,6 +281,7 @@ class AnalysisRun:
             "warnings": self.warnings,
             "started_at": self.started_at,
             "duration_ms": self.duration_ms,
+            "pass_version": self.pass_version,
         }
 
 
