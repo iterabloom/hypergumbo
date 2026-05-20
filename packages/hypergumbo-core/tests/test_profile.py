@@ -126,6 +126,38 @@ def test_detects_multiple_languages(tmp_path: Path) -> None:
     assert "html" in languages
 
 
+def test_inv_hokig_bash_includes_extensionless_shebang(tmp_path: Path) -> None:
+    """INV-hokig: profile.languages.bash.files must agree with the analyzer.
+
+    The bash analyzer detects extensionless executables by shebang line
+    (e.g., .githooks/pre-commit, scripts/auto-pr). Before this fix, profile
+    only counted *.sh / *.bash by extension and reported a lower number
+    than the analyzer's files_analyzed — making
+    profile.languages.bash.files unsafe to use for "how many bash files
+    does this repo have?".
+
+    Fixture: 1 .sh file + 1 extensionless shebang script. Both must
+    surface under profile.languages.bash.files, matching the bash
+    analyzer's enumeration.
+    """
+    (tmp_path / "script.sh").write_text("#!/bin/bash\necho hi\n")
+    no_ext = tmp_path / "deploy"
+    no_ext.write_text("#!/bin/bash\necho deploy\n")
+    no_ext.chmod(0o755)
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    languages = data["profile"]["languages"]
+    assert "bash" in languages
+    assert languages["bash"]["files"] == 2, (
+        f"profile counted {languages['bash']['files']} bash files; "
+        f"expected 2 (script.sh + extensionless shebang 'deploy'). "
+        f"Full profile: {languages}"
+    )
+
+
 def test_inv_tosum_bash_not_double_counted(tmp_path: Path) -> None:
     """INV-tosum: shell scripts must surface exactly once under the canonical 'bash' key.
 

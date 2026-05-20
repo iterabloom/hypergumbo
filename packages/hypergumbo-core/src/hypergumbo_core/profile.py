@@ -666,7 +666,15 @@ def _get_frameworks_for_languages(languages: set[str]) -> set[str]:
 
 @dataclass
 class LanguageStats:
-    """Statistics for a detected language."""
+    """Statistics for a detected language.
+
+    ``files`` is the count of files the language analyzer would enumerate
+    on this repo — when an analyzer registers a canonical ``find_files``
+    callable, that callable's output is the count (so extensionless
+    shebang scripts surface for bash); otherwise the count falls back to
+    the language's extension globs. Matches ``analysis_runs[L].files_analyzed``
+    for languages with a registered analyzer.
+    """
 
     files: int = 0
     loc: int = 0
@@ -759,9 +767,20 @@ def _detect_languages(
     if extra_excludes:
         excludes.extend(extra_excludes)
 
+    # INV-hokig: when a registered analyzer supplies a canonical
+    # ``find_files`` callable, use it so this count agrees with the
+    # analyzer's file enumeration (e.g., bash includes extensionless
+    # shebang scripts that the extension-only glob would miss).
+    from .analyze.registry import ensure_discovered, get_analyzer
+    ensure_discovered()
+
     for lang, patterns in LANGUAGE_EXTENSIONS.items():
-        # Use a set to deduplicate files (e.g., *.ts and *.d.ts both match foo.d.ts)
-        files = set(find_files(repo_root, patterns, excludes=excludes))
+        analyzer = get_analyzer(lang)
+        if analyzer is not None and analyzer.find_files is not None:
+            files: set[Path] = set(analyzer.find_files(repo_root))
+        else:
+            # Use a set to deduplicate files (e.g., *.ts and *.d.ts both match foo.d.ts)
+            files = set(find_files(repo_root, patterns, excludes=excludes))
         if files:
             loc = sum(_count_loc(f) for f in files) if count_loc else 0
             languages[lang] = LanguageStats(files=len(files), loc=loc)

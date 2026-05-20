@@ -768,6 +768,8 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
 }
 ```
 
+**File-count definition:** `languages[L].files` is the count of files the language-L analyzer would enumerate on this repo. When an analyzer registers a canonical `find_files` callable, that callable's output is the count — so extensionless shebang scripts (e.g., `.githooks/pre-commit`, `scripts/auto-pr`) appear in `languages.bash.files`, matching `analysis_runs[bash].files_analyzed`. Otherwise the count falls back to the language's extension globs (e.g., `*.py` / `*.pyi` for Python).
+
 **LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§15 File role classification](#15-file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
 ### nodes[] — definitions, files, endpoints

@@ -432,7 +432,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
 _analyzer = BashAnalyzer()
 
 
-@register_analyzer("bash")
+@register_analyzer("bash", find_files=find_bash_files)
 def analyze_bash(root: Path) -> AnalysisResult:
     """Analyze Bash/shell scripts in a directory.
 

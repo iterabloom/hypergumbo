@@ -81,6 +81,14 @@ class RegisteredAnalyzer:
             decoration time via :func:`hypergumbo_core.ir.compute_pass_version`
             (INV-morag PR 1). Changes only when the pass implementation
             changes; immune to unrelated package-version bumps.
+        find_files: Optional ``(repo_root) -> list[Path]`` callable that
+            returns the canonical file set this analyzer will see. When
+            set, ``profile.detect_profile`` uses it for the per-language
+            file count instead of extension-globbing — keeping
+            ``profile.languages[L].files`` consistent with what the L-pass
+            analyzes (INV-hokig). Required for languages whose canonical
+            file set isn't fully captured by their extension globs
+            (e.g., bash detects extensionless shebang scripts).
     """
 
     name: str
@@ -98,6 +106,7 @@ class RegisteredAnalyzer:
     availability: str = "core"
     requires: str | None = None
     pass_version: str = ""
+    find_files: Callable[[Path], list[Path]] | None = None
 
     def get_func(self) -> AnalyzerFunc:
         """Get the analyzer function, resolving from module for patchability.
@@ -139,6 +148,7 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
     languages: list[str] | None = None,
     availability: str = "core",
     requires: str | None = None,
+    find_files: Callable[[Path], list[Path]] | None = None,
 ) -> Callable[[AnalyzerFunc], AnalyzerFunc]:
     """Decorator to register an analyzer function.
 
@@ -158,6 +168,13 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
             Defaults to ``[name]``.
         availability: ``"core"`` or ``"extra"``.
         requires: Optional pip-package requirement label.
+        find_files: Optional ``(repo_root) -> list[Path]`` callable. When
+            set, ``profile.detect_profile`` calls it to count files for
+            this language instead of extension-globbing, keeping
+            ``profile.languages[L].files`` consistent with the analyzer's
+            enumeration (INV-hokig). Use for languages whose canonical
+            file set extends beyond extension patterns — e.g., bash
+            detects extensionless shebang scripts.
 
     Returns:
         Decorator that registers the function and returns it unchanged.
@@ -193,6 +210,7 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
             availability=availability,
             requires=requires,
             pass_version=compute_pass_version(func),
+            find_files=find_files,
         )
         return func
 
