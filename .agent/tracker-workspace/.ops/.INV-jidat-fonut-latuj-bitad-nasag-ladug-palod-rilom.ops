@@ -1,0 +1,25 @@
+- op: create  # 5a68
+  at: '2026-05-20T00:06:54Z'  # 5a68
+  by: agent  # 5a68
+  actor: jgstern_agent  # 5a68
+  clock: 1  # 5a68
+  nonce: 5a68  # 5a68
+  data:  # 5a68
+    kind: invariant  # 5a68
+    title: "Symbol.origin / Edge.origin should be list[str] — multi-source attribution; current scalar erases multi-pass contributions"  # 5a68
+    status: violated  # 5a68
+    priority: 3  # 5a68
+    parent: INV-dubam-rusok-nizot-zibor-dotuh-gasip-hahin-gujug  # 5a68
+    tags:  # 5a68
+    - schema  # 5a68
+    - analysis_quality  # 5a68
+    - explainability  # 5a68
+    - breaking_change  # 5a68
+    isbefore: []  # 5a68
+    duplicate_of: []  # 5a68
+    not_duplicate_of: []  # 5a68
+    pr_ref:  # 5a68
+    description: "## Empirical observation\n\n`Symbol.origin` and `Edge.origin` are declared as `str` in `ir.py` and `docs/schema.json`. When evidence for an Edge is contributed by multiple passes — e.g., the JS/TS analyzer detects a call-site, the http-linker resolves the call's target, the route-handler-linker tags the target as a route — only one pass receives credit in `origin`. The current convention is \"the pass that called Edge.create() wins\", which biases credit toward late-stage linkers and erases contributions from earlier evidence sources.\n\n## What's needed\n\nChange `Symbol.origin` and `Edge.origin` from `str` to `list[str]`. Order matters: list reads chronologically — the first contributor first, then each subsequent pass that refined or confirmed.\n\nSchema:\n\n```json\n\"origin\": {\n  \"type\": \"array\",\n  \"items\": { \"type\": \"string\" },\n  \"minItems\": 1,\n  \"description\": \"Ordered list of pass IDs that contributed to this Edge/Symbol's existence. First entry is the originating pass; subsequent entries are passes that refined or extended.\"\n}\n```\n\n## Migration\n\nThis is a schema-breaking change. Behavior map JSON files predating this fix carry a scalar `origin`. Migration steps:\n\n1. Spec version bump: 0.8.x → 0.9.0 with a deprecation note.\n2. `Edge.from_dict()` and `Symbol.from_dict()` handle both forms (scalar and list) for backward compatibility during the migration window.\n3. Producer code switches to emitting lists. Single-element lists are valid for passes that don't share construction with others.\n4. After the migration window, `from_dict()` stops accepting scalars; behavior maps from old hypergumbo versions need to be regenerated.\n\n## Scope\n\n- Schema bump\n- IR: `Symbol`, `Edge` dataclasses\n- Producers: ~67 Edge construction sites + ~130 Symbol construction sites\n- Consumers: anywhere `edge.origin` or `symbol.origin` is read as a string (the audit task is finding these)\n- Tests: ~40 test files with `assert sym.origin == \"...\"` style assertions\n\n## Tests\n\n- Schema validation: round-trip a behavior map with multi-contributor origins through `from_dict() -> to_dict()`.\n- Property test: every Edge's `origin` list is non-empty.\n- Migration test: load an old-format behavior map (scalar origin) and assert it deserializes correctly.\n\n## Related\n\nParent META: INV-dubam. Sibling items: derivation graph (Edge.derived_from), pass dependency declaration (Pass.requires)."  # 5a68
+    fields:  # 5a68
+      statement: "When evidence for a Symbol or Edge is contributed by multiple passes, all contributing passes should be credited in origin. Currently origin is scalar — only the pass that called Edge.create()/Symbol(...) gets credit."  # 5a68
+      root_cause: "The current model treats origin as a single-author field. When the analyzer detects a call-site and a linker resolves the target, only the linker is credited. Multi-pass evidence combination forces a lossy attribution choice."  # 5a68

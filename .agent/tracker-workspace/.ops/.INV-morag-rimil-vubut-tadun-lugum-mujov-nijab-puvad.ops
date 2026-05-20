@@ -38,3 +38,26 @@
   clock: 3  # dcac
   nonce: dcac  # dcac
   message: "Reparented to META INV-rugok (Spec/schema/implementation drift). INV-morag is example (d) — catalog suffix -ts-v1 vs runtime suffix -v1 disagree; 40+99 names asymmetric. No name-agreement check at CI."  # dcac
+- op: discuss  # 6071
+  at: '2026-05-20T02:01:20Z'  # 6071
+  by: agent  # 6071
+  actor: jgstern_agent  # 6071
+  clock: 4  # 6071
+  nonce: '6071'  # 6071
+  message: "INV-morag PR 1 merged as PR #3834. Lands two additive provenance fields (option A: AnalysisRun.pass_version via sha256 of pass module source; option B: behavior_map['reproducibility_context'] with L2 capture + explicit L3-L5 disclaim). No rename yet — PR 2 will propagate non-empty pass_version values to every registration site and drop the legacy -v1 suffix from pass IDs. 14 new property tests; 11136 tests pass; 100% coverage. The L2 capture is honest about what hypergumbo records and what it disclaims: not_captured array enumerates transitive pip deps, OS/kernel/libc/locale/env vars, and hardware (CPU model, microcode, fp determinism). Two follow-up CI fixes required to land: stale ARCHITECTURE.md regenerated (14 commits drift, unrelated), and pragma:no cover on two defensive branches in _detect_tree_sitter_versions (tree-sitter PackageNotFoundError + dist with empty Name)."  # 6071
+- op: update  # 5d10
+  at: '2026-05-20T02:01:21Z'  # 5d10
+  by: agent  # 5d10
+  actor: jgstern_agent  # 5d10
+  clock: 5  # 5d10
+  nonce: 5d10  # 5d10
+  set: {}  # 5d10
+  add:  # 5d10
+    tags: [awaits_bakeoff_validation]  # 5d10
+- op: discuss  # 192d
+  at: '2026-05-20T02:01:21Z'  # 192d
+  by: agent  # 192d
+  actor: jgstern_agent  # 192d
+  clock: 6  # 192d
+  nonce: 192d  # 192d
+  message: "Tagged awaits_bakeoff_validation: PR 1 lands additive provenance fields (pass_version, reproducibility_context). The quantitative claim is observable post-fix on any bakeoff repo — behavior_map.json now carries reproducibility_context.captured.grammars (was absent), AnalysisRun.pass_version field is present (was absent). PR 2 (rename + propagate) will be a separate bakeoff validation cycle."  # 192d

@@ -1,0 +1,24 @@
+- op: create  # 1f1a
+  at: '2026-05-20T00:07:19Z'  # 1f1a
+  by: agent  # 1f1a
+  actor: jgstern_agent  # 1f1a
+  clock: 1  # 1f1a
+  nonce: 1f1a  # 1f1a
+  data:  # 1f1a
+    kind: invariant  # 1f1a
+    title: "Pass.requires: list[str] — declare pass dependencies; pre-run validator catches missing prerequisites"  # 1f1a
+    status: violated  # 1f1a
+    priority: 3  # 1f1a
+    parent: INV-dubam-rusok-nizot-zibor-dotuh-gasip-hahin-gujug  # 1f1a
+    tags:  # 1f1a
+    - schema  # 1f1a
+    - analysis_quality  # 1f1a
+    - developer_experience  # 1f1a
+    isbefore: []  # 1f1a
+    duplicate_of: []  # 1f1a
+    not_duplicate_of: []  # 1f1a
+    pr_ref:  # 1f1a
+    description: "## Empirical observation\n\nPass execution order in hypergumbo is governed by implicit convention:\n- The orchestrator runs analyzers first.\n- The orchestrator then runs the file-symbol synthesizer.\n- The orchestrator then runs linkers (in `linkers/registry.py` registration order, with priority hints).\n- The orchestrator then runs UC matching, entrypoint detection, supply chain summary, sketch precomputation.\n\nThis ordering exists by code-path inspection. There is no `Pass.requires` declaration. A user who disables a prerequisite analyzer (e.g., `--no-python`) discovers the missing-prerequisite issue at output-quality time, not at config time.\n\n## What's needed\n\nAdd `Pass.requires: list[str]` to the `Pass` dataclass. Populate for every linker (and any infrastructure pass that depends on specific upstream output).\n\nExamples:\n- `http-linker` requires `javascript` and `python` (it scans for HTTP-route patterns in analyzer output).\n- `containment-linker` requires every analyzer pass (it operates on the full symbol set).\n- `vue-components` requires `javascript` (Vue analyzer is in the JS/TS package).\n\nPre-run validator: given the active pass set, assert every declared dependency is also active. Error if not.\n\n```python\ndef validate_pass_dependencies(active_passes: list[Pass]) -> None:\n    active_ids = {p.id for p in active_passes}\n    for p in active_passes:\n        missing = [r for r in p.requires if r not in active_ids]\n        if missing:\n            raise ValueError(\n                f\"Pass {p.id} requires {missing} but they are not active\"\n            )\n```\n\n## Tests\n\n- Property test: every linker pass has a non-empty `requires` list.\n- Pre-run validator: assert raises when a prerequisite is missing.\n- Pass-set validator: assert hypergumbo's default pass set is internally consistent (every requires links to an active pass).\n\n## Why this matters\n\nWithout this:\n- Disabling an analyzer silently produces a degraded behavior map; no error tells the user that a linker needed the disabled analyzer's output.\n- Parallelism is harder to introduce — the orchestrator doesn't know which passes can run concurrently.\n- The behavior map's `analysis_runs[]` doesn't carry enough information to reproduce the pass schedule.\n\nWith this:\n- Config-time errors when prerequisites are disabled.\n- Topological-sort-based scheduling enables parallelism.\n- `analysis_runs[]` plus `Pass.requires` together form a complete description of the execution graph.\n\n## Scope\n\n- Pass dataclass: add `requires` field\n- Catalog (or registry, depending on automation decision): populate `requires` for every linker\n- Pre-run validator\n- Orchestrator: optionally use `requires` for scheduling (Phase 2)\n- Tests\n\n## Related\n\nParent META: INV-dubam. Sibling items: derivation graph (C), multi-source attribution (D)."  # 1f1a
+    fields:  # 1f1a
+      statement: "Every pass that depends on output from other passes (linkers, infrastructure passes) should declare those dependencies via Pass.requires. The runtime should validate the active pass set at config time and error when a prerequisite is missing."  # 1f1a
+      root_cause: "Pass ordering is implicit in orchestrator code. Each linker assumes its prerequisite analyzers ran. Disabling an analyzer (e.g., --no-python) silently degrades the behavior map; no error tells the user a linker needed the disabled analyzer's output."  # 1f1a

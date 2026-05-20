@@ -23,3 +23,18 @@
     fields:  # aad7
       statement: "Every Symbol and Edge should be queryable along three PROV dimensions: derivation (wasDerivedFrom — which Symbols did the linker consume?), attribution (wasAttributedTo — which passes contributed evidence?), and process model (wasInformedBy — which other passes must run first?). Today origin is scalar, derivation chains are implicit in linker source code, and pass dependencies are convention-based not declared."  # aad7
       root_cause: "The current provenance model captures (execution_id, pass_id) per Symbol/Edge but squashes derivation, attribution, and dependency into a single scalar 'origin' field. Linker code reads ctx.symbols and decides how to construct an edge; the choice is opaque to consumers. Multi-pass evidence combination forces a single-attribution choice. Pass ordering is implicit."  # aad7
+- op: update  # e922
+  at: '2026-05-20T00:15:37Z'  # e922
+  by: agent  # e922
+  actor: jgstern_agent  # e922
+  clock: 2  # e922
+  nonce: e922  # e922
+  set:  # e922
+    priority: 3  # e922
+- op: discuss  # b36a
+  at: '2026-05-20T00:15:37Z'  # b36a
+  by: agent  # b36a
+  actor: jgstern_agent  # b36a
+  clock: 3  # b36a
+  nonce: b36a  # b36a
+  message: "Demoted to P3: this META extends provenance capability (adds derivation chains, multi-source attribution, declared pass dependencies) rather than correcting an active contract violation. The behavior map functionally works today; we just can't query its derivation graph or credit multi-pass evidence. P3 reflects 'important enhancement, not urgent fix' — distinct from the P2 METAs (INV-rugok / INV-dajaf / INV-tolaj / INV-manov) which each address an active drift/dishonesty/miscount."  # b36a
