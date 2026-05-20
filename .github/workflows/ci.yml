@@ -320,7 +320,47 @@ jobs:
           # 2026-04-20); the existing `pip install --upgrade pip` step at
           # install time will pick it up automatically once it ships.
           # Exit plan: drop this ignore once pip-audit stops flagging pip.
-          pip-audit --skip-editable --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219
+          #
+          # transformers / torch / joblib carve-out (20 PYSEC entries, ML stack via sentence-transformers~=5.2.2)
+          # transformers PYSEC-2025-211..218 (CVE-2025-14920/-14921/-14924/-14926/-14927/-14928/-14929/-14930):
+          #   CWE-502 (Deserialization of Untrusted Data) and CWE-94 (Code Injection); all
+          #   CVSS:3.0/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H. Every CVE targets either an exotic model family
+          #   hypergumbo does not load (Perceiver, Transformer-XL, megatron_gpt2, SEW, SEW-D, HuBERT, X-CLIP,
+          #   GLM4) or a convert_config / convert_*.py checkpoint script hypergumbo does not invoke. The only
+          #   model surface is SentenceTransformer(<pinned MiniLM>).encode(). ZDI published these on 2025-12-18
+          #   after Hugging Face declined to patch; upstream considers checkpoint-loading to be trusted-code
+          #   territory by design (no fixed version will be issued).
+          # torch PYSEC-2025-189..197, 210, PYSEC-2026-139 (CVE-2025-2148/-2149/-2953/-2998/-2999/-3000/-3001/
+          #   -3121/-3136/-63396/CVE-2026-4538): CWE-787 / CWE-404 / CWE-502 mix; vectors AV:L (with one
+          #   AV:N/AC:H/UI:R) plus one local .pt2 deserialization. All require attacker-controlled tensors,
+          #   crafted JIT inputs, CUDA allocator misuse, profiler misuse, or a malicious .pt2 file — none
+          #   reachable from the SentenceTransformer encode() path on a pinned MiniLM model. PyTorch's
+          #   SECURITY.md treats "untrusted models" as out-of-scope; no fixed version exists.
+          # joblib PYSEC-2024-277 (CVE-2024-34997): CWE-502, CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H,
+          #   disputed by upstream — NumpyArrayWrapper.read_array() is reached only during joblib's internal
+          #   trusted caching. Hypergumbo never calls joblib.load() on attacker-controlled paths.
+          # Threat-model carve-out: hypergumbo is a local-first CLI on a single-tenant self-hosted runner;
+          #   the ML stack is transitive only, the embedding model is package-pinned (no --model / --checkpoint
+          #   CLI surface), and trust_remote_code / auto_map are never enabled. No untrusted bytes reach
+          #   torch.load / convert_*. CI installs pinned deps from PyPI on a single-tenant runner.
+          # Exit plan — drop the corresponding --ignore-vuln when ANY of these becomes true:
+          #   (1) upstream ships a fixed transformers / torch / joblib release and hypergumbo bumps the pin;
+          #   (2) hypergumbo gains a user-facing --model / --checkpoint / load_model(path) surface;
+          #   (3) the project starts running convert_*.py conversion scripts or sets trust_remote_code=True;
+          #   (4) CI moves off the single-tenant self-hosted runner to a shared / multi-tenant executor.
+          # Re-audit on every sentence-transformers / torch / transformers bump, and at minimum every 90 days.
+          pip-audit --skip-editable \
+            --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219 \
+            --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212 \
+            --ignore-vuln PYSEC-2025-213 --ignore-vuln PYSEC-2025-214 \
+            --ignore-vuln PYSEC-2025-215 --ignore-vuln PYSEC-2025-216 \
+            --ignore-vuln PYSEC-2025-217 --ignore-vuln PYSEC-2025-218 \
+            --ignore-vuln PYSEC-2025-189 --ignore-vuln PYSEC-2025-190 \
+            --ignore-vuln PYSEC-2025-191 --ignore-vuln PYSEC-2025-192 \
+            --ignore-vuln PYSEC-2025-193 --ignore-vuln PYSEC-2025-194 \
+            --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-196 \
+            --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-210 \
+            --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277
 
   verify-generated:
     needs: [changes, stop-the-line]
