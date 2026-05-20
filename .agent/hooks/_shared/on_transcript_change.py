@@ -219,6 +219,27 @@ PLAYBOOKS = [
      "if the audit couldn't have come back showing no leakage, it was confirmation "
      "theater. When NOT to run: active incident, mid-feature on a deadline, no "
      "one-sentence suspicion."),
+    ("multi-value-field-axis-declaration-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/multi-value-field-axis-declaration-playbook.md",
+     "Editing ir.py or datamodels.py? Every str / Optional[str] / Literal[str, ...] "
+     "field on a @dataclass must carry a `# axis: <category>` trailing comment. Four "
+     "categories: <known-axis-name> (one of edge-type / symbol-kind / evidence-type "
+     "registry-backed, or language / pass-id catalog-derived; resolved via _known_axes() "
+     "in multi_value_field_axis.py), identity (unique-per-record like ids and hashes), "
+     "bounded-enum (≤5 fixed values listed in the dataclass docstring), or "
+     "free-text — <justification> (open-ended payload no consumer branches on; "
+     "justification required). When none fit, declare a new axis BEFORE adding the field "
+     "— heavyweight (registry module + ADR-0024 four-artifact scaffolding) or lightweight "
+     "(catalog-derived all_*_known() resolver wired into _known_axes() per ADR-0024 §4). "
+     "Do not propose # axis: pending; that hatch was considered and dropped (see playbook). "
+     "Two documented exceptions: Symbol.origin claims pass-id but carries synthesis labels "
+     "(pending split into synthesis_mechanism); UsageContext.kind at 4 values mixes "
+     "syntactic-construct + semantic-role axes (re-evaluation triggers in docstring). "
+     "Enforced by scripts/check-multi-value-field-axis-declaration (exit 0/1/2), the "
+     "live-tree CI gate test_live_tree_passes, and the pre-commit hook when ir.py / "
+     "datamodels.py are staged. Distinct from the Fundamental Concept Audit playbook, "
+     "which handles 'I suspect an existing field is doing the wrong job' — this one "
+     "handles 'I'm editing a str field right now, what do I do'."),
     ("smart-test-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/smart-test-playbook.md",
      "Always use the pytest alias (which invokes smart-test) instead of python -m pytest or "

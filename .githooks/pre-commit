@@ -337,6 +337,34 @@ else
     echo -e "${YELLOW}skipped (no packages/*.py staged)${NC}"
 fi
 
+# Multi-value field axis declaration (WI-busij) — only fires when
+# ir.py or datamodels.py is staged. Catches new str / Optional[str] /
+# Literal[str, ...] fields added to @dataclass declarations in core
+# files without an accompanying `# axis: <category>` trailing
+# comment. Companion to the live-tree property test in
+# tests/test_multi_value_field_axis.py::test_live_tree_passes —
+# both call hypergumbo_core.multi_value_field_axis.find_field_drift
+# so the pre-commit gate matches CI exactly. See ADR-0024
+# §"Creation practice" for the rule and
+# .agent/agent_playbooks_protocols_sops_skills/multi-value-field-axis-declaration-playbook.md
+# for the practitioner walkthrough.
+echo -n "  Multi-value field axis declaration... "
+if git diff --cached --name-only | grep -qE "^packages/.*/src/.*/(ir|datamodels)\.py$"; then
+    DRIFT_LOG="/tmp/.field-axis-drift.$$"
+    if scripts/check-multi-value-field-axis-declaration > "$DRIFT_LOG" 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+        rm -f "$DRIFT_LOG"
+    else
+        echo -e "${RED}✗${NC}"
+        echo ""
+        cat "$DRIFT_LOG"
+        rm -f "$DRIFT_LOG"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}skipped (no ir.py / datamodels.py staged)${NC}"
+fi
+
 # Producer-side axis coherence (L3) — gates the producer surface for
 # all three sibling axes (Edge.evidence_type, Symbol.kind,
 # Edge.edge_type) at once. Catches the silent-bug shape that L1 misses:
