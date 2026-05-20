@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **276** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 54 core, 4 CLI, 32 tracker)
-- **5867** symbols (functions, classes, methods)
-- **65617** edges by type:
-  - calls: 45331
-  - imports: 9733
-  - instantiates: 6991
+- **5873** symbols (functions, classes, methods)
+- **65753** edges by type:
+  - calls: 45421
+  - imports: 9764
+  - instantiates: 7003
   - contains: 1343
-  - module_attr_ref: 1009
+  - module_attr_ref: 1010
   - dispatches_to: 555
-  - other: 655
+  - other: 657
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 5867 Symbols + 65617 Edges + UsageContexts             │
+│  Output: 5873 Symbols + 65753 Edges + UsageContexts             │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -264,10 +264,10 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 4913.6 | ir.py |
-| `Span` | class | 4151.1 | ir.py |
-| `run_behavior_map` | function | 2775.5 | cli.py |
-| `LinkerContext` | class | 1914.8 | registry.py |
+| `Symbol` | class | 4924.0 | ir.py |
+| `Span` | class | 4161.5 | ir.py |
+| `run_behavior_map` | function | 2796.1 | cli.py |
+| `LinkerContext` | class | 1923.7 | registry.py |
 | `TrackerApp` | class | 1872.3 | tui.py |
 | `load_framework_patterns` | function | 1569.0 | framework_patterns.py |
 | `main` | function | 1452.1 | cli.py |
@@ -804,7 +804,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 6783b77db29a
+  commit: b5cff2e45816
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
