@@ -28,7 +28,7 @@ WHEELS_DIR=""
 # shape_id values depend on tree-sitter CST structure, which can change
 # between grammar versions. Pinning ensures consistent hashes across builds.
 # Update these when intentionally upgrading grammars, and bump SHAPE_ID_SCHEME.
-LEAN_COMMIT="efe6b87145608d12f5996bd7f0cf6095a0e82261"      # 2026-02-20
+LEAN_COMMIT="78b6e3d403b47d5cbac283db9dd48bc850441043"      # 2026-05-20 (upstream rebased; efe6b87 unreachable)
 WOLFRAM_COMMIT="63ebdac6f040d9082d3d8fa88be96ce24549adc5"   # 2026-02-20
 CIRCOM_COMMIT="02150524228b1e6afef96949f2d6b7cc0aaf999e"    # 2024-09-09
 

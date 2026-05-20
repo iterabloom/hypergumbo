@@ -665,7 +665,7 @@ Single file: `hypergumbo.results.json`
   "schema_version": "0.2.1",
   "confidence_model": "hypergumbo-evidence-v1",
   "stable_id_scheme": "hypergumbo-stableid-v2",
-  "shape_id_scheme": "hypergumbo-shapeid-v1",
+  "shape_id_scheme": "hypergumbo-shapeid-v2",
   "repo_fingerprint_scheme": "hypergumbo-repofp-v1",
   "view": "behavior_map",
   "generated_at": "2026-01-15T10:30:00Z",

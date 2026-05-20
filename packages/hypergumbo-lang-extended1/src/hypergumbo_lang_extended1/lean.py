@@ -263,8 +263,11 @@ def _extract_symbols_from_file(
                         if name:
                             add_symbol(child, name, "instance")
                     else:
-                        # Unnamed instance — use typeclass name from apply
-                        apply_node = find_child_by_type(child, "apply")
+                        # Unnamed instance — use typeclass name from the
+                        # type application. Older grammar revisions named
+                        # this node "apply"; current main (post-rebase
+                        # 2026-05) uses "app".
+                        apply_node = find_child_by_type(child, "app") or find_child_by_type(child, "apply")
                         if apply_node:
                             tc_id = find_child_by_type(apply_node, "identifier")
                             if tc_id:
