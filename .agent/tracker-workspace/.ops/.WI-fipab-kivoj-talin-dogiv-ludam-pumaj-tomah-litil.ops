@@ -1,0 +1,24 @@
+- op: create  # 82ce
+  at: '2026-05-20T06:00:10Z'  # 82ce
+  by: agent  # 82ce
+  actor: jgstern_agent  # 82ce
+  clock: 1  # 82ce
+  nonce: 82ce  # 82ce
+  data:  # 82ce
+    kind: work_item  # 82ce
+    title: "Vendor source-built tree-sitter grammars (lean, wolfram, circom)"  # 82ce
+    status: todo_soft  # 82ce
+    priority: 2  # 82ce
+    parent:  # 82ce
+    tags:  # 82ce
+    - tree_sitter  # 82ce
+    - grammar_build  # 82ce
+    - nightly  # 82ce
+    - infrastructure  # 82ce
+    - follow_up  # 82ce
+    isbefore: []  # 82ce
+    duplicate_of: []  # 82ce
+    not_duplicate_of: []  # 82ce
+    pr_ref:  # 82ce
+    description: "Eliminate the upstream-rebase recurrence class that broke nightly's source-grammar build on 2026-05-20 when github.com/Julian/tree-sitter-lean was force-pushed and the pinned commit efe6b87 became unreachable. The current re-pin (jgstern-agent/fix/lean-grammar-repin) is a stopgap; vendoring the three source-built grammars (lean, wolfram, circom) under vendor/tree-sitter-{lean,wolfram,circom}/ makes the build offline-deterministic and independent of upstream git hygiene.\n\nApproach:\n1. One PR per grammar to keep blast radius small.\n2. Use git subtree (preferred — preserves history) or plain directory copy (simpler — discards history).\n3. Update scripts/build-source-grammars to build from vendor/ instead of git clone.\n4. Confirm each upstream's license permits vendoring (likely MIT for all three) and ship LICENSE alongside.\n5. Document the vendor-sync procedure in docs/ (when and how to re-sync from upstream).\n\nTrigger: any future occurrence of the same failure mode, or as the cleanup follow-up to the current re-pin PR."  # 82ce
+    fields: {}  # 82ce

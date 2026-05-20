@@ -42,3 +42,25 @@
   clock: 4  # 6c3c
   nonce: 6c3c  # 6c3c
   message: "Reparented to META INV-rugok (Spec/schema/implementation drift). WI-busij is the closest existing partial fix — pre-commit detection of new multi-value field additions. Its scope is one narrow case (field-add to core dataclasses) but its shape is exactly what this META asks for at the broader spec/schema/code level. Implementation of WI-busij becomes one piece of the META's closure."  # 6c3c
+- op: update  # ae28
+  at: '2026-05-20T07:22:52Z'  # ae28
+  by: agent  # ae28
+  actor: jgstern_agent  # ae28
+  clock: 5  # ae28
+  nonce: ae28  # ae28
+  set:  # ae28
+    status: done  # ae28
+- op: discuss  # 953c
+  at: '2026-05-20T07:22:52Z'  # 953c
+  by: agent  # 953c
+  actor: jgstern_agent  # 953c
+  clock: 6  # 953c
+  nonce: 953c  # 953c
+  message: "Mechanical backstop landed in PR #3839 (merged 2026-05-20 to sha 288cce184d). 36 new tests, 100% coverage on the new multi_value_field_axis module, ~40 fields retroactively annotated across Span / AnalysisRun / Symbol / Edge / ExternalRef / UsageContext / DataModel. Acceptance criteria status: A1 ✓ linter exists, runs <2s; A2 — DEFERRED (.githooks/pre-commit wire-up touches a governance file, needs human approval); A3 ✓ property test test_multi_value_field_axis.py with live-tree gate; A4 — DEFERRED (AGENTS.md essentialization update is governance); A5 ✓ ADR-0024 §Open Questions Q2 marked Resolved by WI-busij; A6 ✓ live tree passes. Five known axes wired: edge-type / symbol-kind / evidence-type (heavyweight registry-backed) plus language / pass-id (catalog-derived lightweight per ADR-0024 §4 'use judgment' carveout). Two design hatches considered and explicitly dropped: # axis: pending (duplicates todo_hard circuit breaker) and # axis: free-text without justification (would have been the can-kicker). Follow-on PR needed for A2+A4 governance wire-up."  # 953c
+- op: discuss  # 7ca0
+  at: '2026-05-20T08:01:45Z'  # 7ca0
+  by: agent  # 7ca0
+  actor: jgstern_agent  # 7ca0
+  clock: 7  # 7ca0
+  nonce: 7ca0  # 7ca0
+  message: "A2 + A4 governance wire-up landed in PR #3840 (merged 2026-05-20 to sha da503f4087). Four files: new playbook .agent/agent_playbooks_protocols_sops_skills/multi-value-field-axis-declaration-playbook.md (practitioner walkthrough, ~370 lines covering four categories, decision procedure, how to add a new axis, two documented smuggling exceptions); AGENTS.md essentialization replacing the prose-only rule with the mechanical-gate version; PLAYBOOKS-list tuple in .agent/hooks/_shared/on_transcript_change.py for context-loading; .githooks/pre-commit entry that fires scripts/check-multi-value-field-axis-declaration when ir.py / datamodels.py is staged. All 6 acceptance criteria now complete: A1 (linter <2s) ✓, A2 (pre-commit wire-up) ✓, A3 (property test) ✓, A4 (AGENTS.md essentialization) ✓, A5 (ADR-0024 §3 Q2 marked Resolved) ✓, A6 (live tree passes) ✓. INV-rugok META now has all 6 children fully closed (4 satisfied + 2 done). 13730 tests pass, 100% coverage on changed source files. User pre-approved governance changes; auto-pr ran without --gov per direction."  # 7ca0

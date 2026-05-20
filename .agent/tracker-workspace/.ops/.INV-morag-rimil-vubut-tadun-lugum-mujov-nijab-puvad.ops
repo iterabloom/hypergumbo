@@ -61,3 +61,19 @@
   clock: 6  # 192d
   nonce: 192d  # 192d
   message: "Tagged awaits_bakeoff_validation: PR 1 lands additive provenance fields (pass_version, reproducibility_context). The quantitative claim is observable post-fix on any bakeoff repo — behavior_map.json now carries reproducibility_context.captured.grammars (was absent), AnalysisRun.pass_version field is present (was absent). PR 2 (rename + propagate) will be a separate bakeoff validation cycle."  # 192d
+- op: update  # bf0d
+  at: '2026-05-20T04:52:41Z'  # bf0d
+  by: agent  # bf0d
+  actor: jgstern_agent  # bf0d
+  clock: 7  # bf0d
+  nonce: bf0d  # bf0d
+  set:  # bf0d
+    status: satisfied  # bf0d
+    pr_ref: '3837'  # bf0d
+- op: discuss  # 5187
+  at: '2026-05-20T04:52:41Z'  # 5187
+  by: agent  # 5187
+  actor: jgstern_agent  # 5187
+  clock: 8  # 5187
+  nonce: '5187'  # 5187
+  message: "INV-morag PR 2 merged as PR #3837. Closes the naming mismatch: make_pass_id is now identity (no -v1 suffix); build_catalog_from_registries() derives the catalog dynamically from _ANALYZER_REGISTRY + _LINKER_REGISTRY so catalog IDs and AnalysisRun.pass IDs come from a single source of truth. Linker registry names normalized to match their PASS_ID literal (~50 sites). Analyzer PASS_IDs aligned to register names (py 'python-ast'->'python'; html 'html-pattern'->'html'; objc 'objective-c'->'objc'; manifest_targets). ~890 mechanical -v1 drops across 125 test files. New scripts/check-pass-id-agreement CI gate (every registered name yields a catalog Pass with matching ID; no catalog ID carries a legacy suffix). 13670 tests pass, 100% coverage on changed files. Required 5 test-fix iterations (round-1: 131 fails; round-2: 53; round-3: 10; round-4: 0 fails; round-5: 100% coverage). The transitional _PASS_METADATA dict in catalog.py holds per-pass description/languages/availability/requires/backend until each language package migrates these into its @register_* call site (follow-up tracker item to be filed separately)."  # 5187

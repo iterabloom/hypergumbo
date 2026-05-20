@@ -23,3 +23,18 @@
     fields:  # 9058
       statement: "When a documented contract (spec text in docs/hypergumbo-spec.md, JSON schema in docs/schema.json, dataclass declaration in ir.py / datamodels.py, or pass-catalog entry) declares a behavior, shape, or field, the implementation must either conform OR the contract must be updated. Drift between any two of (spec doc, schema.json, dataclass declarations, producer code, consumer code, CI gates) is a violated form. Vigilance is not sufficient; the discipline requires mechanical enforcement at PR time."  # 9058
       root_cause: "No CI or pre-commit gate currently asserts: (a) hypergumbo's own behavior map validates against docs/schema.json; (b) every spec-declared field has a non-trivial producer OR a documented null-condition; (c) schema migrations include a conformance audit of all linkers/analyzers/consumers; (d) catalog vs runtime pass-id naming agrees. Each drift bug is filed as its own item because no member of the discipline existed to catch it pre-merge. The recurrences indicate this is an architectural axis, not a sequence of independent oversights."  # 9058
+- op: update  # 631b
+  at: '2026-05-20T08:06:36Z'  # 631b
+  by: agent  # 631b
+  actor: jgstern_agent  # 631b
+  clock: 2  # 631b
+  nonce: 631b  # 631b
+  set:  # 631b
+    status: satisfied  # 631b
+- op: discuss  # 8876
+  at: '2026-05-20T08:06:36Z'  # 8876
+  by: agent  # 8876
+  actor: jgstern_agent  # 8876
+  clock: 3  # 8876
+  nonce: '8876'  # 8876
+  message: "Member-driven close: all 6 children fully resolved (INV-bovif, INV-morag, INV-piroh, INV-tofur satisfied; WI-bujim, WI-busij done). Mechanical enforcement of spec/schema/implementation drift is now in place across the four mechanism axes the META described: (a) hypergumbo's own behavior map validates against docs/schema.json (INV-piroh's schema-conformance gate); (b) every spec-declared field has a non-trivial producer or a documented null condition (INV-tofur covered repo_fingerprint; WI-bujim covered features[]; the schema-conformance gate enforces structurally); (c) schema migrations include a conformance audit of all linkers/analyzers/consumers (INV-bovif covered the _NOISE_KINDS audit; the L3 producer-coherence and L4 fallback-coherence linters enforce per-PR); (d) catalog vs runtime pass-id naming agrees (INV-morag's scripts/check-pass-id-agreement gate). Plus an axis-creation backstop added by WI-busij: scripts/check-multi-value-field-axis-declaration prevents new str fields on core dataclasses from shipping without an axis declaration, closing the recurrence class at the source. The architectural axis is now under mechanical enforcement; future drift either gets caught at pre-commit / CI or constitutes a new META-worthy gap that doesn't yet exist."  # 8876
