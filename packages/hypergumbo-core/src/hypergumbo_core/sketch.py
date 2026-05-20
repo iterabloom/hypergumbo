@@ -360,7 +360,9 @@ class SketchProgress:  # pragma: no cover
         self._start_time = time.time()
         self._phase_times: dict[str, float] = {}
         self._current_phase_idx = 0
-        self._enabled = True
+        # WI-vuhas: \r-based progress redraw garbles captured stderr
+        # (`2>&1`, pipes, files). Only emit when the stream is a TTY.
+        self._enabled = bool(getattr(self._stream, "isatty", lambda: False)())
 
     def disable(self) -> None:
         """Disable progress output."""

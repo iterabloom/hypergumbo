@@ -7089,7 +7089,7 @@ def run_behavior_map(
 
     def show_progress(phase: str, pct: int) -> None:  # pragma: no cover
         """Display progress to stderr."""
-        if not progress:
+        if not progress or not sys.stderr.isatty():
             return
         elapsed = time.time() - start_time
         if pct > 0:
@@ -7103,7 +7103,7 @@ def run_behavior_map(
 
     def complete_progress() -> None:  # pragma: no cover
         """Show completion message."""
-        if not progress:
+        if not progress or not sys.stderr.isatty():
             return
         elapsed = time.time() - start_time
         sys.stderr.write(f"\r[100%] Complete in {elapsed:.1f}s           \n")
