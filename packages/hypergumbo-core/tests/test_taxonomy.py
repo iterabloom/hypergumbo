@@ -321,20 +321,32 @@ class TestLanguageExtensions:
             assert name in LANGUAGE_EXTENSIONS
             assert LANGUAGE_EXTENSIONS[name] == list(LANGUAGES[name].extensions)
 
-    def test_shell_alias_exists(self) -> None:
-        """Shell alias maps to bash extensions for backward compatibility."""
-        from hypergumbo_core.taxonomy import LANGUAGE_EXTENSIONS, LANGUAGES
+    def test_no_alias_keys_in_language_extensions(self) -> None:
+        """INV-tosum: aliases must not appear as top-level keys.
 
-        assert "shell" in LANGUAGE_EXTENSIONS
+        LANGUAGE_EXTENSIONS keyed by alias would cause profile.py to
+        double-count files (10 .sh files surfacing under both 'bash'
+        and 'shell'). Resolution lives in LANGUAGE_ALIASES instead.
+        """
+        from hypergumbo_core.taxonomy import LANGUAGE_ALIASES, LANGUAGE_EXTENSIONS
+
+        assert set(LANGUAGE_EXTENSIONS).isdisjoint(LANGUAGE_ALIASES), (
+            f"alias keys leaked into LANGUAGE_EXTENSIONS: "
+            f"{set(LANGUAGE_EXTENSIONS) & set(LANGUAGE_ALIASES)}"
+        )
+
+    def test_shell_alias_resolves_via_alias_table(self) -> None:
+        """Alias resolution lives in LANGUAGE_ALIASES, not as a duplicate key."""
+        from hypergumbo_core.taxonomy import LANGUAGE_ALIASES, LANGUAGES
+
+        assert LANGUAGE_ALIASES.get("shell") == "bash"
         assert "bash" in LANGUAGES
-        assert LANGUAGE_EXTENSIONS["shell"] == list(LANGUAGES["bash"].extensions)
 
     def test_language_extensions_has_expected_count(self) -> None:
-        """LANGUAGE_EXTENSIONS has all languages plus aliases."""
-        from hypergumbo_core.taxonomy import LANGUAGE_EXTENSIONS, LANGUAGES, _LANGUAGE_ALIASES
+        """LANGUAGE_EXTENSIONS has exactly one entry per LANGUAGES entry — no alias bloat."""
+        from hypergumbo_core.taxonomy import LANGUAGE_EXTENSIONS, LANGUAGES
 
-        expected_count = len(LANGUAGES) + len(_LANGUAGE_ALIASES)
-        assert len(LANGUAGE_EXTENSIONS) == expected_count
+        assert len(LANGUAGE_EXTENSIONS) == len(LANGUAGES)
 
     def test_get_language_extensions_returns_copy(self) -> None:
         """get_language_extensions returns a new dict each call."""
@@ -350,13 +362,16 @@ class TestSourceExtensions:
     """Tests for SOURCE_EXTENSIONS derivation (Phase 3 ADR-0004)."""
 
     def test_source_extensions_only_analyzable(self) -> None:
-        """SOURCE_EXTENSIONS only includes ANALYZABLE languages."""
+        """SOURCE_EXTENSIONS only includes ANALYZABLE languages.
+
+        After INV-tosum: aliases no longer appear as keys, so every key
+        must be a canonical LANGUAGES entry with role ANALYZABLE.
+        """
         from hypergumbo_core.taxonomy import SOURCE_EXTENSIONS, LANGUAGES, FileRole
 
         for name in SOURCE_EXTENSIONS:
-            # Skip aliases
-            if name in LANGUAGES:
-                assert LANGUAGES[name].roles == FileRole.ANALYZABLE
+            assert name in LANGUAGES
+            assert LANGUAGES[name].roles == FileRole.ANALYZABLE
 
     def test_source_extensions_includes_python(self) -> None:
         """SOURCE_EXTENSIONS includes Python (an analyzable language)."""
@@ -377,12 +392,20 @@ class TestSourceExtensions:
 
         assert "json" not in SOURCE_EXTENSIONS
 
-    def test_source_extensions_has_shell_alias(self) -> None:
-        """Shell alias is included for analyzable bash."""
-        from hypergumbo_core.taxonomy import SOURCE_EXTENSIONS
+    def test_no_alias_keys_in_source_extensions(self) -> None:
+        """INV-tosum: aliases must not appear as top-level keys in SOURCE_EXTENSIONS.
 
-        assert "shell" in SOURCE_EXTENSIONS
-        assert "*.sh" in SOURCE_EXTENSIONS["shell"]
+        Same invariant as test_no_alias_keys_in_language_extensions, applied
+        to the analyzable-only derivative.
+        """
+        from hypergumbo_core.taxonomy import LANGUAGE_ALIASES, SOURCE_EXTENSIONS
+
+        assert set(SOURCE_EXTENSIONS).isdisjoint(LANGUAGE_ALIASES), (
+            f"alias keys leaked into SOURCE_EXTENSIONS: "
+            f"{set(SOURCE_EXTENSIONS) & set(LANGUAGE_ALIASES)}"
+        )
+        # Bash extensions are still reachable via the canonical key.
+        assert "*.sh" in SOURCE_EXTENSIONS["bash"]
 
     def test_get_analyzable_extensions_returns_copy(self) -> None:
         """get_analyzable_extensions returns a new dict each call."""

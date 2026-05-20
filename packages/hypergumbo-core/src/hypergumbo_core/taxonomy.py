@@ -745,58 +745,45 @@ def is_additional_file_candidate(path: Path) -> bool:
 # LANGUAGE_EXTENSIONS derivation (for backward compatibility with profile.py)
 # =============================================================================
 
-# Language name aliases for backward compatibility
-# profile.py uses "shell" but taxonomy uses "bash"
+# Language name aliases. Callers that ingest a non-canonical name (e.g.,
+# legacy profiles that still emit "shell") resolve it via
+# ``LANGUAGE_ALIASES.get(name, name)``. The dict is NOT injected as
+# duplicate keys into LANGUAGE_EXTENSIONS / SOURCE_EXTENSIONS — see
+# get_language_extensions docstring (INV-tosum).
 LANGUAGE_ALIASES: dict[str, str] = {
     "shell": "bash",
 }
-
-# Keep private alias for backward compatibility within this module
-_LANGUAGE_ALIASES = LANGUAGE_ALIASES
 
 
 def get_language_extensions() -> dict[str, list[str]]:
     """Derive LANGUAGE_EXTENSIONS dict from LANGUAGES registry.
 
-    This provides backward compatibility with profile.py which expects
-    a dict mapping language names to extension patterns.
+    Returns one entry per canonical language. Aliases are *not* injected
+    as duplicate keys — historically they were (INV-tosum), which caused
+    profile.py to enumerate the same .sh files twice ('bash' + 'shell').
+    Callers that need alias resolution use LANGUAGE_ALIASES directly.
 
     Returns:
-        Dict mapping language names to lists of extension patterns.
+        Dict mapping canonical language names to lists of extension patterns.
     """
-    result: dict[str, list[str]] = {}
-    for name, spec in LANGUAGES.items():
-        result[name] = list(spec.extensions)
-
-    # Add aliases for backward compatibility
-    for alias, canonical in _LANGUAGE_ALIASES.items():
-        if canonical in LANGUAGES:
-            result[alias] = list(LANGUAGES[canonical].extensions)
-
-    return result
+    return {name: list(spec.extensions) for name, spec in LANGUAGES.items()}
 
 
 def get_analyzable_extensions() -> dict[str, list[str]]:
     """Get extensions for ANALYZABLE languages only.
 
-    This replaces SOURCE_EXTENSIONS in sketch.py, providing only the
-    extensions for languages that have symbols to extract.
+    Returns one entry per canonical analyzable language. Aliases are not
+    injected as duplicate keys — see ``get_language_extensions`` (INV-tosum).
 
     Returns:
-        Dict mapping language names to lists of extension patterns
+        Dict mapping canonical language names to lists of extension patterns
         for ANALYZABLE languages only.
     """
-    result: dict[str, list[str]] = {}
-    for name, spec in LANGUAGES.items():
-        if spec.roles == FileRole.ANALYZABLE:
-            result[name] = list(spec.extensions)
-
-    # Add aliases for backward compatibility
-    for alias, canonical in _LANGUAGE_ALIASES.items():
-        if canonical in LANGUAGES and LANGUAGES[canonical].roles == FileRole.ANALYZABLE:
-            result[alias] = list(LANGUAGES[canonical].extensions)
-
-    return result
+    return {
+        name: list(spec.extensions)
+        for name, spec in LANGUAGES.items()
+        if spec.roles == FileRole.ANALYZABLE
+    }
 
 
 # Pre-computed for efficiency (module-level singletons)

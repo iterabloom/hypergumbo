@@ -126,6 +126,27 @@ def test_detects_multiple_languages(tmp_path: Path) -> None:
     assert "html" in languages
 
 
+def test_inv_tosum_bash_not_double_counted(tmp_path: Path) -> None:
+    """INV-tosum: shell scripts must surface exactly once under the canonical 'bash' key.
+
+    Pre-fix, alias keys (e.g., 'shell' → 'bash') were injected into
+    LANGUAGE_EXTENSIONS, causing profile.detect_languages to enumerate
+    the same .sh files twice and emit two entries with identical stats.
+    """
+    (tmp_path / "deploy.sh").write_text("#!/bin/bash\necho hi\n")
+    (tmp_path / "test.sh").write_text("#!/bin/bash\necho test\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    languages = data["profile"]["languages"]
+
+    assert "bash" in languages
+    assert languages["bash"]["files"] == 2
+    assert "shell" not in languages
+
+
 def test_excludes_node_modules_from_profile(tmp_path: Path) -> None:
     """Should not count files in excluded directories."""
     (tmp_path / "app.py").write_text("print('hi')\n")
