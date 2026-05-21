@@ -874,7 +874,7 @@ Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`,
 
 **Fields:**
 - `symbol_id`: Reference to a node (matches `nodes[].id`)
-- `kind`: Entry point type (`http_route`, `cli_command`, `main_function`, `background_task`, `websocket_handler`, `library_export`, `shell_script`, `connectivity_based`, etc.). The `shell_script` kind (INV-tajap) marks bash/sh executable scripts; emitted on the file-kind Symbol whenever the bash analyzer parses a file (every parsed bash file qualifies — `find_bash_files` already requires either a shebang or `.sh`/`.bash` extension).
+- `kind`: Entry point type (`http_route`, `cli_command`, `main_function`, `background_task`, `websocket_handler`, `library_export`, `shell_script`, `html_entry`, `connectivity_based`, etc.). The `shell_script` kind (INV-tajap) marks bash/sh executable scripts; emitted on the file-kind Symbol whenever the bash analyzer parses a file (every parsed bash file qualifies — `find_bash_files` already requires either a shebang or `.sh`/`.bash` extension). The `html_entry` kind (INV-tajap) marks SPA roots / convention-named `index.html` files; emitted on the file-kind Symbol when the filename is `index.html` (case-insensitive).
 - `confidence`: Detection confidence (0.0–1.0), reflecting pattern strength, penalties for test/vendor code, and connectivity boost
 - `label`: Human-readable description
 

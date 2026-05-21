@@ -135,3 +135,78 @@ def test_skips_unreadable_html_files(tmp_path: Path) -> None:
     # Should have the edge from valid file
     script_edges = [e for e in data["edges"] if e["type"] == "script_src"]
     assert len(script_edges) == 1
+
+
+# ─── INV-tajap PR 2: html_entry detection ─────────────────────────────────
+#
+# Pre-fix: HTML files were parsed and got file-kind Symbols, but no concept
+# rode on the file Symbol — so entrypoint detection ignored every index.html
+# in the repo. SPA roots (the page that bootstraps the JS bundle) looked like
+# inert content. This sub-fix stamps a ``html_entry`` concept on the file
+# Symbol when the filename is index.html (the convention-based SPA root),
+# and entrypoints.py turns that into a HTML_ENTRY entrypoint.
+
+
+def test_inv_tajap_index_html_emits_html_entry_concept(tmp_path: Path) -> None:
+    """The file Symbol for index.html carries an html_entry concept."""
+    from hypergumbo_lang_mainstream.html import analyze_html
+
+    (tmp_path / "index.html").write_text(
+        "<!doctype html><html><body><script src='main.js'></script></body></html>\n"
+    )
+    result = analyze_html(tmp_path)
+
+    file_syms = [s for s in result.symbols if s.kind == "file"]
+    assert file_syms, "HTML analyzer must emit a file Symbol for index.html"
+    file_sym = file_syms[0]
+    concepts = (file_sym.meta or {}).get("concepts", [])
+    assert any(c.get("concept") == "html_entry" for c in concepts), (
+        f"expected html_entry concept on index.html file Symbol; "
+        f"got concepts={concepts!r}"
+    )
+
+
+def test_inv_tajap_non_index_html_does_not_emit_html_entry(tmp_path: Path) -> None:
+    """A regular ``page.html`` is NOT marked as html_entry — only the SPA root."""
+    from hypergumbo_lang_mainstream.html import analyze_html
+
+    (tmp_path / "page.html").write_text("<html><body>Hi</body></html>\n")
+    result = analyze_html(tmp_path)
+
+    file_syms = [s for s in result.symbols if s.kind == "file"]
+    assert file_syms
+    concepts = (file_syms[0].meta or {}).get("concepts", [])
+    assert not any(c.get("concept") == "html_entry" for c in concepts), (
+        f"non-index HTML must not carry html_entry; got concepts={concepts!r}"
+    )
+
+
+def test_inv_tajap_index_html_case_insensitive(tmp_path: Path) -> None:
+    """``INDEX.HTML`` / ``Index.html`` still trigger html_entry."""
+    from hypergumbo_lang_mainstream.html import analyze_html
+
+    (tmp_path / "Index.html").write_text("<html></html>\n")
+    result = analyze_html(tmp_path)
+
+    file_syms = [s for s in result.symbols if s.kind == "file"]
+    assert file_syms
+    concepts = (file_syms[0].meta or {}).get("concepts", [])
+    assert any(c.get("concept") == "html_entry" for c in concepts)
+
+
+def test_inv_tajap_index_html_in_subdirectory_still_emits_concept(
+    tmp_path: Path,
+) -> None:
+    """SPA roots in subdirectories (e.g. ``packages/frontend/index.html``)
+    also count — the convention is the filename, not the root location."""
+    from hypergumbo_lang_mainstream.html import analyze_html
+
+    sub = tmp_path / "packages" / "frontend"
+    sub.mkdir(parents=True)
+    (sub / "index.html").write_text("<html></html>\n")
+    result = analyze_html(tmp_path)
+
+    file_syms = [s for s in result.symbols if s.kind == "file"]
+    assert file_syms, "expected the subdirectory index.html to be analyzed"
+    concepts = (file_syms[0].meta or {}).get("concepts", [])
+    assert any(c.get("concept") == "html_entry" for c in concepts)

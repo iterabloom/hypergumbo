@@ -111,6 +111,15 @@ def analyze_html(
         # Create a file node for the HTML file
         file_id = _make_file_id(str(html_file))
         span = Span(start_line=1, end_line=total_lines, start_col=0, end_col=0)
+        # INV-tajap PR 2: stamp ``html_entry`` concept on the file Symbol
+        # when the filename is ``index.html`` (case-insensitive) — that's
+        # the SPA-root / convention-named entrypoint that bootstraps a JS
+        # bundle. Other HTML files (templates, 404 pages, docs) are not
+        # entrypoints. entrypoints.py turns the concept into a HTML_ENTRY
+        # entry (parallel to SHELL_SCRIPT for bash in PR 1).
+        meta: dict | None = None
+        if html_file.name.lower() == "index.html":
+            meta = {"concepts": [{"concept": "html_entry", "framework": "html"}]}
         file_symbol = Symbol(
             id=file_id,
             name=html_file.name,
@@ -120,6 +129,7 @@ def analyze_html(
             span=span,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            meta=meta,
         )
         symbols.append(file_symbol)
 

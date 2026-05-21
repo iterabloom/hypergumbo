@@ -3788,6 +3788,92 @@ class TestInvTajapShellScriptEntrypoint:
         assert len(shell_eps) == 1
 
 
+class TestInvTajapHtmlEntryEntrypoint:
+    """INV-tajap PR 2: ``html_entry`` concept on a file-kind HTML Symbol
+    becomes a ``HTML_ENTRY`` entrypoint. Parallel to SHELL_SCRIPT (PR 1).
+
+    Pre-fix: SPA roots (index.html files that bootstrap a JS bundle) were
+    not detected as entrypoints; all JS routes reachable only from a
+    `<script src=...>` reference looked unreachable.
+    """
+
+    def test_html_entry_concept_emits_entrypoint(self) -> None:
+        """An HTML file Symbol carrying the html_entry concept produces an
+        HTML_ENTRY entrypoint with a path-bearing label."""
+        index_html = make_symbol(
+            "packages/htrac-frontend/index.html",
+            path="packages/htrac-frontend/index.html",
+            kind="file",
+            language="html",
+            meta={"concepts": [{"concept": "html_entry", "framework": "html"}]},
+        )
+        entrypoints = detect_entrypoints([index_html], [])
+
+        html_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.HTML_ENTRY]
+        assert len(html_eps) == 1
+        assert html_eps[0].symbol_id == index_html.id
+        assert "packages/htrac-frontend/index.html" in html_eps[0].label
+
+    def test_python_only_repo_has_no_html_entry(self) -> None:
+        """A repo with no HTML files produces zero HTML_ENTRY entrypoints."""
+        py_main = make_symbol(
+            "main", path="src/app.py", kind="function",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([py_main], [])
+        assert not any(ep.kind == EntrypointKind.HTML_ENTRY for ep in entrypoints)
+
+    def test_mixed_repo_emits_main_shell_and_html(self) -> None:
+        """A 3-file repo (Python + bash + index.html) produces all three kinds."""
+        py_main = make_symbol(
+            "main", path="src/app.py", kind="function",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        bash_file = make_symbol(
+            "scripts/setup", path="scripts/setup", kind="file", language="bash",
+            meta={"concepts": [{"concept": "shell_script", "framework": "bash"}]},
+        )
+        html_file = make_symbol(
+            "index.html", path="index.html", kind="file", language="html",
+            meta={"concepts": [{"concept": "html_entry", "framework": "html"}]},
+        )
+        entrypoints = detect_entrypoints([py_main, bash_file, html_file], [])
+
+        kinds = {ep.kind for ep in entrypoints}
+        assert EntrypointKind.MAIN_FUNCTION in kinds
+        assert EntrypointKind.SHELL_SCRIPT in kinds
+        assert EntrypointKind.HTML_ENTRY in kinds
+
+    def test_two_index_html_files_produce_two_entrypoints(self) -> None:
+        """Multi-app monorepos with multiple index.html files each get an entry."""
+        roots = ["frontend/index.html", "admin/index.html"]
+        symbols = [
+            make_symbol(
+                p, path=p, kind="file", language="html",
+                meta={"concepts": [{"concept": "html_entry", "framework": "html"}]},
+            )
+            for p in roots
+        ]
+        entrypoints = detect_entrypoints(symbols, [])
+
+        html_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.HTML_ENTRY]
+        assert len(html_eps) == 2
+
+    def test_duplicate_html_entry_concept_on_same_symbol_dedups(self) -> None:
+        """Two html_entry concepts on the same Symbol produce one entry."""
+        sym = make_symbol(
+            "index.html", path="index.html", kind="file", language="html",
+            meta={"concepts": [
+                {"concept": "html_entry", "framework": "html"},
+                {"concept": "html_entry", "framework": "html"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+
+        html_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.HTML_ENTRY]
+        assert len(html_eps) == 1
+
+
 class TestRouteLabelDedup:
     """Tests for deduplication of HTTP_ROUTE entrypoints by (method, path)."""
 

@@ -8,7 +8,7 @@ This file enumerates every concept string that the framework-YAML pattern layer 
 - **inert** — producers exist but no consumer reads the concept. Candidates for either removing the producer pattern or writing a Framework-subcategory linker that consumes it.
 - **ghost** — a consumer mentions the concept by name but no YAML emits it. Likely dead code or a leftover reference to a removed pattern; investigate.
 
-Total concepts: **318** (live: 42, inert: 276, ghost: 0).
+Total concepts: **319** (live: 43, inert: 276, ghost: 0).
 
 ## Inventory
 
@@ -143,6 +143,7 @@ Total concepts: **318** (live: 42, inert: 276, ghost: 0).
 | `helper` | inert | cakephp, codeigniter, grape, laminas, padrino, sinatra, symfony | _(none)_ |
 | `hook` | inert | react | _(none)_ |
 | `host_function` | inert | language-conventions | _(none)_ |
+| `html_entry` | live | html.py | `entrypoints.py` |
 | `http_client` | inert | aiohttp, express, micronaut, play | _(none)_ |
 | `hydrator` | inert | laminas | _(none)_ |
 | `input` | inert | shiny | _(none)_ |

@@ -200,6 +200,7 @@ class EntrypointKind(Enum):
     LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
     # Executable scripts in non-Python languages (INV-tajap)
     SHELL_SCRIPT = "shell_script"  # Bash/sh script (shebang or .sh/.bash file)
+    HTML_ENTRY = "html_entry"  # SPA root / convention-named index.html
     # Test/benchmark entry points (from test-frameworks.yaml patterns)
     TEST_FUNCTION = "test_function"  # Test function/method (pytest, JUnit, etc.)
     # SPA bootstrap (createRoot, ReactDOM.render, hydrateRoot)
@@ -727,6 +728,22 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=f"Shell script ({script_path})",
                 ))
                 added_kinds.add(EntrypointKind.SHELL_SCRIPT)
+
+            # INV-tajap PR 2: html_entry concept -> HTML_ENTRY
+            # SPA root / convention-named index.html that bootstraps a JS
+            # bundle. Stamped on the file-kind Symbol by the HTML analyzer
+            # when the filename matches ``index.html`` (case-insensitive).
+            elif concept_type == "html_entry":
+                if EntrypointKind.HTML_ENTRY in added_kinds:
+                    continue
+                html_path = sym.path or sym.name
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.HTML_ENTRY,
+                    confidence=0.85,  # Structural pattern, same tier as shell_script
+                    label=f"HTML entry ({html_path})",
+                ))
+                added_kinds.add(EntrypointKind.HTML_ENTRY)
 
             # Python main guard concept -> MAIN_FUNCTION
             # Structural entrypoint: `if __name__ == "__main__":` pattern
