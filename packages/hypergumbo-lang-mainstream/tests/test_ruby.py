@@ -3946,6 +3946,292 @@ end
             "Widget.new should create edge to Widget#initialize"
         )
 
+    def test_inherits_initialize_via_three_level_chain(
+        self, tmp_path: Path,
+    ) -> None:
+        """Multi-level inheritance: ``C < B < A`` where only ``A`` defines
+        ``#initialize``. The BFS walks two hops past the named class to find
+        the inherited constructor.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "a.rb").write_text("""
+class A
+  def initialize(x)
+    @x = x
+  end
+end
+""")
+        (tmp_path / "b.rb").write_text("""
+class B < A
+end
+""")
+        (tmp_path / "c.rb").write_text("""
+class C < B
+end
+""")
+        (tmp_path / "caller.rb").write_text("""
+class Caller
+  def run
+    C.new(1)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        run = next((s for s in result.symbols if s.name == "Caller#run"), None)
+        a_init = next((s for s in result.symbols if s.name == "A#initialize"), None)
+        assert run is not None and a_init is not None
+        init_edges = [
+            e for e in result.edges if e.src == run.id and e.dst == a_init.id
+        ]
+        assert len(init_edges) >= 1, (
+            "C.new should walk C->B->A to find the inherited #initialize"
+        )
+
+    def test_inheritance_walk_respects_depth_limit(
+        self, tmp_path: Path,
+    ) -> None:
+        """Inheritance walk uses a bounded depth limit. When no ancestor
+        defines ``#initialize`` within ~10 hops, the walk gives up and
+        returns None (falls through to the existing receiver_is_project
+        suppression path that produces no FP edge).
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        # Construct a long-chain inheritance with NO #initialize anywhere.
+        # The walk should not crash, should not emit an edge, and should
+        # return None at depth limit (covering the ``return None`` exit).
+        files = []
+        for i in range(12):
+            parent = f" < Chain{i - 1}" if i > 0 else ""
+            files.append((f"chain{i}.rb", f"class Chain{i}{parent}\nend\n"))
+        for fname, content in files:
+            (tmp_path / fname).write_text(content)
+        (tmp_path / "caller.rb").write_text("""
+class Caller
+  def run
+    Chain11.new
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        run = next((s for s in result.symbols if s.name == "Caller#run"), None)
+        assert run is not None
+        # No #initialize exists anywhere in the chain, so no constructor
+        # edge should be emitted (no FP, no inherited-walk false hit).
+        from_run = [e for e in result.edges if e.src == run.id]
+        # Each edge target must NOT be a method named "initialize"
+        for e in from_run:
+            dst = next((s for s in result.symbols if s.id == e.dst), None)
+            if dst is not None:
+                assert "initialize" not in dst.name, (
+                    f"No #initialize edge expected, got {dst.name}"
+                )
+
+    def test_inherits_initialize_via_parent_chain(self, tmp_path: Path) -> None:
+        """WI-vuton chatwoot diagnostic: when ``Sub < Base`` and only ``Base``
+        defines ``#initialize``, ``Sub.new(...)`` should emit a ``calls`` edge
+        to ``Base#initialize`` via the inheritance chain. Before this fix the
+        redirect failed (no edge emitted) and the call site's transitive
+        downstream methods became unreachable in dead-code analysis.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "base.rb").write_text("""
+class Base
+  def initialize(arg)
+    @arg = arg
+  end
+
+  def perform
+    do_work
+  end
+
+  def do_work
+    puts "working"
+  end
+end
+""")
+
+        (tmp_path / "sub.rb").write_text("""
+class Sub < Base
+  # Inherits #initialize from Base
+  def custom_method
+    puts "custom"
+  end
+end
+""")
+
+        (tmp_path / "caller.rb").write_text("""
+class Caller
+  def run
+    Sub.new("arg").perform
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        run = next((s for s in result.symbols if s.name == "Caller#run"), None)
+        base_init = next(
+            (s for s in result.symbols if s.name == "Base#initialize"), None
+        )
+        assert run is not None, "Should find Caller#run"
+        assert base_init is not None, "Should find Base#initialize"
+
+        # Sub.new(...) should resolve to Base#initialize via inheritance.
+        init_edges = [
+            e for e in result.edges
+            if e.src == run.id and e.dst == base_init.id
+        ]
+        assert len(init_edges) >= 1, (
+            "Sub.new should create edge to Base#initialize via the "
+            "inheritance chain when Sub doesn't define #initialize"
+        )
+
+    def test_scope_resolution_namespaced_with_leading_colon_colon(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-vuton MessageBuilder diagnostic on chatwoot: the exact shape
+        ``::Foo::Bar.new(args).method`` where ``Bar`` inherits ``#initialize``
+        from a parent and the source uses the leading-``::`` idiom for
+        unambiguous root-namespace resolution. Pre-fix the leading ``::`` on
+        a namespaced constant defeated the global-symbols lookup
+        (``::Instagram::MessageText`` doesn't match the registered
+        ``Instagram::MessageText`` key) — the inheritance walk never fired
+        and the constructor call was orphaned, then misresolved to a Rails
+        controller's ``#new`` action via the name-only fallback.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "base.rb").write_text("""
+class Instagram::BaseMessageText
+  def initialize(messaging, channel)
+    @messaging = messaging
+    @channel = channel
+  end
+
+  def perform
+    do_work
+  end
+end
+""")
+
+        (tmp_path / "sub.rb").write_text("""
+class Instagram::MessageText < Instagram::BaseMessageText
+  # Inherits #initialize from BaseMessageText
+end
+""")
+
+        # Decoy: a Rails-style controller with a #new action that would
+        # name-collide if the redirect fell through to the name-resolver.
+        (tmp_path / "sessions_controller.rb").write_text("""
+class DeviseOverrides::SessionsController
+  def new
+    render :index
+  end
+end
+""")
+
+        (tmp_path / "job.rb").write_text("""
+class Webhooks::InstagramEventsJob
+  def message(messaging, channel)
+    ::Instagram::MessageText.new(messaging, channel).perform
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        job_msg = next(
+            (s for s in result.symbols if s.name == "Webhooks::InstagramEventsJob#message"),
+            None,
+        )
+        base_init = next(
+            (s for s in result.symbols if s.name == "Instagram::BaseMessageText#initialize"),
+            None,
+        )
+        sc_new = next(
+            (s for s in result.symbols if s.name == "DeviseOverrides::SessionsController#new"),
+            None,
+        )
+        assert job_msg is not None
+        assert base_init is not None
+        assert sc_new is not None
+
+        # The constructor call must resolve to the inherited #initialize.
+        init_edges = [
+            e for e in result.edges
+            if e.src == job_msg.id and e.dst == base_init.id
+        ]
+        assert len(init_edges) >= 1, (
+            "::Instagram::MessageText.new must resolve to "
+            "Instagram::BaseMessageText#initialize via the inheritance walk"
+        )
+
+        # And critically must NOT name-collide onto the unrelated
+        # controller's #new action (the chatwoot FP shape).
+        fp_edges = [
+            e for e in result.edges
+            if e.src == job_msg.id and e.dst == sc_new.id
+        ]
+        assert len(fp_edges) == 0, (
+            "::Instagram::MessageText.new must not produce a name-collision "
+            "edge to DeviseOverrides::SessionsController#new"
+        )
+
+    def test_scope_resolution_leading_colon_colon(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-vuton chatwoot diagnostic: ``::Klass.new(...)`` (leading ``::``
+        for unambiguous root-namespace resolution) must still resolve
+        through the constant-receiver redirect. Chatwoot uses this idiom in
+        background jobs (``::Instagram::MessageText.new(messaging,
+        channel).perform``).
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "widget.rb").write_text("""
+class Widget
+  def initialize(name)
+    @name = name
+  end
+
+  def perform
+    puts @name
+  end
+end
+""")
+
+        (tmp_path / "job.rb").write_text("""
+class Job
+  def run
+    ::Widget.new("test").perform
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        run = next((s for s in result.symbols if s.name == "Job#run"), None)
+        init = next(
+            (s for s in result.symbols if s.name == "Widget#initialize"), None
+        )
+        assert run is not None, "Should find Job#run"
+        assert init is not None, "Should find Widget#initialize"
+
+        # ::Widget.new(...) should resolve to Widget#initialize even with the
+        # leading :: scope-resolution prefix.
+        init_edges = [
+            e for e in result.edges
+            if e.src == run.id and e.dst == init.id
+        ]
+        assert len(init_edges) >= 1, (
+            "::Widget.new should create edge to Widget#initialize "
+            "(leading :: must not block the constant-receiver redirect)"
+        )
+
     def test_new_without_initialize_no_edge(self, tmp_path: Path) -> None:
         """SomeClass.new with no #initialize defined creates no edge.
 

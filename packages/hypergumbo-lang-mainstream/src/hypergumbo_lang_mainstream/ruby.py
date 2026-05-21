@@ -1898,6 +1898,64 @@ _JOB_ENQUEUE_METHODS = frozenset({"perform_later", "perform_async", "perform_in"
                                    "perform_at"})
 
 
+def _find_inherited_initialize(
+    candidate_class_names: list[str],
+    global_symbols: dict[str, Symbol],
+    max_depth: int = 10,
+) -> Symbol | None:
+    """Walk the ``base_classes`` chain to find an ancestor's ``#initialize``.
+
+    Bound to the constant-receiver ``.new → #initialize`` redirect at
+    ``_try_receiver_call``: when the named class doesn't define
+    ``#initialize`` directly, Ruby walks the inheritance chain at runtime to
+    find the inherited constructor. This helper recovers that resolution
+    from Pass-1 ``base_classes`` metadata stamped on each class Symbol.
+
+    Args:
+        candidate_class_names: Class names to start the walk from (full
+            qualified + short-name fallbacks, matching the caller's
+            ``candidates`` list).
+        global_symbols: Symbol lookup keyed by qualified name.
+        max_depth: Maximum chain depth to walk; 10 matches the conservative
+            cap used by the JAX-RS subresource locator resolver
+            (``framework_patterns.py``) and Java's inherited-method lookup
+            (``java.py:1436-1461``).
+
+    Returns:
+        The Symbol of the nearest ancestor's ``#initialize`` if found,
+        else None.
+    """
+    visited: set[str] = set()
+    frontier: list[str] = list(candidate_class_names)
+    for _ in range(max_depth):
+        if not frontier:
+            return None
+        next_frontier: list[str] = []
+        for class_name in frontier:
+            if class_name in visited:
+                continue
+            visited.add(class_name)
+            class_sym = global_symbols.get(class_name)
+            if class_sym is None or class_sym.kind != "class":
+                continue
+            base_classes = (
+                (class_sym.meta or {}).get("base_classes", []) if class_sym.meta else []
+            )
+            for base in base_classes:
+                # Try fully qualified ("Foo::Bar") then short ("Bar") to match
+                # the caller's candidate-shaping convention.
+                base_short = base.split("::")[-1] if "::" in base else base
+                for base_candidate in (base, base_short):
+                    if base_candidate in visited:  # pragma: no cover - defensive: only fires on cyclic base_classes (Ruby's syntax disallows class cycles at parse time)
+                        continue
+                    init_key = f"{base_candidate}#initialize"
+                    if init_key in global_symbols:
+                        return global_symbols[init_key]
+                    next_frontier.append(base_candidate)
+        frontier = next_frontier
+    return None
+
+
 def _try_receiver_call(
     receiver_node: "tree_sitter.Node",
     method_name: str,
@@ -1966,7 +2024,16 @@ def _try_receiver_call(
     # massive false-positive edges (e.g. RoutesController#new with 130 false
     # in-edges in chatwoot).  Redirect to #initialize instead.
     if method_name == "new":
-        candidates = [receiver_class]
+        # WI-vuton MessageBuilder diagnostic: ``::Foo::Bar.new(...)``
+        # extracts ``receiver_class = "::Foo::Bar"`` (preserving the leading
+        # ``::`` from the AST node text), but ``global_symbols`` is keyed by
+        # qualified name WITHOUT the prefix (``Foo::Bar``). Strip the
+        # leading ``::`` so the constant-receiver redirect (and the
+        # inheritance walk below) find the class symbol when the source
+        # uses the unambiguous root-namespace prefix idiom common in Rails
+        # background jobs (e.g. chatwoot's
+        # ``::Instagram::MessageText.new(...).perform``).
+        candidates = [receiver_class.lstrip(":")]
         if receiver_node.type == "scope_resolution" and short_name and short_name != receiver_class:
             candidates.append(short_name)
         for candidate in candidates:
@@ -1986,6 +2053,31 @@ def _try_receiver_call(
                         meta={"call_construct": "constructor"},
                     ))
                     return True
+        # WI-vuton MessageBuilder diagnostic: when ``Klass#initialize`` is
+        # absent on the named class but a parent class DOES define it, walk
+        # the ``base_classes`` metadata chain (recorded by Pass 1) to find
+        # the nearest ancestor with a user-defined ``#initialize`` and bind
+        # the constructor call to that. Chatwoot's
+        # ``::Instagram::MessageText`` inherits ``#initialize`` from
+        # ``Instagram::BaseMessageText``; pre-fix this redirect failed and
+        # the entire downstream call chain (``perform`` → ``create_message``
+        # → ``MessageBuilder#initialize``) was orphaned from the reachable
+        # set. Mirrors ``java.py``'s ``class_parents`` inherited-method
+        # lookup at lines 1436-1461.
+        inherited = _find_inherited_initialize(candidates, global_symbols)
+        if inherited is not None and inherited.id != current_method.id:
+            edges.append(Edge.create(
+                src=current_method.id,
+                dst=inherited.id,
+                edge_type="calls",
+                line=line,
+                evidence_type="ast_call_inherited",
+                confidence=0.85,
+                origin=PASS_ID,
+                origin_run_id=run_id,
+                meta={"call_construct": "constructor_inherited"},
+            ))
+            return True
         # When the receiver class IS a project symbol but has no
         # user-defined ``#initialize`` (inherits Object#initialize),
         # preserve the original "no edge" semantics: the call is
