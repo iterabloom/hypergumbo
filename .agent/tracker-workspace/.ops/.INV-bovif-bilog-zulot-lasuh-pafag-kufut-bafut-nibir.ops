@@ -75,3 +75,19 @@
   clock: 7  # adcf
   nonce: adcf  # adcf
   message: "Fixed in PR #3829 (merged 2026-05-19). Root cause: cli.py:_NOISE_KINDS overloaded kind='table' between TOML/INI [section] config noise and SQL CREATE TABLE entities. Fix: removed 'table' from _NOISE_KINDS, added _TABLE_NOISE_LANGUAGES = {toml, ini, properties} carve-out in _is_noise (mirrors existing _CSS_LANGUAGES carve-out for kind='variable'). Self-analysis post-fix: SQL table count 0→1 (users from schema.sql fixture); database-query-linker-v1 edges 0→17. Other 3 linkers (event_sourcing/http/graphql_resolver) remain at 0 edges on self-analysis — confirmed by empirical investigation to be unrelated to the schema migration (no event-name overlap, no HTTP URL overlap, no GraphQL schema files in repo). awaits_bakeoff_validation tag added: a repo with SQL DDL + DB query call-sites should show the database_query edge count restoration vs Apr 23 baseline."  # adcf
+- op: update  # 05df
+  at: '2026-05-21T19:23:41Z'  # 05df
+  by: agent  # 05df
+  actor: jgstern_agent  # 05df
+  clock: 8  # 05df
+  nonce: 05df  # 05df
+  set: {}  # 05df
+  remove:  # 05df
+    tags: [awaits_bakeoff_validation]  # 05df
+- op: discuss  # aa57
+  at: '2026-05-21T19:23:41Z'  # aa57
+  by: agent  # aa57
+  actor: jgstern_agent  # aa57
+  clock: 9  # aa57
+  nonce: aa57  # aa57
+  message: "Validated via self-analysis 2026-05-21. Re-ran hypergumbo on this repo (dev tip 74794a2e89) and confirmed the SQL noise-filter fix holds: kind='table' SQL Symbols = 1 (was 0 pre-fix), toml-v1 tables correctly dropped to 0 by _is_noise, database-query-linker edges = 17 (was 0). Self-anchored claim from the original fix discussion, validated on the same target. Artifacts: ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md and verify_validation_drain_05212026{.py,_verdict.txt,.log}. Verdict: moved."  # aa57

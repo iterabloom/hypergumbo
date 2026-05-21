@@ -47,3 +47,34 @@
   set: {}  # e836
   add:  # e836
     tags: [cross_language_parity]  # e836
+- op: update  # 5d50
+  at: '2026-05-21T09:21:28Z'  # 5d50
+  by: agent  # 5d50
+  actor: jgstern_agent  # 5d50
+  clock: 5  # 5d50
+  nonce: 5d50  # 5d50
+  set: {}  # 5d50
+  add:  # 5d50
+    tags: [awaits_bakeoff_validation]  # 5d50
+- op: discuss  # 502d
+  at: '2026-05-21T09:21:28Z'  # 502d
+  by: agent  # 502d
+  actor: jgstern_agent  # 502d
+  clock: 6  # 502d
+  nonce: 502d  # 502d
+  message: "Tagged before auto-pr per the bakeoff-validation tagging discipline (quantitative claim: dead-code-maybe FP rate reduction on codebases with classical inheritance). Will be validated against the bakeoff corpus after merge — hypergumbo's self-analysis shows 0 dispatch_inherited demotions because the codebase uses Protocol/duck-typing, not classical inheritance; classical-inheritance codebases (Spring/Django/etc.) should see substantial reduction."  # 502d
+- op: update  # d629
+  at: '2026-05-21T09:40:11Z'  # d629
+  by: agent  # d629
+  actor: jgstern_agent  # d629
+  clock: 7  # d629
+  nonce: d629  # d629
+  set:  # d629
+    status: done  # d629
+- op: discuss  # 601c
+  at: '2026-05-21T09:40:11Z'  # 601c
+  by: agent  # 601c
+  actor: jgstern_agent  # 601c
+  clock: 8  # 601c
+  nonce: 601c  # 601c
+  message: "Closed in PR #3862 (commit 41484d271c). Two heuristics added in cmd_dead_code_maybe: (1) usage_contexts view_func cross-reference — symbols at position=view_func in usage_contexts join the BFS seed set (only callable-position entries seed; arg_value etc. are ignored); (2) polymorphic dispatch demotion — for each dead method, walk transitive ancestors via extends/inherits/implements edges; if any ancestor's same-named method is reachable, demote. Summary surfaces demoted_view_func and demoted_dispatch_inherited counts. Empirical on hypergumbo self-analysis: demoted_view_func=8; demoted_dispatch_inherited=0 (hypergumbo's DefUseExtractor/NameMatcher families use Python Protocol/duck typing, not classical inheritance, so the strict heuristic correctly finds no overrides). Classical-inheritance codebases should see substantially more demotions. Heuristics #2 (framework lifecycle convention list) and #4 (confidence annotation) from the WI-vuton plan are deferred — they need non-trivial pattern enumeration and a schema change. Tagged awaits_bakeoff_validation: the FP-reduction impact depends on the inheritance-edge density of the target codebase."  # 601c

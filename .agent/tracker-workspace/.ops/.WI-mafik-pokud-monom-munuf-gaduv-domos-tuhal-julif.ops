@@ -65,3 +65,18 @@
   set: {}  # 7d46
   add:  # 7d46
     tags: [cross_language_parity]  # 7d46
+- op: update  # 8202
+  at: '2026-05-21T08:55:21Z'  # 8202
+  by: agent  # 8202
+  actor: jgstern_agent  # 8202
+  clock: 8  # 8202
+  nonce: '8202'  # 8202
+  set:  # 8202
+    status: done  # 8202
+- op: discuss  # d4cd
+  at: '2026-05-21T08:55:21Z'  # d4cd
+  by: agent  # d4cd
+  actor: jgstern_agent  # d4cd
+  clock: 9  # d4cd
+  nonce: d4cd  # d4cd
+  message: "Closed in PR #3861 (commit 558b81d). Audit completed across 3 PRs total: 9b63441d40 (fixture authoring + xfail for 7 non-Python languages), be0ddcb8eb (WI-tihup + WI-mafik PR2: 7-language analyzer retrofits, all original xfail stripped), 558b81d (this PR: 2 audit-extension fixtures covering idioms WI-mafik's description called out — java_wildcard FAILS → filed WI-tuhok as analyzer-fix follow-up; elixir_except PASSES → import-with-except branch confirmed). Final audit ledger: 9 idioms green, 1 xfail at WI-tuhok, no other gaps remain. The polyglot fixture is now the audit instrument going forward: adding a new construct to the fixture automatically fails CI when the analyzer misses it, so the fixture doubles as a regression boundary."  # d4cd

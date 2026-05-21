@@ -71,3 +71,19 @@
   clock: 7  # 4f43
   nonce: 4f43  # 4f43
   message: "INV-tajap CLOSED. Three sub-fixes shipped across PRs #3854, #3856, and the merge of 54d28ca452:\n\n1. shell_script (PR #3854 / 8ab5c5dbcb): bash analyzer stamps shell_script concept on every parsed bash file Symbol; entrypoints.py emits SHELL_SCRIPT (confidence 0.85).\n2. html_entry (PR #3856 / f1dc6bea09): html.py stamps html_entry concept on index.html (case-insensitive); entrypoints.py emits HTML_ENTRY (confidence 0.85).\n3. script_module (54d28ca452): _detect_script_modules helper in entrypoints.py emits SCRIPT_MODULE for TS/JS file Symbols where no inbound imports edge dst==sym.id AND at least one outbound calls edge src==sym.id (confidence 0.80). Edge-set based since the rule requires the full edge set.\n\nCumulative self-analysis impact: 64 -> 97 entrypoints (+52%); 39 non-Python entries (was 0): 36 shell_script + 1 html_entry + 2 script_module (main.ts, vite.config.ts).\n\nTag awaits_bakeoff_validation preserved for the bakeoff queue to re-baseline WI-vuton's dead-code FP rate against this fix on the standard prospector corpus."  # 4f43
+- op: update  # 6d63
+  at: '2026-05-21T19:23:42Z'  # 6d63
+  by: agent  # 6d63
+  actor: jgstern_agent  # 6d63
+  clock: 8  # 6d63
+  nonce: 6d63  # 6d63
+  set: {}  # 6d63
+  remove:  # 6d63
+    tags: [awaits_bakeoff_validation]  # 6d63
+- op: discuss  # f6e6
+  at: '2026-05-21T19:23:42Z'  # f6e6
+  by: agent  # f6e6
+  actor: jgstern_agent  # f6e6
+  clock: 9  # f6e6
+  nonce: f6e6  # f6e6
+  message: "Validated via self-analysis 2026-05-21. Re-ran hypergumbo on this repo (dev tip 74794a2e89) and confirmed entrypoint detection extends to bash/TS/HTML: bm['entrypoints']=97 total (was 64), by_kind={main_function:11, http_route:8, shell_script:36, script_module:2, html_entry:1, library_export:39}, non_python=39 — exact match to the per-PR claims (36 shell + 1 html + 2 script_module). Self-anchored claim; downstream impact on WI-vuton's dead-code FP rate is its own validation (still tagged, pending external cohort). Artifacts: ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md and verify_validation_drain_05212026{.py,_verdict.txt,.log}. Verdict: moved."  # f6e6

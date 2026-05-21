@@ -22,3 +22,18 @@
     pr_ref:  # 91cb
     description: "**Found via WI-mafik audit extension (2026-05-21).**\n\nThe Java analyzer does not attribute bare type usages back to a wildcard-imported package. With:\n\n```java\nimport java.util.*;\npublic class WildcardFixture {\n    public static void exerciseWildcard() {\n        Arrays.asList(1, 2, 3);\n        Collections.emptyList();\n    }\n}\n```\n\nThe analyzer emits unresolved edges with dst `java:external:0-0:Arrays.asList:unresolved` instead of resolving `Arrays` to its source module `java.util` (which the wildcard `import java.util.*` declared).\n\nCompare to the standard explicit-import case which DOES resolve correctly: `import java.util.Arrays;` + `Arrays.asList(1, 2, 3)` → `calls` edge dst contains `java.util` + `asList`. The wildcard-import branch is missing.\n\n**Sibling shape**: WI-hudud (Java static import resolution, closed in WI-mafik PR2), WI-bunul (Java analyzer fix, closed). This is the third Java analyzer gap surfaced by the polyglot fixture.\n\n**Fix sketch**: extend `java.py`'s `_extract_imports` to track wildcard-import packages (`import java.util.*` → record `java.util` as a wildcard package). When the bare-name resolver fails to find an explicit import for a type name like `Arrays`, optimistically attribute it to the first wildcard-imported package whose set of declared classes contains `Arrays` (or, as a lower-confidence fallback when the class set is unknown, attribute to any wildcard package — same precedent as Go dot-imports in WI-vovum).\n\n**Test gap**: the `java_wildcard` fixture in `test_polyglot_call_site_coverage.py` is set `xfail_reason` to point at this item. Removing the xfail when this is fixed surfaces the regression boundary.\n\n**Cross-references**:\n- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py` (`_extract_imports` and bare-name resolver)\n- `packages/hypergumbo-lang-mainstream/tests/test_polyglot_call_site_coverage.py` (`java_wildcard` fixture)\n- WI-mafik (parent audit item)\n- WI-hudud, WI-bunul (sibling Java analyzer fixes)"  # 91cb
     fields: {}  # 91cb
+- op: update  # fe6e
+  at: '2026-05-21T18:29:52Z'  # fe6e
+  by: agent  # fe6e
+  actor: jgstern_agent  # fe6e
+  clock: 2  # fe6e
+  nonce: fe6e  # fe6e
+  set:  # fe6e
+    status: done  # fe6e
+- op: discuss  # 48c1
+  at: '2026-05-21T18:29:52Z'  # 48c1
+  by: agent  # 48c1
+  actor: jgstern_agent  # 48c1
+  clock: 3  # 48c1
+  nonce: 48c1  # 48c1
+  message: "Closed in PR (commit 74794a2e89). Three changes in java.py: (1) new _extract_wildcard_imports helper walks import_declaration nodes with asterisk children and returns package paths in insertion order, excluding static wildcards (which belong to WI-hudud's resolver); (2) _ParsedFile.wildcard_imports field plumbs the list through to _extract_edges; (3) new elif clause in the unresolved-edge construction fires when receiver_name is capitalised + not in explicit imports + wildcard_imports is non-empty, attributing receiver to the first wildcard's package as 'module_path={wildcard}.{receiver}' with a structured ExternalRef. Capitalisation gate discriminates classes from locals. Explicit imports take precedence over wildcards. 6 new tests in TestJavaWildcardImports + the java_wildcard fixture's xfail_reason removed (polyglot now 10/10 green, 0 xfails)."  # 48c1
