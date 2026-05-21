@@ -1407,3 +1407,283 @@ class TestWebSocketLinkerRegistry:
         assert result.symbols is not None
         assert result.edges is not None
         assert result.run is not None
+
+
+class TestWiZolotCrossLanguageBridge:
+    """WI-zolot: TS client at /ws must bridge to Python handler at /ws.
+
+    Pre-fix gaps surfaced by self-analysis (2026-05-16 round 4):
+    1. NATIVE_WEBSOCKET_PATTERN only matched ``'`` / ``"`` quoted URLs, so
+       template-string URLs like ``new WebSocket(`${proto}/${host}/ws`)``
+       (the canonical browser pattern) never produced an endpoint.
+    2. Python side only matched ``@app.websocket('/path')`` decorator. The
+       Starlette routing-table style ``WebSocketRoute("/path", handler)``
+       — used by hypergumbo's own ``serve.py:433`` — never produced an
+       endpoint.
+    3. Even when both ends were detected, the linker only emitted
+       within-language file→endpoint ``references`` and send/receive
+       pairings. No client↔server cross-language edge was ever emitted.
+
+    Fix: extend client regex to accept template strings, add Starlette
+    pattern, emit ``calls`` + ``meta["protocol"]="ws"`` + ``cross_language``
+    bridge edge when client+server endpoints share a path string.
+    """
+
+    def test_native_websocket_template_string_extracts_trailing_path(self, tmp_path: Path) -> None:
+        """The TS client's ``new WebSocket(`...${host}/ws`)`` produces an endpoint."""
+        file = tmp_path / "client.ts"
+        file.write_text(
+            "const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';\n"
+            "const ws = new WebSocket(`${proto}//${location.host}/ws`);\n"
+        )
+        patterns = _detect_patterns(file)
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        assert len(endpoints) == 1
+        assert endpoints[0].event == "/ws"
+        assert endpoints[0].pattern_type == "native"
+
+    def test_native_websocket_template_string_extracts_last_literal_path(self, tmp_path: Path) -> None:
+        """For ``new WebSocket(`/api/${endpoint}/get`)``, extract trailing ``/get``."""
+        file = tmp_path / "client.ts"
+        file.write_text("const ws = new WebSocket(`/api/${endpoint}/get`);\n")
+        patterns = _detect_patterns(file)
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        assert len(endpoints) == 1
+        assert endpoints[0].event == "/get"
+
+    def test_native_websocket_backtick_no_interpolation(self, tmp_path: Path) -> None:
+        """Pure-literal backtick URL ``new WebSocket(`/ws`)`` works too."""
+        file = tmp_path / "client.ts"
+        file.write_text("const ws = new WebSocket(`/ws`);\n")
+        patterns = _detect_patterns(file)
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        assert len(endpoints) == 1
+        assert endpoints[0].event == "/ws"
+
+    def test_starlette_websocket_route_detected(self, tmp_path: Path) -> None:
+        """``WebSocketRoute("/path", handler)`` is detected as a Python endpoint."""
+        file = tmp_path / "serve.py"
+        file.write_text(
+            "from starlette.routing import WebSocketRoute\n"
+            "routes = [\n"
+            "    WebSocketRoute('/ws', _ws_handler),\n"
+            "]\n"
+        )
+        patterns = _detect_python_patterns(file)
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        # event="/ws", pattern_type identifies it as starlette WebSocketRoute.
+        assert any(
+            p.event == "/ws" and p.pattern_type == "starlette"
+            for p in endpoints
+        )
+
+    def test_starlette_websocket_route_double_quote(self, tmp_path: Path) -> None:
+        """Double-quoted ``WebSocketRoute("/ws", ...)`` works (matches serve.py)."""
+        file = tmp_path / "serve.py"
+        file.write_text(
+            "from starlette.routing import WebSocketRoute\n"
+            "routes = [WebSocketRoute(\"/ws\", _ws_handler)]\n"
+        )
+        patterns = _detect_python_patterns(file)
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        assert any(p.event == "/ws" and p.pattern_type == "starlette" for p in endpoints)
+
+    def test_ts_client_to_python_server_bridge_edge_emitted(self, tmp_path: Path) -> None:
+        """TS client at /ws + Python server at /ws → cross-language ``calls`` edge."""
+        from hypergumbo_core.linkers.websocket import _make_symbol_id, _make_file_id
+
+        ts_file = tmp_path / "ws-client.ts"
+        ts_file.write_text(
+            "const ws = new WebSocket(`${location.host}/ws`);\n"
+        )
+        py_file = tmp_path / "serve.py"
+        py_file.write_text(
+            "from starlette.routing import WebSocketRoute\n"
+            "routes = [WebSocketRoute('/ws', _ws_handler)]\n"
+        )
+        result = link_websocket(tmp_path)
+
+        bridge_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and (e.meta or {}).get("protocol") == "ws"
+        ]
+        assert len(bridge_edges) == 1
+        edge = bridge_edges[0]
+        assert (edge.meta or {}).get("cross_language") is True
+        assert (edge.meta or {}).get("url_path") == "/ws"
+        # src is the TS client file; dst is the Python endpoint symbol.
+        assert edge.src == _make_file_id("typescript", "ws-client.ts")
+        # The Python endpoint Symbol id includes the event path.
+        py_endpoint = next(
+            (s for s in result.symbols
+             if s.language == "python"
+             and (s.meta or {}).get("framework_role") == "websocket_endpoint"),
+            None,
+        )
+        assert py_endpoint is not None
+        assert edge.dst == py_endpoint.id
+
+    def test_no_bridge_when_paths_differ(self, tmp_path: Path) -> None:
+        """TS at ``/foo`` + Python at ``/bar`` → no bridge edge."""
+        ts_file = tmp_path / "client.ts"
+        ts_file.write_text("const ws = new WebSocket(`${host}/foo`);\n")
+        py_file = tmp_path / "serve.py"
+        py_file.write_text(
+            "from starlette.routing import WebSocketRoute\n"
+            "routes = [WebSocketRoute('/bar', handler)]\n"
+        )
+        result = link_websocket(tmp_path)
+        bridge_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and (e.meta or {}).get("protocol") == "ws"
+        ]
+        assert bridge_edges == []
+
+    def test_no_bridge_when_only_client_side(self, tmp_path: Path) -> None:
+        """TS endpoint without matching Python endpoint → no bridge edge."""
+        ts_file = tmp_path / "client.ts"
+        ts_file.write_text("const ws = new WebSocket(`${host}/ws`);\n")
+        result = link_websocket(tmp_path)
+        bridge_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and (e.meta or {}).get("protocol") == "ws"
+        ]
+        assert bridge_edges == []
+
+    def test_no_bridge_when_same_language(self, tmp_path: Path) -> None:
+        """Two JS files declaring the same path: no cross-language bridge."""
+        ts_a = tmp_path / "a.ts"
+        ts_a.write_text("const ws = new WebSocket(`${host}/ws`);\n")
+        ts_b = tmp_path / "b.ts"
+        ts_b.write_text("const ws = new WebSocket(`${host}/ws`);\n")
+        result = link_websocket(tmp_path)
+        bridge_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and (e.meta or {}).get("protocol") == "ws"
+        ]
+        assert bridge_edges == []
+
+    def test_url_extracted_into_helper_function(self, tmp_path: Path) -> None:
+        """Hypergumbo's own pattern: URL built in a helper, used at the WS call.
+
+        Real-world TS code often factors the URL construction into a helper:
+
+            function getWsUrl() { return `${proto}//${host}/ws`; }
+            ws = new WebSocket(getWsUrl());
+
+        The inline-template regex misses this because the template literal
+        and the ``new WebSocket(...)`` are in separate expressions. Heuristic:
+        when a TS/JS file uses ``new WebSocket(...)`` anywhere, scan every
+        template literal in the file for a trailing literal path preceded
+        by at least one ``${...}`` interpolation (URL shape).
+        """
+        file = tmp_path / "ws-client.ts"
+        file.write_text(
+            "function getWsUrl() {\n"
+            "  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';\n"
+            "  return `${proto}//${location.host}/ws`;\n"
+            "}\n"
+            "function connect() {\n"
+            "  const ws = new WebSocket(getWsUrl());\n"
+            "}\n"
+        )
+        patterns = _detect_patterns(file)
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        assert any(p.event == "/ws" for p in endpoints), (
+            f"expected /ws endpoint, got {[(p.event, p.pattern_type) for p in endpoints]}"
+        )
+
+    def test_url_template_without_websocket_constructor_not_detected(self, tmp_path: Path) -> None:
+        """If a file has a URL-shaped template literal but no ``new WebSocket()``, no endpoint.
+
+        Guards against false positives: a template literal like
+        ``${API_BASE}/users/list`` in a fetch-only file is an HTTP URL, not
+        a WebSocket URL — leave it to the HTTP linker.
+        """
+        file = tmp_path / "api-client.ts"
+        file.write_text(
+            "export function getUsers() {\n"
+            "  return fetch(`${API_BASE}/users/list`);\n"
+            "}\n"
+        )
+        patterns = _detect_patterns(file)
+        # No WebSocket constructor in this file → no WS endpoints emitted.
+        endpoints = [p for p in patterns if p.type == "endpoint"]
+        assert endpoints == []
+
+    def test_url_template_no_interpolation_not_detected(self, tmp_path: Path) -> None:
+        """A plain backtick literal without interpolation is not assumed to be a URL.
+
+        ``\\`some message: /foo/bar - failure\\``` in a file that also uses
+        ``new WebSocket(...)`` should NOT produce a ``/foo/bar`` endpoint.
+        The URL-shape heuristic requires at least one ``${...}`` block.
+        """
+        file = tmp_path / "client.ts"
+        file.write_text(
+            "function connect() {\n"
+            "  const ws = new WebSocket('/ws');\n"
+            "  console.error(`some message: /foo/bar - failure`);\n"
+            "}\n"
+        )
+        patterns = _detect_patterns(file)
+        endpoint_paths = [p.event for p in patterns if p.type == "endpoint"]
+        # /ws comes from the literal-string match; /foo/bar must NOT appear.
+        assert "/ws" in endpoint_paths
+        assert "/foo/bar" not in endpoint_paths
+
+    def test_self_analysis_shape_end_to_end(self, tmp_path: Path) -> None:
+        """End-to-end: replicate hypergumbo's own ws-client.ts + serve.py shapes.
+
+        This is the WI-zolot acceptance criterion as filed: the
+        ``packages/htrac-frontend/src/ws-client.ts`` shape and the
+        ``serve.py:215`` ``WebSocketRoute('/ws', _ws_handler)`` shape, on
+        the same path, must produce exactly one cross-language WS bridge
+        edge.
+        """
+        ts_dir = tmp_path / "packages" / "htrac-frontend" / "src"
+        ts_dir.mkdir(parents=True)
+        (ts_dir / "ws-client.ts").write_text(
+            "function getWsUrl(): string {\n"
+            "  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';\n"
+            "  return `${proto}//${location.host}/ws`;\n"
+            "}\n"
+            "function connect() {\n"
+            "  const ws = new WebSocket(getWsUrl());\n"
+            "}\n"
+        )
+        py_dir = tmp_path / "packages" / "hypergumbo-tracker" / "src" / "hypergumbo_tracker"
+        py_dir.mkdir(parents=True)
+        (py_dir / "serve.py").write_text(
+            "from starlette.routing import WebSocketRoute\n"
+            "async def _ws_handler(websocket):\n"
+            "    await websocket.accept()\n"
+            "routes = [WebSocketRoute('/ws', _ws_handler)]\n"
+        )
+        result = link_websocket(tmp_path)
+        bridge_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and (e.meta or {}).get("protocol") == "ws"
+        ]
+        assert len(bridge_edges) == 1
+        edge = bridge_edges[0]
+        assert (edge.meta or {}).get("cross_language") is True
+        assert (edge.meta or {}).get("url_path") == "/ws"
+        assert (edge.meta or {}).get("server_framework") == "starlette"
+
+    def test_fastapi_decorator_still_bridges_too(self, tmp_path: Path) -> None:
+        """The pre-existing ``@app.websocket('/ws')`` Python case bridges too."""
+        ts_file = tmp_path / "client.ts"
+        ts_file.write_text("const ws = new WebSocket(`${host}/ws`);\n")
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "@app.websocket('/ws')\n"
+            "async def handler(ws):\n"
+            "    pass\n"
+        )
+        result = link_websocket(tmp_path)
+        bridge_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and (e.meta or {}).get("protocol") == "ws"
+        ]
+        assert len(bridge_edges) == 1
+        assert (bridge_edges[0].meta or {}).get("cross_language") is True

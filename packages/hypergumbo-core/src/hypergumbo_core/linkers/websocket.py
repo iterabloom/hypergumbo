@@ -149,9 +149,43 @@ SOCKETIO_ON_PATTERN = re.compile(
     re.MULTILINE,
 )
 
-# Native WebSocket constructor
+# Native WebSocket constructor (literal quoted URL)
 NATIVE_WEBSOCKET_PATTERN = re.compile(
     r"new\s+WebSocket\s*\(\s*['\"]([^'\"]+)['\"]",
+    re.MULTILINE,
+)
+
+# WI-zolot: Native WebSocket constructor with template-string URL.
+# Browser code canonically computes the URL as
+#   `${proto}//${location.host}/ws`
+# i.e. interpolates the host/scheme but keeps the route path as a trailing
+# literal. We extract the TRAILING literal path component (``/ws``) — the
+# part that matches the server's ``WebSocketRoute("/ws", handler)`` /
+# ``@app.websocket("/ws")`` declaration. The character class
+# ``[a-zA-Z0-9_/-]`` excludes ``$`` and ``{``/``}`` so the non-greedy
+# ``[^`]*?`` consumes any leading ``${...}`` interpolations before the
+# capture latches onto the last contiguous run of literal path chars
+# preceding the closing backtick.
+NATIVE_WEBSOCKET_TEMPLATE_PATTERN = re.compile(
+    r"new\s+WebSocket\s*\(\s*`[^`]*?(/[a-zA-Z0-9_/-]+)\s*`",
+    re.MULTILINE,
+)
+
+# WI-zolot: function-extracted URL constructor pattern.
+# Real-world TS/JS code often factors the URL into a helper:
+#     function getWsUrl() { return `${proto}//${host}/ws`; }
+#     ws = new WebSocket(getWsUrl());
+# Hypergumbo's own ws-client.ts uses this exact idiom. The inline-template
+# regex above misses it because the literal and the constructor are in
+# different expressions. The heuristic: a TS/JS file that uses
+# ``new WebSocket(...)`` AND has a template literal whose trailing path is
+# preceded by at least one ``${...}`` block — i.e. URL-shaped, not a plain
+# log message — is treated as opening a WS to that path. The ``\}`` in the
+# pattern guarantees an interpolation occurred before the trailing path,
+# which discriminates URL templates from generic log strings.
+HAS_WEBSOCKET_CONSTRUCTOR = re.compile(r"\bnew\s+WebSocket\s*\(", re.MULTILINE)
+TS_TEMPLATE_URL_PATH_PATTERN = re.compile(
+    r"`[^`]*?\}[^`]*?(/[a-zA-Z0-9_/-]+)\s*`",
     re.MULTILINE,
 )
 
@@ -174,6 +208,16 @@ WEBSOCKET_SEND_PATTERN = re.compile(
 # FastAPI @app.websocket('/path') decorator
 FASTAPI_WEBSOCKET_DECORATOR = re.compile(
     r"@\w+\.websocket\s*\(\s*['\"]([^'\"]+)['\"]",
+    re.MULTILINE,
+)
+
+# WI-zolot: Starlette routing-table style. ``WebSocketRoute("/path", handler)``
+# is the routing-table style used by Starlette (and by hypergumbo's own
+# serve.py:433 ``WebSocketRoute("/ws", _ws_handler)``). The pre-fix linker
+# only recognised the FastAPI decorator form, so Starlette WS handlers
+# disappeared.
+STARLETTE_WEBSOCKET_ROUTE = re.compile(
+    r"WebSocketRoute\s*\(\s*['\"]([^'\"]+)['\"]",
     re.MULTILINE,
 )
 
@@ -266,7 +310,7 @@ def _language_for_file(file_path: str, pattern_type: str) -> str:
     by_ext = language_from_path(Path(file_path))
     if by_ext is not None:
         return by_ext
-    if pattern_type in ("fastapi", "django_channels"):
+    if pattern_type in ("fastapi", "django_channels", "starlette"):
         return "python"
     return "javascript"
 
@@ -320,7 +364,7 @@ def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
             event_type=event_type,
         ))
 
-    # Native WebSocket constructor (still literal-only for URLs)
+    # Native WebSocket constructor (literal-quoted URL)
     for match in NATIVE_WEBSOCKET_PATTERN.finditer(content):
         url = match.group(1)
         patterns.append(WebSocketPattern(
@@ -331,6 +375,46 @@ def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
             pattern_type="native",
             event_type="literal",
         ))
+
+    # WI-zolot: Native WebSocket constructor with template-string URL.
+    # The TS client at packages/htrac-frontend/src/ws-client.ts builds the
+    # URL as ``${proto}//${location.host}/ws`` — backticks, with the route
+    # path as a trailing literal. We extract that trailing path so the
+    # cross-language bridge edge has something to match the server's route
+    # declaration against.
+    seen_template_paths: set[tuple[str, int]] = set()
+    for match in NATIVE_WEBSOCKET_TEMPLATE_PATTERN.finditer(content):
+        url_path = match.group(1)
+        line_no = get_line_number(match.start())
+        seen_template_paths.add((url_path, line_no))
+        patterns.append(WebSocketPattern(
+            type="endpoint",
+            event=url_path,
+            line=line_no,
+            file_path=str(file_path),
+            pattern_type="native",
+            event_type="literal",
+        ))
+
+    # WI-zolot: function-extracted URL pattern. When the file uses
+    # ``new WebSocket(...)`` anywhere AND has a URL-shaped template literal
+    # (interpolation followed by trailing literal path), treat each such
+    # template as a probable WS endpoint. Skip paths already captured by
+    # the inline-template scan above so the inline case isn't double-counted.
+    if HAS_WEBSOCKET_CONSTRUCTOR.search(content):
+        for match in TS_TEMPLATE_URL_PATH_PATTERN.finditer(content):
+            url_path = match.group(1)
+            line_no = get_line_number(match.start())
+            if (url_path, line_no) in seen_template_paths:
+                continue
+            patterns.append(WebSocketPattern(
+                type="endpoint",
+                event=url_path,
+                line=line_no,
+                file_path=str(file_path),
+                pattern_type="native",
+                event_type="literal",
+            ))
 
     # ws package on patterns
     # Groups: 1=literal event, 2=variable event
@@ -391,6 +475,22 @@ def _detect_python_patterns(file_path: Path) -> list[WebSocketPattern]:
             line=get_line_number(match.start()),
             file_path=str(file_path),
             pattern_type="fastapi",
+            event_type="literal",
+        ))
+
+    # WI-zolot: Starlette ``WebSocketRoute("/path", handler)`` routing-table
+    # entries. Hypergumbo's own serve.py uses this form (no decorator). The
+    # pattern_type "starlette" distinguishes it from FastAPI's decorator
+    # form so downstream consumers can tell the dispatch shape apart, even
+    # though both produce the same canonical endpoint Symbol.
+    for match in STARLETTE_WEBSOCKET_ROUTE.finditer(content):
+        path = match.group(1)
+        patterns.append(WebSocketPattern(
+            type="endpoint",
+            event=path,
+            line=get_line_number(match.start()),
+            file_path=str(file_path),
+            pattern_type="starlette",
             event_type="literal",
         ))
 
@@ -570,6 +670,7 @@ def link_websocket(
         "fastapi": "fastapi",
         "native": "native_websocket",
         "socketio": "socketio",
+        "starlette": "starlette",
         "ws": "ws",
     }
 
@@ -732,6 +833,65 @@ def link_websocket(
                 "framework_dispatch": _PATTERN_TYPE_TO_FRAMEWORK[ep.pattern_type],
             },
         ))
+
+    # WI-zolot: cross-language client↔server bridge.
+    #
+    # Hypothesis investigation for hypergumbo's own repo
+    # (notebookjournal_05162026_0438.md round 4) identified three concrete
+    # gaps: (1) template-string URL not extracted on the client side; (2)
+    # Starlette routing-table form not recognised on the server side; (3)
+    # no cross-language pairing logic at all — only within-language
+    # send/receive and file→endpoint references. Patterns (1) and (2) are
+    # fixed above. This block fixes (3) by emitting a ``calls`` edge with
+    # ``meta["protocol"]="ws"`` and ``meta["cross_language"]=True`` from
+    # each client endpoint to each server endpoint that shares a path
+    # string, following the HTTP linker convention (http.py:1511-1528) so
+    # downstream consumers can treat WS and HTTP cross-language edges
+    # uniformly.
+    _CLIENT_PATTERN_TYPES = frozenset({"native", "socketio", "ws"})
+    _SERVER_PATTERN_TYPES = frozenset({"fastapi", "starlette", "django_channels"})
+
+    by_path: dict[str, list[WebSocketPattern]] = {}
+    for ep in endpoints:
+        by_path.setdefault(ep.event, []).append(ep)
+
+    for path_str, eps in by_path.items():
+        clients = [ep for ep in eps if ep.pattern_type in _CLIENT_PATTERN_TYPES]
+        servers = [ep for ep in eps if ep.pattern_type in _SERVER_PATTERN_TYPES]
+        if not clients or not servers:
+            continue
+        for client_ep in clients:
+            client_lang = _language_for_file(client_ep.file_path, client_ep.pattern_type)
+            for server_ep in servers:
+                server_lang = _language_for_file(server_ep.file_path, server_ep.pattern_type)
+                edges.append(Edge.create(
+                    src=_make_file_id(client_lang, client_ep.file_path),
+                    dst=_make_symbol_id(
+                        server_ep.file_path,
+                        server_ep.line,
+                        server_ep.event,
+                        "endpoint",
+                    ),
+                    edge_type="calls",
+                    line=client_ep.line,
+                    evidence_type="ast_call_direct",
+                    confidence=0.85,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    access_mode="write",
+                    channel=path_str,
+                    meta={
+                        "protocol": "ws",
+                        "url_path": path_str,
+                        "cross_language": client_lang != server_lang,
+                        "client_framework": _PATTERN_TYPE_TO_FRAMEWORK[
+                            client_ep.pattern_type
+                        ],
+                        "server_framework": _PATTERN_TYPE_TO_FRAMEWORK[
+                            server_ep.pattern_type
+                        ],
+                    },
+                ))
 
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
