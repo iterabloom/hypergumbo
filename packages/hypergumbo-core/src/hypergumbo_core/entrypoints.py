@@ -201,6 +201,7 @@ class EntrypointKind(Enum):
     # Executable scripts in non-Python languages (INV-tajap)
     SHELL_SCRIPT = "shell_script"  # Bash/sh script (shebang or .sh/.bash file)
     HTML_ENTRY = "html_entry"  # SPA root / convention-named index.html
+    SCRIPT_MODULE = "script_module"  # TS/JS file with top-level code, no inbound imports
     # Test/benchmark entry points (from test-frameworks.yaml patterns)
     TEST_FUNCTION = "test_function"  # Test function/method (pytest, JUnit, etc.)
     # SPA bootstrap (createRoot, ReactDOM.render, hydrateRoot)
@@ -1083,6 +1084,62 @@ def _connectivity_fallback(
     return entrypoints
 
 
+_SCRIPT_MODULE_LANGUAGES = frozenset({"typescript", "javascript"})
+
+
+def _detect_script_modules(
+    nodes: List[Symbol],
+    edges: List[Edge],
+) -> List[Entrypoint]:
+    """INV-tajap PR 3: detect TS/JS standalone-script entrypoints.
+
+    A ``SCRIPT_MODULE`` entrypoint is a TS/JS file-kind Symbol that satisfies
+    both:
+
+    1. **No inbound ``imports`` edges** — no other file imports this one,
+       so the file isn't a library module.
+    2. **At least one outbound ``calls`` edge** — the file does work at
+       module load (the proxy for "top-level executable code", spec rule
+       from the INV-tajap tracker).
+
+    Unlike SHELL_SCRIPT / HTML_ENTRY which derive from analyzer-stamped
+    ``meta.concepts``, this rule needs the full edge set (inbound-imports
+    can only be answered after every analyzer + linker has run), so the
+    detection lives in ``detect_entrypoints`` itself instead of in
+    ``_detect_from_concepts``.
+
+    Confidence 0.80 (one tier below shell_script / html_entry / main_guard
+    at 0.85, because the rule is a structural inference rather than a
+    direct concept match).
+    """
+    # Precompute lookup sets so the per-symbol checks are O(1).
+    inbound_import_dsts = {
+        e.dst for e in edges if e.edge_type == "imports"
+    }
+    outbound_call_srcs = {
+        e.src for e in edges if e.edge_type == "calls"
+    }
+
+    entrypoints: List[Entrypoint] = []
+    for sym in nodes:
+        if sym.kind != "file":
+            continue
+        if sym.language not in _SCRIPT_MODULE_LANGUAGES:
+            continue
+        if sym.id in inbound_import_dsts:
+            continue  # someone imports this file → library module, not a script
+        if sym.id not in outbound_call_srcs:
+            continue  # no outbound calls → inert data, not executable code
+        script_path = sym.path or sym.name
+        entrypoints.append(Entrypoint(
+            symbol_id=sym.id,
+            kind=EntrypointKind.SCRIPT_MODULE,
+            confidence=0.80,
+            label=f"Script module ({script_path})",
+        ))
+    return entrypoints
+
+
 def detect_entrypoints(
     nodes: List[Symbol],
     edges: List[Edge],
@@ -1117,6 +1174,10 @@ def detect_entrypoints(
     # This includes both framework patterns (routes, commands) and
     # language conventions (main functions)
     entrypoints = _detect_from_concepts(nodes)
+
+    # INV-tajap PR 3: TS/JS standalone scripts — needs the edge set, so
+    # detected here rather than via a concept handler.
+    entrypoints.extend(_detect_script_modules(nodes, edges))
 
     # Remove duplicates (same symbol detected by multiple strategies)
     # Keep the first (highest confidence) entry for each symbol

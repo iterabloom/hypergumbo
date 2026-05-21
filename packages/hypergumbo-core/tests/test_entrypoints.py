@@ -3874,6 +3874,135 @@ class TestInvTajapHtmlEntryEntrypoint:
         assert len(html_eps) == 1
 
 
+class TestInvTajapScriptModuleEntrypoint:
+    """INV-tajap PR 3: TS/JS file Symbols with no inbound ``imports`` edges and
+    at least one outbound ``calls`` edge are SCRIPT_MODULE entrypoints.
+
+    Pre-fix: TS/JS standalone scripts like ``main.ts`` (SPA bootstrap) and
+    ``vite.config.ts`` (build-time config) were not entrypoints, so their
+    transitive callees looked unreachable. The two conditions together
+    express the spec rule: "top-level executable code (proxied by outbound
+    calls) and no inbound imports edges". Unlike SHELL_SCRIPT / HTML_ENTRY
+    which derive from analyzer-stamped concepts, SCRIPT_MODULE requires the
+    edge set, so the detection runs in ``detect_entrypoints`` itself rather
+    than via a ``meta.concepts`` handler.
+    """
+
+    def _make_ts_file(self, path: str) -> Symbol:
+        return make_symbol(
+            path, path=path, kind="file", language="typescript",
+        )
+
+    def _make_call_edge(self, src_id: str, dst_id: str) -> Edge:
+        return Edge.create(
+            src=src_id, dst=dst_id, edge_type="calls",
+            line=1, evidence_type="ast_call_direct",
+            confidence=0.9, origin="javascript-v1",
+            origin_run_id="uuid:test",
+        )
+
+    def _make_import_edge(self, src_id: str, dst_id: str) -> Edge:
+        return Edge.create(
+            src=src_id, dst=dst_id, edge_type="imports",
+            line=1, evidence_type="ast_import",
+            confidence=0.95, origin="javascript-v1",
+            origin_run_id="uuid:test",
+        )
+
+    def test_ts_file_no_inbound_has_calls_emits_script_module(self) -> None:
+        """``main.ts``: no inbound imports, ≥1 outbound call → SCRIPT_MODULE."""
+        main_ts = self._make_ts_file("packages/frontend/main.ts")
+        other = make_symbol("helper", path="packages/frontend/helper.ts",
+                            kind="function", language="typescript")
+        edges = [self._make_call_edge(main_ts.id, other.id)]
+        entrypoints = detect_entrypoints([main_ts, other], edges)
+
+        script_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.SCRIPT_MODULE]
+        assert len(script_eps) == 1
+        assert script_eps[0].symbol_id == main_ts.id
+        assert "packages/frontend/main.ts" in script_eps[0].label
+
+    def test_ts_file_with_inbound_import_is_not_script_module(self) -> None:
+        """``ws-client.ts``: imported by main.ts → NOT SCRIPT_MODULE
+        (it's a library file, not a script)."""
+        main_ts = self._make_ts_file("packages/frontend/main.ts")
+        ws_client = self._make_ts_file("packages/frontend/ws-client.ts")
+        # main.ts imports ws-client.ts AND main.ts has outbound calls
+        other = make_symbol("init", path="packages/frontend/init.ts",
+                            kind="function", language="typescript")
+        edges = [
+            self._make_import_edge(main_ts.id, ws_client.id),
+            self._make_call_edge(main_ts.id, other.id),
+        ]
+        entrypoints = detect_entrypoints([main_ts, ws_client, other], edges)
+
+        script_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.SCRIPT_MODULE]
+        # Only main.ts qualifies; ws-client.ts is imported so it's excluded.
+        assert len(script_eps) == 1
+        assert script_eps[0].symbol_id == main_ts.id
+        # ws_client.id explicitly NOT present
+        assert ws_client.id not in {ep.symbol_id for ep in script_eps}
+
+    def test_ts_file_no_inbound_no_calls_is_not_script_module(self) -> None:
+        """A bare module with no inbound imports AND no outbound calls is
+        inert data — not an entrypoint (e.g., a constants file)."""
+        constants = self._make_ts_file("packages/frontend/constants.ts")
+        entrypoints = detect_entrypoints([constants], [])
+
+        script_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.SCRIPT_MODULE]
+        assert not script_eps
+
+    def test_non_ts_js_file_is_not_script_module(self) -> None:
+        """The rule applies only to TS/JS files — a Python file with no
+        inbound imports and outbound calls doesn't become SCRIPT_MODULE."""
+        py_file = make_symbol(
+            "src/app.py", path="src/app.py", kind="file", language="python",
+        )
+        py_func = make_symbol(
+            "foo", path="src/app.py", kind="function", language="python",
+        )
+        edges = [self._make_call_edge(py_file.id, py_func.id)]
+        entrypoints = detect_entrypoints([py_file, py_func], edges)
+
+        script_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.SCRIPT_MODULE]
+        assert not script_eps
+
+    def test_javascript_file_also_qualifies(self) -> None:
+        """``vite.config.js`` (JavaScript, not TypeScript) qualifies too."""
+        vite_js = make_symbol(
+            "vite.config.js", path="vite.config.js", kind="file",
+            language="javascript",
+        )
+        helper = make_symbol(
+            "defineConfig", path="node_modules/vite/index.js",
+            kind="function", language="javascript",
+        )
+        edges = [self._make_call_edge(vite_js.id, helper.id)]
+        entrypoints = detect_entrypoints([vite_js, helper], edges)
+
+        script_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.SCRIPT_MODULE]
+        assert len(script_eps) == 1
+        assert script_eps[0].symbol_id == vite_js.id
+
+    def test_two_script_modules_produce_two_entries(self) -> None:
+        """``main.ts`` and ``vite.config.ts`` both qualify in a real frontend."""
+        main_ts = self._make_ts_file("src/main.ts")
+        vite_ts = self._make_ts_file("vite.config.ts")
+        helper = make_symbol(
+            "init", path="src/init.ts", kind="function", language="typescript",
+        )
+        edges = [
+            self._make_call_edge(main_ts.id, helper.id),
+            self._make_call_edge(vite_ts.id, helper.id),
+        ]
+        entrypoints = detect_entrypoints([main_ts, vite_ts, helper], edges)
+
+        script_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.SCRIPT_MODULE]
+        assert len(script_eps) == 2
+        paths = {ep.symbol_id.split(":")[1] for ep in script_eps}
+        assert paths == {"src/main.ts", "vite.config.ts"}
+
+
 class TestRouteLabelDedup:
     """Tests for deduplication of HTTP_ROUTE entrypoints by (method, path)."""
 
