@@ -5216,6 +5216,26 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     if seeds_mode in ("exports", "all"):
         seed_ids.update(exported_symbols)
 
+    # WI-vuton heuristic 2: usage_contexts cross-reference. A symbol that
+    # appears as a callable-position (``view_func``) in a usage_context
+    # is reached via the framework dispatcher even when no static call
+    # edge exists. Route handlers, message-queue handlers, decorator-
+    # registered callbacks etc. all surface here; without this seed, they
+    # were the single largest FP class in the dead-code-maybe report on
+    # hypergumbo self-analysis. Only ``view_func`` (and other future
+    # callable-position kinds) seed the BFS — pure name references
+    # (``arg_value``) do not represent dispatch sites and should NOT
+    # produce reachability claims.
+    _CALLABLE_POSITIONS = frozenset({"view_func"})
+    view_func_seed_ids: set[str] = set()
+    for uc in behavior_map.get("usage_contexts", []) or []:
+        if uc.get("position") not in _CALLABLE_POSITIONS:
+            continue
+        ref = uc.get("symbol_ref")
+        if ref and ref in production_symbols:
+            view_func_seed_ids.add(ref)
+    seed_ids.update(view_func_seed_ids)
+
     # BFS from seeds through call-flow edges.
     # calls:          direct function/method calls (post-Phase-3, also covers
     #                 FFI/IPC/RPC bridges via meta['bridge_kind']/['protocol'])
@@ -5309,6 +5329,84 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                     continue
             dead_candidates.append(node)
 
+    # WI-vuton heuristic 1: polymorphic dispatch demotion. A method
+    # ``Sub.foo`` with zero in-edges in the static call graph is almost
+    # certainly reached via virtual dispatch whenever a base-class method
+    # ``Base.foo`` IS reachable — callers go through the base statically
+    # and the runtime picks the override. Pre-fix, every override of a
+    # reachable interface method (the most architecturally important
+    # code) was flagged dead.
+    #
+    # Implementation: walk ``extends`` / ``inherits`` / ``implements``
+    # edges to find each class's transitive ancestors; for each dead
+    # method, look for a same-named (last-segment match) method on any
+    # ancestor class that IS reachable. The last-segment match is
+    # agnostic of the analyzer's qualified-name convention (e.g.
+    # ``Cache.delete`` → ``delete``).
+    _INHERITANCE_EDGE_TYPES = frozenset({"extends", "inherits", "implements"})
+    extends_graph: dict[str, set[str]] = {}
+    for edge in edges:
+        if edge.get("type") in _INHERITANCE_EDGE_TYPES:
+            esrc = edge.get("src", "")
+            edst = edge.get("dst", "")
+            if esrc and edst:
+                extends_graph.setdefault(esrc, set()).add(edst)
+
+    class_to_methods: dict[str, list[dict]] = {}
+    for edge in edges:
+        if edge.get("type") != "contains":
+            continue
+        csrc = edge.get("src", "")
+        cdst = edge.get("dst", "")
+        if csrc not in class_meta_by_id or not cdst:
+            continue
+        method_node = production_symbols.get(cdst)
+        if method_node is None or method_node.get("kind") != "method":
+            continue
+        class_to_methods.setdefault(csrc, []).append(method_node)
+
+    def _ancestors_of(class_id: str) -> set[str]:
+        seen: set[str] = set()
+        stack = [class_id]
+        while stack:
+            cur = stack.pop()
+            for parent in extends_graph.get(cur, ()):
+                if parent not in seen:
+                    seen.add(parent)
+                    stack.append(parent)
+        return seen
+
+    def _method_basename(name: str) -> str:
+        return name.rsplit(".", 1)[-1] if name else ""
+
+    dispatch_inherited_ids: set[str] = set()
+    for node in dead_candidates:
+        if node.get("kind") != "method":
+            continue
+        class_id = method_to_class.get(node["id"])
+        if not class_id:
+            continue
+        method_name = _method_basename(node.get("name", ""))
+        if not method_name:
+            continue
+        for ancestor_id in _ancestors_of(class_id):
+            matched = False
+            for ancestor_method in class_to_methods.get(ancestor_id, ()):
+                if (
+                    _method_basename(ancestor_method.get("name", "")) == method_name
+                    and ancestor_method["id"] in reachable
+                ):
+                    dispatch_inherited_ids.add(node["id"])
+                    matched = True
+                    break
+            if matched:
+                break
+
+    if dispatch_inherited_ids:
+        dead_candidates = [
+            n for n in dead_candidates if n["id"] not in dispatch_inherited_ids
+        ]
+
     # Cross-language string collision: check if dead candidate names
     # appear as substrings in files of a different language.  A hit is
     # a near-certain signal of a missing cross-language reference
@@ -5366,6 +5464,13 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 "seed_count": total_entrypoints,
                 "seeds_mode": seeds_mode,
                 "dead_percent": round(total_dead / max(total_production, 1) * 100, 1),
+                # WI-vuton: how many symbols entered the reachable set via
+                # framework-dispatch usage_contexts (view_func position) and
+                # how many methods were demoted from dead via inheritance-
+                # based virtual-dispatch reasoning. Surfaces the FP-class
+                # corrections so consumers can audit them.
+                "demoted_view_func": len(view_func_seed_ids),
+                "demoted_dispatch_inherited": len(dispatch_inherited_ids),
             },
             "dead_candidates": [
                 {

@@ -1191,3 +1191,370 @@ class TestDeadCodeMaybe:
         # Both reached and exported_fn should be alive under --seeds all.
         assert "reached" not in dead_names
         assert "exported_fn" not in dead_names
+
+
+def _run_dead_code_maybe(tmp_path: Path, behavior_map: dict) -> dict:
+    """Helper: write behavior_map, invoke cmd_dead_code_maybe, return JSON."""
+    import argparse
+    import io
+    import sys
+
+    bm_path = tmp_path / "hg.json"
+    bm_path.write_text(json.dumps(behavior_map))
+    args = argparse.Namespace(
+        path=str(tmp_path), input=str(bm_path), format="json",
+        seeds="entrypoints", min_confidence=0.0,
+    )
+    captured = io.StringIO()
+    old_stdout = sys.stdout
+    sys.stdout = captured
+    try:
+        rc = cmd_dead_code_maybe(args)
+    finally:
+        sys.stdout = old_stdout
+    assert rc == 0
+    return json.loads(captured.getvalue())
+
+
+class TestWiVutonViewFuncDemotion:
+    """WI-vuton heuristic 2: usage_contexts cross-reference.
+
+    A symbol that appears as the ``view_func`` (or any callable position)
+    of a ``usage_context`` is reachable via the framework dispatcher, even
+    when no static ``calls`` / ``dispatches_to`` edge points at it. The
+    dead-code-maybe BFS should treat ``usage_contexts[].symbol_ref`` for
+    callable-position entries as additional seeds.
+    """
+
+    def test_view_func_symbol_not_flagged_dead(self, tmp_path: Path) -> None:
+        """A function listed as a Route view_func is reachable via the framework."""
+        nodes = [
+            {
+                "id": "py:routes.py:1-3:start:function", "name": "start",
+                "kind": "function", "language": "python",
+                "path": "routes.py", "span": {"start_line": 1, "end_line": 3},
+                "meta": {"concepts": [{"concept": "main_function",
+                                         "framework": "python"}]},
+            },
+            {
+                "id": "py:routes.py:5-10:_health:function", "name": "_health",
+                "kind": "function", "language": "python",
+                "path": "routes.py", "span": {"start_line": 5, "end_line": 10},
+            },
+        ]
+        bm = {
+            "schema_version": "0.2.3",
+            "nodes": nodes,
+            "edges": [],
+            "usage_contexts": [
+                {
+                    "id": "usage:1",
+                    "context_name": "Route",
+                    "kind": "call",
+                    "path": "routes.py",
+                    "position": "view_func",
+                    "symbol_ref": "py:routes.py:5-10:_health:function",
+                    "metadata": {"route_path": "/health"},
+                },
+            ],
+        }
+        output = _run_dead_code_maybe(tmp_path, bm)
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        assert "_health" not in dead_names
+
+    def test_view_func_count_in_summary(self, tmp_path: Path) -> None:
+        """Summary reports how many symbols were demoted via view_func."""
+        nodes = [
+            {
+                "id": "py:routes.py:1-3:start:function", "name": "start",
+                "kind": "function", "language": "python",
+                "path": "routes.py", "span": {"start_line": 1, "end_line": 3},
+                "meta": {"concepts": [{"concept": "main_function",
+                                         "framework": "python"}]},
+            },
+            {
+                "id": "py:routes.py:5-10:_health:function", "name": "_health",
+                "kind": "function", "language": "python",
+                "path": "routes.py", "span": {"start_line": 5, "end_line": 10},
+            },
+            {
+                "id": "py:routes.py:12-15:_api:function", "name": "_api",
+                "kind": "function", "language": "python",
+                "path": "routes.py", "span": {"start_line": 12, "end_line": 15},
+            },
+        ]
+        bm = {
+            "schema_version": "0.2.3",
+            "nodes": nodes,
+            "edges": [],
+            "usage_contexts": [
+                {"id": "u1", "context_name": "Route", "kind": "call",
+                 "path": "routes.py", "position": "view_func",
+                 "symbol_ref": "py:routes.py:5-10:_health:function"},
+                {"id": "u2", "context_name": "Route", "kind": "call",
+                 "path": "routes.py", "position": "view_func",
+                 "symbol_ref": "py:routes.py:12-15:_api:function"},
+            ],
+        }
+        output = _run_dead_code_maybe(tmp_path, bm)
+        assert output["summary"]["demoted_view_func"] == 2
+
+    def test_usage_context_at_non_callable_position_ignored(
+        self, tmp_path: Path,
+    ) -> None:
+        """A symbol referenced at a non-callable position (e.g. argument value)
+        is NOT promoted to a seed."""
+        nodes = [
+            {
+                "id": "py:routes.py:1-3:start:function", "name": "start",
+                "kind": "function", "language": "python",
+                "path": "routes.py", "span": {"start_line": 1, "end_line": 3},
+                "meta": {"concepts": [{"concept": "main_function",
+                                         "framework": "python"}]},
+            },
+            {
+                "id": "py:routes.py:5-10:helper:function", "name": "helper",
+                "kind": "function", "language": "python",
+                "path": "routes.py", "span": {"start_line": 5, "end_line": 10},
+            },
+        ]
+        bm = {
+            "schema_version": "0.2.3",
+            "nodes": nodes,
+            "edges": [],
+            "usage_contexts": [
+                # position is not a callable site — pure name reference,
+                # not a dispatcher target. Don't treat as a seed.
+                {"id": "u1", "context_name": "Logger", "kind": "reference",
+                 "path": "routes.py", "position": "arg_value",
+                 "symbol_ref": "py:routes.py:5-10:helper:function"},
+            ],
+        }
+        output = _run_dead_code_maybe(tmp_path, bm)
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        assert "helper" in dead_names
+
+    def test_no_usage_contexts_field_works(self, tmp_path: Path) -> None:
+        """Missing ``usage_contexts`` field on the behavior map is handled gracefully."""
+        nodes = [
+            {
+                "id": "py:app.py:1-3:start:function", "name": "start",
+                "kind": "function", "language": "python",
+                "path": "app.py", "span": {"start_line": 1, "end_line": 3},
+                "meta": {"concepts": [{"concept": "main_function",
+                                         "framework": "python"}]},
+            },
+            {
+                "id": "py:app.py:5-10:orphan:function", "name": "orphan",
+                "kind": "function", "language": "python",
+                "path": "app.py", "span": {"start_line": 5, "end_line": 10},
+            },
+        ]
+        # No usage_contexts key in the map at all.
+        bm = {"schema_version": "0.2.3", "nodes": nodes, "edges": []}
+        output = _run_dead_code_maybe(tmp_path, bm)
+        assert output["summary"]["demoted_view_func"] == 0
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        assert "orphan" in dead_names
+
+
+class TestWiVutonDispatchInheritedDemotion:
+    """WI-vuton heuristic 1: polymorphic dispatch demotion.
+
+    When a method ``Sub.foo`` has zero in-edges in the static call graph
+    but the base-class method ``Base.foo`` IS reachable, ``Sub.foo`` is
+    almost certainly reached via virtual dispatch: callers go through
+    ``Base.foo`` (statically), and the runtime picks the override. Demote
+    ``Sub.foo`` from the dead list and count it under
+    ``summary.demoted_dispatch_inherited``.
+
+    The inheritance check uses ``extends`` / ``inherits`` / ``implements``
+    edges to walk up the class hierarchy. The method-name match uses the
+    final segment of the method's ``name`` (``Sub.foo`` → ``foo``) so the
+    matcher is agnostic of the analyzer's qualified-name convention.
+    """
+
+    def _make_method_node(
+        self,
+        class_name: str,
+        method_name: str,
+        path: str = "app.py",
+        line: int = 10,
+    ) -> dict:
+        return {
+            "id": f"py:{path}:{line}-{line + 3}:{class_name}.{method_name}:method",
+            "name": f"{class_name}.{method_name}",
+            "kind": "method",
+            "language": "python",
+            "path": path,
+            "span": {"start_line": line, "end_line": line + 3},
+        }
+
+    def _make_class_node(self, name: str, path: str = "app.py", line: int = 1) -> dict:
+        return {
+            "id": f"py:{path}:{line}-{line + 8}:{name}:class",
+            "name": name,
+            "kind": "class",
+            "language": "python",
+            "path": path,
+            "span": {"start_line": line, "end_line": line + 8},
+        }
+
+    def test_subclass_override_of_reachable_base_method_demoted(
+        self, tmp_path: Path,
+    ) -> None:
+        """Sub.extract is demoted when Base.extract is reachable."""
+        base_class = self._make_class_node("Base", line=1)
+        sub_class = self._make_class_node("Sub", line=20)
+        base_extract = self._make_method_node("Base", "extract", line=3)
+        sub_extract = self._make_method_node("Sub", "extract", line=22)
+        # main calls Base.extract → Base.extract is reachable.
+        main_fn = {
+            "id": "py:app.py:50-55:main:function", "name": "main",
+            "kind": "function", "language": "python",
+            "path": "app.py", "span": {"start_line": 50, "end_line": 55},
+            "meta": {"concepts": [{"concept": "main_function",
+                                     "framework": "python"}]},
+        }
+        edges = [
+            {"type": "contains", "src": base_class["id"], "dst": base_extract["id"]},
+            {"type": "contains", "src": sub_class["id"], "dst": sub_extract["id"]},
+            {"type": "extends", "src": sub_class["id"], "dst": base_class["id"]},
+            {"type": "calls", "src": main_fn["id"], "dst": base_extract["id"]},
+        ]
+        bm = {
+            "schema_version": "0.2.3",
+            "nodes": [base_class, sub_class, base_extract, sub_extract, main_fn],
+            "edges": edges,
+        }
+        output = _run_dead_code_maybe(tmp_path, bm)
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        # Sub.extract has no inbound calls but its base Base.extract is
+        # reachable → demoted.
+        assert "Sub.extract" not in dead_names
+        assert output["summary"]["demoted_dispatch_inherited"] >= 1
+
+    def test_subclass_method_with_no_base_match_still_dead(
+        self, tmp_path: Path,
+    ) -> None:
+        """Sub.foo is NOT demoted when Base has no foo method."""
+        base_class = self._make_class_node("Base", line=1)
+        sub_class = self._make_class_node("Sub", line=20)
+        sub_foo = self._make_method_node("Sub", "foo", line=22)
+        main_fn = {
+            "id": "py:app.py:50-55:main:function", "name": "main",
+            "kind": "function", "language": "python",
+            "path": "app.py", "span": {"start_line": 50, "end_line": 55},
+            "meta": {"concepts": [{"concept": "main_function",
+                                     "framework": "python"}]},
+        }
+        edges = [
+            {"type": "contains", "src": sub_class["id"], "dst": sub_foo["id"]},
+            {"type": "extends", "src": sub_class["id"], "dst": base_class["id"]},
+        ]
+        bm = {
+            "schema_version": "0.2.3",
+            "nodes": [base_class, sub_class, sub_foo, main_fn],
+            "edges": edges,
+        }
+        output = _run_dead_code_maybe(tmp_path, bm)
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        assert "Sub.foo" in dead_names
+
+    def test_demotion_does_not_fire_when_base_method_also_dead(
+        self, tmp_path: Path,
+    ) -> None:
+        """If Base.extract is also dead, Sub.extract stays dead."""
+        base_class = self._make_class_node("Base", line=1)
+        sub_class = self._make_class_node("Sub", line=20)
+        base_extract = self._make_method_node("Base", "extract", line=3)
+        sub_extract = self._make_method_node("Sub", "extract", line=22)
+        main_fn = {
+            "id": "py:app.py:50-55:main:function", "name": "main",
+            "kind": "function", "language": "python",
+            "path": "app.py", "span": {"start_line": 50, "end_line": 55},
+            "meta": {"concepts": [{"concept": "main_function",
+                                     "framework": "python"}]},
+        }
+        edges = [
+            {"type": "contains", "src": base_class["id"], "dst": base_extract["id"]},
+            {"type": "contains", "src": sub_class["id"], "dst": sub_extract["id"]},
+            {"type": "extends", "src": sub_class["id"], "dst": base_class["id"]},
+        ]
+        bm = {
+            "schema_version": "0.2.3",
+            "nodes": [base_class, sub_class, base_extract, sub_extract, main_fn],
+            "edges": edges,
+        }
+        output = _run_dead_code_maybe(tmp_path, bm)
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        # Both should remain dead — there's no reachable base method.
+        assert "Sub.extract" in dead_names
+        assert "Base.extract" in dead_names
+
+    def test_transitive_ancestor_match(self, tmp_path: Path) -> None:
+        """Demotion walks through the full inheritance chain (grandparent OK)."""
+        grandparent = self._make_class_node("GP", line=1)
+        parent = self._make_class_node("P", line=10)
+        sub = self._make_class_node("S", line=20)
+        gp_extract = self._make_method_node("GP", "extract", line=3)
+        s_extract = self._make_method_node("S", "extract", line=22)
+        main_fn = {
+            "id": "py:app.py:50-55:main:function", "name": "main",
+            "kind": "function", "language": "python",
+            "path": "app.py", "span": {"start_line": 50, "end_line": 55},
+            "meta": {"concepts": [{"concept": "main_function",
+                                     "framework": "python"}]},
+        }
+        edges = [
+            {"type": "contains", "src": grandparent["id"], "dst": gp_extract["id"]},
+            {"type": "contains", "src": sub["id"], "dst": s_extract["id"]},
+            {"type": "extends", "src": parent["id"], "dst": grandparent["id"]},
+            {"type": "extends", "src": sub["id"], "dst": parent["id"]},
+            {"type": "calls", "src": main_fn["id"], "dst": gp_extract["id"]},
+        ]
+        bm = {
+            "schema_version": "0.2.3",
+            "nodes": [grandparent, parent, sub, gp_extract, s_extract, main_fn],
+            "edges": edges,
+        }
+        output = _run_dead_code_maybe(tmp_path, bm)
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        # S.extract is demoted via the GP.extract chain — match works
+        # through the grandparent.
+        assert "S.extract" not in dead_names
+
+    def test_function_kind_not_demoted_via_dispatch(self, tmp_path: Path) -> None:
+        """Top-level functions (kind=function) are NOT subject to dispatch demotion."""
+        # A top-level function can't be a polymorphic override. Even if
+        # ``Sub.helper`` and a free function ``helper`` both exist,
+        # ``helper`` shouldn't be demoted just because ``Sub.helper`` is
+        # reachable.
+        base_class = self._make_class_node("Base", line=1)
+        base_helper = self._make_method_node("Base", "helper", line=3)
+        main_fn = {
+            "id": "py:app.py:50-55:main:function", "name": "main",
+            "kind": "function", "language": "python",
+            "path": "app.py", "span": {"start_line": 50, "end_line": 55},
+            "meta": {"concepts": [{"concept": "main_function",
+                                     "framework": "python"}]},
+        }
+        free_helper = {
+            "id": "py:other.py:1-3:helper:function", "name": "helper",
+            "kind": "function", "language": "python",
+            "path": "other.py", "span": {"start_line": 1, "end_line": 3},
+        }
+        edges = [
+            {"type": "contains", "src": base_class["id"], "dst": base_helper["id"]},
+            {"type": "calls", "src": main_fn["id"], "dst": base_helper["id"]},
+        ]
+        bm = {
+            "schema_version": "0.2.3",
+            "nodes": [base_class, base_helper, main_fn, free_helper],
+            "edges": edges,
+        }
+        output = _run_dead_code_maybe(tmp_path, bm)
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        # free top-level helper() must NOT be demoted just because
+        # Base.helper (a method) is reachable.
+        assert "helper" in dead_names
