@@ -331,14 +331,6 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("java.util", "asList"),
             ("java.util", "emptyList"),
         ),
-        # WI-tuhok: Java analyzer does not attribute bare type usages back
-        # to a wildcard-imported package. Emits `java:external:0-0:
-        # Arrays.asList:unresolved` instead of resolving `Arrays` to
-        # `java.util`. Filed 2026-05-21 as the per-language follow-up to
-        # the WI-mafik audit extension. Remove this xfail_reason when
-        # WI-tuhok lands.
-        xfail_reason="WI-tuhok: Java analyzer doesn't resolve wildcard "
-        "imports (import java.util.*) to the source module",
     ),
     PolyglotFixture(
         language="elixir_except",

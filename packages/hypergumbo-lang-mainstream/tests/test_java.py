@@ -2185,6 +2185,161 @@ public class Consumer {
         assert any(c.name == "Consumer" for c in classes)
 
 
+class TestJavaWildcardImports:
+    """WI-tuhok: ``import java.util.*`` resolves bare class usages.
+
+    Surfaced by the WI-mafik audit extension (2026-05-21). Pre-fix, a
+    bare type usage like ``Arrays.asList(...)`` after ``import java.util.*``
+    emitted an unresolved edge with dst ``java:external:0-0:Arrays.asList:unresolved``
+    instead of attributing ``Arrays`` to its source package ``java.util``.
+    """
+
+    def test_extract_wildcard_imports_returns_package(self, tmp_path: Path) -> None:
+        """``_extract_wildcard_imports`` returns the wildcard package list."""
+        import tree_sitter
+        import tree_sitter_java
+        from hypergumbo_lang_mainstream.java import _extract_wildcard_imports
+
+        parser = tree_sitter.Parser()
+        parser.language = tree_sitter.Language(tree_sitter_java.language())
+        src = (
+            b"import java.util.*;\n"
+            b"import java.io.*;\n"
+            b"import java.util.Arrays;\n"
+        )
+        tree = parser.parse(src)
+        wildcards = _extract_wildcard_imports(tree, src)
+        assert wildcards == ["java.util", "java.io"]
+
+    def test_extract_wildcard_imports_no_wildcards(self, tmp_path: Path) -> None:
+        """Pure-explicit-imports file yields an empty list."""
+        import tree_sitter
+        import tree_sitter_java
+        from hypergumbo_lang_mainstream.java import _extract_wildcard_imports
+
+        parser = tree_sitter.Parser()
+        parser.language = tree_sitter.Language(tree_sitter_java.language())
+        src = b"import java.util.Arrays;\nimport java.io.File;\n"
+        tree = parser.parse(src)
+        wildcards = _extract_wildcard_imports(tree, src)
+        assert wildcards == []
+
+    def test_extract_wildcard_imports_static_wildcard_excluded(
+        self, tmp_path: Path,
+    ) -> None:
+        """``import static java.util.Arrays.*`` is NOT a regular wildcard.
+
+        Static wildcard imports bring **methods** into scope, not class
+        names; they belong to the static-import resolver. Treating them
+        as regular wildcards would attribute bare method names to the
+        Arrays package, which is the static-import resolver's job
+        (WI-hudud).
+        """
+        import tree_sitter
+        import tree_sitter_java
+        from hypergumbo_lang_mainstream.java import _extract_wildcard_imports
+
+        parser = tree_sitter.Parser()
+        parser.language = tree_sitter.Language(tree_sitter_java.language())
+        src = b"import static java.util.Arrays.*;\n"
+        tree = parser.parse(src)
+        wildcards = _extract_wildcard_imports(tree, src)
+        assert wildcards == []
+
+    def test_bare_class_use_attributed_to_wildcard_package(
+        self, tmp_path: Path,
+    ) -> None:
+        """End-to-end: ``Arrays.asList(...)`` after ``import java.util.*`` resolves to ``java.util``."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "WildcardFixture.java"
+        java_file.write_text(
+            "import java.util.*;\n"
+            "\n"
+            "public class WildcardFixture {\n"
+            "    public static void exerciseWildcard() {\n"
+            "        Arrays.asList(1, 2, 3);\n"
+            "    }\n"
+            "}\n"
+        )
+
+        result = analyze_java(tmp_path)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # An edge to Arrays.asList must exist, and its dst must reference
+        # java.util as the source package (not "external").
+        arrays_calls = [
+            e for e in call_edges
+            if "asList" in e.dst and "Arrays" in e.dst
+        ]
+        assert arrays_calls, f"no calls edges to Arrays.asList found; got {[e.dst for e in call_edges]}"
+        # The dst's module_hint segment should be ``java.util``, not ``external``.
+        assert any(
+            "java.util" in e.dst for e in arrays_calls
+        ), f"expected java.util in dst, got {[e.dst for e in arrays_calls]}"
+
+    def test_explicit_import_takes_precedence_over_wildcard(
+        self, tmp_path: Path,
+    ) -> None:
+        """``import java.util.Arrays;`` + ``import java.io.*;`` → Arrays is in java.util."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "MixedFixture.java"
+        java_file.write_text(
+            "import java.util.Arrays;\n"
+            "import java.io.*;\n"
+            "\n"
+            "public class MixedFixture {\n"
+            "    public static void run() {\n"
+            "        Arrays.asList(1, 2);\n"
+            "    }\n"
+            "}\n"
+        )
+
+        result = analyze_java(tmp_path)
+        arrays_calls = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "Arrays" in e.dst and "asList" in e.dst
+        ]
+        assert arrays_calls
+        # Explicit import wins: java.util.Arrays must be the module.
+        assert any("java.util.Arrays" in e.dst for e in arrays_calls)
+        # And nobody attributes Arrays to java.io.
+        assert not any("java.io" in e.dst for e in arrays_calls)
+
+    def test_lowercase_bare_name_not_attributed_to_wildcard(
+        self, tmp_path: Path,
+    ) -> None:
+        """A bare lowercase name is not a class — wildcard fallback shouldn't fire.
+
+        Distinguishes the wildcard-class case from misc bare identifiers
+        (which could be local variables, parameters, or static-imported
+        methods handled by the WI-hudud path).
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "LowercaseFixture.java"
+        java_file.write_text(
+            "import java.util.*;\n"
+            "\n"
+            "public class LowercaseFixture {\n"
+            "    public static void run() {\n"
+            "        // ``localVar`` is not a class — must NOT be attributed\n"
+            "        // to java.util just because the wildcard is present.\n"
+            "        int localVar = 1;\n"
+            "        System.out.println(localVar);\n"
+            "    }\n"
+            "}\n"
+        )
+
+        result = analyze_java(tmp_path)
+        # No call edge should have dst attributing ``localVar`` to java.util.
+        for e in result.edges:
+            if e.edge_type == "calls":
+                assert not (
+                    "localVar" in e.dst and "java.util" in e.dst
+                ), f"localVar attributed to java.util: {e.dst}"
+
+
 class TestJavaVariableTypeInference:
     """Tests for type inference from constructor assignments."""
 

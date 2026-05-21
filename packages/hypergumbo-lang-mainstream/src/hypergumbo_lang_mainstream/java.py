@@ -498,6 +498,10 @@ class _ParsedFile:
     # Powers WI-tihup ExternalRef on bare-call sites whose callable came
     # in via static import. WI-hudud / WI-mafik.
     static_imports: dict[str, str] | None = None
+    # Wildcard packages (``import java.util.*;`` → ``"java.util"``).
+    # Insertion-ordered; consulted as a fallback when a bare class
+    # receiver is not in ``imports``. WI-tuhok / WI-mafik.
+    wildcard_imports: list[str] | None = None
 
 
 def _extract_imports(
@@ -565,6 +569,41 @@ def _extract_static_imports(
                     static_imports[local_name] = source_module
                 break
     return static_imports
+
+
+def _extract_wildcard_imports(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> list[str]:
+    """Extract wildcard-import packages: ``import java.util.*;`` → ``"java.util"`` (WI-tuhok).
+
+    Tree-sitter-java represents ``import java.util.*;`` as an
+    ``import_declaration`` whose children include a ``scoped_identifier``
+    (the package path ``java.util``) and a sibling ``asterisk`` child.
+    The package's class set is implicit (any capitalised bare name
+    introduced by the file may originate from this package), so we keep
+    insertion order in a list and let the resolver attribute bare class
+    receivers to the first wildcard whose package the receiver could
+    plausibly belong to.
+
+    Static wildcards (``import static java.util.Arrays.*;``) are
+    intentionally excluded — they introduce **methods** into scope, not
+    class names, and belong to the static-import resolver (WI-hudud).
+    """
+    wildcards: list[str] = []
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_declaration":
+            continue
+        if any(c.type == "static" for c in node.children):
+            # Static wildcard imports introduce methods, not classes.
+            continue
+        if not any(c.type == "asterisk" for c in node.children):
+            continue
+        for child in node.children:
+            if child.type == "scoped_identifier":
+                wildcards.append(_node_text(child, source))
+                break
+    return wildcards
 
 
 def _get_class_ancestors(
@@ -1197,6 +1236,7 @@ def _extract_edges(
     class_parents: dict[str, str] | None = None,
     class_fields: dict[str, dict[str, str]] | None = None,
     static_imports: dict[str, str] | None = None,
+    wildcard_imports: list[str] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -1648,6 +1688,34 @@ def _extract_edges(
                                     module_path=imports[receiver_name],
                                     name=method_name,
                                 )
+                            # WI-tuhok: when the receiver looks like a
+                            # class (capitalised first letter) but isn't
+                            # in the explicit imports, fall back to the
+                            # first wildcard-imported package. Without
+                            # this, ``import java.util.*;`` +
+                            # ``Arrays.asList(...)`` emitted
+                            # ``java:external:0-0:Arrays.asList:unresolved``
+                            # (the WI-mafik audit gap). Capitalisation gate
+                            # discriminates classes (Arrays) from locals
+                            # (localVar), keeping FPs low. The fully
+                            # qualified module path is
+                            # ``{wildcard_package}.{receiver_name}`` —
+                            # matching the explicit-import shape.
+                            elif (
+                                receiver_name
+                                and receiver_name != "this"
+                                and receiver_name[:1].isupper()
+                                and wildcard_imports
+                            ):
+                                wildcard_module = (
+                                    f"{wildcard_imports[0]}.{receiver_name}"
+                                )
+                                module = wildcard_module
+                                ext_ref = ExternalRef(
+                                    lang="java",
+                                    module_path=wildcard_module,
+                                    name=method_name,
+                                )
                         edges.append(make_unresolved_edge(
                             "java", current_method.id, unresolved_name,
                             node.start_point[0] + 1, PASS_ID, run.execution_id,
@@ -1975,9 +2043,11 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             tree = parser.parse(source)
             file_imports = _extract_imports(tree, source)
             file_static_imports = _extract_static_imports(tree, source)
+            file_wildcard_imports = _extract_wildcard_imports(tree, source)
             parsed_files.append(_ParsedFile(
                 path=file_path, tree=tree, source=source,
                 imports=file_imports, static_imports=file_static_imports,
+                wildcard_imports=file_wildcard_imports,
             ))
             symbols = _extract_symbols(tree, source, file_path, run)
             populate_docstrings_from_tree(tree.root_node, source, symbols)
@@ -2121,6 +2191,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             class_parents=global_class_parents,
             class_fields=global_class_fields,
             static_imports=pf.static_imports or {},
+            wildcard_imports=pf.wildcard_imports or [],
         )
         # WI-lozug: emit module_attr_ref edges for field_access nodes
         # whose base resolves to an imported class or to ``System``
