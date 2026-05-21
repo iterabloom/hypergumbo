@@ -3753,7 +3753,7 @@ def _extract_edges(
             for child in node.children:
                 if child.type == "string":
                     module_name = _node_text(child, source).strip("'\"")
-                    file_id = _make_symbol_id(str(file_path), 1, 1, file_path.name, "file", lang)
+                    file_id = make_file_id(lang, str(file_path))
                     dst_id = f"{lang}:{module_name}:0-0:module:module"
                     edge = Edge.create(
                         src=file_id,
@@ -3794,7 +3794,7 @@ def _extract_edges(
                     for arg in args_node.children:
                         if arg.type == "string":
                             module_name = _node_text(arg, source).strip("'\"")
-                            file_id = _make_symbol_id(str(file_path), 1, 1, file_path.name, "file", lang)
+                            file_id = make_file_id(lang, str(file_path))
                             dst_id = f"{lang}:{module_name}:0-0:module:module"
                             edge = Edge.create(
                                 src=file_id,
@@ -3810,7 +3810,7 @@ def _extract_edges(
                             break
                         elif arg.type == "identifier":
                             var_name = _node_text(arg, source)
-                            file_id = _make_symbol_id(str(file_path), 1, 1, file_path.name, "file", lang)
+                            file_id = make_file_id(lang, str(file_path))
                             dst_id = f"{lang}:<dynamic:{var_name}>:0-0:module:module"
                             edge = Edge.create(
                                 src=file_id,

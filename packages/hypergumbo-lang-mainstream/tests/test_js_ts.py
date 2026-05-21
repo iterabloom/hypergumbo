@@ -944,6 +944,98 @@ const enum Direction {
         assert result.run.files_analyzed == 0
 
 
+class TestImportEdgeSrcWiring:
+    """INV-judod: import-edge ``src`` must equal the importing file's
+    canonical Symbol ID (the one produced by ``make_file_id``).
+
+    Pre-fix bug: js_ts.py constructed the src ID with the file's basename
+    in the ``name`` slot (e.g. ``typescript:.../main.ts:1-1:main.ts:file``)
+    while the file Symbol's actual ID uses the literal ``file`` in that
+    slot (``typescript:.../main.ts:1-1:file:file``). Downstream graph
+    queries asking "what does file X import?" therefore returned zero
+    matches for every TS/JS file in the repo. Python's analyzer always
+    used ``make_file_id`` so its imports surfaced correctly.
+    """
+
+    def test_es6_import_src_matches_file_symbol_id(self, tmp_path: Path) -> None:
+        """The src of an ES6 import edge equals the importing file's Symbol ID."""
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        app_file = tmp_path / "app.js"
+        app_file.write_text("import { helper } from './utils';\n")
+
+        result = analyze_javascript(tmp_path)
+
+        expected_src = make_file_id("javascript", str(app_file))
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert import_edges, "expected at least one import edge"
+        assert all(e.src == expected_src for e in import_edges), (
+            f"import edges should have src={expected_src!r}; got "
+            f"{[e.src for e in import_edges]!r}"
+        )
+
+        symbol_ids = {s.id for s in result.symbols}
+        assert expected_src in symbol_ids, (
+            "import-edge src must reference a real Symbol, not an orphan"
+        )
+
+    def test_require_src_matches_file_symbol_id(self, tmp_path: Path) -> None:
+        """The src of a require() import edge equals the file Symbol ID."""
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        app_file = tmp_path / "app.js"
+        app_file.write_text("const fs = require('fs');\n")
+
+        result = analyze_javascript(tmp_path)
+
+        expected_src = make_file_id("javascript", str(app_file))
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        assert import_edges
+        assert all(e.src == expected_src for e in import_edges)
+        assert expected_src in {s.id for s in result.symbols}
+
+    def test_dynamic_require_src_matches_file_symbol_id(self, tmp_path: Path) -> None:
+        """``require(varname)`` (require_dynamic) also uses the file Symbol ID as src."""
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        app_file = tmp_path / "app.js"
+        app_file.write_text("const x = require(name);\n")
+
+        result = analyze_javascript(tmp_path)
+
+        expected_src = make_file_id("javascript", str(app_file))
+        dyn_edges = [
+            e for e in result.edges
+            if e.edge_type == "imports" and e.evidence_type == "require_dynamic"
+        ]
+        assert dyn_edges, "expected a require_dynamic edge"
+        assert all(e.src == expected_src for e in dyn_edges)
+
+    def test_ts_import_src_matches_file_symbol_id(self, tmp_path: Path) -> None:
+        """Same invariant applies to TypeScript (.ts) files."""
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        main_ts = tmp_path / "main.ts"
+        main_ts.write_text("import { x } from './other';\n")
+        (tmp_path / "other.ts").write_text("export const x = 1;\n")
+
+        result = analyze_javascript(tmp_path)
+
+        expected_src = make_file_id("typescript", str(main_ts))
+        import_edges = [
+            e for e in result.edges
+            if e.edge_type == "imports" and e.src == expected_src
+        ]
+        assert import_edges, (
+            "expected at least one import edge with src=main.ts's file Symbol id; "
+            f"actual srcs were {[e.src for e in result.edges if e.edge_type == 'imports']!r}"
+        )
+
+
 class TestMockedTreeSitter:
     """Tests that mock tree-sitter for code coverage."""
 
