@@ -22,3 +22,18 @@
     fields:  # d989
       statement: "When hypergumbo creates a derived artifact (cache entry, /tmp directory, intermediate output) OR dispatches a unit of analysis work (analyzer pass, linker run, fan-out task), it must either: (a) operate within a declared lifecycle policy — quota, eviction rule, expiration, pre-filter, short-circuit when no input is present — OR (b) be a one-shot operation whose lifecycle is explicitly documented as ephemeral / hand-managed. Producers that create artifacts indefinitely with no policy AND no documentation are violating this invariant. Dispatched work that runs without checking whether there's any input to process is also violating."  # d989
       root_cause: "No project-wide convention exists for 'what's the lifecycle policy for this artifact / this dispatched unit?'. Each producer chose its own implicit policy, usually 'no policy'. Members are independent producers each silently growing without bound or wasting compute on empty inputs. The fix is twofold: (1) declare a small menu of lifecycle policies that producers must choose from (LRU quota, age-based eviction, file-presence pre-filter, honk-threshold-with-retention, ephemeral), and (2) audit existing producers and assign each one. Single-item fixes treat symptoms; the META framing forces the menu-and-discipline conversation."  # d989
+- op: update  # 0ddc
+  at: '2026-05-21T02:29:39Z'  # 0ddc
+  by: agent  # 0ddc
+  actor: jgstern_agent  # 0ddc
+  clock: 2  # 0ddc
+  nonce: 0ddc  # 0ddc
+  set:  # 0ddc
+    status: satisfied  # 0ddc
+- op: discuss  # 1e1c
+  at: '2026-05-21T02:29:39Z'  # 1e1c
+  by: agent  # 1e1c
+  actor: jgstern_agent  # 1e1c
+  clock: 3  # 1e1c
+  nonce: 1e1c  # 1e1c
+  message: "Member-driven close: all 3 children resolved this session (Wave 5). Lifecycle policies now declared across all member producers: (1) WI-jadig satisfied by file-presence pre-filter at run dispatcher (analyze.all_analyzers.run_all_analyzers short-circuits analyzers whose declared languages have files==0 in profile.languages; 133→56 dispatched runs on self-analysis). (2) INV-padum satisfied by honk-threshold-with-retention (HYPERGUMBO_CACHE_HONK_GB env var, default 1.0 GiB; cache-status --per-repo for inspection; cache-clear --repo --keep-latest N for targeted prune; no auto-eviction at any threshold). (3) WI-jupar satisfied by cache-resident-with-state (comparison sketches write directly to per-(repo, state, analyzer-identity) cache_dir; legacy /tmp/hypergumbo_sketch_compare/ drained on first run; rides normal cache lifecycle). Closure criteria from META description: (a) menu of policies exists and is exercised — file-presence pre-filter, honk-threshold-with-retention, and cache-resident-with-state are three distinct policies; (b) each existing producer has declared its policy via docstring at the implementation site; (c) each member item closed via its appropriate policy. PRs: b3e39227c9 (WI-jadig), 66413c9393 (INV-padum), 61d8397c92 (WI-jupar). All 4 METAs from the burn-down plan now satisfied; only Wave 6+ (cross-language parity, odds and ends) remains as open campaign work."  # 1e1c

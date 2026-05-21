@@ -36,3 +36,18 @@
   clock: 3  # a82d
   nonce: a82d  # a82d
   message: "Reparented to META INV-manov (Lifecycle discipline for derived artifacts). 113/133 runs analyzed 0 files but consumed 12.7s wall-clock — dispatched work without a file-presence pre-filter. Candidate policy: short-circuit when no file matches the pass's language."  # a82d
+- op: update  # 470d
+  at: '2026-05-21T00:55:37Z'  # 470d
+  by: agent  # 470d
+  actor: jgstern_agent  # 470d
+  clock: 4  # 470d
+  nonce: 470d  # 470d
+  set:  # 470d
+    status: done  # 470d
+- op: discuss  # a51a
+  at: '2026-05-21T00:55:37Z'  # a51a
+  by: agent  # a51a
+  actor: jgstern_agent  # a51a
+  clock: 5  # a51a
+  nonce: a51a  # a51a
+  message: "Merged in b3e39227c9. Adds file-presence pre-filter to analyze.all_analyzers.run_all_analyzers — analyzer dispatched only when at least one declared language has files>0 in profile.languages AND all declared languages are in LANGUAGE_EXTENSIONS (defensive dispatch for taxonomy-absent languages like gitignore/requirements). Empirical: hypergumbo self-analysis 133 → 56 dispatched runs, 101 in skipped_passes with reason 'no files matched'. Also fixed a long-standing conftest mis-configuration (XDG_CACHE_HOME without HF_HOME pin causing 1.5GB per-test HF re-downloads) that this PR's broader test surface surfaced. Full smart-test green (13843 pass, 0 fail, 10m24s)."  # a51a

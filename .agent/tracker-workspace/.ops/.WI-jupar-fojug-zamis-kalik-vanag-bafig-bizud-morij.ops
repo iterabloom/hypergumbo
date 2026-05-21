@@ -35,3 +35,18 @@
   clock: 3  # ab5d
   nonce: ab5d  # ab5d
   message: "Reparented to META INV-manov (Lifecycle discipline for derived artifacts). /tmp/hypergumbo_sketch_compare/ has no declared lifecycle; producer docstring claims 'temporarily' but no cleanup runs. Candidate policy: ephemeral-per-process (cleanup on exit) or documented hand-managed."  # ab5d
+- op: update  # 6cbe
+  at: '2026-05-21T02:29:09Z'  # 6cbe
+  by: agent  # 6cbe
+  actor: jgstern_agent  # 6cbe
+  clock: 4  # 6cbe
+  nonce: 6cbe  # 6cbe
+  set:  # 6cbe
+    status: done  # 6cbe
+- op: discuss  # 5828
+  at: '2026-05-21T02:29:09Z'  # 5828
+  by: agent  # 5828
+  actor: jgstern_agent  # 5828
+  clock: 5  # 5828
+  nonce: '5828'  # 5828
+  message: "Merged in 61d8397c92 (PR #3851). Comparison-budget sketches now write directly to cache_dir alongside the main sketch — no /tmp/hypergumbo_sketch_compare/ staging, no cross-repo filename collisions, no manual cp UX. One-shot drain removes any stale legacy /tmp/hypergumbo_sketch_compare/ on first run. Now part of cache lifecycle (counted by cache-status, removed by cache-clear, surfaced by INV-padum honk). 4 new pin tests; cli.py at 100% coverage; 2528 tests green."  # 5828

@@ -38,3 +38,18 @@
   set: {}  # 8dc0
   add:  # 8dc0
     tags: [cross_language_parity]  # 8dc0
+- op: update  # a25b
+  at: '2026-05-21T03:20:13Z'  # a25b
+  by: agent  # a25b
+  actor: jgstern_agent  # a25b
+  clock: 4  # a25b
+  nonce: a25b  # a25b
+  set:  # a25b
+    status: satisfied  # a25b
+- op: discuss  # 602a
+  at: '2026-05-21T03:20:13Z'  # 602a
+  by: agent  # 602a
+  actor: jgstern_agent  # 602a
+  clock: 5  # 602a
+  nonce: 602a  # 602a
+  message: "Fixed in PR #3852 (merged cda7f94801). Root cause: three sites in js_ts.py constructed import-edge src IDs using _make_symbol_id(str(file_path), 1, 1, file_path.name, 'file', lang), producing the wrong ID slot (basename in name slot, e.g. 'typescript:.../main.ts:1-1:main.ts:file') while the actual file Symbol uses make_file_id(lang, str(file_path)) which puts literal 'file' in that slot. The IDs never collided, so every TS/JS import edge pointed at an orphan node. Fix: replaced all three sites with make_file_id(lang, str(file_path)). js-module-linker-v1 propagates edge.src unchanged so its import_resolution + ast_import re-emissions are corrected as a side effect. 4 new pin tests in TestImportEdgeSrcWiring cover es6 import, JS require('literal'), JS require(name), and TS import. All 3295 tests pass, 100% coverage on changed files."  # 602a
