@@ -232,6 +232,11 @@ class BashAnalyzer(TreeSitterAnalyzer):
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         signature="()",
+                        # WI-pulor: end_line - start_line + 1 matches the
+                        # convention documented at ir.py:349. Without this,
+                        # bash function symbols render as ``? LOC`` in
+                        # dead-code-maybe output.
+                        lines_of_code=end_line - start_line + 1,
                         stable_id=self.compute_stable_id(node, kind="function"),
                     )
                     analysis.symbols.append(symbol)

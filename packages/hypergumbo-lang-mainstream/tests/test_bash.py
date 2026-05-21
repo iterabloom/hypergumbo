@@ -711,3 +711,71 @@ class TestInvTajapShellScriptConcept:
                 f"shell_script concept must ride on the file Symbol only; "
                 f"found on function {func.name}"
             )
+
+
+class TestWiPulorFunctionLinesOfCode:
+    """WI-pulor: bash function Symbols must populate lines_of_code.
+
+    Pre-fix, every bash function Symbol had lines_of_code=None despite valid
+    spans. The convention (see ir.py:349 and py.py:_compute_lines_of_code) is
+    end_line - start_line + 1. The dead-code-maybe formatter renders ``?`` when
+    LOC is None, so without this fix bash functions appear in the dead-code
+    report as ``? LOC`` instead of e.g. ``8 LOC``.
+    """
+
+    def test_single_line_function_loc_is_one(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        bash_file = tmp_path / "single.sh"
+        bash_file.write_text("#!/bin/bash\nhelper() { echo h; }\n")
+        result = analyze_bash(tmp_path)
+
+        helper = next((s for s in result.symbols if s.name == "helper"), None)
+        assert helper is not None
+        assert helper.lines_of_code == 1
+
+    def test_multi_line_function_loc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        bash_file = tmp_path / "multi.sh"
+        bash_file.write_text(
+            "#!/bin/bash\n"
+            "section() {\n"
+            "    echo \"--- $1 ---\"\n"
+            "    echo \"\"\n"
+            "}\n"
+        )
+        result = analyze_bash(tmp_path)
+
+        section = next((s for s in result.symbols if s.name == "section"), None)
+        assert section is not None
+        assert section.span.start_line == 2
+        assert section.span.end_line == 5
+        assert section.lines_of_code == 4
+
+    def test_all_bash_functions_have_non_null_loc(self, tmp_path: Path) -> None:
+        """Property: no bash function Symbol has lines_of_code=None."""
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        bash_file = tmp_path / "many.sh"
+        bash_file.write_text(
+            "#!/bin/bash\n"
+            "pass() { echo PASS; }\n"
+            "function warn() {\n"
+            "    echo WARN >&2\n"
+            "}\n"
+            "fail() {\n"
+            "    echo FAIL >&2\n"
+            "    exit 1\n"
+            "}\n"
+        )
+        result = analyze_bash(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 3
+        for func in funcs:
+            assert func.lines_of_code is not None, (
+                f"bash function {func.name!r} has lines_of_code=None; "
+                f"WI-pulor regression"
+            )
+            assert func.lines_of_code >= 1
