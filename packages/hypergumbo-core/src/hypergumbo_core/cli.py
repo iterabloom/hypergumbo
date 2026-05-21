@@ -55,7 +55,6 @@ from .linkers.registry import LinkerContext, run_all_linkers
 from .safety_zones import (
     cache_rmtree,
     cache_write,
-    tmp_artifact_write,
     user_out_open_json_dump,
     user_out_write,
 )
@@ -774,11 +773,22 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 
     print(sketch)
 
+    # WI-jupar: one-shot drain of the legacy
+    # /tmp/hypergumbo_sketch_compare/ directory. Prior releases wrote
+    # the comparison sketches there with no cleanup and shared-across-
+    # repos filenames; the path is unambiguously ours so it's safe to
+    # remove on first run, releasing the accumulated backlog.
+    import shutil
+    import tempfile as _tempfile
+    _legacy_compare_dir = (
+        Path(_tempfile.gettempdir()) / "hypergumbo_sketch_compare"
+    )
+    if _legacy_compare_dir.exists():
+        shutil.rmtree(_legacy_compare_dir, ignore_errors=True)
+
     # Generate 4x and 16x budget sketches for comparison table
     # Using 4x/16x (instead of 2x) reveals when large files start fitting
     if max_tokens and stats is not None:
-        import tempfile
-
         budget_4x = max_tokens * 4
         budget_16x = max_tokens * 16
 
@@ -825,10 +835,6 @@ def cmd_sketch(args: argparse.Namespace) -> int:
 
         display_representativeness_table(stats, stats_4x, stats_16x)
 
-        # Save comparison sketches to temp files
-        temp_dir = Path(tempfile.gettempdir()) / "hypergumbo_sketch_compare"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-
         sketch_4x_filename = _generate_sketch_filename(
             tokens=budget_4x,
             exclude_tests=exclude_tests,
@@ -840,22 +846,21 @@ def cmd_sketch(args: argparse.Namespace) -> int:
             with_source=with_source,
         )
 
-        temp_4x_path = temp_dir / sketch_4x_filename
-        temp_16x_path = temp_dir / sketch_16x_filename
-        tmp_artifact_write(temp_4x_path, sketch_4x)
-        tmp_artifact_write(temp_16x_path, sketch_16x)
-
-        # Show helpful message with copy commands
+        # WI-jupar: comparison sketches now live in cache_dir alongside
+        # the main sketch. No /tmp staging — that path was shared across
+        # repos (filename-by-budget collision) and never cleaned up. The
+        # cache_dir is per-(repo, state, analyzer-identity), so each
+        # repo's comparison sketches stay isolated and ride normal cache
+        # lifecycle (cache-status / cache-clear / INV-padum honk).
         if cache_dir is not None:
             cache_4x = cache_dir / sketch_4x_filename
             cache_16x = cache_dir / sketch_16x_filename
+            cache_write(cache_4x, sketch_4x)
+            cache_write(cache_16x, sketch_16x)
             print(
-                f"\nhypergumbo also created comparison sketches temporarily:\n"
-                f"  4x budget ({budget_4x:,}t):  {temp_4x_path}\n"
-                f"  16x budget ({budget_16x:,}t): {temp_16x_path}\n"
-                f"\nTo preserve them to cache:\n"
-                f"  cp {temp_4x_path} {cache_4x}\n"
-                f"  cp {temp_16x_path} {cache_16x}\n",
+                f"\nhypergumbo also cached comparison sketches:\n"
+                f"  4x budget ({budget_4x:,}t):  {cache_4x}\n"
+                f"  16x budget ({budget_16x:,}t): {cache_16x}\n",
                 file=sys.stderr,
             )
 
