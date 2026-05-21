@@ -5377,7 +5377,16 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         return seen
 
     def _method_basename(name: str) -> str:
-        return name.rsplit(".", 1)[-1] if name else ""
+        # WI-kilal: handle Ruby's ``Class#method`` separator in addition to
+        # Python/Java/JS's ``Class.method``. Cross-language analyzers use
+        # different conventions: Python ``ClassA.foo``, Ruby
+        # ``ClassA#foo``. Strip whichever separator appears last in the
+        # qualified name so the heuristic can match same-named methods
+        # across an inheritance chain regardless of language.
+        if not name:  # pragma: no cover - defensive: production callable Symbols always carry a non-empty name (matches the same guard at the caller a few lines below)
+            return ""
+        last_sep = max(name.rfind("."), name.rfind("#"))
+        return name[last_sep + 1:] if last_sep >= 0 else name
 
     dispatch_inherited_ids: set[str] = set()
     for node in dead_candidates:

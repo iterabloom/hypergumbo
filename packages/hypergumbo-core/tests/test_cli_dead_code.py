@@ -1586,6 +1586,58 @@ class TestWiVutonDispatchInheritedDemotion:
         # contains edges shouldn't crash the heuristic).
         assert "helper" in dead_names
 
+    def test_wi_kilal_ruby_hash_separator_basename_match(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-kilal: Ruby qualifies instance methods as ``Class#method``
+        (not ``Class.method``). The dispatch_inherited heuristic must
+        basename both child and ancestor names the same way for the
+        same-named-method comparison to succeed. Before the fix,
+        ``_method_basename`` only split on ``.``, so
+        ``Sub#extract``.rsplit(``.``)[-1] == ``Sub#extract`` (no dot to
+        split on), and the heuristic missed every Ruby override.
+        """
+        base_class = self._make_class_node("ApplicationController", line=1)
+        sub_class = self._make_class_node("SessionsController", line=20)
+        # Ruby-style qualified names with ``#`` separator.
+        base_create = {
+            "id": "rb:app.rb:3-5:ApplicationController#create:method",
+            "name": "ApplicationController#create",
+            "kind": "method", "language": "ruby",
+            "path": "app.rb",
+            "span": {"start_line": 3, "end_line": 5},
+        }
+        sub_create = {
+            "id": "rb:app.rb:22-24:SessionsController#create:method",
+            "name": "SessionsController#create",
+            "kind": "method", "language": "ruby",
+            "path": "app.rb",
+            "span": {"start_line": 22, "end_line": 24},
+        }
+        # Caller invokes the base method; the base method is reachable.
+        main_fn = {
+            "id": "py:app.py:50-55:main:function", "name": "main",
+            "kind": "function", "language": "python",
+            "path": "app.py", "span": {"start_line": 50, "end_line": 55},
+            "meta": {"concepts": [{"concept": "main_function",
+                                     "framework": "python"}]},
+        }
+        edges = [
+            {"type": "contains", "src": base_class["id"], "dst": base_create["id"]},
+            {"type": "contains", "src": sub_class["id"], "dst": sub_create["id"]},
+            {"type": "extends", "src": sub_class["id"], "dst": base_class["id"]},
+            {"type": "calls", "src": main_fn["id"], "dst": base_create["id"]},
+        ]
+        bm = {
+            "schema_version": "0.2.3",
+            "nodes": [base_class, sub_class, base_create, sub_create, main_fn],
+            "edges": edges,
+        }
+        output = _run_dead_code_maybe(tmp_path, bm)
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        assert "SessionsController#create" not in dead_names
+        assert output["summary"]["demoted_dispatch_inherited"] >= 1
+
     def test_function_kind_not_demoted_via_dispatch(self, tmp_path: Path) -> None:
         """Top-level functions (kind=function) are NOT subject to dispatch demotion."""
         # A top-level function can't be a polymorphic override. Even if

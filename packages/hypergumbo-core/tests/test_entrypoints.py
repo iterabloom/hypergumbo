@@ -415,6 +415,82 @@ class TestSemanticEntryDetection:
         assert len(route_eps) == 1
         # Should have a generic label
 
+    def test_wi_kilal_rails_route_label_from_symbol_meta(self) -> None:
+        """WI-kilal: Rails route Symbols carry http_method/route_path at meta
+        level (not in the concept dict, since the rails.yaml pattern matches
+        on ``framework_role: "^route$"`` and stamps the Symbol from the ruby
+        analyzer's routes.rb parser). Entrypoint generation must fall back to
+        the Symbol's meta fields so each route gets a distinct label and the
+        label-dedup at detect_entrypoints doesn't collapse them.
+        """
+        # Two distinct Rails routes — different (method, path) pairs.
+        r1 = make_symbol(
+            "GET /api/v1/users",
+            path="config/routes.rb",
+            kind="route",
+            language="ruby",
+            meta={
+                "concepts": [{"concept": "route", "framework": "rails",
+                              "matched_framework_role": "route"}],
+                "framework_role": "route",
+                "http_method": "GET",
+                "route_path": "/api/v1/users",
+                "controller_action": "api/v1/users#index",
+            },
+        )
+        r2 = make_symbol(
+            "POST /api/v1/users",
+            path="config/routes.rb",
+            kind="route",
+            language="ruby",
+            start_line=2,
+            end_line=2,
+            meta={
+                "concepts": [{"concept": "route", "framework": "rails",
+                              "matched_framework_role": "route"}],
+                "framework_role": "route",
+                "http_method": "POST",
+                "route_path": "/api/v1/users",
+                "controller_action": "api/v1/users#create",
+            },
+        )
+        nodes = [r1, r2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        # Both routes must survive label-dedup — they have distinct (method,
+        # path) but the concept dict is identical, so the fix must fall back
+        # to sym.meta.http_method / sym.meta.route_path when the concept dict
+        # is missing those keys.
+        assert len(route_eps) == 2
+        labels = {ep.label for ep in route_eps}
+        assert any("GET" in lbl and "/api/v1/users" in lbl for lbl in labels)
+        assert any("POST" in lbl and "/api/v1/users" in lbl for lbl in labels)
+
+    def test_wi_kilal_concept_dict_method_takes_precedence(self) -> None:
+        """When the concept dict DOES carry method/path (FastAPI/Express
+        shape), they take precedence over symbol meta — the rails fallback
+        is additive, not overriding.
+        """
+        sym = make_symbol(
+            "create_user",
+            path="src/api/users.py",
+            meta={
+                "concepts": [
+                    {"concept": "route", "method": "PUT", "path": "/explicit"}
+                ],
+                # These should be ignored when concept dict has its own fields
+                "http_method": "GET",
+                "route_path": "/from-meta",
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert "PUT" in route_eps[0].label
+        assert "/explicit" in route_eps[0].label
+
     def test_detect_controller_concept(self) -> None:
         """Symbol with controller concept is detected as controller entrypoint."""
         sym = make_symbol(

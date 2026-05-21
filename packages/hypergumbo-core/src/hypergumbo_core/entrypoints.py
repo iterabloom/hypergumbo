@@ -357,8 +357,20 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             if concept_type == "route":
                 if EntrypointKind.HTTP_ROUTE in added_kinds:
                     continue
-                method = concept.get("method", "")
-                path = concept.get("path", "")
+                # WI-kilal: when the concept dict doesn't carry method/path,
+                # fall back to the Symbol's meta-level fields. Rails routes
+                # are emitted by the ruby analyzer with framework_role="route"
+                # and http_method/route_path at sym.meta level (not in the
+                # concept dict), because rails.yaml matches them via
+                # ``framework_role: "^route$"`` definition-based enrichment
+                # rather than the usage-based ``extract`` that stamps method
+                # and path into the concept dict. Without this fallback,
+                # every Rails route produced the same generic "HTTP route"
+                # label, and the label-dedup in detect_entrypoints collapsed
+                # all of them to one entrypoint (e.g., chatwoot: 623 routes
+                # -> 1 HTTP_ROUTE entrypoint).
+                method = concept.get("method", "") or sym.meta.get("http_method", "")
+                path = concept.get("path", "") or sym.meta.get("route_path", "")
                 if method and path:
                     label = f"HTTP {method.upper()} {path}"
                 elif method:
