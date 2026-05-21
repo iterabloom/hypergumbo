@@ -53,3 +53,19 @@
   set: {}  # af3a
   add:  # af3a
     tags: [awaits_bakeoff_validation]  # af3a
+- op: update  # 2dc4
+  at: '2026-05-21T19:37:04Z'  # 2dc4
+  by: agent  # 2dc4
+  actor: jgstern_agent  # 2dc4
+  clock: 6  # 2dc4
+  nonce: 2dc4  # 2dc4
+  set: {}  # 2dc4
+  remove:  # 2dc4
+    tags: [awaits_bakeoff_validation]  # 2dc4
+- op: discuss  # 10cd
+  at: '2026-05-21T19:37:04Z'  # 10cd
+  by: agent  # 10cd
+  actor: jgstern_agent  # 10cd
+  clock: 7  # 10cd
+  nonce: 10cd  # 10cd
+  message: "Validated via apollo-server cohort 2026-05-21 (~/ALL_REPOS/whole_bunch_of_repos/apollo-server). 13 kind=call usage_contexts emitted in JS/TS, all matching the WI-tisam target name set: 5 startStandaloneServer, 3 createServer, 3 http.createServer, 1 https.createServer, 1 runHttpQuery. The _extract_http_handler_contexts extractor from PR #3826 fires correctly on consumer call sites. Artifacts: ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md and verify_external_drain_05212026{.py,_verdict.txt}. Verdict: moved."  # 10cd

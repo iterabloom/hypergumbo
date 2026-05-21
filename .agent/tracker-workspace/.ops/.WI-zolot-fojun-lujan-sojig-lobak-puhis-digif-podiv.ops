@@ -61,3 +61,19 @@
   clock: 6  # 0237
   nonce: '0237'  # 0237
   message: "Closed in PR #3859 (commit d42c8b83bd). Three concrete gaps in WS linker fixed: (1) NATIVE_WEBSOCKET_TEMPLATE_PATTERN handles backtick template URLs with trailing literal path; (2) HAS_WEBSOCKET_CONSTRUCTOR + TS_TEMPLATE_URL_PATH_PATTERN handle function-extracted URL idiom (hypergumbo's own getWsUrl()/connect() pattern); (3) STARLETTE_WEBSOCKET_ROUTE recognizes Starlette's WebSocketRoute('/path', handler) form; (4) cross-language bridge logic emits edge_type='calls' + meta['protocol']='ws' + meta['cross_language'] following the HTTP linker convention (http.py:1511). Empirical: hypergumbo self-analysis 0 → 12 WS bridge edges; target edge typescript:.../ws-client.ts → websocket:.../serve.py:433:/ws:endpoint exists with server_framework='starlette' and cross_language=True. Tagged awaits_bakeoff_validation per the Wave 6 entrypoint-coverage rule."  # 0237
+- op: update  # 9d39
+  at: '2026-05-21T19:24:53Z'  # 9d39
+  by: agent  # 9d39
+  actor: jgstern_agent  # 9d39
+  clock: 7  # 9d39
+  nonce: 9d39  # 9d39
+  set: {}  # 9d39
+  remove:  # 9d39
+    tags: [awaits_bakeoff_validation]  # 9d39
+- op: discuss  # a6f0
+  at: '2026-05-21T19:24:53Z'  # a6f0
+  by: agent  # a6f0
+  actor: jgstern_agent  # a6f0
+  clock: 8  # a6f0
+  nonce: a6f0  # a6f0
+  message: "Validated via self-analysis 2026-05-21. Re-ran hypergumbo on this repo (dev tip 74794a2e89) and confirmed the WS bridge fix holds: 12 edges with meta.protocol='ws' AND meta.cross_language=True (was 0 pre-fix). Total websocket-linker-origin edges = 42. The TS-client-at-/ws → Python-handler-at-/ws bridge pair is now present in the behavior map. Self-anchored claim from the original PR (0 → 12 on this exact repo). Artifacts: ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md and verify_validation_drain_05212026{.py,_verdict.txt,.log}. Verdict: moved."  # a6f0

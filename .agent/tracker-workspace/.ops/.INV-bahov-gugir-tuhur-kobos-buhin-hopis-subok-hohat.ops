@@ -53,3 +53,19 @@
   set: {}  # c538
   add:  # c538
     tags: [awaits_bakeoff_validation]  # c538
+- op: update  # 10ab
+  at: '2026-05-21T19:37:05Z'  # 10ab
+  by: agent  # 10ab
+  actor: jgstern_agent  # 10ab
+  clock: 6  # 10ab
+  nonce: 10ab  # 10ab
+  set: {}  # 10ab
+  remove:  # 10ab
+    tags: [awaits_bakeoff_validation]  # 10ab
+- op: discuss  # 3cc3
+  at: '2026-05-21T19:37:05Z'  # 3cc3
+  by: agent  # 3cc3
+  actor: jgstern_agent  # 3cc3
+  clock: 7  # 3cc3
+  nonce: 3cc3  # 3cc3
+  message: "Validated via chatwoot cohort 2026-05-21 (~/ALL_REPOS/whole_bunch_of_repos/chatwoot, 204MB, 1006 .vue files). 943 vue file-kind Symbols emitted by the vue_component linker, ALL with canonical id shape 'vue:{path}:1-1:file:file', 0 legacy shapes ('vue:{path}:component_file:1:{name}'), 0 duplicate-path collisions across producers. The PR #3825 fix (canonical make_file_id + existing_file_symbol_by_canonical_id pre-pass) holds at scale. Artifacts: ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md and verify_external_drain_05212026{.py,_verdict.txt}. Verdict: moved."  # 3cc3

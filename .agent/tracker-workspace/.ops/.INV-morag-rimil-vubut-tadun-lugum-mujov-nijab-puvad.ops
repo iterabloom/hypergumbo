@@ -77,3 +77,19 @@
   clock: 8  # 5187
   nonce: '5187'  # 5187
   message: "INV-morag PR 2 merged as PR #3837. Closes the naming mismatch: make_pass_id is now identity (no -v1 suffix); build_catalog_from_registries() derives the catalog dynamically from _ANALYZER_REGISTRY + _LINKER_REGISTRY so catalog IDs and AnalysisRun.pass IDs come from a single source of truth. Linker registry names normalized to match their PASS_ID literal (~50 sites). Analyzer PASS_IDs aligned to register names (py 'python-ast'->'python'; html 'html-pattern'->'html'; objc 'objective-c'->'objc'; manifest_targets). ~890 mechanical -v1 drops across 125 test files. New scripts/check-pass-id-agreement CI gate (every registered name yields a catalog Pass with matching ID; no catalog ID carries a legacy suffix). 13670 tests pass, 100% coverage on changed files. Required 5 test-fix iterations (round-1: 131 fails; round-2: 53; round-3: 10; round-4: 0 fails; round-5: 100% coverage). The transitional _PASS_METADATA dict in catalog.py holds per-pass description/languages/availability/requires/backend until each language package migrates these into its @register_* call site (follow-up tracker item to be filed separately)."  # 5187
+- op: update  # 3fd6
+  at: '2026-05-21T19:24:52Z'  # 3fd6
+  by: agent  # 3fd6
+  actor: jgstern_agent  # 3fd6
+  clock: 9  # 3fd6
+  nonce: 3fd6  # 3fd6
+  set: {}  # 3fd6
+  remove:  # 3fd6
+    tags: [awaits_bakeoff_validation]  # 3fd6
+- op: discuss  # 9a8c
+  at: '2026-05-21T19:24:52Z'  # 9a8c
+  by: agent  # 9a8c
+  actor: jgstern_agent  # 9a8c
+  clock: 10  # 9a8c
+  nonce: 9a8c  # 9a8c
+  message: "Validated via self-analysis 2026-05-21 (B-shape claim, modality = grep cohort artifact). Re-ran hypergumbo on this repo (dev tip 74794a2e89) and confirmed: bm['reproducibility_context'] is present, all 83 AnalysisRun entries carry a pass_version field, and 0 of the 83 runtime pass IDs carry a legacy -v1 or -ts-v1 suffix. The PR 1 + PR 2 contracts hold structurally. Artifacts: ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md and verify_validation_drain_05212026{.py,_verdict.txt,.log}. Verdict: moved."  # 9a8c

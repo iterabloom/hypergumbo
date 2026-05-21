@@ -86,3 +86,19 @@
   set: {}  # 61c8
   add:  # 61c8
     tags: [awaits_bakeoff_validation]  # 61c8
+- op: update  # 7f95
+  at: '2026-05-21T19:24:54Z'  # 7f95
+  by: agent  # 7f95
+  actor: jgstern_agent  # 7f95
+  clock: 10  # 7f95
+  nonce: 7f95  # 7f95
+  set: {}  # 7f95
+  remove:  # 7f95
+    tags: [awaits_bakeoff_validation]  # 7f95
+- op: discuss  # 9d2a
+  at: '2026-05-21T19:24:54Z'  # 9d2a
+  by: agent  # 9d2a
+  actor: jgstern_agent  # 9d2a
+  clock: 11  # 9d2a
+  nonce: 9d2a  # 9d2a
+  message: "Validated via self-analysis 2026-05-21 (B-shape claim). Re-ran hypergumbo on this repo (dev tip 74794a2e89) with handler slices enabled (default) and confirmed bm['features'] now contains 16 entries, each carrying the spec-required keys {id, name, entry_nodes, node_ids, edge_ids, query, limits_hit, node_depths, node_tiers}. Option-(c) index-only embedding from PR #3831 is operational: per-handler features[] entries hold graph-ID pointers into top-level nodes[]/edges[], with full denormalized payloads in <out-stem>.slices/slice.handler.<...>.json. Artifacts: ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md and verify_validation_drain_05212026{.py,_verdict.txt,.log}. Verdict: moved."  # 9d2a
