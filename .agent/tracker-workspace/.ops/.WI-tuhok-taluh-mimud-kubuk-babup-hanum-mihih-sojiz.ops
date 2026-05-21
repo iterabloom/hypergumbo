@@ -1,0 +1,24 @@
+- op: create  # 91cb
+  at: '2026-05-21T08:23:45Z'  # 91cb
+  by: agent  # 91cb
+  actor: jgstern_agent  # 91cb
+  clock: 1  # 91cb
+  nonce: 91cb  # 91cb
+  data:  # 91cb
+    kind: work_item  # 91cb
+    title: "Java analyzer: wildcard imports (import java.util.*) not resolved to source module in calls edges"  # 91cb
+    status: todo_hard  # 91cb
+    priority: 3  # 91cb
+    parent:  # 91cb
+    tags:  # 91cb
+    - analyzer  # 91cb
+    - java  # 91cb
+    - call_graph  # 91cb
+    - wi_mafik_followup  # 91cb
+    - cross_language_parity  # 91cb
+    isbefore: []  # 91cb
+    duplicate_of: []  # 91cb
+    not_duplicate_of: []  # 91cb
+    pr_ref:  # 91cb
+    description: "**Found via WI-mafik audit extension (2026-05-21).**\n\nThe Java analyzer does not attribute bare type usages back to a wildcard-imported package. With:\n\n```java\nimport java.util.*;\npublic class WildcardFixture {\n    public static void exerciseWildcard() {\n        Arrays.asList(1, 2, 3);\n        Collections.emptyList();\n    }\n}\n```\n\nThe analyzer emits unresolved edges with dst `java:external:0-0:Arrays.asList:unresolved` instead of resolving `Arrays` to its source module `java.util` (which the wildcard `import java.util.*` declared).\n\nCompare to the standard explicit-import case which DOES resolve correctly: `import java.util.Arrays;` + `Arrays.asList(1, 2, 3)` → `calls` edge dst contains `java.util` + `asList`. The wildcard-import branch is missing.\n\n**Sibling shape**: WI-hudud (Java static import resolution, closed in WI-mafik PR2), WI-bunul (Java analyzer fix, closed). This is the third Java analyzer gap surfaced by the polyglot fixture.\n\n**Fix sketch**: extend `java.py`'s `_extract_imports` to track wildcard-import packages (`import java.util.*` → record `java.util` as a wildcard package). When the bare-name resolver fails to find an explicit import for a type name like `Arrays`, optimistically attribute it to the first wildcard-imported package whose set of declared classes contains `Arrays` (or, as a lower-confidence fallback when the class set is unknown, attribute to any wildcard package — same precedent as Go dot-imports in WI-vovum).\n\n**Test gap**: the `java_wildcard` fixture in `test_polyglot_call_site_coverage.py` is set `xfail_reason` to point at this item. Removing the xfail when this is fixed surfaces the regression boundary.\n\n**Cross-references**:\n- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py` (`_extract_imports` and bare-name resolver)\n- `packages/hypergumbo-lang-mainstream/tests/test_polyglot_call_site_coverage.py` (`java_wildcard` fixture)\n- WI-mafik (parent audit item)\n- WI-hudud, WI-bunul (sibling Java analyzer fixes)"  # 91cb
+    fields: {}  # 91cb

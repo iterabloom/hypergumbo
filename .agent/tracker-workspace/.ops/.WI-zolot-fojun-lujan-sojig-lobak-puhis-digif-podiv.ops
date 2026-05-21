@@ -30,3 +30,34 @@
   set: {}  # 13c3
   add:  # 13c3
     tags: [cross_language_parity]  # 13c3
+- op: update  # 44cc
+  at: '2026-05-21T08:12:35Z'  # 44cc
+  by: agent  # 44cc
+  actor: jgstern_agent  # 44cc
+  clock: 3  # 44cc
+  nonce: 44cc  # 44cc
+  set: {}  # 44cc
+  add:  # 44cc
+    tags: [awaits_bakeoff_validation]  # 44cc
+- op: discuss  # 572b
+  at: '2026-05-21T08:12:35Z'  # 572b
+  by: agent  # 572b
+  actor: jgstern_agent  # 572b
+  clock: 4  # 572b
+  nonce: 572b  # 572b
+  message: "Tagged before auto-pr per the bakeoff-validation tagging discipline (PR carries quantitative claim: 0 → 12 WS bridge edges on self-analysis). Will close to satisfied after PR merge and validate the bridge edge count on the bakeoff corpus."  # 572b
+- op: update  # 2a41
+  at: '2026-05-21T08:19:48Z'  # 2a41
+  by: agent  # 2a41
+  actor: jgstern_agent  # 2a41
+  clock: 5  # 2a41
+  nonce: 2a41  # 2a41
+  set:  # 2a41
+    status: done  # 2a41
+- op: discuss  # 0237
+  at: '2026-05-21T08:19:48Z'  # 0237
+  by: agent  # 0237
+  actor: jgstern_agent  # 0237
+  clock: 6  # 0237
+  nonce: '0237'  # 0237
+  message: "Closed in PR #3859 (commit d42c8b83bd). Three concrete gaps in WS linker fixed: (1) NATIVE_WEBSOCKET_TEMPLATE_PATTERN handles backtick template URLs with trailing literal path; (2) HAS_WEBSOCKET_CONSTRUCTOR + TS_TEMPLATE_URL_PATH_PATTERN handle function-extracted URL idiom (hypergumbo's own getWsUrl()/connect() pattern); (3) STARLETTE_WEBSOCKET_ROUTE recognizes Starlette's WebSocketRoute('/path', handler) form; (4) cross-language bridge logic emits edge_type='calls' + meta['protocol']='ws' + meta['cross_language'] following the HTTP linker convention (http.py:1511). Empirical: hypergumbo self-analysis 0 → 12 WS bridge edges; target edge typescript:.../ws-client.ts → websocket:.../serve.py:433:/ws:endpoint exists with server_framework='starlette' and cross_language=True. Tagged awaits_bakeoff_validation per the Wave 6 entrypoint-coverage rule."  # 0237

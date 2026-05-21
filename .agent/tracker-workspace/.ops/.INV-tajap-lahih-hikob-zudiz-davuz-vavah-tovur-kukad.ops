@@ -56,3 +56,18 @@
   set: {}  # 547c
   add:  # 547c
     tags: [awaits_bakeoff_validation]  # 547c
+- op: update  # f91f
+  at: '2026-05-21T06:58:45Z'  # f91f
+  by: agent  # f91f
+  actor: jgstern_agent  # f91f
+  clock: 6  # f91f
+  nonce: f91f  # f91f
+  set:  # f91f
+    status: satisfied  # f91f
+- op: discuss  # 4f43
+  at: '2026-05-21T06:58:45Z'  # 4f43
+  by: agent  # 4f43
+  actor: jgstern_agent  # 4f43
+  clock: 7  # 4f43
+  nonce: 4f43  # 4f43
+  message: "INV-tajap CLOSED. Three sub-fixes shipped across PRs #3854, #3856, and the merge of 54d28ca452:\n\n1. shell_script (PR #3854 / 8ab5c5dbcb): bash analyzer stamps shell_script concept on every parsed bash file Symbol; entrypoints.py emits SHELL_SCRIPT (confidence 0.85).\n2. html_entry (PR #3856 / f1dc6bea09): html.py stamps html_entry concept on index.html (case-insensitive); entrypoints.py emits HTML_ENTRY (confidence 0.85).\n3. script_module (54d28ca452): _detect_script_modules helper in entrypoints.py emits SCRIPT_MODULE for TS/JS file Symbols where no inbound imports edge dst==sym.id AND at least one outbound calls edge src==sym.id (confidence 0.80). Edge-set based since the rule requires the full edge set.\n\nCumulative self-analysis impact: 64 -> 97 entrypoints (+52%); 39 non-Python entries (was 0): 36 shell_script + 1 html_entry + 2 script_module (main.ts, vite.config.ts).\n\nTag awaits_bakeoff_validation preserved for the bakeoff queue to re-baseline WI-vuton's dead-code FP rate against this fix on the standard prospector corpus."  # 4f43
