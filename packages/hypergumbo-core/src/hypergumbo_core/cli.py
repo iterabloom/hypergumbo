@@ -5387,7 +5387,9 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         if not class_id:
             continue
         method_name = _method_basename(node.get("name", ""))
-        if not method_name:
+        if not method_name:  # pragma: no cover
+            # Defensive guard: production callable Symbols always carry a
+            # non-empty name (Span+name are required at construction).
             continue
         for ancestor_id in _ancestors_of(class_id):
             matched = False

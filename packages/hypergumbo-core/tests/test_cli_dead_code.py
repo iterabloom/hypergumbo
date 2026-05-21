@@ -1524,6 +1524,68 @@ class TestWiVutonDispatchInheritedDemotion:
         # through the grandparent.
         assert "S.extract" not in dead_names
 
+    def test_contains_edges_with_non_class_src_or_non_method_dst_skipped(
+        self, tmp_path: Path,
+    ) -> None:
+        """``contains`` edges that don't connect a class to a method are skipped.
+
+        Real behavior maps contain three kinds of ``contains`` edges:
+        - module → function (src is a module, not a class)
+        - class → method (the one we want for dispatch reasoning)
+        - class → inner class (dst is a class, not a method)
+
+        The dispatch-inherited heuristic should silently skip the first
+        and third while still finding overrides in the second.
+        """
+        module = {
+            "id": "py:app.py:1-99:file:file", "name": "app.py",
+            "kind": "module", "language": "python",
+            "path": "app.py", "span": {"start_line": 1, "end_line": 99},
+        }
+        base_class = self._make_class_node("Base", line=1)
+        sub_class = self._make_class_node("Sub", line=20)
+        # Inner class inside Sub — exercises the non-method-dst branch.
+        inner_class = self._make_class_node("Inner", line=23)
+        base_extract = self._make_method_node("Base", "extract", line=3)
+        sub_extract = self._make_method_node("Sub", "extract", line=22)
+        # Free top-level function — exercises the non-class-src branch
+        # via a ``contains`` edge from the module to this function.
+        free_helper = {
+            "id": "py:app.py:30-32:helper:function", "name": "helper",
+            "kind": "function", "language": "python",
+            "path": "app.py", "span": {"start_line": 30, "end_line": 32},
+        }
+        main_fn = {
+            "id": "py:app.py:50-55:main:function", "name": "main",
+            "kind": "function", "language": "python",
+            "path": "app.py", "span": {"start_line": 50, "end_line": 55},
+            "meta": {"concepts": [{"concept": "main_function",
+                                     "framework": "python"}]},
+        }
+        edges = [
+            {"type": "contains", "src": module["id"], "dst": main_fn["id"]},
+            {"type": "contains", "src": module["id"], "dst": free_helper["id"]},
+            {"type": "contains", "src": base_class["id"], "dst": base_extract["id"]},
+            {"type": "contains", "src": sub_class["id"], "dst": sub_extract["id"]},
+            {"type": "contains", "src": sub_class["id"], "dst": inner_class["id"]},
+            {"type": "extends", "src": sub_class["id"], "dst": base_class["id"]},
+            {"type": "calls", "src": main_fn["id"], "dst": base_extract["id"]},
+        ]
+        bm = {
+            "schema_version": "0.2.3",
+            "nodes": [module, base_class, sub_class, inner_class,
+                      base_extract, sub_extract, free_helper, main_fn],
+            "edges": edges,
+        }
+        output = _run_dead_code_maybe(tmp_path, bm)
+        dead_names = {d["name"] for d in output["dead_candidates"]}
+        # Sub.extract still demoted (real override).
+        assert "Sub.extract" not in dead_names
+        # free_helper not connected to a reachable function with the
+        # same name; stays dead (the module→function and class→class
+        # contains edges shouldn't crash the heuristic).
+        assert "helper" in dead_names
+
     def test_function_kind_not_demoted_via_dispatch(self, tmp_path: Path) -> None:
         """Top-level functions (kind=function) are NOT subject to dispatch demotion."""
         # A top-level function can't be a polymorphic override. Even if
