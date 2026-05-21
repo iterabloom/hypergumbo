@@ -19599,6 +19599,97 @@ class TestMaterializeRouteSymbols:
         assert routes[0].meta["http_method"] == "GET"
 
 
+class TestMaterializeRouteSymbolsWiMisud:
+    """WI-misud: file-level catch-all route concepts from WI-tisam YAML patterns
+    (node-http.yaml / graphql.yaml's startStandaloneServer / http.createServer
+    patterns) attach to kind=file Symbols. Different files calling these
+    framework entry points are DISTINCT deployments, not duplicate registrations
+    of the same handler — so the (method, path) dedupe key must include the
+    source file when the source symbol is kind=file.
+    """
+
+    def _make_file(
+        self, file_path: str, method: str = "ALL", path: str = "/",
+        framework: str = "node-http", language: str = "typescript",
+    ) -> Symbol:
+        """File Symbol with a route concept attached (WI-tisam UC-enrichment shape)."""
+        return Symbol(
+            id=f"{language}:{file_path}:1-1:file:file",
+            name=file_path,
+            kind="file",
+            language=language,
+            path=file_path,
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            meta={
+                "concepts": [
+                    {"concept": "route", "framework": framework,
+                     "method": method, "path": path},
+                ],
+            },
+        )
+
+    def test_per_file_route_materialized_for_file_kind_concepts(self) -> None:
+        """Two FILE Symbols with the same catch-all (ALL, /) concept must each
+        produce a route Symbol — they are distinct HTTP entry points in
+        distinct deployments, not duplicate registrations of the same handler.
+        """
+        f1 = self._make_file("packages/server/src/standalone/index.ts")
+        f2 = self._make_file("packages/server/src/httpBatching.ts")
+        routes = materialize_route_symbols([f1, f2])
+        assert len(routes) == 2
+        paths = {r.path for r in routes}
+        assert paths == {
+            "packages/server/src/standalone/index.ts",
+            "packages/server/src/httpBatching.ts",
+        }
+
+    def test_method_path_dedupe_still_applies_to_function_kind(self) -> None:
+        """Regression guard: the per-file relaxation must NOT apply to
+        kind=method/function symbols. Django-style cross-file dedupe of
+        identical (method, path) on view methods stays in force.
+        """
+        h1 = Symbol(
+            id="python:views_a.py:10-20:GetUsers.get:method",
+            name="GetUsers.get", kind="method", language="python",
+            path="views_a.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/users/"}]},
+        )
+        h2 = Symbol(
+            id="python:views_b.py:10-20:ListUsers.get:method",
+            name="ListUsers.get", kind="method", language="python",
+            path="views_b.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "GET", "path": "/users/"}]},
+        )
+        routes = materialize_route_symbols([h1, h2])
+        assert len(routes) == 1
+
+    def test_per_file_dedupe_when_same_file_has_two_concepts(self) -> None:
+        """Within a single FILE Symbol, two route concepts with the same
+        (method, path) collapse to one route — the per-file dedupe key
+        includes the source symbol id, so duplicate concepts on the same
+        file Symbol do dedupe.
+        """
+        f = Symbol(
+            id="typescript:packages/server/src/standalone/index.ts:1-1:file:file",
+            name="packages/server/src/standalone/index.ts",
+            kind="file", language="typescript",
+            path="packages/server/src/standalone/index.ts",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            meta={
+                "concepts": [
+                    {"concept": "route", "framework": "node-http",
+                     "method": "ALL", "path": "/"},
+                    {"concept": "route", "framework": "graphql",
+                     "method": "ALL", "path": "/"},
+                ],
+            },
+        )
+        routes = materialize_route_symbols([f])
+        assert len(routes) == 1
+
+
 class TestExpandClassBasedViewRoutes:
     """Tests for expand_class_based_view_routes (WI-lojoh)."""
 

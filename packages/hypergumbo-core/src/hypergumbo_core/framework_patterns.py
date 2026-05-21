@@ -1760,8 +1760,21 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
             if not method:
                 continue
 
-            # Dedupe: same (method, path) pair already materialized
-            route_key = f"{method}:{path}"
+            # Dedupe: same (method, path) pair already materialized.
+            #
+            # WI-misud: when the source symbol is kind="file", scope the
+            # dedupe key by source symbol id. File-level route concepts
+            # (WI-tisam: node-http.yaml / graphql.yaml's startStandaloneServer
+            # / http.createServer catch-all patterns) attach to file Symbols
+            # via UC-enrichment, and different files calling these framework
+            # entry points are DISTINCT deployments — not duplicate
+            # registrations of the same handler. The Django-style cross-file
+            # dedupe (urls.py + views.py declaring the same route) still
+            # applies for kind="method" / kind="function" sources.
+            if sym.kind == "file":
+                route_key = f"{method}:{path}:{sym.id}"
+            else:
+                route_key = f"{method}:{path}"
             if route_key in seen_routes:
                 continue
             seen_routes.add(route_key)
