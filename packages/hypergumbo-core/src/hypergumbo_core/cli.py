@@ -7149,6 +7149,9 @@ def run_behavior_map(
     # Run all language analyzers using consolidated registry
     # This replaces ~800 lines of repetitive analyzer invocation code
     show_progress("Running analyzers", 10)
+    # WI-jadig: pass profile through so the dispatcher can short-circuit
+    # analyzers whose languages have 0 files in this repo (lifecycle policy
+    # member of INV-manov — file-presence pre-filter).
     (
         analysis_runs,
         all_symbols,
@@ -7157,7 +7160,9 @@ def run_behavior_map(
         limits,
         captured_symbols,
         dependency_manifest,
-    ) = run_all_analyzers(repo_root, max_files=max_files)
+    ) = run_all_analyzers(
+        repo_root, max_files=max_files, profile=behavior_map["profile"],
+    )
     _log_memory("after analyzers")
 
     # Resolve deferred symbol references (INV-002 proper fix)

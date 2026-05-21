@@ -1239,3 +1239,197 @@ class TestRunAllAnalyzersFileSymbolSynthesis:
         file_syms = [s for s in symbols if s.id == file_id]
         assert len(file_syms) == 1
         assert file_syms[0].origin == "lua"  # producer's, not the synth's
+
+
+class TestRunAllAnalyzersFilePresencePreFilter:
+    """WI-jadig: skip analyzer dispatch when its languages have zero files.
+
+    Lifecycle policy (INV-manov member): an analyzer is dispatched only
+    when ``profile.languages[L].files > 0`` for at least one ``L`` in
+    ``analyzer.languages``. Otherwise the dispatcher records a
+    ``skipped_passes`` entry with reason ``"no files matched"`` and
+    does not invoke the analyzer function — saving the wall-clock cost
+    of opening a parser / walking the FileIndex / building a tree for
+    a pass that has no input.
+    """
+
+    def test_skips_analyzer_when_profile_has_no_files_for_its_language(
+        self,
+    ) -> None:
+        """Analyzer for a language absent from profile.languages is not dispatched."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+
+        called: list[str] = []
+
+        @register_analyzer("rust", languages=["rust"])
+        def analyze_rust(root: Path) -> AnalysisResult:
+            called.append("rust")  # pragma: no cover - should not run
+            return AnalysisResult()
+
+        profile = {"languages": {"python": {"files": 5}}}
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, _, _, _, limits, _, _ = facade_run_all(
+                Path("/test"), profile=profile,
+            )
+
+        assert called == []
+        skipped_names = {s["pass"] for s in limits.skipped_passes}
+        assert "rust" in skipped_names
+        rust_entry = next(s for s in limits.skipped_passes if s["pass"] == "rust")
+        assert rust_entry["reason"] == "no files matched"
+
+    def test_runs_analyzer_when_profile_has_files_for_its_language(
+        self,
+    ) -> None:
+        """Analyzer for a language present in profile.languages with files>0 runs."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun
+
+        called: list[str] = []
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "python"}
+        run.pass_id = "python"
+
+        @register_analyzer("python", languages=["python"])
+        def analyze_python(root: Path) -> AnalysisResult:
+            called.append("python")
+            return AnalysisResult(run=run, skipped=False)
+
+        profile = {"languages": {"python": {"files": 5}}}
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, _, _, _, limits, _, _ = facade_run_all(
+                Path("/test"), profile=profile,
+            )
+
+        assert called == ["python"]
+        # The python pass must NOT appear in skipped_passes.
+        skipped_names = {s["pass"] for s in limits.skipped_passes}
+        assert "python" not in skipped_names
+
+    def test_no_profile_runs_all_analyzers(self) -> None:
+        """When profile is None, every analyzer is dispatched (backcompat)."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun
+
+        called: list[str] = []
+
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "rust"}
+        run.pass_id = "rust"
+
+        @register_analyzer("rust", languages=["rust"])
+        def analyze_rust(root: Path) -> AnalysisResult:
+            called.append("rust")
+            return AnalysisResult(run=run, skipped=False)
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            facade_run_all(Path("/test"))  # no profile arg
+
+        assert called == ["rust"]
+
+    def test_zero_files_skips_analyzer(self) -> None:
+        """A language entry with files==0 still triggers skip."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+
+        called: list[str] = []
+
+        @register_analyzer("go", languages=["go"])
+        def analyze_go(root: Path) -> AnalysisResult:
+            called.append("go")  # pragma: no cover - should not run
+            return AnalysisResult()
+
+        profile = {"languages": {"go": {"files": 0}, "python": {"files": 5}}}
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, _, _, _, limits, _, _ = facade_run_all(
+                Path("/test"), profile=profile,
+            )
+
+        assert called == []
+        skipped_names = {s["pass"] for s in limits.skipped_passes}
+        assert "go" in skipped_names
+
+    def test_multi_language_analyzer_runs_if_any_has_files(self) -> None:
+        """Analyzer declaring multiple languages runs if ANY has files>0."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun
+
+        called: list[str] = []
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "ts_js"}
+        run.pass_id = "ts_js"
+
+        @register_analyzer("ts_js", languages=["typescript", "javascript"])
+        def analyze_ts_js(root: Path) -> AnalysisResult:
+            called.append("ts_js")
+            return AnalysisResult(run=run, skipped=False)
+
+        # Only javascript has files; typescript missing entirely.
+        profile = {"languages": {"javascript": {"files": 3}}}
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            facade_run_all(Path("/test"), profile=profile)
+
+        assert called == ["ts_js"]
+
+    def test_uncertain_language_dispatches_defensively(self) -> None:
+        """Analyzer declaring a language outside LANGUAGE_EXTENSIONS dispatches.
+
+        ``gitignore`` / ``requirements`` / ``manifest_targets`` are not in
+        the taxonomy's ``LANGUAGE_EXTENSIONS`` table, so the profile detector
+        doesn't count files for them. The pre-filter has no signal to skip
+        on, and must dispatch defensively — otherwise the .gitignore /
+        requirements.txt / Makefile / etc. file types never get analyzed.
+        """
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun
+
+        called: list[str] = []
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "gitignore"}
+        run.pass_id = "gitignore"
+
+        @register_analyzer("gitignore", languages=["gitignore"])
+        def analyze_gitignore(root: Path) -> AnalysisResult:
+            called.append("gitignore")
+            return AnalysisResult(run=run, skipped=False)
+
+        # Profile lists only python — but "gitignore" isn't a taxonomy
+        # language, so the dispatcher should NOT use the absence as a
+        # signal to skip.
+        profile = {"languages": {"python": {"files": 5}}}
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, _, _, _, limits, _, _ = facade_run_all(
+                Path("/test"), profile=profile,
+            )
+
+        assert called == ["gitignore"]
+        skipped_names = {s["pass"] for s in limits.skipped_passes}
+        assert "gitignore" not in skipped_names

@@ -134,6 +134,11 @@ def test_cmd_run_with_php_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
+    # WI-jadig: dispatcher pre-filters analyzers when their language has zero
+    # files in the profile, so we need at least one .php file for the patched
+    # analyzer to be dispatched and surface its skip reason.
+    (tmp_path / "stub.php").write_text("<?php\n")
+
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="php", version="test")
     mock_result = AnalysisResult(
@@ -166,6 +171,9 @@ def test_cmd_run_with_c_analyzer_skipped(tmp_path: Path) -> None:
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
+
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "stub.c").write_text("int main(void){return 0;}\n")
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="c", version="test")
@@ -200,6 +208,9 @@ def test_cmd_run_with_java_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "Stub.java").write_text("class Stub {}\n")
+
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="java", version="test")
     mock_result = AnalysisResult(
@@ -232,6 +243,9 @@ def test_cmd_run_with_elixir_analyzer_skipped(tmp_path: Path) -> None:
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
+
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "stub.ex").write_text("defmodule Stub do\nend\n")
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="elixir", version="test")
@@ -266,6 +280,9 @@ def test_cmd_run_with_rust_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "stub.rs").write_text("fn main() {}\n")
+
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="rust", version="test")
     mock_result = AnalysisResult(
@@ -298,6 +315,9 @@ def test_cmd_run_with_go_analyzer_skipped(tmp_path: Path) -> None:
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
+
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "stub.go").write_text("package main\nfunc main() {}\n")
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="go", version="test")
@@ -332,6 +352,9 @@ def test_cmd_run_with_ruby_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "stub.rb").write_text("def stub; end\n")
+
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="ruby", version="test")
     mock_result = AnalysisResult(
@@ -364,6 +387,9 @@ def test_cmd_run_with_kotlin_analyzer_skipped(tmp_path: Path) -> None:
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
+
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "stub.kt").write_text("fun main() {}\n")
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="kotlin", version="test")
@@ -398,6 +424,9 @@ def test_cmd_run_with_swift_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "stub.swift").write_text("func stub() {}\n")
+
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="swift", version="test")
     mock_result = AnalysisResult(
@@ -430,6 +459,9 @@ def test_cmd_run_with_scala_analyzer_skipped(tmp_path: Path) -> None:
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
+
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "stub.scala").write_text("object Stub {}\n")
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="scala", version="test")
@@ -464,6 +496,9 @@ def test_cmd_run_with_lua_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "stub.lua").write_text("local function stub() end\n")
+
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="lua", version="test")
     mock_result = AnalysisResult(
@@ -497,6 +532,9 @@ def test_cmd_run_with_haskell_analyzer_skipped(tmp_path: Path) -> None:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
 
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "Stub.hs").write_text("module Stub where\n")
+
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="haskell", version="test")
     mock_result = AnalysisResult(
@@ -529,6 +567,9 @@ def test_cmd_run_with_ocaml_analyzer_skipped(tmp_path: Path) -> None:
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.analyze.base import AnalysisResult
+
+    # WI-jadig: see note in test_cmd_run_with_php_analyzer_skipped.
+    (tmp_path / "stub.ml").write_text("let stub () = ()\n")
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="ocaml", version="test")

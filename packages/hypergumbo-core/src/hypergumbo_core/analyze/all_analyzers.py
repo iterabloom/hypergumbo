@@ -99,9 +99,66 @@ def collect_analyzer_result(
         )
 
 
+def _filter_by_file_presence(
+    analyzers: list[RegisteredAnalyzer],
+    profile: dict | None,
+    limits: Limits,
+) -> list[RegisteredAnalyzer]:
+    """Drop analyzers whose languages have zero files in the profile.
+
+    WI-jadig / INV-manov lifecycle policy ("file-presence pre-filter"): an
+    analyzer is short-circuited only when **every** language it declares is
+    in the taxonomy's ``LANGUAGE_EXTENSIONS`` (so the profile actually
+    checked for it) **and** none of those languages appear in
+    ``profile.languages`` with ``files > 0``. In that case the dispatcher
+    records a ``skipped_passes`` entry with reason ``"no files matched"``
+    and does not invoke the analyzer's function — saving the wall-clock
+    cost of opening a parser / walking the FileIndex / building an empty
+    tree for a pass with no input.
+
+    Analyzers whose declared languages are NOT in the taxonomy
+    (``gitignore``, ``requirements``, ``manifest_targets``, ``play-routes``,
+    ``yaml_ansible``, etc.) are dispatched unconditionally — the profile
+    has no opinion about them, so the safe default is to let the analyzer
+    self-determine via its own file walk.
+
+    When ``profile`` is ``None`` the filter is a no-op (callers outside the
+    full ``run_behavior_map`` pipeline don't have a profile to consult).
+    """
+    if profile is None:
+        return analyzers
+    from ..taxonomy import LANGUAGE_EXTENSIONS
+    known_langs = set(LANGUAGE_EXTENSIONS)
+    profile_langs = profile.get("languages") or {}
+    retained: list[RegisteredAnalyzer] = []
+    for analyzer in analyzers:
+        analyzer_langs = (
+            set(analyzer.languages) if analyzer.languages else {analyzer.name}
+        )
+        # Defensive dispatch when any declared language is outside the
+        # taxonomy — profile didn't count files for those, so we can't
+        # tell whether the analyzer has work.
+        if not analyzer_langs <= known_langs:
+            retained.append(analyzer)
+            continue
+        any_with_files = any(
+            (profile_langs.get(lang) or {}).get("files", 0) > 0
+            for lang in analyzer_langs
+        )
+        if any_with_files:
+            retained.append(analyzer)
+        else:
+            limits.skipped_passes.append({
+                "pass": analyzer.name,
+                "reason": "no files matched",
+            })
+    return retained
+
+
 def run_all_analyzers(
     repo_root: Path,
     max_files: int | None = None,
+    profile: dict | None = None,
 ) -> tuple[
     list[dict],  # analysis_runs
     list[Symbol],  # all_symbols
@@ -120,6 +177,13 @@ def run_all_analyzers(
     Args:
         repo_root: Repository root path
         max_files: Optional max files per analyzer
+        profile: Optional repo profile dict (the ``behavior_map["profile"]``
+            block). When supplied, the dispatcher applies WI-jadig's
+            file-presence pre-filter: an analyzer is dispatched only when
+            at least one of its declared ``languages`` has ``files > 0`` in
+            ``profile.languages``; otherwise it's recorded in
+            ``limits.skipped_passes`` with reason ``"no files matched"`` and
+            not invoked.
 
     Returns:
         Tuple of (analysis_runs, all_symbols, all_edges, all_usage_contexts,
@@ -149,6 +213,7 @@ def run_all_analyzers(
     # extension) and file I/O release the GIL, so threads provide real
     # parallelism for the expensive parts of each analyzer.
     analyzers = list(_registry_get_all())
+    analyzers = _filter_by_file_presence(analyzers, profile, limits)
     worker_count = max(1, min(len(analyzers), os.cpu_count() or 1))
 
     with ThreadPoolExecutor(max_workers=worker_count) as pool:

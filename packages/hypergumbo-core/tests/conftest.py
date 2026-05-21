@@ -84,8 +84,22 @@ def isolate_hypergumbo_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     ``test_xdg_cache_base_default``) can still call
     ``monkeypatch.delenv("XDG_CACHE_HOME", raising=False)`` to undo
     this isolation for the duration of the test.
+
+    ``HF_HOME`` is pinned to the user's real cache so HuggingFace Hub
+    doesn't see the per-test ``XDG_CACHE_HOME`` as an empty cache and
+    re-download ~1.5GB of model weights (``microsoft/unixcoder-base`` +
+    ``nomic-ai/modernbert-embed-base``) into each pytest-xdist worker's
+    tmpdir. Without this pin, /tmp tmpfs fills within a single suite run.
+
+    ``HF_HUB_OFFLINE=1`` forces HF Hub to skip every network call —
+    including the xet daemon's cache-freshness ping that ignores
+    ``local_files_only=True`` and hangs forever on a CLOSE-WAIT'd proxy
+    connection. Tests don't need fresh model weights; they need
+    reproducibility, which offline-mode delivers cheaply.
     """
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "_xdg_cache"))
+    monkeypatch.setenv("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
 
 
 def pytest_configure(config):

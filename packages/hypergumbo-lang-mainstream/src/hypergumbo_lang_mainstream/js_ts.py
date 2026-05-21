@@ -4615,7 +4615,11 @@ def _analyze_vue_file(
     return all_symbols, all_edges, True
 
 
-@register_analyzer("javascript", supports_max_files=True)
+@register_analyzer(
+    "javascript",
+    supports_max_files=True,
+    languages=["javascript", "typescript", "vue", "svelte"],
+)
 def analyze_javascript(
     repo_root: Path, max_files: int | None = None
 ) -> JsAnalysisResult:

@@ -714,7 +714,7 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 
 **Output-specific note:** The IR field `pass_id` is serialized as `pass` in JSON output.
 
-**skipped_passes** (array, optional): Lists passes that could not run (e.g., `{"pass": "lean", "reason": "tree-sitter-lean grammar not available"}`). Each entry includes pass ID and reason.
+**skipped_passes** (array, optional): Lists passes that did not run. Each entry includes pass ID and reason. Two reasons are emitted today: missing optional dependencies (e.g., `{"pass": "lean", "reason": "tree-sitter-lean grammar not available"}`) and the WI-jadig file-presence pre-filter — an analyzer whose declared languages all have `files == 0` in `profile.languages` is short-circuited at the dispatcher with `{"pass": "<lang>", "reason": "no files matched"}`, saving the wall-clock cost of opening a parser for a pass that has no input.
 
 **pass_version** (string, INV-morag option A): real per-pass version derived from `sha256(inspect.getsource(<pass module>))`. Replaces the fake `-v1` suffix that previously lived inside `pass_id` with a value that actually changes when the pass implementation changes. INV-morag PR 2 propagated non-empty values to every registration site automatically via the `@register_analyzer` / `@register_linker` decorators and dropped the `-v1` / `-ts-v1` suffix from `pass_id` entirely.
 
