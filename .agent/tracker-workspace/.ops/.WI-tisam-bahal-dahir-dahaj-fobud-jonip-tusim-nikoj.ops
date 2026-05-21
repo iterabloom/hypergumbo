@@ -50,3 +50,26 @@
   clock: 5  # 29a7
   nonce: 29a7  # 29a7
   message: "Cohort validation 2026-05-19: NO_MOVE on apollo-server.\n\nMini-trial: hypergumbo run /home/jgstern_agent/ALL_REPOS/whole_bunch_of_repos/apollo-server (current dev, 28s, 3860 nodes). `hypergumbo routes` output: \"No API routes found in the behavior map. The behavior map contains other endpoint-shaped symbols: 150 graphql_resolver, 14 event_subscriber, 1 mq_publisher, 7 http_client.\" Same as pre-fix.\n\nRoot cause of the no_move: the WI-tisam YAML patterns (node-http.yaml createServer + graphql.yaml startStandaloneServer/runHttpQuery/executeHTTPGraphQLRequest) require `usage.kind == \"call\"`. apollo-server's UsageContext distribution has 0 call-kind UCs (all 89 are kind=library_export). The patterns are structurally incapable of firing on the apollo-server repo because apollo-server is the LIBRARY that DEFINES these functions, not a consumer that CALLS them.\n\nThe fix likely works on apollo-server CONSUMER apps (which import startStandaloneServer and call it), but apollo-server itself is the wrong validation target.\n\nKeeping awaits_bakeoff_validation tag per playbook (no_move parent stays tagged). Regression sub-item to follow."  # 29a7
+- op: discuss  # 1671
+  at: '2026-05-21T19:38:35Z'  # 1671
+  by: agent  # 1671
+  actor: jgstern_agent  # 1671
+  clock: 6  # 1671
+  nonce: '1671'  # 1671
+  message: "Cohort validation 2026-05-21 on apollo-server: NO_MOVE. Although INV-rolul cleanly moved (13 kind=call UCs emitted for WI-tisam target names), the downstream UC→framework_role linker stage does not classify those UCs as http_handler/http_route — 'hypergumbo routes' still reports empty on apollo-server post-fix. Regression sub-item filed: WI-misud-zazah-lohid-divig-vigov-mutum-simub-zituf. Keeping awaits_bakeoff_validation tag per playbook (no_move parent stays tagged). See ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md."  # 1671
+- op: update  # bdf4
+  at: '2026-05-21T20:16:15Z'  # bdf4
+  by: agent  # bdf4
+  actor: jgstern_agent  # bdf4
+  clock: 7  # bdf4
+  nonce: bdf4  # bdf4
+  set: {}  # bdf4
+  remove:  # bdf4
+    tags: [awaits_bakeoff_validation]  # bdf4
+- op: discuss  # f4d1
+  at: '2026-05-21T20:16:16Z'  # f4d1
+  by: agent  # f4d1
+  actor: jgstern_agent  # f4d1
+  clock: 8  # f4d1
+  nonce: f4d1  # f4d1
+  message: "Re-validated via apollo-server cohort 2026-05-21 post-WI-misud fix (PR f31de0ee69). framework_role=route symbols 1 -> 11; 'hypergumbo routes' on apollo-server shows 6 routes (was 0) in production source. The WI-tisam pipeline is now complete end-to-end: INV-rolul confirmed 13 kind=call UCs emitted by _extract_http_handler_contexts (PR #3826); WI-misud fixed materialize_route_symbols to scope the (method, path) dedupe key by source symbol id for kind=file sources, so per-file catch-all concepts each produce a route Symbol. Verdict: moved."  # f4d1

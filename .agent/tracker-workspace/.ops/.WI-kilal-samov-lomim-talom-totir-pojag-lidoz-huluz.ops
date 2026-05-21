@@ -1,0 +1,34 @@
+- op: create  # aaac
+  at: '2026-05-21T19:38:22Z'  # aaac
+  by: agent  # aaac
+  actor: jgstern_agent  # aaac
+  clock: 1  # aaac
+  nonce: aaac  # aaac
+  data:  # aaac
+    kind: work_item  # aaac
+    title: "WI-vuton regression: dispatch_inherited heuristic emits 0 demotions on chatwoot due to thin reachable set from missing Rails entrypoint detection"  # aaac
+    status: todo_soft  # aaac
+    priority: 2  # aaac
+    parent: WI-vuton-buvik-libug-kajan-tavim-bolun-nisij-gabos  # aaac
+    tags: []  # aaac
+    isbefore: []  # aaac
+    duplicate_of: []  # aaac
+    not_duplicate_of: []  # aaac
+    pr_ref:  # aaac
+    description: "From validation drain 2026-05-21 (~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md). Cohort run on chatwoot (38083 nodes, 53556 edges, Rails+Vue).\n\nhypergumbo dead-code-maybe --input chatwoot.json --format json reports:\n- total_production_functions: 13477\n- reachable_functions: 446\n- dead_candidates: 13031\n- dead_percent: 96.7%\n- demoted_view_func: 0\n- demoted_dispatch_inherited: 0\n\nBoth heuristics fire zero times. demoted_view_func=0 is expected: Rails uses config/routes.rb file-based routing, not view_func decorators, so no view_func position UCs exist on chatwoot. demoted_dispatch_inherited=0 is the interesting result: 571 inherits/extends/implements edges exist (Rails OO is rich), BUT the reachable set from 380 entrypoints contains only 446 of 13477 functions (3.3%), so almost no ancestor methods are reachable, so the heuristic finds nothing to demote even where the inheritance topology would support it.\n\nRoot cause is upstream from WI-vuton: Rails controller actions, route handlers, ActiveJob workers, ActiveRecord callbacks etc. aren't detected as entrypoints. INV-tajap's PR 1-3 added shell_script / html_entry / script_module but no Rails-specific entrypoint detection. Without those entrypoints, the reachable BFS terminates early and the dispatch_inherited heuristic has no live ancestors to match against.\n\nSuggested fix scope (Rails entrypoint detection):\n1. config/routes.rb parsing → emit each routed controller action as entrypoint\n2. ActionController class methods (before_action, after_action) → emit as entrypoints\n3. ActiveJob.perform / ActiveJob.perform_later targets → emit as entrypoints\n4. ActiveRecord callbacks (before_save, after_create, etc.) → emit as entrypoints\n\nAfter Rails entrypoint detection coverage lands, re-run dead-code-maybe on chatwoot and re-validate dispatch_inherited demotion count. The fix may also benefit Spring (@Controller, @Service) and Django (urlpatterns) which have similar config-driven dispatch.\n\nSibling: this is the Ruby/Rails analog of INV-tajap's bash/TS/HTML coverage gap."  # aaac
+    fields: {}  # aaac
+- op: update  # 9cd7
+  at: '2026-05-21T21:04:55Z'  # 9cd7
+  by: agent  # 9cd7
+  actor: jgstern_agent  # 9cd7
+  clock: 2  # 9cd7
+  nonce: 9cd7  # 9cd7
+  set:  # 9cd7
+    status: done  # 9cd7
+- op: discuss  # 9d5c
+  at: '2026-05-21T21:04:55Z'  # 9d5c
+  by: agent  # 9d5c
+  actor: jgstern_agent  # 9d5c
+  clock: 3  # 9d5c
+  nonce: 9d5c  # 9d5c
+  message: "Closed in PR merging 75a9349ee5 (2026-05-21). Two fixes: (1) entrypoints.py falls back to sym.meta http_method/route_path when concept dict lacks them (Rails framework_role-based route shape); (2) _method_basename strips both . and # separators (Ruby Class#method). Empirical on chatwoot: HTTP_ROUTE 1->115; reachable 446->1183; dead_percent 96.7%->91.2%. demoted_dispatch_inherited still 0 on chatwoot — separate Ruby call-graph completeness gap (Klass.new->#initialize, before_action callback targets not modeled)."  # 9d5c

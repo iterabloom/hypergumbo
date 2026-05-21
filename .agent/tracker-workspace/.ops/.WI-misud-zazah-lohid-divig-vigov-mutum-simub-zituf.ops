@@ -1,0 +1,34 @@
+- op: create  # d198
+  at: '2026-05-21T19:38:02Z'  # d198
+  by: agent  # d198
+  actor: jgstern_agent  # d198
+  clock: 1  # d198
+  nonce: d198  # d198
+  data:  # d198
+    kind: work_item  # d198
+    title: "WI-tisam regression: UC-to-framework_role linker stage doesn't consume new kind=call UCs on apollo-server"  # d198
+    status: todo_soft  # d198
+    priority: 1  # d198
+    parent: WI-tisam-bahal-dahir-dahaj-fobud-jonip-tusim-nikoj  # d198
+    tags: []  # d198
+    isbefore: []  # d198
+    duplicate_of: []  # d198
+    not_duplicate_of: []  # d198
+    pr_ref:  # d198
+    description: "From validation drain 2026-05-21 (~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md). Cohort run on apollo-server (3780 nodes, 7422 edges, 102 usage_contexts).\n\nPR #3826 successfully added _extract_http_handler_contexts to js_ts.py — 13 kind=call UCs are now emitted on apollo-server for the WI-tisam target set (5 startStandaloneServer, 3 createServer, 3 http.createServer, 1 https.createServer, 1 runHttpQuery). INV-rolul confirmed moved.\n\nBut Symbols with framework_role=http_handler or http_route remain at 0. 'hypergumbo routes' on the apollo-server behavior map reports 'No API routes found'. Other framework_roles ARE detected (event_subscriber=14, graphql_resolver=150, route=1, http_client=7, graphql_client=38, mq_publisher=1) so the linker pipeline runs — it just doesn't classify these particular UCs.\n\nHypothesis: the route_handler linker (or whichever stage maps UCs to framework_role) is missing a consumer for the new kind=call UCs that _extract_http_handler_contexts emits. The fix may need to extend the linker's consumption logic to recognize these UCs and tag the corresponding call_site Symbols (or some derived Symbol) with framework_role=http_handler.\n\nSuggested investigation:\n1. Trace one of the 5 startStandaloneServer UCs — what symbol_ref does it carry, where does the linker look for it.\n2. Compare with how Express/Hapi/Next.js route patterns get from UC to framework_role (they DO produce route classifications today, per fixture tests).\n3. The YAML pattern files (node-http.yaml, graphql.yaml from #3826) define the call-name + role mapping; verify they're loaded by the linker."  # d198
+    fields: {}  # d198
+- op: update  # 8ed7
+  at: '2026-05-21T20:16:15Z'  # 8ed7
+  by: agent  # 8ed7
+  actor: jgstern_agent  # 8ed7
+  clock: 2  # 8ed7
+  nonce: 8ed7  # 8ed7
+  set:  # 8ed7
+    status: done  # 8ed7
+- op: discuss  # e7a6
+  at: '2026-05-21T20:16:15Z'  # e7a6
+  by: agent  # e7a6
+  actor: jgstern_agent  # e7a6
+  clock: 3  # e7a6
+  nonce: e7a6  # e7a6
+  message: "Closed in PR merging f31de0ee69 (2026-05-21). Per-file route Symbol materialization for kind=file source concepts. Apollo-server post-fix: framework_role=route 1 -> 11; hypergumbo routes 0 -> 6 displayed. Three new tests in TestMaterializeRouteSymbolsWiMisud. Closes WI-tisam pipeline downstream."  # e7a6
