@@ -978,6 +978,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Output summary (always at the end)
     _print_output_summary("run", artifacts=generated_files)
 
+    # INV-padum: surface cache footprint after every run. The cache just
+    # grew (a new state-hash entry was written), so this is when the user
+    # is most likely to be in a position to act on the honk.
+    _maybe_honk_cache(_get_cache_base())
+
     return 0
 
 
@@ -2748,6 +2753,115 @@ def _get_dir_size(path: Path) -> int:
     return total
 
 
+_DEFAULT_HONK_GB = 1.0
+
+
+def _get_honk_threshold_bytes() -> float | None:
+    """INV-padum lifecycle policy: cache honk-threshold in bytes.
+
+    Reads ``HYPERGUMBO_CACHE_HONK_GB``. Default 1.0 GiB.
+
+    Returns:
+        Threshold in bytes, or ``None`` when the user has silenced the
+        warning (env var ``0``, ``off``, ``none``, ``false``, empty string,
+        or a non-positive numeric value).
+
+    Malformed env values fall back to the default with a UserWarning so
+    a typo can't crash any CLI surface that calls this on the hot path.
+    """
+    raw = os.environ.get("HYPERGUMBO_CACHE_HONK_GB")
+    if raw is None:
+        return _DEFAULT_HONK_GB * (1024 ** 3)
+    raw_stripped = raw.strip().lower()
+    if raw_stripped in ("", "0", "off", "none", "false"):
+        return None
+    try:
+        value = float(raw_stripped)
+    except ValueError:
+        import warnings
+        warnings.warn(
+            f"Invalid HYPERGUMBO_CACHE_HONK_GB={raw!r}; "
+            f"falling back to {_DEFAULT_HONK_GB} GB.",
+            stacklevel=2,
+        )
+        return _DEFAULT_HONK_GB * (1024 ** 3)
+    if value <= 0:
+        return None
+    return value * (1024 ** 3)
+
+
+def _list_repo_breakdown(cache_dir: Path) -> list[dict]:
+    """Per-repo cache breakdown, sorted by size descending.
+
+    Each row carries ``fingerprint`` (top-level subdir name), ``size``
+    (bytes), ``entries`` (count of state-hash subdirs under ``results/``),
+    and ``last_used`` (mtime of the repo subdir).
+    """
+    rows: list[dict] = []
+    for entry in cache_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        results_dir = entry / "results"
+        entry_count = 0
+        if results_dir.is_dir():
+            entry_count = sum(1 for s in results_dir.iterdir() if s.is_dir())
+        size = _get_dir_size(entry)
+        try:
+            mtime = entry.stat().st_mtime
+        except OSError:  # pragma: no cover
+            mtime = 0.0  # pragma: no cover
+        rows.append({
+            "fingerprint": entry.name,
+            "size": size,
+            "entries": entry_count,
+            "last_used": mtime,
+        })
+    rows.sort(key=lambda r: r["size"], reverse=True)
+    return rows
+
+
+def _maybe_honk_cache(
+    cache_dir: Path, total_size: int | None = None
+) -> None:
+    """Emit the INV-padum cache honk to stderr when threshold exceeded.
+
+    No-op when the user has silenced via ``HYPERGUMBO_CACHE_HONK_GB=0``,
+    the cache directory does not exist, or total size is below threshold.
+    The honk identifies the top consumer and lists the actionable next
+    steps (inspect / prune / configure) so the user can decide whether
+    to retain or prune without leaving the terminal.
+    """
+    threshold = _get_honk_threshold_bytes()
+    if threshold is None:
+        return
+    if not cache_dir.exists():
+        return
+    if total_size is None:
+        total_size = _get_dir_size(cache_dir)
+    if total_size < threshold:
+        return
+    rows = _list_repo_breakdown(cache_dir)
+    threshold_gb = threshold / (1024 ** 3)
+    lines = [
+        f"⚠  HG cache is {_format_size(total_size)} "
+        f"(threshold: {threshold_gb:.1f} GB)",
+    ]
+    if rows:
+        top = rows[0]
+        lines.append(
+            f"    Top consumer: {top['fingerprint']} "
+            f"({_format_size(top['size'])}, {top['entries']} entries)"
+        )
+    lines.append("    Inspect:   hypergumbo cache-status --per-repo")
+    lines.append(
+        "    Prune:     hypergumbo cache-clear --repo <id> --keep-latest 5"
+    )
+    lines.append(
+        "    Configure: HYPERGUMBO_CACHE_HONK_GB=<N>   (0 silences)"
+    )
+    print("\n".join(lines), file=sys.stderr)
+
+
 def cmd_cache_status(args: argparse.Namespace) -> int:
     """Show cache status and statistics.
 
@@ -2755,10 +2869,20 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
     - Number of cached repo entries
     - Total cache size
     - Cache location
+
+    With ``--per-repo``, additionally lists each top-level repo
+    subdirectory with size, state-entry count, and last-used time so
+    the user can identify which repo is consuming the cache.
+
+    INV-padum lifecycle policy: at the end of the report, emit the
+    honk-threshold warning if total cache size exceeds the configured
+    threshold. The warning goes to stderr so it stands out from the
+    routine stdout report and pipes / redirects cleanly.
     """
     import time
 
     cache_dir = _get_cache_base()
+    per_repo = getattr(args, "per_repo", False)
 
     if args.quiet:
         return 0
@@ -2791,6 +2915,31 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
     if entries:
         print(f"Age range: {newest_age}-{oldest_age} days")
 
+    if per_repo:
+        rows = _list_repo_breakdown(cache_dir)
+        print("")
+        print("By repo:")
+        if not rows:
+            print("  (none)")
+        else:
+            now = time.time()
+            for row in rows:
+                age_days = int((now - row["last_used"]) / 86400)
+                if age_days <= 0:
+                    age_label = "today"
+                elif age_days == 1:
+                    age_label = "1 day ago"
+                else:
+                    age_label = f"{age_days} days ago"
+                print(
+                    f"  {row['fingerprint']:<20} "
+                    f"{_format_size(row['size']):>10}   "
+                    f"{row['entries']:>3} entries   "
+                    f"(last used: {age_label})"
+                )
+
+    _maybe_honk_cache(cache_dir, total_size=total_size)
+
     return 0
 
 
@@ -2800,15 +2949,30 @@ def cmd_cache_clear(args: argparse.Namespace) -> int:
     Options:
     - --older-than N: Only remove entries older than N days
     - --dry-run: Show what would be deleted without deleting
+    - --repo FINGERPRINT: Restrict deletion to one repo's subtree
+    - --keep-latest N: Within --repo, keep the N most recently used
+      state-hash subdirs under ``results/`` (INV-padum: targeted prune).
     """
     import time
 
     cache_dir = _get_cache_base()
+    repo = getattr(args, "repo", None)
+    keep_latest = getattr(args, "keep_latest", None)
+
+    if keep_latest is not None and repo is None:
+        print(
+            "Error: --keep-latest requires --repo to scope which repo to prune.",
+            file=sys.stderr,
+        )
+        return 2
 
     if not cache_dir.exists():
         if not args.quiet:
             print(f"Cache directory does not exist: {cache_dir}")
         return 0
+
+    if repo is not None:
+        return _cache_clear_repo(args, cache_dir, repo, keep_latest)
 
     entries = [d for d in cache_dir.iterdir() if d.is_dir()]
     if not entries:
@@ -2848,6 +3012,89 @@ def cmd_cache_clear(args: argparse.Namespace) -> int:
     if not args.quiet:
         print(f"Deleted {deleted_count} entries ({_format_size(total_size)})")
 
+    return 0
+
+
+def _cache_clear_repo(
+    args: argparse.Namespace,
+    cache_dir: Path,
+    repo: str,
+    keep_latest: int | None,
+) -> int:
+    """Per-repo cache prune helper for ``cache-clear --repo``.
+
+    Two modes:
+    - ``keep_latest is None``: delete the entire repo subdir.
+    - ``keep_latest is not None``: delete all but the N most recent
+      state-hash subdirs under ``<repo>/results/``.
+
+    Either mode honors ``--dry-run`` and ``--quiet``.
+    """
+    repo_dir = cache_dir / repo
+    if not repo_dir.is_dir():
+        if not args.quiet:
+            print(f"No cache entries for repo {repo}")
+        return 0
+
+    if keep_latest is None:
+        size = _get_dir_size(repo_dir)
+        if args.dry_run:
+            if not args.quiet:
+                print(
+                    f"Would delete repo {repo} ({_format_size(size)})"
+                )
+            return 0
+        cache_rmtree(repo_dir)
+        if not args.quiet:
+            print(f"Deleted repo {repo} ({_format_size(size)})")
+        return 0
+
+    results_dir = repo_dir / "results"
+    if not results_dir.is_dir():
+        if not args.quiet:
+            print(f"No results entries for repo {repo}")
+        return 0
+
+    state_dirs = [d for d in results_dir.iterdir() if d.is_dir()]
+    state_dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+    to_keep = state_dirs[:keep_latest]
+    to_delete = state_dirs[keep_latest:]
+    if not to_delete:
+        if not args.quiet:
+            print(
+                f"Repo {repo} has {len(state_dirs)} entries; "
+                f"nothing to prune (keep-latest={keep_latest})."
+            )
+        return 0
+
+    total_size = sum(_get_dir_size(d) for d in to_delete)
+
+    if args.dry_run:
+        if not args.quiet:
+            print(
+                f"Would delete {len(to_delete)} entries from repo {repo} "
+                f"({_format_size(total_size)}); keeping {len(to_keep)}."
+            )
+            for d in to_delete:
+                print(f"  {d.name}")
+        return 0
+
+    deleted = 0
+    for d in to_delete:
+        try:
+            cache_rmtree(d)
+            deleted += 1
+        except (OSError, PermissionError) as e:  # pragma: no cover
+            if not args.quiet:  # pragma: no cover
+                print(  # pragma: no cover
+                    f"Warning: Could not delete {d}: {e}", file=sys.stderr
+                )
+
+    if not args.quiet:
+        print(
+            f"Deleted {deleted} entries from repo {repo} "
+            f"({_format_size(total_size)}); kept {len(to_keep)}."
+        )
     return 0
 
 
@@ -6046,9 +6293,23 @@ The output begins with passes suggested for your current directory."""
     p_uninstall_ra.set_defaults(func=cmd_uninstall_rust_analyzer)
 
     # hypergumbo cache-status
+    cache_status_epilog = """\
+Examples:
+  hypergumbo cache-status              # Aggregate report + honk if over threshold
+  hypergumbo cache-status --per-repo   # Per-repo breakdown (find the bloat source)
+
+The honk-threshold warning fires when total cache size exceeds 1.0 GB.
+Configure via HYPERGUMBO_CACHE_HONK_GB=<N> (set to 0 to silence)."""
     p_cache_status = sub.add_parser(
         "cache-status",
         help="Show cache status and statistics",
+        epilog=cache_status_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_cache_status.add_argument(
+        "--per-repo",
+        action="store_true",
+        help="List size, entry count, and last-used time per repo subdirectory",
     )
     p_cache_status.add_argument(
         "--quiet",
@@ -6060,9 +6321,11 @@ The output begins with passes suggested for your current directory."""
     # hypergumbo cache-clear
     cache_clear_epilog = """\
 Examples:
-  hypergumbo cache-clear                  # Clear entire cache
-  hypergumbo cache-clear --older-than 7   # Clear entries older than 7 days
-  hypergumbo cache-clear --dry-run        # Preview what would be deleted
+  hypergumbo cache-clear                              # Clear entire cache
+  hypergumbo cache-clear --older-than 7               # Clear entries older than 7 days
+  hypergumbo cache-clear --dry-run                    # Preview what would be deleted
+  hypergumbo cache-clear --repo <id>                  # Clear one repo's entire subtree
+  hypergumbo cache-clear --repo <id> --keep-latest 5  # Keep 5 newest state entries
 
 The cache stores analysis results and embeddings for each repository.
 Clearing it forces re-analysis on next run (slower but ensures fresh results)."""
@@ -6078,6 +6341,21 @@ Clearing it forces re-analysis on next run (slower but ensures fresh results).""
         type=int,
         metavar="DAYS",
         help="Only remove entries older than N days",
+    )
+    p_cache_clear.add_argument(
+        "--repo",
+        type=str,
+        metavar="FINGERPRINT",
+        help="Restrict deletion to one repo's subtree (top-level fingerprint dir name)",
+    )
+    p_cache_clear.add_argument(
+        "--keep-latest",
+        type=int,
+        metavar="N",
+        help=(
+            "With --repo: keep the N most recent state-hash entries under "
+            "<repo>/results/ and delete the rest"
+        ),
     )
     p_cache_clear.add_argument(
         "--dry-run",

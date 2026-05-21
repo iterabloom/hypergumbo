@@ -1234,7 +1234,10 @@ Reproducibility has two dimensions: **caching** ensures that re-running analysis
   * **Embedding cache**: keyed by individual file content hash; shared across all repo states since embeddings depend only on file content.
 * Cache invalidation: state hash changes when any analyzed file content changes (including dirty git files)
 * Cache format: JSON for analysis results, NumPy `.npy` for embeddings
-* Management: `hypergumbo cache-status` and `hypergumbo cache-clear [--older-than N] [--dry-run]`
+* Management:
+  * `hypergumbo cache-status [--per-repo]` — total size, age range, and (with `--per-repo`) per-repo size / entry-count / last-used breakdown sorted by size desc.
+  * `hypergumbo cache-clear [--older-than N] [--dry-run] [--repo FINGERPRINT [--keep-latest N]]` — `--repo` restricts deletion to one repo's subtree; `--repo` + `--keep-latest N` keeps the N newest state-hash entries under `<repo>/results/` and prunes the rest.
+* Lifecycle policy (INV-padum): **honk-threshold-with-retention.** No automatic eviction at any size. When total cache size exceeds the configured threshold (default 1.0 GiB), `cache-status` and `hypergumbo run` emit a loud stderr warning naming the top consumer and the prune commands. Configure or silence via the `HYPERGUMBO_CACHE_HONK_GB` environment variable (set to `0` / `off` / `none` / `false` to silence). The user owns the prune decision; hypergumbo never throws away cache entries unprompted.
 
 ### Deterministic ordering
 
