@@ -301,6 +301,65 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("Enum", "count"),
         ),
     ),
+    # WI-mafik audit extension (2026-05-21): the per-language idioms in
+    # the WI-mafik description that were NOT exercised by the original
+    # 8-fixture set. Two cases: Java wildcard import + bare type use, and
+    # Elixir ``import X, except: [...]`` + bare call. Both styles are
+    # canonical and routinely appear in real-world projects; if the
+    # analyzer misses them, file a per-language analyzer-fix WI item
+    # (sibling shape: WI-hudud / WI-rakul / WI-vovum / WI-kujom — all
+    # already closed by WI-mafik PR2 for the original 7 fixtures).
+    PolyglotFixture(
+        language="java_wildcard",
+        filename="WildcardFixture.java",
+        source=(
+            "// SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "// WI-mafik Java wildcard-import coverage fixture.\n"
+            "// The class name is fully qualified by the wildcard only —\n"
+            "// no explicit ``import java.util.Arrays``. This is the case\n"
+            "// the WI-mafik description called out as part of the Java audit.\n"
+            "import java.util.*;\n"
+            "\n"
+            "public class WildcardFixture {\n"
+            "    public static void exerciseWildcard() {\n"
+            "        Arrays.asList(1, 2, 3);\n"
+            "        Collections.emptyList();\n"
+            "    }\n"
+            "}\n"
+        ),
+        expected_targets=(
+            ("java.util", "asList"),
+            ("java.util", "emptyList"),
+        ),
+        # WI-tuhok: Java analyzer does not attribute bare type usages back
+        # to a wildcard-imported package. Emits `java:external:0-0:
+        # Arrays.asList:unresolved` instead of resolving `Arrays` to
+        # `java.util`. Filed 2026-05-21 as the per-language follow-up to
+        # the WI-mafik audit extension. Remove this xfail_reason when
+        # WI-tuhok lands.
+        xfail_reason="WI-tuhok: Java analyzer doesn't resolve wildcard "
+        "imports (import java.util.*) to the source module",
+    ),
+    PolyglotFixture(
+        language="elixir_except",
+        filename="polyglot_elixir_except_fixture.ex",
+        source=(
+            "# SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "# WI-mafik Elixir ``import X, except: [...]`` coverage fixture.\n"
+            "defmodule ExceptFixture do\n"
+            "  # All Enum functions are imported except count/1; map/2 is\n"
+            "  # still bare-callable.\n"
+            "  import Enum, except: [count: 1]\n"
+            "\n"
+            "  def exercise_import_except do\n"
+            "    map([1, 2, 3], fn x -> x + 1 end)\n"
+            "  end\n"
+            "end\n"
+        ),
+        expected_targets=(
+            ("Enum", "map"),
+        ),
+    ),
 ]
 
 
