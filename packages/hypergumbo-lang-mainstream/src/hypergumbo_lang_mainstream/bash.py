@@ -188,6 +188,12 @@ class BashAnalyzer(TreeSitterAnalyzer):
         # any function definition) so the script remains reachable in slice
         # traversal.
         end_line = tree.root_node.end_point[0] + 1
+        # INV-tajap: every bash file we successfully parse is an executable
+        # entry point — either it has a shebang (find_bash_files's discovery
+        # criterion for extensionless files) or it has a .sh / .bash extension
+        # (executable by convention). Stamp a ``shell_script`` concept on the
+        # file Symbol so entrypoints.py's concept-driven pipeline picks it up
+        # as a SHELL_SCRIPT entrypoint (parallel to Python's ``main_guard``).
         module_symbol = Symbol(
             id=make_file_id("bash", rel_path),
             name=rel_path,
@@ -197,6 +203,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
             span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            meta={"concepts": [{"concept": "shell_script", "framework": "bash"}]},
         )
         analysis.symbols.append(module_symbol)
 

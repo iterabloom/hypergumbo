@@ -198,6 +198,8 @@ class EntrypointKind(Enum):
     SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
     # Library entry points (exported API)
     LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
+    # Executable scripts in non-Python languages (INV-tajap)
+    SHELL_SCRIPT = "shell_script"  # Bash/sh script (shebang or .sh/.bash file)
     # Test/benchmark entry points (from test-frameworks.yaml patterns)
     TEST_FUNCTION = "test_function"  # Test function/method (pytest, JUnit, etc.)
     # SPA bootstrap (createRoot, ReactDOM.render, hydrateRoot)
@@ -705,6 +707,26 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label=f"{lang} main()",
                 ))
                 added_kinds.add(EntrypointKind.MAIN_FUNCTION)
+
+            # INV-tajap: shell_script concept -> SHELL_SCRIPT
+            # Bash/sh script (shebang line or .sh/.bash file extension).
+            # Stamped on the file-kind Symbol by the bash analyzer; every
+            # such file is treated as an executable entry point because the
+            # bash analyzer's file-discovery criterion (find_bash_files)
+            # already requires either a shebang or a known shell extension.
+            elif concept_type == "shell_script":
+                if EntrypointKind.SHELL_SCRIPT in added_kinds:
+                    continue
+                # The label points at the script path so consumers can
+                # distinguish multiple bash entrypoints in the same repo.
+                script_path = sym.path or sym.name
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.SHELL_SCRIPT,
+                    confidence=0.85,  # Structural pattern, same tier as main_guard
+                    label=f"Shell script ({script_path})",
+                ))
+                added_kinds.add(EntrypointKind.SHELL_SCRIPT)
 
             # Python main guard concept -> MAIN_FUNCTION
             # Structural entrypoint: `if __name__ == "__main__":` pattern

@@ -8,7 +8,7 @@ This file enumerates every concept string that the framework-YAML pattern layer 
 - **inert** — producers exist but no consumer reads the concept. Candidates for either removing the producer pattern or writing a Framework-subcategory linker that consumes it.
 - **ghost** — a consumer mentions the concept by name but no YAML emits it. Likely dead code or a leftover reference to a removed pattern; investigate.
 
-Total concepts: **317** (live: 41, inert: 276, ghost: 0).
+Total concepts: **318** (live: 42, inert: 276, ghost: 0).
 
 ## Inventory
 
@@ -263,6 +263,7 @@ Total concepts: **317** (live: 41, inert: 276, ghost: 0).
 | `shader_entrypoint` | inert | language-conventions | _(none)_ |
 | `shared_memory` | inert | openresty | _(none)_ |
 | `shell` | inert | electron | _(none)_ |
+| `shell_script` | live | bash.py | `entrypoints.py` |
 | `shortcut` | inert | electron | _(none)_ |
 | `signal` | inert | qt | _(none)_ |
 | `signal_handler` | inert | flask | _(none)_ |

@@ -3676,6 +3676,118 @@ class TestInvHosuhMainFunctionDedup:
             assert ":function" in ep.symbol_id
 
 
+class TestInvTajapShellScriptEntrypoint:
+    """INV-tajap: ``shell_script`` concept on a file-kind Symbol becomes a
+    ``SHELL_SCRIPT`` entrypoint.
+
+    Pre-fix, entrypoint detection was Python-only: on hypergumbo self-analysis,
+    0 of ~50 bash scripts were detected as entrypoints, so all 153 bash
+    functions looked unreachable (a primary driver of WI-vuton's 92.6%
+    dead-code candidate rate with ``--seeds entrypoints``).
+    """
+
+    def test_shell_script_concept_emits_entrypoint(self) -> None:
+        """A bash file Symbol carrying the shell_script concept produces a
+        SHELL_SCRIPT entrypoint."""
+        bash_file = make_symbol(
+            "scripts/release-check",
+            path="scripts/release-check",
+            kind="file",
+            language="bash",
+            start_line=1,
+            end_line=200,
+            meta={"concepts": [{"concept": "shell_script", "framework": "bash"}]},
+        )
+        entrypoints = detect_entrypoints([bash_file], [])
+
+        shell_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.SHELL_SCRIPT]
+        assert len(shell_eps) == 1
+        assert shell_eps[0].symbol_id == bash_file.id
+
+    def test_python_only_repo_has_no_shell_script_entry(self) -> None:
+        """A repo with no bash files produces zero SHELL_SCRIPT entrypoints."""
+        py_main = make_symbol(
+            "main", path="src/app.py", kind="function",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([py_main], [])
+        assert not any(ep.kind == EntrypointKind.SHELL_SCRIPT for ep in entrypoints)
+
+    def test_mixed_repo_emits_python_main_and_shell_script(self) -> None:
+        """A 2-file repo (one bash script + one Python file with main_function)
+        produces ≥2 entrypoints: one MAIN_FUNCTION + one SHELL_SCRIPT."""
+        bash_file = make_symbol(
+            "scripts/setup",
+            path="scripts/setup",
+            kind="file",
+            language="bash",
+            start_line=1,
+            end_line=20,
+            meta={"concepts": [{"concept": "shell_script", "framework": "bash"}]},
+        )
+        py_main = make_symbol(
+            "main", path="src/app.py", kind="function",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        entrypoints = detect_entrypoints([bash_file, py_main], [])
+
+        assert len(entrypoints) >= 2
+        kinds = {ep.kind for ep in entrypoints}
+        assert EntrypointKind.SHELL_SCRIPT in kinds
+        assert EntrypointKind.MAIN_FUNCTION in kinds
+
+    def test_shell_script_label_includes_path(self) -> None:
+        """The SHELL_SCRIPT label points at the script path so consumers can
+        distinguish multiple bash entrypoints in the same repo."""
+        bash_file = make_symbol(
+            "scripts/auto-pr",
+            path="scripts/auto-pr",
+            kind="file",
+            language="bash",
+            meta={"concepts": [{"concept": "shell_script", "framework": "bash"}]},
+        )
+        entrypoints = detect_entrypoints([bash_file], [])
+
+        shell_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.SHELL_SCRIPT]
+        assert len(shell_eps) == 1
+        assert "scripts/auto-pr" in shell_eps[0].label
+
+    def test_two_bash_scripts_produce_two_entrypoints(self) -> None:
+        """Distinct bash file Symbols each become independent SHELL_SCRIPT entries."""
+        scripts = ["scripts/setup", ".githooks/commit-msg"]
+        symbols = [
+            make_symbol(
+                p, path=p, kind="file", language="bash",
+                meta={"concepts": [{"concept": "shell_script", "framework": "bash"}]},
+            )
+            for p in scripts
+        ]
+        entrypoints = detect_entrypoints(symbols, [])
+
+        shell_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.SHELL_SCRIPT]
+        assert len(shell_eps) == 2
+        paths = {ep.symbol_id.split(":")[1] for ep in shell_eps}
+        assert paths == set(scripts)
+
+    def test_duplicate_shell_script_concept_on_same_symbol_dedups(self) -> None:
+        """Two shell_script concepts on the same Symbol produce one entry
+        (mirrors the per-Symbol dedup applied to every other concept kind)."""
+        bash_file = make_symbol(
+            "scripts/setup",
+            path="scripts/setup",
+            kind="file",
+            language="bash",
+            meta={"concepts": [
+                {"concept": "shell_script", "framework": "bash"},
+                {"concept": "shell_script", "framework": "bash"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([bash_file], [])
+
+        shell_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.SHELL_SCRIPT]
+        assert len(shell_eps) == 1
+
+
 class TestRouteLabelDedup:
     """Tests for deduplication of HTTP_ROUTE entrypoints by (method, path)."""
 

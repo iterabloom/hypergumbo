@@ -640,3 +640,74 @@ class TestBashShapeId:
         func = next(s for s in result.symbols if s.kind == "function")
         assert func.shape_id is not None
         assert func.shape_id.startswith("sha256:")
+
+
+class TestInvTajapShellScriptConcept:
+    """INV-tajap: every bash file Symbol carries a ``shell_script`` concept so
+    entrypoint detection treats the script as an executable entry.
+
+    Pre-fix bug: ``entrypoints.py`` was Python-only — on hypergumbo self-analysis
+    it detected 0 of ~50 bash scripts as entrypoints (all 153 bash functions
+    looked unreachable, inflating dead-code FPs to 92.6%). Bash files were
+    parsed and a ``kind="file"`` Symbol was emitted, but no ``concept`` rode
+    on its meta, so the YAML-driven entrypoint pipeline had nothing to match.
+    """
+
+    def test_shebang_sh_file_emits_shell_script_concept(self, tmp_path: Path) -> None:
+        """A ``.sh`` file with shebang gets a shell_script concept on the file Symbol."""
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "script.sh").write_text("#!/bin/bash\necho hi\n")
+        result = analyze_bash(tmp_path)
+
+        file_syms = [s for s in result.symbols if s.kind == "file"]
+        assert file_syms, "bash analyzer must emit a file-kind Symbol"
+        file_sym = file_syms[0]
+        concepts = (file_sym.meta or {}).get("concepts", [])
+        shell_concepts = [c for c in concepts if c.get("concept") == "shell_script"]
+        assert shell_concepts, (
+            f"expected shell_script concept on bash file Symbol; "
+            f"got concepts={concepts!r}"
+        )
+        assert shell_concepts[0].get("framework") == "bash"
+
+    def test_extensionless_shebang_file_emits_shell_script_concept(
+        self, tmp_path: Path
+    ) -> None:
+        """An extensionless file picked up via shebang still carries the concept."""
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        script = tmp_path / "release-check"
+        script.write_text("#!/usr/bin/env bash\necho ok\n")
+        script.chmod(0o755)
+
+        result = analyze_bash(tmp_path)
+
+        file_syms = [s for s in result.symbols if s.kind == "file"]
+        assert file_syms, "extensionless shebang script must be analyzed"
+        file_sym = file_syms[0]
+        concepts = (file_sym.meta or {}).get("concepts", [])
+        assert any(c.get("concept") == "shell_script" for c in concepts), (
+            f"extensionless shebang script must carry shell_script concept; "
+            f"got concepts={concepts!r}"
+        )
+
+    def test_function_symbols_do_not_carry_shell_script_concept(
+        self, tmp_path: Path
+    ) -> None:
+        """Only the file-kind Symbol gets the concept — not the functions inside."""
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "script.sh").write_text(
+            "#!/bin/bash\nfunction helper() { echo h; }\n"
+        )
+        result = analyze_bash(tmp_path)
+
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for func in funcs:
+            concepts = (func.meta or {}).get("concepts", [])
+            assert not any(c.get("concept") == "shell_script" for c in concepts), (
+                f"shell_script concept must ride on the file Symbol only; "
+                f"found on function {func.name}"
+            )
