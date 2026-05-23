@@ -444,8 +444,16 @@ members = ["crates/*"]
         result = classify_file(pkg_dir / "index.js", tmp_path, roots)
         assert result.tier == Tier.FIRST_PARTY
 
-    def test_workspace_test_dir_is_internal_dep(self, tmp_path):
-        """Test directories within workspace packages are tier 2."""
+    def test_workspace_test_dir_is_first_party(self, tmp_path):
+        """Test directories within workspace packages are tier 1 with
+        is_test=True (INV-tisid).
+
+        Workspace packages are by definition part of the project; their
+        tests are first-party test code, not vendored deps. Pre-fix
+        (INV-tisid) the workspace branch returned INTERNAL_DEP, making
+        ~99% of self-analysis internal_dep entries tests rather than
+        actual internal dependencies.
+        """
         pkg_json = tmp_path / "package.json"
         pkg_json.write_text('{"workspaces": ["packages/*"]}')
 
@@ -458,7 +466,60 @@ members = ["crates/*"]
         roots = detect_package_roots(tmp_path)
 
         result = classify_file(test_dir / "test_core.py", tmp_path, roots)
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY, (
+            f"Workspace test dir must be tier 1 with is_test=True per "
+            f"INV-tisid; got {result.tier}: {result.reason}"
+        )
+        assert result.is_test is True
+        assert "test" in result.reason.lower()
+
+    def test_cargo_workspace_test_dir_is_first_party(self, tmp_path):
+        """Cargo workspace `crates/<name>/tests/` is tier 1 with is_test=True (INV-tisid)."""
+        cargo_toml = tmp_path / "Cargo.toml"
+        cargo_toml.write_text('[workspace]\nmembers = ["crates/*"]\n')
+
+        crate_dir = tmp_path / "crates" / "mylib"
+        test_dir = crate_dir / "tests"
+        test_dir.mkdir(parents=True)
+        (crate_dir / "Cargo.toml").write_text('[package]\nname = "mylib"\n')
+        (test_dir / "integration.rs").write_text("// integration test")
+
+        roots = detect_package_roots(tmp_path)
+
+        result = classify_file(test_dir / "integration.rs", tmp_path, roots)
+        assert result.tier == Tier.FIRST_PARTY
+        assert result.is_test is True
+
+    def test_workspace_test_dir_drowns_out_real_internal_dep(self, tmp_path):
+        """Regression guard for INV-tisid: a workspace with both real
+        internal-dep code (examples/) and tests should yield tier 2
+        only for the examples, not the tests.
+
+        Self-analysis evidence (2026-05-16): 508 of 509 internal_dep
+        entries were tests, drowning out the single real entry. After
+        the fix, the test ratio drops to 0%.
+        """
+        pkg_json = tmp_path / "package.json"
+        pkg_json.write_text('{"workspaces": ["packages/*"]}')
+
+        pkg_dir = tmp_path / "packages" / "core"
+        (pkg_dir / "tests").mkdir(parents=True)
+        (pkg_dir / "package.json").write_text("{}")
+        (pkg_dir / "tests" / "test_core.py").write_text("# test")
+
+        # Real internal-dep: an examples directory outside the workspace.
+        (tmp_path / "examples").mkdir()
+        (tmp_path / "examples" / "demo.py").write_text("# demo")
+
+        roots = detect_package_roots(tmp_path)
+
+        test_result = classify_file(pkg_dir / "tests" / "test_core.py", tmp_path, roots)
+        example_result = classify_file(tmp_path / "examples" / "demo.py", tmp_path, roots)
+
+        assert test_result.tier == Tier.FIRST_PARTY
+        assert test_result.is_test is True
+        assert example_result.tier == Tier.INTERNAL_DEP
+        assert example_result.is_example is True
 
     def test_workspace_test_file_pattern_is_first_party(self, tmp_path):
         """Co-located test files in workspaces are tier 1 with is_test=True."""
@@ -621,8 +682,9 @@ class TestGradleWorkspaces:
         assert result.tier == Tier.FIRST_PARTY
         assert "clients" in result.reason
 
-    def test_gradle_subproject_test_dir_is_internal_dep(self, tmp_path):
-        """Test directories within Gradle subprojects are tier 2."""
+    def test_gradle_subproject_test_dir_is_first_party(self, tmp_path):
+        """Test directories within Gradle subprojects are tier 1 with
+        is_test=True (INV-tisid)."""
         settings = tmp_path / "settings.gradle"
         settings.write_text("include 'clients'\n")
 
@@ -632,7 +694,7 @@ class TestGradleWorkspaces:
 
         roots = detect_package_roots(tmp_path)
         result = classify_file(test_dir / "AppTest.java", tmp_path, roots)
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
     def test_malformed_settings_gradle(self, tmp_path):
@@ -758,9 +820,17 @@ class TestNotebookClassification:
 
 
 class TestTestFileClassification:
-    """Test that test directories and files are classified as tier 2 (internal_dep).
+    """Test that test directories and files are classified as tier 1
+    (first_party) with is_test=True.
 
-    Test code is not production code — it should not be tier 1 (first_party).
+    Test code IS first-party code (it lives in the project's repo and is
+    written by the project's authors). Tier 2 (internal_dep) is reserved
+    for in-repo non-test code: monorepo subpackages used as dependencies,
+    fuzz harnesses, examples, vendored-but-in-tree deps. Per INV-tisid,
+    routing tests through tier 2 made tier 2 a synonym for is_test and
+    drowned out the real internal-dep signal (~99% of self-analysis
+    internal_dep entries were tests).
+
     Common conventions across languages:
     - Directory-based: tests/, test/, __tests__/, spec/, src/test/
     - File suffix-based: _test.go, .test.js, .spec.ts, _spec.rb
@@ -770,55 +840,55 @@ class TestTestFileClassification:
     test-ness axes independently.
     """
 
-    def test_tests_dir_is_internal_dep(self, tmp_path):
-        """Top-level tests/ directory is tier 2."""
+    def test_tests_dir_is_first_party(self, tmp_path):
+        """Top-level tests/ directory is tier 1 with is_test=True (INV-tisid)."""
         tests_dir = tmp_path / "tests"
         tests_dir.mkdir()
         (tests_dir / "test_main.py").write_text("def test_main(): pass")
 
         result = classify_file(tests_dir / "test_main.py", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert "test" in result.reason.lower()
         assert result.is_test is True
 
-    def test_test_dir_singular_is_internal_dep(self, tmp_path):
-        """Top-level test/ directory is tier 2."""
+    def test_test_dir_singular_is_first_party(self, tmp_path):
+        """Top-level test/ directory is tier 1 with is_test=True (INV-tisid)."""
         test_dir = tmp_path / "test"
         test_dir.mkdir()
         (test_dir / "test_app.rb").write_text("require 'test'")
 
         result = classify_file(test_dir / "test_app.rb", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_jest_tests_dir_is_internal_dep(self, tmp_path):
-        """Jest __tests__/ directory is tier 2."""
+    def test_jest_tests_dir_is_first_party(self, tmp_path):
+        """Jest __tests__/ directory is tier 1 with is_test=True (INV-tisid)."""
         tests_dir = tmp_path / "src" / "__tests__"
         tests_dir.mkdir(parents=True)
         (tests_dir / "app.test.js").write_text("test('ok', () => {})")
 
         result = classify_file(tests_dir / "app.test.js", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_spec_dir_is_internal_dep(self, tmp_path):
-        """Ruby spec/ directory is tier 2."""
+    def test_spec_dir_is_first_party(self, tmp_path):
+        """Ruby spec/ directory is tier 1 with is_test=True (INV-tisid)."""
         spec_dir = tmp_path / "spec"
         spec_dir.mkdir()
         (spec_dir / "user_spec.rb").write_text("describe User do; end")
 
         result = classify_file(spec_dir / "user_spec.rb", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_java_src_test_is_internal_dep(self, tmp_path):
-        """Maven/Gradle src/test/ directory is tier 2."""
+    def test_java_src_test_is_first_party(self, tmp_path):
+        """Maven/Gradle src/test/ directory is tier 1 with is_test=True (INV-tisid)."""
         test_dir = tmp_path / "src" / "test" / "java" / "com" / "example"
         test_dir.mkdir(parents=True)
         (test_dir / "AppTest.java").write_text("class AppTest {}")
 
         result = classify_file(test_dir / "AppTest.java", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
     def test_go_test_file_suffix_is_first_party(self, tmp_path):
@@ -927,14 +997,11 @@ class TestTestFileClassification:
         assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_elixir_test_helper_in_test_dir_is_still_internal_dep(self, tmp_path):
-        """Non-`_test.exs` files in test/ (e.g., test_helper.exs without
-        the trailing `_test`) fall through to the dir pattern → tier 2.
-        This is the conservative half of the WI-pugas fix: only files
-        whose name carries the `_test.exs` suffix get the override;
-        other files in test/ keep their previous behavior. We can
-        revisit a broader "all of test/ is first-party" rule later if
-        warranted.
+    def test_elixir_test_helper_in_test_dir_is_first_party(self, tmp_path):
+        """Non-`_test.exs` files in test/ (e.g., test_helper.exs) fall
+        through to the dir pattern, which now routes to tier 1 with
+        is_test=True per INV-tisid. The "broader 'all of test/ is
+        first-party' rule" hinted at by WI-pugas is now in effect.
         """
         (tmp_path / "mix.exs").write_text("defmodule X.MixProject do\nend\n")
         test_dir = tmp_path / "test"
@@ -942,10 +1009,9 @@ class TestTestFileClassification:
         (test_dir / "test_helper.exs").write_text("ExUnit.start()\n")
 
         result = classify_file(test_dir / "test_helper.exs", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP, (
-            f"`test_helper.exs` (lacking the `_test.exs` co-located suffix) "
-            f"should fall to the dir-pattern → tier 2; got {result.tier}: "
-            f"{result.reason}"
+        assert result.tier == Tier.FIRST_PARTY, (
+            f"`test_helper.exs` in test/ should be tier 1 with is_test=True "
+            f"per INV-tisid; got {result.tier}: {result.reason}"
         )
         assert result.is_test is True
 
@@ -964,24 +1030,25 @@ class TestTestFileClassification:
         assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_unit_tests_dir_is_internal_dep(self, tmp_path):
-        """C++ unit_tests/ directory is tier 2."""
+    def test_unit_tests_dir_is_first_party(self, tmp_path):
+        """C++ unit_tests/ directory is tier 1 with is_test=True (INV-tisid)."""
         test_dir = tmp_path / "unit_tests" / "engine"
         test_dir.mkdir(parents=True)
         (test_dir / "test_utils.cpp").write_text("TEST(Utils, Parse) {}")
 
         result = classify_file(test_dir / "test_utils.cpp", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
-    def test_nested_unit_tests_dir_is_internal_dep(self, tmp_path):
-        """Nested unit_tests/ directory (e.g., src/unit_tests/) is tier 2."""
+    def test_nested_unit_tests_dir_is_first_party(self, tmp_path):
+        """Nested unit_tests/ directory (e.g., src/unit_tests/) is tier 1
+        with is_test=True (INV-tisid)."""
         test_dir = tmp_path / "src" / "unit_tests"
         test_dir.mkdir(parents=True)
         (test_dir / "test_main.cpp").write_text("TEST(Main, Run) {}")
 
         result = classify_file(test_dir / "test_main.cpp", tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
     def test_cpp_test_prefix_is_first_party(self, tmp_path):
@@ -1792,9 +1859,10 @@ class TestIsTestFileAxis:
     These tests pin the new behavior end-to-end: classify_file sets
     is_test, _classify_symbols propagates it to Symbol.is_test_file,
     and Symbol.to_dict / Symbol.from_dict round-trip the field through
-    the supply_chain block.  Co-located test files (matching file-name
-    patterns like _test.go) are tier 1 with is_test=True; test files
-    in dedicated directories (tests/, spec/) remain tier 2.
+    the supply_chain block.  Test files (both co-located like _test.go
+    AND in dedicated directories like tests/, spec/) are tier 1 with
+    is_test=True per INV-tisid; tier 2 is reserved for in-repo non-test
+    code (examples, fuzz harnesses, vendored deps).
     """
 
     def test_workspace_test_file_is_test_true(self, tmp_path: Path) -> None:
@@ -1821,7 +1889,7 @@ class TestIsTestFileAxis:
         assert result.is_test is False
 
     def test_workspace_test_dir_is_test_true(self, tmp_path: Path) -> None:
-        """Workspace tests/ directory is tier 2 AND is_test=True."""
+        """Workspace tests/ directory is tier 1 AND is_test=True (INV-tisid)."""
         pkg = tmp_path / "pkgs" / "core"
         (pkg / "tests").mkdir(parents=True)
         (pkg / "tests" / "test_lib.py").write_text("def test(): pass")
@@ -1829,7 +1897,7 @@ class TestIsTestFileAxis:
         result = classify_file(
             pkg / "tests" / "test_lib.py", tmp_path, {pkg}
         )
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
 
     def test_external_dep_is_test_false(self, tmp_path: Path) -> None:
@@ -2488,12 +2556,18 @@ class TestIsConfigFileAxis:
         assert result.is_config is False
 
     def test_config_under_tests_is_test_not_config(self, tmp_path: Path) -> None:
-        """tests/fixtures/package.json → is_test=True, is_config=False."""
+        """tests/fixtures/package.json → is_test=True, is_config=False.
+
+        After INV-tisid the file is tier 1 (first-party test fixture),
+        not tier 2. The role-flag mutual-exclusion guarantee is what
+        this test pins: is_config must remain False because is_test
+        already claimed the role slot.
+        """
         f = tmp_path / "tests" / "fixtures" / "package.json"
         f.parent.mkdir(parents=True)
         f.write_text("{}")
         result = classify_file(f, tmp_path, set())
-        assert result.tier == Tier.INTERNAL_DEP
+        assert result.tier == Tier.FIRST_PARTY
         assert result.is_test is True
         assert result.is_config is False
 

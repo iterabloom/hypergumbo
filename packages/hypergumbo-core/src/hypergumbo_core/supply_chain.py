@@ -21,9 +21,13 @@ checked in order; first match wins:
 2. External dependency detection (tier 3) - node_modules/, vendor/, etc.
 3. Example/demo detection (tier 2) - examples/, demos/, samples/, tutorials/
 4. Workspace package detection:
-   - If file is in src/, lib/, or app/ within workspace → tier 1
-   - Otherwise (tests, configs, etc.) → tier 2
-5. Test code detection (tier 2) - tests/, spec/, __tests__/, _test.go, .test.js, etc.
+   - If file matches a test directory pattern → tier 1 with is_test=True
+   - Otherwise → tier 1 (workspace IS the project)
+5. Test code detection (tier 1 with is_test=True) - tests/, spec/,
+   __tests__/, _test.go, .test.js, etc. Tier 2 is reserved for in-repo
+   non-test code (examples, fuzz harnesses, vendored deps); routing
+   tests through tier 2 historically made tier 2 a synonym for is_test
+   and drowned out the real internal-dep signal (INV-tisid).
 6. First-party detection (tier 1) - src/, lib/, app/ or default
 
 This ensures library monorepos classify workspace source code as tier 1,
@@ -165,18 +169,17 @@ class FileClassification:
 
     `tier` and the boolean role flags (`is_test`, `is_example`,
     `is_config`, `is_generated`) are independent axes (WI-rigun-patuz,
-    WI-jobuj). The classifier may demote a file to INTERNAL_DEP because
-    it is a test/example/config file, but consumers that want a clean
-    'real third-party deps' or 'production code only' query should
-    compose `tier` with the role flag rather than re-deriving the role
-    from path patterns. The historical 'tests = tier 2' framing
-    (89154fa20) is preserved on `tier`; the role flags expose the
-    detection results as separate bits.
+    WI-jobuj). Per INV-tisid, test code is tier 1 with is_test=True —
+    tests are first-party code, and routing them through tier 2 made
+    tier 2 a synonym for is_test (~99% of self-analysis tier-2 entries
+    were tests, drowning out actual internal-dep signal). Tier 2 is
+    reserved for in-repo non-test code: examples, fuzz harnesses,
+    vendored-but-in-tree deps, monorepo subpackages used as deps.
 
-    Within tier 2 (INTERNAL_DEP), at most one of `is_test`,
-    `is_example`, `is_config` is True per file — the four-way
-    distinction (test / example / config / pure internal_dep) is
-    derivable from those bits.
+    Within tier 2 (INTERNAL_DEP), at most one of `is_example`,
+    `is_config` is True per file (mutual exclusion preserved by the
+    classifier order). `is_test` is now mutually exclusive with the
+    other tier-2 role flags because is_test routes the file to tier 1.
     """
 
     tier: Tier
@@ -363,8 +366,11 @@ FUZZ_BENCH_PATTERNS = [
 ]
 
 # Patterns for test code — checked BEFORE first-party patterns.
-# Directory patterns: dedicated test directories → tier 2 (INTERNAL_DEP)
-# File patterns: co-located test files → tier 1 (FIRST_PARTY) with is_test=True
+# Per INV-tisid, BOTH dedicated test directories AND co-located test
+# files route to tier 1 (FIRST_PARTY) with is_test=True. Tier 2 is
+# reserved for in-repo non-test code (examples, fuzz harnesses,
+# vendored deps); a "test dir → tier 2" rule made tier 2 a synonym
+# for is_test (~99% of self-analysis tier-2 entries were tests).
 TEST_DIR_PATTERNS = [
     r"(?:^|/)tests?/",       # tests/ or test/ at any level
     r"(?:^|/)__tests__/",    # __tests__/ (Jest convention) at any level
@@ -615,11 +621,16 @@ def _classify_file_core(
             try:
                 if path.is_relative_to(pkg_root):
                     rel_to_pkg = str(path.relative_to(pkg_root)).replace("\\", "/")
-                    # Test files in dedicated test DIRECTORIES are tier 2
+                    # INV-tisid: test directories inside workspace packages
+                    # are tier 1 with is_test=True. Tier 2 is reserved for
+                    # in-repo non-test code (examples, fuzz harnesses,
+                    # vendored deps). Previously this branch returned
+                    # INTERNAL_DEP, causing 99% of self-analysis tier-2
+                    # entries to be tests rather than actual internal deps.
                     for test_pat in TEST_DIR_PATTERNS:
                         if re.search(test_pat, rel_to_pkg):
                             return FileClassification(
-                                Tier.INTERNAL_DEP,
+                                Tier.FIRST_PARTY,
                                 f"in workspace {pkg_root.name} (test dir)",
                                 is_test=True,
                             )
@@ -657,11 +668,14 @@ def _classify_file_core(
                 is_test=True,
             )
 
-    # 5b. Check test directory patterns (dedicated test directories → tier 2)
+    # 5b. INV-tisid: test directories are tier 1 with is_test=True.
+    # Tier 2 is reserved for in-repo non-test code (examples, fuzz
+    # harnesses, vendored deps); test code is first-party code that
+    # the project's authors write, not a vendored dependency.
     for pattern in TEST_DIR_PATTERNS:
         if re.search(pattern, rel):
             return FileClassification(
-                Tier.INTERNAL_DEP,
+                Tier.FIRST_PARTY,
                 f"test path matches {pattern}",
                 is_test=True,
             )
