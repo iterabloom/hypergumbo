@@ -27,3 +27,18 @@
   clock: 2  # 4781
   nonce: '4781'  # 4781
   message: "Cross-item review 2026-05-17: verify-claims-2026-05-16 triad with INV-zudak (wrapper-gap subset — Path.mkdir) and WI-dozon (short-name-collision FP subset — taint_refine). All three partition the same 7/18 violations. This item changes the contract (zone semantics) so it touches both the claim YAML and AUTO_SINK_ZONE_MAP; the other two leave the contract untouched and fix producer/refinement code. Recommend deciding the zone split here first because it determines what counts as a wrapper-gap (INV-zudak) and a FP (WI-dozon) in the post-fix world."  # 4781
+- op: update  # bf35
+  at: '2026-05-23T07:42:15Z'  # bf35
+  by: agent  # bf35
+  actor: jgstern_agent  # bf35
+  clock: 3  # bf35
+  nonce: bf35  # bf35
+  set:  # bf35
+    status: done  # bf35
+- op: discuss  # 130b
+  at: '2026-05-23T07:42:15Z'  # 130b
+  by: agent  # 130b
+  actor: jgstern_agent  # 130b
+  clock: 4  # 130b
+  nonce: 130b  # 130b
+  message: "Fixed in PR #3875 (15393d76da). AUTO_SINK_ZONE_MAP[subprocess] now routes to its own subprocess zone (was host_fs). Built-in zone vocabulary 5 -> 6. Empirical: verify-claims --claims docs/hypergumbo.claims.yaml goes 7/18 -> 4/18 violations; all *-no-host-fs install/build-grammars claims now confirmed. Remaining 4 violations are short-name-collision FPs (replace/write/run) which are WI-dozon's territory. ADR-0017 + spec + self-catalog README updated."  # 130b

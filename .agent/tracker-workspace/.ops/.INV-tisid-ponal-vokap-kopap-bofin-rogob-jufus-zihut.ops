@@ -23,3 +23,18 @@
     fields:  # 9873
       statement: "For files matching test-detection patterns (whether co-located, in dedicated test directories, or in workspace test directories), the classifier must return Tier.FIRST_PARTY with is_test=True. Tier.INTERNAL_DEP is reserved for in-repo non-test code: monorepo subpackages used as dependencies, fuzz harnesses, examples, vendored-but-in-tree dependencies."  # 9873
       root_cause: "supply_chain.py:619-625 inside the workspace-package branch returns Tier.INTERNAL_DEP with is_test=True for any file matching TEST_DIR_PATTERNS inside a workspace package root. This contradicts the comment at supply_chain.py:394-399 which explicitly states tier 2 should NOT be a synonym for is_test (filed as WI-pugas on Phoenix/Elixir). WI-pugas's fix added TEST_FILE_PATTERNS_DIR_OVERRIDE at line 652 (which runs AFTER step 5), but the workspace branch at lines 612-644 returns first and never lets the override apply. Same bug pattern in the non-workspace path at line 661-667."  # 9873
+- op: update  # 7244
+  at: '2026-05-23T21:58:46Z'  # 7244
+  by: agent  # 7244
+  actor: jgstern_agent  # 7244
+  clock: 2  # 7244
+  nonce: '7244'  # 7244
+  set:  # 7244
+    status: satisfied  # 7244
+- op: discuss  # 810d
+  at: '2026-05-23T21:58:46Z'  # 810d
+  by: agent  # 810d
+  actor: jgstern_agent  # 810d
+  clock: 3  # 810d
+  nonce: 810d  # 810d
+  message: "Fixed in this PR. Both halves of the bug (workspace inner loop at supply_chain.py:619-625 + non-workspace TEST_DIR_PATTERNS loop at :661-667) now return Tier.FIRST_PARTY with is_test=True. Empirical self-analysis: tier-2 unique paths 509→1 (-99.8%), tier-2 Symbol nodes 24180→467 (-98%), test paths in tier 2 508→0. The remaining 467 tier-2 entries all share path='<external>' (synthetic boundary sentinel, pre-existing, separate concern). 12 existing pinning tests flipped from INTERNAL_DEP→FIRST_PARTY; 2 new regression guards added (Cargo workspace test dir, drown-out comparator)."  # 810d

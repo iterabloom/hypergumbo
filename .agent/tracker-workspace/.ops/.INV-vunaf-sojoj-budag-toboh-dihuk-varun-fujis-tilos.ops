@@ -24,3 +24,27 @@
     fields:  # bab9
       statement: "Framework detection must only report frameworks declared as actual dependencies in manifest files. It must never report on incidental substring matches in comments, marker names, group names, build-system tables, or partial-substring collisions with unrelated packages."  # bab9
       root_cause: "profile.py:_manifest_has_package (line 841) does regex word-boundary substring match on lowercased concatenated raw manifest text. 16 of 18 detectors call this helper (Python, Rust, Go, Java/Kotlin x3, Swift, Scala, Dart, Ruby, Elixir, Haskell, Clojure, R, Lua, C++, Erlang, F#). Only JS and PHP correctly use json.loads + dependency-key inspection. Confirmed FPs on hypergumbo self-analysis: 'pytorch' matches a pytest marker name; 'transformers' matches sentence-transformers via word-boundary regex."  # bab9
+- op: update  # 9349
+  at: '2026-05-23T20:19:01Z'  # 9349
+  by: agent  # 9349
+  actor: jgstern_agent  # 9349
+  clock: 2  # 9349
+  nonce: '9349'  # 9349
+  set: {}  # 9349
+  add:  # 9349
+    tags: [awaits_bakeoff_validation]  # 9349
+- op: update  # 94c2
+  at: '2026-05-23T20:27:16Z'  # 94c2
+  by: agent  # 94c2
+  actor: jgstern_agent  # 94c2
+  clock: 3  # 94c2
+  nonce: 94c2  # 94c2
+  set:  # 94c2
+    status: satisfied  # 94c2
+- op: discuss  # 152e
+  at: '2026-05-23T20:27:16Z'  # 152e
+  by: agent  # 152e
+  actor: jgstern_agent  # 152e
+  clock: 4  # 152e
+  nonce: 152e  # 152e
+  message: "Fixed in PR #3877. Replaced raw-text substring matching (`_manifest_has_package`) with format-aware structured parsers across all 16 substring-match detectors. Per-format parsers cover TOML (pyproject/Cargo/Pipfile/Project.toml), XML (pom.xml/csproj/fsproj), Gradle/Kotlin/Groovy, line-based (go.mod/Gemfile/mix.exs/Package.swift/build.sbt/DESCRIPTION/pubspec.yaml/cabal/stack.yaml/package.yaml/deps.edn/project.clj/rockspec/rebar.config/erlang.mk/nimble/build.zig.zon/dub.json/dub.sdl/dune-project/opam) and DSL-marker fallback for build-script syntax (`android {`, `qt +=`). New `_pattern_matches_deps` supports five match modes including strict hyphen-prefix (so `transformers` no longer matches `sentence-transformers`). Empirical impact on hypergumbo self-analysis: `profile.frameworks` went from `['starlette','pytest','pytorch','transformers','lit']` to `['lit','starlette']` (+ dev_frameworks=['pytest']) — pytorch FP and transformers FP eliminated. 60 new tests pin the invariants. Tagged awaits_bakeoff_validation for empirical confirmation across the BROAD cohort."  # 152e

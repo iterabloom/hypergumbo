@@ -22,3 +22,18 @@
     fields:  # 7c63
       statement: "The sketch's structure-tree section must only contain real filesystem paths. Synthetic boundary placeholders ('<external>', '<unresolved>', etc.) must be excluded from the file-tree renderer regardless of source surface."  # 7c63
       root_cause: "sketch.py::_collect_important_files Step 4 (lines 3131-3138) iterates all symbols without filtering external_symbol nodes (1561 of them on hypergumbo self-analysis, all with path='<external>'). Path('<external>').parts == ('<external>',) so it passes is_root_level_file."  # 7c63
+- op: update  # 2097
+  at: '2026-05-23T21:21:01Z'  # 2097
+  by: agent  # 2097
+  actor: jgstern_agent  # 2097
+  clock: 2  # 2097
+  nonce: '2097'  # 2097
+  set:  # 2097
+    status: satisfied  # 2097
+- op: discuss  # e578
+  at: '2026-05-23T21:21:01Z'  # e578
+  by: agent  # e578
+  actor: jgstern_agent  # e578
+  clock: 3  # e578
+  nonce: e578  # e578
+  message: "Fixed in PR #3878 (merged at 82b911518e). _collect_important_files now filters external-boundary symbols via is_external_boundary at the top of the function, before centrality aggregation. Empirical: hypergumbo self-analysis sketch '<external>' occurrences 1→0. Quantitative claim is the boolean elimination of the placeholder, not a percentage — no awaits_bakeoff_validation tag warranted since the assertion is provable from any single self-analysis run (test_excludes_external_boundary_symbols pins the unit invariant) and there are no cross-repo regressions to validate. Tagged sketch/self_analysis/dogfooding."  # e578
