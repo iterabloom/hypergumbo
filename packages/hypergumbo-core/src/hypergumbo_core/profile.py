@@ -870,6 +870,11 @@ def _manifest_has_package(content: str, package: str) -> bool:
     get a trailing boundary, since the non-word character itself provides
     sufficient delimitation.
 
+    DEPRECATED: New code should use ``_pattern_matches_deps`` against a
+    structured ``set[str]`` of declared dep names from one of the
+    ``_parse_*_deps`` helpers below.  Retained for DSL-marker fallbacks
+    (e.g., ``"android {"``, ``"qt +="``) that aren't package names.
+
     Args:
         content: Lowercased concatenated manifest file content.
         package: Package/library name to search for (case-insensitive).
@@ -884,24 +889,829 @@ def _manifest_has_package(content: str, package: str) -> bool:
     return bool(re.search(prefix + escaped + suffix, content))
 
 
+# ---------------------------------------------------------------------------
+# INV-vunaf: structured manifest dep-name parsers.
+#
+# The historical detector flow concatenated all manifest text and ran
+# word-boundary regex against framework-name patterns.  That produced
+# false positives from:
+#
+#   * comments (e.g., "# torch was considered")
+#   * pytest marker names (e.g., ``markers = ["torch: ..."]``)
+#   * partial-substring collisions (``transformers`` in
+#     ``sentence-transformers``)
+#
+# The parsers below extract the *declared dep names* from each format,
+# returning a normalized lowercase ``set[str]`` that detectors check
+# against with exact or token-boundary matching.  This mirrors the safe
+# pattern that ``_detect_js_frameworks`` / ``_detect_php_frameworks``
+# already use (JSON-parse, inspect ``dependencies`` keys).
+# ---------------------------------------------------------------------------
+
+
+def _load_toml(content: str) -> dict | None:
+    """Parse TOML content; return None on failure.
+
+    Resolves a TOML loader (tomllib on 3.11+, tomli fallback) following the
+    pattern in ``linkers/subprocess_cli.py``.
+    """
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover - py3.10 fallback
+        try:
+            import tomli as tomllib  # type: ignore[no-redef]
+        except ImportError:  # pragma: no cover
+            return None
+    try:
+        return tomllib.loads(content)
+    except (ValueError, TypeError):
+        return None
+
+
+_PEP508_NAME_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+
+def _pep508_dist_name(spec: str) -> str | None:
+    """Extract the distribution name from a PEP 508 requirement spec.
+
+    Examples::
+
+        "flask"               -> "flask"
+        "flask>=2.0"          -> "flask"
+        "flask[extra]>=2.0"   -> "flask"
+        "sentence-transformers~=5.2.2" -> "sentence-transformers"
+        "flask @ git+https://..." -> "flask"
+
+    Returns None when the spec doesn't start with a valid PEP 508 name.
+    """
+    spec = spec.strip()
+    if not spec or spec.startswith("#"):
+        return None
+    match = _PEP508_NAME_RE.match(spec)
+    return match.group(1).lower() if match else None
+
+
+def _parse_pyproject_deps(content: str) -> set[str]:
+    """Extract dep names from pyproject.toml content.
+
+    Covers PEP 621 (``[project]``), Poetry (``[tool.poetry]``), and PEP 735
+    (``[dependency-groups]``).
+    """
+    deps: set[str] = set()
+    data = _load_toml(content)
+    if not isinstance(data, dict):
+        return deps
+
+    project = data.get("project")
+    if isinstance(project, dict):
+        for entry in project.get("dependencies") or []:
+            if isinstance(entry, str):
+                name = _pep508_dist_name(entry)
+                if name:
+                    deps.add(name)
+        optional = project.get("optional-dependencies")
+        if isinstance(optional, dict):
+            for entries in optional.values():
+                if isinstance(entries, list):
+                    for entry in entries:
+                        if isinstance(entry, str):
+                            name = _pep508_dist_name(entry)
+                            if name:
+                                deps.add(name)
+
+    groups = data.get("dependency-groups")
+    if isinstance(groups, dict):
+        for entries in groups.values():
+            if isinstance(entries, list):
+                for entry in entries:
+                    if isinstance(entry, str):
+                        name = _pep508_dist_name(entry)
+                        if name:
+                            deps.add(name)
+
+    poetry = data.get("tool", {}).get("poetry") if isinstance(data.get("tool"), dict) else None
+    if isinstance(poetry, dict):
+        for key in ("dependencies", "dev-dependencies"):
+            entries = poetry.get(key)
+            if isinstance(entries, dict):
+                for name in entries:
+                    if isinstance(name, str) and name.lower() != "python":
+                        deps.add(name.lower())
+        groups_p = poetry.get("group")
+        if isinstance(groups_p, dict):
+            for group_data in groups_p.values():
+                if isinstance(group_data, dict):
+                    entries = group_data.get("dependencies")
+                    if isinstance(entries, dict):
+                        for name in entries:
+                            if isinstance(name, str) and name.lower() != "python":
+                                deps.add(name.lower())
+
+    return deps
+
+
+def _parse_requirements_txt_deps(content: str) -> set[str]:
+    """Extract dep names from a requirements.txt-style file.
+
+    Strips ``#`` comments, ignores ``-e`` / ``--editable`` / ``-r`` / ``-c``
+    options, and extracts the PEP 508 distribution name from each line.
+    """
+    deps: set[str] = set()
+    for raw in content.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        # Strip option prefixes like "-e", "--editable", "-r requirements.txt"
+        if line.startswith("-"):
+            # Skip pip options entirely; in-line VCS specs after `-e` rarely
+            # include a clean PEP 508 name we can rely on.
+            continue
+        name = _pep508_dist_name(line)
+        if name:
+            deps.add(name)
+    return deps
+
+
+_SETUP_INSTALL_REQUIRES_RE = re.compile(
+    r"install_requires\s*=\s*[\[\(](?P<body>[^\)\]]*)[\)\]]",
+    re.DOTALL,
+)
+_SETUP_EXTRAS_REQUIRE_RE = re.compile(
+    r"extras_require\s*=\s*\{(?P<body>[^\}]*)\}",
+    re.DOTALL,
+)
+_QUOTED_STRING_RE = re.compile(r"['\"]([^'\"]+)['\"]")
+
+
+def _parse_setup_py_deps(content: str) -> set[str]:
+    """Extract dep names from setup.py's ``install_requires`` / ``extras_require``.
+
+    Best-effort regex parse: scoped to the literal list/tuple/dict body to
+    avoid catching unrelated quoted strings (e.g., comments at module top
+    that mention package names).
+    """
+    deps: set[str] = set()
+    stripped = _strip_python_line_comments(content)
+    for match in _SETUP_INSTALL_REQUIRES_RE.finditer(stripped):
+        for spec in _QUOTED_STRING_RE.findall(match.group("body")):
+            name = _pep508_dist_name(spec)
+            if name:
+                deps.add(name)
+    for match in _SETUP_EXTRAS_REQUIRE_RE.finditer(stripped):
+        for spec in _QUOTED_STRING_RE.findall(match.group("body")):
+            name = _pep508_dist_name(spec)
+            if name:
+                deps.add(name)
+    return deps
+
+
+def _strip_python_line_comments(content: str) -> str:
+    """Drop ``#``-prefixed line comments without disturbing literal ``#``
+    characters inside quoted strings.
+
+    Approach: walk character-by-character tracking single/double/triple
+    quote state. When outside a string, ``#`` to end-of-line is dropped.
+    """
+    out: list[str] = []
+    i = 0
+    n = len(content)
+    in_single = False
+    in_double = False
+    in_triple_single = False
+    in_triple_double = False
+    while i < n:
+        ch = content[i]
+        rest3 = content[i : i + 3]
+        if not (in_single or in_double or in_triple_single or in_triple_double):
+            if rest3 == "'''":
+                in_triple_single = True
+                out.append(rest3)
+                i += 3
+                continue
+            if rest3 == '"""':
+                in_triple_double = True
+                out.append(rest3)
+                i += 3
+                continue
+            if ch == "'":
+                in_single = True
+                out.append(ch)
+                i += 1
+                continue
+            if ch == '"':
+                in_double = True
+                out.append(ch)
+                i += 1
+                continue
+            if ch == "#":
+                # Skip to end of line
+                while i < n and content[i] != "\n":
+                    i += 1
+                continue
+            out.append(ch)
+            i += 1
+            continue
+        # Inside some string
+        if in_triple_single and rest3 == "'''":
+            in_triple_single = False
+            out.append(rest3)
+            i += 3
+            continue
+        if in_triple_double and rest3 == '"""':
+            in_triple_double = False
+            out.append(rest3)
+            i += 3
+            continue
+        if in_single and ch == "'" and (i == 0 or content[i - 1] != "\\"):
+            in_single = False
+        if in_double and ch == '"' and (i == 0 or content[i - 1] != "\\"):
+            in_double = False
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _parse_pipfile_deps(content: str) -> set[str]:
+    """Extract dep names from a Pipfile (TOML format).
+
+    Walks ``[packages]`` and ``[dev-packages]`` sections.
+    """
+    deps: set[str] = set()
+    data = _load_toml(content)
+    if not isinstance(data, dict):
+        return deps
+    for key in ("packages", "dev-packages"):
+        section = data.get(key)
+        if isinstance(section, dict):
+            for name in section:
+                if isinstance(name, str):
+                    deps.add(name.lower())
+    return deps
+
+
+def _parse_cargo_toml_deps(content: str) -> set[str]:
+    """Extract crate names from a Cargo.toml.
+
+    Walks ``[dependencies]``, ``[dev-dependencies]``,
+    ``[build-dependencies]`` and ``[target.*.dependencies]``.
+    """
+    deps: set[str] = set()
+    data = _load_toml(content)
+    if not isinstance(data, dict):
+        return deps
+    for key in ("dependencies", "dev-dependencies", "build-dependencies"):
+        section = data.get(key)
+        if isinstance(section, dict):
+            for name in section:
+                if isinstance(name, str):
+                    deps.add(name.lower())
+    targets = data.get("target")
+    if isinstance(targets, dict):
+        for tgt in targets.values():
+            if isinstance(tgt, dict):
+                for key in ("dependencies", "dev-dependencies", "build-dependencies"):
+                    section = tgt.get(key)
+                    if isinstance(section, dict):
+                        for name in section:
+                            if isinstance(name, str):
+                                deps.add(name.lower())
+    workspace = data.get("workspace")
+    if isinstance(workspace, dict):
+        section = workspace.get("dependencies")
+        if isinstance(section, dict):
+            for name in section:
+                if isinstance(name, str):
+                    deps.add(name.lower())
+    return deps
+
+
+_GO_MOD_REQUIRE_BLOCK_RE = re.compile(r"require\s*\(([^)]*)\)", re.DOTALL)
+_GO_MOD_REQUIRE_LINE_RE = re.compile(r"^\s*require\s+(\S+)\s+\S", re.MULTILINE)
+
+
+def _parse_go_mod_deps(content: str) -> set[str]:
+    """Extract module paths from a go.mod file.
+
+    Handles both block (``require ( ... )``) and single-line forms; strips
+    ``//`` line comments before tokenizing.
+    """
+    deps: set[str] = set()
+    # Strip line comments (// to end-of-line) while leaving block comments
+    # intact -- go.mod doesn't use /* */ in practice.
+    stripped_lines = []
+    for line in content.splitlines():
+        comment = line.find("//")
+        if comment >= 0:
+            line = line[:comment]
+        stripped_lines.append(line)
+    stripped = "\n".join(stripped_lines)
+
+    for block in _GO_MOD_REQUIRE_BLOCK_RE.findall(stripped):
+        for raw in block.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            tokens = line.split()
+            if tokens:
+                deps.add(tokens[0].lower())
+    for path in _GO_MOD_REQUIRE_LINE_RE.findall(stripped):
+        deps.add(path.lower())
+    return deps
+
+
+_XML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_POM_DEP_RE = re.compile(
+    r"<(?:dependency|plugin|parent)>(.*?)</(?:dependency|plugin|parent)>",
+    re.DOTALL | re.IGNORECASE,
+)
+_POM_GROUP_RE = re.compile(r"<groupId>\s*([^<]+?)\s*</groupId>", re.IGNORECASE)
+_POM_ARTIFACT_RE = re.compile(r"<artifactId>\s*([^<]+?)\s*</artifactId>", re.IGNORECASE)
+
+
+def _parse_pom_xml_deps(content: str) -> set[str]:
+    """Extract group / artifact / coordinate strings from a pom.xml.
+
+    Strips XML comments first.  Returns the set of group, artifact, and
+    ``group:artifact`` strings declared in ``<dependency>``, ``<plugin>``,
+    and ``<parent>`` blocks.
+    """
+    deps: set[str] = set()
+    stripped = _XML_COMMENT_RE.sub("", content)
+    for block in _POM_DEP_RE.findall(stripped):
+        group_m = _POM_GROUP_RE.search(block)
+        artifact_m = _POM_ARTIFACT_RE.search(block)
+        group = group_m.group(1).strip().lower() if group_m else None
+        artifact = artifact_m.group(1).strip().lower() if artifact_m else None
+        if group:
+            deps.add(group)
+        if artifact:
+            deps.add(artifact)
+        if group and artifact:
+            deps.add(f"{group}:{artifact}")
+    return deps
+
+
+# Gradle dependency declarations (subset; covers common configurations).
+_GRADLE_DEP_CONFIGURATIONS = (
+    "implementation",
+    "api",
+    "compile",
+    "compileOnly",
+    "runtimeOnly",
+    "testImplementation",
+    "testCompile",
+    "testRuntime",
+    "annotationProcessor",
+    "kapt",
+    "ksp",
+    "classpath",
+    "platform",
+)
+_GRADLE_DEP_RE = re.compile(
+    r"^\s*(?:" + "|".join(_GRADLE_DEP_CONFIGURATIONS) + r")\s*[\(\s]\s*"
+    r"(?:platform\s*\()?\s*['\"]([^'\"]+)['\"]",
+    re.MULTILINE,
+)
+_GRADLE_PLUGIN_ID_RE = re.compile(
+    r"\bid\s*[\(\s]\s*['\"]([^'\"]+)['\"]",
+)
+# Maven-shaped coordinates inside any quoted string: ``"<group>:<artifact>[:<version>]"``
+# with the group containing at least one ``.`` (rules out generic ``"key:value"``
+# pairs that aren't deps).  Captures multi-module Gradle projects that
+# declare coordinates in helper map structures rather than ``implementation(...)``
+# blocks (e.g., Apache Kafka's ``gradle/dependencies.gradle``).
+_GRADLE_MAVEN_COORD_RE = re.compile(
+    r"['\"]([a-zA-Z][\w.-]*\.[\w.-]+):([\w.-]+)(?::[^'\"]*)?['\"]"
+)
+
+
+def _strip_cstyle_comments(content: str) -> str:
+    """Strip ``//`` line and ``/* */`` block comments while respecting strings.
+
+    Walks character-by-character tracking single/double-quoted string state
+    so that a ``//`` or ``/*`` inside a string literal is preserved (e.g.,
+    URLs like ``"https://example.com"`` survive intact).
+    """
+    out: list[str] = []
+    i = 0
+    n = len(content)
+    in_double = False
+    in_single = False
+    while i < n:
+        ch = content[i]
+        if in_double:
+            out.append(ch)
+            if ch == '"' and content[i - 1] != "\\":
+                in_double = False
+            i += 1
+            continue
+        if in_single:
+            out.append(ch)
+            if ch == "'" and content[i - 1] != "\\":
+                in_single = False
+            i += 1
+            continue
+        if ch == '"':
+            in_double = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "'":
+            in_single = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n:
+            nxt = content[i + 1]
+            if nxt == "/":
+                # Line comment: skip to end-of-line (don't consume the newline).
+                while i < n and content[i] != "\n":
+                    i += 1
+                continue
+            if nxt == "*":
+                # Block comment: skip until */.
+                i += 2
+                while i + 1 < n and not (content[i] == "*" and content[i + 1] == "/"):
+                    i += 1
+                i += 2
+                continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _strip_gradle_comments(content: str) -> str:
+    """Strip C-style comments while respecting string literals."""
+    return _strip_cstyle_comments(content)
+
+
+def _parse_gradle_deps(content: str) -> set[str]:
+    """Extract Maven coordinates and plugin IDs from a Gradle script.
+
+    For each ``implementation("group:artifact:version")``-style line, emits
+    ``group``, ``artifact``, and ``group:artifact`` tokens.  Also extracts
+    plugin IDs from ``id("plugin.id")`` declarations and any free-floating
+    Maven-coord-shaped quoted string (helper map structures used by
+    multi-module projects).  Strips ``//`` and ``/* */`` comments first
+    while respecting string literals.
+    """
+    deps: set[str] = set()
+    stripped = _strip_gradle_comments(content)
+    for coord in _GRADLE_DEP_RE.findall(stripped):
+        coord = coord.strip().lower()
+        if not coord:
+            continue
+        parts = coord.split(":")
+        if len(parts) >= 2:
+            group, artifact = parts[0], parts[1]
+            deps.add(group)
+            deps.add(artifact)
+            deps.add(f"{group}:{artifact}")
+        else:
+            deps.add(coord)
+    for plugin_id in _GRADLE_PLUGIN_ID_RE.findall(stripped):
+        deps.add(plugin_id.strip().lower())
+    for group, artifact in _GRADLE_MAVEN_COORD_RE.findall(stripped):
+        group_lc = group.lower()
+        artifact_lc = artifact.lower()
+        deps.add(group_lc)
+        deps.add(artifact_lc)
+        deps.add(f"{group_lc}:{artifact_lc}")
+    return deps
+
+
+_GEMFILE_GEM_RE = re.compile(r"^\s*gem\s+['\"]([^'\"]+)['\"]", re.MULTILINE)
+
+
+def _parse_gemfile_deps(content: str) -> set[str]:
+    """Extract gem names from a Gemfile, stripping ``#`` line comments."""
+    deps: set[str] = set()
+    stripped_lines = []
+    for line in content.splitlines():
+        idx = line.find("#")
+        if idx >= 0:
+            line = line[:idx]
+        stripped_lines.append(line)
+    stripped = "\n".join(stripped_lines)
+    for name in _GEMFILE_GEM_RE.findall(stripped):
+        deps.add(name.strip().lower())
+    return deps
+
+
+_MIX_EXS_DEP_RE = re.compile(r"\{\s*:([a-zA-Z_][a-zA-Z0-9_]*)\s*,")
+
+
+def _parse_mix_exs_deps(content: str) -> set[str]:
+    """Extract Hex package names from a mix.exs ``deps`` function.
+
+    Looks for ``{:atom_name, ...}`` tuples, stripping ``#`` line comments
+    first.  Elixir-style triple-quote heredoc comments are uncommon in
+    mix.exs and not handled.
+    """
+    deps: set[str] = set()
+    stripped_lines = []
+    for line in content.splitlines():
+        idx = line.find("#")
+        if idx >= 0:
+            line = line[:idx]
+        stripped_lines.append(line)
+    stripped = "\n".join(stripped_lines)
+    for atom in _MIX_EXS_DEP_RE.findall(stripped):
+        deps.add(atom.lower())
+    return deps
+
+
+_SBT_LIB_DEP_RE = re.compile(
+    r"['\"]([A-Za-z0-9._-]+)['\"]\s*%{1,2}\s*['\"]([A-Za-z0-9._-]+)['\"]"
+)
+_SBT_PLUGIN_RE = re.compile(
+    r"addSbtPlugin\(\s*['\"]([A-Za-z0-9._-]+)['\"]\s*%\s*['\"]([A-Za-z0-9._-]+)['\"]",
+)
+
+
+def _parse_sbt_deps(content: str) -> set[str]:
+    """Extract org/artifact coordinates from SBT-style content.
+
+    Handles both ``"org" %% "artifact"`` library dependencies and
+    ``addSbtPlugin("org" % "plugin")`` declarations.  Strips ``//`` and
+    ``/* */`` comments first.
+    """
+    deps: set[str] = set()
+    stripped = _strip_gradle_comments(content)  # same comment syntax as Gradle/Java
+    for group, artifact in _SBT_LIB_DEP_RE.findall(stripped):
+        group_lc = group.lower()
+        artifact_lc = artifact.lower()
+        deps.add(group_lc)
+        deps.add(artifact_lc)
+        deps.add(f"{group_lc}:{artifact_lc}")
+    for group, artifact in _SBT_PLUGIN_RE.findall(stripped):
+        deps.add(group.lower())
+        deps.add(artifact.lower())
+    return deps
+
+
+_SWIFT_PACKAGE_URL_RE = re.compile(r"\.package\s*\([^)]*?url:\s*['\"]([^'\"]+)['\"]")
+_SWIFT_PACKAGE_NAME_RE = re.compile(r"\.package\s*\([^)]*?name:\s*['\"]([^'\"]+)['\"]")
+_SWIFT_PACKAGE_PATH_RE = re.compile(r"\.package\s*\(\s*path:\s*['\"]([^'\"]+)['\"]")
+
+
+def _parse_package_swift_deps(content: str) -> set[str]:
+    """Extract dependency names from a Package.swift manifest.
+
+    Strips ``//`` and ``/* */`` comments first, then walks ``.package(...)``
+    declarations and extracts the last URL path component (or the explicit
+    ``name:`` argument when present).
+    """
+    deps: set[str] = set()
+    stripped = _strip_gradle_comments(content)  # Swift comments match Gradle/Java
+    for url in _SWIFT_PACKAGE_URL_RE.findall(stripped):
+        # Drop trailing ".git" and take last path segment as the package name.
+        tail = url.rstrip("/").rsplit("/", 1)[-1]
+        if tail.endswith(".git"):
+            tail = tail[:-4]
+        if tail:
+            deps.add(tail.lower())
+    for name in _SWIFT_PACKAGE_NAME_RE.findall(stripped):
+        deps.add(name.strip().lower())
+    for path in _SWIFT_PACKAGE_PATH_RE.findall(stripped):
+        tail = path.rstrip("/").rsplit("/", 1)[-1]
+        if tail:
+            deps.add(tail.lower())
+    return deps
+
+
+def _parse_description_deps(content: str) -> set[str]:
+    """Extract package names from an R DESCRIPTION file.
+
+    Walks ``Imports:``, ``Depends:``, ``LinkingTo:``, ``Suggests:``, and
+    ``Enhances:`` fields (RFC822-style, supporting continuation lines).
+    Strips ``#`` line comments first.
+    """
+    deps: set[str] = set()
+    stripped_lines = []
+    for line in content.splitlines():
+        idx = line.find("#")
+        if idx >= 0:
+            line = line[:idx]
+        stripped_lines.append(line)
+    stripped = "\n".join(stripped_lines)
+
+    field_names = ("Imports", "Depends", "LinkingTo", "Suggests", "Enhances")
+    field_re = re.compile(
+        r"^(" + "|".join(field_names) + r")\s*:\s*(.*?)(?=^\S|\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    for _name, body in field_re.findall(stripped):
+        for raw in body.split(","):
+            # Strip version constraints "(>= 1.0)" and whitespace.
+            name = re.split(r"[\s\(]", raw.strip(), maxsplit=1)[0]
+            if name and name.lower() != "r":
+                deps.add(name.lower())
+    return deps
+
+
+def _parse_project_toml_deps(content: str) -> set[str]:
+    """Extract Julia dep names from a ``Project.toml`` ``[deps]`` section."""
+    deps: set[str] = set()
+    data = _load_toml(content)
+    if not isinstance(data, dict):
+        return deps
+    section = data.get("deps")
+    if isinstance(section, dict):
+        for name in section:
+            if isinstance(name, str):
+                deps.add(name.lower())
+    return deps
+
+
+def _parse_pubspec_yaml_deps(content: str) -> set[str]:
+    """Extract Dart dep names from ``pubspec.yaml``.
+
+    No PyYAML dep available; uses a hand-rolled indent-aware line parser
+    for the ``dependencies:`` / ``dev_dependencies:`` /
+    ``dependency_overrides:`` sections.  Strips ``#`` comments.
+    """
+    deps: set[str] = set()
+    in_section = False
+    section_indent = -1
+    for raw in content.splitlines():
+        # Strip line comments.
+        idx = raw.find("#")
+        line = raw[:idx] if idx >= 0 else raw
+        if not line.strip():
+            continue
+        leading = len(line) - len(line.lstrip())
+        stripped = line.strip()
+        if leading == 0:
+            in_section = stripped.rstrip(":") in (
+                "dependencies",
+                "dev_dependencies",
+                "dependency_overrides",
+            ) and stripped.endswith(":")
+            section_indent = 0
+            continue
+        if in_section and leading > section_indent:
+            # Dep entries look like "name:" or "name: version".
+            match = re.match(r"^([A-Za-z0-9_][A-Za-z0-9_-]*)\s*:", stripped)
+            if match:
+                deps.add(match.group(1).lower())
+    return deps
+
+
+_PACKAGE_REF_RE = re.compile(
+    r'<PackageReference[^>]*?Include\s*=\s*"([^"]+)"', re.IGNORECASE
+)
+_REFERENCE_RE = re.compile(
+    r'<Reference[^>]*?Include\s*=\s*"([^"]+)"', re.IGNORECASE
+)
+
+
+def _parse_msbuild_proj_deps(content: str) -> set[str]:
+    """Extract NuGet package names from a *.csproj / *.fsproj / *.vcxproj.
+
+    Strips XML comments, then walks ``<PackageReference Include="...">``
+    and ``<Reference Include="...">`` elements.
+    """
+    deps: set[str] = set()
+    stripped = _XML_COMMENT_RE.sub("", content)
+    for name in _PACKAGE_REF_RE.findall(stripped):
+        deps.add(name.strip().lower())
+    for name in _REFERENCE_RE.findall(stripped):
+        # ``<Reference Include="Foo, Version=1.0">`` -> "foo"
+        head = name.split(",", 1)[0].strip()
+        if head:
+            deps.add(head.lower())
+    return deps
+
+
+def _strip_comment_lines(
+    content: str, line_comment_prefixes: tuple[str, ...]
+) -> str:
+    """Drop everything from a line-comment prefix to end-of-line.
+
+    Best-effort: does not handle the prefix appearing inside string
+    literals.  Used for line-oriented manifests (``.cabal``, ``rebar.config``,
+    ``deps.edn``, ``project.clj``, ``rockspec``, ``.nimble``, ``build.zig``,
+    etc.) where the comment-inside-string case is exceedingly rare.
+    """
+    out_lines = []
+    for line in content.splitlines():
+        best = len(line)
+        for prefix in line_comment_prefixes:
+            idx = line.find(prefix)
+            if idx >= 0 and idx < best:
+                best = idx
+        out_lines.append(line[:best])
+    return "\n".join(out_lines)
+
+
+def _read_manifest_text(path: Path) -> str:
+    """Read a manifest file's raw (case-preserved) text; '' on error."""
+    try:
+        return path.read_text(errors="ignore")
+    except (OSError, IOError):  # pragma: no cover - defensive
+        return ""
+
+
+def _collect_parsed_deps(
+    repo_root: Path,
+    filename: str,
+    parser,
+    *,
+    max_depth: int = 3,
+) -> set[str]:
+    """Find all ``filename`` manifests and union their parsed dep sets."""
+    deps: set[str] = set()
+    for path in _find_manifest_files(repo_root, filename, max_depth):
+        text = _read_manifest_text(path)
+        if text:
+            deps |= parser(text)
+    return deps
+
+
+def _pattern_matches_deps(pattern: str, deps: set[str]) -> bool:
+    """Check whether a framework pattern matches one of ``deps``.
+
+    Match rules (all lowercase):
+
+    * Exact match: ``pattern in deps``.
+    * Coordinate-prefix match: ``pattern:<anything>`` (Maven-style
+      ``"org.springframework.boot"`` matches the coordinate
+      ``"org.springframework.boot:spring-boot-starter"``).
+    * Module-path suffix: ``pattern/<anything>`` (versioned Go modules:
+      ``"github.com/labstack/echo"`` matches ``"github.com/labstack/echo/v4"``).
+    * Dotted-namespace prefix: ``pattern.<anything>`` (group-ID-style
+      ``"androidx.compose"`` matches ``"androidx.compose.ui"``,
+      ``"microsoft.aspnetcore"`` matches ``"microsoft.aspnetcore.mvc"``).
+    * Hyphenated-package family: ``pattern-<anything>`` (Hex / cabal /
+      opam patterns: ``"scotty"`` matches stack's ``"scotty-0.12.1"``,
+      ``"cohttp"`` matches OCaml's ``"cohttp-lwt-unix"``).
+
+    The hyphen-prefix mode is *strict prefix* -- pattern ``"transformers"``
+    does **not** match ``"sentence-transformers"`` (since that dep starts
+    with ``"sentence"``, not ``"transformers"``).  Word-boundary
+    substring matching from the legacy ``_manifest_has_package`` is gone
+    by design (INV-vunaf).
+    """
+    p = pattern.lower()
+    if p in deps:
+        return True
+    for dep in deps:
+        if ":" not in p and dep.startswith(p + ":"):
+            return True
+        if "/" in p and dep.startswith(p + "/"):
+            return True
+        if "." in p and dep.startswith(p + "."):
+            return True
+        if dep.startswith(p + "-"):
+            return True
+    return False
+
+
+def _read_dsl_marker_text(repo_root: Path, filenames: tuple[str, ...]) -> str:
+    """Read the lowercased concatenation of selected manifest files.
+
+    Used only for *DSL-marker* fallback patterns -- those containing
+    structural tokens like ``{`` or ``+=`` that aren't package names.  The
+    primary detection path uses structured parsing; this exists only so
+    the rare marker-style patterns keep working.
+    """
+    parts: list[str] = []
+    for filename in filenames:
+        parts.append(_read_all_manifest_files(repo_root, filename))
+    return "\n".join(parts)
+
+
+def _is_dsl_marker(pattern: str) -> bool:
+    """Identify DSL-marker patterns (not package names).
+
+    Patterns with structural tokens like ``{`` or ``+=`` indicate the
+    framework is being detected from a build-script syntax fragment, not
+    from a declared dependency name.
+    """
+    return any(tok in pattern for tok in ("{", "+="))
+
+
 def _detect_python_frameworks(repo_root: Path) -> list[str]:
     """Detect Python frameworks from dependency files.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories
-    (e.g., backend/pyproject.toml in monorepos).
+    (e.g., backend/pyproject.toml in monorepos).  Per INV-vunaf, dep names
+    are extracted via structured parsing -- *not* substring match on raw
+    text -- so comments, pytest marker names, and partial-substring
+    collisions (``sentence-transformers`` -> ``transformers``) no longer
+    produce false positives.
     """
     detected = []
-
-    # Check pyproject.toml, requirements.txt, setup.py, Pipfile - recursively
-    content = ""
-    content += _read_all_manifest_files(repo_root, "pyproject.toml")
-    content += _read_all_manifest_files(repo_root, "requirements.txt")
-    content += _read_all_manifest_files(repo_root, "setup.py")
-    content += _read_all_manifest_files(repo_root, "Pipfile")
+    deps: set[str] = set()
+    deps |= _collect_parsed_deps(repo_root, "pyproject.toml", _parse_pyproject_deps)
+    deps |= _collect_parsed_deps(repo_root, "requirements.txt", _parse_requirements_txt_deps)
+    deps |= _collect_parsed_deps(repo_root, "setup.py", _parse_setup_py_deps)
+    deps |= _collect_parsed_deps(repo_root, "Pipfile", _parse_pipfile_deps)
 
     for framework, patterns in PYTHON_FRAMEWORKS.items():
         for pattern in patterns:
-            if _manifest_has_package(content, pattern):
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -943,16 +1753,16 @@ def _detect_rust_frameworks(repo_root: Path) -> list[str]:
     """Detect Rust frameworks/crates from Cargo.toml.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Per INV-vunaf, crate names are extracted from ``[dependencies]`` /
+    ``[dev-dependencies]`` / ``[build-dependencies]`` / target tables via
+    TOML parse rather than substring match on raw text.
     """
     detected = []
-
-    # Concatenate all Cargo.toml files
-    content = _read_all_manifest_files(repo_root, "Cargo.toml")
+    deps = _collect_parsed_deps(repo_root, "Cargo.toml", _parse_cargo_toml_deps)
 
     for framework, patterns in RUST_FRAMEWORKS.items():
         for pattern in patterns:
-            # Check for crate in dependencies section
-            if _manifest_has_package(content, pattern):
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -963,15 +1773,16 @@ def _detect_go_frameworks(repo_root: Path) -> list[str]:
     """Detect Go frameworks from go.mod.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Per INV-vunaf, module paths are extracted from ``require`` directives
+    after stripping ``//`` comments, so commented-out modules can no longer
+    trigger framework detection.
     """
     detected = []
-
-    # Concatenate all go.mod files
-    content = _read_all_manifest_files(repo_root, "go.mod")
+    deps = _collect_parsed_deps(repo_root, "go.mod", _parse_go_mod_deps)
 
     for framework, patterns in GO_FRAMEWORKS.items():
         for pattern in patterns:
-            if _manifest_has_package(content, pattern):
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -1015,55 +1826,59 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
     Also scans auxiliary Gradle files in the gradle/ directory (e.g.,
     gradle/dependencies.gradle) used by multi-module Gradle projects like
     Apache Kafka to declare dependencies outside of build.gradle.
+
+    Per INV-vunaf, package-name patterns are matched against dep names
+    extracted via XML / Gradle structured parsing.  DSL-marker patterns
+    (e.g., ``"android {"``) keep a raw-text fallback because they are
+    intentionally build-script syntax fragments rather than package
+    names.
     """
     detected: list[str] = []
     detected_set: set[str] = set()
 
-    # Check pom.xml (Maven) - recursively
-    content = _read_all_manifest_files(repo_root, "pom.xml")
-    for framework, patterns in JAVA_FRAMEWORKS.items():
-        for pattern in patterns:
-            if _manifest_has_package(content, pattern):
-                if framework not in detected_set:
-                    detected.append(framework)
-                    detected_set.add(framework)
-                break
+    # Gather structured deps from pom.xml and build.gradle*
+    deps: set[str] = set()
+    deps |= _collect_parsed_deps(repo_root, "pom.xml", _parse_pom_xml_deps)
+    deps |= _collect_parsed_deps(repo_root, "build.gradle", _parse_gradle_deps)
+    deps |= _collect_parsed_deps(repo_root, "build.gradle.kts", _parse_gradle_deps)
 
-    # Check build.gradle (Gradle) - recursively
-    for gradle_file in ["build.gradle", "build.gradle.kts"]:
-        content = _read_all_manifest_files(repo_root, gradle_file)
-        for framework, patterns in JAVA_FRAMEWORKS.items():
-            if framework not in detected_set:
-                for pattern in patterns:
-                    if _manifest_has_package(content, pattern):
-                        detected.append(framework)
-                        detected_set.add(framework)
-                        break
-
-    # Check auxiliary Gradle files (e.g., gradle/dependencies.gradle, gradle/libs.gradle)
-    # Multi-module Gradle projects like Apache Kafka declare dependencies in these
-    # files rather than in build.gradle directly.
+    # Auxiliary Gradle files under gradle/ (e.g., gradle/dependencies.gradle).
     gradle_dir = repo_root / "gradle"
     if gradle_dir.is_dir():
-        aux_content_parts: list[str] = []
-        for pattern in ("*.gradle", "*.gradle.kts"):
-            for aux_file in gradle_dir.glob(pattern):
-                try:
-                    aux_content_parts.append(aux_file.read_text(errors="ignore").lower())
-                except (OSError, IOError):  # pragma: no cover
-                    pass
-        if aux_content_parts:
-            aux_content = "\n".join(aux_content_parts)
-            for framework, patterns in JAVA_FRAMEWORKS.items():
-                if framework not in detected_set:
-                    for pattern in patterns:
-                        if _manifest_has_package(aux_content, pattern):
-                            detected.append(framework)
-                            detected_set.add(framework)
-                            break
+        for aux_pattern in ("*.gradle", "*.gradle.kts"):
+            for aux_file in gradle_dir.glob(aux_pattern):
+                text = _read_manifest_text(aux_file)
+                if text:
+                    deps |= _parse_gradle_deps(text)
 
-    # Check for AndroidManifest.xml (definitive Android indicator)
-    # If any AndroidManifest.xml exists, this is an Android project
+    # DSL-marker fallback content: only build-script files (not pom.xml).
+    marker_content = _read_dsl_marker_text(
+        repo_root, ("build.gradle", "build.gradle.kts")
+    )
+    if gradle_dir.is_dir():
+        aux_parts: list[str] = []
+        for aux_pattern in ("*.gradle", "*.gradle.kts"):
+            for aux_file in gradle_dir.glob(aux_pattern):
+                aux_parts.append(_read_manifest_text(aux_file).lower())
+        if aux_parts:
+            marker_content = marker_content + "\n" + "\n".join(aux_parts)
+
+    for framework, patterns in JAVA_FRAMEWORKS.items():
+        # Note: a single union of deps means we visit each framework once;
+        # the historical "skip if already detected" guard from the
+        # multi-loop ancestor is no longer needed.
+        for pattern in patterns:
+            matched = (
+                _manifest_has_package(marker_content, pattern)
+                if _is_dsl_marker(pattern)
+                else _pattern_matches_deps(pattern, deps)
+            )
+            if matched:
+                detected.append(framework)
+                detected_set.add(framework)
+                break
+
+    # AndroidManifest.xml presence is a definitive Android indicator.
     if "android" not in detected_set:
         manifest_files = list(_find_manifest_files(repo_root, "AndroidManifest.xml"))
         if manifest_files:
@@ -1077,15 +1892,16 @@ def _detect_swift_frameworks(repo_root: Path) -> list[str]:
     """Detect Swift frameworks from Package.swift.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Per INV-vunaf, dep names are extracted from ``.package(url:)`` /
+    ``.package(name:)`` / ``.package(path:)`` declarations after comment
+    stripping rather than substring match.
     """
     detected = []
-
-    # Concatenate all Package.swift files
-    content = _read_all_manifest_files(repo_root, "Package.swift")
+    deps = _collect_parsed_deps(repo_root, "Package.swift", _parse_package_swift_deps)
 
     for framework, patterns in SWIFT_FRAMEWORKS.items():
         for pattern in patterns:
-            if _manifest_has_package(content, pattern):
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -1114,24 +1930,20 @@ def _detect_scala_frameworks(repo_root: Path) -> list[str]:
     an empty ``profile.frameworks``.
     """
     detected = []
+    deps: set[str] = set()
+    deps |= _collect_parsed_deps(repo_root, "build.sbt", _parse_sbt_deps)
 
-    content = _read_all_manifest_files(repo_root, "build.sbt")
-    # Add project-directory manifests (SBT meta-build).  These files
-    # carry the real dependency coordinates for projects that use a
-    # Dependencies.scala helper, and the plugin declarations for Play
-    # and similar frameworks.
     project_dir = repo_root / "project"
     if project_dir.is_dir():
         for child in project_dir.iterdir():
             if child.is_file() and child.suffix in (".scala", ".sbt"):
-                try:
-                    content += "\n" + child.read_text(errors="ignore").lower()
-                except (OSError, IOError):  # pragma: no cover - defensive
-                    pass
+                text = _read_manifest_text(child)
+                if text:
+                    deps |= _parse_sbt_deps(text)
 
     for framework, patterns in SCALA_FRAMEWORKS.items():
         for pattern in patterns:
-            if _manifest_has_package(content, pattern):
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -1142,41 +1954,46 @@ def _detect_dart_frameworks(repo_root: Path) -> list[str]:
     """Detect Dart/Flutter frameworks from pubspec.yaml.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Per INV-vunaf, dep names are extracted via the indent-aware pubspec
+    parser; commented-out entries no longer trigger detection.
     """
     detected = []
     detected_set: set[str] = set()
 
-    # Find all pubspec.yaml files recursively
-    for pubspec in _find_manifest_files(repo_root, "pubspec.yaml"):
-        try:
-            content = pubspec.read_text(errors="ignore").lower()
-            # Check for Flutter SDK
-            if "flutter:" in content and "sdk: flutter" in content:
-                if "flutter" not in detected_set:
-                    detected.append("flutter")
-                    detected_set.add("flutter")
+    flutter_packages = {
+        "flutter_bloc": ["flutter_bloc", "bloc"],
+        "riverpod": ["flutter_riverpod", "riverpod"],
+        "provider": ["provider"],
+        "getx": ["get"],
+        "mobx": ["flutter_mobx", "mobx"],
+        "dio": ["dio"],
+        "freezed": ["freezed"],
+        "go_router": ["go_router"],
+        "flame": ["flame"],
+    }
 
-            # Check for common Flutter packages
-            flutter_packages = {
-                "flutter_bloc": ["flutter_bloc", "bloc"],
-                "riverpod": ["flutter_riverpod", "riverpod"],
-                "provider": ["provider"],
-                "getx": ["get:"],
-                "mobx": ["flutter_mobx", "mobx"],
-                "dio": ["dio:"],
-                "freezed": ["freezed"],
-                "go_router": ["go_router"],
-                "flame": ["flame:"],
-            }
-            for framework, patterns in flutter_packages.items():
-                if framework not in detected_set:
-                    for pattern in patterns:
-                        if pattern in content:
-                            detected.append(framework)
-                            detected_set.add(framework)
-                            break
-        except (OSError, IOError):  # pragma: no cover
-            pass
+    for pubspec in _find_manifest_files(repo_root, "pubspec.yaml"):
+        text = _read_manifest_text(pubspec)
+        if not text:
+            continue
+        deps = _parse_pubspec_yaml_deps(text)
+        # Flutter SDK uses ``sdk: flutter`` inside dependencies; signal that
+        # by looking for the canonical pair of tokens on non-comment lines.
+        non_comment = "\n".join(
+            line.split("#", 1)[0] for line in text.splitlines()
+        ).lower()
+        if "flutter:" in non_comment and "sdk: flutter" in non_comment:
+            if "flutter" not in detected_set:
+                detected.append("flutter")
+                detected_set.add("flutter")
+        for framework, patterns in flutter_packages.items():
+            if framework in detected_set:
+                continue
+            for pattern in patterns:
+                if pattern in deps:
+                    detected.append(framework)
+                    detected_set.add(framework)
+                    break
 
     return detected
 
@@ -1185,15 +2002,15 @@ def _detect_ruby_frameworks(repo_root: Path) -> list[str]:
     """Detect Ruby frameworks from Gemfile.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Per INV-vunaf, gem names are extracted from ``gem '...'`` declarations
+    after stripping ``#`` comments.
     """
     detected = []
-
-    # Concatenate all Gemfile files
-    content = _read_all_manifest_files(repo_root, "Gemfile")
+    deps = _collect_parsed_deps(repo_root, "Gemfile", _parse_gemfile_deps)
 
     for framework, patterns in RUBY_FRAMEWORKS.items():
         for pattern in patterns:
-            if _manifest_has_package(content, pattern):
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -1204,83 +2021,164 @@ def _detect_elixir_frameworks(repo_root: Path) -> list[str]:
     """Detect Elixir frameworks from mix.exs.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    Uses word boundary matching to avoid false positives (e.g., "nex" in "next").
+    Per INV-vunaf, atom names are extracted from ``{:atom, ...}`` tuples
+    after comment stripping rather than substring match.
     """
     detected = []
-
-    # Concatenate all mix.exs files
-    content = _read_all_manifest_files(repo_root, "mix.exs")
+    deps = _collect_parsed_deps(repo_root, "mix.exs", _parse_mix_exs_deps)
 
     for framework, patterns in ELIXIR_FRAMEWORKS.items():
         for pattern in patterns:
-            # Use regex for word boundary matching to avoid substring false positives
-            # Match :pattern, "pattern", or 'pattern' (Elixir atom/string syntax)
-            import re
-
-            # Pattern matches :nex, {:nex, or "nex" but not "next"
-            regex = rf'[:"\']{re.escape(pattern)}["\',\s\}}]'
-            if re.search(regex, content, re.IGNORECASE):
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
     return detected
+
+
+_CABAL_BUILD_DEPENDS_RE = re.compile(
+    r"^[ \t]*build-depends\s*:\s*(.*?)(?=^\S|\Z)",
+    re.MULTILINE | re.DOTALL | re.IGNORECASE,
+)
+
+
+def _parse_cabal_deps(content: str) -> set[str]:
+    """Extract package names from a Haskell ``.cabal`` ``build-depends`` field."""
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, ("--",))
+    for match in _CABAL_BUILD_DEPENDS_RE.finditer(stripped):
+        for raw in match.group(1).split(","):
+            name = re.split(r"[\s\(]", raw.strip(), maxsplit=1)[0]
+            if name:
+                deps.add(name.lower())
+    return deps
+
+
+def _parse_haskell_yaml_deps(content: str) -> set[str]:
+    """Extract package names from stack.yaml ``extra-deps`` / package.yaml ``dependencies``.
+
+    Both are YAML; we use a hand-rolled indent-aware parser similar to
+    ``_parse_pubspec_yaml_deps``.
+    """
+    deps: set[str] = set()
+    in_section = False
+    section_indent = -1
+    for raw in content.splitlines():
+        idx = raw.find("#")
+        line = raw[:idx] if idx >= 0 else raw
+        if not line.strip():
+            continue
+        leading = len(line) - len(line.lstrip())
+        stripped_line = line.strip()
+        if leading == 0:
+            in_section = stripped_line.rstrip(":") in (
+                "dependencies",
+                "extra-deps",
+                "library",
+                "executable",
+            ) and stripped_line.endswith(":")
+            section_indent = 0
+            continue
+        if in_section and leading > section_indent:
+            # Entry forms:
+            #   - some-pkg
+            #   - some-pkg ==1.2.3
+            #   - some-pkg-1.2.3@sha256:...
+            entry = stripped_line.lstrip("-").strip()
+            if not entry or entry.startswith("#"):
+                continue
+            match = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)", entry)
+            if match:
+                deps.add(match.group(1).lower())
+    return deps
 
 
 def _detect_haskell_frameworks(repo_root: Path) -> list[str]:
     """Detect Haskell frameworks from *.cabal, stack.yaml, or package.yaml.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    Checks:
-    - *.cabal files for build-depends
-    - stack.yaml for extra-deps
-    - package.yaml (hpack) for dependencies
+    Per INV-vunaf, dep names are extracted from ``build-depends`` /
+    ``extra-deps`` / ``dependencies`` fields after comment stripping.
     """
     detected = []
+    deps: set[str] = set()
 
-    # Read all cabal files
-    cabal_content = ""
-    for depth in range(4):  # 0, 1, 2, 3 levels deep
-        pattern = "/".join(["*"] * depth) + "/*.cabal" if depth > 0 else "*.cabal"
-        for cabal_file in repo_root.glob(pattern):
-            try:
-                cabal_content += cabal_file.read_text(errors="ignore").lower() + "\n"
-            except (OSError, IOError):  # pragma: no cover
-                pass
+    for depth in range(4):
+        pat = "/".join(["*"] * depth) + "/*.cabal" if depth > 0 else "*.cabal"
+        for cabal_file in repo_root.glob(pat):
+            text = _read_manifest_text(cabal_file)
+            if text:
+                deps |= _parse_cabal_deps(text)
 
-    # Read stack.yaml and package.yaml files
-    yaml_content = ""
-    for filename in ("stack.yaml", "package.yaml"):
-        yaml_content += _read_all_manifest_files(repo_root, filename)
-
-    combined_content = cabal_content + yaml_content
+    deps |= _collect_parsed_deps(repo_root, "stack.yaml", _parse_haskell_yaml_deps)
+    deps |= _collect_parsed_deps(repo_root, "package.yaml", _parse_haskell_yaml_deps)
 
     for framework, patterns in HASKELL_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in combined_content:
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
     return detected
 
 
+_CLOJURE_DEPS_EDN_KEY_RE = re.compile(
+    r"([A-Za-z0-9._/-]+)\s*\{[^{}]*?(?:mvn/version|:mvn/version|sha)",
+    re.IGNORECASE,
+)
+_CLOJURE_PROJECT_CLJ_RE = re.compile(
+    r"\[\s*([A-Za-z0-9._/-]+)\s+\"[^\"]+\"",
+)
+
+
+def _parse_clojure_deps_edn(content: str) -> set[str]:
+    """Extract dep coordinates from a Clojure ``deps.edn`` file.
+
+    deps.edn maps each lib (e.g., ``org.clojure/clojure``) to a map with
+    ``:mvn/version`` / ``:local/root`` / ``:git/url`` etc.  Strip ``;``
+    comments first.
+    """
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, (";",))
+    for coord in _CLOJURE_DEPS_EDN_KEY_RE.findall(stripped):
+        coord_lc = coord.lower()
+        deps.add(coord_lc)
+        if "/" in coord_lc:
+            head, tail = coord_lc.split("/", 1)
+            deps.add(head)
+            deps.add(tail)
+    return deps
+
+
+def _parse_clojure_project_clj(content: str) -> set[str]:
+    """Extract dep coordinates from a Leiningen ``project.clj`` file."""
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, (";",))
+    for coord in _CLOJURE_PROJECT_CLJ_RE.findall(stripped):
+        coord_lc = coord.lower()
+        deps.add(coord_lc)
+        if "/" in coord_lc:
+            head, tail = coord_lc.split("/", 1)
+            deps.add(head)
+            deps.add(tail)
+    return deps
+
+
 def _detect_clojure_frameworks(repo_root: Path) -> list[str]:
     """Detect Clojure frameworks from deps.edn or project.clj.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    Checks:
-    - deps.edn for dependencies (tools.deps/CLI)
-    - project.clj for dependencies (Leiningen)
+    Per INV-vunaf, dep coordinates are extracted via best-effort parsers
+    after stripping ``;`` line comments.
     """
     detected = []
-
-    # Read deps.edn and project.clj files
-    deps_content = _read_all_manifest_files(repo_root, "deps.edn")
-    project_content = _read_all_manifest_files(repo_root, "project.clj")
-    combined_content = deps_content + project_content
+    deps: set[str] = set()
+    deps |= _collect_parsed_deps(repo_root, "deps.edn", _parse_clojure_deps_edn)
+    deps |= _collect_parsed_deps(repo_root, "project.clj", _parse_clojure_project_clj)
 
     for framework, patterns in CLOJURE_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in combined_content:
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -1291,107 +2189,222 @@ def _detect_r_frameworks(repo_root: Path) -> list[str]:
     """Detect R frameworks from DESCRIPTION file.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    The DESCRIPTION file contains Imports and Depends fields listing packages.
+    Per INV-vunaf, package names are extracted from the Imports / Depends /
+    LinkingTo / Suggests / Enhances fields after stripping ``#`` comments.
     """
     detected = []
-
-    # Read all DESCRIPTION files (R package manifest)
-    content = _read_all_manifest_files(repo_root, "DESCRIPTION")
+    deps = _collect_parsed_deps(repo_root, "DESCRIPTION", _parse_description_deps)
 
     for framework, patterns in R_FRAMEWORKS.items():
         for pattern in patterns:
-            if _manifest_has_package(content, pattern):
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
     return detected
+
+
+_ROCKSPEC_DEP_RE = re.compile(r"['\"]([A-Za-z0-9._-]+)(?:\s*[<>=~^]+\s*[\w.]+)?['\"]")
+
+
+def _parse_rockspec_deps(content: str) -> set[str]:
+    """Extract dep names from a LuaRocks ``*.rockspec`` file.
+
+    Strips ``--`` line and ``--[[ ]]--`` block comments, then scans the
+    ``dependencies`` table for quoted package names.
+    """
+    deps: set[str] = set()
+    # Strip block comments.
+    stripped = re.sub(r"--\[\[.*?\]\]--?", "", content, flags=re.DOTALL)
+    stripped = _strip_comment_lines(stripped, ("--",))
+    # Scope to the dependencies table.
+    for match in re.finditer(
+        r"dependencies\s*=\s*\{([^}]*)\}", stripped, re.DOTALL
+    ):
+        for spec in _ROCKSPEC_DEP_RE.findall(match.group(1)):
+            deps.add(spec.lower())
+    return deps
 
 
 def _detect_lua_frameworks(repo_root: Path) -> list[str]:
     """Detect Lua frameworks from *.rockspec files or special markers.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    Also checks for OpenResty-specific files (nginx.conf with lua directives).
+    Per INV-vunaf, rockspec dep names are extracted from the
+    ``dependencies`` table; the OpenResty marker (``resty`` / ``ngx`` in
+    nginx.conf) remains a content-style heuristic.
     """
     detected = []
-
-    # Read all rockspec files
-    rockspec_content = ""
+    deps: set[str] = set()
     for depth in range(4):
-        pattern = "/".join(["*"] * depth) + "/*.rockspec" if depth > 0 else "*.rockspec"
-        for rockspec_file in repo_root.glob(pattern):
-            try:
-                rockspec_content += rockspec_file.read_text(errors="ignore").lower() + "\n"
-            except (OSError, IOError):  # pragma: no cover
-                pass
+        pat = "/".join(["*"] * depth) + "/*.rockspec" if depth > 0 else "*.rockspec"
+        for rockspec_file in repo_root.glob(pat):
+            text = _read_manifest_text(rockspec_file)
+            if text:
+                deps |= _parse_rockspec_deps(text)
 
-    # Also check for OpenResty markers in nginx.conf
+    # OpenResty markers (``resty``, ``ngx``, etc.) appear in nginx.conf and
+    # aren't package names; keep content-style detection for those.
     nginx_content = _read_all_manifest_files(repo_root, "nginx.conf")
-
-    combined_content = rockspec_content + nginx_content
 
     for framework, patterns in LUA_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in combined_content:
+            if _pattern_matches_deps(pattern, deps):
+                detected.append(framework)
+                break
+            if nginx_content and _manifest_has_package(nginx_content, pattern):
                 detected.append(framework)
                 break
 
     return detected
+
+
+_CMAKE_FIND_PACKAGE_RE = re.compile(
+    r"find_package\s*\(\s*([A-Za-z0-9_]+)", re.IGNORECASE
+)
+
+
+def _parse_cmake_deps(content: str) -> set[str]:
+    """Extract package names from CMakeLists.txt ``find_package`` calls.
+
+    Strips ``#`` line comments first.
+    """
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, ("#",))
+    for name in _CMAKE_FIND_PACKAGE_RE.findall(stripped):
+        deps.add(name.lower())
+    return deps
+
+
+_QMAKE_QT_MODULES_RE = re.compile(r"^\s*QT\s*\+?=\s*(.+)$", re.MULTILINE)
+
+
+def _parse_qmake_deps(content: str) -> set[str]:
+    """Extract Qt module names from a qmake ``.pro`` file ``QT +=`` line."""
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, ("#",))
+    for tail in _QMAKE_QT_MODULES_RE.findall(stripped):
+        for token in tail.split():
+            tok = token.strip()
+            if tok:
+                deps.add("qt" + tok.lower())
+                deps.add(tok.lower())
+    return deps
+
+
+def _parse_vcpkg_deps(content: str) -> set[str]:
+    """Extract dep names from a vcpkg.json manifest."""
+    deps: set[str] = set()
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, ValueError):
+        return deps
+    if not isinstance(data, dict):
+        return deps
+    for entry in data.get("dependencies") or []:
+        if isinstance(entry, str):
+            deps.add(entry.lower())
+        elif isinstance(entry, dict):
+            name = entry.get("name")
+            if isinstance(name, str):
+                deps.add(name.lower())
+    return deps
 
 
 def _detect_cpp_frameworks(repo_root: Path) -> list[str]:
     """Detect C++ frameworks from CMakeLists.txt, *.pro, or vcpkg.json.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    Qt is detected via find_package(Qt*), QT += modules, or vcpkg dependencies.
+    Per INV-vunaf, Qt is detected via structured parsing of
+    ``find_package(Qt*)`` calls, qmake ``QT += <modules>`` lines, and
+    vcpkg.json dep entries.  DSL-marker patterns (``qmake``, ``qt +=``)
+    keep a content-style fallback because they aren't package names.
     """
     detected = []
-
-    # Read CMakeLists.txt files
-    cmake_content = _read_all_manifest_files(repo_root, "CMakeLists.txt")
-
-    # Read .pro files (qmake)
-    pro_content = ""
+    deps: set[str] = set()
+    deps |= _collect_parsed_deps(repo_root, "CMakeLists.txt", _parse_cmake_deps)
     for depth in range(4):
-        pattern = "/".join(["*"] * depth) + "/*.pro" if depth > 0 else "*.pro"
-        for pro_file in repo_root.glob(pattern):
-            try:
-                pro_content += pro_file.read_text(errors="ignore").lower() + "\n"
-            except (OSError, IOError):  # pragma: no cover
-                pass
+        pat = "/".join(["*"] * depth) + "/*.pro" if depth > 0 else "*.pro"
+        for pro_file in repo_root.glob(pat):
+            text = _read_manifest_text(pro_file)
+            if text:
+                deps |= _parse_qmake_deps(text)
+    deps |= _collect_parsed_deps(repo_root, "vcpkg.json", _parse_vcpkg_deps)
 
-    # Read vcpkg.json
-    vcpkg_content = _read_all_manifest_files(repo_root, "vcpkg.json")
-
-    combined_content = cmake_content + pro_content + vcpkg_content
+    marker_content = _read_all_manifest_files(repo_root, "CMakeLists.txt")
+    for depth in range(4):
+        pat = "/".join(["*"] * depth) + "/*.pro" if depth > 0 else "*.pro"
+        for pro_file in repo_root.glob(pat):
+            text = _read_manifest_text(pro_file)
+            if text:
+                marker_content = marker_content + "\n" + text.lower()
 
     for framework, patterns in CPP_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in combined_content:
+            matched = (
+                _manifest_has_package(marker_content, pattern)
+                if _is_dsl_marker_or_special(pattern)
+                else _pattern_matches_deps(pattern, deps)
+            )
+            if matched:
                 detected.append(framework)
                 break
 
     return detected
 
 
+def _is_dsl_marker_or_special(pattern: str) -> bool:
+    """C++ patterns that aren't package names (qmake DSL fragments, etc.)."""
+    if _is_dsl_marker(pattern):
+        return True
+    return pattern.lower() in ("qmake", "qt +=", "qt+=")
+
+
+_REBAR_DEP_ATOM_RE = re.compile(r"\{\s*([a-z][a-zA-Z0-9_]*)\s*,")
+_ERLANGMK_DEP_RE = re.compile(r"^\s*DEPS\s*[+:?]?=\s*(.+)$", re.MULTILINE)
+
+
+def _parse_rebar_config_deps(content: str) -> set[str]:
+    """Extract dep atom names from a rebar.config ``{deps, [...]}`` term.
+
+    Strips ``%`` line comments first.
+    """
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, ("%",))
+    for match in re.finditer(r"\{\s*deps\s*,\s*\[([^\]]*)\]", stripped, re.DOTALL):
+        for atom in _REBAR_DEP_ATOM_RE.findall(match.group(1)):
+            deps.add(atom.lower())
+    return deps
+
+
+def _parse_erlangmk_deps(content: str) -> set[str]:
+    """Extract dep names from an erlang.mk Makefile ``DEPS = ...`` line."""
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, ("#",))
+    for tail in _ERLANGMK_DEP_RE.findall(stripped):
+        for token in tail.split():
+            tok = token.strip()
+            if tok:
+                deps.add(tok.lower())
+    return deps
+
+
 def _detect_erlang_frameworks(repo_root: Path) -> list[str]:
     """Detect Erlang frameworks from rebar.config or erlang.mk.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Per INV-vunaf, dep atom names are extracted from the ``{deps, [...]}``
+    term in rebar.config and the ``DEPS = ...`` lines in erlang.mk after
+    stripping comments.
     """
     detected = []
-
-    # Read rebar.config files
-    rebar_content = _read_all_manifest_files(repo_root, "rebar.config")
-
-    # Read erlang.mk files
-    erlangmk_content = _read_all_manifest_files(repo_root, "erlang.mk")
-
-    combined_content = rebar_content + erlangmk_content
+    deps: set[str] = set()
+    deps |= _collect_parsed_deps(repo_root, "rebar.config", _parse_rebar_config_deps)
+    deps |= _collect_parsed_deps(repo_root, "erlang.mk", _parse_erlangmk_deps)
 
     for framework, patterns in ERLANG_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in combined_content:
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -1402,23 +2415,22 @@ def _detect_fsharp_frameworks(repo_root: Path) -> list[str]:
     """Detect F# frameworks from *.fsproj files.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    F# projects use .fsproj (MSBuild) with PackageReference elements.
+    Per INV-vunaf, NuGet package names are extracted from
+    ``<PackageReference Include="...">`` elements after XML-comment
+    stripping.
     """
     detected = []
-
-    # Read all .fsproj files
-    fsproj_content = ""
+    deps: set[str] = set()
     for depth in range(4):
-        pattern = "/".join(["*"] * depth) + "/*.fsproj" if depth > 0 else "*.fsproj"
-        for fsproj_file in repo_root.glob(pattern):
-            try:
-                fsproj_content += fsproj_file.read_text(errors="ignore").lower() + "\n"
-            except (OSError, IOError):  # pragma: no cover
-                pass
+        pat = "/".join(["*"] * depth) + "/*.fsproj" if depth > 0 else "*.fsproj"
+        for fsproj_file in repo_root.glob(pat):
+            text = _read_manifest_text(fsproj_file)
+            if text:
+                deps |= _parse_msbuild_proj_deps(text)
 
     for framework, patterns in FSHARP_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in fsproj_content:
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -1431,17 +2443,18 @@ def _detect_kotlin_frameworks(repo_root: Path) -> list[str]:
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
     Note: Java frameworks (Spring, etc.) are detected by _detect_java_frameworks.
     This function detects Kotlin-specific frameworks like Ktor.
+
+    Per INV-vunaf, dep coordinates are extracted via structured Gradle
+    parsing rather than substring match.
     """
     detected = []
-
-    # Read build.gradle.kts and build.gradle files
-    content = ""
-    for gradle_file in ["build.gradle.kts", "build.gradle"]:
-        content += _read_all_manifest_files(repo_root, gradle_file)
+    deps: set[str] = set()
+    deps |= _collect_parsed_deps(repo_root, "build.gradle.kts", _parse_gradle_deps)
+    deps |= _collect_parsed_deps(repo_root, "build.gradle", _parse_gradle_deps)
 
     for framework, patterns in KOTLIN_FRAMEWORKS.items():
         for pattern in patterns:
-            if _manifest_has_package(content, pattern):
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -1453,22 +2466,21 @@ def _detect_csharp_frameworks(repo_root: Path) -> list[str]:
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
     C# projects use .csproj (MSBuild) with PackageReference elements.
+    Per INV-vunaf, package names come from those elements after XML-comment
+    stripping.
     """
     detected = []
-
-    # Read all .csproj files
-    csproj_content = ""
+    deps: set[str] = set()
     for depth in range(4):
-        pattern = "/".join(["*"] * depth) + "/*.csproj" if depth > 0 else "*.csproj"
-        for csproj_file in repo_root.glob(pattern):
-            try:
-                csproj_content += csproj_file.read_text(errors="ignore").lower() + "\n"
-            except (OSError, IOError):  # pragma: no cover
-                pass
+        pat = "/".join(["*"] * depth) + "/*.csproj" if depth > 0 else "*.csproj"
+        for csproj_file in repo_root.glob(pat):
+            text = _read_manifest_text(csproj_file)
+            if text:
+                deps |= _parse_msbuild_proj_deps(text)
 
     for framework, patterns in CSHARP_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in csproj_content:
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -1480,16 +2492,18 @@ def _detect_dart_web_frameworks(repo_root: Path) -> list[str]:
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
     Note: Flutter is detected separately in _detect_dart_frameworks.
-    This function detects server-side Dart frameworks like Shelf.
+
+    Per INV-vunaf, dep names come from the indent-aware pubspec parser; the
+    legacy ``"<name>:"`` pattern values now match by stripping the trailing
+    ``:`` and looking up exact dep keys.
     """
     detected = []
-
-    # Read all pubspec.yaml files
-    content = _read_all_manifest_files(repo_root, "pubspec.yaml")
+    deps = _collect_parsed_deps(repo_root, "pubspec.yaml", _parse_pubspec_yaml_deps)
 
     for framework, patterns in DART_FRAMEWORKS.items():
         for pattern in patterns:
-            if _manifest_has_package(content, pattern):
+            normalized = pattern.rstrip(":").lower()
+            if normalized and normalized in deps:
                 detected.append(framework)
                 break
 
@@ -1500,119 +2514,211 @@ def _detect_julia_frameworks(repo_root: Path) -> list[str]:
     """Detect Julia frameworks from Project.toml.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    Julia projects use Project.toml for dependencies.
+    Per INV-vunaf, dep names come from the ``[deps]`` section via TOML
+    parsing rather than substring match on raw text.
     """
     detected = []
-
-    # Read Project.toml files
-    content = _read_all_manifest_files(repo_root, "Project.toml")
+    deps = _collect_parsed_deps(repo_root, "Project.toml", _parse_project_toml_deps)
 
     for framework, patterns in JULIA_FRAMEWORKS.items():
         for pattern in patterns:
-            if _manifest_has_package(content, pattern):
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
     return detected
+
+
+_DUNE_DEPENDS_RE = re.compile(r"\(depends\s+([^)]+)\)", re.DOTALL)
+_OPAM_DEPENDS_RE = re.compile(r"depends\s*:\s*\[([^\]]*)\]", re.DOTALL)
+
+
+def _parse_dune_project_deps(content: str) -> set[str]:
+    """Extract OCaml dep names from a ``dune-project`` file ``depends`` form."""
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, (";",))
+    for body in _DUNE_DEPENDS_RE.findall(stripped):
+        for token in body.split():
+            token = token.strip().strip("()").strip()
+            if token and not token.startswith((":", "(")):
+                deps.add(token.lower())
+    return deps
+
+
+def _parse_opam_deps(content: str) -> set[str]:
+    """Extract OCaml dep names from an opam ``depends:`` field."""
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, ("#",))
+    for body in _OPAM_DEPENDS_RE.findall(stripped):
+        for match in _QUOTED_STRING_RE.findall(body):
+            name = re.split(r"[\s\{]", match, maxsplit=1)[0]
+            if name:
+                deps.add(name.lower())
+    return deps
 
 
 def _detect_ocaml_frameworks(repo_root: Path) -> list[str]:
     """Detect OCaml frameworks from dune-project or *.opam files.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    OCaml projects use dune-project (dune build system) or .opam files.
+    Per INV-vunaf, dep names are extracted from the ``(depends ...)`` form
+    in dune-project and the ``depends: [ ... ]`` field in .opam files
+    after stripping comments.
     """
     detected = []
-
-    # Read dune-project files
-    dune_content = _read_all_manifest_files(repo_root, "dune-project")
-
-    # Read all .opam files
-    opam_content = ""
+    deps = _collect_parsed_deps(repo_root, "dune-project", _parse_dune_project_deps)
     for depth in range(4):
-        pattern = "/".join(["*"] * depth) + "/*.opam" if depth > 0 else "*.opam"
-        for opam_file in repo_root.glob(pattern):
-            try:
-                opam_content += opam_file.read_text(errors="ignore").lower() + "\n"
-            except (OSError, IOError):  # pragma: no cover
-                pass
-
-    combined_content = dune_content + opam_content
+        pat = "/".join(["*"] * depth) + "/*.opam" if depth > 0 else "*.opam"
+        for opam_file in repo_root.glob(pat):
+            text = _read_manifest_text(opam_file)
+            if text:
+                deps |= _parse_opam_deps(text)
 
     for framework, patterns in OCAML_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in combined_content:
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
     return detected
+
+
+_NIMBLE_REQUIRES_RE = re.compile(
+    r"requires\s+['\"]([A-Za-z0-9_][A-Za-z0-9_-]*)", re.IGNORECASE
+)
+
+
+def _parse_nimble_deps(content: str) -> set[str]:
+    """Extract Nim dep names from ``.nimble`` ``requires`` declarations."""
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, ("#",))
+    for name in _NIMBLE_REQUIRES_RE.findall(stripped):
+        deps.add(name.lower())
+    return deps
 
 
 def _detect_nim_frameworks(repo_root: Path) -> list[str]:
     """Detect Nim frameworks from *.nimble files.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    Nim projects use .nimble files for package management.
+    Per INV-vunaf, dep names are extracted from ``requires "..."`` lines
+    after stripping ``#`` comments.
     """
     detected = []
-
-    # Read all .nimble files
-    nimble_content = ""
+    deps: set[str] = set()
     for depth in range(4):
-        pattern = "/".join(["*"] * depth) + "/*.nimble" if depth > 0 else "*.nimble"
-        for nimble_file in repo_root.glob(pattern):
-            try:
-                nimble_content += nimble_file.read_text(errors="ignore").lower() + "\n"
-            except (OSError, IOError):  # pragma: no cover
-                pass
+        pat = "/".join(["*"] * depth) + "/*.nimble" if depth > 0 else "*.nimble"
+        for nimble_file in repo_root.glob(pat):
+            text = _read_manifest_text(nimble_file)
+            if text:
+                deps |= _parse_nimble_deps(text)
 
     for framework, patterns in NIM_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in nimble_content:
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
     return detected
+
+
+_ZIG_ZON_DEPS_RE = re.compile(r"\.dependencies\s*=\s*\.\{(.*?)\}", re.DOTALL)
+_ZIG_ZON_KEY_RE = re.compile(r"\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\.\{")
+
+
+def _parse_zig_zon_deps(content: str) -> set[str]:
+    """Extract dep names from a Zig ``build.zig.zon`` ``.dependencies`` block.
+
+    Strips ``//`` line comments first.
+    """
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, ("//",))
+    for body in _ZIG_ZON_DEPS_RE.findall(stripped):
+        for name in _ZIG_ZON_KEY_RE.findall(body):
+            deps.add(name.lower())
+    return deps
+
+
+def _parse_zig_build_deps(content: str) -> set[str]:
+    """Extract dep names referenced via ``b.dependency("name", ...)`` calls."""
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, ("//",))
+    for name in re.findall(
+        r"\bdependency\s*\(\s*['\"]([A-Za-z_][A-Za-z0-9_-]*)", stripped
+    ):
+        deps.add(name.lower())
+    return deps
 
 
 def _detect_zig_frameworks(repo_root: Path) -> list[str]:
     """Detect Zig frameworks from build.zig.zon or build.zig.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    Zig projects use build.zig.zon (package manifest) or build.zig (build script).
+    Per INV-vunaf, dep names are extracted from the ``.dependencies`` block
+    in build.zig.zon and ``b.dependency("...")`` calls in build.zig after
+    stripping ``//`` comments.
     """
     detected = []
-
-    # Read build.zig.zon and build.zig files
-    zon_content = _read_all_manifest_files(repo_root, "build.zig.zon")
-    build_content = _read_all_manifest_files(repo_root, "build.zig")
-    combined_content = zon_content + build_content
+    deps: set[str] = set()
+    deps |= _collect_parsed_deps(repo_root, "build.zig.zon", _parse_zig_zon_deps)
+    deps |= _collect_parsed_deps(repo_root, "build.zig", _parse_zig_build_deps)
 
     for framework, patterns in ZIG_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in combined_content:
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
     return detected
 
 
+def _parse_dub_json_deps(content: str) -> set[str]:
+    """Extract dep names from a dub.json file's ``dependencies`` map."""
+    deps: set[str] = set()
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, ValueError):
+        return deps
+    if not isinstance(data, dict):
+        return deps
+    section = data.get("dependencies")
+    if isinstance(section, dict):
+        for name in section:
+            if isinstance(name, str):
+                deps.add(name.lower())
+    return deps
+
+
+_DUB_SDL_DEP_RE = re.compile(
+    r"^\s*dependency\s+['\"]([A-Za-z0-9_][A-Za-z0-9._-]*)['\"]",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def _parse_dub_sdl_deps(content: str) -> set[str]:
+    """Extract dep names from a ``dub.sdl`` ``dependency "name"`` line."""
+    deps: set[str] = set()
+    stripped = _strip_comment_lines(content, ("//",))
+    for name in _DUB_SDL_DEP_RE.findall(stripped):
+        deps.add(name.lower())
+    return deps
+
+
 def _detect_d_frameworks(repo_root: Path) -> list[str]:
     """Detect D frameworks from dub.json or dub.sdl.
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
-    D projects use dub.json or dub.sdl for package management.
+    Per INV-vunaf, dep names come from JSON ``dependencies`` keys (dub.json)
+    or ``dependency "name"`` declarations (dub.sdl) after comment stripping.
     """
     detected = []
-
-    # Read dub.json and dub.sdl files
-    dub_json_content = _read_all_manifest_files(repo_root, "dub.json")
-    dub_sdl_content = _read_all_manifest_files(repo_root, "dub.sdl")
-    combined_content = dub_json_content + dub_sdl_content
+    deps: set[str] = set()
+    deps |= _collect_parsed_deps(repo_root, "dub.json", _parse_dub_json_deps)
+    deps |= _collect_parsed_deps(repo_root, "dub.sdl", _parse_dub_sdl_deps)
 
     for framework, patterns in D_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in combined_content:
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 
@@ -1624,15 +2730,14 @@ def _detect_groovy_frameworks(repo_root: Path) -> list[str]:
 
     Scans recursively up to 3 levels deep to find manifests in subdirectories.
     Groovy frameworks like Grails and Ratpack use Gradle for builds.
+    Per INV-vunaf, dep coordinates are extracted via the Gradle parser.
     """
     detected = []
-
-    # Read build.gradle files
-    content = _read_all_manifest_files(repo_root, "build.gradle")
+    deps = _collect_parsed_deps(repo_root, "build.gradle", _parse_gradle_deps)
 
     for framework, patterns in GROOVY_FRAMEWORKS.items():
         for pattern in patterns:
-            if _manifest_has_package(content, pattern):
+            if _pattern_matches_deps(pattern, deps):
                 detected.append(framework)
                 break
 

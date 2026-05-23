@@ -3077,3 +3077,947 @@ def test_refine_frameworks_preserves_other_fields() -> None:
     result = refine_frameworks(profile, edges, symbols)
     assert result.languages == {"python": LanguageStats(files=5, loc=100)}
     assert result.framework_mode == "auto"
+
+
+# ---------------------------------------------------------------------------
+# INV-vunaf: structured manifest dep-name parsing must not produce false
+# positives from substring matches in comments, marker names, or
+# partial-substring collisions with unrelated packages.
+# ---------------------------------------------------------------------------
+
+
+class TestInvVunafPythonStructuredParsing:
+    """INV-vunaf: Python framework detection rejects substring FPs."""
+
+    def test_pytest_marker_named_torch_does_not_trigger_pytorch(
+        self, tmp_path: Path
+    ) -> None:
+        """A pytest marker named ``torch`` must not flag pytorch as a dependency.
+
+        Mirrors the hypergumbo self-analysis FP at ``pyproject.toml:9``::
+
+            markers = ["torch: tests requiring PyTorch (deselect with -m 'not torch')"]
+        """
+        from hypergumbo_core.profile import _detect_python_frameworks
+
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "myapp"\ndependencies = ["fastapi"]\n'
+            "[tool.pytest.ini_options]\n"
+            'markers = ["torch: tests requiring PyTorch (deselect with -m \'not torch\')"]\n'
+        )
+
+        detected = _detect_python_frameworks(tmp_path)
+        assert "pytorch" not in detected, (
+            f"pytest marker 'torch' must not trigger pytorch detection; got {detected}"
+        )
+        assert "fastapi" in detected
+
+    def test_sentence_transformers_does_not_trigger_transformers(
+        self, tmp_path: Path
+    ) -> None:
+        """Hyphenated package ``sentence-transformers`` must not flag transformers.
+
+        Mirrors the hypergumbo self-analysis FP at
+        ``packages/hypergumbo-core/pyproject.toml:46`` ::
+
+            dependencies = ["sentence-transformers~=5.2.2"]
+        """
+        from hypergumbo_core.profile import _detect_python_frameworks
+
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "myapp"\ndependencies = ["sentence-transformers~=5.2.2"]\n'
+        )
+
+        detected = _detect_python_frameworks(tmp_path)
+        assert "transformers" not in detected, (
+            f"sentence-transformers must not trigger transformers detection; got {detected}"
+        )
+
+    def test_comment_mentioning_torch_does_not_trigger_pytorch(
+        self, tmp_path: Path
+    ) -> None:
+        """A comment mentioning torch in pyproject.toml must not trigger pytorch."""
+        from hypergumbo_core.profile import _detect_python_frameworks
+
+        (tmp_path / "pyproject.toml").write_text(
+            "# We considered torch but went with jax instead.\n"
+            '[project]\nname = "myapp"\ndependencies = ["jax"]\n'
+        )
+
+        detected = _detect_python_frameworks(tmp_path)
+        assert "pytorch" not in detected, (
+            f"comment mention of torch must not trigger pytorch; got {detected}"
+        )
+        assert "jax" in detected
+
+    def test_real_torch_dep_still_detects_pytorch(self, tmp_path: Path) -> None:
+        """Regression: a real torch dependency must still trigger pytorch."""
+        from hypergumbo_core.profile import _detect_python_frameworks
+
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "myapp"\ndependencies = ["torch>=2.0"]\n'
+        )
+
+        detected = _detect_python_frameworks(tmp_path)
+        assert "pytorch" in detected
+
+    def test_real_transformers_dep_still_detects_transformers(
+        self, tmp_path: Path
+    ) -> None:
+        """Regression: a real transformers dependency must still trigger detection."""
+        from hypergumbo_core.profile import _detect_python_frameworks
+
+        (tmp_path / "requirements.txt").write_text("transformers>=4.0\n")
+
+        detected = _detect_python_frameworks(tmp_path)
+        assert "transformers" in detected
+
+    def test_requirements_txt_comment_stripped(self, tmp_path: Path) -> None:
+        """A commented-out package in requirements.txt must not be detected."""
+        from hypergumbo_core.profile import _detect_python_frameworks
+
+        (tmp_path / "requirements.txt").write_text(
+            "# torch was removed in favor of jax\njax\n"
+        )
+
+        detected = _detect_python_frameworks(tmp_path)
+        assert "pytorch" not in detected
+        assert "jax" in detected
+
+    def test_pipfile_extracts_packages_section(self, tmp_path: Path) -> None:
+        """Pipfile [packages] section dep names are extracted; comments excluded."""
+        from hypergumbo_core.profile import _detect_python_frameworks
+
+        (tmp_path / "Pipfile").write_text(
+            "# torch mentioned in comment only\n"
+            "[packages]\n"
+            'flask = "*"\n'
+            'sentence-transformers = "*"\n'
+        )
+
+        detected = _detect_python_frameworks(tmp_path)
+        assert "flask" in detected
+        assert "pytorch" not in detected
+        assert "transformers" not in detected
+
+    def test_optional_and_dev_deps_in_pyproject_detected(
+        self, tmp_path: Path
+    ) -> None:
+        """Optional/dev deps in pyproject.toml are detected as deps."""
+        from hypergumbo_core.profile import _detect_python_frameworks
+
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "myapp"\n'
+            "dependencies = []\n"
+            "[project.optional-dependencies]\n"
+            'ml = ["torch>=2.0", "scikit-learn"]\n'
+            "[dependency-groups]\n"
+            'dev = ["pytest"]\n'
+        )
+
+        detected = _detect_python_frameworks(tmp_path)
+        assert "pytorch" in detected
+        assert "scikit-learn" in detected
+        assert "pytest" in detected
+
+    def test_setup_py_install_requires_detected(self, tmp_path: Path) -> None:
+        """setup.py install_requires entries are parsed (and comments rejected)."""
+        from hypergumbo_core.profile import _detect_python_frameworks
+
+        (tmp_path / "setup.py").write_text(
+            "# torch was considered\n"
+            "from setuptools import setup\n"
+            'setup(name="myapp", install_requires=["flask", "celery>=5.0"])\n'
+        )
+
+        detected = _detect_python_frameworks(tmp_path)
+        assert "flask" in detected
+        assert "celery" in detected
+        assert "pytorch" not in detected
+
+
+class TestInvVunafCrossLanguageFPs:
+    """INV-vunaf: parallel FP cases for other detectors."""
+
+    def test_rust_comment_does_not_trigger_actix(self, tmp_path: Path) -> None:
+        """A Cargo.toml comment must not produce framework FPs."""
+        from hypergumbo_core.profile import _detect_rust_frameworks
+
+        (tmp_path / "Cargo.toml").write_text(
+            '[package]\nname = "myapp"\nversion = "0.1.0"\n'
+            "# actix-web was rejected; using tokio + axum instead.\n"
+            "[dependencies]\n"
+            'tokio = "1.0"\n'
+            'axum = "0.6"\n'
+        )
+
+        detected = _detect_rust_frameworks(tmp_path)
+        assert "tokio" in detected
+        assert "axum" in detected
+        assert "actix-web" not in detected
+
+    def test_go_vanity_path_collision_does_not_trigger(
+        self, tmp_path: Path
+    ) -> None:
+        """A go.mod comment must not trigger gin via substring collision."""
+        from hypergumbo_core.profile import _detect_go_frameworks
+
+        (tmp_path / "go.mod").write_text(
+            "module example.com/myapp\n\n"
+            "go 1.21\n\n"
+            "// github.com/gin-gonic/gin was tried; switched to echo.\n"
+            "require (\n"
+            "    github.com/labstack/echo/v4 v4.10.0\n"
+            ")\n"
+        )
+
+        detected = _detect_go_frameworks(tmp_path)
+        assert "echo" in detected
+        assert "gin" not in detected
+
+    def test_pom_xml_comment_does_not_trigger_spring(
+        self, tmp_path: Path
+    ) -> None:
+        """An XML comment in pom.xml must not flag spring-boot."""
+        from hypergumbo_core.profile import _detect_java_frameworks
+
+        (tmp_path / "pom.xml").write_text(
+            "<project>\n"
+            "  <!-- We considered org.springframework.boot but use micronaut. -->\n"
+            "  <dependencies>\n"
+            "    <dependency>\n"
+            "      <groupId>io.micronaut</groupId>\n"
+            "      <artifactId>micronaut-http</artifactId>\n"
+            "    </dependency>\n"
+            "  </dependencies>\n"
+            "</project>\n"
+        )
+
+        detected = _detect_java_frameworks(tmp_path)
+        assert "micronaut" in detected
+        assert "spring-boot" not in detected
+
+    def test_gradle_comment_does_not_trigger_ktor(self, tmp_path: Path) -> None:
+        """A Gradle comment must not flag Kotlin frameworks."""
+        from hypergumbo_core.profile import _detect_kotlin_frameworks
+
+        (tmp_path / "build.gradle.kts").write_text(
+            "// io.ktor was evaluated; using spring-boot instead.\n"
+            "dependencies {\n"
+            '    implementation("org.springframework.boot:spring-boot-starter-web:3.0.0")\n'
+            "}\n"
+        )
+
+        detected = _detect_kotlin_frameworks(tmp_path)
+        assert "ktor" not in detected
+
+    def test_gemfile_comment_does_not_trigger_rails(
+        self, tmp_path: Path
+    ) -> None:
+        """A Gemfile comment must not flag rails."""
+        from hypergumbo_core.profile import _detect_ruby_frameworks
+
+        (tmp_path / "Gemfile").write_text(
+            "# rails was migrated away from; using sinatra now.\n"
+            'gem "sinatra"\n'
+        )
+
+        detected = _detect_ruby_frameworks(tmp_path)
+        assert "sinatra" in detected
+        assert "rails" not in detected
+
+    def test_description_comment_does_not_trigger_shiny(
+        self, tmp_path: Path
+    ) -> None:
+        """An R DESCRIPTION comment must not flag shiny."""
+        from hypergumbo_core.profile import _detect_r_frameworks
+
+        (tmp_path / "DESCRIPTION").write_text(
+            "Package: myapp\n"
+            "Title: My App\n"
+            "Version: 1.0.0\n"
+            "# shiny was considered\n"
+            "Imports: plumber\n"
+        )
+
+        detected = _detect_r_frameworks(tmp_path)
+        assert "plumber" in detected
+        assert "shiny" not in detected
+
+    def test_groovy_comment_does_not_trigger_grails(
+        self, tmp_path: Path
+    ) -> None:
+        """A Groovy build.gradle comment must not flag grails."""
+        from hypergumbo_core.profile import _detect_groovy_frameworks
+
+        (tmp_path / "build.gradle").write_text(
+            "// org.grails was evaluated; using ratpack-core instead.\n"
+            "dependencies {\n"
+            '    implementation "io.ratpack:ratpack-core:1.9.0"\n'
+            "}\n"
+        )
+
+        detected = _detect_groovy_frameworks(tmp_path)
+        assert "ratpack" in detected
+        assert "grails" not in detected
+
+    def test_julia_comment_does_not_trigger_genie(
+        self, tmp_path: Path
+    ) -> None:
+        """A Project.toml comment must not flag a Julia framework."""
+        from hypergumbo_core.profile import _detect_julia_frameworks
+
+        (tmp_path / "Project.toml").write_text(
+            'name = "MyApp"\n'
+            "# Genie was considered\n"
+            "[deps]\n"
+            'HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"\n'
+        )
+
+        detected = _detect_julia_frameworks(tmp_path)
+        assert "http" in detected
+        assert "genie" not in detected
+
+    def test_dart_web_pubspec_partial_string_does_not_trigger_shelf(
+        self, tmp_path: Path
+    ) -> None:
+        """A commented-out pubspec.yaml line must not flag shelf."""
+        from hypergumbo_core.profile import _detect_dart_web_frameworks
+
+        (tmp_path / "pubspec.yaml").write_text(
+            "name: myapp\n"
+            "# Removed: shelf: ^1.0.0 -- switched to serverpod\n"
+            "dependencies:\n"
+            "  serverpod: ^1.0.0\n"
+        )
+
+        detected = _detect_dart_web_frameworks(tmp_path)
+        assert "serverpod" in detected
+        assert "shelf" not in detected
+
+    def test_scala_comment_does_not_trigger_play(
+        self, tmp_path: Path
+    ) -> None:
+        """A Scala build.sbt comment must not flag play."""
+        from hypergumbo_core.profile import _detect_scala_frameworks
+
+        (tmp_path / "build.sbt").write_text(
+            "// com.typesafe.play was considered; using http4s instead.\n"
+            'libraryDependencies += "org.http4s" %% "http4s-blaze-server" % "0.23"\n'
+        )
+
+        detected = _detect_scala_frameworks(tmp_path)
+        assert "http4s" in detected
+        assert "play" not in detected
+
+    def test_swift_package_path_dependency_is_extracted(
+        self, tmp_path: Path
+    ) -> None:
+        """A ``.package(path: "...")`` declaration is also recognized."""
+        from hypergumbo_core.profile import _parse_package_swift_deps
+
+        content = (
+            "let package = Package(\n"
+            '    dependencies: [\n'
+            '        .package(path: "../local-pkg/")\n'
+            "    ]\n"
+            ")\n"
+        )
+        deps = _parse_package_swift_deps(content)
+        assert "local-pkg" in deps
+
+    def test_swift_package_name_dependency_is_extracted(
+        self, tmp_path: Path
+    ) -> None:
+        """A ``.package(name: "...")`` declaration is also recognized."""
+        from hypergumbo_core.profile import _parse_package_swift_deps
+
+        content = (
+            "let package = Package(\n"
+            '    dependencies: [\n'
+            '        .package(name: "my-lib", url: "https://example.com/repo.git",\n'
+            '                 from: "1.0.0")\n'
+            "    ]\n"
+            ")\n"
+        )
+        deps = _parse_package_swift_deps(content)
+        assert "my-lib" in deps
+
+    def test_swift_package_comment_does_not_trigger_vapor(
+        self, tmp_path: Path
+    ) -> None:
+        """A Package.swift comment must not flag vapor."""
+        from hypergumbo_core.profile import _detect_swift_frameworks
+
+        (tmp_path / "Package.swift").write_text(
+            '// swift-tools-version:5.7\n'
+            "// vapor was considered; using hummingbird instead.\n"
+            "import PackageDescription\n"
+            "let package = Package(\n"
+            '    name: "myapp",\n'
+            "    dependencies: [\n"
+            '        .package(url: "https://github.com/hummingbird-project/hummingbird", from: "1.0.0"),\n'
+            "    ]\n"
+            ")\n"
+        )
+
+        detected = _detect_swift_frameworks(tmp_path)
+        assert "hummingbird" in detected
+        assert "vapor" not in detected
+
+
+class TestInvVunafParserUnits:
+    """Direct unit tests for the structured manifest parsers (INV-vunaf)."""
+
+    def test_load_toml_returns_none_on_malformed(self) -> None:
+        from hypergumbo_core.profile import _load_toml
+        assert _load_toml("this is = not valid toml [[[") is None
+
+    def test_pep508_dist_name_skips_comment_line(self) -> None:
+        from hypergumbo_core.profile import _pep508_dist_name
+        assert _pep508_dist_name("# just a comment") is None
+        assert _pep508_dist_name("") is None
+        assert _pep508_dist_name("!!!") is None  # no valid name
+
+    def test_parse_pyproject_deps_handles_non_dict(self) -> None:
+        from hypergumbo_core.profile import _parse_pyproject_deps
+        # TOML that parses to a non-dict (impossible for top-level TOML, but
+        # _load_toml returning None should produce an empty set).
+        assert _parse_pyproject_deps("definitely not [valid") == set()
+
+    def test_parse_pyproject_deps_poetry_style(self) -> None:
+        from hypergumbo_core.profile import _parse_pyproject_deps
+        content = (
+            "[tool.poetry]\nname = 'myapp'\n"
+            "[tool.poetry.dependencies]\n"
+            "python = '^3.10'\n"
+            "fastapi = '^0.100'\n"
+            "[tool.poetry.dev-dependencies]\n"
+            "pytest = '^7.0'\n"
+            "[tool.poetry.group.test.dependencies]\n"
+            "httpx = '*'\n"
+        )
+        deps = _parse_pyproject_deps(content)
+        assert "fastapi" in deps
+        assert "pytest" in deps
+        assert "httpx" in deps
+        assert "python" not in deps  # python pin must be excluded
+
+    def test_parse_requirements_txt_skips_pip_options(self) -> None:
+        from hypergumbo_core.profile import _parse_requirements_txt_deps
+        content = (
+            "-r other-requirements.txt\n"
+            "-e .\n"
+            "fastapi>=0.100\n"
+            "--editable git+https://github.com/foo/bar.git\n"
+        )
+        deps = _parse_requirements_txt_deps(content)
+        assert deps == {"fastapi"}
+
+    def test_parse_setup_py_extras_require(self) -> None:
+        from hypergumbo_core.profile import _parse_setup_py_deps
+        content = (
+            "from setuptools import setup\n"
+            "setup(name='myapp',\n"
+            "    install_requires=['flask'],\n"
+            "    extras_require={'ml': ['torch', 'scikit-learn']})\n"
+        )
+        deps = _parse_setup_py_deps(content)
+        assert "flask" in deps
+        assert "torch" in deps
+        assert "scikit-learn" in deps
+
+    def test_strip_python_line_comments_preserves_strings(self) -> None:
+        from hypergumbo_core.profile import _strip_python_line_comments
+        # The '#' inside the single-quoted string must not be stripped.
+        assert _strip_python_line_comments("x = 'has # inside'  # tail") == (
+            "x = 'has # inside'  "
+        )
+        # Double-quoted variant.
+        assert _strip_python_line_comments('y = "has # inside"  # tail') == (
+            'y = "has # inside"  '
+        )
+        # Triple-double quoted (docstring) preserves '#'.
+        triple_double = '"""docstring with # inside"""\nx = 1  # tail\n'
+        result = _strip_python_line_comments(triple_double)
+        assert "# inside" in result
+        assert "# tail" not in result
+        # Triple-single quoted.
+        triple_single = "'''docstring with # inside'''\nx = 1  # tail\n"
+        result = _strip_python_line_comments(triple_single)
+        assert "# inside" in result
+        assert "# tail" not in result
+
+    def test_parse_pipfile_dev_packages(self) -> None:
+        from hypergumbo_core.profile import _parse_pipfile_deps
+        # Malformed Pipfile yields empty set (covers _load_toml -> None branch).
+        assert _parse_pipfile_deps("[[[ not toml") == set()
+        # Valid Pipfile yields both packages and dev-packages.
+        content = (
+            "[packages]\n"
+            'flask = "*"\n'
+            "[dev-packages]\n"
+            'pytest = "*"\n'
+        )
+        deps = _parse_pipfile_deps(content)
+        assert "flask" in deps
+        assert "pytest" in deps
+
+    def test_parse_cargo_toml_target_and_workspace_deps(self) -> None:
+        from hypergumbo_core.profile import _parse_cargo_toml_deps
+        content = (
+            '[target."cfg(unix)".dependencies]\n'
+            'libc = "0.2"\n'
+            "[workspace.dependencies]\n"
+            'serde = "1.0"\n'
+        )
+        deps = _parse_cargo_toml_deps(content)
+        assert "libc" in deps
+        assert "serde" in deps
+
+    def test_parse_cargo_toml_malformed_returns_empty(self) -> None:
+        from hypergumbo_core.profile import _parse_cargo_toml_deps
+        assert _parse_cargo_toml_deps("[[[ not toml") == set()
+
+    def test_parse_go_mod_single_line_require(self) -> None:
+        from hypergumbo_core.profile import _parse_go_mod_deps
+        content = (
+            "module example.com/myapp\n"
+            "go 1.21\n"
+            "require github.com/spf13/cobra v1.5.0\n"
+        )
+        deps = _parse_go_mod_deps(content)
+        assert "github.com/spf13/cobra" in deps
+
+    def test_parse_pom_xml_skips_comment(self) -> None:
+        from hypergumbo_core.profile import _parse_pom_xml_deps
+        content = (
+            "<project>\n"
+            "  <!-- <dependency><groupId>commented</groupId>"
+            "<artifactId>out</artifactId></dependency> -->\n"
+            "  <dependencies>\n"
+            "    <dependency>\n"
+            "      <groupId>com.example</groupId>\n"
+            "      <artifactId>real-dep</artifactId>\n"
+            "    </dependency>\n"
+            "  </dependencies>\n"
+            "</project>\n"
+        )
+        deps = _parse_pom_xml_deps(content)
+        assert "com.example" in deps
+        assert "real-dep" in deps
+        assert "com.example:real-dep" in deps
+        assert "commented" not in deps
+        assert "out" not in deps
+
+    def test_parse_gradle_deps_extracts_plugin_ids(self) -> None:
+        from hypergumbo_core.profile import _parse_gradle_deps
+        content = (
+            "plugins {\n"
+            "    id 'java'\n"
+            '    id("com.android.application") version "8.0.0"\n'
+            "}\n"
+        )
+        deps = _parse_gradle_deps(content)
+        assert "java" in deps
+        assert "com.android.application" in deps
+
+    def test_parse_gradle_deps_extracts_maven_coord_in_helper_map(self) -> None:
+        from hypergumbo_core.profile import _parse_gradle_deps
+        content = (
+            "ext {\n"
+            '    libs = [foo: "io.example.lib:my-lib:1.0.0"]\n'
+            "}\n"
+        )
+        deps = _parse_gradle_deps(content)
+        assert "io.example.lib" in deps
+        assert "my-lib" in deps
+        assert "io.example.lib:my-lib" in deps
+
+    def test_parse_gradle_deps_skips_single_token_implementation(self) -> None:
+        from hypergumbo_core.profile import _parse_gradle_deps
+        # A configuration with no coord (e.g., `implementation(project(":a"))`)
+        # leaves an empty quoted match -- the parser must skip it cleanly.
+        content = (
+            "dependencies {\n"
+            '    implementation ""\n'
+            '    implementation "foo"\n'
+            "}\n"
+        )
+        deps = _parse_gradle_deps(content)
+        assert "foo" in deps
+
+    def test_strip_cstyle_comments_respects_single_quoted(self) -> None:
+        from hypergumbo_core.profile import _strip_cstyle_comments
+        # '//' inside single-quoted string must survive.
+        text = "let x = 'http://example.com'  // tail"
+        stripped = _strip_cstyle_comments(text)
+        assert "http://example.com" in stripped
+        assert "// tail" not in stripped
+
+    def test_strip_cstyle_comments_respects_block_comment(self) -> None:
+        from hypergumbo_core.profile import _strip_cstyle_comments
+        text = "before /* commented */ after"
+        stripped = _strip_cstyle_comments(text)
+        assert "commented" not in stripped
+        assert "before" in stripped
+        assert "after" in stripped
+
+    def test_parse_sbt_deps_plugin(self) -> None:
+        from hypergumbo_core.profile import _parse_sbt_deps
+        content = 'addSbtPlugin("com.typesafe.play" % "sbt-plugin" % "2.8.0")\n'
+        deps = _parse_sbt_deps(content)
+        assert "com.typesafe.play" in deps
+        assert "sbt-plugin" in deps
+
+    def test_parse_description_imports_field(self) -> None:
+        from hypergumbo_core.profile import _parse_description_deps
+        content = (
+            "Package: myapp\n"
+            "Imports:\n"
+            "    shiny (>= 1.0),\n"
+            "    plumber\n"
+            "Depends:\n"
+            "    R (>= 4.0)\n"
+        )
+        deps = _parse_description_deps(content)
+        assert "shiny" in deps
+        assert "plumber" in deps
+        # "R" itself is filtered.
+        assert "r" not in deps
+
+    def test_parse_pubspec_yaml_in_section(self) -> None:
+        from hypergumbo_core.profile import _parse_pubspec_yaml_deps
+        content = (
+            "name: myapp\n"
+            "dependencies:\n"
+            "  shelf: ^1.0.0\n"
+            "  serverpod: ^1.0.0\n"
+            "dev_dependencies:\n"
+            "  test: ^1.0.0\n"
+        )
+        deps = _parse_pubspec_yaml_deps(content)
+        assert "shelf" in deps
+        assert "serverpod" in deps
+        assert "test" in deps
+
+    def test_parse_msbuild_proj_reference_attribute(self) -> None:
+        from hypergumbo_core.profile import _parse_msbuild_proj_deps
+        content = (
+            "<Project>\n"
+            '  <ItemGroup>\n'
+            '    <Reference Include="System.Web, Version=4.0.0.0, '
+            'Culture=neutral" />\n'
+            '    <PackageReference Include="Newtonsoft.Json" Version="13.0.0" />\n'
+            "  </ItemGroup>\n"
+            "</Project>\n"
+        )
+        deps = _parse_msbuild_proj_deps(content)
+        assert "system.web" in deps
+        assert "newtonsoft.json" in deps
+
+    def test_parse_cabal_build_depends(self) -> None:
+        from hypergumbo_core.profile import _parse_cabal_deps
+        content = (
+            "name:           myapp\n"
+            "library\n"
+            "  build-depends: base >= 4.7 && < 5,\n"
+            "                 servant,\n"
+            "                 scotty (>= 0.12)\n"
+        )
+        deps = _parse_cabal_deps(content)
+        assert "servant" in deps
+        assert "scotty" in deps
+
+    def test_parse_haskell_yaml_deps(self) -> None:
+        from hypergumbo_core.profile import _parse_haskell_yaml_deps
+        content = (
+            "name: myapp\n"
+            "dependencies:\n"
+            "  - base >= 4.7\n"
+            "  - scotty\n"
+            "  - servant-server-1.2.3@sha256:abc\n"
+        )
+        deps = _parse_haskell_yaml_deps(content)
+        assert "scotty" in deps
+        assert "servant-server-1.2.3" in deps
+
+    def test_parse_clojure_deps_edn(self) -> None:
+        from hypergumbo_core.profile import _parse_clojure_deps_edn
+        content = (
+            "{:deps {compojure/compojure {:mvn/version \"1.7.0\"}\n"
+            "        ring/ring-core {:mvn/version \"1.9.0\"}}}\n"
+        )
+        deps = _parse_clojure_deps_edn(content)
+        assert "compojure/compojure" in deps
+        assert "compojure" in deps
+        assert "ring/ring-core" in deps
+        assert "ring" in deps
+
+    def test_parse_clojure_project_clj(self) -> None:
+        from hypergumbo_core.profile import _parse_clojure_project_clj
+        content = (
+            '(defproject myapp "0.1.0"\n'
+            '  :dependencies [[compojure "1.7.0"]\n'
+            '                 [ring/ring-core "1.9.0"]])\n'
+        )
+        deps = _parse_clojure_project_clj(content)
+        assert "compojure" in deps
+        assert "ring/ring-core" in deps
+        assert "ring" in deps
+        assert "ring-core" in deps
+
+    def test_parse_rockspec_deps(self) -> None:
+        from hypergumbo_core.profile import _parse_rockspec_deps
+        content = (
+            'package = "myapp"\n'
+            "dependencies = {\n"
+            '    "lua >= 5.1",\n'
+            '    "lapis >= 1.10",\n'
+            "}\n"
+        )
+        deps = _parse_rockspec_deps(content)
+        assert "lapis" in deps
+
+    def test_parse_cmake_find_package(self) -> None:
+        from hypergumbo_core.profile import _parse_cmake_deps
+        content = (
+            "cmake_minimum_required(VERSION 3.10)\n"
+            "# Qt6 was considered\n"
+            "find_package(Qt5 REQUIRED COMPONENTS Core Widgets)\n"
+        )
+        deps = _parse_cmake_deps(content)
+        assert "qt5" in deps
+        assert "qt6" not in deps  # filtered as comment
+
+    def test_parse_qmake_qt_modules(self) -> None:
+        from hypergumbo_core.profile import _parse_qmake_deps
+        content = "QT += core widgets sql\n# QT += notthis\n"
+        deps = _parse_qmake_deps(content)
+        assert "qtcore" in deps
+        assert "qtwidgets" in deps
+        assert "core" in deps
+        assert "qtnotthis" not in deps
+
+    def test_parse_vcpkg_deps(self) -> None:
+        from hypergumbo_core.profile import _parse_vcpkg_deps
+        content = (
+            '{"name": "myapp", "dependencies": ["fmt", '
+            '{"name": "qt5-base", "version>=": "5.15"}]}'
+        )
+        deps = _parse_vcpkg_deps(content)
+        assert "fmt" in deps
+        assert "qt5-base" in deps
+        # Malformed JSON yields empty set.
+        from hypergumbo_core.profile import _parse_vcpkg_deps as fn
+        assert fn("not json") == set()
+
+    def test_parse_rebar_config(self) -> None:
+        from hypergumbo_core.profile import _parse_rebar_config_deps
+        content = (
+            "{deps, [\n"
+            "    {cowboy, \"2.10.0\"},\n"
+            "    {jsx, \"3.1.0\"}\n"
+            "]}.\n"
+        )
+        deps = _parse_rebar_config_deps(content)
+        assert "cowboy" in deps
+        assert "jsx" in deps
+
+    def test_parse_erlangmk_deps(self) -> None:
+        from hypergumbo_core.profile import _parse_erlangmk_deps
+        content = "DEPS = cowboy ranch\n"
+        deps = _parse_erlangmk_deps(content)
+        assert "cowboy" in deps
+        assert "ranch" in deps
+
+    def test_parse_nimble_requires(self) -> None:
+        from hypergumbo_core.profile import _parse_nimble_deps
+        content = (
+            'version = "0.1.0"\n'
+            'requires "jester >= 0.5.0"\n'
+            'requires "prologue"\n'
+            '# requires "skipthis"\n'
+        )
+        deps = _parse_nimble_deps(content)
+        assert "jester" in deps
+        assert "prologue" in deps
+        assert "skipthis" not in deps
+
+    def test_parse_zig_zon_deps(self) -> None:
+        from hypergumbo_core.profile import _parse_zig_zon_deps
+        content = (
+            ".{\n"
+            '    .name = "myapp",\n'
+            "    .dependencies = .{\n"
+            '        .zap = .{ .url = "https://example.com/zap.tar.gz" },\n'
+            "    },\n"
+            "}\n"
+        )
+        deps = _parse_zig_zon_deps(content)
+        assert "zap" in deps
+
+    def test_parse_zig_build_dependency_calls(self) -> None:
+        from hypergumbo_core.profile import _parse_zig_build_deps
+        content = (
+            'const zap = b.dependency("zap", .{});\n'
+            "// b.dependency(\"commented\", .{})\n"
+        )
+        deps = _parse_zig_build_deps(content)
+        assert "zap" in deps
+        assert "commented" not in deps
+
+    def test_parse_dub_json_deps(self) -> None:
+        from hypergumbo_core.profile import _parse_dub_json_deps
+        content = '{"name": "myapp", "dependencies": {"vibe-d": "~>0.9.0"}}'
+        deps = _parse_dub_json_deps(content)
+        assert "vibe-d" in deps
+        assert _parse_dub_json_deps("not json") == set()
+
+    def test_parse_dub_sdl_deps(self) -> None:
+        from hypergumbo_core.profile import _parse_dub_sdl_deps
+        content = 'name "myapp"\ndependency "vibe-d" version="~>0.9.0"\n'
+        deps = _parse_dub_sdl_deps(content)
+        assert "vibe-d" in deps
+
+    def test_parse_dune_project_depends(self) -> None:
+        from hypergumbo_core.profile import _parse_dune_project_deps
+        content = (
+            "(lang dune 3.0)\n"
+            "(name myapp)\n"
+            "(package (depends cohttp-lwt-unix dream))\n"
+        )
+        deps = _parse_dune_project_deps(content)
+        assert "cohttp-lwt-unix" in deps
+        assert "dream" in deps
+
+    def test_parse_opam_depends(self) -> None:
+        from hypergumbo_core.profile import _parse_opam_deps
+        content = (
+            'opam-version: "2.0"\n'
+            'depends: [\n'
+            '    "ocaml" {>= "4.14"}\n'
+            '    "dream"\n'
+            ']\n'
+        )
+        deps = _parse_opam_deps(content)
+        assert "dream" in deps
+        assert "ocaml" in deps
+
+    def test_pattern_matches_deps_module_path_suffix(self) -> None:
+        """``github.com/labstack/echo`` matches ``github.com/labstack/echo/v4``."""
+        from hypergumbo_core.profile import _pattern_matches_deps
+        assert _pattern_matches_deps(
+            "github.com/labstack/echo", {"github.com/labstack/echo/v4"}
+        )
+
+    def test_is_dsl_marker_recognizes_braces(self) -> None:
+        from hypergumbo_core.profile import _is_dsl_marker
+        assert _is_dsl_marker("android {")
+        assert _is_dsl_marker("qt +=")
+        assert not _is_dsl_marker("org.springframework.boot")
+
+    def test_parse_gradle_deps_skips_whitespace_only_coord(self) -> None:
+        from hypergumbo_core.profile import _parse_gradle_deps
+        # ``[^'"]+`` matches the whitespace-only string, but ``coord.strip()``
+        # is empty -- the parser must skip it cleanly.
+        content = 'dependencies {\n    implementation " "\n}\n'
+        deps = _parse_gradle_deps(content)
+        assert deps == set()
+
+    def test_parse_mix_exs_strips_hash_comment(self) -> None:
+        from hypergumbo_core.profile import _parse_mix_exs_deps
+        content = (
+            "defp deps do\n"
+            "  # {:notthis, \"~> 1.0\"}\n"
+            "  [{:phoenix, \"~> 1.7\"}]\n"
+            "end\n"
+        )
+        deps = _parse_mix_exs_deps(content)
+        assert "phoenix" in deps
+        assert "notthis" not in deps
+
+    def test_parse_project_toml_malformed_returns_empty(self) -> None:
+        from hypergumbo_core.profile import _parse_project_toml_deps
+        assert _parse_project_toml_deps("[[[ not toml") == set()
+
+    def test_pattern_matches_deps_coordinate_prefix(self) -> None:
+        """``"org.springframework.boot"`` matches ``"org.springframework.boot:starter"``."""
+        from hypergumbo_core.profile import _pattern_matches_deps
+        assert _pattern_matches_deps(
+            "org.springframework.boot",
+            {"org.springframework.boot:spring-boot-starter"},
+        )
+
+    def test_detect_java_skips_already_detected_framework(
+        self, tmp_path: Path
+    ) -> None:
+        """When the same framework appears in pom.xml AND build.gradle,
+        the second loop branch hits ``if framework in detected_set: continue``."""
+        from hypergumbo_core.profile import _detect_java_frameworks
+        (tmp_path / "pom.xml").write_text(
+            "<project><dependencies>\n"
+            "<dependency><groupId>io.micronaut</groupId>"
+            "<artifactId>micronaut-http</artifactId></dependency>\n"
+            "</dependencies></project>\n"
+        )
+        (tmp_path / "build.gradle").write_text(
+            "dependencies {\n"
+            '    implementation "io.micronaut:micronaut-http:1.0"\n'
+            "}\n"
+        )
+        detected = _detect_java_frameworks(tmp_path)
+        assert detected.count("micronaut") == 1
+
+    def test_detect_dart_empty_pubspec_continues(
+        self, tmp_path: Path
+    ) -> None:
+        """A zero-byte pubspec.yaml triggers the ``if not text: continue`` branch."""
+        from hypergumbo_core.profile import _detect_dart_frameworks
+        (tmp_path / "pubspec.yaml").write_text("")
+        # Should produce no detection and not crash.
+        assert _detect_dart_frameworks(tmp_path) == []
+
+    def test_detect_dart_already_detected_skips_repeat(
+        self, tmp_path: Path
+    ) -> None:
+        """When two pubspec.yaml files both declare a Flutter framework, the
+        second hits the ``if framework in detected_set: continue`` branch."""
+        from hypergumbo_core.profile import _detect_dart_frameworks
+        (tmp_path / "pubspec.yaml").write_text(
+            "name: a\n"
+            "dependencies:\n"
+            "  flutter_bloc: ^8.0.0\n"
+        )
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "pubspec.yaml").write_text(
+            "name: b\n"
+            "dependencies:\n"
+            "  flutter_bloc: ^8.0.0\n"
+        )
+        detected = _detect_dart_frameworks(tmp_path)
+        assert detected.count("flutter_bloc") == 1
+
+    def test_parse_haskell_yaml_skips_blank_and_commented_lines(self) -> None:
+        """Blank lines and ``- # commented`` entries are skipped."""
+        from hypergumbo_core.profile import _parse_haskell_yaml_deps
+        content = (
+            "name: myapp\n"
+            "\n"  # blank line
+            "dependencies:\n"
+            "  # comment-only line above\n"
+            "  - servant\n"
+            "  - # commented entry value\n"
+        )
+        deps = _parse_haskell_yaml_deps(content)
+        assert "servant" in deps
+
+    def test_parse_vcpkg_deps_non_dict_returns_empty(self) -> None:
+        """A JSON array at top level is not a vcpkg manifest."""
+        from hypergumbo_core.profile import _parse_vcpkg_deps
+        assert _parse_vcpkg_deps('["just", "an", "array"]') == set()
+
+    def test_parse_dub_json_deps_non_dict_returns_empty(self) -> None:
+        from hypergumbo_core.profile import _parse_dub_json_deps
+        assert _parse_dub_json_deps('"just-a-string"') == set()

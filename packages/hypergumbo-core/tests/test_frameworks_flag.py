@@ -117,7 +117,13 @@ class TestFrameworksFlagIntegration:
     def test_frameworks_default_auto_detects(self, tmp_path: Path) -> None:
         """Default should auto-detect frameworks (existing behavior)."""
         (tmp_path / "app.py").write_text("from fastapi import FastAPI\n")
-        (tmp_path / "pyproject.toml").write_text('dependencies = ["fastapi"]\n')
+        # INV-vunaf: declare the dep under PEP 621's [project] table so the
+        # structured parser sees it.  The previous shape (bare top-level
+        # ``dependencies = ["fastapi"]``) only happened to work via the
+        # legacy substring-match path that this fix removed.
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname = "myapp"\ndependencies = ["fastapi"]\n'
+        )
 
         out_path = tmp_path / "out.json"
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)  # No frameworks arg
