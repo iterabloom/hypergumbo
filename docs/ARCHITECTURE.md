@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **277** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 55 core, 4 CLI, 32 tracker)
-- **5905** symbols (functions, classes, methods)
-- **66325** edges by type:
-  - calls: 45878
-  - imports: 9828
-  - instantiates: 7020
-  - contains: 1343
-  - module_attr_ref: 1030
-  - dispatches_to: 555
-  - other: 671
+- **29411** symbols (functions, classes, methods)
+- **97912** edges by type:
+  - calls: 55803
+  - contains: 21155
+  - imports: 9907
+  - instantiates: 7582
+  - module_attr_ref: 1077
+  - references: 1064
+  - other: 1324
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 5905 Symbols + 66325 Edges + UsageContexts             │
+│  Output: 29411 Symbols + 97912 Edges + UsageContexts            │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -264,20 +264,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 4931.8 | ir.py |
-| `Span` | class | 4167.8 | ir.py |
-| `run_behavior_map` | function | 2814.9 | cli.py |
+| `Symbol` | class | 4981.4 | ir.py |
+| `Span` | class | 4207.7 | ir.py |
+| `run_behavior_map` | function | 2878.8 | cli.py |
 | `LinkerContext` | class | 1923.7 | registry.py |
 | `TrackerApp` | class | 1872.3 | tui.py |
 | `load_framework_patterns` | function | 1569.0 | framework_patterns.py |
 | `main` | function | 1452.1 | cli.py |
 | `clear_pattern_cache` | function | 1073.5 | framework_patterns.py |
-| `find_files` | function | 1013.9 | discovery.py |
+| `find_files` | function | 1017.2 | discovery.py |
 | `match_patterns` | function | 873.0 | framework_patterns.py |
 | `TreeSitterAnalyzer` | class | 859.1 | base.py |
+| `detect_entrypoints` | function | 795.2 | entrypoints.py |
 | `Store` | class | 792.1 | store.py |
-| `detect_entrypoints` | function | 766.4 | entrypoints.py |
-| `Edge` | class | 743.7 | ir.py |
+| `Edge` | class | 751.5 | ir.py |
 
 ## Pattern System
 
@@ -808,7 +808,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 0c5aa91ea3fd
+  commit: 61d0f9b19f6f
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
