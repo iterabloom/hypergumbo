@@ -50,6 +50,7 @@ from rich.table import Table
 from . import __version__
 from .analyze.all_analyzers import run_all_analyzers
 from .analyze.base import is_exported_from_modifiers
+from .behavior_map_io import load_behavior_map
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 from .linkers.registry import LinkerContext, run_all_linkers
 from .safety_zones import (
@@ -671,7 +672,7 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         if not input_file.exists():
             print(f"Error: Input file not found: {input_path}", file=sys.stderr)
             return 1
-        cached_results = json.loads(input_file.read_text())
+        cached_results = load_behavior_map(input_file)
 
         # Warn if results file is older than any source files in repo
         results_mtime = input_file.stat().st_mtime
@@ -1235,7 +1236,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
         return 1
 
-    behavior_map = json.loads(input_path.read_text())
+    behavior_map = load_behavior_map(input_path)
 
     # Reconstruct Symbol and Edge objects from the behavior map
     nodes = [Symbol.from_dict(n) for n in behavior_map.get("nodes", [])]
@@ -1557,7 +1558,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = json.loads(input_path.read_text())
+    behavior_map = load_behavior_map(input_path)
     nodes = behavior_map.get("nodes", [])
 
     # Search pattern (case-insensitive substring match)
@@ -1680,7 +1681,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = json.loads(input_path.read_text())
+    behavior_map = load_behavior_map(input_path)
     nodes = behavior_map.get("nodes", [])
 
     from .paths import is_test_file
@@ -1902,7 +1903,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = json.loads(input_path.read_text())
+    behavior_map = load_behavior_map(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
 
@@ -3385,7 +3386,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = json.loads(input_path.read_text())
+    behavior_map = load_behavior_map(input_path)
     nodes = behavior_map.get("nodes", [])
     edges_raw = behavior_map.get("edges", [])
 
@@ -3583,7 +3584,7 @@ def cmd_compact(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = json.loads(input_path.read_text())
+    behavior_map = load_behavior_map(input_path)
     nodes = behavior_map.get("nodes", [])
     edges_data = behavior_map.get("edges", [])
 
@@ -3646,7 +3647,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         )
         return 1
 
-    behavior_map = json.loads(input_path.read_text())
+    behavior_map = load_behavior_map(input_path)
     raw_edges = behavior_map.get("edges", [])
 
     # Build lightweight edge objects for the tagging pass
@@ -4274,7 +4275,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         )
         return 1
 
-    behavior_map = json.loads(input_path.read_text())
+    behavior_map = load_behavior_map(input_path)
     raw_edges = behavior_map.get("edges", [])
 
     from dataclasses import dataclass as _dc
@@ -4666,7 +4667,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         return 1
 
     # Load behavior map
-    behavior_map = json.loads(input_path.read_text())
+    behavior_map = load_behavior_map(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
 
@@ -5145,7 +5146,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
         return 1
 
-    behavior_map = json.loads(input_path.read_text())
+    behavior_map = load_behavior_map(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
     # Identify production callable symbols (exclude test files)

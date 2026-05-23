@@ -24,9 +24,12 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+# WI-mokim: consumer-side .gz handling for `hypergumbo run --gzip` outputs.
+from hypergumbo_core.behavior_map_io import load_behavior_map
+
 
 def find_artifacts(base_paths: list[str] | None = None) -> list[Path]:
-    """Find all hypergumbo JSON artifacts."""
+    """Find all hypergumbo JSON artifacts (including .gz per WI-mokim)."""
     if base_paths is None:
         base_paths = ["/tmp"]
 
@@ -36,32 +39,32 @@ def find_artifacts(base_paths: list[str] | None = None) -> list[Path]:
         if not base_path.exists():
             continue
 
-        # Find hg.json files in bakeoff directories
-        for hg_json in base_path.rglob("hg.json"):
-            artifacts.append(hg_json)
+        # Find hg.json files in bakeoff directories (both plain and gzipped)
+        for pattern in ("hg.json", "hg.json.gz"):
+            for hg_file in base_path.rglob(pattern):
+                artifacts.append(hg_file)
 
         # Find standalone artifacts (not budget variants)
-        for json_file in base_path.glob("*.json"):
+        candidates = list(base_path.glob("*.json")) + list(base_path.glob("*.json.gz"))
+        for json_file in candidates:
             # Skip budget variants and non-hypergumbo files
             name = json_file.name
             if any(x in name for x in [".4k.", ".16k.", ".64k."]):
                 continue
             # Quick check if it's a hypergumbo artifact
             try:
-                with open(json_file) as f:
-                    data = json.load(f)
+                data = load_behavior_map(json_file)
                 if "nodes" in data and "edges" in data and "schema_version" in data:
                     artifacts.append(json_file)
-            except (json.JSONDecodeError, KeyError):
+            except (json.JSONDecodeError, KeyError, OSError):
                 continue
 
     return sorted(set(artifacts))
 
 
 def load_artifact(path: Path) -> dict[str, Any]:
-    """Load a JSON artifact."""
-    with open(path) as f:
-        return json.load(f)
+    """Load a JSON artifact (handles .gz transparently per WI-mokim)."""
+    return load_behavior_map(path)
 
 
 def get_concepts(node: dict) -> list[str]:

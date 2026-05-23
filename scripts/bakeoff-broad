@@ -92,6 +92,9 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import pool_utils  # noqa: E402
 
+# WI-mokim: consumer-side .gz handling for `hypergumbo run --gzip` outputs.
+from hypergumbo_core.behavior_map_io import find_behavior_map, load_behavior_map  # noqa: E402
+
 
 # =============================================================================
 # Configuration
@@ -978,13 +981,13 @@ def _diagnose_cohort(state, workdir, cohort_number, repos, out_dir, diag_dir):
     issues = []
 
     for repo_name in repos:
-        hg_path = os.path.join(out_dir, repo_name, "hg.json")
-        if not os.path.exists(hg_path):
+        repo_out = os.path.join(out_dir, repo_name)
+        hg_path = find_behavior_map(repo_out)
+        if hg_path is None:
             continue
 
         try:
-            with open(hg_path) as f:
-                data = json.load(f)
+            data = load_behavior_map(hg_path)
         except Exception as e:
             print(f"Warning: Failed to parse {hg_path}: {e}")
             continue

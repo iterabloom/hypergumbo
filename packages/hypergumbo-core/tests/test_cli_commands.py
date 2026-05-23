@@ -3784,6 +3784,53 @@ def test_cmd_compact_converts_behavior_map(tmp_path: Path) -> None:
     assert "nodes_summary" in compact_map
 
 
+@pytest.mark.parametrize("suffix", [".json", ".json.gz"])
+def test_cmd_compact_accepts_gzipped_input(tmp_path: Path, suffix: str) -> None:
+    """WI-mokim: cmd_compact must round-trip plain .json AND .json.gz
+    fixtures. Prior to WI-mokim the .gz path dumped gzip bytes into
+    json.loads and exploded; this guards that consumer-side decompression
+    stays wired up."""
+    import gzip
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": "2026-01-25T00:00:00Z",
+        "nodes": [
+            {
+                "id": f"python:main.py:1-10:func{i}:function",
+                "name": f"func{i}",
+                "kind": "function",
+                "language": "python",
+                "path": "main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 0},
+            }
+            for i in range(5)
+        ],
+        "edges": [],
+        "entrypoints": [],
+        "analysis_runs": [],
+    }
+    input_path = tmp_path / f"hg{suffix}"
+    if suffix == ".json.gz":
+        with gzip.open(input_path, "wt") as f:
+            json.dump(behavior_map, f)
+    else:
+        input_path.write_text(json.dumps(behavior_map))
+
+    output_path = tmp_path / "hg.compact.json"
+    args = FakeArgs()
+    args.input = str(input_path)
+    args.out = str(output_path)
+    args.max_symbols = 10
+    args.min_symbols = 3
+    args.coverage = 0.8
+    args.no_connectivity = False
+
+    assert cmd_compact(args) == 0
+    compact_map = json.loads(output_path.read_text())
+    assert compact_map["view"] == "compact"
+    assert len(compact_map["nodes"]) >= 1
+
+
 def test_cmd_compact_to_stdout(tmp_path: Path, capsys) -> None:
     """Test that cmd_compact prints to stdout when no --out specified."""
     behavior_map = {

@@ -37,6 +37,9 @@ import random
 import sys
 from pathlib import Path
 
+# WI-mokim: consumer-side .gz handling for `hypergumbo run --gzip` outputs.
+from hypergumbo_core.behavior_map_io import find_behavior_map, load_behavior_map
+
 DEFAULT_BAKEOFF_DIR = os.path.expanduser(
     "~/hypergumbo_lab_notebook/bakeoff_artifacts"
 )
@@ -436,11 +439,10 @@ def get_dominant_language(repo_out_dir, diag_dir, repo_name):
                 if lang:
                     return lang
 
-    # Fall back to hg.json
-    hg_path = os.path.join(repo_out_dir, "hg.json")
-    if os.path.exists(hg_path):
-        with open(hg_path) as f:
-            hg = json.load(f)
+    # Fall back to hg.json (or hg.json.gz per WI-mokim)
+    hg_path = find_behavior_map(repo_out_dir)
+    if hg_path is not None:
+        hg = load_behavior_map(hg_path)
         # Count nodes by language (file extension heuristic)
         lang_counts = {}
         for node in hg.get("nodes", []):

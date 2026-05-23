@@ -272,16 +272,14 @@ _DERIVED_ARTIFACTS = ("entries.txt", "symbols.txt", "routes.txt")
 def _find_hg_json(repo_out: str) -> "str | None":
     """Find hg.json or hg.json.gz in a repo output directory.
 
-    Prefers plain hg.json over hg.json.gz when both exist.
-    Returns the full path, or None if neither exists.
+    Local string-returning wrapper around the library helper
+    ``hypergumbo_core.behavior_map_io.find_behavior_map`` (WI-mokim).
+    Kept as-is for callsite stability (this script's many call sites
+    expect ``str`` paths, not ``pathlib.Path``).
     """
-    plain = os.path.join(repo_out, "hg.json")
-    if os.path.exists(plain):
-        return plain
-    gz = os.path.join(repo_out, "hg.json.gz")
-    if os.path.exists(gz):
-        return gz
-    return None
+    from hypergumbo_core.behavior_map_io import find_behavior_map
+    match = find_behavior_map(repo_out)
+    return str(match) if match is not None else None
 
 
 def _has_hg_json(repo_out: str) -> bool:
@@ -292,18 +290,11 @@ def _has_hg_json(repo_out: str) -> bool:
 def _open_hg_json(path: str) -> dict:
     """Read and parse hg.json or hg.json.gz transparently.
 
-    Args:
-        path: Full path to hg.json or hg.json.gz file.
-
-    Returns:
-        Parsed JSON data as a dict.
+    Thin wrapper around ``hypergumbo_core.behavior_map_io.load_behavior_map``
+    (WI-mokim); kept for callsite stability.
     """
-    if path.endswith(".gz"):
-        with gzip.open(path, "rt") as f:
-            return json.load(f)
-    else:
-        with open(path) as f:
-            return json.load(f)
+    from hypergumbo_core.behavior_map_io import load_behavior_map
+    return load_behavior_map(path)
 
 
 def _should_compress_repo(repo_out: str, min_age_hours: float = 8.0) -> bool:

@@ -45,6 +45,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .behavior_map_io import load_behavior_map
+
 
 PartitionKey = tuple[str, str, str, str]
 """``(src_kind, src_language, dst_kind, dst_language)`` — the empirical
@@ -317,9 +319,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        behavior_map = json.loads(
-            args.behavior_map.read_text(encoding="utf-8"),
-        )
+        behavior_map = load_behavior_map(args.behavior_map)
     except (FileNotFoundError, OSError) as exc:
         print(
             f"check-edge-type-runtime-coherence: cannot read "
