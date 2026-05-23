@@ -92,6 +92,28 @@ def test_run_skips_unicode_error_files(tmp_path: Path) -> None:
     assert "UnicodeDecodeError" in py_failed[0]["reason"]
 
 
+def test_run_analyzes_bom_prefixed_python_file(tmp_path: Path) -> None:
+    """INV-kitot: a Python file with a UTF-8 BOM must be analyzed normally.
+
+    Python's own interpreter accepts BOM-prefixed source; the analyzer must
+    not be stricter than Python itself. Previously, read_text() without
+    encoding='utf-8-sig' left U+FEFF in the source, ast.parse() raised
+    SyntaxError, and the file was silently dropped.
+    """
+    py_file = tmp_path / "bom.py"
+    py_file.write_bytes(b"\xef\xbb\xbfdef boom():\n    pass\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert len(data["nodes"]) == 1
+    assert data["nodes"][0]["name"] == "boom"
+    assert data["nodes"][0]["kind"] == "function"
+    # And the file must not be recorded as failed.
+    assert data["limits"]["failed_files"] == []
+
+
 def test_run_detects_python_class(tmp_path: Path) -> None:
     """Running analysis on a Python file should detect class definitions."""
     # Create a Python file with a class
@@ -1699,6 +1721,45 @@ def test_fastapi_apirouter_prefix_composition_imported_constant(tmp_path: Path) 
     assert len(usage_contexts) >= 1
     ctx = usage_contexts[0]
     assert ctx["metadata"]["route_path"] == "/v2/models/{model_name}/infer"
+
+
+def test_fastapi_apirouter_prefix_resolves_imported_constant_from_bom_file(tmp_path: Path) -> None:
+    """INV-kitot: cross-file import resolution must read BOM-prefixed files.
+
+    The constants file (where V2_ROUTE_PREFIX lives) is BOM-prefixed. Without
+    encoding='utf-8-sig' at py.py:1081, ast.parse() raised SyntaxError, the
+    candidate was skipped, and the route prefix fell back to empty.
+    """
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    pkg_dir = tmp_path / "myapp"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    # BOM-prefixed constants file — the path that hit py.py:1081.
+    (pkg_dir / "constants.py").write_bytes(
+        b"\xef\xbb\xbfV2_ROUTE_PREFIX = '/v2'\n"
+    )
+
+    (pkg_dir / "endpoints.py").write_text(
+        "from fastapi import APIRouter\n"
+        "from myapp.constants import V2_ROUTE_PREFIX\n"
+        "\n"
+        "def infer():\n"
+        "    pass\n"
+        "\n"
+        "v2_router = APIRouter(prefix=V2_ROUTE_PREFIX)\n"
+        "v2_router.add_api_route('/models/{model_name}/infer', infer, methods=['POST'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [
+        uc.to_dict()
+        for uc in result.usage_contexts
+        if "endpoints.py" in uc.path
+    ]
+    assert len(usage_contexts) >= 1
+    assert usage_contexts[0]["metadata"]["route_path"] == "/v2/models/{model_name}/infer"
 
 
 def test_fastapi_apirouter_prefix_composition_relative_import(tmp_path: Path) -> None:

@@ -1078,7 +1078,8 @@ def _resolve_imported_string_constant(
         if not candidate.is_file():
             continue
         try:
-            source = candidate.read_text()
+            # utf-8-sig strips leading BOM; Python's own lexer does the same. INV-kitot.
+            source = candidate.read_text(encoding="utf-8-sig")
             mod = ast.parse(source)
         except (SyntaxError, UnicodeDecodeError):  # pragma: no cover
             continue
@@ -2143,7 +2144,8 @@ def _extract_file_analysis(
     limits.failed_files (INV-buhur).
     """
     try:
-        source = py_file.read_text()
+        # utf-8-sig strips leading BOM; Python's own lexer does the same. INV-kitot.
+        source = py_file.read_text(encoding="utf-8-sig")
         # Suppress SyntaxWarning from invalid escape sequences in analyzed code.
         # These warnings come from the target codebase, not hypergumbo.
         with warnings.catch_warnings():
