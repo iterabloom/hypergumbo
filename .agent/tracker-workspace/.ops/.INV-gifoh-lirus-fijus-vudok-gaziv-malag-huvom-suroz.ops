@@ -30,3 +30,18 @@
   clock: 2  # 95fe
   nonce: 95fe  # 95fe
   message: "Cross-item review 2026-05-17: test-coverage-output coherence cluster with WI-fugut (Test-Dense column mislabels test-call-edge count as 'tests' and recommends 'may indicate redundant tests'). Both items boil down to the test-coverage subcommand using a definition of 'test' that's not documented and differs from what reasonable consumers expect. Fixing this item (sketch vs subcommand divergence) and WI-fugut (column header wording + interpretation hint) together gives the subcommand a coherent vocabulary; fixing only one leaves an internal contradiction."  # 95fe
+- op: update  # e832
+  at: '2026-05-23T06:04:44Z'  # e832
+  by: agent  # e832
+  actor: jgstern_agent  # e832
+  clock: 3  # e832
+  nonce: e832  # e832
+  set:  # e832
+    status: satisfied  # e832
+- op: discuss  # 8a3b
+  at: '2026-05-23T06:04:45Z'  # 8a3b
+  by: agent  # 8a3b
+  actor: jgstern_agent  # 8a3b
+  clock: 4  # 8a3b
+  nonce: 8a3b  # 8a3b
+  message: "Fixed in PR #3872 (5308131742). sketch._estimate_test_coverage now filters BFS to edge_type=='calls' (was passing all edges) and recognizes WI-dulav concept-tagged tests (was path-heuristic only). End-to-end on hypergumbo self-analysis: sketch 92%→59% (2461/4205), test-coverage 58.2%→58.5% (2461/4205) — same numerator/denominator/methodology, only residual gap is :.0f vs :.1f display formatting. Three new tests pin the invariant."  # 8a3b

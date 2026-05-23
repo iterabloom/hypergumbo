@@ -30,3 +30,18 @@
   clock: 2  # 6da9
   nonce: 6da9  # 6da9
   message: "Cross-item review 2026-05-17: forms the verify-claims-2026-05-16 triad with WI-dozon and WI-bibuk — three disjoint subsets of the same 7/18 violations from the self-analysis run. This item: genuine wrapper-gap subset (real bug — Path.mkdir not yet covered by safety_zones). WI-dozon: short-name-collision FP subset (str.replace, platform.system — taint_refine scope expansion). WI-bibuk: claim-too-strict subset (subprocess→host_fs zone collapse — claim YAML and/or AUTO_SINK_ZONE_MAP need revision). All three should clear together for the 'verify-claims --claims docs/hypergumbo.claims.yaml passes' invariant; landing only one risks claims appearing to pass while the structural gap remains."  # 6da9
+- op: update  # 73b1
+  at: '2026-05-23T07:06:44Z'  # 73b1
+  by: agent  # 73b1
+  actor: jgstern_agent  # 73b1
+  clock: 3  # 73b1
+  nonce: 73b1  # 73b1
+  set:  # 73b1
+    status: satisfied  # 73b1
+- op: discuss  # 9570
+  at: '2026-05-23T07:06:44Z'  # 9570
+  by: agent  # 9570
+  actor: jgstern_agent  # 9570
+  clock: 4  # 9570
+  nonce: '9570'  # 9570
+  message: "Fixed in PR #3873 (cf60dea8b9). Three new mkdir wrappers (cache_mkdir, tmp_artifact_mkdir, install_artifact_mkdir) in safety_zones.py; build_grammars.py and gitleaks.py callsites migrated; three sink catalogs updated. Verify-claims: build-grammars-no-host-fs flow count 6 -> 3 (the residual 3 are subprocess.run, which is WI-bibuk's territory)."  # 9570

@@ -85,3 +85,17 @@
   clock: 9  # 1d52
   nonce: 1d52  # 1d52
   message: "Cohort validation 2026-05-21 on chatwoot (Rails+Vue, 13477 production functions): NO_MOVE. dead-code-maybe summary: demoted_view_func=0 (Rails uses config/routes.rb, no view_func decorators), demoted_dispatch_inherited=0 (571 inheritance edges available but reachable set only 446/13477 functions due to missing Rails entrypoint detection upstream — no ancestor methods are reachable, so dispatch_inherited has nothing to demote). dead_percent=96.7% (worse than self-analysis 92.6%). Regression sub-item filed: WI-kilal-samov-lomim-talom-totir-pojag-lidoz-huluz — root cause is upstream Rails entrypoint detection gap, not the WI-vuton heuristic itself. Keeping awaits_bakeoff_validation tag per playbook; revisit after Rails entrypoint detection lands. See ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md."  # 1d52
+- op: discuss  # 7b5a
+  at: '2026-05-21T21:06:09Z'  # 7b5a
+  by: agent  # 7b5a
+  actor: jgstern_agent  # 7b5a
+  clock: 10  # 7b5a
+  nonce: 7b5a  # 7b5a
+  message: "Post-WI-kilal re-validation 2026-05-21 on chatwoot. Entrypoint coverage expanded substantially (HTTP_ROUTE 1->115; reachable 446->1183; dead_percent 96.7%->91.2% — a 5.5pp reduction) but demoted_view_func and demoted_dispatch_inherited both remain at 0. The view_func=0 is expected on Rails (config/routes.rb dispatch, no view_func decorators). The dispatch_inherited=0 has a structural cause now documented: even though the Ruby # separator basename fix shipped in WI-kilal and 22 concrete in-tree dispatch matches exist on chatwoot, the BASE methods in those matches (Messages::Instagram::BaseMessageBuilder#initialize, MessageBuilder#get_story_object_from_source_id, etc.) are themselves unreachable. Ruby idioms like Klass.new->#initialize, before_action :foo callback resolution, and include-mixin method bodies aren't currently modeled by the Ruby analyzer's call-graph. Keeping awaits_bakeoff_validation: a Spring or Django target with classical inheritance + richer call-graph coverage would be the next cohort to test the empirical impact claim. Filing the Ruby-call-graph gap as the upstream blocker."  # 7b5a
+- op: discuss  # 1e89
+  at: '2026-05-21T23:59:54Z'  # 1e89
+  by: agent  # 1e89
+  actor: jgstern_agent  # 1e89
+  clock: 11  # 1e89
+  nonce: '1e89'  # 1e89
+  message: "Post-constructor-walk re-validation 2026-05-21 on chatwoot (commit 1ab55051fe). The MessageBuilder diagnostic concluded: the gap was constructor-inheritance, NOT mixin resolution. Fix shipped — 16 new constructor_inherited edges, 38 FP edges removed (151->113 to DeviseOverrides::SessionsController#new). BFS-reachable: 1183->1198. dead_percent: 91.2%->91.1%.\n\ndemoted_dispatch_inherited STILL 0 on chatwoot. New diagnosis: the corrected chains terminate at Rails background jobs (Webhooks::InstagramEventsJob etc.) that aren't themselves in the entrypoints[] (75 background_task entrypoints exist but at the CLASS level, missing several job classes). This is a Rails-job entrypoint-detection coverage gap, separate from the constructor walk and separate from the mixin gap.\n\nMixin linker filed as WI-puluf (needs_human_review): includes scope/design choices (linker placement, edge type, FP risk mitigation) requiring human judgment before agent implementation.\n\nKeeping awaits_bakeoff_validation: WI-vuton's empirical claim is still gated on Rails-job entrypoint detection coverage. Will need a third investigation pass once that gap is addressed."  # 1e89

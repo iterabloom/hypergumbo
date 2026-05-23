@@ -34,3 +34,18 @@
   set: {}  # 014a
   add:  # 014a
     isbefore: [WI-hahor-lavup-fopub-suvas-zunus-sajij-harup-rijib]  # 014a
+- op: update  # a55e
+  at: '2026-05-23T05:29:13Z'  # a55e
+  by: agent  # a55e
+  actor: jgstern_agent  # a55e
+  clock: 3  # a55e
+  nonce: a55e  # a55e
+  set:  # a55e
+    status: satisfied  # a55e
+- op: discuss  # 1b52
+  at: '2026-05-23T05:29:13Z'  # 1b52
+  by: agent  # 1b52
+  actor: jgstern_agent  # 1b52
+  clock: 4  # 1b52
+  nonce: 1b52  # 1b52
+  message: "Fixed in PR #3871 (367693c99b). Python analyzer now emits every FunctionDef/AsyncFunctionDef at any nesting depth as a Symbol with a qualified name (outer.inner / outermost.middle.inner), and bare-name calls inside the outer body resolve through a per-parent inner_scope map before falling through to module scope (Python LEGB). End-to-end on sketch.py's _collect_important_files validation case: 0 → 4 inner Symbols, 0 → 4 outer-to-inner calls edges. Five new tests + four updated tests pin the invariant. WI-hahor (the isbefore-blocker) covered as a downstream consumer surface."  # 1b52

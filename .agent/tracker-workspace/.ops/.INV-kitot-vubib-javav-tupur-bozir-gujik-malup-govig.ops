@@ -29,3 +29,18 @@
   clock: 2  # ef90
   nonce: ef90  # ef90
   message: "Companion item: INV-buhur (limits.failed_files never populated). Fixing this BOM bug removes ONE trigger of failed_files emptiness; real user SyntaxErrors will still go unrecorded until INV-buhur is also addressed. These are related but distinct — independent fixes, can land in either order."  # ef90
+- op: update  # e48e
+  at: '2026-05-23T04:43:17Z'  # e48e
+  by: agent  # e48e
+  actor: jgstern_agent  # e48e
+  clock: 3  # e48e
+  nonce: e48e  # e48e
+  set:  # e48e
+    status: satisfied  # e48e
+- op: discuss  # 2251
+  at: '2026-05-23T04:43:17Z'  # 2251
+  by: agent  # 2251
+  actor: jgstern_agent  # 2251
+  clock: 4  # 2251
+  nonce: '2251'  # 2251
+  message: "Fixed in PR #3870 (ed6618908a). Both py.py call sites now use read_text(encoding='utf-8-sig'); the utf-8-sig codec silently strips leading BOM. End-to-end verified: BOM-prefixed .py file now produces 1 function-kind Symbol with failed_files=[]. Two regression tests pin the invariant (one for the main analyzer path, one for the cross-file FastAPI prefix resolver). Companion INV-buhur (failed_files never populated by Python analyzer) remains open."  # 2251
