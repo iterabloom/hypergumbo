@@ -5209,6 +5209,180 @@ class TestUnresolvedEdgeEmission:
         assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
 
 
+class TestInvMofavNestedFunctionEmissionAndCallResolution:
+    """INV-mofav: every nested FunctionDef must be emitted as a Symbol, and
+    bare-name calls to nested functions must emit `calls` edges to them.
+
+    Found via self-analysis dogfood round 10. Validation case:
+    `sketch._collect_important_files` defines 4 inner functions and calls
+    them ~12 times; pre-INV-mofav, 0 inner functions were Symbols and 0 of
+    those calls were edges.
+
+    Naming convention: nested functions use a qualified `.name` of the form
+    `outer.inner` (and `outer.middle.inner` for deeper nesting), mirroring
+    the existing `ClassName.method` pattern. The short name is still
+    registered in `symbol_by_name` for within-file call resolution.
+    """
+
+    def test_undecorated_nested_function_is_emitted_with_qualified_name(self, tmp_path: Path) -> None:
+        """INV-mofav statement part 1: every FunctionDef must be a Symbol."""
+        py_file = tmp_path / "utils.py"
+        py_file.write_text(
+            "def outer():\n"
+            "    def inner_helper():\n"
+            "        return 42\n"
+            "    return inner_helper()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n for n in data["nodes"] if n["kind"] == "function"]
+        names = sorted(f["name"] for f in funcs)
+        assert "outer" in names
+        assert "outer.inner_helper" in names
+
+        # meta.nesting_parent identifies the immediate enclosing function.
+        nested = next(f for f in funcs if f["name"] == "outer.inner_helper")
+        assert nested.get("meta", {}).get("nesting_parent") == "outer"
+
+    def test_bare_name_call_to_nested_function_emits_calls_edge(self, tmp_path: Path) -> None:
+        """INV-mofav statement part 2: outer body's bare-name call to a
+        nested function emits a `calls` edge with dst = nested Symbol."""
+        py_file = tmp_path / "utils.py"
+        py_file.write_text(
+            "def outer():\n"
+            "    def helper(x: int) -> int:\n"
+            "        return x + 1\n"
+            "    return helper(41)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        outer_sym = next(n for n in data["nodes"] if n["name"] == "outer")
+        helper_sym = next(n for n in data["nodes"] if n["name"] == "outer.helper")
+        outer_calls = [
+            e for e in data["edges"]
+            if e["src"] == outer_sym["id"]
+            and e["type"] == "calls"
+            and e["dst"] == helper_sym["id"]
+        ]
+        assert len(outer_calls) == 1
+
+    def test_deeply_nested_function_qualified_with_full_chain(self, tmp_path: Path) -> None:
+        """Three-level nesting: name is `outermost.middle.inner`."""
+        py_file = tmp_path / "deep.py"
+        py_file.write_text(
+            "def level1():\n"
+            "    def level2():\n"
+            "        def level3():\n"
+            "            return 1\n"
+            "        return level3()\n"
+            "    return level2()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        names = sorted(n["name"] for n in data["nodes"] if n["kind"] == "function")
+        assert "level1" in names
+        assert "level1.level2" in names
+        assert "level1.level2.level3" in names
+
+    def test_sibling_nested_functions_are_distinct_symbols(self, tmp_path: Path) -> None:
+        """Two nested functions in different parents with the same short name
+        get distinct qualified names, so they are distinct Symbols."""
+        py_file = tmp_path / "siblings.py"
+        py_file.write_text(
+            "def outer_a():\n"
+            "    def helper():\n"
+            "        return 'a'\n"
+            "    return helper()\n"
+            "\n"
+            "def outer_b():\n"
+            "    def helper():\n"
+            "        return 'b'\n"
+            "    return helper()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        names = sorted(n["name"] for n in data["nodes"] if n["kind"] == "function")
+        assert "outer_a.helper" in names
+        assert "outer_b.helper" in names
+
+        # Each nested function has a distinct id and points its caller's
+        # `calls` edge at itself, not the sibling.
+        a_outer = next(n for n in data["nodes"] if n["name"] == "outer_a")
+        a_helper = next(n for n in data["nodes"] if n["name"] == "outer_a.helper")
+        b_outer = next(n for n in data["nodes"] if n["name"] == "outer_b")
+        b_helper = next(n for n in data["nodes"] if n["name"] == "outer_b.helper")
+
+        assert a_helper["id"] != b_helper["id"]
+        a_calls = [e for e in data["edges"] if e["src"] == a_outer["id"] and e["type"] == "calls"]
+        b_calls = [e for e in data["edges"] if e["src"] == b_outer["id"] and e["type"] == "calls"]
+        assert any(e["dst"] == a_helper["id"] for e in a_calls)
+        assert not any(e["dst"] == b_helper["id"] for e in a_calls)
+        assert any(e["dst"] == b_helper["id"] for e in b_calls)
+        assert not any(e["dst"] == a_helper["id"] for e in b_calls)
+
+    def test_validation_case_multi_helper_outer_emits_all_inner_edges(self, tmp_path: Path) -> None:
+        """Validation case mirroring `_collect_important_files`:
+        4 inner functions, multiple bare-name calls to each."""
+        py_file = tmp_path / "validation.py"
+        py_file.write_text(
+            "def collect():\n"
+            "    def to_relative(path):\n"
+            "        return path\n"
+            "    def get_root_dir(path):\n"
+            "        return path\n"
+            "    def is_root_level_file(path):\n"
+            "        return True\n"
+            "    def add_file(path):\n"
+            "        return True\n"
+            "    p1 = to_relative('a')\n"
+            "    r = get_root_dir(p1)\n"
+            "    if is_root_level_file(p1):\n"
+            "        add_file(p1)\n"
+            "    add_file('b')\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        funcs = [n["name"] for n in data["nodes"] if n["kind"] == "function"]
+        for expected in ("collect.to_relative", "collect.get_root_dir",
+                          "collect.is_root_level_file", "collect.add_file"):
+            assert expected in funcs, f"missing nested function Symbol: {expected}"
+
+        outer = next(n for n in data["nodes"] if n["name"] == "collect")
+        outer_calls = [e for e in data["edges"] if e["src"] == outer["id"] and e["type"] == "calls"]
+        dsts_by_name = {
+            n["id"]: n["name"]
+            for n in data["nodes"]
+            if n["name"].startswith("collect.")
+        }
+        called_inner_names = sorted({dsts_by_name[e["dst"]] for e in outer_calls if e["dst"] in dsts_by_name})
+        assert called_inner_names == [
+            "collect.add_file",
+            "collect.get_root_dir",
+            "collect.is_root_level_file",
+            "collect.to_relative",
+        ]
+        # add_file is called twice in the source, but call edges dedupe
+        # by (src, dst, type) across the file — so the expected count is 1.
+        add_file_id = next(n["id"] for n in data["nodes"] if n["name"] == "collect.add_file")
+        add_file_edges = [e for e in outer_calls if e["dst"] == add_file_id]
+        assert len(add_file_edges) == 1
+
+
 class TestNestedFunctionExtraction:
     """Tests for extracting nested functions (closures) with decorators.
 
@@ -5260,25 +5434,33 @@ class TestNestedFunctionExtraction:
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
         func_names = [f["name"] for f in functions]
 
-        # Should include the factory function AND the nested route handlers
+        # Should include the factory function AND the nested route handlers.
+        # INV-mofav: nested handlers carry qualified names like
+        # `get_entity_router.list_entities` to disambiguate same-named
+        # nested functions in different parents.
         assert "get_entity_router" in func_names, "Factory function should be extracted"
-        assert "list_entities" in func_names, "Nested route handler should be extracted"
-        assert "get_entity" in func_names, "Nested route handler should be extracted"
-        assert "create_entity" in func_names, "Nested route handler should be extracted"
+        assert "get_entity_router.list_entities" in func_names
+        assert "get_entity_router.get_entity" in func_names
+        assert "get_entity_router.create_entity" in func_names
 
         # Verify the nested functions have their decorator metadata
-        nested_funcs = {f["name"]: f for f in functions if f["name"] in ["list_entities", "get_entity", "create_entity"]}
+        qualified = [
+            "get_entity_router.list_entities",
+            "get_entity_router.get_entity",
+            "get_entity_router.create_entity",
+        ]
+        nested_funcs = {f["name"]: f for f in functions if f["name"] in qualified}
 
         for name, func in nested_funcs.items():
             decorators = func.get("meta", {}).get("decorators", [])
             assert len(decorators) >= 1, f"{name} should have decorator metadata"
             assert decorators[0]["name"].startswith("router."), f"{name} decorator should be router.*"
 
-    def test_nested_function_without_decorator_not_extracted(self, tmp_path: Path) -> None:
-        """Nested helper functions without decorators should NOT be extracted.
-
-        We don't want to clutter the symbol list with private helper closures.
-        Only nested functions with decorators (indicating they serve as handlers) should be extracted.
+    def test_undecorated_nested_function_is_extracted_with_qualified_name(self, tmp_path: Path) -> None:
+        """INV-mofav: undecorated nested functions ARE extracted (with a
+        qualified `outer.inner` name). Pre-INV-mofav, undecorated nested
+        functions were silently dropped; this test pinned the old behavior
+        and now pins the new invariant.
         """
         py_file = tmp_path / "utils.py"
         py_file.write_text(
@@ -5296,12 +5478,13 @@ class TestNestedFunctionExtraction:
         functions = [n for n in data["nodes"] if n["kind"] == "function"]
         func_names = [f["name"] for f in functions]
 
-        # Should only have the outer function, not the inner helper
         assert "outer" in func_names
-        assert "inner_helper" not in func_names, "Undecorated nested function should not be extracted"
+        assert "outer.inner_helper" in func_names
+        # The short name (no qualifier) is NOT in func_names — qualified-only.
+        assert "inner_helper" not in func_names
 
     def test_nested_async_function_with_decorator_is_extracted(self, tmp_path: Path) -> None:
-        """Async nested functions with decorators should also be extracted."""
+        """Async nested functions with decorators get qualified names too."""
         py_file = tmp_path / "async_routes.py"
         py_file.write_text(
             "from fastapi import APIRouter\n"
@@ -5324,10 +5507,14 @@ class TestNestedFunctionExtraction:
         func_names = [f["name"] for f in functions]
 
         assert "get_async_router" in func_names
-        assert "async_handler" in func_names, "Async nested handler should be extracted"
+        assert "get_async_router.async_handler" in func_names
 
-    def test_deeply_nested_decorated_function_is_extracted(self, tmp_path: Path) -> None:
-        """Decorated functions nested more than one level deep should be extracted."""
+    def test_deeply_nested_function_is_extracted_with_full_qualifier(self, tmp_path: Path) -> None:
+        """INV-mofav: at any nesting depth, the qualified name is the
+        full chain `outermost.middle.inner`. Every level is extracted —
+        the pre-INV-mofav rule "undecorated middle layer is dropped" no
+        longer applies.
+        """
         py_file = tmp_path / "deep.py"
         py_file.write_text(
             "def level1():\n"
@@ -5347,9 +5534,8 @@ class TestNestedFunctionExtraction:
         func_names = [f["name"] for f in functions]
 
         assert "level1" in func_names
-        assert "level3_decorated" in func_names, "Deeply nested decorated function should be extracted"
-        # level2 has no decorator, so should not be extracted
-        assert "level2" not in func_names
+        assert "level1.level2" in func_names
+        assert "level1.level2.level3_decorated" in func_names
 
 
 class TestIfNameMainDetection:
@@ -6367,6 +6553,6 @@ class TestSymbolIsExportedIntegration:
         by_name = {s.name: s for s in result.symbols if s.kind == "function"}
         # get_router is top-level and public → exported.
         assert by_name["get_router"].is_exported is True
-        # list_items is nested (col_offset > 0) → not exported even
-        # though the name is public.
-        assert by_name["list_items"].is_exported is False
+        # list_items is nested (INV-mofav: qualified name `get_router.list_items`)
+        # → not exported, even though the short name is public.
+        assert by_name["get_router.list_items"].is_exported is False

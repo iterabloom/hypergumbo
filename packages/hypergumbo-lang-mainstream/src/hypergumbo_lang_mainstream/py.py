@@ -1735,6 +1735,17 @@ class FileAnalysis:
     # Original source text (for library_patterns regex scanning during
     # dataflow annotation — see annotate_dataflow_ast).
     source: str = ""
+    # INV-mofav: per-enclosing-function inner scope. Maps the enclosing
+    # function Symbol's id to {short_name -> nested Symbol}. Lets call
+    # resolution see bare-name calls to inner helpers without polluting
+    # the flat symbol_by_name dict.
+    nested_by_parent_id: dict[str, dict[str, "Symbol"]] = field(default_factory=dict)
+    # INV-mofav: maps AST FunctionDef/AsyncFunctionDef node id -> Symbol.
+    # Used by edge extraction to resolve the caller Symbol for nested
+    # functions (which aren't registered in the flat symbol_by_name dict).
+    # AST node ids are stable within a single process; this field is only
+    # consumed in the same process that produced the tree.
+    func_symbol_by_node_id: dict[int, "Symbol"] = field(default_factory=dict)
 
 
 def _detect_source_roots(repo_root: Path) -> list[Path]:
@@ -2227,6 +2238,32 @@ def _extract_file_analysis(
     # Key: (start_line, name) tuple
     processed_functions: set[tuple[int, str]] = set()
 
+    # INV-mofav: build a parent map so each FunctionDef can find its
+    # immediate enclosing FunctionDef (if any), and emit a qualified
+    # name like `outer.inner` or `outermost.middle.inner`.
+    parent_map: dict[int, ast.AST] = {}
+    for _p in ast.walk(tree):
+        for _c in ast.iter_child_nodes(_p):
+            parent_map[id(_c)] = _p
+    func_symbol_by_node_id: dict[int, Symbol] = {}
+
+    def _enclosing_function_chain(node: ast.AST) -> list[str]:
+        """Return the names of enclosing FunctionDef ancestors, outermost-first.
+
+        Stops at the first non-function parent boundary in either direction:
+        class bodies and module level don't extend the chain. Used for
+        qualified naming of nested functions per INV-mofav. Class methods
+        keep their existing `ClassName.method` naming (computed elsewhere).
+        """
+        chain: list[str] = []
+        current = parent_map.get(id(node))
+        while current is not None:
+            if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                chain.append(current.name)
+            current = parent_map.get(id(current))
+        chain.reverse()  # outermost first
+        return chain
+
     # Scan for APIRouter prefix assignments (for route path composition)
     router_prefixes = _scan_router_prefixes(tree, repo_root, py_file)
 
@@ -2375,18 +2412,23 @@ def _extract_file_analysis(
             if (node.lineno, node.name) in processed_functions:
                 continue
 
-            # Extract functions that are either:
-            # 1. Top-level (col_offset == 0) - always extract
-            # 2. Nested but have decorators - extract for patterns like FastAPI router factories
-            #    where route handlers are defined as decorated nested functions:
-            #        def get_router():
-            #            router = APIRouter()
-            #            @router.get("/items")  # <-- This should be extracted
-            #            def list_items(): ...
+            # INV-mofav: every FunctionDef / AsyncFunctionDef is emitted as a
+            # Symbol, at any nesting depth. Top-level and nested-with-decorator
+            # cases are unchanged in name (`node.name`). Nested-undecorated
+            # cases use a qualified name `outer.inner` (recursively
+            # `outermost.middle.inner`) to disambiguate same-named nested
+            # functions in different parents.
             is_top_level = node.col_offset == 0
-            has_decorators = bool(node.decorator_list)
+            func_chain = _enclosing_function_chain(node)
+            is_nested = bool(func_chain)
+            if is_nested:
+                qualified_name = ".".join(func_chain + [node.name])
+                immediate_parent_name = func_chain[-1]
+            else:
+                qualified_name = node.name
+                immediate_parent_name = None
 
-            if is_top_level or has_decorators:
+            if True:
                 # Track as processed
                 processed_functions.add((node.lineno, node.name))
                 end_line = node.end_lineno or node.lineno
@@ -2439,17 +2481,22 @@ def _extract_file_analysis(
                 _fds = ast.get_docstring(node)
                 _fds_line = _fds.split("\n")[0].strip()[:80] if _fds else None
                 # WI-gipag: only top-level functions are candidates for
-                # the public API. Nested functions captured here (because
-                # they carry decorators, per the router-factory rule
-                # above) are never externally reachable via __all__, so
-                # is_exported stays False.
+                # the public API. Nested functions captured here (whether
+                # decorated or undecorated under INV-mofav) are never
+                # externally reachable via __all__, so is_exported stays
+                # False for them.
                 func_is_exported = (
                     is_top_level
                     and _is_python_top_level_exported(node.name, module_all)
                 )
+                # INV-mofav: nested functions stamp the immediate enclosing
+                # function name into meta.nesting_parent so consumers can
+                # branch on nesting without parsing the qualified `name`.
+                if immediate_parent_name is not None:
+                    func_meta["nesting_parent"] = immediate_parent_name
                 symbol = Symbol(
-                    id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
-                    name=node.name,
+                    id=_make_symbol_id(str(py_file), node.lineno, end_line, qualified_name, "function"),
+                    name=qualified_name,
                     kind="function",
                     language="python",
                     path=str(py_file),
@@ -2465,7 +2512,15 @@ def _extract_file_analysis(
                     is_exported=func_is_exported,
                 )
                 symbols.append(symbol)
-                symbol_by_name[node.name] = symbol
+                # Only top-level functions get registered in the flat
+                # symbol_by_name dict (which feeds call resolution for
+                # bare-name calls at module-level). Nested functions resolve
+                # through the per-parent inner_scope map (INV-mofav) to
+                # prevent sibling collisions when two parents each define a
+                # nested helper of the same short name.
+                if not is_nested:
+                    symbol_by_name[node.name] = symbol
+                func_symbol_by_node_id[id(node)] = symbol
 
     # Extract usage contexts for call-based frameworks (v1.1.x).
     # UsageContext records feed into YAML-driven enrichment (concept tagging on
@@ -2602,6 +2657,22 @@ def _extract_file_analysis(
     else:
         importing_module = py_file.stem  # Fallback to just filename
     symbol_imports, module_imports = _extract_imports(tree, importing_module)
+
+    # INV-mofav: build the per-parent inner scope map. For each emitted
+    # function Symbol whose AST node has an enclosing FunctionDef ancestor,
+    # register it under its short name in the parent function's scope.
+    nested_by_parent_id: dict[str, dict[str, Symbol]] = {}
+    for _node_id, _sym in func_symbol_by_node_id.items():
+        _parent = parent_map.get(_node_id)
+        while _parent is not None:
+            if isinstance(_parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                _parent_sym = func_symbol_by_node_id.get(id(_parent))
+                if _parent_sym is not None:
+                    short_name = _sym.name.rsplit(".", 1)[-1]
+                    nested_by_parent_id.setdefault(_parent_sym.id, {})[short_name] = _sym
+                break
+            _parent = parent_map.get(id(_parent))
+
     return FileAnalysis(
         symbols=symbols,
         symbol_by_name=symbol_by_name,
@@ -2610,6 +2681,8 @@ def _extract_file_analysis(
         tree=tree,
         usage_contexts=usage_contexts,
         source=source,
+        nested_by_parent_id=nested_by_parent_id,
+        func_symbol_by_node_id=func_symbol_by_node_id,
     ), None
 
 
@@ -2623,6 +2696,8 @@ def _extract_edges(
     _sym_by_path_name: dict[tuple[str, str], Symbol] | None = None,
     *,
     run_id: str,
+    nested_by_parent_id: dict[str, dict[str, Symbol]] | None = None,
+    func_symbol_by_node_id: dict[int, Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -2654,17 +2729,26 @@ def _extract_edges(
     """
     if module_imports is None:  # pragma: no cover
         module_imports = {}
+    if nested_by_parent_id is None:  # pragma: no cover
+        nested_by_parent_id = {}
+    if func_symbol_by_node_id is None:  # pragma: no cover
+        func_symbol_by_node_id = {}
 
     edges: list[Edge] = []
 
-    def _emit_function_ref(name_node: ast.Name, caller: Symbol) -> None:
+    def _emit_function_ref(name_node: ast.Name, caller: Symbol, inner_scope: dict[str, Symbol] | None = None) -> None:
         """Emit a 'references' edge if *name_node* resolves to a function/method.
 
         Used for function references in non-call contexts: call arguments,
         dict values, variable assignments, and collection literals.
         """
         name = name_node.id
-        symbol = local_symbols.get(name)
+        # INV-mofav: enclosing-function scope wins over module scope, mirroring
+        # Python's LEGB rule for bare names. Without this, a bare-name reference
+        # to a nested helper resolves to a same-named top-level Symbol.
+        symbol = inner_scope.get(name) if inner_scope else None
+        if symbol is None:
+            symbol = local_symbols.get(name)
         if not symbol and name in imports:
             mod_name, original_name = imports[name]
             symbol = _lookup_symbol_by_module(
@@ -2735,8 +2819,15 @@ def _extract_edges(
         block_nodes: list[ast.AST],
         caller_symbol: Symbol,
         var_types: dict[str, Symbol] | None = None,
+        inner_scope: dict[str, Symbol] | None = None,
     ) -> None:
-        """Process AST nodes within a code block, tracking variable types."""
+        """Process AST nodes within a code block, tracking variable types.
+
+        ``inner_scope`` is the enclosing-function scope (INV-mofav) — short
+        names defined as nested functions of ``caller_symbol``. Resolution
+        consults ``inner_scope`` before ``local_symbols`` so bare-name calls
+        to inner helpers don't fall through to a same-named top-level Symbol.
+        """
         if var_types is None:
             var_types = {}
 
@@ -2748,7 +2839,7 @@ def _extract_edges(
                     if isinstance(target, ast.Name) and isinstance(node.value, ast.Call):
                         assigned_class = _resolve_call_target(
                             node.value, local_symbols, imports, global_symbols,
-                            module_imports, resolver
+                            module_imports, resolver, inner_scope=inner_scope,
                         )
                         if assigned_class and assigned_class.kind == "class":
                             var_types[target.id] = assigned_class
@@ -2770,7 +2861,7 @@ def _extract_edges(
 
             # Function reference in assignment RHS: callback = my_func
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
-                _emit_function_ref(node.value, caller_symbol)
+                _emit_function_ref(node.value, caller_symbol, inner_scope=inner_scope)
 
             # Process calls
             if isinstance(node, ast.Call):
@@ -2779,31 +2870,33 @@ def _extract_edges(
                     module_imports, var_types, edges, resolver,
                     sym_by_path_name=_sym_by_path_name,
                     run_id=run_id,
+                    inner_scope=inner_scope,
                 )
                 # Function references in call arguments: map(transform, items)
                 for arg in node.args:
                     if isinstance(arg, ast.Name):
-                        _emit_function_ref(arg, caller_symbol)
+                        _emit_function_ref(arg, caller_symbol, inner_scope=inner_scope)
                 for kw in node.keywords:
                     if isinstance(kw.value, ast.Name):
-                        _emit_function_ref(kw.value, caller_symbol)
+                        _emit_function_ref(kw.value, caller_symbol, inner_scope=inner_scope)
 
             # Function references in dict values: {"GET": handle_get}
             if isinstance(node, ast.Dict):
                 for val in node.values:
                     if isinstance(val, ast.Name):
-                        _emit_function_ref(val, caller_symbol)
+                        _emit_function_ref(val, caller_symbol, inner_scope=inner_scope)
 
             # Function references in list/tuple: [func_a, func_b]
             if isinstance(node, (ast.List, ast.Tuple)):
                 for elt in node.elts:
                     if isinstance(elt, ast.Name):
-                        _emit_function_ref(elt, caller_symbol)
+                        _emit_function_ref(elt, caller_symbol, inner_scope=inner_scope)
 
-            # Recurse into child nodes (but not into nested function defs)
+            # Recurse into child nodes (but not into nested function defs —
+            # those get their own caller_symbol in the outer FunctionDef loop).
             for child in ast.iter_child_nodes(node):
                 if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    process_code_block([child], caller_symbol, var_types)
+                    process_code_block([child], caller_symbol, var_types, inner_scope=inner_scope)
 
     def _extract_param_types(
         func_node: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -3089,7 +3182,11 @@ def _extract_edges(
     # Process functions (including async functions)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            caller_symbol = local_symbols.get(node.name)
+            # INV-mofav: nested functions aren't registered in the flat
+            # symbol_by_name dict, so look them up by AST node id first.
+            caller_symbol = func_symbol_by_node_id.get(id(node))
+            if caller_symbol is None:
+                caller_symbol = local_symbols.get(node.name)
             if caller_symbol:
                 # Process decorators on the function
                 _process_decorators(caller_symbol, node.decorator_list)
@@ -3102,8 +3199,11 @@ def _extract_edges(
                         for fname, fsym in class_field_types[class_name].items():
                             if fname not in param_types:
                                 param_types[fname] = fsym
+                # INV-mofav: each function's inner_scope contains its nested
+                # function helpers, keyed by short name.
+                inner_scope = nested_by_parent_id.get(caller_symbol.id)
                 _emit_module_attr_refs(node.body, caller_symbol)
-                process_code_block(node.body, caller_symbol, param_types)
+                process_code_block(node.body, caller_symbol, param_types, inner_scope=inner_scope)
 
         # Process class decorators
         elif isinstance(node, ast.ClassDef):
@@ -3157,6 +3257,7 @@ def _resolve_call_target(
     global_symbols: dict[tuple[str, str], Symbol],
     module_imports: dict[str, str],
     resolver: "SymbolResolver | None" = None,
+    inner_scope: dict[str, Symbol] | None = None,
 ) -> Symbol | None:
     """Resolve the target of a call expression to a Symbol.
 
@@ -3164,12 +3265,21 @@ def _resolve_call_target(
     - ClassName() -> class symbol
     - module.ClassName() -> class symbol in module
     - imported_name() -> resolved symbol
+
+    ``inner_scope`` is the enclosing-function scope (INV-mofav): when the
+    bare name resolves to a nested function in the caller's body, it wins
+    over a same-named top-level Symbol (Python LEGB rule).
     """
     func = call_node.func
 
     # Simple name: ClassName() or func()
     if isinstance(func, ast.Name):
         name = func.id
+        # INV-mofav: enclosing-function scope wins over module scope.
+        if inner_scope is not None:
+            symbol = inner_scope.get(name)
+            if symbol:
+                return symbol
         # Check local symbols
         symbol = local_symbols.get(name)
         if symbol:
@@ -3210,6 +3320,7 @@ def _process_call(
     sym_by_path_name: dict[tuple[str, str], Symbol] | None = None,
     *,
     run_id: str,
+    inner_scope: dict[str, Symbol] | None = None,
 ) -> None:
     """Process a single call expression and emit appropriate edges.
 
@@ -3219,6 +3330,10 @@ def _process_call(
     - Self field method calls: self.field.method() (using field type inference)
     - Module-qualified calls: module.ClassName(), module.func()
     - Variable method calls: stub.method() (using var_types for type inference)
+
+    ``inner_scope`` is the enclosing-function scope (INV-mofav): bare-name
+    calls to nested functions resolve through it before falling through to
+    ``local_symbols``.
     """
     func = call_node.func
     callee_symbol = None
@@ -3228,7 +3343,10 @@ def _process_call(
     # Case 1: Simple name calls - helper() or ClassName()
     if isinstance(func, ast.Name):
         callee_name = func.id
-        callee_symbol = local_symbols.get(callee_name)
+        # INV-mofav: enclosing-function scope wins over module scope.
+        callee_symbol = inner_scope.get(callee_name) if inner_scope else None
+        if callee_symbol is None:
+            callee_symbol = local_symbols.get(callee_name)
 
         if callee_symbol and callee_symbol.kind == "class":
             is_instantiation = True
@@ -3480,6 +3598,8 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
         file_analysis.tree, file_analysis.symbol_by_name, {}, {},
         file_analysis.module_imports,
         run_id=run.execution_id,
+        nested_by_parent_id=file_analysis.nested_by_parent_id,
+        func_symbol_by_node_id=file_analysis.func_symbol_by_node_id,
     )
     return AnalysisResult(
         symbols=file_analysis.symbols,
@@ -3597,6 +3717,8 @@ def analyze_python(
             analysis.tree, analysis.symbol_by_name, analysis.imports, global_symbols,
             analysis.module_imports, resolver, _sym_by_path_name,
             run_id=run.execution_id,
+            nested_by_parent_id=analysis.nested_by_parent_id,
+            func_symbol_by_node_id=analysis.func_symbol_by_node_id,
         )
         # ADR-0015: annotate edges with access_mode from Python AST context.
         # Pass source + python.yaml config so library_patterns (e.g. .append,
