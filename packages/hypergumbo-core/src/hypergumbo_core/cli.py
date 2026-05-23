@@ -4065,6 +4065,7 @@ def _build_python_ddg_for_verify_claims(
         )
         from .taint_refine import (
             extract_python_imports,
+            extract_python_param_annotations,
             extract_python_receiver_hints,
         )
         # Force-import the Python def/use extractor so it self-registers.
@@ -4123,6 +4124,7 @@ def _build_python_ddg_for_verify_claims(
             populate_def_use_for_cfg=populate_def_use_for_cfg,
             solve_reaching_defs=solve_reaching_defs,
             extract_python_receiver_hints=extract_python_receiver_hints,
+            extract_python_param_annotations=extract_python_param_annotations,
         )
 
     return ddg_edges, ddg_symbols, hints_by_caller
@@ -4143,6 +4145,7 @@ def _collect_python_function_ddg(
     populate_def_use_for_cfg: Any,
     solve_reaching_defs: Any,
     extract_python_receiver_hints: Any,
+    extract_python_param_annotations: Any,
 ) -> None:
     """Recurse a Python AST collecting per-function DDG edges and refinement hints.
 
@@ -4177,14 +4180,25 @@ def _collect_python_function_ddg(
                 result = solve_reaching_defs(cfg)
             except Exception:  # pragma: no cover - defensive
                 return  # bail on this function; continue tree walk implicitly skipped
-            if not result.bailed_out and result.ddg_edges:
-                ddg_edges.extend(result.ddg_edges)
-                ddg_symbols.add(sym_id)
-                fn_hints = extract_python_receiver_hints(
-                    body_node, src, module_imports, imports, result.ddg_edges,
+            if not result.bailed_out:
+                if result.ddg_edges:
+                    ddg_edges.extend(result.ddg_edges)
+                    ddg_symbols.add(sym_id)
+                # WI-dozon: parameter annotations are extracted even when
+                # the DDG is empty — short helpers like `return name.replace(...)`
+                # have no def-use edges, but the parameter annotation is
+                # exactly the signal that pins the receiver type. Run the
+                # refinement whenever annotations OR DDG edges exist.
+                param_anns = extract_python_param_annotations(
+                    node, src, module_imports, imports,
                 )
-                if fn_hints:
-                    hints_by_caller[sym_id] = fn_hints
+                if param_anns or result.ddg_edges:
+                    fn_hints = extract_python_receiver_hints(
+                        body_node, src, module_imports, imports, result.ddg_edges,
+                        param_annotations=param_anns,
+                    )
+                    if fn_hints:
+                        hints_by_caller[sym_id] = fn_hints
     # Recurse into children so we pick up nested function definitions.
     for child in node.children:
         _collect_python_function_ddg(
@@ -4196,6 +4210,7 @@ def _collect_python_function_ddg(
             populate_def_use_for_cfg=populate_def_use_for_cfg,
             solve_reaching_defs=solve_reaching_defs,
             extract_python_receiver_hints=extract_python_receiver_hints,
+            extract_python_param_annotations=extract_python_param_annotations,
         )
 
 

@@ -50,6 +50,23 @@ Out of scope
   file's top level plus assignments in the calling function.
 * **Languages without a §1c extractor**. By construction — there is no
   DDG to walk backwards through.
+
+WI-dozon parameter-annotation pinning (in scope)
+------------------------------------------------
+Parameter-receiver type pinning is supported when the parameter carries
+a type annotation. ``def f(name: str): name.replace(...)`` is resolved
+by reading the ``str`` annotation: the receiver hint at the call site
+becomes ``builtins.str``, which makes ``_sink_module_compatible`` reject
+the short-name match against ``pathlib.Path.replace``. Supported
+annotation shapes: bare builtin names (``str``, ``bytes``, ``list``,
+``dict``, ``int``, ``float``, ``bool``, ``tuple``, ``set``,
+``frozenset``, ``bytearray``, ``memoryview``, ``complex``, ``range``,
+``object``); bare imported class names (``Path`` when
+``from pathlib import Path`` is in scope); dotted annotations
+(``pathlib.Path``); generic types with a supported outer
+(``list[int]`` → ``builtins.list``). Explicit non-coverage: ``Optional``,
+``Union``, forward-reference strings — these can't be pinned to a single
+module hint and are conservatively skipped.
 """
 from __future__ import annotations
 
@@ -158,12 +175,139 @@ def _parse_import_from_statement(
             imports[alias] = (module_path, original)
 
 
+_BUILTIN_TYPE_NAMES: frozenset[str] = frozenset({
+    "str", "bytes", "int", "float", "bool", "list", "tuple", "dict",
+    "set", "frozenset", "bytearray", "memoryview", "complex", "range",
+    "object",
+})
+
+# Generic-type outer names that don't pin a single concrete type and
+# therefore can't be used as a module hint. WI-dozon conservatively
+# skips them rather than guessing a default.
+_UNPINNABLE_GENERIC_OUTERS: frozenset[str] = frozenset({
+    "Optional", "Union", "Callable", "Any", "Iterable", "Iterator",
+    "Sequence", "Mapping", "MutableMapping", "Awaitable", "AsyncIterable",
+})
+
+
+def _resolve_annotation_name(
+    name: str,
+    module_imports: dict[str, str],
+    imports: dict[str, tuple[str, str]],
+) -> str | None:
+    """Resolve a bare annotation name to a ``module.name`` hint or None.
+
+    Rules:
+    - Builtin type → ``builtins.<name>`` (handles ``str``, ``bytes``,
+      ``list``, ``dict``, etc.).
+    - ``from X import Name`` → ``X.Name``.
+    - ``import X.Y`` aliased to ``Name`` (less common for types but
+      supported via ``module_imports``).
+    - Otherwise: None (conservative — don't invent a hint).
+    """
+    if name in _BUILTIN_TYPE_NAMES:
+        return f"builtins.{name}"
+    if name in imports:
+        module_path, original = imports[name]
+        return f"{module_path}.{original}"
+    if name in module_imports:
+        # The annotation is itself a module path (rare for types but
+        # not impossible: ``import collections; def f(x: collections): ...``).
+        return module_imports[name]
+    return None
+
+
+def _resolve_annotation_node(
+    type_node: Any,
+    source: bytes,
+    module_imports: dict[str, str],
+    imports: dict[str, tuple[str, str]],
+) -> str | None:
+    """Resolve a ``type``-node annotation to a module hint or None.
+
+    Handles the tree-sitter shapes ``identifier`` (``str``),
+    ``attribute`` (``pathlib.Path``), and ``generic_type`` (``list[int]``,
+    ``Optional[str]``). For generic_type, the outer name is what
+    matters; ``Optional`` / ``Union`` / etc. return None.
+    """
+    # The ``type`` node wraps a single annotation expression.
+    inner: Any = None
+    for child in type_node.children:
+        if child.type in ("identifier", "attribute", "generic_type"):
+            inner = child
+            break
+    if inner is None:
+        return None
+    if inner.type == "identifier":
+        return _resolve_annotation_name(
+            _node_text(inner, source), module_imports, imports,
+        )
+    if inner.type == "attribute":
+        # Reassemble ``pathlib.Path`` from the attribute chain.
+        return _node_text(inner, source)
+    # generic_type: ``list[int]``, ``Optional[str]``, etc.
+    outer = None
+    for child in inner.children:
+        if child.type == "identifier":
+            outer = _node_text(child, source)
+            break
+    if outer is None or outer in _UNPINNABLE_GENERIC_OUTERS:
+        return None
+    return _resolve_annotation_name(outer, module_imports, imports)
+
+
+def extract_python_param_annotations(
+    func_def_node: Any,
+    source: bytes,
+    module_imports: dict[str, str],
+    imports: dict[str, tuple[str, str]],
+) -> dict[str, str]:
+    """Map each annotated parameter to a module hint (WI-dozon).
+
+    Walks ``func_def_node.child_by_field_name("parameters")`` and
+    extracts ``typed_parameter`` / ``typed_default_parameter`` shapes.
+    Unannotated parameters and parameters whose annotation can't be
+    pinned to a single type are silently absent from the result.
+
+    Used by :func:`extract_python_receiver_hints` to resolve receivers
+    that the DDG can't bind (parameter receivers). Closes the
+    ``def f(name: str): name.replace(...)`` FP class that previously
+    collided with ``pathlib.Path.replace`` under the ``external``
+    exemption.
+    """
+    annotations: dict[str, str] = {}
+    params_node = func_def_node.child_by_field_name("parameters")
+    if params_node is None:  # pragma: no cover - tree-sitter always provides this
+        return annotations
+    for param in params_node.children:
+        if param.type not in ("typed_parameter", "typed_default_parameter"):
+            continue
+        # First identifier child is the parameter name; the type child
+        # carries the annotation expression.
+        param_name = None
+        type_node = None
+        for child in param.children:
+            if child.type == "identifier" and param_name is None:
+                param_name = _node_text(child, source)
+            elif child.type == "type":
+                type_node = child
+        if param_name is None or type_node is None:  # pragma: no cover - defensive
+            continue
+        hint = _resolve_annotation_node(
+            type_node, source, module_imports, imports,
+        )
+        if hint is not None:
+            annotations[param_name] = hint
+    return annotations
+
+
 def extract_python_receiver_hints(
     body_node: Any,
     source: bytes,
     module_imports: dict[str, str],
     imports: dict[str, tuple[str, str]],
     ddg_edges: list,
+    param_annotations: dict[str, str] | None = None,
 ) -> dict[tuple[int, str], str]:
     """For each ``recv.method()`` site in a function body, derive a module hint.
 
@@ -181,7 +325,15 @@ def extract_python_receiver_hints(
 
     Returns ``{(call_line, attr_name) → module_hint}``. Empty when no
     receiver resolves cleanly.
+
+    ``param_annotations`` (WI-dozon) provides the
+    ``{parameter_name → module_hint}`` fallback used when the DDG has no
+    def visible at the call site (i.e., the receiver is a parameter
+    whose annotation pins its type).
     """
+    if param_annotations is None:
+        param_annotations = {}
+
     # Map ``def_line → assignment AST node`` for fast lookup. Only
     # statements at the function-body level are considered (nested
     # control flow uses the same line number for the assignment, so
@@ -220,6 +372,12 @@ def extract_python_receiver_hints(
                         module_imports,
                         imports,
                     )
+                    # WI-dozon: when no DDG-visible binding pins the
+                    # receiver, fall back to the parameter annotation
+                    # (if any). DDG wins when both fire — local rebinds
+                    # are more specific than the signature annotation.
+                    if hint is None and receiver in param_annotations:
+                        hint = param_annotations[receiver]
                     if hint is not None:
                         hints[(call_line, attr_name)] = hint
         for child in node.children:

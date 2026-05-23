@@ -184,11 +184,12 @@ def f():
 
 
 def test_receiver_hint_unresolvable_when_no_binding(py_parser, py_mapping):
-    """Parameter receiver — no in-function def → no hint.
+    """Unannotated parameter receiver — no in-function def → no hint.
 
     The pass MUST NOT invent a hint; if the receiver's def isn't visible
-    in the DDG (it's a parameter, a closure capture, etc.), the edge
-    keeps its ``external`` placeholder.
+    in the DDG (parameter without annotation, closure capture, etc.),
+    the edge keeps its ``external`` placeholder. The WI-dozon extension
+    only fires when the parameter carries a usable type annotation.
     """
     src = b"""def f(x):
     return x.get("FOO")
@@ -203,6 +204,210 @@ def test_receiver_hint_unresolvable_when_no_binding(py_parser, py_mapping):
         body_node, src, module_imports, imports, result.ddg_edges,
     )
     assert hints == {}
+
+
+def test_wi_dozon_param_annotation_str_pins_receiver(py_parser, py_mapping):
+    """WI-dozon: a parameter annotated ``str`` pins the receiver of any
+    bare-name method call on that parameter to ``builtins.str``.
+
+    Pre-WI-dozon, ``def f(name: str): name.replace(...)`` left ``name.replace``
+    as an ``external:replace:unresolved`` edge that collided with
+    ``pathlib.Path.replace`` (a fs_write sink) under the ``external``
+    exemption in ``_sink_module_compatible``. With param-annotation
+    pinning, the edge's module segment becomes ``builtins.str`` and the
+    sink match fails on the prefix check.
+    """
+    from hypergumbo_core.taint_refine import extract_python_param_annotations
+    src = b"""def f(name: str):
+    return name.replace("-", " ")
+"""
+    tree = py_parser.parse(src)
+    module_imports, imports = extract_python_imports(tree.root_node, src)
+    sym_id = "python:t.py:1-2:f:function"
+    fn_node, body_node, cfg, result = _build_function_ddg(
+        tree.root_node, src, py_mapping, sym_id,
+    )
+    # Param annotations resolved to builtins.str.
+    param_anns = extract_python_param_annotations(
+        fn_node, src, module_imports, imports,
+    )
+    assert param_anns == {"name": "builtins.str"}
+    # And the receiver-hints pass picks it up at the call site (line 2).
+    hints = extract_python_receiver_hints(
+        body_node, src, module_imports, imports, result.ddg_edges,
+        param_annotations=param_anns,
+    )
+    assert hints == {(2, "replace"): "builtins.str"}
+
+
+def test_wi_dozon_param_annotation_path_uses_import(py_parser, py_mapping):
+    """WI-dozon: ``def f(p: Path)`` with ``from pathlib import Path`` →
+    receiver hint ``pathlib.Path``. The annotation's name resolves
+    through the file's ``imports`` table just like an attribute-chain
+    RHS resolves through the same imports map.
+    """
+    from hypergumbo_core.taint_refine import extract_python_param_annotations
+    src = b"""from pathlib import Path
+def f(p: Path):
+    return p.write_text("x")
+"""
+    tree = py_parser.parse(src)
+    module_imports, imports = extract_python_imports(tree.root_node, src)
+    sym_id = "python:t.py:2-3:f:function"
+    fn_node, body_node, cfg, result = _build_function_ddg(
+        tree.root_node, src, py_mapping, sym_id,
+    )
+    param_anns = extract_python_param_annotations(
+        fn_node, src, module_imports, imports,
+    )
+    assert param_anns == {"p": "pathlib.Path"}
+    hints = extract_python_receiver_hints(
+        body_node, src, module_imports, imports, result.ddg_edges,
+        param_annotations=param_anns,
+    )
+    assert hints == {(3, "write_text"): "pathlib.Path"}
+
+
+def test_wi_dozon_ddg_hint_wins_over_param_annotation(py_parser, py_mapping):
+    """WI-dozon: when a parameter is rebound to a more specific value
+    inside the function body, the DDG hint takes precedence over the
+    annotation. The annotation is the fallback when DDG doesn't have a
+    binding visible at the call site.
+    """
+    from hypergumbo_core.taint_refine import extract_python_param_annotations
+    src = b"""import os
+def f(x: str):
+    x = os.environ
+    return x.get("FOO")
+"""
+    tree = py_parser.parse(src)
+    module_imports, imports = extract_python_imports(tree.root_node, src)
+    sym_id = "python:t.py:2-4:f:function"
+    fn_node, body_node, cfg, result = _build_function_ddg(
+        tree.root_node, src, py_mapping, sym_id,
+    )
+    param_anns = extract_python_param_annotations(
+        fn_node, src, module_imports, imports,
+    )
+    assert param_anns == {"x": "builtins.str"}
+    hints = extract_python_receiver_hints(
+        body_node, src, module_imports, imports, result.ddg_edges,
+        param_annotations=param_anns,
+    )
+    # The DDG sees x = os.environ at line 3 and resolves the receiver
+    # at line 4 to os.environ; the param annotation is shadowed.
+    assert hints == {(4, "get"): "os.environ"}
+
+
+def test_wi_dozon_unsupported_annotation_skipped(py_parser, py_mapping):
+    """WI-dozon: complex annotations the resolver doesn't understand
+    (`Optional[str]`, `Union[str, bytes]`, forward-ref strings) are
+    silently skipped — the parameter gets no entry in the annotations
+    map. The pass conservatively refuses to invent a hint.
+    """
+    from hypergumbo_core.taint_refine import extract_python_param_annotations
+    src = b"""from typing import Optional
+def f(name: Optional[str], data: "bytes"):
+    return name.replace("-", " ")
+"""
+    tree = py_parser.parse(src)
+    module_imports, imports = extract_python_imports(tree.root_node, src)
+    fn_node, body_node, cfg, result = _build_function_ddg(
+        tree.root_node, src, py_mapping, "python:t.py:2-3:f:function",
+    )
+    param_anns = extract_python_param_annotations(
+        fn_node, src, module_imports, imports,
+    )
+    # No entries — neither Optional[...] nor the forward-ref string is
+    # extracted. (The Optional[str] / Union[str, ...] handling is
+    # explicit future work; the forward-ref string would need eval.)
+    assert param_anns == {}
+
+
+def test_wi_dozon_dotted_annotation_reassembles_module_path(py_parser, py_mapping):
+    """WI-dozon: ``def f(p: pathlib.Path)`` (dotted annotation, no
+    from-import) → receiver hint ``pathlib.Path``. The attribute-chain
+    tree-sitter shape is reassembled into its text form directly.
+    """
+    from hypergumbo_core.taint_refine import extract_python_param_annotations
+    src = b"""def f(p: pathlib.Path):
+    return p.write_text('x')
+"""
+    tree = py_parser.parse(src)
+    module_imports, imports = extract_python_imports(tree.root_node, src)
+    fn_node, _, _, _ = _build_function_ddg(
+        tree.root_node, src, py_mapping, "python:t.py:1-2:f:function",
+    )
+    param_anns = extract_python_param_annotations(
+        fn_node, src, module_imports, imports,
+    )
+    assert param_anns == {"p": "pathlib.Path"}
+
+
+def test_wi_dozon_generic_with_resolvable_outer(py_parser, py_mapping):
+    """WI-dozon: ``def f(items: list[int])`` → ``builtins.list``. The
+    generic_type's outer identifier is what matters; the subscript is
+    ignored for the receiver-type hint.
+    """
+    from hypergumbo_core.taint_refine import extract_python_param_annotations
+    src = b"""def f(items: list[int]):
+    items.append(0)
+"""
+    tree = py_parser.parse(src)
+    module_imports, imports = extract_python_imports(tree.root_node, src)
+    fn_node, _, _, _ = _build_function_ddg(
+        tree.root_node, src, py_mapping, "python:t.py:1-2:f:function",
+    )
+    param_anns = extract_python_param_annotations(
+        fn_node, src, module_imports, imports,
+    )
+    assert param_anns == {"items": "builtins.list"}
+
+
+def test_wi_dozon_module_imports_resolves_annotation(py_parser, py_mapping):
+    """WI-dozon: ``import collections; def f(x: collections)`` resolves
+    the annotation through the ``module_imports`` table when the bare
+    name names an imported module rather than a from-imported class.
+
+    Rare in practice for type annotations, but the resolver supports
+    it for completeness — the same name-resolution chain the rest of
+    taint_refine uses.
+    """
+    from hypergumbo_core.taint_refine import extract_python_param_annotations
+    src = b"""import collections
+def f(x: collections):
+    return x
+"""
+    tree = py_parser.parse(src)
+    module_imports, imports = extract_python_imports(tree.root_node, src)
+    fn_node, _, _, _ = _build_function_ddg(
+        tree.root_node, src, py_mapping, "python:t.py:2-3:f:function",
+    )
+    param_anns = extract_python_param_annotations(
+        fn_node, src, module_imports, imports,
+    )
+    assert param_anns == {"x": "collections"}
+
+
+def test_wi_dozon_unresolvable_bare_name_returns_none(py_parser, py_mapping):
+    """WI-dozon: a bare name annotation that's neither a builtin nor
+    imported (e.g., ``def f(x: SomeUndefinedClass)``) returns None
+    rather than inventing a hint. Conservative: better to leave the
+    receiver unpinned than to fabricate the wrong module path.
+    """
+    from hypergumbo_core.taint_refine import extract_python_param_annotations
+    src = b"""def f(x: SomeUndefinedClass):
+    return x
+"""
+    tree = py_parser.parse(src)
+    module_imports, imports = extract_python_imports(tree.root_node, src)
+    fn_node, _, _, _ = _build_function_ddg(
+        tree.root_node, src, py_mapping, "python:t.py:1-2:f:function",
+    )
+    param_anns = extract_python_param_annotations(
+        fn_node, src, module_imports, imports,
+    )
+    assert param_anns == {}
 
 
 def test_receiver_hint_skips_call_rhs(py_parser, py_mapping):
