@@ -4814,43 +4814,81 @@ def _detect_shell_integration_tests(
     return shell_tests
 
 
+def _has_test_concept(symbol: Symbol) -> bool:
+    """A function carries a test concept when framework-pattern enrichment
+    tagged it (WI-dulav): Template-Haskell ``$forAllProperties``, QuickCheck
+    ``prop_*``, hypothesis ``@given``, etc. These functions can live in
+    src/ but logically belong to the test suite.
+
+    Used by `_estimate_test_coverage` (INV-gifoh) so that sketch's
+    coverage methodology matches `cmd_test_coverage`'s.
+    """
+    meta = symbol.meta or {}
+    for c in meta.get("concepts", ()) or ():
+        name = c.get("concept") if isinstance(c, dict) else None
+        if isinstance(name, str) and name.startswith("test"):
+            return True
+    return False
+
+
+def _is_test_symbol(symbol: Symbol) -> bool:
+    """A symbol counts as a test when its path matches a test heuristic OR
+    framework-pattern enrichment tagged it with a ``test_*`` concept.
+
+    INV-gifoh: this is the canonical methodology shared by sketch and the
+    `test-coverage` subcommand.
+    """
+    return _is_test_path(symbol.path) or _has_test_concept(symbol)
+
+
 def _estimate_test_coverage(
     symbols: list[Symbol], edges: list
 ) -> tuple[int, int, float] | None:
     """Estimate test coverage from call graph using transitive BFS.
 
-    Counts how many non-test functions/methods are reachable from test code
-    via the call graph. This follows calls transitively: if test_foo() calls
-    helper() which calls core(), both helper and core are counted as tested.
+    Counts how many non-test functions/methods are transitively reachable
+    from test code via *calls* edges only. If ``test_foo()`` calls
+    ``helper()`` which calls ``core()``, both helper and core are counted
+    as tested.
 
-    This is a static approximation - actual coverage requires execution.
+    This is a static approximation; actual coverage requires execution.
+    See INV-gifoh: the methodology (transitive BFS over ``calls`` edges,
+    test set = path-heuristic OR ``test_*`` concept) is the same one used
+    by ``cmd_test_coverage``, so the percentages reported by ``sketch``
+    and ``test-coverage`` agree on identical input.
 
     Args:
         symbols: All symbols from analysis (including test symbols).
-        edges: All edges from analysis (including test->production calls).
+        edges: All edges from analysis. Only ``edge_type == "calls"``
+            edges contribute to transitive reach; ``references`` /
+            ``inherits`` / ``imports`` / others are filtered out.
 
     Returns:
         (tested_count, total_count, percentage) or None if no targets.
     """
-    # Identify test symbols (functions/methods in test files)
+    # Identify test symbols (functions/methods in test files OR
+    # framework-tagged as tests). INV-gifoh.
     test_symbol_ids: set[str] = set()
-    for s in symbols:
-        if _is_test_path(s.path) and s.kind in ("function", "method"):
-            test_symbol_ids.add(s.id)
-
-    # Identify non-test callable symbols (coverage targets)
     target_symbol_ids: set[str] = set()
     for s in symbols:
-        if not _is_test_path(s.path) and s.kind in ("function", "method"):
+        if s.kind not in ("function", "method"):
+            continue
+        if _is_test_symbol(s):
+            test_symbol_ids.add(s.id)
+        else:
             target_symbol_ids.add(s.id)
 
     if not target_symbol_ids:
         return None
 
-    # Extract call edges
+    # Extract calls edges only. INV-gifoh: non-`calls` edges (references,
+    # inherits, imports) do NOT widen transitive reach — that's what made
+    # sketch's pre-fix number ~34 points higher than test-coverage's on
+    # hypergumbo self-analysis.
     call_edges = [
         (getattr(edge, "src", None), getattr(edge, "dst", None))
         for edge in edges
+        if getattr(edge, "edge_type", None) == "calls"
     ]
 
     # Use shared helper for transitive BFS

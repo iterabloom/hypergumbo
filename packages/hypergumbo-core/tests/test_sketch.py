@@ -6778,6 +6778,153 @@ class TestEstimateTestCoverage:
         assert total == 3
         assert pct == 100.0
 
+    def test_inv_gifoh_only_calls_edges_widen_reach(self) -> None:
+        """INV-gifoh: non-`calls` edges (references, inherits, imports) do NOT
+        contribute to transitive reach. Pre-fix, sketch passed all edges to the
+        BFS which inflated coverage by ~34 points on self-analysis vs the
+        test-coverage subcommand.
+        """
+        test_sym = Symbol(
+            id="t1", name="test_x", kind="function", language="python",
+            path="tests/test_x.py", span=Span(1, 5, 0, 0),
+        )
+        prod_sym = Symbol(
+            id="p1", name="helper", kind="function", language="python",
+            path="src/app.py", span=Span(1, 5, 0, 0),
+        )
+        # Only edge from the test to production is `references`, NOT `calls`.
+        ref_edge = Edge(
+            id="e1", src="t1", dst="p1", edge_type="references",
+            line=3, origin="test", origin_run_id="test",
+        )
+        result = _estimate_test_coverage([prod_sym, test_sym], [ref_edge])
+        assert result is not None
+        tested, total, pct = result
+        assert tested == 0
+        assert total == 1
+        assert pct == 0.0
+
+    def test_inv_gifoh_test_concept_in_src_is_treated_as_test(self) -> None:
+        """INV-gifoh: a function tagged with a `test_*` concept (WI-dulav,
+        Template-Haskell / QuickCheck `prop_*` pattern) counts as a test
+        even if its path is under src/. Mirrors `cmd_test_coverage`'s
+        methodology so the two outputs report the same percentage.
+        """
+        # The function-under-test in src/.
+        target = Symbol(
+            id="p1", name="real_target", kind="function", language="python",
+            path="src/app.py", span=Span(1, 5, 0, 0),
+        )
+        # A "test" function in src/ tagged via the framework concept layer.
+        prop_test = Symbol(
+            id="p_prop", name="prop_invariant", kind="function", language="python",
+            path="src/app.py", span=Span(10, 15, 0, 0),
+            meta={"concepts": [{"concept": "test_function", "framework": "quickcheck"}]},
+        )
+        # prop_invariant calls real_target — that should make real_target tested.
+        edge = Edge(
+            id="e1", src="p_prop", dst="p1", edge_type="calls",
+            line=12, origin="test", origin_run_id="test",
+        )
+        result = _estimate_test_coverage([target, prop_test], [edge])
+        assert result is not None
+        tested, total, pct = result
+        # prop_invariant is excluded from targets (it's a test), so total=1.
+        # real_target is reached by prop_invariant via a `calls` edge → tested=1.
+        assert total == 1
+        assert tested == 1
+        assert pct == 100.0
+
+    def test_inv_gifoh_sketch_and_cli_methodologies_agree(self) -> None:
+        """INV-gifoh: `_estimate_test_coverage` (sketch) and the test-coverage
+        subcommand's internal coverage calculation must produce the same
+        (tested, total, pct) on the same Symbol+Edge input. Previously they
+        diverged on hypergumbo's self-analysis (58.2% vs 92%) because sketch
+        included non-`calls` edges in transitive reach and missed concept-
+        tagged tests.
+        """
+        # Fixture: one test (tests/), one prop-test in src/ (concept-tagged),
+        # three production functions, one inherits edge (should NOT count),
+        # one references edge (should NOT count), and two calls chains.
+        test_file = Symbol(
+            id="t1", name="test_foo", kind="function", language="python",
+            path="tests/test_app.py", span=Span(1, 5, 0, 0),
+        )
+        prop_in_src = Symbol(
+            id="t2", name="prop_invariant", kind="function", language="python",
+            path="src/props.py", span=Span(1, 5, 0, 0),
+            meta={"concepts": [{"concept": "test_property", "framework": "hypothesis"}]},
+        )
+        prod_a = Symbol(
+            id="p_a", name="alpha", kind="function", language="python",
+            path="src/app.py", span=Span(1, 5, 0, 0),
+        )
+        prod_b = Symbol(
+            id="p_b", name="beta", kind="function", language="python",
+            path="src/app.py", span=Span(10, 15, 0, 0),
+        )
+        prod_c = Symbol(
+            id="p_c", name="gamma", kind="function", language="python",
+            path="src/app.py", span=Span(20, 25, 0, 0),
+        )
+        edges = [
+            Edge(id="e1", src="t1", dst="p_a", edge_type="calls", line=3,
+                 origin="test", origin_run_id="test"),
+            Edge(id="e2", src="p_a", dst="p_b", edge_type="calls", line=7,
+                 origin="test", origin_run_id="test"),
+            Edge(id="e3", src="t2", dst="p_c", edge_type="calls", line=4,
+                 origin="test", origin_run_id="test"),
+            # The next two edges should NOT contribute to transitive reach
+            # under the canonical methodology (calls-only).
+            Edge(id="e4", src="t1", dst="p_c", edge_type="references", line=4,
+                 origin="test", origin_run_id="test"),
+            Edge(id="e5", src="t1", dst="p_b", edge_type="inherits", line=5,
+                 origin="test", origin_run_id="test"),
+        ]
+        symbols = [test_file, prop_in_src, prod_a, prod_b, prod_c]
+
+        # Sketch side: _estimate_test_coverage
+        sketch_result = _estimate_test_coverage(symbols, edges)
+        assert sketch_result is not None
+        sk_tested, sk_total, sk_pct = sketch_result
+
+        # CLI side: replay cmd_test_coverage's internal computation directly.
+        from hypergumbo_core.ranking import compute_transitive_test_coverage
+        nodes = [s.to_dict() if hasattr(s, "to_dict") else s for s in symbols]
+
+        def _has_test_concept(node: dict) -> bool:
+            for c in (node.get("meta") or {}).get("concepts", ()) or ():
+                cn = c.get("concept") if isinstance(c, dict) else None
+                if isinstance(cn, str) and cn.startswith("test"):
+                    return True
+            return False
+
+        cli_test_ids: set[str] = set()
+        cli_target_ids: set[str] = set()
+        for n in nodes:
+            kind = n.get("kind")
+            path = n.get("path", "")
+            from hypergumbo_core.sketch import _is_test_path
+            is_test = _is_test_path(path) or _has_test_concept(n)
+            if kind not in ("function", "method"):
+                continue
+            if is_test:
+                cli_test_ids.add(n["id"])
+            else:
+                cli_target_ids.add(n["id"])
+        cli_call_edges = [(e.src, e.dst) for e in edges if e.edge_type == "calls"]
+        cli_tests_per_target = compute_transitive_test_coverage(
+            test_ids=cli_test_ids, target_ids=cli_target_ids, call_edges=cli_call_edges,
+        )
+        cli_tested = sum(1 for v in cli_tests_per_target.values() if v)
+        cli_total = len(cli_target_ids)
+        cli_pct = (cli_tested / cli_total * 100) if cli_total else 0.0
+
+        assert (sk_tested, sk_total, sk_pct) == (cli_tested, cli_total, cli_pct)
+        # Concrete sanity: alpha + beta + gamma all reached via calls;
+        # the inherits/references edges should not "extra-tie" anything.
+        assert sk_tested == 3 and sk_total == 3 and sk_pct == 100.0
+
 
 class TestGroupFilesByLanguage:
     """Tests for language-based file grouping."""
