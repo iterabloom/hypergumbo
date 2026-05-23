@@ -159,6 +159,19 @@ def user_out_open_json_dump_gzip(path: Path, obj: Any) -> None:
         json.dump(obj, f, indent=2, sort_keys=True)
 
 
+def cache_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+    """Create a cache directory (typically under ``~/.cache/hypergumbo/``).
+
+    SAFETY ZONE: ``user_cache``. INV-zudak: ``Path.mkdir`` is an
+    fs-write primitive that needs to route through the wrapper just like
+    ``cache_write`` / ``cache_write_bytes`` do, so the verify-claims
+    pass can distinguish ``user_cache`` scaffolding from arbitrary
+    ``host_fs`` directory creation.
+    """
+    _safety_zone_barrier()
+    path.mkdir(parents=parents, exist_ok=exist_ok)
+
+
 def tmp_artifact_write(path: Path, content: str) -> None:
     """Write content to an ephemeral path under ``/tmp/`` or a tempdir.
 
@@ -171,6 +184,19 @@ def tmp_artifact_write(path: Path, content: str) -> None:
     path.write_text(content)
 
 
+def tmp_artifact_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+    """Create an ephemeral build directory under ``/tmp/`` or a tempdir.
+
+    SAFETY ZONE: ``tmp_artifact``. INV-zudak: pairs with
+    :func:`tmp_artifact_write` and :func:`tmp_artifact_rmtree` so that
+    every fs-write primitive used by ``build_grammars.py`` routes
+    through the wrapper. Without this, ``Path.mkdir`` callsites in
+    grammar-scaffolding code surface as raw ``host_fs`` flows.
+    """
+    _safety_zone_barrier()
+    path.mkdir(parents=parents, exist_ok=exist_ok)
+
+
 def tmp_artifact_rmtree(path: Path) -> None:
     """Recursively delete an ephemeral build directory under ``/tmp/``.
 
@@ -181,6 +207,20 @@ def tmp_artifact_rmtree(path: Path) -> None:
     """
     _safety_zone_barrier()
     shutil.rmtree(path)
+
+
+def install_artifact_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+    """Create an install-target directory (typically under ``~/.local/`` or
+    an extras install dir).
+
+    SAFETY ZONE: ``install_artifact``. INV-zudak: pairs with
+    :func:`install_artifact_write_bytes` /
+    :func:`install_artifact_copy` so the install zone has a complete
+    sink surface for verify-claims. Used by ``install-gitleaks`` to
+    scaffold ``GITLEAKS_INSTALL_DIR`` before landing the binary.
+    """
+    _safety_zone_barrier()
+    path.mkdir(parents=parents, exist_ok=exist_ok)
 
 
 def install_artifact_write_bytes(path: Path, data: bytes) -> None:

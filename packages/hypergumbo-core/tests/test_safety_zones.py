@@ -21,14 +21,17 @@ import pytest
 
 from hypergumbo_core.safety_zones import (
     _safety_zone_barrier,
+    cache_mkdir,
     cache_rmtree,
     cache_save_npy,
     cache_write,
     cache_write_bytes,
     install_artifact_chmod,
     install_artifact_copy,
+    install_artifact_mkdir,
     install_artifact_unlink,
     install_artifact_write_bytes,
+    tmp_artifact_mkdir,
     tmp_artifact_rmtree,
     tmp_artifact_write,
     user_out_open_json_dump,
@@ -145,3 +148,39 @@ def test_install_artifact_unlink(tmp_path: Path) -> None:
     assert p.exists()
     install_artifact_unlink(p)
     assert not p.exists()
+
+
+def test_cache_mkdir_inv_zudak(tmp_path: Path) -> None:
+    """INV-zudak: ``cache_mkdir`` routes ``Path.mkdir`` through the
+    user_cache wrapper so verify-claims sees it as a user_cache sink
+    rather than a raw host_fs flow.
+    """
+    p = tmp_path / "cache_subdir" / "nested"
+    cache_mkdir(p, parents=True)
+    assert p.is_dir()
+    # exist_ok=True is supported (idempotent re-creation).
+    cache_mkdir(p, parents=True, exist_ok=True)
+
+
+def test_tmp_artifact_mkdir_inv_zudak(tmp_path: Path) -> None:
+    """INV-zudak: ``tmp_artifact_mkdir`` routes scaffold creation
+    (build_grammars.py) through the tmp_artifact wrapper.
+    """
+    p = tmp_path / "grammar_build" / "pkg"
+    tmp_artifact_mkdir(p, parents=True)
+    assert p.is_dir()
+    tmp_artifact_mkdir(p, parents=True, exist_ok=True)
+    # Without parents=, refuses to auto-create intermediates (mirrors Path.mkdir).
+    import pytest
+    with pytest.raises(FileNotFoundError):
+        tmp_artifact_mkdir(tmp_path / "no_intermediate" / "child")
+
+
+def test_install_artifact_mkdir_inv_zudak(tmp_path: Path) -> None:
+    """INV-zudak: ``install_artifact_mkdir`` routes install-target
+    directory creation (gitleaks GITLEAKS_INSTALL_DIR) through the
+    install_artifact wrapper.
+    """
+    p = tmp_path / "install" / "bin"
+    install_artifact_mkdir(p, parents=True, exist_ok=True)
+    assert p.is_dir()

@@ -16,3 +16,4 @@ sinks:
         - install_artifact_copy
         - install_artifact_chmod
         - install_artifact_unlink
+        - install_artifact_mkdir

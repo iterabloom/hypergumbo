@@ -55,9 +55,11 @@ import tempfile
 import zipfile
 
 from .safety_zones import (
+    cache_mkdir,
     cache_write,
     install_artifact_chmod,
     install_artifact_copy,
+    install_artifact_mkdir,
     install_artifact_unlink,
     install_artifact_write_bytes,
 )
@@ -233,8 +235,8 @@ def install_gitleaks(quiet: bool = False) -> bool:
                 print(f"Error: Could not find {binary_name} in archive", file=sys.stderr)
                 return False
 
-            # Ensure install directory exists
-            GITLEAKS_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
+            # Ensure install directory exists (INV-zudak: route through wrapper).
+            install_artifact_mkdir(GITLEAKS_INSTALL_DIR, parents=True, exist_ok=True)
 
             # Copy binary
             install_artifact_copy(extracted_binary, GITLEAKS_PATH)
@@ -385,7 +387,9 @@ def scan_content_cached(
             del cache[k]
 
     try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        # INV-zudak: route directory creation through the user_cache wrapper
+        # so verify-claims doesn't see a raw host_fs mkdir flow.
+        cache_mkdir(cache_dir, parents=True, exist_ok=True)
         cache_write(cache_file, json.dumps(cache, indent=2))
     except OSError:  # pragma: no cover - cache write failure must not break scan
         pass

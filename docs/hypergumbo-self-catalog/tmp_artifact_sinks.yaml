@@ -9,3 +9,4 @@ sinks:
       functions:
         - tmp_artifact_write
         - tmp_artifact_rmtree
+        - tmp_artifact_mkdir

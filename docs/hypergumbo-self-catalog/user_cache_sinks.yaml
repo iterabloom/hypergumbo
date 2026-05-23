@@ -17,3 +17,4 @@ sinks:
         - cache_write_bytes
         - cache_save_npy
         - cache_rmtree
+        - cache_mkdir

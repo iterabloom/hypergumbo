@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .safety_zones import tmp_artifact_rmtree, tmp_artifact_write
+from .safety_zones import tmp_artifact_mkdir, tmp_artifact_rmtree, tmp_artifact_write
 
 
 @dataclass
@@ -216,8 +216,9 @@ def build_grammar(
     # Create Python package directory
     if pkg_dir.exists():
         tmp_artifact_rmtree(pkg_dir)
-    pkg_dir.mkdir(parents=True)
-    (pkg_dir / module_name).mkdir()
+    # INV-zudak: route scaffolding mkdir through the tmp_artifact wrapper.
+    tmp_artifact_mkdir(pkg_dir, parents=True)
+    tmp_artifact_mkdir(pkg_dir / module_name)
 
     # Generate source files
     tmp_artifact_write(
@@ -271,7 +272,8 @@ def build_all_grammars(
     if build_dir is None:
         build_dir = Path(tempfile.gettempdir()) / "ts-grammar-build"
 
-    build_dir.mkdir(parents=True, exist_ok=True)
+    # INV-zudak: route build-dir scaffolding through the tmp_artifact wrapper.
+    tmp_artifact_mkdir(build_dir, parents=True, exist_ok=True)
 
     if not quiet:  # pragma: no cover
         print("Building tree-sitter grammars from source...")
