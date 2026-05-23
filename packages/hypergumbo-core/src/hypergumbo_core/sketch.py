@@ -74,7 +74,7 @@ from typing import List, Optional
 
 from .discovery import find_files, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
-from .ir import Symbol, Edge
+from .ir import Symbol, Edge, is_external_boundary
 from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
@@ -3030,6 +3030,13 @@ def _collect_important_files(
     Returns:
         List of relative file paths to show in the tree.
     """
+    # INV-kalif: synthetic external-boundary symbols carry path='<external>'
+    # which Path().parts treats as a real single-part component, slipping past
+    # the root-level-file guard and rendering as ├── <external> in the tree.
+    # Filter before centrality aggregation so the placeholder never accrues
+    # a score that could displace a real root-level file.
+    symbols = [s for s in symbols if not is_external_boundary(s)]
+
     important_files: list[str] = []
     seen_root_dirs: set[str] = set()  # Directories only
     seen_root_files: set[str] = set()  # Root-level files only

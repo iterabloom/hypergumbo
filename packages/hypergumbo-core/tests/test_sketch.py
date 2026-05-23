@@ -4860,6 +4860,49 @@ class TestCollectImportantFiles:
         assert "/completely" not in str(result)
         assert len(result) == 0
 
+    def test_excludes_external_boundary_symbols(self, tmp_path: Path) -> None:
+        """INV-kalif: external-boundary symbols (path='<external>') must not
+        appear in the structure tree.
+
+        Boundary nodes carry ``meta.external_boundary=True`` and synthetic
+        ``path='<external>'``. ``Path('<external>').parts == ('<external>',)``
+        slips past the root-level-file guard and renders as ``├── <external>``
+        in the structure tree. Filter must happen before centrality
+        aggregation so the placeholder never accumulates a score.
+        """
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("def main(): pass")
+
+        real_symbol = Symbol(
+            id="src:app:main",
+            name="main",
+            kind="function",
+            language="python",
+            path="src/app.py",
+            span=Span(1, 1, 1, 10),
+        )
+        external_symbol = Symbol(
+            id="external:lodash",
+            name="lodash",
+            kind="external_symbol",
+            language="javascript",
+            path="<external>",
+            span=Span(0, 0, 0, 0),
+            meta={"external_boundary": True},
+        )
+
+        result = _collect_important_files(
+            repo_root=tmp_path,
+            source_files=[],
+            entrypoints=[],
+            datamodels=[],
+            symbols=[real_symbol, external_symbol],
+            centrality={"src:app:main": 0.5, "external:lodash": 0.9},
+        )
+
+        assert "<external>" not in result
+        assert "src/app.py" in result
+
     def test_collects_additional_files_from_subdirectories(self, tmp_path: Path) -> None:
         """Collects additional files (CONFIG/DOCUMENTATION) from unrepresented directories."""
         # Create directories with only documentation files (no source code)
