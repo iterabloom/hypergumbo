@@ -511,7 +511,14 @@ def load_taint_catalog(
 AUTO_SINK_ZONE_MAP: dict[str, tuple[str, str]] = {
     # io_primitives boundary -> (taint zone, trust_level)
     "fs_write": ("host_fs", "untrusted"),
-    "subprocess": ("host_fs", "untrusted"),
+    # WI-bibuk: subprocess gets its own zone rather than collapsing into
+    # host_fs. Shelling out to a trusted external program (``pip``, ``git``,
+    # ``rustup``, ``gitleaks``) is not the same trust surface as a direct
+    # arbitrary-path filesystem write — the external program owns where
+    # its bytes land. Claims that prohibit ``host_fs`` no longer fire on
+    # legitimate ``subprocess.run`` calls; claims that need to prohibit
+    # subprocess use ``prohibited_sink_zone: subprocess`` explicitly.
+    "subprocess": ("subprocess", "untrusted"),
     "net_send": ("network", "untrusted"),
     "env_write": ("host_env", "untrusted"),
     "ipc_send": ("ipc", "untrusted"),

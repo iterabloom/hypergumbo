@@ -45,12 +45,11 @@ using the layer-2 mechanism. Do NOT promote entries here into layer 1.
   (`user_cache`, `user_out`, `local_bin`, `site_packages`, `rustup_dir`,
   `hf_cache`, `tmp_build`, `subprocess`, `dev_zone`) by listing specific
   sink call sites within hypergumbo's own code.
-- `subprocess_zone_override.yaml` — overrides the auto-derived
-  `subprocess`-boundary sinks (currently mapped to `host_fs` via
-  `AUTO_SINK_ZONE_MAP`) into a distinct `subprocess` zone. Uses the same
-  `(module, name, kind)` triples the auto-derivation produces, so the
-  override mechanism in `_merge_with_user_override` (taint.py) swaps the
-  zone cleanly.
+  > Since WI-bibuk (2026-05-23), the `subprocess` boundary auto-derives
+  > directly into a `subprocess` zone via `AUTO_SINK_ZONE_MAP`; no
+  > per-project override file is needed for the zone split. The override
+  > mechanism in `_merge_with_user_override` (taint.py) remains
+  > available for finer-grained per-`(module, name, kind)` zone swaps.
 
 ## Layer-3 entry rule
 

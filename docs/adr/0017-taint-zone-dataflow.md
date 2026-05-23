@@ -448,16 +448,18 @@ Default behavior (`start_at: caller`, applied when the key is omitted) preserves
 
 Built-in taint sinks are derived directly from `io_primitives/*.yaml` — every IO primitive whose `boundary` is a write-side category (`fs_write`, `subprocess`, `net_send`, `env_write`, `ipc_send`, `browser_storage_write`) becomes a structural taint sink at `trust_level=untrusted` in a zone determined by `AUTO_SINK_ZONE_MAP` in `taint.py`. Hypergumbo does not ship a built-in `taint_sinks/` directory; auto-derivation from the IO primitive catalog covers the built-in case without a second source of truth that could drift out of sync. The YAML schemas shown below remain valid as a contract for **project-local** sink catalogs loaded via the `--taint-sinks` CLI flag — these are where project-specific zones (`relay`, `compute_host`, `dev_zone`, `user_cache`, `install_artifact`, …) are declared. See `taint.py:load_builtin_taint_catalog` for the implementation and `AUTO_SINK_ZONE_MAP` for the boundary→zone mapping.
 
-**Built-in zone vocabulary (5 zones, auto-derived).** `AUTO_SINK_ZONE_MAP` is the single source of truth — a freshly-installed `hypergumbo verify-claims` with no project configuration knows about exactly these five zones:
+**Built-in zone vocabulary (6 zones, auto-derived).** `AUTO_SINK_ZONE_MAP` is the single source of truth — a freshly-installed `hypergumbo verify-claims` with no project configuration knows about exactly these six zones:
 
 | boundary (io_primitives) | zone | trust_level |
 |--------------------------|------|-------------|
 | `fs_write` | `host_fs` | `untrusted` |
-| `subprocess` | `host_fs` | `untrusted` |
+| `subprocess` | `subprocess` | `untrusted` |
 | `net_send` | `network` | `untrusted` |
 | `env_write` | `host_env` | `untrusted` |
 | `ipc_send` | `ipc` | `untrusted` |
 | `browser_storage_write` | `browser_storage` | `untrusted` |
+
+> **Note (WI-bibuk, 2026-05-23):** the `subprocess` zone was split out from `host_fs`. Shelling out to a trusted external program (`pip`, `git`, `rustup`, `gitleaks`) is a different trust surface than writing to arbitrary filesystem paths — the external program owns where its bytes land. Claims that prohibit `host_fs` no longer fire on legitimate `subprocess.run` invocations; claims that need to prohibit shelling out use `prohibited_sink_zone: subprocess` explicitly.
 
 **Project-local zones (open set).** Projects extend the vocabulary by declaring sinks in YAML and passing them via `--taint-sinks` or `extra_catalogs:`. The PlazaFlow zones (`relay`, `compute_host`, `persistent_storage`) used as worked examples throughout this ADR are themselves project-local — they are not built-in. Hypergumbo's own self-claims add `dev_zone`, `install_artifact`, `tmp_artifact`, `user_cache`, `user_out` via `docs/hypergumbo-self-catalog/`. User-defined zones are first-class in `verify-claims` constraints and behave identically to built-in zones for taint-flow checking.
 

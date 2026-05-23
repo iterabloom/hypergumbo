@@ -1238,6 +1238,43 @@ class TestAutoImportFromIoPrimitives:
         assert "urllib.request.urlopen" in by_qname
         assert by_qname["urllib.request.urlopen"].zone == "network"
 
+    def test_wi_bibuk_subprocess_maps_to_subprocess_zone_not_host_fs(self) -> None:
+        """WI-bibuk: ``subprocess.run`` and the rest of the subprocess
+        boundary auto-derive into a dedicated ``subprocess`` zone, NOT
+        into ``host_fs``.
+
+        Pre-fix, the AUTO_SINK_ZONE_MAP collapsed ``subprocess`` into
+        ``host_fs``, which made every legitimate ``subprocess.run(["pip",
+        "install", ...])`` in install-* / build-grammars surface as a
+        ``host_fs`` violation by construction. The zone collapse confused
+        "we shelled out to a trusted external program" with "we wrote to
+        arbitrary filesystem paths" — two different trust surfaces.
+        """
+        from hypergumbo_core.taint import (
+            AUTO_SINK_ZONE_MAP,
+            load_builtin_taint_catalog,
+        )
+
+        # 1. The map itself routes the subprocess boundary to its own zone.
+        zone, _ = AUTO_SINK_ZONE_MAP["subprocess"]
+        assert zone == "subprocess", (
+            "subprocess boundary should auto-derive into its own zone, "
+            "not collapse into host_fs"
+        )
+
+        # 2. The concrete subprocess.run sink lands in zone=subprocess.
+        catalog = load_builtin_taint_catalog()
+        py_sinks = catalog.sinks_for_language("python")
+        by_qname = {s.qualified_name: s for s in py_sinks}
+        assert "subprocess.run" in by_qname, "expected subprocess.run as an auto-derived sink"
+        assert by_qname["subprocess.run"].zone == "subprocess"
+        assert by_qname["subprocess.run"].trust_level == "untrusted"
+
+        # 3. fs_write sinks remain in zone=host_fs — the change is scoped
+        # to the subprocess boundary only.
+        assert "pathlib.Path.write_text" in by_qname
+        assert by_qname["pathlib.Path.write_text"].zone == "host_fs"
+
     def test_auto_import_browser_storage_write_maps_to_browser_storage_zone(
         self,
     ) -> None:
