@@ -67,3 +67,10 @@
   clock: 7  # d9ea
   nonce: d9ea  # d9ea
   message: "Above you wrote \"a follow-up bug should be filed for the framework detector's recursive manifest scan not following `-r` includes (only matches files literally named requirements.txt, missing requirements/base.txt layouts that bakerydemo and many django apps use)\" -- please ensure such a follow-up item exists in the tracker."  # d9ea
+- op: discuss  # e39c
+  at: '2026-05-24T03:07:39Z'  # e39c
+  by: agent  # e39c
+  actor: jgstern_agent  # e39c
+  clock: 8  # e39c
+  nonce: e39c  # e39c
+  message: "Follow-up filed as WI-himas-dazus-vodog-tahup-mukov-zanuf-panuz-dutip (P3, todo_soft, tags: framework_detection / analysis_quality / python). Item captures the bakerydemo reproducer (top-level requirements.txt contains only '-r requirements/base.txt'; detector matches the literal filename and misses the layered files), restates the invariant (framework detection should reflect the actual transitive dependency closure in the manifest set, not just files literally named requirements.txt), and enumerates three fix options (resolve -r includes, glob more files, configurable manifest-glob list) with sequencing guidance. Cross-references INV-vunaf as the related-but-distinct FP-side counterpart to this FN-side gap."  # e39c

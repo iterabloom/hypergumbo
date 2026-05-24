@@ -21,3 +21,18 @@
     pr_ref:  # 941c
     description: "**Found via self-analysis dogfooding on 2026-05-16 (round 8).**\n\n**Symptom.** Hypergumbo's reported per-language LOC undercounts `wc -l` by 12-22% on self-analysis:\n\n| Language | hypergumbo loc | `wc -l` (excludes applied) | Delta |\n|---|---:|---:|---:|\n| python | 451,074 | 538,365 | -16.2% |\n| typescript | 702 | 797 | -11.9% |\n| markdown | 25,465 | 32,519 | -21.7% |\n| bash | 2,669 | 3,059 | -12.7% |\n\nThis is not a bug. The implementation at `packages/hypergumbo-core/src/hypergumbo_core/profile.py:720-734`:\n\n```python\ndef _count_loc(file_path: Path, max_file_size: int | None = None) -> int:\n    \"\"\"Count non-empty lines in a file.\"\"\"\n    ...\n    content = file_path.read_text(encoding=\"utf-8\", errors=\"ignore\")\n    return sum(1 for line in content.splitlines() if line.strip())\n```\n\ncounts **non-empty lines**, which is a defensible SLOC convention (matches `cloc`, `tokei`'s \"code\" tally before further comment-stripping).\n\n**The gap.** Nothing in the public-facing docs tells a consumer this. `docs/hypergumbo-spec.md`, the README, and the schema documentation all use \"LOC\" without defining it. An agent or human comparing hypergumbo's number against `wc -l` will see a consistent ~15% gap and reasonably suspect a counting bug.\n\n**Severity.** Low — pure docs gap, no code change. The risk is wasted investigation time (I went down this path during round 8 before realizing the convention was deliberate).\n\n**Fix proposal.**\n\n1. Update the `_count_loc` docstring to read:\n   ```\n   Count non-empty lines (SLOC convention). Excludes blank-only lines\n   (whitespace-only lines are also excluded). Does NOT strip comments.\n   Expect ~10-20% lower than `wc -l` for typical source files.\n   ```\n\n2. Add a one-line entry to `docs/hypergumbo-spec.md` under the profile output description: \"`loc` is non-empty source lines (≈SLOC), not raw line count. Comments are included.\"\n\n3. (Optional) Add a `metrics.loc_definition: \"non_empty_lines\"` field to the schema so tools can confirm the convention programmatically.\n\n**Cross-references.**\n\n- `packages/hypergumbo-core/src/hypergumbo_core/profile.py:720-734` — `_count_loc` implementation\n- `docs/hypergumbo-spec.md` — needs the definition added\n- README — needs the definition added if it claims \"lines of code\"\n\n**Notebook reference.** Round 8 section of `~/hypergumbo_lab_notebook/notebookjournal_05162026_0438.md`."  # 941c
     fields: {}  # 941c
+- op: update  # 9c2e
+  at: '2026-05-24T04:01:52Z'  # 9c2e
+  by: agent  # 9c2e
+  actor: jgstern_agent  # 9c2e
+  clock: 2  # 9c2e
+  nonce: 9c2e  # 9c2e
+  set:  # 9c2e
+    status: done  # 9c2e
+- op: discuss  # 898b
+  at: '2026-05-24T04:01:52Z'  # 898b
+  by: agent  # 898b
+  actor: jgstern_agent  # 898b
+  clock: 3  # 898b
+  nonce: 898b  # 898b
+  message: "Fixed in PR #3888 (8439efe4d0). `_count_loc` docstring + docs/hypergumbo-spec.md LOC definition expanded to name the SLOC convention and document the ~10-20% gap vs raw `wc -l`."  # 898b

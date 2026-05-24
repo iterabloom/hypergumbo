@@ -1,0 +1,22 @@
+- op: create  # cbe4
+  at: '2026-05-24T03:06:47Z'  # cbe4
+  by: agent  # cbe4
+  actor: jgstern_agent  # cbe4
+  clock: 1  # cbe4
+  nonce: cbe4  # cbe4
+  data:  # cbe4
+    kind: work_item  # cbe4
+    title: "Framework detector's manifest scan misses -r includes: requirements/base.txt + requirements/dev.txt layouts (bakerydemo, many Django apps) report frameworks=[]"  # cbe4
+    status: todo_soft  # cbe4
+    priority: 3  # cbe4
+    parent:  # cbe4
+    tags:  # cbe4
+    - framework_detection  # cbe4
+    - analysis_quality  # cbe4
+    - python  # cbe4
+    isbefore: []  # cbe4
+    duplicate_of: []  # cbe4
+    not_duplicate_of: []  # cbe4
+    pr_ref:  # cbe4
+    description: "**Origin.** Follow-up bug surfaced during WI-jifib data-pass (2026-05-15 closing comment on tracker://WI-jifib), then formally requested by user on 2026-05-19.\n\n**Symptom.** The framework detector's recursive manifest scan matches files literally named `requirements.txt`. It does NOT follow `-r <other-file>` includes that pip-style requirements files use to compose dependency layouts across multiple files. Bakerydemo and many Django apps use this layout:\n\n```\nrequirements/\n  base.txt         # core deps (django, wagtail, etc.)\n  dev.txt          # -r base.txt + dev-only deps\n  production.txt   # -r base.txt + prod-only deps\n```\n\nThe top-level `requirements.txt` either doesn't exist or contains only `-r requirements/base.txt`. The detector scans for the literal filename `requirements.txt`, misses the layered files entirely, and reports `frameworks: []` for the repo. Downstream effect: framework-gated linkers (e.g., `django-third-party-dispatch` from WI-jifib) never activate on these repos, dropping their AC-2 rescue counts to zero even though Django IS present.\n\n**Reproducer.** On `wagtail/bakerydemo`:\n```\n$ hypergumbo run --root . --out /tmp/bakerydemo.json\n$ jq '.detected_frameworks' /tmp/bakerydemo.json\n[]\n$ find . -name 'requirements*' -type f\n./requirements/base.txt\n./requirements/production.txt\n./requirements/dev.txt\n```\n\nExpected: `[\"django\", \"wagtail\"]` (both declared in `requirements/base.txt`).\nActual: `[]`.\n\n**Invariant.** Framework detection must reflect the actual transitive dependency closure declared in a repo's manifest set, not the dependency subset that happens to live in a file named exactly `requirements.txt`. Naively: \"find every pip-requirements-shaped file and union their deps.\"\n\n**Fix options.**\n\n1. **Resolve `-r` includes from any seed file.** Treat `requirements.txt`, `requirements*.txt`, and any `*.txt` referenced via `-r` from those files as part of the dependency closure. Standard `pip-compile`-style include resolution; bounded by the repo root.\n2. **Glob more files unconditionally.** Match `requirements.txt`, `requirements/*.txt`, `requirements-*.txt`. Skip `-r` resolution. Simpler, but may pull in test-only deps that should not influence framework activation.\n3. **Manifest-set discovery via configurable patterns.** Accept a per-language manifest-glob list (e.g., `[\"requirements.txt\", \"requirements/*.txt\", \"requirements-*.txt\"]`). Pulls the special-case into config; allows extension to other ecosystems with similar patterns (e.g., `pyproject.toml` with `dependency-groups`).\n\nRecommended sequencing: (1) is the most correct; (2) is the cheap drip; (3) is the structural fix that pays back for future ecosystems. A 15-min spike to confirm where the matcher lives + which ecosystems use `-r`-style includes (Python, possibly Conda) should precede picking.\n\n**Cross-references.**\n- `WI-jifib` (origin context — α-conservative third-party-base allow-list; AC-2 partially-satisfied flag was traced to this detector gap on bakerydemo)\n- `INV-vunaf` (related but distinct — manifest-substring framework detection produces FPs; this item is about FNs)\n- Framework-detector module: `packages/hypergumbo-core/src/hypergumbo_core/profile.py` (manifest scan) and per-framework matchers under `packages/hypergumbo-core/src/hypergumbo_core/framework_patterns.py`.\n- Data-pass note: `~/hypergumbo_lab_notebook/wi-jusih-data-pass-20260515/report.md` (records bakerydemo failure mode).\n\n**Verification target.** Post-fix, `hypergumbo run` on `wagtail/bakerydemo` reports `detected_frameworks` including `django` and `wagtail`, and WI-jifib AC-2 Wagtail Page rescues can be measured."  # cbe4
+    fields: {}  # cbe4

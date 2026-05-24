@@ -23,3 +23,19 @@
     fields:  # ba18
       statement: "Symbol.stable_id must distinguish classes that live in distinct modules even when their body shape (method names, field names, base names) is identical, because module identity IS part of class identity in Python's import semantics. Post-INV-fusus self-analysis shows 18.94% of Python class nodes (811/4282) still collide across modules — 49x TestAdaAnalysisUnavailable / TestAsmAnalysisUnavailable / TestCapnpAnalysisUnavailable per-language fallback classes, 36x TestAnalysisRun in different test modules."  # ba18
       root_cause: "Diagnosis spike pending. Three candidate root causes: (a) regression where the WI-jagus containing_module_stable_id input is no longer included in the ClassDef hash; (b) the module's own stable_id is colliding (escalate to INV-sotiv file/module kind coverage); (c) some upstream step strips path information before _compute_stable_id runs. Empirical signal is unambiguous (49x and 36x exact-name cross-module collisions), root cause is not."  # ba18
+- op: update  # e6f4
+  at: '2026-05-24T04:50:18Z'  # e6f4
+  by: agent  # e6f4
+  actor: jgstern_agent  # e6f4
+  clock: 2  # e6f4
+  nonce: e6f4  # e6f4
+  set: {}  # e6f4
+  add:  # e6f4
+    tags: [awaits_bakeoff_validation]  # e6f4
+- op: discuss  # 57ee
+  at: '2026-05-24T04:50:18Z'  # 57ee
+  by: agent  # 57ee
+  actor: jgstern_agent  # 57ee
+  clock: 3  # 57ee
+  nonce: 57ee  # 57ee
+  message: "Fix shipped on branch jgstern-agent/fix/inv-zudob-class-containing-id (commit 9dfec82496). Empirical impact on self-analysis: cross-module class collision rate 18.94% → 1.76% (91% reduction); all 76 residual collisions are same-file identical-body groups (e.g., 12x MockEdge in test_io_boundary.py, 8x Args in test_cli_commands.py), preserved by design per the (stable_id, canonical_name) docstring contract. Quantitative-claim PR per bakeoff-validation-tagging-discipline; needs BROAD-cohort confirmation that the prospector corpus sees comparable reductions before final closure."  # 57ee

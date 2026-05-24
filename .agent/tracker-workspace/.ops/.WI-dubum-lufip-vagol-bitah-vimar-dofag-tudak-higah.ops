@@ -43,3 +43,10 @@
   clock: 4  # d849
   nonce: d849  # d849
   message: "above you wrote \"Deferred all source dumps (queried symbol, caller, callee) to after both 'Called by' and 'Calls' summaries print\" -- what do you mean 'deferred'? Deferred as in you will create a new tracker item, or deferred as in they print out further down the screen?"  # d849
+- op: discuss  # 9795
+  at: '2026-05-24T03:07:40Z'  # 9795
+  by: agent  # 9795
+  actor: jgstern_agent  # 9795
+  clock: 5  # 9795
+  nonce: '9795'  # 9795
+  message: "Clarification: deferred as in 'runtime ordering' — the source dump blocks now print further down in the cmd_explain output, AFTER both summary headers ('Called by (N):' and 'Calls (N):'). No new tracker item was created; the fix landed in PR #3885 as a reorder of the existing print calls in cmd_explain. Concretely: precomputed queried_symbol_source upfront, then reordered the print sequence so both summaries appear back-to-back at the top of the output, with all source dumps (queried symbol, caller, callee) moved to the bottom. The regression test test_cmd_explain_summary_appears_before_source_dumps in test_cli_explain.py pins the new order by asserting the byte offset of 'Called by (' is less than that of 'Calls (', which is less than that of 'Source for ' / 'Source ('."  # 9795

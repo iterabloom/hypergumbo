@@ -85,3 +85,10 @@
   clock: 9  # b5e8
   nonce: b5e8  # b5e8
   message: "please ensure a follow-up item exists in the tracker for structurally-identical-but-different-modules class collision"  # b5e8
+- op: discuss  # 62db
+  at: '2026-05-24T03:07:26Z'  # 62db
+  by: agent  # 62db
+  actor: jgstern_agent  # 62db
+  clock: 10  # 62db
+  nonce: 62db  # 62db
+  message: "Follow-up filed as INV-zudob-rohaj-nodaf-pifir-bunih-rimus-rikup-lasah (P3, violated, tags: stable_id / identity / analysis_quality / dogfood_round4_followup). Item captures the residue: 811/4282 Python class nodes (18.94%) still collide across modules after PR #3797, with concrete examples (49x TestAda/Asm/Capnp-AnalysisUnavailable, 36x TestAnalysisRun in distinct test modules). Three candidate root causes filed in the new item's root_cause field for the diagnosis spike to disambiguate before code change. Original INV-fusus remains satisfied — the same-module @dataclass case it actually owned is closed; this is a distinct cross-module shape."  # 62db
