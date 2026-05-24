@@ -1,0 +1,12 @@
+tree-sitter-circom — vendored grammar source.
+
+Upstream:  https://github.com/Decurity/tree-sitter-circom
+Commit:    02150524228b1e6afef96949f2d6b7cc0aaf999e
+Sync date: 2024-09-09
+License:   MIT (see LICENSE in this directory)
+
+To re-sync from upstream, see docs/grammars/vendor-sync.md.
+
+Vendoring scope: src/ only. parser.c is generated; do not edit by hand
+(see vendor-sync.md). grammar.json and node-types.json are upstream
+metadata kept alongside parser.c for parity with upstream layout.

@@ -1,0 +1,12 @@
+tree-sitter-lean — vendored grammar source.
+
+Upstream:  https://github.com/Julian/tree-sitter-lean
+Commit:    78b6e3d403b47d5cbac283db9dd48bc850441043
+Sync date: 2026-05-20
+License:   MIT (see LICENSE in this directory)
+
+To re-sync from upstream, see docs/grammars/vendor-sync.md.
+
+Vendoring scope: src/ only. parser.c is generated; do not edit by hand
+(see vendor-sync.md). grammar.json and node-types.json are upstream
+metadata kept alongside parser.c for parity with upstream layout.

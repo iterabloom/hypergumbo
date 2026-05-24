@@ -127,10 +127,19 @@ class TestRunCommand:
 
 
 class TestBuildGrammar:
-    """Tests for build_grammar function."""
+    """Tests for build_grammar function (WI-fipab-kivoj vendor-mode)."""
 
-    def test_build_grammar_git_not_found(self, tmp_path: Path) -> None:
-        """Test handling when git is not found."""
+    @staticmethod
+    def _stage_vendor(tmp_path: Path, name: str) -> Path:
+        """Stage a fake vendor/tree-sitter-<name>/src/parser.c under ``tmp_path``."""
+        vendor_root = tmp_path / "vendor"
+        repo_dir = vendor_root / f"tree-sitter-{name}"
+        (repo_dir / "src").mkdir(parents=True)
+        (repo_dir / "src" / "parser.c").write_text("// fake")
+        return vendor_root
+
+    def test_build_grammar_missing_vendor_source(self, tmp_path: Path) -> None:
+        """Returns False if vendor/<grammar>/src/ is missing (WI-fipab-kivoj)."""
         spec = GrammarSpec(
             name="test",
             repo_url="https://example.com/test.git",
@@ -138,26 +147,7 @@ class TestBuildGrammar:
             scanner_type="none",
         )
 
-        with patch(
-            "hypergumbo_core.build_grammars._run_command",
-            side_effect=FileNotFoundError("git not found"),
-        ):
-            result = build_grammar(spec, tmp_path, quiet=True)
-            assert result is False
-
-    def test_build_grammar_clone_failure(self, tmp_path: Path) -> None:
-        """Test handling when git clone fails."""
-        spec = GrammarSpec(
-            name="test",
-            repo_url="https://example.com/test.git",
-            function_name="tree_sitter_test",
-            scanner_type="none",
-        )
-
-        with patch(
-            "hypergumbo_core.build_grammars._run_command",
-            side_effect=subprocess.CalledProcessError(1, "git"),
-        ):
+        with patch("hypergumbo_core.build_grammars.VENDOR_ROOT", tmp_path / "vendor"):
             result = build_grammar(spec, tmp_path, quiet=True)
             assert result is False
 
@@ -170,28 +160,23 @@ class TestBuildGrammar:
             scanner_type="none",
         )
 
-        # Create fake repo dir so clone "succeeds"
-        repo_dir = tmp_path / "tree-sitter-test"
-        repo_dir.mkdir()
-        (repo_dir / "src").mkdir()
-        (repo_dir / "src" / "parser.c").write_text("// fake")
-
-        call_count = 0
+        vendor_root = self._stage_vendor(tmp_path, "test")
 
         def mock_run_command(cmd, cwd=None, quiet=False):
-            nonlocal call_count
-            call_count += 1
-            # First call is git pull (ignore), subsequent is pip install
             if "pip" in cmd:
                 raise subprocess.CalledProcessError(1, "pip")
             return MagicMock(returncode=0)
 
-        with patch("hypergumbo_core.build_grammars._run_command", side_effect=mock_run_command):
-            result = build_grammar(spec, tmp_path, quiet=True)
-            assert result is False
+        with patch("hypergumbo_core.build_grammars.VENDOR_ROOT", vendor_root):
+            with patch(
+                "hypergumbo_core.build_grammars._run_command",
+                side_effect=mock_run_command,
+            ):
+                result = build_grammar(spec, tmp_path, quiet=True)
+                assert result is False
 
-    def test_build_grammar_updates_existing_repo(self, tmp_path: Path) -> None:
-        """Test that existing repos are updated, not cloned."""
+    def test_build_grammar_runs_pip_install_only(self, tmp_path: Path) -> None:
+        """Vendor-mode build issues no git commands — only the pip install."""
         spec = GrammarSpec(
             name="test",
             repo_url="https://example.com/test.git",
@@ -199,57 +184,22 @@ class TestBuildGrammar:
             scanner_type="none",
         )
 
-        # Create existing repo dir
-        repo_dir = tmp_path / "tree-sitter-test"
-        repo_dir.mkdir()
-        (repo_dir / "src").mkdir()
-        (repo_dir / "src" / "parser.c").write_text("// fake")
-
+        vendor_root = self._stage_vendor(tmp_path, "test")
         commands_run = []
 
         def mock_run_command(cmd, cwd=None, quiet=False):
             commands_run.append(cmd)
             return MagicMock(returncode=0)
 
-        with patch("hypergumbo_core.build_grammars._run_command", side_effect=mock_run_command):
-            build_grammar(spec, tmp_path, quiet=True)
+        with patch("hypergumbo_core.build_grammars.VENDOR_ROOT", vendor_root):
+            with patch(
+                "hypergumbo_core.build_grammars._run_command",
+                side_effect=mock_run_command,
+            ):
+                build_grammar(spec, tmp_path, quiet=True)
 
-        # Should have run git pull, not git clone
-        git_commands = [c for c in commands_run if c[0] == "git"]
-        assert any("pull" in c for c in git_commands)
-        assert not any("clone" in c for c in git_commands)
-
-    def test_build_grammar_git_pull_failure_ignored(self, tmp_path: Path) -> None:
-        """Test that git pull failures are silently ignored."""
-        spec = GrammarSpec(
-            name="test",
-            repo_url="https://example.com/test.git",
-            function_name="tree_sitter_test",
-            scanner_type="none",
-        )
-
-        # Create existing repo dir
-        repo_dir = tmp_path / "tree-sitter-test"
-        repo_dir.mkdir()
-        (repo_dir / "src").mkdir()
-        (repo_dir / "src" / "parser.c").write_text("// fake")
-
-        call_count = 0
-
-        def mock_run_command(cmd, cwd=None, quiet=False):
-            nonlocal call_count
-            call_count += 1
-            # Git pull fails (detached HEAD, etc.)
-            if "pull" in cmd:
-                raise subprocess.CalledProcessError(1, "git pull")
-            # pip install succeeds
-            return MagicMock(returncode=0)
-
-        with patch("hypergumbo_core.build_grammars._run_command", side_effect=mock_run_command):
-            result = build_grammar(spec, tmp_path, quiet=True)
-
-        # Should still succeed despite pull failure
-        assert result is True
+        assert not any(c[0] == "git" for c in commands_run)
+        assert any("pip" in c for c in commands_run)
 
     def test_build_grammar_cleans_existing_pkg_dir(self, tmp_path: Path) -> None:
         """Test that existing package directory is cleaned before building."""
@@ -260,11 +210,7 @@ class TestBuildGrammar:
             scanner_type="none",
         )
 
-        # Create existing repo and pkg directories
-        repo_dir = tmp_path / "tree-sitter-test"
-        repo_dir.mkdir()
-        (repo_dir / "src").mkdir()
-        (repo_dir / "src" / "parser.c").write_text("// fake")
+        vendor_root = self._stage_vendor(tmp_path, "test")
 
         pkg_dir = tmp_path / "tree-sitter-test-py"
         pkg_dir.mkdir()
@@ -274,14 +220,73 @@ class TestBuildGrammar:
         def mock_run_command(cmd, cwd=None, quiet=False):
             return MagicMock(returncode=0)
 
-        with patch("hypergumbo_core.build_grammars._run_command", side_effect=mock_run_command):
-            result = build_grammar(spec, tmp_path, quiet=True)
+        with patch("hypergumbo_core.build_grammars.VENDOR_ROOT", vendor_root):
+            with patch(
+                "hypergumbo_core.build_grammars._run_command",
+                side_effect=mock_run_command,
+            ):
+                result = build_grammar(spec, tmp_path, quiet=True)
 
         # Old file should be gone
         assert not old_file.exists()
         # New package structure should exist
         assert (pkg_dir / "tree_sitter_test" / "__init__.py").exists()
         assert result is True
+
+
+class TestVendorLayout:
+    """Tests for the vendor directory layout (WI-fipab-kivoj)."""
+
+    def test_vendor_root_points_at_repo_root(self) -> None:
+        """``VENDOR_ROOT`` must resolve to ``<repo_root>/vendor``."""
+        from hypergumbo_core.build_grammars import VENDOR_ROOT
+        # ``VENDOR_ROOT`` derives from this module's location; we don't
+        # care about the absolute prefix, only the leaf segment.
+        assert VENDOR_ROOT.name == "vendor"
+
+    def test_vendor_dir_for_constructs_path(self) -> None:
+        """``vendor_dir_for(name)`` is ``VENDOR_ROOT / 'tree-sitter-<name>'``."""
+        from hypergumbo_core.build_grammars import VENDOR_ROOT, vendor_dir_for
+        assert vendor_dir_for("lean") == VENDOR_ROOT / "tree-sitter-lean"
+        assert vendor_dir_for("wolfram") == VENDOR_ROOT / "tree-sitter-wolfram"
+        assert vendor_dir_for("circom") == VENDOR_ROOT / "tree-sitter-circom"
+
+    def test_each_source_grammar_has_vendored_src(self) -> None:
+        """Each SOURCE_GRAMMARS entry must have a real vendored ``src/``."""
+        from hypergumbo_core.build_grammars import SOURCE_GRAMMARS, vendor_dir_for
+        for spec in SOURCE_GRAMMARS:
+            src_dir = vendor_dir_for(spec.name) / "src"
+            assert src_dir.exists(), f"missing vendor src/ for {spec.name}"
+            assert (src_dir / "parser.c").exists(), (
+                f"missing parser.c for {spec.name}"
+            )
+
+    def test_each_vendored_grammar_has_license(self) -> None:
+        """Each vendored grammar must ship a LICENSE file (MIT in all
+        three current cases)."""
+        from hypergumbo_core.build_grammars import SOURCE_GRAMMARS, vendor_dir_for
+        for spec in SOURCE_GRAMMARS:
+            license_file = vendor_dir_for(spec.name) / "LICENSE"
+            assert license_file.exists(), f"missing LICENSE for {spec.name}"
+            assert "MIT" in license_file.read_text(), (
+                f"LICENSE for {spec.name} is not MIT — re-confirm vendoring "
+                "is permitted before pulling a new upstream version"
+            )
+
+    def test_each_vendored_grammar_has_upstream_metadata(self) -> None:
+        """Each vendored grammar must ship an UPSTREAM file recording the
+        source URL and the pinned commit (drives docs/grammars/vendor-sync.md)."""
+        from hypergumbo_core.build_grammars import SOURCE_GRAMMARS, vendor_dir_for
+        for spec in SOURCE_GRAMMARS:
+            upstream = vendor_dir_for(spec.name) / "UPSTREAM"
+            assert upstream.exists(), f"missing UPSTREAM for {spec.name}"
+            content = upstream.read_text()
+            assert spec.repo_url.rstrip(".git") in content, (
+                f"UPSTREAM for {spec.name} does not record repo_url"
+            )
+            assert "Commit:" in content, (
+                f"UPSTREAM for {spec.name} does not record a pinned commit"
+            )
 
 
 class TestBuildAllGrammars:

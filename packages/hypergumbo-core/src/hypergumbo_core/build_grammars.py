@@ -7,19 +7,28 @@ and tree-sitter-circom from their source repositories. These grammars are not
 published to PyPI and must be compiled from source. The set must stay in sync
 with `scripts/build-source-grammars` (the CI/dev path).
 
+WI-fipab-kivoj: source is vendored under ``vendor/tree-sitter-{lean,
+wolfram,circom}/`` (plain directory copy from upstream at a pinned commit).
+Both this module and ``scripts/build-source-grammars`` read from the vendor
+tree instead of cloning at build time, so the build is offline-deterministic
+and independent of upstream git hygiene. The upstream URL and pinned commit
+for each grammar live in ``vendor/tree-sitter-<name>/UPSTREAM``;
+``GrammarSpec.repo_url`` is kept here as documentation metadata for the
+re-sync procedure (see ``docs/grammars/vendor-sync.md``), not as a build-
+time fetch target.
+
 Requirements:
-- git (to clone repos)
 - A C/C++ compiler (gcc, clang, or MSVC)
 - Python development headers
 
 The build process:
-1. Clones or updates the grammar repository
+1. Locates the vendored grammar source under ``vendor/tree-sitter-<name>/``
 2. Generates Python binding code (C extension)
 3. Builds and installs via pip
 """
 from __future__ import annotations
 
-import subprocess  # nosec B404 - required for git/pip commands
+import subprocess  # nosec B404 - required for pip commands
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -29,9 +38,22 @@ from typing import Literal
 from .safety_zones import tmp_artifact_mkdir, tmp_artifact_rmtree, tmp_artifact_write
 
 
+# Repo root resolution. This module lives at
+# packages/hypergumbo-core/src/hypergumbo_core/build_grammars.py; the
+# vendor/ tree is at the project root four levels up.
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+VENDOR_ROOT = _REPO_ROOT / "vendor"
+
+
 @dataclass
 class GrammarSpec:
-    """Specification for a tree-sitter grammar to build from source."""
+    """Specification for a tree-sitter grammar to build from source.
+
+    ``repo_url`` is documentation metadata — the build path reads source
+    from ``vendor/tree-sitter-<name>/`` (WI-fipab-kivoj), not from a fresh
+    clone of ``repo_url``. The field is kept to support the re-sync
+    procedure in ``docs/grammars/vendor-sync.md``.
+    """
 
     name: str
     repo_url: str
@@ -60,6 +82,11 @@ SOURCE_GRAMMARS = [
         scanner_type="none",
     ),
 ]
+
+
+def vendor_dir_for(name: str) -> Path:
+    """Path to the vendored tree-sitter grammar source for ``name``."""
+    return VENDOR_ROOT / f"tree-sitter-{name}"
 
 
 def _generate_binding_c(function_name: str) -> str:
@@ -184,33 +211,21 @@ def build_grammar(
     Returns:
         True if successful, False otherwise
     """
-    repo_dir = build_dir / f"tree-sitter-{spec.name}"
+    # WI-fipab-kivoj: read from the vendored grammar directory instead of
+    # cloning the upstream repo. ``build_dir`` is used only for the
+    # generated Python-binding scaffolding (setup.py, binding.c, __init__.py)
+    # and pip's intermediate artifacts.
+    repo_dir = vendor_dir_for(spec.name)
     pkg_dir = build_dir / f"tree-sitter-{spec.name}-py"
     module_name = f"tree_sitter_{spec.name}"
 
     if not quiet:  # pragma: no cover
         print(f"\n=== Building tree-sitter-{spec.name} ===")
 
-    # Clone or update the repository
-    try:
-        if repo_dir.exists():
-            if not quiet:  # pragma: no cover
-                print("Updating existing repo...")
-            try:
-                _run_command(["git", "-C", str(repo_dir), "pull", "--ff-only"], quiet=True)
-            except subprocess.CalledProcessError:
-                pass  # Ignore pull failures (detached HEAD, etc.)
-        else:
-            if not quiet:  # pragma: no cover
-                print(f"Cloning {spec.repo_url}...")
-            _run_command(["git", "clone", "--depth", "1", spec.repo_url, str(repo_dir)])
-    except subprocess.CalledProcessError as e:
+    if not (repo_dir / "src").exists():
         if not quiet:  # pragma: no cover
-            print(f"Error cloning repository: {e}")
-        return False
-    except FileNotFoundError:
-        if not quiet:  # pragma: no cover
-            print("Error: git not found. Please install git.")
+            print(f"Error: vendored source not found at {repo_dir}/src")
+            print("See docs/grammars/vendor-sync.md to restore the vendor tree.")
         return False
 
     # Create Python package directory
