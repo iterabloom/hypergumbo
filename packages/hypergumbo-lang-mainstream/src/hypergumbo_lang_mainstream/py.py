@@ -94,6 +94,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
+    make_file_stable_id,
     make_route_stable_id,
     make_typed_stable_id,
     visibility_from_modifiers,
@@ -2168,6 +2169,23 @@ def _extract_file_analysis(
     symbols = []
     symbol_by_name: dict[str, Symbol] = {}
 
+    # INV-zudob: compute the file's stable identity once up-front so
+    # top-level ClassDef and untyped-function stable_ids can fold it in
+    # as their containing identity. Pre-INV-zudob the top-level call
+    # sites passed no containing argument, so module identity was
+    # silently erased and structurally-identical classes/functions in
+    # different files collapsed to one stable_id (18.94% of class nodes
+    # on self-analysis). The repo-relative path matches the convention
+    # used by ``make_file_stable_id`` elsewhere — see also the
+    # ``file_name`` computation for the module Symbol below.
+    file_relative_path = str(py_file)
+    if repo_root is not None:
+        try:
+            file_relative_path = str(py_file.relative_to(repo_root))
+        except ValueError:  # pragma: no cover - defensive
+            pass
+    file_containing_id = make_file_stable_id("python", file_relative_path)
+
     # WI-gipag: extract the module-level __all__ (if any) once up front
     # so each top-level Symbol extraction can decide is_exported without
     # re-walking the tree. None means "no __all__ found" → fall back to
@@ -2206,13 +2224,9 @@ def _extract_file_analysis(
         # cli-level path normalize pass strips repo_root from ``.path``
         # but not ``.name``, so the analyzer is responsible for emitting
         # ``name`` already normalized (mirror of INV-vaguj for the
-        # analyzer-side producer).
-        file_name = str(py_file)
-        if repo_root is not None:
-            try:
-                file_name = str(py_file.relative_to(repo_root))
-            except ValueError:  # pragma: no cover - defensive
-                pass
+        # analyzer-side producer). Reuses ``file_relative_path`` computed
+        # earlier for INV-zudob.
+        file_name = file_relative_path
 
         module_symbol = Symbol(
             id=_make_file_id(str(py_file)),
@@ -2312,7 +2326,9 @@ def _extract_file_analysis(
                 language="python",
                 path=str(py_file),
                 span=span,
-                stable_id=_compute_stable_id(node),
+                stable_id=_compute_stable_id(
+                    node, containing_stable_id=file_containing_id
+                ),
                 shape_id=_compute_shape_id(node),
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                 lines_of_code=_compute_lines_of_code(node),
@@ -2470,13 +2486,21 @@ def _extract_file_analysis(
                 func_modifiers = _python_visibility_modifiers(node.name)
                 norm_sig = normalize_python_signature(func_sig)
                 if norm_sig:
+                    # INV-zudob: typed tier also threads file identity as
+                    # the containing scope for top-level functions, so
+                    # two same-signature functions in different modules
+                    # get distinct stable_ids.
                     func_stable_id = make_typed_stable_id(
                         "function", norm_sig,
                         visibility_from_modifiers(func_modifiers),
+                        file_containing_id,
                         decorators=_extract_py_decorator_names(node),
                     )
                 else:
-                    func_stable_id = _compute_stable_id(node)
+                    # INV-zudob: same threading for the untyped fallback.
+                    func_stable_id = _compute_stable_id(
+                        node, containing_stable_id=file_containing_id
+                    )
 
                 _fds = ast.get_docstring(node)
                 _fds_line = _fds.split("\n")[0].strip()[:80] if _fds else None

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Property tests for INV-fusus: stable_id must distinguish distinct symbols
-within the same compilation unit.
+"""Property tests for INV-fusus + INV-zudob: stable_id must distinguish
+distinct symbols within the same compilation unit AND across distinct
+compilation units.
 
 INV-fusus reported a 91% collision rate on hypergumbo's own self-analysis:
 ``_compute_stable_id`` hashed only ``kind:param_count:arity_flags:decorators:
@@ -23,7 +24,21 @@ that is semantic identity, not an artifact. Consumers that want absolute
 uniqueness should join on ``(stable_id, canonical_name)`` per the Symbol
 docstring contract.
 
-A secondary fix in the same change: ``isinstance(node, ast.FunctionDef)``
+INV-zudob extends this: structurally-identical classes (and top-level
+untyped functions) in *different* modules must get distinct stable_ids
+because module identity IS part of symbol identity under Python's import
+semantics. Pre-INV-zudob the top-level call sites in ``py.py`` did not
+thread ``containing_stable_id``, so the field defaulted to the empty
+string and module identity was silently erased from the hash —
+``49x TestAdaAnalysisUnavailable`` and ``36x TestAnalysisRun`` collision
+groups on hypergumbo's own self-analysis (18.94% of class nodes). The
+fix threads ``make_file_stable_id("python", repo_relative_path)`` as the
+containing identity for top-level classes and untyped functions; the
+existing within-module discrimination from INV-fusus is preserved
+because identical-body classes in the SAME file still share that
+containing identity.
+
+A secondary fix in the INV-fusus change: ``isinstance(node, ast.FunctionDef)``
 in ``_compute_stable_id`` was broadened to ``isinstance(node, (ast.
 FunctionDef, ast.AsyncFunctionDef))`` so async functions get correct
 ``param_count`` and ``arity_flags`` instead of being silently treated as
@@ -203,36 +218,48 @@ class TestSurvivesRenamesAndMoves:
     """The two halves of the Symbol.stable_id docstring promise."""
 
     def test_class_rename_preserves_stable_id(self, tmp_path: Path) -> None:
-        """Renaming a class without touching its body keeps stable_id stable."""
+        """Renaming a class in-place (same module) keeps stable_id stable.
+
+        Per INV-zudob, module identity is part of class identity (Python
+        import semantics), so the "survives renames" promise applies
+        *within* a module — renaming the class at the same file path must
+        not change its stable_id. Moving a class to a different file is a
+        different operation and produces a different stable_id by design.
+        """
         data_old = _run_and_load(
             tmp_path,
             "class OldName:\n"
             "    x: int\n"
             "    def m(self): pass\n",
-            filename="v1.py",
+            filename="mod.py",
         )
         data_new = _run_and_load(
             tmp_path,
             "class NewName:\n"
             "    x: int\n"
             "    def m(self): pass\n",
-            filename="v2.py",
+            filename="mod.py",
         )
         old_cls = next(c for c in data_old["nodes"] if c["kind"] == "class" and c["name"] == "OldName")
         new_cls = next(c for c in data_new["nodes"] if c["kind"] == "class" and c["name"] == "NewName")
         assert old_cls["stable_id"] == new_cls["stable_id"], (
-            "Renaming a class should not change its stable_id (survives renames)"
+            "Renaming a class within the same module should not change its "
+            "stable_id (survives renames)"
         )
 
     def test_method_order_irrelevant(self, tmp_path: Path) -> None:
-        """Reordering methods within a class body must not change class stable_id."""
+        """Reordering methods within a class body must not change class stable_id.
+
+        Same-module reorder: rewrites the same file so containing identity
+        is held constant; only the body order changes.
+        """
         data_a = _run_and_load(
             tmp_path,
             "class C:\n"
             "    def a(self): pass\n"
             "    def b(self): pass\n"
             "    def c(self): pass\n",
-            filename="order_a.py",
+            filename="order.py",
         )
         data_b = _run_and_load(
             tmp_path,
@@ -240,7 +267,7 @@ class TestSurvivesRenamesAndMoves:
             "    def c(self): pass\n"
             "    def a(self): pass\n"
             "    def b(self): pass\n",
-            filename="order_b.py",
+            filename="order.py",
         )
         cls_a = next(c for c in data_a["nodes"] if c["kind"] == "class")
         cls_b = next(c for c in data_b["nodes"] if c["kind"] == "class")
@@ -312,4 +339,111 @@ class TestAsyncFunctionDistinguished:
         assert _compute_stable_id(zero_arg_sync) != sid_async, (
             "Async function with 2 args collides with zero-arg sync function "
             "— isinstance check missing AsyncFunctionDef"
+        )
+
+
+class TestCrossModuleIdenticalSymbolsDistinct:
+    """INV-zudob: structurally-identical symbols in different modules must
+    get distinct stable_ids — module identity is part of symbol identity.
+    """
+
+    def test_two_identical_classes_in_different_files_distinct(
+        self, tmp_path: Path
+    ) -> None:
+        """Mirror the self-analysis ``49x TestAdaAnalysisUnavailable`` case.
+
+        Two identical class bodies in distinct files must split stable_id.
+        """
+        (tmp_path / "test_ada.py").write_text(
+            "class TestAdaAnalysisUnavailable:\n"
+            "    def test_fallback(self): pass\n"
+        )
+        (tmp_path / "test_asm.py").write_text(
+            "class TestAdaAnalysisUnavailable:\n"
+            "    def test_fallback(self): pass\n"
+        )
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+        classes = [
+            c for c in data["nodes"]
+            if c["kind"] == "class" and c["name"] == "TestAdaAnalysisUnavailable"
+        ]
+        assert len(classes) == 2, (
+            f"Expected 2 class symbols across 2 files, got {len(classes)}"
+        )
+        sids = {c["stable_id"] for c in classes}
+        assert len(sids) == 2, (
+            "Two structurally-identical classes in different modules share "
+            "stable_id — containing_stable_id not folded into the top-level "
+            "ClassDef hash (INV-zudob)"
+        )
+
+    def test_same_class_in_two_test_files_distinct(self, tmp_path: Path) -> None:
+        """Mirror the ``36x TestAnalysisRun`` case: same class name, same
+        body shape, two different test modules — must be distinct symbols.
+        """
+        body = (
+            "class TestAnalysisRun:\n"
+            "    def test_runs(self): pass\n"
+            "    def test_completes(self): pass\n"
+        )
+        (tmp_path / "test_cli.py").write_text(body)
+        (tmp_path / "test_runtime.py").write_text(body)
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+        classes = [
+            c for c in data["nodes"]
+            if c["kind"] == "class" and c["name"] == "TestAnalysisRun"
+        ]
+        assert len(classes) == 2
+        assert len({c["stable_id"] for c in classes}) == 2
+
+    def test_top_level_function_cross_module_distinct(self, tmp_path: Path) -> None:
+        """Top-level untyped functions in different modules must also split.
+
+        The fix at the untyped fallback (``_compute_stable_id`` call for
+        top-level functions) must thread containing identity too.
+        """
+        # Use unannotated args so the untyped fallback path is taken
+        # rather than the typed ``make_typed_stable_id`` path.
+        body = "def helper(x, y):\n    return x + y\n"
+        (tmp_path / "mod_a.py").write_text(body)
+        (tmp_path / "mod_b.py").write_text(body)
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+        funcs = [
+            f for f in data["nodes"]
+            if f["kind"] == "function" and f["name"] == "helper"
+        ]
+        assert len(funcs) == 2, (
+            f"Expected 2 function symbols across 2 files, got {len(funcs)}"
+        )
+        assert len({f["stable_id"] for f in funcs}) == 2, (
+            "Untyped top-level functions with identical bodies in different "
+            "modules share stable_id (INV-zudob — function fallback path)"
+        )
+
+    def test_class_move_to_different_file_changes_stable_id(
+        self, tmp_path: Path
+    ) -> None:
+        """Moving a class to a different file is a structural change in
+        Python's import graph, so its stable_id must change.
+        """
+        body = (
+            "class Handler:\n"
+            "    x: int\n"
+            "    def run(self): pass\n"
+        )
+        data_a = _run_and_load(tmp_path, body, filename="pkg_a.py")
+        # Remove pkg_a.py so the second analysis only sees pkg_b.py
+        (tmp_path / "pkg_a.py").unlink()
+        data_b = _run_and_load(tmp_path, body, filename="pkg_b.py")
+        cls_a = next(c for c in data_a["nodes"] if c["kind"] == "class")
+        cls_b = next(c for c in data_b["nodes"] if c["kind"] == "class")
+        assert cls_a["stable_id"] != cls_b["stable_id"], (
+            "Class moved to a different module path retained its stable_id "
+            "— containing identity not folded into the hash"
         )

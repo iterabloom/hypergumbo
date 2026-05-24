@@ -37,21 +37,38 @@ def test_stable_id_computed_for_classes(tmp_path: Path) -> None:
 
 
 def test_stable_id_survives_rename(tmp_path: Path) -> None:
-    """stable_id should be the same for functions with same signature but different names."""
-    # Two functions with same signature (1 param, no defaults)
-    (tmp_path / "a.py").write_text("def foo(x): pass\n")
-    (tmp_path / "b.py").write_text("def bar(x): pass\n")
+    """stable_id should survive an in-place rename within the same module.
 
+    Per INV-zudob, module identity is part of symbol identity (Python
+    import semantics), so the "survives renames" promise holds *within*
+    a module: renaming a function at the same file path must not change
+    its stable_id. Cross-file moves are a different operation and produce
+    different stable_ids by design (see
+    ``TestCrossModuleIdenticalSymbolsDistinct`` in
+    ``packages/hypergumbo-lang-mainstream/tests/test_stable_id_class_collisions.py``).
+    """
+    # Same file, same signature (1 param, no defaults), different names.
     out_path = tmp_path / "out.json"
+    src = tmp_path / "mod.py"
+
+    src.write_text("def foo(x): pass\n")
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    foo_sid = next(
+        n["stable_id"]
+        for n in json.loads(out_path.read_text())["nodes"]
+        if n["kind"] == "function" and n["name"] == "foo"
+    )
 
-    data = json.loads(out_path.read_text())
+    src.write_text("def bar(x): pass\n")
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    bar_sid = next(
+        n["stable_id"]
+        for n in json.loads(out_path.read_text())["nodes"]
+        if n["kind"] == "function" and n["name"] == "bar"
+    )
 
-    func_nodes = [n for n in data["nodes"] if n["kind"] == "function"]
-    assert len(func_nodes) == 2
-
-    # Same signature -> same stable_id
-    assert func_nodes[0]["stable_id"] == func_nodes[1]["stable_id"]
+    # Same module, same signature, just renamed -> same stable_id.
+    assert foo_sid == bar_sid
 
 
 def test_stable_id_changes_with_signature(tmp_path: Path) -> None:
