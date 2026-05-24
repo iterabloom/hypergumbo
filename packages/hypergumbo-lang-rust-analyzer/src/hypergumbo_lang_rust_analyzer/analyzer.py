@@ -42,10 +42,12 @@ derived symbols separately from tree-sitter-derived ones.
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.ir import Edge
 
 from hypergumbo_lang_rust_analyzer.gate import should_use_rust_analyzer_backend
 from hypergumbo_lang_rust_analyzer.graceful_degrade import (
@@ -69,6 +71,50 @@ def _disk_source_reader(path: str) -> bytes | None:
         return None
 
 
+def _emit_user_warning(message: str) -> None:
+    """Surface graceful-degrade diagnostics as Python ``UserWarning``.
+
+    WI-todon: the prior implementation passed no logger into
+    :func:`try_analyze_with_rust_analyzer`, which meant every
+    invoke/translate failure (including OOM-kills) was swallowed
+    silently. Wiring this real log callable as the default makes the
+    diagnostics from :mod:`graceful_degrade._format_invocation_failed`
+    visible to the user without requiring CLI plumbing changes.
+    ``stacklevel=3`` so the warning points at the analyzer call site
+    (registry dispatch) rather than this helper.
+    """
+    warnings.warn(message, UserWarning, stacklevel=3)
+
+
+def _repo_has_rs_files(repo_root: Path) -> bool:
+    """Return True iff ``repo_root`` contains at least one ``.rs`` file.
+
+    Used by the engagement check to suppress false-positive warnings on
+    repos that simply have no Rust code (where "no SCIP edges" is the
+    correct answer, not a silent fall-through). The scan short-circuits
+    on first match so cost scales with depth-to-first-Rust-file, not
+    total tree size. ``rglob`` swallows :class:`OSError` for unreadable
+    subdirectories rather than crashing the analyzer.
+    """
+    try:
+        return next(iter(repo_root.rglob("*.rs")), None) is not None
+    except OSError:  # pragma: no cover — pure defensive
+        return False
+
+
+def _has_scip_origin_edge(edges: list[Edge]) -> bool:
+    """Return True iff at least one edge carries ``origin='scip'``.
+
+    The artifact-engagement check uses this signature: a successful
+    rust-analyzer + SCIP translation produces edges with
+    ``origin='scip'``. A SCIP run that exits 0 but produces no usable
+    output (the wasmtime-OOM-class scenario) yields zero such edges,
+    even when ``.rs`` files are present — that is exactly the silent
+    fall-through WI-todon makes visible.
+    """
+    return any(getattr(edge, "origin", None) == "scip" for edge in edges)
+
+
 @register_analyzer("rust_analyzer", priority=45)
 def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     """Entry point for the SCIP-backed Rust analyzer.
@@ -83,6 +129,15 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     AnalysisResult so the registry treats "no SCIP run" identically
     to "SCIP run produced nothing".
 
+    WI-todon engagement diagnostics: a real log callable
+    (:func:`_emit_user_warning`) is wired into
+    :func:`try_analyze_with_rust_analyzer` so invoke/translate
+    failures surface as ``UserWarning`` instead of being swallowed.
+    After a successful translate, an artifact-level engagement check
+    fires when zero ``origin='scip'`` edges were produced on a repo
+    that contains ``.rs`` files — catching the OOM-class scenario
+    where rust-analyzer exits 0 but emits no usable SCIP output.
+
     The registry calls this with ``repo_root`` being the workspace
     root, which is exactly what ``cargo metadata`` + ``rust-analyzer
     scip`` expect.
@@ -90,9 +145,18 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     if not should_use_rust_analyzer_backend():
         return AnalysisResult()
 
-    result = try_analyze_with_rust_analyzer(repo_root, _disk_source_reader)
+    result = try_analyze_with_rust_analyzer(
+        repo_root, _disk_source_reader, log=_emit_user_warning,
+    )
     if result is None:
         return AnalysisResult()
 
     symbols, edges = result
+    if not _has_scip_origin_edge(edges) and _repo_has_rs_files(repo_root):
+        _emit_user_warning(
+            f"rust-analyzer backend produced no SCIP-origin edges for "
+            f"{repo_root} despite .rs files being present — likely silent "
+            f"engagement failure (see WI-todon). Inspect prior warnings for "
+            f"invoke-time diagnostics.",
+        )
     return AnalysisResult(symbols=symbols, edges=edges)

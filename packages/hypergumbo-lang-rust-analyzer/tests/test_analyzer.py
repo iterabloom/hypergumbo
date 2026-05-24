@@ -107,7 +107,7 @@ class TestAnalyzeRustWithScip:
     ) -> None:
         captured: dict[str, object] = {}
 
-        def _fake_try(workspace, source_reader):
+        def _fake_try(workspace, source_reader, *, log=None):
             captured["workspace"] = workspace
             captured["reader"] = source_reader
             return ([], [])
@@ -138,3 +138,160 @@ class TestAnalyzerRegistration:
         entry = _ANALYZER_REGISTRY["rust_analyzer"]
         assert entry.priority == 45
         assert entry.name == "rust_analyzer"
+
+
+class TestEngagementCheck:
+    """WI-todon: warn if the SCIP backend ran but produced no SCIP-origin edges
+    on a repo that contains `.rs` files.
+
+    This catches silent fall-through after invoke returned exit 0 but the
+    SCIP→IR translation yielded nothing useful — exactly the wasmtime / OOM
+    scenario where rust-analyzer "completes" without engaging.
+    """
+
+    @staticmethod
+    def _make_scip_edge() -> Edge:
+        sym = Symbol(
+            id="rust:src/lib.rs:1-2:foo:function",
+            name="foo", kind="function", language="rust",
+            path="src/lib.rs", span=Span(1, 2, 0, 0), origin="scip",
+        )
+        return Edge.create(
+            src=sym.id, dst=sym.id, edge_type="calls",
+            line=1, confidence=0.9, origin="scip", origin_run_id="rx",
+        )
+
+    @staticmethod
+    def _make_non_scip_edge() -> Edge:
+        sym = Symbol(
+            id="rust:src/lib.rs:1-2:foo:function",
+            name="foo", kind="function", language="rust",
+            path="src/lib.rs", span=Span(1, 2, 0, 0), origin="rust-v1",
+        )
+        return Edge.create(
+            src=sym.id, dst=sym.id, edge_type="calls",
+            line=1, confidence=0.5, origin="rust-v1", origin_run_id="rx",
+        )
+
+    def test_warns_when_zero_scip_edges_and_rs_files_present(
+        self, tmp_path: Path,
+    ) -> None:
+        (tmp_path / "lib.rs").write_bytes(b"fn main() {}\n")
+        with patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
+            return_value=True,
+        ), patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
+            return_value=([], []),
+        ), pytest.warns(UserWarning, match="produced no SCIP"):
+            analyze_rust_with_scip(tmp_path)
+
+    def test_silent_when_at_least_one_scip_edge_present(
+        self, tmp_path: Path,
+    ) -> None:
+        (tmp_path / "lib.rs").write_bytes(b"fn main() {}\n")
+        scip_edge = self._make_scip_edge()
+        with patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
+            return_value=True,
+        ), patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
+            return_value=([], [scip_edge]),
+        ):
+            import warnings
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                analyze_rust_with_scip(tmp_path)
+            engagement = [w for w in caught if "produced no SCIP" in str(w.message)]
+            assert engagement == []
+
+    def test_silent_when_no_rs_files_present(self, tmp_path: Path) -> None:
+        """No .rs files → no expectation that SCIP would emit anything; no warn."""
+        with patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
+            return_value=True,
+        ), patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
+            return_value=([], []),
+        ):
+            import warnings
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                analyze_rust_with_scip(tmp_path)
+            engagement = [w for w in caught if "produced no SCIP" in str(w.message)]
+            assert engagement == []
+
+    def test_silent_when_result_is_none(self, tmp_path: Path) -> None:
+        """graceful-degrade already logged on its way to None; don't double-warn."""
+        (tmp_path / "lib.rs").write_bytes(b"fn main() {}\n")
+        with patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
+            return_value=True,
+        ), patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
+            return_value=None,
+        ):
+            import warnings
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                analyze_rust_with_scip(tmp_path)
+            engagement = [w for w in caught if "produced no SCIP" in str(w.message)]
+            assert engagement == []
+
+    def test_silent_when_gate_false(self, tmp_path: Path) -> None:
+        """Gate False means the user did not opt in — no warning regardless."""
+        (tmp_path / "lib.rs").write_bytes(b"fn main() {}\n")
+        with patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
+            return_value=False,
+        ):
+            import warnings
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                analyze_rust_with_scip(tmp_path)
+            engagement = [w for w in caught if "produced no SCIP" in str(w.message)]
+            assert engagement == []
+
+    def test_detects_rs_files_in_subdirectories(self, tmp_path: Path) -> None:
+        """Engagement check uses recursive scan — workspace crates live in subdirs."""
+        sub = tmp_path / "crates" / "foo" / "src"
+        sub.mkdir(parents=True)
+        (sub / "lib.rs").write_bytes(b"fn main() {}\n")
+        with patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
+            return_value=True,
+        ), patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
+            return_value=([], []),
+        ), pytest.warns(UserWarning, match="produced no SCIP"):
+            analyze_rust_with_scip(tmp_path)
+
+    def test_warning_wired_to_graceful_degrade_log_callable(
+        self, tmp_path: Path,
+    ) -> None:
+        """analyzer.py wires a real log callable into try_analyze_with_rust_analyzer
+        so graceful-degrade's diagnostics surface as warnings to the user."""
+        captured_log: list[object] = []
+
+        def _fake_try(workspace, source_reader, *, log=None):
+            captured_log.append(log)
+            return None
+
+        with patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
+            return_value=True,
+        ), patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
+            side_effect=_fake_try,
+        ):
+            analyze_rust_with_scip(tmp_path)
+
+        assert len(captured_log) == 1
+        log_fn = captured_log[0]
+        assert callable(log_fn)
+        import warnings
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            log_fn("test message from graceful-degrade")
+        assert len(caught) == 1
+        assert "test message from graceful-degrade" in str(caught[0].message)

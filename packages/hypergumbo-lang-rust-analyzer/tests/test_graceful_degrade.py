@@ -188,3 +188,159 @@ class TestDefaultLogIsNoOp:
         captured = capsys.readouterr()
         assert captured.out == ""
         assert captured.err == ""
+
+
+class TestRichDiagnosticsForInvocationFailed:
+    """WI-todon: surface exit code + stderr tail + OOM hint when RA crashes."""
+
+    def test_log_includes_exit_code(self, tmp_path: Path) -> None:
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerInvocationFailed(
+                "rust-analyzer scip exited 2", b"thread panicked: foo",
+                returncode=2,
+            )
+
+        log_msgs: list[str] = []
+        try_analyze_with_rust_analyzer(
+            tmp_path, _fake_source_reader,
+            invoke=_invoke, log=log_msgs.append,
+        )
+        assert len(log_msgs) == 1
+        assert "exit=2" in log_msgs[0]
+
+    def test_log_includes_stderr_tail(self, tmp_path: Path) -> None:
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerInvocationFailed(
+                "rust-analyzer scip exited 2",
+                b"error: cargo metadata failed: package foo not found",
+                returncode=2,
+            )
+
+        log_msgs: list[str] = []
+        try_analyze_with_rust_analyzer(
+            tmp_path, _fake_source_reader,
+            invoke=_invoke, log=log_msgs.append,
+        )
+        assert "cargo metadata failed: package foo not found" in log_msgs[0]
+
+    def test_returncode_negative_nine_emits_oom_hint(self, tmp_path: Path) -> None:
+        """SIGKILL on Linux surfaces as -9 → loudly call out memory exhaustion."""
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerInvocationFailed(
+                "rust-analyzer scip exited -9", b"", returncode=-9,
+            )
+
+        log_msgs: list[str] = []
+        try_analyze_with_rust_analyzer(
+            tmp_path, _fake_source_reader,
+            invoke=_invoke, log=log_msgs.append,
+        )
+        assert "OOM" in log_msgs[0] or "memory" in log_msgs[0].lower()
+        assert "SIGKILL" in log_msgs[0]
+
+    def test_returncode_137_emits_oom_hint(self, tmp_path: Path) -> None:
+        """Shell-convention 128+9 also indicates SIGKILL."""
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerInvocationFailed(
+                "rust-analyzer scip exited 137", b"", returncode=137,
+            )
+
+        log_msgs: list[str] = []
+        try_analyze_with_rust_analyzer(
+            tmp_path, _fake_source_reader,
+            invoke=_invoke, log=log_msgs.append,
+        )
+        assert "OOM" in log_msgs[0] or "memory" in log_msgs[0].lower()
+        assert "SIGKILL" in log_msgs[0]
+
+    def test_returncode_2_does_not_emit_oom_hint(self, tmp_path: Path) -> None:
+        """Exit 2 is a regular cargo/parse error, NOT SIGKILL — no OOM hint."""
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerInvocationFailed(
+                "rust-analyzer scip exited 2", b"cargo error", returncode=2,
+            )
+
+        log_msgs: list[str] = []
+        try_analyze_with_rust_analyzer(
+            tmp_path, _fake_source_reader,
+            invoke=_invoke, log=log_msgs.append,
+        )
+        assert "OOM" not in log_msgs[0]
+        assert "SIGKILL" not in log_msgs[0]
+
+    def test_timeout_has_no_returncode_no_oom_hint(self, tmp_path: Path) -> None:
+        """Timeout sets returncode=None — log omits exit and OOM."""
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerInvocationFailed(
+                "rust-analyzer scip timed out after 600.0s",
+                b"", returncode=None,
+            )
+
+        log_msgs: list[str] = []
+        try_analyze_with_rust_analyzer(
+            tmp_path, _fake_source_reader,
+            invoke=_invoke, log=log_msgs.append,
+        )
+        assert "exit=" not in log_msgs[0]
+        assert "OOM" not in log_msgs[0]
+        assert "timed out" in log_msgs[0]
+
+    def test_long_stderr_truncated_to_tail(self, tmp_path: Path) -> None:
+        """Long stderr is truncated to a fixed tail to keep logs scannable."""
+        long_stderr = (b"noise\n" * 200) + b"FINAL_LINE_OF_INTEREST"
+
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerInvocationFailed(
+                "rust-analyzer scip exited 2", long_stderr, returncode=2,
+            )
+
+        log_msgs: list[str] = []
+        try_analyze_with_rust_analyzer(
+            tmp_path, _fake_source_reader,
+            invoke=_invoke, log=log_msgs.append,
+        )
+        assert "FINAL_LINE_OF_INTEREST" in log_msgs[0]
+        assert len(log_msgs[0]) < len(long_stderr)
+
+    def test_empty_stderr_omits_stderr_section(self, tmp_path: Path) -> None:
+        """Empty stderr (e.g. SIGKILL'd before any output) → no 'stderr:' chunk."""
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerInvocationFailed(
+                "rust-analyzer scip exited -9", b"", returncode=-9,
+            )
+
+        log_msgs: list[str] = []
+        try_analyze_with_rust_analyzer(
+            tmp_path, _fake_source_reader,
+            invoke=_invoke, log=log_msgs.append,
+        )
+        assert "stderr:" not in log_msgs[0]
+
+
+class TestRichDiagnosticsForNoOutput:
+    """WI-todon: RustAnalyzerNoOutput's stderr (cargo metadata) reaches the user."""
+
+    def test_log_includes_stderr_tail(self, tmp_path: Path) -> None:
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerNoOutput(
+                "no index.scip",
+                b"error: failed to parse Cargo.toml: invalid syntax",
+            )
+
+        log_msgs: list[str] = []
+        try_analyze_with_rust_analyzer(
+            tmp_path, _fake_source_reader,
+            invoke=_invoke, log=log_msgs.append,
+        )
+        assert "failed to parse Cargo.toml" in log_msgs[0]
+
+    def test_empty_stderr_omits_stderr_section(self, tmp_path: Path) -> None:
+        def _invoke(workspace, *, cwd):
+            raise RustAnalyzerNoOutput("no index.scip", b"")
+
+        log_msgs: list[str] = []
+        try_analyze_with_rust_analyzer(
+            tmp_path, _fake_source_reader,
+            invoke=_invoke, log=log_msgs.append,
+        )
+        assert "stderr:" not in log_msgs[0]

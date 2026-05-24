@@ -73,13 +73,20 @@ class RustAnalyzerInvocationFailed(RustAnalyzerError):
     """Raised when the binary ran but exited non-zero or timed out.
 
     The exception carries the captured stderr (best-effort; empty
-    bytes when the process was killed before producing any output) so
-    the caller can surface it to the user.
+    bytes when the process was killed before producing any output) and
+    the exit code (``None`` for the timeout path, where we killed the
+    process ourselves and no exit code was produced). WI-todon: the
+    graceful-degrade layer inspects ``returncode`` to detect the OOM
+    signature (``-9`` on Linux, ``137`` under shell convention) so it
+    can give the user a load-bearing hint instead of a generic failure.
     """
 
-    def __init__(self, message: str, stderr: bytes) -> None:
+    def __init__(
+        self, message: str, stderr: bytes, *, returncode: Optional[int] = None,
+    ) -> None:
         super().__init__(message)
         self.stderr = stderr
+        self.returncode = returncode
 
 
 class RustAnalyzerNoOutput(RustAnalyzerError):
@@ -148,12 +155,14 @@ def run_rust_analyzer_scip(
         raise RustAnalyzerInvocationFailed(
             f"rust-analyzer scip timed out after {timeout_sec}s",
             exc.stderr or b"",
+            returncode=None,
         ) from exc
 
     if completed.returncode != 0:
         raise RustAnalyzerInvocationFailed(
             f"rust-analyzer scip exited {completed.returncode}",
             completed.stderr or b"",
+            returncode=completed.returncode,
         )
 
     index_path = cwd / "index.scip"

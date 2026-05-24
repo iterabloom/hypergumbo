@@ -193,3 +193,43 @@ class TestRunnerFailures:
                 which=_which_found, runner=_runner,
             )
         assert excinfo.value.stderr == b""
+
+
+class TestInvocationFailedCarriesReturncode:
+    """WI-todon: graceful-degrade needs the exit code to detect OOM-kill (-9 / 137)."""
+
+    def test_nonzero_exit_carries_returncode(self, tmp_path: Path) -> None:
+        def _runner(cmd, *, cwd, capture_output, timeout):
+            return _Completed(returncode=137, stderr=b"OOM")
+
+        with pytest.raises(RustAnalyzerInvocationFailed) as excinfo:
+            run_rust_analyzer_scip(
+                tmp_path, cwd=tmp_path,
+                which=_which_found, runner=_runner,
+            )
+        assert excinfo.value.returncode == 137
+
+    def test_negative_nine_returncode_preserved(self, tmp_path: Path) -> None:
+        """Linux SIGKILL surfaces as returncode -9; preserve verbatim."""
+        def _runner(cmd, *, cwd, capture_output, timeout):
+            return _Completed(returncode=-9, stderr=b"")
+
+        with pytest.raises(RustAnalyzerInvocationFailed) as excinfo:
+            run_rust_analyzer_scip(
+                tmp_path, cwd=tmp_path,
+                which=_which_found, runner=_runner,
+            )
+        assert excinfo.value.returncode == -9
+
+    def test_timeout_sets_returncode_to_none(self, tmp_path: Path) -> None:
+        """Timeout means we killed the process; no exit code to report."""
+        def _runner(cmd, *, cwd, capture_output, timeout):
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=timeout, stderr=b"")
+
+        with pytest.raises(RustAnalyzerInvocationFailed) as excinfo:
+            run_rust_analyzer_scip(
+                tmp_path, cwd=tmp_path,
+                which=_which_found, runner=_runner,
+            )
+        assert excinfo.value.returncode is None
+        assert excinfo.value.stderr == b""

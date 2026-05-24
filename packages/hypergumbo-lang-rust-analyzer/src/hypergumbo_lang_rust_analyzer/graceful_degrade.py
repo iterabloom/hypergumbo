@@ -44,6 +44,8 @@ from hypergumbo_core.ir import Edge, Symbol
 
 from .invoke import (
     RustAnalyzerError,
+    RustAnalyzerInvocationFailed,
+    RustAnalyzerNoOutput,
     run_rust_analyzer_scip,
 )
 from .translate import SourceReader, translate_scip_to_hg
@@ -55,6 +57,66 @@ TranslateFn = Callable[[bytes, SourceReader], Tuple[List[Symbol], List[Edge]]]
 # user's terminal. A set because the helper may be called across
 # multiple workspaces in a single process (monorepo analysis).
 _LOGGED_FALLBACK: set[str] = set()
+
+# Stderr tail length when surfacing rust-analyzer / cargo diagnostics. ~512
+# chars keeps the failure cause readable without dragging a 200-line panic
+# trace into the user's terminal.
+_STDERR_TAIL_BYTES = 512
+
+# Exit codes that indicate SIGKILL — almost always OOM-kill in practice for
+# rust-analyzer on memory-pressured machines (e.g. wasmtime-class workspaces
+# on <32 GiB RAM, the original WI-todon trigger). -9 = Linux signal-based,
+# 137 = shell convention (128 + signal number).
+_SIGKILL_EXIT_CODES = frozenset({-9, 137})
+
+
+def _stderr_tail(stderr: bytes) -> str:
+    """Decode the last ``_STDERR_TAIL_BYTES`` of stderr for surfacing in a log line.
+
+    Trailing newlines are stripped so the result lays out cleanly inline; the
+    caller wraps it in its own framing. Decoding uses ``errors="replace"`` so
+    a stray non-UTF-8 byte from rust-analyzer cannot crash the diagnostic
+    pipeline.
+    """
+    if not stderr:
+        return ""
+    tail = stderr[-_STDERR_TAIL_BYTES:] if len(stderr) > _STDERR_TAIL_BYTES else stderr
+    return tail.decode("utf-8", errors="replace").rstrip()
+
+
+def _format_invocation_failed(exc: RustAnalyzerInvocationFailed) -> str:
+    """Build the user-facing diagnostic for an invocation failure.
+
+    Layered: base failure line, optional exit-code chunk (omitted on timeout
+    where we killed the process), optional OOM hint when the exit code matches
+    a SIGKILL signature, optional stderr tail (omitted when empty so we don't
+    print 'stderr: ' with nothing after it).
+    """
+    parts: list[str] = [str(exc)]
+    if exc.returncode is not None:
+        parts.append(f"exit={exc.returncode}")
+        if exc.returncode in _SIGKILL_EXIT_CODES:
+            parts.append(
+                "process killed by SIGKILL (likely OOM — rust-analyzer on "
+                "wasmtime-class workspaces may need >16 GiB RAM)",
+            )
+    tail = _stderr_tail(exc.stderr)
+    if tail:
+        parts.append(f"stderr-tail: {tail}")
+    return " | ".join(parts)
+
+
+def _format_no_output(exc: RustAnalyzerNoOutput) -> str:
+    """Build the user-facing diagnostic for the no-output failure mode.
+
+    No exit code (the process exited 0) — just the message and a stderr tail
+    when present, since cargo's diagnostic is the load-bearing signal here.
+    """
+    parts: list[str] = [str(exc)]
+    tail = _stderr_tail(exc.stderr)
+    if tail:
+        parts.append(f"stderr-tail: {tail}")
+    return " | ".join(parts)
 
 
 def _reset_logged_fallback_for_tests() -> None:
@@ -102,9 +164,15 @@ def try_analyze_with_rust_analyzer(
             key = f"{type(exc).__name__}:{workspace}"
             if key not in _LOGGED_FALLBACK:
                 _LOGGED_FALLBACK.add(key)
+                if isinstance(exc, RustAnalyzerInvocationFailed):
+                    detail = _format_invocation_failed(exc)
+                elif isinstance(exc, RustAnalyzerNoOutput):
+                    detail = _format_no_output(exc)
+                else:
+                    detail = str(exc)
                 emit(
                     f"rust-analyzer backend unavailable for {workspace}: "
-                    f"{type(exc).__name__} — falling through to rust.py",
+                    f"{type(exc).__name__}: {detail} — falling through to rust.py",
                 )
             return None
 
