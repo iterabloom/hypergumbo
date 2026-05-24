@@ -71,3 +71,14 @@
   clock: 8  # f3b6
   nonce: f3b6  # f3b6
   message: "All 16 repos assessed across 3 cohorts. Cross-cohort results: 0 USEFUL, 8 PARTIALLY_USEFUL, 8 NOT_USEFUL. Mean scores: refactoring=31.2, new_feature=28.0, understanding=31.2. Key improvement themes: (1) Rust self.field.method() call resolution, (2) gRPC/tonic service detection, (3) tracing::instrument decorator conflation, (4) rslice seed selection needs prod_in_degree, (5) route deduplication. Full summaries in deep-20260303-203358/reflect/cohort-*/iter-001/summary.yaml."  # f3b6
+- op: update  # 934e
+  at: '2026-05-24T01:53:07Z'  # 934e
+  by: agent  # 934e
+  actor: jgstern_agent  # 934e
+  clock: 9  # 934e
+  nonce: 934e  # 934e
+  set: {}  # 934e
+  add:  # 934e
+    tags: [bakeoff_revalidation]  # 934e
+  remove:  # 934e
+    tags: [bakeoff-revalidation]  # 934e

@@ -71,3 +71,14 @@
   clock: 8  # 01f3
   nonce: 01f3  # 01f3
   message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). SVG path detection in discussion message renderer was part of this commit. Pushed directly to dev."  # 01f3
+- op: update  # ddf4
+  at: '2026-05-24T01:52:57Z'  # ddf4
+  by: agent  # ddf4
+  actor: jgstern_agent  # ddf4
+  clock: 9  # ddf4
+  nonce: ddf4  # ddf4
+  set: {}  # ddf4
+  add:  # ddf4
+    tags: [adr_0020]  # ddf4
+  remove:  # ddf4
+    tags: [adr-0020]  # ddf4

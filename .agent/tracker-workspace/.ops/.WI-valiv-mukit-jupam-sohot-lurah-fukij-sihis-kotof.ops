@@ -35,3 +35,14 @@
   clock: 3  # 1e3b
   nonce: 1e3b  # 1e3b
   message: "Implemented in PR #113. Ruby FFI linker emits ruby:C_ffi:0-0:<name>:unresolved edges for external library attach_function bindings. io_boundary tagger redirects to C catalog. 4 new tests."  # 1e3b
+- op: update  # 8c96
+  at: '2026-05-24T01:53:38Z'  # 8c96
+  by: agent  # 8c96
+  actor: jgstern_agent  # 8c96
+  clock: 4  # 8c96
+  nonce: 8c96  # 8c96
+  set: {}  # 8c96
+  add:  # 8c96
+    tags: [io_boundary]  # 8c96
+  remove:  # 8c96
+    tags: [io-boundary]  # 8c96

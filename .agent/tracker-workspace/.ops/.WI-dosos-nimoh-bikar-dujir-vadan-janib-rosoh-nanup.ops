@@ -48,3 +48,14 @@
   clock: 5  # ad85
   nonce: ad85  # ad85
   message: "Already implemented: preview.py (render_svg_preview, format_preview_placeholder), preview_pipeline.py (SVG→PNG→ANSI pipeline), tui.py integration (SVG path detection in discussion entries, placeholder rendering). Listed in CHANGELOG under unreleased."  # ad85
+- op: update  # 5ec4
+  at: '2026-05-24T01:52:56Z'  # 5ec4
+  by: agent  # 5ec4
+  actor: jgstern_agent  # 5ec4
+  clock: 6  # 5ec4
+  nonce: 5ec4  # 5ec4
+  set: {}  # 5ec4
+  add:  # 5ec4
+    tags: [adr_0020]  # 5ec4
+  remove:  # 5ec4
+    tags: [adr-0020]  # 5ec4

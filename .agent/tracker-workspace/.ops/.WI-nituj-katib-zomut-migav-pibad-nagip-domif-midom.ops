@@ -33,3 +33,14 @@
   clock: 3  # 8e03
   nonce: '8e03'  # 8e03
   message: "New DEEP session initialized: deep-reval-20260303-160033. 7 cohorts (40 repos, op-succinct missing from pool). Using OptAttest curriculum."  # 8e03
+- op: update  # 0447
+  at: '2026-05-24T01:53:07Z'  # 0447
+  by: agent  # 0447
+  actor: jgstern_agent  # 0447
+  clock: 4  # 0447
+  nonce: '0447'  # 0447
+  set: {}  # 0447
+  add:  # 0447
+    tags: [bakeoff_revalidation]  # 0447
+  remove:  # 0447
+    tags: [bakeoff-revalidation]  # 0447

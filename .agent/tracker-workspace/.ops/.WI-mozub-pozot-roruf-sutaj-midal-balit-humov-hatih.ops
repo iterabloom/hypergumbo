@@ -78,3 +78,14 @@
   clock: 9  # 4fe0
   nonce: 4fe0  # 4fe0
   message: "Screenshot capture was implemented as part of the annotation mode commit: 9caf0e03 (feat(tui): annotation mode for screenshot markup (ADR-0020 Part 1)). Screenshot save path fixes in follow-up commits: 80ec044e, c3be9758, 452cd8af, dd185320. All merged to dev via auto-pr."  # 4fe0
+- op: update  # 1365
+  at: '2026-05-24T01:52:56Z'  # 1365
+  by: agent  # 1365
+  actor: jgstern_agent  # 1365
+  clock: 10  # 1365
+  nonce: '1365'  # 1365
+  set: {}  # 1365
+  add:  # 1365
+    tags: [adr_0020]  # 1365
+  remove:  # 1365
+    tags: [adr-0020]  # 1365

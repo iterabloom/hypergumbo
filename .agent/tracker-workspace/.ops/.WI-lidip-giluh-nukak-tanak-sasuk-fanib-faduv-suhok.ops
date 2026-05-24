@@ -78,3 +78,14 @@
   clock: 9  # 71a1
   nonce: 71a1  # 71a1
   message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). This commit added cell-to-SVG coordinate mapping using Rich export constants, SVG annotation element generation, and injection. Pushed directly to dev (no separate PR)."  # 71a1
+- op: update  # d810
+  at: '2026-05-24T01:52:57Z'  # d810
+  by: agent  # d810
+  actor: jgstern_agent  # d810
+  clock: 10  # d810
+  nonce: d810  # d810
+  set: {}  # d810
+  add:  # d810
+    tags: [adr_0020]  # d810
+  remove:  # d810
+    tags: [adr-0020]  # d810

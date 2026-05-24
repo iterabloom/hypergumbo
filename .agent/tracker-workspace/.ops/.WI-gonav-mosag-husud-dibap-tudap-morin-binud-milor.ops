@@ -35,3 +35,14 @@
   clock: 3  # 78cb
   nonce: 78cb  # 78cb
   message: "Fixed in commit 22f0f5129. Added size, length, copy, find to ambiguous_names in java.yaml. List.size()/Map.size()/String.length() etc. on unresolved-external destinations no longer match Files.size/File.length etc. Module-resolved calls (e.g., explicit java.nio.file.Files dst) still match. 3 new tests in TestAmbiguousNameFiltering."  # 78cb
+- op: update  # cea2
+  at: '2026-05-24T01:53:37Z'  # cea2
+  by: agent  # cea2
+  actor: jgstern_agent  # cea2
+  clock: 4  # cea2
+  nonce: cea2  # cea2
+  set: {}  # cea2
+  add:  # cea2
+    tags: [io_boundary]  # cea2
+  remove:  # cea2
+    tags: [io-boundary]  # cea2

@@ -66,3 +66,14 @@
     tags: [phase_2]  # 6f06
   remove:  # 6f06
     tags: [phase-2]  # 6f06
+- op: update  # 9ea4
+  at: '2026-05-24T01:54:28Z'  # 9ea4
+  by: agent  # 9ea4
+  actor: jgstern_agent  # 9ea4
+  clock: 7  # 9ea4
+  nonce: 9ea4  # 9ea4
+  set: {}  # 9ea4
+  add:  # 9ea4
+    tags: [stable_id]  # 9ea4
+  remove:  # 9ea4
+    tags: [stable-id]  # 9ea4

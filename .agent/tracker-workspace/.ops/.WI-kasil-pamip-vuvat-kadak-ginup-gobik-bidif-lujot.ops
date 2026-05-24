@@ -27,3 +27,14 @@
   nonce: 0fce  # 0fce
   set:  # 0fce
     status: deleted  # 0fce
+- op: update  # df08
+  at: '2026-05-24T01:52:57Z'  # df08
+  by: agent  # df08
+  actor: jgstern_agent  # df08
+  clock: 3  # df08
+  nonce: df08  # df08
+  set: {}  # df08
+  add:  # df08
+    tags: [adr_0020]  # df08
+  remove:  # df08
+    tags: [adr-0020]  # df08

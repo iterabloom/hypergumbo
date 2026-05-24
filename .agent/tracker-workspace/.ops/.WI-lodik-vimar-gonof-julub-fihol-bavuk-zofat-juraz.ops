@@ -43,3 +43,14 @@
   nonce: c55e  # c55e
   set:  # c55e
     parent: INV-nimik-zudat-pafil-hipuf-hisif-sunip-kopib-puluj  # c55e
+- op: update  # a5ef
+  at: '2026-05-24T01:53:27Z'  # a5ef
+  by: agent  # a5ef
+  actor: jgstern_agent  # a5ef
+  clock: 5  # a5ef
+  nonce: a5ef  # a5ef
+  set: {}  # a5ef
+  add:  # a5ef
+    tags: [external_bakeoff]  # a5ef
+  remove:  # a5ef
+    tags: [external-bakeoff]  # a5ef

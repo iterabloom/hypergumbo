@@ -87,3 +87,14 @@
   clock: 9  # f6e6
   nonce: f6e6  # f6e6
   message: "Validated via self-analysis 2026-05-21. Re-ran hypergumbo on this repo (dev tip 74794a2e89) and confirmed entrypoint detection extends to bash/TS/HTML: bm['entrypoints']=97 total (was 64), by_kind={main_function:11, http_route:8, shell_script:36, script_module:2, html_entry:1, library_export:39}, non_python=39 — exact match to the per-PR claims (36 shell + 1 html + 2 script_module). Self-anchored claim; downstream impact on WI-vuton's dead-code FP rate is its own validation (still tagged, pending external cohort). Artifacts: ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md and verify_validation_drain_05212026{.py,_verdict.txt,.log}. Verdict: moved."  # f6e6
+- op: update  # 3b79
+  at: '2026-05-24T01:35:58Z'  # 3b79
+  by: agent  # 3b79
+  actor: jgstern_agent  # 3b79
+  clock: 10  # 3b79
+  nonce: 3b79  # 3b79
+  set: {}  # 3b79
+  add:  # 3b79
+    tags: [entrypoint]  # 3b79
+  remove:  # 3b79
+    tags: [entrypoint_detection]  # 3b79

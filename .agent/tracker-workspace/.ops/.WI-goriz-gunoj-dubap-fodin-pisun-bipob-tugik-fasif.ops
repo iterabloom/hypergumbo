@@ -57,3 +57,14 @@
   clock: 6  # 4ede
   nonce: 4ede  # 4ede
   message: "Implemented in PR #2673 as screenshot_path() in annotations.py. Generates .agent/screenshots/<item-id>-<YYYYMMDD-HHMMSS>.svg paths."  # 4ede
+- op: update  # c0f1
+  at: '2026-05-24T01:52:56Z'  # c0f1
+  by: agent  # c0f1
+  actor: jgstern_agent  # c0f1
+  clock: 7  # c0f1
+  nonce: c0f1  # c0f1
+  set: {}  # c0f1
+  add:  # c0f1
+    tags: [adr_0020]  # c0f1
+  remove:  # c0f1
+    tags: [adr-0020]  # c0f1

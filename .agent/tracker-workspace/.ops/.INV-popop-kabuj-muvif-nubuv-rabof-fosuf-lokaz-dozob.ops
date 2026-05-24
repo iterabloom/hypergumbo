@@ -86,3 +86,36 @@
   clock: 9  # b37c
   nonce: b37c  # b37c
   message: "Fixed in PR batch. HTTP linker was last remaining violation — now uses make_route_stable_id(method, url_path)."  # b37c
+- op: update  # 7f02
+  at: '2026-05-24T01:53:52Z'  # 7f02
+  by: agent  # 7f02
+  actor: jgstern_agent  # 7f02
+  clock: 10  # 7f02
+  nonce: 7f02  # 7f02
+  set: {}  # 7f02
+  add:  # 7f02
+    tags: [phase_0]  # 7f02
+  remove:  # 7f02
+    tags: [phase-0]  # 7f02
+- op: update  # 6a8d
+  at: '2026-05-24T01:54:23Z'  # 6a8d
+  by: agent  # 6a8d
+  actor: jgstern_agent  # 6a8d
+  clock: 11  # 6a8d
+  nonce: 6a8d  # 6a8d
+  set: {}  # 6a8d
+  add:  # 6a8d
+    tags: [spec_violation]  # 6a8d
+  remove:  # 6a8d
+    tags: [spec-violation]  # 6a8d
+- op: update  # 46bd
+  at: '2026-05-24T01:54:28Z'  # 46bd
+  by: agent  # 46bd
+  actor: jgstern_agent  # 46bd
+  clock: 12  # 46bd
+  nonce: 46bd  # 46bd
+  set: {}  # 46bd
+  add:  # 46bd
+    tags: [stable_id]  # 46bd
+  remove:  # 46bd
+    tags: [stable-id]  # 46bd

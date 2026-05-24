@@ -212,3 +212,25 @@
   clock: 27  # 33bb
   nonce: 33bb  # 33bb
   message: "Bakeoff validated. deep-20260401-180246 cohort-001 on chai2010/cgo: 7 IO edges detected (fopen, fread, fwrite, fgetc, fgets, fputc, fputs) via cgo pseudo-namespace redirect to C catalog. Before fix: 0 IO edges. The LOW_IO_TAG_RATE WARN (1.6% < 5.0%) is expected for a tiny 16-file utility library — the IO edges exist and are correct, just diluted by 434 total call edges. The invariant 'IO boundary chains must be traceable through FFI bridges' is satisfied for the cgo→C stdlib path."  # 33bb
+- op: update  # 4ea7
+  at: '2026-05-24T01:52:41Z'  # 4ea7
+  by: agent  # 4ea7
+  actor: jgstern_agent  # 4ea7
+  clock: 28  # 4ea7
+  nonce: 4ea7  # 4ea7
+  set: {}  # 4ea7
+  add:  # 4ea7
+    tags: [adr_0016]  # 4ea7
+  remove:  # 4ea7
+    tags: [adr-0016]  # 4ea7
+- op: update  # d0b8
+  at: '2026-05-24T01:53:37Z'  # d0b8
+  by: agent  # d0b8
+  actor: jgstern_agent  # d0b8
+  clock: 29  # d0b8
+  nonce: d0b8  # d0b8
+  set: {}  # d0b8
+  add:  # d0b8
+    tags: [io_boundary]  # d0b8
+  remove:  # d0b8
+    tags: [io-boundary]  # d0b8

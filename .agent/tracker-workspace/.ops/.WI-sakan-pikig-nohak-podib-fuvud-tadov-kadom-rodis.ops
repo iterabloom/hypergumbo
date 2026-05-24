@@ -35,3 +35,14 @@
   clock: 3  # f7cc
   nonce: f7cc  # f7cc
   message: "Fixed. Java catalog grew from ~136 primitives to 312 via expansion: new db_read/db_write boundaries (JDBC, JPA javax+jakarta, Spring JdbcTemplate+CrudRepository+JpaRepository, Hibernate Session), new logging boundary (SLF4J, Log4j 1.x/2.x, Logback, java.util.logging), net_send additions (Apache HttpClient 4.x+5.x, Spring WebClient, Unirest, Retrofit), fs_read/fs_write additions (Apache Commons IO FileUtils+IOUtils). Kotlin inherits via alias. Did NOT address BUG-10 (List.size vs Files.size — lives in module-hint matching logic, separately tracked as WI-gonav)."  # f7cc
+- op: update  # 2cf0
+  at: '2026-05-24T01:53:37Z'  # 2cf0
+  by: agent  # 2cf0
+  actor: jgstern_agent  # 2cf0
+  clock: 4  # 2cf0
+  nonce: 2cf0  # 2cf0
+  set: {}  # 2cf0
+  add:  # 2cf0
+    tags: [io_boundary]  # 2cf0
+  remove:  # 2cf0
+    tags: [io-boundary]  # 2cf0

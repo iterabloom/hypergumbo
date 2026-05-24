@@ -35,3 +35,14 @@
   clock: 3  # f336
   nonce: f336  # f336
   message: "Fixed in WIP PR. New io_primitives/elixir.yaml covering File/IO/System/Logger stdlib, HTTPoison/Tesla/Req/Finch/Mint clients, Phoenix Router+Controller+Channel+Endpoint, Plug.Conn, Ecto.Repo/Multi + Postgrex/MyXQL/Redix, GenServer/Process/Oban/Task. elixir→erlang added to _CATALOG_PARENTS so atom-access paths (:gen_tcp, :file, :ets) still matched. 2 tests verify Erlang-parent merge + boundary-kind breadth (fs_read, fs_write, net_send, net_recv, logging, db_read, db_write, subprocess, env_read, ipc_send)."  # f336
+- op: update  # 3ecd
+  at: '2026-05-24T01:53:37Z'  # 3ecd
+  by: agent  # 3ecd
+  actor: jgstern_agent  # 3ecd
+  clock: 4  # 3ecd
+  nonce: 3ecd  # 3ecd
+  set: {}  # 3ecd
+  add:  # 3ecd
+    tags: [io_boundary]  # 3ecd
+  remove:  # 3ecd
+    tags: [io-boundary]  # 3ecd

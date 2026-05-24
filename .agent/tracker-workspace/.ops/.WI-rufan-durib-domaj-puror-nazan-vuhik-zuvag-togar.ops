@@ -42,3 +42,14 @@
   clock: 4  # e616
   nonce: e616  # e616
   message: "Implemented in PR #103. PasswordVerifier with bcrypt (real + duress, timing-safe). RateLimiter with per-credential exponential backoff and lockout. 15 tests."  # e616
+- op: update  # de6a
+  at: '2026-05-24T01:52:51Z'  # de6a
+  by: agent  # de6a
+  actor: jgstern_agent  # de6a
+  clock: 5  # de6a
+  nonce: de6a  # de6a
+  set: {}  # de6a
+  add:  # de6a
+    tags: [adr_0019]  # de6a
+  remove:  # de6a
+    tags: [adr-0019]  # de6a

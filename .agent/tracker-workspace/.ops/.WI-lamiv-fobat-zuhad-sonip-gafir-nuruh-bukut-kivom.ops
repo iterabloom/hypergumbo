@@ -42,3 +42,14 @@
   clock: 4  # aa6e
   nonce: aa6e  # aa6e
   message: "Already addressed in PR #96 and PR #100/103. starlette, uvicorn, httpx, watchfiles, bcrypt added to base dependencies (not optional extras) so CI installs them automatically."  # aa6e
+- op: update  # 7ba6
+  at: '2026-05-24T01:52:52Z'  # 7ba6
+  by: agent  # 7ba6
+  actor: jgstern_agent  # 7ba6
+  clock: 5  # 7ba6
+  nonce: 7ba6  # 7ba6
+  set: {}  # 7ba6
+  add:  # 7ba6
+    tags: [adr_0019]  # 7ba6
+  remove:  # 7ba6
+    tags: [adr-0019]  # 7ba6

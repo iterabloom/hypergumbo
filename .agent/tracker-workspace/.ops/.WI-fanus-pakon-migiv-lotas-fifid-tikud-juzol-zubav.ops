@@ -19,3 +19,43 @@
     pr_ref:  # 4474
     description: "Phase 0 (RCT pin-readiness) §0.6 followup. Two-part cleanup, file after Phase 5 lands.\n\nPART 1 — dash/underscore duplicates:\n- analysis-quality (14 tags total this discipline) vs analysis_quality\n- ci-infrastructure vs ci_infrastructure\n- phase-2 vs phase_2\n- entrypoint vs entrypoints\n\nPART 2 — missing concept tags (surfaced during Phase 0 substring search):\n- ranking\n- dampener\n- centrality\n- wheel\n- sha256\n- citation\n- span_construct (currently must search title/description; substring works but a tag would be cleaner)\n\nFor each dupe: pick canonical form, rename usages, retire the other. For each missing tag: add to the tag catalog with a one-line definition. Validate by re-running scripts/tracker tags before/after.\n\nNote: plan §0.6 originally said 'reproducibility' was missing — it's not (line 131 of tag list). Don't re-add.\n\nSource: ~/hypergumbo_lab_notebook/notebookjournal_05132026_1912.md"  # 4474
     fields: {}  # 4474
+- op: update  # 69f9
+  at: '2026-05-24T01:38:52Z'  # 69f9
+  by: agent  # 69f9
+  actor: jgstern_agent  # 69f9
+  clock: 2  # 69f9
+  nonce: 69f9  # 69f9
+  set:  # 69f9
+    status: done  # 69f9
+- op: discuss  # 8b8e
+  at: '2026-05-24T01:38:52Z'  # 8b8e
+  by: agent  # 8b8e
+  actor: jgstern_agent  # 8b8e
+  clock: 3  # 8b8e
+  nonce: 8b8e  # 8b8e
+  message: "Completed both parts.\n\nPART 1 — dash/underscore dupes harmonized (7 renames, 21 item-tag rewrites):\n- analysis-quality (4) → analysis_quality (total 287, +4)\n- ci-infrastructure (1) → ci_infrastructure (total 38, +1)\n- self-analysis (1) → self_analysis (total 47, +1) [not in original item body — surfaced by 2026-05-23 tags --count audit]\n- phase-2 (12) → phase_2 (was 0/inactive; now 12 active)\n- phase-2b (1) → phase_2b (NEW snake form) [not in original item body — surfaced by audit; phase-2b is a legit Rust Phase 2b sub-phase tag on WI-bifog]\n- entrypoints (1) → entrypoint (total 5)\n- entrypoint_detection (1) → entrypoint (consolidated; was on INV-tajap)\n\nPART 2 — 7 missing concept tags added via tracker tags describe (each carries a one-line definition; usage starts at 0/inactive, ready to be adopted by future items):\nranking, dampener, centrality, wheel, sha256, citation, span_construct.\n\nCanonical direction confirmed by _TAG_NAME_RE = ^[a-z_][a-z0-9_]*$ (dashes are illegal under current validation). All old dash forms now show inactive in tracker tags --count.\n\nFollow-up worth filing separately (not in this item's scope): many other tags still violate _TAG_NAME_RE (adr-0017, io-boundary, phase-0/-1/-3, stable-id, external-bakeoff, bakeoff-revalidation, formal-methods, supply-chain, taint-flow, test-coverage, tracker-hygiene, etc., 20+ entries). These were grandfathered before the regex tightened. A separate sweep could harmonize them, but the WI-fanus body did not request it."  # 8b8e
+- op: discuss  # 1831
+  at: '2026-05-24T01:51:54Z'  # 1831
+  by: agent  # 1831
+  actor: jgstern_agent  # 1831
+  clock: 4  # 1831
+  nonce: '1831'  # 1831
+  message: "Scope expanded post-closure per 2026-05-23 user direction: do a full sweep of the remaining 29 dash-form tags (including the ADR family — cosmetic mismatch with hyphenated ADR file names is explicitly accepted). Landmine grep across packages/scripts/.agent/.githooks/pyproject.toml found zero load-bearing references — only the test-coverage CLI subcommand (different namespace, stays hyphenated) and natural-language prose in docs. 7 collisions with existing snake forms detected (adr_0014, io_boundary, spec_violation, supply_chain, taint_flow, test_coverage, tracker_hygiene), all expected to merge cleanly as phase_2 did in the original WI-fanus run."  # 1831
+- op: update  # 5893
+  at: '2026-05-24T01:54:48Z'  # 5893
+  by: agent  # 5893
+  actor: jgstern_agent  # 5893
+  clock: 5  # 5893
+  nonce: '5893'  # 5893
+  set: {}  # 5893
+  add:  # 5893
+    tags: [tracker_hygiene]  # 5893
+  remove:  # 5893
+    tags: [tracker-hygiene]  # 5893
+- op: discuss  # 36f7
+  at: '2026-05-24T01:55:39Z'  # 36f7
+  by: agent  # 36f7
+  actor: jgstern_agent  # 36f7
+  clock: 6  # 36f7
+  nonce: 36f7  # 36f7
+  message: "Expanded-scope sweep complete: 29 additional dash→snake renames, 181 item-tag rewrites. Final tracker tags --count shows 0 dash-form entries (active or inactive). Merges into pre-existing snake forms behaved correctly (adr_0014: 2→3, io_boundary: 1→22, stable_id: 0→15, taint_flow: 4→6, test_coverage: 2→4, tracker_hygiene: 1→3, supply_chain: 1→3, spec_violation: 0→1). Auto-sync circuit breaker opened mid-batch (~2000 line .ops queue accumulated locally); per AGENTS.md the queue drains automatically when the breaker resets (~28 min from open). No manual intervention. Tag catalog now uniformly conforms to _TAG_NAME_RE = ^[a-z_][a-z0-9_]*$. ADR-id family (adr_0014/15/16/17/19/20) carries the deliberately-accepted cosmetic mismatch with hyphenated ADR file names."  # 36f7

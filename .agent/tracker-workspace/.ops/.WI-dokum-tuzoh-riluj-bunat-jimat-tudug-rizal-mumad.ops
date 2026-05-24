@@ -63,3 +63,14 @@
   clock: 7  # 992d
   nonce: 992d  # 992d
   message: "Implemented Option A in PR #93. pyffi linker emits python:C_stdlib:0-0:<name>:unresolved edges for ctypes.CDLL(None) and ffi.dlopen(None). io_boundary tagger redirects to C catalog. If repo-local C symbol exists, resolved edge preferred. 7 new tests, all at 100% coverage."  # 992d
+- op: update  # 4afb
+  at: '2026-05-24T01:53:37Z'  # 4afb
+  by: agent  # 4afb
+  actor: jgstern_agent  # 4afb
+  clock: 8  # 4afb
+  nonce: 4afb  # 4afb
+  set: {}  # 4afb
+  add:  # 4afb
+    tags: [io_boundary]  # 4afb
+  remove:  # 4afb
+    tags: [io-boundary]  # 4afb

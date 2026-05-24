@@ -42,3 +42,25 @@
   clock: 4  # 6573
   nonce: '6573'  # 6573
   message: "Merged in PRs #2351 (boundary map aggregation) and #2352 (CLI command). 'hypergumbo io-boundaries' shows I/O boundary map grouped by type. Reverse-trace for entry-point population deferred to Phase 1d dogfood."  # 6573
+- op: update  # 160a
+  at: '2026-05-24T01:52:41Z'  # 160a
+  by: agent  # 160a
+  actor: jgstern_agent  # 160a
+  clock: 5  # 160a
+  nonce: 160a  # 160a
+  set: {}  # 160a
+  add:  # 160a
+    tags: [adr_0016]  # 160a
+  remove:  # 160a
+    tags: [adr-0016]  # 160a
+- op: update  # 8e81
+  at: '2026-05-24T01:53:37Z'  # 8e81
+  by: agent  # 8e81
+  actor: jgstern_agent  # 8e81
+  clock: 6  # 8e81
+  nonce: '8e81'  # 8e81
+  set: {}  # 8e81
+  add:  # 8e81
+    tags: [io_boundary]  # 8e81
+  remove:  # 8e81
+    tags: [io-boundary]  # 8e81

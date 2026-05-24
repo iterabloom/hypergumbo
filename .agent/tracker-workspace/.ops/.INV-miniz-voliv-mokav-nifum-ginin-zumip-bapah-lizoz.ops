@@ -51,3 +51,14 @@
   clock: 5  # 318f
   nonce: 318f  # 318f
   message: "PR1 of stop-stripping plan merged (commits c7d60b1a3 + f829acd14). cli.run_behavior_map no longer strips boundary nodes from JSON output; the f5ab42e61 strip block is gone. Every disk-load consumer now sees boundary nodes via behavior_map['nodes'] with kind=external_symbol, supply_chain.tier populated. Schema bumped 0.2.2→0.2.3 (additive: external_symbol added to Symbol.kind enum, Span line minimum loosened to 0)."  # 318f
+- op: update  # 10c8
+  at: '2026-05-24T01:53:27Z'  # 10c8
+  by: agent  # 10c8
+  actor: jgstern_agent  # 10c8
+  clock: 6  # 10c8
+  nonce: 10c8  # 10c8
+  set: {}  # 10c8
+  add:  # 10c8
+    tags: [external_bakeoff]  # 10c8
+  remove:  # 10c8
+    tags: [external-bakeoff]  # 10c8

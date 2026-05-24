@@ -44,3 +44,36 @@
   set: {}  # 4775
   add:  # 4775
     tags: [done-ish, someday]  # 4775
+- op: update  # 6a09
+  at: '2026-05-24T01:52:41Z'  # 6a09
+  by: agent  # 6a09
+  actor: jgstern_agent  # 6a09
+  clock: 5  # 6a09
+  nonce: 6a09  # 6a09
+  set: {}  # 6a09
+  add:  # 6a09
+    tags: [adr_0016]  # 6a09
+  remove:  # 6a09
+    tags: [adr-0016]  # 6a09
+- op: update  # ea93
+  at: '2026-05-24T01:53:22Z'  # ea93
+  by: agent  # ea93
+  actor: jgstern_agent  # ea93
+  clock: 6  # ea93
+  nonce: ea93  # ea93
+  set: {}  # ea93
+  add:  # ea93
+    tags: [done_ish]  # ea93
+  remove:  # ea93
+    tags: [done-ish]  # ea93
+- op: update  # 9fcd
+  at: '2026-05-24T01:53:38Z'  # 9fcd
+  by: agent  # 9fcd
+  actor: jgstern_agent  # 9fcd
+  clock: 7  # 9fcd
+  nonce: 9fcd  # 9fcd
+  set: {}  # 9fcd
+  add:  # 9fcd
+    tags: [io_boundary]  # 9fcd
+  remove:  # 9fcd
+    tags: [io-boundary]  # 9fcd

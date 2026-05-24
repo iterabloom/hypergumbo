@@ -83,3 +83,14 @@
     tags: [phase_2]  # 8ccd
   remove:  # 8ccd
     tags: [phase-2]  # 8ccd
+- op: update  # 06bb
+  at: '2026-05-24T01:52:46Z'  # 06bb
+  by: agent  # 06bb
+  actor: jgstern_agent  # 06bb
+  clock: 10  # 06bb
+  nonce: 06bb  # 06bb
+  set: {}  # 06bb
+  add:  # 06bb
+    tags: [adr_0017]  # 06bb
+  remove:  # 06bb
+    tags: [adr-0017]  # 06bb

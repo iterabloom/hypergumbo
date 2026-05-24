@@ -34,3 +34,14 @@
   clock: 3  # 6460
   nonce: '6460'  # 6460
   message: "C0 completed (10 repos): all WARN. Pre-Agda-fix baseline. Key: bft-consensus-agda 2848 nodes/9137 edges, crypto-agda 4374 nodes/14903 edges. ZeroKnowledgeProofs had slice failures."  # 6460
+- op: update  # 346e
+  at: '2026-05-24T01:53:07Z'  # 346e
+  by: agent  # 346e
+  actor: jgstern_agent  # 346e
+  clock: 4  # 346e
+  nonce: 346e  # 346e
+  set: {}  # 346e
+  add:  # 346e
+    tags: [bakeoff_revalidation]  # 346e
+  remove:  # 346e
+    tags: [bakeoff-revalidation]  # 346e

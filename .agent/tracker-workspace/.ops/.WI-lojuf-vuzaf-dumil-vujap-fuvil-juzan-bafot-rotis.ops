@@ -130,3 +130,25 @@
   clock: 16  # 3604
   nonce: '3604'  # 3604
   message: "FFI integration merged in PR #2396. tag_io_boundaries() now includes FFI edge types (wasm_bridge, wasm_load, bridge_invokes, ipc_calls, ipc_event, grpc_calls, implements_rpc) in its call_types set. I/O boundaries are traced across language boundaries. Combined with 6 language catalogs (PRs #2348-2357), ADR-0016 Phase 2 is complete."  # 3604
+- op: update  # 865b
+  at: '2026-05-24T01:52:41Z'  # 865b
+  by: agent  # 865b
+  actor: jgstern_agent  # 865b
+  clock: 17  # 865b
+  nonce: 865b  # 865b
+  set: {}  # 865b
+  add:  # 865b
+    tags: [adr_0016]  # 865b
+  remove:  # 865b
+    tags: [adr-0016]  # 865b
+- op: update  # fc25
+  at: '2026-05-24T01:53:37Z'  # fc25
+  by: agent  # fc25
+  actor: jgstern_agent  # fc25
+  clock: 18  # fc25
+  nonce: fc25  # fc25
+  set: {}  # fc25
+  add:  # fc25
+    tags: [io_boundary]  # fc25
+  remove:  # fc25
+    tags: [io-boundary]  # fc25

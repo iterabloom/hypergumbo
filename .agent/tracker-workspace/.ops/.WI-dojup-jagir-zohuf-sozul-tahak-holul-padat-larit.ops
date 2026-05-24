@@ -79,3 +79,14 @@
   clock: 9  # 3521
   nonce: '3521'  # 3521
   message: "cfg.py created in PR #2575. taint.py already existed from Phase 1 (PR #2548). Both modules are in hypergumbo-core."  # 3521
+- op: update  # 4722
+  at: '2026-05-24T01:52:46Z'  # 4722
+  by: agent  # 4722
+  actor: jgstern_agent  # 4722
+  clock: 10  # 4722
+  nonce: '4722'  # 4722
+  set: {}  # 4722
+  add:  # 4722
+    tags: [adr_0017]  # 4722
+  remove:  # 4722
+    tags: [adr-0017]  # 4722

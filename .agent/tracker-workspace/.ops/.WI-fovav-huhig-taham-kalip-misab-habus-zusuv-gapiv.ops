@@ -49,3 +49,14 @@
     tags: [phase_2]  # 3508
   remove:  # 3508
     tags: [phase-2]  # 3508
+- op: update  # af1b
+  at: '2026-05-24T01:54:28Z'  # af1b
+  by: agent  # af1b
+  actor: jgstern_agent  # af1b
+  clock: 5  # af1b
+  nonce: af1b  # af1b
+  set: {}  # af1b
+  add:  # af1b
+    tags: [stable_id]  # af1b
+  remove:  # af1b
+    tags: [stable-id]  # af1b

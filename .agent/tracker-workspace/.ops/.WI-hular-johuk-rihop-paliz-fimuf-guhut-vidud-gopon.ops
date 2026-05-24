@@ -35,3 +35,14 @@
   clock: 3  # 6682
   nonce: '6682'  # 6682
   message: "Fixed in commit 2846f4a17. test-coverage now emits per-language false-negative caveats in text output (footer), JSON output (caveats field), and --help epilog. Recall_disclaimer + per_language entries for Java/Spring/MockMvc, Kotlin/PSI, Go/reflection, Scala/ScalaTest, Ruby/RSpec, Python/pytest, JS-TS/Jest, C#/xUnit. Languages without documented blind spots silently skip caveats. 6 new tests cover all surfaces."  # 6682
+- op: update  # d977
+  at: '2026-05-24T01:54:43Z'  # d977
+  by: agent  # d977
+  actor: jgstern_agent  # d977
+  clock: 4  # d977
+  nonce: d977  # d977
+  set: {}  # d977
+  add:  # d977
+    tags: [test_coverage]  # d977
+  remove:  # d977
+    tags: [test-coverage]  # d977

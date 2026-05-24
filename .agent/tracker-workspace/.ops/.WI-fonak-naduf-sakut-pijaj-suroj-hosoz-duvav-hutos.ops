@@ -35,3 +35,25 @@
   clock: 3  # f8c6
   nonce: f8c6  # f8c6
   message: "Merged in PR #2350. tag_io_boundaries() stamps io_boundary/io_primitive metadata on call edges matching I/O primitive catalogs."  # f8c6
+- op: update  # 3b77
+  at: '2026-05-24T01:52:41Z'  # 3b77
+  by: agent  # 3b77
+  actor: jgstern_agent  # 3b77
+  clock: 4  # 3b77
+  nonce: 3b77  # 3b77
+  set: {}  # 3b77
+  add:  # 3b77
+    tags: [adr_0016]  # 3b77
+  remove:  # 3b77
+    tags: [adr-0016]  # 3b77
+- op: update  # 2dd8
+  at: '2026-05-24T01:53:37Z'  # 2dd8
+  by: agent  # 2dd8
+  actor: jgstern_agent  # 2dd8
+  clock: 5  # 2dd8
+  nonce: 2dd8  # 2dd8
+  set: {}  # 2dd8
+  add:  # 2dd8
+    tags: [io_boundary]  # 2dd8
+  remove:  # 2dd8
+    tags: [io-boundary]  # 2dd8

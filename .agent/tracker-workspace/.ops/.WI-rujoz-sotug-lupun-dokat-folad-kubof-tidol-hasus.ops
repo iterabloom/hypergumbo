@@ -42,3 +42,14 @@
   clock: 4  # 5a69
   nonce: 5a69  # 5a69
   message: "Backend implemented in PR #114. save_screenshot() and save_screenshot_with_item() utilities. TUI wiring (calling these from annotation screen) is part of WI-fubij/WI-gikut."  # 5a69
+- op: update  # ff04
+  at: '2026-05-24T01:52:57Z'  # ff04
+  by: agent  # ff04
+  actor: jgstern_agent  # ff04
+  clock: 5  # ff04
+  nonce: ff04  # ff04
+  set: {}  # ff04
+  add:  # ff04
+    tags: [adr_0020]  # ff04
+  remove:  # ff04
+    tags: [adr-0020]  # ff04

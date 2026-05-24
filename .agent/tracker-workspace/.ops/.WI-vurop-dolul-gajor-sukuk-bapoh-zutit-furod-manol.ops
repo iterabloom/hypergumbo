@@ -50,3 +50,14 @@
   clock: 5  # 3604
   nonce: '3604'  # 3604
   message: "(Apologies — previous \"tiny\" entry was a debugging artifact from working around an argparse arg-ordering bug; intended reply follows.)\n\nDone. Created WI-pinop-jakok-zukof-vurod-bufug-fonuh-bupif-pajaj (P4, todo_soft, tags: uat_2026_04_13, io-boundary, js_ts_analyzer, analyzer_call_edges) for the known-globals-without-import gap (console, localStorage, sessionStorage, navigator, document, window, WebSocket). Catalog-driven approach, with a regression test that asserts a no-import file producing logging + storage_write boundaries."  # 3604
+- op: update  # 5d5d
+  at: '2026-05-24T01:53:37Z'  # 5d5d
+  by: agent  # 5d5d
+  actor: jgstern_agent  # 5d5d
+  clock: 6  # 5d5d
+  nonce: 5d5d  # 5d5d
+  set: {}  # 5d5d
+  add:  # 5d5d
+    tags: [io_boundary]  # 5d5d
+  remove:  # 5d5d
+    tags: [io-boundary]  # 5d5d

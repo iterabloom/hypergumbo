@@ -81,3 +81,25 @@
   clock: 9  # faf2
   nonce: faf2  # faf2
   message: "Implemented in PR #2589. infer_summary() with transitive DDG forward walk. Tracks param_to_return via BFS with re-definition tracking. 31 tests, 100% coverage."  # faf2
+- op: update  # d894
+  at: '2026-05-24T01:52:46Z'  # d894
+  by: agent  # d894
+  actor: jgstern_agent  # d894
+  clock: 10  # d894
+  nonce: d894  # d894
+  set: {}  # d894
+  add:  # d894
+    tags: [adr_0017]  # d894
+  remove:  # d894
+    tags: [adr-0017]  # d894
+- op: update  # 38d0
+  at: '2026-05-24T01:54:08Z'  # 38d0
+  by: agent  # 38d0
+  actor: jgstern_agent  # 38d0
+  clock: 11  # 38d0
+  nonce: 38d0  # 38d0
+  set: {}  # 38d0
+  add:  # 38d0
+    tags: [phase_3]  # 38d0
+  remove:  # 38d0
+    tags: [phase-3]  # 38d0

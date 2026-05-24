@@ -48,3 +48,14 @@
   clock: 5  # c142
   nonce: c142  # c142
   message: "Implemented in PR #2673 as sanitize_label_text() in annotations.py. Escapes <, >, &, \", ' to XML entities."  # c142
+- op: update  # 8f2f
+  at: '2026-05-24T01:52:57Z'  # 8f2f
+  by: agent  # 8f2f
+  actor: jgstern_agent  # 8f2f
+  clock: 6  # 8f2f
+  nonce: 8f2f  # 8f2f
+  set: {}  # 8f2f
+  add:  # 8f2f
+    tags: [adr_0020]  # 8f2f
+  remove:  # 8f2f
+    tags: [adr-0020]  # 8f2f

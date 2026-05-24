@@ -49,3 +49,14 @@
   clock: 5  # b7d1
   nonce: b7d1  # b7d1
   message: "CDI scope binding PR #1704 merged. @Produces + scope-annotated implements now detected."  # b7d1
+- op: update  # f28e
+  at: '2026-05-24T01:53:27Z'  # f28e
+  by: agent  # f28e
+  actor: jgstern_agent  # f28e
+  clock: 6  # f28e
+  nonce: f28e  # f28e
+  set: {}  # f28e
+  add:  # f28e
+    tags: [external_bakeoff]  # f28e
+  remove:  # f28e
+    tags: [external-bakeoff]  # f28e

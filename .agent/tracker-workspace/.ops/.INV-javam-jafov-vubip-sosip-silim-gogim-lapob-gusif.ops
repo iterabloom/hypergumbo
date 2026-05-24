@@ -74,3 +74,25 @@
   clock: 8  # 4d76
   nonce: 4d76  # 4d76
   message: "Validated end-to-end on a live Ruby-only repo (no io-boundary catalog, no taint catalog for ruby):\n\n**io-boundaries JSON:** `unsupported_languages: ['ruby']` present in output.\n\n**io-boundaries stderr:** \"Note: no I/O primitive catalog for language(s): ruby. Zero boundaries reported for these languages does NOT mean the code is I/O-free — it means hypergumbo cannot detect I/O for this language yet. (INV-javam)\"\n\n**verify-claims stderr (taint-flow claim TF-001 evaluated):** \"Note: no taint-flow catalog for language(s): ruby. Claims touching these languages are NOT actually verified — taint-flow has no sources/sinks to trace. Treat 'confirmed' verdicts on these languages as inconclusive. (INV-javam)\"\n\nAll three channels fire. Note: the deep-20260409-054615 bakeoff artifacts (iter-008) predate the INV-javam fix (iter timestamp 2026-04-10 vs fix commit 688fe9761 2026-04-15), so the converged bakeoff's JSON shows the old schema; direct manual validation on a fresh Ruby-only repo confirms the current code emits the signal correctly."  # 4d76
+- op: update  # d3eb
+  at: '2026-05-24T01:53:37Z'  # d3eb
+  by: agent  # d3eb
+  actor: jgstern_agent  # d3eb
+  clock: 9  # d3eb
+  nonce: d3eb  # d3eb
+  set: {}  # d3eb
+  add:  # d3eb
+    tags: [io_boundary]  # d3eb
+  remove:  # d3eb
+    tags: [io-boundary]  # d3eb
+- op: update  # f2cf
+  at: '2026-05-24T01:54:38Z'  # f2cf
+  by: agent  # f2cf
+  actor: jgstern_agent  # f2cf
+  clock: 10  # f2cf
+  nonce: f2cf  # f2cf
+  set: {}  # f2cf
+  add:  # f2cf
+    tags: [taint_flow]  # f2cf
+  remove:  # f2cf
+    tags: [taint-flow]  # f2cf

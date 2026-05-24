@@ -42,3 +42,14 @@
   clock: 4  # f3ba
   nonce: f3ba  # f3ba
   message: "Fixed in PR #3063 (merged to dev at ac39a71e9). cmd_test_coverage now recognises any function/method whose meta.concepts contains a concept starting with 'test' as a test, in addition to the existing _is_test_path heuristic. Same rule excludes them from coverage targets. Closes shellcheck UAT BUG-11: Template Haskell $forAllProperties discovers 2214 prop_* properties in src/ ShellCheck — the framework YAML pattern (test-frameworks.yaml:298-302) already tagged them, but cmd_test_coverage consulted paths only. Generalises to every language whose framework YAML emits test_* concepts (test_function, test_suite, test_lifecycle, test_fixture). Two regression tests: concept-tagged test counted as test (non-test path), and concept-tagged test excluded from coverage targets."  # f3ba
+- op: update  # 6330
+  at: '2026-05-24T01:54:43Z'  # 6330
+  by: agent  # 6330
+  actor: jgstern_agent  # 6330
+  clock: 5  # 6330
+  nonce: '6330'  # 6330
+  set: {}  # 6330
+  add:  # 6330
+    tags: [test_coverage]  # 6330
+  remove:  # 6330
+    tags: [test-coverage]  # 6330

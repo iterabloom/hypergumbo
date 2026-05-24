@@ -48,3 +48,14 @@
   clock: 5  # 1c0f
   nonce: 1c0f  # 1c0f
   message: "ADR-0020 fully implemented across PRs #60-68. Part 1: AnnotationScreen with rects/arrows/labels, arrow key nudge, SVG injection. Part 2: preview.py with SVG→PNG→ANSI pipeline, caching, graceful degradation. All sub-items (WI-mozub, WI-fuzim, WI-zozos, WI-fubij, WI-lapob, WI-dosos) done."  # 1c0f
+- op: update  # 93d7
+  at: '2026-05-24T01:52:56Z'  # 93d7
+  by: agent  # 93d7
+  actor: jgstern_agent  # 93d7
+  clock: 6  # 93d7
+  nonce: 93d7  # 93d7
+  set: {}  # 93d7
+  add:  # 93d7
+    tags: [adr_0020]  # 93d7
+  remove:  # 93d7
+    tags: [adr-0020]  # 93d7

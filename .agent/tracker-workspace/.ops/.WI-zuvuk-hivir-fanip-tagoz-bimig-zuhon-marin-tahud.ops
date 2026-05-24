@@ -34,3 +34,14 @@
   clock: 3  # 07a8
   nonce: 07a8  # 07a8
   message: "C1 completed in revalidation session."  # 07a8
+- op: update  # 3b66
+  at: '2026-05-24T01:53:07Z'  # 3b66
+  by: agent  # 3b66
+  actor: jgstern_agent  # 3b66
+  clock: 4  # 3b66
+  nonce: 3b66  # 3b66
+  set: {}  # 3b66
+  add:  # 3b66
+    tags: [bakeoff_revalidation]  # 3b66
+  remove:  # 3b66
+    tags: [bakeoff-revalidation]  # 3b66

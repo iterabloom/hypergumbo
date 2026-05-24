@@ -38,3 +38,14 @@
   clock: 3  # a0cd
   nonce: a0cd  # a0cd
   message: "Fixed in PR #2550 (merged). Python analyzer now emits unresolved_variable_method_call edges for method calls on local variables."  # a0cd
+- op: update  # f953
+  at: '2026-05-24T01:52:46Z'  # f953
+  by: agent  # f953
+  actor: jgstern_agent  # f953
+  clock: 4  # f953
+  nonce: f953  # f953
+  set: {}  # f953
+  add:  # f953
+    tags: [adr_0017]  # f953
+  remove:  # f953
+    tags: [adr-0017]  # f953

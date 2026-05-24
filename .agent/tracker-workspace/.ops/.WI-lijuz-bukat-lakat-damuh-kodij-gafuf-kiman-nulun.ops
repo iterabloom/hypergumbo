@@ -83,3 +83,14 @@
     tags: [phase_2]  # 0efe
   remove:  # 0efe
     tags: [phase-2]  # 0efe
+- op: update  # d26e
+  at: '2026-05-24T01:52:46Z'  # d26e
+  by: agent  # d26e
+  actor: jgstern_agent  # d26e
+  clock: 10  # d26e
+  nonce: d26e  # d26e
+  set: {}  # d26e
+  add:  # d26e
+    tags: [adr_0017]  # d26e
+  remove:  # d26e
+    tags: [adr-0017]  # d26e

@@ -72,3 +72,25 @@
   clock: 8  # 60bb
   nonce: 60bb  # 60bb
   message: "Implemented in PR #2591 (CI pending). TAINT_CALL_EDGE_TYPES includes 12 cross-language linker edge types. Both structural and DDG taint propagation now traverse wasm_bridge, ffi_bridge, ipc_calls, napi_bridge, grpc_calls, etc. 68 tests, 100% coverage."  # 60bb
+- op: update  # ba80
+  at: '2026-05-24T01:52:46Z'  # ba80
+  by: agent  # ba80
+  actor: jgstern_agent  # ba80
+  clock: 9  # ba80
+  nonce: ba80  # ba80
+  set: {}  # ba80
+  add:  # ba80
+    tags: [adr_0017]  # ba80
+  remove:  # ba80
+    tags: [adr-0017]  # ba80
+- op: update  # 2fe2
+  at: '2026-05-24T01:54:13Z'  # 2fe2
+  by: agent  # 2fe2
+  actor: jgstern_agent  # 2fe2
+  clock: 10  # 2fe2
+  nonce: 2fe2  # 2fe2
+  set: {}  # 2fe2
+  add:  # 2fe2
+    tags: [phase_4]  # 2fe2
+  remove:  # 2fe2
+    tags: [phase-4]  # 2fe2

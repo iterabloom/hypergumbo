@@ -62,3 +62,14 @@
   nonce: '7193'  # 7193
   set:  # 7193
     parent: INV-kagob-salob-nuhim-lilut-sural-lapis-jokif-kivif  # 7193
+- op: update  # c492
+  at: '2026-05-24T01:52:09Z'  # c492
+  by: agent  # c492
+  actor: jgstern_agent  # c492
+  clock: 7  # c492
+  nonce: c492  # c492
+  set: {}  # c492
+  add:  # c492
+    tags: [adr_0015]  # c492
+  remove:  # c492
+    tags: [adr-0015]  # c492

@@ -62,3 +62,14 @@
   clock: 7  # 6826
   nonce: '6826'  # 6826
   message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). Preview caching keyed on (svg_path, mtime, panel_width) was part of this commit. Pushed directly to dev."  # 6826
+- op: update  # b536
+  at: '2026-05-24T01:52:57Z'  # b536
+  by: agent  # b536
+  actor: jgstern_agent  # b536
+  clock: 8  # b536
+  nonce: b536  # b536
+  set: {}  # b536
+  add:  # b536
+    tags: [adr_0020]  # b536
+  remove:  # b536
+    tags: [adr-0020]  # b536

@@ -62,3 +62,14 @@
   clock: 7  # 81d8
   nonce: 81d8  # 81d8
   message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). Graceful degradation when cairosvg or Chafa unavailable was part of this commit. Pushed directly to dev."  # 81d8
+- op: update  # 9d6d
+  at: '2026-05-24T01:52:57Z'  # 9d6d
+  by: agent  # 9d6d
+  actor: jgstern_agent  # 9d6d
+  clock: 8  # 9d6d
+  nonce: 9d6d  # 9d6d
+  set: {}  # 9d6d
+  add:  # 9d6d
+    tags: [adr_0020]  # 9d6d
+  remove:  # 9d6d
+    tags: [adr-0020]  # 9d6d

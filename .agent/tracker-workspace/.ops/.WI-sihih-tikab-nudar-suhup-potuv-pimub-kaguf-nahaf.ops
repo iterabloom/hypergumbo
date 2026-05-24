@@ -42,3 +42,14 @@
   set: {}  # 76e5
   add:  # 76e5
     tags: [done-ish]  # 76e5
+- op: update  # 6ee7
+  at: '2026-05-24T01:53:22Z'  # 6ee7
+  by: agent  # 6ee7
+  actor: jgstern_agent  # 6ee7
+  clock: 5  # 6ee7
+  nonce: 6ee7  # 6ee7
+  set: {}  # 6ee7
+  add:  # 6ee7
+    tags: [done_ish]  # 6ee7
+  remove:  # 6ee7
+    tags: [done-ish]  # 6ee7

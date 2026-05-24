@@ -72,3 +72,25 @@
   clock: 8  # b354
   nonce: b354  # b354
   message: "Implemented in PR #2587. FunctionSummary dataclass + YAML loader. TypeScript stdlib (12 functions) and Rust stdlib (11 functions) summaries. Default-conservative for undeclared. 24 tests, 100% coverage."  # b354
+- op: update  # b518
+  at: '2026-05-24T01:52:46Z'  # b518
+  by: agent  # b518
+  actor: jgstern_agent  # b518
+  clock: 9  # b518
+  nonce: b518  # b518
+  set: {}  # b518
+  add:  # b518
+    tags: [adr_0017]  # b518
+  remove:  # b518
+    tags: [adr-0017]  # b518
+- op: update  # 9db8
+  at: '2026-05-24T01:54:08Z'  # 9db8
+  by: agent  # 9db8
+  actor: jgstern_agent  # 9db8
+  clock: 10  # 9db8
+  nonce: 9db8  # 9db8
+  set: {}  # 9db8
+  add:  # 9db8
+    tags: [phase_3]  # 9db8
+  remove:  # 9db8
+    tags: [phase-3]  # 9db8

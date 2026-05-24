@@ -46,3 +46,14 @@
     tags: [phase_2]  # 0b17
   remove:  # 0b17
     tags: [phase-2]  # 0b17
+- op: update  # c343
+  at: '2026-05-24T01:52:46Z'  # c343
+  by: agent  # c343
+  actor: jgstern_agent  # c343
+  clock: 5  # c343
+  nonce: c343  # c343
+  set: {}  # c343
+  add:  # c343
+    tags: [adr_0017]  # c343
+  remove:  # c343
+    tags: [adr-0017]  # c343

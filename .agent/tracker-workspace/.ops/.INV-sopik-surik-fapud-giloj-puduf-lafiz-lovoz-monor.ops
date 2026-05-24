@@ -48,3 +48,25 @@
   nonce: '9245'  # 9245
   set:  # 9245
     status: deleted  # 9245
+- op: update  # 2c06
+  at: '2026-05-24T01:53:37Z'  # 2c06
+  by: agent  # 2c06
+  actor: jgstern_agent  # 2c06
+  clock: 5  # 2c06
+  nonce: 2c06  # 2c06
+  set: {}  # 2c06
+  add:  # 2c06
+    tags: [io_boundary]  # 2c06
+  remove:  # 2c06
+    tags: [io-boundary]  # 2c06
+- op: update  # 0b76
+  at: '2026-05-24T01:54:38Z'  # 0b76
+  by: agent  # 0b76
+  actor: jgstern_agent  # 0b76
+  clock: 6  # 0b76
+  nonce: 0b76  # 0b76
+  set: {}  # 0b76
+  add:  # 0b76
+    tags: [taint_flow]  # 0b76
+  remove:  # 0b76
+    tags: [taint-flow]  # 0b76

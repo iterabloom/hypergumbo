@@ -35,3 +35,25 @@
   clock: 3  # 86b3
   nonce: 86b3  # 86b3
   message: "Merged in PR #2348. Python I/O primitive catalog (io_primitives/python.yaml) and IoBoundaryCatalog loading/matching infra."  # 86b3
+- op: update  # 69c4
+  at: '2026-05-24T01:52:41Z'  # 69c4
+  by: agent  # 69c4
+  actor: jgstern_agent  # 69c4
+  clock: 4  # 69c4
+  nonce: 69c4  # 69c4
+  set: {}  # 69c4
+  add:  # 69c4
+    tags: [adr_0016]  # 69c4
+  remove:  # 69c4
+    tags: [adr-0016]  # 69c4
+- op: update  # ff91
+  at: '2026-05-24T01:53:37Z'  # ff91
+  by: agent  # ff91
+  actor: jgstern_agent  # ff91
+  clock: 5  # ff91
+  nonce: ff91  # ff91
+  set: {}  # ff91
+  add:  # ff91
+    tags: [io_boundary]  # ff91
+  remove:  # ff91
+    tags: [io-boundary]  # ff91

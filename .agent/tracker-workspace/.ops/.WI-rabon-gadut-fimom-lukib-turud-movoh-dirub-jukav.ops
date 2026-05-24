@@ -34,3 +34,14 @@
   clock: 3  # ea4c
   nonce: ea4c  # ea4c
   message: "Fix round 1 not needed. Triage found mostly benign WARNs (HIGH_TIER1_PCT, HIGH_SLICE_COVERAGE_PCT). Actionable issues: Circom 54.6% orphan rate (pre-existing), Lean cross-file resolution (pre-existing). TOML hash IDs already fixed in PR #1698. SKIP regressions caused by transient dev state, fixed by re-run."  # ea4c
+- op: update  # 709e
+  at: '2026-05-24T01:53:07Z'  # 709e
+  by: agent  # 709e
+  actor: jgstern_agent  # 709e
+  clock: 4  # 709e
+  nonce: 709e  # 709e
+  set: {}  # 709e
+  add:  # 709e
+    tags: [bakeoff_revalidation]  # 709e
+  remove:  # 709e
+    tags: [bakeoff-revalidation]  # 709e

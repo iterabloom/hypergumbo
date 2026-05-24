@@ -119,3 +119,14 @@
   set: {}  # 06ad
   remove:  # 06ad
     tags: [awaits_bakeoff_validation]  # 06ad
+- op: update  # 36b3
+  at: '2026-05-24T01:53:38Z'  # 36b3
+  by: agent  # 36b3
+  actor: jgstern_agent  # 36b3
+  clock: 15  # 36b3
+  nonce: 36b3  # 36b3
+  set: {}  # 36b3
+  add:  # 36b3
+    tags: [io_boundary]  # 36b3
+  remove:  # 36b3
+    tags: [io-boundary]  # 36b3

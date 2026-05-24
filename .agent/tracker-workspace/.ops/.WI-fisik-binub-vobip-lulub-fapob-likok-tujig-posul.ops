@@ -99,3 +99,25 @@
   clock: 11  # 2c46
   nonce: 2c46  # 2c46
   message: "Implemented in feat/taint-flow-phase1. Taint catalogs: taint_sources/ (crypto.yaml, key_material.yaml), taint_sinks/ (host_filesystem.yaml, network_send.yaml), taint_sanitizers/ (encryption.yaml). Python, Rust, TS, Go, Java coverage."  # 2c46
+- op: update  # e0ed
+  at: '2026-05-24T01:52:45Z'  # e0ed
+  by: agent  # e0ed
+  actor: jgstern_agent  # e0ed
+  clock: 12  # e0ed
+  nonce: e0ed  # e0ed
+  set: {}  # e0ed
+  add:  # e0ed
+    tags: [adr_0017]  # e0ed
+  remove:  # e0ed
+    tags: [adr-0017]  # e0ed
+- op: update  # eff4
+  at: '2026-05-24T01:53:58Z'  # eff4
+  by: agent  # eff4
+  actor: jgstern_agent  # eff4
+  clock: 13  # eff4
+  nonce: eff4  # eff4
+  set: {}  # eff4
+  add:  # eff4
+    tags: [phase_1]  # eff4
+  remove:  # eff4
+    tags: [phase-1]  # eff4

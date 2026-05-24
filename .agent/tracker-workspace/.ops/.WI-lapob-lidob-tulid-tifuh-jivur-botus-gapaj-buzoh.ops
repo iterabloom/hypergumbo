@@ -64,3 +64,14 @@
   clock: 7  # be6c
   nonce: be6c  # be6c
   message: "Already implemented in tui.py AnnotationScreen: _nudge() with arrow key bindings (action_nudge_up/down/left/right), Enter confirms (action_confirm), Escape discards (action_discard)."  # be6c
+- op: update  # 2e80
+  at: '2026-05-24T01:52:57Z'  # 2e80
+  by: agent  # 2e80
+  actor: jgstern_agent  # 2e80
+  clock: 8  # 2e80
+  nonce: '2e80'  # 2e80
+  set: {}  # 2e80
+  add:  # 2e80
+    tags: [adr_0020]  # 2e80
+  remove:  # 2e80
+    tags: [adr-0020]  # 2e80

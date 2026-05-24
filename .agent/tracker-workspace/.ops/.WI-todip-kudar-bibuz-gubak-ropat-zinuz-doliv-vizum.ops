@@ -92,3 +92,14 @@
     tags: [phase_2]  # 3525
   remove:  # 3525
     tags: [phase-2]  # 3525
+- op: update  # dcee
+  at: '2026-05-24T01:52:46Z'  # dcee
+  by: agent  # dcee
+  actor: jgstern_agent  # dcee
+  clock: 11  # dcee
+  nonce: dcee  # dcee
+  set: {}  # dcee
+  add:  # dcee
+    tags: [adr_0017]  # dcee
+  remove:  # dcee
+    tags: [adr-0017]  # dcee

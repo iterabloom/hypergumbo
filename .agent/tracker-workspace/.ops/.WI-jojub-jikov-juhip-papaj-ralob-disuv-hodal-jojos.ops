@@ -90,3 +90,25 @@
   clock: 10  # 2961
   nonce: '2961'  # 2961
   message: "Implemented in feat/taint-flow-phase1. Two-phase BFS: reachable set from source without sanitizers, check sink presence. Dominance-based sanitizer checking. 41 tests, 100% coverage."  # 2961
+- op: update  # fc21
+  at: '2026-05-24T01:52:45Z'  # fc21
+  by: agent  # fc21
+  actor: jgstern_agent  # fc21
+  clock: 11  # fc21
+  nonce: fc21  # fc21
+  set: {}  # fc21
+  add:  # fc21
+    tags: [adr_0017]  # fc21
+  remove:  # fc21
+    tags: [adr-0017]  # fc21
+- op: update  # 00c4
+  at: '2026-05-24T01:53:58Z'  # 00c4
+  by: agent  # 00c4
+  actor: jgstern_agent  # 00c4
+  clock: 12  # 00c4
+  nonce: 00c4  # 00c4
+  set: {}  # 00c4
+  add:  # 00c4
+    tags: [phase_1]  # 00c4
+  remove:  # 00c4
+    tags: [phase-1]  # 00c4

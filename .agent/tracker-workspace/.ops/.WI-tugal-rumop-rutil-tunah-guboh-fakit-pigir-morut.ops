@@ -119,3 +119,14 @@
     tags: [phase_2]  # a0f1
   remove:  # a0f1
     tags: [phase-2]  # a0f1
+- op: update  # 76d1
+  at: '2026-05-24T01:52:46Z'  # 76d1
+  by: agent  # 76d1
+  actor: jgstern_agent  # 76d1
+  clock: 14  # 76d1
+  nonce: 76d1  # 76d1
+  set: {}  # 76d1
+  add:  # 76d1
+    tags: [adr_0017]  # 76d1
+  remove:  # 76d1
+    tags: [adr-0017]  # 76d1

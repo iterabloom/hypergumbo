@@ -62,3 +62,14 @@
   clock: 7  # 84db
   nonce: 84db  # 84db
   message: "Primary commit: 9caf0e03 (feat(tui): annotation mode for screenshot markup (ADR-0020 Part 1)). Follow-up fixes for canvas rendering and SVG geometry: 2f0bee1c, de2e4ff7, 83b46ea3, 33265aed, 5108d0ce, 2d5e3c6b, e040a7e1. All merged to dev via auto-pr fast-forward."  # 84db
+- op: update  # f9e2
+  at: '2026-05-24T01:52:56Z'  # f9e2
+  by: agent  # f9e2
+  actor: jgstern_agent  # f9e2
+  clock: 8  # f9e2
+  nonce: f9e2  # f9e2
+  set: {}  # f9e2
+  add:  # f9e2
+    tags: [adr_0020]  # f9e2
+  remove:  # f9e2
+    tags: [adr-0020]  # f9e2

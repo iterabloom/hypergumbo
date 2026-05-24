@@ -34,3 +34,14 @@
   clock: 3  # 622e
   nonce: 622e  # 622e
   message: "Final results after C4 re-run: 15 GOOD, 25 WARN, 0 FAIL across 40 repos. Up from initial 13 GOOD. All SKIP regressions resolved. Comparison vs initial run: orphan rate -17.38pp, avg_slice +44.35, cross_file +7.09pp. Agda repos dramatically improved. Session: deep-reval-20260303-160033."  # 622e
+- op: update  # 13ce
+  at: '2026-05-24T01:53:07Z'  # 13ce
+  by: agent  # 13ce
+  actor: jgstern_agent  # 13ce
+  clock: 4  # 13ce
+  nonce: 13ce  # 13ce
+  set: {}  # 13ce
+  add:  # 13ce
+    tags: [bakeoff_revalidation]  # 13ce
+  remove:  # 13ce
+    tags: [bakeoff-revalidation]  # 13ce

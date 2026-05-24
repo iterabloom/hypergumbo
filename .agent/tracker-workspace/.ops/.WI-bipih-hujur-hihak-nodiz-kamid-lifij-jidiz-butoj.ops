@@ -34,3 +34,14 @@
   clock: 3  # 3d3e
   nonce: 3d3e  # 3d3e
   message: "Full analysis written in notebookjournal_03032026_2130.md. Key findings: orphan rate -17.38pp mean, Agda repos orphan halved (-65 to -88pp). 3 verdict upgrades, 3 SKIP regressions. 24 WARNs triaged: 19 benign, 15 language-specific, 13 structural."  # 3d3e
+- op: update  # 3400
+  at: '2026-05-24T01:53:07Z'  # 3400
+  by: agent  # 3400
+  actor: jgstern_agent  # 3400
+  clock: 4  # 3400
+  nonce: '3400'  # 3400
+  set: {}  # 3400
+  add:  # 3400
+    tags: [bakeoff_revalidation]  # 3400
+  remove:  # 3400
+    tags: [bakeoff-revalidation]  # 3400

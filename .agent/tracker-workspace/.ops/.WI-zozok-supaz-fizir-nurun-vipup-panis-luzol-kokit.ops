@@ -35,3 +35,25 @@
   clock: 3  # 41b8
   nonce: 41b8  # 41b8
   message: "Dogfood validated in PR #2353. Running 'hypergumbo io-boundaries --path .' on hypergumbo's own codebase produces: 199 boundary calls (55 fs_read, 94 fs_write, 6 net_send, 41 subprocess, 3 env_read). Results match expectations: heavy file I/O (source analysis), minimal network (dependency checking), subprocess use (git/tree-sitter). Fix for CLI dispatch also merged."  # 41b8
+- op: update  # 6ae8
+  at: '2026-05-24T01:52:41Z'  # 6ae8
+  by: agent  # 6ae8
+  actor: jgstern_agent  # 6ae8
+  clock: 4  # 6ae8
+  nonce: 6ae8  # 6ae8
+  set: {}  # 6ae8
+  add:  # 6ae8
+    tags: [adr_0016]  # 6ae8
+  remove:  # 6ae8
+    tags: [adr-0016]  # 6ae8
+- op: update  # 181b
+  at: '2026-05-24T01:53:37Z'  # 181b
+  by: agent  # 181b
+  actor: jgstern_agent  # 181b
+  clock: 5  # 181b
+  nonce: 181b  # 181b
+  set: {}  # 181b
+  add:  # 181b
+    tags: [io_boundary]  # 181b
+  remove:  # 181b
+    tags: [io-boundary]  # 181b

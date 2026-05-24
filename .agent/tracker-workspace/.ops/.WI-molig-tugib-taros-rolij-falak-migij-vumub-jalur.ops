@@ -124,3 +124,14 @@
   clock: 15  # 30f1
   nonce: 30f1  # 30f1
   message: "Merged in PR #2361. Web Audio framework pattern detects AudioContext creation, node factories (createGain, createOscillator, etc.), .connect() graph wiring, AudioWorkletProcessor, and Tone.js patterns (chain, fan, toDestination). Auto-detected via npm packages. DEEP bakeoff baseline on 8 repos: Tone.js GOOD (12K edges), koel GOOD (23K edges)."  # 30f1
+- op: update  # 637e
+  at: '2026-05-24T01:54:53Z'  # 637e
+  by: agent  # 637e
+  actor: jgstern_agent  # 637e
+  clock: 16  # 637e
+  nonce: 637e  # 637e
+  set: {}  # 637e
+  add:  # 637e
+    tags: [web_audio]  # 637e
+  remove:  # 637e
+    tags: [web-audio]  # 637e

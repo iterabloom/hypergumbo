@@ -79,3 +79,25 @@
   clock: 8  # 3423
   nonce: '3423'  # 3423
   message: "[migrated from justification field] Option A (language-scoped normalization) chosen over Option B (canonical cross-language mapping) because: (1) stable_id tracks single-symbol identity across refactors, not cross-language comparison; (2) containing_module_stable_id already prevents cross-language collisions structurally; (3) Option A is a strict subset of Option B — per-language normalization is needed either way; (4) matches shape_id precedent (within-language, not cross-language)."  # 3423
+- op: update  # ea47
+  at: '2026-05-24T01:54:08Z'  # ea47
+  by: agent  # ea47
+  actor: jgstern_agent  # ea47
+  clock: 9  # ea47
+  nonce: ea47  # ea47
+  set: {}  # ea47
+  add:  # ea47
+    tags: [phase_3]  # ea47
+  remove:  # ea47
+    tags: [phase-3]  # ea47
+- op: update  # cf46
+  at: '2026-05-24T01:54:28Z'  # cf46
+  by: agent  # cf46
+  actor: jgstern_agent  # cf46
+  clock: 10  # cf46
+  nonce: cf46  # cf46
+  set: {}  # cf46
+  add:  # cf46
+    tags: [stable_id]  # cf46
+  remove:  # cf46
+    tags: [stable-id]  # cf46

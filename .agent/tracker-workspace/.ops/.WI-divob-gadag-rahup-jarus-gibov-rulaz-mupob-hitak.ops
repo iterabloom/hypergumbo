@@ -43,3 +43,14 @@
   nonce: '5538'  # 5538
   set:  # 5538
     parent: INV-nogas-vavob-dalok-fafuj-vimum-jumik-sadur-lomim  # 5538
+- op: update  # 2d75
+  at: '2026-05-24T01:53:27Z'  # 2d75
+  by: agent  # 2d75
+  actor: jgstern_agent  # 2d75
+  clock: 5  # 2d75
+  nonce: 2d75  # 2d75
+  set: {}  # 2d75
+  add:  # 2d75
+    tags: [external_bakeoff]  # 2d75
+  remove:  # 2d75
+    tags: [external-bakeoff]  # 2d75

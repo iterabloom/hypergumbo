@@ -81,3 +81,25 @@
   clock: 9  # aab7
   nonce: aab7  # aab7
   message: "Implemented in PR #2590. TypeScript def/use extractor (146 lines) handling declarations, destructuring, assignments, member/subscript writes, for..of/in, return. 28 tests, 100% coverage."  # aab7
+- op: update  # 4924
+  at: '2026-05-24T01:52:46Z'  # 4924
+  by: agent  # 4924
+  actor: jgstern_agent  # 4924
+  clock: 10  # 4924
+  nonce: '4924'  # 4924
+  set: {}  # 4924
+  add:  # 4924
+    tags: [adr_0017]  # 4924
+  remove:  # 4924
+    tags: [adr-0017]  # 4924
+- op: update  # e68c
+  at: '2026-05-24T01:54:08Z'  # e68c
+  by: agent  # e68c
+  actor: jgstern_agent  # e68c
+  clock: 11  # e68c
+  nonce: e68c  # e68c
+  set: {}  # e68c
+  add:  # e68c
+    tags: [phase_3]  # e68c
+  remove:  # e68c
+    tags: [phase-3]  # e68c

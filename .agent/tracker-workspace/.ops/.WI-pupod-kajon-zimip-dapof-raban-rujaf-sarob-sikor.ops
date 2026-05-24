@@ -19,3 +19,14 @@
     pr_ref:  # 86f5
     description: "Epic for ADR-0019 Part A — remote access to hypergumbo-tracker from a phone over Tor. Core value: see what agents are doing from a phone. Components: htrac serve (Python/Starlette), Tor onion service, native iOS/macOS app (Swift), four-factor auth, BlockSuite web frontend, WebSocket live sync. See docs/adr/0019-remote-access-transport.md."  # 86f5
     fields: {}  # 86f5
+- op: update  # f616
+  at: '2026-05-24T01:52:51Z'  # f616
+  by: agent  # f616
+  actor: jgstern_agent  # f616
+  clock: 2  # f616
+  nonce: f616  # f616
+  set: {}  # f616
+  add:  # f616
+    tags: [adr_0019]  # f616
+  remove:  # f616
+    tags: [adr-0019]  # f616

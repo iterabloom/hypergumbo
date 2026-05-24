@@ -79,3 +79,14 @@
   clock: 9  # 8a6c
   nonce: 8a6c  # 8a6c
   message: "Phase 4 (cross-language taint via linker edges) merged in PR #2591. All 4 phases complete. Remaining precision gaps are incremental: Rust borrow aliases (Phase 2b, WI-bifog), additional language extractors. The core invariant — structural results labeled approximate, DDG results labeled precise — is fully enforced. Moving to holding: no architectural gaps remain, only incremental extractor coverage."  # 8a6c
+- op: update  # d8f7
+  at: '2026-05-24T01:52:46Z'  # d8f7
+  by: agent  # d8f7
+  actor: jgstern_agent  # d8f7
+  clock: 10  # d8f7
+  nonce: d8f7  # d8f7
+  set: {}  # d8f7
+  add:  # d8f7
+    tags: [adr_0017]  # d8f7
+  remove:  # d8f7
+    tags: [adr-0017]  # d8f7

@@ -44,3 +44,14 @@
   clock: 4  # 47ba
   nonce: 47ba  # 47ba
   message: "Cross-ref: PlazaFlow readiness. Compact mode must retain edges from all active linkers when Tauri IPC, Yjs CRDT, WASM bindgen, and WebSocket are all active in one project. See INV-jisit (cross-linker integration)."  # 47ba
+- op: update  # 7e54
+  at: '2026-05-24T01:53:27Z'  # 7e54
+  by: agent  # 7e54
+  actor: jgstern_agent  # 7e54
+  clock: 5  # 7e54
+  nonce: '7e54'  # 7e54
+  set: {}  # 7e54
+  add:  # 7e54
+    tags: [external_bakeoff]  # 7e54
+  remove:  # 7e54
+    tags: [external-bakeoff]  # 7e54

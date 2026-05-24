@@ -83,3 +83,14 @@
     tags: [phase_2]  # fdf8
   remove:  # fdf8
     tags: [phase-2]  # fdf8
+- op: update  # cadf
+  at: '2026-05-24T01:52:46Z'  # cadf
+  by: agent  # cadf
+  actor: jgstern_agent  # cadf
+  clock: 10  # cadf
+  nonce: cadf  # cadf
+  set: {}  # cadf
+  add:  # cadf
+    tags: [adr_0017]  # cadf
+  remove:  # cadf
+    tags: [adr-0017]  # cadf

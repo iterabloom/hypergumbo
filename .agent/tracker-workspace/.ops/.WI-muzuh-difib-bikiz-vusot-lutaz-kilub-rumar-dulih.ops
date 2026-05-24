@@ -50,3 +50,14 @@
   nonce: bd7c  # bd7c
   set:  # bd7c
     status: done  # bd7c
+- op: update  # b8a0
+  at: '2026-05-24T01:53:07Z'  # b8a0
+  by: agent  # b8a0
+  actor: jgstern_agent  # b8a0
+  clock: 6  # b8a0
+  nonce: b8a0  # b8a0
+  set: {}  # b8a0
+  add:  # b8a0
+    tags: [bakeoff_revalidation]  # b8a0
+  remove:  # b8a0
+    tags: [bakeoff-revalidation]  # b8a0

@@ -36,3 +36,14 @@
   clock: 3  # dfa0
   nonce: dfa0  # dfa0
   message: "Fixed: Circom analyzer now parses <==, ==>, === signal flow constraints and creates references edges from enclosing template to referenced signals."  # dfa0
+- op: update  # cc69
+  at: '2026-05-24T01:53:32Z'  # cc69
+  by: agent  # cc69
+  actor: jgstern_agent  # cc69
+  clock: 4  # cc69
+  nonce: cc69  # cc69
+  set: {}  # cc69
+  add:  # cc69
+    tags: [formal_methods]  # cc69
+  remove:  # cc69
+    tags: [formal-methods]  # cc69

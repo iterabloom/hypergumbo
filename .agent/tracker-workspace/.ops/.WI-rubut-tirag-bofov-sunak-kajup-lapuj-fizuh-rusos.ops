@@ -73,3 +73,14 @@
   clock: 8  # 576b
   nonce: 576b  # 576b
   message: "PR #2673 merged. RectAnnotation, ArrowAnnotation, LabelAnnotation dataclasses with to_dict/from_dict round-trip, sanitize_label_text, screenshot_path."  # 576b
+- op: update  # 773d
+  at: '2026-05-24T01:52:56Z'  # 773d
+  by: agent  # 773d
+  actor: jgstern_agent  # 773d
+  clock: 9  # 773d
+  nonce: 773d  # 773d
+  set: {}  # 773d
+  add:  # 773d
+    tags: [adr_0020]  # 773d
+  remove:  # 773d
+    tags: [adr-0020]  # 773d

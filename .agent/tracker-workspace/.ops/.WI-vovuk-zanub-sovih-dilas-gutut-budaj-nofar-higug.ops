@@ -63,3 +63,14 @@
   clock: 7  # 3790
   nonce: '3790'  # 3790
   message: "Implemented in commit 684718a6e on branch jgstern-agent/feat/go-mod-tier-classification. Go go.mod require directives now parsed to classify boundary nodes: direct deps → tier 2, indirect/stdlib → tier 3. Language-agnostic DependencyManifest enables future extension. 40 new tests, 100% coverage."  # 3790
+- op: update  # 4fbf
+  at: '2026-05-24T01:54:33Z'  # 4fbf
+  by: agent  # 4fbf
+  actor: jgstern_agent  # 4fbf
+  clock: 8  # 4fbf
+  nonce: 4fbf  # 4fbf
+  set: {}  # 4fbf
+  add:  # 4fbf
+    tags: [supply_chain]  # 4fbf
+  remove:  # 4fbf
+    tags: [supply-chain]  # 4fbf

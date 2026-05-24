@@ -34,3 +34,14 @@
   clock: 3  # f425
   nonce: f425  # f425
   message: "C4 re-run in progress to fix transient SKIP regressions. No code fixes were needed — the SKIPs were caused by a mid-edit file state during bakeoff."  # f425
+- op: update  # e12d
+  at: '2026-05-24T01:53:07Z'  # e12d
+  by: agent  # e12d
+  actor: jgstern_agent  # e12d
+  clock: 4  # e12d
+  nonce: e12d  # e12d
+  set: {}  # e12d
+  add:  # e12d
+    tags: [bakeoff_revalidation]  # e12d
+  remove:  # e12d
+    tags: [bakeoff-revalidation]  # e12d

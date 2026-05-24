@@ -34,3 +34,14 @@
   clock: 3  # 2053
   nonce: '2053'  # 2053
   message: "Triage complete. 24 WARN repos, 0 FAIL. Issue breakdown:\n\nBENIGN (not actionable):\n- HIGH_TIER1_PCT (10): Pure first-party repos (Lean/Agda/Wolfram) naturally have 100% tier1\n- HIGH_SLICE_COVERAGE_PCT (9): Small focused repos where slices cover >10% naturally\n- LOW_SLICE_COVERAGE_PCT (1): ZeroKnowledgeProofs (Wolfram) - very small codebase\n\nLANGUAGE-SPECIFIC (requires analyzer improvement):\n- LOW_CROSS_FILE_RATIO (5): All Lean/Agda repos — cross-file module resolution needs work\n- LOW_AVG_SLICE_NODES (10): Lean/Agda repos + TS repos — slice depth limited by module resolution\n\nSTRUCTURAL (may warrant fixes):\n- HIGH_ORPHAN_RATE (10): Mixed — Circom 54.6%, clean 33%, openzeppelin-contracts 26.1%\n- LOW_TIER1_PCT (3): didkit 27%, osx 35%, sp1-contract-call 40% — tier classification may be too aggressive\n\nMost WARNs are benign (pure first-party repos with no third-party deps score HIGH_TIER1_PCT). The actionable categories are orphan rate (circom/solidity) and cross-file resolution (Lean/Agda)."  # 2053
+- op: update  # 06b4
+  at: '2026-05-24T01:53:07Z'  # 06b4
+  by: agent  # 06b4
+  actor: jgstern_agent  # 06b4
+  clock: 4  # 06b4
+  nonce: 06b4  # 06b4
+  set: {}  # 06b4
+  add:  # 06b4
+    tags: [bakeoff_revalidation]  # 06b4
+  remove:  # 06b4
+    tags: [bakeoff-revalidation]  # 06b4

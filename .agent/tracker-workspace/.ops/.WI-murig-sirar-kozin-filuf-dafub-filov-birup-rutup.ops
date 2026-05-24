@@ -45,3 +45,25 @@
   clock: 4  # 56bb
   nonce: 56bb  # 56bb
   message: "[migrated from justification field] Investigation shows signatures ALREADY preserve generic type parameters (e.g., Java: '(Map<String, Integer> scores) List<String>', Kotlin: '(items: List<T>, pred: (T) -> Boolean): List<T>', C#: '(Dictionary<string, T> map) List<T>'). Generics are only stripped during type inference for method resolution, which is correct behavior. No work needed."  # 56bb
+- op: update  # 7860
+  at: '2026-05-24T01:54:08Z'  # 7860
+  by: agent  # 7860
+  actor: jgstern_agent  # 7860
+  clock: 5  # 7860
+  nonce: '7860'  # 7860
+  set: {}  # 7860
+  add:  # 7860
+    tags: [phase_3]  # 7860
+  remove:  # 7860
+    tags: [phase-3]  # 7860
+- op: update  # af67
+  at: '2026-05-24T01:54:28Z'  # af67
+  by: agent  # af67
+  actor: jgstern_agent  # af67
+  clock: 6  # af67
+  nonce: af67  # af67
+  set: {}  # af67
+  add:  # af67
+    tags: [stable_id]  # af67
+  remove:  # af67
+    tags: [stable-id]  # af67

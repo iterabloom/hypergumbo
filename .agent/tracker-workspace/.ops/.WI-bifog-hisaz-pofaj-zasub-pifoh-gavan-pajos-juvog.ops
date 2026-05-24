@@ -101,3 +101,25 @@
   clock: 12  # a2b4
   nonce: a2b4  # a2b4
   message: "The initial Rust def/use extractor was PR #2582 (feat(cfg): Rust def/use extractor for core patterns, ADR-0017 §1c Phase 2, commit b8fc35d1). The borrow alias and ref pattern extension was PR #2604 (feat(rust): borrow alias tracking and ref patterns, commit 03dee372)."  # a2b4
+- op: update  # 1174
+  at: '2026-05-24T01:35:48Z'  # 1174
+  by: agent  # 1174
+  actor: jgstern_agent  # 1174
+  clock: 13  # 1174
+  nonce: '1174'  # 1174
+  set: {}  # 1174
+  add:  # 1174
+    tags: [phase_2b]  # 1174
+  remove:  # 1174
+    tags: [phase-2b]  # 1174
+- op: update  # e404
+  at: '2026-05-24T01:52:46Z'  # e404
+  by: agent  # e404
+  actor: jgstern_agent  # e404
+  clock: 14  # e404
+  nonce: e404  # e404
+  set: {}  # e404
+  add:  # e404
+    tags: [adr_0017]  # e404
+  remove:  # e404
+    tags: [adr-0017]  # e404

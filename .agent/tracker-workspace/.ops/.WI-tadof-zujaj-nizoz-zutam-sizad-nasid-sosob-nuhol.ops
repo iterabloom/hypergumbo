@@ -64,3 +64,25 @@
   nonce: e8e2  # e8e2
   set:  # e8e2
     parent: INV-popop-kabuj-muvif-nubuv-rabof-fosuf-lokaz-dozob  # e8e2
+- op: update  # d040
+  at: '2026-05-24T01:52:05Z'  # d040
+  by: agent  # d040
+  actor: jgstern_agent  # d040
+  clock: 8  # d040
+  nonce: d040  # d040
+  set: {}  # d040
+  add:  # d040
+    tags: [adr_0014]  # d040
+  remove:  # d040
+    tags: [adr-0014]  # d040
+- op: update  # be9e
+  at: '2026-05-24T01:54:28Z'  # be9e
+  by: agent  # be9e
+  actor: jgstern_agent  # be9e
+  clock: 9  # be9e
+  nonce: be9e  # be9e
+  set: {}  # be9e
+  add:  # be9e
+    tags: [stable_id]  # be9e
+  remove:  # be9e
+    tags: [stable-id]  # be9e

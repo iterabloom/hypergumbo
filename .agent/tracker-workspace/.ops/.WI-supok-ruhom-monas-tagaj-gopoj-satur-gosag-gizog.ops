@@ -43,3 +43,14 @@
   nonce: 2bf3  # 2bf3
   set:  # 2bf3
     parent: INV-vusog-kimig-vasin-gomot-sahud-ponul-nilov-novuv  # 2bf3
+- op: update  # 9a09
+  at: '2026-05-24T01:53:27Z'  # 9a09
+  by: agent  # 9a09
+  actor: jgstern_agent  # 9a09
+  clock: 5  # 9a09
+  nonce: 9a09  # 9a09
+  set: {}  # 9a09
+  add:  # 9a09
+    tags: [external_bakeoff]  # 9a09
+  remove:  # 9a09
+    tags: [external-bakeoff]  # 9a09

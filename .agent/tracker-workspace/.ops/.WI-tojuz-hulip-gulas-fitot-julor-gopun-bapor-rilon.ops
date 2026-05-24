@@ -34,3 +34,25 @@
   clock: 3  # 9efb
   nonce: 9efb  # 9efb
   message: "Fixed in PR #40 (commit 0c2de3c). Added 'in', 'out', 'err' to Java ambiguous_names. JPA CriteriaBuilder.in() no longer falsely matches System.in. Module-qualified lookups (module_hint=System) still work correctly."  # 9efb
+- op: update  # a159
+  at: '2026-05-24T01:52:41Z'  # a159
+  by: agent  # a159
+  actor: jgstern_agent  # a159
+  clock: 4  # a159
+  nonce: a159  # a159
+  set: {}  # a159
+  add:  # a159
+    tags: [adr_0016]  # a159
+  remove:  # a159
+    tags: [adr-0016]  # a159
+- op: update  # 942b
+  at: '2026-05-24T01:53:37Z'  # 942b
+  by: agent  # 942b
+  actor: jgstern_agent  # 942b
+  clock: 5  # 942b
+  nonce: 942b  # 942b
+  set: {}  # 942b
+  add:  # 942b
+    tags: [io_boundary]  # 942b
+  remove:  # 942b
+    tags: [io-boundary]  # 942b

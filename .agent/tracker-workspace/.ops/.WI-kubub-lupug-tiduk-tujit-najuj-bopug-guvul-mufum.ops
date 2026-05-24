@@ -62,3 +62,14 @@
   clock: 7  # 91c6
   nonce: 91c6  # 91c6
   message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). Collapse/expand for inline screenshot previews was part of this commit. Pushed directly to dev."  # 91c6
+- op: update  # 43ff
+  at: '2026-05-24T01:52:57Z'  # 43ff
+  by: agent  # 43ff
+  actor: jgstern_agent  # 43ff
+  clock: 8  # 43ff
+  nonce: 43ff  # 43ff
+  set: {}  # 43ff
+  add:  # 43ff
+    tags: [adr_0020]  # 43ff
+  remove:  # 43ff
+    tags: [adr-0020]  # 43ff

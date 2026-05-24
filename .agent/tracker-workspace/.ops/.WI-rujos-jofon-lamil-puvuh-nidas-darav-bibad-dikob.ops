@@ -35,3 +35,14 @@
   clock: 3  # 9874
   nonce: '9874'  # 9874
   message: "Fixed in WIP PR. New io_primitives/kotlin.yaml with Kotlin stdlib (kotlin.io File/Path extensions + top-level println), ktor client/server, Android Log, kotlin-logging (both mu.KLogger and 5.x io.github.oshai variant), Exposed ORM. Moved kotlin from _CATALOG_ALIASES to _CATALOG_PARENTS so Java parent still covers raw java.io/java.net/JDBC. 3 new tests cover Java-parent merge, boundary-kind breadth, and the alias→parent regression guard."  # 9874
+- op: update  # a188
+  at: '2026-05-24T01:53:37Z'  # a188
+  by: agent  # a188
+  actor: jgstern_agent  # a188
+  clock: 4  # a188
+  nonce: a188  # a188
+  set: {}  # a188
+  add:  # a188
+    tags: [io_boundary]  # a188
+  remove:  # a188
+    tags: [io-boundary]  # a188

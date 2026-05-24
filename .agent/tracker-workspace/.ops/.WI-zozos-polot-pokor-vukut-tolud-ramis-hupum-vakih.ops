@@ -64,3 +64,14 @@
   clock: 7  # 0761
   nonce: '0761'  # 0761
   message: "Done in PR #64. AnnotationScreen modal freezes the underlying screen (Textual modal pauses parent) and shows _AnnotationCanvas overlay. Mouse events handled via on_mouse_down/move/up."  # 0761
+- op: update  # b64a
+  at: '2026-05-24T01:52:57Z'  # b64a
+  by: agent  # b64a
+  actor: jgstern_agent  # b64a
+  clock: 8  # b64a
+  nonce: b64a  # b64a
+  set: {}  # b64a
+  add:  # b64a
+    tags: [adr_0020]  # b64a
+  remove:  # b64a
+    tags: [adr-0020]  # b64a

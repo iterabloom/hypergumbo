@@ -34,3 +34,14 @@
   clock: 3  # 2530
   nonce: '2530'  # 2530
   message: "Fixed in PR #1682. explain now uses priority-based matching: exact ID → path → path suffix → name → partial."  # 2530
+- op: update  # 9cc7
+  at: '2026-05-24T01:53:27Z'  # 9cc7
+  by: agent  # 9cc7
+  actor: jgstern_agent  # 9cc7
+  clock: 4  # 9cc7
+  nonce: 9cc7  # 9cc7
+  set: {}  # 9cc7
+  add:  # 9cc7
+    tags: [external_bakeoff]  # 9cc7
+  remove:  # 9cc7
+    tags: [external-bakeoff]  # 9cc7

@@ -99,3 +99,25 @@
   clock: 11  # 8c79
   nonce: 8c79  # 8c79
   message: "Implemented in feat/taint-flow-phase1. New taint_flow constraint type in verify-claims YAML. TaintFlowConstraint dataclass with source_taint, prohibited_sink_zone, allowed_sanitizers. 13 new tests."  # 8c79
+- op: update  # c6f8
+  at: '2026-05-24T01:52:46Z'  # c6f8
+  by: agent  # c6f8
+  actor: jgstern_agent  # c6f8
+  clock: 12  # c6f8
+  nonce: c6f8  # c6f8
+  set: {}  # c6f8
+  add:  # c6f8
+    tags: [adr_0017]  # c6f8
+  remove:  # c6f8
+    tags: [adr-0017]  # c6f8
+- op: update  # d64e
+  at: '2026-05-24T01:53:58Z'  # d64e
+  by: agent  # d64e
+  actor: jgstern_agent  # d64e
+  clock: 13  # d64e
+  nonce: d64e  # d64e
+  set: {}  # d64e
+  add:  # d64e
+    tags: [phase_1]  # d64e
+  remove:  # d64e
+    tags: [phase-1]  # d64e

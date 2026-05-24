@@ -118,3 +118,14 @@
   nonce: de25  # de25
   set:  # de25
     status: satisfied  # de25
+- op: update  # 0941
+  at: '2026-05-24T01:54:33Z'  # 0941
+  by: agent  # 0941
+  actor: jgstern_agent  # 0941
+  clock: 15  # 0941
+  nonce: '0941'  # 0941
+  set: {}  # 0941
+  add:  # 0941
+    tags: [supply_chain]  # 0941
+  remove:  # 0941
+    tags: [supply-chain]  # 0941

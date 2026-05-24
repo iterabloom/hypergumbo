@@ -128,3 +128,14 @@
     tags: [phase_2]  # e620
   remove:  # e620
     tags: [phase-2]  # e620
+- op: update  # 3be0
+  at: '2026-05-24T01:52:46Z'  # 3be0
+  by: agent  # 3be0
+  actor: jgstern_agent  # 3be0
+  clock: 15  # 3be0
+  nonce: 3be0  # 3be0
+  set: {}  # 3be0
+  add:  # 3be0
+    tags: [adr_0017]  # 3be0
+  remove:  # 3be0
+    tags: [adr-0017]  # 3be0

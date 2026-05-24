@@ -19,3 +19,18 @@
     pr_ref:  # 25a2
     description: "**Found via self-analysis dogfooding on 2026-05-17 (round 15).**\n\n**Symptom.** `hypergumbo --help` usage line shows only 20 of 25 registered subcommands:\n\n```\nusage: hypergumbo [-h] [--version] [--debug]\n                  [--backend {tree-sitter,rust-analyzer}]\n                  {sketch,run,slice,search,routes,explain,catalog,test-coverage,symbols,compact,io-boundaries,add-extras,remove-extras,build-grammars,install-gitleaks,uninstall-gitleaks,install-embeddings,uninstall-embeddings,install-rust-analyzer,uninstall-rust-analyzer}\n                  ...\n```\n\nMissing from this line: `config`, `dead-code-maybe`, `verify-claims`, `cache-status`, `cache-clear`. All five are registered subparsers (cli.py:6515, 6232, 6531, 6043, 6064 respectively) and appear correctly in the `--help` body via the custom HelpFormatter.\n\n**Verified working subcommands not in usage line.**\n\n```\n$ hypergumbo config --help    # functional\n$ hypergumbo dead-code-maybe --help    # functional\n$ hypergumbo verify-claims --help    # functional\n$ hypergumbo cache-status --help    # functional\n$ hypergumbo cache-clear --help    # functional\n```\n\n**Root cause.** `packages/hypergumbo-core/src/hypergumbo_core/cli.py:6606-6612` hardcodes the metavar string:\n\n```python\nsub.metavar = (\n    \"{sketch,run,slice,search,routes,explain,catalog,test-coverage,\"\n    \"symbols,compact,io-boundaries,add-extras,remove-extras,\"\n    \"build-grammars,install-gitleaks,uninstall-gitleaks,\"\n    \"install-embeddings,uninstall-embeddings,\"\n    \"install-rust-analyzer,uninstall-rust-analyzer}\"\n)\n```\n\nWhen `config`, `dead-code-maybe`, `verify-claims`, `cache-status`, `cache-clear` were added later (via `sub.add_parser(...)` and `_set_subparser_group(...)`), this hardcoded metavar was not updated. The body of `--help` uses the custom HelpFormatter (`_format_action`) which iterates `subactions` and is therefore consistent — only the usage line is stale.\n\n**Fix.** Build the metavar dynamically from registered subparsers in declared group/suborder. Adding a unit test that asserts every registered subparser name appears in `sub.metavar` (or in the dynamically-built version) would prevent regression.\n\n**Severity.** Low — body shows them. But the usage line is the FIRST thing a user sees, and a quick `--help | head` would miss those 5 subcommands. Also a maintenance hazard: each new subcommand must remember to update this manually.\n\n**Cross-references.** None — independent finding from yesterday's items.\n\n**Notebook reference.** `~/hypergumbo_lab_notebook/notebookjournal_05162026_0438.md` Round 15 section (to be appended)."  # 25a2
     fields: {}  # 25a2
+- op: update  # 6b0c
+  at: '2026-05-24T02:52:11Z'  # 6b0c
+  by: agent  # 6b0c
+  actor: jgstern_agent  # 6b0c
+  clock: 2  # 6b0c
+  nonce: 6b0c  # 6b0c
+  set:  # 6b0c
+    status: done  # 6b0c
+- op: discuss  # 01df
+  at: '2026-05-24T02:52:11Z'  # 01df
+  by: agent  # 01df
+  actor: jgstern_agent  # 01df
+  clock: 3  # 01df
+  nonce: 01df  # 01df
+  message: "Fixed in PR #3885. Replaced hardcoded sub.metavar string with dynamic build via _get_subparsers_by_group(sub); now picks up newly registered subcommands automatically. Regression test in test_cli_basic.py asserts every registered subparser name appears in metavar."  # 01df

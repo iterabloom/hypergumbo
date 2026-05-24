@@ -113,3 +113,14 @@
   clock: 14  # 60e7
   nonce: '60e7'  # 60e7
   message: "Fixed in PR #2293 (AGENTS.md output capture policy). Added 'Output Capture for Long-Running Commands' section with required pattern, list of applicable commands, and safety valve guidance."  # 60e7
+- op: update  # 26ec
+  at: '2026-05-24T01:53:02Z'  # 26ec
+  by: agent  # 26ec
+  actor: jgstern_agent  # 26ec
+  clock: 15  # 26ec
+  nonce: 26ec  # 26ec
+  set: {}  # 26ec
+  add:  # 26ec
+    tags: [agent_behavior]  # 26ec
+  remove:  # 26ec
+    tags: [agent-behavior]  # 26ec

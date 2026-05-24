@@ -43,3 +43,14 @@
   nonce: d45c  # d45c
   set:  # d45c
     parent: INV-nimik-zudat-pafil-hipuf-hisif-sunip-kopib-puluj  # d45c
+- op: update  # 653e
+  at: '2026-05-24T01:53:27Z'  # 653e
+  by: agent  # 653e
+  actor: jgstern_agent  # 653e
+  clock: 5  # 653e
+  nonce: 653e  # 653e
+  set: {}  # 653e
+  add:  # 653e
+    tags: [external_bakeoff]  # 653e
+  remove:  # 653e
+    tags: [external-bakeoff]  # 653e

@@ -89,3 +89,14 @@
   clock: 10  # cbad
   nonce: cbad  # cbad
   message: "Implemented in commit e4a0c602 ('feat: TUI screenshot annotation infrastructure (ADR-0020)'). SVG→PNG→ANSI rendering pipeline (cairosvg + Chafa + Rich) was part of this commit. Pushed directly to dev."  # cbad
+- op: update  # d4db
+  at: '2026-05-24T01:52:57Z'  # d4db
+  by: agent  # d4db
+  actor: jgstern_agent  # d4db
+  clock: 11  # d4db
+  nonce: d4db  # d4db
+  set: {}  # d4db
+  add:  # d4db
+    tags: [adr_0020]  # d4db
+  remove:  # d4db
+    tags: [adr-0020]  # d4db

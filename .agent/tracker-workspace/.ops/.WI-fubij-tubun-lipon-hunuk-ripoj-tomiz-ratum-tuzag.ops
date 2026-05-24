@@ -64,3 +64,14 @@
   clock: 7  # abf2
   nonce: abf2  # abf2
   message: "Already implemented in tui.py AnnotationScreen: mouse drag for rects (on_mouse_down/move/up), L key + click for labels, A key + drag for arrows, U for undo. All gesture modes with status bar feedback."  # abf2
+- op: update  # c2e6
+  at: '2026-05-24T01:52:57Z'  # c2e6
+  by: agent  # c2e6
+  actor: jgstern_agent  # c2e6
+  clock: 8  # c2e6
+  nonce: c2e6  # c2e6
+  set: {}  # c2e6
+  add:  # c2e6
+    tags: [adr_0020]  # c2e6
+  remove:  # c2e6
+    tags: [adr-0020]  # c2e6

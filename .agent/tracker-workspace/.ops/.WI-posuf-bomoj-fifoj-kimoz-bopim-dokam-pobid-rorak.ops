@@ -63,3 +63,14 @@
   clock: 7  # 0f71
   nonce: 0f71  # 0f71
   message: "Fixed in PR #1698. TOML sha256 → location-based IDs."  # 0f71
+- op: update  # 23a8
+  at: '2026-05-24T01:53:27Z'  # 23a8
+  by: agent  # 23a8
+  actor: jgstern_agent  # 23a8
+  clock: 8  # 23a8
+  nonce: 23a8  # 23a8
+  set: {}  # 23a8
+  add:  # 23a8
+    tags: [external_bakeoff]  # 23a8
+  remove:  # 23a8
+    tags: [external-bakeoff]  # 23a8

@@ -42,3 +42,14 @@
   clock: 4  # 8e59
   nonce: '8e59'  # 8e59
   message: "Fixed in PR #2828. Full TLA+ analyzer implemented: 6 symbol kinds (module, operator, constant, variable, theorem, assumption), EXTENDS/INSTANCE import edges, body reference edges. 25 tests at 100% coverage. Handles LOCAL, RECURSIVE, parameterized signatures, primed variables, unnamed theorem/assumption skipping."  # 8e59
+- op: update  # 0ad4
+  at: '2026-05-24T01:53:48Z'  # 0ad4
+  by: agent  # 0ad4
+  actor: jgstern_agent  # 0ad4
+  clock: 5  # 0ad4
+  nonce: 0ad4  # 0ad4
+  set: {}  # 0ad4
+  add:  # 0ad4
+    tags: [lang_analyzer]  # 0ad4
+  remove:  # 0ad4
+    tags: [lang-analyzer]  # 0ad4

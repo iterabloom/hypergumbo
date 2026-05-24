@@ -34,3 +34,14 @@
   clock: 3  # 9f9d
   nonce: 9f9d  # 9f9d
   message: "C6 completed (6 repos). 2 GOOD (ssi, zksync-era), 4 WARN. zksync-era: 21654 nodes, 56517 edges — largest repo."  # 9f9d
+- op: update  # b1db
+  at: '2026-05-24T01:53:07Z'  # b1db
+  by: agent  # b1db
+  actor: jgstern_agent  # b1db
+  clock: 4  # b1db
+  nonce: b1db  # b1db
+  set: {}  # b1db
+  add:  # b1db
+    tags: [bakeoff_revalidation]  # b1db
+  remove:  # b1db
+    tags: [bakeoff-revalidation]  # b1db

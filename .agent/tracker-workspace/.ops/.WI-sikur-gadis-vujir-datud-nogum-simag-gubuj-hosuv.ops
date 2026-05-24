@@ -43,3 +43,14 @@
   nonce: f9ed  # f9ed
   set:  # f9ed
     parent: META-sulor-nulit-birav-sikav-zihuh-povis-kavis-fojut  # f9ed
+- op: update  # 140f
+  at: '2026-05-24T01:53:27Z'  # 140f
+  by: agent  # 140f
+  actor: jgstern_agent  # 140f
+  clock: 5  # 140f
+  nonce: 140f  # 140f
+  set: {}  # 140f
+  add:  # 140f
+    tags: [external_bakeoff]  # 140f
+  remove:  # 140f
+    tags: [external-bakeoff]  # 140f

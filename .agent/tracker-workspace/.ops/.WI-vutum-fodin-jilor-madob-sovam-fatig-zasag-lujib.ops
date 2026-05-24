@@ -35,3 +35,14 @@
   clock: 3  # bcfb
   nonce: bcfb  # bcfb
   message: "Added symbol_path guard '(^|/)test(s)?/' to Clojure test-* pattern in test-frameworks.yaml. Mirrors Go's _test.go guard."  # bcfb
+- op: update  # 6296
+  at: '2026-05-24T01:35:53Z'  # 6296
+  by: agent  # 6296
+  actor: jgstern_agent  # 6296
+  clock: 4  # 6296
+  nonce: '6296'  # 6296
+  set: {}  # 6296
+  add:  # 6296
+    tags: [entrypoint]  # 6296
+  remove:  # 6296
+    tags: [entrypoints]  # 6296

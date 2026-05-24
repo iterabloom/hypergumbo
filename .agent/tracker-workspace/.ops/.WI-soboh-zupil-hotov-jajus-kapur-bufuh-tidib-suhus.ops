@@ -34,3 +34,14 @@
   clock: 3  # c144
   nonce: c144  # c144
   message: "Fixed in PR #134. Root cause: _stale_pr_audit() in stop_logic.sh did not call apply_failover_overrides() after detect_api_base, so it always queried origin (Codeberg) even during failover. One-line fix: added apply_failover_overrides() call."  # c144
+- op: update  # 67da
+  at: '2026-05-24T01:53:12Z'  # 67da
+  by: agent  # 67da
+  actor: jgstern_agent  # 67da
+  clock: 4  # 67da
+  nonce: 67da  # 67da
+  set: {}  # 67da
+  add:  # 67da
+    tags: [ci_failover]  # 67da
+  remove:  # 67da
+    tags: [ci-failover]  # 67da
