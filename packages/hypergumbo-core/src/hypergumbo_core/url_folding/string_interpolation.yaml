@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# URL-folding idiom: string interpolation (WI-mugog, Phase A).
+#
+# Captures the family of URL-composition forms that look like a template with
+# inline interpolation slots, e.g. JS/TS backtick template literals
+# (`${name}`), Python f-strings (`f"...{name}..."`), Kotlin / Ruby / Scala /
+# Swift string interpolation. Phase A only covers JS/TS — later phases extend
+# this same engine + YAML pair to the other listed languages by adding entries
+# under ``languages:`` with each language's specific placeholder regex.
+#
+# The engine ``fold_string_interpolation`` (in url_folding/__init__.py) is a
+# generalisation of the legacy ``_fold_template_literal`` function in
+# linkers/http.py: it substitutes ``${NAME}`` (or whichever placeholder shape
+# the language uses) against a ``consts`` dict, strips a leading host/base
+# placeholder, retains path-segment placeholders, and truncates at the first
+# non-`/`-preceded unresolved placeholder.
+idiom: string_interpolation
+engine: fold_string_interpolation
+languages:
+  javascript:
+    # Matches the existing _TEMPLATE_SLOT regex in linkers/http.py:269 exactly,
+    # so JS/TS scanner behaviour is preserved bit-for-bit.
+    placeholder_pattern: '\$\{([^}]+)\}'
+  typescript:
+    # TypeScript shares the JavaScript scanner (linkers/http.py:1411 falls
+    # through to _scan_javascript_file for any non-.py/.go/.rb/.java/.elm
+    # extension, including .ts). Same placeholder shape.
+    placeholder_pattern: '\$\{([^}]+)\}'

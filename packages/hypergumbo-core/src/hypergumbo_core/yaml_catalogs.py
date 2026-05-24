@@ -90,6 +90,14 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         loader="hypergumbo_core.function_summaries",
         adr="ADR-0017",
     ),
+    CatalogSpec(
+        directory="url_folding",
+        purpose="Per-idiom URL-folding declarations (string interpolation, "
+        "array join, ...) wiring active route-detector languages to engine "
+        "functions in hypergumbo_core.url_folding.",
+        loader="hypergumbo_core.url_folding",
+        adr=None,
+    ),
 )
 
 

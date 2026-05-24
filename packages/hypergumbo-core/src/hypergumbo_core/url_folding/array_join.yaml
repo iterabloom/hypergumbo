@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# URL-folding idiom: array join (WI-mugog, Phase A).
+#
+# Captures URL composition that joins a sequence of segments (literals and
+# variable references) by a fixed separator string, e.g. Elm
+# ``String.join "/" [apiUrl, "silence", silence.id]`` or analogues in
+# Clojure/Lisp.
+#
+# The engine ``fold_array_join`` (in url_folding/__init__.py) is a
+# generalisation of the legacy ``_fold_elm_string_join`` function in
+# linkers/http.py: it drops the first list item (assumed host/base URL),
+# replaces non-literal items with ``{name}`` placeholders, and joins the
+# remainder by the language-specific separator.
+#
+# Note. Unlike the string_interpolation idiom, array-join call-site discovery
+# is multi-pass (Elm requires finding a ``let url = String.join "/" [...]``
+# binding AND a subsequent ``Utils.Api.<method>`` reference inside a scan
+# window). The per-language scanner therefore calls ``fold_array_join``
+# directly rather than going through a generic regex dispatcher. Phase A
+# scope: only this one language uses this idiom and the inline call from
+# linkers/http.py:_find_elm_let_bound_url_calls is the canonical caller.
+idiom: array_join
+engine: fold_array_join
+languages:
+  elm:
+    separator: "/"

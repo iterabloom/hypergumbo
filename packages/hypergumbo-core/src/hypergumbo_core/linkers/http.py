@@ -95,6 +95,11 @@ from urllib.parse import urlparse
 from ..analyze.base import make_route_stable_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..url_folding import (
+    fold_array_join,
+    fold_string_interpolation,
+    load_url_folding_registry,
+)
 from ._concept_utils import get_concept, has_concept
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 from ._text_filters import read_masked_source
@@ -265,8 +270,21 @@ JS_MODULE_CONST_PATTERN = re.compile(
     re.VERBOSE | re.MULTILINE,
 )
 
-# Any ${...} interpolation slot inside a template literal.
-_TEMPLATE_SLOT = re.compile(r"\$\{([^}]+)\}")
+# WI-mugog (Phase A): per-language URL-folding config is sourced from the
+# YAML registry under ``hypergumbo_core/url_folding/`` so a new language's
+# placeholder syntax or separator can be added by editing YAML rather than
+# Python. The lookups are dict-indexed (not ``.get(...)``) — a missing
+# language key is a registry / YAML bug we want to surface loud at import,
+# not silently fall back to a default.
+_URL_FOLDING_CONFIG_BY_LANGUAGE: dict[str, dict[str, str]] = {
+    v.language: v.config_dict() for v in load_url_folding_registry()
+}
+_JS_PLACEHOLDER_PATTERN: str = (
+    _URL_FOLDING_CONFIG_BY_LANGUAGE["javascript"]["placeholder_pattern"]
+)
+_ELM_ARRAY_JOIN_SEPARATOR: str = (
+    _URL_FOLDING_CONFIG_BY_LANGUAGE["elm"]["separator"]
+)
 
 
 # ---------------------------------------------------------------------------
@@ -434,58 +452,19 @@ def _extract_module_constants(content: str) -> dict[str, str]:
 def _fold_template_literal(
     template: str, consts: dict[str, str]
 ) -> tuple[str, str]:
-    """Fold ``${NAME}`` slots in a JS/TS template literal (WI-sijoh).
+    """Fold ``${NAME}`` slots in a JS/TS template literal (WI-sijoh / WI-mugog).
 
-    Strategy (mirrors Elm wrapper-module semantics for host-prefix idioms
-    and preserves path-parameter placeholders for ``_match_route_pattern``):
+    Thin JS/TS-specific wrapper around the generalised
+    ``fold_string_interpolation`` engine from the ``url_folding`` package.
+    The placeholder regex is read from ``url_folding/string_interpolation.yaml``
+    so future tweaks to JS/TS slot syntax happen in YAML, not in Python.
 
-    * ``${NAME}`` slots resolved via ``consts`` → literal substitution.
-    * Unresolved ``${NAME}`` slots → rewritten as ``{NAME}``.
-    * Leading ``{VAR}/`` is stripped as a host/base URL prefix (the TS
-      analogue of Elm's ``apiUrl ++ "/path"`` idiom).
-    * An unresolved ``{VAR}`` preceded by ``/`` is a path segment parameter
-      and is kept — ``_match_route_pattern`` converts ``:id``/``{id}``/``<id>``
-      style placeholders to ``[^/]+`` on the route side, which matches our
-      ``{VAR}`` on the client side.
-    * An unresolved ``{VAR}`` NOT preceded by ``/`` is arbitrary template
-      continuation (may span segments, may be a query-string tail). The
-      URL is truncated at that point and the remaining literal prefix is
-      used for route matching. Result is marked ``url_type="variable"``
-      so callers can opt into prefix-matching semantics.
-
-    Returns ``(folded_url, url_type)`` where ``url_type`` is ``"literal"``
-    when every slot resolved cleanly (no truncation) AND the URL has a
-    leading ``/`` anchor, else ``"variable"``.
+    Returns ``(folded_url, url_type)`` per the engine contract — see
+    ``hypergumbo_core.url_folding.fold_string_interpolation`` for the full
+    folding strategy (host-prefix strip, path-segment param retention,
+    template-continuation truncation).
     """
-    def _sub(match: re.Match) -> str:
-        name = match.group(1).strip()
-        if name in consts:
-            return consts[name]
-        return "{" + name + "}"
-
-    folded = _TEMPLATE_SLOT.sub(_sub, template)
-
-    # Host-prefix strip: `{pathPrefix}/rest...` → `/rest...`.
-    host_prefix = re.match(r"^\{[^}]+\}(/.*)$", folded)
-    if host_prefix is not None:
-        folded = host_prefix.group(1)
-
-    # Find the first ``{VAR}`` that is NOT preceded by ``/``. Placeholders
-    # preceded by ``/`` (or at string start after host-prefix strip, which
-    # always leaves a leading ``/``) are treated as path-segment params and
-    # retained. Non-``/``-preceded placeholders indicate template
-    # continuation and truncate the URL there.
-    truncated = False
-    trunc_match = re.search(r"(?<!/)\{[^}]+\}", folded)
-    if trunc_match is not None:
-        folded = folded[: trunc_match.start()]
-        truncated = True
-
-    if truncated or not folded.startswith("/"):
-        url_type = "variable"
-    else:
-        url_type = "literal"
-    return folded, url_type
+    return fold_string_interpolation(template, consts, _JS_PLACEHOLDER_PATTERN)
 
 
 def _is_prefix_candidate(call_path: str) -> bool:
@@ -1165,24 +1144,19 @@ def _parse_string_join_parts(parts: str) -> list[tuple[str, bool]]:
 
 
 def _fold_elm_string_join(parts: str) -> str | None:
-    """Fold a ``String.join "/" [...]`` parts list into a URL path.
+    """Fold a ``String.join "/" [...]`` parts list into a URL path
+    (WI-rosan / WI-mugog).
 
-    Strategy: drop the first list item (assumed base URL variable, e.g.
-    ``apiUrl``) as the host prefix. Join the remaining items with ``/``.
-    Literal items contribute their text; identifier references become
-    ``{name}`` placeholders so ``_match_route_pattern`` can match them
-    against Go route parameters.
+    Thin Elm-specific wrapper around the generalised ``fold_array_join``
+    engine from the ``url_folding`` package. The ``"/"`` separator is read
+    from ``url_folding/array_join.yaml`` so a future Clojure / Lisp variant
+    can declare its own separator without touching this function.
 
-    Returns the URL (``"/silence/{uuid}"``, ``"/alerts"``) or ``None`` if
-    the list is empty or has no path segments after the base URL.
+    Returns the URL (``"/silence/{uuid}"``, ``"/alerts"``) or ``None`` when
+    the list has fewer than two items (no path segments after the base URL).
     """
     items = _parse_string_join_parts(parts)
-    if len(items) < 2:
-        return None
-    segments: list[str] = []
-    for value, is_literal in items[1:]:
-        segments.append(value if is_literal else "{" + value + "}")
-    return "/" + "/".join(segments)
+    return fold_array_join(items, _ELM_ARRAY_JOIN_SEPARATOR)
 
 
 def _find_elm_let_bound_url_calls(
