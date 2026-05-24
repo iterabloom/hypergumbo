@@ -6,10 +6,27 @@
 # Third-party libraries (cowboy, ranch, etc.) call these primitives
 # transitively, so covering stdlib + OTP is sufficient.
 language: erlang
-# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
-# requires enumerating Erlang/OTP stdlib and adding ``stdlib_provenance``
-# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
-status: in_progress
+# WI-tukif (Plan C, PR B): catalog audited against erlang.org/doc/man/
+# 2026-05-24 for OTP 26. Strict-stdlib coverage: file/filelib/prim_file
+# (filesystem), gen_tcp/gen_udp/gen_sctp/ssl (sockets), httpc/httpd (inets
+# HTTP), inet (DNS + socket options), ets/dets/mnesia (databases), erlang
+# process primitives + gen_server/gen_statem/gen_event/supervisor/proc_lib
+# (OTP behaviours), rpc/global (distributed), os/application/init
+# (environment), code (loading .beam files), io/io_lib/logger/error_logger
+# (output). digraph_utils / digraph / crypto / random / rand are
+# intentionally absent — not IO. dist_util is internal-only.
+status: complete
+stdlib_provenance:
+  source_url: https://erlang.org/doc/apps/stdlib/index.html
+  version: "26"
+  retrieved: "2026-05-24"
+  notes: |
+    Erlang/OTP I/O primitives derived from erlang.org/doc/apps/stdlib for
+    OTP 26 plus the inets and ssl applications. Third-party HTTP servers
+    (cowboy/ranch) and clients are intentionally excluded under the
+    Plan C strict-stdlib rule; first-party calls surface in
+    external_potential via the Plan C, PR C filter. stdlib_other is not
+    enumerated yet — populated incrementally as needed.
 
 # Function names that are too generic to match without module context.
 # Erlang modules use short, generic names for very different operations.
@@ -51,6 +68,9 @@ fs_read:
   - module: prim_file
     functions: [read_file, read, list_dir, read_file_info]
     notes: "Low-level file operations; usually called via file module"
+  - module: code
+    functions: [load_file, ensure_loaded, get_object_code, where_is_file, is_loaded, lib_dir, priv_dir, root_dir, get_path]
+    notes: "Code server reads .beam files from disk + resolves application paths"
 
 fs_write:
   - module: file
@@ -85,6 +105,9 @@ net_recv:
   - module: httpd
     functions: [start, start_service]
     notes: "inets HTTP server"
+  - module: inet
+    functions: [getaddr, getaddrs, gethostbyname, gethostbyaddr, gethostname, getservbyname, getservbyport]
+    notes: "DNS resolution and service-name lookups (queries name servers)"
 
 db_read:
   - module: ets

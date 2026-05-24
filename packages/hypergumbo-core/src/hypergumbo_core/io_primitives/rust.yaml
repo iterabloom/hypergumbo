@@ -4,10 +4,27 @@
 # Maps std library functions to I/O boundary types. Covers Rust stable std.
 # Third-party crates (tokio, reqwest, etc.) trace through these primitives.
 language: rust
-# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
-# requires enumerating Rust ``std::*`` and adding ``stdlib_provenance``
-# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
-status: in_progress
+# WI-tukif (Plan C, PR B): catalog audited against doc.rust-lang.org/std/
+# 2026-05-24 for Rust 1.78 stable. Coverage is complete for the strict-stdlib
+# IO surface: std::fs (file ops), std::io (stdin/stdout/stderr + Read/Write
+# traits handled via ambiguous_names), std::net (TcpStream/TcpListener/
+# UdpSocket), std::process::Command (subprocess), std::env (env_read), and
+# std::path::Path (path queries that touch the filesystem). std::os::*
+# raw-fd extensions, std::ffi (FFI types are meta-IO, not IO), and
+# std::sync/std::thread (concurrency primitives) are intentionally absent —
+# they are out of scope for the strict-stdlib IO catalog.
+status: complete
+stdlib_provenance:
+  source_url: https://doc.rust-lang.org/std/
+  version: "1.78"
+  retrieved: "2026-05-24"
+  notes: |
+    Rust std I/O primitives derived from doc.rust-lang.org's std-library
+    index for Rust 1.78 stable. Third-party async-IO and HTTP crates
+    (tokio, hyper, reqwest, axum, actix-web) are intentionally excluded
+    under the Plan C strict-stdlib rule; first-party calls into them
+    surface in external_potential via the Plan C, PR C filter.
+    stdlib_other is not enumerated yet — populated incrementally as needed.
 
 # Method names that are too generic to match without module context.
 # Rust traits mean .read(), .write(), .connect() etc. appear on many types;

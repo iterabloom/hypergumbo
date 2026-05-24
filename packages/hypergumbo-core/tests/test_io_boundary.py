@@ -1052,12 +1052,34 @@ class TestCatalogStatus:
         assert catalog.stdlib_provenance is not None
         assert catalog.stdlib_provenance["source_url"].startswith("https://")
 
+    def test_rust_catalog_is_complete_with_provenance(self) -> None:
+        # WI-tukif batch 1: Rust catalog audited against doc.rust-lang.org/std/
+        # 2026-05-24 (Rust 1.78 stable).
+        catalog = load_catalog("rust")
+        assert catalog.status == "complete"
+        assert catalog.stdlib_provenance is not None
+        assert catalog.stdlib_provenance["source_url"].startswith(
+            "https://doc.rust-lang.org",
+        )
+
+    def test_erlang_catalog_is_complete_with_provenance(self) -> None:
+        # WI-tukif batch 1: Erlang catalog audited against erlang.org/doc/
+        # 2026-05-24 (OTP 26).
+        catalog = load_catalog("erlang")
+        assert catalog.status == "complete"
+        assert catalog.stdlib_provenance is not None
+        assert catalog.stdlib_provenance["source_url"].startswith(
+            "https://erlang.org",
+        )
+
     def test_other_catalogs_declare_status_in_progress(self) -> None:
-        # All non-Python catalogs must declare status=in_progress until a
-        # follow-up PR promotes them to complete.
+        # WI-tukif (Plan C, PR B) is promoting these catalogs incrementally.
+        # As each lands with status=complete + stdlib_provenance, remove it
+        # from this list. The catalogs still pending audit must continue to
+        # declare status=in_progress.
         for lang in (
-            "c", "elixir", "erlang", "go", "haskell", "java", "javascript",
-            "kotlin", "objc", "rust", "scala", "swift",
+            "c", "elixir", "go", "haskell", "java", "javascript",
+            "kotlin", "objc", "scala", "swift",
         ):
             catalog = load_catalog(lang)
             assert catalog.status == "in_progress", (
