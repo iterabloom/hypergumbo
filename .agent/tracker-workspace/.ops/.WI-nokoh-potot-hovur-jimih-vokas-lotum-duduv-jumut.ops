@@ -94,3 +94,18 @@
   clock: 11  # 443a
   nonce: 443a  # 443a
   message: "You're right — same stale-framing issue as WI-burud. Verified 2026-05-14:\n\n- WI-duzul-dusad (rust-analyzer scaffold) is done. analyze_rust_with_scip runs end-to-end.\n- WI-mafut-hajah (SCIP→IR translation shim) is done. The shim was designed language-agnostic from the start; per WI-mafut's discussion thread, Rust-specific quirks (trait-suffix descriptor parsing, the proc-macro carve-out) live in the rust-analyzer package, not in the shim. So the shim's surface itself is ready for a second-language reuse experiment.\n\nWhat this item is now positioned to deliver: the design sketch in its description body (which emitters produce compatible SCIP, per-language quirks, single-vs-per-language-shim recommendation). The 2026-04-19 thread already called out reviewing WI-zakub/WI-bajuz/WI-duzul/WI-mafut once they landed — 4-for-4 done now, so the inputs for that review exist.\n\nStatus stays todo_soft P4 — investigative design sketch. Don't think it's urgent versus other P3/P2 work, but it's no longer gated on infrastructure."  # 443a
+- op: update  # 327f
+  at: '2026-05-24T09:26:43Z'  # 327f
+  by: agent  # 327f
+  actor: jgstern_agent  # 327f
+  clock: 12  # 327f
+  nonce: 327f  # 327f
+  set:  # 327f
+    status: done  # 327f
+- op: discuss  # 22dd
+  at: '2026-05-24T09:26:43Z'  # 22dd
+  by: agent  # 22dd
+  actor: jgstern_agent  # 22dd
+  clock: 13  # 22dd
+  nonce: 22dd  # 22dd
+  message: "Design sketch shipped in PR #3897 at docs/future/scip-generalization-vision.md. The doc answers the three sub-questions per the description: (a) compatible emitter survey (rust-analyzer / scip-typescript / scip-java / scip-python / scip-clang / scip-go / scip-ruby / scip-dotnet); (b) per-language translation quirks (descriptor syntax differences, what proc-macro-like construct surfaces or doesn't — Java annotation processors DO surface, TS decorators DON'T, C macros DO, Rust proc-macros DON'T at default invocation per WI-totub finding, plus stable_id parity work needed per language); (c) recommendation: keep existing shape (shared shim + per-language wrappers) — adding a new language is 'free' at the architecture layer, the work is in the per-language wrapper. Plus sequencing recommendation (Go first, TypeScript second, Java third, Python fourth, C/C++ fifth, Ruby later) and effort/risk table. Doc explicitly leaves three open questions for follow-up tracker items if generalization is pursued. Per the description's deliverable spec: 'Followed by tracker items for each language integration if pursued' — that is deferred to user direction, since the recommendation includes an alternative path of waiting for empirical signal from the WI-vovad bakeoff cohort before investing in per-language wrappers."  # 22dd

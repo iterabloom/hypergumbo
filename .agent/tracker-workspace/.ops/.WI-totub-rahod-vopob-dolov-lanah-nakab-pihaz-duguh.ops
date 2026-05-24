@@ -30,3 +30,18 @@
   set: {}  # 1ff0
   add:  # 1ff0
     isbefore: [WI-burud-fadub-lahis-farod-pohik-hogip-fukum-disup]  # 1ff0
+- op: update  # dea2
+  at: '2026-05-24T09:17:56Z'  # dea2
+  by: agent  # dea2
+  actor: jgstern_agent  # dea2
+  clock: 3  # dea2
+  nonce: dea2  # dea2
+  set:  # dea2
+    status: done  # dea2
+- op: discuss  # a4c7
+  at: '2026-05-24T09:17:56Z'  # a4c7
+  by: agent  # a4c7
+  actor: jgstern_agent  # a4c7
+  clock: 4  # a4c7
+  nonce: a4c7  # a4c7
+  message: "Run completed 2026-05-24. Test crate: 10-line clap::Parser-derived Args struct + main using Args::parse(). Result: default 'rust-analyzer scip <workspace>' does NOT surface proc-macro-expanded symbols. SCIP captures references INTO macro infrastructure (clap_builder Parser#parse(), [Arg]long()) but does NOT synthesize the user-side impl bodies (<Args as Parser>::parse, FromArgMatches, CommandFactory). Bonus check confirmed: missing symbols are absent from the raw index.scip itself, NOT dropped by the SCIP->IR translator. Per acceptance criterion (b): WI-burud's expected value for wasm_bindgen / napi / tauri_ipc drops to ~0. Full write-up at ~/hypergumbo_lab_notebook/notebookjournal_05242026_0516.md."  # a4c7

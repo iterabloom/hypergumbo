@@ -18,3 +18,32 @@
     pr_ref:  # cc39
     description: "WI-lidum's 6-repo audit (alertmanager + prometheus + kserve + chatwoot + detekt + django; 4 surfaces × 6 repos = 24 cells) found that adding apply_sibling_impl_weights to the previously-missing surfaces produced exactly 0 top-100 movement across all 24 cells. Including alertmanager, the original test case from WI-luvaj (19 Notifier.Notify variants).\n\nThree hypotheses worth disambiguating:\n\n1. Order-of-application effect: apply_utility_symbol_weights and apply_trivial_sink_weights run before apply_sibling_impl_weights and may already pull the same-name siblings out of top-N before sibling_impl gets a chance to fire.\n\n2. min_group_size=6 threshold doesn't trigger: post-baseline-stack centrality distribution makes the effective group sizes smaller than 6 because most siblings have already been demoted by other dampeners.\n\n3. Render-time dedup masks the effect on sketch (already known): sketch._format_symbols deduplicates same-name symbols at render time, and apply_sibling_impl_weights only touches the bottom-(N-3) members of each name group while leaving the top-3 at full weight. The dedup winner is by definition the top-1 member, so the rendered output never changes. This is documented in test_sketch.py via NOTE comment after WI-lidum patch 1. Does NOT explain why compact surfaces (no dedup) also show 0 movement.\n\nDiagnostic plan: instrument apply_sibling_impl_weights to log group sizes and which symbols hit the dampener, run on alertmanager and one other repo with same-name OOP fan-out (cassandra would be a good candidate). If groups are correctly identified but the dampener output is still in top-N, hypothesis 1 is correct. If groups are below threshold, hypothesis 2.\n\nOutcome paths:\n- If dampener is genuinely effective in some scenarios: lower min_group_size or document the conditions under which it fires.\n- If dampener is dead code: remove from rank_symbols + the four backfilled surfaces in one stroke. (Not done in WI-lidum because surface uniformity was the goal there.)\n\nFiling P4 todo_soft because (a) cost of dampener is essentially free per Finding 1 in the audit, (b) historical bakeoff (WI-luvaj) provides some justification for keeping it, (c) no FP harm observed.\n\nReferences:\n- ~/hypergumbo_lab_notebook/notebookjournal_04272026_2159.md (sibling_impl section + Open question)\n- WI-luvaj (original alertmanager Notifier.Notify case)\n- packages/hypergumbo-core/src/hypergumbo_core/ranking.py:913-977 (apply_sibling_impl_weights)"  # cc39
     fields: {}  # cc39
+- op: discuss  # 1978
+  at: '2026-05-24T09:46:01Z'  # 1978
+  by: agent  # 1978
+  actor: jgstern_agent  # 1978
+  clock: 2  # 1978
+  nonce: '1978'  # 1978
+  message: "Diagnostic complete (2026-05-24). Verdict: REMOVE (Outcome Path B in the description).\n\nRan instrumented `apply_sibling_impl_weights` + canonical-stack-with-vs-without comparison on three diverse repos:\n\n| Repo | Symbols | Groups ≥6 callables | Sibling_impl alone dampens | Top-100 movement |\n|---|---|---|---|---|\n| alertmanager (WI-luvaj original) | 4788 | 15 (incl. Notifier.Notify=18) | 108 | **0** (positions or membership) |\n| hypergumbo (self) | 33308 | 53 (incl. Command.handle pattern) | 418 | **0** |\n| django | 53184 | 60 (incl. Command.handle=57, add_arguments=47) | 277 | **0** |\n\nFindings:\n- The dampener IS firing on the very groups it was designed for. Not a min_group_size threshold issue.\n- 0 / 100 top-100 positions change on ANY of the three repos. Position-preservation check ALSO shows 0 reorderings within top-100.\n- Of 108-418 symbols dampened by sibling_impl on raw centrality, NONE are in top-100 of the canonical pipeline.\n\nMechanism (Hypothesis 1 from this item — confirmed): `apply_common_method_name_weights` runs BEFORE sibling_impl and dampens the same groups uniformly by 10/count. For groups of size 11+ (Notifier.Notify=18 → 0.56x; Command.handle=57 → 0.18x), common_method alone is enough to push the entire group's tail out of top-100. The groups of size 6-10 that uniquely fall to sibling_impl have such low raw centrality that they were never in top-100 to begin with.\n\nPlan: remove apply_sibling_impl_weights from ranking.py, drop \"sibling_impl\" from _CANONICAL_DAMPENERS, drop from _VICTIM_REMOVAL_EXCLUDE_DAMPENERS in compact.py, delete the four pinning tests, update the NOTE in test_sketch.py. No bakeoff claim — pure dead-code removal, zero behavior change on the canonical pipeline.\n\nDiagnostic artifacts: /tmp/wi-karad/{diagnose.py,alertmanager.json,hypergumbo.json,django.json}."  # 1978
+- op: update  # bc40
+  at: '2026-05-24T11:08:27Z'  # bc40
+  by: agent  # bc40
+  actor: jgstern_agent  # bc40
+  clock: 3  # bc40
+  nonce: bc40  # bc40
+  set:  # bc40
+    status: done  # bc40
+- op: discuss  # d840
+  at: '2026-05-24T11:08:27Z'  # d840
+  by: agent  # d840
+  actor: jgstern_agent  # d840
+  clock: 4  # d840
+  nonce: d840  # d840
+  message: "Closed in PR #3898 (1ac8ee888d). Outcome Path B (remove dead code). Empirical: 3 repos × 100 top-100 positions × 2 metrics (membership + ordering) = 600 zero-deltas in the canonical pipeline; apply_common_method_name_weights (threshold=10) does the actual work on large name groups, leaving sibling_impl with no symbols to demote that weren't already buried. Canonical stack reduced 8 → 7 stages. Net: -267 lines (87 from ranking.py, 229 from test_ranking.py, 13 from test_sketch.py, 1 from compact.py)."  # d840
+- op: discuss  # 2483
+  at: '2026-05-24T18:25:04Z'  # 2483
+  by: agent  # 2483
+  actor: jgstern_agent  # 2483
+  clock: 5  # 2483
+  nonce: '2483'  # 2483
+  message: "Diagnostic artifact persisted to lab notebook: `~/hypergumbo_lab_notebook/wi-karad-diagnose-dampener.py` (copied from `/tmp/wi-karad/diagnose.py`). Header note added documenting (a) that line 24's `apply_sibling_impl_weights` import is broken against post-#3898 `dev`, (b) a 4-step adapter recipe for reusing the script in future dampener-effectiveness audits (drop the deleted import; swap `exclude_dampeners=(\"sibling_impl\",)` for the suspect dampener; optionally generalize via `getattr(ranking, f'apply_{name}_weights')`; run against ≥3 diverse behavior maps and check group-trigger / raw-dampened / top-100-membership / top-100-position deltas). Behavior-map JSONs (alertmanager / hypergumbo / django, ~306MB total) intentionally NOT persisted — easy to regenerate via `hypergumbo run`."  # 2483
