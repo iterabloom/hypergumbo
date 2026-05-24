@@ -39,3 +39,19 @@
   clock: 3  # 57ee
   nonce: 57ee  # 57ee
   message: "Fix shipped on branch jgstern-agent/fix/inv-zudob-class-containing-id (commit 9dfec82496). Empirical impact on self-analysis: cross-module class collision rate 18.94% → 1.76% (91% reduction); all 76 residual collisions are same-file identical-body groups (e.g., 12x MockEdge in test_io_boundary.py, 8x Args in test_cli_commands.py), preserved by design per the (stable_id, canonical_name) docstring contract. Quantitative-claim PR per bakeoff-validation-tagging-discipline; needs BROAD-cohort confirmation that the prospector corpus sees comparable reductions before final closure."  # 57ee
+- op: update  # 4c0d
+  at: '2026-05-24T05:34:29Z'  # 4c0d
+  by: agent  # 4c0d
+  actor: jgstern_agent  # 4c0d
+  clock: 4  # 4c0d
+  nonce: 4c0d  # 4c0d
+  set:  # 4c0d
+    status: pending_validation  # 4c0d
+    pr_ref: '#3891'  # 4c0d
+- op: discuss  # 9e51
+  at: '2026-05-24T05:34:30Z'  # 9e51
+  by: agent  # 9e51
+  actor: jgstern_agent  # 9e51
+  clock: 5  # 9e51
+  nonce: '9e51'  # 9e51
+  message: "Merged via PR #3891 (commit 2d62c818bf on dev). Self-analysis dogfood post-fix shows cross-module class collision rate 18.94% → 1.76% (91% reduction); 76 residual collisions are all same-file identical-body groups (12x MockEdge in test_io_boundary.py, 8x Args in test_cli_commands.py, etc.) preserved by design per the (stable_id, canonical_name) docstring contract. Status moves to pending_validation; awaits_bakeoff_validation tag remains until BROAD-cohort confirmation strips it via bakeoff-deep-reflect aggregate. Auto-pr hit the merge-accept gremlin (Codeberg server-side hiccup); merge confirmed by human via direct PR inspection."  # 9e51

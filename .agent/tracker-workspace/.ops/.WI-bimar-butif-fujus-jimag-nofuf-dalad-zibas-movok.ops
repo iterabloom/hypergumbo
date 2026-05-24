@@ -41,3 +41,10 @@
   clock: 4  # 4529
   nonce: '4529'  # 4529
   message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: author flagged no acute signal currently."  # 4529
+- op: discuss  # 243f
+  at: '2026-05-24T07:23:51Z'  # 243f
+  by: agent  # 243f
+  actor: jgstern_agent  # 243f
+  clock: 5  # 243f
+  nonce: 243f  # 243f
+  message: "Scope assessment 2026-05-24 (5-item burndown session): tackled WI-bimar and concluded it doesn't fit alongside WI-himas in the residual session budget. Two viable implementation routes were considered: (a) Lua framework pattern YAML that classifies metatype-bound functions as serialization-callback-shaped entrypoints (the WI-pimig Phase-1 analog for dead-code FP suppression) — blocked by the YAML pattern grammar not supporting structural 'function defined in a table passed to ffi.metatype' matchers; (b) extending lua_ffi.py to detect ffi.metatype patterns + track ffi.new(ctype) variable assignments + link colon-method-call sites back to metatype-table function definitions — substantial new variable-tracking infrastructure on top of the current line-by-line regex scanner. The description's own gating ('When to address: only when a polyglot Lua+C bakeoff cohort or a UAT report surfaces the metatype-binding gap as a measurable dead-code or call-graph FP. Until then, sits at P4 todo_soft as scope-expansion work per the Commitment Protocol. No acute signal currently.') confirms deferral is correct. Item stays todo_soft P4 with someday tag."  # 243f

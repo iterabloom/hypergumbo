@@ -34,3 +34,10 @@
   clock: 3  # 37d0
   nonce: 37d0  # 37d0
   message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: multi-week audit effort (12 languages × official-doc audits); ship as 1-3 PRs post-pin."  # 37d0
+- op: discuss  # 66c2
+  at: '2026-05-24T07:20:02Z'  # 66c2
+  by: agent  # 66c2
+  actor: jgstern_agent  # 66c2
+  clock: 4  # 66c2
+  nonce: 66c2  # 66c2
+  message: "Batch 1 shipped: PR #3893 (0e2398a6f7) — Rust + Erlang catalogs flipped to status=complete with stdlib_provenance. Audited against doc.rust-lang.org/std/ (Rust 1.78 stable) and erlang.org/doc/ (OTP 26). Erlang gained code module (fs_read, .beam loader) and inet module (net_recv, DNS) before promotion. Two new tests pin the promotion in TestCatalogStatus. Remaining 10 catalogs still in_progress: c, elixir, go, haskell, java, javascript, kotlin, objc, scala, swift. Proposed sequencing for remaining work (smallest stdlib surface first to keep audit effort bounded per PR): batch 2 = haskell + kotlin + scala (smaller per-language stdlib surfaces on top of established parents); batch 3 = go + java (mid-tier with substantive db_* coverage); batch 4 = c + elixir + objc + swift (larger native/Foundation surfaces); batch 5 = javascript (Node.js + browser globals + completion of stdlib_other). Each batch ships as one PR per WI-tukif's 1-3 PRs guideline scaled to remaining work."  # 66c2

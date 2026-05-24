@@ -55,3 +55,18 @@
   clock: 5  # b746
   nonce: b746  # b746
   message: "Cross-item review 2026-05-17: wired isbefore links to the three rust-analyzer downstream items — WI-vovad (BROAD bakeoff cohort), WI-burud (linker upgrade), WI-nokoh (SCIP shim generalization). The common thread: each one needs to TRUST that '--backend rust-analyzer' actually engaged rust-analyzer. WI-vovad's bakeoff comparison data is meaningless if RA silently fell through; WI-burud's conditional 'consume rust-analyzer symbols when present' code path can't tell 'absent because tree-sitter-only' from 'absent because silent fall-through'; WI-nokoh replicating to other languages would replicate the silent-failure mode N times. WI-totub (proc-macro precondition) is NOT linked here because its description explicitly notes the test is small enough that rust-analyzer won't OOM AND it manually performs the engagement check by inspecting edge origins — independent of this item."  # b746
+- op: update  # 5c01
+  at: '2026-05-24T09:08:53Z'  # 5c01
+  by: agent  # 5c01
+  actor: jgstern_agent  # 5c01
+  clock: 6  # 5c01
+  nonce: 5c01  # 5c01
+  set:  # 5c01
+    status: done  # 5c01
+- op: discuss  # b66b
+  at: '2026-05-24T09:08:53Z'  # b66b
+  by: agent  # b66b
+  actor: jgstern_agent  # b66b
+  clock: 7  # b66b
+  nonce: b66b  # b66b
+  message: "Closed in PR #3895 (commits d35a748afa + 4f0a7a2994 on dev). Three diagnostic layers added per the description's fix proposal: (1) RustAnalyzerInvocationFailed carries returncode: Optional[int]; (2) graceful_degrade.py emits exit=N + stderr-tail in user-facing log and names OOM-kill explicitly when returncode in {-9, 137}; (3) analyzer.py engagement check emits UserWarning when zero scip-origin edges produced on a repo with .rs files present. Default log callable in analyzer.py is now warnings.warn(..., UserWarning, stacklevel=3) so diagnostics surface automatically without CLI plumbing. 19 new tests across the three test modules; 100% coverage on all changed source files (analyzer.py, graceful_degrade.py, invoke.py). Unblocks the isbefore-linked downstream WI-vovad / WI-burud / WI-nokoh."  # b66b

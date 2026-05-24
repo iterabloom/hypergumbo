@@ -36,3 +36,18 @@
   clock: 3  # 31a7
   nonce: 31a7  # 31a7
   message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: bakeoff orchestration; out of plan scope."  # 31a7
+- op: update  # 9ece
+  at: '2026-05-24T09:11:30Z'  # 9ece
+  by: agent  # 9ece
+  actor: jgstern_agent  # 9ece
+  clock: 4  # 9ece
+  nonce: 9ece  # 9ece
+  set:  # 9ece
+    status: done  # 9ece
+- op: discuss  # 273c
+  at: '2026-05-24T09:11:30Z'  # 273c
+  by: agent  # 273c
+  actor: jgstern_agent  # 273c
+  clock: 5  # 273c
+  nonce: 273c  # 273c
+  message: "Deliverable shipped 2026-05-24: curriculum file written to ~/hypergumbo_lab_notebook/curricula/rust-analyzer-validation.md. Three-tier cohort (ripgrep / firecracker / wasmtime) covering engagement sanity, mid-size workspace fidelity, and the OOM-kill stress path that WI-todon's diagnostics now make visible. Substituted firecracker + wasmtime for axum / swc / cargo (not in local pool) — wasmtime is deliberately included to validate WI-todon's SIGKILL hint + artifact-engagement-check on memory-pressured boxes. Metrics, expected directions, red-flag thresholds, and a failure-modes table tying pre-/post-WI-todon symptoms documented. Running the bakeoff is a separate user-driven step (the description scopes WI-vovad as 'add a curated cohort', not 'run the bakeoff to validation'); the bakeoff run becomes the validation signal that gates WI-burud + WI-nokoh's downstream work. Lab-notebook artifact (outside repo) so no PR was needed."  # 273c
