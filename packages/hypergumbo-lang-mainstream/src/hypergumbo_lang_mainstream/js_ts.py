@@ -987,11 +987,19 @@ def _detect_jsx_route(
 
         attr_name = None
         attr_value = None
+        # INV-dogif gap (4): only accept path values from string literals.
+        # `<Route path={someVar}>` resolves the JSX expression to the identifier
+        # *name*, not its runtime value — emitting that as route_path produces
+        # a junk entry in routes.txt. Track the source so we can keep accepting
+        # identifiers for component-shaped attrs (element/component/render)
+        # while rejecting them for path.
+        attr_value_from_string = False
         for attr_child in child.children:
             if attr_child.type == "property_identifier":
                 attr_name = _node_text(attr_child, source)
             elif attr_child.type == "string":
                 attr_value = _node_text(attr_child, source).strip("'\"")
+                attr_value_from_string = True
             elif attr_child.type == "jsx_expression":
                 # {<Users />} or {Users}
                 for expr_child in attr_child.children:
@@ -1004,9 +1012,12 @@ def _detect_jsx_route(
                     elif expr_child.type == "identifier":
                         attr_value = _node_text(expr_child, source)
 
-        if attr_name == "path" and attr_value is not None:
+        if attr_name == "path" and attr_value is not None and attr_value_from_string:
             route_path = attr_value
-        elif attr_name in ("element", "component") and attr_value is not None:
+        # INV-dogif gap (3): React Router v5 render-prop is a component-shaped
+        # attr alongside element/component (and v6 dropped render but legacy
+        # codebases still ship it).
+        elif attr_name in ("element", "component", "render") and attr_value is not None:
             component_name = attr_value
 
     if route_path is None:
@@ -1138,7 +1149,13 @@ def _extract_route_objects(
 
             key = _node_text(key_node, source).strip("'\"")
             if key == "path":
-                path = _node_text(value_node, source).strip("'\"")
+                # INV-dogif gap (5): only accept path values from string
+                # literals. {path: someVar, ...} would otherwise emit a Route
+                # node whose route_path is the variable's identifier text — a
+                # junk entry in routes.txt. Dynamic paths can't be resolved
+                # statically; skip emission to match the JSX-side behavior.
+                if value_node.type == "string":
+                    path = _node_text(value_node, source).strip("'\"")
             elif key == "element":
                 # Extract component name from JSX: <Users /> → "Users"
                 component = _extract_component_from_jsx(value_node, source)

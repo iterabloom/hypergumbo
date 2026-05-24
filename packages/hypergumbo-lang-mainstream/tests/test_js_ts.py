@@ -8187,6 +8187,90 @@ class TestReactRouterJSXRouteDetection:
         route = next(r for r in routes if r.meta["route_path"] == "/nolazy")
         assert "lazy_import" not in route.meta
 
+    # INV-dogif residual gaps (3), (4), (5) — see tracker discussion 2026-05-17
+
+    def test_jsx_dynamic_path_expression_does_not_emit_route(self, tmp_path: Path) -> None:
+        """INV-dogif gap (4): <Route path={someVar}> must NOT emit a route.
+
+        The identifier text of a JSX expression is the variable NAME, not its
+        value, so emitting a route with route_path='someVar' would be a false
+        positive (junk entry in routes.txt). Dynamic paths can't be statically
+        resolved; skip emission to match the silent-skip discipline.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.tsx").write_text(
+            'import { Route } from "react-router-dom";\n'
+            "const userPath = '/users';\n"
+            "function App() {\n"
+            "  return <Route path={userPath} element={<Users />} />;\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
+        # The identifier 'userPath' must NOT appear as a route_path.
+        bogus = [r for r in routes if r.meta and r.meta.get("route_path") == "userPath"]
+        assert bogus == [], (
+            "Dynamic JSX path expression emitted as route with identifier text: "
+            f"{[r.meta for r in bogus]}"
+        )
+
+    def test_object_config_dynamic_path_does_not_emit_route(self, tmp_path: Path) -> None:
+        """INV-dogif gap (5): {path: someVar, ...} must NOT emit a bogus route.
+
+        At js_ts.py:1140-1141, the code blindly extracts _node_text from the
+        value_node and treats it as the path. For identifier nodes that yields
+        the variable name as a fake route_path — a junk entry in routes.txt.
+        Skip emission when the value isn't a string literal.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "router.tsx").write_text(
+            "import { createBrowserRouter } from 'react-router-dom';\n"
+            "const homePath = '/';\n"
+            "const router = createBrowserRouter([\n"
+            "  { path: homePath, element: <Home /> },\n"
+            "  { path: '/users', element: <Users /> },\n"
+            "]);\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
+        route_paths = {r.meta["route_path"] for r in routes if r.meta}
+        # The static '/users' route still emits.
+        assert "/users" in route_paths
+        # The identifier 'homePath' must NOT appear as a route_path.
+        assert "homePath" not in route_paths, (
+            "Object-config dynamic path emitted as route with identifier text: "
+            f"{route_paths}"
+        )
+
+    def test_v5_render_prop_route(self, tmp_path: Path) -> None:
+        """INV-dogif gap (3): React Router v5 <Route render={...}> recognized.
+
+        v5 uses render-prop and children-prop patterns alongside element/component.
+        The route's path must still be detected; the render-prop component name
+        (if extractable as an identifier) populates handler_ref.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "App.jsx").write_text(
+            'import { Route } from "react-router";\n'
+            "function App() {\n"
+            "  return (\n"
+            '    <Route path="/legacy" render={LegacyView} />\n'
+            "  );\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        routes = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
+        assert len(routes) >= 1
+        route = next(r for r in routes if r.meta.get("route_path") == "/legacy")
+        # handler_ref derived from the render-prop identifier.
+        assert route.meta.get("handler_ref") == "LegacyView"
+
 
 class TestReactLazyRouteDetection:
     """Tests for React.lazy() component detection in JSX routes.
