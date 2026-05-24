@@ -2,7 +2,7 @@
 # Audit-findings 0009: Symbol.kind Cluster 27C — Apex/Peer Overloads
 
 - Date: 2026-05-05
-- Status: All rows PRELIM_RESOLVED at filing (producer migration is structurally complete — no analyzer emits the peer values; registry entries remain on `endpoint_shape` through the Phase 4a deprecation window per ADR-0027 §"Phase 4")
+- Status: All RESOLVED — producer migration was structurally complete at filing (no analyzer emitted the peer values); registry entries were parked on `endpoint_shape` through the Phase 4a deprecation window and subsequently advanced PRELIM_RESOLVED → RESOLVED at SCHEMA_VERSION 0.6.0 when the `endpoint_shape` parking axis was retired and the 71 values removed from `SYMBOL_KINDS` (ADR-0027 §"Phase 4" closure).
 - Closes: WI-rusit-tagap-tumul-bisuv-nipad-sozop-kobit-larah (Cluster 27C apex/peer collapse, ADR-0027 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Fifth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster 27A canonical), 0005 (Cluster 27B file-shape), 0006 (Cluster 27G build/config), and 0007 (Cluster 27H domain long-tail).
 

@@ -2,7 +2,7 @@
 # Audit-findings 0005: Symbol.kind Cluster 27B — File-Shape and Package-Shape Entities
 
 - Date: 2026-05-05
-- Status: Mixed — 6 CANONICAL rows RESOLVED via Wave 6 PR 1 registry promotion (file, library, package, executable, program, project moved from `pending_classification` to `language_construct`); 11 FOLD/DEPRECATE-NO-FOLD rows now PRELIM_RESOLVED via Wave 6 PR 3 (producer migrations + registry move from `pending_classification` to `endpoint_shape`).
+- Status: All RESOLVED — 6 CANONICAL rows promoted via Wave 6 PR 1 (file, library, package, executable, program, project moved from `pending_classification` to `language_construct`); 11 FOLD/DEPRECATE-NO-FOLD rows resolved via Wave 6 PR 3 (producer migrations + registry move to `endpoint_shape`) and subsequently advanced PRELIM_RESOLVED → RESOLVED at SCHEMA_VERSION 0.6.0 when the `endpoint_shape` parking axis was retired and the 71 values removed from `SYMBOL_KINDS`.
 - Closes: WI-gajob-hibod-talop-lofik-valuv-tumak-bifad-kopod (Cluster 27B file-shape entities: separate-axis vs canonical, ADR-0027 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Second audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster 27A canonical).
 

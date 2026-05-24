@@ -726,7 +726,12 @@ class RepoProfile:
 
 
 def _count_loc(file_path: Path, max_file_size: int | None = None) -> int:
-    """Count non-empty lines in a file.
+    """Count non-empty lines (SLOC convention).
+
+    Excludes whitespace-only lines; does NOT strip comments. Matches the
+    "code" tally produced by tools like `cloc` and `tokei` before any
+    further comment-stripping pass. Expect ~10-20% lower than raw `wc -l`
+    for typical source files (the gap is blank lines).
 
     Args:
         file_path: Path to the file.

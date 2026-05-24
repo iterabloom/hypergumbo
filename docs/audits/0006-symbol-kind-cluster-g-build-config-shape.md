@@ -2,7 +2,7 @@
 # Audit-findings 0006: Symbol.kind Cluster 27G — Build / Config-Shape Entities
 
 - Date: 2026-05-05
-- Status: Mixed — 15 CANONICAL rows RESOLVED via WI-runod Wave 6 PR 2 registry promotion; 4 DEPRECATE-NO-FOLD rows now PRELIM_RESOLVED via Wave 6 PR 4 (`config`/`dev-dependency`/`build-dependency`/`work_item`); 5 FOLD rows now PRELIM_RESOLVED via Wave 6 PR 5 (`test_case`/`editable`/`url_requirement`/`devDependency`/`python_task` — producer migrations + registry move from `pending_classification` to `endpoint_shape`).
+- Status: All RESOLVED — 15 CANONICAL rows promoted via WI-runod Wave 6 PR 2 registry promotion; 4 DEPRECATE-NO-FOLD rows resolved via Wave 6 PR 4 (`config`/`dev-dependency`/`build-dependency`/`work_item`); 5 FOLD rows resolved via Wave 6 PR 5 (`test_case`/`editable`/`url_requirement`/`devDependency`/`python_task` — producer migrations + registry move to `endpoint_shape`). The 9 non-canonical rows subsequently advanced PRELIM_RESOLVED → RESOLVED at SCHEMA_VERSION 0.6.0 when the `endpoint_shape` parking axis was retired and the 71 values removed from `SYMBOL_KINDS`.
 - Closes: WI-dubab-karur-vihak-majiv-dijug-pafot-vipuk-holod (Cluster 27G build/config-shape entities: separate-axis or demote, ADR-0027 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Third audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster 27A canonical) and 0005 (Cluster 27B file-shape).
 

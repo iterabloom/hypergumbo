@@ -146,7 +146,7 @@ hypergumbo --help --all                        # comprehensive help for all comm
 `verify-claims` ships with paranoid defaults auto-derived from the built-in IO primitive catalog. Projects can supply their own trust zones, sanitizers, and label maps:
 
 ```bash
-hypergumbo verify-claims claims.yaml \
+hypergumbo verify-claims --claims claims.yaml \
     --taint-sources    myrepo/taint/sources.yaml \
     --taint-sinks      myrepo/taint/sinks/ \
     --taint-sanitizers myrepo/taint/sanitizers.yaml

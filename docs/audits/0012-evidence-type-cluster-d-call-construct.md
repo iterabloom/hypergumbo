@@ -2,7 +2,7 @@
 # Audit-findings 0012: Edge.evidence_type Cluster 28D — Apex/Peer Call-Construct Overloads
 
 - Date: 2026-05-05
-- Status: All rows PRELIM_RESOLVED at filing (Phase 3 producer migration shipped this PR; values remain on `endpoint_shape` through the Phase 4a deprecation window per ADR-0028 §"Phase 4")
+- Status: All RESOLVED — Phase 3 producer migration shipped at filing (all values moved from active axes to `endpoint_shape`); subsequently advanced PRELIM_RESOLVED → RESOLVED at SCHEMA_VERSION 0.7.0 when the `endpoint_shape` parking axis was retired and the 111 values removed from `EVIDENCE_TYPES` (ADR-0028 §"Phase 4" closure).
 - Closes: WI-nibis-bohak-bitik-fozul-vohan-finik-soful-zijov (Cluster 28D apex/peer collapse, ADR-0028 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Third audit-findings doc on the `Edge.evidence_type` axis declared by [ADR-0028](../adr/0028-evidence-type-inference-pathway-only.md), companion to audit-findings 0004 (Cluster 28A canonical inference) and audit-findings 0008 (Cluster 28B resolution-status).
 

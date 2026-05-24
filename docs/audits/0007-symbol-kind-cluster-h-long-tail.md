@@ -2,7 +2,7 @@
 # Audit-findings 0007: Symbol.kind Cluster 27H — Domain-Specific Long Tail
 
 - Date: 2026-05-05
-- Status: All rows resolved — 57 CANONICAL rows RESOLVED (53 via Wave 6 PR 2 registry promotion + 3 via Wave 6 PR 4 reclassification of `theorem`/`inductive`/`message` + 1 via Wave 6 PR 6 reclassification of `external_symbol`); 3 DEPRECATE-NO-FOLD rows PRELIM_RESOLVED (`heading`, `model` via Wave 6 PR 4; `unresolved` via Wave 6 PR 6).
+- Status: All RESOLVED — 57 CANONICAL rows promoted (53 via Wave 6 PR 2 registry promotion + 3 via Wave 6 PR 4 reclassification of `theorem`/`inductive`/`message` + 1 via Wave 6 PR 6 reclassification of `external_symbol`); 3 DEPRECATE-NO-FOLD rows (`heading`, `model` via Wave 6 PR 4; `unresolved` via Wave 6 PR 6) subsequently advanced PRELIM_RESOLVED → RESOLVED at SCHEMA_VERSION 0.6.0 when the `endpoint_shape` parking axis was retired and the 71 values removed from `SYMBOL_KINDS`.
 - Closes: WI-nupus-fovor-rataf-momub-natit-hihir-bufas-bukih (Cluster 27H domain long-tail per-value audit, ADR-0027 Phase 3)
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Fourth audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster 27A canonical), 0005 (Cluster 27B file-shape), and 0006 (Cluster 27G build/config-shape).
 

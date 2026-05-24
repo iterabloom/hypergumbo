@@ -76,6 +76,13 @@ if TYPE_CHECKING:
 # Import UsageContext at runtime since it's used by matches_usage and extract_usage_value
 from .ir import UsageContext
 
+# Note for YAML authors: if your framework's canonical usage is manifest-declared
+# but never imported in app code (Rails-style autoload-by-convention), also add
+# its framework ID to `profile._AUTOLOAD_BY_CONVENTION_FRAMEWORKS`. See the
+# docstring at `profile.py` near `_AUTOLOAD_BY_CONVENTION_FRAMEWORKS` for
+# inclusion criteria and counter-examples (Sinatra, Django, FastAPI all fall
+# through the standard import-edge check and do NOT belong in that set).
+
 
 @dataclass
 class UsagePatternSpec:

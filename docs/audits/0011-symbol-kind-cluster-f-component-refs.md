@@ -2,7 +2,7 @@
 # Audit-findings 0011: Symbol.kind Cluster 27F — Component / UI References
 
 - Date: 2026-05-05
-- Status: Mixed — `component_ref` PRELIM_RESOLVED (shape-2 edge-endpoint redesign + producer drop ship in this PR); `component`, `slot`, `prop`, `view` CANONICAL + RESOLVED on `language_construct`; `component_file` deferred to audit-findings 0005 Cluster 27B per the file-shape verdict already on record there.
+- Status: All RESOLVED — `component`, `slot`, `prop`, `view` promoted CANONICAL on `language_construct` at filing; `component_ref` resolved via the shape-2 edge-endpoint redesign + producer drop, then advanced PRELIM_RESOLVED → RESOLVED at SCHEMA_VERSION 0.6.0 when the `endpoint_shape` parking axis was retired and the 71 values removed from `SYMBOL_KINDS` (ADR-0027 §"Phase 4" closure); `component_file` deferred to audit-findings 0005 Cluster 27B per the file-shape verdict already on record there.
 - Closes: WI-mihiz-vulon-tidiz-napir-vabup-zudun-jurat-lolaz (Cluster 27F, ADR-0027 Phase 3).
 - Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). Seventh audit-findings doc on the `Symbol.kind` axis declared by [ADR-0027](../adr/0027-symbol-kind-language-construct-only.md), companion to audit-findings 0003 (Cluster 27A canonical), 0005 (Cluster 27B file-shape), 0006 (Cluster 27G build/config), 0007 (Cluster 27H domain long-tail), 0009 (Cluster 27C apex/peer), and 0010 (Cluster 27E edge-label leakage).
 
