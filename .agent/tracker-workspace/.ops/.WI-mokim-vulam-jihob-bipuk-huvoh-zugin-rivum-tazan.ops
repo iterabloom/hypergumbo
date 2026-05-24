@@ -28,3 +28,18 @@
   clock: 2  # 6e3d
   nonce: 6e3d  # 6e3d
   message: "Cross-item review 2026-05-17: forms a --gzip-coherence pair with WI-makom (producer-side bug: --gzip silently writes gzipped binary to a non-.gz path). Both stem from the original WI-kojob --gzip introduction. The proposed _load_behavior_map() helper here is the consumer-side half; WI-makom is the producer-side half. The bakeoff-deep helpers (this item's description, scripts/bakeoff-deep:273-302) are a known reference impl for the suffix-detection logic — confirm they survived auto-sync at the cited line numbers before basing the new helper on them."  # 6e3d
+- op: update  # dc91
+  at: '2026-05-23T23:42:16Z'  # dc91
+  by: agent  # dc91
+  actor: jgstern_agent  # dc91
+  clock: 3  # dc91
+  nonce: dc91  # dc91
+  set:  # dc91
+    status: done  # dc91
+- op: discuss  # a3f7
+  at: '2026-05-23T23:42:16Z'  # a3f7
+  by: agent  # a3f7
+  actor: jgstern_agent  # a3f7
+  clock: 4  # a3f7
+  nonce: a3f7  # a3f7
+  message: "Fixed in PR #3881 (ae3f576151). Added shared hypergumbo_core.behavior_map_io module exposing load_behavior_map(path) (suffix-routes on .gz) and find_behavior_map(directory, basename) (plain-wins-ties discovery). Migrated all 11 cli.py consumer sites (cmd_sketch, cmd_slice, cmd_search, cmd_routes, cmd_explain, cmd_symbols, cmd_compact, cmd_io_boundaries, cmd_verify_claims, cmd_test_coverage, cmd_dead_code_maybe) plus runtime_coherence.py. Scripts wired: bakeoff-broad, bakeoff-broad-reflect, analyze-artifacts; bakeoff-deep's local helpers retain string-return shapes but delegate to library. bakeoff-deep-reflect / bakeoff-map don't read behavior maps directly (state/metadata JSON only). 11 new unit tests + static-audit + end-to-end parametrized .gz round-trip via cmd_compact."  # a3f7

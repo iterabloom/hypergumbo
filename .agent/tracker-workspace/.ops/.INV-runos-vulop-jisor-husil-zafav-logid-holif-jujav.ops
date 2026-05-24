@@ -51,3 +51,14 @@
   clock: 5  # 2226
   nonce: '2226'  # 2226
   message: "Already fixed in commit 335bb307. Uses errors='replace' in _get_node_text(). Test test_non_utf8_encoded_file validates Latin-1 handling."  # 2226
+- op: update  # 30d8
+  at: '2026-05-24T01:33:43Z'  # 30d8
+  by: agent  # 30d8
+  actor: jgstern_agent  # 30d8
+  clock: 6  # 30d8
+  nonce: 30d8  # 30d8
+  set: {}  # 30d8
+  add:  # 30d8
+    tags: [analysis_quality]  # 30d8
+  remove:  # 30d8
+    tags: [analysis-quality]  # 30d8

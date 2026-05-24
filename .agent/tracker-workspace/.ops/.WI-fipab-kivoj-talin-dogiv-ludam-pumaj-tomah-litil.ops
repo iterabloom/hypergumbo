@@ -22,3 +22,18 @@
     pr_ref:  # 82ce
     description: "Eliminate the upstream-rebase recurrence class that broke nightly's source-grammar build on 2026-05-20 when github.com/Julian/tree-sitter-lean was force-pushed and the pinned commit efe6b87 became unreachable. The current re-pin (jgstern-agent/fix/lean-grammar-repin) is a stopgap; vendoring the three source-built grammars (lean, wolfram, circom) under vendor/tree-sitter-{lean,wolfram,circom}/ makes the build offline-deterministic and independent of upstream git hygiene.\n\nApproach:\n1. One PR per grammar to keep blast radius small.\n2. Use git subtree (preferred — preserves history) or plain directory copy (simpler — discards history).\n3. Update scripts/build-source-grammars to build from vendor/ instead of git clone.\n4. Confirm each upstream's license permits vendoring (likely MIT for all three) and ship LICENSE alongside.\n5. Document the vendor-sync procedure in docs/ (when and how to re-sync from upstream).\n\nTrigger: any future occurrence of the same failure mode, or as the cleanup follow-up to the current re-pin PR."  # 82ce
     fields: {}  # 82ce
+- op: update  # 7395
+  at: '2026-05-24T00:52:59Z'  # 7395
+  by: agent  # 7395
+  actor: jgstern_agent  # 7395
+  clock: 2  # 7395
+  nonce: '7395'  # 7395
+  set:  # 7395
+    status: done  # 7395
+- op: discuss  # a9d2
+  at: '2026-05-24T00:52:59Z'  # a9d2
+  by: agent  # a9d2
+  actor: jgstern_agent  # a9d2
+  clock: 3  # a9d2
+  nonce: a9d2  # a9d2
+  message: "Fixed in PR #3882 (5b2d4cfb6c). Vendored tree-sitter-{lean,wolfram,circom} grammars under vendor/tree-sitter-*/ (plain directory copy, MIT-licensed all three). Both build paths (scripts/build-source-grammars and hypergumbo_core.build_grammars) now read vendor/<grammar>/src directly — no git clone at build time. Each grammar ships its upstream LICENSE plus an UPSTREAM file documenting source URL + pinned commit + sync date for re-sync. New TestVendorLayout class pins 5 layout invariants; old git-flow tests removed and replaced with vendor-source-missing + no-git-command-issued regression guards. Re-sync procedure documented in docs/grammars/vendor-sync.md. +12MB to repo (10.7MB of which is tree-sitter-lean/src/parser.c). vendor/ is outside every package's wheel boundary so pip-installed wheel sizes unchanged. Eliminates the 2026-05-20 upstream-force-push failure class entirely."  # a9d2
