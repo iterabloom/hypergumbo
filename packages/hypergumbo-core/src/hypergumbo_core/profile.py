@@ -1037,6 +1037,106 @@ def _parse_requirements_txt_deps(content: str) -> set[str]:
     return deps
 
 
+def _parse_requirements_txt_dash_r_includes(content: str) -> list[str]:
+    """Return the relative paths that this requirements file ``-r``-includes.
+
+    WI-himas: pip's ``-r <file>`` and ``-c <file>`` directives compose a
+    dependency closure across multiple requirements files (the Wagtail /
+    bakerydemo layout uses ``requirements/dev.txt`` opening with
+    ``-r base.txt``). The framework detector needs to follow these to
+    surface the full transitive dep set.
+    """
+    includes: list[str] = []
+    for raw in content.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        # Match ``-r <path>`` / ``--requirement <path>`` / ``-c <path>`` /
+        # ``--constraint <path>``. The PEP 508 grammar reserves both r/c.
+        for prefix in ("-r ", "--requirement ", "-c ", "--constraint ",
+                       "-r=", "--requirement=", "-c=", "--constraint="):
+            if line.startswith(prefix):
+                ref = line[len(prefix):].strip().strip("'\"")
+                if ref:
+                    includes.append(ref)
+                break
+    return includes
+
+
+def _collect_pip_requirements_deps(repo_root: Path, max_depth: int = 3) -> set[str]:
+    """Find every pip-requirements-shaped file and union their parsed deps.
+
+    WI-himas: the manifest set is the closure of ``requirements.txt``,
+    every ``requirements/*.txt``, every ``requirements-*.txt``, and any
+    file each of those ``-r``-includes (transitively, bounded by
+    ``repo_root``). Outside-repo references are dropped — following
+    ``-r ../host-file.txt`` would let a malicious manifest parse
+    arbitrary files on the host.
+    """
+    deps: set[str] = set()
+    seeds: set[Path] = set()
+
+    # Seed 1: literal "requirements.txt" anywhere in the manifest tree.
+    seeds.update(_find_manifest_files(repo_root, "requirements.txt", max_depth))
+    # Seed 2: requirements/*.txt and requirements-*.txt layouts.
+    for pattern in ("requirements/*.txt", "requirements-*.txt"):
+        for depth in range(max_depth + 1):
+            glob_pattern = "/".join(["*"] * depth + [pattern]) if depth else pattern
+            for path in repo_root.glob(glob_pattern):
+                if not path.is_file():  # pragma: no cover - glob('*.txt') shouldn't return dirs
+                    continue
+                parts = path.relative_to(repo_root).parts
+                # Mirror _find_manifest_files's directory exclusions.
+                if any(
+                    p.startswith(".")
+                    or p in ("node_modules", "vendor", "venv", ".venv", "__pycache__")
+                    for p in parts[:-1]
+                ):
+                    continue
+                from .paths import is_test_file as _is_test_file
+                rel_for_fixture_check = "/".join(parts)
+                if _is_test_file(rel_for_fixture_check):  # pragma: no cover - requirements/ rarely under test/
+                    continue
+                seeds.add(path)
+
+    # Resolve the -r include chain. Each visited file contributes its own
+    # parsed deps; outside-repo references are dropped at resolution time.
+    visited: set[Path] = set()
+    work: list[Path] = list(seeds)
+    repo_root_resolved = repo_root.resolve()
+    while work:
+        current = work.pop()
+        try:
+            current_resolved = current.resolve()
+        except OSError:  # pragma: no cover - defensive for race / symlink loops
+            continue
+        if current_resolved in visited:
+            continue
+        visited.add(current_resolved)
+        # Bound to repo: drop anything outside repo_root. Defensive — seeds
+        # are all repo-rooted and -r candidates are bounds-checked before
+        # enqueue, but resolved paths can drift across symlinks.
+        try:
+            current_resolved.relative_to(repo_root_resolved)
+        except ValueError:  # pragma: no cover - defensive symlink-escape guard
+            continue
+        text = _read_manifest_text(current)
+        if not text:  # pragma: no cover - defensive for empty/unreadable file
+            continue
+        deps |= _parse_requirements_txt_deps(text)
+        for ref in _parse_requirements_txt_dash_r_includes(text):
+            # ``-r`` paths are relative to the including file's directory.
+            candidate = (current.parent / ref).resolve()
+            try:
+                candidate.relative_to(repo_root_resolved)
+            except ValueError:
+                continue
+            if candidate.is_file():
+                work.append(candidate)
+
+    return deps
+
+
 _SETUP_INSTALL_REQUIRES_RE = re.compile(
     r"install_requires\s*=\s*[\[\(](?P<body>[^\)\]]*)[\)\]]",
     re.DOTALL,
@@ -1710,7 +1810,11 @@ def _detect_python_frameworks(repo_root: Path) -> list[str]:
     detected = []
     deps: set[str] = set()
     deps |= _collect_parsed_deps(repo_root, "pyproject.toml", _parse_pyproject_deps)
-    deps |= _collect_parsed_deps(repo_root, "requirements.txt", _parse_requirements_txt_deps)
+    # WI-himas: pip requirements use a layered manifest set (requirements.txt,
+    # requirements/*.txt, requirements-*.txt) with -r/-c includes between
+    # files. Resolve the full closure instead of matching only the literal
+    # "requirements.txt" filename.
+    deps |= _collect_pip_requirements_deps(repo_root)
     deps |= _collect_parsed_deps(repo_root, "setup.py", _parse_setup_py_deps)
     deps |= _collect_parsed_deps(repo_root, "Pipfile", _parse_pipfile_deps)
 

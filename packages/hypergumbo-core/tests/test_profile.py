@@ -314,6 +314,118 @@ def test_detects_django_framework(tmp_path: Path) -> None:
     assert "django" in data["profile"]["frameworks"]
 
 
+# ============================================================================
+# WI-himas: layered requirements/ directory + -r include resolution
+# ============================================================================
+
+
+def test_wi_himas_detects_django_from_requirements_subdir(tmp_path: Path) -> None:
+    """WI-himas: requirements/base.txt is part of the manifest set even when no
+    top-level requirements.txt exists (bakerydemo / many Django apps layout).
+    """
+    (tmp_path / "manage.py").write_text("#!/usr/bin/env python\nimport django\n")
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+    (req_dir / "base.txt").write_text("Django>=4.2\nwagtail==5.0\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "django" in data["profile"]["frameworks"]
+
+
+def test_wi_himas_resolves_dash_r_include_chain(tmp_path: Path) -> None:
+    """WI-himas: top-level requirements.txt with only `-r requirements/base.txt`
+    must surface the base file's deps in the union.
+    """
+    (tmp_path / "manage.py").write_text("import django\n")
+    (tmp_path / "requirements.txt").write_text("-r requirements/base.txt\n")
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+    (req_dir / "base.txt").write_text("Django>=4.2\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "django" in data["profile"]["frameworks"]
+
+
+def test_wi_himas_dev_dot_txt_inherits_via_dash_r(tmp_path: Path) -> None:
+    """WI-himas: requirements/dev.txt opens with `-r base.txt`; both files'
+    deps must be detected (production.txt = base.txt + prod deps pattern).
+    """
+    (tmp_path / "manage.py").write_text("import django\n")
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+    (req_dir / "base.txt").write_text("Django>=4.2\n")
+    (req_dir / "dev.txt").write_text("-r base.txt\npytest>=7.0\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    # django (from base.txt, included via -r from dev.txt) must surface.
+    assert "django" in data["profile"]["frameworks"]
+
+
+def test_wi_himas_hyphen_requirements_file_is_part_of_manifest_set(tmp_path: Path) -> None:
+    """WI-himas: requirements-prod.txt (hyphen suffix) is recognized as part
+    of the pip-requirements manifest set, not just the literal name.
+    """
+    (tmp_path / "manage.py").write_text("import django\n")
+    (tmp_path / "requirements-prod.txt").write_text("Django>=4.2\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "django" in data["profile"]["frameworks"]
+
+
+def test_wi_himas_requirements_under_venv_is_skipped(tmp_path: Path) -> None:
+    """WI-himas: requirements/*.txt nested under .venv/ / node_modules/ /
+    vendor/ etc. are NOT part of the project manifest set. Shadowed deps in
+    an installed virtualenv would otherwise create framework-detection FPs.
+    """
+    (tmp_path / "manage.py").write_text("import django\n")
+    # Real project layout: no Django in any project-level manifest.
+    venv_req = tmp_path / ".venv" / "site-packages" / "somepkg" / "requirements"
+    venv_req.mkdir(parents=True)
+    (venv_req / "base.txt").write_text("Django>=4.2\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    # Django must NOT be detected — the .venv requirements file shouldn't
+    # be in the project manifest set.
+    assert "django" not in data["profile"]["frameworks"]
+
+
+def test_wi_himas_dash_r_outside_repo_does_not_escape(tmp_path: Path) -> None:
+    """WI-himas: -r references must not follow outside the repo root.
+    Bounding the resolution at repo_root prevents directory traversal that
+    would parse arbitrary host files.
+    """
+    (tmp_path / "manage.py").write_text("import django\n")
+    # -r ../outside.txt — would escape repo if followed.
+    (tmp_path / "requirements.txt").write_text("-r ../outside.txt\n")
+    # Simulate a sibling file that should NOT be read.
+    outside = tmp_path.parent / f"outside-{tmp_path.name}.txt"
+    outside.write_text("Django>=4.2\n")
+
+    out_path = tmp_path / "out.json"
+    try:
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+        # The outside file was NOT read, so django is not detected.
+        assert "django" not in data["profile"]["frameworks"]
+    finally:
+        outside.unlink(missing_ok=True)
+
+
 def test_profile_empty_when_no_source_files(tmp_path: Path) -> None:
     """Should return empty profile for repos with no recognized source files."""
     # Create a file with no recognized extension
