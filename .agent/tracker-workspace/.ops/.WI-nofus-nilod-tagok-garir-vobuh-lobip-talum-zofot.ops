@@ -72,3 +72,14 @@
   clock: 8  # cdf5
   nonce: cdf5  # cdf5
   message: "Implemented in PR #2579. select_ddg_targets() selects IO-critical, taint-relevant, and high-centrality functions. Tier-filtered, budget-capped at 500. 122 tests, 100% coverage."  # cdf5
+- op: update  # fdf8
+  at: '2026-05-24T01:34:55Z'  # fdf8
+  by: agent  # fdf8
+  actor: jgstern_agent  # fdf8
+  clock: 9  # fdf8
+  nonce: fdf8  # fdf8
+  set: {}  # fdf8
+  add:  # fdf8
+    tags: [phase_2]  # fdf8
+  remove:  # fdf8
+    tags: [phase-2]  # fdf8

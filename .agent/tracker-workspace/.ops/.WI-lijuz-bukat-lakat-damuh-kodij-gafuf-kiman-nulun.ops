@@ -72,3 +72,14 @@
   clock: 8  # e0c1
   nonce: e0c1  # e0c1
   message: "Implemented in PR #2578. Added Go (with defer hook), TypeScript (with try/catch/finally), Java (with try/catch/finally) YAML CFG node mappings. Python and Rust mappings were created in PR #2575. Total: 5 language mappings."  # e0c1
+- op: update  # 0efe
+  at: '2026-05-24T01:34:55Z'  # 0efe
+  by: agent  # 0efe
+  actor: jgstern_agent  # 0efe
+  clock: 9  # 0efe
+  nonce: 0efe  # 0efe
+  set: {}  # 0efe
+  add:  # 0efe
+    tags: [phase_2]  # 0efe
+  remove:  # 0efe
+    tags: [phase-2]  # 0efe

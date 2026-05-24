@@ -117,3 +117,14 @@
   clock: 13  # 5d91
   nonce: 5d91  # 5d91
   message: "Implemented in PR #2575. CFG builder (1226 lines), Python+Rust YAML mappings, 80 tests at 100% coverage. Handles all ADR-0017 §1a control-flow categories plus 3 semantic hooks."  # 5d91
+- op: update  # e620
+  at: '2026-05-24T01:34:55Z'  # e620
+  by: agent  # e620
+  actor: jgstern_agent  # e620
+  clock: 14  # e620
+  nonce: e620  # e620
+  set: {}  # e620
+  add:  # e620
+    tags: [phase_2]  # e620
+  remove:  # e620
+    tags: [phase-2]  # e620

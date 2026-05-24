@@ -90,3 +90,14 @@
   clock: 10  # d2d9
   nonce: d2d9  # d2d9
   message: "Implemented in PR #2582. Rust def/use extractor (183 lines) for core patterns: let, tuple/struct/tuple-struct destructure, reassignment, compound assign, field/index writes, for, if-let, match arms (incl. mut_pattern via match_pattern), closures, return, macros. 37 tests, 100% coverage."  # d2d9
+- op: update  # e715
+  at: '2026-05-24T01:34:55Z'  # e715
+  by: agent  # e715
+  actor: jgstern_agent  # e715
+  clock: 11  # e715
+  nonce: e715  # e715
+  set: {}  # e715
+  add:  # e715
+    tags: [phase_2]  # e715
+  remove:  # e715
+    tags: [phase-2]  # e715

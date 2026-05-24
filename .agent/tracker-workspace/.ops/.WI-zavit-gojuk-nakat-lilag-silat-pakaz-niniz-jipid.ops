@@ -72,3 +72,14 @@
   clock: 8  # cde7
   nonce: cde7  # cde7
   message: "Implemented in PR #2586. is_field_tainted() with field-sensitivity lite rules. x tainted → x.field inherits. obj.field tainted ≠ obj tainted. 64 tests, 100% coverage."  # cde7
+- op: update  # 8ccd
+  at: '2026-05-24T01:34:55Z'  # 8ccd
+  by: agent  # 8ccd
+  actor: jgstern_agent  # 8ccd
+  clock: 9  # 8ccd
+  nonce: 8ccd  # 8ccd
+  set: {}  # 8ccd
+  add:  # 8ccd
+    tags: [phase_2]  # 8ccd
+  remove:  # 8ccd
+    tags: [phase-2]  # 8ccd
