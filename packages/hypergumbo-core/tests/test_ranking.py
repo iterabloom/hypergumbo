@@ -14,7 +14,6 @@ from hypergumbo_core.ranking import (
     apply_test_weights,
     apply_utility_symbol_weights,
     apply_common_method_name_weights,
-    apply_sibling_impl_weights,
     group_symbols_by_file,
     compute_file_scores,
     filter_edges_for_ranking,
@@ -3405,156 +3404,6 @@ class TestApplyCommonMethodNameWeights:
             assert result[s.id] >= 0.1, "Dampening should have a floor of 0.1"
 
 
-class TestApplySiblingImplWeights:
-    """Tests for apply_sibling_impl_weights.
-
-    When many methods share the same name (interface implementations like
-    19 Notifier.Notify variants in alertmanager), they flood the top
-    rankings even after common-method-name dampening. Sibling impl
-    dampening keeps the top K within each name group at full weight
-    and steeply dampens the rest, so users see 2-3 representative
-    implementations instead of 19.
-    """
-
-    def test_top_k_kept_rest_dampened(self):
-        """Within a name group, top K symbols keep full weight, rest are dampened."""
-        # 19 methods named "Notifier.Notify" with varying scores
-        notify_syms = [
-            make_symbol(
-                "Notifier.Notify",
-                path=f"notify/impl{i}/impl.go",
-                kind="method",
-                language="go",
-            )
-            for i in range(19)
-        ]
-        # Give them decreasing scores
-        centrality = {
-            s.id: 100.0 - i for i, s in enumerate(notify_syms)
-        }
-
-        result = apply_sibling_impl_weights(centrality, notify_syms, top_k=3)
-
-        # Sort by original score descending
-        sorted_ids = sorted(centrality.keys(), key=lambda k: -centrality[k])
-
-        # Top 3 should be unchanged
-        for sid in sorted_ids[:3]:
-            assert result[sid] == centrality[sid], (
-                f"Top-K symbol {sid} should keep full weight"
-            )
-        # Symbols 4+ should be dampened
-        for sid in sorted_ids[3:]:
-            assert result[sid] < centrality[sid], (
-                f"Below-top-K symbol {sid} should be dampened"
-            )
-
-    def test_small_group_not_dampened(self):
-        """Groups smaller than min_group_size are not affected."""
-        # 3 methods named "Handler.Process" — below default min_group_size
-        syms = [
-            make_symbol(
-                "Handler.Process",
-                path=f"handlers/h{i}.go",
-                kind="method",
-                language="go",
-            )
-            for i in range(3)
-        ]
-        centrality = {s.id: 10.0 for s in syms}
-
-        result = apply_sibling_impl_weights(centrality, syms)
-
-        for s in syms:
-            assert result[s.id] == 10.0, "Small groups should not be dampened"
-
-    def test_non_method_excluded(self):
-        """Only method/function kinds are grouped — classes are excluded."""
-        # 10 classes named "Controller" — should not trigger dampening
-        syms = [
-            make_symbol(
-                "Controller",
-                path=f"controllers/c{i}.py",
-                kind="class",
-            )
-            for i in range(10)
-        ]
-        centrality = {s.id: 5.0 for s in syms}
-
-        result = apply_sibling_impl_weights(centrality, syms)
-
-        for s in syms:
-            assert result[s.id] == 5.0, "Class-kind symbols should not be grouped"
-
-    def test_integration_with_rank_symbols(self):
-        """Sibling impl dampening is applied in the rank_symbols pipeline."""
-        # 15 methods named "Notifier.Notify" all with same in-degree from
-        # shared callers, plus one unique high-value symbol
-        notify_syms = [
-            make_symbol(
-                "Notifier.Notify",
-                path=f"notify/ch{i}/ch.go",
-                kind="method",
-                language="go",
-            )
-            for i in range(15)
-        ]
-        unique_sym = make_symbol(
-            "API.getAlertsHandler",
-            path="api/api.go",
-            kind="method",
-            language="go",
-        )
-        callers = [
-            make_symbol(f"caller_{i}", path=f"src/c{i}.go", kind="function", language="go")
-            for i in range(18)
-        ]
-
-        all_syms = notify_syms + [unique_sym] + callers
-
-        # Each caller calls all Notify impls and the unique sym
-        edges = []
-        for caller in callers:
-            for ns in notify_syms:
-                edges.append(make_edge(caller.id, ns.id))
-            edges.append(make_edge(caller.id, unique_sym.id))
-
-        # Give Notify impls some out-edges too.
-        # target is a substantial function (loc=30) that also calls another
-        # function, making it a connector rather than a trivial sink.
-        target = Symbol(
-            id="go:net/send.go:1-30:function:send",
-            name="send", kind="function", language="go",
-            path="net/send.go",
-            span=Span(start_line=1, end_line=30, start_col=0, end_col=0),
-        )
-        target.supply_chain_tier = 1
-        target.supply_chain_reason = "tier_1"
-        target.lines_of_code = 30
-        all_syms.append(target)
-        for ns in notify_syms:
-            edges.append(make_edge(ns.id, target.id))
-
-        # Give unique_sym outgoing edges (realistic: API handlers call services)
-        svc = make_symbol("alertService", path="svc/alert.go", kind="function", language="go")
-        all_syms.append(svc)
-        edges.append(make_edge(unique_sym.id, svc.id))
-        edges.append(make_edge(unique_sym.id, target.id))
-        # Give target an out-edge so it's not a pure sink
-        edges.append(make_edge(target.id, svc.id))
-
-        result = rank_symbols(all_syms, edges)
-
-        # Find how many Notifier.Notify in top 5
-        top5_names = [r.symbol.name for r in result[:5]]
-        notify_in_top5 = sum(1 for n in top5_names if n == "Notifier.Notify")
-
-        assert notify_in_top5 <= 3, (
-            f"At most 3 Notifier.Notify should appear in top 5, "
-            f"got {notify_in_top5}: {top5_names}"
-        )
-
-
 class TestComputeTruncationElbow:
     """Tests for compute_truncation_elbow function."""
 
@@ -4004,7 +3853,7 @@ class TestComputeDampenedCentrality:
         edges = [make_edge(c.id, core.id) for c in callers]
         all_symbols = [core] + callers
 
-        # Inline replication of the canonical 8-stage stack with tuned params.
+        # Inline replication of the canonical 7-stage stack with tuned params.
         inline = compute_centrality(
             all_symbols, edges,
             hub_threshold=100, within_file_weight=0.3,
@@ -4014,7 +3863,6 @@ class TestComputeDampenedCentrality:
         inline = apply_noise_weights(inline, all_symbols)
         inline = apply_utility_symbol_weights(inline, all_symbols)
         inline = apply_common_method_name_weights(inline, all_symbols)
-        inline = apply_sibling_impl_weights(inline, all_symbols)
         inline = apply_trivial_sink_weights(inline, all_symbols, edges)
         inline = apply_generated_code_weights(inline, all_symbols)
         inline = apply_file_kind_weights(inline, all_symbols)
@@ -4087,10 +3935,10 @@ class TestComputeDampenedCentrality:
 
 
 class TestCanonicalDampenerStackPinned:
-    """Pins for the canonical 8-stage dampener stack (Phase 2b).
+    """Pins for the canonical 7-stage dampener stack (Phase 2b).
 
-    Pins the tuple order and the specific multiplier formulas for the two
-    dampeners whose exact factors weren't previously asserted (only
+    Pins the tuple order and the specific multiplier formula for the one
+    dampener whose exact factor wasn't previously asserted (only
     monotonicity bounds were). The other six dampeners already pin their
     multipliers explicitly elsewhere in this file:
 
@@ -4103,33 +3951,35 @@ class TestCanonicalDampenerStackPinned:
     """
 
     def test_canonical_dampener_order_pinned(self) -> None:
-        """The 8-stage dampener stack order is load-bearing.
+        """The 7-stage dampener stack order is load-bearing.
 
-        Per the code comment at ranking.py:1103: "Order is load-bearing —
+        Per the code comment at ranking.py: "Order is load-bearing —
         see ranking.py for rationale on why tier comes first and file_kind
         comes last." This test guards against silent reordering.
 
         Specifically: ``tier`` first (so first-party boost happens before
-        path-based dampening), ``utility``/``common_method``/``sibling_impl``
-        in that progression (each subsequent dampener narrows the surface
-        the previous one widened), ``trivial_sink`` after the name-based
+        path-based dampening), ``utility``/``common_method`` in that
+        progression (each subsequent dampener narrows the surface the
+        previous one widened), ``trivial_sink`` after the name-based
         dampeners (so it sees post-dampener scores), ``file_kind`` last
         (so the file-kind zero doesn't propagate through subsequent stages).
+
+        WI-karad (2026-05-24): an 8th dampener ``sibling_impl`` was removed
+        from this stack after a 3-repo diagnostic confirmed 0 top-100
+        movement. See ranking.py for the removal rationale.
         """
         assert _CANONICAL_DAMPENERS == (
             "tier",
             "noise",
             "utility",
             "common_method",
-            "sibling_impl",
             "trivial_sink",
             "generated",
             "file_kind",
         ), (
             f"_CANONICAL_DAMPENERS changed to {_CANONICAL_DAMPENERS!r}. "
-            "Order is load-bearing per ranking.py:1103. If this is "
-            "intentional, document the new order rationale and update "
-            "this pin."
+            "Order is load-bearing. If this is intentional, document "
+            "the new order rationale and update this pin."
         )
 
     def test_common_method_name_exact_formula_pinned(self) -> None:
@@ -4183,57 +4033,11 @@ class TestCanonicalDampenerStackPinned:
                 f"got {result_15[s.id]} — formula drifted."
             )
 
-    def test_sibling_impl_tail_factor_pinned(self) -> None:
-        """Pins the ``tail_factor = 0.15`` multiplier when dampening fires.
-
-        Existing tests assert top-K is unchanged and non-top-K is
-        ``< original``, but the exact 0.15 multiplier wasn't pinned.
-        The bakeoff rationale (alertmanager cohort-008 iter-003) chose
-        0.15 deliberately to move below-top-K out of typical top-30
-        ranges; silently bumping to 0.5 or 0.05 would change real-repo
-        rankings.
-
-        Note (WI-karad reference): the 6-repo audit found 0 top-100
-        movement from this dampener across 24 cells. Outcome is "remove
-        dead code or document conditions." Either way, the multiplier
-        itself is what gets pinned here — if WI-karad ultimately removes
-        the dampener entirely, this test gets removed alongside it.
-        """
-        # 7 same-name methods, top_k=3, min_group_size=6 (default) →
-        # symbols ranked 4-7 get multiplied by tail_factor=0.15.
-        notify_syms = [
-            make_symbol(
-                "Notifier.Notify",
-                path=f"notify/ch{i}/ch.go",
-                kind="method",
-                language="go",
-            )
-            for i in range(7)
-        ]
-        # Distinct centrality scores so ranking is unambiguous.
-        centrality = {
-            s.id: 100.0 - i for i, s in enumerate(notify_syms)
-        }
-        result = apply_sibling_impl_weights(centrality, notify_syms)
-
-        sorted_ids = sorted(centrality.keys(), key=lambda k: -centrality[k])
-        # Top 3 unchanged.
-        for sid in sorted_ids[:3]:
-            assert result[sid] == centrality[sid]
-        # Symbols 4-7 each get multiplied by exactly 0.15.
-        for sid in sorted_ids[3:]:
-            expected = centrality[sid] * 0.15
-            assert result[sid] == pytest.approx(expected), (
-                f"Expected centrality * 0.15 = {expected}, got "
-                f"{result[sid]} — apply_sibling_impl_weights "
-                "tail_factor drifted from 0.15."
-            )
-
     def test_compute_dampened_centrality_applies_stack_in_order(self) -> None:
         """compute_dampened_centrality applies dampeners in canonical order.
 
         Smoke test that ``exclude_dampeners=()`` produces the same result
-        as running the eight dampeners manually in the documented order.
+        as running the seven dampeners manually in the documented order.
         Catches accidental reordering inside _apply_canonical_dampeners
         even when _CANONICAL_DAMPENERS itself is unchanged (e.g., if
         someone manually inlined a stage in the wrong position).
@@ -4255,7 +4059,6 @@ class TestCanonicalDampenerStackPinned:
         manual = apply_noise_weights(manual, [target, caller])
         manual = apply_utility_symbol_weights(manual, [target, caller])
         manual = apply_common_method_name_weights(manual, [target, caller])
-        manual = apply_sibling_impl_weights(manual, [target, caller])
         manual = apply_trivial_sink_weights(manual, [target, caller], edges)
         manual = apply_generated_code_weights(manual, [target, caller])
         manual = apply_file_kind_weights(manual, [target, caller])

@@ -3357,19 +3357,6 @@ class TestFormatSymbols:
             f"hot_helper (line {a_pos}) after max_per_file_in=5 capping"
         )
 
-    # NOTE on apply_sibling_impl_weights: WI-lidum's 6-repo audit found 0
-    # behavior change on the sketch surface for this dampener (24 of 24
-    # surface-by-repo combinations including alertmanager, the original
-    # WI-luvaj test case). The reason emerged during test design: sketch
-    # deduplicates same-name symbols at render time, and the dampener only
-    # touches the bottom-(N-3) members of each name group while leaving the
-    # top-3 at full weight. The dedup winner is by definition the top-1
-    # member, which the dampener never modifies — so the rendered output
-    # never changes. The call is still wired into _format_symbols below
-    # for surface uniformity with rank_symbols, but no behavioral test is
-    # possible at this layer; the call-site coverage is exercised by every
-    # test that calls _format_symbols.
-
     def test_deduplicates_utility_functions_across_files(self) -> None:
         """Utility functions with same name across files are deduplicated.
 

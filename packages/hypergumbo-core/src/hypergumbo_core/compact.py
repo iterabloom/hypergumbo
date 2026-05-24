@@ -124,7 +124,6 @@ _VICTIM_REMOVAL_EXCLUDE_DAMPENERS = (
     "noise",
     "utility",
     "common_method",
-    "sibling_impl",
     "trivial_sink",
     "generated",
     "file_kind",

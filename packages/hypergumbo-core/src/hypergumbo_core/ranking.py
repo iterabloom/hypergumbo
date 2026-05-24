@@ -911,75 +911,6 @@ def apply_common_method_name_weights(
     return weighted
 
 
-def apply_sibling_impl_weights(
-    centrality: Dict[str, float],
-    symbols: List[Symbol],
-    top_k: int = 3,
-    min_group_size: int = 6,
-    tail_factor: float = 0.15,
-) -> Dict[str, float]:
-    """Dampen centrality for excess interface implementation siblings.
-
-    When many methods share the same name (e.g., 19 Notifier.Notify variants
-    in alertmanager — one per notification channel), they flood top rankings
-    even after common-method-name dampening.  This function groups same-name
-    methods, keeps the top K by score at full weight, and steeply dampens
-    the rest.
-
-    Bakeoff finding: alertmanager cohort-008 iter-003 had 19 Notifier.Notify
-    implementations occupying positions 1-20.  After common-method-name
-    dampening (0.53x), they still dominated because all had similar raw
-    scores (in=18 from shared interface callers).
-
-    Detection:
-    - Group callable symbols (function/method) by name
-    - Only apply to groups with >= min_group_size members
-    - Sort each group by centrality score (descending)
-    - Top K keep their score; remainder get tail_factor multiplier
-
-    Args:
-        centrality: Centrality scores to weight.
-        symbols: Symbol list (used for name grouping).
-        top_k: Number of highest-scored members to keep at full weight
-            within each name group. Default 3.
-        min_group_size: Minimum group size to trigger dampening. Default 6.
-        tail_factor: Multiplier for symbols beyond top K. Default 0.15.
-
-    Returns:
-        Dictionary mapping symbol ID to dampened centrality score.
-    """
-    # ADR-0027 Phase-2 audit (WI-jukav): see apply_common_method_name_weights
-    # above for the rationale on the narrow set. Forward-compatible.
-    _CALLABLE_KINDS = {"function", "method"}
-
-    # Group callable symbols by name
-    name_groups: Dict[str, list[str]] = {}
-    symbol_lookup: Dict[str, Symbol] = {}
-    for s in symbols:
-        symbol_lookup[s.id] = s
-        if s.kind in _CALLABLE_KINDS:
-            name_groups.setdefault(s.name, []).append(s.id)
-
-    # Identify which symbol IDs need dampening
-    dampened_ids: set[str] = set()
-    for _name, sids in name_groups.items():
-        if len(sids) < min_group_size:
-            continue
-        # Sort by centrality descending, dampen beyond top_k
-        ranked = sorted(sids, key=lambda sid: -centrality.get(sid, 0))
-        for sid in ranked[top_k:]:
-            dampened_ids.add(sid)
-
-    weighted = {}
-    for sid, score in centrality.items():
-        if sid in dampened_ids:
-            weighted[sid] = score * tail_factor
-        else:
-            weighted[sid] = score
-
-    return weighted
-
-
 def group_symbols_by_file(symbols: List[Symbol]) -> Dict[str, List[Symbol]]:
     """Group symbols by their file path.
 
@@ -1100,17 +1031,23 @@ def filter_edges_for_ranking(
     return filtered
 
 
-# Canonical 8-stage dampener stack applied by rank_symbols and the four
+# Canonical 7-stage dampener stack applied by rank_symbols and the four
 # selection surfaces (sketch._format_symbols, compact.select_by_coverage,
 # compact.select_by_connectivity, compact.format_tiered_behavior_map's
 # victim-removal step). Order is load-bearing — see ranking.py for
 # rationale on why tier comes first and file_kind comes last.
+#
+# WI-karad (2026-05-24): an 8th dampener `sibling_impl` was removed after
+# a 3-repo diagnostic (alertmanager / hypergumbo / django) confirmed it
+# produced 0 top-100 movement in the canonical pipeline. Mechanism:
+# apply_common_method_name_weights (threshold=10) runs first and dampens
+# the same large name groups uniformly by 10/count, which is already
+# enough to push every group's tail out of top-100 by itself.
 _CANONICAL_DAMPENERS: tuple[str, ...] = (
     "tier",
     "noise",
     "utility",
     "common_method",
-    "sibling_impl",
     "trivial_sink",
     "generated",
     "file_kind",
@@ -1140,8 +1077,6 @@ def _apply_canonical_dampeners(
         centrality = apply_utility_symbol_weights(centrality, symbols)
     if "common_method" not in exclude_dampeners:
         centrality = apply_common_method_name_weights(centrality, symbols)
-    if "sibling_impl" not in exclude_dampeners:
-        centrality = apply_sibling_impl_weights(centrality, symbols)
     if "trivial_sink" not in exclude_dampeners:
         centrality = apply_trivial_sink_weights(centrality, symbols, edges)
     if "generated" not in exclude_dampeners:
@@ -1164,15 +1099,15 @@ def compute_dampened_centrality(
 ) -> Dict[str, float]:
     """Compute centrality and apply the canonical dampener stack.
 
-    Single source of truth for the "compute_centrality + 8-dampener
+    Single source of truth for the "compute_centrality + 7-dampener
     stack" pipeline shared across the four selection surfaces (sketch
     and three compact entry points). Defaults match rank_symbols'
     tuned values (hub_threshold=100, within_file_weight=0.3,
     max_per_file_in=5, edge_type_weights=DEFAULT_EDGE_TYPE_WEIGHTS).
 
     Dampeners are applied in canonical order:
-    tier → noise → utility → common_method → sibling_impl →
-    trivial_sink → generated → file_kind.
+    tier → noise → utility → common_method → trivial_sink →
+    generated → file_kind.
 
     Args:
         symbols: Symbols to score.
