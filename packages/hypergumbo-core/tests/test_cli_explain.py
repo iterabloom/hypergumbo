@@ -1863,3 +1863,99 @@ def test_cmd_explain_finds_symbol_by_partial_name(tmp_path: Path, capsys) -> Non
     assert result == 0
     out, _ = capsys.readouterr()
     assert "findUser" in out
+
+
+def test_cmd_explain_summary_appears_before_source_dumps(tmp_path: Path, capsys) -> None:
+    """WI-dubum: 'Called by' and 'Calls' summaries must appear before all
+    source dumps so users see the call graph before scrolling past code.
+
+    Previously --with-source put source-for-queried-symbol immediately
+    after metadata and interleaved caller/callee source between the two
+    summaries, pushing 'Calls (N):' to ~99% of the way through the output.
+    """
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    main_py = src_dir / "main.py"
+    main_py.write_text(
+        "def caller():\n"
+        "    target()\n"
+        "    return 1\n"
+        "\n"
+        "def target():\n"
+        "    return helper()\n"
+        "\n"
+        "def helper():\n"
+        "    return 42\n"
+    )
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-3:caller:function",
+                "name": "caller", "kind": "function", "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 13},
+            },
+            {
+                "id": "python:src/main.py:5-6:target:function",
+                "name": "target", "kind": "function", "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 5, "end_line": 6, "start_col": 0, "end_col": 13},
+            },
+            {
+                "id": "python:src/main.py:8-9:helper:function",
+                "name": "helper", "kind": "function", "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 8, "end_line": 9, "start_col": 0, "end_col": 13},
+            },
+        ],
+        "edges": [
+            {
+                "id": "e1",
+                "src": "python:src/main.py:1-3:caller:function",
+                "dst": "python:src/main.py:5-6:target:function",
+                "type": "calls", "line": 2,
+            },
+            {
+                "id": "e2",
+                "src": "python:src/main.py:5-6:target:function",
+                "dst": "python:src/main.py:8-9:helper:function",
+                "type": "calls", "line": 6,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "target"
+    args.path = str(tmp_path)
+    args.input = None
+    args.with_source = True
+    args.tokens = None
+    args.exclude_tests = False
+
+    result = cmd_explain(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+
+    called_by_pos = out.find("Called by (")
+    calls_pos = out.find("Calls (")
+    source_for_pos = out.find("Source for ")
+    source_queried_pos = out.find("\n  Source (")
+
+    assert called_by_pos != -1, "expected 'Called by (' header"
+    assert calls_pos != -1, "expected 'Calls (' header"
+    # Both summaries precede every source block (both queried-symbol
+    # source and per-caller/callee source).
+    assert called_by_pos < calls_pos, "Called by should print before Calls"
+    if source_queried_pos != -1:
+        assert calls_pos < source_queried_pos, (
+            "Calls summary must precede queried-symbol source — WI-dubum regression"
+        )
+    if source_for_pos != -1:
+        assert calls_pos < source_for_pos, (
+            "Calls summary must precede caller/callee source dumps — WI-dubum regression"
+        )
+

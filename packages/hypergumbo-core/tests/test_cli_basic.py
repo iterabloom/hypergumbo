@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import argparse
 import logging
 import sys
 
@@ -68,3 +69,32 @@ def test_main_uses_sys_argv_when_argv_not_provided(tmp_path, monkeypatch):
     result = main()  # No argv parameter
 
     assert result == 0
+
+
+def test_usage_metavar_includes_every_registered_subparser():
+    """WI-zunos: every registered subparser must appear in the usage line.
+
+    Previously the metavar was a hardcoded string that drifted as new
+    subcommands were added (config, dead-code-maybe, verify-claims,
+    cache-status, cache-clear were all silently omitted). The fix
+    builds the metavar dynamically from the registered subparsers,
+    so every command shows up in `hypergumbo --help`.
+    """
+    parser = build_parser()
+    sub_action = next(
+        a for a in parser._actions
+        if isinstance(a, argparse._SubParsersAction)
+    )
+    metavar = sub_action.metavar
+    assert metavar is not None
+    # Every registered subparser name appears in the metavar.
+    for name in sub_action.choices:
+        assert name in metavar, f"{name!r} missing from sub.metavar={metavar!r}"
+    # Explicit guards for the five that were previously missing.
+    for previously_missing in (
+        "config", "dead-code-maybe", "verify-claims",
+        "cache-status", "cache-clear",
+    ):
+        assert previously_missing in metavar, (
+            f"{previously_missing!r} missing from metavar — WI-zunos regression"
+        )

@@ -1602,3 +1602,80 @@ class TestLeafCallersSurviveFilterPass:
         assert fs_read["leaf_callers"] == [
             "python:src/app.py:1-5:app:function"
         ]
+
+
+def test_io_boundaries_tier_tag_attaches_to_primitive_not_caller(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-vumos: the [tier-N tier_name] annotation describes the boundary
+    destination, not the caller — so it must render on the primitive line,
+    not on each caller line.
+
+    Previously the tag appeared at the end of `<- caller (path:line)` lines,
+    which made it visually attach to the caller's identifier and led
+    reviewers to mis-attribute the tier to the caller.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {
+                "id": "python:src/a.py:1-5:read_env_a:function",
+                "name": "read_env_a", "kind": "function", "language": "python",
+                "path": "src/a.py", "span": {"start_line": 1, "end_line": 5},
+                "supply_chain": {"tier": 1, "tier_name": "first_party"},
+            },
+            {
+                "id": "python:src/b.py:1-5:read_env_b:function",
+                "name": "read_env_b", "kind": "function", "language": "python",
+                "path": "src/b.py", "span": {"start_line": 1, "end_line": 5},
+                "supply_chain": {"tier": 1, "tier_name": "first_party"},
+            },
+            {
+                "id": "python:os:0-0:environ:unresolved",
+                "name": "os.environ", "kind": "external_symbol",
+                "language": "python", "path": "<external>",
+                "span": {"start_line": 0, "end_line": 0,
+                         "start_col": 0, "end_col": 0},
+                "meta": {"external_boundary": True},
+                "supply_chain": {"tier": 3, "tier_name": "external_dep"},
+            },
+        ],
+        edges=[
+            {
+                "src": "python:src/a.py:1-5:read_env_a:function",
+                "dst": "python:os:0-0:environ:unresolved",
+                "type": "calls", "confidence": 0.9,
+            },
+            {
+                "src": "python:src/b.py:1-5:read_env_b:function",
+                "dst": "python:os:0-0:environ:unresolved",
+                "type": "calls", "confidence": 0.9,
+            },
+        ],
+    )
+    args = _make_args(tmp_path, bmap)
+    rc = cmd_io_boundaries(args)
+    assert rc == 0
+    text = capsys.readouterr().out
+
+    # No caller line carries the tier tag.
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("<- "):
+            assert "[tier-" not in line, (
+                f"caller line still carries tier tag — WI-vumos regression:\n  {line!r}"
+            )
+
+    # The tier tag is present on the primitive/destination line.
+    assert "[tier-3 external_dep]" in text, (
+        "tier tag should be present somewhere — moved, not removed"
+    )
+    # Specifically: the line containing the primitive's tag has the tier
+    # tag attached to it. The primitive name "os.environ" rendered with
+    # count and tier on the same line.
+    prim_lines = [
+        line for line in text.splitlines()
+        if "os.environ" in line and "[tier-3" in line
+    ]
+    assert prim_lines, (
+        "primitive line should carry the tier tag in the new layout"
+    )

@@ -1784,8 +1784,25 @@ def cmd_routes(args: argparse.Namespace) -> int:
     total_routes = len(routes)
     print(f"Found {total_routes} API route(s):\n")
 
+    def _route_sort_key(route: dict) -> tuple:
+        # WI-jajas: stable within-file order. Sort by (start_line, method,
+        # route_path) so the same logical routes render identically across
+        # full vs compact behavior maps (compact reorders nodes by
+        # centrality, which previously leaked into the routes display).
+        span = route.get("span", {}) or {}
+        meta = route.get("meta", {}) or {}
+        method = (meta.get("http_method") or "") if meta.get("framework_role") == "route" else ""
+        route_path = meta.get("route_path") or ""
+        if not method:
+            for concept in meta.get("concepts", []) or []:
+                if isinstance(concept, dict) and concept.get("concept") == "route":
+                    method = concept.get("method") or method
+                    route_path = route_path or (concept.get("path") or "")
+                    break
+        return (span.get("start_line", 0), (method or "").upper(), route_path)
+
     for file_path in sorted(routes_by_path.keys()):
-        file_routes = routes_by_path[file_path]
+        file_routes = sorted(routes_by_path[file_path], key=_route_sort_key)
         print(f"{file_path}:")
         for route in file_routes:
             name = route.get("name", "")
@@ -1993,27 +2010,22 @@ def cmd_explain(args: argparse.Namespace) -> int:
         sources_shown: set[str] = set()
         tokens_used = 0
 
-        # In with_source mode, show source for queried symbol first
+        # WI-dubum: defer all source dumps until after the call-graph
+        # summaries print so 'Called by' / 'Calls' appear at the top of
+        # the output rather than after hundreds of source lines. The
+        # queried-symbol source is precomputed here and printed below
+        # the two summaries.
+        queried_symbol_source: Optional[str] = None
+        queried_symbol_source_tokens = 0
         if with_source:
-            symbol_source = _extract_source_lines(repo_root, path, start_line, end_line)
-            if symbol_source:
-                source_tokens = _estimate_tokens(symbol_source)
-                # Always show queried symbol's source (reserve budget)
-                if token_budget is None or tokens_used + source_tokens <= token_budget:
-                    print(f"\n  Source ({path}:{start_line}-{end_line}):")
-                    for line in symbol_source.splitlines():
-                        print(f"    {line}")
-                    tokens_used += source_tokens
-                    sources_shown.add(symbol_id)
-                else:
-                    # Even with budget, always show queried symbol
-                    print(f"\n  Source ({path}:{start_line}-{end_line}):")
-                    for line in symbol_source.splitlines():
-                        print(f"    {line}")
-                    tokens_used += source_tokens
-                    sources_shown.add(symbol_id)
-            else:
-                print(f"\n  [Source unavailable: {path}]")
+            queried_symbol_source = _extract_source_lines(
+                repo_root, path, start_line, end_line
+            )
+            if queried_symbol_source:
+                queried_symbol_source_tokens = _estimate_tokens(queried_symbol_source)
+                # Queried symbol is always shown; reserve its tokens.
+                tokens_used += queried_symbol_source_tokens
+                sources_shown.add(symbol_id)
 
         # Find callers (edges where dst = this symbol)
         # Tuple: (in_degree, name, path, line, src_id, src_node) - in_degree for sorting
@@ -2161,7 +2173,10 @@ def cmd_explain(args: argparse.Namespace) -> int:
                         items_to_show.discard(item[1])
                         current_total -= item[8]
 
-        # Display callers
+        # WI-dubum: print both summaries before any source dumps so the
+        # call-graph signal isn't buried beneath hundreds of lines of
+        # source code.
+        # Display callers summary
         print()
         if callers:
             print(f"  Called by ({len(callers)}):")
@@ -2170,7 +2185,26 @@ def cmd_explain(args: argparse.Namespace) -> int:
         else:
             print("  Called by: (none)")
 
-        # Show caller sources (after Called by list)
+        # Display callees summary
+        print()
+        if callees:
+            print(f"  Calls ({len(callees)}):")
+            for _, callee_name, callee_path, callee_line, _, _ in callees:
+                print(f"    - {callee_name} ({callee_path}:{callee_line})")
+        else:
+            print("  Calls: (none)")
+
+        # Now print all source dumps (queried symbol → callers → callees)
+        # after both summaries.
+        if with_source:
+            if queried_symbol_source:
+                print(f"\n  Source ({path}:{start_line}-{end_line}):")
+                for line in queried_symbol_source.splitlines():
+                    print(f"    {line}")
+            else:
+                print(f"\n  [Source unavailable: {path}]")
+
+        # Show caller sources (after both summaries)
         if with_source and caller_source_items:
             caller_module_omitted = 0
             caller_regular_omitted = 0
@@ -2193,15 +2227,6 @@ def cmd_explain(args: argparse.Namespace) -> int:
                 print(f"\n  [{caller_module_omitted} module-level call(s) omitted for brevity]")
             if caller_regular_omitted > 0:
                 print(f"\n  [{caller_regular_omitted} caller source(s) omitted for brevity]")
-
-        # Display callees
-        print()
-        if callees:
-            print(f"  Calls ({len(callees)}):")
-            for _, callee_name, callee_path, callee_line, _, _ in callees:
-                print(f"    - {callee_name} ({callee_path}:{callee_line})")
-        else:
-            print("  Calls: (none)")
 
         # Show callee sources (after Calls list)
         if with_source and callee_source_items:
@@ -3949,27 +3974,34 @@ def _print_io_boundaries_by_type(
         for prim in sorted(prim_counts.keys()):
             count = prim_counts[prim]
             risk_flag = " *** HIGH RISK ***" if is_high_risk(prim) else ""
-            print(f"    {prim} ({count}){risk_flag}")
+            # WI-vumos: tier tag describes the boundary destination, not
+            # the caller. Render it on the primitive header line so the
+            # referent is unambiguous. All chains hitting the same
+            # primitive share the same dst, so we read tier from any one
+            # of them.
+            prim_tier_tag = ""
+            for chain in chains_by_prim[prim]:
+                if chain.dst_external_boundary and chain.dst_tier_name:
+                    prim_tier_tag = (
+                        f"  [tier-{chain.dst_tier} {chain.dst_tier_name}]"
+                    )
+                    break
+            print(f"    {prim} ({count}){risk_flag}{prim_tier_tag}")
             for chain in chains_by_prim[prim]:
                 caller = _format_io_caller(chain.io_edge_src, nodes_by_id, repo_root)
-                # Surface dst supply-chain tier so the user can tell apart
-                # "first-party calls first-party I/O" from "first-party
-                # calls a tier-3 wrapper that may reach the network."
-                # Only annotate when the dst is an external boundary —
-                # the common case for stdlib / npm / third-party deps.
-                tier_tag = ""
-                if chain.dst_external_boundary and chain.dst_tier_name:
-                    tier_tag = f"  [tier-{chain.dst_tier} {chain.dst_tier_name}]"
                 # Plan C, PR C: external_potential chains for in_progress
                 # source languages flag the absence-of-catalog-hit as
                 # unreliable so the user knows the language's stdlib is
-                # not yet provenance-validated.
+                # not yet provenance-validated. The unreliable flag stays
+                # per-caller because it depends on the SOURCE language,
+                # not the dst — different callers of the same primitive
+                # from different source languages may differ.
                 unreliable_tag = (
                     "  [unreliable]"
                     if chain.dst_classification_unreliable
                     else ""
                 )
-                print(f"      <- {caller}{tier_tag}{unreliable_tag}")
+                print(f"      <- {caller}{unreliable_tag}")
                 if chain.entry_points:
                     ep_names = [
                         _format_io_caller(ep, nodes_by_id, repo_root)
@@ -4846,18 +4878,29 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         print(f"Untested: {untested_functions}")
         print(f"Total test functions: {total_tests}")
 
-        # Test-dense functions
+        # Most-called-from-tests functions. The metric counts inbound
+        # call edges from test files, not test functions, so framing it
+        # as "redundant tests" inverts the actionable signal (WI-fugut):
+        # a high count means a function is widely used in test code,
+        # which is the opposite of redundant.
         display_hot = test_dense[:top_n] if top_n else test_dense[:20]
         if display_hot:
-            print("\nTest-Dense (highest test density - may indicate redundant tests)")
-            print("-" * 48)
+            print("\nMost-Called from Tests (functions reached most often by test code)")
+            print("-" * 65)
             for density, test_count, loc, target, _ in display_hot:
                 name = _format_symbol_display_name(target, target.get("id", ""))
                 path = target.get("path", "")
                 span = target.get("span", {})
                 start = span.get("start_line", 0)
                 end = span.get("end_line", 0)
-                print(f"  {density:5.2f} t/LOC  ({test_count:3} tests, {loc:3} LOC)  {path}:{start}-{end}  {name}()")
+                print(
+                    f"  {density:5.2f} edges/LOC  ({test_count:3} test-call edges,"
+                    f" {loc:3} LOC)  {path}:{start}-{end}  {name}()"
+                )
+            print(
+                "  (Counts inbound calls from test files; heavy use "
+                "means widely-used, not over-tested.)"
+            )
 
         # Cold spots
         display_cold = cold_spots[:top_n] if top_n else cold_spots[:20]
@@ -7023,14 +7066,15 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
     for i, cmd in enumerate(extras_cmds):
         _set_subparser_group(sub, cmd, "extras", 1, suborder=i)
 
-    # Set custom metavar to control the order in usage line
-    sub.metavar = (
-        "{sketch,run,slice,search,routes,explain,catalog,test-coverage,"
-        "symbols,compact,io-boundaries,add-extras,remove-extras,"
-        "build-grammars,install-gitleaks,uninstall-gitleaks,"
-        "install-embeddings,uninstall-embeddings,"
-        "install-rust-analyzer,uninstall-rust-analyzer}"
-    )
+    # Build metavar dynamically from the registered subparsers in their
+    # declared group/suborder. Previously this was a hardcoded string that
+    # silently drifted when new subcommands were added — config,
+    # dead-code-maybe, verify-claims, cache-status, and cache-clear were
+    # all omitted from `hypergumbo --help` (WI-zunos).
+    sub.metavar = "{" + ",".join(
+        name for name, _subparser, _group, _is_new_group
+        in _get_subparsers_by_group(sub)
+    ) + "}"
 
     return p
 

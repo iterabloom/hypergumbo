@@ -106,9 +106,9 @@ def test_cmd_test_coverage_basic_hot_cold_spots(tmp_path: Path, capsys) -> None:
     assert "Total functions: 2" in out
     assert "Tested: 1" in out
     assert "Untested: 1" in out
-    # Hot spot: helper is called by 3 tests
+    # Hot spot: helper is reached by 3 test-call edges
     assert "helper()" in out
-    assert "3 tests" in out
+    assert "3 test-call edges" in out
     # Cold spot: process has 0 tests
     assert "process()" in out
     assert "50 LOC" in out
@@ -1245,3 +1245,80 @@ def test_test_coverage_json_includes_caveats_field(
     assert "recall_disclaimer" in cav
     assert "per_language" in cav
     assert "java" in cav["per_language"]
+
+
+def test_cmd_test_coverage_section_header_does_not_suggest_redundant_tests(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-fugut: the 'Test-Dense' section's old framing
+    ('may indicate redundant tests') is wrong — a high inbound test-call
+    count means the function is heavily USED in test code, not that it
+    has redundant tests. Acting on the old hint would delete the wrong
+    code. Header is renamed and the redundant-tests suggestion is dropped.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/util.py:1-3:_glob_chars:function",
+                "name": "_glob_chars", "kind": "function", "language": "python",
+                "path": "src/util.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 10},
+                "lines_of_code": 3,
+            },
+            {
+                "id": "python:tests/test_a.py:1-3:test_a:function",
+                "name": "test_a", "kind": "function", "language": "python",
+                "path": "tests/test_a.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 10},
+                "meta": {"concepts": [{"concept": "test"}]},
+            },
+            {
+                "id": "python:tests/test_b.py:1-3:test_b:function",
+                "name": "test_b", "kind": "function", "language": "python",
+                "path": "tests/test_b.py",
+                "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 10},
+                "meta": {"concepts": [{"concept": "test"}]},
+            },
+        ],
+        "edges": [
+            {"id": "e1",
+             "src": "python:tests/test_a.py:1-3:test_a:function",
+             "dst": "python:src/util.py:1-3:_glob_chars:function",
+             "type": "calls", "line": 1},
+            {"id": "e2",
+             "src": "python:tests/test_b.py:1-3:test_b:function",
+             "dst": "python:src/util.py:1-3:_glob_chars:function",
+             "type": "calls", "line": 1},
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.format = "text"
+    args.min_tests = None
+    args.max_tests = None
+    args.top = None
+
+    result = cmd_test_coverage(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+
+    # The old misleading framing is gone.
+    assert "redundant tests" not in out, (
+        "test-coverage must not suggest tests are redundant — WI-fugut"
+    )
+    assert "Test-Dense" not in out, (
+        "stale 'Test-Dense' header should be replaced with a clearer label"
+    )
+    # The new framing is present.
+    assert "Most-Called from Tests" in out, (
+        "expected the renamed section header"
+    )
+    # The per-row metric is relabeled.
+    assert "test-call edges" in out, (
+        "metric label must say 'test-call edges', not 'tests'"
+    )

@@ -1322,3 +1322,84 @@ def test_cmd_routes_route_node_with_wrong_concept_method(
     assert "[GET] /debug/*subpath" in out
     assert "[POST] /debug/*subpath" in out
     assert "Found 2 API route" in out
+
+
+def _routes_output_for(behavior_map: dict, tmp_path: Path, capsys) -> str:
+    """Run cmd_routes against a behavior map and return its stdout text."""
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.exclude_tests = False
+    result = cmd_routes(args)
+    assert result == 0
+    out, _ = capsys.readouterr()
+    return out
+
+
+def _route_node(symbol_id: str, name: str, line: int, route_path: str, method: str) -> dict:
+    return {
+        "id": symbol_id,
+        "name": name,
+        "kind": "function",
+        "language": "python",
+        "path": "src/api.py",
+        "span": {"start_line": line, "end_line": line + 2, "start_col": 0, "end_col": 10},
+        "stable_id": f"sha256:{symbol_id}",
+        "meta": {"concepts": [{"concept": "route", "path": route_path, "method": method}]},
+    }
+
+
+def test_cmd_routes_within_file_order_stable_across_insertion_order(
+    tmp_path: Path, capsys
+) -> None:
+    """WI-jajas: routes within a file display in stable (start_line, method,
+    route_path) order regardless of node-insertion order.
+
+    Previously the inner loop iterated file_routes in node-insertion order,
+    so feeding routes from a `compact` behavior map (which reorders nodes
+    by centrality) produced a different ordering than the full input —
+    breaking diffability for the same logical routes.
+    """
+    # Three routes in the same file, registered as (line 30, line 10, line 20).
+    routes_insertion_a = [
+        _route_node("python:src/api.py:30-32:c:function", "c", 30, "/c", "GET"),
+        _route_node("python:src/api.py:10-12:a:function", "a", 10, "/a", "GET"),
+        _route_node("python:src/api.py:20-22:b:function", "b", 20, "/b", "POST"),
+    ]
+    # Same routes, different insertion order (simulating compact reordering).
+    routes_insertion_b = [
+        _route_node("python:src/api.py:20-22:b:function", "b", 20, "/b", "POST"),
+        _route_node("python:src/api.py:30-32:c:function", "c", 30, "/c", "GET"),
+        _route_node("python:src/api.py:10-12:a:function", "a", 10, "/a", "GET"),
+    ]
+
+    bmap_a = {"schema_version": SCHEMA_VERSION, "nodes": routes_insertion_a, "edges": []}
+    bmap_b = {"schema_version": SCHEMA_VERSION, "nodes": routes_insertion_b, "edges": []}
+
+    (tmp_path / "a").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "b").mkdir(parents=True, exist_ok=True)
+    out_a = _routes_output_for(bmap_a, tmp_path / "a", capsys)
+    out_b = _routes_output_for(bmap_b, tmp_path / "b", capsys)
+
+    # Compare just the routes section (path-bearing output summary is
+    # naturally different across runs).
+    def _route_lines(out: str) -> list[str]:
+        return [
+            line for line in out.splitlines()
+            if line.startswith(("  [GET]", "  [POST]", "  [PUT]", "  [DELETE]"))
+        ]
+
+    assert _route_lines(out_a) == _route_lines(out_b), (
+        "routes output reordered across insertion orders — WI-jajas regression"
+    )
+
+    # Order within the file is by start_line.
+    idx_a = out_a.index("[GET] /a")
+    idx_b = out_a.index("[POST] /b")
+    idx_c = out_a.index("[GET] /c")
+    assert idx_a < idx_b < idx_c, (
+        f"routes not sorted by start_line: a@{idx_a}, b@{idx_b}, c@{idx_c}"
+    )
