@@ -21,3 +21,25 @@
     pr_ref:  # fb7c
     description: "**Found via self-analysis dogfooding on 2026-05-16 (round 10).**\n\n**Symptom.** `hypergumbo explain _collect_important_files` produces 1583 lines of output. The \"Calls (16):\" summary — the literal point of the `explain` command — appears at **line 1563**, i.e., **98.7% of the way through the output**.\n\nLayout of the 1583-line output:\n\n| Range | Content | Lines |\n|---|---|---:|\n| 1-264 | Symbol metadata + the symbol's own source code | 264 |\n| 267-1121 | Source for callee #1 (`generate_sketch`, 855 lines of source — including a 100-line docstring) | 855 |\n| 1122-1559 | Source for 14 test-file callers, dumped in full | 438 |\n| 1560-1562 | \"Source for ... (module level)\" with a 1-line excerpt | 3 |\n| **1563-1579** | **The actual \"Calls (16):\" summary** | **17** |\n| 1580-1583 | Trailer | 4 |\n\nA consumer (human or AI agent) running `explain` expects to see \"what does this symbol call and what calls it?\" as a primary, scannable summary. Instead they get ~99% source-code dump first and the summary buried at the bottom.\n\n**Why this is a problem.**\n\n1. **AI consumers fail at large outputs.** A 1583-line explain output for a single symbol is ~20 KB. An LLM consuming this for code understanding will either truncate it (losing the summary at the bottom) or burn 5000+ tokens on text that the user could have inferred from `grep`. Either way, the structured signal — the call graph summary — is the LAST thing in the context window, where it gets least attention.\n\n2. **No section navigation.** There are no anchor headers like \"## Callers\" / \"## Callees\" / \"## Calls\". Sections are introduced inline (\"Source for X (path:lines):\", \"Calls (N):\"). A user can't `grep -A 20 \"^## Callees\"` the output.\n\n3. **Source dumps duplicate `--with-source` flag semantics confusingly.** `hypergumbo explain --help` says \"--with-source: Show source code for symbol, callers, and callees (default: enabled)\" and \"--no-source: Omit source code from explain output.\" So the 1583-line behavior is the DEFAULT — source-on by default — which means most invocations will produce this layout. `--no-source` would presumably trim it, but the summary-buried-at-bottom problem persists even without source dumps for symbols with many callers/callees.\n\n**Severity.** Low (UX). Doesn't break correctness, but actively degrades the value of the explain subcommand for AI consumers and for any human comparing it to a `grep -A` invocation.\n\n**Fix proposal — three viable approaches, increasing in scope.**\n\n1. **Reorder: summary first, source last.** Print the \"Calls (N):\" and \"Callers (N):\" summaries at the TOP of the output, immediately after the symbol metadata. Push all source dumps (own, callers, callees) to the bottom. This is a 1-section-reorder change.\n\n2. **Add section anchors.** Prefix each section with a markdown-style heading like `## Callers` / `## Calls` / `## Source`. Add a \"Table of contents\" line at the top listing line numbers. Costs nothing on read, enables grep-navigation.\n\n3. **Make source-on opt-in.** Change `--with-source` default to false. Print a one-liner at the bottom saying \"Run with --with-source to include source dumps.\" Sized for AI agents that consume thousands of explain outputs and rarely want the body text; the few invocations that want source can pass the flag.\n\nRecommended: (1) + (2) together (reorder + headings). (3) is a separate UX-policy decision that affects existing scripts.\n\n**Test gap.** Snapshot test for explain output structure: assert that the \"Calls (N):\" line appears in the top half of the output (line index < total/2).\n\n**Cross-references.**\n\n- `packages/hypergumbo-core/src/hypergumbo_core/cli.py` — `cmd_explain` formatter\n- `WI-nijum-...` (filed round 2) — sibling explain/sketch output-UX nit"  # fb7c
     fields: {}  # fb7c
+- op: update  # 2597
+  at: '2026-05-24T02:52:50Z'  # 2597
+  by: agent  # 2597
+  actor: jgstern_agent  # 2597
+  clock: 2  # 2597
+  nonce: '2597'  # 2597
+  set:  # 2597
+    status: done  # 2597
+- op: discuss  # 62c4
+  at: '2026-05-24T02:52:50Z'  # 62c4
+  by: agent  # 62c4
+  actor: jgstern_agent  # 62c4
+  clock: 3  # 62c4
+  nonce: 62c4  # 62c4
+  message: "Fixed in PR #3885. Deferred all source dumps (queried symbol, caller, callee) to after both 'Called by' and 'Calls' summaries print. Summary line now appears in the top portion of cmd_explain output. Regression test asserts Calls (header) precedes any Source ( block."  # 62c4
+- op: discuss  # d849
+  at: '2026-05-24T03:02:36Z'  # d849
+  by: human  # d849
+  actor: jgstern  # d849
+  clock: 4  # d849
+  nonce: d849  # d849
+  message: "above you wrote \"Deferred all source dumps (queried symbol, caller, callee) to after both 'Called by' and 'Calls' summaries print\" -- what do you mean 'deferred'? Deferred as in you will create a new tracker item, or deferred as in they print out further down the screen?"  # d849
