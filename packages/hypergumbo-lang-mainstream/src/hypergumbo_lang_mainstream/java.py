@@ -1410,6 +1410,17 @@ def _extract_edges(
                     current_class = ".".join(ancestors) if ancestors else None
                     edge_added = False
                     resolved_sym: Symbol | None = None
+                    # WI-sivuk (PR-4 of INV-nilud): hints captured when the
+                    # Site-2 (typed-receiver) or Site-3 (inherited-field-
+                    # receiver) paths are entered. When the call ultimately
+                    # falls through to the final unresolved emit, these are
+                    # threaded into ``make_unresolved_edge`` so the Tier-2
+                    # ``inherited_calls`` linker (PR-5) can resolve typed-
+                    # receiver and inherited-field calls. ``None`` whenever
+                    # the call didn't enter that path.
+                    pr4_receiver_type_hint: str | None = None
+                    pr4_inherited_field_receiver: str | None = None
+                    pr4_enclosing_class_hint: str | None = None
 
                     # Case 1: this.method() or method() - resolve in current class
                     if receiver_name is None or receiver_name == "this":
@@ -1438,30 +1449,38 @@ def _extract_edges(
                                 # here has been lifted into the Tier-2
                                 # ``inherited_calls`` linker
                                 # (``_walk_single_then_interfaces``,
-                                # priority=18). The analyzer now emits
-                                # one unresolved-call edge carrying the
-                                # ``enclosing_class`` hint; the linker
-                                # walks the extends + implements chain
-                                # and emits ``ast_call_inherited`` at
-                                # confidence 0.90.
+                                # priority=18). The analyzer hands off
+                                # by stashing the ``enclosing_class``
+                                # hint for the final unresolved emit
+                                # below; the linker walks the extends
+                                # + implements chain and emits
+                                # ``ast_call_inherited`` at confidence
+                                # 0.90.
                                 #
-                                # ``resolved_sym`` is intentionally left
-                                # None here: the return-type-inference
+                                # ``resolved_sym`` is intentionally
+                                # left None: the return-type-inference
                                 # cascade further below depends on
-                                # ``resolved_sym`` being set during the
-                                # original (analyzer-local) walk and so
-                                # no longer fires for inherited matches.
-                                # That cost is acknowledged in the PR
-                                # description; the bakeoff cohort
-                                # (spring-petclinic, spring-boot,
-                                # chatwoot) will quantify any downstream
-                                # ``ast_call_type_inferred`` shift.
-                                edges.append(make_unresolved_edge(
-                                    "java", current_method.id, method_name,
-                                    node.start_point[0] + 1,
-                                    PASS_ID, run.execution_id,
-                                    enclosing_class=current_class,
-                                ))
+                                # ``resolved_sym`` being set during
+                                # the original (analyzer-local) walk
+                                # and so no longer fires for inherited
+                                # matches. Spring-petclinic / spring-
+                                # boot bakeoff will quantify any
+                                # downstream ``ast_call_type_inferred``
+                                # shift.
+                                #
+                                # WI-sivuk (PR-4 of INV-nilud): the
+                                # original PR-3 emitted a second
+                                # unresolved edge here, but that
+                                # double-counted every bare/``this``
+                                # inherited-call site (the final
+                                # unresolved emit below already fires
+                                # for the same site, and is the only
+                                # one wired up to ``static_imports`` /
+                                # ``wildcard_imports`` for proper
+                                # ``module_hint`` and ``dst_ref``).
+                                # The hint is now threaded through to
+                                # that single emit.
+                                pr4_enclosing_class_hint = current_class
 
                     # Case 2: ClassName.method() - static call
                     elif receiver_name and receiver_name in class_symbols:
@@ -1495,6 +1514,10 @@ def _extract_edges(
                     # Case 3: variable.method() - use type inference
                     elif receiver_name and receiver_name in var_types:
                         type_class_name = var_types[receiver_name]
+                        # WI-sivuk (PR-4): record the inferred type as a
+                        # hint for the unresolved-fallback emit. PR-5's
+                        # linker uses this to walk the type's MRO.
+                        pr4_receiver_type_hint = type_class_name
                         candidate = f"{type_class_name}.{method_name}"
                         lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                         if lookup_result.found and not _is_import_class_mismatch(
@@ -1560,6 +1583,11 @@ def _extract_edges(
                         and class_fields
                         and current_class
                     ):
+                        # WI-sivuk (PR-4): record the receiver name as a
+                        # hint for the unresolved-fallback emit. PR-5's
+                        # linker walks the enclosing-class's parent chain
+                        # to find a field of this name on a known parent.
+                        pr4_inherited_field_receiver = receiver_name
                         parent = class_parents.get(current_class)
                         depth = 0
                         while parent and depth < 10:
@@ -1724,6 +1752,11 @@ def _extract_edges(
                             node.start_point[0] + 1, PASS_ID, run.execution_id,
                             module_hint=module,
                             dst_ref=ext_ref,
+                            enclosing_class=pr4_enclosing_class_hint,
+                            receiver_type_hint=pr4_receiver_type_hint,
+                            inherited_field_receiver=(
+                                pr4_inherited_field_receiver
+                            ),
                         ))
 
         # Object creation: new ClassName()

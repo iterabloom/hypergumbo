@@ -4863,3 +4863,245 @@ public class App {
             f"cfg.name is a local field access, not an imported "
             f"class attribute; got: {[e.dst for e in attr_edges]}"
         )
+
+
+class TestJavaSite2Site3UnresolvedHints:
+    """WI-sivuk (PR-4 of INV-nilud): analyzer threads Site-2/3 hints into
+    the final unresolved emit (``java.py:1647-1727``) so the inherited_calls
+    linker (PR-5) can resolve typed-receiver and inherited-field calls.
+
+    Also covers the WI-dukog (PR-3) follow-up: Case 1's ``else`` branch at
+    ``java.py:1459-1464`` must set ``edge_added = True`` so the final
+    fallback emit doesn't fire a second time for the same call site.
+    """
+
+    def test_case1_else_emits_single_unresolved_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """bare ``method()`` whose name isn't in the current class must
+        emit exactly ONE unresolved edge (with ``enclosing_class`` hint),
+        not two — pre-PR-4 the Case 1 ``else`` branch fell through to the
+        final unresolved emit, double-counting every inherited bare call.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Base.java").write_text("""
+public class Base {
+    protected void helper() {}
+}
+""")
+        (tmp_path / "Sub.java").write_text("""
+public class Sub extends Base {
+    public void run() {
+        helper();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        helper_unresolved = [
+            e for e in result.edges
+            if not e.is_resolved and "helper" in e.dst
+        ]
+        assert len(helper_unresolved) == 1, (
+            f"Expected exactly 1 unresolved edge for bare helper() call "
+            f"(Case 1 else must set edge_added=True). "
+            f"Got {len(helper_unresolved)}: "
+            f"{[(e.dst, e.meta) for e in helper_unresolved]}"
+        )
+        assert helper_unresolved[0].meta == {"enclosing_class": "Sub"}
+
+    def test_this_else_emits_single_unresolved_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """``this.method()`` whose name isn't in the current class must
+        emit exactly ONE unresolved edge with ``enclosing_class`` hint."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Base.java").write_text("""
+public class Base {
+    protected void format(Object o) {}
+}
+""")
+        (tmp_path / "Sub.java").write_text("""
+public class Sub extends Base {
+    public void run() {
+        this.format(null);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        fmt_unresolved = [
+            e for e in result.edges
+            if not e.is_resolved and "format" in e.dst
+        ]
+        assert len(fmt_unresolved) == 1, (
+            f"Expected exactly 1 unresolved edge for this.format() call. "
+            f"Got {len(fmt_unresolved)}: "
+            f"{[(e.dst, e.meta) for e in fmt_unresolved]}"
+        )
+        assert fmt_unresolved[0].meta == {"enclosing_class": "Sub"}
+
+    def test_site2_unresolved_carries_receiver_type_hint(
+        self, tmp_path: Path,
+    ) -> None:
+        """``var.method()`` where var's type isn't a project symbol must
+        emit an unresolved edge with ``receiver_type_hint`` meta set to
+        the inferred type's short name."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # InputStream is not a project symbol — neither in class_symbols
+        # nor resolvable as InputStream.read. Parameter type captures
+        # the simple name into ``var_types``.
+        (tmp_path / "Reader.java").write_text("""
+public class Reader {
+    public void process(InputStream stream) {
+        stream.read();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        read_unresolved = [
+            e for e in result.edges
+            if not e.is_resolved and "stream.read" in e.dst
+        ]
+        assert len(read_unresolved) == 1, (
+            f"Expected exactly 1 unresolved edge for stream.read(). "
+            f"Got {len(read_unresolved)}: "
+            f"{[(e.dst, e.meta) for e in read_unresolved]}"
+        )
+        assert read_unresolved[0].meta is not None
+        assert read_unresolved[0].meta.get("receiver_type_hint") == (
+            "InputStream"
+        ), (
+            f"Expected receiver_type_hint=InputStream on unresolved "
+            f"stream.read() edge. Got meta={read_unresolved[0].meta}"
+        )
+
+    def test_site2_resolved_fallback_unchanged(
+        self, tmp_path: Path,
+    ) -> None:
+        """When ``var.method()`` resolves via the class_symbols fallback
+        (existing ``ast_call_inherited_method`` path), the edge resolves
+        to the type's class symbol — PR-4 must not break this."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "OwnerRepository.java").write_text("""
+public interface OwnerRepository {
+    Owner findByLastName(String lastName);
+}
+""")
+        (tmp_path / "OwnerController.java").write_text("""
+public class OwnerController {
+    private OwnerRepository owners;
+
+    public void processCreation(Owner owner) {
+        this.owners.save(owner);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        repo_iface = next(
+            (s for s in result.symbols
+             if s.name == "OwnerRepository" and s.kind == "interface"),
+            None,
+        )
+        assert repo_iface is not None
+
+        # Existing ast_call_inherited_method edge to the interface
+        # symbol must still be present.
+        inherited_method_edges = [
+            e for e in result.edges
+            if e.evidence_type == "ast_call_inherited_method"
+            and e.dst == repo_iface.id
+        ]
+        assert len(inherited_method_edges) == 1
+
+    def test_site3_unresolved_carries_inherited_field_receiver(
+        self, tmp_path: Path,
+    ) -> None:
+        """``field.method()`` where ``field`` is not in var_types nor in
+        class_symbols and the analyzer's parent walk doesn't find it on
+        any known parent — must still emit an unresolved edge with
+        ``inherited_field_receiver`` meta set to the receiver name."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # ``log`` looks like an inherited field, but no parent class
+        # declaring it exists in the project. Class_fields contains
+        # MyService's empty field set; current_class is set; receiver
+        # is not in var_types or class_symbols.
+        (tmp_path / "Parent.java").write_text("""
+public class Parent {
+    protected String otherField;
+}
+""")
+        (tmp_path / "MyService.java").write_text("""
+public class MyService extends Parent {
+    public void doWork() {
+        log.info("hello");
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        log_unresolved = [
+            e for e in result.edges
+            if not e.is_resolved and "log.info" in e.dst
+        ]
+        assert len(log_unresolved) == 1, (
+            f"Expected exactly 1 unresolved edge for log.info(). "
+            f"Got {len(log_unresolved)}: "
+            f"{[(e.dst, e.meta) for e in log_unresolved]}"
+        )
+        assert log_unresolved[0].meta is not None
+        assert log_unresolved[0].meta.get("inherited_field_receiver") == (
+            "log"
+        ), (
+            f"Expected inherited_field_receiver=log on unresolved "
+            f"log.info() edge. Got meta={log_unresolved[0].meta}"
+        )
+
+    def test_case4_unresolved_has_no_site_hints(
+        self, tmp_path: Path,
+    ) -> None:
+        """When the call goes through Case 4 (imported receiver, not
+        Site 2 nor Site 3), the unresolved edge must NOT carry
+        ``receiver_type_hint`` or ``inherited_field_receiver``."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # ``Arrays.asList(...)`` — receiver_name=Arrays is not in
+        # var_types (no Arrays variable declared) and not in
+        # class_symbols (Arrays isn't a project class). Goes to Case 4.
+        (tmp_path / "App.java").write_text("""
+import java.util.Arrays;
+public class App {
+    public void run() {
+        Arrays.asList(1, 2, 3);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        arr_unresolved = [
+            e for e in result.edges
+            if not e.is_resolved and "Arrays.asList" in e.dst
+        ]
+        assert len(arr_unresolved) == 1
+        meta = arr_unresolved[0].meta or {}
+        assert "receiver_type_hint" not in meta, (
+            f"Case 4 fallback must not carry receiver_type_hint; "
+            f"got meta={meta}"
+        )
+        assert "inherited_field_receiver" not in meta, (
+            f"Case 4 fallback must not carry inherited_field_receiver; "
+            f"got meta={meta}"
+        )
