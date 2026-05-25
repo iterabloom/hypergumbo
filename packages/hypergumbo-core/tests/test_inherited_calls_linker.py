@@ -19,6 +19,7 @@ from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers.inherited_calls import (
     _MRO_WALKERS,
     _walk_insertion_order,
+    _walk_single_then_interfaces,
     link_inherited_calls,
 )
 from hypergumbo_core.linkers.registry import LinkerContext
@@ -119,7 +120,7 @@ class TestWalkInsertionOrder:
         )
         result = _walk_insertion_order(
             start_class_id=child.id, callee_short_name="save",
-            inheritance_index={child.id: [parent.id]},
+            inheritance_index={child.id: [(parent.id, "extends")]},
             method_index=idx, depth_cap=10,
         )
         assert result is not None and result.id == parent_save.id
@@ -139,7 +140,10 @@ class TestWalkInsertionOrder:
         )
         result = _walk_insertion_order(
             start_class_id=c.id, callee_short_name="initialize",
-            inheritance_index={c.id: [b.id], b.id: [a.id]},
+            inheritance_index={
+                c.id: [(b.id, "extends")],
+                b.id: [(a.id, "extends")],
+            },
             method_index=idx, depth_cap=10,
         )
         assert result is not None and result.id == a_init.id
@@ -156,7 +160,8 @@ class TestWalkInsertionOrder:
         )
         result = _walk_insertion_order(
             start_class_id=b.id, callee_short_name="missing",
-            inheritance_index={b.id: [a.id]}, method_index=idx, depth_cap=10,
+            inheritance_index={b.id: [(a.id, "extends")]},
+            method_index=idx, depth_cap=10,
         )
         assert result is None
 
@@ -187,7 +192,9 @@ class TestWalkInsertionOrder:
         result = _walk_insertion_order(
             start_class_id=email_worker.id,
             callee_short_name="perform_async",
-            inheritance_index={email_worker.id: [sidekiq_worker.id]},
+            inheritance_index={
+                email_worker.id: [(sidekiq_worker.id, "includes")],
+            },
             method_index=idx, depth_cap=10,
         )
         assert result is not None and result.id == worker_perform_async.id
@@ -205,8 +212,8 @@ class TestWalkInsertionOrder:
             class_symbols={c.id: c for c in classes},
         )
         # C0 -> C1 -> ... -> C19 chain.
-        inheritance: dict[str, list[str]] = {
-            classes[i].id: [classes[i + 1].id] for i in range(19)
+        inheritance: dict[str, list[tuple[str, str]]] = {
+            classes[i].id: [(classes[i + 1].id, "extends")] for i in range(19)
         }
         capped = _walk_insertion_order(
             start_class_id=classes[0].id, callee_short_name="bar",
@@ -234,7 +241,230 @@ class TestWalkInsertionOrder:
         # A->B->A cycle, no method anywhere.
         result = _walk_insertion_order(
             start_class_id=a.id, callee_short_name="missing",
-            inheritance_index={a.id: [b.id], b.id: [a.id]},
+            inheritance_index={
+                a.id: [(b.id, "extends")],
+                b.id: [(a.id, "extends")],
+            },
+            method_index=idx, depth_cap=10,
+        )
+        assert result is None
+
+
+class TestWalkSingleThenInterfaces:
+    """BFS walk prioritizing extends parents over implements/includes
+    (Java/Kotlin/C#/Scala-class MRO).
+    """
+
+    def test_direct_method_match_on_starting_class(self) -> None:
+        """If the starting class itself has the method, return it immediately."""
+        from hypergumbo_core.linkers.type_hierarchy import build_method_index
+
+        foo = _cls("sym:Foo", "Foo", path="/Foo.java", language="java")
+        foo_bar = _method(
+            "sym:Foo.bar", "Foo.bar", path="/Foo.java", language="java",
+        )
+        idx = build_method_index(
+            [foo, foo_bar],
+            class_ids_by_name={"Foo": [foo.id]},
+            class_symbols={foo.id: foo},
+        )
+        result = _walk_single_then_interfaces(
+            start_class_id=foo.id, callee_short_name="bar",
+            inheritance_index={}, method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == foo_bar.id
+
+    def test_walks_extends_chain_to_grandparent(self) -> None:
+        """Method on a 2-hop extends ancestor resolves."""
+        from hypergumbo_core.linkers.type_hierarchy import build_method_index
+
+        base = _cls("sym:Base", "Base", path="/Base.java", language="java")
+        base_validate = _method(
+            "sym:Base.validate", "Base.validate",
+            path="/Base.java", language="java",
+        )
+        middle = _cls(
+            "sym:Middle", "Middle", path="/Middle.java", language="java",
+        )
+        child = _cls(
+            "sym:Child", "Child", path="/Child.java", language="java",
+        )
+        idx = build_method_index(
+            [base, base_validate, middle, child],
+            class_ids_by_name={
+                "Base": [base.id], "Middle": [middle.id],
+                "Child": [child.id],
+            },
+            class_symbols={
+                base.id: base, middle.id: middle, child.id: child,
+            },
+        )
+        result = _walk_single_then_interfaces(
+            start_class_id=child.id, callee_short_name="validate",
+            inheritance_index={
+                child.id: [(middle.id, "extends")],
+                middle.id: [(base.id, "extends")],
+            },
+            method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == base_validate.id
+
+    def test_extends_parent_preferred_over_interface(self) -> None:
+        """When both the extends-parent AND an implemented interface have
+        the method, the extends-parent wins (Java's single-superclass MRO).
+        """
+        from hypergumbo_core.linkers.type_hierarchy import build_method_index
+
+        # Two ancestors of Child, both define `run`. Child extends Parent,
+        # implements Iface. Parent wins.
+        parent = _cls(
+            "sym:Parent", "Parent", path="/Parent.java", language="java",
+        )
+        parent_run = _method(
+            "sym:Parent.run", "Parent.run",
+            path="/Parent.java", language="java",
+        )
+        iface = _cls(
+            "sym:Iface", "Iface", path="/Iface.java", language="java",
+        )
+        iface_run = _method(
+            "sym:Iface.run", "Iface.run",
+            path="/Iface.java", language="java",
+        )
+        child = _cls(
+            "sym:Child", "Child", path="/Child.java", language="java",
+        )
+        idx = build_method_index(
+            [parent, parent_run, iface, iface_run, child],
+            class_ids_by_name={
+                "Parent": [parent.id], "Iface": [iface.id],
+                "Child": [child.id],
+            },
+            class_symbols={
+                parent.id: parent, iface.id: iface, child.id: child,
+            },
+        )
+        # implements listed first in the index (out of declaration order).
+        # The walker must still pick extends-parent's method.
+        result = _walk_single_then_interfaces(
+            start_class_id=child.id, callee_short_name="run",
+            inheritance_index={
+                child.id: [
+                    (iface.id, "implements"),
+                    (parent.id, "extends"),
+                ],
+            },
+            method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == parent_run.id
+
+    def test_falls_through_to_interface_when_extends_chain_lacks_method(
+        self,
+    ) -> None:
+        """If the extends chain doesn't define the method but an interface
+        does (Java 8+ default methods), the interface method resolves.
+        """
+        from hypergumbo_core.linkers.type_hierarchy import build_method_index
+
+        parent = _cls(
+            "sym:Parent", "Parent", path="/Parent.java", language="java",
+        )
+        iface = _cls(
+            "sym:Iface", "Iface", path="/Iface.java", language="java",
+        )
+        iface_default = _method(
+            "sym:Iface.greet", "Iface.greet",
+            path="/Iface.java", language="java",
+        )
+        child = _cls(
+            "sym:Child", "Child", path="/Child.java", language="java",
+        )
+        idx = build_method_index(
+            [parent, iface, iface_default, child],
+            class_ids_by_name={
+                "Parent": [parent.id], "Iface": [iface.id],
+                "Child": [child.id],
+            },
+            class_symbols={
+                parent.id: parent, iface.id: iface, child.id: child,
+            },
+        )
+        result = _walk_single_then_interfaces(
+            start_class_id=child.id, callee_short_name="greet",
+            inheritance_index={
+                child.id: [
+                    (parent.id, "extends"),
+                    (iface.id, "implements"),
+                ],
+            },
+            method_index=idx, depth_cap=10,
+        )
+        assert result is not None and result.id == iface_default.id
+
+    def test_returns_none_when_no_ancestor_defines_method(self) -> None:
+        from hypergumbo_core.linkers.type_hierarchy import build_method_index
+
+        a = _cls("sym:A", "A", path="/A.java", language="java")
+        b = _cls("sym:B", "B", path="/B.java", language="java")
+        idx = build_method_index(
+            [a, b],
+            class_ids_by_name={"A": [a.id], "B": [b.id]},
+            class_symbols={a.id: a, b.id: b},
+        )
+        result = _walk_single_then_interfaces(
+            start_class_id=b.id, callee_short_name="missing",
+            inheritance_index={b.id: [(a.id, "extends")]},
+            method_index=idx, depth_cap=10,
+        )
+        assert result is None
+
+    def test_depth_cap_stops_runaway_walk(self) -> None:
+        """A long chain past the depth cap returns None even if a match exists."""
+        from hypergumbo_core.linkers.type_hierarchy import build_method_index
+
+        classes: list[Symbol] = [
+            _cls(f"sym:C{i}", f"C{i}", path=f"/C{i}.java", language="java")
+            for i in range(20)
+        ]
+        m = _method(
+            f"sym:C{19}.bar", "C19.bar", path="/C19.java", language="java",
+        )
+        idx = build_method_index(
+            classes + [m],
+            class_ids_by_name={c.name: [c.id] for c in classes},
+            class_symbols={c.id: c for c in classes},
+        )
+        inheritance: dict[str, list[tuple[str, str]]] = {
+            classes[i].id: [(classes[i + 1].id, "extends")] for i in range(19)
+        }
+        capped = _walk_single_then_interfaces(
+            start_class_id=classes[0].id, callee_short_name="bar",
+            inheritance_index=inheritance, method_index=idx, depth_cap=5,
+        )
+        assert capped is None
+        uncapped = _walk_single_then_interfaces(
+            start_class_id=classes[0].id, callee_short_name="bar",
+            inheritance_index=inheritance, method_index=idx, depth_cap=25,
+        )
+        assert uncapped is not None and uncapped.id == m.id
+
+    def test_cycle_protection(self) -> None:
+        """A cyclic inheritance index doesn't infinite-loop."""
+        from hypergumbo_core.linkers.type_hierarchy import build_method_index
+
+        a = _cls("sym:A", "A", path="/A.java", language="java")
+        b = _cls("sym:B", "B", path="/B.java", language="java")
+        idx = build_method_index(
+            [a, b],
+            class_ids_by_name={"A": [a.id], "B": [b.id]},
+            class_symbols={a.id: a, b.id: b},
+        )
+        result = _walk_single_then_interfaces(
+            start_class_id=a.id, callee_short_name="missing",
+            inheritance_index={
+                a.id: [(b.id, "extends")],
+                b.id: [(a.id, "extends")],
+            },
             method_index=idx, depth_cap=10,
         )
         assert result is None
@@ -248,6 +478,9 @@ class TestMROWalkerRegistry:
 
     def test_groovy_resolves_to_insertion_order(self) -> None:
         assert _MRO_WALKERS["groovy"] is _walk_insertion_order
+
+    def test_java_resolves_to_single_then_interfaces(self) -> None:
+        assert _MRO_WALKERS["java"] is _walk_single_then_interfaces
 
 
 # ---------------------------------------------------------------------------
@@ -351,17 +584,17 @@ class TestEndToEndInheritedCalls:
         assert result.edges == []
 
     def test_no_op_for_unregistered_language(self) -> None:
-        """PR-2 only registers Ruby/Groovy walkers; Java edges are untouched."""
-        # Java analyzer is not modified in PR-2, but a hypothetical hint
-        # would still be skipped because no java walker is registered yet.
-        a = _cls("sym:A", "A", language="java")
-        a_init = _method("sym:A.foo", "A.foo", language="java")
-        b = _cls("sym:B", "B", language="java")
-        caller = _caller(sid="sym:Caller.bar", language="java")
+        """Languages without an MRO walker are silently skipped. PR-3
+        registers ``java``, so this test uses ``python`` (not yet
+        registered) to exercise the ``walker is None`` branch."""
+        a = _cls("sym:A", "A", language="python")
+        a_init = _method("sym:A.foo", "A.foo", language="python")
+        b = _cls("sym:B", "B", language="python")
+        caller = _caller(sid="sym:Caller.bar", language="python")
         extends = _edge(b.id, a.id, "extends")
         from hypergumbo_core.analyze.base import make_unresolved_edge
         unresolved = make_unresolved_edge(
-            lang="java", src_id=caller.id, callee_name="foo",
+            lang="python", src_id=caller.id, callee_name="foo",
             line=1, pass_id="test", run_id="test",
             enclosing_class="B",
         )
@@ -370,8 +603,72 @@ class TestEndToEndInheritedCalls:
             symbols=[a, a_init, b, caller], edges=[extends, unresolved],
         )
         result = link_inherited_calls(ctx)
-        # PR-2 scope: no java walker yet → no edge.
         assert result.edges == []
+
+    def test_resolves_java_unresolved_call_via_extends_chain(self) -> None:
+        """PR-3: Java analyzer emits make_unresolved_edge(...,
+        enclosing_class=<owner>); linker walks extends chain and emits
+        ast_call_inherited at confidence 0.90."""
+        a = _cls("sym:A", "A", language="java")
+        a_foo = _method("sym:A.foo", "A.foo", language="java")
+        b = _cls("sym:B", "B", language="java")
+        caller = _caller(sid="sym:Caller.bar", language="java")
+        extends = _edge(b.id, a.id, "extends")
+        from hypergumbo_core.analyze.base import make_unresolved_edge
+        unresolved = make_unresolved_edge(
+            lang="java", src_id=caller.id, callee_name="foo",
+            line=12, pass_id="test", run_id="test",
+            enclosing_class="B",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[a, a_foo, b, caller], edges=[extends, unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [
+            e for e in result.edges
+            if e.src == caller.id and e.dst == a_foo.id
+        ]
+        assert len(resolved) == 1
+        assert resolved[0].evidence_type == "ast_call_inherited"
+        assert resolved[0].confidence == 0.90
+        assert resolved[0].line == 12
+
+    def test_resolves_java_through_implements_when_extends_chain_lacks_method(
+        self,
+    ) -> None:
+        """PR-3 enhancement: with Java 8+ default methods, an interface
+        method should resolve via implements when the extends chain has
+        no match. This goes beyond the old in-analyzer walk which only
+        followed extends.
+        """
+        parent = _cls("sym:Parent", "Parent", language="java")
+        iface = _cls("sym:Iface", "Iface", language="java")
+        iface_greet = _method("sym:Iface.greet", "Iface.greet", language="java")
+        child = _cls("sym:Child", "Child", language="java")
+        caller = _caller(sid="sym:Child.bar", language="java")
+        extends_child_parent = _edge(child.id, parent.id, "extends")
+        implements_child_iface = _edge(child.id, iface.id, "implements")
+        from hypergumbo_core.analyze.base import make_unresolved_edge
+        unresolved = make_unresolved_edge(
+            lang="java", src_id=caller.id, callee_name="greet",
+            line=5, pass_id="test", run_id="test",
+            enclosing_class="Child",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[parent, iface, iface_greet, child, caller],
+            edges=[
+                extends_child_parent, implements_child_iface, unresolved,
+            ],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [
+            e for e in result.edges
+            if e.src == caller.id and e.dst == iface_greet.id
+        ]
+        assert len(resolved) == 1
+        assert resolved[0].evidence_type == "ast_call_inherited"
 
     def test_does_not_duplicate_existing_resolved_edge(self) -> None:
         """If a direct resolved edge to the same target already exists,

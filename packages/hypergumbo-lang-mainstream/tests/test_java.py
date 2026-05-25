@@ -7,6 +7,37 @@ from unittest.mock import patch, MagicMock
 from hypergumbo_lang_mainstream import java as java_module
 
 
+def _run_inherited_calls_pipeline(analyzer_result):
+    """Run inheritance + inherited_calls linkers on top of analyzer output.
+
+    WI-dukog (PR-3 of INV-nilud): the Java analyzer's Site-1 walk
+    (bare / ``this.method()`` ancestor traversal at ``java.py:1437-1461``)
+    was lifted into the ``inherited_calls`` Tier-2 linker
+    (``_walk_single_then_interfaces`` walker). Tests that previously
+    asserted ``ast_call_inherited`` edges directly from ``analyze_java``
+    output now compose the linker stack to recover them. Mirrors the
+    Ruby helper added in PR-2 (``test_ruby.py``).
+    """
+    from hypergumbo_core.linkers.inheritance import link_inheritance
+    from hypergumbo_core.linkers.inherited_calls import link_inherited_calls
+    from hypergumbo_core.linkers.registry import LinkerContext
+
+    inh_ctx = LinkerContext(
+        repo_root=Path("/"),
+        symbols=analyzer_result.symbols,
+        edges=analyzer_result.edges,
+    )
+    inh_result = link_inheritance(inh_ctx)
+    combined = list(analyzer_result.edges) + list(inh_result.edges)
+    call_ctx = LinkerContext(
+        repo_root=Path("/"),
+        symbols=analyzer_result.symbols,
+        edges=combined,
+    )
+    call_result = link_inherited_calls(call_ctx)
+    return combined + list(call_result.edges)
+
+
 class TestFindJavaFiles:
     """Tests for Java file discovery."""
 
@@ -4296,8 +4327,14 @@ class TestJavaInheritedMethodResolution:
     """Tests for resolving inherited method calls via this.method() or bare method().
 
     When a class extends a parent and calls a method defined in the parent
-    (not overridden in the child), Case 1 of _extract_edges should walk
-    up the extends chain to find the method in the parent class.
+    (not overridden in the child), the call must resolve to the parent's
+    method. PR-3 of INV-nilud (WI-dukog) lifted this walk from the Java
+    analyzer (formerly ``java.py:1437-1461``) into the Tier-2
+    ``inherited_calls`` linker (``_walk_single_then_interfaces``). The
+    four Site-1 tests here drive the analyzer + the linker stack via the
+    module-level ``_run_inherited_calls_pipeline`` helper. The Site-3
+    (inherited field) tests below still call ``analyze_java`` directly —
+    they will be migrated when PR-5 lifts Site 3.
     """
 
     def test_bare_call_to_parent_method_resolves(self, tmp_path: Path) -> None:
@@ -4320,6 +4357,7 @@ public class AccountResource extends BaseResource {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         create_method = next(
             (s for s in result.symbols if "createAccount" in s.name), None
@@ -4333,16 +4371,17 @@ public class AccountResource extends BaseResource {
 
         # Should have a call edge from createAccount to verifyNonNull
         call_edges = [
-            e for e in result.edges
+            e for e in all_edges
             if e.src == create_method.id
             and e.dst == verify_method.id
             and e.edge_type == "calls"
+            and e.is_resolved
         ]
         assert len(call_edges) == 1, (
             f"Expected edge from createAccount to verifyNonNull (inherited), "
             f"got {len(call_edges)}. "
             f"All edges from createAccount: "
-            f"{[(e.edge_type, e.dst, e.evidence_type) for e in result.edges if e.src == create_method.id]}"
+            f"{[(e.edge_type, e.dst, e.evidence_type) for e in all_edges if e.src == create_method.id]}"
         )
         assert call_edges[0].evidence_type == "ast_call_inherited"
         assert call_edges[0].confidence <= 0.90  # Slightly lower than direct
@@ -4367,6 +4406,7 @@ public class UserController extends BaseController {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         get_user = next(
             (s for s in result.symbols if "getUser" in s.name), None
@@ -4379,16 +4419,17 @@ public class UserController extends BaseController {
         assert format_resp is not None
 
         call_edges = [
-            e for e in result.edges
+            e for e in all_edges
             if e.src == get_user.id
             and e.dst == format_resp.id
             and e.edge_type == "calls"
+            and e.is_resolved
         ]
         assert len(call_edges) == 1, (
             f"Expected edge from getUser to formatResponse (inherited), "
             f"got {len(call_edges)}. "
             f"All edges: "
-            f"{[(e.edge_type, e.dst, e.evidence_type) for e in result.edges if e.src == get_user.id]}"
+            f"{[(e.edge_type, e.dst, e.evidence_type) for e in all_edges if e.src == get_user.id]}"
         )
 
     def test_grandparent_method_resolves(self, tmp_path: Path) -> None:
@@ -4414,6 +4455,7 @@ public class Child extends Middle {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         process_method = next(
             (s for s in result.symbols if "process" in s.name), None
@@ -4426,10 +4468,11 @@ public class Child extends Middle {
         assert validate_method is not None
 
         call_edges = [
-            e for e in result.edges
+            e for e in all_edges
             if e.src == process_method.id
             and e.dst == validate_method.id
             and e.edge_type == "calls"
+            and e.is_resolved
         ]
         assert len(call_edges) == 1, (
             "Expected edge from process to validate (inherited from grandparent)"
@@ -4454,6 +4497,7 @@ public class Child extends Parent {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         run_method = next(
             (s for s in result.symbols if "run" in s.name), None
@@ -4467,10 +4511,11 @@ public class Child extends Parent {
         assert child_dowork is not None
 
         call_edges = [
-            e for e in result.edges
+            e for e in all_edges
             if e.src == run_method.id
             and e.dst == child_dowork.id
             and e.edge_type == "calls"
+            and e.is_resolved
         ]
         # Should resolve to Child.doWork (direct), not Parent.doWork
         assert len(call_edges) == 1

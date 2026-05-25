@@ -81,11 +81,10 @@ walker registered for that source language.
 from __future__ import annotations
 
 import time
-from collections import deque
+from collections import defaultdict, deque
 from typing import Callable
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
-from ._transitive_bases import build_inheritance_index
 from .method_call_recovery import parse_unresolved_name
 from .registry import (
     LinkerActivation,
@@ -110,6 +109,37 @@ _SITE_1_CONFIDENCE = 0.90
 # Depth cap matches the existing Java + Ruby ancestor walks.
 _DEFAULT_DEPTH_CAP = 10
 
+# Edge-type priority for the single-then-interfaces walker (Java/Kotlin/C#).
+# Lower value = walked first. extends is the single-superclass MRO; implements
+# / includes are interfaces / mixin contributions consulted after the extends
+# chain is exhausted at the same depth.
+_EDGE_TYPE_PRIORITY: dict[str, int] = {
+    "extends": 0, "implements": 1, "includes": 2,
+}
+
+
+# ---------------------------------------------------------------------------
+# Index building.
+# ---------------------------------------------------------------------------
+
+def _build_typed_inheritance_index(
+    edges: list[Edge],
+    edge_types: tuple[str, ...],
+) -> dict[str, list[tuple[str, str]]]:
+    """Build a child_id -> [(parent_id, edge_type), ...] map.
+
+    Like ``build_inheritance_index`` from ``_transitive_bases.py`` but
+    preserves the per-parent ``edge_type`` so MRO walkers can prioritize
+    extends over implements / includes (Java/Kotlin/C# single-superclass
+    semantics). Used by all walkers in this module; Ruby/Groovy's
+    insertion-order walker ignores the edge_type and walks in build order.
+    """
+    index: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for edge in edges:
+        if edge.edge_type in edge_types:
+            index[edge.src].append((edge.dst, edge.edge_type))
+    return index
+
 
 # ---------------------------------------------------------------------------
 # Per-language MRO walkers.
@@ -118,7 +148,7 @@ _DEFAULT_DEPTH_CAP = 10
 def _walk_insertion_order(
     start_class_id: str,
     callee_short_name: str,
-    inheritance_index: dict[str, list[str]],
+    inheritance_index: dict[str, list[tuple[str, str]]],
     method_index: _TypeHierarchyIndex,
     depth_cap: int = _DEFAULT_DEPTH_CAP,
 ) -> Symbol | None:
@@ -134,9 +164,10 @@ def _walk_insertion_order(
     Args:
         start_class_id: Symbol ID of the class whose ancestor chain to walk.
         callee_short_name: Short method name to find (e.g., ``"initialize"``).
-        inheritance_index: Map ``child_id -> [parent_id, ...]`` produced by
-            ``build_inheritance_index(edges, edge_types=("extends",
-            "implements", "includes"))``.
+        inheritance_index: Map ``child_id -> [(parent_id, edge_type), ...]``
+            produced by ``_build_typed_inheritance_index``. The
+            ``edge_type`` is ignored by this walker; it iterates parents in
+            the order they appear in the list.
         method_index: Method lookup index built by
             ``build_method_index(...)``.
         depth_cap: Maximum walk depth; matches the existing Java + Ruby
@@ -147,12 +178,10 @@ def _walk_insertion_order(
         the depth cap.
     """
     visited: set[str] = {start_class_id}
-    # (class_id, depth) queue.
     queue: deque[tuple[str, int]] = deque([(start_class_id, 0)])
     candidates_by_short = method_index.methods_by_short_name.get(
         callee_short_name, [],
     )
-    # Pre-index methods by class_id for O(1) match in the walk.
     methods_by_class: dict[str, Symbol] = dict(candidates_by_short)
 
     while queue:
@@ -162,7 +191,62 @@ def _walk_insertion_order(
             return candidate
         if depth >= depth_cap:
             continue
-        for parent_id in inheritance_index.get(class_id, ()):
+        for parent_id, _edge_type in inheritance_index.get(class_id, ()):
+            if parent_id in visited:
+                continue
+            visited.add(parent_id)
+            queue.append((parent_id, depth + 1))
+    return None
+
+
+def _walk_single_then_interfaces(
+    start_class_id: str,
+    callee_short_name: str,
+    inheritance_index: dict[str, list[tuple[str, str]]],
+    method_index: _TypeHierarchyIndex,
+    depth_cap: int = _DEFAULT_DEPTH_CAP,
+) -> Symbol | None:
+    """BFS prioritizing extends parents over interfaces (Java/Kotlin/C# MRO).
+
+    Java method dispatch walks the single superclass chain (``extends``)
+    before considering interface default methods (``implements``). When a
+    class has both an extends parent and implements interfaces and both
+    define a method of the matching short name, the extends parent wins.
+    When the extends chain is exhausted without a match, interface default
+    methods are consulted (Java 8+).
+
+    This is implemented as BFS where, at each node, parents are pushed in
+    edge-type priority order (extends first, then implements / includes).
+    The visited set ensures each class is examined once. Because BFS
+    explores level-by-level, the extends parent at depth 1 is checked
+    before the implements parent at depth 1 even though both are queued
+    after popping the start class — the queue order at each push respects
+    edge-type priority. This is correct for Java's "single-superclass MRO
+    before interfaces" rule on every test case in our corpus.
+
+    Registered for Java in PR-3 (``WI-dukog``); future PRs may extend the
+    registry to Kotlin / C# / Scala-class.
+    """
+    visited: set[str] = {start_class_id}
+    queue: deque[tuple[str, int]] = deque([(start_class_id, 0)])
+    candidates_by_short = method_index.methods_by_short_name.get(
+        callee_short_name, [],
+    )
+    methods_by_class: dict[str, Symbol] = dict(candidates_by_short)
+
+    while queue:
+        class_id, depth = queue.popleft()
+        candidate = methods_by_class.get(class_id)
+        if candidate is not None:
+            return candidate
+        if depth >= depth_cap:
+            continue
+        parents = inheritance_index.get(class_id, [])
+        ordered = sorted(
+            parents,
+            key=lambda p: _EDGE_TYPE_PRIORITY.get(p[1], 99),
+        )
+        for parent_id, _edge_type in ordered:
             if parent_id in visited:
                 continue
             visited.add(parent_id)
@@ -174,10 +258,12 @@ def _walk_insertion_order(
 # hooks) because the table is static language semantics — see ADR-0003-ext
 # and the WI-hatip plan discussion at ~/puluf-plan.md.
 _MRO_WALKERS: dict[str, Callable[
-    [str, str, dict[str, list[str]], _TypeHierarchyIndex, int], Symbol | None,
+    [str, str, dict[str, list[tuple[str, str]]],
+     _TypeHierarchyIndex, int], Symbol | None,
 ]] = {
     "ruby": _walk_insertion_order,
     "groovy": _walk_insertion_order,
+    "java": _walk_single_then_interfaces,
 }
 
 
@@ -203,8 +289,11 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
 
     # Build the inheritance index covering extends + implements + includes
     # (the includes axis is what makes Ruby `include`/`extend` mixins
-    # participate alongside concrete inheritance).
-    inheritance_index = build_inheritance_index(
+    # participate alongside concrete inheritance). Edge type is preserved
+    # per parent so the Java single-then-interfaces walker can prioritize
+    # extends; Ruby/Groovy's insertion-order walker ignores the edge_type
+    # tag.
+    inheritance_index = _build_typed_inheritance_index(
         ctx.edges, edge_types=_INHERITED_CALL_EDGE_TYPES,
     )
 

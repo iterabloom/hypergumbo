@@ -1433,32 +1433,35 @@ def _extract_edges(
                                 edge_added = True
                                 resolved_sym = lookup_result.symbol
                             else:
-                                # Walk extends chain to find inherited method
-                                parent = class_parents.get(current_class)
-                                depth = 0
-                                while parent and depth < 10:
-                                    candidate = f"{parent}.{method_name}"
-                                    lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
-                                    if lookup_result.found:
-                                        edge_confidence = (
-                                            0.90 * lookup_result.confidence
-                                        )
-                                        edge = Edge.create(
-                                            src=current_method.id,
-                                            dst=lookup_result.symbol.id,
-                                            edge_type="calls",
-                                            line=node.start_point[0] + 1,
-                                            confidence=edge_confidence,
-                                            origin=PASS_ID,
-                                            origin_run_id=run.execution_id,
-                                            evidence_type="ast_call_inherited",
-                                        )
-                                        edges.append(edge)
-                                        edge_added = True
-                                        resolved_sym = lookup_result.symbol
-                                        break
-                                    parent = class_parents.get(parent)
-                                    depth += 1
+                                # WI-dukog (PR-3 of INV-nilud): the
+                                # extends-chain walk that used to live
+                                # here has been lifted into the Tier-2
+                                # ``inherited_calls`` linker
+                                # (``_walk_single_then_interfaces``,
+                                # priority=18). The analyzer now emits
+                                # one unresolved-call edge carrying the
+                                # ``enclosing_class`` hint; the linker
+                                # walks the extends + implements chain
+                                # and emits ``ast_call_inherited`` at
+                                # confidence 0.90.
+                                #
+                                # ``resolved_sym`` is intentionally left
+                                # None here: the return-type-inference
+                                # cascade further below depends on
+                                # ``resolved_sym`` being set during the
+                                # original (analyzer-local) walk and so
+                                # no longer fires for inherited matches.
+                                # That cost is acknowledged in the PR
+                                # description; the bakeoff cohort
+                                # (spring-petclinic, spring-boot,
+                                # chatwoot) will quantify any downstream
+                                # ``ast_call_type_inferred`` shift.
+                                edges.append(make_unresolved_edge(
+                                    "java", current_method.id, method_name,
+                                    node.start_point[0] + 1,
+                                    PASS_ID, run.execution_id,
+                                    enclosing_class=current_class,
+                                ))
 
                     # Case 2: ClassName.method() - static call
                     elif receiver_name and receiver_name in class_symbols:
