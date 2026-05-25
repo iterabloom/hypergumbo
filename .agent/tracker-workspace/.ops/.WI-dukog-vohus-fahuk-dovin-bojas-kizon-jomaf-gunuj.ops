@@ -19,3 +19,34 @@
     pr_ref:  # 359c
     description: "PR-3 of the inherited_calls campaign (parent META INV-nilud). Add `_walk_single_then_interfaces` walker to `linkers/inherited_calls.py`. Switch Java bare/`this` calls (`java.py:1437-1461`) to `make_unresolved_edge(..., enclosing_class=<owner>)`. Delete the Site-1 walk from `java.py`. Migrate `TestJavaInheritedMethodResolution` (`test_java.py:4303-4374`) to pipeline-mode.\n\n**Edge confidence preserved.** `ast_call_inherited` at 0.90.\n\n**Bakeoff cohort:** spring-petclinic, spring-boot, chatwoot.\n\n**Success criterion:** `ast_call_inherited` edges within ±1 on spring-petclinic; chatwoot unchanged (no Java effect).\n\n**Tag at merge:** `awaits_bakeoff_validation`.\n\nCanonical plan: `~/puluf-plan.md`."  # 359c
     fields: {}  # 359c
+- op: update  # b9ae
+  at: '2026-05-25T08:33:13Z'  # b9ae
+  by: agent  # b9ae
+  actor: jgstern_agent  # b9ae
+  clock: 2  # b9ae
+  nonce: b9ae  # b9ae
+  set: {}  # b9ae
+  add:  # b9ae
+    tags: [awaits_bakeoff_validation]  # b9ae
+- op: discuss  # 2aac
+  at: '2026-05-25T09:03:27Z'  # 2aac
+  by: agent  # 2aac
+  actor: jgstern_agent  # 2aac
+  clock: 3  # 2aac
+  nonce: 2aac  # 2aac
+  message: "Merged as PR #3905, dev SHA fc4dda70e640."  # 2aac
+- op: update  # 62bc
+  at: '2026-05-25T09:04:07Z'  # 62bc
+  by: agent  # 62bc
+  actor: jgstern_agent  # 62bc
+  clock: 4  # 62bc
+  nonce: 62bc  # 62bc
+  set:  # 62bc
+    status: done  # 62bc
+- op: discuss  # 43eb
+  at: '2026-05-25T09:04:07Z'  # 43eb
+  by: agent  # 43eb
+  actor: jgstern_agent  # 43eb
+  clock: 5  # 43eb
+  nonce: 43eb  # 43eb
+  message: "PR #3905 merged at fc4dda70e640 (first-try CI pass, no gremlin). New walker _walk_single_then_interfaces in linkers/inherited_calls.py (BFS extends-before-implements, 107 stmts, 100% coverage). Java analyzer Site-1 walk at java.py:1437-1461 replaced by single make_unresolved_edge(enclosing_class=current_class) call. Walker signatures uniformized to typed inheritance_index. 4 TestJavaInheritedMethodResolution Site-1 tests migrated to pipeline-mode via new _run_inherited_calls_pipeline helper. 10009/10009 smart-test pass; full local pytest 19219 pass + 1 expected basename-collision error. Acknowledged behavior change: return-type-inference cascade no longer fires for inherited Site-1 matches (analyzer hands off resolution before knowing what matched). Forward improvement: walker resolves interface default-methods (Java 8+). Tag awaits_bakeoff_validation attached BEFORE auto-pr (lesson from PR-2 rebase overwrite). Unblocks WI-sivuk (PR-4 Java analyzer Site-2/3 enrichment)."  # 43eb

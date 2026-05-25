@@ -28,3 +28,18 @@
   set: {}  # fb7a
   add:  # fb7a
     tags: [awaits_bakeoff_validation]  # fb7a
+- op: update  # 8896
+  at: '2026-05-25T06:20:58Z'  # 8896
+  by: agent  # 8896
+  actor: jgstern_agent  # 8896
+  clock: 3  # 8896
+  nonce: '8896'  # 8896
+  set:  # 8896
+    status: done  # 8896
+- op: discuss  # 9cb4
+  at: '2026-05-25T06:20:58Z'  # 9cb4
+  by: agent  # 9cb4
+  actor: jgstern_agent  # 9cb4
+  clock: 4  # 9cb4
+  nonce: 9cb4  # 9cb4
+  message: "PR #3904 merged at 5076811123 (+50210b22e4 empty re-trigger + 9612d0b8b4 baseline bump for ast_includes). 9954/9954 tests pass; 100% coverage on changed sources (1110 stmts incl. new linkers/inherited_calls.py at 81 stmts). New evidence_type ast_includes registered. Ruby Pass 1 now extracts included_modules; inheritance.py emits new includes edges; new Tier-2 Infrastructure linker inherited_calls.py walks ancestor chains (Ruby/Groovy via _walk_insertion_order, priority=18, always-active) consuming the make_unresolved_edge enclosing_class hint added in PR-1. Ruby _find_inherited_initialize deleted; 4 integration tests migrated to pipeline mode via new _run_inherited_calls_pipeline helper. CI failure recovery: empty re-trigger commit after Codeberg HTTP 504 outage during actions/checkout; second CI cycle hit schema-coverage gate (warning mode) on new ast_includes — baseline bumped per the WI-luzuh foundation-phase escape hatch. ADR-0029 documents contract + per-language MRO table + 5-PR campaign sequence. Tag awaits_bakeoff_validation already attached. Closes WI-puluf via the substrate. Unblocks WI-dukog (PR-3 Java Site 1)."  # 9cb4

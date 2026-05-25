@@ -19,3 +19,34 @@
     pr_ref:  # 5809
     description: "PR-4 of the inherited_calls campaign (parent META INV-nilud). Java analyzer at `java.py:1492-1591` emits `var_types` and `class_fields` as `Edge.meta` on the unresolved-fallback path. Linker consumes nothing yet — this is pure analyzer-side enrichment that PR-5 then consumes.\n\n**Behavior change:** none (analyzer-side meta keys added but unconsumed by any linker).\n\n**Bakeoff cohort:** spring-petclinic, spring-boot.\n\n**Success criterion:** total Java edge count within ±0.5%; meta keys present on ≥80% of Site-2/3 fallback edges.\n\n**Tag at merge:** `awaits_bakeoff_validation`.\n\nCanonical plan: `~/puluf-plan.md`."  # 5809
     fields: {}  # 5809
+- op: update  # 9939
+  at: '2026-05-25T19:31:41Z'  # 9939
+  by: agent  # 9939
+  actor: jgstern_agent  # 9939
+  clock: 2  # 9939
+  nonce: '9939'  # 9939
+  set: {}  # 9939
+  add:  # 9939
+    tags: [awaits_bakeoff_validation]  # 9939
+- op: discuss  # 7b78
+  at: '2026-05-25T19:39:46Z'  # 7b78
+  by: agent  # 7b78
+  actor: jgstern_agent  # 7b78
+  clock: 3  # 7b78
+  nonce: 7b78  # 7b78
+  message: "Merged as PR #3906, dev SHA 1dd5ac8e4808."  # 7b78
+- op: update  # 29b0
+  at: '2026-05-25T19:55:11Z'  # 29b0
+  by: agent  # 29b0
+  actor: jgstern_agent  # 29b0
+  clock: 4  # 29b0
+  nonce: 29b0  # 29b0
+  set:  # 29b0
+    status: done  # 29b0
+- op: discuss  # 218e
+  at: '2026-05-25T19:55:11Z'  # 218e
+  by: agent  # 218e
+  actor: jgstern_agent  # 218e
+  clock: 5  # 218e
+  nonce: 218e  # 218e
+  message: "Merged as PR #3906, dev SHA 1dd5ac8e48. First-try CI pass, no gremlin. Single-emit refactor: Case 1 / Case 3 / Case 3.5 paths stash hints (pr4_enclosing_class_hint / pr4_receiver_type_hint / pr4_inherited_field_receiver) and all three threaded into the single final make_unresolved_edge call at java.py:~1722, eliminating PR-3's double-emit on bare/this inherited calls while preserving static_imports/wildcard_imports/dst_ref. Caught the design weakness of a simpler one-line edge_added=True fix via polyglot-call-site-coverage test on import-static singletonList. 6 new TestJavaSite2Site3UnresolvedHints tests, all 10 polyglot cases still pass. Java analyzer 100% coverage on 885 statements. Tag awaits_bakeoff_validation attached BEFORE auto-pr. Bakeoff signal: Java unresolved-edge count decreases by ~count of ast_call_inherited resolved edges (one redundant unresolved removed per bare/this inherited site); no decrease in is_resolved=True count. Unblocks WI-puvil (PR-5 Java Sites 2+3 lift)."  # 218e

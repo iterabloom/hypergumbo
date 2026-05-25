@@ -25,3 +25,18 @@
   clock: 2  # d593
   nonce: d593  # d593
   message: "Cross-reference: new META INV-nilud filed today ('Inheritance-aware call resolution lives in linkers/inherited_calls.py, not in language analyzers') with 5-PR campaign plan at ~/puluf-plan.md (Alternative B). This item will close as part of WI-hatip (PR-2: linker substrate + Ruby migration), which lands the included_modules metadata extraction on ruby.py and the new includes edge type (emitted from extended inheritance.py). The architectural choice you flagged for human review — linker vs analyzer placement, edge type choice — is resolved as: (1) Tier-2 Infrastructure linker (cousin of inheritance.py, not Framework subcategory ruby_mixin.py as originally proposed); (2) new edge_type='includes' with evidence_type='ast_includes', emitted from extended inheritance.py rather than the new linker (because the structural relation is symmetric with extends/implements). Plan filed under META; this item stays needs_human_review until PR-2 merges and the substrate is in place."  # d593
+- op: update  # 9eec
+  at: '2026-05-25T06:20:58Z'  # 9eec
+  by: agent  # 9eec
+  actor: jgstern_agent  # 9eec
+  clock: 3  # 9eec
+  nonce: 9eec  # 9eec
+  set:  # 9eec
+    status: done  # 9eec
+- op: discuss  # 0de9
+  at: '2026-05-25T06:20:58Z'  # 0de9
+  by: agent  # 0de9
+  actor: jgstern_agent  # 0de9
+  clock: 4  # 0de9
+  nonce: 0de9  # 0de9
+  message: "Closed by PR #3904 (WI-hatip / PR-2 of INV-nilud campaign) merged at 5076811123. The substrate that addresses the include/extend mixin-resolution gap shipped: Ruby Pass 1 extracts included_modules from class/module bodies, centralized inheritance.py emits new includes edges, and the new Tier-2 Infrastructure linker inherited_calls.py walks through them via Ruby's insertion-order MRO. Sidekiq workers / ActiveModel validations / Rails concerns can now be reached via the linker pipeline whenever the receiver class is project-internal and an ancestor (concrete OR mixin) defines the called method short-name. Tag awaits_bakeoff_validation on WI-hatip — chatwoot bakeoff will validate empirical mixin-coverage uplift."  # 0de9

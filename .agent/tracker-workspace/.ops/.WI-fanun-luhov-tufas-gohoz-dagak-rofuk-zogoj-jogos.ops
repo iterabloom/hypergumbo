@@ -85,3 +85,10 @@
   clock: 9  # 7cea
   nonce: 7cea  # 7cea
   message: "Stripping tag under Phase 2 anomaly cleanup (extended sweep). Verdict: D-stale — post-fix self-analysis measurement is already in the 2026-05-19T04:28:33Z closing entry: '3072 methods + 568 classes + 430 functions + 122 variables + 80 files + 29 modules + 13 bash functions on packages/hypergumbo-tracker self-analysis now carry hgfp1: structural fingerprints.' Note also references that the analysis_run.repo_fingerprint half (the original 0/133 → 100% claim) was closed by INV-tofur in PR #3789. Both halves of the original 99.7%-null claim are empirically resolved in-thread. Bakeoff would only re-measure self-analysis or hypergumbo-tracker self-analysis; the signal is already at hand."  # 7cea
+- op: discuss  # a6fa
+  at: '2026-05-19T04:27:43Z'  # a6fa
+  by: agent  # a6fa
+  actor: jgstern_agent  # a6fa
+  clock: 6  # a6fa
+  nonce: a6fa  # a6fa
+  message: "Merged as PR #3812, dev SHA 77bdfad076da."  # a6fa
