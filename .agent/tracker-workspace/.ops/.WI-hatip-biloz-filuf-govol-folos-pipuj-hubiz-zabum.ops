@@ -1,0 +1,30 @@
+- op: create  # 4489
+  at: '2026-05-25T02:36:37Z'  # 4489
+  by: agent  # 4489
+  actor: jgstern_agent  # 4489
+  clock: 1  # 4489
+  nonce: '4489'  # 4489
+  data:  # 4489
+    kind: work_item  # 4489
+    title: "PR-2: linkers/inherited_calls.py substrate + Ruby migration + WI-puluf closure"  # 4489
+    status: todo_soft  # 4489
+    priority: 3  # 4489
+    parent: INV-nilud-zivag-jibak-danov-polak-sibam-fahif-katat  # 4489
+    tags:  # 4489
+    - cross_language_parity  # 4489
+    isbefore:  # 4489
+    - WI-dukog-vohus-fahuk-dovin-bojas-kizon-jomaf-gunuj  # 4489
+    duplicate_of: []  # 4489
+    not_duplicate_of: []  # 4489
+    pr_ref:  # 4489
+    description: "PR-2 of the inherited_calls campaign (parent META INV-nilud). Create `packages/hypergumbo-core/src/hypergumbo_core/linkers/inherited_calls.py` (substrate + Site-1 resolver + `_walk_insertion_order` walker). Add `included_modules` metadata extraction to `ruby.py` (class-decl pass) so `include`/`extend` declarations are visible to `inheritance.py`. Extend `inheritance.py` to emit `includes` edges (new `edge_type=\"includes\"`, `evidence_type=\"ast_includes\"`) when `included_modules` is populated and the target resolves to a project Symbol. Delete `_find_inherited_initialize` from `ruby.py` (`ruby.py:1901-1956`). Migrate `TestRubyConstructorEdges` (`test_ruby.py:3949-4163`) to pipeline-mode.\n\n**WI-puluf closes when this PR merges.** The `included_modules` extraction + `includes` edge type are exactly the substrate WI-puluf called for.\n\n**Edge types:** `calls` with `ast_call_inherited` (0.90 confidence) for Site 1; new `includes` edge type for Ruby mixins.\n\n**New ADR:** `docs/adr/00NN-cross-language-inherited-call-linker.md` documenting the contract + per-language MRO table.\n\n**Schema bump:** `docs/schema.json` registers `includes` edge type (heavyweight axis per ADR-0023).\n\n**Linker registration:** `priority=18` (between `inheritance`=15 and `type_hierarchy`=20). `LinkerActivation(always=True)`. `LinkerRequirement(name=\"unresolved_edges_with_hints\")`.\n\n**Bakeoff cohort:** chatwoot (Ruby mixin coverage), hypergumbo-self (Python regression check), spring-petclinic (Java canary — must be unchanged this PR).\n\n**Success criterion:** `ast_call_inherited` edges on chatwoot ≥ baseline; new `includes` edges present on chatwoot's `app/models/concerns/`, `app/controllers/concerns/`, and Sidekiq/ActiveModel/Devise sites; Java edge set on spring-petclinic byte-identical.\n\n**Tag at merge:** `awaits_bakeoff_validation`.\n\nCanonical plan: `~/puluf-plan.md`."  # 4489
+    fields: {}  # 4489
+- op: update  # fb7a
+  at: '2026-05-25T04:25:04Z'  # fb7a
+  by: agent  # fb7a
+  actor: jgstern_agent  # fb7a
+  clock: 2  # fb7a
+  nonce: fb7a  # fb7a
+  set: {}  # fb7a
+  add:  # fb7a
+    tags: [awaits_bakeoff_validation]  # fb7a

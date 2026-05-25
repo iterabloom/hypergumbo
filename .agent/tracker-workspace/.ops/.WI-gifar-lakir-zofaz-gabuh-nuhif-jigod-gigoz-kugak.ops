@@ -1,0 +1,43 @@
+- op: create  # 140e
+  at: '2026-05-25T02:36:43Z'  # 140e
+  by: agent  # 140e
+  actor: jgstern_agent  # 140e
+  clock: 1  # 140e
+  nonce: 140e  # 140e
+  data:  # 140e
+    kind: work_item  # 140e
+    title: "PR-1: Contract + shared helpers for inherited_calls linker (additive refactor)"  # 140e
+    status: todo_hard  # 140e
+    priority: 3  # 140e
+    parent: INV-nilud-zivag-jibak-danov-polak-sibam-fahif-katat  # 140e
+    tags:  # 140e
+    - cross_language_parity  # 140e
+    isbefore:  # 140e
+    - WI-hatip-biloz-filuf-govol-folos-pipuj-hubiz-zabum  # 140e
+    duplicate_of: []  # 140e
+    not_duplicate_of: []  # 140e
+    pr_ref:  # 140e
+    description: "PR-1 of the inherited_calls campaign (parent META INV-nilud). Pure additive refactor — no behavior change, no bakeoff.\n\n**Changes:**\n1. `analyze/base.py:445`: extend `make_unresolved_edge(...)` with three optional kwargs: `enclosing_class: str | None`, `receiver_type_hint: str | None`, `inherited_field_receiver: str | None`. They land in `Edge.meta`. Existing call sites unchanged at default.\n2. `linkers/inheritance.py:34-127`: promote `_resolve_target_symbol` → public `resolve_target_symbol`. (Same-language gating + same-file preference + sorted-ID fallback.)\n3. `linkers/method_call_recovery.py`: promote `_short_name` → `short_name`, `_parse_unresolved_name` → `parse_unresolved_name`.\n4. `linkers/_transitive_bases.py:113-126`: generalize `build_inheritance_index(edges)` → `build_inheritance_index(edges, edge_types: tuple[str, ...] = (\"extends\", \"implements\"))`. Existing callers pass through default; PR-2 will pass `(\"extends\", \"implements\", \"includes\")` for Ruby.\n5. `linkers/type_hierarchy.py:291-330`: extract `_TypeHierarchyIndex` build into a module-public `build_method_index(...)` helper so PR-2's `inherited_calls.py` reuses it without a circular ordering dependency.\n\n**Tests:** existing tests must pass unchanged (no behavior change). New helper signatures get direct-call unit tests in their current packages. 100% coverage required.\n\n**No bakeoff:** pure refactor, behavior-preserving. No `awaits_bakeoff_validation` tag.\n\nCanonical plan: `~/puluf-plan.md`."  # 140e
+    fields: {}  # 140e
+- op: discuss  # b695
+  at: '2026-05-25T03:25:54Z'  # b695
+  by: agent  # b695
+  actor: jgstern_agent  # b695
+  clock: 2  # b695
+  nonce: b695  # b695
+  message: "Merged as PR #3902, dev SHA dd871a79eadb."  # b695
+- op: update  # 70d4
+  at: '2026-05-25T03:26:35Z'  # 70d4
+  by: agent  # 70d4
+  actor: jgstern_agent  # 70d4
+  clock: 3  # 70d4
+  nonce: 70d4  # 70d4
+  set:  # 70d4
+    status: done  # 70d4
+- op: discuss  # bee3
+  at: '2026-05-25T03:26:35Z'  # bee3
+  by: agent  # bee3
+  actor: jgstern_agent  # bee3
+  clock: 4  # bee3
+  nonce: bee3  # bee3
+  message: "PR #3902 merged at dd871a79ea (fast-forward). All 5 changes landed: make_unresolved_edge gains 3 hint kwargs; resolve_target_symbol / short_name / parse_unresolved_name / build_method_index promoted to public; build_inheritance_index gains edge_types kwarg. 31 new tests, 9635/9635 full smart-test pass, 100% coverage on all 5 changed source files (1110 stmts, 0 miss), all 5 packages 100% in isolation. Pure refactor, no behavior change, no bakeoff claim. PR-1 of INV-nilud campaign complete; isbefore unblocks WI-hatip (PR-2)."  # bee3
