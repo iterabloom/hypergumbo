@@ -36,8 +36,12 @@ PASS_ID = make_pass_id("inheritance-linker")
 
 def _build_symbol_maps(
     symbols: list[Symbol],
-) -> tuple[dict[str, list[Symbol]], dict[str, list[Symbol]]]:
-    """Build multi-value lookup maps for classes and interfaces.
+) -> tuple[
+    dict[str, list[Symbol]],
+    dict[str, list[Symbol]],
+    dict[str, list[Symbol]],
+]:
+    """Build multi-value lookup maps for classes, interfaces, and modules.
 
     Uses list values to handle name collisions (e.g., multiple classes named
     'Model' across different files). Resolution is done by
@@ -45,11 +49,16 @@ def _build_symbol_maps(
     fallback.
 
     Returns:
-        Tuple of (class_by_name, interface_by_name) dicts mapping name to
-        list of Symbol candidates.
+        Tuple of (class_by_name, interface_by_name, module_by_name) dicts
+        mapping name to list of Symbol candidates. The module map is used
+        by WI-hatip's `includes`-edge emission to resolve Ruby
+        ``include``/``extend`` mixin targets; modules and classes are
+        independent symbol kinds so a name collision between them
+        shouldn't shadow either.
     """
     class_by_name: dict[str, list[Symbol]] = {}
     interface_by_name: dict[str, list[Symbol]] = {}
+    module_by_name: dict[str, list[Symbol]] = {}
 
     for sym in symbols:
         if sym.kind in ("class", "struct"):
@@ -63,8 +72,12 @@ def _build_symbol_maps(
             if sym.name not in interface_by_name:
                 interface_by_name[sym.name] = []
             interface_by_name[sym.name].append(sym)
+        elif sym.kind == "module":
+            if sym.name not in module_by_name:
+                module_by_name[sym.name] = []
+            module_by_name[sym.name].append(sym)
 
-    return class_by_name, interface_by_name
+    return class_by_name, interface_by_name, module_by_name
 
 
 def resolve_target_symbol(
@@ -131,6 +144,96 @@ def resolve_target_symbol(
 # WI-gifar (PR-1 of INV-nilud) promoted it to the public surface so the
 # upcoming inherited_calls linker can share the disambiguation logic.
 _resolve_target_symbol = resolve_target_symbol
+
+
+def _create_includes_edges(
+    symbols: list[Symbol],
+    module_by_name: dict[str, list[Symbol]],
+    existing_edges: list[Edge],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Create `includes` edges from ``included_modules`` metadata.
+
+    WI-hatip (PR-2 of INV-nilud): for every class/module Symbol whose
+    ``meta["included_modules"]`` lists project-internal module names,
+    emit an ``edge_type="includes"`` edge with
+    ``evidence_type="ast_includes"``. The Ruby analyzer extracts the
+    metadata in Pass 1; this linker resolves the names to Symbols using
+    the same disambiguation cascade as extends/implements.
+
+    External module names (e.g., gem-provided ``Sidekiq::Worker``) yield
+    no edge — the same "no edge for external base classes" semantics as
+    ``_create_inheritance_edges`` follows for extends/implements.
+
+    Args:
+        symbols: All symbols (to find candidates with included_modules meta).
+        module_by_name: Multi-value module-name lookup map.
+        existing_edges: Edges already present (for dedup).
+        run: AnalysisRun for provenance stamping.
+
+    Returns:
+        List of NEW `includes` edges (no duplicates).
+    """
+    existing_edge_keys: set[tuple[str, str, str]] = {
+        (e.src, e.dst, e.edge_type)
+        for e in existing_edges
+        if e.edge_type == "includes"
+    }
+
+    edges: list[Edge] = []
+
+    for sym in symbols:
+        if sym.kind not in ("class", "module"):
+            continue
+        included = sym.meta.get("included_modules", []) if sym.meta else []
+        if not included:
+            continue
+
+        for module_name in included:
+            # Try qualified name first, then short segment fallback.
+            lookup_names = [module_name]
+            if "::" in module_name:
+                lookup_names.append(module_name.split("::")[-1])
+            if "." in module_name:
+                lookup_names.append(module_name.split(".")[-1])
+
+            target_sym: Symbol | None = None
+            is_fallback = False
+            for lookup_name in lookup_names:
+                resolved = resolve_target_symbol(
+                    lookup_name, sym, module_by_name,
+                )
+                if resolved is not None:
+                    target_sym, is_fallback = resolved
+                    break
+
+            if target_sym is None:
+                continue  # External module — no edge.
+
+            if target_sym.id == sym.id:
+                continue  # Self-include (defensive; Ruby permits it syntactically).
+
+            edge_key = (sym.id, target_sym.id, "includes")
+            if edge_key in existing_edge_keys:
+                continue
+
+            confidence = 0.5 if is_fallback else 0.95
+            edge_meta: dict[str, object] | None = (
+                {"disambiguation_fallback": True} if is_fallback else None
+            )
+            edges.append(Edge.create(
+                src=sym.id,
+                dst=target_sym.id,
+                edge_type="includes",
+                line=sym.span.start_line if sym.span else 0,
+                confidence=confidence,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="ast_includes",
+                meta=edge_meta,
+            ))
+
+    return edges
 
 
 def _create_inheritance_edges(
@@ -288,12 +391,21 @@ def link_inheritance(ctx: LinkerContext) -> LinkerResult:
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     # Build multi-value lookup maps (INV-015: handles name collisions)
-    class_by_name, interface_by_name = _build_symbol_maps(ctx.symbols)
-
-    # Create edges (skipping any that already exist from analyzers)
-    edges = _create_inheritance_edges(
-        ctx.symbols, class_by_name, interface_by_name, ctx.edges, run
+    class_by_name, interface_by_name, module_by_name = _build_symbol_maps(
+        ctx.symbols,
     )
+
+    # Create extends/implements edges (skipping any already from analyzers)
+    edges = _create_inheritance_edges(
+        ctx.symbols, class_by_name, interface_by_name, ctx.edges, run,
+    )
+
+    # WI-hatip (PR-2 of INV-nilud): also emit `includes` edges from
+    # `included_modules` metadata so the inherited_calls linker can
+    # walk through Ruby mixins.
+    edges.extend(_create_includes_edges(
+        ctx.symbols, module_by_name, ctx.edges, run,
+    ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
 

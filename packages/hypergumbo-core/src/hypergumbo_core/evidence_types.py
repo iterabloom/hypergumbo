@@ -135,6 +135,9 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
                      "Edge inferred from an import statement in source AST."),
     EvidenceTypeSpec("ast_include", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an include directive in source AST (C/C++)."),
+    EvidenceTypeSpec("ast_includes", AXIS_INFERENCE_PATHWAY,
+                     "Edge inferred from a runtime mixin declaration "
+                     "(Ruby `include`/`extend`, etc.) — WI-hatip."),
     EvidenceTypeSpec("ast_method_inferred", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a method call where dispatch was inferred."),
     EvidenceTypeSpec("ast_method_this", AXIS_INFERENCE_PATHWAY,

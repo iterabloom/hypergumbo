@@ -58,6 +58,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_unresolved_edge,
     node_text,
     populate_docstrings_from_tree,
 )
@@ -1835,6 +1836,17 @@ def _extract_symbols_from_file(
                             meta = {"base_classes": [superclass_name]}
                             break
 
+                # WI-hatip (PR-2 of INV-nilud): extract `include` / `extend`
+                # mixin declarations as `included_modules` so the linker
+                # stack can walk through them for inherited-call resolution.
+                body_node = _find_child_by_field(node, "body")
+                if body_node is not None:
+                    included = _extract_included_modules(body_node, source)
+                    if included:
+                        if meta is None:
+                            meta = {}
+                        meta["included_modules"] = included
+
                 symbol = Symbol(
                     id=make_symbol_id("ruby", str(file_path), start_line, end_line, class_name, "class"),
                     name=class_name,
@@ -1865,6 +1877,15 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # WI-hatip (PR-2 of INV-nilud): modules can include other
+                # modules — same MRO contribution as on classes.
+                module_meta: dict[str, object] | None = None
+                body_node = _find_child_by_field(node, "body")
+                if body_node is not None:
+                    included = _extract_included_modules(body_node, source)
+                    if included:
+                        module_meta = {"included_modules": included}
+
                 symbol = Symbol(
                     id=make_symbol_id("ruby", str(file_path), start_line, end_line, module_name, "module"),
                     name=module_name,
@@ -1879,6 +1900,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    meta=module_meta,
                     stable_id=_analyzer.compute_stable_id(node, kind="module"),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
@@ -1898,62 +1920,51 @@ _JOB_ENQUEUE_METHODS = frozenset({"perform_later", "perform_async", "perform_in"
                                    "perform_at"})
 
 
-def _find_inherited_initialize(
-    candidate_class_names: list[str],
-    global_symbols: dict[str, Symbol],
-    max_depth: int = 10,
-) -> Symbol | None:
-    """Walk the ``base_classes`` chain to find an ancestor's ``#initialize``.
+def _extract_included_modules(
+    body_node: "tree_sitter.Node",
+    source: bytes,
+) -> list[str]:
+    """Scan top-level body statements for ``include`` / ``extend`` declarations.
 
-    Bound to the constant-receiver ``.new → #initialize`` redirect at
-    ``_try_receiver_call``: when the named class doesn't define
-    ``#initialize`` directly, Ruby walks the inheritance chain at runtime to
-    find the inherited constructor. This helper recovers that resolution
-    from Pass-1 ``base_classes`` metadata stamped on each class Symbol.
+    Ruby's mixin idioms (`include Mod`, `extend Mod`) contribute to the
+    method-resolution order at runtime. WI-hatip (PR-2 of INV-nilud)
+    extracts them as ``meta["included_modules"]`` on the enclosing
+    class/module Symbol so the centralized ``inheritance.py`` linker can
+    emit ``includes`` edges and the new ``inherited_calls.py`` linker can
+    walk through them as part of the Ruby insertion-order MRO.
+
+    Only **literal constant** arguments are captured (``constant`` and
+    ``scope_resolution`` AST shapes). Dynamic ``include some_method_call``
+    forms are silently dropped because they cannot be statically resolved
+    to a project Symbol without a name resolver.
 
     Args:
-        candidate_class_names: Class names to start the walk from (full
-            qualified + short-name fallbacks, matching the caller's
-            ``candidates`` list).
-        global_symbols: Symbol lookup keyed by qualified name.
-        max_depth: Maximum chain depth to walk; 10 matches the conservative
-            cap used by the JAX-RS subresource locator resolver
-            (``framework_patterns.py``) and Java's inherited-method lookup
-            (``java.py:1436-1461``).
+        body_node: The ``body_statement`` child of a ``class`` or ``module``
+            node.
+        source: Raw source bytes (for `node_text` extraction).
 
     Returns:
-        The Symbol of the nearest ancestor's ``#initialize`` if found,
-        else None.
+        Declaration-ordered list of module name strings (qualified form
+        preserved, e.g. ``"Sidekiq::Worker"``). Empty list if no matching
+        declarations are present.
     """
-    visited: set[str] = set()
-    frontier: list[str] = list(candidate_class_names)
-    for _ in range(max_depth):
-        if not frontier:
-            return None
-        next_frontier: list[str] = []
-        for class_name in frontier:
-            if class_name in visited:
-                continue
-            visited.add(class_name)
-            class_sym = global_symbols.get(class_name)
-            if class_sym is None or class_sym.kind != "class":
-                continue
-            base_classes = (
-                (class_sym.meta or {}).get("base_classes", []) if class_sym.meta else []
-            )
-            for base in base_classes:
-                # Try fully qualified ("Foo::Bar") then short ("Bar") to match
-                # the caller's candidate-shaping convention.
-                base_short = base.split("::")[-1] if "::" in base else base
-                for base_candidate in (base, base_short):
-                    if base_candidate in visited:  # pragma: no cover - defensive: only fires on cyclic base_classes (Ruby's syntax disallows class cycles at parse time)
-                        continue
-                    init_key = f"{base_candidate}#initialize"
-                    if init_key in global_symbols:
-                        return global_symbols[init_key]
-                    next_frontier.append(base_candidate)
-        frontier = next_frontier
-    return None
+    modules: list[str] = []
+    for child in body_node.children:
+        if child.type != "call":
+            continue
+        method_node = _find_child_by_field(child, "method")
+        if method_node is None or method_node.type != "identifier":  # pragma: no cover - defensive: tree-sitter Ruby grammar always emits a "method" field on `call` nodes; non-identifier method (e.g. operator) skipped
+            continue
+        method_name = node_text(method_node, source)
+        if method_name not in ("include", "extend"):
+            continue
+        args_node = _find_child_by_field(child, "arguments")
+        if args_node is None:  # pragma: no cover - defensive: tree-sitter `call` with bare `include` would parse as identifier, not call, so this branch is unreachable in practice
+            continue
+        for arg in args_node.children:
+            if arg.type in ("constant", "scope_resolution"):
+                modules.append(node_text(arg, source))
+    return modules
 
 
 def _try_receiver_call(
@@ -2053,49 +2064,45 @@ def _try_receiver_call(
                         meta={"call_construct": "constructor"},
                     ))
                     return True
-        # WI-vuton MessageBuilder diagnostic: when ``Klass#initialize`` is
-        # absent on the named class but a parent class DOES define it, walk
-        # the ``base_classes`` metadata chain (recorded by Pass 1) to find
-        # the nearest ancestor with a user-defined ``#initialize`` and bind
-        # the constructor call to that. Chatwoot's
-        # ``::Instagram::MessageText`` inherits ``#initialize`` from
-        # ``Instagram::BaseMessageText``; pre-fix this redirect failed and
-        # the entire downstream call chain (``perform`` → ``create_message``
-        # → ``MessageBuilder#initialize``) was orphaned from the reachable
-        # set. Mirrors ``java.py``'s ``class_parents`` inherited-method
-        # lookup at lines 1436-1461.
-        inherited = _find_inherited_initialize(candidates, global_symbols)
-        if inherited is not None and inherited.id != current_method.id:
-            edges.append(Edge.create(
-                src=current_method.id,
-                dst=inherited.id,
-                edge_type="calls",
-                line=line,
-                evidence_type="ast_call_inherited",
-                confidence=0.85,
-                origin=PASS_ID,
-                origin_run_id=run_id,
-                meta={"call_construct": "constructor_inherited"},
-            ))
-            return True
-        # When the receiver class IS a project symbol but has no
-        # user-defined ``#initialize`` (inherits Object#initialize),
-        # preserve the original "no edge" semantics: the call is
-        # intra-project; emitting a constant-external edge would be
-        # wrong and an edge to ``#new`` (the Rails-action collision)
-        # would be a false positive. Only fall through to the
-        # external fallback when the receiver is genuinely outside
-        # the project (no Pass-1 symbol).
-        receiver_is_project = any(
-            candidate in global_symbols
+        # WI-hatip (PR-2 of INV-nilud): when ``Klass#initialize`` is
+        # absent on the named class but the receiver is a project
+        # symbol, emit an unresolved-call edge carrying the
+        # ``enclosing_class`` hint. The new ``inherited_calls`` linker
+        # (priority=18) walks the ancestor chain (extends + implements
+        # + includes) of the named class via the Ruby insertion-order
+        # MRO and emits the resolved ``ast_call_inherited`` edge if
+        # any ancestor defines ``#initialize``. Mixin contributions
+        # (Sidekiq::Worker, ActiveModel::Validations, ...) flow
+        # through ``included_modules`` metadata + ``includes`` edges
+        # from this PR, so the linker resolves through `include`'d
+        # modules too. Replaces the in-analyzer
+        # ``_find_inherited_initialize`` walk (deleted in this PR);
+        # see WI-vuton chatwoot diagnostic + WI-puluf mixin
+        # investigation under META INV-nilud.
+        receiver_is_project_candidates = [
+            candidate for candidate in candidates
+            if candidate in global_symbols
             or any(
                 key.startswith(f"{candidate}#")
                 or key.startswith(f"{candidate}.")
                 for key in global_symbols
             )
-            for candidate in candidates
-        )
-        if receiver_is_project:
+        ]
+        if receiver_is_project_candidates:
+            # Emit one unresolved-call edge per project candidate so the
+            # linker can try each starting class. (dedup at the
+            # (src, dst) pair-level is handled by the linker.)
+            for candidate in receiver_is_project_candidates:
+                edges.append(make_unresolved_edge(
+                    lang="ruby",
+                    src_id=current_method.id,
+                    callee_name="initialize",
+                    line=line,
+                    pass_id=PASS_ID,
+                    run_id=run_id,
+                    module_hint=candidate,
+                    enclosing_class=candidate,
+                ))
             return True
         # WI-rijij / WI-mafik: ``Set.new(...)`` where the receiver is
         # external (e.g. ``require "set"``). Fall through to the

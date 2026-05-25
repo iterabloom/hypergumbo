@@ -70,7 +70,7 @@ Values that name the relationship the edge expresses between src and dst. Per AD
 - **`extends`** — Class extends a superclass.
 - **`implements`** — Class implements an interface.
 - **`imports`** — Module imports another module or symbol.
-- **`includes`** — File includes / sources / mixes-in another file's content (LaTeX \include, RST .. include::, Meson subdir, etc.).
+- **`includes`** — File or class includes / sources / mixes-in another unit's content (LaTeX \include, RST .. include::, Meson subdir, Ruby `include`/`extend` mixin — WI-hatip).
 - **`inherits`** — Class/contract inherits from a parent (used by languages where 'inherits' reads more naturally than 'extends').
 - **`instantiates`** — Constructor or factory creates an instance.
 - **`links`** — Generic linkage relationship.
@@ -320,6 +320,7 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`ast_implements`** — Edge inferred from an `implements` clause in source AST.
 - **`ast_import`** — Edge inferred from an import statement in source AST.
 - **`ast_include`** — Edge inferred from an include directive in source AST (C/C++).
+- **`ast_includes`** — Edge inferred from a runtime mixin declaration (Ruby `include`/`extend`, etc.) — WI-hatip.
 - **`ast_method_inferred`** — Edge inferred from a method call where dispatch was inferred.
 - **`ast_method_this`** — Edge inferred from a `this`/`self` method call.
 - **`ast_method_this_property`** — Edge inferred from a `this.prop` / `self.attr` reference.

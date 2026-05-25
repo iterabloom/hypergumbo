@@ -149,8 +149,9 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     ),
     EdgeTypeSpec(
         "includes", AXIS_RELATIONSHIP,
-        "File includes / sources / mixes-in another file's content "
-        "(LaTeX \\include, RST .. include::, Meson subdir, etc.).",
+        "File or class includes / sources / mixes-in another unit's "
+        "content (LaTeX \\include, RST .. include::, Meson subdir, "
+        "Ruby `include`/`extend` mixin — WI-hatip).",
     ),
     EdgeTypeSpec(
         "constrains", AXIS_RELATIONSHIP,

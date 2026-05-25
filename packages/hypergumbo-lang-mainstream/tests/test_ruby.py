@@ -6,6 +6,38 @@ from pathlib import Path
 from hypergumbo_core.analyze.base import find_child_by_type
 from unittest.mock import patch, MagicMock
 
+
+def _run_inherited_calls_pipeline(analyzer_result):
+    """Run inheritance + inherited_calls linkers on top of analyzer output.
+
+    WI-hatip (PR-2 of INV-nilud): the Ruby analyzer's constructor walk
+    (formerly `_find_inherited_initialize`) was lifted into the
+    `inherited_calls` Tier-2 linker. Tests that previously asserted on
+    resolved `ast_call_inherited` edges directly from `analyze_ruby`
+    output now need to also run the linker stack. This helper composes
+    the two passes (inheritance for `extends`/`implements`/`includes`,
+    then `inherited_calls` for ancestor-walked resolution) and returns
+    the combined edge list.
+    """
+    from hypergumbo_core.linkers.inheritance import link_inheritance
+    from hypergumbo_core.linkers.inherited_calls import link_inherited_calls
+    from hypergumbo_core.linkers.registry import LinkerContext
+
+    inh_ctx = LinkerContext(
+        repo_root=Path("/"),
+        symbols=analyzer_result.symbols,
+        edges=analyzer_result.edges,
+    )
+    inh_result = link_inheritance(inh_ctx)
+    combined = list(analyzer_result.edges) + list(inh_result.edges)
+    call_ctx = LinkerContext(
+        repo_root=Path("/"),
+        symbols=analyzer_result.symbols,
+        edges=combined,
+    )
+    call_result = link_inherited_calls(call_ctx)
+    return combined + list(call_result.edges)
+
 class TestFindRubyFiles:
     """Tests for Ruby file discovery."""
 
@@ -442,6 +474,134 @@ end
         child_extends = [e for e in extends_edges if "Child" in e.src]
         # Should still create an edge (deterministic fallback)
         assert len(child_extends) == 1
+
+class TestRubyIncludedModulesExtraction:
+    """Tests for WI-hatip (PR-2 of INV-nilud inherited_calls campaign).
+
+    Ruby Pass 1 now extracts `include ModuleName` and `extend ModuleName`
+    declarations from class/module bodies into ``meta["included_modules"]``,
+    so PR-2's extended `inheritance.py` linker can emit `includes` edges
+    and the new `inherited_calls.py` linker can walk through mixins as
+    part of the Ruby insertion-order MRO.
+    """
+
+    def test_extracts_single_include(self, tmp_path: Path) -> None:
+        """`include Sidekiq::Worker` lands in meta['included_modules']."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "worker.rb").write_text("""
+class EmailWorker
+  include Sidekiq::Worker
+
+  def perform(id)
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "EmailWorker"), None)
+        assert cls is not None and cls.meta is not None
+        assert cls.meta.get("included_modules") == ["Sidekiq::Worker"]
+
+    def test_extracts_multiple_includes(self, tmp_path: Path) -> None:
+        """Two `include`s yield two entries in declaration order."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "model.rb").write_text("""
+class User
+  include ActiveModel::Validations
+  include Devise::Models::DatabaseAuthenticatable
+end
+""")
+        result = analyze_ruby(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "User"), None)
+        assert cls is not None and cls.meta is not None
+        assert cls.meta.get("included_modules") == [
+            "ActiveModel::Validations",
+            "Devise::Models::DatabaseAuthenticatable",
+        ]
+
+    def test_extract_treats_extend_same_as_include(self, tmp_path: Path) -> None:
+        """`extend ModuleName` is also captured (class-method mixin)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "ext.rb").write_text("""
+class Klass
+  extend HelpfulClassMethods
+end
+""")
+        result = analyze_ruby(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Klass"), None)
+        assert cls is not None and cls.meta is not None
+        assert cls.meta.get("included_modules") == ["HelpfulClassMethods"]
+
+    def test_class_without_include_has_no_included_modules(
+        self, tmp_path: Path,
+    ) -> None:
+        """A class with no include/extend leaves the key absent."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "simple.rb").write_text("""
+class Plain
+  def hello; end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Plain"), None)
+        assert cls is not None
+        if cls.meta is not None:
+            assert "included_modules" not in cls.meta
+
+    def test_module_extracts_includes(self, tmp_path: Path) -> None:
+        """Modules can include other modules; same extraction applies."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "concern.rb").write_text("""
+module AuthHelper
+  include ActiveSupport::Concern
+end
+""")
+        result = analyze_ruby(tmp_path)
+        mod = next((s for s in result.symbols if s.name == "AuthHelper"), None)
+        assert mod is not None and mod.meta is not None
+        assert mod.meta.get("included_modules") == ["ActiveSupport::Concern"]
+
+    def test_combines_with_base_classes(self, tmp_path: Path) -> None:
+        """A class with both a superclass and `include` gets both meta keys."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "combined.rb").write_text("""
+class ApplicationController < ActionController::Base
+  include Devise::Controllers::Helpers
+end
+""")
+        result = analyze_ruby(tmp_path)
+        cls = next(
+            (s for s in result.symbols if s.name == "ApplicationController"),
+            None,
+        )
+        assert cls is not None and cls.meta is not None
+        assert cls.meta.get("base_classes") == ["ActionController::Base"]
+        assert cls.meta.get("included_modules") == [
+            "Devise::Controllers::Helpers",
+        ]
+
+    def test_ignores_include_with_non_constant_argument(
+        self, tmp_path: Path,
+    ) -> None:
+        """A method-call `include?(x)` and `include` with dynamic args are skipped."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "dynamic.rb").write_text("""
+class Dyn
+  include some_method_call
+end
+""")
+        result = analyze_ruby(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Dyn"), None)
+        assert cls is not None
+        if cls.meta is not None:
+            assert "included_modules" not in cls.meta
+
 
 class TestRubyModuleExtraction:
     """Tests for extracting Ruby modules."""
@@ -3982,8 +4142,12 @@ end
         run = next((s for s in result.symbols if s.name == "Caller#run"), None)
         a_init = next((s for s in result.symbols if s.name == "A#initialize"), None)
         assert run is not None and a_init is not None
+        # WI-hatip PR-2: the inherited walk now lives in the
+        # inherited_calls linker; run the pipeline to see the resolved edge.
+        all_edges = _run_inherited_calls_pipeline(result)
         init_edges = [
-            e for e in result.edges if e.src == run.id and e.dst == a_init.id
+            e for e in all_edges
+            if e.src == run.id and e.dst == a_init.id and e.is_resolved
         ]
         assert len(init_edges) >= 1, (
             "C.new should walk C->B->A to find the inherited #initialize"
@@ -4080,10 +4244,12 @@ end
         assert run is not None, "Should find Caller#run"
         assert base_init is not None, "Should find Base#initialize"
 
+        # WI-hatip PR-2: inherited walk via linker pipeline.
+        all_edges = _run_inherited_calls_pipeline(result)
         # Sub.new(...) should resolve to Base#initialize via inheritance.
         init_edges = [
-            e for e in result.edges
-            if e.src == run.id and e.dst == base_init.id
+            e for e in all_edges
+            if e.src == run.id and e.dst == base_init.id and e.is_resolved
         ]
         assert len(init_edges) >= 1, (
             "Sub.new should create edge to Base#initialize via the "
@@ -4160,10 +4326,12 @@ end
         assert base_init is not None
         assert sc_new is not None
 
+        # WI-hatip PR-2: inherited walk via linker pipeline.
+        all_edges = _run_inherited_calls_pipeline(result)
         # The constructor call must resolve to the inherited #initialize.
         init_edges = [
-            e for e in result.edges
-            if e.src == job_msg.id and e.dst == base_init.id
+            e for e in all_edges
+            if e.src == job_msg.id and e.dst == base_init.id and e.is_resolved
         ]
         assert len(init_edges) >= 1, (
             "::Instagram::MessageText.new must resolve to "

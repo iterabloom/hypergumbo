@@ -1071,3 +1071,174 @@ class TestResolveTargetSymbolPublic:
             resolve_target_symbol,
         )
         assert resolve_target_symbol is _resolve_target_symbol
+
+
+# ---------------------------------------------------------------------------
+# WI-hatip (PR-2 of INV-nilud inherited_calls campaign):
+# The inheritance linker now emits `includes` edges from Ruby
+# `included_modules` metadata (and any future language with the same
+# mixin shape). The new edge_type is `includes` with evidence_type
+# `ast_includes`.
+# ---------------------------------------------------------------------------
+
+
+class TestIncludesEdges:
+    """Tests for the new `includes` edge type emitted from included_modules."""
+
+    def _cls(self, sid: str, name: str, path: str = "/a.rb",
+             base_classes: list[str] | None = None,
+             included_modules: list[str] | None = None) -> Symbol:
+        meta: dict[str, object] = {}
+        if base_classes is not None:
+            meta["base_classes"] = base_classes
+        if included_modules is not None:
+            meta["included_modules"] = included_modules
+        return Symbol(
+            id=sid, name=name, kind="class", language="ruby", path=path,
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run", meta=meta or None,
+        )
+
+    def _mod(self, sid: str, name: str, path: str = "/m.rb",
+             included_modules: list[str] | None = None) -> Symbol:
+        meta: dict[str, object] = {}
+        if included_modules is not None:
+            meta["included_modules"] = included_modules
+        return Symbol(
+            id=sid, name=name, kind="module", language="ruby", path=path,
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run", meta=meta or None,
+        )
+
+    def test_emits_includes_edge_for_class(self) -> None:
+        """A class with `include ModuleX` produces an includes edge."""
+        worker_mod = self._mod("sym:Worker", "Worker")
+        klass = self._cls(
+            "sym:EmailWorker", "EmailWorker",
+            included_modules=["Worker"],
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[worker_mod, klass], edges=[],
+        )
+        result = link_inheritance(ctx)
+        includes = [e for e in result.edges if e.edge_type == "includes"]
+        assert len(includes) == 1
+        assert includes[0].src == "sym:EmailWorker"
+        assert includes[0].dst == "sym:Worker"
+        assert includes[0].evidence_type == "ast_includes"
+
+    def test_emits_includes_edge_for_module(self) -> None:
+        """A module with `include` (e.g., Concern) also produces the edge."""
+        concern_mod = self._mod("sym:Concern", "Concern")
+        helper_mod = self._mod(
+            "sym:AuthHelper", "AuthHelper",
+            included_modules=["Concern"],
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[concern_mod, helper_mod], edges=[],
+        )
+        result = link_inheritance(ctx)
+        includes = [e for e in result.edges if e.edge_type == "includes"]
+        assert len(includes) == 1
+        assert includes[0].src == "sym:AuthHelper"
+        assert includes[0].dst == "sym:Concern"
+
+    def test_emits_extends_and_includes_when_both_present(self) -> None:
+        """Class with both superclass and include yields two edges."""
+        base = self._cls("sym:Base", "Base")
+        validations = self._mod("sym:Validations", "Validations")
+        user = self._cls(
+            "sym:User", "User",
+            base_classes=["Base"],
+            included_modules=["Validations"],
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base, validations, user],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+        by_type = {e.edge_type: e for e in result.edges}
+        assert by_type["extends"].dst == "sym:Base"
+        assert by_type["includes"].dst == "sym:Validations"
+
+    def test_skips_external_module_with_no_in_tree_symbol(self) -> None:
+        """`include Sidekiq::Worker` where Sidekiq is external -> no edge."""
+        klass = self._cls(
+            "sym:MyWorker", "MyWorker",
+            included_modules=["Sidekiq::Worker"],
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[klass], edges=[],
+        )
+        result = link_inheritance(ctx)
+        assert [e for e in result.edges if e.edge_type == "includes"] == []
+
+    def test_qualified_name_falls_back_to_short_segment(self) -> None:
+        """`include Foo::Bar` resolves to Bar module when only short is in tree."""
+        bar_mod = self._mod("sym:Bar", "Bar")
+        klass = self._cls(
+            "sym:Klass", "Klass", included_modules=["Foo::Bar"],
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[bar_mod, klass], edges=[],
+        )
+        result = link_inheritance(ctx)
+        includes = [e for e in result.edges if e.edge_type == "includes"]
+        assert len(includes) == 1
+        assert includes[0].dst == "sym:Bar"
+
+    def test_dot_qualified_name_falls_back_to_short_segment(self) -> None:
+        """`Foo.Bar`-style qualified mixin name (non-Ruby producers) also
+        falls back to the short segment. Ruby uses `::` exclusively, but
+        the resolution code keeps shape parity with extends/implements
+        which supports both Java-style `.` and Ruby-style `::`.
+        """
+        bar_mod = Symbol(
+            id="sym:Bar", name="Bar", kind="module", language="groovy",
+            path="/m.groovy",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run", meta=None,
+        )
+        klass = Symbol(
+            id="sym:Klass", name="Klass", kind="class", language="groovy",
+            path="/k.groovy",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run",
+            meta={"included_modules": ["Foo.Bar"]},
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[bar_mod, klass], edges=[],
+        )
+        result = link_inheritance(ctx)
+        includes = [e for e in result.edges if e.edge_type == "includes"]
+        assert len(includes) == 1
+        assert includes[0].dst == "sym:Bar"
+
+    def test_skips_self_include(self) -> None:
+        """A symbol that names itself as included gets no self-edge."""
+        mod = self._mod(
+            "sym:Selfish", "Selfish", included_modules=["Selfish"],
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[mod], edges=[],
+        )
+        result = link_inheritance(ctx)
+        assert [e for e in result.edges if e.edge_type == "includes"] == []
+
+    def test_skips_duplicate_when_includes_edge_already_exists(self) -> None:
+        """Pre-existing `includes` edges from analyzers are not duplicated."""
+        mod = self._mod("sym:X", "X")
+        klass = self._cls(
+            "sym:C", "C", included_modules=["X"],
+        )
+        existing = Edge.create(
+            src="sym:C", dst="sym:X", edge_type="includes", line=1,
+            origin="test", origin_run_id="test",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=[mod, klass], edges=[existing],
+        )
+        result = link_inheritance(ctx)
+        new_includes = [e for e in result.edges if e.edge_type == "includes"]
+        assert len(new_includes) == 0

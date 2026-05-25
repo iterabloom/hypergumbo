@@ -864,6 +864,7 @@
                 "ast_implements": "inference_pathway",
                 "ast_import": "inference_pathway",
                 "ast_include": "inference_pathway",
+                "ast_includes": "inference_pathway",
                 "ast_method_inferred": "inference_pathway",
                 "ast_method_this": "inference_pathway",
                 "ast_method_this_property": "inference_pathway",
