@@ -28,6 +28,7 @@ from hypergumbo_core.analyze.base import (
     make_route_stable_id,
     make_symbol_id,
     make_typed_stable_id,
+    make_unresolved_edge,
     node_text,
     normalize_generic_params,
     normalize_signature_go,
@@ -1603,7 +1604,11 @@ class TestPopulateDocstringsFromTree:
 
 
 class TestMakeUnresolvedEdge:
-    """Tests for the shared make_unresolved_edge utility."""
+    """Tests for make_unresolved_edge — base + INV-nilud hint kwargs."""
+
+    # WI-gifar (PR-1 of INV-nilud inherited_calls campaign): the three
+    # _hint_ kwargs below let analyzers attach Edge.meta entries that the
+    # upcoming inherited_calls linker can walk ancestor chains against.
 
     def test_creates_correct_edge(self) -> None:
         """Creates an Edge with correct format and confidence."""
@@ -1632,6 +1637,62 @@ class TestMakeUnresolvedEdge:
             module_hint="java.io.InputStream",
         )
         assert edge.dst == "java:java.io.InputStream:0-0:read:unresolved"
+
+    def _call(self, **overrides) -> object:
+        kwargs = {
+            "lang": "java",
+            "src_id": "java:/app/Foo.java:1-5:Foo.bar:method",
+            "callee_name": "baz",
+            "line": 12,
+            "pass_id": "java:1.0",
+            "run_id": "run-xyz",
+        }
+        kwargs.update(overrides)
+        return make_unresolved_edge(**kwargs)
+
+    def test_default_edge_shape_is_unchanged(self) -> None:
+        edge = self._call()
+        assert edge.edge_type == "calls"
+        assert edge.evidence_type == "ast_call_direct"
+        assert edge.confidence == 0.50
+        assert edge.is_resolved is False
+        assert edge.dst == "java:external:0-0:baz:unresolved"
+        assert edge.line == 12
+
+    def test_no_hints_yields_no_meta(self) -> None:
+        """Backward compat: omitting the new kwargs leaves Edge.meta as None."""
+        edge = self._call()
+        assert edge.meta is None
+
+    def test_enclosing_class_hint_lands_in_meta(self) -> None:
+        edge = self._call(enclosing_class="Foo")
+        assert edge.meta == {"enclosing_class": "Foo"}
+
+    def test_receiver_type_hint_lands_in_meta(self) -> None:
+        edge = self._call(receiver_type_hint="Bar")
+        assert edge.meta == {"receiver_type_hint": "Bar"}
+
+    def test_inherited_field_receiver_lands_in_meta(self) -> None:
+        edge = self._call(inherited_field_receiver="self.helper")
+        assert edge.meta == {"inherited_field_receiver": "self.helper"}
+
+    def test_all_three_hints_combined(self) -> None:
+        edge = self._call(
+            enclosing_class="Foo",
+            receiver_type_hint="Bar",
+            inherited_field_receiver="self.helper",
+        )
+        assert edge.meta == {
+            "enclosing_class": "Foo",
+            "receiver_type_hint": "Bar",
+            "inherited_field_receiver": "self.helper",
+        }
+
+    def test_module_hint_kwarg_still_works(self) -> None:
+        """module_hint must remain reachable alongside the new kwargs."""
+        edge = self._call(module_hint="java.util", enclosing_class="Foo")
+        assert edge.dst == "java:java.util:0-0:baz:unresolved"
+        assert edge.meta == {"enclosing_class": "Foo"}
 
 
 def _make_caller_symbol(
@@ -1932,3 +1993,5 @@ class TestSynthesizeFileSymbolsHonorIdentity:
         assert new_syms[0].path == "dart:io"
         assert new_syms[0].name == "dart:io"
         assert new_syms[0].span.end_line == 1  # no file to count
+
+

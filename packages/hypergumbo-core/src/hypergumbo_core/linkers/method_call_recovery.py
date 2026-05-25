@@ -78,7 +78,7 @@ PASS_ID = make_pass_id("method-call-recovery")
 _CLASS_HINT_EDGE_TYPES = frozenset({"calls", "instantiates"})
 
 
-def _short_name(name: str) -> str:
+def short_name(name: str) -> str:
     """Return the unqualified short name for a symbol."""
     for sep in ("#", "::", "."):
         if sep in name:
@@ -86,7 +86,7 @@ def _short_name(name: str) -> str:
     return name
 
 
-def _parse_unresolved_name(dst: str) -> str | None:
+def parse_unresolved_name(dst: str) -> str | None:
     """Extract the bare method name from an unresolved dst.
 
     Convention (see js_ts.py / java.py / py.py): ::
@@ -102,6 +102,13 @@ def _parse_unresolved_name(dst: str) -> str | None:
     if len(parts) < 5:
         return None
     return parts[-2]
+
+
+# Backward-compat aliases for callers that imported the private names before
+# WI-gifar (PR-1 of INV-nilud) promoted them so the upcoming inherited_calls
+# linker can share the unresolved-dst parsing and short-form helpers.
+_short_name = short_name
+_parse_unresolved_name = parse_unresolved_name
 
 
 @register_linker(
@@ -130,7 +137,7 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
         if e.edge_type in _CLASS_HINT_EDGE_TYPES and e.dst in class_ids:
             class_hints[e.src].append(e)
         if e.edge_type == "calls" and e.dst.endswith(":unresolved"):
-            name = _parse_unresolved_name(e.dst)
+            name = parse_unresolved_name(e.dst)
             if name is not None:
                 unresolved[e.src].append((name, e))
         if e.edge_type == "calls" and e.dst in sym_by_id:
@@ -147,7 +154,7 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
         target = sym_by_id.get(e.dst)
         if target is None:
             continue
-        class_methods[e.src][_short_name(target.name)] = target
+        class_methods[e.src][short_name(target.name)] = target
 
     new_edges: list[Edge] = []
     for caller_id, hints in class_hints.items():

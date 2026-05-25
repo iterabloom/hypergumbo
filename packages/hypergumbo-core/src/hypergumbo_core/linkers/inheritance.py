@@ -41,7 +41,7 @@ def _build_symbol_maps(
 
     Uses list values to handle name collisions (e.g., multiple classes named
     'Model' across different files). Resolution is done by
-    ``_resolve_target_symbol`` using same-file preference and deterministic
+    ``resolve_target_symbol`` using same-file preference and deterministic
     fallback.
 
     Returns:
@@ -67,7 +67,7 @@ def _build_symbol_maps(
     return class_by_name, interface_by_name
 
 
-def _resolve_target_symbol(
+def resolve_target_symbol(
     name: str,
     child_sym: Symbol,
     candidates_by_name: dict[str, list[Symbol]],
@@ -127,6 +127,12 @@ def _resolve_target_symbol(
     return candidates_sorted[0], True
 
 
+# Backward-compat alias for callers that imported the private name before
+# WI-gifar (PR-1 of INV-nilud) promoted it to the public surface so the
+# upcoming inherited_calls linker can share the disambiguation logic.
+_resolve_target_symbol = resolve_target_symbol
+
+
 def _create_inheritance_edges(
     symbols: list[Symbol],
     class_by_name: dict[str, list[Symbol]],
@@ -142,7 +148,7 @@ def _create_inheritance_edges(
     - If base is not found (external) -> no edge
     - If edge already exists (from analyzer) -> skip to avoid duplicates
 
-    Uses ``_resolve_target_symbol`` to disambiguate when multiple classes or
+    Uses ``resolve_target_symbol`` to disambiguate when multiple classes or
     interfaces share the same name.
 
     Args:
@@ -210,7 +216,7 @@ def _create_inheritance_edges(
             is_fallback = False
 
             for lookup_name in lookup_names:
-                resolved = _resolve_target_symbol(
+                resolved = resolve_target_symbol(
                     lookup_name, sym, interface_by_name,
                 )
                 if resolved is not None:
@@ -219,7 +225,7 @@ def _create_inheritance_edges(
                     break
                 if rust_kind_discipline:
                     continue
-                resolved = _resolve_target_symbol(
+                resolved = resolve_target_symbol(
                     lookup_name, sym, class_by_name,
                 )
                 if resolved is not None:

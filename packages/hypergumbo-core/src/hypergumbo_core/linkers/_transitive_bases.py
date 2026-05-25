@@ -112,16 +112,26 @@ def short_name_fallback(
 
 def build_inheritance_index(
     edges: list["Edge"],
+    edge_types: tuple[str, ...] = _INHERITANCE_EDGE_TYPES,
 ) -> dict[str, list[str]]:
-    """Build a src-id -> list-of-dst-ids map from extends/implements edges.
+    """Build a src-id -> list-of-dst-ids map from inheritance-style edges.
 
     The returned map keys on the child class's symbol id and yields the
-    parent symbol ids reachable in one step. Edge types other than
-    ``extends`` / ``implements`` are ignored.
+    parent symbol ids reachable in one step. Edge types other than the
+    tuple passed in ``edge_types`` are ignored.
+
+    Args:
+        edges: All edges to consider.
+        edge_types: Tuple of edge_type strings to treat as inheritance.
+            Defaults to ``("extends", "implements")`` for back-compat.
+            Ruby ``include``/``extend`` ancestor walks pass
+            ``("extends", "implements", "includes")`` (WI-hatip / PR-2
+            of INV-nilud) so the new ``includes`` edge participates in
+            transitive base-name collection alongside extends/implements.
     """
     index: dict[str, list[str]] = defaultdict(list)
     for edge in edges:
-        if edge.edge_type in _INHERITANCE_EDGE_TYPES:
+        if edge.edge_type in edge_types:
             index[edge.src].append(edge.dst)
     return index
 

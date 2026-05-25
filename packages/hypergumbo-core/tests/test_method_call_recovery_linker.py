@@ -381,3 +381,71 @@ class TestInvZuhubMethodCallRecoveryFallback:
         assert edge.meta is not None
         assert edge.meta.get("disambiguation_fallback") is True
         assert edge.meta.get("resolution_quality") == "recovery"
+
+
+# ---------------------------------------------------------------------------
+# WI-gifar (PR-1 of INV-nilud inherited_calls campaign):
+# Promote _short_name and _parse_unresolved_name to public names so the
+# upcoming inherited_calls linker can share the unresolved-dst parsing
+# and qualified-name short-form helpers without re-implementing them.
+# ---------------------------------------------------------------------------
+
+
+class TestShortNamePublic:
+    """Public alias short_name matches private implementation."""
+
+    def test_public_name_is_importable(self) -> None:
+        from hypergumbo_core.linkers.method_call_recovery import short_name
+        assert callable(short_name)
+
+    def test_dot_separator(self) -> None:
+        from hypergumbo_core.linkers.method_call_recovery import short_name
+        assert short_name("com.example.UserService.findUser") == "findUser"
+
+    def test_hash_separator_ruby_style(self) -> None:
+        from hypergumbo_core.linkers.method_call_recovery import short_name
+        assert short_name("UserController#index") == "index"
+
+    def test_double_colon_separator(self) -> None:
+        from hypergumbo_core.linkers.method_call_recovery import short_name
+        assert short_name("std::vector::push_back") == "push_back"
+
+    def test_no_separator_returns_input(self) -> None:
+        from hypergumbo_core.linkers.method_call_recovery import short_name
+        assert short_name("bareName") == "bareName"
+
+    def test_public_and_private_names_share_implementation(self) -> None:
+        from hypergumbo_core.linkers.method_call_recovery import (
+            _short_name,
+            short_name,
+        )
+        assert short_name is _short_name
+
+
+class TestParseUnresolvedNamePublic:
+    """Public alias parse_unresolved_name matches private implementation."""
+
+    def test_public_name_is_importable(self) -> None:
+        from hypergumbo_core.linkers.method_call_recovery import parse_unresolved_name
+        assert callable(parse_unresolved_name)
+
+    def test_extracts_name_from_standard_dst(self) -> None:
+        from hypergumbo_core.linkers.method_call_recovery import parse_unresolved_name
+        assert parse_unresolved_name(
+            "kotlin:external:0-0:run:unresolved"
+        ) == "run"
+
+    def test_returns_none_for_non_unresolved_dst(self) -> None:
+        from hypergumbo_core.linkers.method_call_recovery import parse_unresolved_name
+        assert parse_unresolved_name("sym:CliRunner.run") is None
+
+    def test_returns_none_for_too_few_parts(self) -> None:
+        from hypergumbo_core.linkers.method_call_recovery import parse_unresolved_name
+        assert parse_unresolved_name("foo:unresolved") is None
+
+    def test_public_and_private_names_share_implementation(self) -> None:
+        from hypergumbo_core.linkers.method_call_recovery import (
+            _parse_unresolved_name,
+            parse_unresolved_name,
+        )
+        assert parse_unresolved_name is _parse_unresolved_name

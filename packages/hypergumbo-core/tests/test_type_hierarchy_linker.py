@@ -1832,3 +1832,97 @@ class TestSkipLevelDispatch:
             f"Expected IFoo.foo to dispatch transitively to Impl.foo via "
             f"IBar interface inheritance; got dispatches={dispatch_dsts}"
         )
+
+
+# ---------------------------------------------------------------------------
+# WI-gifar (PR-1 of INV-nilud inherited_calls campaign):
+# Extract _TypeHierarchyIndex.build into a module-public build_method_index
+# helper so the upcoming inherited_calls linker (priority=18) can reuse the
+# class -> short-method-name index without reaching for a private name.
+# inherited_calls runs BEFORE type_hierarchy (priority=20), so both linkers
+# must independently build the same index — hence the shared helper.
+# ---------------------------------------------------------------------------
+
+
+class TestBuildMethodIndexPublic:
+    """Public module-level build_method_index helper."""
+
+    def _cls(self, sid: str, name: str, path: str) -> Symbol:
+        return Symbol(
+            id=sid, name=name, kind="class", language="java", path=path,
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run", meta=None,
+        )
+
+    def _method(self, sid: str, name: str, path: str) -> Symbol:
+        return Symbol(
+            id=sid, name=name, kind="method", language="java", path=path,
+            span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run", meta=None,
+        )
+
+    def test_public_name_is_importable(self) -> None:
+        from hypergumbo_core.linkers.type_hierarchy import build_method_index
+        assert callable(build_method_index)
+
+    def test_builds_short_name_index_for_method_symbol(self) -> None:
+        from hypergumbo_core.linkers.type_hierarchy import build_method_index
+
+        foo_class = self._cls("java:/Foo.java:1-5:Foo:class", "Foo", "/Foo.java")
+        foo_bar = self._method(
+            "java:/Foo.java:2-4:Foo.bar:method", "Foo.bar", "/Foo.java"
+        )
+        index = build_method_index(
+            [foo_class, foo_bar],
+            class_ids_by_name={"Foo": [foo_class.id]},
+            class_symbols={foo_class.id: foo_class},
+        )
+        # short name "bar" maps to (class_id, method_symbol)
+        assert "bar" in index.methods_by_short_name
+        entries = index.methods_by_short_name["bar"]
+        assert len(entries) == 1
+        cid, msym = entries[0]
+        assert cid == foo_class.id
+        assert msym.id == foo_bar.id
+
+    def test_skips_non_method_symbols(self) -> None:
+        from hypergumbo_core.linkers.type_hierarchy import build_method_index
+
+        cls = self._cls("java:/X.java:1-5:X:class", "X", "/X.java")
+        index = build_method_index(
+            [cls],
+            class_ids_by_name={"X": [cls.id]},
+            class_symbols={cls.id: cls},
+        )
+        assert index.methods_by_short_name == {}
+
+    def test_empty_symbol_list(self) -> None:
+        from hypergumbo_core.linkers.type_hierarchy import build_method_index
+
+        index = build_method_index([], class_ids_by_name={}, class_symbols={})
+        assert index.symbol_by_id == {}
+        assert index.methods_by_short_name == {}
+
+    def test_legacy_classmethod_still_works(self) -> None:
+        """_TypeHierarchyIndex.build continues to delegate to build_method_index."""
+        from hypergumbo_core.linkers.type_hierarchy import (
+            _TypeHierarchyIndex,
+            build_method_index,
+        )
+
+        cls = self._cls("java:/Foo.java:1-5:Foo:class", "Foo", "/Foo.java")
+        bar = self._method(
+            "java:/Foo.java:2-4:Foo.bar:method", "Foo.bar", "/Foo.java"
+        )
+        legacy = _TypeHierarchyIndex.build(
+            [cls, bar],
+            class_ids_by_name={"Foo": [cls.id]},
+            class_symbols={cls.id: cls},
+        )
+        canonical = build_method_index(
+            [cls, bar],
+            class_ids_by_name={"Foo": [cls.id]},
+            class_symbols={cls.id: cls},
+        )
+        assert legacy.methods_by_short_name == canonical.methods_by_short_name
+        assert legacy.symbol_by_id.keys() == canonical.symbol_by_id.keys()

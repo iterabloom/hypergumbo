@@ -1017,3 +1017,57 @@ class TestInheritanceLinker:
         edge_map = {e.dst: e.edge_type for e in result.edges}
         assert edge_map["sym:BaseService"] == "extends"
         assert edge_map["sym:Logging"] == "implements"
+
+
+# ---------------------------------------------------------------------------
+# WI-gifar (PR-1 of INV-nilud inherited_calls campaign):
+# Promote _resolve_target_symbol to public resolve_target_symbol so the
+# upcoming inherited_calls linker can reuse the same-language / same-file
+# / sorted-ID disambiguation logic.
+# ---------------------------------------------------------------------------
+
+
+class TestResolveTargetSymbolPublic:
+    """Public alias resolve_target_symbol matches private implementation."""
+
+    def _sym(self, sid: str, name: str, path: str, language: str = "python") -> Symbol:
+        return Symbol(
+            id=sid,
+            name=name,
+            kind="class",
+            language=language,
+            path=path,
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test",
+            origin_run_id="test-run",
+            meta=None,
+        )
+
+    def test_public_name_is_importable(self) -> None:
+        from hypergumbo_core.linkers.inheritance import resolve_target_symbol
+        assert callable(resolve_target_symbol)
+
+    def test_resolves_unique_candidate(self) -> None:
+        from hypergumbo_core.linkers.inheritance import resolve_target_symbol
+
+        base = self._sym("sym:Base", "Base", "/lib.py")
+        child = self._sym("sym:Child", "Child", "/app.py")
+        result = resolve_target_symbol("Base", child, {"Base": [base]})
+        assert result is not None
+        sym, is_fallback = result
+        assert sym.id == "sym:Base"
+        assert is_fallback is False
+
+    def test_returns_none_when_no_candidates(self) -> None:
+        from hypergumbo_core.linkers.inheritance import resolve_target_symbol
+
+        child = self._sym("sym:Child", "Child", "/app.py")
+        assert resolve_target_symbol("Missing", child, {}) is None
+
+    def test_public_and_private_names_share_implementation(self) -> None:
+        """The promotion must not fork behavior — both names dispatch the same code."""
+        from hypergumbo_core.linkers.inheritance import (
+            _resolve_target_symbol,
+            resolve_target_symbol,
+        )
+        assert resolve_target_symbol is _resolve_target_symbol

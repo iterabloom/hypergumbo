@@ -34,7 +34,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, Iterator, Optional
 
 from ..dataflow import annotate_dataflow, get_dataflow_config
 from ..discovery import find_files
@@ -452,6 +452,9 @@ def make_unresolved_edge(
     *,
     module_hint: str = "external",
     dst_ref: Optional[ExternalRef] = None,
+    enclosing_class: Optional[str] = None,
+    receiver_type_hint: Optional[str] = None,
+    inherited_field_receiver: Optional[str] = None,
 ) -> Edge:
     """Create an unresolved-external call edge for a callee not in the project.
 
@@ -473,8 +476,25 @@ def make_unresolved_edge(
             ``dst`` string remains keyed by ``module_hint`` and
             ``callee_name``. Callers are responsible for keeping the
             two coherent.
+        enclosing_class: Owning class short name of the call site (Site 1:
+            bare / `this` / `self` calls). Lands on ``Edge.meta`` under
+            ``"enclosing_class"`` for the inherited_calls linker (INV-nilud
+            campaign, PR-1) to walk the ancestor chain.
+        receiver_type_hint: Inferred receiver type short name (Site 2:
+            typed-receiver calls). Lands on ``Edge.meta`` under
+            ``"receiver_type_hint"``.
+        inherited_field_receiver: Receiver identifier when believed to be
+            an inherited field (Site 3). Lands on ``Edge.meta`` under
+            ``"inherited_field_receiver"``.
     """
     dst_id = f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"
+    hint_meta: Dict[str, Any] = {}
+    if enclosing_class is not None:
+        hint_meta["enclosing_class"] = enclosing_class
+    if receiver_type_hint is not None:
+        hint_meta["receiver_type_hint"] = receiver_type_hint
+    if inherited_field_receiver is not None:
+        hint_meta["inherited_field_receiver"] = inherited_field_receiver
     return Edge.create(
         src=src_id,
         dst=dst_id,
@@ -486,6 +506,7 @@ def make_unresolved_edge(
         evidence_type="ast_call_direct",
         is_resolved=False,
         dst_ref=dst_ref,
+        meta=hint_meta or None,
     )
 
 

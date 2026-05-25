@@ -298,6 +298,12 @@ class _TypeHierarchyIndex:
 
     Methods are indexed by their resolved class ID (not name), so that
     multiple classes sharing a short name do not collide.
+
+    See ``build_method_index`` (module-level) for the canonical
+    constructor. The ``build`` classmethod is preserved as a thin
+    delegate for in-module callers and any external code that pinned
+    the original name before WI-gifar (PR-1 of INV-nilud) extracted
+    the helper.
     """
 
     symbol_by_id: dict[str, Symbol]
@@ -310,24 +316,46 @@ class _TypeHierarchyIndex:
         class_ids_by_name: dict[str, list[str]],
         class_symbols: dict[str, Symbol],
     ) -> _TypeHierarchyIndex:
-        """Build indexes from the full symbol list."""
-        symbol_by_id = {s.id: s for s in all_symbols}
-        methods_by_short_name: dict[str, list[tuple[str, Symbol]]] = {}
-        for sym in all_symbols:
-            if sym.kind != "method":
-                continue
-            short_name = _get_method_short_name(sym.name)
-            class_id = _resolve_method_class_id(
-                sym, class_ids_by_name, class_symbols,
-            )
-            if class_id is not None:
-                methods_by_short_name.setdefault(short_name, []).append(
-                    (class_id, sym)
-                )
-        return _TypeHierarchyIndex(
-            symbol_by_id=symbol_by_id,
-            methods_by_short_name=methods_by_short_name,
+        """Delegate to module-level ``build_method_index`` (WI-gifar)."""
+        return build_method_index(all_symbols, class_ids_by_name, class_symbols)
+
+
+def build_method_index(
+    all_symbols: list[Symbol],
+    class_ids_by_name: dict[str, list[str]],
+    class_symbols: dict[str, Symbol],
+) -> _TypeHierarchyIndex:
+    """Build a short-method-name -> [(class_id, Symbol)] index over methods.
+
+    Extracted from ``_TypeHierarchyIndex.build`` so the upcoming
+    ``inherited_calls`` linker (priority=18, runs before
+    ``type_hierarchy`` at priority=20) can share the same index
+    construction without reaching for a private name or depending on
+    ``type_hierarchy``'s execution. Both linkers call this helper
+    independently. WI-gifar (PR-1 of INV-nilud).
+
+    Args:
+        all_symbols: All symbols in the analysis.
+        class_ids_by_name: Multi-value short-class-name -> [class_id] map.
+        class_symbols: Class-id -> Symbol map.
+    """
+    symbol_by_id = {s.id: s for s in all_symbols}
+    methods_by_short_name: dict[str, list[tuple[str, Symbol]]] = {}
+    for sym in all_symbols:
+        if sym.kind != "method":
+            continue
+        short_method_name = _get_method_short_name(sym.name)
+        class_id = _resolve_method_class_id(
+            sym, class_ids_by_name, class_symbols,
         )
+        if class_id is not None:
+            methods_by_short_name.setdefault(short_method_name, []).append(
+                (class_id, sym)
+            )
+    return _TypeHierarchyIndex(
+        symbol_by_id=symbol_by_id,
+        methods_by_short_name=methods_by_short_name,
+    )
 
 
 def find_implementing_methods(

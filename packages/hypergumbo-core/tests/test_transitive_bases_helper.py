@@ -306,3 +306,56 @@ class TestShortNameFallback:
             frozenset({"TimeStampedModel"}),
             ("django.", "django_extensions."),
         ) is False
+
+
+# ---------------------------------------------------------------------------
+# WI-gifar (PR-1 of INV-nilud inherited_calls campaign):
+# build_inheritance_index gains an edge_types kwarg so Ruby's new `includes`
+# edge can participate in transitive ancestor walks alongside extends/implements.
+# Default tuple matches historical behavior.
+# ---------------------------------------------------------------------------
+
+
+class TestBuildInheritanceIndexEdgeTypesKwarg:
+    """build_inheritance_index(edges, edge_types=...) gating."""
+
+    def test_default_edge_types_match_legacy_behavior(self) -> None:
+        a, b = _cls("A"), _cls("B", span=(10, 15))
+        # extends + implements collected; includes excluded
+        edges = [
+            _edge(a, b, "extends"),
+            _edge(a, b, "implements"),
+            _edge(a, b, "includes"),
+            _edge(a, b, "calls"),
+        ]
+        index = build_inheritance_index(edges)
+        # 3 entries reach b: extends, implements (default tuple), but not includes/calls
+        assert index[a.id] == [b.id, b.id]
+
+    def test_custom_edge_types_can_add_includes(self) -> None:
+        a, b = _cls("A"), _cls("B", span=(10, 15))
+        edges = [
+            _edge(a, b, "extends"),
+            _edge(a, b, "includes"),
+            _edge(a, b, "calls"),
+        ]
+        index = build_inheritance_index(
+            edges,
+            edge_types=("extends", "implements", "includes"),
+        )
+        assert index[a.id] == [b.id, b.id]  # extends + includes
+
+    def test_custom_edge_types_can_restrict_to_includes_only(self) -> None:
+        a, b = _cls("A"), _cls("B", span=(10, 15))
+        edges = [
+            _edge(a, b, "extends"),
+            _edge(a, b, "includes"),
+        ]
+        index = build_inheritance_index(edges, edge_types=("includes",))
+        assert index[a.id] == [b.id]
+
+    def test_custom_edge_types_can_exclude_everything(self) -> None:
+        a, b = _cls("A"), _cls("B", span=(10, 15))
+        edges = [_edge(a, b, "extends"), _edge(a, b, "implements")]
+        index = build_inheritance_index(edges, edge_types=())
+        assert a.id not in index
