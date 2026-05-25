@@ -1,0 +1,20 @@
+- op: create  # 7a00
+  at: '2026-05-25T02:34:25Z'  # 7a00
+  by: agent  # 7a00
+  actor: jgstern_agent  # 7a00
+  clock: 1  # 7a00
+  nonce: 7a00  # 7a00
+  data:  # 7a00
+    kind: work_item  # 7a00
+    title: "PR-5: Java Sites 2+3 lift (linker consumes PR-4 meta) — closes META INV-nilud campaign"  # 7a00
+    status: todo_soft  # 7a00
+    priority: 3  # 7a00
+    parent: INV-nilud-zivag-jibak-danov-polak-sibam-fahif-katat  # 7a00
+    tags:  # 7a00
+    - cross_language_parity  # 7a00
+    isbefore: []  # 7a00
+    duplicate_of: []  # 7a00
+    not_duplicate_of: []  # 7a00
+    pr_ref:  # 7a00
+    description: "PR-5 of the inherited_calls campaign (parent META INV-nilud). Linker grows Site-2 (typed-receiver) and Site-3 (inherited-field-receiver) resolvers that consume the `Edge.meta` keys (`var_types`, `class_fields`) emitted by PR-4. Delete the Java analyzer walks for Sites 2 and 3 at `java.py:1492-1591`. Migrate `TestJavaTypeInference` (~2500-2580) and `TestJavaFieldInheritance` (4457-4576) to pipeline-mode (full analyzer→linker integration).\n\n**Edge confidence preserved.** `ast_call_inherited_method` at 0.70, `ast_call_inherited_field` at 0.80.\n\n**Bakeoff cohort:** spring-petclinic, spring-boot, chatwoot.\n\n**Success criterion:** `ast_call_inherited_method` + `ast_call_inherited_field` counts within ±1 on spring-petclinic, ±0.5% on spring-boot. Chatwoot unchanged (no Java).\n\n**META status transition:** INV-nilud → `pending_validation` on PR-5 merge. → `satisfied` after a full BROAD cycle confirms no regression.\n\n**Tag at merge:** `awaits_bakeoff_validation`.\n\nCanonical plan: `~/puluf-plan.md`."  # 7a00
+    fields: {}  # 7a00

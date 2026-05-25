@@ -1,0 +1,21 @@
+- op: create  # 359c
+  at: '2026-05-25T02:34:45Z'  # 359c
+  by: agent  # 359c
+  actor: jgstern_agent  # 359c
+  clock: 1  # 359c
+  nonce: 359c  # 359c
+  data:  # 359c
+    kind: work_item  # 359c
+    title: "PR-3: Java Site 1 lift (bare/this calls → inherited_calls linker)"  # 359c
+    status: todo_soft  # 359c
+    priority: 3  # 359c
+    parent: INV-nilud-zivag-jibak-danov-polak-sibam-fahif-katat  # 359c
+    tags:  # 359c
+    - cross_language_parity  # 359c
+    isbefore:  # 359c
+    - WI-sivuk-godop-dizop-hizom-gobod-zurom-zujam-lizil  # 359c
+    duplicate_of: []  # 359c
+    not_duplicate_of: []  # 359c
+    pr_ref:  # 359c
+    description: "PR-3 of the inherited_calls campaign (parent META INV-nilud). Add `_walk_single_then_interfaces` walker to `linkers/inherited_calls.py`. Switch Java bare/`this` calls (`java.py:1437-1461`) to `make_unresolved_edge(..., enclosing_class=<owner>)`. Delete the Site-1 walk from `java.py`. Migrate `TestJavaInheritedMethodResolution` (`test_java.py:4303-4374`) to pipeline-mode.\n\n**Edge confidence preserved.** `ast_call_inherited` at 0.90.\n\n**Bakeoff cohort:** spring-petclinic, spring-boot, chatwoot.\n\n**Success criterion:** `ast_call_inherited` edges within ±1 on spring-petclinic; chatwoot unchanged (no Java effect).\n\n**Tag at merge:** `awaits_bakeoff_validation`.\n\nCanonical plan: `~/puluf-plan.md`."  # 359c
+    fields: {}  # 359c

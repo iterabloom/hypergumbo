@@ -1,0 +1,21 @@
+- op: create  # 5809
+  at: '2026-05-25T02:34:36Z'  # 5809
+  by: agent  # 5809
+  actor: jgstern_agent  # 5809
+  clock: 1  # 5809
+  nonce: '5809'  # 5809
+  data:  # 5809
+    kind: work_item  # 5809
+    title: "PR-4: Java analyzer enrichment for Sites 2/3 (meta only, unconsumed)"  # 5809
+    status: todo_soft  # 5809
+    priority: 3  # 5809
+    parent: INV-nilud-zivag-jibak-danov-polak-sibam-fahif-katat  # 5809
+    tags:  # 5809
+    - cross_language_parity  # 5809
+    isbefore:  # 5809
+    - WI-puvil-zilab-bokak-sazag-dijoh-kurol-dijil-kohoh  # 5809
+    duplicate_of: []  # 5809
+    not_duplicate_of: []  # 5809
+    pr_ref:  # 5809
+    description: "PR-4 of the inherited_calls campaign (parent META INV-nilud). Java analyzer at `java.py:1492-1591` emits `var_types` and `class_fields` as `Edge.meta` on the unresolved-fallback path. Linker consumes nothing yet — this is pure analyzer-side enrichment that PR-5 then consumes.\n\n**Behavior change:** none (analyzer-side meta keys added but unconsumed by any linker).\n\n**Bakeoff cohort:** spring-petclinic, spring-boot.\n\n**Success criterion:** total Java edge count within ±0.5%; meta keys present on ≥80% of Site-2/3 fallback edges.\n\n**Tag at merge:** `awaits_bakeoff_validation`.\n\nCanonical plan: `~/puluf-plan.md`."  # 5809
+    fields: {}  # 5809
