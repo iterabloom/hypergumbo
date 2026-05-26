@@ -53,6 +53,7 @@ Nine analyzers implement variable type inference. The original six (Python, Java
 | Go       | ✅ (short var, var spec, `go.py:593-635`) | ✅ (`go.py:638-671`) | ❌ | ❌ | ❌ (Phase 1) | File-scoped |
 | Ruby     | ✅ (pattern-based: `.new`, `.find`, `.create`, `ruby.py:1973-2017`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | File-scoped |
 | Lua      | ✅ (pattern-based: `MyClass:new()`, `lua.py:235-295`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | File-scoped |
+| Rust     | ✅ (let-binding constructor / struct-expression / type-annotated let, `rust.py:_extract_var_types_rust`) | ✅ (`rust.py:_extract_param_types_rust`) | Partial (via `field_type_registry`, `self.field` only) | ✅ (`rust.py:_extract_rust_return_type_name` — Result/Option/Box/Rc/Arc unwrap, impl/dyn Trait opaque) | ✅ (Phase 3 / WI-titor) | File-scoped |
 
 The **Chained** column tracks INV-dihos source 5: "this analyzer's `var_types` consults a global function-signature registry when assigning the result of a method call." A `❌` means the analyzer name-guesses the var type from the method name (or gives up); a `(Phase N)` annotation places the analyzer in the rollout plan in §Future Work. Languages with no return-type annotations at all (Ruby, Lua) are marked `n/a` because there is no source data to register; the same is true for fully-dynamic Python without PEP 484 annotations, but type-annotated Python is tracked by Phase 4.
 

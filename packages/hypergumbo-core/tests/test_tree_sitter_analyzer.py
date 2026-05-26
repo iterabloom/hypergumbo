@@ -1318,6 +1318,130 @@ class TestFieldTypeRegistryAggregation:
         assert captured == {}
 
 
+class TestMethodReturnTypeRegistryAggregation:
+    """Tests for the WI-titor / INV-dihos method return-type aggregation
+    step in ``TreeSitterAnalyzer.analyze()`` (§4c).
+
+    Mirrors ``TestFieldTypeRegistryAggregation`` because the two
+    registries follow the same first-writer-wins convention and the
+    same end-of-analyze cleanup pattern.
+    """
+
+    def _make_return_type_analyzer(self):
+        """A StubAnalyzer subclass that populates FileAnalysis.method_return_types
+        based on filename, like FieldTypeAnalyzer does for class_field_types."""
+
+        class MethodReturnTypeAnalyzer(StubAnalyzer):
+            def extract_symbols_from_file(self, tree, source, file_path,
+                                          rel_path, run):
+                analysis = super().extract_symbols_from_file(
+                    tree, source, file_path, rel_path, run,
+                )
+                stem = Path(rel_path).stem
+                if stem == "engine":
+                    analysis.method_return_types = {
+                        "Engine::query": "Outcome",
+                        "Engine::new": "Engine",
+                    }
+                elif stem == "outcome":
+                    analysis.method_return_types = {
+                        "Outcome::execute": "i32",
+                    }
+                return analysis
+
+        return MethodReturnTypeAnalyzer
+
+    def test_aggregates_across_files(self, tmp_path: Path) -> None:
+        """analyze() merges method_return_types from multiple files into
+        self._method_return_type_registry, available to Pass-2 callers."""
+        (tmp_path / "engine.stub").write_text("content")
+        (tmp_path / "outcome.stub").write_text("content")
+
+        captured: dict[str, str] = {}
+        ReturnTypeAnalyzer = self._make_return_type_analyzer()
+
+        class CapturingAnalyzer(ReturnTypeAnalyzer):
+            def extract_edges_from_file(self, tree, source, file_path,
+                                        rel_path, local_symbols,
+                                        global_symbols, run,
+                                        import_aliases, resolver):
+                captured.update(self._method_return_type_registry)
+                return []
+
+        CapturingAnalyzer().analyze(tmp_path)
+
+        assert captured == {
+            "Engine::query": "Outcome",
+            "Engine::new": "Engine",
+            "Outcome::execute": "i32",
+        }
+
+    def test_registry_cleared_after_analyze(self, tmp_path: Path) -> None:
+        """_method_return_type_registry is cleared after analyze()
+        to prevent stale data leaking across runs (same hygiene as
+        _field_type_registry)."""
+        (tmp_path / "engine.stub").write_text("content")
+
+        analyzer = self._make_return_type_analyzer()()
+        analyzer.analyze(tmp_path)
+        assert analyzer._method_return_type_registry == {}
+
+    def test_first_writer_wins(self, tmp_path: Path) -> None:
+        """When two files declare the same ``Receiver::method``, first-seen wins."""
+        (tmp_path / "a.stub").write_text("content")
+        (tmp_path / "b.stub").write_text("content")
+
+        captured: dict[str, str] = {}
+
+        class DuplicateAnalyzer(StubAnalyzer):
+            call_count = 0
+
+            def extract_symbols_from_file(self, tree, source, file_path,
+                                          rel_path, run):
+                analysis = super().extract_symbols_from_file(
+                    tree, source, file_path, rel_path, run,
+                )
+                DuplicateAnalyzer.call_count += 1
+                # Both files claim Widget::resize, with different types.
+                if DuplicateAnalyzer.call_count == 1:
+                    analysis.method_return_types = {"Widget::resize": "Size2D"}
+                else:
+                    analysis.method_return_types = {"Widget::resize": "Dimension"}
+                return analysis
+
+            def extract_edges_from_file(self, tree, source, file_path,
+                                        rel_path, local_symbols,
+                                        global_symbols, run,
+                                        import_aliases, resolver):
+                captured.update(self._method_return_type_registry)
+                return []
+
+        DuplicateAnalyzer.call_count = 0
+        DuplicateAnalyzer().analyze(tmp_path)
+
+        # setdefault means first-seen wins (whichever file the analyzer
+        # visited first — the test doesn't control file iteration order,
+        # so either value is acceptable as long as only one survives).
+        assert captured["Widget::resize"] in ("Size2D", "Dimension")
+
+    def test_empty_when_no_return_types(self, tmp_path: Path) -> None:
+        """Registry stays empty when no subclass populates method_return_types."""
+        (tmp_path / "hello.stub").write_text("content")
+
+        captured: dict[str, str] = {}
+
+        class CapturingAnalyzer(StubAnalyzer):
+            def extract_edges_from_file(self, tree, source, file_path,
+                                        rel_path, local_symbols,
+                                        global_symbols, run,
+                                        import_aliases, resolver):
+                captured.update(self._method_return_type_registry)
+                return []
+
+        CapturingAnalyzer().analyze(tmp_path)
+        assert captured == {}
+
+
 class TestResolveReceiverType:
     """Tests for TreeSitterAnalyzer.resolve_receiver_type()."""
 

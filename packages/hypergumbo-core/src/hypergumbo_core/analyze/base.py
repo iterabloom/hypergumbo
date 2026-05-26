@@ -2376,6 +2376,19 @@ class TreeSitterAnalyzer:
                     field_type_registry[class_name].setdefault(fname, ftype)
         self._field_type_registry = field_type_registry
 
+        # 4c. Aggregate method return-type registry across files
+        # (INV-dihos / WI-kuroj / WI-titor). Mirrors field_type_registry:
+        # first writer wins. Subclasses opt in by populating
+        # FileAnalysis.method_return_types during Pass 1; analyzers that
+        # don't (Kotlin/C#'s inline chaining handles the same use case)
+        # simply leave the registry empty. Consumed in Pass 2 via
+        # ``self._method_return_type_registry``.
+        method_return_type_registry: dict[str, str] = {}
+        for analysis, _, _source in file_analyses.values():
+            for key, ret_type in analysis.method_return_types.items():
+                method_return_type_registry.setdefault(key, ret_type)
+        self._method_return_type_registry = method_return_type_registry
+
         # 5. Pass 2: Extract edges and usage contexts
         # Reuses cached source bytes from Pass 1 to avoid re-reading files.
         all_symbols: list[Symbol] = []
@@ -2407,8 +2420,10 @@ class TreeSitterAnalyzer:
             )
             all_contexts.extend(contexts)
 
-        # Clear field type registry to avoid stale data across runs.
+        # Clear field + method-return-type registries to avoid stale
+        # data across runs (mirrors the WI-kuroj cleanup pattern).
         self._field_type_registry = {}
+        self._method_return_type_registry = {}
 
         # 7. Post-process
         all_symbols, all_edges, all_contexts = self.post_process(

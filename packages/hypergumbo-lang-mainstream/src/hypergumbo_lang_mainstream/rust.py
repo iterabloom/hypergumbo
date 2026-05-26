@@ -168,6 +168,271 @@ def normalize_rust_signature(
     )
 
 
+_RUST_BUILTIN_RETURN_TYPES = frozenset({
+    "i8", "i16", "i32", "i64", "i128", "isize",
+    "u8", "u16", "u32", "u64", "u128", "usize",
+    "f32", "f64", "bool", "char", "str", "String",
+    "()", "Self", "self",
+})
+
+_RUST_UNWRAP_WRAPPERS = ("Result", "Option", "Box", "Rc", "Arc")
+
+
+def _rust_split_first_top_level_arg(s: str) -> str:
+    """Return the first comma-separated argument of a generic arg list,
+    respecting nested ``<...>`` so ``HashMap<K, V>, E`` yields
+    ``HashMap<K, V>`` and not ``HashMap<K``.
+    """
+    depth = 0
+    for i, c in enumerate(s):
+        if c == "<":
+            depth += 1
+        elif c == ">":
+            depth -= 1
+        elif c == "," and depth == 0:
+            return s[:i].strip()
+    return s.strip()
+
+
+def _extract_rust_return_type_name(signature: str | None) -> str | None:
+    """Extract the return-type name from a Rust function signature.
+
+    WI-titor (INV-dihos Phase 3) return-type registry entry-point for
+    Rust. Signatures follow the form ``(params) -> ReturnType`` produced
+    by ``_extract_rust_signature``. The extractor:
+
+    * leaves opaque returns unregistered — ``impl Trait`` and
+      ``dyn Trait`` (no concrete name for ``var_types`` to consume);
+    * strips references and lifetimes — ``&'a T`` / ``&mut T`` / ``&T`` → ``T``;
+    * unwraps the WI-titor Tier 2 wrapper set
+      (``Result<T,E>`` / ``Option<T>`` / ``Box<T>`` / ``Rc<T>`` / ``Arc<T>``)
+      to the first generic argument, recursing once so nested wrappers
+      like ``Box<Result<Client,Error>>`` reduce to ``Client``;
+    * strips other generics (``Vec<User>`` → ``Vec``, consistent with
+      ADR-0006 §Limitations / ``generic_strip_pattern``);
+    * strips module paths (``std::sync::Mutex`` → ``Mutex``) because
+      symbols are stored under bare names;
+    * filters builtins (``i32`` / ``bool`` / ``()`` / ``String`` etc.)
+      and non-identifier residues.
+
+    Returns ``None`` when the residue carries no information the
+    receiver-type chain can use.
+    """
+    if not signature:
+        return None
+    arrow_idx = signature.find("->")
+    if arrow_idx < 0:
+        return None
+    ret_part = signature[arrow_idx + 2:].strip()
+    if not ret_part:
+        return None  # pragma: no cover - _extract_rust_signature never emits "-> "
+
+    if ret_part.startswith("impl ") or ret_part.startswith("impl<"):
+        return None
+    if ret_part.startswith("dyn "):
+        return None
+
+    while ret_part.startswith("&"):
+        ret_part = ret_part[1:].lstrip()
+        if ret_part.startswith("'"):
+            space_idx = ret_part.find(" ")
+            if space_idx < 0:
+                return None  # pragma: no cover - lifetime-only return
+            ret_part = ret_part[space_idx + 1:].lstrip()
+        if ret_part.startswith("mut "):
+            ret_part = ret_part[4:].lstrip()
+        if not ret_part:
+            return None  # pragma: no cover
+
+    for wrapper in _RUST_UNWRAP_WRAPPERS:
+        prefix = wrapper + "<"
+        if ret_part.startswith(prefix) and ret_part.endswith(">"):
+            inner = ret_part[len(prefix):-1].strip()
+            first_arg = _rust_split_first_top_level_arg(inner)
+            return _extract_rust_return_type_name(f"-> {first_arg}")
+
+    angle_idx = ret_part.find("<")
+    if angle_idx >= 0:
+        ret_part = ret_part[:angle_idx]
+
+    if "::" in ret_part:
+        ret_part = ret_part.rsplit("::", 1)[-1]
+
+    if not ret_part or ret_part in _RUST_BUILTIN_RETURN_TYPES:
+        return None
+    if ret_part.replace("_", "").isalnum():
+        return ret_part
+    return None  # pragma: no cover - non-identifier residue (extractor invariants filter earlier)
+
+
+def _normalize_rust_type_to_bare_name(type_text: str) -> str | None:
+    """Reduce a Rust type expression to a bare type identifier or None.
+
+    WI-titor shared helper used by ``_extract_param_types_rust`` and the
+    let-binding var_types walker. Mirrors the residue path of
+    ``_extract_rust_return_type_name`` (after the arrow-strip and
+    wrapper-unwrap steps): strip references and lifetimes, unwrap
+    Result/Option/Box/Rc/Arc, strip non-unwrap generics, strip module
+    paths, filter builtins / opaque types / non-identifiers.
+
+    Returns ``None`` when no useful concrete name remains — fail-open per
+    ADR-0006's "extra edges are preferable to missing edges, but never
+    forge a name we can't justify" posture.
+    """
+    return _extract_rust_return_type_name(f"-> {type_text.strip()}")
+
+
+def _extract_param_types_rust(
+    node: "tree_sitter.Node", source: bytes
+) -> dict[str, str]:
+    """Extract parameter ``name -> type`` mapping from a Rust function_item.
+
+    WI-titor (INV-dihos Phase 3) var_types bootstrap. The result feeds
+    the file-scoped ``var_types`` dict so method calls on typed
+    parameters (``fn process(client: Client) { client.send() }``)
+    resolve to ``Client::send`` instead of falling through to the
+    short-name ambiguity guard.
+
+    Skips ``self`` / ``&self`` / ``&mut self`` (they're handled
+    separately by ``_get_impl_target`` + ``field_type_registry``).
+    Type-normalization (reference strip, lifetime strip, generic strip,
+    builtin filter) goes through ``_normalize_rust_type_to_bare_name``
+    so the same rules apply at param sites and at return sites.
+    """
+    if node.type != "function_item":
+        return {}  # pragma: no cover - caller invariant
+    params_node = _find_child_by_field(node, "parameters")
+    if not params_node:
+        return {}  # pragma: no cover - well-formed function_item always has parameters
+    out: dict[str, str] = {}
+    for child in params_node.children:
+        if child.type != "parameter":
+            continue
+        pattern_node = _find_child_by_field(child, "pattern")
+        type_node = _find_child_by_field(child, "type")
+        if not pattern_node or not type_node:
+            continue  # pragma: no cover - self_parameter has no pattern; pattern-only params (no annotation) are rare in Rust
+        param_name = node_text(pattern_node, source)
+        param_type = node_text(type_node, source)
+        bare = _normalize_rust_type_to_bare_name(param_type)
+        if param_name and bare:
+            out[param_name] = bare
+    return out
+
+
+def _extract_var_types_rust(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+    method_return_type_registry: dict[str, str] | None,
+) -> dict[str, str]:
+    """Build a file-scoped ``var_name -> type_name`` map for Rust.
+
+    WI-titor (INV-dihos Phase 3) var_types bootstrap + chained-call
+    registry consumption. File-scoped (not method-scoped) matches the
+    Java/Kotlin/C#/Go convention per ADR-0006; the documented trade-off
+    is occasional false positives when the same variable name carries
+    different types across functions (extra edges, never missing edges).
+
+    Sources, in tree walk order (first writer wins, mirrors Go's
+    single-assignment posture):
+
+    1. Function parameters from every ``function_item`` (delegated to
+       ``_extract_param_types_rust``).
+    2. ``let x: Type = ...`` — explicit type annotation, the strongest
+       signal.
+    3. ``let x = Type::new(...)`` / ``let x = Type::associated_fn(...)``
+       — when the callee is a ``scoped_identifier`` whose path resolves
+       to a single bare type, ``x`` adopts that type. This is the
+       constructor / associated-function convention and matches Go's
+       ``s := Server{}`` rule.
+    4. ``let x = Type { ... }`` — ``struct_expression`` body, the type
+       is the ``name`` field.
+    5. ``let x = receiver.method(...)`` — Phase 3 new path: when
+       ``receiver`` is already bound in ``var_types`` and the registry
+       knows ``ReceiverType::method``'s return type, ``x`` adopts that
+       return type. Without the registry, this returns no binding
+       (fail-open — matches the pre-WI-titor behavior).
+
+    Returns an empty dict when no patterns match; never raises.
+    """
+    var_types: dict[str, str] = {}
+    registry = method_return_type_registry or {}
+
+    for node in iter_tree(root_node):
+        if node.type == "function_item":
+            for k, v in _extract_param_types_rust(node, source).items():
+                var_types.setdefault(k, v)
+        elif node.type == "let_declaration":
+            pattern_node = _find_child_by_field(node, "pattern")
+            if pattern_node is None or pattern_node.type != "identifier":
+                continue
+            var_name = node_text(pattern_node, source)
+            if var_name in var_types:
+                continue  # first writer wins
+            type_node = _find_child_by_field(node, "type")
+            if type_node is not None:
+                bare = _normalize_rust_type_to_bare_name(
+                    node_text(type_node, source)
+                )
+                if bare:
+                    var_types[var_name] = bare
+                    continue
+            value_node = _find_child_by_field(node, "value")
+            if value_node is None:
+                continue
+            inferred = _infer_type_from_rust_rhs(
+                value_node, source, var_types, registry,
+            )
+            if inferred:
+                var_types[var_name] = inferred
+    return var_types
+
+
+def _infer_type_from_rust_rhs(
+    value_node: "tree_sitter.Node",
+    source: bytes,
+    var_types: dict[str, str],
+    method_return_type_registry: dict[str, str],
+) -> str | None:
+    """Try to infer the type a Rust let-binding RHS would yield.
+
+    Mirrors the union of constructor / struct-expression / chained-call
+    rules in ``_extract_var_types_rust``. Returns the bare type name or
+    ``None`` (fail-open). Pulled out as a helper so the same logic can
+    be reused at edge-extraction time if needed.
+    """
+    if value_node.type == "struct_expression":
+        name_node = _find_child_by_field(value_node, "name")
+        if name_node is not None:
+            return _normalize_rust_type_to_bare_name(
+                node_text(name_node, source)
+            )
+        return None  # pragma: no cover - struct_expression always has a name field
+    if value_node.type == "call_expression":
+        func_node = _find_child_by_field(value_node, "function")
+        if func_node is None:
+            return None  # pragma: no cover - call_expression always has a function field
+        if func_node.type == "scoped_identifier":
+            path_node = _find_child_by_field(func_node, "path")
+            if path_node is not None:
+                return _normalize_rust_type_to_bare_name(
+                    node_text(path_node, source)
+                )
+            return None  # pragma: no cover - scoped_identifier always has a path
+        if func_node.type == "field_expression":
+            value_recv = _find_child_by_field(func_node, "value")
+            field_recv = _find_child_by_field(func_node, "field")
+            if value_recv is None or field_recv is None:
+                return None  # pragma: no cover - field_expression always has both fields
+            recv_name = node_text(value_recv, source)
+            method_name = node_text(field_recv, source)
+            recv_type = var_types.get(recv_name)
+            if recv_type:
+                key = f"{recv_type}::{method_name}"
+                return method_return_type_registry.get(key)
+    return None
+
+
 def _extract_base_type_name(type_node: "tree_sitter.Node", source: bytes) -> str:
     """Extract the base type identifier from a type node.
 
@@ -655,6 +920,15 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[func_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
+                # WI-titor (INV-dihos Phase 3): populate the return-type
+                # registry so Pass 2 var_types inference can chain through
+                # ``let x = receiver.method()``. Keyed by qualified name
+                # (``Receiver::method``) for methods and bare name for
+                # free functions; first writer wins downstream.
+                ret_name = _extract_rust_return_type_name(signature)
+                if ret_name:
+                    analysis.method_return_types[full_name] = ret_name
+
         # Struct declaration
         elif node.type == "struct_item":
             name_node = _find_child_by_field(node, "name")
@@ -1109,6 +1383,7 @@ def _extract_edges_from_file(
     field_type_registry: dict[str, dict[str, str]] | None = None,
     analyzer: "RustAnalyzer | None" = None,
     kind_index: dict[str, list[Symbol]] | None = None,
+    var_types: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1130,10 +1405,20 @@ def _extract_edges_from_file(
             ``register_symbol``), the impl_item handler returns no
             trait_sym for any name and the unresolved-trait branch
             handles edge emission.
+        var_types: Optional file-scoped ``var_name -> type_name`` map
+            from ``_extract_var_types_rust`` (WI-titor / INV-dihos Phase
+            3). When provided, ``receiver.method()`` calls whose
+            ``receiver`` is a bound variable resolve directly to
+            ``{ReceiverType}::{method}`` — a new strategy that fires
+            between the self-field path (Strategy 1.5) and the
+            short-name fallback (Strategy 2), bypassing the
+            generic-trait-method blocklist for receivers with known
+            types.
     """
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("rust", str(file_path))
+    _var_types: dict[str, str] = var_types or {}
     # WI-milak / BUG-04: hoisted out of the iter_tree loop so the
     # impl_item ``_lookup_trait`` closure doesn't trigger ruff B023
     # (function-definition-does-not-bind-loop-variable). The contents
@@ -1483,6 +1768,57 @@ def _extract_edges_from_file(
                                             origin=PASS_ID,
                                             origin_run_id=run_id,
                                             meta={"call_construct": "method", "receiver": "typed_field"},
+                                        ))
+                                        resolved = True
+
+                        # Strategy 1.8 (WI-titor / INV-dihos Phase 3):
+                        # ``var.method()`` where ``var`` is a typed local
+                        # / parameter / let-binding tracked in
+                        # ``_var_types``. Resolves the receiver type
+                        # without consulting the field_type_registry (so
+                        # it covers parameters and let-bindings, not
+                        # just ``self.field``). Fires after the
+                        # self-field strategy because that one has the
+                        # stronger 0.88-confidence ``typed_field``
+                        # signal; fires before the short-name fallback
+                        # because typed receivers should win short-name
+                        # ambiguity and bypass the generic-trait-method
+                        # blocklist (the receiver type is known).
+                        if (
+                            not resolved
+                            and is_method_call
+                            and _var_types
+                        ):
+                            value_node = inner.child_by_field_name("value")
+                            if value_node is not None and value_node.type == "identifier":
+                                recv_name = node_text(value_node, source)
+                                recv_type = _var_types.get(recv_name)
+                                if recv_type:
+                                    typed_name = f"{recv_type}::{callee_name}"
+                                    target = (
+                                        local_symbols.get(typed_name)
+                                        or global_symbols.get(typed_name)
+                                    )
+                                    if target is None:
+                                        lookup = resolver.lookup(
+                                            typed_name, caller_path=_caller_path,
+                                        )
+                                        if lookup.found and lookup.symbol:
+                                            target = lookup.symbol
+                                    if target is not None:
+                                        edges.append(Edge.create(
+                                            src=current_function.id,
+                                            dst=target.id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            evidence_type="ast_call_type_inferred",
+                                            confidence=0.85,
+                                            origin=PASS_ID,
+                                            origin_run_id=run_id,
+                                            meta={
+                                                "call_construct": "method",
+                                                "receiver": "typed_var",
+                                            },
                                         ))
                                         resolved = True
 
@@ -2034,6 +2370,18 @@ class RustAnalyzer(TreeSitterAnalyzer):
         else:
             kind_index = {}
 
+        # WI-titor: pre-compute file-scoped var_types from let bindings
+        # and parameter declarations, consulting the cross-file
+        # method-return-type registry for chained method calls. The
+        # registry comes from base.py's Pass-1 aggregation step
+        # (TreeSitterAnalyzer.analyze §4c).
+        method_return_type_registry = getattr(
+            self, "_method_return_type_registry", {},
+        )
+        var_types = _extract_var_types_rust(
+            tree.root_node, source, method_return_type_registry,
+        )
+
         return _extract_edges_from_file(
             tree, source, rel_path,
             local_symbols, global_symbols,
@@ -2043,6 +2391,7 @@ class RustAnalyzer(TreeSitterAnalyzer):
             field_type_registry=self._field_type_registry,
             analyzer=self,
             kind_index=kind_index,
+            var_types=var_types,
         )
 
     def extract_usage_contexts_from_file(

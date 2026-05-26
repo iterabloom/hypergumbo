@@ -1012,6 +1012,578 @@ fn greet(name: &str) -> String {
         assert as_dict["signature"] == "(name: &str) -> String"
 
 
+class TestRustReturnTypeExtraction:
+    """Unit tests for _extract_rust_return_type_name (WI-titor Tier 2 escape hatches).
+
+    INV-dihos Phase 3: the return-type registry needs a Rust-aware extractor
+    that unwraps the smart-pointer / fallible wrappers Rust users routinely
+    return (Result, Option, Box, Rc, Arc), strips references and lifetimes,
+    and refuses to register opaque `impl Trait` / `dyn Trait` returns
+    (which carry no concrete type name the var_types chain can use).
+    """
+
+    def test_simple_user_type(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("() -> Client") == "Client"
+
+    def test_no_return_arrow(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("(name: &str)") is None
+
+    def test_none_signature(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name(None) is None
+
+    def test_empty_signature(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("") is None
+
+    def test_builtin_filtered(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("(x: i32) -> i32") is None
+        assert _extract_rust_return_type_name("() -> bool") is None
+        assert _extract_rust_return_type_name("() -> String") is None
+        assert _extract_rust_return_type_name("() -> ()") is None
+
+    def test_result_unwraps_to_t(self) -> None:
+        """Result<T, E> → T (drop the error type)."""
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("() -> Result<Client, Error>") == "Client"
+
+    def test_option_unwraps_to_t(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("(&self) -> Option<User>") == "User"
+
+    def test_box_unwraps_to_t(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("() -> Box<Engine>") == "Engine"
+
+    def test_rc_unwraps_to_t(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("() -> Rc<Config>") == "Config"
+
+    def test_arc_unwraps_to_t(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("() -> Arc<State>") == "State"
+
+    def test_nested_wrappers_unwrap_recursively(self) -> None:
+        """Box<Result<Client, Error>> → Client."""
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name(
+            "() -> Box<Result<Client, Error>>"
+        ) == "Client"
+
+    def test_result_with_nested_generic_error_uses_depth_aware_split(self) -> None:
+        """Result<HashMap<K, V>, Error> picks HashMap<K, V>, then strips generics → HashMap.
+
+        Naive ``split(',', 1)[0]`` would slice mid-generic and yield ``HashMap<K``;
+        the depth-aware split keeps generic groups intact.
+        """
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name(
+            "() -> Result<HashMap<K, V>, Error>"
+        ) == "HashMap"
+
+    def test_impl_trait_is_opaque(self) -> None:
+        """WI-titor: ``impl Trait`` return types carry no concrete name."""
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name(
+            "() -> impl Iterator<Item=Foo>"
+        ) is None
+
+    def test_dyn_trait_is_opaque(self) -> None:
+        """``dyn Trait`` (trait object) is similarly opaque — the runtime
+        type is a vtable, not the trait name."""
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name(
+            "() -> dyn Iterator<Item=Foo>"
+        ) is None
+
+    def test_reference_strip(self) -> None:
+        """``&Client`` and ``&mut Client`` strip the reference."""
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("() -> &Client") == "Client"
+        assert _extract_rust_return_type_name("(&mut self) -> &mut Client") == "Client"
+
+    def test_reference_with_lifetime(self) -> None:
+        """``&'a Client`` strips the lifetime annotation."""
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("() -> &'a Client") == "Client"
+        assert _extract_rust_return_type_name("() -> &'static Config") == "Config"
+
+    def test_module_path_strip(self) -> None:
+        """``std::sync::Mutex`` → ``Mutex`` (symbols stored under bare names)."""
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name(
+            "() -> std::sync::Mutex"
+        ) == "Mutex"
+
+    def test_other_generic_strip(self) -> None:
+        """Non-unwrap generics (Vec, HashMap, etc.) strip args, keep base.
+
+        Per ADR-0006 §Limitations: ``vector<Query>`` → ``vector``. The
+        unwrap set is intentionally narrow (Result/Option/Box/Rc/Arc) —
+        everything else falls through to the generic-strip path.
+        """
+        from hypergumbo_lang_mainstream.rust import _extract_rust_return_type_name
+        assert _extract_rust_return_type_name("() -> Vec<User>") == "Vec"
+        assert _extract_rust_return_type_name(
+            "() -> HashMap<String, Value>"
+        ) == "HashMap"
+
+
+class TestRustParamTypeExtraction:
+    """Unit tests for _extract_param_types_rust (WI-titor bootstrap).
+
+    Tier-2 var_types source: function parameters with type annotations.
+    Mirrors _extract_param_types in kotlin.py / similar helpers in
+    java.py / go.py.
+    """
+
+    def _func_node(self, source_text: str):
+        import tree_sitter_rust as ts_rust
+        from tree_sitter import Language, Parser
+        lang = Language(ts_rust.language())
+        parser = Parser(lang)
+        tree = parser.parse(source_text.encode("utf-8"))
+
+        def walk(n):
+            yield n
+            for c in n.children:
+                yield from walk(c)
+
+        for node in walk(tree.root_node):
+            if node.type == "function_item":
+                return node, source_text.encode("utf-8")
+        raise AssertionError("no function_item in fixture")  # pragma: no cover
+
+    def test_simple_param(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_param_types_rust
+        node, src = self._func_node("fn f(client: Client) {}")
+        assert _extract_param_types_rust(node, src) == {"client": "Client"}
+
+    def test_multiple_params(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_param_types_rust
+        node, src = self._func_node("fn f(a: Foo, b: Bar) {}")
+        assert _extract_param_types_rust(node, src) == {"a": "Foo", "b": "Bar"}
+
+    def test_reference_param_strips_borrow(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_param_types_rust
+        node, src = self._func_node("fn f(client: &Client) {}")
+        assert _extract_param_types_rust(node, src) == {"client": "Client"}
+
+    def test_mut_reference_param(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_param_types_rust
+        node, src = self._func_node("fn f(client: &mut Client) {}")
+        assert _extract_param_types_rust(node, src) == {"client": "Client"}
+
+    def test_lifetime_reference_param(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_param_types_rust
+        node, src = self._func_node("fn f<'a>(client: &'a Client) {}")
+        assert _extract_param_types_rust(node, src) == {"client": "Client"}
+
+    def test_generic_param_keeps_base(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_param_types_rust
+        node, src = self._func_node("fn f(items: Vec<Item>) {}")
+        assert _extract_param_types_rust(node, src) == {"items": "Vec"}
+
+    def test_scoped_param_keeps_bare_type(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_param_types_rust
+        node, src = self._func_node(
+            "fn f(client: std::sync::Mutex) {}"
+        )
+        assert _extract_param_types_rust(node, src) == {"client": "Mutex"}
+
+    def test_builtin_params_filtered(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_param_types_rust
+        node, src = self._func_node("fn f(x: i32, name: String) {}")
+        # i32 + String are builtins → not registered (var_types only
+        # carries user-defined types worth method-resolving against).
+        assert _extract_param_types_rust(node, src) == {}
+
+    def test_method_skips_self(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_param_types_rust
+        # Place inside an impl so &self is well-formed.
+        src_text = (
+            "struct Engine; "
+            "impl Engine { fn run(&self, q: Query) {} }"
+        )
+        node, src = self._func_node(src_text)
+        # &self is the self_parameter; only `q: Query` should register.
+        assert _extract_param_types_rust(node, src) == {"q": "Query"}
+
+
+class TestRustVarTypesExtraction:
+    """Unit tests for _extract_var_types_rust (WI-titor file-scoped var_types).
+
+    Single-pass file-scoped collector. Sources:
+    - function parameters (delegated to _extract_param_types_rust)
+    - ``let x: Type = ...`` (explicit annotation)
+    - ``let x = Type::new(...)`` (constructor / associated-function call)
+    - ``let x = Type { ... }`` (struct expression)
+    - ``let x = receiver.method(...)`` (registry-driven, Phase 3 new path)
+    """
+
+    def _parse(self, source_text: str):
+        import tree_sitter_rust as ts_rust
+        from tree_sitter import Language, Parser
+        lang = Language(ts_rust.language())
+        parser = Parser(lang)
+        tree = parser.parse(source_text.encode("utf-8"))
+        return tree, source_text.encode("utf-8")
+
+    def test_param_binds_to_type(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "fn handler(client: Client) { client.send(); }"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types == {"client": "Client"}
+
+    def test_let_with_explicit_type(self) -> None:
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "fn handler() { let client: Client = make_client(); }"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types == {"client": "Client"}
+
+    def test_let_with_constructor_call(self) -> None:
+        """``let x = Type::new(...)`` infers ``x: Type``."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "fn handler() { let client = Client::new(); }"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types == {"client": "Client"}
+
+    def test_let_with_struct_expression(self) -> None:
+        """``let x = Type { ... }`` infers ``x: Type``."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "fn handler() { let c = Config { port: 8080 }; }"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types == {"c": "Config"}
+
+    def test_let_via_registry_chained_call(self) -> None:
+        """WI-titor Phase 3 new path: ``let x = obj.method()`` consults
+        the method_return_type_registry to set ``var_types[x]``."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        registry = {"Engine::query": "Query"}
+        tree, src = self._parse(
+            "fn handler(engine: Engine) { let q = engine.query(); }"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, registry)
+        assert var_types == {"engine": "Engine", "q": "Query"}
+
+    def test_let_via_registry_unknown_method_no_binding(self) -> None:
+        """Registry miss leaves the variable unbound (fail-open)."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "fn handler(engine: Engine) { let q = engine.execute(); }"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, {})
+        assert var_types == {"engine": "Engine"}
+
+    def test_let_with_builtin_constructor_filtered(self) -> None:
+        """``let x = String::new()`` doesn't pollute var_types — String
+        is a builtin (no user-defined methods to resolve against)."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "fn handler() { let s = String::new(); }"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types == {}
+
+    def test_let_with_no_initializer(self) -> None:
+        """``let x;`` (no initializer) creates no binding."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "fn handler() { let x; x = 1; }"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types == {}
+
+    def test_let_with_non_identifier_pattern_skipped(self) -> None:
+        """Destructuring patterns like ``let (a, b) = ...`` are skipped —
+        not a single name we can map to a type."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "fn handler() { let (a, b) = (1, 2); }"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types == {}
+
+    def test_first_writer_wins_on_rebinding(self) -> None:
+        """Rust ``let`` shadowing: the first binding sticks (matches Go's
+        single-assignment posture; later same-name lets would carry a
+        different type but file-scoped tracking can't distinguish blocks)."""
+        from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
+        tree, src = self._parse(
+            "fn handler() { let x = Foo::new(); let x = Bar::new(); }"
+        )
+        var_types = _extract_var_types_rust(tree.root_node, src, None)
+        assert var_types == {"x": "Foo"}
+
+
+class TestRustReturnTypeRegistryIntegration:
+    """End-to-end tests for the WI-titor return-type registry chain.
+
+    Drives `analyze_rust` against synthetic Rust fixtures and verifies
+    that typed-receiver calls resolve through the registry — i.e. the
+    full pipeline of Pass 1 ``method_return_types`` population +
+    aggregation + Pass 2 ``var_types`` consumption + new resolution
+    strategy is wired up.
+    """
+
+    def test_typed_param_method_call_resolves(self, tmp_path: Path) -> None:
+        """``fn handler(client: Client) { client.send(...) }`` should
+        resolve to ``Client::send`` via param-driven var_types — even
+        when there's another ``send`` method elsewhere that would
+        otherwise win the short-name lookup."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "main.rs").write_text("""
+struct Client;
+struct Server;
+
+impl Client {
+    fn send(&self, msg: &str) {}
+}
+
+impl Server {
+    fn send(&self, msg: &str) {}
+}
+
+fn handler(client: Client) {
+    client.send("hello");
+}
+""")
+
+        result = analyze_rust(tmp_path)
+        edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Find Client::send symbol
+        client_send = next(
+            (s for s in result.symbols if s.name == "Client::send"),
+            None,
+        )
+        server_send = next(
+            (s for s in result.symbols if s.name == "Server::send"),
+            None,
+        )
+        handler = next(
+            (s for s in result.symbols if s.name == "handler"),
+            None,
+        )
+        assert client_send is not None
+        assert server_send is not None
+        assert handler is not None
+        # The call should resolve to Client::send (typed), not Server::send.
+        handler_calls = [e for e in edges if e.src == handler.id and e.is_resolved]
+        assert any(e.dst == client_send.id for e in handler_calls), (
+            f"expected Client::send call from handler; got {[e.dst for e in handler_calls]}"
+        )
+        assert not any(e.dst == server_send.id for e in handler_calls)
+
+    def test_chained_call_resolves_via_registry(
+        self, tmp_path: Path,
+    ) -> None:
+        """``let r = engine.query(); r.execute()`` should infer
+        ``r: Outcome`` from ``Engine::query``'s return-type registry
+        entry, then resolve ``r.execute()`` to ``Outcome::execute`` —
+        even when a competing ``Decoy::execute`` would win the short-name
+        lookup without the registry."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "main.rs").write_text("""
+struct Engine;
+struct Outcome;
+struct Decoy;
+
+impl Engine {
+    fn query(&self) -> Outcome { Outcome }
+}
+
+impl Outcome {
+    fn execute(&self) -> i32 { 0 }
+}
+
+impl Decoy {
+    fn execute(&self) -> i32 { 1 }
+}
+
+fn handler(engine: Engine) {
+    let r = engine.query();
+    r.execute();
+}
+""")
+
+        analysis = analyze_rust(tmp_path)
+        edges = [e for e in analysis.edges if e.edge_type == "calls"]
+        outcome_execute = next(
+            (s for s in analysis.symbols if s.name == "Outcome::execute"),
+            None,
+        )
+        decoy_execute = next(
+            (s for s in analysis.symbols if s.name == "Decoy::execute"),
+            None,
+        )
+        handler = next(
+            (s for s in analysis.symbols if s.name == "handler"),
+            None,
+        )
+        assert outcome_execute is not None
+        assert decoy_execute is not None
+        assert handler is not None
+        resolved_dsts = [e.dst for e in edges if e.src == handler.id and e.is_resolved]
+        assert outcome_execute.id in resolved_dsts, (
+            f"expected Outcome::execute via chained registry; got {resolved_dsts}"
+        )
+        assert decoy_execute.id not in resolved_dsts
+
+    def test_unwrapped_result_return_chains(self, tmp_path: Path) -> None:
+        """``fn query(&self) -> Result<Data, Error>`` registers
+        ``Engine::query → Data`` (Tier-2 Result unwrap), so
+        ``let d = engine.query(); d.parse()`` resolves to ``Data::parse``
+        even when a competing ``Decoy::parse`` would win on short name."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "main.rs").write_text("""
+struct Engine;
+struct Data;
+struct Error;
+struct Decoy;
+
+impl Engine {
+    fn query(&self) -> Result<Data, Error> { Ok(Data) }
+}
+
+impl Data {
+    fn parse(&self) -> i32 { 0 }
+}
+
+impl Decoy {
+    fn parse(&self) -> i32 { 1 }
+}
+
+fn handler(engine: Engine) {
+    let d = engine.query();
+    d.parse();
+}
+""")
+
+        analysis = analyze_rust(tmp_path)
+        edges = [e for e in analysis.edges if e.edge_type == "calls"]
+        data_parse = next(
+            (s for s in analysis.symbols if s.name == "Data::parse"),
+            None,
+        )
+        decoy_parse = next(
+            (s for s in analysis.symbols if s.name == "Decoy::parse"),
+            None,
+        )
+        handler = next(
+            (s for s in analysis.symbols if s.name == "handler"),
+            None,
+        )
+        assert data_parse is not None
+        assert decoy_parse is not None
+        assert handler is not None
+        resolved_dsts = [e.dst for e in edges if e.src == handler.id and e.is_resolved]
+        assert data_parse.id in resolved_dsts, (
+            f"expected Data::parse via Result<Data,Error> unwrap; got {resolved_dsts}"
+        )
+        assert decoy_parse.id not in resolved_dsts
+
+    def test_cross_file_typed_call_via_resolver_suffix(
+        self, tmp_path: Path,
+    ) -> None:
+        """Strategy 1.8 falls back to the global ``NameResolver`` when
+        the qualified ``Type::method`` isn't directly in the per-file
+        symbol dicts — covering the resolver-suffix-lookup branch.
+
+        Synthetic construction mirrors ``test_resolver_fallback_for_field_call``:
+        the target ``Service::process`` is deliberately absent from
+        ``global_symbols`` but present in the ``NameResolver``, so the
+        new strategy must walk through to the resolver fallback.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+            RustAnalyzer,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        import tree_sitter
+        import tree_sitter_rust
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")  # pragma: no cover
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source = b"""
+fn handler(svc: Service) {
+    svc.process();
+}
+"""
+        tree = parser.parse(source)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:handler:function",
+            name="handler", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:svc.rs:1-3:Service::process:method",
+            name="Service::process", kind="method", language="rust",
+            path="svc.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        local_symbols = {"handler": caller}
+        # Deliberately NOT including "Service::process" in global_symbols
+        # so the resolver fallback path inside Strategy 1.8 fires.
+        global_symbols = {"handler": caller}
+        resolver = NameResolver({"Service::process": target})
+
+        analyzer = RustAnalyzer()
+        analyzer._field_type_registry = {}
+
+        method_syms = {"process": [target]}
+        mr = ListNameResolver(method_syms, ambiguity_threshold=3)
+
+        span_idx = {(1, 3): caller}
+
+        edges = _extract_edges_from_file(
+            tree, source, "test.rs",
+            local_symbols, global_symbols,
+            "run", resolver, {},
+            method_resolver=mr,
+            span_index=span_idx,
+            field_type_registry=analyzer._field_type_registry,
+            analyzer=analyzer,
+            var_types={"svc": "Service"},
+        )
+
+        typed_var_edges = [
+            e for e in edges
+            if (
+                e.evidence_type == "ast_call_type_inferred"
+                and e.meta is not None
+                and e.meta.get("receiver") == "typed_var"
+            )
+        ]
+        assert len(typed_var_edges) == 1
+        assert typed_var_edges[0].dst == target.id
+        assert typed_var_edges[0].confidence == 0.85
+
+
 # ============================================================================
 # Annotation Extraction Tests (ADR-0003 v1.0.x - YAML Pattern Support)
 # ============================================================================
