@@ -1,0 +1,32 @@
+- op: create  # ff97
+  at: '2026-05-26T08:27:55Z'  # ff97
+  by: agent  # ff97
+  actor: jgstern_agent  # ff97
+  clock: 1  # ff97
+  nonce: ff97  # ff97
+  data:  # ff97
+    kind: work_item  # ff97
+    title: "WI-promote-phase: structural fix for INV-rojip — promote frameworks from prod-non-test import edges"  # ff97
+    status: todo_hard  # ff97
+    priority: 3  # ff97
+    parent:  # ff97
+    tags:  # ff97
+    - framework_detection  # ff97
+    - profile  # ff97
+    - structural  # ff97
+    isbefore: []  # ff97
+    duplicate_of: []  # ff97
+    not_duplicate_of: []  # ff97
+    pr_ref:  # ff97
+    description: "Add promote-then-demote phase to refine_frameworks. Promote a framework when prod-non-test import edges match its _import_modules_for_framework patterns, even when manifest is silent. Specificity gate: scoped (@apollo/server) or compound (foo/bar) patterns auto-promote; bare names (react, vue, graphql) require manifest evidence. Closes the structural-fix half of INV-rojip; the four prior targeted patches (WI-lohok, WI-himas, WI-rofiz, WI-donud) remain in place and a follow-on WI-deprecate-targeted-patches will audit which can be reverted."  # ff97
+    fields:  # ff97
+      statement: "Framework detection promotes a framework to profile.frameworks when prod-non-test source files import a module matching its registered import-module patterns, gated on a specificity rule (scoped or compound auto-promote; bare names require manifest evidence)."  # ff97
+- op: update  # 747f
+  at: '2026-05-26T08:28:07Z'  # 747f
+  by: agent  # 747f
+  actor: jgstern_agent  # 747f
+  clock: 2  # 747f
+  nonce: 747f  # 747f
+  set: {}  # 747f
+  add:  # 747f
+    isbefore: [INV-rojip-bosup-lonut-gamiv-famuz-hulij-gamoj-posij]  # 747f

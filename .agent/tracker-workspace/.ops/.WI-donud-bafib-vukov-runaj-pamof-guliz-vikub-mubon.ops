@@ -47,3 +47,34 @@
   clock: 5  # 14b1
   nonce: 14b1  # 14b1
   message: "Blocked on INV-rolul (JS/TS kind=call UC emission gap). The 'wrong target' diagnosis from 2026-05-19 was incomplete — the fix is end-to-end NO_MOVE on real consumers too because JS/TS analyzer emits zero call-UCs for WI-tisam's target names. Bumped to todo_hard per structural-fix-protocol (analogue check across languages required before closure)."  # 14b1
+- op: update  # b8b7
+  at: '2026-05-26T07:53:47Z'  # b8b7
+  by: agent  # b8b7
+  actor: jgstern_agent  # b8b7
+  clock: 6  # b8b7
+  nonce: b8b7  # b8b7
+  set: {}  # b8b7
+  add:  # b8b7
+    tags: [awaits_bakeoff_validation]  # b8b7
+- op: discuss  # a84d
+  at: '2026-05-26T08:02:55Z'  # a84d
+  by: agent  # a84d
+  actor: jgstern_agent  # a84d
+  clock: 7  # a84d
+  nonce: a84d  # a84d
+  message: "Merged as PR #3913, dev SHA 25f3819ef9ba."  # a84d
+- op: update  # e689
+  at: '2026-05-26T08:03:16Z'  # e689
+  by: agent  # e689
+  actor: jgstern_agent  # e689
+  clock: 8  # e689
+  nonce: e689  # e689
+  set:  # e689
+    status: done  # e689
+- op: discuss  # 2a28
+  at: '2026-05-26T08:03:16Z'  # 2a28
+  by: agent  # 2a28
+  actor: jgstern_agent  # 2a28
+  clock: 9  # 2a28
+  nonce: 2a28  # 2a28
+  message: "Closed by PR #3913 (commit 25f3819ef9). The WI-tisam end-to-end gap on apollo-server/smoke-test/ was a YAML-residence bug, not an analyzer-emission bug — INV-rolul shipped `_extract_http_handler_contexts` correctly, but the matching `startStandaloneServer` pattern in graphql.yaml was framework-gated and didn't load on a consumer whose local package.json doesn't declare `@apollo/server`. Fix: relocate `startStandaloneServer` / `runHttpQuery` / `executeHTTPGraphQLRequest` patterns from graphql.yaml to node-http.yaml (always-loaded; name set is high-specificity so no false-positive risk in non-Apollo codebases). Closure criterion (\"smoke-test routes.txt count goes from 0 → at least 1\") met empirically: hypergumbo routes on /home/jgstern_agent/ALL_REPOS/whole_bunch_of_repos/apollo-server/smoke-test/ now reports 1 route ([ALL] / -> ALL /, line 1 in nodenext/src/smoke-test.ts). Parent apollo-server unchanged at 6 routes. Two existing pattern-load tests in test_framework_patterns.py updated to load `node-http` instead of `graphql`; one new regression test (`test_apollo_patterns_fire_without_graphql_framework`) locks the closure invariant by exercising `enrich_symbols` with `detected_frameworks=set()`. 9117 tests pass, 100% coverage on all five packages in isolation. Tag awaits_bakeoff_validation retained — BROAD cohort: apollo-server (parent and smoke-test subdir both)."  # 2a28
