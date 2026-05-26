@@ -77,3 +77,35 @@
   clock: 8  # 906e
   nonce: 906e  # 906e
   message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: largest delta of INV-dihos rollout (Rust/C++/Scala lack existing var_types infra) + Phase 2 prerequisite; >1 week."  # 906e
+- op: update  # 5d3b
+  at: '2026-05-26T05:36:27Z'  # 5d3b
+  by: agent  # 5d3b
+  actor: jgstern_agent  # 5d3b
+  clock: 9  # 5d3b
+  nonce: 5d3b  # 5d3b
+  set: {}  # 5d3b
+  add:  # 5d3b
+    tags: [awaits_bakeoff_validation]  # 5d3b
+- op: discuss  # 6775
+  at: '2026-05-26T06:21:45Z'  # 6775
+  by: agent  # 6775
+  actor: jgstern_agent  # 6775
+  clock: 10  # 6775
+  nonce: '6775'  # 6775
+  message: "Merged as PR #3911, dev SHA ccba033e3780."  # 6775
+- op: update  # 5eca
+  at: '2026-05-26T06:44:28Z'  # 5eca
+  by: agent  # 5eca
+  actor: jgstern_agent  # 5eca
+  clock: 11  # 5eca
+  nonce: 5eca  # 5eca
+  set:  # 5eca
+    status: done  # 5eca
+    pr_ref: https://codeberg.org/iterabloom/hypergumbo/pulls/3911  # 5eca
+- op: discuss  # 033e
+  at: '2026-05-26T06:44:28Z'  # 033e
+  by: agent  # 033e
+  actor: jgstern_agent  # 033e
+  clock: 12  # 033e
+  nonce: 033e  # 033e
+  message: "Rust slice shipped via PR #3911 (commit ccba033e3780). C++ and Scala portions split into sibling WIs under INV-dihos: WI-zimat-rafur-kiluh-kajof-bavud-soniz-vokud-mozim (C++) and WI-hijot-sosak-tupim-nanol-dubuv-kokiv-gahag-gubub (Scala) — both `todo_soft` P4 `someday`, both `isbefore WI-hudam` to preserve the INV-dihos Phase 3 → Phase 4 chain. Per the WI's own splitting hint, this avoided shipping ~600-LOC of bootstrap across three analyzers in one PR. The Rust slice establishes the substrate pattern: file-scoped `_extract_var_types_rust` (params + let-bindings + chained-call registry consumption), Pass-1 method_return_types population, base.py §4c cross-file aggregation into self._method_return_type_registry, Strategy 1.8 typed-variable resolution between self-field (1.5) and short-name fallback (2). 28 new tests in test_rust.py + 4 in test_tree_sitter_analyzer.py, 100% coverage on rust.py (871 stmts) and base.py (745 stmts). `awaits_bakeoff_validation` retained — BROAD cohort: alertmanager, penumbra, candle."  # 033e

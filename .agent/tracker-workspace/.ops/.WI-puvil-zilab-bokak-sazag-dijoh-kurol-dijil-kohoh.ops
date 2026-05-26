@@ -18,3 +18,34 @@
     pr_ref:  # 7a00
     description: "PR-5 of the inherited_calls campaign (parent META INV-nilud). Linker grows Site-2 (typed-receiver) and Site-3 (inherited-field-receiver) resolvers that consume the `Edge.meta` keys (`var_types`, `class_fields`) emitted by PR-4. Delete the Java analyzer walks for Sites 2 and 3 at `java.py:1492-1591`. Migrate `TestJavaTypeInference` (~2500-2580) and `TestJavaFieldInheritance` (4457-4576) to pipeline-mode (full analyzer→linker integration).\n\n**Edge confidence preserved.** `ast_call_inherited_method` at 0.70, `ast_call_inherited_field` at 0.80.\n\n**Bakeoff cohort:** spring-petclinic, spring-boot, chatwoot.\n\n**Success criterion:** `ast_call_inherited_method` + `ast_call_inherited_field` counts within ±1 on spring-petclinic, ±0.5% on spring-boot. Chatwoot unchanged (no Java).\n\n**META status transition:** INV-nilud → `pending_validation` on PR-5 merge. → `satisfied` after a full BROAD cycle confirms no regression.\n\n**Tag at merge:** `awaits_bakeoff_validation`.\n\nCanonical plan: `~/puluf-plan.md`."  # 7a00
     fields: {}  # 7a00
+- op: update  # f0c8
+  at: '2026-05-26T03:53:35Z'  # f0c8
+  by: agent  # f0c8
+  actor: jgstern_agent  # f0c8
+  clock: 2  # f0c8
+  nonce: f0c8  # f0c8
+  set: {}  # f0c8
+  add:  # f0c8
+    tags: [awaits_bakeoff_validation]  # f0c8
+- op: discuss  # 838e
+  at: '2026-05-26T04:22:18Z'  # 838e
+  by: agent  # 838e
+  actor: jgstern_agent  # 838e
+  clock: 3  # 838e
+  nonce: 838e  # 838e
+  message: "Merged as PR #3908, dev SHA f447952fc92f."  # 838e
+- op: update  # e7bc
+  at: '2026-05-26T04:22:43Z'  # e7bc
+  by: agent  # e7bc
+  actor: jgstern_agent  # e7bc
+  clock: 4  # e7bc
+  nonce: e7bc  # e7bc
+  set:  # e7bc
+    status: done  # e7bc
+- op: discuss  # 3bf9
+  at: '2026-05-26T04:22:43Z'  # 3bf9
+  by: agent  # 3bf9
+  actor: jgstern_agent  # 3bf9
+  clock: 5  # 3bf9
+  nonce: 3bf9  # 3bf9
+  message: "Merged as PR #3908, dev SHA f447952fc9. First-try CI pass, no gremlin. Two new linker resolvers (_resolve_site2 + _resolve_site3) consume PR-4 meta + new analyzer-side class.meta['fields'] channel. Site 2 three-step resolution: direct method on type → MRO walk (forward improvement) → fallback to type symbol. Site 3 walks enclosing class's parents via inheritance edges, reads parent.meta['fields'] for receiver name, looks up method on field's type. Dispatch by hint specificity in _try_resolve helper (Site 3 > Site 2 > Site 1). Net deletion ~95 LOC from Java analyzer; net addition ~200 LOC of centralized linker logic. Side-effect-only resolver lookup preserved in Case 3 to keep the return-type-inference cascade chaining var_types across factory patterns. 13 new TestSite2/3 tests + 3 helper-walk tests; 9 existing Java tests migrated to pipeline-mode. ADR-0029 type_hierarchy priority corrected to 60 (was 20). 100% coverage on linker (199 stmts) and Java analyzer (866 stmts). Tag awaits_bakeoff_validation attached BEFORE auto-pr."  # 3bf9

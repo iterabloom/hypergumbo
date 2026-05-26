@@ -50,3 +50,10 @@
   clock: 5  # 43eb
   nonce: 43eb  # 43eb
   message: "PR #3905 merged at fc4dda70e640 (first-try CI pass, no gremlin). New walker _walk_single_then_interfaces in linkers/inherited_calls.py (BFS extends-before-implements, 107 stmts, 100% coverage). Java analyzer Site-1 walk at java.py:1437-1461 replaced by single make_unresolved_edge(enclosing_class=current_class) call. Walker signatures uniformized to typed inheritance_index. 4 TestJavaInheritedMethodResolution Site-1 tests migrated to pipeline-mode via new _run_inherited_calls_pipeline helper. 10009/10009 smart-test pass; full local pytest 19219 pass + 1 expected basename-collision error. Acknowledged behavior change: return-type-inference cascade no longer fires for inherited Site-1 matches (analyzer hands off resolution before knowing what matched). Forward improvement: walker resolves interface default-methods (Java 8+). Tag awaits_bakeoff_validation attached BEFORE auto-pr (lesson from PR-2 rebase overwrite). Unblocks WI-sivuk (PR-4 Java analyzer Site-2/3 enrichment)."  # 43eb
+- op: discuss  # 4fc9
+  at: '2026-05-25T19:56:01Z'  # 4fc9
+  by: agent  # 4fc9
+  actor: jgstern_agent  # 4fc9
+  clock: 6  # 4fc9
+  nonce: 4fc9  # 4fc9
+  message: "PR-4 (WI-sivuk, PR #3906 / 1dd5ac8e48) discovered and repaired a PR-3 double-emit regression. Case 1's else block at java.py:1459-1464 called make_unresolved_edge directly but neglected to set edge_added=True, so the final fallback emit at java.py:~1647 fired a second unresolved edge per bare/this inherited-call site (one with enclosing_class hint, one without). PR-3 tests didn't catch this because they filtered is_resolved=True. PR-4 repair is structural rather than a one-line edge_added=True flag: Case 1's else now only stashes the hint into pr4_enclosing_class_hint and defers to the single final emit, preserving the static_imports/wildcard_imports/dst_ref computation that the polyglot-call-site test on import-static singletonList depended on. Acknowledged as PR-3 hangover, no separate hotfix needed."  # 4fc9

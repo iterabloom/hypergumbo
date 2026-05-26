@@ -1,0 +1,23 @@
+- op: create  # eea9
+  at: '2026-05-26T05:37:04Z'  # eea9
+  by: agent  # eea9
+  actor: jgstern_agent  # eea9
+  clock: 1  # eea9
+  nonce: eea9  # eea9
+  data:  # eea9
+    kind: work_item  # eea9
+    title: "INV-dihos Phase 3 (split): Return-Type Registry for C++"  # eea9
+    status: todo_soft  # eea9
+    priority: 4  # eea9
+    parent: INV-dihos-razov-momat-runoh-mohov-zumop-mivar-nijog  # eea9
+    tags:  # eea9
+    - analysis_quality  # eea9
+    - cross_language_linkers  # eea9
+    - someday  # eea9
+    isbefore:  # eea9
+    - WI-hudam-bakim-birul-riban-vajis-siliz-tirug-valid  # eea9
+    duplicate_of: []  # eea9
+    not_duplicate_of: []  # eea9
+    pr_ref:  # eea9
+    description: "INV-dihos Phase 3 (split): Return-Type Registry — C++ portion.\n\nWI-titor was originally scoped to ship Rust + C++ + Scala in one PR. Per\nthe WI's own splitting hint (\"consider splitting if it grows too large to\nship as a single PR\"), the Rust slice landed first as a standalone PR\n(see WI-titor pr_ref). This sibling WI tracks the C++ slice.\n\nDELIVERABLES:\n(1) Bootstrap var_types infrastructure for C++: per-file `dict[str, str]`\n    populated from constructor calls, parameter declarations, AND field\n    declarations (per WI guidance — C++ field-type tracking is in scope).\n    Mirror the Rust pattern landed under WI-titor (`_extract_var_types_rust`\n    in `rust.py`).\n\n(2) Populate `FileAnalysis.method_return_types` from each\n    function_definition / method_definition / declaration node's\n    signature in Pass 1.\n\n(3) Tier 2 escape hatches in a `_extract_cpp_return_type_name` helper:\n    - pointer/reference strip: `Query*` → `Query`, `Query&` → `Query`,\n      `const Query&` → `Query`\n    - template specialization: `vector<Query>` → `vector` (consistent\n      with ADR-0006 §Limitations / `generic_strip_pattern`)\n    - smart pointers: `std::unique_ptr<T>` / `std::shared_ptr<T>` /\n      `std::weak_ptr<T>` → `T` (Tier-2 unwrap analogous to Rust\n      Box/Rc/Arc)\n    - module-path strip: `std::vector::iterator` → `iterator`\n\n(4) Wire registry into Pass 2 var_types fill loop + add new\n    resolution strategy in `_extract_edges_from_file` for typed-variable\n    method calls (mirror Rust's Strategy 1.8).\n\n(5) Regression tests per language. Target a bakeoff repo with active\n    receiver-type-blocked dispatch: any LLVM-style C++ repo per\n    ADR-0006 §Phase rollout.\n\nPREREQUISITE: WI-titor (Rust slice) landed — pattern established in\n`base.py` §4c aggregation + `_extract_var_types_*` per-language helper\nconvention.\n\nTag at merge: `awaits_bakeoff_validation`."  # eea9
+    fields: {}  # eea9
