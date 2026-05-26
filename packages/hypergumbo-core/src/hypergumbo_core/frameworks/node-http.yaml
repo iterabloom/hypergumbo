@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Bare Node.js HTTP server patterns (WI-tisam)
+# Bare Node.js HTTP server patterns (WI-tisam / WI-donud)
 #
 # Node's stdlib ``http.createServer`` / ``https.createServer`` /
 # ``http2.createServer`` accept a request callback that handles every
@@ -12,8 +12,11 @@
 #
 # Sibling framework files (express.yaml, graphql.yaml) capture the
 # router-attached idioms. This file is the catch-all for raw-stdlib
-# patterns that are otherwise invisible to the framework_role-driven
-# route materialiser.
+# patterns AND for high-specificity HTTP-entrypoint names from frameworks
+# that are otherwise invisible to the framework_role-driven route
+# materialiser when the framework is not detected (WI-donud: a thin
+# Apollo consumer importing via a workspace can fail the package.json
+# dependency check).
 
 id: node-http
 language: javascript
@@ -37,6 +40,35 @@ patterns:
     usage:
       kind: "^call$"
       name: "^createServer$"
+    extract:
+      path: "literal:/"
+      method: "literal:ALL"
+
+  # Apollo Server v4 standalone HTTP listener (WI-donud).
+  # startStandaloneServer(server, options) launches the GraphQL server
+  # as its own HTTP listener — no Express/Fastify middleware wraps it,
+  # so the standard app.use(expressMiddleware(server)) detection misses
+  # it. The function that calls startStandaloneServer IS the HTTP
+  # entrypoint for the deployment. Lives here rather than in graphql.yaml
+  # because thin Apollo consumers (workspace imports without local
+  # package.json dep) get frameworks=set() and graphql.yaml never loads.
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^startStandaloneServer$"
+    extract:
+      path: "literal:/"
+      method: "literal:ALL"
+
+  # Apollo Server v3-style runHttpQuery and executeHTTPGraphQLRequest —
+  # the underlying HTTP entry that newer Apollo wrappers delegate to.
+  # Same workspace-import rationale as startStandaloneServer; name set
+  # is high-specificity so always-loading is safe (DEEP cohort 1 reflect
+  # on apollo-server).
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(runHttpQuery|executeHTTPGraphQLRequest)$"
     extract:
       path: "literal:/"
       method: "literal:ALL"

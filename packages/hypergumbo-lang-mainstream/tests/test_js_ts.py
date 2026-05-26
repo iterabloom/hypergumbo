@@ -8538,11 +8538,12 @@ class TestHttpHandlerUsageContext:
     via UsageContext.
 
     The JS/TS analyzer must emit ``kind="call"`` UsageContexts for the
-    function-name set targeted by ``frameworks/graphql.yaml`` and
-    ``frameworks/node-http.yaml`` ``usage: kind: "^call$"`` patterns
-    (WI-tisam). Without these UCs, the YAML patterns never fire
-    end-to-end on real consumers even though their unit tests
-    (synthesise-UC-then-feed-matcher) pass.
+    function-name set targeted by ``frameworks/node-http.yaml`` ``usage:
+    kind: "^call$"`` patterns (WI-tisam / WI-donud — Apollo entrypoints
+    relocated from graphql.yaml to node-http.yaml so they fire on thin
+    consumers without ``@apollo/server`` in package.json). Without these
+    UCs, the YAML patterns never fire end-to-end on real consumers even
+    though their unit tests (synthesise-UC-then-feed-matcher) pass.
     """
 
     def test_start_standalone_server(self, tmp_path: Path) -> None:

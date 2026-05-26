@@ -8231,9 +8231,13 @@ class TestBareNodeHttpAndApolloStandaloneRoutes:
     establish HTTP entry points without any framework router. routes.txt
     on apollo-server reported "No API routes found" because no YAML
     pattern recognised these idioms (DEEP cohort 1 reflect on
-    deep-20260510-054430). WI-tisam adds the patterns in
-    ``frameworks/node-http.yaml`` (always-loaded) and an Apollo block in
-    ``frameworks/graphql.yaml`` (loaded when graphql is detected).
+    deep-20260510-054430). WI-tisam added the patterns in
+    ``frameworks/node-http.yaml`` (always-loaded). WI-donud subsequently
+    relocated the Apollo entrypoints (``startStandaloneServer``,
+    ``runHttpQuery``, ``executeHTTPGraphQLRequest``) from
+    ``frameworks/graphql.yaml`` to ``node-http.yaml`` so they fire on
+    thin consumers (e.g. apollo-server/smoke-test) whose local
+    package.json doesn't declare ``@apollo/server``.
     """
 
     def test_node_http_createServer_via_usage_context(self) -> None:
@@ -8345,7 +8349,14 @@ class TestBareNodeHttpAndApolloStandaloneRoutes:
         assert results == []
 
     def test_apollo_startStandaloneServer_match(self) -> None:
-        """Apollo's ``startStandaloneServer`` matches via graphql.yaml."""
+        """Apollo's ``startStandaloneServer`` matches via node-http.yaml.
+
+        Lives in node-http (always-loaded) rather than graphql (framework-gated)
+        because a thin consumer (e.g. apollo-server/smoke-test) may import
+        Apollo via a workspace without declaring ``@apollo/server`` in its
+        local package.json — graphql framework detection then misses, and a
+        framework-gated YAML would never fire (WI-donud).
+        """
         from hypergumbo_core.framework_patterns import (
             clear_pattern_cache,
             load_framework_patterns,
@@ -8353,8 +8364,8 @@ class TestBareNodeHttpAndApolloStandaloneRoutes:
         )
 
         clear_pattern_cache()
-        pattern_def = load_framework_patterns("graphql")
-        assert pattern_def is not None, "graphql.yaml must be loadable"
+        pattern_def = load_framework_patterns("node-http")
+        assert pattern_def is not None, "node-http.yaml must be loadable"
 
         ctx = UsageContext.create(
             kind="call",
@@ -8370,7 +8381,9 @@ class TestBareNodeHttpAndApolloStandaloneRoutes:
         assert "route" in concepts
 
     def test_apollo_runHttpQuery_match(self) -> None:
-        """Apollo's ``runHttpQuery`` / ``executeHTTPGraphQLRequest`` match."""
+        """Apollo's ``runHttpQuery`` / ``executeHTTPGraphQLRequest`` match via
+        node-http.yaml (always-loaded, WI-donud).
+        """
         from hypergumbo_core.framework_patterns import (
             clear_pattern_cache,
             load_framework_patterns,
@@ -8378,7 +8391,7 @@ class TestBareNodeHttpAndApolloStandaloneRoutes:
         )
 
         clear_pattern_cache()
-        pattern_def = load_framework_patterns("graphql")
+        pattern_def = load_framework_patterns("node-http")
         assert pattern_def is not None
 
         for name in ("runHttpQuery", "executeHTTPGraphQLRequest"):
@@ -8396,6 +8409,57 @@ class TestBareNodeHttpAndApolloStandaloneRoutes:
             assert "route" in concepts, (
                 f"{name} should match the Apollo route pattern; got {results}"
             )
+
+    def test_apollo_patterns_fire_without_graphql_framework(self) -> None:
+        """WI-donud closure guard: a thin Apollo consumer whose local
+        package.json doesn't declare ``@apollo/server`` produces an empty
+        ``detected_frameworks`` set. The Apollo HTTP-entrypoint patterns
+        (startStandaloneServer / runHttpQuery / executeHTTPGraphQLRequest)
+        must still fire end-to-end through ``enrich_symbols`` so that the
+        calling file Symbol receives a ``concept: route`` annotation and
+        materialises into a route Symbol downstream.
+
+        This is the regression test for the smoke-test fixture path that was
+        reporting "No API routes found" despite ``_extract_http_handler_contexts``
+        emitting ``kind=call`` UCs (INV-rolul shipped that emission but
+        graphql.yaml's framework gate suppressed the YAML match).
+        """
+        from hypergumbo_core.framework_patterns import (
+            clear_pattern_cache,
+            enrich_symbols,
+        )
+
+        clear_pattern_cache()
+
+        file_sym = Symbol(
+            id="typescript:smoke-test.ts:1-1:file:file",
+            name="smoke-test.ts",
+            kind="file",
+            language="typescript",
+            path="smoke-test.ts",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            meta={},
+        )
+        uc = UsageContext.create(
+            kind="call",
+            context_name="startStandaloneServer",
+            position="caller",
+            path="smoke-test.ts",
+            span=Span(40, 40, 0, 60),
+            symbol_ref=file_sym.id,
+            metadata={"http_handler_function": "startStandaloneServer"},
+        )
+
+        enrich_symbols([file_sym], set(), usage_contexts=[uc])
+
+        concepts = (file_sym.meta or {}).get("concepts") or []
+        route_concepts = [c for c in concepts if isinstance(c, dict) and c.get("concept") == "route"]
+        assert route_concepts, (
+            "startStandaloneServer should attach concept:route even when "
+            f"detected_frameworks=set(); got concepts={concepts!r}"
+        )
+        assert route_concepts[0].get("path") == "/"
+        assert route_concepts[0].get("method") == "ALL"
 
 
 class TestExtractUsageValue:
