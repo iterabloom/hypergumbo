@@ -116,6 +116,8 @@ def _iter_implements_edges(edges: list[Edge]) -> list[Edge]:
     "rust-trait-dispatch-linker",
     priority=23,
     description="Emit dispatches_to edges from Rust trait symbols to the concrete methods of impl blocks that implement them (WI-kivut)",
+    # CNF: Rust trait dispatch is Rust-only.
+    depends_on=[["rust"]],
 )
 def link_rust_trait_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Fan dispatches_to edges out from each trait to its concrete impl methods.

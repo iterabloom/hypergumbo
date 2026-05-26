@@ -919,6 +919,8 @@ def _count_js_import_edges(ctx: LinkerContext) -> int:
             ("javascript", "typescript"),
         ],
     ),
+    # CNF: JS/TS module resolution; JS/TS share the "javascript" analyzer pass id.
+    depends_on=[["javascript"]],
 )
 def link_js_module(ctx: LinkerContext) -> LinkerResult:
     """Entry point for the JS module linker via the registry.

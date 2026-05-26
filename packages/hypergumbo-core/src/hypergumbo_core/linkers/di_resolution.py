@@ -775,6 +775,10 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
         "Python injector, Java SPI)"
     ),
     activation=LinkerActivation(always=True),
+    # CNF: per the description, DI patterns span Java (Guice/Spring/SPI),
+    # C# (ASP.NET Core), JS/TS (NestJS/Angular/Inversify), Kotlin (Koin),
+    # Python (injector).
+    depends_on=[["java", "csharp", "javascript", "kotlin", "python"]],
 )
 def _di_resolution_entry(ctx: LinkerContext) -> LinkerResult:
     """Registry entry point for the DI resolution linker."""

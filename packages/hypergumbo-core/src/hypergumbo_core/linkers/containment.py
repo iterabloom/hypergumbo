@@ -185,6 +185,12 @@ def _find_parent(
     "containment-linker",
     priority=12,  # After analyzers (0), before inheritance (15)
     description="Creates contains edges from classes/interfaces to their methods",
+    # CNF: explicit empty. This linker is graph-structural — it pairs every
+    # method symbol with its enclosing class symbol via name-prefix matching.
+    # It produces useful output for ANY analyzer's symbol set, with no specific
+    # language requirement; the trivial output on an empty symbol set is also
+    # the correct answer. Honest declaration: no upstream pass is required.
+    depends_on=[],
 )
 def link_containment(ctx: LinkerContext) -> LinkerResult:
     """Create contains edges from class/interface symbols to their methods.

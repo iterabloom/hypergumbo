@@ -211,6 +211,11 @@ DEPENDENCY_REQUIREMENTS = [
     priority=80,  # Run late, after all imports have been collected
     description="Dependency linking (imports to manifest declarations)",
     requirements=DEPENDENCY_REQUIREMENTS,
+    # CNF: dependency linking ties import edges (any language) to manifest
+    # declarations (any package-manager-aware analyzer). Either side alone
+    # provides partial value; together they produce dep edges. Single OR-clause
+    # spanning every language whose imports/manifests this linker consumes.
+    depends_on=[["python", "javascript", "ruby", "java", "go", "rust", "csharp", "kotlin", "scala", "elixir", "php", "swift", "dart"]],
 )
 def dependency_linker(ctx: LinkerContext) -> LinkerResult:
     """Dependency linker for registry-based dispatch.

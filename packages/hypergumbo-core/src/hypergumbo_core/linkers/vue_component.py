@@ -122,6 +122,8 @@ def _resolve_import_path(
         frameworks=["vue", "nuxt"],
         language_pairs=[("vue", "vue")],
     ),
+    # CNF: Vue SFCs are parsed by the javascript analyzer.
+    depends_on=[["javascript"]],
 )
 def link_vue_components(ctx: LinkerContext) -> LinkerResult:
     """Resolve Vue component imports to symbol-to-symbol edges.

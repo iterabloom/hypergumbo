@@ -171,6 +171,8 @@ def _build_method_index(
     "airflow-framework-dispatch-linker",
     priority=20,
     description="Emit dispatches_to edges from Airflow subclasses to their framework-called override methods (WI-nutav)",
+    # CNF: airflow is Python-only.
+    depends_on=[["python"]],
 )
 def link_airflow_framework_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Create dispatches_to edges from Airflow subclasses to their framework overrides.

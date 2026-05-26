@@ -371,6 +371,10 @@ def link_annotations(
     priority=90,  # Run after framework linkers
     activation=LinkerActivation(always=True),
     requirements=[],
+    # CNF: annotation conventions (@-decorators, Java annotations, C# attributes,
+    # Kotlin annotations, etc.) appear in any language with first-class metadata
+    # syntax.
+    depends_on=[["python", "javascript", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "ruby", "php"]],
 )
 def annotation_convention_linker(ctx: LinkerContext) -> LinkerResult:
     """Run the annotation convention linker."""

@@ -497,8 +497,9 @@ WASM_BINDGEN_REQUIREMENTS = [
             ("javascript", "rust"),
         ],
     ),
-    # JS/TS share the "javascript" analyzer pass id.
-    depends_on=["javascript", "rust"],
+    # CNF: javascript (JS/TS share the analyzer pass id) AND rust — both
+    # required for wasm-bindgen's import ↔ #[wasm_bindgen] bridge.
+    depends_on=[["javascript"], ["rust"]],
 )
 def wasm_bindgen_linker(ctx: LinkerContext) -> LinkerResult:
     """wasm_bindgen linker for registry-based dispatch.

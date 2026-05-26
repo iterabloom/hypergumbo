@@ -310,6 +310,11 @@ def link_orm_queries(
     "orm-linker",
     priority=75,  # Run after framework patterns have enriched symbols
     description="ORM query linking (model accessor patterns to Model symbols)",
+    # CNF: ORM frameworks span Java (Hibernate/JPA/MyBatis), Python
+    # (SQLAlchemy/Django ORM/Peewee), Ruby (ActiveRecord), Go (GORM/sqlc),
+    # JS/TS (TypeORM/Prisma/Sequelize), C# (EF Core), Kotlin (Exposed),
+    # Elixir (Ecto).
+    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "kotlin", "elixir"]],
 )
 def orm_linker(ctx: LinkerContext) -> LinkerResult:
     """ORM linker for registry-based dispatch.

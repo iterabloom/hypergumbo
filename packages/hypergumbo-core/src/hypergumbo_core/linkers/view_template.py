@@ -270,6 +270,8 @@ def _count_controller_methods(ctx: LinkerContext) -> int:
     priority=65,  # After route_handler (60)
     description="Rails controller action to view template binding",
     activation=LinkerActivation(frameworks=["rails"]),
+    # CNF: Rails is Ruby-only.
+    depends_on=[["ruby"]],
 )
 def link_view_template(ctx: LinkerContext) -> LinkerResult:
     """Linker entry point for registry."""

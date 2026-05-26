@@ -442,6 +442,10 @@ def _count_openapi_files(ctx: LinkerContext) -> bool:
         ),
     ],
     activation=LinkerActivation(frameworks=["openapi", "swagger"]),
+    # CNF: OpenAPI specs themselves live in YAML/JSON; route handlers they
+    # link to come from any HTTP-server language. Plus the YAML/JSON
+    # config-format analyzers.
+    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "rust", "yaml_ansible", "json"]],
 )
 def openapi_linker(ctx: LinkerContext) -> LinkerResult:
     """OpenAPI linker for registry-based dispatch.

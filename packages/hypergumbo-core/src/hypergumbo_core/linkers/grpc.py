@@ -1154,6 +1154,10 @@ def _resolve_unresolved_grpc_edges(
     description="gRPC/Protobuf RPC pattern linking across languages",
     requirements=GRPC_REQUIREMENTS,
     activation=LinkerActivation(frameworks=["grpc", "protobuf"]),
+    # CNF: gRPC has first-class clients in Go, Python, Java, JS/TS, C++, Rust,
+    # Ruby, C#, Kotlin, Swift, Dart. Proto schema itself goes through the
+    # proto analyzer.
+    depends_on=[["go", "python", "java", "javascript", "cpp", "rust", "ruby", "csharp", "kotlin", "swift", "dart", "proto"]],
 )
 def grpc_linker(ctx: LinkerContext) -> LinkerResult:
     """gRPC linker for registry-based dispatch.

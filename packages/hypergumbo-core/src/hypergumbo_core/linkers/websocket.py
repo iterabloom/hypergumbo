@@ -912,6 +912,10 @@ def link_websocket(
     "websocket-linker",
     priority=50,
     description="WebSocket communication pattern linking (Socket.io, ws, Django Channels)",
+    # CNF: WebSocket patterns appear in any language with a WS library —
+    # Socket.io (JS/TS), Django Channels (python), Phoenix (elixir),
+    # Spring WebFlux (java), Action Cable (ruby), Gorilla (go), SignalR (csharp).
+    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir"]],
 )
 def websocket_linker(ctx: LinkerContext) -> LinkerResult:
     """WebSocket linker for registry-based dispatch.

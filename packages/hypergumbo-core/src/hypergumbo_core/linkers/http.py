@@ -1582,6 +1582,9 @@ HTTP_REQUIREMENTS = [
     priority=60,  # Run after analyzers have produced route symbols
     description="HTTP client-server linking (fetch, axios, requests to routes)",
     requirements=HTTP_REQUIREMENTS,
+    # CNF: HTTP routes/clients exist in every general-purpose language with a
+    # web stack. Single OR-clause across the major HTTP-server languages.
+    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "php", "rust", "kotlin", "swift", "scala", "elm"]],
 )
 def http_linker(ctx: LinkerContext) -> LinkerResult:
     """HTTP linker for registry-based dispatch.

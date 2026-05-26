@@ -349,6 +349,10 @@ GRAPHQL_REQUIREMENTS = [
     description="GraphQL client-schema linking (gql calls to operations)",
     requirements=GRAPHQL_REQUIREMENTS,
     activation=LinkerActivation(frameworks=["graphql"]),
+    # CNF: GraphQL has client SDKs in JS/TS (apollo-client/urql/relay), Python
+    # (graphene/strawberry), Java (graphql-java), Ruby (graphql-ruby), Go
+    # (gqlgen). Schema docs themselves are the graphql analyzer.
+    depends_on=[["javascript", "python", "java", "ruby", "go", "graphql"]],
 )
 def graphql_linker(ctx: LinkerContext) -> LinkerResult:
     """GraphQL linker for registry-based dispatch.

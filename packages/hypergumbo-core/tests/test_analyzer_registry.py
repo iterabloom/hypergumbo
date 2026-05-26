@@ -214,7 +214,7 @@ class TestRegisterAnalyzer:
         assert registered.requires_symbols == ["html"]
 
     def test_depends_on_defaults_to_empty_list(self) -> None:
-        """WI-hupaz: depends_on defaults to []."""
+        """WI-dilab: depends_on defaults to [] (CNF: empty outer list)."""
 
         @register_analyzer("nodeps-analyzer")
         def analyze_nodeps(repo_root: Path) -> AnalysisResult:
@@ -224,22 +224,26 @@ class TestRegisterAnalyzer:
         assert registered is not None
         assert registered.depends_on == []
 
-    def test_with_depends_on(self) -> None:
-        """WI-hupaz: depends_on kwarg flows into RegisteredAnalyzer.
+    def test_with_depends_on_cnf(self) -> None:
+        """WI-dilab: depends_on kwarg flows into RegisteredAnalyzer as CNF.
 
         Distinct from the legacy ``requires_symbols`` (which is a per-analyzer
         stub for future multi-pass symbol consumption); ``depends_on`` carries
-        pass-id dependencies surfaced via the catalog's
-        ``Pass.depends_on`` field (INV-hujog).
+        pass-id dependencies in Conjunctive Normal Form (outer-AND of
+        inner-OR) surfaced via the catalog's ``Pass.depends_on`` field
+        (INV-hujog).
         """
 
-        @register_analyzer("jni-bridge-test", depends_on=["java", "c"])
+        @register_analyzer(
+            "jni-bridge-test-analyzer",
+            depends_on=[["java"], ["c", "cpp"]],
+        )
         def analyze_jni_bridge(repo_root: Path) -> AnalysisResult:
             return AnalysisResult()
 
-        registered = get_analyzer("jni-bridge-test")
+        registered = get_analyzer("jni-bridge-test-analyzer")
         assert registered is not None
-        assert registered.depends_on == ["java", "c"]
+        assert registered.depends_on == [["java"], ["c", "cpp"]]
 
 
 # ---------------------------------------------------------------------------

@@ -280,6 +280,8 @@ def _build_method_index(
     "django-orm-dispatch-linker",
     priority=22,
     description="Emit dispatches_to edges from Django Model/Manager/View/Form/Admin subclasses to their framework-called override methods (WI-nosug)",
+    # CNF: Django is Python-only.
+    depends_on=[["python"]],
 )
 def link_django_orm_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Create dispatches_to edges from Django subclasses to their framework overrides.

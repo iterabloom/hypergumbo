@@ -107,11 +107,12 @@ class RegisteredAnalyzer:
     requires: str | None = None
     pass_version: str = ""
     find_files: Callable[[Path], list[Path]] | None = None
-    # WI-hupaz / INV-hujog: pass-id dependencies surfaced into ``Pass.depends_on``.
-    # Empty default = no declared upstream. Distinct from the legacy
-    # ``requires_symbols`` (a multi-pass-symbol-consumption stub that never
-    # got wired into production scheduling).
-    depends_on: list[str] = field(default_factory=list)
+    # WI-hupaz / WI-dilab / INV-hujog: pass-id dependencies surfaced into
+    # ``Pass.depends_on``. CNF: outer-AND of inner-OR clauses. Empty default
+    # = no declared upstream. Distinct from the legacy ``requires_symbols``
+    # (a multi-pass-symbol-consumption stub that never got wired into
+    # production scheduling).
+    depends_on: list[list[str]] = field(default_factory=list)
 
     def get_func(self) -> AnalyzerFunc:
         """Get the analyzer function, resolving from module for patchability.
@@ -154,7 +155,7 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
     availability: str = "core",
     requires: str | None = None,
     find_files: Callable[[Path], list[Path]] | None = None,
-    depends_on: list[str] | None = None,
+    depends_on: list[list[str]] | None = None,
 ) -> Callable[[AnalyzerFunc], AnalyzerFunc]:
     """Decorator to register an analyzer function.
 
@@ -217,7 +218,7 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
             requires=requires,
             pass_version=compute_pass_version(func),
             find_files=find_files,
-            depends_on=list(depends_on) if depends_on else [],
+            depends_on=[list(clause) for clause in depends_on] if depends_on else [],
         )
         return func
 

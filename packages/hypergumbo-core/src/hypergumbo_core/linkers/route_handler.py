@@ -850,6 +850,10 @@ def _check_routes_available(ctx: LinkerContext) -> int:
             check=_check_routes_available,
         )
     ],
+    # CNF: route handlers come from any HTTP-server language analyzer —
+    # Python (Flask/FastAPI/Django), JS/TS (Express/Koa/NestJS), Ruby (Rails),
+    # Java (Spring), Go (Echo/Gin), C# (ASP.NET), Elixir (Phoenix), PHP (Laravel).
+    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "php"]],
 )
 def link_route_handler(ctx: LinkerContext) -> LinkerResult:
     """Linker entry point for registry."""

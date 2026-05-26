@@ -550,6 +550,9 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
     "message-queue-linker",
     priority=55,  # Run after core linkers, with other messaging patterns
     description="Message queue linking (Kafka, RabbitMQ, SQS, Redis pub/sub)",
+    # CNF: Kafka/RabbitMQ/SQS/Redis pub-sub clients exist across all common
+    # backend languages.
+    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "kotlin", "scala"]],
 )
 def message_queue_linker(ctx: LinkerContext) -> LinkerResult:
     """Message queue linker for registry-based dispatch.

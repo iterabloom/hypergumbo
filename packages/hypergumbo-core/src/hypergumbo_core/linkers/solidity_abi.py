@@ -289,6 +289,9 @@ SOLIDITY_ABI_REQUIREMENTS = [
             ("javascript", "solidity"),
         ],
     ),
+    # CNF: javascript (JS/TS share the analyzer pass id) AND solidity (the
+    # on-chain contract side) — both required for ABI binding resolution.
+    depends_on=[["javascript"], ["solidity"]],
 )
 def solidity_abi_linker(ctx: LinkerContext) -> LinkerResult:
     """Solidity ABI linker for registry-based dispatch.

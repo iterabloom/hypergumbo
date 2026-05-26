@@ -909,6 +909,10 @@ def _create_subscriber_to_method_edges(
     "event-sourcing-linker",
     priority=55,  # Run after core linkers, with other event patterns
     description="Event sourcing linking (EventEmitter, Django signals, Spring events, Guava EventBus, Go channels)",
+    # CNF: per the description — JS/TS (EventEmitter), Python (Django signals),
+    # Java (Spring events / Guava EventBus), Go (channels), plus Ruby
+    # (ActiveSupport::Notifications) and C# (delegates / IObservable).
+    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp"]],
 )
 def event_sourcing_linker(ctx: LinkerContext) -> LinkerResult:
     """Event sourcing linker for registry-based dispatch.

@@ -484,6 +484,10 @@ SUBPROCESS_REQUIREMENTS = [
     priority=65,  # Run after framework patterns have identified CLI commands
     description="Subprocess-to-CLI linking (subprocess.run to Click/Typer commands)",
     requirements=SUBPROCESS_REQUIREMENTS,
+    # CNF: subprocess invocations appear in any language with shell-out APIs.
+    # CLI handler resolution targets Python (Click/Typer/argparse), JS/TS
+    # (commander/yargs), Go (cobra/flag), Java (picocli), Rust (clap), etc.
+    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "rust", "kotlin", "elixir"]],
 )
 def subprocess_linker(ctx: LinkerContext) -> LinkerResult:
     """Subprocess linker for registry-based dispatch.

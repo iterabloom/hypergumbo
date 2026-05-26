@@ -73,6 +73,10 @@ def _is_test_path(path: str) -> bool:
     "middleware-chain-linker",
     priority=55,
     description="Chain consecutive middleware symbols in the same file",
+    # CNF: middleware is a cross-framework concept — Express/Koa (JS/TS),
+    # Django/Flask/FastAPI (python), Rails/Rack (ruby), Spring (java), Echo/Gin
+    # (go), Phoenix (elixir).
+    depends_on=[["python", "javascript", "ruby", "java", "go", "elixir"]],
 )
 def link_middleware_chain(ctx: LinkerContext) -> LinkerResult:
     """Create middleware_chain edges between consecutive middleware symbols."""

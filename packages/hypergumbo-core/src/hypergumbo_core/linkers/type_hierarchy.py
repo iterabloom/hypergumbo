@@ -587,6 +587,10 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     priority=60,  # Run after analyzers, before final cleanup
     description="Creates dispatches_to edges for polymorphic method dispatch",
     activation=LinkerActivation(always=True),  # Run on all codebases
+    # CNF: polymorphic dispatch resolution is meaningful in any OO/trait
+    # language with class/method hierarchies — Java, C#, Kotlin, Scala, Python,
+    # Ruby, JS/TS, Rust (traits), Swift, Dart, PHP, Elixir (protocols).
+    depends_on=[["python", "javascript", "ruby", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "php", "elixir"]],
 )
 def _link_type_hierarchy_entry(ctx: LinkerContext) -> LinkerResult:
     """Entry point for type hierarchy linker."""

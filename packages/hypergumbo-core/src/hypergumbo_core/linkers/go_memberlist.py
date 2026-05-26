@@ -122,6 +122,8 @@ def _short_name(symbol_name: str) -> str:
     priority=45,
     description="Go hashicorp/memberlist cluster delegate callbacks",
     activation=LinkerActivation(always=True),
+    # CNF: hashicorp/memberlist is Go-only.
+    depends_on=[["go"]],
 )
 def go_memberlist_linker(ctx: LinkerContext) -> LinkerResult:
     """Emit ``dispatches_to`` edges from memberlist.Create anchors to delegates.

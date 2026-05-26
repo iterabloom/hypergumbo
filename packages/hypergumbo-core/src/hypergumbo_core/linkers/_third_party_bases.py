@@ -247,6 +247,8 @@ def _build_method_index(
     priority=23,  # one slot after django-orm-dispatch (22) so dedup catches overlaps
     description="Emit dispatches_to edges from third-party Django/DRF/Wagtail/hierarkey subclasses to framework-called override methods (WI-jifib)",
     activation=LinkerActivation(frameworks=["django"]),
+    # CNF: Django and the third-party Django ecosystem are Python-only.
+    depends_on=[["python"]],
 )
 def link_django_third_party_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Create dispatches_to edges from third-party-base subclasses to their overrides.

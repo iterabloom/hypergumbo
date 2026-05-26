@@ -488,6 +488,8 @@ def link_yjs_crdt(
     priority=85,  # After framework linkers, before annotation convention
     activation=LinkerActivation(always=True),
     requirements=[],
+    # CNF: Yjs is a JS/TS CRDT library.
+    depends_on=[["javascript"]],
 )
 def yjs_crdt_linker(ctx: LinkerContext) -> LinkerResult:
     """Run the Yjs/CRDT reactive linker."""

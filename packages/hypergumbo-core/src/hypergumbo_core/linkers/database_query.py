@@ -490,6 +490,9 @@ DATABASE_QUERY_REQUIREMENTS = [
     priority=70,  # Run after SQL analyzer has produced table symbols
     description="Database query linking (SQL queries in code to schema tables)",
     requirements=DATABASE_QUERY_REQUIREMENTS,
+    # CNF: SQL is required (target side); any backend language consuming
+    # SQL is the query side. Two AND-conjuncts.
+    depends_on=[["sql"], ["python", "javascript", "ruby", "java", "go", "csharp", "rust", "kotlin", "scala", "elixir", "php"]],
 )
 def database_query_linker(ctx: LinkerContext) -> LinkerResult:
     """Database query linker for registry-based dispatch.

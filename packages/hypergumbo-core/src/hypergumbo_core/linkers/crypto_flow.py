@@ -368,6 +368,9 @@ def link_crypto_flow(
     priority=86,  # After framework linkers, near Yjs linker
     activation=LinkerActivation(always=True),
     requirements=[],
+    # CNF: crypto APIs (hash/cipher/sign/HMAC) appear in every general-purpose
+    # backend language.
+    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "rust", "kotlin", "swift", "php"]],
 )
 def crypto_flow_linker(ctx: LinkerContext) -> LinkerResult:
     """Run the crypto-flow linker."""

@@ -119,6 +119,9 @@ _parse_unresolved_name = parse_unresolved_name
         "direct calls=Class.method edge so forward slice can traverse the "
         "method without fanning out through siblings (WI-gigoz / Path B')."
     ),
+    # CNF: class-based call patterns appear in every OO language analyzer that
+    # emits class/method symbols.
+    depends_on=[["python", "javascript", "ruby", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "cpp", "php"]],
 )
 def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
     """See module docstring for the algorithm."""

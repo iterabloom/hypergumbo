@@ -359,6 +359,8 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     priority=40,  # Run with other IPC linkers
     description="Phoenix Channels IPC linking (Elixir channels, LiveView)",
     activation=LinkerActivation(frameworks=["phoenix"]),
+    # CNF: Phoenix is Elixir-only.
+    depends_on=[["elixir"]],
 )
 def phoenix_ipc_linker(ctx: LinkerContext) -> LinkerResult:
     """Phoenix IPC linker for registry-based dispatch.

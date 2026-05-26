@@ -341,6 +341,8 @@ REACT_COMPONENT_REQUIREMENTS = [
     activation=LinkerActivation(
         frameworks=["react"],
     ),
+    # CNF: React is JS/TS only (which share the "javascript" analyzer pass id).
+    depends_on=[["javascript"]],
 )
 def react_component_linker(ctx: LinkerContext) -> LinkerResult:
     """React component linker for registry-based dispatch.

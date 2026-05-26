@@ -319,6 +319,8 @@ def _expected_method_names(interfaces: list[str]) -> frozenset[str]:
         "Emit dispatches_to edges from Kafka Streams callback impls "
         "to their framework-called methods (WI-lisov)"
     ),
+    # CNF: Kafka Streams API is Java-only.
+    depends_on=[["java"]],
 )
 def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Recover Kafka Streams topology-callback dispatch edges.

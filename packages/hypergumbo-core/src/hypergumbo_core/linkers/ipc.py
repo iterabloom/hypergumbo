@@ -870,6 +870,8 @@ IPC_REQUIREMENTS = [
     priority=40,  # Run after analyzers
     description="Electron IPC and postMessage pattern linking",
     requirements=IPC_REQUIREMENTS,
+    # CNF: Electron IPC and browser postMessage are JS/TS-only.
+    depends_on=[["javascript"]],
 )
 def ipc_linker(ctx: LinkerContext) -> LinkerResult:
     """IPC linker for registry-based dispatch.

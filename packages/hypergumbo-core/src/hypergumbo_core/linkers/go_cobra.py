@@ -157,6 +157,8 @@ def _find_go_files(repo_root: Path):
     priority=45,
     description="Go spf13/cobra CLI command dispatch (RunE, PreRunE, etc.)",
     activation=LinkerActivation(always=True),
+    # CNF: cobra is Go-only.
+    depends_on=[["go"]],
 )
 def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
     """Emit ``dispatches_to`` edges from cobra.Command sites to handlers.

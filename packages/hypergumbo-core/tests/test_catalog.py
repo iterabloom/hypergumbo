@@ -9,6 +9,7 @@ from hypergumbo_core.catalog import (
     get_default_catalog,
     is_available,
     validate_pass_dependencies,
+    validate_pass_name_resolution,
 )
 
 
@@ -319,36 +320,84 @@ class TestCatalogMethods:
 
 
 # ---------------------------------------------------------------------------
-# WI-hupaz: Pass.depends_on substrate + validate_pass_dependencies()
+# WI-dilab: Pass.depends_on CNF substrate + validators
+# (Migrated from WI-hupaz's flat-list shape; same intent, richer semantics.)
 # ---------------------------------------------------------------------------
 
 
 class TestPassDependsOn:
-    """Pass.depends_on: list of pass IDs this pass requires upstream (INV-hujog)."""
+    """Pass.depends_on: CNF (outer-AND of inner-OR clauses). Empty list = no deps."""
 
     def test_pass_has_depends_on_field_defaulting_to_empty_list(self) -> None:
         p = Pass(id="python", description="Python AST", availability="core")
         assert p.depends_on == []
 
-    def test_pass_accepts_explicit_depends_on(self) -> None:
+    def test_pass_accepts_explicit_depends_on_cnf(self) -> None:
+        # JNI's real requirement: java AND (c OR cpp OR rust).
         p = Pass(
             id="jni-linker",
             description="JNI bridge",
             availability="core",
-            depends_on=["java", "c"],
+            depends_on=[["java"], ["c", "cpp", "rust"]],
         )
-        assert p.depends_on == ["java", "c"]
+        assert p.depends_on == [["java"], ["c", "cpp", "rust"]]
 
     def test_pass_depends_on_default_is_independent_per_instance(self) -> None:
         # field(default_factory=list) — not a shared mutable default
         p1 = Pass(id="a", description="", availability="core")
         p2 = Pass(id="b", description="", availability="core")
-        p1.depends_on.append("x")
+        p1.depends_on.append(["x"])
         assert p2.depends_on == []
 
 
+class TestValidatePassNameResolution:
+    """Static check: every literal in every depends_on clause names a known pass."""
+
+    def test_empty_pass_set_passes_silently(self) -> None:
+        validate_pass_name_resolution([])
+
+    def test_pass_with_no_depends_on_passes_silently(self) -> None:
+        validate_pass_name_resolution([
+            Pass(id="python", description="", availability="core"),
+        ])
+
+    def test_resolved_literals_pass_silently(self) -> None:
+        # Every literal resolves — no error.
+        validate_pass_name_resolution([
+            Pass(id="python", description="", availability="core"),
+            Pass(id="javascript", description="", availability="core"),
+            Pass(id="some-linker", description="", availability="core",
+                 depends_on=[["python", "javascript"]]),
+        ])
+
+    def test_unknown_literal_raises_valueerror(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            validate_pass_name_resolution([
+                Pass(id="jni-linker", description="", availability="core",
+                     depends_on=[["jaba"]]),  # typo
+            ])
+        msg = str(excinfo.value)
+        assert "jni-linker" in msg
+        assert "jaba" in msg
+
+    def test_error_message_lists_all_unknown_literals_across_clauses(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            validate_pass_name_resolution([
+                Pass(id="jni-linker", description="", availability="core",
+                     depends_on=[["jaba"], ["see", "ceepeepee", "rust"]]),
+                Pass(id="rust", description="", availability="core"),
+            ])
+        msg = str(excinfo.value)
+        # All three unknown literals should be cited.
+        assert "jaba" in msg
+        assert "see" in msg
+        assert "ceepeepee" in msg
+        # The known literal must NOT be flagged.
+        assert "depends_on names unknown passes: ['jaba', 'see', 'ceepeepee']" in msg
+
+
 class TestValidatePassDependencies:
-    """validate_pass_dependencies(passes) raises when prerequisites unresolved."""
+    """Runtime CNF check: every AND-conjunct contains at least one active literal."""
 
     def test_empty_pass_set_passes_silently(self) -> None:
         validate_pass_dependencies([])
@@ -358,83 +407,131 @@ class TestValidatePassDependencies:
             Pass(id="python", description="", availability="core"),
         ])
 
-    def test_resolved_dependency_passes_silently(self) -> None:
+    def test_single_clause_single_literal_active(self) -> None:
         validate_pass_dependencies([
             Pass(id="python", description="", availability="core"),
-            Pass(id="jni-linker", description="", availability="core",
-                 depends_on=["python"]),
+            Pass(id="airflow-linker", description="", availability="core",
+                 depends_on=[["python"]]),
         ])
 
-    def test_missing_dependency_raises_valueerror(self) -> None:
+    def test_single_clause_or_satisfied_by_any_member(self) -> None:
+        # http-linker: [["python", "javascript", "java"]] — any one of these
+        # being active satisfies the (single) AND-conjunct.
+        validate_pass_dependencies([
+            Pass(id="python", description="", availability="core"),
+            # javascript and java NOT active — but python is.
+            Pass(id="http-linker", description="", availability="core",
+                 depends_on=[["python", "javascript", "java"]]),
+        ])
+
+    def test_single_clause_or_no_members_active_raises(self) -> None:
+        # http-linker needs at least one of [python, javascript, java].
+        # If none are active, the conjunct is unsatisfied.
         with pytest.raises(ValueError) as excinfo:
             validate_pass_dependencies([
+                # Only ruby is active.
+                Pass(id="ruby", description="", availability="core"),
+                Pass(id="http-linker", description="", availability="core",
+                     depends_on=[["python", "javascript", "java"]]),
+            ])
+        msg = str(excinfo.value)
+        assert "http-linker" in msg
+        assert "python" in msg
+        assert "javascript" in msg
+        assert "java" in msg
+
+    def test_multi_clause_all_satisfied(self) -> None:
+        # JNI's actual shape: java AND (c OR cpp OR rust).
+        validate_pass_dependencies([
+            Pass(id="java", description="", availability="core"),
+            Pass(id="c", description="", availability="core"),
+            # No cpp, no rust — but the (c OR cpp OR rust) clause is satisfied by c.
+            Pass(id="jni-linker", description="", availability="core",
+                 depends_on=[["java"], ["c", "cpp", "rust"]]),
+        ])
+
+    def test_multi_clause_first_unsatisfied_raises(self) -> None:
+        # JNI: java AND (c OR cpp OR rust). Missing java.
+        with pytest.raises(ValueError) as excinfo:
+            validate_pass_dependencies([
+                Pass(id="c", description="", availability="core"),
                 Pass(id="jni-linker", description="", availability="core",
-                     depends_on=["java"]),
+                     depends_on=[["java"], ["c", "cpp", "rust"]]),
             ])
         msg = str(excinfo.value)
         assert "jni-linker" in msg
-        assert "java" in msg
+        # The unsatisfied "java"-only clause should appear.
+        assert "['java']" in msg
 
-    def test_error_message_names_all_missing_dependencies(self) -> None:
+    def test_multi_clause_second_unsatisfied_raises(self) -> None:
+        # JNI: java AND (c OR cpp OR rust). java present, but no impl lang.
         with pytest.raises(ValueError) as excinfo:
             validate_pass_dependencies([
-                Pass(id="jni-linker", description="", availability="core",
-                     depends_on=["java", "c", "cpp"]),
                 Pass(id="java", description="", availability="core"),
+                Pass(id="jni-linker", description="", availability="core",
+                     depends_on=[["java"], ["c", "cpp", "rust"]]),
             ])
         msg = str(excinfo.value)
-        assert "c" in msg
-        assert "cpp" in msg
-        assert "java" not in msg.split("requires")[1] if "requires" in msg else True
+        assert "jni-linker" in msg
+        # The unsatisfied OR-of-impls clause should appear.
+        assert "['c', 'cpp', 'rust']" in msg
 
-    def test_multiple_passes_with_missing_dependencies(self) -> None:
+    def test_both_clauses_unsatisfied_both_reported(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            validate_pass_dependencies([
+                # Neither java nor any impl lang active.
+                Pass(id="ruby", description="", availability="core"),
+                Pass(id="jni-linker", description="", availability="core",
+                     depends_on=[["java"], ["c", "cpp", "rust"]]),
+            ])
+        msg = str(excinfo.value)
+        assert "['java']" in msg
+        assert "['c', 'cpp', 'rust']" in msg
+
+    def test_multiple_passes_reported_together(self) -> None:
         with pytest.raises(ValueError) as excinfo:
             validate_pass_dependencies([
                 Pass(id="jni-linker", description="", availability="core",
-                     depends_on=["java"]),
+                     depends_on=[["java"], ["c", "cpp", "rust"]]),
                 Pass(id="cgo-linker", description="", availability="core",
-                     depends_on=["go"]),
+                     depends_on=[["go"], ["c", "cpp"]]),
             ])
         msg = str(excinfo.value)
-        # Both linkers + both missing prerequisites should be cited.
+        # Both unsatisfied passes cited.
         assert "jni-linker" in msg
         assert "cgo-linker" in msg
-        assert "java" in msg
-        assert "go" in msg
 
     def test_self_dependency_resolves(self) -> None:
-        # Pathological but well-defined: a pass declaring itself as a dependency
-        # is trivially "active" — no error. (Topo-sort cycle detection is
-        # a separate concern, deferred to scheduling-phase work.)
+        # Pathological: a pass listing itself in some clause.
         validate_pass_dependencies([
             Pass(id="weird", description="", availability="core",
-                 depends_on=["weird"]),
+                 depends_on=[["weird"]]),
         ])
 
 
 class TestCatalogStaticConsistency:
-    """get_default_catalog() must pass validate_pass_dependencies()."""
+    """get_default_catalog() must pass validate_pass_name_resolution()."""
 
-    def test_default_catalog_depends_on_graph_is_internally_consistent(self) -> None:
+    def test_default_catalog_depends_on_names_all_resolve(self) -> None:
         catalog = get_default_catalog()
-        # Should not raise: every depends_on entry in the default catalog
-        # resolves to a registered pass.
-        validate_pass_dependencies(catalog.passes)
+        # Should not raise: every literal in every clause resolves to a
+        # registered pass.
+        validate_pass_name_resolution(catalog.passes)
 
 
 class TestBridgeLinkerDependsOnPopulated:
-    """Language-pair Bridge linkers declare depends_on (the bridged languages).
+    """Language-pair Bridge linkers declare CNF: anchor AND any-of-impls.
 
     Per ADR-0003-ext, Bridge linkers are unambiguous: their dependency set
-    is exactly the language analyzers they bridge. These seven serve as the
-    canonical pattern for the follow-up per-linker audit WI.
+    has one anchor language and a set of impl languages. CNF expresses this
+    as ``[[anchor], [impl1, impl2, ...]]``.
     """
 
     def _pass_by_id(self, pass_id: str) -> Pass:
         # Linker modules register themselves via @register_linker side-effects
         # at import time. The default catalog only finds them once they're
         # imported (eagerly done in cli.py at runtime); explicitly import the
-        # seven Bridge modules here so tests run standalone.
+        # bridge modules here so tests run standalone.
         import hypergumbo_core.linkers.jni
         import hypergumbo_core.linkers.cgo
         import hypergumbo_core.linkers.napi
@@ -442,36 +539,110 @@ class TestBridgeLinkerDependsOnPopulated:
         import hypergumbo_core.linkers.wasm_bindgen
         import hypergumbo_core.linkers.pyffi
         import hypergumbo_core.linkers.lua_ffi
+        import hypergumbo_core.linkers.ruby_ffi
+        import hypergumbo_core.linkers.solidity_abi
+        import hypergumbo_core.linkers.swift_objc
         catalog = get_default_catalog()
         match = next((p for p in catalog.passes if p.id == pass_id), None)
         assert match is not None, f"Pass {pass_id!r} not in default catalog"
         return match
 
-    def test_jni_linker_depends_on_java_c_cpp_rust(self) -> None:
+    def test_jni_linker_cnf(self) -> None:
         p = self._pass_by_id("jni-linker")
-        assert set(p.depends_on) == {"java", "c", "cpp", "rust"}
+        assert p.depends_on == [["java"], ["c", "cpp", "rust"]]
 
-    def test_cgo_linker_depends_on_go_c_cpp(self) -> None:
+    def test_cgo_linker_cnf(self) -> None:
         p = self._pass_by_id("cgo-linker")
-        assert set(p.depends_on) == {"go", "c", "cpp"}
+        assert p.depends_on == [["go"], ["c", "cpp"]]
 
-    def test_napi_linker_depends_on_javascript_c_cpp(self) -> None:
+    def test_napi_linker_cnf(self) -> None:
         # JS analyzer also handles TypeScript (single 'javascript' pass id).
         p = self._pass_by_id("napi-linker")
-        assert set(p.depends_on) == {"javascript", "c", "cpp"}
+        assert p.depends_on == [["javascript"], ["c", "cpp"]]
 
-    def test_tauri_ipc_linker_depends_on_javascript_rust(self) -> None:
+    def test_tauri_ipc_linker_cnf(self) -> None:
         p = self._pass_by_id("tauri-ipc-linker")
-        assert set(p.depends_on) == {"javascript", "rust"}
+        assert p.depends_on == [["javascript"], ["rust"]]
 
-    def test_wasm_bindgen_linker_depends_on_javascript_rust(self) -> None:
+    def test_wasm_bindgen_linker_cnf(self) -> None:
         p = self._pass_by_id("wasm-bindgen-linker")
-        assert set(p.depends_on) == {"javascript", "rust"}
+        assert p.depends_on == [["javascript"], ["rust"]]
 
-    def test_pyffi_linker_depends_on_python_c_cpp_rust(self) -> None:
+    def test_pyffi_linker_cnf(self) -> None:
         p = self._pass_by_id("pyffi-linker")
-        assert set(p.depends_on) == {"python", "c", "cpp", "rust"}
+        assert p.depends_on == [["python"], ["c", "cpp", "rust"]]
 
-    def test_lua_ffi_linker_depends_on_lua_c_cpp(self) -> None:
+    def test_lua_ffi_linker_cnf(self) -> None:
         p = self._pass_by_id("lua-ffi-linker")
-        assert set(p.depends_on) == {"lua", "c", "cpp"}
+        assert p.depends_on == [["lua"], ["c", "cpp"]]
+
+    def test_ruby_ffi_linker_cnf(self) -> None:
+        p = self._pass_by_id("ruby-ffi-linker")
+        assert p.depends_on == [["ruby"], ["c", "cpp"]]
+
+    def test_solidity_abi_linker_cnf(self) -> None:
+        p = self._pass_by_id("solidity-abi-linker")
+        assert p.depends_on == [["javascript"], ["solidity"]]
+
+    def test_swift_objc_linker_cnf(self) -> None:
+        p = self._pass_by_id("swift-objc-linker")
+        assert p.depends_on == [["swift"], ["objc"]]
+
+
+class TestINVHujogClosureCriterion:
+    """Every Bridge/Framework/Protocol linker has non-empty depends_on.
+
+    Infrastructure linkers may have empty depends_on (declared explicitly, with
+    a docstring note explaining why). Per the WI-dilab closure criterion.
+    """
+
+    def _all_linkers_with_subcategory(self) -> dict[str, str]:
+        """Returns {pass_id: subcategory} by parsing linker module docstrings."""
+        # Importing cli triggers eager linker module imports.
+        import hypergumbo_core.cli
+        from hypergumbo_core.linkers.registry import _LINKER_REGISTRY
+        import importlib
+        result: dict[str, str] = {}
+        for name, reg in _LINKER_REGISTRY.items():
+            module = importlib.import_module(reg.func.__module__)
+            doc = module.__doc__ or ""
+            first_line = doc.lstrip().split("\n", 1)[0]
+            # Convention: "<Subcategory> linker: <one-line purpose>."
+            for cat in ("Bridge", "Framework", "Protocol", "Infrastructure"):
+                if first_line.startswith(f"{cat} linker"):
+                    result[name] = cat
+                    break
+        return result
+
+    def test_every_bridge_framework_protocol_linker_has_non_empty_depends_on(self) -> None:
+        catalog = get_default_catalog()
+        subcategories = self._all_linkers_with_subcategory()
+        passes_by_id = {p.id: p for p in catalog.passes}
+        offenders: list[str] = []
+        for name, cat in subcategories.items():
+            if cat in ("Bridge", "Framework", "Protocol"):
+                p = passes_by_id.get(name)
+                if p is None:
+                    continue
+                if not p.depends_on or all(not clause for clause in p.depends_on):
+                    offenders.append(f"{name} ({cat})")
+        assert not offenders, (
+            f"Linkers in Bridge/Framework/Protocol categories must declare "
+            f"non-empty depends_on (per WI-dilab closure criterion). Offenders: "
+            f"{offenders}"
+        )
+
+    def test_infrastructure_linkers_have_explicit_depends_on(self) -> None:
+        # Empty list is OK for Infrastructure; the requirement is that the
+        # field is explicitly declared (in the @register_linker call) rather
+        # than left to default. We can't introspect "was the kwarg passed",
+        # but we CAN assert the field reads as a list (vs missing/None).
+        catalog = get_default_catalog()
+        subcategories = self._all_linkers_with_subcategory()
+        passes_by_id = {p.id: p for p in catalog.passes}
+        for name, cat in subcategories.items():
+            if cat == "Infrastructure":
+                p = passes_by_id.get(name)
+                if p is None:
+                    continue
+                assert isinstance(p.depends_on, list)

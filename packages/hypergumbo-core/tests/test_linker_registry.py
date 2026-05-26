@@ -314,7 +314,7 @@ class TestRegisterLinker:
         assert result.symbols == ["test"]
 
     def test_depends_on_defaults_to_empty_list(self):
-        """WI-hupaz: depends_on field defaults to []."""
+        """WI-dilab: depends_on field defaults to [] (CNF: empty outer list)."""
 
         @register_linker("nodeps-linker")
         def link_nodeps(ctx: LinkerContext) -> LinkerResult:
@@ -324,16 +324,19 @@ class TestRegisterLinker:
         assert linker is not None
         assert linker.depends_on == []
 
-    def test_with_depends_on(self):
-        """WI-hupaz: depends_on kwarg flows into RegisteredLinker."""
+    def test_with_depends_on_cnf(self):
+        """WI-dilab: depends_on kwarg flows into RegisteredLinker as CNF."""
 
-        @register_linker("jni-test-linker", depends_on=["java", "c"])
+        @register_linker(
+            "jni-test-linker",
+            depends_on=[["java"], ["c", "cpp", "rust"]],
+        )
         def link_jni_test(ctx: LinkerContext) -> LinkerResult:
             return LinkerResult()
 
         linker = get_linker("jni-test-linker")
         assert linker is not None
-        assert linker.depends_on == ["java", "c"]
+        assert linker.depends_on == [["java"], ["c", "cpp", "rust"]]
 
 
 class TestGetLinker:

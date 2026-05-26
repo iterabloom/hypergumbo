@@ -518,7 +518,9 @@ PYFFI_REQUIREMENTS = [
     activation=LinkerActivation(
         language_pairs=[("python", "c"), ("python", "cpp"), ("python", "rust")],
     ),
-    depends_on=["python", "c", "cpp", "rust"],
+    # CNF: anchor (python) AND any-of-impls (c/cpp/rust — ctypes/cffi/PyO3
+    # target one of these native languages).
+    depends_on=[["python"], ["c", "cpp", "rust"]],
 )
 def pyffi_linker(ctx: LinkerContext) -> LinkerResult:
     """Python FFI linker for registry-based dispatch.

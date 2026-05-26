@@ -56,10 +56,27 @@ class Pass:
             catalog entries; empty string when unknown.
         pass_label: Human-friendly display name. Falls back to ``id`` when
             empty.
-        depends_on: IDs of upstream passes whose output this pass consumes
-            (INV-hujog / WI-hupaz). Distinct from ``requires`` (package
-            availability label). Empty list means no declared dependencies.
-            Validated by :func:`validate_pass_dependencies`.
+        depends_on: Pass-id dependencies expressed in Conjunctive Normal Form
+            (INV-hujog / WI-dilab; WI-hupaz shipped the flat-list precursor).
+            Outer list = AND-conjunction; each inner list = OR-disjunction.
+            Example: JNI bridges Java native methods to C/C++/Rust impls —
+            ``[["java"], ["c", "cpp", "rust"]]`` reads as "java required, AND
+            at least one of c/cpp/rust required." Empty outer list = no
+            declared dependencies (honest declaration for language-agnostic
+            Infrastructure linkers like containment). Distinct from
+            ``requires`` (package-availability label).
+
+            Two validators consume this field:
+
+            - :func:`validate_pass_name_resolution` is the static check:
+              every literal in every clause must resolve to a registered
+              pass-id. Catches typos at CI time, independent of any runtime
+              active-set decision.
+            - :func:`validate_pass_dependencies` is the forward-looking
+              runtime check: given an active subset of passes, every outer
+              AND-conjunct must contain at least one literal in the active
+              set. Not yet wired into ``run_behavior_map``; deferred to a
+              Phase 2 WI that adds config-time pass-filtering plumbing.
     """
 
     id: str
@@ -69,7 +86,7 @@ class Pass:
     languages: List[str] = field(default_factory=list)
     backend: str = ""
     pass_label: str = ""
-    depends_on: List[str] = field(default_factory=list)
+    depends_on: List[List[str]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dict."""
@@ -128,41 +145,97 @@ def is_available(p: Pass) -> bool:
     return False
 
 
-def validate_pass_dependencies(passes: List[Pass]) -> None:
-    """Assert every pass's ``depends_on`` resolves within ``passes`` (INV-hujog).
+def validate_pass_name_resolution(passes: List[Pass]) -> None:
+    """Static check: every literal in every ``depends_on`` clause names a known pass.
 
-    Each :class:`Pass` may declare a ``depends_on`` list of upstream pass IDs
-    that must also be present in the active set. This validator runs at
-    catalog-build time (statically: every default-catalog dependency must
-    resolve to a registered pass) and is intended to run at pipeline-config
-    time (when the runtime filters the catalog down to an active subset, to
-    surface "linker X needs analyzer Y which was disabled" before producing
-    a silently degraded behavior map).
+    ``Pass.depends_on`` is CNF (outer-AND of inner-OR clauses), per the WI-dilab
+    schema. This validator iterates every literal across every clause and
+    requires it to match the ``id`` of a registered pass. Independent of which
+    passes are runtime-active — purely a typo / drift check that runs at
+    catalog-build time and in CI.
+
+    Distinct from :func:`validate_pass_dependencies` (which checks the OR-arm
+    runtime semantics: every outer-AND-conjunct must contain at least one
+    literal in the active-pass subset).
 
     Raises:
-        ValueError: At least one pass declared a ``depends_on`` entry that
-            is not present in ``passes``. The message lists every
-            ``(dependent_pass_id, [missing_prereqs])`` pair so callers can
-            see the entire shape of the gap at once, not just the first
-            offending edge.
-
-    Pathological-but-defined: a pass listing itself in ``depends_on`` is
-    trivially satisfied (its own ID is in the active set). Cycle detection
-    is a separate scheduling-phase concern, deferred to a follow-up WI.
+        ValueError: At least one literal in some clause names a pass that is
+            not in ``passes``. The error message groups misspellings by
+            dependent pass-id, listing every (pass_id, [unknown_literals])
+            pair so callers see the full surface of the typo set, not just
+            the first offending name.
     """
-    active_ids = {p.id for p in passes}
-    missing_by_pass: List[tuple[str, List[str]]] = []
+    known_ids = {p.id for p in passes}
+    unknown_by_pass: List[tuple[str, List[str]]] = []
     for p in passes:
-        missing = [dep for dep in p.depends_on if dep not in active_ids]
-        if missing:
-            missing_by_pass.append((p.id, missing))
-    if missing_by_pass:
+        unknown: List[str] = []
+        for clause in p.depends_on:
+            for literal in clause:
+                if literal not in known_ids and literal not in unknown:
+                    unknown.append(literal)
+        if unknown:
+            unknown_by_pass.append((p.id, unknown))
+    if unknown_by_pass:
         lines = [
-            f"Pass {pass_id!r} depends_on missing prerequisites: {missing}"
-            for pass_id, missing in missing_by_pass
+            f"Pass {pass_id!r} depends_on names unknown passes: {unknown}"
+            for pass_id, unknown in unknown_by_pass
         ]
         raise ValueError(
-            "Pass dependency validation failed:\n  " + "\n  ".join(lines)
+            "Pass dependency name-resolution failed:\n  " + "\n  ".join(lines)
+        )
+
+
+def validate_pass_dependencies(active_passes: List[Pass]) -> None:
+    """Runtime CNF check: every AND-conjunct contains at least one active literal.
+
+    Forward-looking validator. Once :data:`hypergumbo_core.cli.run_behavior_map`
+    grows config-time pass-filtering (a Phase 2 WI), this validator will fire
+    on the filtered active-pass set to surface "linker X needs at least one
+    of [a, b, c] but none of them are active" before pipeline execution
+    produces silently-degraded output.
+
+    CNF semantics:
+
+    - ``depends_on=[]`` — no declared dependencies (vacuously satisfied).
+      Honest for Infrastructure linkers like containment that operate on any
+      symbol set.
+    - ``depends_on=[["x"]]`` — single conjunct, single literal. Equivalent to
+      plain "x must be active." Used for Framework linkers scoped to one
+      language.
+    - ``depends_on=[["x", "y", "z"]]`` — single conjunct, three-literal OR.
+      "At least one of x/y/z must be active." Used for Protocol linkers that
+      scan multiple language analyzers' output.
+    - ``depends_on=[["x"], ["a", "b"]]`` — two conjuncts. "x AND (a OR b)
+      must both hold." Used for Bridge linkers that bridge one anchor
+      language to multiple impl languages.
+
+    Pathological-but-defined: a pass listing itself in some clause is trivially
+    satisfied when that pass is in the active set. Cycle detection is a
+    separate scheduling concern, deferred.
+
+    Raises:
+        ValueError: At least one pass has an outer AND-conjunct with no
+            literal in the active-pass set. The error message groups by
+            dependent pass, listing every unsatisfied clause as a list so
+            callers see the full set of unmet "at least one of"
+            requirements, not just the first.
+    """
+    active_ids = {p.id for p in active_passes}
+    unsatisfied_by_pass: List[tuple[str, List[List[str]]]] = []
+    for p in active_passes:
+        unsatisfied_clauses: List[List[str]] = []
+        for clause in p.depends_on:
+            if not any(literal in active_ids for literal in clause):
+                unsatisfied_clauses.append(list(clause))
+        if unsatisfied_clauses:
+            unsatisfied_by_pass.append((p.id, unsatisfied_clauses))
+    if unsatisfied_by_pass:
+        lines = [
+            f"Pass {pass_id!r} unsatisfied depends_on clauses (need at least one literal in active set): {clauses}"
+            for pass_id, clauses in unsatisfied_by_pass
+        ]
+        raise ValueError(
+            "Pass dependency CNF validation failed:\n  " + "\n  ".join(lines)
         )
 
 
@@ -356,7 +429,7 @@ def build_catalog_from_registries() -> Catalog:
     def _from_registered(name: str, reg_description: str, reg_languages: List[str],
                          reg_availability: str, reg_requires: Optional[str],
                          reg_backend: str, reg_pass_label: str,
-                         reg_depends_on: List[str]) -> Pass:
+                         reg_depends_on: List[List[str]]) -> Pass:
         # Registry default for availability is "core". For analyzers that
         # haven't yet moved their metadata into the decorator call, the
         # fallback dict knows better — most analyzers are actually "extra"
@@ -375,7 +448,7 @@ def build_catalog_from_registries() -> Catalog:
             languages=list(reg_languages) if reg_languages else list(fallback.get("languages", [])),
             backend=reg_backend or fallback.get("backend", ""),
             pass_label=reg_pass_label or name,
-            depends_on=list(reg_depends_on),
+            depends_on=[list(clause) for clause in reg_depends_on],
         )
 
     # Analyzers first, sorted by priority then name for stable output.

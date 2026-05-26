@@ -149,6 +149,8 @@ def _count_template_directives(ctx: LinkerContext) -> int:
         frameworks=["vue", "nuxt"],
         language_pairs=[("vue", "javascript"), ("vue", "typescript")],
     ),
+    # CNF: Vue/Nuxt run on JS/TS (which share the "javascript" analyzer pass id).
+    depends_on=[["javascript"]],
 )
 def link_vue_template_method(ctx: LinkerContext) -> LinkerResult:
     """Linker entry point for registry."""

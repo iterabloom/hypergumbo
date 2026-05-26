@@ -367,6 +367,8 @@ RUBY_FFI_REQUIREMENTS = [
     activation=LinkerActivation(
         language_pairs=[("ruby", "c"), ("ruby", "cpp")],
     ),
+    # CNF: anchor (ruby) AND any-of-impls (c/cpp).
+    depends_on=[["ruby"], ["c", "cpp"]],
 )
 def ruby_ffi_linker(ctx: LinkerContext) -> LinkerResult:
     """Ruby FFI linker for registry-based dispatch.

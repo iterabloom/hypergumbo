@@ -251,6 +251,9 @@ def link_swift_objc(root: Path) -> SwiftObjCLinkerResult:
     priority=30,  # Run early, interop bridging is foundational
     description="Swift/Objective-C bridging (@objc, NSObject, bridging headers)",
     activation=LinkerActivation(language_pairs=[("swift", "objc")]),
+    # CNF: swift AND objc — both required for the @objc / NSObject /
+    # bridging-header bridge.
+    depends_on=[["swift"], ["objc"]],
 )
 def swift_objc_linker(ctx: LinkerContext) -> LinkerResult:
     """Swift/Objective-C linker for registry-based dispatch.

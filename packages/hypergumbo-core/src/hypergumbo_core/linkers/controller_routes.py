@@ -125,6 +125,11 @@ def _span_size(span) -> int:
     "controller-routes-linker",
     priority=56,
     description="Link controller-concept symbols to their nested route methods",
+    # CNF: scans symbols carrying the "controller" concept, populated by route-handler
+    # patterns across Rails (ruby), Django (python), Spring (java), Express (js),
+    # Phoenix (elixir), Laravel (php), Echo/Gin (go). At least one such analyzer
+    # must run for this linker to have controllers to consume.
+    depends_on=[["python", "javascript", "ruby", "java", "go", "elixir", "php"]],
 )
 def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
     """Create contains_routes edges from controllers to their route methods."""

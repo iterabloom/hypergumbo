@@ -188,6 +188,8 @@ class PhoenixStrategy(MethodNameStrategy):
     priority=67,  # After Rails (65) and Django (66); shares the renders edge type.
     description="Phoenix controller action → template binding",
     activation=LinkerActivation(frameworks=["phoenix"]),
+    # CNF: Phoenix is Elixir-only.
+    depends_on=[["elixir"]],
 )
 def link_view_template_phoenix(ctx: LinkerContext) -> LinkerResult:
     """Linker entry point for registry."""

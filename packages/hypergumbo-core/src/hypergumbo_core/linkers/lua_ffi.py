@@ -324,7 +324,8 @@ LUA_FFI_REQUIREMENTS = [
     activation=LinkerActivation(
         language_pairs=[("lua", "c"), ("lua", "cpp")],
     ),
-    depends_on=["lua", "c", "cpp"],
+    # CNF: anchor (lua) AND any-of-impls (c/cpp).
+    depends_on=[["lua"], ["c", "cpp"]],
 )
 def lua_ffi_linker(ctx: LinkerContext) -> LinkerResult:
     """Lua FFI linker for registry-based dispatch.

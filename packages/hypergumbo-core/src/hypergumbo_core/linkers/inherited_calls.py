@@ -351,6 +351,14 @@ def _extract_method_short_name(callee_name: str) -> str:
         "Java/Kotlin/Python/etc walkers and Site-2/3 receiver resolvers."
     ),
     activation=LinkerActivation(always=True),
+    # CNF: registered walkers exist for Java, Ruby, Groovy (per
+    # ``_MRO_WALKERS``). Future PRs extend the set to Python/Kotlin/etc.
+    # This linker also depends on the inheritance-linker pass producing
+    # extends/implements/includes edges first.
+    depends_on=[
+        ["inheritance-linker"],
+        ["java", "ruby", "groovy"],
+    ],
 )
 def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
     """See module docstring for the algorithm."""

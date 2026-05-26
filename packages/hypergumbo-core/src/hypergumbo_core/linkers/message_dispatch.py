@@ -345,6 +345,10 @@ def link_message_dispatch(
     priority=87,  # Near Yjs and crypto-flow linkers
     activation=LinkerActivation(always=True),
     requirements=[],
+    # CNF: cross-process message dispatch (browser postMessage, Worker
+    # messaging, Erlang/Elixir send, Akka tell) appears in any language with
+    # message-passing constructs.
+    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "erlang", "rust"]],
 )
 def message_dispatch_linker(ctx: LinkerContext) -> LinkerResult:
     """Run the message dispatch linker."""

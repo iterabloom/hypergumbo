@@ -372,7 +372,14 @@ def _create_inheritance_edges(
     return edges
 
 
-@register_linker("inheritance-linker", priority=15)  # Before type_hierarchy (priority 20)
+@register_linker(
+    "inheritance-linker",
+    priority=15,  # Before type_hierarchy (priority 20)
+    # CNF: inheritance edges come from any analyzer that populates
+    # base_classes / extends / implements / includes metadata. Covers every
+    # OO language with class/interface/trait/mixin constructs.
+    depends_on=[["python", "javascript", "ruby", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "php", "elixir"]],
+)
 def link_inheritance(ctx: LinkerContext) -> LinkerResult:
     """Create extends/implements edges from base_classes metadata.
 

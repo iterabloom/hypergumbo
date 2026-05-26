@@ -306,6 +306,8 @@ class SpringStrategy(ExplicitStringStrategy):
     priority=68,  # After Rails (65), Django (66), Phoenix (67).
     description="Spring MVC controller view-name return → template binding",
     activation=LinkerActivation(frameworks=["spring", "spring-mvc"]),
+    # CNF: Spring MVC is Java-only.
+    depends_on=[["java"]],
 )
 def link_view_template_spring(ctx: LinkerContext) -> LinkerResult:
     """Linker entry point for registry."""

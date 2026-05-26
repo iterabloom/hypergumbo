@@ -149,6 +149,9 @@ def _span_size(span) -> int:
     "router-routes-linker",
     priority=56,
     description="Link router-concept symbols to their nested route registrations",
+    # CNF: router symbols carry the "router" concept, emitted across the same
+    # set of HTTP-server frameworks/languages as route handlers.
+    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "php"]],
 )
 def link_router_routes(ctx: LinkerContext) -> LinkerResult:
     """Create registers_routes edges from routers to nested route symbols."""

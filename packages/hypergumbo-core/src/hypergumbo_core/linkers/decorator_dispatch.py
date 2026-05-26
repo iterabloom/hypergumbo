@@ -127,6 +127,11 @@ def _find_dispatch_sites(
     "decorator-dispatch",
     priority=15,
     description="Resolve decorator-based registry dispatch patterns",
+    # CNF: decorator-based registry dispatch is canonical in Python (Flask,
+    # FastAPI, Django), present in JS/TS via NestJS/Angular, and increasingly
+    # in Java/Kotlin/Scala via annotations. The linker consumes symbols
+    # carrying decorator metadata from any of these analyzers.
+    depends_on=[["python", "javascript", "java", "kotlin", "scala"]],
 )
 def link_decorator_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Create dispatches_to edges from registry dispatch sites to registered handlers."""

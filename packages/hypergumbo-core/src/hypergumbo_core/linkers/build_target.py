@@ -78,7 +78,17 @@ def _resolve_target_path(
     return resolved
 
 
-@register_linker("build-target-linker", priority=15)
+@register_linker(
+    "build-target-linker",
+    priority=15,
+    # CNF: build targets come from manifest analyzers (TOML for Cargo, JSON
+    # for npm); main()/entry-point functions come from the corresponding
+    # language analyzer. Both sides must be present.
+    depends_on=[
+        ["toml", "json"],
+        ["rust", "javascript", "go", "python", "java"],
+    ],
+)
 def link_build_targets(ctx: LinkerContext) -> LinkerResult:
     """Connect defines_target edges to main() functions.
 

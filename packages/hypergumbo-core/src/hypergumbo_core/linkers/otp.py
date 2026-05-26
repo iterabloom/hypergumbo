@@ -308,6 +308,8 @@ def _extract_erlang_caller_module(
     priority=40,
     description="OTP GenServer call/cast dispatch (Elixir/Erlang)",
     activation=LinkerActivation(always=True),
+    # CNF: OTP is the Erlang/Elixir actor-model runtime. Either language works.
+    depends_on=[["elixir", "erlang"]],
 )
 def otp_linker(ctx: LinkerContext) -> LinkerResult:
     """Link GenServer.call/cast sites to handler functions.

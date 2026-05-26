@@ -299,7 +299,8 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
     description="Java/C/C++/Rust JNI bridge - links native method declarations to C/C++/Rust implementations",
     requirements=JNI_REQUIREMENTS,
     activation=LinkerActivation(language_pairs=[("java", "c"), ("java", "cpp"), ("java", "rust")]),
-    depends_on=["java", "c", "cpp", "rust"],
+    # CNF: anchor (java) AND any-of-impls (c/cpp/rust).
+    depends_on=[["java"], ["c", "cpp", "rust"]],
 )
 def jni_linker(ctx: LinkerContext) -> LinkerResult:
     """JNI linker for registry-based dispatch.

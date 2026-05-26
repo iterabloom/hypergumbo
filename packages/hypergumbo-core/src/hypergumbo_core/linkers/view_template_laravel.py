@@ -281,6 +281,10 @@ class LaravelStrategy(ExplicitStringStrategy):
     priority=69,  # After Rails (65), Django (66), Phoenix (67), Spring (68).
     description="Laravel Blade controller view() / View::make() → template binding",
     activation=LinkerActivation(frameworks=["laravel"]),
+    # CNF: Laravel is PHP; templates are Blade. Both analyzers contribute the
+    # symbols this linker consumes — PHP for the controller view() call,
+    # Blade for the template target.
+    depends_on=[["php"], ["blade"]],
 )
 def link_view_template_laravel(ctx: LinkerContext) -> LinkerResult:
     """Linker entry point for registry."""

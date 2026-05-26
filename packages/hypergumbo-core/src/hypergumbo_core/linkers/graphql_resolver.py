@@ -591,6 +591,11 @@ RESOLVER_REQUIREMENTS = [
     priority=60,  # Run after analyzers have produced GraphQL symbols
     description="GraphQL resolver linking (resolvers to schema types/fields)",
     requirements=RESOLVER_REQUIREMENTS,
+    # CNF: resolvers live in the language hosting the GraphQL server —
+    # canonically JS/TS (apollo-server/yoga), Python (graphene/strawberry),
+    # Java (graphql-java), Ruby (graphql-ruby), Go (gqlgen). Schema docs
+    # via the graphql analyzer carry the type/field targets.
+    depends_on=[["javascript", "python", "java", "ruby", "go", "graphql"]],
 )
 def graphql_resolver_linker(ctx: LinkerContext) -> LinkerResult:
     """GraphQL resolver linker for registry-based dispatch.

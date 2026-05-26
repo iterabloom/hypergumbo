@@ -406,6 +406,8 @@ def _find_model_attr(tree: ast.Module, class_name: str) -> Optional[str]:
     priority=66,  # After Rails view_template (65), shares the same edge type.
     description="Django view function / CBV → template binding",
     activation=LinkerActivation(frameworks=["django"]),
+    # CNF: Django is Python-only.
+    depends_on=[["python"]],
 )
 def link_view_template_django(ctx: LinkerContext) -> LinkerResult:
     """Linker entry point for registry."""

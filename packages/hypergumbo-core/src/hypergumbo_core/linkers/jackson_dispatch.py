@@ -408,6 +408,8 @@ def _select_dispatch_targets(methods: list["Symbol"]) -> list["Symbol"]:
     "jackson-dispatch-linker",
     priority=21,
     description="Emit dispatches_to edges from Jackson/JavaBean serialization targets to their bean accessors (WI-gupah)",
+    # CNF: Jackson is Java-only.
+    depends_on=[["java"]],
 )
 def link_jackson_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Recover Jackson / JavaBean reflective dispatch edges.
