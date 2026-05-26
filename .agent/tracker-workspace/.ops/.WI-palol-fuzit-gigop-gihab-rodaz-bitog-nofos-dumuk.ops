@@ -30,3 +30,18 @@
   set: {}  # 747f
   add:  # 747f
     isbefore: [INV-rojip-bosup-lonut-gamiv-famuz-hulij-gamoj-posij]  # 747f
+- op: update  # 38dd
+  at: '2026-05-26T09:05:47Z'  # 38dd
+  by: agent  # 38dd
+  actor: jgstern_agent  # 38dd
+  clock: 3  # 38dd
+  nonce: 38dd  # 38dd
+  set:  # 38dd
+    status: done  # 38dd
+- op: discuss  # 0f0c
+  at: '2026-05-26T09:05:47Z'  # 0f0c
+  by: agent  # 0f0c
+  actor: jgstern_agent  # 0f0c
+  clock: 4  # 0f0c
+  nonce: 0f0c  # 0f0c
+  message: "Merged via PR #3915 as commit 659c575645. Two-phase model in refine_frameworks: promote (manifest-silent → frameworks) runs before demote (test-only → dev_frameworks). Specificity gate (_is_specific_pattern) accepts scoped/slash-compound/dot-compound patterns; bare names continue to require manifest evidence per the WI-rofiz lesson. _module_matches extended for slash-prefix subpaths. _has_prod_import_match helper consolidates the inner loop. 11 new tests pin the invariants; 100% coverage on profile.py maintained. CI green first try; INV-rahib streak holds at 8-of-8 in current cohort. INV-rojip stays violated pending the bare-name extension (cohorts 2+3 of its closure cohort: bakerydemo Django, chatwoot Rails)."  # 0f0c

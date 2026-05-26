@@ -23,3 +23,17 @@
     fields:  # 4e40
       statement: "A framework should be reported in profile.frameworks when prod-non-test source code imports modules matching that framework's import-module patterns, regardless of whether the local manifest declares the dep. The current refine_frameworks pipeline uses import edges only for demotion (manifest detected, no imports → dev_frameworks), never for promotion (manifest silent, prod imports → frameworks)."  # 4e40
       root_cause: "profile.py::refine_frameworks already builds module_importers from import edges and classifies importers via is_test_file, but iterates only over frameworks already detected from manifests — frameworks reached only by imports stay invisible. Workspace-imported deps (apollo-server smoke-test), autoload-by-convention (Rails on chatwoot), layered manifests (Django -r requirements/base.txt), and bare-name FP guards (graphql npm) have each been patched in isolation; the data plumbing for a structural fix has existed since refine_frameworks landed."  # 4e40
+- op: discuss  # 0dc6
+  at: '2026-05-26T09:05:48Z'  # 0dc6
+  by: agent  # 0dc6
+  actor: jgstern_agent  # 0dc6
+  clock: 2  # 0dc6
+  nonce: 0dc6  # 0dc6
+  message: "WI-palol merged via PR #3915 (commit 659c575645). Closes the structural-fix half of the INV's recurrence pattern: workspace-scoped imports (cohorts 1+4 of the closure spec) now flow through a generic promote phase rather than per-ecosystem targeted patches. Cohorts 2+3 (bakerydemo Django bare-name, chatwoot Rails autoload-with-no-imports) remain unaddressed — bare-name promotion would need a different mechanism (count threshold, per-language whitelist, or distinct compound-import-required gate; the design tension is unresolved). INV-rojip stays violated until a follow-on WI extends promote to those cases AND a bakeoff confirms the four cohorts. Suggested next: file the bare-name extension as a separate WI; run the bakeoff for WI-palol on apollo-server+Node-monorepo cohort first to validate the scoped path lands cleanly."  # 0dc6
+- op: discuss  # e8c4
+  at: '2026-05-26T18:11:23Z'  # e8c4
+  by: agent  # e8c4
+  actor: jgstern_agent  # e8c4
+  clock: 3  # e8c4
+  nonce: e8c4  # e8c4
+  message: "Filed WI-pusad (WI-pusad-hunaj-pafuk-halud-sugul-tulub-labuk-vojin) as the bare-name extension to WI-palol. Implements Mechanism B (compound-import-required gate): bare-name patterns promote only when at least one prod-non-test importer matched via the prefix arm of _module_matches (compound submodule like django.db or rails/generators), not on bare-exact imports alone. Preserves WI-rofiz lesson (bare 'import graphql' for typedef installs still doesn't promote). Closes cohorts 2 (bakerydemo Django) and 3 partial (chatwoot Rails with Gemfile declaration — Rails-without-Gemfile remains out of scope; that variant needs a file-structure heuristic, separate mechanism class). isbefore link added: INV-rojip stays violated until both WI-palol AND WI-pusad bakeoffs land and confirm no regression."  # e8c4
