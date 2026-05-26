@@ -56,6 +56,10 @@ class Pass:
             catalog entries; empty string when unknown.
         pass_label: Human-friendly display name. Falls back to ``id`` when
             empty.
+        depends_on: IDs of upstream passes whose output this pass consumes
+            (INV-hujog / WI-hupaz). Distinct from ``requires`` (package
+            availability label). Empty list means no declared dependencies.
+            Validated by :func:`validate_pass_dependencies`.
     """
 
     id: str
@@ -65,6 +69,7 @@ class Pass:
     languages: List[str] = field(default_factory=list)
     backend: str = ""
     pass_label: str = ""
+    depends_on: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dict."""
@@ -121,6 +126,44 @@ def is_available(p: Pass) -> bool:
         return importlib.util.find_spec("tree_sitter") is not None
 
     return False
+
+
+def validate_pass_dependencies(passes: List[Pass]) -> None:
+    """Assert every pass's ``depends_on`` resolves within ``passes`` (INV-hujog).
+
+    Each :class:`Pass` may declare a ``depends_on`` list of upstream pass IDs
+    that must also be present in the active set. This validator runs at
+    catalog-build time (statically: every default-catalog dependency must
+    resolve to a registered pass) and is intended to run at pipeline-config
+    time (when the runtime filters the catalog down to an active subset, to
+    surface "linker X needs analyzer Y which was disabled" before producing
+    a silently degraded behavior map).
+
+    Raises:
+        ValueError: At least one pass declared a ``depends_on`` entry that
+            is not present in ``passes``. The message lists every
+            ``(dependent_pass_id, [missing_prereqs])`` pair so callers can
+            see the entire shape of the gap at once, not just the first
+            offending edge.
+
+    Pathological-but-defined: a pass listing itself in ``depends_on`` is
+    trivially satisfied (its own ID is in the active set). Cycle detection
+    is a separate scheduling-phase concern, deferred to a follow-up WI.
+    """
+    active_ids = {p.id for p in passes}
+    missing_by_pass: List[tuple[str, List[str]]] = []
+    for p in passes:
+        missing = [dep for dep in p.depends_on if dep not in active_ids]
+        if missing:
+            missing_by_pass.append((p.id, missing))
+    if missing_by_pass:
+        lines = [
+            f"Pass {pass_id!r} depends_on missing prerequisites: {missing}"
+            for pass_id, missing in missing_by_pass
+        ]
+        raise ValueError(
+            "Pass dependency validation failed:\n  " + "\n  ".join(lines)
+        )
 
 
 # Config/data formats that shouldn't trigger pass suggestions
@@ -312,7 +355,8 @@ def build_catalog_from_registries() -> Catalog:
 
     def _from_registered(name: str, reg_description: str, reg_languages: List[str],
                          reg_availability: str, reg_requires: Optional[str],
-                         reg_backend: str, reg_pass_label: str) -> Pass:
+                         reg_backend: str, reg_pass_label: str,
+                         reg_depends_on: List[str]) -> Pass:
         # Registry default for availability is "core". For analyzers that
         # haven't yet moved their metadata into the decorator call, the
         # fallback dict knows better — most analyzers are actually "extra"
@@ -331,6 +375,7 @@ def build_catalog_from_registries() -> Catalog:
             languages=list(reg_languages) if reg_languages else list(fallback.get("languages", [])),
             backend=reg_backend or fallback.get("backend", ""),
             pass_label=reg_pass_label or name,
+            depends_on=list(reg_depends_on),
         )
 
     # Analyzers first, sorted by priority then name for stable output.
@@ -345,6 +390,7 @@ def build_catalog_from_registries() -> Catalog:
             reg_requires=reg.requires,
             reg_backend=reg.backend,
             reg_pass_label=reg.pass_label,
+            reg_depends_on=reg.depends_on,
         ))
         seen.add(reg.name)
 
@@ -359,6 +405,7 @@ def build_catalog_from_registries() -> Catalog:
             reg_requires=reg.requires,
             reg_backend=reg.backend,
             reg_pass_label=reg.pass_label,
+            reg_depends_on=reg.depends_on,
         ))
         seen.add(reg.name)
 

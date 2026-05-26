@@ -349,6 +349,8 @@ NAPI_REQUIREMENTS = [
             ("typescript", "cpp"),
         ],
     ),
+    # JS/TS share the "javascript" analyzer pass id.
+    depends_on=["javascript", "c", "cpp"],
 )
 def napi_linker(ctx: LinkerContext) -> LinkerResult:
     """N-API linker for registry-based dispatch.

@@ -313,6 +313,28 @@ class TestRegisterLinker:
         result = link_func(ctx)
         assert result.symbols == ["test"]
 
+    def test_depends_on_defaults_to_empty_list(self):
+        """WI-hupaz: depends_on field defaults to []."""
+
+        @register_linker("nodeps-linker")
+        def link_nodeps(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult()
+
+        linker = get_linker("nodeps-linker")
+        assert linker is not None
+        assert linker.depends_on == []
+
+    def test_with_depends_on(self):
+        """WI-hupaz: depends_on kwarg flows into RegisteredLinker."""
+
+        @register_linker("jni-test-linker", depends_on=["java", "c"])
+        def link_jni_test(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult()
+
+        linker = get_linker("jni-test-linker")
+        assert linker is not None
+        assert linker.depends_on == ["java", "c"]
+
 
 class TestGetLinker:
     """Tests for get_linker function."""

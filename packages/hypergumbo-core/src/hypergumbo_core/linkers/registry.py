@@ -457,6 +457,14 @@ class RegisteredLinker:
     availability: str = "core"
     requires: str | None = None
     pass_version: str = ""
+    # WI-hupaz / INV-hujog: pass-id dependencies surfaced into ``Pass.depends_on``.
+    # Distinct from ``activation`` (which gates "should this linker run at all
+    # for this repo") and ``requirements`` (which gates "does this linker have
+    # enough symbols to do useful work"). ``depends_on`` names the upstream
+    # analyzer pass IDs whose output this linker structurally requires —
+    # i.e., without those analyzers running, this linker cannot produce its
+    # intended edges at all.
+    depends_on: list[str] = field(default_factory=list)
 
 
 # Global registry of linkers
@@ -474,6 +482,7 @@ def register_linker(  # nosec B107 — pass_label/backend defaults are tag strin
     languages: list[str] | None = None,
     availability: str = "core",
     requires: str | None = None,
+    depends_on: list[str] | None = None,
 ) -> Callable[[LinkerFunc], LinkerFunc]:
     """Decorator to register a linker function.
 
@@ -516,6 +525,7 @@ def register_linker(  # nosec B107 — pass_label/backend defaults are tag strin
             availability=availability,
             requires=requires,
             pass_version=compute_pass_version(func),
+            depends_on=list(depends_on) if depends_on else [],
         )
         return func
 

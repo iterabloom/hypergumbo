@@ -219,6 +219,7 @@ def link_cgo(
     description="Go/C/C++ cgo bridge - links C.funcName() calls to C/C++ implementations",
     requirements=CGO_REQUIREMENTS,
     activation=LinkerActivation(language_pairs=[("go", "c"), ("go", "cpp")]),
+    depends_on=["go", "c", "cpp"],
 )
 def cgo_linker(ctx: LinkerContext) -> LinkerResult:
     """Cgo linker for registry-based dispatch.

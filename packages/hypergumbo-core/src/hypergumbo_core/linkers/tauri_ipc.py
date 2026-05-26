@@ -991,6 +991,8 @@ TAURI_IPC_REQUIREMENTS = [
             ("javascript", "rust"),
         ],
     ),
+    # JS/TS share the "javascript" analyzer pass id.
+    depends_on=["javascript", "rust"],
 )
 def tauri_ipc_linker(ctx: LinkerContext) -> LinkerResult:
     """Tauri IPC linker for registry-based dispatch.
