@@ -1,0 +1,40 @@
+- op: create  # 0b00
+  at: '2026-05-26T20:14:09Z'  # 0b00
+  by: agent  # 0b00
+  actor: jgstern_agent  # 0b00
+  clock: 1  # 0b00
+  nonce: '0b00'  # 0b00
+  data:  # 0b00
+    kind: work_item  # 0b00
+    title: "WI-depends-on-substrate: Pass.depends_on field + validator + bridge-linker population"  # 0b00
+    status: todo_soft  # 0b00
+    priority: 3  # 0b00
+    parent:  # 0b00
+    tags:  # 0b00
+    - schema  # 0b00
+    - structural  # 0b00
+    - analysis_quality  # 0b00
+    isbefore:  # 0b00
+    - INV-hujog-vamon-zafon-mikik-pisah-tanor-pumah-rogij  # 0b00
+    duplicate_of: []  # 0b00
+    not_duplicate_of: []  # 0b00
+    pr_ref:  # 0b00
+    description: "## Statement\n\nSubstrate-only PR for INV-hujog: add the `Pass.depends_on: list[str]` field, the `validate_pass_dependencies()` validator, and the registration decorator kwargs that flow into both. Populate `depends_on` on the language-pair Bridge linkers (jni, cgo, napi, ipc, pyffi, wasm_bindgen, tauri_ipc, lua_ffi) where the semantics are unambiguous (`depends_on = the two languages bridged`). Defer the wider per-linker audit to a follow-up WI.\n\n## Naming decision\n\nThe INV-hujog description uses `Pass.requires: list[str]`. However, `Pass.requires: Optional[str]` already exists in `catalog.py` with a different meaning (it labels the pip-package requirement for extras, e.g., `\"tree-sitter-language-pack\"`). Renaming the existing field would touch every Pass instantiation. Adding a new `Pass.depends_on: list[str]` field for pass dependencies sidesteps the collision and is semantically cleaner.\n\nThe `validate_pass_dependencies()` name follows the INV's pseudocode literally.\n\n## What ships\n\n1. New field `Pass.depends_on: list[str] = field(default_factory=list)` in `catalog.py`.\n2. New kwarg `depends_on: list[str] | None = None` on `register_analyzer` and `register_linker` decorators in their respective registries.\n3. New field `depends_on: list[str]` on `RegisteredAnalyzer` and `RegisteredLinker`.\n4. `build_catalog_from_registries()` flows `depends_on` from registry → Pass.\n5. New `validate_pass_dependencies(passes: list[Pass]) -> None` in `catalog.py` — raises `ValueError` listing missing prerequisites.\n6. CI-style consistency test: `validate_pass_dependencies(get_default_catalog().passes)` passes (every declared depends_on resolves to a registered pass).\n7. Populate `depends_on` on language-pair Bridge linkers: jni, cgo, napi, ipc, pyffi, wasm_bindgen, tauri_ipc, lua_ffi.\n\n## What's deferred\n\n- Per-linker `depends_on` audit and population for Framework / Protocol / Infrastructure subcategory linkers. ~40 linkers. The semantics need per-linker thought (e.g., \"is http-linker truly broken without javascript, or merely less-useful?\"). Filed as follow-up WI.\n- Wiring validator into `run_behavior_map` start-of-run (orchestrator integration). Trivial once the substrate exists. Could ship in PR-1 if cheap; otherwise PR-2.\n- `Pass.depends_on` does NOT yet imply scheduling logic. Topo-sort scheduling is INV-hujog \"Phase 2\" and out of scope here.\n\n## Tests (TDD)\n\n- `Pass()` instantiates with empty `depends_on` by default; can construct with explicit list.\n- `RegisteredLinker` and `RegisteredAnalyzer` carry `depends_on` field; default empty.\n- `register_linker(depends_on=[\"java\", \"c\"])` flows into the RegisteredLinker.\n- `register_analyzer(depends_on=[\"html\"])` flows into the RegisteredAnalyzer.\n- `validate_pass_dependencies(passes)` raises `ValueError` listing missing prerequisites when any pass declares an unresolved depends_on.\n- `validate_pass_dependencies(passes)` passes silently when all dependencies resolve.\n- `validate_pass_dependencies(passes)` ValueError message names the dependent pass and the missing prerequisite list.\n- Static consistency: `validate_pass_dependencies(get_default_catalog().passes)` does not raise.\n- Bridge linkers (jni, cgo, napi, ipc, pyffi, wasm_bindgen, tauri_ipc, lua_ffi) declare non-empty `depends_on` containing both bridged language names.\n\n## INV-hujog closure status after this PR\n\nStays `violated`. The full closure criterion (\"every linker pass has a non-empty requires list\") requires the follow-up audit. This PR ships the data plumbing and the canonical Bridge-linker pattern; without it the follow-up audit can't even declare what it's populating."  # 0b00
+    fields:  # 0b00
+      statement: "Pass.depends_on: list[str] is declarable on every analyzer/linker registration; validate_pass_dependencies() raises ValueError listing missing prerequisites; Bridge linkers (jni, cgo, napi, ipc, pyffi, wasm_bindgen, tauri_ipc, lua_ffi) populate depends_on with both bridged language names; static consistency test asserts the default catalog's depends_on graph resolves."  # 0b00
+      root_cause: "INV-hujog requires Pass.requires:list[str] but Pass.requires:Optional[str] already exists with package-availability semantics. This WI introduces a parallel depends_on:list[str] field for pass-dependency semantics, sidestepping the collision and unblocking the per-linker audit follow-up."  # 0b00
+- op: update  # 5153
+  at: '2026-05-26T20:57:46Z'  # 5153
+  by: agent  # 5153
+  actor: jgstern_agent  # 5153
+  clock: 2  # 5153
+  nonce: '5153'  # 5153
+  set:  # 5153
+    status: in_progress  # 5153
+- op: discuss  # b46b
+  at: '2026-05-26T20:57:46Z'  # b46b
+  by: agent  # b46b
+  actor: jgstern_agent  # b46b
+  clock: 3  # b46b
+  nonce: b46b  # b46b
+  message: "Implementation complete in commit 162392b9b3 on feat/inv-hujog-pass-requires. Substrate (Pass.depends_on field + validate_pass_dependencies validator + RegisteredAnalyzer/RegisteredLinker depends_on kwargs + 7 Bridge linker population) all green: 11838 passed, 3 skipped, 100% coverage on all 12 changed source files. Starting auto-pr."  # b46b

@@ -37,3 +37,25 @@
   clock: 3  # e8c4
   nonce: e8c4  # e8c4
   message: "Filed WI-pusad (WI-pusad-hunaj-pafuk-halud-sugul-tulub-labuk-vojin) as the bare-name extension to WI-palol. Implements Mechanism B (compound-import-required gate): bare-name patterns promote only when at least one prod-non-test importer matched via the prefix arm of _module_matches (compound submodule like django.db or rails/generators), not on bare-exact imports alone. Preserves WI-rofiz lesson (bare 'import graphql' for typedef installs still doesn't promote). Closes cohorts 2 (bakerydemo Django) and 3 partial (chatwoot Rails with Gemfile declaration — Rails-without-Gemfile remains out of scope; that variant needs a file-structure heuristic, separate mechanism class). isbefore link added: INV-rojip stays violated until both WI-palol AND WI-pusad bakeoffs land and confirm no regression."  # e8c4
+- op: discuss  # 6bd2
+  at: '2026-05-26T18:17:37Z'  # 6bd2
+  by: agent  # 6bd2
+  actor: jgstern_agent  # 6bd2
+  clock: 4  # 6bd2
+  nonce: 6bd2  # 6bd2
+  message: "Filed INV-fomod (INV-fomod-gonit-kojim-rohag-sozif-lanoh-kazah-jatun, P4 violated) as a sibling class for the chatwoot Rails-autoload-no-imports residue and similar autoload-by-convention cases where manifest is silent AND no import edges exist. Distinct mechanism class (file-structure signatures), not a refinement of INV-rojip's import-edge approach. INV-rojip stays scoped to import-edge promotion; INV-fomod is the file-structure complement. The two together cover all three detection paths (manifest / import-edge / file-structure). INV-fomod NOT linked isbefore INV-rojip — they're orthogonal closure paths."  # 6bd2
+- op: update  # af96
+  at: '2026-05-26T19:50:25Z'  # af96
+  by: agent  # af96
+  actor: jgstern_agent  # af96
+  clock: 5  # af96
+  nonce: af96  # af96
+  set:  # af96
+    status: pending_validation  # af96
+- op: discuss  # bb45
+  at: '2026-05-26T19:50:25Z'  # bb45
+  by: agent  # bb45
+  actor: jgstern_agent  # bb45
+  clock: 6  # bb45
+  nonce: bb45  # bb45
+  message: "WI-palol (PR #3915) + WI-pusad (PR #3917) shipped. Cohorts 1+4 (workspace-scoped imports) handled by WI-palol; cohorts 2+3 partial — bakerydemo Django bare-name handled by WI-pusad. Cohort 3 chatwoot Rails-without-Gemfile case explicitly out of scope (file-structure heuristic; INV-fomod is the orthogonal sibling for that). Bakeoff on 7 cases (3 synthetic positive, 1 synthetic regression, 3 real) confirmed: django source, flask-restful, hypergumbo-self all behave as expected (Django + Flask promoted from imports, hypergumbo self produces zero FPs). Transitions violated → pending_validation pending the BROAD cycle that confirms cohorts hold across the prospector corpus."  # bb45

@@ -31,3 +31,34 @@
   set: {}  # 8188
   add:  # 8188
     isbefore: [INV-rojip-bosup-lonut-gamiv-famuz-hulij-gamoj-posij]  # 8188
+- op: update  # eb69
+  at: '2026-05-26T19:31:58Z'  # eb69
+  by: agent  # eb69
+  actor: jgstern_agent  # eb69
+  clock: 3  # eb69
+  nonce: eb69  # eb69
+  set: {}  # eb69
+  add:  # eb69
+    tags: [awaits_bakeoff_validation]  # eb69
+- op: discuss  # 4844
+  at: '2026-05-26T19:47:14Z'  # 4844
+  by: agent  # 4844
+  actor: jgstern_agent  # 4844
+  clock: 4  # 4844
+  nonce: '4844'  # 4844
+  message: "Merged as PR #3917, dev SHA 4449696014c2."  # 4844
+- op: update  # a7e8
+  at: '2026-05-26T19:50:24Z'  # a7e8
+  by: agent  # a7e8
+  actor: jgstern_agent  # a7e8
+  clock: 5  # a7e8
+  nonce: a7e8  # a7e8
+  set:  # a7e8
+    status: done  # a7e8
+- op: discuss  # 1455
+  at: '2026-05-26T19:50:24Z'  # 1455
+  by: agent  # 1455
+  actor: jgstern_agent  # 1455
+  clock: 6  # 1455
+  nonce: '1455'  # 1455
+  message: "Merged via PR #3917 as commit 4449696014. Mechanism B (compound-import-required gate) plus a cross-ecosystem FP guard discovered during bakeoff. _module_match_kind returns exact/prefix/None; _has_prod_import_match gains require_prefix_arm + allowed_langs kwargs. Bakeoff (7 cases, all positive): react-exact no-promote (WI-rofiz preserved), react-compound promoted, django-no-manifest promoted, flask-no-manifest promoted, flask-restful detected, real django source promoted, hypergumbo self-analysis zero FPs. Cross-ecosystem leak discovered (Python http.client → Julia 'http' framework FP) and fixed in-flight with per-module language gate mirroring the demote phase's existing fw_langs short-circuit. materialize_route_symbols gains comma-split for method lists (surfaced by starlette.yaml loading once WI-pusad's bare arm promoted starlette). 15 new tests in test_profile.py + 2 in test_framework_patterns.py. INV-rahib streak holds at 9-of-9."  # 1455
