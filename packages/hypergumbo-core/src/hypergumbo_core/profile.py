@@ -2980,31 +2980,80 @@ def _has_prod_import_match(
     patterns: Iterable[str],
     module_importers: dict[str, list[str]],
     is_test_fn: Callable[[str], bool],
+    *,
+    require_prefix_arm: bool = False,
+    module_languages: dict[str, set[str]] | None = None,
+    allowed_langs: set[str] | None = None,
 ) -> bool:
-    """Return True if any (module, importer) pair satisfies *both*:
+    """Return True if any (module, importer) pair satisfies all of:
 
     - ``imported`` module matches at least one of ``patterns`` (per
-      ``_module_matches``), and
+      ``_module_match_kind``),
     - at least one importer of that module is a non-empty path that
-      ``is_test_fn`` says is not a test file.
+      ``is_test_fn`` says is not a test file,
+    - if ``allowed_langs`` is set: the matched module's language
+      appears in that set (consulted via ``module_languages``).
+
+    When ``require_prefix_arm`` is True, the matching arm must be
+    ``"prefix"`` (compound submodule like ``django.db`` or
+    ``rails/generators``) — exact matches against the pattern are
+    rejected. This is the WI-pusad bare-name gate: bare-pattern
+    promotion requires evidence of a compound submodule import,
+    distinguishing real framework use (``from django.db import X``)
+    from generic single-name imports (``import graphql`` for typedefs).
+
+    The ``allowed_langs`` gate prevents cross-ecosystem FPs: e.g., the
+    Julia ``http`` framework has bare pattern ``http``, and Python's
+    ``http.client`` stdlib import would otherwise match it via the
+    prefix arm. Surfaced by WI-pusad on the django source bakeoff.
 
     Used by both the promote and demote phases of
-    ``refine_frameworks``. The promote phase passes only patterns that
-    pass the specificity gate (``_is_specific_pattern``); the demote
-    phase passes the framework's full pattern set.
+    ``refine_frameworks``. The promote phase calls with
+    ``require_prefix_arm=False`` for the WI-palol specific-pattern arm
+    and ``require_prefix_arm=True`` for the WI-pusad bare-pattern arm,
+    both with ``allowed_langs`` set to the framework's languages. The
+    demote phase always uses ``require_prefix_arm=False`` and
+    ``allowed_langs=None`` (a framework with any prod import stays
+    confirmed, exact or prefix, regardless of language — the coarser
+    ``fw_langs & import_edge_langs`` check upstream of the call already
+    short-circuits the demote path for language-mismatched frameworks).
 
     Args:
         patterns: Lowercased import-module patterns to match against.
         module_importers: Mapping of lowercased imported-module name to
             the list of source file paths that imported it.
         is_test_fn: Callable returning True when a path is a test file.
+        require_prefix_arm: When True, only ``"prefix"``-kind matches
+            count toward promotion. Default False preserves the
+            WI-palol / pre-WI-pusad behavior.
+        module_languages: Mapping of lowercased imported-module name to
+            the set of languages whose edges referenced it. Required
+            when ``allowed_langs`` is provided.
+        allowed_langs: When set, restricts matching to modules whose
+            language appears in this set. Used by the promote phase to
+            prevent cross-ecosystem FPs.
 
     Returns:
         True if a prod-non-test importer of a pattern-matching module
-        exists.
+        exists under the active gate.
     """
     for module_key, importers in module_importers.items():
-        if not any(_module_matches(module_key, pat) for pat in patterns):
+        if allowed_langs is not None and module_languages is not None:
+            mod_langs = module_languages.get(module_key, set())
+            if not mod_langs & allowed_langs:
+                continue
+        match_kind = None
+        for pat in patterns:
+            kind = _module_match_kind(module_key, pat)
+            if kind is not None:
+                # Prefer the strongest arm seen so far: prefix beats exact.
+                if match_kind != "prefix":
+                    match_kind = kind
+                if match_kind == "prefix":
+                    break
+        if match_kind is None:
+            continue
+        if require_prefix_arm and match_kind != "prefix":
             continue
         if any(p and not is_test_fn(p) for p in importers):
             return True
@@ -3039,32 +3088,38 @@ def _is_specific_pattern(pattern: str) -> bool:
     return pattern.startswith("@") or "/" in pattern or "." in pattern
 
 
-def _module_matches(imported: str, pattern: str) -> bool:
-    """Check if an imported module name matches a framework pattern.
+def _module_match_kind(imported: str, pattern: str) -> str | None:
+    """Classify how an imported module matches a framework pattern.
 
-    Uses prefix matching against two separator conventions:
+    Three possible outcomes:
 
-    - Dot-separated submodules (``starlette.responses`` matches
-      ``starlette``) — Python, Java/Kotlin Maven coords.
-    - Slash-separated subpath imports (``@apollo/server/standalone``
-      matches ``@apollo/server``, ``next/link`` matches ``next``) —
-      scoped npm packages, Go paths.
+    - ``"exact"`` — ``imported`` equals ``pattern`` (case-insensitive).
+      Example: imported = ``"django"``, pattern = ``"django"``.
+    - ``"prefix"`` — ``imported`` starts with the pattern followed by
+      a separator (``.`` for Python / Maven coords, ``/`` for npm
+      scoped paths and Go paths). Example: imported = ``"django.db"``,
+      pattern = ``"django"``; imported = ``"@apollo/server/standalone"``,
+      pattern = ``"@apollo/server"``.
+    - ``None`` — no match.
 
-    Exact equality also matches.  Both strings are compared lowercase.
+    Consumed by ``_has_prod_import_match`` for the WI-pusad
+    compound-import-required gate (bare-name promotion requires a
+    ``"prefix"`` match; ``"exact"`` alone is too weak — see WI-rofiz's
+    lesson on bare ``graphql`` triggering FPs from typedef installs).
 
     Args:
         imported: The imported module name (2nd colon-field of the edge dst).
         pattern: The framework import module name (lowercased).
 
     Returns:
-        True if the import matches the pattern.
+        ``"exact"``, ``"prefix"``, or ``None``.
     """
     imported_lower = imported.lower()
-    return (
-        imported_lower == pattern
-        or imported_lower.startswith(pattern + ".")
-        or imported_lower.startswith(pattern + "/")
-    )
+    if imported_lower == pattern:
+        return "exact"
+    if imported_lower.startswith(pattern + ".") or imported_lower.startswith(pattern + "/"):
+        return "prefix"
+    return None
 
 
 def refine_frameworks(
@@ -3126,6 +3181,13 @@ def refine_frameworks(
     import_edge_langs: set[str] = set()
     # Map: lowercased_module → list of source file paths
     module_importers: dict[str, list[str]] = {}
+    # WI-pusad / INV-rojip cohort-2 FP: same import path-string can match
+    # framework patterns from different language ecosystems (e.g. Python
+    # ``http.client`` would match the Julia ``http`` framework's bare
+    # pattern via the prefix arm without this gate). Track per-module
+    # languages so the promote phase only fires when an import's
+    # language matches one of the framework's registered languages.
+    module_languages: dict[str, set[str]] = {}
 
     for edge in edges:
         if edge.edge_type != "imports":
@@ -3144,26 +3206,53 @@ def refine_frameworks(
         if not src_path and ":" in edge.src:
             src_path = edge.src.split(":")[1] if len(edge.src.split(":")) > 1 else ""
 
-        module_importers.setdefault(imported_module.lower(), []).append(src_path)
+        module_key = imported_module.lower()
+        module_importers.setdefault(module_key, []).append(src_path)
+        module_languages.setdefault(module_key, set()).add(lang)
 
-    # === PROMOTE PHASE (WI-palol / INV-rojip) ===
+    # === PROMOTE PHASE (WI-palol + WI-pusad / INV-rojip) ===
     # Find frameworks reached only by import edges (manifest silent) and
     # add them to the working framework list. The demote phase below
-    # then runs over the combined list. The specificity gate guards
-    # against bare-name FPs (`react` imported by build tooling, `flask`
-    # in a non-Flask repo).
+    # then runs over the combined list. Two arms:
+    #
+    # - WI-palol specific-pattern arm: scoped (@apollo/server),
+    #   slash-compound (github.com/.../gin), or dot-compound
+    #   (org.springframework.boot) patterns promote on any prod-non-test
+    #   importer (exact or prefix match).
+    # - WI-pusad bare-name arm: bare patterns (django, flask, rails,
+    #   react) promote ONLY when at least one prod-non-test importer
+    #   matched via the prefix arm — i.e., a compound submodule like
+    #   `django.db` or `react/jsx-runtime`. Exact bare imports alone
+    #   (just `import graphql`) are too weak a signal (WI-rofiz lesson).
     existing: set[str] = set(profile.frameworks) | set(profile.dev_frameworks)
     promoted: list[str] = []
     for _lang, fw_dict in LANGUAGE_FRAMEWORKS.items():
         for fw in fw_dict:
             if fw in existing or fw in promoted:
                 continue
-            specific_patterns = [
-                p for p in _import_modules_for_framework(fw) if _is_specific_pattern(p)
-            ]
-            if not specific_patterns:
+            patterns = _import_modules_for_framework(fw)
+            if not patterns:  # pragma: no cover  -- every framework in LANGUAGE_FRAMEWORKS has at least one pattern
                 continue
-            if _has_prod_import_match(specific_patterns, module_importers, is_test_file):
+            fw_langs = _framework_languages(fw)
+            specific_patterns = [p for p in patterns if _is_specific_pattern(p)]
+            if specific_patterns and _has_prod_import_match(
+                specific_patterns,
+                module_importers,
+                is_test_file,
+                module_languages=module_languages,
+                allowed_langs=fw_langs,
+            ):
+                promoted.append(fw)
+                continue
+            bare_patterns = [p for p in patterns if not _is_specific_pattern(p)]
+            if bare_patterns and _has_prod_import_match(
+                bare_patterns,
+                module_importers,
+                is_test_file,
+                require_prefix_arm=True,
+                module_languages=module_languages,
+                allowed_langs=fw_langs,
+            ):
                 promoted.append(fw)
 
     working_frameworks: list[str] = list(profile.frameworks) + promoted

@@ -19662,6 +19662,68 @@ class TestMaterializeRouteSymbols:
         assert len(routes) == 1
         assert routes[0].meta["http_method"] == "GET"
 
+    def test_materializer_splits_comma_joined_methods(self):
+        """Comma-joined method strings (from YAML extract of methods list)
+        produce one route Symbol per method.
+
+        ``_extract_from_metadata`` comma-joins list values from UC
+        metadata, so a YAML pattern with ``extract: method: "metadata.methods"``
+        applied to a Starlette ``Route('/items', h, methods=['GET', 'POST'])``
+        produces a concept dict with ``method = "GET,POST"``. The
+        analyzer-side starlette extractor already iterates per method
+        and emits two route Symbols (GET /items, POST /items); without
+        per-method splitting in materialize, the YAML+materialize path
+        would emit a third Symbol with method='GET,POST' that the
+        WI-tizad dedupe (keyed on the joined string) doesn't match
+        against the analyzer-emitted ones. Surfaced by WI-pusad when
+        starlette.yaml started loading on repos without an explicit
+        manifest declaration (bare-name promotion via the
+        starlette.routing compound import).
+        """
+        handler = Symbol(
+            id="python:app.py:10-20:list_items:function",
+            name="list_items", kind="function", language="python",
+            path="app.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "GET,POST", "path": "/items"}]},
+        )
+        routes = materialize_route_symbols([handler])
+        # Two Symbols produced — one per method — with single-method
+        # http_method values matching the analyzer-side convention.
+        methods = sorted(r.meta["http_method"] for r in routes)
+        assert methods == ["GET", "POST"]
+        assert all(r.meta["route_path"] == "/items" for r in routes)
+
+    def test_materializer_comma_split_dedupes_against_analyzer_routes(self):
+        """Comma-split + analyzer-emitted per-method = no duplicates."""
+        analyzer_get = Symbol(
+            id="python:app.py:5-15:GET /items:route",
+            name="GET /items", kind="function", language="python",
+            path="app.py",
+            span=Span(start_line=5, end_line=15, start_col=0, end_col=0),
+            meta={"route_path": "/items", "http_method": "GET",
+                  "framework_role": "route"},
+        )
+        analyzer_post = Symbol(
+            id="python:app.py:5-15:POST /items:route",
+            name="POST /items", kind="function", language="python",
+            path="app.py",
+            span=Span(start_line=5, end_line=15, start_col=0, end_col=0),
+            meta={"route_path": "/items", "http_method": "POST",
+                  "framework_role": "route"},
+        )
+        handler = Symbol(
+            id="python:app.py:10-20:list_items:function",
+            name="list_items", kind="function", language="python",
+            path="app.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [{"concept": "route", "method": "GET,POST", "path": "/items"}]},
+        )
+        routes = materialize_route_symbols([analyzer_get, analyzer_post, handler])
+        # Per-method materialize splits hit the WI-tizad dedupe; no new
+        # Symbols emitted because analyzer already covers both methods.
+        assert len(routes) == 0
+
 
 class TestMaterializeRouteSymbolsWiMisud:
     """WI-misud: file-level catch-all route concepts from WI-tisam YAML patterns

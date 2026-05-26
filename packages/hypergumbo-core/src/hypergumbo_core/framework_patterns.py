@@ -1748,79 +1748,97 @@ def materialize_route_symbols(symbols: list[Symbol]) -> list[Symbol]:
             if (sym.meta or {}).get("framework_role") == "route":
                 continue
 
-            method = (concept.get("method") or "").upper()
+            method_raw = (concept.get("method") or "").upper()
             path = concept.get("path") or ""
 
             # Stapler convention: doXxx → POST /xxx, getXxx → GET /xxx
             # When the YAML pattern matches method_name but doesn't set
             # extract_method, we can derive method + path from the name.
-            if not method and sym.name:
+            if not method_raw and sym.name:
                 short_name = sym.name.split(".")[-1]
                 if short_name.startswith("do") and len(short_name) > 2 and short_name[2].isupper():
-                    method = "POST"
+                    method_raw = "POST"
                     path = "/" + short_name[2].lower() + short_name[3:]
                 elif short_name.startswith("get") and len(short_name) > 3 and short_name[3].isupper():
-                    method = "GET"
+                    method_raw = "GET"
                     path = "/" + short_name[3].lower() + short_name[4:]
 
             # Need at least a method to create a meaningful route node
-            if not method:
+            if not method_raw:
                 continue
 
-            # Dedupe: same (method, path) pair already materialized.
-            #
-            # WI-misud: when the source symbol is kind="file", scope the
-            # dedupe key by source symbol id. File-level route concepts
-            # (WI-tisam: node-http.yaml / graphql.yaml's startStandaloneServer
-            # / http.createServer catch-all patterns) attach to file Symbols
-            # via UC-enrichment, and different files calling these framework
-            # entry points are DISTINCT deployments — not duplicate
-            # registrations of the same handler. The Django-style cross-file
-            # dedupe (urls.py + views.py declaring the same route) still
-            # applies for kind="method" / kind="function" sources.
-            if sym.kind == "file":
-                route_key = f"{method}:{path}:{sym.id}"
+            # Comma-joined method lists (e.g., Starlette ``Route('/x', h,
+            # methods=['GET', 'POST'])`` flowed through
+            # ``_extract_from_metadata`` which comma-joins list values)
+            # must be expanded into one route Symbol per method. The
+            # analyzer-side starlette extractor already iterates per
+            # method; without this split, the YAML+materialize path
+            # would emit a single ``GET,POST`` route Symbol that the
+            # WI-tizad dedupe (keyed on the joined string) misses,
+            # producing a duplicate alongside the per-method analyzer
+            # emissions. Surfaced by WI-pusad once bare-name framework
+            # promotion (here: starlette via ``starlette.routing``
+            # compound import) made starlette.yaml load on repos
+            # without an explicit manifest declaration.
+            if "," in method_raw:
+                methods_list = [m.strip() for m in method_raw.split(",") if m.strip()]
             else:
-                route_key = f"{method}:{path}"
-            if route_key in seen_routes:
-                continue
-            seen_routes.add(route_key)
+                methods_list = [method_raw]
 
-            # Normalize empty paths to "/" (INV-nimik)
-            if not path:
-                path = "/"
-            route_name = f"{method} {path}"
+            for method in methods_list:
+                # Dedupe: same (method, path) pair already materialized.
+                #
+                # WI-misud: when the source symbol is kind="file", scope the
+                # dedupe key by source symbol id. File-level route concepts
+                # (WI-tisam: node-http.yaml / graphql.yaml's startStandaloneServer
+                # / http.createServer catch-all patterns) attach to file Symbols
+                # via UC-enrichment, and different files calling these framework
+                # entry points are DISTINCT deployments — not duplicate
+                # registrations of the same handler. The Django-style cross-file
+                # dedupe (urls.py + views.py declaring the same route) still
+                # applies for kind="method" / kind="function" sources.
+                if sym.kind == "file":
+                    route_key = f"{method}:{path}:{sym.id}"
+                else:
+                    route_key = f"{method}:{path}"
+                if route_key in seen_routes:
+                    continue
+                seen_routes.add(route_key)
 
-            stable_id = make_route_stable_id(method, path)
+                # Normalize empty paths to "/" (INV-nimik)
+                route_path_normalized = path if path else "/"
+                route_name = f"{method} {route_path_normalized}"
 
-            # Create route symbol at the same location as the handler
-            route_id = (
-                f"{sym.language}:{sym.path}:{sym.span.start_line}-"
-                f"{sym.span.end_line}:{route_name}:route"
-            )
-            route_sym = SymbolCls(
-                id=route_id,
-                name=route_name,
-                kind="function",
-                language=sym.language,
-                path=sym.path,
-                span=Span(
-                    start_line=sym.span.start_line,
-                    end_line=sym.span.end_line,
-                    start_col=sym.span.start_col,
-                    end_col=sym.span.end_col,
-                ),
-                origin=pass_id,
-                stable_id=stable_id,
-                meta={
-                    "route_path": path,
-                    "http_method": method,
-                    "handler_ref": sym.name,
-                    "materialized_from": sym.id,
-                    "framework_role": "route",
-                },
-            )
-            new_route_symbols.append(route_sym)
+                stable_id = make_route_stable_id(method, route_path_normalized)
+
+                # Create route symbol at the same location as the handler
+                route_id = (
+                    f"{sym.language}:{sym.path}:{sym.span.start_line}-"
+                    f"{sym.span.end_line}:{route_name}:route"
+                )
+                route_sym = SymbolCls(
+                    id=route_id,
+                    name=route_name,
+                    kind="function",
+                    language=sym.language,
+                    path=sym.path,
+                    span=Span(
+                        start_line=sym.span.start_line,
+                        end_line=sym.span.end_line,
+                        start_col=sym.span.start_col,
+                        end_col=sym.span.end_col,
+                    ),
+                    origin=pass_id,
+                    stable_id=stable_id,
+                    meta={
+                        "route_path": route_path_normalized,
+                        "http_method": method,
+                        "handler_ref": sym.name,
+                        "materialized_from": sym.id,
+                        "framework_role": "route",
+                    },
+                )
+                new_route_symbols.append(route_sym)
 
     return new_route_symbols
 

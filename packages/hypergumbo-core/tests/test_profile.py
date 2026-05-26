@@ -3352,6 +3352,304 @@ def test_refine_frameworks_promote_skips_already_in_dev_frameworks() -> None:
     assert "apollo" in result.dev_frameworks
 
 
+# ---------------------------------------------------------------------------
+# WI-pusad / INV-rojip cohorts 2+3: bare-name promotion via
+# compound-import-required gate (Mechanism B).
+#
+# WI-palol gated promotion on _is_specific_pattern (scoped / `/` / `.`).
+# Bare names (django, flask, rails) stayed out. WI-pusad extends the
+# promote phase to bare-name patterns under one condition: at least one
+# prod-non-test importer matched via the PREFIX arm of _module_matches
+# (e.g., `django.db` matched `django` via `.db` suffix; `rails/generators`
+# matched `rails` via `/generators` suffix). Exact bare imports alone
+# (just `import graphql`, no submodule) do NOT promote — preserving
+# WI-rofiz's lesson.
+# ---------------------------------------------------------------------------
+
+
+def test_module_match_kind_exact() -> None:
+    """Exact-equal import returns kind 'exact'."""
+    from hypergumbo_core.profile import _module_match_kind
+    assert _module_match_kind("django", "django") == "exact"
+
+
+def test_module_match_kind_prefix_dot() -> None:
+    """Dot-prefix submodule returns kind 'prefix'."""
+    from hypergumbo_core.profile import _module_match_kind
+    assert _module_match_kind("django.db", "django") == "prefix"
+    assert _module_match_kind("django.urls.path", "django") == "prefix"
+
+
+def test_module_match_kind_prefix_slash() -> None:
+    """Slash-prefix subpath returns kind 'prefix'."""
+    from hypergumbo_core.profile import _module_match_kind
+    assert _module_match_kind("@apollo/server/standalone", "@apollo/server") == "prefix"
+    assert _module_match_kind("rails/generators", "rails") == "prefix"
+
+
+def test_module_match_kind_no_match() -> None:
+    """Non-matching module returns None."""
+    from hypergumbo_core.profile import _module_match_kind
+    assert _module_match_kind("flask", "django") is None
+    assert _module_match_kind("djangoextra", "django") is None  # not a separator
+
+
+def test_module_match_kind_case_insensitive() -> None:
+    """Match is case-insensitive."""
+    from hypergumbo_core.profile import _module_match_kind
+    assert _module_match_kind("Django.DB", "django") == "prefix"
+
+
+def test_refine_frameworks_promotes_bare_django_via_compound_submodule() -> None:
+    """WI-pusad motivating case: bakerydemo Django with manifest silent.
+
+    A prod source file imports `django.db.models` — `_module_matches`
+    fires via the prefix arm (the import is a compound submodule of
+    `django`). The bare pattern `django` is not specific (no `@`, no
+    `/`, no `.` in the pattern itself), so WI-palol would not promote.
+    WI-pusad extends the promote phase with a bare-name arm gated on
+    the prefix-match condition.
+    """
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    edges = [
+        _make_edge(
+            src="python:bakery/models.py:1-5:Bakery:class",
+            dst="python:django.db.models:0-0:Model:symbol",
+        ),
+        _make_edge(
+            src="python:bakery/urls.py:1-5:urlpatterns:variable",
+            dst="python:django.urls:0-0:path:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol("python:bakery/models.py:1-5:Bakery:class", "bakery/models.py"),
+        _make_symbol("python:bakery/urls.py:1-5:urlpatterns:variable", "bakery/urls.py"),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "django" in result.frameworks
+
+
+def test_refine_frameworks_does_not_promote_react_on_exact_only_imports() -> None:
+    """WI-rofiz regression: bare `import react` (exact-only) must NOT
+    promote.
+
+    `react` is the canonical bare-name FP risk identified by WI-rofiz
+    (build tooling and codegen import `react` without using it as a
+    framework). Under WI-pusad's compound-import-required gate, the
+    bare exact import alone does not satisfy promotion.
+    """
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    edges = [
+        _make_edge(
+            src="typescript:build/codegen.ts:1-5:gen:function",
+            dst="typescript:react:0-0:default:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "typescript:build/codegen.ts:1-5:gen:function",
+            "build/codegen.ts",
+            language="typescript",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "react" not in result.frameworks
+
+
+def test_refine_frameworks_promotes_react_on_compound_submodule() -> None:
+    """Bare `react` promotes when `react/jsx-runtime` is imported.
+
+    Only a real React app uses the jsx-runtime subpath import (added
+    by the build toolchain for the new JSX transform). Build tooling
+    that imports plain `react` for codegen does not. This is the
+    canonical positive case for bare-name compound promotion.
+    """
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    edges = [
+        _make_edge(
+            src="typescript:src/App.tsx:1-5:App:function",
+            dst="typescript:react/jsx-runtime:0-0:jsx:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "typescript:src/App.tsx:1-5:App:function",
+            "src/App.tsx",
+            language="typescript",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "react" in result.frameworks
+
+
+def test_refine_frameworks_promotes_flask_via_compound_submodule() -> None:
+    """Bare `flask` promotes when `flask.app` or similar is imported."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    edges = [
+        _make_edge(
+            src="python:app.py:1-5:create_app:function",
+            dst="python:flask.app:0-0:Flask:symbol",
+        ),
+        _make_edge(
+            src="python:routes.py:1-5:register:function",
+            dst="python:flask.blueprints:0-0:Blueprint:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol("python:app.py:1-5:create_app:function", "app.py"),
+        _make_symbol("python:routes.py:1-5:register:function", "routes.py"),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "flask" in result.frameworks
+
+
+def test_refine_frameworks_bare_promote_skipped_for_test_only_compound() -> None:
+    """Even compound submodule imports skip promotion if they're test-only."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    edges = [
+        _make_edge(
+            src="python:tests/test_models.py:1-5:test_x:function",
+            dst="python:django.db.models:0-0:Model:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "python:tests/test_models.py:1-5:test_x:function",
+            "tests/test_models.py",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "django" not in result.frameworks
+    assert "django" not in result.dev_frameworks
+
+
+def test_refine_frameworks_bare_promote_in_explicit_mode_skipped() -> None:
+    """Explicit mode bypasses bare-name promotion too."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([], mode="explicit")
+    edges = [
+        _make_edge(
+            src="python:bakery/models.py:1-5:Bakery:class",
+            dst="python:django.db.models:0-0:Model:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol("python:bakery/models.py:1-5:Bakery:class", "bakery/models.py"),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "django" not in result.frameworks
+
+
+def test_refine_frameworks_bare_arm_does_not_double_promote() -> None:
+    """When both arms could fire (specific patterns AND bare patterns
+    on the same framework), the framework is added once."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    # apollo framework has @apollo/server (specific) AND apollo-server (bare).
+    # Edge 1 matches @apollo/server (specific arm). Edge 2 matches
+    # apollo-server via the prefix arm (apollo-server/foo). Both should
+    # promote apollo, but it should appear once.
+    edges = [
+        _make_edge(
+            src="typescript:src/a.ts:1-5:a:function",
+            dst="typescript:@apollo/server:0-0:foo:symbol",
+        ),
+        _make_edge(
+            src="typescript:src/b.ts:1-5:b:function",
+            dst="typescript:apollo-server/foo:0-0:bar:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol("typescript:src/a.ts:1-5:a:function", "src/a.ts", language="typescript"),
+        _make_symbol("typescript:src/b.ts:1-5:b:function", "src/b.ts", language="typescript"),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert result.frameworks.count("apollo") == 1
+
+
+def test_refine_frameworks_promote_does_not_cross_ecosystem_for_bare() -> None:
+    """Cross-ecosystem FP guard: Python `http.client` import (stdlib)
+    must not promote the Julia `http` framework via the bare-name arm.
+
+    Both `http` (Julia framework, bare pattern `http`) and Python's
+    `http.client` import would otherwise match via the prefix arm of
+    _module_match_kind. The allowed_langs gate restricts promotion to
+    edges whose language matches the framework's language. Surfaced
+    by the WI-pusad bakeoff on Django source code.
+    """
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    edges = [
+        _make_edge(
+            src="python:django/views/generic/base.py:1-5:view:function",
+            dst="python:http.client:0-0:HTTPConnection:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "python:django/views/generic/base.py:1-5:view:function",
+            "django/views/generic/base.py",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "http" not in result.frameworks
+    assert "http" not in result.dev_frameworks
+
+
+def test_refine_frameworks_promote_does_not_cross_ecosystem_for_specific() -> None:
+    """Cross-ecosystem FP guard also applies to specific patterns.
+
+    A hypothetical typescript-language repo importing a path that
+    matches a Python-language framework's specific pattern should
+    not promote that framework. Inverse of the bare-name case.
+    """
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    # `starlette.responses` is a Python framework pattern (specific
+    # via dot-compound). Simulate a typescript edge whose dst happens
+    # to contain `starlette.responses` (contrived but exercises the
+    # gate). The typescript language is not in starlette's framework
+    # languages, so promotion must not fire.
+    edges = [
+        _make_edge(
+            src="typescript:src/weird.ts:1-5:weird:function",
+            dst="typescript:starlette.responses:0-0:JSONResponse:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "typescript:src/weird.ts:1-5:weird:function",
+            "src/weird.ts",
+            language="typescript",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "starlette" not in result.frameworks
+
+
 def test_refine_frameworks_go_full_path_matching() -> None:
     """Go framework patterns use full import paths and match exactly."""
     from hypergumbo_core.profile import refine_frameworks
