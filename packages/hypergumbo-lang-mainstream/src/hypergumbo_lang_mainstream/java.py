@@ -1511,70 +1511,53 @@ def _extract_edges(
                             edge_added = True
                             resolved_sym = lookup_result.symbol
 
-                    # Case 3: variable.method() - use type inference
+                    # Case 3: variable.method() — Site 2 typed receiver.
+                    # WI-puvil (PR-5 of INV-nilud): the analyzer-side
+                    # edge emission (``<TypeName>.<method>`` direct
+                    # lookup + fallback-to-type symbol) has been lifted
+                    # into the Tier-2 ``inherited_calls`` linker
+                    # (``_resolve_site2``, priority=18). The analyzer
+                    # now only stashes the inferred type as the
+                    # ``receiver_type_hint`` and lets the final
+                    # unresolved emit thread it through.
+                    #
+                    # We still run a side-effect-only resolver lookup
+                    # here to populate ``resolved_sym``, which the
+                    # return-type-inference cascade further below
+                    # consumes to chain ``var_types`` across factory-
+                    # method patterns (``Client c = f.createClient();``
+                    # then ``c.send();``). Without this peek, the
+                    # cascade breaks and ``c`` would have no
+                    # receiver_type_hint on the next call, costing the
+                    # Site-2 resolution.
                     elif receiver_name and receiver_name in var_types:
                         type_class_name = var_types[receiver_name]
-                        # WI-sivuk (PR-4): record the inferred type as a
-                        # hint for the unresolved-fallback emit. PR-5's
-                        # linker uses this to walk the type's MRO.
                         pr4_receiver_type_hint = type_class_name
-                        candidate = f"{type_class_name}.{method_name}"
-                        lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
-                        if lookup_result.found and not _is_import_class_mismatch(
-                            type_class_name, lookup_result.symbol, imports,
-                            caller_file=str(file_path),
-                        ):
-                            edge_confidence = 0.85 * lookup_result.confidence
-                            edge = Edge.create(
-                                src=current_method.id,
-                                dst=lookup_result.symbol.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                confidence=edge_confidence,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_call_type_inferred",
-                            )
-                            edges.append(edge)
-                            edge_added = True
-                            resolved_sym = lookup_result.symbol
-                        else:
-                            # Fallback: method not found on type (likely
-                            # inherited from a framework base class, e.g.
-                            # JpaRepository.save). Link to the type's
-                            # class/interface symbol instead — but only
-                            # if the class symbol matches the file's
-                            # imports. WI-fuhaj: without this guard, a
-                            # local Jackson POJO named ``Logger`` absorbs
-                            # every ``log.trace/error/warn`` call in any
-                            # file that imports ``org.slf4j.Logger``,
-                            # because the slf4j Logger isn't in the
-                            # codebase symbols so the suffix-match
-                            # resolver reaches the local POJO. On Kafka
-                            # this produced 2057+ bogus edges to a
-                            # 50-line config POJO.
-                            type_sym = class_symbols.get(type_class_name)
-                            if type_sym is not None and not _is_import_class_mismatch(
-                                type_class_name, type_sym, imports,
+                        candidate = (
+                            f"{type_class_name}.{method_name}"
+                        )
+                        lookup_result = resolver.lookup(
+                            candidate, caller_path=_caller_path,
+                        )
+                        if (
+                            lookup_result.found
+                            and not _is_import_class_mismatch(
+                                type_class_name,
+                                lookup_result.symbol,
+                                imports,
                                 caller_file=str(file_path),
-                            ):
-                                edge = Edge.create(
-                                    src=current_method.id,
-                                    dst=type_sym.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    confidence=0.70,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_call_inherited_method",
-                                )
-                                edges.append(edge)
-                                edge_added = True
+                            )
+                        ):
+                            resolved_sym = lookup_result.symbol
 
-                    # Case 3.5: inherited field.method() — receiver is a
-                    # field declared in a parent class, not in this file's
-                    # var_types.  Walk the extends chain to find the field
-                    # type, then resolve the method on that type.
+                    # Case 3.5: inherited field.method() — Site 3.
+                    # WI-puvil (PR-5): the parent-chain field walk
+                    # (formerly ~40 LOC here) has been lifted into the
+                    # linker's ``_walk_parents_for_field`` helper. The
+                    # analyzer now stashes the receiver name and the
+                    # enclosing class so the linker can walk the
+                    # ``extends`` edges emitted by ``inheritance.py``
+                    # and consult each parent's ``meta["fields"]``.
                     if (
                         not edge_added
                         and receiver_name
@@ -1583,43 +1566,8 @@ def _extract_edges(
                         and class_fields
                         and current_class
                     ):
-                        # WI-sivuk (PR-4): record the receiver name as a
-                        # hint for the unresolved-fallback emit. PR-5's
-                        # linker walks the enclosing-class's parent chain
-                        # to find a field of this name on a known parent.
                         pr4_inherited_field_receiver = receiver_name
-                        parent = class_parents.get(current_class)
-                        depth = 0
-                        while parent and depth < 10:
-                            parent_fields = class_fields.get(parent)
-                            if parent_fields and receiver_name in parent_fields:
-                                field_type = parent_fields[receiver_name]
-                                candidate = f"{field_type}.{method_name}"
-                                lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
-                                if (
-                                    lookup_result.found
-                                    and not _is_import_class_mismatch(
-                                        field_type, lookup_result.symbol,
-                                        imports,
-                                        caller_file=str(file_path),
-                                    )
-                                ):
-                                    edge = Edge.create(
-                                        src=current_method.id,
-                                        dst=lookup_result.symbol.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        confidence=0.80 * lookup_result.confidence,
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        evidence_type="ast_call_inherited_field",
-                                    )
-                                    edges.append(edge)
-                                    edge_added = True
-                                    resolved_sym = lookup_result.symbol
-                                break
-                            parent = class_parents.get(parent)
-                            depth += 1
+                        pr4_enclosing_class_hint = current_class
 
                     # Return type inference: if the resolved method has
                     # a return type and the call is in a variable assignment,
@@ -2192,6 +2140,23 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                                         global_class_fields[cls_name] = {}
                                     global_class_fields[cls_name][field_name] = type_name
                                     break
+
+    # WI-puvil (PR-5 of INV-nilud): attach the global_class_fields data
+    # to each class symbol's ``meta["fields"]`` so the Tier-2
+    # ``inherited_calls`` linker can walk parents and resolve
+    # ``field.method()`` Site-3 calls without re-parsing the AST. This is
+    # the single source of truth for "what fields does this class have?"
+    # — the in-analyzer Case-3.5 walk (java.py:1555-1594) is replaced by
+    # the linker's ``_walk_parents_for_field`` helper that reads this
+    # meta off the parent class symbols it finds via the ``extends``
+    # edges emitted by ``inheritance.py``.
+    for cls_name, fields_dict in global_class_fields.items():
+        cls_sym = class_symbols.get(cls_name)
+        if cls_sym is None:  # pragma: no cover
+            continue
+        if cls_sym.meta is None:
+            cls_sym.meta = {}
+        cls_sym.meta["fields"] = dict(fields_dict)
 
     # WI-kuroj: build method return-type registry from Pass 1 symbols.
     # Java already chains return types inline during edge extraction

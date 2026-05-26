@@ -751,3 +751,495 @@ class TestEndToEndInheritedCalls:
         )
         result = link_inherited_calls(ctx)
         assert result.edges == []
+
+
+# ---------------------------------------------------------------------------
+# Site-2 (typed-receiver) + Site-3 (inherited-field-receiver) resolution
+# (WI-puvil / PR-5 of INV-nilud).
+# ---------------------------------------------------------------------------
+
+
+def _java_cls(sid: str, name: str, path: str = "/a.java",
+              fields: dict | None = None) -> Symbol:
+    meta: dict | None = None
+    if fields is not None:
+        meta = {"fields": dict(fields)}
+    return Symbol(
+        id=sid, name=name, kind="class", language="java", path=path,
+        span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run", meta=meta,
+    )
+
+
+def _java_iface(sid: str, name: str, path: str = "/a.java") -> Symbol:
+    return Symbol(
+        id=sid, name=name, kind="interface", language="java", path=path,
+        span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run", meta=None,
+    )
+
+
+def _java_method(sid: str, qualified_name: str,
+                 path: str = "/a.java") -> Symbol:
+    return Symbol(
+        id=sid, name=qualified_name, kind="method", language="java",
+        path=path,
+        span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run", meta=None,
+    )
+
+
+def _java_caller(sid: str = "sym:Caller.run") -> Symbol:
+    return Symbol(
+        id=sid, name="Caller.run", kind="method", language="java",
+        path="/caller.java",
+        span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run", meta=None,
+    )
+
+
+def _unresolved_site2(
+    src_id: str, callee_name: str, receiver_type_hint: str, line: int = 1,
+) -> Edge:
+    """Unresolved-call edge with receiver_type_hint (Site 2)."""
+    from hypergumbo_core.analyze.base import make_unresolved_edge
+    return make_unresolved_edge(
+        lang="java", src_id=src_id, callee_name=callee_name,
+        line=line, pass_id="test-pass", run_id="test-run",
+        module_hint="external",
+        receiver_type_hint=receiver_type_hint,
+    )
+
+
+def _unresolved_site3(
+    src_id: str, callee_name: str, enclosing_class: str,
+    inherited_field_receiver: str, line: int = 1,
+) -> Edge:
+    """Unresolved-call edge with enclosing_class + inherited_field_receiver
+    (Site 3)."""
+    from hypergumbo_core.analyze.base import make_unresolved_edge
+    return make_unresolved_edge(
+        lang="java", src_id=src_id, callee_name=callee_name,
+        line=line, pass_id="test-pass", run_id="test-run",
+        module_hint="external",
+        enclosing_class=enclosing_class,
+        inherited_field_receiver=inherited_field_receiver,
+    )
+
+
+class TestSite2TypedReceiverResolution:
+    """Site 2 resolves ``var.method()`` calls where ``var``'s type was
+    inferred by the Java analyzer and threaded into ``Edge.meta`` as
+    ``receiver_type_hint`` (PR-4)."""
+
+    def test_resolves_method_directly_on_type(self) -> None:
+        """``var.method()`` where ``Type`` has ``method`` defined directly
+        resolves to that method at confidence 0.85 (ast_call_type_inferred).
+        """
+        repo_iface = _java_iface(
+            "sym:OwnerRepository", "OwnerRepository",
+        )
+        find_method = _java_method(
+            "sym:OwnerRepository.findByLastName",
+            "OwnerRepository.findByLastName",
+        )
+        caller = _java_caller()
+        unresolved = _unresolved_site2(
+            src_id=caller.id, callee_name="owners.findByLastName",
+            receiver_type_hint="OwnerRepository", line=42,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[repo_iface, find_method, caller],
+            edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == find_method.id
+        assert resolved[0].evidence_type == "ast_call_type_inferred"
+        assert resolved[0].confidence == 0.85
+        assert resolved[0].line == 42
+
+    def test_resolves_method_via_mro_on_parent(self) -> None:
+        """``var.method()`` where ``Type`` doesn't define ``method``
+        directly but its extends-parent does — resolves to the parent
+        method at confidence 0.70 (ast_call_inherited_method)."""
+        parent = _java_cls("sym:BaseRepo", "BaseRepo")
+        save_method = _java_method("sym:BaseRepo.save", "BaseRepo.save")
+        sub = _java_cls("sym:OwnerRepo", "OwnerRepo")
+        caller = _java_caller()
+        extends_edge = _edge(sub.id, parent.id, "extends")
+        unresolved = _unresolved_site2(
+            src_id=caller.id, callee_name="owners.save",
+            receiver_type_hint="OwnerRepo",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[parent, save_method, sub, caller],
+            edges=[extends_edge, unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == save_method.id
+        assert resolved[0].evidence_type == "ast_call_inherited_method"
+        assert resolved[0].confidence == 0.70
+
+    def test_falls_back_to_type_symbol_when_method_not_found(self) -> None:
+        """``var.method()`` where ``Type`` exists but method isn't on it
+        or any ancestor — fall back to an edge to the type symbol itself
+        at confidence 0.70 (ast_call_inherited_method, matching the
+        analyzer's pre-PR-5 behavior)."""
+        repo_iface = _java_iface(
+            "sym:OwnerRepository", "OwnerRepository",
+        )
+        caller = _java_caller()
+        unresolved = _unresolved_site2(
+            src_id=caller.id, callee_name="owners.save",
+            receiver_type_hint="OwnerRepository",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[repo_iface, caller],
+            edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == repo_iface.id
+        assert resolved[0].evidence_type == "ast_call_inherited_method"
+        assert resolved[0].confidence == 0.70
+
+    def test_no_resolution_when_type_not_in_project(self) -> None:
+        """``var.method()`` where the inferred type isn't a project Symbol
+        (e.g., stdlib InputStream) — no Site-2 edge emitted."""
+        caller = _java_caller()
+        unresolved = _unresolved_site2(
+            src_id=caller.id, callee_name="stream.read",
+            receiver_type_hint="InputStream",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[caller], edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_no_resolution_without_hint(self) -> None:
+        """An unresolved edge without ``receiver_type_hint`` (and without
+        the other hints) gets no Site-2 resolution."""
+        from hypergumbo_core.analyze.base import make_unresolved_edge
+        caller = _java_caller()
+        repo = _java_iface("sym:Repo", "Repo")
+        unresolved = make_unresolved_edge(
+            lang="java", src_id=caller.id, callee_name="x.foo",
+            line=1, pass_id="test", run_id="test",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[repo, caller], edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_site2_walker_skipped_for_unregistered_language(self) -> None:
+        """If the source language lacks an MRO walker, Site-2 still
+        attempts the *direct* type-method lookup (no MRO walk needed),
+        but doesn't synthesize an MRO-walk edge or a fallback. Falls back
+        to type-symbol-only edge."""
+        # Python is not in _MRO_WALKERS yet. With direct method lookup
+        # and the fallback-to-type both not requiring an MRO walker, the
+        # linker still emits the direct match.
+        repo = Symbol(
+            id="sym:py.Repo", name="Repo", kind="class", language="python",
+            path="/r.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run", meta=None,
+        )
+        save = Symbol(
+            id="sym:py.Repo.save", name="Repo.save", kind="method",
+            language="python", path="/r.py",
+            span=Span(start_line=2, end_line=4, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run", meta=None,
+        )
+        caller = Symbol(
+            id="sym:py.Caller", name="Caller.run", kind="method",
+            language="python", path="/c.py",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run", meta=None,
+        )
+        from hypergumbo_core.analyze.base import make_unresolved_edge
+        unresolved = make_unresolved_edge(
+            lang="python", src_id=caller.id, callee_name="r.save",
+            line=1, pass_id="test", run_id="test",
+            receiver_type_hint="Repo",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[repo, save, caller], edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        # Direct match works (no walker needed). Python is the source
+        # language so direct-method lookup happens for it.
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == save.id
+        assert resolved[0].evidence_type == "ast_call_type_inferred"
+
+
+class TestSite3InheritedFieldResolution:
+    """Site 3 resolves ``field.method()`` calls where ``field`` is declared
+    on a parent of the enclosing class. The Java analyzer threads both
+    ``enclosing_class`` and ``inherited_field_receiver`` into
+    ``Edge.meta`` (PR-5 extends PR-4 to also stash enclosing_class on
+    the Case-3.5 path), and each class symbol carries
+    ``meta["fields"] = {name: type, ...}`` (PR-5).
+    """
+
+    def test_resolves_field_declared_on_immediate_parent(self) -> None:
+        """``log.info()`` on a class extending a parent that declares
+        ``protected Logger log;`` and ``Logger.info`` exists — resolves
+        to ``Logger.info`` at confidence 0.80 (ast_call_inherited_field).
+        """
+        logger_cls = _java_cls("sym:Logger", "Logger")
+        info_method = _java_method("sym:Logger.info", "Logger.info")
+        parent = _java_cls("sym:Base", "Base", fields={"log": "Logger"})
+        sub = _java_cls("sym:Sub", "Sub")
+        caller = _java_method("sym:Sub.run", "Sub.run")
+        extends_edge = _edge(sub.id, parent.id, "extends")
+        unresolved = _unresolved_site3(
+            src_id=caller.id, callee_name="log.info",
+            enclosing_class="Sub", inherited_field_receiver="log",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger_cls, info_method, parent, sub, caller],
+            edges=[extends_edge, unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == info_method.id
+        assert resolved[0].evidence_type == "ast_call_inherited_field"
+        assert resolved[0].confidence == 0.80
+
+    def test_resolves_field_declared_on_grandparent(self) -> None:
+        """Field declared on grandparent through a 2-hop extends chain."""
+        repo_cls = _java_cls("sym:Repo", "Repo")
+        save_method = _java_method("sym:Repo.save", "Repo.save")
+        grandparent = _java_cls(
+            "sym:G", "G", fields={"repo": "Repo"},
+        )
+        parent = _java_cls("sym:P", "P")
+        sub = _java_cls("sym:S", "S")
+        caller = _java_method("sym:S.use", "S.use")
+        e1 = _edge(sub.id, parent.id, "extends")
+        e2 = _edge(parent.id, grandparent.id, "extends")
+        unresolved = _unresolved_site3(
+            src_id=caller.id, callee_name="repo.save",
+            enclosing_class="S", inherited_field_receiver="repo",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[repo_cls, save_method, grandparent, parent,
+                     sub, caller],
+            edges=[e1, e2, unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == save_method.id
+        assert resolved[0].evidence_type == "ast_call_inherited_field"
+
+    def test_no_resolution_when_no_parent_declares_field(self) -> None:
+        """If no ancestor declares ``inherited_field_receiver`` as a
+        field, emit nothing."""
+        parent = _java_cls("sym:Base", "Base", fields={"other": "Foo"})
+        sub = _java_cls("sym:Sub", "Sub")
+        caller = _java_method("sym:Sub.run", "Sub.run")
+        e1 = _edge(sub.id, parent.id, "extends")
+        unresolved = _unresolved_site3(
+            src_id=caller.id, callee_name="missing.foo",
+            enclosing_class="Sub", inherited_field_receiver="missing",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[parent, sub, caller], edges=[e1, unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_no_resolution_when_field_type_not_in_project(self) -> None:
+        """Parent declares the field, but the field's type isn't a
+        project Symbol — no resolved edge (the method can't be looked
+        up without the type symbol)."""
+        parent = _java_cls(
+            "sym:Base", "Base", fields={"log": "ExternalLogger"},
+        )
+        sub = _java_cls("sym:Sub", "Sub")
+        caller = _java_method("sym:Sub.run", "Sub.run")
+        e1 = _edge(sub.id, parent.id, "extends")
+        unresolved = _unresolved_site3(
+            src_id=caller.id, callee_name="log.info",
+            enclosing_class="Sub", inherited_field_receiver="log",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[parent, sub, caller], edges=[e1, unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_no_resolution_when_method_not_on_field_type(self) -> None:
+        """Parent declares the field, field's type is a known class,
+        but the method isn't on it or any ancestor — no edge."""
+        logger_cls = _java_cls("sym:Logger", "Logger")  # no methods
+        parent = _java_cls(
+            "sym:Base", "Base", fields={"log": "Logger"},
+        )
+        sub = _java_cls("sym:Sub", "Sub")
+        caller = _java_method("sym:Sub.run", "Sub.run")
+        e1 = _edge(sub.id, parent.id, "extends")
+        unresolved = _unresolved_site3(
+            src_id=caller.id, callee_name="log.unknown",
+            enclosing_class="Sub", inherited_field_receiver="log",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger_cls, parent, sub, caller],
+            edges=[e1, unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_no_resolution_without_enclosing_class_hint(self) -> None:
+        """An edge with ``inherited_field_receiver`` but no
+        ``enclosing_class`` hint — no Site-3 walk."""
+        from hypergumbo_core.analyze.base import make_unresolved_edge
+        logger_cls = _java_cls("sym:Logger", "Logger")
+        info_method = _java_method("sym:Logger.info", "Logger.info")
+        parent = _java_cls("sym:Base", "Base", fields={"log": "Logger"})
+        sub = _java_cls("sym:Sub", "Sub")
+        caller = _java_method("sym:Sub.run", "Sub.run")
+        unresolved = make_unresolved_edge(
+            lang="java", src_id=caller.id, callee_name="log.info",
+            line=1, pass_id="test", run_id="test",
+            inherited_field_receiver="log",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger_cls, info_method, parent, sub, caller],
+            edges=[unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        assert result.edges == []
+
+    def test_site3_field_type_method_via_mro_walk(self) -> None:
+        """Site 3 where the field's type doesn't define the method
+        directly, but its extends-parent does — Site-3 invokes the MRO
+        walker on the field's type and resolves the method via the
+        chain. Emits ast_call_inherited_field at 0.80 to the chain
+        method (not the field type itself)."""
+        base_logger = _java_cls("sym:BaseLogger", "BaseLogger")
+        info_method = _java_method(
+            "sym:BaseLogger.info", "BaseLogger.info",
+        )
+        derived_logger = _java_cls("sym:DerivedLogger", "DerivedLogger")
+        parent = _java_cls(
+            "sym:Base", "Base", fields={"log": "DerivedLogger"},
+        )
+        sub = _java_cls("sym:Sub", "Sub")
+        caller = _java_method("sym:Sub.run", "Sub.run")
+        e_sub_parent = _edge(sub.id, parent.id, "extends")
+        e_dl_bl = _edge(derived_logger.id, base_logger.id, "extends")
+        unresolved = _unresolved_site3(
+            src_id=caller.id, callee_name="log.info",
+            enclosing_class="Sub", inherited_field_receiver="log",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[base_logger, info_method, derived_logger,
+                     parent, sub, caller],
+            edges=[e_sub_parent, e_dl_bl, unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == info_method.id
+        assert resolved[0].evidence_type == "ast_call_inherited_field"
+        assert resolved[0].confidence == 0.80
+
+    def test_walk_parents_for_field_respects_depth_cap(self) -> None:
+        """``_walk_parents_for_field`` halts at ``depth_cap`` even if the
+        chain extends further. Confirms the depth-cap branch (defensive
+        symmetry with the method MRO walkers)."""
+        from hypergumbo_core.linkers.inherited_calls import (
+            _walk_parents_for_field,
+        )
+        # Build a 5-deep extends chain; place the field on the
+        # deepest ancestor. With depth_cap=2 the field is unreachable.
+        c0 = _java_cls("sym:C0", "C0")
+        c1 = _java_cls("sym:C1", "C1")
+        c2 = _java_cls("sym:C2", "C2")
+        c3 = _java_cls("sym:C3", "C3")
+        c4 = _java_cls("sym:C4", "C4", fields={"target": "Logger"})
+        inheritance_index = {
+            c0.id: [(c1.id, "extends")],
+            c1.id: [(c2.id, "extends")],
+            c2.id: [(c3.id, "extends")],
+            c3.id: [(c4.id, "extends")],
+        }
+        class_symbols = {s.id: s for s in (c0, c1, c2, c3, c4)}
+        # depth_cap=2 — won't reach c4 (depth 4 from c0).
+        result = _walk_parents_for_field(
+            c0.id, "target", inheritance_index, class_symbols,
+            depth_cap=2,
+        )
+        assert result is None
+
+    def test_walk_parents_for_field_cycle_protection(self) -> None:
+        """Cycle in the parent chain doesn't loop forever; the visited
+        set short-circuits already-seen parents."""
+        from hypergumbo_core.linkers.inherited_calls import (
+            _walk_parents_for_field,
+        )
+        a = _java_cls("sym:A", "A")
+        b = _java_cls("sym:B", "B")
+        # A -> B -> A cycle (Symbol set is acyclic by construction in
+        # real codebases, but defensive guards belong in the walker).
+        inheritance_index = {
+            a.id: [(b.id, "extends")],
+            b.id: [(a.id, "extends")],
+        }
+        class_symbols = {s.id: s for s in (a, b)}
+        result = _walk_parents_for_field(
+            a.id, "nothing", inheritance_index, class_symbols,
+        )
+        assert result is None  # No field; cycle didn't hang.
+
+    def test_site3_takes_priority_over_site1_when_both_hints_present(
+        self,
+    ) -> None:
+        """When an edge carries both ``enclosing_class`` and
+        ``inherited_field_receiver``, Site-3 walk fires (more specific
+        about call shape)."""
+        logger_cls = _java_cls("sym:Logger", "Logger")
+        info_method = _java_method("sym:Logger.info", "Logger.info")
+        parent = _java_cls("sym:Base", "Base", fields={"log": "Logger"})
+        sub = _java_cls("sym:Sub", "Sub")
+        caller = _java_method("sym:Sub.run", "Sub.run")
+        e1 = _edge(sub.id, parent.id, "extends")
+        unresolved = _unresolved_site3(
+            src_id=caller.id, callee_name="log.info",
+            enclosing_class="Sub", inherited_field_receiver="log",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[logger_cls, info_method, parent, sub, caller],
+            edges=[e1, unresolved],
+        )
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].evidence_type == "ast_call_inherited_field"

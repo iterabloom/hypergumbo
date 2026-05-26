@@ -277,9 +277,13 @@ class Service {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         assert result.run is not None
-        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        call_edges = [
+            e for e in all_edges
+            if e.edge_type == "calls" and e.is_resolved
+        ]
         do_work = next(
             (s for s in result.symbols if s.name == "Controller.doWork"), None
         )
@@ -287,7 +291,8 @@ class Service {
 
         # this.svc.process() should produce a call edge from doWork to
         # Service.process. The receiver is a field_access node ("this.svc"),
-        # and the method name is "process".
+        # and the method name is "process". WI-puvil PR-5: resolved by the
+        # inherited_calls linker via Site-2 (receiver_type_hint=Service).
         do_work_calls = [e for e in call_edges if e.src == do_work.id]
         assert len(do_work_calls) >= 1, (
             f"Expected call edges from doWork for this.svc.process(), "
@@ -2399,12 +2404,12 @@ public class Caller {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         assert result.run is not None
         assert result.run.files_analyzed == 2
 
         # Find the Caller.run -> Helper.doWork edge
-        edges = result.edges
         caller_run = next(
             (s for s in result.symbols if "run" in s.name and "Caller" in s.id), None
         )
@@ -2415,14 +2420,16 @@ public class Caller {
         assert caller_run is not None
         assert helper_dowork is not None
 
-        # Should have edge from Caller.run to Helper.doWork via type inference
+        # WI-puvil (PR-5): the inherited_calls linker emits this edge via
+        # Site-2 (receiver_type_hint=Helper, direct method match).
         call_edge = next(
             (
                 e
-                for e in edges
+                for e in all_edges
                 if e.src == caller_run.id
                 and e.dst == helper_dowork.id
                 and e.edge_type == "calls"
+                and e.is_resolved
             ),
             None,
         )
@@ -2461,9 +2468,16 @@ public class App {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
-        call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        # c.send() should resolve via return type of createClient()
+        # WI-puvil (PR-5): linker resolves c.send() via Site-2; the
+        # return-type-inference cascade in the analyzer populates
+        # var_types[c]=Client from the f.createClient() return type, and
+        # the unresolved emit threads receiver_type_hint=Client.
+        call_edges = [
+            e for e in all_edges
+            if e.edge_type == "calls" and e.is_resolved
+        ]
         send_edge = next(
             (e for e in call_edges if "run" in e.src and "send" in e.dst),
             None,
@@ -2568,6 +2582,7 @@ public class OwnerController {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         controller_method = next(
             (s for s in result.symbols if "processCreation" in s.name), None
@@ -2579,18 +2594,19 @@ public class OwnerController {
         assert controller_method is not None, "Should find processCreation"
         assert repo_iface is not None, "Should find OwnerRepository interface"
 
-        # Should have an edge from processCreation to OwnerRepository
-        # (fallback when specific method not found)
+        # WI-puvil (PR-5): linker's Site-2 resolver falls back to the
+        # type symbol when the method isn't on the type or any ancestor.
         call_edges = [
-            e for e in result.edges
+            e for e in all_edges
             if e.src == controller_method.id
             and e.dst == repo_iface.id
             and e.edge_type == "calls"
+            and e.is_resolved
         ]
         assert len(call_edges) == 1, (
             f"Expected fallback edge to OwnerRepository, got {len(call_edges)}. "
             f"All edges from controller: "
-            f"{[(e.edge_type, e.dst) for e in result.edges if e.src == controller_method.id]}"
+            f"{[(e.edge_type, e.dst) for e in all_edges if e.src == controller_method.id]}"
         )
         assert call_edges[0].evidence_type == "ast_call_inherited_method"
         assert call_edges[0].confidence < 0.85  # Lower than direct resolution
@@ -2615,6 +2631,7 @@ public class OwnerController {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         controller_method = next(
             (s for s in result.symbols if "search" in s.name), None
@@ -2626,12 +2643,14 @@ public class OwnerController {
         assert controller_method is not None
         assert find_method is not None
 
-        # Normal resolution to the actual method
+        # WI-puvil (PR-5): linker's Site-2 direct lookup resolves to the
+        # method on the interface (ast_call_type_inferred at 0.85).
         call_edges = [
-            e for e in result.edges
+            e for e in all_edges
             if e.src == controller_method.id
             and e.dst == find_method.id
             and e.edge_type == "calls"
+            and e.is_resolved
         ]
         assert len(call_edges) == 1
         assert call_edges[0].evidence_type == "ast_call_type_inferred"
@@ -2724,6 +2743,7 @@ public class Handler {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         assert result.run is not None
         assert result.run.files_analyzed == 2
@@ -2743,24 +2763,27 @@ public class Handler {
         assert db_save is not None
         assert db_commit is not None
 
-        # Should have edges from Handler.process to Database.save and Database.commit
+        # WI-puvil (PR-5): linker resolves db.save()/db.commit() via
+        # Site-2 (receiver_type_hint=Database from param-type capture).
         save_edge = next(
             (
                 e
-                for e in result.edges
+                for e in all_edges
                 if e.src == handler_process.id
                 and e.dst == db_save.id
                 and e.edge_type == "calls"
+                and e.is_resolved
             ),
             None,
         )
         commit_edge = next(
             (
                 e
-                for e in result.edges
+                for e in all_edges
                 if e.src == handler_process.id
                 and e.dst == db_commit.id
                 and e.edge_type == "calls"
+                and e.is_resolved
             ),
             None,
         )
@@ -4544,6 +4567,7 @@ public class AccountResource extends BaseResource {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         create = next(
             (s for s in result.symbols if "AccountResource" in s.name and "create" in s.name and s.kind == "method"),
@@ -4556,17 +4580,22 @@ public class AccountResource extends BaseResource {
         assert create is not None, "Should find AccountResource.create"
         assert api_method is not None, "Should find AccountUserApi.createAccount"
 
+        # WI-puvil (PR-5): linker resolves the inherited-field call via
+        # Site-3 (walks AccountResource's parent BaseResource, reads
+        # meta['fields']['accountApi']='AccountUserApi', then looks up
+        # createAccount on the interface).
         call_edges = [
-            e for e in result.edges
+            e for e in all_edges
             if e.src == create.id
             and e.dst == api_method.id
             and e.edge_type == "calls"
+            and e.is_resolved
         ]
         assert len(call_edges) == 1, (
             f"Expected edge from create to createAccount via inherited field, "
             f"got {len(call_edges)}. "
             f"All edges from create: "
-            f"{[(e.edge_type, e.dst, e.evidence_type) for e in result.edges if e.src == create.id]}"
+            f"{[(e.edge_type, e.dst, e.evidence_type) for e in all_edges if e.src == create.id]}"
         )
         assert call_edges[0].evidence_type == "ast_call_inherited_field"
         assert call_edges[0].confidence <= 0.85
@@ -4598,6 +4627,7 @@ public class Service extends MiddleBase {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         run_method = next(
             (s for s in result.symbols if "Service" in s.name and "run" in s.name),
@@ -4610,11 +4640,15 @@ public class Service extends MiddleBase {
         assert run_method is not None
         assert info_method is not None
 
+        # WI-puvil (PR-5): linker walks Service→MiddleBase→GrandBase
+        # via extends edges, finds logger:Logger in GrandBase's
+        # meta['fields'], resolves info() on Logger.
         call_edges = [
-            e for e in result.edges
+            e for e in all_edges
             if e.src == run_method.id
             and e.dst == info_method.id
             and e.edge_type == "calls"
+            and e.is_resolved
         ]
         assert len(call_edges) == 1
         assert call_edges[0].evidence_type == "ast_call_inherited_field"
@@ -4983,12 +5017,13 @@ public class Reader {
             f"stream.read() edge. Got meta={read_unresolved[0].meta}"
         )
 
-    def test_site2_resolved_fallback_unchanged(
+    def test_site2_resolved_fallback_through_linker(
         self, tmp_path: Path,
     ) -> None:
-        """When ``var.method()`` resolves via the class_symbols fallback
-        (existing ``ast_call_inherited_method`` path), the edge resolves
-        to the type's class symbol — PR-4 must not break this."""
+        """WI-puvil (PR-5): the ``ast_call_inherited_method`` fallback
+        for ``var.method()`` now fires from the inherited_calls linker
+        (Site 2, Step 3 — fallback to the type symbol when neither
+        direct nor MRO walk resolves)."""
         from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "OwnerRepository.java").write_text("""
@@ -5007,6 +5042,7 @@ public class OwnerController {
 """)
 
         result = analyze_java(tmp_path)
+        all_edges = _run_inherited_calls_pipeline(result)
 
         repo_iface = next(
             (s for s in result.symbols
@@ -5015,12 +5051,11 @@ public class OwnerController {
         )
         assert repo_iface is not None
 
-        # Existing ast_call_inherited_method edge to the interface
-        # symbol must still be present.
         inherited_method_edges = [
-            e for e in result.edges
+            e for e in all_edges
             if e.evidence_type == "ast_call_inherited_method"
             and e.dst == repo_iface.id
+            and e.is_resolved
         ]
         assert len(inherited_method_edges) == 1
 

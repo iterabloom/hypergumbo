@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **278** Python modules (130 analyzers, 56 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 6; 56 core, 4 CLI, 32 tracker)
-- **29510** symbols (functions, classes, methods)
-- **98205** edges by type:
-  - calls: 55987
-  - contains: 21196
-  - imports: 9932
-  - instantiates: 7612
-  - module_attr_ref: 1078
-  - references: 1076
-  - other: 1324
+- **279** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 56 core, 4 CLI, 32 tracker)
+- **29700** symbols (functions, classes, methods)
+- **98847** edges by type:
+  - calls: 56351
+  - contains: 21334
+  - imports: 9994
+  - instantiates: 7676
+  - references: 1087
+  - module_attr_ref: 1079
+  - other: 1326
 
 ## Package Architecture
 
@@ -50,7 +50,7 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 56 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-0003-ext), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 57 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-0003-ext), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
 | **hypergumbo-lang-mainstream** | 43 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 29510 Symbols + 98205 Edges + UsageContexts            │
+│  Output: 29700 Symbols + 98847 Edges + UsageContexts            │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -103,7 +103,7 @@ Source Files
 │  Tier 2 edge recovery (ADR-0003-ext — Protocol / Bridge /       │
 │  Framework / Infrastructure). Match via meta.concepts and       │
 │  symbol metadata across files and language boundaries.          │
-│  56 linkers: P11 / B10 / F29 / I6 (HTTP, JNI, gRPC, React, ...) │
+│  57 linkers: P11 / B10 / F29 / I7 (HTTP, JNI, gRPC, React, ...) │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -264,10 +264,10 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 4986.6 | ir.py |
-| `Span` | class | 4211.9 | ir.py |
+| `Symbol` | class | 5028.4 | ir.py |
+| `Span` | class | 4243.4 | ir.py |
 | `run_behavior_map` | function | 2925.9 | cli.py |
-| `LinkerContext` | class | 1923.7 | registry.py |
+| `LinkerContext` | class | 2035.6 | registry.py |
 | `TrackerApp` | class | 1872.3 | tui.py |
 | `load_framework_patterns` | function | 1569.0 | framework_patterns.py |
 | `main` | function | 1452.1 | cli.py |
@@ -277,7 +277,7 @@ These symbols have the highest bidirectional centrality
 | `TreeSitterAnalyzer` | class | 859.1 | base.py |
 | `detect_entrypoints` | function | 795.2 | entrypoints.py |
 | `Store` | class | 792.1 | store.py |
-| `Edge` | class | 754.1 | ir.py |
+| `Edge` | class | 759.3 | ir.py |
 
 ## Pattern System
 
@@ -345,7 +345,7 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 151 YAML catalog files across 7 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 153 YAML catalog files across 8 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
 | Directory | Files | ADR | Loader | Purpose |
 |---|---:|---|---|---|
@@ -356,6 +356,7 @@ The `hypergumbo-core` package ships 151 YAML catalog files across 7 directories.
 | `taint_sources/` | 2 | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
 | `taint_sanitizers/` | 1 | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
 | `function_summaries/` | 2 | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
+| `url_folding/` | 2 | — | `hypergumbo_core.url_folding` | Per-idiom URL-folding declarations (string interpolation, array join, ...) wiring active route-detector languages to engine functions in hypergumbo_core.url_folding. |
 
 Adding a new catalog category: create the directory, write the loader (or extend an existing one), and register a `CatalogSpec` in `hypergumbo_core.yaml_catalogs.YAML_CATALOGS`. The drift check fails until the registry entry lands.
 
@@ -726,6 +727,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.grpc`**: Framework linker: gRPC/Protobuf for detecting RPC communication pat...
 - **`hypergumbo_core.linkers.http`**: Protocol linker: HTTP client-server for detecting cross-language AP...
 - **`hypergumbo_core.linkers.inheritance`**: Infrastructure linker: inheritance for creating extends/implements ...
+- **`hypergumbo_core.linkers.inherited_calls`**: Infrastructure linker: inherited-call resolution via ancestor walking.
 - **`hypergumbo_core.linkers.ipc`**: Protocol linker: IPC for detecting inter-process communication patt...
 - **`hypergumbo_core.linkers.jackson_dispatch`**: Framework linker: Jackson / JavaBean serialization dispatch (WI-gup...
 - **`hypergumbo_core.linkers.jni`**: Bridge linker: JNI for connecting Java native methods to C/C++/Rust...
@@ -809,7 +811,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d35a748afabc
+  commit: 31f4a4ef3060
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

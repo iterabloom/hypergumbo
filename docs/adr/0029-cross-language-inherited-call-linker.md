@@ -67,7 +67,7 @@ PR-2 also lights up an adjacent registry entry: the canonical `includes` edge ty
 ```python
 @register_linker(
     "inherited-calls",
-    priority=18,  # Between inheritance (15) and type_hierarchy (20).
+    priority=18,  # Between inheritance (15) and type_hierarchy (60).
     activation=LinkerActivation(always=True),
 )
 ```
@@ -75,7 +75,7 @@ PR-2 also lights up an adjacent registry entry: the canonical `includes` edge ty
 `priority=18` was chosen so the linker:
 
 1. Runs **after** `inheritance` (15), which produces the `extends`/`implements`/`includes` edges this linker walks.
-2. Runs **before** `type_hierarchy` (20), which consumes resolved-call edges for dispatch closure.
+2. Runs **before** `type_hierarchy` (60), the next caller of `build_method_index`. (The original ADR text said `type_hierarchy=20`; that was a transcription error caught during PR-5 — the actual registered priority is 60, set at the `@register_linker` call in `linkers/type_hierarchy.py`.)
 
 The linker uses `build_inheritance_index(edges, edge_types=("extends", "implements", "includes"))` (the PR-1 generalized helper) so Ruby mixin contributions participate in the same walk as concrete inheritance. It uses `build_method_index(...)` (the PR-1-extracted helper from `type_hierarchy.py`) for O(1) short-method-name lookups by class id.
 
