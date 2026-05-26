@@ -3111,6 +3111,247 @@ def test_refine_frameworks_mixed_prod_and_dev() -> None:
     assert result.dev_frameworks == ["pytest"]
 
 
+# ---------------------------------------------------------------------------
+# WI-palol / INV-rojip: promote-phase tests.
+#
+# refine_frameworks gains a second decision phase that promotes a framework
+# into ``profile.frameworks`` when prod-non-test source files import a
+# module matching the framework's registered import-module patterns, even
+# if the manifest is silent. A specificity gate ("pattern is scoped, slash-
+# compound, or dot-compound") protects against bare-name FPs (`react`,
+# `flask`) that were the motivation for WI-rofiz. See INV-rojip for the
+# full prior-occurrence history.
+# ---------------------------------------------------------------------------
+
+
+def test_is_specific_pattern_scoped() -> None:
+    """Scoped packages (@apollo/server) are specific."""
+    from hypergumbo_core.profile import _is_specific_pattern
+    assert _is_specific_pattern("@apollo/server")
+
+
+def test_is_specific_pattern_slash_compound() -> None:
+    """Slash-compound paths (github.com/gin-gonic/gin) are specific."""
+    from hypergumbo_core.profile import _is_specific_pattern
+    assert _is_specific_pattern("github.com/gin-gonic/gin")
+
+
+def test_is_specific_pattern_dot_compound() -> None:
+    """Dot-compound Maven-style coords (org.springframework.boot) are specific."""
+    from hypergumbo_core.profile import _is_specific_pattern
+    assert _is_specific_pattern("org.springframework.boot")
+
+
+def test_is_specific_pattern_bare_name_not_specific() -> None:
+    """Bare names (react, flask, rails) are not specific — need manifest."""
+    from hypergumbo_core.profile import _is_specific_pattern
+    assert not _is_specific_pattern("react")
+    assert not _is_specific_pattern("flask")
+    assert not _is_specific_pattern("rails")
+
+
+def test_refine_frameworks_promotes_apollo_from_workspace_import() -> None:
+    """WI-palol motivating case: apollo-server smoke-test consumer.
+
+    The local package.json declares only graphql + make-fetch-happen;
+    Apollo is imported via npm workspace from @apollo/server/standalone.
+    Manifest detection sees nothing apollo-related, but prod-non-test
+    code imports @apollo/server. The promote phase should add the
+    'apollo' framework (which has @apollo/server in its pattern set)
+    to profile.frameworks.
+    """
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    edges = [
+        _make_edge(
+            src="typescript:nodenext/src/smoke-test.ts:18-43:smokeTest:function",
+            dst="typescript:@apollo/server/standalone:0-0:startStandaloneServer:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "typescript:nodenext/src/smoke-test.ts:18-43:smokeTest:function",
+            "nodenext/src/smoke-test.ts",
+            language="typescript",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "apollo" in result.frameworks
+    # 'graphql' also has @apollo/server in its pattern set — both promote.
+    assert "graphql" in result.frameworks
+
+
+def test_refine_frameworks_does_not_promote_on_test_only_imports() -> None:
+    """Test-only imports of a scoped package don't trigger promotion.
+
+    If the only @apollo/server import is in a __tests__/ folder, the
+    framework is not a production dep of this repo and should not be
+    promoted.
+    """
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    edges = [
+        _make_edge(
+            src="typescript:__tests__/integration.test.ts:1-5:test_starts:function",
+            dst="typescript:@apollo/server/standalone:0-0:startStandaloneServer:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "typescript:__tests__/integration.test.ts:1-5:test_starts:function",
+            "__tests__/integration.test.ts",
+            language="typescript",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "apollo" not in result.frameworks
+    assert "apollo" not in result.dev_frameworks
+
+
+def test_refine_frameworks_does_not_promote_bare_name_react() -> None:
+    """Specificity gate: bare-name imports do not promote.
+
+    A prod file importing the bare 'react' module is too weak a signal
+    on its own — many non-React tools depend on react for build/codegen.
+    Without a manifest declaration, the framework must NOT be promoted.
+    This mirrors the WI-rofiz lesson (bare 'graphql' was an FP trigger).
+    """
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    edges = [
+        _make_edge(
+            src="typescript:src/App.tsx:1-5:App:function",
+            dst="typescript:react:0-0:default:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "typescript:src/App.tsx:1-5:App:function",
+            "src/App.tsx",
+            language="typescript",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "react" not in result.frameworks
+
+
+def test_refine_frameworks_promotes_go_compound_path() -> None:
+    """Go imports are always full paths (github.com/owner/repo) and
+    therefore always pass the specificity gate."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([])
+    edges = [
+        _make_edge(
+            src="go:cmd/server/main.go:1-5:main:function",
+            dst="go:github.com/gin-gonic/gin:0-0:package:package",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "go:cmd/server/main.go:1-5:main:function",
+            "cmd/server/main.go",
+            language="go",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "gin" in result.frameworks
+
+
+def test_refine_frameworks_promote_explicit_mode_skipped() -> None:
+    """Explicit mode bypasses promotion (caller intent wins)."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile([], mode="explicit")
+    edges = [
+        _make_edge(
+            src="typescript:src/a.ts:1-5:a:function",
+            dst="typescript:@apollo/server:0-0:foo:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol("typescript:src/a.ts:1-5:a:function", "src/a.ts", language="typescript"),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "apollo" not in result.frameworks
+
+
+def test_refine_frameworks_promote_skips_already_in_frameworks() -> None:
+    """A framework already in profile.frameworks is not double-promoted.
+
+    Combined with manifest detection: flask is in profile.frameworks
+    from manifest scan; concurrent prod imports of @apollo/server still
+    cause apollo to be promoted, while flask remains untouched.
+    """
+    from hypergumbo_core.profile import refine_frameworks
+
+    profile = _make_profile(["flask"])
+    edges = [
+        _make_edge(
+            src="python:src/app.py:1-5:handler:function",
+            dst="python:flask:0-0:module:module",
+        ),
+        _make_edge(
+            src="typescript:src/server.ts:1-5:start:function",
+            dst="typescript:@apollo/server:0-0:foo:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol("python:src/app.py:1-5:handler:function", "src/app.py"),
+        _make_symbol(
+            "typescript:src/server.ts:1-5:start:function",
+            "src/server.ts",
+            language="typescript",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert "flask" in result.frameworks
+    assert "apollo" in result.frameworks
+    # flask appears only once in result.frameworks (no double-add).
+    assert result.frameworks.count("flask") == 1
+
+
+def test_refine_frameworks_promote_skips_already_in_dev_frameworks() -> None:
+    """A framework already in profile.dev_frameworks (would only happen
+    if a prior pass already classified it) is not re-promoted."""
+    from hypergumbo_core.profile import refine_frameworks
+    from hypergumbo_core.profile import RepoProfile
+
+    profile = RepoProfile(
+        frameworks=[],
+        dev_frameworks=["apollo"],
+        framework_mode="auto",
+    )
+    edges = [
+        _make_edge(
+            src="typescript:src/server.ts:1-5:start:function",
+            dst="typescript:@apollo/server:0-0:foo:symbol",
+        ),
+    ]
+    symbols = [
+        _make_symbol(
+            "typescript:src/server.ts:1-5:start:function",
+            "src/server.ts",
+            language="typescript",
+        ),
+    ]
+
+    result = refine_frameworks(profile, edges, symbols)
+    # apollo stays in dev — the promote phase respects the caller's
+    # dev_frameworks classification.
+    assert "apollo" not in result.frameworks
+    assert "apollo" in result.dev_frameworks
+
+
 def test_refine_frameworks_go_full_path_matching() -> None:
     """Go framework patterns use full import paths and match exactly."""
     from hypergumbo_core.profile import refine_frameworks

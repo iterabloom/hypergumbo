@@ -53,6 +53,7 @@ Why This Design
 """
 import json
 import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -2975,13 +2976,81 @@ def _framework_languages(framework: str) -> set[str]:
     return langs
 
 
+def _has_prod_import_match(
+    patterns: Iterable[str],
+    module_importers: dict[str, list[str]],
+    is_test_fn: Callable[[str], bool],
+) -> bool:
+    """Return True if any (module, importer) pair satisfies *both*:
+
+    - ``imported`` module matches at least one of ``patterns`` (per
+      ``_module_matches``), and
+    - at least one importer of that module is a non-empty path that
+      ``is_test_fn`` says is not a test file.
+
+    Used by both the promote and demote phases of
+    ``refine_frameworks``. The promote phase passes only patterns that
+    pass the specificity gate (``_is_specific_pattern``); the demote
+    phase passes the framework's full pattern set.
+
+    Args:
+        patterns: Lowercased import-module patterns to match against.
+        module_importers: Mapping of lowercased imported-module name to
+            the list of source file paths that imported it.
+        is_test_fn: Callable returning True when a path is a test file.
+
+    Returns:
+        True if a prod-non-test importer of a pattern-matching module
+        exists.
+    """
+    for module_key, importers in module_importers.items():
+        if not any(_module_matches(module_key, pat) for pat in patterns):
+            continue
+        if any(p and not is_test_fn(p) for p in importers):
+            return True
+    return False
+
+
+def _is_specific_pattern(pattern: str) -> bool:
+    """Return True if an import-module pattern is "specific enough" to
+    promote a framework from import edges alone (no manifest evidence).
+
+    A pattern is specific when it is scoped (``@scope/name``),
+    slash-compound (``github.com/owner/repo``), or dot-compound
+    (``org.springframework.boot``). Bare single-token names (``react``,
+    ``flask``, ``rails``, ``tokio``) do not qualify — their import
+    surface is too generic to safely promote without manifest backing,
+    per the lesson of WI-rofiz (bare ``graphql`` triggered FPs from
+    repos using ``graphql`` only for type definitions or codegen).
+
+    The gate is consulted only by the promote phase of
+    ``refine_frameworks``; the demote phase ignores it. Bare-name
+    frameworks therefore continue to flow through manifest detection
+    unchanged (Cargo.toml for Rust, requirements.txt + pyproject.toml
+    for Python, Gemfile for Ruby, package.json for npm bare names).
+
+    Args:
+        pattern: Lowercased import-module pattern, as produced by
+            ``_import_modules_for_framework``.
+
+    Returns:
+        True if the pattern is structurally specific.
+    """
+    return pattern.startswith("@") or "/" in pattern or "." in pattern
+
+
 def _module_matches(imported: str, pattern: str) -> bool:
     """Check if an imported module name matches a framework pattern.
 
-    Uses prefix matching: ``starlette.responses`` matches pattern
-    ``starlette`` because the imported module starts with the pattern
-    followed by a dot.  Exact equality also matches.  Both strings are
-    compared lowercase.
+    Uses prefix matching against two separator conventions:
+
+    - Dot-separated submodules (``starlette.responses`` matches
+      ``starlette``) — Python, Java/Kotlin Maven coords.
+    - Slash-separated subpath imports (``@apollo/server/standalone``
+      matches ``@apollo/server``, ``next/link`` matches ``next``) —
+      scoped npm packages, Go paths.
+
+    Exact equality also matches.  Both strings are compared lowercase.
 
     Args:
         imported: The imported module name (2nd colon-field of the edge dst).
@@ -2991,7 +3060,11 @@ def _module_matches(imported: str, pattern: str) -> bool:
         True if the import matches the pattern.
     """
     imported_lower = imported.lower()
-    return imported_lower == pattern or imported_lower.startswith(pattern + ".")
+    return (
+        imported_lower == pattern
+        or imported_lower.startswith(pattern + ".")
+        or imported_lower.startswith(pattern + "/")
+    )
 
 
 def refine_frameworks(
@@ -2999,11 +3072,28 @@ def refine_frameworks(
     edges: list,
     symbols: list,
 ) -> "RepoProfile":
-    """Validate detected frameworks against actual import edges.
+    """Validate and supplement detected frameworks using import edges.
 
-    Cross-references each candidate framework against import edges in the
-    analysis results.  Frameworks imported only by test files (or not
-    imported at all) are moved from ``frameworks`` to ``dev_frameworks``.
+    Two-phase pipeline (WI-palol / INV-rojip):
+
+    1. **Promote** — for every framework F that is *not* already in
+       ``profile.frameworks`` or ``profile.dev_frameworks``: if some
+       prod-non-test source file imports a module matching one of F's
+       registered import-module patterns *and* that pattern passes the
+       specificity gate (``_is_specific_pattern``), promote F to the
+       working framework list. The specificity gate prevents bare-name
+       FPs (``react`` imported by build tooling, ``graphql`` imported
+       for type definitions) while letting through scoped npm packages
+       (``@apollo/server``), Go full paths (``github.com/.../gin``),
+       and Maven coords (``org.springframework.boot``). This phase
+       resolves the workspace-import surface of INV-rojip (WI-donud's
+       motivating case: apollo-server smoke-test consumer).
+
+    2. **Demote** — for every framework in the working list, check
+       import edges in its languages. Frameworks with no prod-non-test
+       imports (or only test imports) move to ``dev_frameworks``.
+       Members of ``_AUTOLOAD_BY_CONVENTION_FRAMEWORKS`` skip this
+       step (WI-lohok: Rails autoload).
 
     Only applies in AUTO mode — explicit/all/none modes are returned
     unchanged because the user specified the frameworks intentionally.
@@ -3019,15 +3109,13 @@ def refine_frameworks(
             file paths for test classification).
 
     Returns:
-        A new RepoProfile with ``frameworks`` (production-confirmed) and
-        ``dev_frameworks`` (dev/test-only) populated.
+        A new RepoProfile with ``frameworks`` (production-confirmed +
+        import-promoted) and ``dev_frameworks`` (dev/test-only)
+        populated.
     """
     from .paths import is_test_file
 
     if profile.framework_mode != "auto":
-        return profile
-
-    if not profile.frameworks:
         return profile
 
     # Build symbol ID → file path lookup for source classification.
@@ -3058,10 +3146,32 @@ def refine_frameworks(
 
         module_importers.setdefault(imported_module.lower(), []).append(src_path)
 
-    confirmed: list[str] = []
-    dev_only: list[str] = []
+    # === PROMOTE PHASE (WI-palol / INV-rojip) ===
+    # Find frameworks reached only by import edges (manifest silent) and
+    # add them to the working framework list. The demote phase below
+    # then runs over the combined list. The specificity gate guards
+    # against bare-name FPs (`react` imported by build tooling, `flask`
+    # in a non-Flask repo).
+    existing: set[str] = set(profile.frameworks) | set(profile.dev_frameworks)
+    promoted: list[str] = []
+    for _lang, fw_dict in LANGUAGE_FRAMEWORKS.items():
+        for fw in fw_dict:
+            if fw in existing or fw in promoted:
+                continue
+            specific_patterns = [
+                p for p in _import_modules_for_framework(fw) if _is_specific_pattern(p)
+            ]
+            if not specific_patterns:
+                continue
+            if _has_prod_import_match(specific_patterns, module_importers, is_test_file):
+                promoted.append(fw)
 
-    for fw in profile.frameworks:
+    working_frameworks: list[str] = list(profile.frameworks) + promoted
+
+    confirmed: list[str] = []
+    dev_only: list[str] = list(profile.dev_frameworks)
+
+    for fw in working_frameworks:
         # WI-lohok: some frameworks are loaded by convention (Bundler /
         # mix / etc.), not by an explicit production-code import. The
         # import-edge demotion check would incorrectly demote them to
@@ -3084,19 +3194,9 @@ def refine_frameworks(
             confirmed.append(fw)
             continue
 
-        import_modules = _import_modules_for_framework(fw)
-        has_prod_import = False
-
-        for module_key, importers in module_importers.items():
-            if any(_module_matches(module_key, pat) for pat in import_modules):
-                for src_path in importers:
-                    if src_path and not is_test_file(src_path):
-                        has_prod_import = True
-                        break
-            if has_prod_import:
-                break
-
-        if has_prod_import:
+        if _has_prod_import_match(
+            _import_modules_for_framework(fw), module_importers, is_test_file
+        ):
             confirmed.append(fw)
         else:
             dev_only.append(fw)
