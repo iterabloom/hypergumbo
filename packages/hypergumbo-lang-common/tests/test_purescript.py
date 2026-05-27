@@ -197,7 +197,7 @@ foo = 42
         result = analyze_purescript(tmp_path)
         func = next((s for s in result.symbols if "foo" in s.name), None)
         assert func is not None
-        assert func.origin == "purescript"
+        assert func.origin == ["purescript"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_purescript_file(tmp_path, "Test.purs", "module Test where")

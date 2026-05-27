@@ -410,7 +410,7 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
 
     for pattern in all_patterns:
         query_symbol = _create_query_symbol(pattern, root)
-        query_symbol.origin = PASS_ID
+        query_symbol.origin = [PASS_ID]
         query_symbol.origin_run_id = run.execution_id
         symbols.append(query_symbol)
 

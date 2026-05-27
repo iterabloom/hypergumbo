@@ -223,7 +223,7 @@ some code
         result = analyze_markdown(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        assert section.origin == "markdown"
+        assert section.origin == ["markdown"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "# Title\n")

@@ -15,12 +15,12 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **279** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 56 core, 4 CLI, 32 tracker)
-- **29886** symbols (functions, classes, methods)
-- **101653** edges by type:
-  - calls: 56687
-  - contains: 21468
-  - imports: 10030
-  - instantiates: 7715
+- **29912** symbols (functions, classes, methods)
+- **101715** edges by type:
+  - calls: 56716
+  - contains: 21492
+  - imports: 10038
+  - instantiates: 7716
   - references: 3304
   - module_attr_ref: 1106
   - other: 1343
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 29886 Symbols + 101653 Edges + UsageContexts           │
+│  Output: 29912 Symbols + 101715 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -193,7 +193,7 @@ A code symbol (function, class, etc.) detected by analysis.
 - `language`: Programming language (python, javascript, etc.)
 - `path`: File path where the symbol is defined
 - `span`: Source location with lines and columns
-- `origin`: Provenance string. For analyzer-emitted symbols, this SHOULD be a versioned analyzer ID such as ``python-v1``, ``go-v1``, etc. (see the analyzer registry for the canonical list). A small set of synthesis-origin values (``inheritance``, ``orchestrator_file_symbol_synthesis``, ``scip``) currently coexist in this field as a documented exception pending a future split into a sibling ``synthesis_mechanism`` field. Do not extend the synthesis-shaped value set without first revisiting that plan.
+- `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat.
 - `origin_run_id`: Unique execution ID of the analysis run
 - `origin_run_signature`: Run signature for grouping by analyzer config
 - `stable_id`: Semantic identity hash (survives renames/moves)
@@ -224,7 +224,7 @@ A relationship between two symbols (e.g., function calls).
 - `edge_type`: Type of relationship (calls, imports, inherits, etc.)
 - `line`: Line number where the relationship occurs
 - `confidence`: Confidence score (0.0-1.0)
-- `origin`: Which analysis pass created this edge
+- `origin`: Pass IDs that contributed to this edge (INV-jidat). Auto-normalized from scalar str.
 - `origin_run_id`: Unique execution ID of the analysis run
 - `origin_run_signature`: Run signature for grouping
 - `evidence_type`: Type of evidence (e.g., ast_call_direct)
@@ -265,8 +265,8 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 5038.8 | ir.py |
-| `Span` | class | 4251.8 | ir.py |
+| `Symbol` | class | 5396.5 | ir.py |
+| `Span` | class | 4253.9 | ir.py |
 | `run_behavior_map` | function | 2993.9 | cli.py |
 | `LinkerContext` | class | 2038.6 | registry.py |
 | `TrackerApp` | class | 1872.3 | tui.py |
@@ -812,7 +812,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 1a88a326e910
+  commit: 56e0d164cb66
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

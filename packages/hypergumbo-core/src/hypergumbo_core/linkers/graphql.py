@@ -269,7 +269,7 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
     # Create symbols for each client call
     for call in all_calls:
         client_symbol = _create_client_symbol(call, root)
-        client_symbol.origin = PASS_ID
+        client_symbol.origin = [PASS_ID]
         client_symbol.origin_run_id = run.execution_id
         symbols.append(client_symbol)
 

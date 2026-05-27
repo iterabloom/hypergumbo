@@ -209,10 +209,10 @@ class TestAnalyzeMatlab:
         result = analyze_matlab(matlab_repo)
 
         for sym in result.symbols:
-            assert sym.origin == PASS_ID
+            assert sym.origin == [PASS_ID]
 
         for edge in result.edges:
-            assert edge.origin == PASS_ID
+            assert edge.origin == [PASS_ID]
 
     def test_analysis_run_metadata(self, matlab_repo: Path) -> None:
         """Should include analysis run metadata."""

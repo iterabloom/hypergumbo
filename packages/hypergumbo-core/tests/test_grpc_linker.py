@@ -832,7 +832,7 @@ service TestService {
         result = link_grpc(tmp_path)
 
         for symbol in result.symbols:
-            assert symbol.origin == "grpc-linker"
+            assert symbol.origin == ["grpc-linker"]
 
 
 class TestGrpcEdgeProperties:

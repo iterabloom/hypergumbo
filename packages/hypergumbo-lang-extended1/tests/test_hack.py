@@ -263,7 +263,7 @@ function add(): int { return 1; }
         result = analyze_hack(tmp_path)
         func = next((s for s in result.symbols if s.name == "add"), None)
         assert func is not None
-        assert func.origin == "hack"
+        assert func.origin == ["hack"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", "<?hh\necho 'test';")

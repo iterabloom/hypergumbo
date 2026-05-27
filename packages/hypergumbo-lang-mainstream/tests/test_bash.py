@@ -316,7 +316,7 @@ class TestBashSymbolProperties:
         assert test_func is not None
         assert test_func.span.start_line == 1
         assert test_func.language == "bash"
-        assert test_func.origin == "bash"
+        assert test_func.origin == ["bash"]
 
 class TestBashEdgeProperties:
     """Tests for edge property correctness."""

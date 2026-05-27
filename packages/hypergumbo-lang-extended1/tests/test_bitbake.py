@@ -208,7 +208,7 @@ SUMMARY = "Test"
         result = analyze_bitbake(tmp_path)
         var = next((s for s in result.symbols if s.kind == "variable"), None)
         assert var is not None
-        assert var.origin == "bitbake"
+        assert var.origin == ["bitbake"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_bitbake_file(tmp_path, "test.bb", "SUMMARY = \"Test\"")

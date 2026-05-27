@@ -591,11 +591,11 @@ function bar() { foo(); }
         assert result.run.pass_id == PASS_ID
 
         for symbol in result.symbols:
-            assert symbol.origin == PASS_ID
+            assert symbol.origin == [PASS_ID]
             assert symbol.origin_run_id == result.run.execution_id
 
         for edge in result.edges:
-            assert edge.origin == PASS_ID
+            assert edge.origin == [PASS_ID]
             assert edge.origin_run_id == result.run.execution_id
 
     def test_import_edge_confidence(self, tmp_path: Path) -> None:

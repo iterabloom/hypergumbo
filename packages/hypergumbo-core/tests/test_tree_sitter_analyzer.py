@@ -307,7 +307,7 @@ class TestTreeSitterAnalyzerBasic:
 
         sym = result.symbols[0]
         assert sym.language == "stub"
-        assert sym.origin == "stub"
+        assert sym.origin == ["stub"]
         assert sym.kind == "function"
 
 

@@ -225,7 +225,7 @@ SELECT * WHERE { ?s ?p ?o }
         result = analyze_sparql(tmp_path)
         prefix = next((s for s in result.symbols if s.kind == "prefix"), None)
         assert prefix is not None
-        assert prefix.origin == "sparql"
+        assert prefix.origin == ["sparql"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_sparql_file(tmp_path, "test.sparql", "SELECT * WHERE { ?s ?p ?o }")

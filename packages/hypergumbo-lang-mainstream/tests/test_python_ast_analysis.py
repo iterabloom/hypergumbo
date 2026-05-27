@@ -3495,7 +3495,7 @@ class TestModulePseudoNode:
             n for n in data["nodes"]
             if n["kind"] == "file"
             and n["language"] == "python"
-            and n["origin"] != "orchestrator_file_symbol_synthesis"
+            and n["origin"] != ["orchestrator_file_symbol_synthesis"]
         ]
         assert len(analyzer_emitted) == 0
 
@@ -3535,7 +3535,7 @@ class TestModulePseudoNode:
             n for n in data["nodes"]
             if n["kind"] == "file"
             and n["language"] == "python"
-            and n["origin"] != "orchestrator_file_symbol_synthesis"
+            and n["origin"] != ["orchestrator_file_symbol_synthesis"]
         ]
         assert len(analyzer_emitted) == 0
 
@@ -3556,7 +3556,7 @@ class TestModulePseudoNode:
             n for n in data["nodes"]
             if n["kind"] == "file"
             and n["language"] == "python"
-            and n["origin"] != "orchestrator_file_symbol_synthesis"
+            and n["origin"] != ["orchestrator_file_symbol_synthesis"]
         ]
         assert len(analyzer_emitted) == 0
 
@@ -3578,7 +3578,7 @@ class TestModulePseudoNode:
             n for n in data["nodes"]
             if n["kind"] == "file"
             and n["language"] == "python"
-            and n["origin"] != "orchestrator_file_symbol_synthesis"
+            and n["origin"] != ["orchestrator_file_symbol_synthesis"]
         ]
         assert len(analyzer_emitted) == 0
 

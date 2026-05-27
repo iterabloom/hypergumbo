@@ -188,7 +188,7 @@ class TestAnalyzeKdl:
         result = analyze_kdl(tmp_path)
         node = next((s for s in result.symbols if s.kind == "node"), None)
         assert node is not None
-        assert node.origin == "kdl"
+        assert node.origin == ["kdl"]
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_kdl_file(tmp_path, "config.kdl", "node")

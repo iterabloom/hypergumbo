@@ -159,7 +159,7 @@ executable('foo', 'foo.c')
         result = analyze_meson(tmp_path)
         exe = next((s for s in result.symbols if s.name == "foo"), None)
         assert exe is not None
-        assert exe.origin == "meson"
+        assert exe.origin == ["meson"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_meson_file(tmp_path, "meson.build", "project('test', 'c')")

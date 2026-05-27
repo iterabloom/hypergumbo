@@ -112,7 +112,7 @@ def _has_scip_origin_edge(edges: list[Edge]) -> bool:
     even when ``.rs`` files are present — that is exactly the silent
     fall-through WI-todon makes visible.
     """
-    return any(getattr(edge, "origin", None) == "scip" for edge in edges)
+    return any("scip" in getattr(edge, "origin", []) for edge in edges)
 
 
 @register_analyzer("rust_analyzer", priority=45)

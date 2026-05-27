@@ -122,7 +122,7 @@ def test_single_definition_becomes_symbol() -> None:
     assert s.language == "python"
     assert s.path == "mod.py"
     assert s.span == Span(start_line=6, end_line=9, start_col=0, end_col=0)
-    assert s.origin == "scip"
+    assert s.origin == ["scip"]
     assert s.stable_id == sym
     assert s.meta and s.meta.get("scip_symbol") == sym
 

@@ -428,7 +428,7 @@ export default {
             None,
         )
         assert edge is not None
-        assert edge.origin == "vue"
+        assert edge.origin == ["vue"]
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         # Cluster F per audit-findings 0011: component_ref Symbol dropped;

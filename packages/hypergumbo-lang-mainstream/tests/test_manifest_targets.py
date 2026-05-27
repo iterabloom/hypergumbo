@@ -478,7 +478,7 @@ class TestAnalysisResult:
         result = _analyze_manifest_targets(tmp_path)
         sym = result.symbols[0]
         assert sym.meta["target_path"] == "Sources/CLI/main.swift"
-        assert sym.origin == "manifest_targets"
+        assert sym.origin == ["manifest_targets"]
         assert sym.language == "swift"
 
     def test_registered_entry_point(self, tmp_path: Path) -> None:

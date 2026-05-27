@@ -203,7 +203,7 @@ local add(a, b) = a + b;
         result = analyze_jsonnet(tmp_path)
         func = next((s for s in result.symbols if s.name == "add"), None)
         assert func is not None
-        assert func.origin == "jsonnet"
+        assert func.origin == ["jsonnet"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", "{}")

@@ -58,7 +58,7 @@ class TestEdgePostInitEnforcement:
             id="e1", src="s", dst="d", edge_type="calls", line=1,
             origin="test-pass", origin_run_id="run-1",
         )
-        assert e.origin == "test-pass"
+        assert e.origin == ["test-pass"]
         assert e.origin_run_id == "run-1"
 
     def test_from_dict_injects_sentinel_for_empty(self) -> None:
@@ -75,7 +75,7 @@ class TestEdgePostInitEnforcement:
             "origin_run_id": "",
         }
         e = Edge.from_dict(legacy)
-        assert e.origin == LEGACY_DESERIALIZED_SENTINEL
+        assert e.origin == [LEGACY_DESERIALIZED_SENTINEL]
         assert e.origin_run_id == LEGACY_DESERIALIZED_SENTINEL
 
     def test_from_dict_preserves_populated_fields(self) -> None:
@@ -91,7 +91,7 @@ class TestEdgePostInitEnforcement:
             "origin_run_id": "run-42",
         }
         e = Edge.from_dict(d)
-        assert e.origin == "real-pass"
+        assert e.origin == ["real-pass"]
         assert e.origin_run_id == "run-42"
 
 

@@ -249,7 +249,7 @@ service Weather {}
         result = analyze_smithy(tmp_path)
         svc = next((s for s in result.symbols if s.kind == "service"), None)
         assert svc is not None
-        assert svc.origin == "smithy"
+        assert svc.origin == ["smithy"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", "namespace test")

@@ -638,7 +638,7 @@ socket.on('message', handleMessage);
         # All symbols (endpoint + file) should have origin set
         assert len(result.symbols) >= 1
         for symbol in result.symbols:
-            assert symbol.origin == PASS_ID
+            assert symbol.origin == [PASS_ID]
             assert symbol.origin_run_id == result.run.execution_id
 
     def test_edge_origin(self, tmp_path: Path) -> None:
@@ -647,7 +647,7 @@ socket.on('message', handleMessage);
         (tmp_path / "receiver.js").write_text("socket.on('event', handler);")
         result = link_websocket(tmp_path)
         for edge in result.edges:
-            assert edge.origin == PASS_ID
+            assert edge.origin == [PASS_ID]
             assert edge.origin_run_id == result.run.execution_id
 
 

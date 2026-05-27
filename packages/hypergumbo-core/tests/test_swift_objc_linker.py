@@ -149,7 +149,7 @@ class TestSwiftObjCSymbolCreation:
         result = link_swift_objc(tmp_path)
 
         for symbol in result.symbols:
-            assert symbol.origin == "swift-objc-linker"
+            assert symbol.origin == ["swift-objc-linker"]
 
 
 class TestSwiftObjCEdgeProperties:

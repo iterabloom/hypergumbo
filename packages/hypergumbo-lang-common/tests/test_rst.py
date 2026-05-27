@@ -219,7 +219,7 @@ Title
         result = analyze_rst(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        assert section.origin == "rst"
+        assert section.origin == ["rst"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_rst_file(tmp_path, "test.rst", "Title\n=====\n")

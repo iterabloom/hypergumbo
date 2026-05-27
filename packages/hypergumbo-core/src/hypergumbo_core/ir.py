@@ -294,6 +294,15 @@ _TIER_NAMES = {
 }
 
 
+def _normalize_origin(raw: object) -> List[str]:
+    """Coerce scalar/list/missing origin to list[str] (INV-jidat migration)."""
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        return [raw] if raw else []
+    return []  # pragma: no cover
+
+
 @dataclass
 class Symbol:
     """A code symbol (function, class, etc.) detected by analysis.
@@ -305,14 +314,10 @@ class Symbol:
         language: Programming language (python, javascript, etc.)
         path: File path where the symbol is defined
         span: Source location with lines and columns
-        origin: Provenance string. For analyzer-emitted symbols, this SHOULD be
-            a versioned analyzer ID such as ``python-v1``, ``go-v1``, etc. (see
-            the analyzer registry for the canonical list). A small set of
-            synthesis-origin values (``inheritance``,
-            ``orchestrator_file_symbol_synthesis``, ``scip``) currently coexist
-            in this field as a documented exception pending a future split into
-            a sibling ``synthesis_mechanism`` field. Do not extend the
-            synthesis-shaped value set without first revisiting that plan.
+        origin: Provenance list (INV-jidat). Each element is a pass ID that
+            contributed to this Symbol's existence, ordered chronologically
+            (originating pass first). Single-element lists are the common case.
+            Auto-normalized from scalar str for backward compat.
         origin_run_id: Unique execution ID of the analysis run
         origin_run_signature: Run signature for grouping by analyzer config
         stable_id: Semantic identity hash (survives renames/moves)
@@ -360,7 +365,7 @@ class Symbol:
     language: str  # axis: language
     path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself.
     span: Span
-    origin: str = ""  # axis: pass-id
+    origin: List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
     origin_run_signature: Optional[str] = None  # axis: identity
     stable_id: Optional[str] = None  # axis: identity
@@ -381,6 +386,10 @@ class Symbol:
     signature: Optional[str] = None  # axis: free-text — callable signature string in source-language grammar; consumers display, never branch on the value itself.
     docstring: Optional[str] = None  # axis: free-text — natural-language summary from the source comment; consumers display/log/hash, never branch on the value itself.
     modifiers: List[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.origin, str):
+            self.origin = [self.origin] if self.origin else []
 
     # Keep line/end_line for backwards compatibility during transition
     @property
@@ -438,7 +447,7 @@ class Symbol:
             language=d["language"],
             path=d["path"],
             span=Span.from_dict(span_data),
-            origin=d.get("origin", ""),
+            origin=_normalize_origin(d.get("origin", "")),
             origin_run_id=d.get("origin_run_id", ""),
             origin_run_signature=d.get("origin_run_signature"),
             stable_id=d.get("stable_id"),
@@ -535,7 +544,7 @@ class Edge:
         edge_type: Type of relationship (calls, imports, inherits, etc.)
         line: Line number where the relationship occurs
         confidence: Confidence score (0.0-1.0)
-        origin: Which analysis pass created this edge
+        origin: Pass IDs that contributed to this edge (INV-jidat). Auto-normalized from scalar str.
         origin_run_id: Unique execution ID of the analysis run
         origin_run_signature: Run signature for grouping
         evidence_type: Type of evidence (e.g., ast_call_direct)
@@ -555,7 +564,7 @@ class Edge:
     line: int
     edge_key: Optional[str] = None  # axis: identity
     confidence: float = 0.85
-    origin: str = ""  # axis: pass-id
+    origin: List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
     origin_run_signature: Optional[str] = None  # axis: identity
     evidence_type: str = "ast_call_direct"  # axis: evidence-type
@@ -568,12 +577,8 @@ class Edge:
     meta: Optional[Dict[str, Any]] = None
 
     def __post_init__(self) -> None:
-        # WI-higap: hard-raise on empty provenance fields. Every edge must
-        # declare which pass produced it (origin) and during which analysis
-        # run instance (origin_run_id) so the run-side AnalysisRun row can
-        # be joined back to its emitted edges. Loose construction lets
-        # silent provenance regressions accumulate (cf. the 425 edges with
-        # empty origin_run_id observed on 2026-05-16 self-analysis).
+        if isinstance(self.origin, str):
+            self.origin = [self.origin] if self.origin else []
         if not self.origin:
             raise ValueError(
                 f"Edge.origin must be non-empty (edge_type={self.edge_type!r}, "
@@ -717,7 +722,7 @@ class Edge:
             line=d.get("line", 0),
             edge_key=d.get("edge_key"),
             confidence=d.get("confidence", 0.85),
-            origin=d.get("origin") or LEGACY_DESERIALIZED_SENTINEL,
+            origin=_normalize_origin(d.get("origin")) or [LEGACY_DESERIALIZED_SENTINEL],
             origin_run_id=d.get("origin_run_id") or LEGACY_DESERIALIZED_SENTINEL,
             origin_run_signature=d.get("origin_run_signature"),
             evidence_type=meta.get("evidence_type", "ast_call_direct"),

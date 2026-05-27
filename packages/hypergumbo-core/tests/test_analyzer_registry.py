@@ -1272,7 +1272,7 @@ class TestRunAllAnalyzersFileSymbolSynthesis:
 
         file_syms = [s for s in symbols if s.id == file_id]
         assert len(file_syms) == 1
-        assert file_syms[0].origin == "lua"  # producer's, not the synth's
+        assert file_syms[0].origin == ["lua"]  # producer's, not the synth's
 
 
 class TestRunAllAnalyzersFilePresencePreFilter:

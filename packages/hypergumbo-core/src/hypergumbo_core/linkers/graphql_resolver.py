@@ -493,7 +493,7 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
 
     for pattern in all_patterns:
         resolver_symbol = _create_resolver_symbol(pattern, root)
-        resolver_symbol.origin = PASS_ID
+        resolver_symbol.origin = [PASS_ID]
         resolver_symbol.origin_run_id = run.execution_id
         symbols.append(resolver_symbol)
 

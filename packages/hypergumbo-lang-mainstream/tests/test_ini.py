@@ -249,7 +249,7 @@ host = localhost
         result = analyze_ini(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        assert section.origin == "ini"
+        assert section.origin == ["ini"]
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_ini_file(tmp_path, "config.ini", "[section]\nkey=value")

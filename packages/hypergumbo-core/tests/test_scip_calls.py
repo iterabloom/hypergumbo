@@ -90,7 +90,7 @@ def test_ref_inside_definition_emits_edge() -> None:
     assert edge.src == caller
     assert edge.dst == callee
     assert edge.edge_type == "references"
-    assert edge.origin == "scip"
+    assert edge.origin == ["scip"]
     assert edge.evidence_type == "scip_occurrence_ref"
     assert edge.line == 6  # 5 + 1 (SCIP 0-index → hypergumbo 1-index)
 

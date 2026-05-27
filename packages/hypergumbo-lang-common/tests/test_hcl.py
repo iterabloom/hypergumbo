@@ -359,7 +359,7 @@ class TestHCLSymbolProperties:
         assert resource is not None
         assert resource.span.start_line == 1
         assert resource.language == "hcl"
-        assert resource.origin == "hcl"
+        assert resource.origin == ["hcl"]
 
 class TestHCLEdgeProperties:
     """Tests for edge property correctness."""

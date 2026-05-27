@@ -1623,7 +1623,7 @@ class TestMakeUnresolvedEdge:
         assert edge.confidence == 0.50
         assert edge.evidence_type == "ast_call_direct"
         assert edge.is_resolved is False
-        assert edge.origin == "c-pass"
+        assert edge.origin == ["c-pass"]
         assert edge.origin_run_id == "run-123"
         assert edge.line == 3
 
@@ -1736,7 +1736,7 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
         assert sym.path == "src/main.py"
         assert sym.span.start_line == 1
         assert sym.span.end_line == 1
-        assert sym.origin == "orchestrator_file_symbol_synthesis"
+        assert sym.origin == ["orchestrator_file_symbol_synthesis"]
 
     def test_synthesizes_for_dangling_dst(self) -> None:
         """make_file_id-shape on the dst side is also covered."""

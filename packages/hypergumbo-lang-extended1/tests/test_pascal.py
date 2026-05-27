@@ -287,7 +287,7 @@ end.
         result = analyze_pascal(tmp_path)
         func = next((s for s in result.symbols if s.name == "Foo"), None)
         assert func is not None
-        assert func.origin == "pascal"
+        assert func.origin == ["pascal"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_pascal_file(tmp_path, "test.pas", "program Test; begin end.")

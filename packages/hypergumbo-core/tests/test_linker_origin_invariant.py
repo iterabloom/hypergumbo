@@ -195,7 +195,7 @@ class TestSymbolOriginRuntime:
 
         assert result.symbols, "fixture should produce at least one http_client symbol"
         for sym in result.symbols:
-            assert sym.origin == PASS_ID, (
+            assert sym.origin == [PASS_ID], (
                 f"http_linker emitted symbol with origin={sym.origin!r}, "
                 f"expected {PASS_ID!r}"
             )
@@ -231,7 +231,7 @@ class TestSymbolOriginRuntime:
 
         assert result.symbols, "fixture should produce at least one subprocess call symbol"
         for sym in result.symbols:
-            assert sym.origin == PASS_ID, (
+            assert sym.origin == [PASS_ID], (
                 f"subprocess_linker symbol origin={sym.origin!r}, "
                 f"expected {PASS_ID!r}"
             )
@@ -268,7 +268,7 @@ class TestSymbolOriginRuntime:
             "ipc fixture should produce at least one synthesised IPC symbol"
         )
         for sym in result.symbols:
-            assert sym.origin == PASS_ID, (
+            assert sym.origin == [PASS_ID], (
                 f"ipc_linker symbol origin={sym.origin!r}, "
                 f"expected {PASS_ID!r}"
             )

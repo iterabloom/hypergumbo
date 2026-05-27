@@ -389,7 +389,7 @@ class TestGroovySymbolProperties:
         assert test_class is not None
         assert test_class.span.start_line == 1
         assert test_class.language == "groovy"
-        assert test_class.origin == "groovy"
+        assert test_class.origin == ["groovy"]
 
     def test_method_prefixed_with_class(self, tmp_path: Path) -> None:
         """Methods are prefixed with class name."""

@@ -381,7 +381,7 @@ class TestLinkViewTemplates:
         assert template_sym.language == "erb"
         assert template_sym.name == "index.html.erb"
         assert template_sym.path == "app/views/users/index.html.erb"
-        assert template_sym.origin == PASS_ID
+        assert template_sym.origin == [PASS_ID]
 
     def test_multiple_actions_same_controller(self, tmp_path: Path) -> None:
         """Multiple actions in one controller each get their own edge."""

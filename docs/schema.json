@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.9.1"
+      "const": "0.10.0"
     },
     "confidence_model": {
       "type": "string",
@@ -412,8 +412,11 @@
           "$ref": "#/$defs/Span"
         },
         "origin": {
-          "type": "string",
-          "description": "Analysis pass that created this symbol"
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Pass IDs that contributed to this symbol (INV-jidat)"
         },
         "origin_run_id": {
           "type": "string",
@@ -775,8 +778,11 @@
           "description": "Confidence score"
         },
         "origin": {
-          "type": "string",
-          "description": "Analysis pass that created this edge"
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Pass IDs that contributed to this edge (INV-jidat)"
         },
         "origin_run_id": {
           "type": "string",

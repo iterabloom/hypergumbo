@@ -331,7 +331,7 @@ import Header from './Header.astro';
             None,
         )
         assert edge is not None
-        assert edge.origin == "astro"
+        assert edge.origin == ["astro"]
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         # Cluster F per audit-findings 0011: edge src is now a file_id.

@@ -98,7 +98,7 @@ class TestLinkViaStrategies:
         assert template_sym.language == "html"
         assert template_sym.name == "users.html"
         assert template_sym.path == "templates/users.html"
-        assert template_sym.origin == PASS_ID
+        assert template_sym.origin == [PASS_ID]
         assert edge.dst == template_sym.id
 
     def test_missing_candidate_emits_nothing(self, tmp_path: Path) -> None:

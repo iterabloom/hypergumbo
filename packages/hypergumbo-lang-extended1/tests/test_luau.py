@@ -299,7 +299,7 @@ end
         result = analyze_luau(tmp_path)
         func = next((s for s in result.symbols if s.kind == "function"), None)
         assert func is not None
-        assert func.origin == "luau"
+        assert func.origin == ["luau"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_luau_file(tmp_path, "test.luau", "local x = 1")

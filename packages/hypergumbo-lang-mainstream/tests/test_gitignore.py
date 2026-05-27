@@ -267,7 +267,7 @@ node_modules/
         result = analyze_gitignore(tmp_path)
         pattern = next((s for s in result.symbols if s.kind == "pattern"), None)
         assert pattern is not None
-        assert pattern.origin == "gitignore"
+        assert pattern.origin == ["gitignore"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_gitignore_file(tmp_path, ".gitignore", "*.log\n")

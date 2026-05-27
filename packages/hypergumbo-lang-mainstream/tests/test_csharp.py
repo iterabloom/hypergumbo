@@ -1059,7 +1059,7 @@ class TestCSharpAnalysisRun:
 
 
         for symbol in result.symbols:
-            assert symbol.origin == PASS_ID
+            assert symbol.origin == [PASS_ID]
             assert symbol.origin_run_id == result.run.execution_id
 
 

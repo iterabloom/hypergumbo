@@ -269,7 +269,7 @@ actor Main
         result = analyze_pony(tmp_path)
         actor = next((s for s in result.symbols if s.kind == "actor"), None)
         assert actor is not None
-        assert actor.origin == "pony"
+        assert actor.origin == ["pony"]
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_pony_file(tmp_path, "test.pony", "actor Main")

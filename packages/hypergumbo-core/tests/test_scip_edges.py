@@ -87,7 +87,7 @@ def test_is_implementation_produces_implements_edge() -> None:
     assert e.src == src
     assert e.dst == dst
     assert e.edge_type == "implements"
-    assert e.origin == "scip"
+    assert e.origin == ["scip"]
 
 
 def test_is_type_definition_produces_has_type_edge() -> None:
@@ -245,7 +245,7 @@ def test_edge_carries_scip_evidence_type_and_origin() -> None:
     dst = _sym("d")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_implementation=True)
     [e] = scip_index_to_edges(idx, run_id="test")
-    assert e.origin == "scip"
+    assert e.origin == ["scip"]
     assert e.evidence_type.startswith("scip_")
     assert e.confidence > 0.0
 

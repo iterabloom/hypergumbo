@@ -721,7 +721,7 @@ def link_events(root: Path) -> EventSourcingLinkResult:
 
     for pattern in all_patterns:
         symbol = _create_event_symbol(pattern, root)
-        symbol.origin = PASS_ID
+        symbol.origin = [PASS_ID]
         symbol.origin_run_id = run.execution_id
         symbols.append(symbol)
 

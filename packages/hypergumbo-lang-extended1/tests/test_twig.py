@@ -199,7 +199,7 @@ Hello, {{ user.name }}!
         result = analyze_twig(tmp_path)
         block = next((s for s in result.symbols if s.kind == "block"), None)
         assert block is not None
-        assert block.origin == "twig"
+        assert block.origin == ["twig"]
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", "{% block content %}{% endblock %}")

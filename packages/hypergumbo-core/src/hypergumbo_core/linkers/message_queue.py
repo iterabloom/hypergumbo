@@ -465,7 +465,7 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
     symbols: list[Symbol] = []
     for pattern in all_patterns:
         symbol = _create_symbol(pattern, root)
-        symbol.origin = PASS_ID
+        symbol.origin = [PASS_ID]
         symbol.origin_run_id = run.execution_id
         symbols.append(symbol)
 

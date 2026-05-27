@@ -216,7 +216,7 @@ node 'server' {
         result = analyze_puppet(tmp_path)
         cls = next((s for s in result.symbols if s.kind == "class"), None)
         assert cls is not None
-        assert cls.origin == "puppet"
+        assert cls.origin == ["puppet"]
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_puppet_file(tmp_path, "init.pp", "class nginx {}")

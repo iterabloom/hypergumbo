@@ -389,7 +389,7 @@ def link_subprocess(root: Path, cli_symbols: list[Symbol]) -> SubprocessLinkResu
     for call in all_calls:
         # Create symbol for the call site
         call_symbol = _create_call_symbol(call, root)
-        call_symbol.origin = PASS_ID
+        call_symbol.origin = [PASS_ID]
         call_symbol.origin_run_id = run.execution_id
         symbols.append(call_symbol)
 

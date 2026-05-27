@@ -222,10 +222,10 @@ class TestAnalyzeGleam:
         result = analyze_gleam(gleam_repo)
 
         for sym in result.symbols:
-            assert sym.origin == PASS_ID
+            assert sym.origin == [PASS_ID]
 
         for edge in result.edges:
-            assert edge.origin == PASS_ID
+            assert edge.origin == [PASS_ID]
 
     def test_analysis_run_metadata(self, gleam_repo: Path) -> None:
         """Should include analysis run metadata."""

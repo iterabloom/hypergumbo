@@ -3818,7 +3818,7 @@ def analyze_python(
 
         # Set origin on symbols
         for symbol in analysis.symbols:
-            symbol.origin = PASS_ID
+            symbol.origin = [PASS_ID]
             symbol.origin_run_id = run.execution_id
         all_symbols.extend(analysis.symbols)
 

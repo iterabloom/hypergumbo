@@ -1023,7 +1023,7 @@ def test_symbol_from_dict() -> None:
     assert symbol.path == "src/api.py"
     assert symbol.span.start_line == 10
     assert symbol.span.end_line == 20
-    assert symbol.origin == "python"
+    assert symbol.origin == ["python"]
     assert symbol.supply_chain_tier == 1
     assert symbol.supply_chain_reason == "first_party"
     assert symbol.cyclomatic_complexity == 5
@@ -1046,7 +1046,7 @@ def test_symbol_from_dict_with_defaults() -> None:
 
     assert symbol.id == "python:test.py:1-5:foo:function"
     assert symbol.name == "foo"
-    assert symbol.origin == ""
+    assert symbol.origin == []
     assert symbol.supply_chain_tier == 1  # Default
     assert symbol.modifiers == []
 
@@ -1224,7 +1224,7 @@ def test_edge_from_dict() -> None:
     assert edge.edge_type == "calls"
     assert edge.line == 3
     assert edge.confidence == 0.95
-    assert edge.origin == "python"
+    assert edge.origin == ["python"]
     assert edge.evidence_type == "ast_call_direct"
     assert edge.evidence_lang == "python"
 
