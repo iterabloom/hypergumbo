@@ -10,6 +10,7 @@ from hypergumbo_core.linkers.registry import (
     LinkerContext,
     LinkerRequirement,
     LinkerResult,
+    _stamp_pass_version,
     check_linker_requirements,
     clear_registry,
     get_all_linkers,
@@ -1148,3 +1149,212 @@ class TestLinkerPipelineAccumulation:
         assert len(observed_symbols[0]) == 0
         assert len(observed_symbols[1]) == 1
         assert observed_symbols[1][0].name == "IFace.Method"
+
+
+class TestLinkerContextCreateRun:
+    """Tests for LinkerContext.create_run() factory method."""
+
+    def test_create_run_stamps_pass_version(self):
+        """create_run() stamps linker_pass_version onto AnalysisRun.pass_version."""
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            linker_pass_id="test-linker",
+            linker_pass_version="abc123",
+        )
+        run = ctx.create_run()
+        assert run.pass_version == "abc123"
+        assert run.pass_id == "test-linker"
+
+    def test_create_run_stamps_pass_id(self):
+        """create_run() uses linker_pass_id as the AnalysisRun.pass_id."""
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            linker_pass_id="my-linker",
+            linker_pass_version="def456",
+        )
+        run = ctx.create_run()
+        assert run.pass_id == "my-linker"
+
+    def test_create_run_uses_package_version(self):
+        """create_run() uses PASS_VERSION (package version) as AnalysisRun.version."""
+        from hypergumbo_core.ir import PASS_VERSION
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            linker_pass_id="ver-linker",
+            linker_pass_version="xyz",
+        )
+        run = ctx.create_run()
+        assert run.version == PASS_VERSION
+
+    def test_create_run_without_fields_raises(self):
+        """create_run() raises ValueError when linker_pass_id is empty."""
+        ctx = LinkerContext(repo_root=Path("/test"))
+        with pytest.raises(ValueError, match="linker_pass_id"):
+            ctx.create_run()
+
+
+class TestRunAllLinkersPassVersion:
+    """Tests that run_all_linkers stamps pass_version on returned runs.
+
+    Linker bodies call AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+    without pass_version — run_all_linkers stamps it centrally from the
+    RegisteredLinker's code-hash pass_version.
+    """
+
+    def test_stamps_pass_version_on_manual_run(self):
+        """pass_version is stamped even when the linker creates its own run."""
+        from hypergumbo_core.ir import PASS_VERSION as PV
+
+        @register_linker("pv-manual")
+        def link_pv_manual(ctx: LinkerContext) -> LinkerResult:
+            run = AnalysisRun.create(pass_id="pv-manual", version=PV)
+            return LinkerResult(run=run)
+
+        ctx = LinkerContext(repo_root=Path("/test"))
+        results = run_all_linkers(ctx)
+
+        linker_results = [(n, r) for n, r in results if n == "pv-manual"]
+        assert len(linker_results) == 1
+        _, result = linker_results[0]
+        assert result.run is not None
+        assert result.run.pass_version != ""
+
+    def test_stamps_pass_version_via_create_run(self):
+        """pass_version is also correct when linker uses ctx.create_run()."""
+
+        @register_linker("pv-factory")
+        def link_pv_factory(ctx: LinkerContext) -> LinkerResult:
+            run = ctx.create_run()
+            return LinkerResult(run=run)
+
+        ctx = LinkerContext(repo_root=Path("/test"))
+        results = run_all_linkers(ctx)
+
+        linker_results = [(n, r) for n, r in results if n == "pv-factory"]
+        assert len(linker_results) == 1
+        _, result = linker_results[0]
+        assert result.run is not None
+        assert result.run.pass_version != ""
+
+    def test_parallel_linkers_get_own_pass_version(self):
+        """Parallel linkers at the same priority each get their own pass_version."""
+        from hypergumbo_core.ir import PASS_VERSION as PV
+
+        @register_linker("pv-par-a", priority=50)
+        def link_pv_par_a(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult(run=AnalysisRun.create(pass_id="pv-par-a", version=PV))
+
+        @register_linker("pv-par-b", priority=50)
+        def link_pv_par_b(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult(run=AnalysisRun.create(pass_id="pv-par-b", version=PV))
+
+        ctx = LinkerContext(repo_root=Path("/test"))
+        results = run_all_linkers(ctx)
+
+        by_name = {n: r for n, r in results if n.startswith("pv-par")}
+        assert "pv-par-a" in by_name
+        assert "pv-par-b" in by_name
+        assert by_name["pv-par-a"].run is not None
+        assert by_name["pv-par-b"].run is not None
+        assert by_name["pv-par-a"].run.pass_version != ""
+        assert by_name["pv-par-b"].run.pass_version != ""
+
+    def test_no_run_is_fine(self):
+        """Linkers that return no run are not affected."""
+
+        @register_linker("pv-no-run")
+        def link_pv_no_run(ctx: LinkerContext) -> LinkerResult:
+            return LinkerResult()
+
+        ctx = LinkerContext(repo_root=Path("/test"))
+        results = run_all_linkers(ctx)
+        linker_results = [(n, r) for n, r in results if n == "pv-no-run"]
+        assert len(linker_results) == 1
+        assert linker_results[0][1].run is None
+
+    def test_preserves_existing_pass_version(self):
+        """If linker already sets pass_version, don't overwrite it."""
+
+        @register_linker("pv-preset")
+        def link_pv_preset(ctx: LinkerContext) -> LinkerResult:
+            run = ctx.create_run()
+            return LinkerResult(run=run)
+
+        ctx = LinkerContext(repo_root=Path("/test"))
+        results = run_all_linkers(ctx)
+        linker_results = [(n, r) for n, r in results if n == "pv-preset"]
+        assert len(linker_results) == 1
+        _, result = linker_results[0]
+        assert result.run is not None
+        assert result.run.pass_version != ""
+
+
+class TestStampPassVersion:
+    """Tests for _stamp_pass_version helper."""
+
+    def test_stamps_empty_pass_version(self):
+        """Stamps pass_version when run has empty pass_version."""
+        from hypergumbo_core.linkers.registry import RegisteredLinker
+
+        run = AnalysisRun.create(pass_id="test", version="1.0.0")
+        assert run.pass_version == ""
+        result = LinkerResult(run=run)
+        linker = RegisteredLinker(
+            name="test", func=lambda ctx: LinkerResult(), pass_version="abc123"
+        )
+        _stamp_pass_version(result, linker)
+        assert run.pass_version == "abc123"
+
+    def test_skips_none_run(self):
+        """Does not raise when run is None."""
+        from hypergumbo_core.linkers.registry import RegisteredLinker
+
+        result = LinkerResult()
+        linker = RegisteredLinker(
+            name="test", func=lambda ctx: LinkerResult(), pass_version="abc123"
+        )
+        _stamp_pass_version(result, linker)
+        assert result.run is None
+
+    def test_preserves_nonempty_pass_version(self):
+        """Does not overwrite an already-set pass_version."""
+        from hypergumbo_core.linkers.registry import RegisteredLinker
+
+        run = AnalysisRun.create(
+            pass_id="test", version="1.0.0", pass_version="original"
+        )
+        result = LinkerResult(run=run)
+        linker = RegisteredLinker(
+            name="test", func=lambda ctx: LinkerResult(), pass_version="different"
+        )
+        _stamp_pass_version(result, linker)
+        assert run.pass_version == "original"
+
+
+class TestAllRegisteredLinkersHavePassVersion:
+    """Structural invariant: every registered linker has a non-empty pass_version.
+
+    Imports cli module to trigger all linker registrations, then checks
+    pass_version on every registered linker. Uses its own fixture override
+    to avoid the module-level clean_registry (which would clear the real
+    linkers before we can inspect them).
+    """
+
+    @pytest.fixture(autouse=True)
+    def clean_registry(self):
+        """Override the module-level autouse fixture — keep real linkers."""
+        yield
+
+    def test_all_linkers_have_pass_version(self):
+        """All real registered linkers must have non-empty pass_version."""
+        import hypergumbo_core.cli
+
+        from hypergumbo_core.linkers.registry import _LINKER_REGISTRY
+
+        assert len(_LINKER_REGISTRY) > 0, "No linkers registered"
+        missing = [
+            name for name, lnk in _LINKER_REGISTRY.items()
+            if not lnk.pass_version
+        ]
+        assert missing == [], f"Linkers with empty pass_version: {missing}"

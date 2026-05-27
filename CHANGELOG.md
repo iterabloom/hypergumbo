@@ -100,6 +100,7 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 
 #### Linker quality
 
+- **Linker `pass_version` wired through `run_all_linkers`** — `_stamp_pass_version()` centrally stamps each linker's `compute_pass_version` code-hash onto its `AnalysisRun.pass_version`. Previously all linker-created runs had empty `pass_version` (WI-hupoz). `LinkerContext` gains `create_run()` factory and per-linker identity fields.
 - **Disambiguation-fallback discipline** — thirteen linkers adopt `confidence ≤ 0.5` + `meta["disambiguation_fallback"]=True` for ambiguous simple-name resolutions. New fallback-coherence linter pins the contract statically.
 - **URL-folding logic extracted** from the HTTP linker into a per-idiom YAML + engine substrate (`url_folding/`), preparing for multi-language extension.
 

@@ -65,6 +65,12 @@ Linkers have heterogeneous input needs (some need repo_root only,
 others need filtered symbols, captured symbols, etc.). LinkerContext
 provides all possible inputs, and each linker takes what it needs.
 
+``run_all_linkers()`` populates per-linker identity fields
+(``linker_pass_id``, ``linker_pass_version``) on each context before
+dispatch, and stamps ``pass_version`` on the returned ``AnalysisRun``
+via ``_stamp_pass_version()`` — so linker bodies don't need to thread
+pass_version manually.
+
 Usage
 -----
 In a linker module:
@@ -141,6 +147,10 @@ class LinkerContext:
     detected_frameworks: set[str] = field(default_factory=set)
     detected_languages: set[str] = field(default_factory=set)
 
+    # Per-linker identity — populated by run_all_linkers before dispatch.
+    linker_pass_id: str = ""
+    linker_pass_version: str = ""
+
     # Cross-linker tree-sitter parse cache. Populated lazily by the linker
     # docstring/comment masker (linkers/_text_filters) so the second linker
     # to scan a given file reuses the first linker's parse. Forward-compat
@@ -158,6 +168,21 @@ class LinkerContext:
     _symbols_by_path: dict[str, list["Symbol"]] | None = field(
         default=None, init=False, repr=False
     )
+
+    def create_run(self) -> "AnalysisRun":
+        """Create an AnalysisRun stamped with this linker's pass_version."""
+        if not self.linker_pass_id:
+            raise ValueError(
+                "linker_pass_id is empty — create_run() requires "
+                "per-linker identity (set by run_all_linkers)"
+            )
+        from ..ir import PASS_VERSION, AnalysisRun
+
+        return AnalysisRun.create(
+            pass_id=self.linker_pass_id,
+            version=PASS_VERSION,
+            pass_version=self.linker_pass_version,
+        )
 
     def _ensure_indexes(self) -> None:
         """Build symbol indexes if not already built."""
@@ -628,6 +653,12 @@ def run_linker(
     return _run_linker_with_cache(linker.func, ctx)
 
 
+def _stamp_pass_version(result: LinkerResult, linker: RegisteredLinker) -> None:
+    """Stamp the linker's code-hash pass_version onto its AnalysisRun."""
+    if result.run is not None and not result.run.pass_version:
+        result.run.pass_version = linker.pass_version
+
+
 def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     """Run all registered linkers in priority order.
 
@@ -685,7 +716,10 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
         if len(group) == 1:
             # Single linker — run directly (avoids thread pool overhead)
             linker = group[0]
+            running_ctx.linker_pass_id = linker.name
+            running_ctx.linker_pass_version = linker.pass_version
             result = _run_linker_with_cache(linker.func, running_ctx)
+            _stamp_pass_version(result, linker)
             results.append((linker.name, result))
             all_linker_symbols.extend(result.symbols)
             if result.edges:
@@ -710,6 +744,8 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
                         detected_frameworks=ctx.detected_frameworks,
                         detected_languages=ctx.detected_languages,
                         parsed_trees=ctx.parsed_trees,
+                        linker_pass_id=linker.name,
+                        linker_pass_version=linker.pass_version,
                     )
                     future_to_linker[
                         pool.submit(_run_linker_with_cache, linker.func, lctx)
@@ -717,6 +753,7 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
                 for future in as_completed(future_to_linker):
                     linker = future_to_linker[future]
                     result = future.result()
+                    _stamp_pass_version(result, linker)
                     results.append((linker.name, result))
                     all_linker_symbols.extend(result.symbols)
                     if result.edges:
