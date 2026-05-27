@@ -82,3 +82,28 @@
   clock: 9  # beca
   nonce: beca  # beca
   message: "Cross-item review 2026-05-17: loose coupling with WI-luvig (Symbol.canonical_name docstring oversells, now under META INV-zadum write-side identity sub-META). If canonical_name were populated for variable Symbols as part of the write-side work, Deliverable B's per-file constant-resolution table could key by canonical_name for more reliable shadow detection (function-local rebindings of module constant names). Not a blocker — name-keyed resolution works without canonical_name — but coordinate if both items get worked together. Recording here so future agents see the connection."  # beca
+- op: update  # 7601
+  at: '2026-05-27T02:08:26Z'  # 7601
+  by: agent  # 7601
+  actor: jgstern_agent  # 7601
+  clock: 10  # 7601
+  nonce: '7601'  # 7601
+  set:  # 7601
+    status: in_progress  # 7601
+- op: update  # 3b18
+  at: '2026-05-27T03:17:34Z'  # 3b18
+  by: agent  # 3b18
+  actor: jgstern_agent  # 3b18
+  clock: 11  # 3b18
+  nonce: 3b18  # 3b18
+  set:  # 3b18
+    status: done  # 3b18
+  add:  # 3b18
+    tags: [awaits_bakeoff_validation]  # 3b18
+- op: discuss  # 6bec
+  at: '2026-05-27T03:17:35Z'  # 6bec
+  by: agent  # 6bec
+  actor: jgstern_agent  # 6bec
+  clock: 12  # 6bec
+  nonce: 6bec  # 6bec
+  message: "Merged as PR #3925. Python intra-file constant-read resolution emits references edges with evidence_type=ast_name_read. Expected ~1,301 orphan variable Symbols → near zero on self-analysis."  # 6bec

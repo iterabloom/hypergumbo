@@ -21,3 +21,10 @@
     fields:  # 63dd
       statement: "Tracker mutations performed between auto-sync's git-add snapshot and its post-merge cleanup must not be destroyed by the cleanup. No silent data loss."  # 63dd
       root_cause: "sync.py cleanup (lines 1486-1527) unconditionally resets tracked ops to HEAD and deletes untracked ops after a successful sync+merge, without checking whether those files received post-snapshot mutations during the sync's push+CI+merge window."  # 63dd
+- op: discuss  # d376
+  at: '2026-05-27T01:50:26Z'  # d376
+  by: agent  # d376
+  actor: jgstern_agent  # d376
+  clock: 2  # d376
+  nonce: d376  # d376
+  message: "Discovered during notes-vs-tracker consistency check on 2026-05-27. Three mutations lost from the 2026-05-26 session: WI-dilab-hitub (entire item, recreated as WI-pusuk), WI-hupaz done transition (re-applied manually), INV-hujog pending_validation (survived because it was written after cleanup). Root cause confirmed via transcript forensics: sync.py cleanup at lines 1486-1527 deleted untracked ops and reset tracked ops between the git-add snapshot and the ff-only merge."  # d376

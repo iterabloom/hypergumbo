@@ -23,3 +23,20 @@
     fields:  # 5a68
       statement: "When evidence for a Symbol or Edge is contributed by multiple passes, all contributing passes should be credited in origin. Currently origin is scalar — only the pass that called Edge.create()/Symbol(...) gets credit."  # 5a68
       root_cause: "The current model treats origin as a single-author field. When the analyzer detects a call-site and a linker resolves the target, only the linker is credited. Multi-pass evidence combination forces a lossy attribution choice."  # 5a68
+- op: update  # a5df
+  at: '2026-05-27T06:55:45Z'  # a5df
+  by: agent  # a5df
+  actor: jgstern_agent  # a5df
+  clock: 2  # a5df
+  nonce: a5df  # a5df
+  set:  # a5df
+    status: pending_validation  # a5df
+  add:  # a5df
+    tags: [awaits_bakeoff_validation]  # a5df
+- op: discuss  # 54b8
+  at: '2026-05-27T06:55:45Z'  # 54b8
+  by: agent  # 54b8
+  actor: jgstern_agent  # 54b8
+  clock: 3  # 54b8
+  nonce: 54b8  # 54b8
+  message: "Fixed in PR #3927 (merged). Symbol.origin and Edge.origin changed from str to list[str]. Schema 0.10.0. Auto-normalization preserves backward compat. Needs BROAD bakeoff to validate multi-element origins appear correctly."  # 54b8

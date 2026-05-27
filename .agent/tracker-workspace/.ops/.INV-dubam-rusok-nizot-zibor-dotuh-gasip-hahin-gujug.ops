@@ -38,3 +38,10 @@
   clock: 3  # b36a
   nonce: b36a  # b36a
   message: "Demoted to P3: this META extends provenance capability (adds derivation chains, multi-source attribution, declared pass dependencies) rather than correcting an active contract violation. The behavior map functionally works today; we just can't query its derivation graph or credit multi-pass evidence. P3 reflects 'important enhancement, not urgent fix' — distinct from the P2 METAs (INV-rugok / INV-dajaf / INV-tolaj / INV-manov) which each address an active drift/dishonesty/miscount."  # b36a
+- op: discuss  # b54d
+  at: '2026-05-27T06:58:06Z'  # b54d
+  by: agent  # b54d
+  actor: jgstern_agent  # b54d
+  clock: 4  # b54d
+  nonce: b54d  # b54d
+  message: "Progress: 3 of 5 closure criteria now addressed. (1) Edge.derived_from: INV-rukor pending_validation, PR #3926. (2) origin scalar→list: INV-jidat pending_validation, PR #3927. (3) Pass.depends_on: INV-hujog pending_validation, PR #3893/#3920. Outstanding: (4) hypergumbo explain surfaces derivation chains. (5) PROV-vocabulary ADR."  # b54d

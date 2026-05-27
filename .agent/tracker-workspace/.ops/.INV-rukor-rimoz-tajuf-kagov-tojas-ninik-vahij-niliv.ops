@@ -22,3 +22,27 @@
     fields:  # 7223
       statement: "Every Edge produced by a linker should record which Symbols (and possibly which Edges) the linker consumed as derivation inputs. Currently derivation chains are implicit in linker source code."  # 7223
       root_cause: "Linker code reads ctx.symbols, decides selection logic, calls Edge.create() with src+dst+edge_type but never records the broader selection context. To answer 'why does this edge exist?' a consumer must re-read the linker source."  # 7223
+- op: discuss  # 2cc3
+  at: '2026-05-27T04:21:00Z'  # 2cc3
+  by: agent  # 2cc3
+  actor: jgstern_agent  # 2cc3
+  clock: 2  # 2cc3
+  nonce: 2cc3  # 2cc3
+  message: "Implementation in progress: Edge.derived_from field added to IR + serialization, mechanical transform applied to all 55 linker files (88 Edge.create sites), source-tree scan test enforcing coverage. Schema bump to 0.9.1. Full test suite running."  # 2cc3
+- op: update  # 3d57
+  at: '2026-05-27T04:45:42Z'  # 3d57
+  by: agent  # 3d57
+  actor: jgstern_agent  # 3d57
+  clock: 3  # 3d57
+  nonce: 3d57  # 3d57
+  set:  # 3d57
+    status: pending_validation  # 3d57
+  add:  # 3d57
+    tags: [awaits_bakeoff_validation]  # 3d57
+- op: discuss  # 1f56
+  at: '2026-05-27T04:45:42Z'  # 1f56
+  by: agent  # 1f56
+  actor: jgstern_agent  # 1f56
+  clock: 4  # 1f56
+  nonce: 1f56  # 1f56
+  message: "Fixed in PR #3926 (merged). Edge.derived_from populated across all 55 linker files (88 sites). Schema 0.9.1. Needs BROAD bakeoff to validate derived_from appears on linker-originated edges in real repos."  # 1f56

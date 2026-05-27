@@ -28,3 +28,10 @@
   clock: 2  # 9e76
   nonce: '9e76'  # 9e76
   message: "Retroactive recreation of WI-dilab-hitub (lost to auto-pr ops clobber on 2026-05-26). Merged as PR #3921, commit 955ec5df7e. See description for full details of the clobber mechanism."  # 9e76
+- op: discuss  # cee6
+  at: '2026-05-27T01:50:20Z'  # cee6
+  by: agent  # cee6
+  actor: jgstern_agent  # cee6
+  clock: 3  # cee6
+  nonce: cee6  # cee6
+  message: "This item replaces the lost WI-dilab-hitub-fudif-vavit-zutir-rojak-fimiv-vopah. The original ID (WI-dilab) is referenced in commit messages (955ec5df7e), source code comments, test docstrings, and CHANGELOG.md. The new canonical ID is WI-pusuk. Code references to 'WI-dilab' remain valid as historical markers — they refer to the same body of work."  # cee6
