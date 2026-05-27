@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **279** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 56 core, 4 CLI, 32 tracker)
-- **29912** symbols (functions, classes, methods)
-- **101715** edges by type:
-  - calls: 56716
-  - contains: 21492
-  - imports: 10038
-  - instantiates: 7716
-  - references: 3304
-  - module_attr_ref: 1106
+- **29949** symbols (functions, classes, methods)
+- **101859** edges by type:
+  - calls: 56820
+  - contains: 21502
+  - imports: 10046
+  - instantiates: 7732
+  - references: 3309
+  - module_attr_ref: 1107
   - other: 1343
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 29912 Symbols + 101715 Edges + UsageContexts           │
+│  Output: 29949 Symbols + 101859 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -267,7 +267,7 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 5396.5 | ir.py |
 | `Span` | class | 4253.9 | ir.py |
-| `run_behavior_map` | function | 2993.9 | cli.py |
+| `run_behavior_map` | function | 3004.4 | cli.py |
 | `LinkerContext` | class | 2038.6 | registry.py |
 | `TrackerApp` | class | 1872.3 | tui.py |
 | `load_framework_patterns` | function | 1730.6 | framework_patterns.py |
@@ -812,7 +812,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 56e0d164cb66
+  commit: 405baf5140ac
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
