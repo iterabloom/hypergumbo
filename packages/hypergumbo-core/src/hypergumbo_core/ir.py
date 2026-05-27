@@ -213,6 +213,10 @@ class AnalysisRun:
     # which is honest about "we don't know" rather than the fake "-v1".
     pass_version: str = ""  # axis: identity
 
+    def __post_init__(self) -> None:
+        if not self.config_fingerprint:
+            self.config_fingerprint = _default_config_fingerprint()
+
     def record_failed_file(self, path: str, reason: str) -> None:
         """Record a per-file failure for later drain into limits.failed_files.
 

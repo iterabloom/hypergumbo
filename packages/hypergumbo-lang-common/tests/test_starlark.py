@@ -227,6 +227,13 @@ py_binary(name = "app", srcs = ["app.py"])
         assert result.run.pass_id == "starlark"
         assert result.run.files_analyzed >= 1
 
+    def test_analysis_run_has_config_fingerprint(self, temp_repo: Path) -> None:
+        """INV-kotiz: starlark run must have non-empty config_fingerprint."""
+        (temp_repo / "BUILD").write_text('py_binary(name="app", srcs=["a.py"])')
+        result = analyze_starlark(temp_repo)
+        assert result.run.config_fingerprint != ""
+        assert result.run.config_fingerprint.startswith("sha256:")
+
 
 class TestStarlarkLoadAliases:
     """Tests for Starlark load alias tracking (ADR-0007)."""

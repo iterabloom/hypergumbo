@@ -329,3 +329,10 @@ message User {}
         assert result.run is not None
         assert result.run.pass_id == "proto"
         assert result.run.files_analyzed >= 1
+
+    def test_analysis_run_has_config_fingerprint(self, temp_repo: Path) -> None:
+        """INV-kotiz: proto run must have non-empty config_fingerprint."""
+        (temp_repo / "svc.proto").write_text('syntax = "proto3";\nmessage M {}')
+        result = analyze_proto(temp_repo)
+        assert result.run.config_fingerprint != ""
+        assert result.run.config_fingerprint.startswith("sha256:")

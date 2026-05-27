@@ -263,3 +263,10 @@ service UserService {}
         assert result.run is not None
         assert result.run.pass_id == "thrift"
         assert result.run.files_analyzed >= 1
+
+    def test_analysis_run_has_config_fingerprint(self, temp_repo: Path) -> None:
+        """INV-kotiz: thrift run must have non-empty config_fingerprint."""
+        (temp_repo / "svc.thrift").write_text("service Svc {}")
+        result = analyze_thrift(temp_repo)
+        assert result.run.config_fingerprint != ""
+        assert result.run.config_fingerprint.startswith("sha256:")

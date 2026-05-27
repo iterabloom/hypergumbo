@@ -95,6 +95,32 @@ def test_analysis_run_has_config_fingerprint() -> None:
     assert run.config_fingerprint.startswith("sha256:")
 
 
+def test_analysis_run_direct_construction_gets_config_fingerprint() -> None:
+    """INV-kotiz: direct AnalysisRun() must auto-default config_fingerprint."""
+    run = AnalysisRun(
+        execution_id="uuid:test",
+        pass_id="thrift",
+        version="0.1.0",
+        files_analyzed=0,
+        duration_ms=100,
+    )
+    assert run.config_fingerprint != "", (
+        "Direct AnalysisRun() must not leave config_fingerprint empty"
+    )
+    assert run.config_fingerprint.startswith("sha256:")
+
+
+def test_analysis_run_explicit_config_fingerprint_preserved() -> None:
+    """INV-kotiz: explicit config_fingerprint must not be overwritten."""
+    run = AnalysisRun(
+        execution_id="uuid:test",
+        pass_id="custom",
+        version="0.1.0",
+        config_fingerprint="sha256:custom123",
+    )
+    assert run.config_fingerprint == "sha256:custom123"
+
+
 def test_analysis_run_has_repo_fingerprint() -> None:
     """AnalysisRun should have repo_fingerprint for cache keying."""
     run = AnalysisRun.create(pass_id="python", version="0.5.0")
