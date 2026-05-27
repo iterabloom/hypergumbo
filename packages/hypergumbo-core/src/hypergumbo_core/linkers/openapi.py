@@ -373,6 +373,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                     },
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    derived_from=[symbol.id, route.id],
                 )
                 result_edges.append(edge)
                 matched = True
@@ -398,6 +399,7 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                         },
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
+                        derived_from=[symbol.id, route.id],
                     )
                     result_edges.append(edge)
 

@@ -373,6 +373,7 @@ def link_pyffi(
                     access_mode="write",
                     dest_access_mode="read",
                     meta=edge_meta,
+                    derived_from=[src_sym.id, c_sym.id],
                 ))
             elif is_stdlib:
                 # Stdlib call with no repo-local match — emit unresolved edge
@@ -389,6 +390,7 @@ def link_pyffi(
                     access_mode="write",
                     dest_access_mode="read",
                     meta={"bridge_kind": "ffi"},
+                    derived_from=[src_sym.id, dst],
                 ))
             else:
                 # Non-stdlib call with repo-local C symbol. INV-zuhub: multi-value
@@ -414,6 +416,7 @@ def link_pyffi(
                     access_mode="write",
                     dest_access_mode="read",
                     meta=edge_meta,
+                    derived_from=[src_sym.id, c_sym.id],
                 ))
 
     # --- Phase 2: Match PyO3 Rust symbols to Python unresolved calls ---
@@ -468,6 +471,7 @@ def link_pyffi(
                 access_mode="write",
                 dest_access_mode="read",
                 meta=pyo3_meta,
+                derived_from=[edge.src, rust_sym.id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

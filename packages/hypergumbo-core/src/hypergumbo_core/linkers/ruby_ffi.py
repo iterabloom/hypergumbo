@@ -252,6 +252,7 @@ def link_ruby_ffi(
                     access_mode="write",
                     dest_access_mode="read",
                     meta=edge_meta,
+                    derived_from=[src_sym.id, c_sym.id],
                 ))
             else:
                 # Unresolved: external library (e.g., libzmq, libc)
@@ -269,6 +270,7 @@ def link_ruby_ffi(
                     access_mode="write",
                     dest_access_mode="read",
                     meta={"bridge_kind": "ffi", "framework_dispatch": "ruby_ffi_attach"},
+                    derived_from=[src_sym.id, dst],
                 ))
 
     # --- Phase 2: Scan C files for rb_define_method patterns ---
@@ -319,6 +321,7 @@ def link_ruby_ffi(
                 access_mode="write",
                 dest_access_mode="read",
                 meta=edge_meta,
+                derived_from=[c_sym.id, c_sym.id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

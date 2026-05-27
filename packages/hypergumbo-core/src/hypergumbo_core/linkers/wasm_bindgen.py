@@ -295,6 +295,7 @@ def link_wasm_bindgen(
                 access_mode="write",
                 dest_access_mode="read",
                 meta={"bridge_kind": "wasm", "framework_dispatch": "wasm_bindgen_import"},
+                derived_from=[src_id, target_sym.id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
@@ -436,6 +437,7 @@ def _create_wasm_load_edges(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta={"framework_dispatch": "wasm_instantiate"},
+                derived_from=[src_id, wasm_module_id],
             ))
 
     return edges, symbols

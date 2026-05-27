@@ -347,6 +347,7 @@ def link_django_orm_dispatch(ctx: LinkerContext) -> LinkerResult:
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
+                    derived_from=[class_sym.id, target.id],
                 ),
             )
 

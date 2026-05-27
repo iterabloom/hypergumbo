@@ -806,6 +806,7 @@ def link_js_modules(
                 origin_run_id=run.execution_id,
                 evidence_type=evidence_type,
                 confidence=import_confidence,
+                derived_from=[edge.src, mod_sym.id],
             ))
 
             # Create module_exports edges (only once per module_file)
@@ -837,6 +838,7 @@ def link_js_modules(
                         origin_run_id=run.execution_id,
                         evidence_type="module_export_heuristic",
                         confidence=0.75,
+                        derived_from=[mod_sym.id, file_sym.id],
                     ))
 
         elif not _is_relative_import(import_path):
@@ -880,6 +882,7 @@ def link_js_modules(
                 evidence_type="ast_import",
                 confidence=0.95,
                 meta={"framework_dispatch": "npm_package"},
+                derived_from=[edge.src, pkg_sym.id],
             ))
 
     run.files_analyzed = len(module_file_cache)

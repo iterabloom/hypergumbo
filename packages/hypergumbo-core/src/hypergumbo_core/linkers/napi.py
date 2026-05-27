@@ -294,6 +294,7 @@ def link_napi(
             access_mode="write",
             dest_access_mode="read",
             meta=edge_meta,
+            derived_from=[edge.src, target_sym.id],
         ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

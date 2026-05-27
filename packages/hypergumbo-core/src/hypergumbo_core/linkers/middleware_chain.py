@@ -116,6 +116,7 @@ def link_middleware_chain(ctx: LinkerContext) -> LinkerResult:
                 confidence=0.70,
                 meta={"framework_dispatch": "middleware_chain"},
                 origin_run_id=run.execution_id,
+                derived_from=[src.id, dst.id],
             )
             edges.append(edge)
 

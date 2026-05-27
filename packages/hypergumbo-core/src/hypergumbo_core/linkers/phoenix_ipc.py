@@ -328,6 +328,7 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="naming_convention",
+                    derived_from=[src_id, dst_id],
                 )
                 edge.meta = {
                     "channel_kind": "ipc",

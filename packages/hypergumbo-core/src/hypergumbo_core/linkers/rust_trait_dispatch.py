@@ -180,6 +180,7 @@ def link_rust_trait_dispatch(ctx: LinkerContext) -> LinkerResult:
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta={"framework_dispatch": "rust_trait_dispatch"},
+                    derived_from=[trait_sym.id, method.id],
                 ),
             )
 

@@ -403,6 +403,7 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
+                                derived_from=[enclosing.id, handler.id],
                             )
                             edge.meta = {
                                 "framework_dispatch": "otp_genserver",
@@ -496,6 +497,7 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
+                                derived_from=[enclosing.id, handler.id],
                             )
                             edge.meta = {
                                 "framework_dispatch": "otp_genserver",

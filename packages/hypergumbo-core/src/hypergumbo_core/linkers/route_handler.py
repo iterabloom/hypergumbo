@@ -780,6 +780,7 @@ def link_routes_to_handlers(
                     else handler_meta
                 ),
                 origin_run_id=run.execution_id,
+                derived_from=[route.id, handler.id],
             )
             new_edges.append(edge)
             routes_linked += 1
@@ -823,6 +824,7 @@ def link_routes_to_handlers(
                         else la_meta_base
                     ),
                     origin_run_id=run.execution_id,
+                    derived_from=[route.id, target.id],
                 )
                 new_edges.append(la_edge)
 

@@ -789,6 +789,7 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                         "subscriber_event_type": sub_pattern.event_type,
                         "detection_pattern": "event_name",
                     },
+                    derived_from=[pub_symbol.id, sub_symbol.id],
                 )
                 edges.append(edge)
 

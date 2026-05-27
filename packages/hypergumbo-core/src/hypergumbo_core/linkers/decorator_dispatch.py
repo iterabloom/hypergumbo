@@ -168,6 +168,7 @@ def link_decorator_dispatch(ctx: LinkerContext) -> LinkerResult:
                 evidence_type="ast_call_direct",
                 confidence=0.70,
                 meta={"framework_dispatch": "registry_dispatch"},
+                derived_from=[site_sym.id, handler.id],
             )
             edges.append(edge)
 

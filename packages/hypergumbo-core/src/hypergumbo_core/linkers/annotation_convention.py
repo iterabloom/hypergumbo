@@ -258,6 +258,7 @@ def link_annotations(
                     dest_access_mode="read",
                     channel=channel,
                     meta={"mechanism": "annotation"},
+                    derived_from=[pub_id, sub_id],
                 ))
 
     # --- Create route symbols for @hg:route directives ---
@@ -357,6 +358,7 @@ def link_annotations(
                 evidence_type="hg_annotation",
                 channel=target_name,
                 meta=edge_meta,
+                derived_from=[disp_id, target.id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

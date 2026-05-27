@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **279** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 56 core, 4 CLI, 32 tracker)
-- **29873** symbols (functions, classes, methods)
-- **101614** edges by type:
-  - calls: 56668
-  - contains: 21459
-  - imports: 10023
+- **29886** symbols (functions, classes, methods)
+- **101653** edges by type:
+  - calls: 56687
+  - contains: 21468
+  - imports: 10030
   - instantiates: 7715
-  - references: 3303
-  - module_attr_ref: 1103
+  - references: 3304
+  - module_attr_ref: 1106
   - other: 1343
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 29873 Symbols + 101614 Edges + UsageContexts           │
+│  Output: 29886 Symbols + 101653 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -232,6 +232,7 @@ A relationship between two symbols (e.g., function calls).
 - `evidence_spans`: Structured locations of evidence
 - `is_resolved`: Whether the dst symbol was resolved at analysis time. Default True (the ~90% case); set to False for unresolved external targets per ADR-0028.
 - `dst_ref`: Structured identity for the dst endpoint, populated when the dst points at an external symbol (stdlib / dependency / unresolved external). Canonical source of truth for external dsts — the legacy `dst` string is built from the same `ExternalRef` and stays populated alongside for back-compat. None for in-repo dsts whose `dst` is a real Symbol ID.
+- `derived_from`: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
 
@@ -811,7 +812,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 9decd00d81d2
+  commit: 1a88a326e910
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

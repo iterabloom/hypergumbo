@@ -532,6 +532,7 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                             "topic_type": "variable" if is_variable_match else "literal",
                             "cross_language": is_cross_language,
                         },
+                        derived_from=[pub_symbol.id, sub_symbol.id],
                     )
                     edges.append(edge)
 

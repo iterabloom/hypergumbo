@@ -264,6 +264,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="naming_convention",
+            derived_from=[parent_sym.id, sym.id],
         ))
         # Track to avoid duplicates within this run
         existing_contains.add(pair)
@@ -310,6 +311,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="canonical_name",
+            derived_from=[parent_sym.id, sym.id],
         ))
         existing_contains.add(pair)
 
@@ -367,6 +369,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="span_overlap",
+            derived_from=[best.id, sym.id],
         ))
         existing_contains.add(pair)
 

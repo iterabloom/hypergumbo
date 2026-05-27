@@ -543,6 +543,7 @@ class Edge:
         evidence_spans: Structured locations of evidence
         is_resolved: Whether the dst symbol was resolved at analysis time. Default True (the ~90% case); set to False for unresolved external targets per ADR-0028.
         dst_ref: Structured identity for the dst endpoint, populated when the dst points at an external symbol (stdlib / dependency / unresolved external). Canonical source of truth for external dsts — the legacy `dst` string is built from the same `ExternalRef` and stays populated alongside for back-compat. None for in-repo dsts whose `dst` is a real Symbol ID.
+        derived_from: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
     """
@@ -562,6 +563,7 @@ class Edge:
     evidence_spans: Optional[List[Dict[str, Any]]] = None
     is_resolved: bool = True
     dst_ref: Optional[ExternalRef] = None
+    derived_from: Optional[List[str]] = None  # axis: identity
     quality: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
 
@@ -601,6 +603,7 @@ class Edge:
         evidence_spans: Optional[List[Dict[str, Any]]] = None,
         is_resolved: bool = True,
         dst_ref: Optional[ExternalRef] = None,
+        derived_from: Optional[List[str]] = None,
         meta: Optional[Dict[str, Any]] = None,
         access_mode: Optional[str] = None,
         dest_access_mode: Optional[str] = None,
@@ -654,6 +657,7 @@ class Edge:
             evidence_spans=evidence_spans,
             is_resolved=is_resolved,
             dst_ref=dst_ref,
+            derived_from=derived_from,
             meta=meta,
         )
 
@@ -687,6 +691,8 @@ class Edge:
         }
         if self.dst_ref is not None:
             out["dst_ref"] = self.dst_ref.to_dict()
+        if self.derived_from is not None:
+            out["derived_from"] = self.derived_from
         return out
 
     @classmethod
@@ -719,6 +725,7 @@ class Edge:
             evidence_spans=meta.get("evidence_spans"),
             is_resolved=d.get("is_resolved", True),
             dst_ref=ExternalRef.from_dict(dst_ref_raw) if dst_ref_raw else None,
+            derived_from=d.get("derived_from"),
             quality=d.get("quality"),
             meta=meta,
         )

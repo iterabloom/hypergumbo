@@ -233,6 +233,7 @@ def go_memberlist_linker(ctx: LinkerContext) -> LinkerResult:
                             "delegate_method": _short_name(target.name),
                             "framework_dispatch": "memberlist",
                         },
+                        derived_from=[anchor.id, target.id],
                     ),
                 )
 

@@ -231,6 +231,7 @@ def _create_includes_edges(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_includes",
                 meta=edge_meta,
+                derived_from=[sym.id, target_sym.id],
             ))
 
     return edges
@@ -366,6 +367,7 @@ def _create_inheritance_edges(
                 origin_run_id=run.execution_id,
                 evidence_type=f"ast_{edge_type}",
                 meta=edge_meta,
+                derived_from=[sym.id, target_sym.id],
             )
             edges.append(edge)
 

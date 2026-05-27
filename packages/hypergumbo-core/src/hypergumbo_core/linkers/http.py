@@ -1491,6 +1491,7 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
+                derived_from=[client_symbol.id, matched_route.id],
             )
             edge.meta = {
                 "protocol": "http",

@@ -274,6 +274,7 @@ def link_via_strategies(
                         confidence=0.85,
                         meta={"detection_pattern": emission.detection_pattern},
                         origin_run_id=run.execution_id,
+                        derived_from=[emission.action_symbol_id, template_id],
                     )
                 )
 

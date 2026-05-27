@@ -209,6 +209,7 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 evidence_type="ast_call",
                 confidence=confidence,
                 meta=edge_meta,
+                derived_from=[caller_id, chosen_method.id],
             ))
             # Mark resolved so a second unresolved sibling on the same
             # method doesn't double-emit.

@@ -679,6 +679,7 @@ def link_tauri_ipc(
                     "protocol": "ipc",
                     "framework_dispatch": "tauri_invoke",
                 },
+                derived_from=[src_id, target_sym.id],
             ))
 
     # Phase 4: Specta wrapper resolution
@@ -793,6 +794,7 @@ def link_tauri_ipc(
                     evidence_type="ast_import",
                     access_mode="write",
                     meta={"framework_dispatch": "specta_wrapper"},
+                    derived_from=[caller_id, publisher_id],
                 ))
 
     # Phase 5: Rust→TS event emission (emit/emit_all/emit_to → listen/once)
@@ -923,6 +925,7 @@ def link_tauri_ipc(
                             "channel_kind": "ipc",
                             "framework_dispatch": "tauri_emit_listen",
                         },
+                        derived_from=[src_id, dst_id],
                     ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

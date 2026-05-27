@@ -788,7 +788,9 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 
 ### edges[] — relationships
 
-Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenance fields (`origin`, `origin_run_id`, `origin_run_signature`), `quality`, and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
+Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenance fields (`origin`, `origin_run_id`, `origin_run_signature`, `derived_from`), `quality`, and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
+
+**derived_from (INV-rukor):** `derived_from: list[str] | null` records which Symbol (or Edge) IDs the producer consumed to construct this Edge. Populated by linkers (always non-null); null for analyzer-originated edges whose derivation is the AST itself. Enables answering "why does this edge exist?" without re-reading linker source code.
 
 **Multi-pass evidence (optional):** When multiple analysis passes observe the same relationship, `meta.evidence[]` accumulates their individual observations. The top-level `meta.evidence_type`, `meta.evidence_lang`, and `meta.evidence_spans` always reflect the primary (highest-confidence) record.
 

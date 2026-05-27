@@ -286,6 +286,7 @@ def link_react_components(
                 origin_run_id=run.execution_id,
                 evidence_type="jsx_element",
                 meta=edge_meta,
+                derived_from=[src_id, target_sym.id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

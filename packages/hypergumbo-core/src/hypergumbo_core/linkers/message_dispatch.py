@@ -331,6 +331,7 @@ def link_message_dispatch(
                 dest_access_mode="read",
                 channel=write.channel,
                 meta={"channel_kind": "message_bus"},
+                derived_from=[pub_id, sub_id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

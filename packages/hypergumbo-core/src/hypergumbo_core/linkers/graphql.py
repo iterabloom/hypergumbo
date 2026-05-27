@@ -292,6 +292,7 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
+                    derived_from=[client_symbol.id, schema_sym.id],
                 )
                 # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
                 # leak; meta["framework_dispatch"]="graphql_operation".

@@ -354,6 +354,7 @@ def link_crypto_flow(
                 dest_access_mode="read",
                 channel=write.channel,
                 meta={"detection_pattern": "crypto_api"},
+                derived_from=[pub_id, sub_id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

@@ -628,6 +628,7 @@ def _link_go_methods_to_rpc_routes(
             origin_run_id=run.execution_id,
             evidence_type="ast_call_direct",
             meta={"framework_dispatch": "grpc_go_server"},
+            derived_from=[sym.id, route_id],
         ))
 
     return edges
@@ -803,6 +804,7 @@ def link_grpc(
                     "protocol": "grpc",
                     "framework_dispatch": "grpc_service_match",
                 },
+                derived_from=[stub_id, servicer_id],
             ))
 
     # WI-ropoz: fallback — stubs/clients without an in-tree servicer
@@ -854,6 +856,7 @@ def link_grpc(
             evidence_type="ast_call_direct",
             is_resolved=False,
             meta=edge_meta,
+            derived_from=[stub_id, target.id],
         ))
 
     # Create route symbols for proto RPC definitions.
@@ -920,6 +923,7 @@ def link_grpc(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta=bridge_meta,
+                derived_from=[sym.id, target_svc.id],
             ))
 
     for rpc in all_rpc_defs:
@@ -1003,6 +1007,7 @@ def link_grpc(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta=route_meta,
+                derived_from=[route_id, target_svc.id],
             ))
 
     # Link Go implementation methods to proto RPC route symbols.
@@ -1143,6 +1148,7 @@ def _resolve_unresolved_grpc_edges(
                 origin_run_id=run.execution_id,
                 evidence_type="grpc_stub_resolution",
                 is_resolved=False,
+                derived_from=[edge.src, best_candidate.id],
             ))
 
     return resolved_edges

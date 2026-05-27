@@ -802,6 +802,7 @@ def link_websocket(
                                 send_pat.pattern_type
                             ],
                         },
+                        derived_from=[_make_file_id(_language_for_file(send_pat.file_path, send_pat.pattern_type), send_pat.file_path), _make_file_id(_language_for_file(recv_pat.file_path, recv_pat.pattern_type), recv_pat.file_path)],
                     )
                     edges.append(edge)
 
@@ -832,6 +833,7 @@ def link_websocket(
                 "construct": "websocket_endpoint",
                 "framework_dispatch": _PATTERN_TYPE_TO_FRAMEWORK[ep.pattern_type],
             },
+            derived_from=[_make_file_id(_language_for_file(ep.file_path, ep.pattern_type), ep.file_path), _make_symbol_id(ep.file_path, ep.line, ep.event, 'endpoint')],
         ))
 
     # WI-zolot: cross-language client↔server bridge.
@@ -891,6 +893,7 @@ def link_websocket(
                             server_ep.pattern_type
                         ],
                     },
+                    derived_from=[_make_file_id(client_lang, client_ep.file_path), _make_symbol_id(server_ep.file_path, server_ep.line, server_ep.event, 'endpoint')],
                 ))
 
     run.files_analyzed = files_analyzed

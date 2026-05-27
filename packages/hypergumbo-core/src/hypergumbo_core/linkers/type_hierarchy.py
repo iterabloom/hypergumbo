@@ -575,6 +575,7 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="type_hierarchy",
+                    derived_from=[parent_method.id, override.id],
                 )
                 new_edges.append(edge)
 

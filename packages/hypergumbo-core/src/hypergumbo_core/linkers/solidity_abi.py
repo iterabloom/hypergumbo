@@ -234,6 +234,7 @@ def link_solidity_abi(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta={"detection_pattern": "abi_name_match"},
+                derived_from=[syn_id, target.id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

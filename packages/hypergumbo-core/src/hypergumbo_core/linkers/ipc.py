@@ -563,6 +563,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                         "channel_kind": "ipc",
                         "channel_type": "variable" if is_variable_match else "literal",
                     },
+                    derived_from=[src_id, dst_id],
                 )
                 edges.append(edge)
 
@@ -715,6 +716,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                         "namespace": namespace,
                         "framework_dispatch": "electron_context_bridge",
                     },
+                    derived_from=[caller_id, preload_send_id],
                 )
                 edges.append(edge)
 
@@ -813,6 +815,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                         "function": func_name,
                         "framework_dispatch": "electron_context_bridge",
                     },
+                    derived_from=[caller_id, preload_send_id],
                 )
                 edges.append(edge)
 

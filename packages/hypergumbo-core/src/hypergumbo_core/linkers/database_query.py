@@ -452,6 +452,7 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
                 origin_run_id=run.execution_id,
                 evidence_type="naming_convention",
                 meta=edge_meta,
+                derived_from=[query_symbol.id, table_sym.id],
             )
             edges.append(edge)
 

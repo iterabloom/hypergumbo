@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.9.0"
+      "const": "0.9.1"
     },
     "confidence_model": {
       "type": "string",
@@ -826,6 +826,22 @@
           ],
           "default": null,
           "description": "Structured identity for the dst endpoint when it points at an external symbol (stdlib, dependency, unresolved external). Per WI-tihup, this is the canonical source of truth for external-target identity \u2014 the legacy `dst` string field is built from the same ExternalRef and stays populated alongside for back-compat with consumers that haven't migrated. None when dst points at an in-repo Symbol (whose `dst` field is a real Symbol ID)."
+        },
+        "derived_from": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; null for analyzer-originated edges."
         },
         "quality": {
           "oneOf": [

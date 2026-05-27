@@ -565,6 +565,7 @@ def _resolve_site1(
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited",
         is_resolved=True,
+        derived_from=[edge.src, resolved_target.id],
     )
 
 
@@ -620,6 +621,7 @@ def _resolve_site2(
             origin=PASS_ID, origin_run_id=run.execution_id,
             evidence_type="ast_call_type_inferred",
             is_resolved=True,
+            derived_from=[edge.src, direct.id],
         )
 
     # Step 2: MRO walk (requires a registered walker).
@@ -639,6 +641,7 @@ def _resolve_site2(
                     origin=PASS_ID, origin_run_id=run.execution_id,
                     evidence_type="ast_call_inherited_method",
                     is_resolved=True,
+                    derived_from=[edge.src, via_mro.id],
                 )
 
     # Step 3: fallback to the type symbol itself.
@@ -654,6 +657,7 @@ def _resolve_site2(
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited_method",
         is_resolved=True,
+        derived_from=[edge.src, type_sym.id],
     )
 
 
@@ -733,4 +737,5 @@ def _resolve_site3(
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited_field",
         is_resolved=True,
+        derived_from=[edge.src, resolved_target.id],
     )

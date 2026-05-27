@@ -273,6 +273,7 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
             evidence_type="ast_import",
             confidence=0.90,
             meta={"framework_dispatch": "vue_component"},
+            derived_from=[edge.src, target_file_sym.id],
         )
         new_edges.append(resolved_edge)
 

@@ -284,6 +284,7 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
             access_mode="write",
             dest_access_mode="read",
             meta=edge_meta,
+            derived_from=[sym.id, native_sym.id],
         )
         edges.append(edge)
 

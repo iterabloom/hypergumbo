@@ -889,6 +889,7 @@ def _connect_synthetic_to_enclosing(
             origin=pass_id,
             origin_run_id=run_id,
             evidence_type="enclosing_scope",
+            derived_from=[enclosing.id, sym.id],
         ))
 
     return edges

@@ -122,6 +122,7 @@ def link_vue_template_methods(
             evidence_type="ast_call_direct",
             confidence=0.90,
             meta={"framework_dispatch": "vue_event_handler"},
+            derived_from=[sym.id, target.id],
         )
         new_edges.append(edge)
 

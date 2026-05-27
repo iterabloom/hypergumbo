@@ -447,6 +447,7 @@ def link_subprocess(root: Path, cli_symbols: list[Symbol]) -> SubprocessLinkResu
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
+                    derived_from=[call_symbol.id, target_symbol.id],
                 ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

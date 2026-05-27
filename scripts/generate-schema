@@ -537,6 +537,22 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "Symbol (whose `dst` field is a real Symbol ID)."
                 ),
             },
+            "derived_from": {
+                "oneOf": [
+                    {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                    },
+                    {"type": "null"},
+                ],
+                "default": None,
+                "description": (
+                    "Symbol (or Edge) IDs the producer consumed "
+                    "to construct this Edge (INV-rukor). Populated "
+                    "by linkers; null for analyzer-originated edges."
+                ),
+            },
             "quality": {
                 "oneOf": [{"type": "object"}, {"type": "null"}],
                 "description": "Quality assessment"

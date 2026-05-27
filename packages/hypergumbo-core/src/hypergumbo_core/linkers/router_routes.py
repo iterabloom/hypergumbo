@@ -198,6 +198,7 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
                 confidence=0.80,
                 meta={"mechanism": "route_registration", "framework_dispatch": "router_routes"},
                 origin_run_id=run.execution_id,
+                derived_from=[winner.id, route.id],
             )
             edges.append(edge)
 

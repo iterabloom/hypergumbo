@@ -627,6 +627,7 @@ def _create_di_edges(
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
+                    derived_from=[iface_m.id, impl_m.id],
                 ))
 
     return edges
@@ -715,6 +716,7 @@ def _create_di_registers_edges(
             origin_run_id=run.execution_id,
             evidence_type="ast_decorator",
             meta=edge_meta,
+            derived_from=[module_sym.id, provider_sym.id],
         ))
 
     return edges

@@ -474,6 +474,7 @@ def link_yjs_crdt(
                     "channel_kind": "crdt",
                     "framework_dispatch": "yjs_crdt",
                 },
+                derived_from=[pub_id, sub_id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
