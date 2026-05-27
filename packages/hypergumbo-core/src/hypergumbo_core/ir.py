@@ -206,11 +206,9 @@ class AnalysisRun:
     warnings: List[str] = field(default_factory=list)
     started_at: str = ""  # axis: free-text — ISO-8601 UTC timestamp; consumers display, never branch on the value.
     duration_ms: int = 0
-    # INV-morag option A: real per-pass version (code-hash of the pass
-    # module). Default "" because PR 1 introduces the field additively;
-    # PR 2 propagates non-empty values to every registration site. Existing
-    # producers that don't yet pass pass_version keep the empty default,
-    # which is honest about "we don't know" rather than the fake "-v1".
+    # Code-hash of the pass module (via compute_pass_version). Analyzers
+    # set it from self.pass_version; linkers are stamped by _stamp_pass_version
+    # in run_all_linkers. Distinct from ``version`` (the package version).
     pass_version: str = ""  # axis: identity
 
     def __post_init__(self) -> None:
@@ -241,15 +239,15 @@ class AnalysisRun:
 
         Args:
             pass_id: Identifier for the analysis pass (e.g., 'python-ast-v1')
-            version: Hypergumbo version (e.g., '0.5.0')
+            version: Hypergumbo package version (``PASS_VERSION``). All
+                producers pass the same value (INV-kohat).
             config_fingerprint: Hash of effective config (defaults to empty config hash)
             toolchain: Runtime info dict (defaults to current Python runtime)
             repo_fingerprint: Hash of repo state for cache keying (optional)
-            pass_version: Real per-pass version (INV-morag option A) — typically
-                computed via :func:`compute_pass_version` at registration time.
-                Default "" preserves back-compat for producers that haven't
-                opted in yet; the field is honest about "unknown" rather than
-                the legacy fake ``-v1``.
+            pass_version: Code-hash of the pass module (via
+                :func:`compute_pass_version`). Analyzers set this from
+                ``self.pass_version``; linkers are stamped centrally by
+                ``_stamp_pass_version`` in ``run_all_linkers``.
         """
         tc = toolchain if toolchain is not None else _get_python_toolchain()
         cfg_fp = config_fingerprint if config_fingerprint else _default_config_fingerprint()

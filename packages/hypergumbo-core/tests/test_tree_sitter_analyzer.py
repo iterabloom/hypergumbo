@@ -39,7 +39,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_symbol_id,
 )
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from hypergumbo_core.ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import NameResolver
 
 
@@ -270,7 +270,7 @@ class TestTreeSitterAnalyzerBasic:
         assert result.usage_contexts == []
         assert result.run is not None
         assert result.run.pass_id == "stub"
-        assert result.run.version == "test-0.1.0"
+        assert result.run.version == PASS_VERSION
         assert result.run.files_analyzed == 0
         assert result.run.duration_ms >= 0
         assert not result.skipped
@@ -309,6 +309,31 @@ class TestTreeSitterAnalyzerBasic:
         assert sym.language == "stub"
         assert sym.origin == ["stub"]
         assert sym.kind == "function"
+
+
+class TestAnalyzerVersionSemantic:
+    """INV-kohat: AnalysisRun.version always holds package version, not code-hash."""
+
+    def test_version_is_package_version_not_code_hash(self, tmp_path: Path) -> None:
+        """run.version must equal PASS_VERSION even when pass_version is set."""
+        analyzer = StubAnalyzer()
+        assert analyzer.pass_version == "test-0.1.0"
+        result = analyzer.analyze(tmp_path)
+        assert result.run.version == PASS_VERSION
+
+    def test_pass_version_carries_code_hash(self, tmp_path: Path) -> None:
+        """run.pass_version must hold the analyzer's code-hash."""
+        analyzer = StubAnalyzer()
+        result = analyzer.analyze(tmp_path)
+        assert result.run.pass_version == "test-0.1.0"
+
+    def test_version_fallback_when_no_pass_version(self, tmp_path: Path) -> None:
+        """run.version still equals PASS_VERSION when pass_version is empty."""
+        analyzer = StubAnalyzer()
+        analyzer.pass_version = ""
+        result = analyzer.analyze(tmp_path)
+        assert result.run.version == PASS_VERSION
+        assert result.run.pass_version == ""
 
 
 class TestTreeSitterAnalyzerSkipped:

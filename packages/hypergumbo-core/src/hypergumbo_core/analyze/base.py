@@ -1632,7 +1632,7 @@ class TreeSitterAnalyzer:
     """Pass identifier (e.g., "go", "rust" — no legacy "-v1" suffix per INV-morag PR 2)."""
 
     pass_version: str = ""
-    """Version string (e.g., "hypergumbo-0.1.0")."""
+    """Code-hash of the analyzer module (via compute_pass_version)."""
 
     file_patterns: ClassVar[list[str]] = []
     """Glob patterns for source files (e.g., ["*.go"], ["*.rs"])."""
@@ -2271,8 +2271,11 @@ class TreeSitterAnalyzer:
         """
         start_time = time.time()
         effective_pass_id = self.pass_id or make_pass_id(self.lang)
-        effective_pass_version = self.pass_version or PASS_VERSION
-        run = AnalysisRun.create(pass_id=effective_pass_id, version=effective_pass_version)
+        run = AnalysisRun.create(
+            pass_id=effective_pass_id,
+            version=PASS_VERSION,
+            pass_version=self.pass_version,
+        )
 
         # 1. Check grammar availability
         if not self._check_grammar_available():
