@@ -1,0 +1,23 @@
+- op: create  # 999a
+  at: '2026-05-27T20:14:02Z'  # 999a
+  by: agent  # 999a
+  actor: jgstern_agent  # 999a
+  clock: 1  # 999a
+  nonce: 999a  # 999a
+  data:  # 999a
+    kind: invariant  # 999a
+    title: "AnalysisRun.version semantic split: analyzers stamp code-hash, linkers stamp package version"  # 999a
+    status: violated  # 999a
+    priority: 2  # 999a
+    parent:  # 999a
+    tags:  # 999a
+    - provenance  # 999a
+    - concept_audit  # 999a
+    isbefore: []  # 999a
+    duplicate_of: []  # 999a
+    not_duplicate_of: []  # 999a
+    pr_ref:  # 999a
+    description: "Filed during fundamental concept audit 2026-05-27 (provenance fields on IR dataclasses).\n\nEvidence:\n- analyze/base.py:2274-2275: effective_pass_version = self.pass_version or PASS_VERSION; run = AnalysisRun.create(pass_id=..., version=effective_pass_version)\n- linkers/containment.py (and all ~35 linker bodies): run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION) where PASS_VERSION = __version__ = \"5.0.1\"\n- ir.py:165-170: _compute_run_signature hashes version, so run_signature includes different-kind data per producer type\n\nFix: either (a) make AnalysisRun.version always hold the package version, and use pass_version for the code-hash (which is what the INV-morag design intended but didn't complete for linkers), or (b) rename version to something unambiguous. The simplest fix: linkers should pass version=PASS_VERSION, pass_version=linker.pass_version (see F4 companion item)."  # 999a
+    fields:  # 999a
+      statement: "AnalysisRun.version must hold the same semantic content (code-hash or package-version, not both) regardless of whether the creating producer is an analyzer or a linker"  # 999a
+      root_cause: "Analyzers pass self.pass_version (code-hash) as the version arg to AnalysisRun.create(); linkers pass PASS_VERSION (package version __version__). _compute_run_signature hashes version for cache keying, making run_signatures semantically incomparable across analyzer vs linker runs."  # 999a

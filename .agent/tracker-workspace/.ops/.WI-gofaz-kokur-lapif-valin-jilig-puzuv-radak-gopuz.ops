@@ -1,0 +1,21 @@
+- op: create  # ba31
+  at: '2026-05-27T20:06:25Z'  # ba31
+  by: agent  # ba31
+  actor: jgstern_agent  # ba31
+  clock: 1  # ba31
+  nonce: ba31  # ba31
+  data:  # ba31
+    kind: work_item  # ba31
+    title: "Add missing db_write/db_read/process_send/logging entries to AUTO_SINK_ZONE_MAP / AUTO_SOURCE_LABEL_MAP (taint-io_boundary coverage gap)"  # ba31
+    status: todo_hard  # ba31
+    priority: 3  # ba31
+    parent:  # ba31
+    tags:  # ba31
+    - analysis_quality  # ba31
+    - concept_audit  # ba31
+    isbefore: []  # ba31
+    duplicate_of: []  # ba31
+    not_duplicate_of: []  # ba31
+    pr_ref:  # ba31
+    description: "Filed during fundamental concept audit 2026-05-27 (taint/dataflow/io-boundary layering).\n\nGap: 6 of 15 io_boundary.boundary_types values have no entry in AUTO_SINK_ZONE_MAP or AUTO_SOURCE_LABEL_MAP (taint.py:511-533). Of these:\n- fs_read, browser_storage_read: documented exclusions (taint.py:506-508)\n- db_write: UNDOCUMENTED exclusion. Real sink — writing tainted data to a database is the same trust question as fs_write or net_send. 5 languages have populated db_write catalogs (Haskell, Java, Swift, Erlang, Elixir).\n- db_read: UNDOCUMENTED exclusion. Potential source (user-controlled data from DB). Same 5 languages.\n- process_send: UNDOCUMENTED exclusion (Erlang only).\n- logging: UNDOCUMENTED exclusion (C, Elixir, Erlang). Arguably a sink — sensitive data in log output is a real vulnerability class (CWE-532).\n\nFix: For each undocumented exclusion, either add an AUTO_SINK_ZONE_MAP/AUTO_SOURCE_LABEL_MAP entry with the appropriate zone/label, or add an explicit inline comment explaining why it's intentionally excluded (same shape as the fs_read comment). Proposed mappings:\n- db_write -> (\"database\", \"untrusted\")\n- db_read -> taint_label \"untrusted_input\"\n- logging -> (\"logging\", \"untrusted\") — CWE-532 sensitive data exposure via logs\n- process_send -> (\"ipc\", \"untrusted\") — structurally same as ipc_send\n\nAfter adding, update tests and verify no regressions in verify-claims on hypergumbo's own claims file."  # ba31
+    fields: {}  # ba31

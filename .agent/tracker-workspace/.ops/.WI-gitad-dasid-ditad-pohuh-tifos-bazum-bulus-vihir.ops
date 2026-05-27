@@ -1,0 +1,21 @@
+- op: create  # e2d5
+  at: '2026-05-27T20:07:00Z'  # e2d5
+  by: agent  # e2d5
+  actor: jgstern_agent  # e2d5
+  clock: 1  # e2d5
+  nonce: e2d5  # e2d5
+  data:  # e2d5
+    kind: work_item  # e2d5
+    title: "HIGH_RISK_PRIMITIVES drift guard: property test asserting each entry exists in at least one io_primitives YAML catalog"  # e2d5
+    status: todo_hard  # e2d5
+    priority: 4  # e2d5
+    parent:  # e2d5
+    tags:  # e2d5
+    - analysis_quality  # e2d5
+    - concept_audit  # e2d5
+    isbefore: []  # e2d5
+    duplicate_of: []  # e2d5
+    not_duplicate_of: []  # e2d5
+    pr_ref:  # e2d5
+    description: "Filed during fundamental concept audit 2026-05-27 (taint/dataflow/io-boundary layering).\n\nio_boundary.py:168-196 defines a frozenset HIGH_RISK_PRIMITIVES covering destructive fs, subprocess, and network outbound primitives across 6 languages (Python, Go, Java, Rust, JavaScript, C). This set is manually maintained with no automated sync against io_primitives/*.yaml.\n\nFailure mode: a primitive gets renamed or removed from a YAML catalog but stays in HIGH_RISK_PRIMITIVES (phantom entry — the high_risk flag never fires). Or a new high-risk primitive gets added to YAML but not to the frozenset (missing entry — no warning for dangerous calls).\n\nFix: property test that loads all io_primitives YAML catalogs and asserts:\n1. Every entry in HIGH_RISK_PRIMITIVES appears as a qualified_name in at least one catalog.\n2. (Aspirational) every subprocess/destructive-fs primitive in the catalogs appears in HIGH_RISK_PRIMITIVES or in an explicit exemption list.\n\nPart 1 catches phantom entries. Part 2 catches missing entries. Part 2 can be deferred if the exemption list is large initially.\n\nLower priority than the AUTO_SINK_ZONE_MAP gap (WI-gofaz) because HIGH_RISK_PRIMITIVES affects display only (has_high_risk flag in JSON output), not taint-flow correctness."  # e2d5
+    fields: {}  # e2d5

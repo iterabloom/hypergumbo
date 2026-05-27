@@ -1,0 +1,23 @@
+- op: create  # 7630
+  at: '2026-05-27T20:06:46Z'  # 7630
+  by: agent  # 7630
+  actor: jgstern_agent  # 7630
+  clock: 1  # 7630
+  nonce: '7630'  # 7630
+  data:  # 7630
+    kind: invariant  # 7630
+    title: "Every write-side boundary_types entry must have AUTO_SINK_ZONE_MAP entry or explicit exclusion comment"  # 7630
+    status: violated  # 7630
+    priority: 3  # 7630
+    parent:  # 7630
+    tags:  # 7630
+    - analysis_quality  # 7630
+    - concept_audit  # 7630
+    isbefore: []  # 7630
+    duplicate_of: []  # 7630
+    not_duplicate_of: []  # 7630
+    pr_ref:  # 7630
+    description: "Filed during fundamental concept audit 2026-05-27 (taint/dataflow/io-boundary layering).\n\nThe AUTO_SINK_ZONE_MAP (taint.py:511-526) and AUTO_SOURCE_LABEL_MAP (taint.py:528-533) derive taint sinks/sources from io_primitives YAML catalogs. When a new boundary_type is added to io_boundary.py:502-517 without a corresponding entry in either map, it silently gets zero taint coverage.\n\nThis already happened: db_write, db_read, process_send, and logging all have populated YAML catalogs but no auto-mapping entry.\n\nEnforcement: property test asserting the invariant; fail with clear message naming unmapped boundaries.\n\nCompanion to WI-gofaz (which adds the missing entries); this item adds the regression guard."  # 7630
+    fields:  # 7630
+      statement: "Every write-side io_boundary.boundary_types entry must have an AUTO_SINK_ZONE_MAP entry or explicit exclusion comment"  # 7630
+      root_cause: "No drift guard between io_boundary.boundary_types list and taint auto-mapping tables; new boundary types silently get zero taint coverage"  # 7630
