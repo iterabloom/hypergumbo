@@ -3,16 +3,19 @@
 
 This guide is for code that consumes hypergumbo's behavior-map JSON
 and filters or weights symbols by `Symbol.kind` or edges by
-`Edge.evidence_type`. If your code only consumes structure
-(`Symbol.name`, `Edge.src`, `Edge.dst`, the relationship-shape
-`edge_type` like `calls` / `imports` / `extends`), you can stop reading.
+`Edge.evidence_type`, or reads `origin` / `pass_id` fields. If your
+code only consumes structure (`Symbol.name`, `Edge.src`, `Edge.dst`,
+the relationship-shape `edge_type` like `calls` / `imports` /
+`extends`), you can stop reading.
 
-This is the **closure** of the ADR-0027 and ADR-0028 programs: 71
-`Symbol.kind` values and 111 `Edge.evidence_type` values retire
-from their registries between schema 0.5.8 and 0.8.0. The companion
-doc [`migrating-edge-types.md`](migrating-edge-types.md) covers an
-earlier program (ADR-0023) for `Edge.edge_type` and is unrelated to
-this migration.
+Parts 1–5 cover the **closure** of the ADR-0027 and ADR-0028
+programs: 71 `Symbol.kind` values and 111 `Edge.evidence_type`
+values retire from their registries between schema 0.5.8 and 0.8.0.
+Part 6 covers post-closure breaking changes (0.9.0 → 0.10.0),
+including the `origin` type change and `pass_id` suffix removal.
+The companion doc [`migrating-edge-types.md`](migrating-edge-types.md)
+covers an earlier program (ADR-0023) for `Edge.edge_type` and is
+unrelated to this migration.
 
 ## What changed in one paragraph
 
@@ -416,6 +419,39 @@ A static linter pins the contract at every linker emission site.
 If you filter on confidence ≥ 0.5 you'll now reliably exclude
 ambiguous-resolution edges; if you want them, query on
 `meta.get("disambiguation_fallback")`.
+
+## Part 6 — Post-closure schema changes (0.9.0 → 0.10.0)
+
+The concept-axes program concluded at 0.8.0. Subsequent schema
+bumps in the same 5.x release cycle are unrelated to the axes
+closure but affect JSON consumers:
+
+| Version | What ships |
+|---|---|
+| 0.9.0 | Self-analysis validates clean. `line=0` fix on module_exports edges; missing top-level keys added. |
+| 0.9.1 | Additive. `Edge.derived_from: list[str]` (linker derivation provenance). `pass_id` suffix removal (`-v1` / `-ts-v1` / `-ast-v1` gone — **breaking** if you match on pass IDs). `behavior_map["features"]` and `behavior_map["reproducibility_context"]` added. |
+| 0.10.0 | **Breaking.** `Symbol.origin` and `Edge.origin` change from `str` to `list[str]`. Multi-source attribution: when multiple passes contribute, all are credited. |
+
+**`origin` migration.** If your code reads `symbol.origin` or
+`edge.origin` as a string, switch to list iteration:
+
+```python
+# Before (0.9.1 and earlier):
+if edge["origin"] == "python":
+    ...
+
+# After (0.10.0+):
+if "python" in edge["origin"]:
+    ...
+```
+
+**`pass_id` migration.** If your code matches on pass IDs like
+`"python-v1"` or `"js_ts-ts-v1"`, strip the suffix:
+`"python-v1"` → `"python"`, `"js_ts-ts-v1"` → `"js_ts"`.
+
+**`Edge.derived_from`.** New optional field (list of Symbol ID
+strings). Present on linker-produced edges; absent or empty on
+analyzer-produced edges. No migration needed — it's additive.
 
 ## See also
 

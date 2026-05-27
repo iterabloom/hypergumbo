@@ -151,6 +151,7 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 
 - **SQL `CREATE TABLE` entities no longer dropped by `_NOISE_KINDS` filter.** The `"table"` entry intended to suppress TOML/INI sections also suppressed SQL tables, leaving the database_query linker unable to produce edges. Now language-gated.
 - **JS/TS HTTP/GraphQL server-handler UC extraction.** Framework pattern rules for Node HTTP and Apollo were silently no-ops because the analyzer only emitted UCs for a small bootstrap-names allowlist. New extractor covers the full target set.
+- **JS/TS `access_mode` annotation coverage on call edges.** Calls inside `return` / `throw` / `yield` / `await` were unclassified, leaving `--dataflow` slices empty on TypeScript repos. Adds positional rules for those contexts plus expanded `library_patterns` for mutators, ORM verbs, RxJS, EventEmitter, and Promise/Observable readers.
 - **Apollo HTTP-entrypoint patterns relocated** from framework-gated `graphql.yaml` to always-loaded `node-http.yaml`, fixing detection on workspace-imported Apollo repos.
 - **React Router fixes**: dynamic-path expressions no longer emit false-positive routes; v5 `render` prop recognized.
 - **Framework detection: structured manifest parsing.** Previously used substring matching on raw manifest text, causing false positives (`"torch"` from a pytest marker, `"transformers"` as substring of `"sentence-transformers"`). Now uses structural parsers for ~30 manifest formats across all supported ecosystems.

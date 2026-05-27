@@ -24,6 +24,18 @@ own `RELEASE-NOTES-6.X.md` when it ships).
   bare-Node `http.createServer`, Apollo standalone GraphQL, plus
   Django-ecosystem third-party base classes (HierarkeyForm,
   django-filter `FilterSet`, DRF `Serializer`, Wagtail `Page`).
+- **Provenance and reproducibility** — every edge records which
+  passes created it (`origin` as a list), which Symbols it was
+  derived from (`derived_from`), and a code-hash `pass_version`.
+  `behavior_map["reproducibility_context"]` captures tool and
+  grammar versions. `hypergumbo explain --provenance` surfaces
+  derivation chains.
+- **Inherited-calls linker** — a new centralized linker walks
+  ancestor chains to resolve unresolved `calls` edges across
+  Ruby, Groovy, and Java.
+- **`--gzip` and consumer-side `.gz` support** — `hypergumbo run
+  --gzip` compresses output ~90-95%. All `--input`-taking
+  subcommands now transparently read `.gz` files.
 - **Cleaner I/O-boundary output by default** — the `external_potential`
   bucket no longer dominates the text view; opt back in with
   `--show-external-potential` when you want it.
@@ -35,10 +47,17 @@ own `RELEASE-NOTES-6.X.md` when it ships).
   now ships a project-local taint catalog used to audit hypergumbo's
   own IO surface; see [SECURITY.md](../SECURITY.md) for the
   generated audit.
-- **JSON wire format evolves** — schema version 0.5.8 → 0.8.0,
+- **52% more entrypoints detected** — bash/sh scripts, `index.html`
+  SPA roots, and standalone TS/JS script modules are now recognized.
+  64 → 97 entrypoints on self-analysis.
+- **Orphan-node rate cut from 5.5% to 2.0%** — intra-file variable
+  references, nested function defs, and identity/dedup fixes reduce
+  disconnected Symbols.
+- **JSON wire format evolves** — schema version 0.5.8 → 0.10.0,
   retiring 71 `Symbol.kind` values and 111 `Edge.evidence_type`
-  values into canonical names + `meta` keys. JSON consumers should
-  read [MIGRATION-5.X-CONCEPT-AXES.md](MIGRATION-5.X-CONCEPT-AXES.md)
+  values into canonical names + `meta` keys, plus new provenance
+  fields. JSON consumers should read
+  [MIGRATION-5.X-CONCEPT-AXES.md](MIGRATION-5.X-CONCEPT-AXES.md)
   before upgrading.
 
 ### For CLI users
@@ -47,8 +66,10 @@ own `RELEASE-NOTES-6.X.md` when it ships).
 
 | Flag | Subcommand | What it does |
 |---|---|---|
-| `--show-external-potential` | `io-boundaries` | Re-enable the `external_potential` bucket in text output. The bucket is now suppressed by default because it dominated output volume on large repos (kafka 76k chains, airflow 28k of ~30k). JSON output is unchanged. |
+| `--gzip` | `run` | Compress output as gzipped JSON (~90-95% reduction). `--out` auto-appends `.gz` when the path doesn't already end with it. |
 | `--no-sketch-fan-out` | `run` | Skip emission of the precomputed sketch-tier previews (`<stem>.{4k,16k,64k}.json`). Equivalent to `--budgets none`; surfaced as a named flag so it shows up next to `--no-handler-slices`. |
+| `--show-external-potential` | `io-boundaries` | Re-enable the `external_potential` bucket in text output. The bucket is now suppressed by default because it dominated output volume on large repos (kafka 76k chains, airflow 28k of ~30k). JSON output is unchanged. |
+| `--provenance` | `explain` | Show per-edge derivation chains: resolves `Edge.derived_from` IDs to `name (kind)` pairs. `explain` now always shows `Origin:` with contributing passes and annotates callers/callees with edge type. |
 
 **Changed defaults.**
 
@@ -60,25 +81,42 @@ own `RELEASE-NOTES-6.X.md` when it ships).
   (budget-tier previews + `<stem>.slices/`) up front in the help
   text and run-command epilog, with a `--budgets none --no-handler-slices`
   example for single-file output.
+- All `--input`-taking subcommands now transparently read `.gz`
+  files via a shared `load_behavior_map()` helper routing all 11
+  consumer sites.
+- `pass_id` values in JSON output no longer carry a `-v1` / `-ts-v1`
+  / `-ast-v1` suffix. This is a breaking change for consumers that
+  match on pass IDs.
 
 **Bugfixes worth knowing about.**
 
+- `hypergumbo slice` output summary now reads "Generated N
+  artifact(s)" (was truncated) and duplicate artifact listings
+  across 8 subcommands fixed.
+- `hypergumbo symbols` Kind column no longer truncates
+  (e.g., "functi…"). Width computed from data.
 - `hypergumbo explain Symbol | head` no longer prints a
   `BrokenPipeError` traceback. POSIX-only; Windows was never affected.
 - `--backend rust-analyzer` install advice now suggests `pipx install
   --force` or `pipx inject hypergumbo hypergumbo-lang-rust-analyzer`
   when `hypergumbo` is already on the system (the old advice silently
   no-op'd because `pipx install` already saw the bare package).
+- `--backend rust-analyzer` crash now surfaces exit code, stderr tail,
+  and OOM-kill hint instead of silently falling through to tree-sitter.
 - `hypergumbo run` no longer emits two false-positive warnings on
   repos that don't contain Circom files or TOML manifests.
 - `remove-extras` actually uninstalls the three source-built grammars
   now (`tree-sitter-lean` / `tree-sitter-wolfram` / `tree-sitter-circom`).
   The previous behavior was a silent no-op.
+- Sketch progress no longer contaminates captured stderr (gates on
+  `sys.stderr.isatty()`).
+- `limits.failed_files[]` now actually populated — previously always
+  `[]` even when files were dropped.
 
 ### For JSON consumers
 
-**Schema version chain: 0.5.8 → 0.8.0.** Six bumps in flight, two
-of them carrying breaking enum changes:
+**Schema version chain: 0.5.8 → 0.10.0.** Nine bumps in flight,
+two carrying breaking enum changes and one carrying a type change:
 
 | Version | What it brings |
 |---|---|
@@ -87,6 +125,9 @@ of them carrying breaking enum changes:
 | 0.7.1 | 6 evidence_type additions; `error_set` on `Symbol.kind` for Zig. Additive. |
 | 0.7.2 | `Edge.dst_ref` field lands as optional sibling of legacy `Edge.dst`. |
 | 0.8.0 | Producers canonicalize on `Edge.dst_ref`; consumers should prefer it over the legacy colon-split heuristic on `Edge.dst`. |
+| 0.9.0 | Self-analysis validates clean. `line=0` fix on module_exports edges; missing top-level keys added. |
+| 0.9.1 | `Edge.derived_from: list[str]` lands. `pass_id` suffix removal. `behavior_map["features"]` and `behavior_map["reproducibility_context"]` added. Additive. |
+| 0.10.0 | **Breaking:** `Symbol.origin` and `Edge.origin` change from `str` to `list[str]`. Multi-source attribution: when multiple passes contribute, all are credited. |
 
 If you consume the JSON output, **read
 [MIGRATION-5.X-CONCEPT-AXES.md](MIGRATION-5.X-CONCEPT-AXES.md)
@@ -102,6 +143,24 @@ consumers prefer it over the legacy `Edge.dst` colon-split heuristic.
 Cached JSON from earlier releases loads cleanly with
 `dst_ref=None`.
 
+**New: `Edge.derived_from`.** Every linker-produced Edge records
+which Symbol IDs were consumed to construct it. Populated across
+all 55 linker modules.
+
+**New: `Symbol.origin` / `Edge.origin` as `list[str]`.**
+Previously a single string; now a list to support multi-source
+attribution. Consumers that read `origin` as a string must switch
+to list iteration.
+
+**New: `behavior_map["reproducibility_context"]`.**
+Captures L2 reproducibility metadata (hypergumbo / Python /
+tree-sitter / grammar versions) plus an explicit `not_captured`
+array.
+
+**New: `behavior_map["features"]`.** Spec-shape index entries for
+detected route handlers. Stable feature IDs enable
+diff-across-commits.
+
 **New: `disambiguation_fallback` discipline across 13 linkers.**
 When a linker resolves a simple name (e.g. `User`) to a structurally
 ambiguous target, the resulting edge now carries
@@ -109,6 +168,12 @@ ambiguous target, the resulting edge now carries
 If you filter or weight edges by confidence, this is the contract
 you can rely on. A static linter pins the contract at every
 emission site.
+
+**Changed: `pass_id` suffix removal.** The legacy `-v1` / `-ts-v1`
+/ `-ast-v1` suffixes on pass IDs are removed;
+`make_pass_id(name) == name`. Backend identity moves to
+`Pass.backend`; display labels to `Pass.pass_label`. If you match
+on pass IDs, update your patterns.
 
 **New wire contract: `io-boundaries --json`.**
 `IO_BOUNDARIES_SCHEMA_VERSION = "1.0"` is now part of the envelope.
@@ -162,11 +227,26 @@ methods.
 `IAsyncEnumerable<T>` so `var x = await SomeAsync()` binds to the
 awaited type. Bare wrapper-only returns stay `None`.
 
+**Ruby.** Constructor-call `.new` redirect now walks the inheritance
+chain when the named class doesn't define `#initialize` directly.
+Rails routes are now distinct entrypoints, and `dispatch_inherited`
+handles Ruby's `Class#method` separator.
+
+**Java.** Wildcard imports (`import java.util.*`) now resolve to the
+source package for class-shaped receivers. Java's inline parent-chain
+walk for inherited calls replaced by the centralized inherited-calls
+linker.
+
 **Python.** `verify-claims` now resolves more method-call receivers
 through a post-DDG IR refinement pass — `x = os.environ; x.get(...)`
 no longer conflates with `dict.get` / `args.get`. Eight zone-tagged
 wrappers in `hypergumbo_core.safety_zones` provide fs-write
-discipline that downstream Python projects can adopt.
+discipline that downstream Python projects can adopt. Nested function
+defs are now emitted as Symbols with qualified names and bare-name
+calls resolved via LEGB scope walk (~121 missing Symbols and ~360
+missing call edges recovered on self-analysis). BOM-prefixed files
+(`utf-8-sig`) no longer silently dropped. Intra-file variable
+reference edges for module-level constants reduce orphan Symbols.
 
 **Rust.** PyO3 `#[pymethods] impl Foo { fn bar() {} }` propagates
 the annotation to every method declared inside; path-qualified
@@ -197,6 +277,37 @@ out.
 `meta["component_type"]` for `<activity>` / `<service>` /
 `<receiver>` / `<provider>`.
 
+### Cross-cutting quality improvements
+
+**Identity and deduplication.** Python class `stable_id` collisions
+fixed — five `@dataclass` classes in `ir.py` previously shared one
+hash. File identity now threaded into top-level `stable_id`
+computation so structurally identical classes in different modules
+produce distinct hashes. File/module double-representation collapsed
+(Python, JS/TS, Bash, Perl, PHP, PowerShell no longer emit both
+`kind="module"` and `kind="file"` for the same path).
+STABLE_ID_SCHEME bumped from v1 to v4.
+
+**Dead-code analysis.** `dead-code-maybe` now demotes
+framework-dispatched symbols (route handlers, decorator callbacks)
+and polymorphic-dispatch overrides via usage_contexts
+cross-referencing and ancestor-chain method matching.
+
+**Entrypoint detection.** Bash/sh scripts recognized via
+`shell_script` concept; `index.html` SPA roots via `html_entry`;
+standalone TS/JS script modules (no inbound imports + has outbound
+calls) via `script_module` kind. Main-function dedup prevents
+double-counting. 64 → 97 entrypoints on self-analysis (+52%).
+
+**Supply chain classification.** Test directories no longer route
+to tier=2 (internal_dep) — tests are first-party. Previously
+99.8% of tier-2 paths on self-analysis were test files.
+
+**Analyzer dispatch.** 113 of 133 analyzers were previously
+dispatched to repos with zero matching files, consuming ~13% of
+wall-clock time. Now pre-filtered by file presence with reason
+recorded in `limits.skipped_passes`.
+
 ### For framework-pattern YAML authors
 
 `Pattern.meta_match: dict[str, str]` is a new field on framework
@@ -226,22 +337,21 @@ producing ~15K spurious findings on self-analysis).
 
 ### Preview features
 
-- **`hypergumbo run --gzip`** — writes the main output and budget-
-  tier side-outputs as gzipped JSON. Producer-only at this stage;
-  most `hypergumbo` subcommands that take `--input` do not yet
-  read `.gz`. Tracked at
-  `WI-mokim-vulam-jihob-bipuk-huvoh-zugin-rivum-tazan`.
+None at this time. (`--gzip` graduated to a full feature now that
+all `--input`-taking subcommands transparently read `.gz` files.)
 
 ### Known limitations
 
 - Short-name sink matching in `verify-claims` overapproximates for
   method-call receivers the DDG can't resolve (call-return
-  bindings, parameter receivers, closure captures). The post-DDG
-  IR refinement pass resolves the import-rooted case in Python;
-  Rust and TypeScript follow when those ship def/use extractors
-  per ADR-0017 §1c. Load-bearing claims (dev-zone and install-zone
-  unreachability) verify cleanly. See [SECURITY.md](../SECURITY.md)
-  for the residual detail.
+  bindings, closure captures). The post-DDG IR refinement pass
+  resolves the import-rooted case in Python; `taint_refine` now
+  also pins parameter-receiver types from function-signature
+  annotations (e.g. `name: str` → `name.replace(...)` no longer
+  matches `pathlib.Path.replace`). Rust and TypeScript follow when
+  those ship def/use extractors per ADR-0017 §1c. Load-bearing
+  claims (dev-zone and install-zone unreachability) verify cleanly.
+  See [SECURITY.md](../SECURITY.md) for the residual detail.
 
 ### Where to read more
 
