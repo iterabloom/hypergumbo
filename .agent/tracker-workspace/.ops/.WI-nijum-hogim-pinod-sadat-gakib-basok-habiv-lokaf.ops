@@ -20,3 +20,18 @@
     pr_ref:  # b017
     description: "**Found via self-analysis dogfooding on 2026-05-16 (round 2).**\n\n**Symptom.** Running `hypergumbo slice --entry hypergumbo_core/cli.py` prints:\n\n```\n[hypergumbo slice] Generated 23\n  /home/.../slice.handler.GET.health.json\n  /home/.../slice.handler.GET.api_items.json\n  ... (8 distinct handler slices)\n  /home/.../slice.handler.GET.health.json   <-- duplicate\n  /home/.../slice.handler.GET.api_items.json <-- duplicate\n  ... (same 8 listed again)\n  /home/.../slice.handler.index.json\n  /home/.../hypergumbo.results.4k.json\n  /home/.../hypergumbo.results.16k.json\n  /home/.../hypergumbo.results.64k.json\n  /home/.../hypergumbo.results.json         <-- listed twice\n  /home/.../hypergumbo.results.json         <--\n  /home/.../slice.hypergumbo_core_cli.py.json\n```\n\nOn disk: 14 actual files (9 handler slices in `hypergumbo.results.slices/` subdir + 3 sketches at different token budgets + 1 main results JSON + 1 entry slice). The CLI reports \"Generated 23\" with the noun cut off and lists 23 lines, 9 of them duplicates.\n\n**Two bugs in `packages/hypergumbo-core/src/hypergumbo_core/cli.py`:**\n\n1. **Line 541** — `parts.append(f\"Generated {generated_count}\")` is missing the noun suffix. The fallback at line 545 has `\"Generated 0 artifact(s)\"`. The variant taken when `generated_count > 0` is the truncated one.\n\n2. **Line 1529** — operator precedence bug in `cmd_slice`:\n   ```python\n   all_artifacts = generated_files + [input_path, out_path] if not was_cached else [input_path, out_path]\n   ```\n   Python evaluates this as `generated_files + ([input_path, out_path] if not was_cached else [input_path, out_path])` — the conditional binds tighter than `+`. So when `was_cached=False`, the conditional returns `[input_path, out_path]` and that gets appended to `generated_files`, which already contains those entries (added by `run_behavior_map` at line 7462).\n\n**Fix proposal.**\n\nLine 541:\n```python\nparts.append(f\"Generated {generated_count} artifact(s)\")\n```\n\nLine 1529 — parenthesize the left branch and dedupe:\n```python\nall_artifacts = list(dict.fromkeys(\n    (generated_files + [input_path, out_path]) if not was_cached else [input_path, out_path]\n))\n```\n\nTests: extend whichever class in `packages/hypergumbo-core/tests/` exercises the slice CLI's summary output (likely `test_cli.py` or `test_slice.py`).\n\n**Severity.** Cosmetic — the cache directory on disk is correct, only the CLI listing is wrong. No data corruption, no missing artifacts. Treat as low-priority polish."  # b017
     fields: {}  # b017
+- op: update  # f5ed
+  at: '2026-05-27T16:38:36Z'  # f5ed
+  by: agent  # f5ed
+  actor: jgstern_agent  # f5ed
+  clock: 2  # f5ed
+  nonce: f5ed  # f5ed
+  set:  # f5ed
+    status: done  # f5ed
+- op: discuss  # 44b2
+  at: '2026-05-27T16:38:37Z'  # 44b2
+  by: agent  # 44b2
+  actor: jgstern_agent  # 44b2
+  clock: 3  # 44b2
+  nonce: 44b2  # 44b2
+  message: "Fixed in PR #3933. Two bugs: (1) 'Generated N' missing noun → 'Generated N artifact(s)', (2) operator precedence bug in 8 subcommand artifact-list constructions causing duplicate listings. Also added dedup in _print_output_summary."  # 44b2

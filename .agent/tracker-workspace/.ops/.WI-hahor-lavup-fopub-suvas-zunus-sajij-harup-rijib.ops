@@ -51,3 +51,18 @@
   clock: 5  # 1345
   nonce: '1345'  # 1345
   message: "## Orphan Node Triage — 2026-05-27\n\n### Summary\nSelf-analysis on `dev` at `6e067b7e81` shows **664 orphan nodes (2.0%)**, down from **1783 (5.5%)** when this item was filed. 63% reduction from INV-mofav (nested functions) + WI-vuton (polymorphic dispatch) fixes.\n\n### Breakdown by kind\n| Kind | Orphan | Verdict |\n|---|---|---|\n| function | 216 | Mixed: 167 test functions with builtin-only bodies (legit), 7 genuinely dead prod code, 7 route symbols, 28 nested/misc |\n| call_site | 113 | Linker-synthesized endpoints without connecting edges (78 subprocess, 18 HTTP, 17 DB) |\n| variable | 109 | Module-level constants consumed by bare-name reference (99 prod, 10 test) |\n| external_symbol | 105 | Legitimate boundary nodes for unresolved stdlib/external refs |\n| dependency | 68 | Declared deps never imported in code |\n| export | 20 | All bash `export` statements (bash analyzer limitation) |\n| file | 16 | Bash scripts + `__init__.py` + setup.py without `contains` edges |\n| project | 7 | Workspace metadata (legitimate) |\n| struct/enum/etc | 10 | Non-Python kinds (wgsl, swift, rust, go from corpus fixtures) |\n| class | **0** | Fixed by INV-mofav + WI-vuton |\n| module | **0** | Fixed by INV-hojus |\n\n### Root causes identified\n\n1. **Test functions with builtin-only bodies (167):** test_* functions whose bodies use only `assert`, `isinstance`, `len`, `set`, etc. No user-defined symbol calls → no outbound edges. Correct behavior — the analyzer can't and shouldn't fabricate edges for builtin operations.\n\n2. **Linker-synthesized call_site orphans (113):** Subprocess-linker (78), HTTP-linker (18), DB-query-linker (17) create call_site nodes but don't always create edges FROM calling functions TO those call_sites. The 17 non-orphan call_sites (DB queries with table references) show the pattern works when implemented.\n\n3. **Module-level constant/type-alias orphan variables (99):** `*_REQUIREMENTS` dicts, `__all__`, `__version__`, `TypeAlias` assignments, compiled regex patterns. Consumed by bare-name reference or Python-level machinery the analyzer doesn't track.\n\n4. **Genuinely dead production code (6):** `_find_children_by_type` in sql.py, `_is_class_method` in objc.py, four `_is_*_tree_sitter_available_legacy` functions. All correctly marked `# pragma: no cover`. Orphan detection is correct.\n\n5. **Framework route dispatch (7):** Starlette route symbols in serve.py. Registered via decorators, dispatch not captured as edges.\n\n### Deliverables\n- Sentinel test: `test_orphan_node_audit.py` — 3 structural invariant tests (fast, CI) + 1 baseline ratchet (opt-in via HYPERGUMBO_RUN_SELF_ANALYSIS=1).\n- No follow-up items filed: remaining orphans are mostly legitimate or low-priority. The call_site gap (root cause 2) is the most impactful but is a linker-design question, not a bug."  # 1345
+- op: update  # 0adf
+  at: '2026-05-27T08:15:34Z'  # 0adf
+  by: agent  # 0adf
+  actor: jgstern_agent  # 0adf
+  clock: 6  # 0adf
+  nonce: 0adf  # 0adf
+  set:  # 0adf
+    status: done  # 0adf
+- op: discuss  # aff6
+  at: '2026-05-27T08:15:34Z'  # aff6
+  by: agent  # aff6
+  actor: jgstern_agent  # aff6
+  clock: 7  # aff6
+  nonce: aff6  # aff6
+  message: "Triage complete + sentinel test committed. PR in flight via auto-pr. Orphan rate: 1783 (5.5%) → 664 (2.0%). Root causes documented in tracker discussion. No follow-up items warranted — remaining orphans are legitimate or low-priority."  # aff6

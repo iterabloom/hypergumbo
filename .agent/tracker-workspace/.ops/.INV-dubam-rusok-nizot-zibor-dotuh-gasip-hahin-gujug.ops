@@ -45,3 +45,18 @@
   clock: 4  # b54d
   nonce: b54d  # b54d
   message: "Progress: 3 of 5 closure criteria now addressed. (1) Edge.derived_from: INV-rukor pending_validation, PR #3926. (2) origin scalar→list: INV-jidat pending_validation, PR #3927. (3) Pass.depends_on: INV-hujog pending_validation, PR #3893/#3920. Outstanding: (4) hypergumbo explain surfaces derivation chains. (5) PROV-vocabulary ADR."  # b54d
+- op: update  # 3d70
+  at: '2026-05-27T09:14:45Z'  # 3d70
+  by: agent  # 3d70
+  actor: jgstern_agent  # 3d70
+  clock: 5  # 3d70
+  nonce: 3d70  # 3d70
+  set:  # 3d70
+    status: satisfied  # 3d70
+- op: discuss  # eceb
+  at: '2026-05-27T09:14:45Z'  # eceb
+  by: agent  # eceb
+  actor: jgstern_agent  # eceb
+  clock: 6  # eceb
+  nonce: eceb  # eceb
+  message: "All 5 closure criteria met. (1) Edge.derived_from: INV-rukor PR #3926. (2) origin as list: INV-jidat PR #3927. (3) Pass.depends_on CNF: INV-hujog PRs #3919/#3921. (4) explain provenance surfacing: this PR. (5) PROV-vocabulary ADR-0030: this PR."  # eceb

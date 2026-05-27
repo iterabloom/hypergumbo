@@ -27,3 +27,18 @@
   clock: 2  # 3851
   nonce: '3851'  # 3851
   message: "Cross-item review 2026-05-17: forms a --gzip-coherence pair with WI-mokim. This item: producer side (--gzip writes gzipped binary to a non-.gz path silently). WI-mokim: consumer side (11 cli.py --input subcommands plus four scripts don't accept .gz). The two failure modes compose: a user who avoids this item's pitfall by adding .gz to --out still hits WI-mokim when feeding the output back into compact/slice/io-boundaries/etc. Both reference the original WI-kojob --gzip introduction. Consider landing together (or document the partial state in release notes) so users don't have an arc where producer is fixed but consumer remains broken."  # 3851
+- op: update  # 0df1
+  at: '2026-05-27T16:38:38Z'  # 0df1
+  by: agent  # 0df1
+  actor: jgstern_agent  # 0df1
+  clock: 3  # 0df1
+  nonce: 0df1  # 0df1
+  set:  # 0df1
+    status: done  # 0df1
+- op: discuss  # a00f
+  at: '2026-05-27T16:38:38Z'  # a00f
+  by: agent  # a00f
+  actor: jgstern_agent  # a00f
+  clock: 4  # a00f
+  nonce: a00f  # a00f
+  message: "Fixed in PR #3933. cmd_run now auto-appends .gz to --out path when --gzip is active and path doesn't already end in .gz. Prints a note to stderr. Already-correct .json.gz paths are unchanged."  # a00f

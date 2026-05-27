@@ -22,3 +22,18 @@
     fields:  # 949f
       statement: "config_fingerprint should be either consistently populated across all AnalysisRuns or consistently absent. Today 130 runs report 'sha256:44136fa355b3678a' (a 16-hex truncation of the empty-config hash) while 3 specific runs (thrift-v1, proto-v1, starlark-v1) emit the empty string '' instead. The 3 affected passes all have files_analyzed=0, but so do 110 other passes that DO populate the field correctly — so the trigger is not 'no files'."  # 949f
       root_cause: "Some pass-finalization paths take a different code branch that fails to compute or stamp config_fingerprint. Likely a missing call in thrift/proto/starlark-specific dispatch in the analyze pipeline. The truncation to 16 hex on the 130 populated runs (sha256 normally renders as 64 hex chars) suggests a deliberate compact representation, but the inconsistent empty-string branch is unintentional."  # 949f
+- op: update  # 2894
+  at: '2026-05-27T17:05:27Z'  # 2894
+  by: agent  # 2894
+  actor: jgstern_agent  # 2894
+  clock: 2  # 2894
+  nonce: '2894'  # 2894
+  set:  # 2894
+    status: satisfied  # 2894
+- op: discuss  # dbbb
+  at: '2026-05-27T17:05:27Z'  # dbbb
+  by: agent  # dbbb
+  actor: jgstern_agent  # dbbb
+  clock: 3  # dbbb
+  nonce: dbbb  # dbbb
+  message: "Fixed in PR #3934. Root cause: 11 analyzers constructed AnalysisRun(...) directly bypassing the create() factory, leaving config_fingerprint as empty string. Fix: __post_init__ auto-defaults empty config_fingerprint to _default_config_fingerprint() (sha256 hash of empty config). Structural — covers all current and future direct constructions."  # dbbb

@@ -22,3 +22,18 @@
     pr_ref:  # 63e1
     description: "**Found via self-analysis dogfooding on 2026-05-16 (round 12).**\n\n**Symptom.** `hypergumbo symbols` output truncates the word \"function\" to \"functi…\" in the `Kind` column because the column width is set too narrow:\n\n```\n Symbol                                                        Kind       In  Out   Deg  File\n TreeSitterAnalyzer                                            class     215   19   234  packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py\n find_files                                                    functi…   307    4   311  packages/hypergumbo-core/src/hypergumbo_core/discovery.py\n Symbol                                                        class    1872    4  1876  packages/hypergumbo-core/src/hypergumbo_core/ir.py\n```\n\n`class` and `method` fit, `function` is the shortest \"kind\" that doesn't fit. The column is ~7 chars wide; \"function\" is 8 chars, \"external_symbol\" would need 15 chars.\n\n**Why this is a problem.** Cosmetic, but the truncation:\n\n1. **Looks like a stylistic choice rather than a layout failure.** A user reading \"functi…\" might wonder if there's a \"functio\" vs \"functin\" distinction. The ellipsis suggests intentional abbreviation.\n\n2. **Inconsistent with the other columns.** The Symbol column has `--col-width N` (capped at 1000, default 60/80) — wide and configurable. The Kind column is hardcoded at the truncated width with no flag to widen.\n\n3. **Generalizes to other kinds.** Any `kind` value longer than ~7 chars (e.g., `external_symbol`, `dependency`, `package`, `module`, `variable` if used) would all show truncated.\n\n**Severity.** Low (cosmetic).\n\n**Fix proposal.** In the `symbols` output formatter:\n\n1. **Compute the Kind column width dynamically from the data.** `max(len(n.kind) for n in nodes)` — typically 8-15 chars. No truncation needed.\n\n2. **Or expose `--kind-col-width N`** matching the existing `--col-width N` for Symbol/File columns.\n\nRecommended: (1) — dynamic width is free and never truncates.\n\n**Test gap.** Snapshot test for `hypergumbo symbols` output: assert no row contains the ellipsis `…` in the Kind column on a fixture with mixed kinds (function + class + method + external_symbol).\n\n**Cross-references.**\n\n- `packages/hypergumbo-core/src/hypergumbo_core/cli.py` — `cmd_symbols` output formatter"  # 63e1
     fields: {}  # 63e1
+- op: update  # b16c
+  at: '2026-05-27T16:38:37Z'  # b16c
+  by: agent  # b16c
+  actor: jgstern_agent  # b16c
+  clock: 2  # b16c
+  nonce: b16c  # b16c
+  set:  # b16c
+    status: done  # b16c
+- op: discuss  # 94e2
+  at: '2026-05-27T16:38:37Z'  # 94e2
+  by: agent  # 94e2
+  actor: jgstern_agent  # 94e2
+  clock: 3  # 94e2
+  nonce: '94e2'  # 94e2
+  message: "Fixed in PR #3933. Kind column now computes min_width dynamically from the data (max kind string length) with no_wrap=True, so 'function' and longer kinds display without truncation."  # 94e2
