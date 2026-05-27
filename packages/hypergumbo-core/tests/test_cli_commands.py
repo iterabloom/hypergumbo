@@ -643,6 +643,73 @@ JNIEXPORT void JNICALL Java_NativeLib_sayHello(JNIEnv *env, jobject obj) {
     assert len(native_edges) >= 1
 
 
+def test_cmd_run_gzip_auto_appends_gz_extension(tmp_path: Path, capsys) -> None:
+    """WI-makom: --gzip with --out foo.json must auto-append .gz."""
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.out = str(tmp_path / "output.json")
+
+    result = cmd_run(args)
+    assert result == 0
+
+    # The .json file should exist (non-gzip baseline)
+    assert (tmp_path / "output.json").exists()
+
+    # Now run with --gzip but .json extension
+    args2 = FakeArgs()
+    args2.path = str(tmp_path)
+    args2.out = str(tmp_path / "output2.json")
+
+    result2 = cmd_run(args2)
+    assert result2 == 0
+
+    # Verify the auto-appended .gz file exists and is valid gzip
+    import gzip
+    gz_path = tmp_path / "output2.json.gz"
+    json_path = tmp_path / "output2.json"
+
+    # With gzip=True and .json path, should write to .json.gz
+    args3 = FakeArgs()
+    args3.path = str(tmp_path)
+    args3.out = str(tmp_path / "gztest.json")
+    args3.gzip_output = True
+
+    result3 = cmd_run(args3)
+    assert result3 == 0
+
+    gz_out = tmp_path / "gztest.json.gz"
+    assert gz_out.exists(), "Expected .json.gz file from --gzip with .json --out"
+    assert not (tmp_path / "gztest.json").exists(), (
+        ".json file should not exist when --gzip auto-appends .gz"
+    )
+    with gzip.open(gz_out, "rt") as f:
+        data = json.loads(f.read())
+    assert "schema_version" in data
+
+    out, _ = capsys.readouterr()
+    assert "gztest.json.gz" in out
+
+
+def test_cmd_run_gzip_with_gz_extension_unchanged(tmp_path: Path) -> None:
+    """WI-makom: --gzip with --out foo.json.gz must NOT double-append."""
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.out = str(tmp_path / "output.json.gz")
+    args.gzip_output = True
+
+    result = cmd_run(args)
+    assert result == 0
+
+    import gzip
+    gz_path = tmp_path / "output.json.gz"
+    assert gz_path.exists()
+    # Should NOT create output.json.gz.gz
+    assert not (tmp_path / "output.json.gz.gz").exists()
+    with gzip.open(gz_path, "rt") as f:
+        data = json.loads(f.read())
+    assert "schema_version" in data
+
+
 def test_cmd_slice_creates_slice(tmp_path: Path, capsys) -> None:
     """Test that slice command produces a valid slice file."""
     # Create a behavior map file
@@ -854,6 +921,48 @@ def test_cmd_slice_reads_existing_results(tmp_path: Path, capsys) -> None:
 
     data = json.loads((tmp_path / "slice.json").read_text())
     assert len(data["feature"]["node_ids"]) == 1
+
+
+def test_cmd_slice_no_duplicate_artifacts(tmp_path: Path, capsys) -> None:
+    """WI-nijum: slice output summary must not list the same path twice."""
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-2:hello:function",
+                "name": "hello",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 10},
+            }
+        ],
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "hello"
+    args.out = str(tmp_path / "slice.json")
+    args.input = None
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+
+    result = cmd_slice(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    summary_lines = [l.strip() for l in out.splitlines() if l.strip()]
+    path_lines = [l for l in summary_lines if "/" in l or "slice.json" in l]
+    assert len(path_lines) == len(set(path_lines)), (
+        f"Duplicate artifact paths in summary: {path_lines}"
+    )
 
 
 def test_cmd_slice_with_limits_hit(tmp_path: Path, capsys) -> None:
@@ -2866,12 +2975,44 @@ def test_print_output_summary_with_cached_artifacts(tmp_path: Path, capsys) -> N
     result = output.getvalue()
     # Should show both generated and cached counts
     assert "[hypergumbo test]" in result
-    assert "Generated 1" in result
+    assert "Generated 1 artifact(s)" in result
     assert "Using 1 cached" in result
     # Should show [cached] prefix for cached file
     assert "[cached]" in result
     assert "cached.json" in result
     assert "new.json" in result
+
+
+def test_print_output_summary_generated_includes_noun(tmp_path: Path) -> None:
+    """WI-nijum: 'Generated N' must include the noun 'artifact(s)'."""
+    import io
+
+    f1 = tmp_path / "a.json"
+    f1.write_text("{}")
+    f2 = tmp_path / "b.json"
+    f2.write_text("{}")
+
+    output = io.StringIO()
+    _print_output_summary("test", artifacts=[f1, f2], file=output)
+
+    result = output.getvalue()
+    assert "Generated 2 artifact(s)" in result
+
+
+def test_print_output_summary_deduplicates_artifacts(tmp_path: Path) -> None:
+    """WI-nijum: duplicate paths in the artifact list must be collapsed."""
+    import io
+
+    f1 = tmp_path / "a.json"
+    f1.write_text("{}")
+
+    output = io.StringIO()
+    _print_output_summary("test", artifacts=[f1, f1, f1], file=output)
+
+    result = output.getvalue()
+    assert "Generated 1 artifact(s)" in result
+    lines = [l for l in result.splitlines() if "a.json" in l]
+    assert len(lines) == 1, f"Expected 1 listing for a.json, got {len(lines)}"
 
 
 def test_print_output_summary_all_cached(tmp_path: Path) -> None:

@@ -78,6 +78,63 @@ def test_cmd_symbols_shows_tabular_output(tmp_path: Path, capsys) -> None:
     assert "src/main.py" in out
 
 
+def test_cmd_symbols_kind_column_not_truncated(tmp_path: Path, capsys) -> None:
+    """WI-puroz: Kind column must show full kind names without ellipsis."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/main.py:11-20:MyClass:class",
+                "name": "MyClass",
+                "kind": "class",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 11, "end_line": 20, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/main.py:21-30:helper:method",
+                "name": "helper",
+                "kind": "method",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 21, "end_line": 30, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+
+    result = cmd_symbols(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "function" in out
+    assert "class" in out
+    assert "method" in out
+    # WI-puroz: no ellipsis in kind column
+    assert "…" not in out, "Kind column must not contain ellipsis (…)"
+    assert "functi…" not in out
+
+
 def test_cmd_symbols_sorts_by_individual_degree(tmp_path: Path, capsys) -> None:
     """Symbols are sorted by bidirectional centrality, not file total.
 

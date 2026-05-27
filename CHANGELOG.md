@@ -14,6 +14,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 > for the reader-friendly summary of what's changed. This file (CHANGELOG.md)
 > remains the implementer log.
 
+### Fixed (post-5.0.1)
+
+- **WI-nijum: `hypergumbo slice` CLI — "Generated N" missing noun + duplicate artifact listings.** Two bugs fixed: (1) the output summary line now reads "Generated N artifact(s)" instead of the truncated "Generated N"; (2) operator precedence bug in 8 artifact-list constructions across `cmd_slice`, `cmd_search`, `cmd_dead_code`, `cmd_explain`, `cmd_symbols` (both branches), `cmd_routes`, and `cmd_io_boundaries` — `generated_files + [input_path] if ... else [input_path]` evaluated as `generated_files + ([input_path] if ... else [input_path])` instead of the intended `(generated_files + [input_path]) if ... else [input_path]` — causing duplicate paths in the summary listing. Both were structural: the noun omission was a single-site typo but the precedence bug was copy-pasted across all subcommands. Additionally, `_print_output_summary` now deduplicates artifact paths so even if callers pass overlapping lists, the listing is clean.
+
+- **WI-puroz: `hypergumbo symbols` Kind column no longer truncates "function" to "functi…".** The Kind column now computes its minimum width from the data (`max(len(kind) for kind in display_rows)`) instead of relying on Rich's auto-fit, which squeezed it too narrow when the Symbol and File columns consumed explicit width allocations.
+
+- **WI-makom: `hypergumbo run --gzip --out foo.json` no longer silently writes gzip binary to a `.json` path.** When `--gzip` is active and `--out` doesn't end in `.gz`, the CLI now auto-appends `.gz` to the output path and prints a note to stderr. When `--out` already ends in `.gz`, behavior is unchanged.
+
 ### Added (post-5.0.1)
 
 - **INV-dubam criteria 4+5: `hypergumbo explain` provenance surfacing + PROV-vocabulary ADR.** Closes the INV-dubam META ("Behavior maps must carry PROV-compliant provenance"). Two changes: (1) `hypergumbo explain` now surfaces provenance — always shows `Origin:` line with contributing pass(es), annotates caller/callee lines with edge type (e.g., `[imported_call]`), and a new `--provenance` flag shows per-edge `Derived from:` chains resolving `Edge.derived_from` IDs to `name (kind)` pairs. (2) New ADR-0030 documents the mapping from hypergumbo's provenance fields to the W3C PROV-DM vocabulary (Entity→Symbol/Edge, Activity→Pass, Agent→tool, wasAttributedTo→origin, wasDerivedFrom→derived_from, wasInformedBy→depends_on). All 5 closure criteria now met: (1) Edge.derived_from (INV-rukor, PR #3926), (2) origin as list (INV-jidat, PR #3927), (3) Pass.depends_on in CNF (INV-hujog, PRs #3919/#3921), (4) explain provenance surfacing (this PR), (5) PROV ADR (this PR). INV-dubam transitions violated → satisfied.

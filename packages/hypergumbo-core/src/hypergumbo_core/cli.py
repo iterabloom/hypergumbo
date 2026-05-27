@@ -529,8 +529,15 @@ def _print_output_summary(
     generated_count = 0
     cached_count = 0
 
+    seen: set[Path] = set()
+    deduped: list[Path] = []
     if artifacts:
         for artifact_path in artifacts:
+            resolved = artifact_path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            deduped.append(artifact_path)
             if artifact_path in cached_set:
                 cached_count += 1
             else:
@@ -539,7 +546,7 @@ def _print_output_summary(
     # Build summary line
     parts = []
     if generated_count > 0:
-        parts.append(f"Generated {generated_count}")
+        parts.append(f"Generated {generated_count} artifact(s)")
     if cached_count > 0:
         parts.append(f"Using {cached_count} cached")
     if not parts:
@@ -547,11 +554,9 @@ def _print_output_summary(
 
     print(f"\n[hypergumbo {command}] {', '.join(parts)}", file=file)
 
-    if artifacts:
-        for artifact_path in artifacts:
-            prefix = "[cached] " if artifact_path in cached_set else ""
-            # Show full absolute path for clarity
-            print(f"  {prefix}{artifact_path.resolve()}", file=file)
+    for artifact_path in deduped:
+        prefix = "[cached] " if artifact_path in cached_set else ""
+        print(f"  {prefix}{artifact_path.resolve()}", file=file)
     if stdout_output:
         print("  Output: stdout", file=file)
     if embeddings_dir:  # pragma: no cover - only when embeddings available
@@ -957,6 +962,14 @@ def cmd_run(args: argparse.Namespace) -> int:
         args, "max_handler_slices", _DEFAULT_MAX_HANDLER_SLICES
     )
     gzip_output = getattr(args, "gzip_output", False)
+
+    if gzip_output and out_path is not None and not str(out_path).endswith(".gz"):
+        out_path = Path(str(out_path) + ".gz")
+        print(
+            f"Note: --gzip active, writing to {out_path} "
+            f"(appended .gz extension)",
+            file=sys.stderr,
+        )
     no_sketch_fan_out = getattr(args, "no_sketch_fan_out", False)
 
     # Detect and filter locale documentation directories
@@ -1538,7 +1551,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
     # Output summary (always at the end)
     cached_set = {input_path} if was_cached else set()
     # Include generated analysis files + the slice output
-    all_artifacts = generated_files + [input_path, out_path] if not was_cached else [input_path, out_path]
+    all_artifacts = (generated_files + [input_path, out_path]) if not was_cached else [input_path, out_path]
     _print_output_summary("slice", artifacts=all_artifacts, cached_artifacts=cached_set)
 
     return 0
@@ -1607,7 +1620,7 @@ def cmd_search(args: argparse.Namespace) -> int:
 
     # Output summary (always at the end)
     cached_set = {input_path} if was_cached else set()
-    artifacts = generated_files + [input_path] if not was_cached else [input_path]
+    artifacts = (generated_files + [input_path]) if not was_cached else [input_path]
     _print_output_summary(
         "search",
         artifacts=artifacts,
@@ -1767,7 +1780,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 "or use `hypergumbo explain <name>`."
             )
         cached_set = {input_path} if was_cached else set()
-        artifacts = generated_files + [input_path] if not was_cached else [input_path]
+        artifacts = (generated_files + [input_path]) if not was_cached else [input_path]
         _print_output_summary(
             "routes", artifacts=artifacts, stdout_output=True, cached_artifacts=cached_set
         )
@@ -1850,7 +1863,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
 
     # Output summary (always at the end)
     cached_set = {input_path} if was_cached else set()
-    artifacts = generated_files + [input_path] if not was_cached else [input_path]
+    artifacts = (generated_files + [input_path]) if not was_cached else [input_path]
     _print_output_summary(
         "routes", artifacts=artifacts, stdout_output=True, cached_artifacts=cached_set
     )
@@ -2290,7 +2303,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
 
     # Output summary (always at the end)
     cached_set = {input_path} if was_cached else set()
-    artifacts = generated_files + [input_path] if not was_cached else [input_path]
+    artifacts = (generated_files + [input_path]) if not was_cached else [input_path]
     _print_output_summary(
         "explain", artifacts=artifacts, stdout_output=True, cached_artifacts=cached_set
     )
@@ -3566,7 +3579,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     if not display_rows:
         print("No symbols found.")
         cached_set = {input_path} if was_cached else set()
-        artifacts = generated_files + [input_path] if not was_cached else [input_path]
+        artifacts = (generated_files + [input_path]) if not was_cached else [input_path]
         _print_output_summary(
             "symbols", artifacts=artifacts, stdout_output=True, cached_artifacts=cached_set
         )
@@ -3596,7 +3609,8 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         "Symbol", style="cyan",
         width=symbol_width, no_wrap=no_wrap_flag, overflow=overflow,
     )
-    table.add_column("Kind", style="green")
+    kind_width = max((len(r[1]) for r in display_rows), default=4)
+    table.add_column("Kind", style="green", min_width=kind_width, no_wrap=True)
     table.add_column("In", justify="right", style="yellow")
     table.add_column("Out", justify="right", style="yellow")
     table.add_column("Deg", justify="right", style="bold yellow")
@@ -3620,7 +3634,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
 
     # Output summary
     cached_set = {input_path} if was_cached else set()
-    artifacts = generated_files + [input_path] if not was_cached else [input_path]
+    artifacts = (generated_files + [input_path]) if not was_cached else [input_path]
     _print_output_summary(
         "symbols", artifacts=artifacts, stdout_output=True, cached_artifacts=cached_set
     )
@@ -4976,7 +4990,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
     # Output summary (to stderr for JSON mode to avoid breaking JSON parsing)
     summary_file = sys.stderr if args.format == "json" else None
     cached_set = {input_path} if was_cached else set()
-    artifacts = generated_files + [input_path] if not was_cached else [input_path]
+    artifacts = (generated_files + [input_path]) if not was_cached else [input_path]
     _print_output_summary(
         "test-coverage",
         artifacts=artifacts,
