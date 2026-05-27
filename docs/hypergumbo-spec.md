@@ -253,7 +253,7 @@ class Symbol:
     path: str
     language: str
     span: Span
-    origin: str                # which pass created this
+    origin: list[str]          # which passes contributed to this (INV-jidat; was str pre-0.10.0)
     origin_run_id: str         # references AnalysisRun.execution_id
     supply_chain_tier: int     # 1=first_party, 2=internal_dep, 3=external_dep, 4=derived
     supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
