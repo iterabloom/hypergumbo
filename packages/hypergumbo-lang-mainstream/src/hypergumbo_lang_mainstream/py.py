@@ -2790,6 +2790,88 @@ def _extract_edges(
                 origin_run_id=run_id,
             ))
 
+    module_level_vars: dict[str, Symbol] = {
+        name: sym for name, sym in local_symbols.items()
+        if sym.kind == "variable"
+    }
+
+    def _collect_local_bindings(
+        func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> frozenset[str]:
+        """Return names bound locally in *func_node* (params + body assignments).
+
+        Used to detect shadows that suppress variable-reference edges.
+        Walks the immediate scope only — nested function/class bodies are
+        excluded so their locals don't mask the enclosing function's view.
+        """
+        names: set[str] = set()
+        for arg in func_node.args.args:
+            names.add(arg.arg)
+        for arg in func_node.args.posonlyargs:
+            names.add(arg.arg)
+        for arg in func_node.args.kwonlyargs:
+            names.add(arg.arg)
+        if func_node.args.vararg:
+            names.add(func_node.args.vararg.arg)
+        if func_node.args.kwarg:
+            names.add(func_node.args.kwarg.arg)
+
+        scope_boundary = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+        def _walk_scope(nodes: list[ast.AST]) -> None:
+            for node in nodes:
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                    names.add(node.id)
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        names.add(alias.asname or alias.name.split(".")[0])
+                elif isinstance(node, ast.ImportFrom):
+                    for alias in node.names:
+                        names.add(alias.asname or alias.name)
+                for child in ast.iter_child_nodes(node):
+                    if not isinstance(child, scope_boundary):
+                        _walk_scope([child])
+
+        _walk_scope(list(ast.iter_child_nodes(func_node)))
+        return frozenset(names)
+
+    def _emit_variable_refs(
+        body_nodes: list[ast.AST],
+        caller_symbol: Symbol,
+        local_bindings: frozenset[str] = frozenset(),
+    ) -> None:
+        """Emit ``references`` edges for bare-name reads of module-level variables.
+
+        Walks *body_nodes* (skipping nested function/class scopes) and emits
+        an edge for each ``ast.Name`` in Load context that resolves to a
+        module-level variable Symbol and is not shadowed by a local binding.
+        """
+        scope_boundary = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+        def _walk(nodes: list[ast.AST]) -> None:
+            for node in nodes:
+                if (
+                    isinstance(node, ast.Name)
+                    and isinstance(node.ctx, ast.Load)
+                    and node.id in module_level_vars
+                    and node.id not in local_bindings
+                ):
+                    edges.append(Edge.create(
+                        src=caller_symbol.id,
+                        dst=module_level_vars[node.id].id,
+                        edge_type="references",
+                        line=node.lineno,
+                        confidence=0.85,
+                        evidence_type="ast_name_read",
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                    ))
+                for child in ast.iter_child_nodes(node):
+                    if not isinstance(child, scope_boundary):
+                        _walk([child])
+
+        _walk(body_nodes)
+
     def _emit_module_attr_refs(
         block_nodes: list[ast.AST],
         caller_symbol: Symbol,
@@ -3228,6 +3310,10 @@ def _extract_edges(
                 inner_scope = nested_by_parent_id.get(caller_symbol.id)
                 _emit_module_attr_refs(node.body, caller_symbol)
                 process_code_block(node.body, caller_symbol, param_types, inner_scope=inner_scope)
+                _emit_variable_refs(
+                    node.body, caller_symbol,
+                    local_bindings=_collect_local_bindings(node),
+                )
 
         # Process class decorators
         elif isinstance(node, ast.ClassDef):
@@ -3245,6 +3331,7 @@ def _extract_edges(
         ]
         _emit_module_attr_refs(module_level_nodes, module_symbol)
         process_code_block(module_level_nodes, module_symbol)
+        _emit_variable_refs(module_level_nodes, module_symbol)
 
     return edges
 

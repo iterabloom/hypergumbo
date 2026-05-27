@@ -869,6 +869,7 @@
                 "ast_method_this": "inference_pathway",
                 "ast_method_this_property": "inference_pathway",
                 "ast_method_type_inferred": "inference_pathway",
+                "ast_name_read": "inference_pathway",
                 "ast_new": "inference_pathway",
                 "ast_package": "inference_pathway",
                 "ast_perform": "inference_pathway",

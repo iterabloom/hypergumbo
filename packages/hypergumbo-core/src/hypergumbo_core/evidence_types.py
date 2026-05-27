@@ -146,6 +146,8 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
                      "Edge inferred from a `this.prop` / `self.attr` reference."),
     EvidenceTypeSpec("ast_method_type_inferred", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a method call with type-inferred receiver."),
+    EvidenceTypeSpec("ast_name_read", AXIS_INFERENCE_PATHWAY,
+                     "Edge inferred from a bare-name read of a module-level variable (WI-jagus)."),
     EvidenceTypeSpec("ast_new", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a `new` constructor expression."),
     EvidenceTypeSpec("ast_package", AXIS_INFERENCE_PATHWAY,

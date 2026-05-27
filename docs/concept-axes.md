@@ -325,6 +325,7 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`ast_method_this`** — Edge inferred from a `this`/`self` method call.
 - **`ast_method_this_property`** — Edge inferred from a `this.prop` / `self.attr` reference.
 - **`ast_method_type_inferred`** — Edge inferred from a method call with type-inferred receiver.
+- **`ast_name_read`** — Edge inferred from a bare-name read of a module-level variable (WI-jagus).
 - **`ast_new`** — Edge inferred from a `new` constructor expression.
 - **`ast_package`** — Edge inferred from a package declaration.
 - **`ast_perform`** — Edge inferred from a `perform`/effect-handler invocation (OCaml/Eff).
