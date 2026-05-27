@@ -189,6 +189,7 @@
     "ast_method_this",
     "ast_method_this_property",
     "ast_method_type_inferred",
+    "ast_name_read",
     "ast_new",
     "ast_package",
     "ast_perform",
