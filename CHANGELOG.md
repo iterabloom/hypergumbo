@@ -42,7 +42,6 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 
 #### Provenance and reproducibility
 
-- **`Symbol.origin` and `Edge.origin` changed from `str` to `list[str]`.** Multi-source attribution: when multiple passes contribute, all are credited. SCHEMA_VERSION 0.9.1 → 0.10.0.
 - **`Edge.derived_from: list[str]`** — every linker-produced Edge records which Symbol IDs were consumed to construct it. Populated across all 55 linker modules.
 - **`Pass.depends_on` in Conjunctive Normal Form.** Declares analyzer prerequisites for every linker as outer-AND of inner-OR clauses (e.g., JNI requires "java AND (c OR cpp OR rust)"). Populated across all 57 linkers with static and runtime validators.
 - **`AnalysisRun.pass_version` via code-hash.** `compute_pass_version` returns sha256 of the pass module source, replacing the fake `-v1` suffix that bumped on every release regardless of logic changes.
@@ -67,7 +66,6 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 - **`hypergumbo run --gzip`** compresses output (~90-95% reduction). `--out` auto-appends `.gz` when the path doesn't already end with it.
 - **`hypergumbo run --no-sketch-fan-out`** — explicit named alias for `--budgets none`.
 - **`behavior_map["features"]` populated** with spec-shape index entries for detected route handlers. Stable feature IDs enable diff-across-commits.
-- **`limits.failed_files[]` now actually populated.** Previously always `[]` even when files were dropped. Now records `{path, reason, analyzer}` across 29 producer sites.
 - **Corpus-driven schema-coverage ratchet gate.** Self-analysis exercises only ~20% of canonical registries. New CI gate runs against a 10-fixture multi-language corpus (~5s) with a shrink-only baseline.
 
 #### Other additions
@@ -89,6 +87,7 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 - **SCHEMA_VERSION 0.5.8 → 0.6.0 — `Symbol.kind` endpoint_shape closure.** All 71 endpoint_shape values removed: framework roles → canonical kind + `meta["framework_role"]`; edge labels → `call_site` + `meta["call_kind"]`; file-shape, build-config, and long-tail values fold or drop.
 - **CUDA / Android XML canonical-kind folds.** CUDA now emits `kind="function"` + `meta["cuda_execution_space"]`; Android XML emits `kind="component"` + `meta["component_type"]`.
 - **Producer-coherence linter extended** — inline ternary resolution, non-string Constant handling, f-string expansion mode, and variable-form backstop. Six new `AXIS_PENDING` values registered; SCHEMA_VERSION 0.7.0 → 0.7.1.
+- **`Symbol.origin` and `Edge.origin` changed from `str` to `list[str]`.** Multi-source attribution: when multiple passes contribute, all are credited. SCHEMA_VERSION 0.9.1 → 0.10.0.
 
 #### Catalog and pass identity
 
@@ -113,7 +112,6 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 
 - **`io-boundaries` hides `external_potential` bucket** from default text output (was drowning per-primitive view). New `--show-external-potential` flag opts back in.
 - **Circom analyzer gates on actual `.circom` files** instead of warning whenever the grammar is unavailable. Partial-install TOML warnings suppressed on irrelevant repos.
-- **`remove-extras` now actually uninstalls source-built grammars** (previously no-op'd).
 - **`hypergumbo run --out` help text lists side-output files** (compact-tier previews, handler slices).
 - **Ten `git rev-parse` call-sites hardened** against unverified-ref stdout contamination.
 - **Framework `Pattern.meta_match` field** re-binds YAML rules to post-fold emission shapes (canonical kind + meta keys).
@@ -131,8 +129,9 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 
 - **`hypergumbo slice` output summary** now reads "Generated N artifact(s)" (was truncated) and duplicate artifact listings across 8 subcommands fixed (operator-precedence bug).
 - **`hypergumbo symbols` Kind column** no longer truncates (e.g., "functi…"). Width computed from data.
-- **`hypergumbo run --gzip --out foo.json`** auto-appends `.gz` instead of silently writing gzip binary to a `.json` path.
 - **All `--input`-taking subcommands handle `.gz` files.** New shared `load_behavior_map()` routes all 11 consumer sites.
+- **`limits.failed_files[]` now actually populated.** Previously always `[]` even when files were dropped. Now records `{path, reason, analyzer}` across 29 producer sites.
+- **`remove-extras` now actually uninstalls source-built grammars** (previously no-op'd).
 - **`hypergumbo explain Symbol | head`** no longer prints a BrokenPipeError traceback.
 - **Display polish** (5 fixes): `--help` metavar dynamically lists all subcommands; `routes` output sorted deterministically within files; `io-boundaries` tier tag moved to primitive header; `explain` summaries print before source dumps; test-density section header no longer mislabels high test usage as "redundant."
 - **Sketch progress no longer contaminates captured stderr.** Progress producers now gate on `sys.stderr.isatty()`.
