@@ -1279,6 +1279,14 @@ do_merge() {
 			echo "⚠️  Merge failed (HTTP $merge_http_code, attempt $attempt/$max_retries) — retrying in $((attempt * 5))s..."
 			sleep $((attempt * 5))
 		else
+			# Final attempt exhausted — one last merge-state check
+			# before giving up (Codeberg sometimes returns HTTP 405
+			# despite successfully processing the merge).
+			if _check_pr_merged "$pr_num"; then
+				echo "✅ Verified: PR was successfully merged! (despite HTTP $merge_http_code)"
+				rm -f "$tmp_file"
+				return 0
+			fi
 			echo "❌ Merge failed after $max_retries attempts (last HTTP $merge_http_code)"
 			echo "Response: $merge_response"
 			rm -f "$tmp_file"
