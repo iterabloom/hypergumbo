@@ -1,0 +1,30 @@
+- op: create  # bc8b
+  at: '2026-05-27T00:47:53Z'  # bc8b
+  by: agent  # bc8b
+  actor: jgstern_agent  # bc8b
+  clock: 1  # bc8b
+  nonce: bc8b  # bc8b
+  data:  # bc8b
+    kind: work_item  # bc8b
+    title: "WI-depends-on-CNF: Pass.depends_on flat→CNF migration + per-linker audit across all 57 linkers (closes INV-hujog)"  # bc8b
+    status: done  # bc8b
+    priority: 3  # bc8b
+    parent:  # bc8b
+    tags:  # bc8b
+    - schema  # bc8b
+    - structural  # bc8b
+    - analysis_quality  # bc8b
+    isbefore:  # bc8b
+    - INV-hujog-vamon-zafon-mikik-pisah-tanor-pumah-rogij  # bc8b
+    duplicate_of: []  # bc8b
+    not_duplicate_of: []  # bc8b
+    pr_ref: https://codeberg.org/iterabloom/hypergumbo/pulls/3921  # bc8b
+    description: "## Retroactive creation — original ops lost to auto-pr clobber\n\nThis item was originally created during the 2026-05-26 session as WI-dilab-hitub-fudif-vavit-zutir-rojak-fimiv-vopah. Its ops file was lost when auto-pr's cleanup_local did git checkout dev + git pull, which overwrote the working-tree ops. The original tracker add, update to in_progress, and update to done all succeeded (confirmed via transcript), but the ops file never reached the auto-sync threshold (80 lines) before the session ended.\n\n## What shipped (PR #3921, commit 955ec5df7e)\n\nPass.depends_on migrated from list[str] to list[list[str]] (CNF: outer-AND of inner-OR clauses). All 57 linkers audited and populated. Validator split into validate_pass_name_resolution (static, CI-time) and validate_pass_dependencies (runtime CNF gating, not yet wired into run_behavior_map). TestINVHujogClosureCriterion property test pins the closure criterion. 12063 tests passed, 100% coverage on 50 changed source files."  # bc8b
+    fields: {}  # bc8b
+- op: discuss  # 9e76
+  at: '2026-05-27T00:47:59Z'  # 9e76
+  by: agent  # 9e76
+  actor: jgstern_agent  # 9e76
+  clock: 2  # 9e76
+  nonce: '9e76'  # 9e76
+  message: "Retroactive recreation of WI-dilab-hitub (lost to auto-pr ops clobber on 2026-05-26). Merged as PR #3921, commit 955ec5df7e. See description for full details of the clobber mechanism."  # 9e76
