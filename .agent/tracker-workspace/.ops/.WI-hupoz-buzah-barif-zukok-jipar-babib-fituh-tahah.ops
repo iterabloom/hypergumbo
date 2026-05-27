@@ -1,0 +1,21 @@
+- op: create  # 457f
+  at: '2026-05-27T20:15:23Z'  # 457f
+  by: agent  # 457f
+  actor: jgstern_agent  # 457f
+  clock: 1  # 457f
+  nonce: 457f  # 457f
+  data:  # 457f
+    kind: work_item  # 457f
+    title: "Wire RegisteredLinker.pass_version through LinkerContext to AnalysisRun.create(pass_version=...)"  # 457f
+    status: todo_hard  # 457f
+    priority: 3  # 457f
+    parent:  # 457f
+    tags:  # 457f
+    - provenance  # 457f
+    - concept_audit  # 457f
+    isbefore: []  # 457f
+    duplicate_of: []  # 457f
+    not_duplicate_of: []  # 457f
+    pr_ref:  # 457f
+    description: "Filed during fundamental concept audit 2026-05-27 (provenance fields on IR dataclasses).\n\nRegisteredLinker.pass_version is computed at decoration time via compute_pass_version (registry.py:539), giving each linker a real code-hash. But no linker body passes it to AnalysisRun.create() — all linkers call AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION) without pass_version=..., so every linker-created AnalysisRun has pass_version=\"\" (empty).\n\nThe code-hash exists on the registration but is dropped on the floor.\n\nFix: add pass_version to LinkerContext (which is already passed to every linker body), then update the linker template to include pass_version=ctx.pass_version in the AnalysisRun.create() call. This is a straightforward threading exercise across ~35 linker bodies, or better: make LinkerContext.create_run() a factory that stamps pass_version automatically.\n\nCompanion to INV-kohat (the version semantic split): once linkers pass pass_version, AnalysisRun.version can be clarified to always hold the package version, and pass_version always holds the code-hash."  # 457f
+    fields: {}  # 457f

@@ -1,0 +1,21 @@
+- op: create  # be44
+  at: '2026-05-27T20:15:10Z'  # be44
+  by: agent  # be44
+  actor: jgstern_agent  # be44
+  clock: 1  # be44
+  nonce: be44  # be44
+  data:  # be44
+    kind: work_item  # be44
+    title: "Remove dead field origin_run_signature from Symbol and Edge (never stamped by any producer)"  # be44
+    status: todo_hard  # be44
+    priority: 3  # be44
+    parent:  # be44
+    tags:  # be44
+    - provenance  # be44
+    - concept_audit  # be44
+    isbefore: []  # be44
+    duplicate_of: []  # be44
+    not_duplicate_of: []  # be44
+    pr_ref:  # be44
+    description: "Filed during fundamental concept audit 2026-05-27 (provenance fields on IR dataclasses).\n\norigin_run_signature is declared on Symbol (ir.py:374) and Edge (ir.py:573), serialized in to_dict and deserialized in from_dict, but:\n- Zero producers ever set it (not in any analyzer or linker)\n- Zero consumers read it outside ser/deser\n- 13 total references, all in ir.py or test fixtures\n- Always None in fresh analysis output\n\nThe intended purpose was to link entities to their creating AnalysisRun's run_signature for config-based grouping. That link was never wired. The field is pure dead weight.\n\nFix: deprecate in next minor, remove in next schema bump. Update from_dict to silently ignore the key for back-compat with old JSON. Remove the field from Symbol and Edge dataclasses."  # be44
+    fields: {}  # be44

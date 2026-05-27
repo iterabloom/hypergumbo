@@ -1,0 +1,21 @@
+- op: create  # d017
+  at: '2026-05-27T20:48:06Z'  # d017
+  by: agent  # d017
+  actor: jgstern_agent  # d017
+  clock: 1  # d017
+  nonce: d017  # d017
+  data:  # d017
+    kind: work_item  # d017
+    title: "Remove dead requires_symbols field from RegisteredAnalyzer (superseded by depends_on)"  # d017
+    status: todo_hard  # d017
+    priority: 4  # d017
+    parent:  # d017
+    tags:  # d017
+    - concept_audit  # d017
+    - pass_infrastructure  # d017
+    isbefore: []  # d017
+    duplicate_of: []  # d017
+    not_duplicate_of: []  # d017
+    pr_ref:  # d017
+    description: "Filed during fundamental concept audit 2026-05-27 (pass identity/dependency model).\n\nrequires_symbols on RegisteredAnalyzer was designed for future multi-pass scheduling (\"this analyzer needs symbols from another analyzer\"). It is:\n- Declared on RegisteredAnalyzer (analyze/registry.py:99)\n- Accepted as a decorator kwarg (analyze/registry.py:148)\n- Never passed by any of the ~45 registered analyzers\n- Never consumed by any runtime code (all_analyzers.py doesn't read it)\n- Superseded by depends_on (INV-hujog), which uses a richer CNF model and is actually validated\n\n17 total references, all in registry.py definition/signature.\n\nFix: remove the field from RegisteredAnalyzer, remove the kwarg from register_analyzer, remove the comment referencing it. One-commit change."  # d017
+    fields: {}  # d017

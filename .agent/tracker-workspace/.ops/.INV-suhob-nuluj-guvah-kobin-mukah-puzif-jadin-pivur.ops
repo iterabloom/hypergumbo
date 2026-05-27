@@ -1,0 +1,23 @@
+- op: create  # 1a3b
+  at: '2026-05-27T20:48:19Z'  # 1a3b
+  by: agent  # 1a3b
+  actor: jgstern_agent  # 1a3b
+  clock: 1  # 1a3b
+  nonce: 1a3b  # 1a3b
+  data:  # 1a3b
+    kind: invariant  # 1a3b
+    title: "Drift guard: activation.language_pairs and depends_on must encode consistent constraints on Bridge linkers"  # 1a3b
+    status: violated  # 1a3b
+    priority: 4  # 1a3b
+    parent:  # 1a3b
+    tags:  # 1a3b
+    - concept_audit  # 1a3b
+    - pass_infrastructure  # 1a3b
+    isbefore: []  # 1a3b
+    duplicate_of: []  # 1a3b
+    not_duplicate_of: []  # 1a3b
+    pr_ref:  # 1a3b
+    description: "Filed during fundamental concept audit 2026-05-27 (pass identity/dependency model).\n\nFor Bridge linkers (JNI, CGo, PyFFI, NAPI, wasm_bindgen, etc.), activation.language_pairs and depends_on CNF express semantically identical constraints in different syntax. E.g., JNI:\n- activation: language_pairs=[(\"java\",\"c\"), (\"java\",\"cpp\"), (\"java\",\"rust\")]\n- depends_on: [[\"java\"], [\"c\", \"cpp\", \"rust\"]]\n\nThese must stay in sync. If someone adds a new impl language to one but not the other, the constraint silently diverges. No test currently asserts consistency.\n\nFix: property test that, for every RegisteredLinker with both activation.language_pairs and depends_on, checks that the set of languages reachable via language_pairs matches the set reachable via CNF clause resolution. The test shape: collect all languages from all pairs, partition into anchor (appears in position 0 of every pair) and impl (appears in position 1); assert depends_on has a clause containing exactly the anchor(s) and a clause containing exactly the impl(s)."  # 1a3b
+    fields:  # 1a3b
+      statement: "For every linker declaring both activation.language_pairs and depends_on, the CNF semantics of depends_on must be consistent with the language_pairs constraint"  # 1a3b
+      root_cause: "Bridge linkers manually encode the same language constraint in two different syntaxes (activation and depends_on) with no sync guard; adding a new impl language to one but not the other silently diverges the constraint"  # 1a3b
