@@ -1906,6 +1906,24 @@ def _estimate_tokens(text: str) -> int:
     return _shared_estimate_tokens(text)
 
 
+def _print_edge_provenance(
+    edge_dict: Dict[str, Any],
+    nodes_by_id: Dict[str, Dict[str, Any]],
+) -> None:
+    """Print derivation chain details for an edge (--provenance mode)."""
+    derived_from = edge_dict.get("derived_from")
+    if not derived_from:
+        return
+    resolved = []
+    for sym_id in derived_from:
+        node = nodes_by_id.get(sym_id)
+        if node:
+            resolved.append(f"{node.get('name', sym_id)} ({node.get('kind', '?')})")
+        else:
+            resolved.append(sym_id)
+    print(f"      Derived from: {', '.join(resolved)}")
+
+
 def cmd_explain(args: argparse.Namespace) -> int:
     """Explain a symbol with its callers and callees."""
     repo_root = Path(args.path).resolve()
@@ -1939,6 +1957,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
     exclude_tests = getattr(args, "exclude_tests", False)
     with_source = getattr(args, "with_source", False)
     token_budget = getattr(args, "tokens", None)
+    show_provenance = getattr(args, "provenance", False)
 
     # Find matching symbols using priority-based matching (same rules as
     # slice --entry for consistency — WI-gipop).
@@ -1985,6 +2004,14 @@ def cmd_explain(args: argparse.Namespace) -> int:
         print(f"  Location: {path}:{start_line}-{end_line}")
         print(f"  Language: {lang}")
 
+        # Show origin passes (PROV wasAttributedTo)
+        node_origin = node.get("origin")
+        if node_origin:
+            if isinstance(node_origin, list):
+                print(f"  Origin: {', '.join(node_origin)}")
+            else:
+                print(f"  Origin: {node_origin}")
+
         # Show complexity and LOC if available
         complexity = node.get("cyclomatic_complexity")
         loc = node.get("lines_of_code")
@@ -2029,8 +2056,8 @@ def cmd_explain(args: argparse.Namespace) -> int:
                 sources_shown.add(symbol_id)
 
         # Find callers (edges where dst = this symbol)
-        # Tuple: (in_degree, name, path, line, src_id, src_node) - in_degree for sorting
-        callers: list[tuple[int, str, str, int, str, Optional[Dict[str, Any]]]] = []
+        # Tuple: (in_degree, name, path, line, src_id, src_node, edge_type, edge_dict)
+        callers: list[tuple[int, str, str, int, str, Optional[Dict[str, Any]], str, Dict[str, Any]]] = []
         for edge in edges:
             if edge.get("dst") == symbol_id:
                 src_id = edge.get("src", "")
@@ -2047,14 +2074,15 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     continue
                 src_line = edge.get("line", 0)
                 src_in_degree = in_degree.get(src_id, 0)
-                callers.append((src_in_degree, src_name, src_path, src_line, src_id, src_node))
+                edge_type = edge.get("type", "")
+                callers.append((src_in_degree, src_name, src_path, src_line, src_id, src_node, edge_type, edge))
 
         # Sort callers by in-degree (descending), then by name for stability
         callers.sort(key=lambda x: (-x[0], x[1]))
 
         # Find callees (edges where src = this symbol)
-        # Tuple: (in_degree, name, path, line, dst_id, dst_node) - in_degree for sorting
-        callees: list[tuple[int, str, str, int, str, Optional[Dict[str, Any]]]] = []
+        # Tuple: (in_degree, name, path, line, dst_id, dst_node, edge_type, edge_dict)
+        callees: list[tuple[int, str, str, int, str, Optional[Dict[str, Any]], str, Dict[str, Any]]] = []
         for edge in edges:
             if edge.get("src") == symbol_id:
                 dst_id = edge.get("dst", "")
@@ -2071,7 +2099,8 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     continue
                 edge_line = edge.get("line", 0)
                 dst_in_degree = in_degree.get(dst_id, 0)
-                callees.append((dst_in_degree, dst_name, dst_path, edge_line, dst_id, dst_node))
+                edge_type = edge.get("type", "")
+                callees.append((dst_in_degree, dst_name, dst_path, edge_line, dst_id, dst_node, edge_type, edge))
 
         # Sort callees by in-degree (descending), then by name for stability
         callees.sort(key=lambda x: (-x[0], x[1]))
@@ -2086,7 +2115,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
             caller_ids_added: set[str] = set()
 
             # Prepare caller source items
-            for caller_in_degree, caller_name, caller_path, caller_line, caller_id, caller_node in callers:
+            for caller_in_degree, caller_name, caller_path, caller_line, caller_id, caller_node, _et, _ed in callers:
                 if caller_id in sources_shown:
                     continue
                 is_module_level = (
@@ -2114,7 +2143,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     caller_ids_added.add(caller_id)
 
             # Prepare callee source items (skip if already in caller list)
-            for callee_in_degree, callee_name, callee_path, callee_line, callee_id, callee_node in callees:
+            for callee_in_degree, callee_name, callee_path, callee_line, callee_id, callee_node, _et, _ed in callees:
                 if callee_id in sources_shown or callee_id in caller_ids_added:
                     continue
                 is_module_level = (
@@ -2181,8 +2210,11 @@ def cmd_explain(args: argparse.Namespace) -> int:
         print()
         if callers:
             print(f"  Called by ({len(callers)}):")
-            for _, caller_name, caller_path, caller_line, _, _ in callers:
-                print(f"    - {caller_name} ({caller_path}:{caller_line})")
+            for _, caller_name, caller_path, caller_line, _, _, edge_type, edge_dict in callers:
+                edge_annotation = f" [{edge_type}]" if edge_type else ""
+                print(f"    - {caller_name} ({caller_path}:{caller_line}){edge_annotation}")
+                if show_provenance:
+                    _print_edge_provenance(edge_dict, nodes_by_id)
         else:
             print("  Called by: (none)")
 
@@ -2190,8 +2222,11 @@ def cmd_explain(args: argparse.Namespace) -> int:
         print()
         if callees:
             print(f"  Calls ({len(callees)}):")
-            for _, callee_name, callee_path, callee_line, _, _ in callees:
-                print(f"    - {callee_name} ({callee_path}:{callee_line})")
+            for _, callee_name, callee_path, callee_line, _, _, edge_type, edge_dict in callees:
+                edge_annotation = f" [{edge_type}]" if edge_type else ""
+                print(f"    - {callee_name} ({callee_path}:{callee_line}){edge_annotation}")
+                if show_provenance:
+                    _print_edge_provenance(edge_dict, nodes_by_id)
         else:
             print("  Calls: (none)")
 
@@ -6331,8 +6366,11 @@ Examples:
   hypergumbo explain "main"               # Show what main calls and is called by
   hypergumbo explain "UserService"        # Explain a class
   hypergumbo explain "parse_config"       # Explain a specific function
+  hypergumbo explain "foo" --provenance   # Include derivation chains per edge
 
-Shows: Symbol location, callers (what calls it), callees (what it calls).
+Shows: Symbol location, origin passes, callers (what calls it), callees (what it calls).
+Edge types are shown inline. Use --provenance to see which symbols each linker
+consumed to construct each edge (PROV wasDerivedFrom).
 
 Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 
@@ -6379,6 +6417,13 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         default=None,
         dest="tokens",
         help="Token budget for source code (must be a positive integer; omits low-priority sources when exceeded)",
+    )
+    p_explain.add_argument(
+        "--provenance",
+        action="store_true",
+        default=False,
+        dest="provenance",
+        help="Show derivation chains (derived_from) for each edge",
     )
     p_explain.set_defaults(func=cmd_explain)
 

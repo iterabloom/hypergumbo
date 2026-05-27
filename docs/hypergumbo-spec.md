@@ -85,8 +85,11 @@ Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into
 * `-t N` limits output to approximately N tokens.
 * `--with-source` appends full source file contents after the sketch (ordered by symbol importance density, skips files under 5 LOC)
 
-🟩 **`hypergumbo explain <symbol> [--with-source] [-t tokens] [-x]`**
+🟩 **`hypergumbo explain <symbol> [--with-source] [-t tokens] [-x] [--provenance]`**
 Shows detailed info about a symbol (function, class, etc.) and its callers/callees.
+* Always shows `Origin:` line with the pass(es) that created the symbol (PROV wasAttributedTo)
+* Caller/callee lines annotated with edge type (e.g., `[imported_call]`, `[calls]`)
+* `--provenance` shows derivation chains per edge: resolves `Edge.derived_from` IDs to `name (kind)` pairs (PROV wasDerivedFrom). See ADR-0030 for the PROV vocabulary mapping.
 * `--with-source` shows source code for the symbol, callers, and callees:
   - Symbol source shown first
   - "Called by" list, then caller sources (ordered by in-degree descending)

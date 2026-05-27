@@ -1865,6 +1865,492 @@ def test_cmd_explain_finds_symbol_by_partial_name(tmp_path: Path, capsys) -> Non
     assert "findUser" in out
 
 
+# =============================================================================
+# Tests for explain provenance surfacing (INV-dubam criterion 4)
+# =============================================================================
+
+
+def test_cmd_explain_shows_symbol_origin(tmp_path: Path, capsys) -> None:
+    """Explain shows origin passes for the queried symbol."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "origin": ["python-analyzer"],
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "Origin: python-analyzer" in out
+
+
+def test_cmd_explain_shows_scalar_origin(tmp_path: Path, capsys) -> None:
+    """Explain handles legacy scalar origin (backward compat)."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "origin": "python-analyzer",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "Origin: python-analyzer" in out
+
+
+def test_cmd_explain_shows_multi_origin(tmp_path: Path, capsys) -> None:
+    """Explain shows all contributing passes when origin is multi-element."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "origin": ["python-analyzer", "inherited-calls-linker"],
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "python-analyzer" in out
+    assert "inherited-calls-linker" in out
+
+
+def test_cmd_explain_shows_edge_type_in_callers(tmp_path: Path, capsys) -> None:
+    """Caller lines show the edge type."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/main.py:10-15:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 10, "end_line": 15, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:1",
+                "src": "python:src/main.py:1-5:main:function",
+                "dst": "python:src/main.py:10-15:foo:function",
+                "type": "imported_call",
+                "origin": ["python-analyzer"],
+                "line": 3,
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "imported_call" in out
+
+
+def test_cmd_explain_shows_edge_type_in_callees(tmp_path: Path, capsys) -> None:
+    """Callee lines show the edge type."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/utils.py:1-5:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:1",
+                "src": "python:src/main.py:1-5:main:function",
+                "dst": "python:src/utils.py:1-5:helper:function",
+                "type": "calls",
+                "origin": ["python-analyzer"],
+                "line": 3,
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "main"
+    args.path = str(tmp_path)
+    args.input = None
+
+    result = cmd_explain(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Callee line should mention the edge type
+    assert "calls" in out
+
+
+def test_cmd_explain_provenance_on_callees(tmp_path: Path, capsys) -> None:
+    """--provenance shows derived_from on callee edges (Calls direction)."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/utils.py:1-5:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/utils.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:1",
+                "src": "python:src/main.py:1-5:main:function",
+                "dst": "python:src/utils.py:1-5:helper:function",
+                "type": "imported_call",
+                "origin": ["http-linker"],
+                "derived_from": [
+                    "python:src/main.py:1-5:main:function",
+                    "python:src/utils.py:1-5:helper:function",
+                ],
+                "line": 3,
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "main"
+    args.path = str(tmp_path)
+    args.input = None
+    args.provenance = True
+
+    result = cmd_explain(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Callee provenance should show derived_from
+    assert "Derived from:" in out
+    assert "main (function)" in out
+    assert "helper (function)" in out
+
+
+def test_cmd_explain_provenance_shows_derived_from(tmp_path: Path, capsys) -> None:
+    """--provenance shows derived_from details for edges."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/api.py:1-5:handler:function",
+                "name": "handler",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/api.py:1-1:file:file",
+                "name": "file",
+                "kind": "file",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 1, "start_col": 0, "end_col": 0},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:1",
+                "src": "python:src/main.py:1-5:main:function",
+                "dst": "python:src/api.py:1-5:handler:function",
+                "type": "imported_call",
+                "origin": ["http-linker"],
+                "derived_from": [
+                    "python:src/main.py:1-5:main:function",
+                    "python:src/api.py:1-5:handler:function",
+                    "python:src/api.py:1-1:file:file",
+                ],
+                "line": 3,
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "handler"
+    args.path = str(tmp_path)
+    args.input = None
+    args.provenance = True
+
+    result = cmd_explain(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should show derived_from with resolved names
+    assert "Derived from:" in out
+    assert "main" in out
+    assert "handler" in out
+
+
+def test_cmd_explain_provenance_off_by_default(tmp_path: Path, capsys) -> None:
+    """Derived-from details are hidden when --provenance is not specified."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/api.py:1-5:handler:function",
+                "name": "handler",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:1",
+                "src": "python:src/main.py:1-5:main:function",
+                "dst": "python:src/api.py:1-5:handler:function",
+                "type": "imported_call",
+                "origin": ["http-linker"],
+                "derived_from": [
+                    "python:src/main.py:1-5:main:function",
+                    "python:src/api.py:1-5:handler:function",
+                ],
+                "line": 3,
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "handler"
+    args.path = str(tmp_path)
+    args.input = None
+    args.provenance = False
+
+    result = cmd_explain(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "Derived from:" not in out
+
+
+def test_cmd_explain_provenance_no_derived_from(tmp_path: Path, capsys) -> None:
+    """--provenance gracefully handles edges without derived_from."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/main.py:10-15:foo:function",
+                "name": "foo",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 10, "end_line": 15, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:1",
+                "src": "python:src/main.py:1-5:main:function",
+                "dst": "python:src/main.py:10-15:foo:function",
+                "type": "calls",
+                "line": 3,
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "foo"
+    args.path = str(tmp_path)
+    args.input = None
+    args.provenance = True
+
+    result = cmd_explain(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Should not crash; no derived_from line shown for edges without it
+    assert "Derived from:" not in out
+
+
+def test_cmd_explain_provenance_unresolved_derived_from(tmp_path: Path, capsys) -> None:
+    """--provenance falls back to raw ID when derived_from refs unknown nodes."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/api.py:1-5:handler:function",
+                "name": "handler",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:1",
+                "src": "python:src/main.py:1-5:main:function",
+                "dst": "python:src/api.py:1-5:handler:function",
+                "type": "imported_call",
+                "origin": ["http-linker"],
+                "derived_from": [
+                    "python:src/main.py:1-5:main:function",
+                    "python:unknown:1-1:ghost:function",
+                ],
+                "line": 3,
+                "confidence": 0.9,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "handler"
+    args.path = str(tmp_path)
+    args.input = None
+    args.provenance = True
+
+    result = cmd_explain(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "Derived from:" in out
+    # Known node resolved to name
+    assert "main (function)" in out
+    # Unknown node shows raw ID
+    assert "python:unknown:1-1:ghost:function" in out
+
+
 def test_cmd_explain_summary_appears_before_source_dumps(tmp_path: Path, capsys) -> None:
     """WI-dubum: 'Called by' and 'Calls' summaries must appear before all
     source dumps so users see the call graph before scrolling past code.
