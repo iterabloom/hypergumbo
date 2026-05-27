@@ -22,3 +22,18 @@
     fields:  # 1f1a
       statement: "Every pass that depends on output from other passes (linkers, infrastructure passes) should declare those dependencies via Pass.requires. The runtime should validate the active pass set at config time and error when a prerequisite is missing."  # 1f1a
       root_cause: "Pass ordering is implicit in orchestrator code. Each linker assumes its prerequisite analyzers ran. Disabling an analyzer (e.g., --no-python) silently degrades the behavior map; no error tells the user a linker needed the disabled analyzer's output."  # 1f1a
+- op: update  # f473
+  at: '2026-05-27T00:14:34Z'  # f473
+  by: agent  # f473
+  actor: jgstern_agent  # f473
+  clock: 2  # f473
+  nonce: f473  # f473
+  set:  # f473
+    status: pending_validation  # f473
+- op: discuss  # f8ff
+  at: '2026-05-27T00:14:34Z'  # f8ff
+  by: agent  # f8ff
+  actor: jgstern_agent  # f8ff
+  clock: 3  # f8ff
+  nonce: f8ff  # f8ff
+  message: "Closure substrate + audit shipped via WI-hupaz (PR #3919, commit 128b44c737) + WI-dilab (PR #3921, commit 955ec5df7e). Pass.depends_on is now declared in CNF (outer-AND of inner-OR) across all 57 linkers: 10 Bridge linkers as anchor+impls, 29 Framework linkers (single-language or multi-language OR-clauses), 11 Protocol linkers as multi-language OR-clauses, 7 Infrastructure linkers (6 with appropriate declarations + containment alone with explicit empty list and docstring justification). validate_pass_name_resolution catches typos at CI time; validate_pass_dependencies provides forward-looking runtime CNF gating. Full satisfaction (status → satisfied) requires Phase 2 wire-up of validate_pass_dependencies into run_behavior_map's config-time pass filtering — that's a separate future WI."  # f8ff

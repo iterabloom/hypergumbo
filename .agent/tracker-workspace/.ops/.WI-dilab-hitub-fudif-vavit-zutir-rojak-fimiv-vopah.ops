@@ -1,0 +1,55 @@
+- op: create  # cc8f
+  at: '2026-05-26T22:22:31Z'  # cc8f
+  by: agent  # cc8f
+  actor: jgstern_agent  # cc8f
+  clock: 1  # cc8f
+  nonce: cc8f  # cc8f
+  data:  # cc8f
+    kind: work_item  # cc8f
+    title: "WI-cnf-migration: Pass.depends_on flat→CNF + per-linker audit (closes INV-hujog)"  # cc8f
+    status: todo_soft  # cc8f
+    priority: 3  # cc8f
+    parent:  # cc8f
+    tags:  # cc8f
+    - schema  # cc8f
+    - structural  # cc8f
+    - analysis_quality  # cc8f
+    isbefore:  # cc8f
+    - INV-hujog-vamon-zafon-mikik-pisah-tanor-pumah-rogij  # cc8f
+    duplicate_of: []  # cc8f
+    not_duplicate_of: []  # cc8f
+    pr_ref:  # cc8f
+    description: "## Statement\n\nMigrate `Pass.depends_on` from flat `list[str]` (Option 2 shape, shipped in WI-hupaz) to nested `list[list[str]]` interpreted as Conjunctive Normal Form (outer-AND of inner-ORs). Populate `depends_on` on every active linker (~57 total) per its subcategory's natural shape. Closes INV-hujog.\n\n## Why CNF, not flat\n\nWI-hupaz shipped declarations that don't capture Bridge linker semantics correctly. JNI's real requirement is \"java AND (c OR cpp OR rust)\" — a mix of AND and OR that a flat list can't express. Under any future runtime gating, the flat list would force either an over-AND interpretation (refuses JNI on Java+C-only repos) or an over-OR interpretation (allows JNI on Rust-only repos). Pure-AND failure is more dangerous (silently misses correct configs); pure-OR failure is more obvious (accepts wrong configs).\n\nCNF is the minimal richer expression that captures all current Bridge/Framework/Protocol linker semantics. Survey: 57 linkers, 0 hit a CNF gap. Future polyglot bridges (Kotlin+Java JNI, Scala+Java JNI) also fit CNF cleanly. Edge cases that DON'T fit CNF (negation, counting, optional-augmentations, config-dependent) are orthogonal concepts that belong elsewhere (separate fields or `LinkerActivation`).\n\n## What ships\n\n1. **Substrate migration:** `Pass.depends_on: list[list[str]]` replacing the flat list. Same for `RegisteredAnalyzer.depends_on` and `RegisteredLinker.depends_on`. Decorator kwargs and `_from_registered` flow updated. Inner-list deep-copy in `_from_registered` to avoid shared mutable defaults.\n\n2. **Validator split into two functions:**\n   - `validate_pass_name_resolution(passes)` — static name-spelling check. Every literal in every clause must be a registered pass-id. Catches typos at CI time, independent of runtime active set.\n   - `validate_pass_dependencies(active_passes)` — runtime CNF check. For each outer-AND-conjunct, at least one literal must be in the active set. The actual gating semantic (forward-looking — not yet wired into `run_behavior_map`).\n\n3. **Re-decorate the 7 WI-hupaz Bridge linkers** to CNF shape: jni / cgo / napi / pyffi / lua_ffi / tauri_ipc / wasm_bindgen.\n\n4. **Populate remaining 50 linkers:**\n   - Bridge (3): ruby_ffi, solidity_abi, swift_objc — anchor language AND any-of-impls\n   - Framework (29): each gets `[[<scoped-language>]]` — single AND-conjunct, single OR-literal (degenerate CNF, same as flat list for single-language linkers)\n   - Protocol (11): each gets `[[<lang1>, <lang2>, ...]]` — single AND-conjunct, multi-literal OR-group\n   - Infrastructure (7): explicit empty `[]` with a docstring note explaining why empty is honest for language-agnostic linkers\n\n5. **Closure criterion property test:** \"Every Bridge / Framework / Protocol linker has at least one non-empty AND-conjunct. Infrastructure linkers may have empty depends_on (explicit declaration).\"\n\n6. **Tests rewritten:** WI-hupaz's 14 `test_catalog.py` tests + 2 each in `test_linker_registry.py` and `test_analyzer_registry.py` rewritten for nested-list shape. New CNF-specific tests cover multi-conjunct, OR-satisfaction-by-any-member, mixed-shape declarations.\n\n## Closure status after this PR\n\nINV-hujog transitions `violated → pending_validation`. Full closure (status → satisfied) requires a future PR that wires `validate_pass_dependencies(active_passes)` into `run_behavior_map` for config-time gating. Today's PR ships the data + static validation; runtime gating is a Phase 2 concern, deferred per the WI-hupaz handoff.\n\n## What's NOT in scope\n\n- Wiring `validate_pass_dependencies` into `run_behavior_map` (Phase 2 / future WI)\n- Topological-sort scheduling using `depends_on` (Phase 2 / future WI)\n- Cycle detection (separate scheduling concern, deferred)\n- Negation / counting / optional / config-dependent semantics (out of scope for `depends_on`; belong in other fields if ever needed)\n\n## Acceptance / verification\n\n- 100% coverage on every touched source module (~14 source files + tests)\n- All Bridge/Framework/Protocol linkers declare non-empty depends_on\n- All Infrastructure linkers declare explicit empty depends_on with docstring\n- Static name-resolution check passes for the default catalog\n- No behavior-map effect (validator not yet wired into runtime)\n- `awaits_bakeoff_validation` NOT applied — pure substrate, zero runtime effect"  # cc8f
+    fields:  # cc8f
+      statement: "Pass.depends_on migrates from flat list[str] to nested list[list[str]] interpreted as CNF (outer-AND of inner-ORs). Every Bridge/Framework/Protocol linker declares non-empty depends_on; Infrastructure linkers declare empty with docstring note. Static name-resolution validator catches typos; runtime CNF validator (forward-looking) gates active-set requirements. INV-hujog transitions to pending_validation."  # cc8f
+      root_cause: "WI-hupaz's flat-list shape can't express Bridge linker semantics (java AND (c OR cpp OR rust)). CNF is the minimal richer expression that captures all current Bridge/Framework/Protocol linker structures without semantic compromise; survey of 57 linkers found zero CNF gaps. Closes the structural inadequacy that would otherwise force either over-AND or over-OR runtime gating later."  # cc8f
+- op: update  # 5fb9
+  at: '2026-05-26T23:13:40Z'  # 5fb9
+  by: agent  # 5fb9
+  actor: jgstern_agent  # 5fb9
+  clock: 2  # 5fb9
+  nonce: 5fb9  # 5fb9
+  set:  # 5fb9
+    status: in_progress  # 5fb9
+- op: discuss  # 40d3
+  at: '2026-05-26T23:13:41Z'  # 40d3
+  by: agent  # 40d3
+  actor: jgstern_agent  # 40d3
+  clock: 3  # 40d3
+  nonce: 40d3  # 40d3
+  message: "Implementation complete in commit f7644e14eb on feat/cnf-depends-on. CNF migration + 50-linker audit + 18 new/rewritten tests; 12063 passed/3 skipped/100% coverage on all 50 changed source files. The TestINVHujogClosureCriterion property test caught django-third-party-dispatch-linker as one Framework linker I missed in the initial sweep — fixed and re-tested. Starting auto-pr."  # 40d3
+- op: update  # 042d
+  at: '2026-05-27T00:14:33Z'  # 042d
+  by: agent  # 042d
+  actor: jgstern_agent  # 042d
+  clock: 4  # 042d
+  nonce: 042d  # 042d
+  set:  # 042d
+    status: done  # 042d
+- op: discuss  # 2635
+  at: '2026-05-27T00:14:33Z'  # 2635
+  by: agent  # 2635
+  actor: jgstern_agent  # 2635
+  clock: 5  # 2635
+  nonce: '2635'  # 2635
+  message: "Merged via PR #3921 as commit 955ec5df7e. CNF migration (flat list[str] → list[list[str]]) + per-linker audit across all 57 linkers + 18 new/rewritten tests; 12063 passed / 3 skipped / 100% coverage on all 50 changed source files. The TestINVHujogClosureCriterion property test caught django-third-party-dispatch-linker as one Framework linker missed in initial sweep (fixed and re-tested). Commit message amended pre-merge to drop a fabricated Signed-off-by line (\"Joshua Galen Stern\") that was hallucinated from context bleed — see thread for the full etiology. Only the legitimate jgstern-agent sign-off remains on the merged commit. INV-rahib streak holds at 11-of-11."  # 2635
