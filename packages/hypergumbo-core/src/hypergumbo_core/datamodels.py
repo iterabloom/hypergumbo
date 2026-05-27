@@ -89,7 +89,7 @@ class DataModel:
     """
 
     symbol_id: str  # axis: identity
-    kind: DataModelKind
+    kind: DataModelKind  # currently write-only — no consumer reads this field (sketch uses label/framework instead)
     confidence: float
     label: str  # axis: free-text — human-readable label for display; consumers render, never branch on the value itself.
     framework: str = ""  # axis: free-text — framework label like "Django", "Pydantic"; consumers display, never branch on the value itself.

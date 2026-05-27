@@ -584,6 +584,83 @@ runs can find prior work:
   retrospective re-trace of the ~225 PRELIM_RESOLVED rows on
   Symbol.kind axis carried over from prior audits.
 
+- **2026-05-27 — Pass identity/dependency model.**
+  Hypothesis: the Pass abstraction accumulated multiple overlapping
+  "should this run?" mechanisms that answer the same question in
+  different syntax. Outcome: partially confirmed. Three findings:
+  (F1) ``activation.language_pairs`` and ``depends_on`` CNF encode
+  semantically identical constraints for Bridge linkers (JNI, CGo,
+  PyFFI, NAPI, wasm_bindgen) with no sync guard — adding a new impl
+  language to one but not the other silently diverges. (F2)
+  ``requires_symbols`` on ``RegisteredAnalyzer`` is dead — 17
+  references, zero producers, zero consumers, superseded by
+  ``depends_on``. (F3) ``validate_pass_dependencies`` exists and works
+  but is not wired to any runtime path — intentional deferral, not a
+  bug. Clean pairs confirmed: ``activation`` vs ``requirements``
+  (pre-filter vs diagnostic), ``availability``/``requires`` vs
+  ``activation`` (installable vs repo-appropriate), ``Pass`` vs
+  ``RegisteredAnalyzer``/``RegisteredLinker`` (view-model pattern).
+  Two tracker items filed: WI-burin (remove dead requires_symbols),
+  INV-suhob (activation/depends_on drift guard).
+
+- **2026-05-27 — DataModelKind re-eval triggers.**
+  Re-eval check for the three triggers documented in WI-juvag-numud /
+  WI-sudov (2026-04-30 adjacent sweep). Outcome: rejected — no trigger
+  has fired. (a) Zero consumers read ``DataModel.kind`` — the field is
+  write-only; sketch reads ``.confidence``, ``.symbol_id``,
+  ``.framework``, ``.label`` but never ``.kind``. (b) Enum still has 7
+  values (threshold 12). (c) Two marginal cross-axis misclassifications
+  found (cli-rust ValueEnum → SCHEMA, Qt model/view → ORM_MODEL) but
+  invisible because no consumer reads ``kind``. Additional finding:
+  ``DataModel.to_dict()`` is never called outside ``datamodels.py`` —
+  the ``kind`` value never reaches any output. No tracker items filed;
+  existing re-eval triggers remain correctly calibrated.
+
+- **2026-05-27 — Provenance fields on IR dataclasses.**
+  Hypothesis: the ~10 provenance fields across Symbol, Edge, and
+  AnalysisRun are smuggling different questions (who created? /
+  reproducible? / what consumed?) through a shared naming pattern.
+  Outcome: partially confirmed. Four findings: (F1) `AnalysisRun.version`
+  holds a code-hash (sha256) when created by analyzers but a package
+  version string ("5.0.1") when created by linkers — `_compute_run_signature`
+  hashes both indiscriminately, making run_signatures incomparable across
+  producer types. (F2) `origin_run_signature` on Symbol and Edge is dead
+  weight — declared, serialized, deserialized, but never stamped by any
+  producer (zero of ~35 analyzers and ~35 linkers set it) and never read
+  by any consumer. (F3) `run_signature` on AnalysisRun is correctly
+  computed and serialized but has zero internal consumers — kept for
+  potential external PROV-DM tooling. (F4) `RegisteredLinker.pass_version`
+  is computed at decoration time but never threaded to
+  `AnalysisRun.create(pass_version=...)` — every linker-created
+  AnalysisRun has `pass_version=""`. Adjacent concepts audited:
+  `edge_key` vs `id` (clean), `stable_id` vs `shape_id` vs `fingerprint`
+  (clean), `repo_fingerprint` (clean). Three tracker items filed:
+  INV-kohat (version semantic split), WI-gapin (remove dead
+  origin_run_signature), WI-hupoz (wire linker pass_version).
+
+- **2026-05-27 — Taint / Dataflow / IO-Boundary / Safety-Zones
+  layering.** Hypothesis: the four subsystems are overlapping concepts
+  whose boundaries are confused. Outcome: partially confirmed. The
+  conceptual layering is well-designed — ADR-0015/0016/0017 genuinely
+  answer different questions at different pipeline stages, and
+  safety_zones is correctly scoped to self-analysis only. One concrete
+  gap found: 4 of 15 `io_boundary.boundary_types` values (`db_write`,
+  `db_read`, `process_send`, `logging`) have populated YAML catalogs
+  across 5 languages but no entry in `AUTO_SINK_ZONE_MAP` or
+  `AUTO_SOURCE_LABEL_MAP` and no documented exclusion rationale —
+  meaning taint-flow analysis silently produces false confidence on
+  database-writing and logging code paths. Two architectural smells:
+  (1) no drift guard between `boundary_types` and the auto-mapping
+  tables (new boundaries silently get zero taint coverage); (2)
+  `HIGH_RISK_PRIMITIVES` is a manually maintained frozenset with no
+  sync against io_primitives YAML. Adjacent concepts audited:
+  `access_mode` vs `boundary` (clean), `safety_zones` vs `taint.zone`
+  (clean, different scope), `trust_level` on `TaintSink` (unused but
+  documented extension point — keep, re-eval on first `semi-trusted`
+  consumer). Three tracker items filed: WI-gofaz (add missing
+  mappings), INV-zivah (drift guard invariant), WI-gitad
+  (HIGH_RISK_PRIMITIVES sync test).
+
 (Future audits append here.)
 
 ## Relationship to other playbooks
