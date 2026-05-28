@@ -1,0 +1,23 @@
+- op: create  # fdea
+  at: '2026-05-28T07:34:03Z'  # fdea
+  by: agent  # fdea
+  actor: jgstern_agent  # fdea
+  clock: 1  # fdea
+  nonce: fdea  # fdea
+  data:  # fdea
+    kind: invariant  # fdea
+    title: "Solidity analyzer mis-classifies string literals (e.g. require messages) as imports"  # fdea
+    status: violated  # fdea
+    priority: 2  # fdea
+    parent:  # fdea
+    tags:  # fdea
+    - dogfooding  # fdea
+    - solidity  # fdea
+    isbefore: []  # fdea
+    duplicate_of: []  # fdea
+    not_duplicate_of: []  # fdea
+    pr_ref:  # fdea
+    description: "**Symptom.** The Solidity analyzer emits `imports` edges to arbitrary string literals (e.g. `require()` revert messages) as if they were import paths. On hypergumbo self-analysis (branch dev @ 77a69627b8), the literal `\"Not owner\"` from `tests/fixtures/schema-coverage-corpus/solidity/Contract.sol:18` becomes:\n- a bogus external_symbol node: `{id: 'Not owner:<unknown>:0-0:Not owner:Not owner', kind: external_symbol, language: 'Not owner', name: 'Not owner', path: '<external>'}`\n- a bogus edge: `solidity:.../Contract.sol --imports--> 'Not owner:...'`\n- a leak into `io-boundaries.unsupported_languages`: `['Not owner', 'ansible', 'bash', 'csharp', ...]`\n- a leak into `verify-claims` INV-javam diagnostic: `Note: no taint-flow catalog for language(s): Not owner, ansible, ...`\n\n**Root cause.** `packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/solidity.py:355–369` iterates every node in the tree-sitter parse tree and unconditionally calls `_extract_import_aliases(node, source)`. That helper looks for any direct `\"string\"` child via `find_child_by_type(node, \"string\")`; if found, the string contents become the import path. Tree nodes like `call_argument` (which wraps `require`'s arguments) have a direct `\"string\"` child, so the function treats them as imports.\n\nThe indentation on lines 357–369 is 12 spaces deep inside an 8-space-block `for`, suggesting an earlier `if node.type == \"import_directive\":` guard was removed without re-indenting the body.\n\n**Fix sketch.**\n```python\nfor node in iter_tree(tree.root_node):\n    if node.type != \"import_directive\":\n        continue\n    import_path, aliases = _extract_import_aliases(node, source)\n    if import_path:\n        ...\n```\n\n**Blast radius.** On hypergumbo self-analysis: 1 spurious edge (one fixture). On real-world Solidity codebases: scales with `require(_, \"msg\")` / `revert(\"msg\")` / `emit Event(\"msg\")` etc. — likely tens to hundreds per contract.\n\n**Property test to lock down.** Every Solidity `imports` edge's `dst` must be a path that ends in `.sol` (or a relative-resolved Solidity file). Strings without that shape indicate the leak.\n\n**Discovery context.** Self-analysis dogfooding session, 2026-05-28. Lab notebook: `~/hypergumbo_lab_notebook/notebookjournal_05282026_0707.md` (Finding B)."  # fdea
+    fields:  # fdea
+      statement: "The Solidity analyzer emits imports edges only from import_directive nodes; string literals inside call_expression / call_argument / emit / revert must not produce imports edges or external_symbol nodes."  # fdea
+      root_cause: "solidity.py line 356 for-loop calls _extract_import_aliases on every tree node without filtering on node.type == \"import_directive\". Looks like a deleted-guard regression — the body is over-indented relative to the for header."  # fdea

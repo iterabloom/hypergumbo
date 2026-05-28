@@ -1,0 +1,21 @@
+- op: create  # eedc
+  at: '2026-05-28T07:34:33Z'  # eedc
+  by: agent  # eedc
+  actor: jgstern_agent  # eedc
+  clock: 1  # eedc
+  nonce: eedc  # eedc
+  data:  # eedc
+    kind: work_item  # eedc
+    title: "Backfill catalog descriptions for 52 core analyzers"  # eedc
+    status: todo_hard  # eedc
+    priority: 4  # eedc
+    parent:  # eedc
+    tags:  # eedc
+    - dogfooding  # eedc
+    - catalog  # eedc
+    isbefore: []  # eedc
+    duplicate_of: []  # eedc
+    not_duplicate_of: []  # eedc
+    pr_ref:  # eedc
+    description: "**Symptom.** `hypergumbo catalog` emits an entry for every analyzer pass with format `  - <name> (<tier>): <description>`. On hypergumbo self-analysis (branch dev @ 77a69627b8), 52 of 112 core analyzers ship with an empty description. All 63 `extra` analyzers have non-empty descriptions.\n\n**Empty-description core analyzers (52):**\nrust_analyzer, apex, asm, astro, bibtex, bitbake, circom, commonlisp, fennel, gitignore, gleam, hack, haxe, ini, janet, ... (and 37 more — full list grep-able).\n\nThe output makes 46% of the catalog look broken / unmaintained.\n\n**Likely cause.** Missing `description=` kwarg on `@register_analyzer(...)` calls in those analyzer modules. Two-line fix per module.\n\n**Discovery context.** Self-analysis dogfooding session, 2026-05-28. Lab notebook: `~/hypergumbo_lab_notebook/notebookjournal_05282026_0707.md` (Finding D)."  # eedc
+    fields: {}  # eedc

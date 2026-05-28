@@ -1,0 +1,23 @@
+- op: create  # 48c8
+  at: '2026-05-28T07:34:22Z'  # 48c8
+  by: agent  # 48c8
+  actor: jgstern_agent  # 48c8
+  clock: 1  # 48c8
+  nonce: 48c8  # 48c8
+  data:  # 48c8
+    kind: invariant  # 48c8
+    title: "explain --provenance is invisible on analyzer-produced edge types"  # 48c8
+    status: violated  # 48c8
+    priority: 3  # 48c8
+    parent:  # 48c8
+    tags:  # 48c8
+    - dogfooding  # 48c8
+    - explain  # 48c8
+    isbefore: []  # 48c8
+    duplicate_of: []  # 48c8
+    not_duplicate_of: []  # 48c8
+    pr_ref:  # 48c8
+    description: "**Symptom.** `hypergumbo explain <symbol> --provenance` produces output byte-identical to `hypergumbo explain <symbol>` for every symbol primarily reached via analyzer-produced edges (`calls`, `instantiates`, `extends`, `imports`, `module_attr_ref`, `decorated_by`). The CHANGELOG advertises `--provenance` as \"shows per-edge derivation chains\" but on hypergumbo self-analysis (branch dev @ 77a69627b8) the flag is functionally invisible.\n\n**Why.** `derived_from` is populated only on linker-produced edges. Coverage on this run:\n- contains 100%, dispatches_to 100%, uses 100%, event_publishes 100%, module_exports 100%, depends_on_manifest 100%\n- calls 0.09%, imports 0.11%, references 1.1%, instantiates 0%, module_attr_ref 0%, decorated_by 0%, extends 0%\n\n`Symbol` (1934 callers, all `instantiates`): no provenance chains visible.\n`TreeSitterAnalyzer` (215 callers, mostly `extends`): no provenance chains visible.\nFor users, `--provenance` looks broken even though the underlying data is correctly populated for linker edges.\n\n**Two paths to fix.**\n\n(A, cheap, UX-only) When `--provenance` is requested but no edges in scope carry `derived_from`, print a one-line notice:\n```\n(No derivation chains: derived_from is only populated on linker-produced edges.\n Use `hypergumbo run --debug` or query `behavior_map[\"edges\"]` directly to see\n raw provenance fields.)\n```\n\n(B, structural) Extend analyzer producers to populate `derived_from` on `calls`/`extends`/`instantiates` with the source-symbol IDs consumed during edge resolution. This is the CHANGELOG-implied behavior.\n\n**Discovery context.** Self-analysis dogfooding session, 2026-05-28. Lab notebook: `~/hypergumbo_lab_notebook/notebookjournal_05282026_0707.md` (Finding E)."  # 48c8
+    fields:  # 48c8
+      statement: "When hypergumbo explain <symbol> --provenance is invoked and no inbound/outbound edges carry derived_from, the user must receive an explicit notice rather than identical output to non-provenance mode."  # 48c8
+      root_cause: "derived_from is populated only on linker-produced edges (contains/dispatches_to/uses/...); analyzer-produced edges (calls/extends/instantiates/...) are at 0% coverage. explain primarily renders the latter, so --provenance has no visible effect."  # 48c8
