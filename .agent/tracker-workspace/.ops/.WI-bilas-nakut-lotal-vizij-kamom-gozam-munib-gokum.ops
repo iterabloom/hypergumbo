@@ -1,0 +1,25 @@
+- op: create  # afae
+  at: '2026-05-28T20:04:38Z'  # afae
+  by: agent  # afae
+  actor: jgstern_agent  # afae
+  clock: 1  # afae
+  nonce: afae  # afae
+  data:  # afae
+    kind: work_item  # afae
+    title: "SIGINT during hypergumbo run dumps raw KeyboardInterrupt traceback"  # afae
+    status: todo_hard  # afae
+    priority: 2  # afae
+    parent:  # afae
+    tags:  # afae
+    - dogfooding  # afae
+    - pass11  # afae
+    - cli  # afae
+    - low_severity  # afae
+    isbefore: []  # afae
+    duplicate_of: []  # afae
+    not_duplicate_of: []  # afae
+    pr_ref:  # afae
+    description: ""  # afae
+    fields:  # afae
+      statement: "Pressing Ctrl-C during 'hypergumbo run' produces a raw Python KeyboardInterrupt traceback (with concurrent.futures internals) rather than a graceful 'Aborted by user' message. Exit code is correctly 130. No partial output file is created (good). The traceback creates noise and looks like a crash even though the behavior is intentional."  # afae
+      root_cause: "ThreadPoolExecutor's as_completed() blocks in a wait() loop; SIGINT bubbles up as KeyboardInterrupt with no top-level handler."  # afae

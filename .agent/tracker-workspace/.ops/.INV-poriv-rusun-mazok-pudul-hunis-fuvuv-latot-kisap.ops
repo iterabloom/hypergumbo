@@ -1,0 +1,25 @@
+- op: create  # e2b8
+  at: '2026-05-28T20:04:36Z'  # e2b8
+  by: agent  # e2b8
+  actor: jgstern_agent  # e2b8
+  clock: 1  # e2b8
+  nonce: e2b8  # e2b8
+  data:  # e2b8
+    kind: invariant  # e2b8
+    title: "edge.confidence is per-linker hardcoded constant, not calibrated"  # e2b8
+    status: violated  # e2b8
+    priority: 2  # e2b8
+    parent:  # e2b8
+    tags:  # e2b8
+    - dogfooding  # e2b8
+    - pass11  # e2b8
+    - linkers  # e2b8
+    - medium_severity  # e2b8
+    isbefore: []  # e2b8
+    duplicate_of: []  # e2b8
+    not_duplicate_of: []  # e2b8
+    pr_ref:  # e2b8
+    description: ""  # e2b8
+    fields:  # e2b8
+      statement: "Most linkers emit a single hardcoded confidence value across all their edges: decorator-dispatch always 0.7 (292 edges, 1 value), dependency-linker always 0.9 (26 edges, 1 value), enclosure-linker always 0.9 (119 edges, 1 value), pyffi-linker always 0.75, database-query-linker always 0.85, json always 0.95. Only type-hierarchy uses real variance (12 unique values across 324 edges). The confidence field exists, is 100% populated, but doesn't reflect per-edge uncertainty — it's just a per-linker label."  # e2b8
+      root_cause: "Linkers were ported with hardcoded confidence constants. No calibration step computes per-edge confidence based on resolution method, ambiguity, or evidence quality."  # e2b8

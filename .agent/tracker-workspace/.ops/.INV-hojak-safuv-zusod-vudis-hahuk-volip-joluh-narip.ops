@@ -35,3 +35,10 @@
   clock: 3  # 6498
   nonce: '6498'  # 6498
   message: "Pass-9 evidence: the 'Not owner' string-literal-as-import leak now surfaces in io-boundaries JSON output. Running 'hypergumbo io-boundaries --json --input behavior_map.json | jq .unsupported_languages' returns: ['Not owner', 'ansible', 'bash', 'csharp', 'html', 'json', 'markdown', 'solidity', 'sql', 'toml', 'wgsl']. The 'Not owner' entry is the same Solidity require-message-string leak — io-boundaries treats it as a language and adds it to the unsupported list. Downstream consumers of io-boundaries JSON will see this in their unsupported_languages set and confuse it for a real language.\n\nSame root cause (B), broader surface: cli text output (B), language enum count (NN — language count 18 includes 'Not owner'), io-boundaries JSON. Fixing the original Solidity require-msg-as-import resolves all three.\n\nFound in dogfooding pass 9 (2026-05-28)."  # 6498
+- op: discuss  # 3c55
+  at: '2026-05-28T20:05:04Z'  # 3c55
+  by: agent  # 3c55
+  actor: jgstern_agent  # 3c55
+  clock: 4  # 3c55
+  nonce: 3c55  # 3c55
+  message: "pass11: confirmed 3rd manifestation. The 'Not owner' string from a Solidity require() msg in packages/hypergumbo-lang-extended1/tests/BRANCHES_test_solidity.py:114 now appears as language=Not owner on an external_symbol node (path=<unknown>, canonical_name='Not owner:<unknown>:Not owner:Not owner'). Strengthens the structural pattern: Solidity require() message-strings leak across multiple IR axes (imports, io-boundaries unsupported_languages, language taxonomy)."  # 3c55

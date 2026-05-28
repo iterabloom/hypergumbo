@@ -1,0 +1,25 @@
+- op: create  # 6166
+  at: '2026-05-28T20:03:38Z'  # 6166
+  by: agent  # 6166
+  actor: jgstern_agent  # 6166
+  clock: 1  # 6166
+  nonce: '6166'  # 6166
+  data:  # 6166
+    kind: invariant  # 6166
+    title: "Markdown analyzer emits orphan external_symbol :doc_link nodes"  # 6166
+    status: violated  # 6166
+    priority: 2  # 6166
+    parent:  # 6166
+    tags:  # 6166
+    - dogfooding  # 6166
+    - pass11  # 6166
+    - markdown  # 6166
+    - medium_severity  # 6166
+    isbefore: []  # 6166
+    duplicate_of: []  # 6166
+    not_duplicate_of: []  # 6166
+    pr_ref:  # 6166
+    description: ""  # 6166
+    fields:  # 6166
+      statement: "The markdown analyzer creates external_symbol nodes for relative documentation links (e.g., adr/0007-...md, ../audits/0005-...md) but emits no edges referencing them. 102 of 105 orphan <external> nodes are markdown:doc_link with zero inbound and zero outbound edges. Same target via different relative paths (adr/0003-...md, docs/adr/0003-...md, 0003-...md) creates duplicate nodes — no path canonicalization."  # 6166
+      root_cause: "Markdown analyzer's doc_link emission and the markdown-link-resolver linker are decoupled — nodes get created but no link edges are emitted, so doc references aren't graph-navigable."  # 6166
