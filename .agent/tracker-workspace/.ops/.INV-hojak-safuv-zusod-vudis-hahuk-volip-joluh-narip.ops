@@ -42,3 +42,10 @@
   clock: 4  # 3c55
   nonce: 3c55  # 3c55
   message: "pass11: confirmed 3rd manifestation. The 'Not owner' string from a Solidity require() msg in packages/hypergumbo-lang-extended1/tests/BRANCHES_test_solidity.py:114 now appears as language=Not owner on an external_symbol node (path=<unknown>, canonical_name='Not owner:<unknown>:Not owner:Not owner'). Strengthens the structural pattern: Solidity require() message-strings leak across multiple IR axes (imports, io-boundaries unsupported_languages, language taxonomy)."  # 3c55
+- op: discuss  # d2b9
+  at: '2026-05-28T20:32:40Z'  # d2b9
+  by: agent  # d2b9
+  actor: jgstern_agent  # d2b9
+  clock: 5  # d2b9
+  nonce: d2b9  # d2b9
+  message: "pass12: 4th axis of leakage. metrics.languages aggregate emits a 'Not owner' KEY with nodes=1 edges=0. So the Solidity require() msg-string has now leaked into: (1) imports (pass 1), (2) io-boundaries unsupported_languages (pass 9), (3) external_symbol language field (pass 11), (4) metrics.languages tier aggregation (pass 12). Every axis derived from node.language inherits the contamination."  # d2b9

@@ -1,0 +1,25 @@
+- op: create  # 3310
+  at: '2026-05-28T20:32:15Z'  # 3310
+  by: agent  # 3310
+  actor: jgstern_agent  # 3310
+  clock: 1  # 3310
+  nonce: '3310'  # 3310
+  data:  # 3310
+    kind: invariant  # 3310
+    title: "compact silently accepts invalid --max-symbols and --coverage values"  # 3310
+    status: violated  # 3310
+    priority: 2  # 3310
+    parent:  # 3310
+    tags:  # 3310
+    - dogfooding  # 3310
+    - pass12  # 3310
+    - input_validation  # 3310
+    - low_severity  # 3310
+    isbefore: []  # 3310
+    duplicate_of: []  # 3310
+    not_duplicate_of: []  # 3310
+    pr_ref:  # 3310
+    description: ""  # 3310
+    fields:  # 3310
+      statement: "hypergumbo compact silently accepts --max-symbols 0 (produces 1 node), --max-symbols -5 (output unclear), --coverage 2.0 (out of documented 0.0-1.0 range; returns 100 nodes = default max), --coverage -1 (negative; returns 100 nodes). No clamping warning, no rejection. Same input-validation pattern as PP/QQ/RR/III/X (compact silent invalid flags filed pass 5, this extends to numeric values)."  # 3310
+      root_cause: "Compact CLI arg parsing accepts raw int/float without bounds-checking."  # 3310

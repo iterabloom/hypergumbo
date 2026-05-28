@@ -37,3 +37,17 @@
   clock: 3  # 36f7
   nonce: 36f7  # 36f7
   message: "Pass-10 refinement: with --debug, the LAST stderr line before death is '[hypergumbo_core.ranking] DEBUG: centrality: processing 29 files with 4701 patterns'. This is the second batch through _compute_centrality_with_python in ranking.py:1583. The function builds a single combined regex with 4701 alternatives (\\\\b(name1|name2|...|name4701)\\\\b) and runs it across files via ThreadPoolExecutor (max_workers=8).\n\nThe TT failure happens INSIDE this second batch. The faulthandler approach didn't help because: (a) running cli.main() in-process (via 'python -X faulthandler') still exited at 0 bytes stdout/stderr, suggesting sys.exit or signal occurs before faulthandler dumps; (b) -t 16150 with EVERY output mode (no redirect, > /dev/null, |cat > /dev/null, > file) produces exit 141 with 0 bytes. So the SIGPIPE-like exit is not from a downstream pipe close — it's from inside hypergumbo's own process.\n\nLikely candidates inside _compute_centrality_with_python:\n- ThreadPoolExecutor worker thread crashes (e.g., regex re.error on a problematic pattern, OSError on a bad file)\n- 4701-alternation regex causes catastrophic backtracking on a specific file content\n- futures.as_completed propagates an unhandled BrokenPipeError from inside a worker\n\nNext probe: instrument _compute_one to log per-file processing time / capture exceptions; or run with PYTHONUNBUFFERED=1 to see which file is being processed when death occurs.\n\nSeverity remains HIGH — only command path affected is sketch (the most-used hypergumbo invocation). The bounce at 16150 (a token budget) suggests it's about which symbol set gets ranked, not the budget itself."  # 36f7
+- op: discuss  # ab66
+  at: '2026-05-28T20:06:24Z'  # ab66
+  by: agent  # ab66
+  actor: jgstern_agent  # ab66
+  clock: 4  # ab66
+  nonce: ab66  # ab66
+  message: "pass11 bisection: TT cliff is between t=16145 (works, 65791 bytes) and t=16146 (exit 141, 0 bytes). Single-token boundary, not 50-token cliff as pass-8 estimated. Confirmed at 16147/16148/16149/16150 (all exit 141). Root cause (per pass 10) is still inside _compute_centrality_with_python; the cliff boundary is now precise enough to write a targeted in-tree instrumentation patch."  # ab66
+- op: discuss  # 9440
+  at: '2026-05-28T20:32:40Z'  # 9440
+  by: agent  # 9440
+  actor: jgstern_agent  # 9440
+  clock: 5  # 9440
+  nonce: '9440'  # 9440
+  message: "pass12: sketch cliff is monotonic above 16145. Tested t=17000, 20000, 32000, 64000, 128000 — ALL fail with exit 141 / 0 bytes stdout. Combined with pass-11 bisection (t=16145 last working value), the failure is permanent for any budget ≥16146 on hypergumbo's own self-analysis. Confirms TT is not a per-token edge case but a regime change: below 16145 sketch runs, ≥16146 it instantly SIGPIPEs from within _compute_centrality_with_python."  # 9440

@@ -1,0 +1,25 @@
+- op: create  # 11b6
+  at: '2026-05-28T20:31:25Z'  # 11b6
+  by: agent  # 11b6
+  actor: jgstern_agent  # 11b6
+  clock: 1  # 11b6
+  nonce: 11b6  # 11b6
+  data:  # 11b6
+    kind: invariant  # 11b6
+    title: "First-party hypergumbo_* symbols emitted as external_symbol path=<external>"  # 11b6
+    status: violated  # 11b6
+    priority: 2  # 11b6
+    parent:  # 11b6
+    tags:  # 11b6
+    - dogfooding  # 11b6
+    - pass12  # 11b6
+    - classification_axes  # 11b6
+    - medium_severity  # 11b6
+    isbefore: []  # 11b6
+    duplicate_of: []  # 11b6
+    not_duplicate_of: []  # 11b6
+    pr_ref:  # 11b6
+    description: ""  # 11b6
+    fields:  # 11b6
+      statement: "366 'imports' edges target external_symbol nodes whose canonical_name starts with python:hypergumbo_ (i.e., first-party workspace packages). The behavior map has 331 unique such nodes including __version__, parse_tier_spec, fold_array_join, scip_pb2.Index, etc. All have path=<external> and supply_chain tiers internal_dep (hypergumbo_core.*) or external_dep (hypergumbo_tracker.*). The actual function/class definitions exist as separate proper nodes — so the import is mis-routed to a phantom external twin instead of being resolved to the real first-party node. Special sub-case: 3 of these are ORPHANS (no inbound edges) and correspond to pyproject.toml [project.scripts] entries (hypergumbo_core.cli:main, hypergumbo_tracker.cli:main, hypergumbo_tracker.cli:textconv_main); the console-script declaration creates the external node but no edge references it."  # 11b6
+      root_cause: "The Python analyzer's import-resolution stage doesn't traverse the workspace-sibling package map (packages/*/pyproject.toml) to recognize hypergumbo_* as first-party. Combined with HHH (tier classifier same gap) and KKK (stdlib catalog gap), 22% of Python externals are recoverable. Pyproject.toml console-script parsing is similarly siloed — it creates external_symbol nodes without linking to the in-tree definitions."  # 11b6

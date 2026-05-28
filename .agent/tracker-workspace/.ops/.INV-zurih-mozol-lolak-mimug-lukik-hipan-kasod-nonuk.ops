@@ -23,3 +23,10 @@
     fields:  # 7aef
       statement: "A user-facing CLI command must never expose a raw Python traceback for input-validation failures. Specifically, verify-claims must catch yaml.YAMLError when parsing the claims file and present a clean error message naming the file path and the underlying reason."  # 7aef
       root_cause: "verify_claims.load_claims (verify_claims.py:191) calls yaml.safe_load(content) with no try/except; yaml.scanner.ScannerError (subclass of yaml.YAMLError) propagates to main() unhandled."  # 7aef
+- op: discuss  # 39b4
+  at: '2026-05-28T20:06:25Z'  # 39b4
+  by: agent  # 39b4
+  actor: jgstern_agent  # 39b4
+  clock: 2  # 39b4
+  nonce: 39b4  # 39b4
+  message: "pass11: new invocation-path manifestation. --taint-sources pointing at malformed YAML now produces raw yaml.YAMLError traceback (in addition to the prior --claims invocation). Same fail-loud-with-Python-traceback pattern; clean errors needed across all YAML-consuming flags (--claims, --taint-sources, --taint-sinks, --taint-sanitizers)."  # 39b4

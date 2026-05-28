@@ -23,3 +23,10 @@
     fields:  # cbf0
       statement: "On hypergumbo's self-analysis behavior_map, 144 hypergumbo_* modules are classified as supply_chain.tier_name='internal_dep' (tier 2) with path='<external>' and reason='direct dependency (pyproject.toml)'. Examples: hypergumbo_core itself, hypergumbo_core.linkers.airflow_framework_dispatch, hypergumbo_core.linkers.build_target, hypergumbo_core.linkers.controller_routes. Additionally 24 hypergumbo_* nodes are classified as 'external_dep' (tier 3) — including hypergumbo-core, hypergumbo-lang-common, hypergumbo-lang-extended1 — because they appear in inter-package pyproject.toml dependency declarations."  # cbf0
       root_cause: "The tier classifier (per supply_chain.py rules) treats every entry in pyproject.toml's [project.dependencies] / [tool.poetry.dependencies] as 'external/internal direct dep'. In a workspace/monorepo where sibling packages list each other as dependencies (the normal pattern), this mis-classifies every workspace package as 'external'. The classifier needs to recognize sibling workspace packages (presence of packages/<dep>/pyproject.toml in the same repo) and classify them as first_party."  # cbf0
+- op: discuss  # fef1
+  at: '2026-05-28T20:32:40Z'  # fef1
+  by: agent  # fef1
+  actor: jgstern_agent  # fef1
+  clock: 2  # fef1
+  nonce: fef1  # fef1
+  message: "pass12: PPP (INV-mosar) extends this finding to the symbol-resolution layer. 366 'imports' edges target external_symbol nodes whose canonical_name begins with python:hypergumbo_, i.e., first-party workspace packages mis-routed as externals. HHH covers the tier-classifier surface; PPP covers the same root-cause at the import-resolution surface. Both stem from the analyzer not recognizing packages/*/pyproject.toml as workspace siblings. Recommend bundling the fix."  # fef1

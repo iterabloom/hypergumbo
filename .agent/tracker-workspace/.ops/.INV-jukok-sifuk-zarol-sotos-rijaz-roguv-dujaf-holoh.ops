@@ -1,0 +1,25 @@
+- op: create  # 3d47
+  at: '2026-05-28T20:31:26Z'  # 3d47
+  by: agent  # 3d47
+  actor: jgstern_agent  # 3d47
+  clock: 1  # 3d47
+  nonce: 3d47  # 3d47
+  data:  # 3d47
+    kind: invariant  # 3d47
+    title: "23 edges have dangling src IDs that don't exist as nodes"  # 3d47
+    status: violated  # 3d47
+    priority: 2  # 3d47
+    parent:  # 3d47
+    tags:  # 3d47
+    - dogfooding  # 3d47
+    - pass12  # 3d47
+    - graph_integrity  # 3d47
+    - medium_severity  # 3d47
+    isbefore: []  # 3d47
+    duplicate_of: []  # 3d47
+    not_duplicate_of: []  # 3d47
+    pr_ref:  # 3d47
+    description: ""  # 3d47
+    fields:  # 3d47
+      statement: "The behavior map contains 23 edges whose src ID (python:packages/hypergumbo-core/src/hypergumbo_core/scip/_generated/scip_pb2.py:1-1:file:file) does not appear in the nodes list. scip_pb2.py is a real 15KB auto-generated protobuf file but has no file-level node; only 6 external_symbol nodes mention it. Edges of type 'calls' from this phantom src to google.protobuf:* targets are emitted. metrics.by_supply_chain_tier shows the inconsistency: 'unknown' tier reports 23 edges but 0 nodes. dst IDs are NOT dangling (0 violations) — only src side."  # 3d47
+      root_cause: "Auto-generated protobuf file path is special-cased in node emission (likely skipped via a 'generated' file filter) but NOT in edge emission. Pipeline order: imports edges emitted before the file-node-filter runs, leaving dangling src refs."  # 3d47

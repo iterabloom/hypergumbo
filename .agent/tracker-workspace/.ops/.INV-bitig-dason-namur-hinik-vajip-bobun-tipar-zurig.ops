@@ -23,3 +23,10 @@
     fields:  # 4273
       statement: "When verify-claims is invoked without --input from a directory containing no analyzable source files, every must_not_exist claim returns 'confirmed' with evidence_count=0 and exit 0, instead of producing an error or warning about the empty analysis."  # 4273
       root_cause: "No guard checks that the auto-discovered/auto-run behavior_map contains a non-trivial node count before honoring 'no chains found -> confirmed' verdicts. The fail-silent path matches the empty-truth fallacy already documented for taint-* (II) and unknown constraint type (AA)."  # 4273
+- op: discuss  # 7fa5
+  at: '2026-05-28T20:06:24Z'  # 7fa5
+  by: agent  # 7fa5
+  actor: jgstern_agent  # 7fa5
+  clock: 2  # 7fa5
+  nonce: 7fa5  # 7fa5
+  message: "pass11: new schema manifestation. Claims with 'constraint' dict lacking must_not_exist=true/max_chains/taint_flow are silently confirmed as 'No constraint to check'. Boundary-centric schema (only must_not_exist=true|max_chains|taint_flow are recognized) silently no-ops any other constraint shape. Users writing structurally similar but unrecognized schemas (e.g., must_exist: kind: function) get false 'confirmed' verdicts with zero warning."  # 7fa5

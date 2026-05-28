@@ -1,0 +1,22 @@
+- op: create  # e305
+  at: '2026-05-28T21:04:02Z'  # e305
+  by: agent  # e305
+  actor: jgstern_agent  # e305
+  clock: 1  # e305
+  nonce: e305  # e305
+  data:  # e305
+    kind: work_item  # e305
+    title: "bash analyzer pass is 631ms/file (15x slower than Python's 41ms/file); 26.5s on 42 files = 23% of analysis time"  # e305
+    status: todo_hard  # e305
+    priority: 1  # e305
+    parent:  # e305
+    tags:  # e305
+    - dogfooding  # e305
+    - pass13  # e305
+    - performance  # e305
+    isbefore: []  # e305
+    duplicate_of: []  # e305
+    not_duplicate_of: []  # e305
+    pr_ref:  # e305
+    description: "Pass 13: bash pass in self-analysis: duration_ms=26518, files_analyzed=42. Per-file: 631ms. Compare Python (838 files, 34.5s = 41ms/file), markdown (107 files, 3s = 28ms/file). Bash analyzer dominates ~23% of the 114s wall-clock budget on ~5% of the file count. No failed_files / warnings. Worth profiling — possible candidate: shellcheck subprocess overhead, or tree-sitter-bash grammar."  # e305
+    fields: {}  # e305

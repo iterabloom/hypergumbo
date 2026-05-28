@@ -1,0 +1,25 @@
+- op: create  # c556
+  at: '2026-05-28T20:31:40Z'  # c556
+  by: agent  # c556
+  actor: jgstern_agent  # c556
+  clock: 1  # c556
+  nonce: c556  # c556
+  data:  # c556
+    kind: work_item  # c556
+    title: "catalog subcommand has no --json/--format json output"  # c556
+    status: todo_hard  # c556
+    priority: 2  # c556
+    parent:  # c556
+    tags:  # c556
+    - dogfooding  # c556
+    - pass12  # c556
+    - cli  # c556
+    - low_severity  # c556
+    isbefore: []  # c556
+    duplicate_of: []  # c556
+    not_duplicate_of: []  # c556
+    pr_ref:  # c556
+    description: ""  # c556
+    fields:  # c556
+      statement: "hypergumbo catalog returns only human-readable text. Neither --json nor --format json are accepted (silent reject with argparse 'unrecognized arguments'). Programmatic consumers (e.g., CI dashboards listing supported analyzers) must scrape the text format. Other subcommands inconsistently use --json (verify-claims) or --format json (test-coverage, dead-code-maybe); catalog has neither."  # c556
+      root_cause: "catalog was implemented as a text-only subcommand; no JSON schema was designed for analyzer listings."  # c556
