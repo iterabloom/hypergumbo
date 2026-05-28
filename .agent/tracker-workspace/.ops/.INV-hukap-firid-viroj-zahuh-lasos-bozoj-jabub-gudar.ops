@@ -1,0 +1,25 @@
+- op: create  # 7907
+  at: '2026-05-28T22:15:46Z'  # 7907
+  by: agent  # 7907
+  actor: jgstern_agent  # 7907
+  clock: 1  # 7907
+  nonce: '7907'  # 7907
+  data:  # 7907
+    kind: invariant  # 7907
+    title: "MMMMM: ~58s (51%) of total wall-clock is non-pass overhead invisible in analysis_runs; only 6 concurrent passes max despite 18 languages"  # 7907
+    status: violated  # 7907
+    priority: 2  # 7907
+    parent:  # 7907
+    tags:  # 7907
+    - dogfooding  # 7907
+    - pass16  # 7907
+    - observability  # 7907
+    - profiling  # 7907
+    isbefore: []  # 7907
+    duplicate_of: []  # 7907
+    not_duplicate_of: []  # 7907
+    pr_ref:  # 7907
+    description: ""  # 7907
+    fields:  # 7907
+      statement: "Total wall-clock 1:54 (114s); cumulative pass duration 92.8s; pass wall-clock first-start to last-finish = 55.96s. ~58s (51%) of total wall-clock is non-pass overhead with NO line item in analysis_runs. Implied parallelism during pass phase: 1.66x (only 6 concurrent passes max despite 18 active languages)"  # 7907
+      root_cause: "The 58s overhead presumably includes: framework discovery, file index build, embedding cache priming, schema validation, JSON serialization, gitleaks invocation (if installed), repo fingerprinting. None of these have AnalysisRun-style provenance entries, so consumers can't see where 50% of wall-clock goes. Compounds XXXX (40 of 84 passes already underprovenanced) — even tracked passes only account for half of wall-clock"  # 7907

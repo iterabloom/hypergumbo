@@ -1,0 +1,25 @@
+- op: create  # e799
+  at: '2026-05-28T22:42:04Z'  # e799
+  by: agent  # e799
+  actor: jgstern_agent  # e799
+  clock: 1  # e799
+  nonce: e799  # e799
+  data:  # e799
+    kind: invariant  # e799
+    title: "AnalysisRun lacks nodes_emitted/edges_emitted; per-pass productivity reverse-derived only"  # e799
+    status: violated  # e799
+    priority: 3  # e799
+    parent:  # e799
+    tags:  # e799
+    - dogfooding  # e799
+    - pass17  # e799
+    - observability  # e799
+    - schema  # e799
+    isbefore: []  # e799
+    duplicate_of: []  # e799
+    not_duplicate_of: []  # e799
+    pr_ref:  # e799
+    description: "Pass 17 finding OOOOOO. All 84 AnalysisRun records have 15 fields: config_fingerprint, duration_ms, execution_id, failed_files, files_analyzed, files_skipped, pass, pass_version, repo_fingerprint, run_signature, skipped_passes, started_at, toolchain, version, warnings. None of: nodes_emitted, edges_emitted, output_size_bytes. To answer 'pyffi-linker emitted how many edges?' one must scan all 108649 edges checking origin lists for 'pyffi-linker'. This makes dead-pass detection (pass 16 NNNNN/OOOOO/PPPPP) a multi-million-element filter operation per query. The data is computable but not curated. Direct fields would also make pass-productivity dashboards trivial."  # e799
+    fields:  # e799
+      statement: "The AnalysisRun record should expose nodes_emitted and edges_emitted fields directly so consumers can answer 'which pass produced how much output' without scanning the entire nodes/edges lists for matching origins."  # e799
+      root_cause: "The AnalysisRun schema records files_analyzed/files_skipped/duration_ms but no production-output counters. Pipeline does not aggregate per-pass emission counts at orchestration time."  # e799

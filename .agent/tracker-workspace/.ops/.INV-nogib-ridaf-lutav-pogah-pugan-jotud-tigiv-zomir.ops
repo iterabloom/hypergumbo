@@ -1,0 +1,25 @@
+- op: create  # 0420
+  at: '2026-05-28T22:53:05Z'  # 0420
+  by: agent  # 0420
+  actor: jgstern_agent  # 0420
+  clock: 1  # 0420
+  nonce: '0420'  # 0420
+  data:  # 0420
+    kind: invariant  # 0420
+    title: "references edges with evidence_type=ast_name_read carry access_mode=write (direct contradiction)"  # 0420
+    status: violated  # 0420
+    priority: 3  # 0420
+    parent:  # 0420
+    tags:  # 0420
+    - dogfooding  # 0420
+    - pass18  # 0420
+    - classification_axes_audit  # 0420
+    - access_mode  # 0420
+    isbefore: []  # 0420
+    duplicate_of: []  # 0420
+    not_duplicate_of: []  # 0420
+    pr_ref:  # 0420
+    description: "Pass 18 finding AAAAAAA. 1230 of 4250 references edges (29%) have evidence_type='ast_name_read' AND access_mode='write' — a direct flat contradiction within the same edge.meta object. Additional cases: 852 references with evidence_type='function_reference' also tagged access_mode='write' (function references are reads, not writes). Sample edge: src='python:conftest.py:30-36:_find_venv_dir:function' dst='python:conftest.py:27-27:_REPO_ROOT:variable' type='references' meta={'access_mode': 'write', 'evidence_type': 'ast_name_read'}. The edge represents the function _find_venv_dir reading _REPO_ROOT, not writing it. Mass mislabeling — 2082 edges (49% of all references) have the contradiction. Distinct from BBBBBBB (module_attr_ref) and CCCCCCC (calls)."  # 0420
+    fields:  # 0420
+      statement: "When two metadata fields on the same edge encode the same underlying property (read-vs-write semantics), their values must agree. An edge whose evidence_type explicitly says 'ast_name_read' must not also carry access_mode='write'."  # 0420
+      root_cause: "The references edge emitter sets access_mode='write' as a default for ast_name_read evidence, ignoring the evidence_type's own polarity. The two fields are written independently rather than derived from a shared inference."  # 0420

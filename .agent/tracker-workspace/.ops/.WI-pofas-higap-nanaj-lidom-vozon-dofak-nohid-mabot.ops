@@ -1,0 +1,24 @@
+- op: create  # 0eab
+  at: '2026-05-28T22:16:10Z'  # 0eab
+  by: agent  # 0eab
+  actor: jgstern_agent  # 0eab
+  clock: 1  # 0eab
+  nonce: 0eab  # 0eab
+  data:  # 0eab
+    kind: work_item  # 0eab
+    title: "QQQQQ: Five different JSON-output conventions across 15 subcommands; 8 of 13 read subcmds have no JSON option; --format/--json/--flat naming inconsistent"  # 0eab
+    status: todo_hard  # 0eab
+    priority: 1  # 0eab
+    parent:  # 0eab
+    tags:  # 0eab
+    - dogfooding  # 0eab
+    - pass16  # 0eab
+    - cli  # 0eab
+    - ux  # 0eab
+    isbefore: []  # 0eab
+    duplicate_of: []  # 0eab
+    not_duplicate_of: []  # 0eab
+    pr_ref:  # 0eab
+    description: ""  # 0eab
+    fields:  # 0eab
+      rationale: "hypergumbo has FIVE patterns for JSON output across 15 subcommands: (1) '--format text|json': config, test-coverage, dead-code-maybe; (2) '--json' flag: io-boundaries, verify-claims; (3) '--flat' flag: slice; (4) always JSON: run, compact; (5) no JSON: sketch, search, routes, explain, catalog, symbols, cache-status. This extends RRR (catalog), BBB (cache-status), AAAAA (routes) with two more text-only subcmds (symbols, explain) AND highlights the inconsistent flag naming (--format vs --json vs --flat) for the JSON-supporting ones"  # 0eab

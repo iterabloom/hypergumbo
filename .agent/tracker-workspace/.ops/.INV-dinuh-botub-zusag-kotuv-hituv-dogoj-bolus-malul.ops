@@ -1,0 +1,24 @@
+- op: create  # 791f
+  at: '2026-05-28T23:15:32Z'  # 791f
+  by: agent  # 791f
+  actor: jgstern_agent  # 791f
+  clock: 1  # 791f
+  nonce: 791f  # 791f
+  data:  # 791f
+    kind: invariant  # 791f
+    title: "Python emitter hardcodes 5 confidence values per edge-type bucket without calibration"  # 791f
+    status: violated  # 791f
+    priority: 2  # 791f
+    parent:  # 791f
+    tags:  # 791f
+    - pass19  # 791f
+    - dogfooding  # 791f
+    isbefore: []  # 791f
+    duplicate_of: []  # 791f
+    not_duplicate_of: []  # 791f
+    pr_ref:  # 791f
+    description: ""  # 791f
+    fields:  # 791f
+      severity: "medium"  # 791f
+      statement: "Python origin emits 5 hardcoded confidence values across its edges: 0.85 (calls=36663, references=2877, module_attr_ref=1323), 0.95 (imports=10457, instantiates=7803, decorated_by=270, extends=147), 0.4 (calls=16080), 0.5 (calls=7714, decorated_by=129), 0.8 (references=1322). type=calls splits 0.85 vs 0.4 vs 0.5 across 60567 edges with no apparent semantic axis distinguishing buckets. Only type-hierarchy origin (291 edges) emits non-rounded computed values. NNN noted broader pattern; this is the per-bucket detail."  # 791f
+      root_cause: "Python analyzer code hardcodes confidence per (edge-type, evidence_type) tuple; no calibration loop, no input-dependent variability. Affects packages/hypergumbo-lang-python."  # 791f

@@ -1,0 +1,24 @@
+- op: create  # 9848
+  at: '2026-05-28T22:42:02Z'  # 9848
+  by: agent  # 9848
+  actor: jgstern_agent  # 9848
+  clock: 1  # 9848
+  nonce: '9848'  # 9848
+  data:  # 9848
+    kind: invariant  # 9848
+    title: "3 edge.type values appear exactly once (inherits, script_src, overrides) — vestigial"  # 9848
+    status: violated  # 9848
+    priority: 1  # 9848
+    parent:  # 9848
+    tags:  # 9848
+    - dogfooding  # 9848
+    - pass17  # 9848
+    - classification_axes_audit  # 9848
+    isbefore: []  # 9848
+    duplicate_of: []  # 9848
+    not_duplicate_of: []  # 9848
+    pr_ref:  # 9848
+    description: "Pass 17 finding NNNNNN. edge.type distribution across 108649 edges showing 17 distinct types. Three types appear with count == 1: inherits (1, vs extends 147 — same semantic; s8 VV calls these out), script_src (1, html-specific 'this script tag includes this URL'), overrides (1, method override). The 'inherits' singleton is suspicious because 'extends' (147) covers the same semantic in stricter form. Bundle with classification_axes_audit. Similar pattern as s16 IIIII (evidence_type 5 single-occurrence vestigial values)."  # 9848
+    fields:  # 9848
+      statement: "When an axis vocabulary contains values with exactly 1 occurrence across a population of 100K+, those values are either vestigial (left over from a removed code path) or evidence of an under-tested edge case. Either way, the vocabulary should be audited."  # 9848
+      root_cause: "Three edge.type values were added historically but only get emitted in narrow code paths that rarely fire: 'inherits' (1 edge) is overshadowed by 'extends' (147), 'script_src' (1 edge, HTML-specific) is unique, 'overrides' (1 edge) lacks linker coverage."  # 9848

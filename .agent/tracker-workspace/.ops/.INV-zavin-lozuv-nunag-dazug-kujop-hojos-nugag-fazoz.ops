@@ -1,0 +1,32 @@
+- op: create  # d557
+  at: '2026-05-28T22:41:05Z'  # d557
+  by: agent  # d557
+  actor: jgstern_agent  # d557
+  clock: 1  # d557
+  nonce: d557  # d557
+  data:  # d557
+    kind: invariant  # d557
+    title: "compact emits dangling features.edge_ids and features.node_ids references"  # d557
+    status: violated  # d557
+    priority: 3  # d557
+    parent:  # d557
+    tags:  # d557
+    - dogfooding  # d557
+    - pass17  # d557
+    - compact  # d557
+    - data_integrity  # d557
+    isbefore: []  # d557
+    duplicate_of: []  # d557
+    not_duplicate_of: []  # d557
+    pr_ref:  # d557
+    description: "Pass 17 finding IIIIII. With --max-symbols 100 (default) compact emitted 100 nodes / 350 edges. All 16 features preserved unchanged. Reference check: feature[0] edge_ids=[4 IDs] but only 1 of those edge IDs exists in compact's 350 edges; node_ids=[5 IDs] but only 2 of those node IDs exist in compact's 100 nodes. feature[7] edge_ids=[19 IDs] but only 2 present; node_ids=[17 IDs] but only 4 present. Features 8-14 each have edge_ids=[] and node_ids=[1 ID] with 0 of those node_ids present in compact. Downstream consumers attempting to walk features by ID will hit missing data. This compounds with s15 VVVV (7 of 16 features in full bm.json already have edge_ids=[])."  # d557
+    fields:  # d557
+      statement: "The compact view's features list must only reference edge_ids and node_ids that exist in the compact's own edges/nodes lists; dangling references indicate that the compaction layer copied feature records without re-projecting their referenced IDs."  # d557
+      root_cause: "Compact pass copies features wholesale from the source behavior map without filtering each feature's edge_ids/node_ids to the post-compaction node/edge set or rewriting them after pruning."  # d557
+- op: discuss  # ff9d
+  at: '2026-05-28T22:54:33Z'  # ff9d
+  by: agent  # ff9d
+  actor: jgstern_agent  # ff9d
+  clock: 2  # ff9d
+  nonce: ff9d  # ff9d
+  message: "Pass 18 FFFFFFF: retested compact with --max-symbols 1000 (10x the default). Result: 1000 nodes / 8254 edges. Feature ref-check: TOTAL of 10/70 feature.edge_ids and 20/71 feature.node_ids present. Per-feature: f0=1/4 edges, 2/5 nodes; f1=0/7, 1/6; f2=1/7, 2/6; f3=0/7, 1/6; f4=3/9, 4/8. Dangling rate is ~85% even with 10x more symbols in the compact pool. Conclusion: IIIIII is structural — increasing --max-symbols does NOT shrink the dangling-references count proportionally. The compact selection criteria (centrality coverage) don't co-vary with feature membership; feature-bearing node IDs are not being preferentially selected. Fix needs to re-project features' edge_ids/node_ids onto the post-compaction node/edge sets, not just preserve them verbatim. Top-level edges/nodes self-consistency is 100% (350/350 with both endpoints; 8254/8254 at 1k): only features.edge_ids/features.node_ids have dangling refs."  # ff9d

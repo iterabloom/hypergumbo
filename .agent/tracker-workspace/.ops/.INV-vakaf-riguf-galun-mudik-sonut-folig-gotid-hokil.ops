@@ -1,0 +1,24 @@
+- op: create  # 8949
+  at: '2026-05-28T22:41:37Z'  # 8949
+  by: agent  # 8949
+  actor: jgstern_agent  # 8949
+  clock: 1  # 8949
+  nonce: '8949'  # 8949
+  data:  # 8949
+    kind: invariant  # 8949
+    title: "edge.meta.call_construct includes 'cross_file' (relational, not construct-type)"  # 8949
+    status: violated  # 8949
+    priority: 1  # 8949
+    parent:  # 8949
+    tags:  # 8949
+    - dogfooding  # 8949
+    - pass17  # 8949
+    - classification_axes_audit  # 8949
+    isbefore: []  # 8949
+    duplicate_of: []  # 8949
+    not_duplicate_of: []  # 8949
+    pr_ref:  # 8949
+    description: "Pass 17 finding LLLLLL. edge.meta.call_construct distinct values across 21189 edges: method (20898, 98.6%), function (213), cross_file (78). 'cross_file' is a property of edge endpoints (src.path != dst.path), not a property of the syntactic construct. A method call CAN be cross_file. By collapsing both into one field, downstream consumers lose either signal (a cross_file method call now reports cross_file, hiding that it is a method). Bundle with the broader classification_axes_audit."  # 8949
+    fields:  # 8949
+      statement: "The edge.meta.call_construct axis should describe what KIND of construct the call resolves to (method, function, lambda, etc.); mixing in relational classifiers like 'cross_file' (which is about edge endpoints not the constructor) leaks two axes into one field."  # 8949
+      root_cause: "When call resolution determines the callee is in a different file, the linker overwrites call_construct with 'cross_file' rather than marking that as a separate edge.meta.scope or edge.meta.locality field."  # 8949

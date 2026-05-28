@@ -1,0 +1,25 @@
+- op: create  # 30e3
+  at: '2026-05-28T22:54:30Z'  # 30e3
+  by: agent  # 30e3
+  actor: jgstern_agent  # 30e3
+  clock: 1  # 30e3
+  nonce: '30e3'  # 30e3
+  data:  # 30e3
+    kind: invariant  # 30e3
+    title: "access_mode field has 0% coverage on 12 of 17 edge.types; coverage policy undocumented"  # 30e3
+    status: violated  # 30e3
+    priority: 1  # 30e3
+    parent:  # 30e3
+    tags:  # 30e3
+    - dogfooding  # 30e3
+    - pass18  # 30e3
+    - access_mode  # 30e3
+    - schema  # 30e3
+    isbefore: []  # 30e3
+    duplicate_of: []  # 30e3
+    not_duplicate_of: []  # 30e3
+    pr_ref:  # 30e3
+    description: "Pass 18 finding IIIIIII. Distribution of access_mode presence across 108649 edges by edge.type: calls 41412/60831 (68.1%); event_publishes 103/103 (100%); instantiates 5567/7803 (71.3%); module_attr_ref 556/1326 (41.9%); references 2520/4250 (59.3%); contains 0/22529; decorated_by 0/403; depends_on 0/6; depends_on_manifest 0/26; dispatches_to 0/617; extends 0/147; implements 0/6; imports 0/10480; inherits 0/1; overrides 0/1; script_src 0/1; uses 0/119. 12 of 17 edge types have 0 coverage; 5 have partial coverage (none 100% except event_publishes). Whether the absence means 'not applicable' or 'not yet implemented' is undocumented. Consumer querying access_mode needs to know whether to interpret None as 'irrelevant' or 'missing data'."  # 30e3
+    fields:  # 30e3
+      statement: "When a meta field is selectively populated across edge types, the schema should document which edge types carry the field and which don't. access_mode is unpopulated for 12 of 17 edge.type values without any explicit schema declaration of which types are in scope."  # 30e3
+      root_cause: "access_mode population is wired in 5 edge-emission paths (calls 68%, instantiates 71%, references 59%, module_attr_ref 42%, event_publishes 100%) and the other 12 edge types never set the field. There is no declared policy that distinguishes 'access_mode applies' vs 'not applicable' edge types."  # 30e3

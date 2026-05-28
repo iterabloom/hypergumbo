@@ -1,0 +1,24 @@
+- op: create  # 76c2
+  at: '2026-05-28T22:54:28Z'  # 76c2
+  by: agent  # 76c2
+  actor: jgstern_agent  # 76c2
+  clock: 1  # 76c2
+  nonce: 76c2  # 76c2
+  data:  # 76c2
+    kind: invariant  # 76c2
+    title: "'Not owner' Solidity require-msg leaks into node.canonical_name as :Not owner suffix (cross-field)"  # 76c2
+    status: violated  # 76c2
+    priority: 2  # 76c2
+    parent:  # 76c2
+    tags:  # 76c2
+    - dogfooding  # 76c2
+    - pass18  # 76c2
+    - classification_axes_audit  # 76c2
+    isbefore: []  # 76c2
+    duplicate_of: []  # 76c2
+    not_duplicate_of: []  # 76c2
+    pr_ref:  # 76c2
+    description: "Pass 18 finding GGGGGGG. Extension of s16 JJJJJ (INV-kalaf). Probed node.canonical_name distinct 'state suffix' (last colon segment): {'unresolved': 1295, 'attribute': 213, 'doc_link': 102, 'module': 11, 'script': 1, 'Not owner': 1, 'package': 1}. 'Not owner' appears as a canonical_name state suffix — the Solidity require-msg leaks here too, not just into node.language. The single affected node carries language='Not owner' AND canonical_name endswith ':Not owner'. JJJJJ as filed scoped the propagation to node.language + io-boundaries.unsupported_languages; this finding adds canonical_name to the contamination surface."  # 76c2
+    fields:  # 76c2
+      statement: "Source-text strings extracted from one syntactic context (e.g. Solidity require-message argument) must not propagate into more than one node-identity axis. JJJJJ scoped this to node.language; canonical_name leakage proves the contamination is wider than originally captured."  # 76c2
+      root_cause: "The unresolved-symbol synthesis path stores the source string as both language AND in the canonical_name 'state' suffix; the same garbage propagates across both axes from a single ingestion point. Fix at the source must include canonical_name re-mapping."  # 76c2

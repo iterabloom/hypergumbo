@@ -1,0 +1,25 @@
+- op: create  # ef74
+  at: '2026-05-28T22:53:45Z'  # ef74
+  by: agent  # ef74
+  actor: jgstern_agent  # ef74
+  clock: 1  # ef74
+  nonce: ef74  # ef74
+  data:  # ef74
+    kind: invariant  # ef74
+    title: "calls to collection-mutators (.append/.extend/.add) labeled access_mode='write' instead of 'mutate'"  # ef74
+    status: violated  # ef74
+    priority: 2  # ef74
+    parent:  # ef74
+    tags:  # ef74
+    - dogfooding  # ef74
+    - pass18  # ef74
+    - classification_axes_audit  # ef74
+    - access_mode  # ef74
+    isbefore: []  # ef74
+    duplicate_of: []  # ef74
+    not_duplicate_of: []  # ef74
+    pr_ref:  # ef74
+    description: "Pass 18 finding CCCCCCC. Of 2480 calls edges with access_mode='write', the top callees are: append (1183), add (282), extend (151), setdefault (86), write (63). These are mutation operations on existing receivers. 'mutate' as a distinct access_mode value exists (161 total uses) but isn't applied to collection mutators. The vocabulary has 4 cells (read/write/mutate/delete) but in practice only 3 are functionally distinguished — write is over-loaded with mutate. Compare event_publishes which has 100% access_mode coverage and uses 'write' consistently (likely correct since events ARE writes); call mutators are not writes in the same sense."  # ef74
+    fields:  # ef74
+      statement: "When the access_mode vocabulary distinguishes 'write' from 'mutate' as distinct values (4 values: read, write, mutate, delete), calls that semantically mutate (e.g. list.append, set.add, list.extend) should be labeled 'mutate' not 'write'. Using 'write' for mutations conflates the two."  # ef74
+      root_cause: "The 'calls' edge emitter labels any call to a known mutating method (append/extend/add/setdefault) as access_mode='write' instead of routing to the 'mutate' value defined in the vocabulary; mutate is only used in 161 cases despite ~1616 calls to collection mutators."  # ef74

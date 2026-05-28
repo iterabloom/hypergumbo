@@ -1,0 +1,24 @@
+- op: create  # 9e3a
+  at: '2026-05-28T23:16:07Z'  # 9e3a
+  by: agent  # 9e3a
+  actor: jgstern_agent  # 9e3a
+  clock: 1  # 9e3a
+  nonce: 9e3a  # 9e3a
+  data:  # 9e3a
+    kind: invariant  # 9e3a
+    title: "AnalysisRun.duration_ms=0 for linker passes that emit substantial edges (timing broken for graph-consuming passes)"  # 9e3a
+    status: violated  # 9e3a
+    priority: 2  # 9e3a
+    parent:  # 9e3a
+    tags:  # 9e3a
+    - pass19  # 9e3a
+    - dogfooding  # 9e3a
+    isbefore: []  # 9e3a
+    duplicate_of: []  # 9e3a
+    not_duplicate_of: []  # 9e3a
+    pr_ref:  # 9e3a
+    description: ""  # 9e3a
+    fields:  # 9e3a
+      severity: "high"  # 9e3a
+      statement: "Multiple linker passes report duration_ms=0 AND files_analyzed=0 in AnalysisRun while emitting many edges: type-hierarchy duration=0ms emits 324 edges; enclosure-linker duration=0ms emits 119 edges; decorator-dispatch-linker duration=0ms emits 292 dispatches_to edges. Producing 324+ edges in 0 milliseconds is structurally impossible. Of 84 runs, 17 have files=0 AND duration=0, yet several of those origins are credited with non-trivial edge production."  # 9e3a
+      root_cause: "The duration_ms timer is not started (or rounds down to 0 below 1ms granularity) for passes that consume the IR rather than file streams. Same root cause family as files_analyzed=0 issue (pass-13 UUU + pass-15 XXXX), but compounds with duration=0 to produce 'this pass did nothing' record despite real edge production. Affects AnalysisRun emission in graph-consuming linkers."  # 9e3a

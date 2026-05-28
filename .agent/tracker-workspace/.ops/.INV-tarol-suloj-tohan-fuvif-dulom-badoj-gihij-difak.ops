@@ -1,0 +1,24 @@
+- op: create  # 7bed
+  at: '2026-05-28T23:15:55Z'  # 7bed
+  by: agent  # 7bed
+  actor: jgstern_agent  # 7bed
+  clock: 1  # 7bed
+  nonce: 7bed  # 7bed
+  data:  # 7bed
+    kind: invariant  # 7bed
+    title: "slice feature.edge_ids leaks file-level imports when entry is a function"  # 7bed
+    status: violated  # 7bed
+    priority: 2  # 7bed
+    parent:  # 7bed
+    tags:  # 7bed
+    - pass19  # 7bed
+    - dogfooding  # 7bed
+    isbefore: []  # 7bed
+    duplicate_of: []  # 7bed
+    not_duplicate_of: []  # 7bed
+    pr_ref:  # 7bed
+    description: ""  # 7bed
+    fields:  # 7bed
+      severity: "high"  # 7bed
+      statement: "hypergumbo slice --entry='<function>' --max-hops 0 (and 1) returns feature.edge_ids containing edges of the *containing file*, not the function. Concretely: entry=_hash (function in fingerprint.py:242-244) with --max-hops 0 returns 12 edge_ids — ALL are 'imports' edges with src=fingerprint.py:1-1:file:file (file-level imports). The actual edges involving _hash (4 real call-graph edges) are NOT in feature.edge_ids. With --max-hops 1: 14 total edges, only 2 touch the entry. The slice subcommand conflates function-entry scope with containing-file scope."  # 7bed
+      root_cause: "slice gathers edges by walking from the entry's containing FILE, not from the entry node itself, then bounds by hops. The reduction step doesn't filter file-level imports that don't reach the function. Affects packages/hypergumbo-core/src/hypergumbo_core/slice.py or analogous."  # 7bed

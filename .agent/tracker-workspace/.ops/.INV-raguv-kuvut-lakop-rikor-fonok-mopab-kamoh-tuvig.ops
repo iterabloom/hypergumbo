@@ -1,0 +1,25 @@
+- op: create  # c191
+  at: '2026-05-28T23:15:21Z'  # c191
+  by: agent  # c191
+  actor: jgstern_agent  # c191
+  clock: 1  # c191
+  nonce: c191  # c191
+  data:  # c191
+    kind: invariant  # c191
+    title: "9 edge.meta fields are constant-value-only (zero entropy when populated)"  # c191
+    status: violated  # c191
+    priority: 2  # c191
+    parent:  # c191
+    tags:  # c191
+    - pass19  # c191
+    - dogfooding  # c191
+    - classification_axes_audit  # c191
+    isbefore: []  # c191
+    duplicate_of: []  # c191
+    not_duplicate_of: []  # c191
+    pr_ref:  # c191
+    description: ""  # c191
+    fields:  # c191
+      severity: "medium"  # c191
+      statement: "Nine edge.meta fields carry exactly one value across all populated rows: channel_kind='queue' (103), detection_pattern='table_name' (17), table_name='users' (17), disambiguation_fallback=True (11), dest_access_mode='read' (113), protocol='ws' (12), bridge_kind='ffi' (10), client_framework='native_websocket' (12), url_path='/ws' (12). Each field exists in the schema as if categorizing or routing, but stores a constant. Either intended for future expansion or vestigial."  # c191
+      root_cause: "Schema includes optional decoration fields populated by linkers (websocket-linker, message-queue-linker, database-query-linker, dependency-linker). Each linker writes a constant value because it only emits one mechanism. Either the field should be derived from origin/edge.type, or other-value cases need linker support."  # c191

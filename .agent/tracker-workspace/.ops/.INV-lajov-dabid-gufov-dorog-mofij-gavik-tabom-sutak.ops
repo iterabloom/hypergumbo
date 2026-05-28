@@ -1,0 +1,25 @@
+- op: create  # 9847
+  at: '2026-05-28T23:16:18Z'  # 9847
+  by: agent  # 9847
+  actor: jgstern_agent  # 9847
+  clock: 1  # 9847
+  nonce: '9847'  # 9847
+  data:  # 9847
+    kind: invariant  # 9847
+    title: "edge.meta has both 'construct' and 'call_construct' fields with disjoint scopes and name-confusable identifiers"  # 9847
+    status: violated  # 9847
+    priority: 2  # 9847
+    parent:  # 9847
+    tags:  # 9847
+    - pass19  # 9847
+    - dogfooding  # 9847
+    - classification_axes_audit  # 9847
+    isbefore: []  # 9847
+    duplicate_of: []  # 9847
+    not_duplicate_of: []  # 9847
+    pr_ref:  # 9847
+    description: ""  # 9847
+    fields:  # 9847
+      severity: "low"  # 9847
+      statement: "edge.meta carries two name-similar fields with disjoint scopes and vocabularies: 'construct' (31 edges, values 'websocket_endpoint' 30 + 'event_emit' 1, all type=references) and 'call_construct' (21189 edges, values 'method' 20898 + 'function' 213 + 'cross_file' 78, all type=calls). Zero overlap in populated rows. A schema reader would reasonably believe these were related; they are not."  # 9847
+      root_cause: "Two independent linkers (websocket-linker emits construct; python emits call_construct) coined name-similar field names without coordination. Pass-17 LLLLLL noted call_construct mixes construct-type with cross_file relational axis; this finding extends to the name-collision between the two distinct fields."  # 9847

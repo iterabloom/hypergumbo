@@ -1,0 +1,24 @@
+- op: create  # 96ab
+  at: '2026-05-28T22:53:43Z'  # 96ab
+  by: agent  # 96ab
+  actor: jgstern_agent  # 96ab
+  clock: 1  # 96ab
+  nonce: 96ab  # 96ab
+  data:  # 96ab
+    kind: invariant  # 96ab
+    title: "module_attr_ref edges labeled access_mode='write' on 95% of cases (mass mislabeling)"  # 96ab
+    status: violated  # 96ab
+    priority: 2  # 96ab
+    parent:  # 96ab
+    tags:  # 96ab
+    - dogfooding  # 96ab
+    - pass18  # 96ab
+    - access_mode  # 96ab
+    isbefore: []  # 96ab
+    duplicate_of: []  # 96ab
+    not_duplicate_of: []  # 96ab
+    pr_ref:  # 96ab
+    description: "Pass 18 finding BBBBBBB. 556 of 1326 module_attr_ref edges (42%) have access_mode set; of those, 531 (95%) are 'write' and 25 are 'read'. Sample 'write' targets: importlib.util, os.environ, importlib.metadata — these are reads of imported attributes. The evidence_type is 'module_attribute_reference' on all 531. Examples: 'python:packages/hypergumbo/tests/test_meta.py:27-32:_load_me' -> 'python:importlib:0-0:importlib.util:attribute' tagged write — but _load_meta is dereferencing importlib.util (a read). Distinct from AAAAAAA (references edges) and CCCCCCC (calls)."  # 96ab
+    fields:  # 96ab
+      statement: "Edge type 'module_attr_ref' (module attribute reference) is by name a read access — looking up an attribute on a module. Its access_mode should be 'read' unless evidence specifically indicates assignment (e.g. os.environ['X']=v). 95% labeling as 'write' implies the field is being set unconditionally rather than inferred from context."  # 96ab
+      root_cause: "module_attr_ref emitter defaults access_mode='write' for any module attribute reference regardless of read-vs-write context; the disambiguation logic that should detect attribute assignment is either missing or inverted."  # 96ab

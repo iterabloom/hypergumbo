@@ -21,3 +21,10 @@
     fields:  # 48c8
       statement: "When hypergumbo explain <symbol> --provenance is invoked and no inbound/outbound edges carry derived_from, the user must receive an explicit notice rather than identical output to non-provenance mode."  # 48c8
       root_cause: "derived_from is populated only on linker-produced edges (contains/dispatches_to/uses/...); analyzer-produced edges (calls/extends/instantiates/...) are at 0% coverage. explain primarily renders the latter, so --provenance has no visible effect."  # 48c8
+- op: discuss  # a281
+  at: '2026-05-28T22:42:26Z'  # a281
+  by: agent  # a281
+  actor: jgstern_agent  # a281
+  clock: 2  # a281
+  nonce: a281  # a281
+  message: "Pass 17 FFFFFF re-confirmation: ran 'hypergumbo explain auto-pr --input /tmp/hg-dogfood-s11/bm.json --provenance' and the same without --provenance. Output was BYTE-IDENTICAL (3116 lines each, diff produced no output). The --provenance flag is a complete no-op in the explain code path, not just 'missing extra output'. Suggested fix: either remove the flag or wire it to emit derived_from chains under each Calls/Called by entry. Sample target: scripts/auto-pr."  # a281

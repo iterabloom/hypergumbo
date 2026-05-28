@@ -1,0 +1,25 @@
+- op: create  # 0305
+  at: '2026-05-28T23:15:08Z'  # 0305
+  by: agent  # 0305
+  actor: jgstern_agent  # 0305
+  clock: 1  # 0305
+  nonce: '0305'  # 0305
+  data:  # 0305
+    kind: invariant  # 0305
+    title: "node.canonical_name format dual-mode"  # 0305
+    status: violated  # 0305
+    priority: 2  # 0305
+    parent:  # 0305
+    tags:  # 0305
+    - pass19  # 0305
+    - dogfooding  # 0305
+    - classification_axes_audit  # 0305
+    isbefore: []  # 0305
+    duplicate_of: []  # 0305
+    not_duplicate_of: []  # 0305
+    pr_ref:  # 0305
+    description: ""  # 0305
+    fields:  # 0305
+      severity: "high"  # 0305
+      statement: "node.canonical_name carries 3 different formats across the same field: bare name (0 colons, 99 nodes from kind=dependency/project/struct/view/etc., languages toml/json/wgsl/sql), 'lang:module:symbol:state' (3 colons, 1623 external_symbol nodes), and one 7-colon path-bearing form. Schema declares no single vocabulary for this field."  # 0305
+      root_cause: "Multiple analyzer code paths populate canonical_name with different formats; no single enforced vocabulary."  # 0305

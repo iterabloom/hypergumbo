@@ -1,0 +1,32 @@
+- op: create  # 2197
+  at: '2026-05-28T22:41:33Z'  # 2197
+  by: agent  # 2197
+  actor: jgstern_agent  # 2197
+  clock: 1  # 2197
+  nonce: '2197'  # 2197
+  data:  # 2197
+    kind: invariant  # 2197
+    title: "io-boundaries --include-tests REDUCES total_io_edges in JSON mode (inverted vs text)"  # 2197
+    status: violated  # 2197
+    priority: 3  # 2197
+    parent:  # 2197
+    tags:  # 2197
+    - dogfooding  # 2197
+    - pass17  # 2197
+    - cli  # 2197
+    - io_boundaries  # 2197
+    isbefore: []  # 2197
+    duplicate_of: []  # 2197
+    not_duplicate_of: []  # 2197
+    pr_ref:  # 2197
+    description: "Pass 17 finding JJJJJJ. Measured: text default=843 boundary calls; text --include-tests=6432; JSON default total_io_edges=7859; JSON --include-tests total_io_edges=6432. The four numbers form: 843 < 6432 = 6432 < 7859. JSON default exceeds JSON --include-tests by 1427, which is the opposite of the flag's intent. Either JSON default should be 843 (matching text default) and --include-tests should yield 6432, or both defaults should be 7859 and --include-tests should yield no change. Compounds with s7 II (verify-claims --taint-* silently accept any input — a different flag inconsistency) and is structurally similar to s8 QQ (--input consumers accept wrong-view JSON). Open investigation 'io-boundaries inclusion asymmetry 843/6432/7859 across text/text+tests/JSON' is hereby resolved as a bug, not by-design."  # 2197
+    fields:  # 2197
+      statement: "The --include-tests flag should monotonically increase the result set across all output formats: passing it should never reduce the count compared to omitting it."  # 2197
+      root_cause: "io-boundaries JSON serialization path applies a different default-inclusion policy than the text serializer; the --include-tests flag is wired to text-mode filtering only and the JSON default is 'all edges with no filter' instead of 'production-only'."  # 2197
+- op: discuss  # ba8f
+  at: '2026-05-28T22:54:32Z'  # ba8f
+  by: agent  # ba8f
+  actor: jgstern_agent  # ba8f
+  clock: 2  # ba8f
+  nonce: ba8f  # ba8f
+  message: "Pass 18 DDDDDDD root-cause analysis: traced cli.py:3866-3886 + io_boundary.py:1249 (total_io_edges=tagged_count). The 7859→6432 inversion isn't a single-metric value being filtered — it's two DIFFERENT METRICS reported under the same field name 'total_io_edges'. (1) JSON default with exclude_tests=True falls into cli.py:3870's filtered_total = sum(len(e.chains) for e in filtered_entries.values()) which counts production-filtered chains INCLUDING the external_potential bucket: 7016 ep + 843 non-ep = 7859. (2) JSON --include-tests falls into cli.py:3882's else branch which uses bmap.to_dict() and that surfaces bmap.total_io_edges = tagged_count from io_boundary.py:1249 — the count of boundary-tagged edges BEFORE external_potential is added: 6432. Additional bug: in the --include-tests JSON response, the boundaries.chains lists SUM to 25128 (sub-totals: ep=18696, fs_read=1593, fs_write=4395, env_read=152, subprocess=152, logging=125, others ≤10) but total_io_edges field reports 6432 — the summary value disagrees with the contents of the same response object. Fix: pick ONE metric (probably sum-of-chains, since that's what the response contains) and use it consistently in both code paths."  # ba8f

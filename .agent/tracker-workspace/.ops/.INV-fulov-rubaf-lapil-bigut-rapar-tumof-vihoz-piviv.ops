@@ -1,0 +1,25 @@
+- op: create  # ef17
+  at: '2026-05-28T22:40:29Z'  # ef17
+  by: agent  # ef17
+  actor: jgstern_agent  # ef17
+  clock: 1  # ef17
+  nonce: ef17  # ef17
+  data:  # ef17
+    kind: invariant  # ef17
+    title: "modifiers vocab leaks language-specific visibility terms (5 distinct)"  # ef17
+    status: violated  # ef17
+    priority: 2  # ef17
+    parent:  # ef17
+    tags:  # ef17
+    - dogfooding  # ef17
+    - pass17  # ef17
+    - classification_axes_audit  # ef17
+    - modifiers  # ef17
+    isbefore: []  # ef17
+    duplicate_of: []  # ef17
+    not_duplicate_of: []  # ef17
+    pr_ref:  # ef17
+    description: "Pass 17 finding CCCCCC. 4001 of 33830 nodes have non-empty modifiers list. Six distinct values: private (3942 python), re_exported (39 python), public (8 csharp+java), exported (6 go), pub (4 rust), external (2 solidity). Five different words for what is semantically 'visibility'. Bundle candidate for the classification_axes ADR alongside s8 VV (edge.type extends/inherits/implements leak) and s16 IIIII (evidence_type vocab fragmentation)."  # ef17
+    fields:  # ef17
+      statement: "The node.modifiers field should use a single normalized vocabulary across languages; language-specific terms for the same semantic concept (visibility) violate the cross-language axis property."  # ef17
+      root_cause: "Each language analyzer emits its own native visibility keyword (csharp/java->'public', rust->'pub', go->'exported', solidity->'external', python->'private'/'re_exported') without normalization to a shared vocabulary."  # ef17

@@ -1,0 +1,24 @@
+- op: create  # 25d3
+  at: '2026-05-28T22:40:27Z'  # 25d3
+  by: agent  # 25d3
+  actor: jgstern_agent  # 25d3
+  clock: 1  # 25d3
+  nonce: 25d3  # 25d3
+  data:  # 25d3
+    kind: invariant  # 25d3
+    title: "stable_id mass collisions: 60% of nodes share with at least one other"  # 25d3
+    status: violated  # 25d3
+    priority: 3  # 25d3
+    parent:  # 25d3
+    tags:  # 25d3
+    - dogfooding  # 25d3
+    - pass17  # 25d3
+    - identity  # 25d3
+    isbefore: []  # 25d3
+    duplicate_of: []  # 25d3
+    not_duplicate_of: []  # 25d3
+    pr_ref:  # 25d3
+    description: "Pass 17 finding BBBBBB. Of 33694 nodes with non-null stable_id, only 17189 are distinct — 20267 nodes (60%) share stable_id with at least one other node. 3762 collision groups exist. Largest groups: sha256:6223e7ef940e256e (155 bash functions in scripts/lib/forgejo-api.sh: poll_ci, do_merge, find_open_pr, ...); sha256:24796ad7123df73f (152 test_profile.py tests); sha256:172f092ad68de501 (105 test_python_ast_analysis.py tests). In the bash group: 148 distinct fingerprints among 155 collided nodes — so the fingerprints DO distinguish them but stable_id does not. The field name 'stable_id' is misleading — it is a structural-shape hash with deliberately broad equivalence classes. Schema declares scheme='hypergumbo-stableid-v4'."  # 25d3
+    fields:  # 25d3
+      statement: "node.stable_id values should be sufficiently distinguishing such that the share-rate is low; collision rates approaching half the population indicate the field is over-coarse or misnamed."  # 25d3
+      root_cause: "stable_id computation hashes structural shape (signature, kind, language) rather than including positional or path-disambiguating information; 3762 collision groups exist with the largest (155 nodes) being functions in scripts/lib/forgejo-api.sh."  # 25d3

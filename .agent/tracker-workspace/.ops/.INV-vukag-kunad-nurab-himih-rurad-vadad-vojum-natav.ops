@@ -1,0 +1,24 @@
+- op: create  # cefc
+  at: '2026-05-28T22:41:01Z'  # cefc
+  by: agent  # cefc
+  actor: jgstern_agent  # cefc
+  clock: 1  # cefc
+  nonce: cefc  # cefc
+  data:  # cefc
+    kind: invariant  # cefc
+    title: "analysis_runs.failed_files and warnings universally empty despite known pass failures"  # cefc
+    status: violated  # cefc
+    priority: 2  # cefc
+    parent:  # cefc
+    tags:  # cefc
+    - dogfooding  # cefc
+    - pass17  # cefc
+    - observability  # cefc
+    isbefore: []  # cefc
+    duplicate_of: []  # cefc
+    not_duplicate_of: []  # cefc
+    pr_ref:  # cefc
+    description: "Pass 17 finding EEEEEE. analysis_runs[0..83].failed_files == [] for all 84 runs; analysis_runs[0..83].warnings == [] for all 84 runs. Known issues NOT reported: PPPPP (yaml analyzer processes 174 files producing 0 nodes from 173/174 — no warning); JJJJJ ('Not owner' Solidity require-msg propagating as language — no warning); the multiple linkers from MMMMMM (1+ seconds with zero productive output — no warning). Per-pass schema fields exist (failed_files: List[str], warnings: List[str]) but the channels are unused. Extends s14 YYYY (classification_failures=[] despite known mislabeling) and s14 RRRR (limits.skipped_passes 66 vs runs[].skipped_passes union 0)."  # cefc
+    fields:  # cefc
+      statement: "AnalysisRun.failed_files and AnalysisRun.warnings should report file-level errors and analyzer warnings encountered during a pass; universal emptiness across all 84 runs implies these fields are reserved-but-never-populated."  # cefc
+      root_cause: "Each language analyzer reports its own failures/warnings through stdout/stderr or never reports them at all; the AnalysisRun structure exposes fields for these but no language analyzer populates them. The orchestrator never aggregates analyzer warnings into the structured record."  # cefc

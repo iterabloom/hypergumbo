@@ -1,0 +1,24 @@
+- op: create  # e2b5
+  at: '2026-05-28T22:40:31Z'  # e2b5
+  by: agent  # e2b5
+  actor: jgstern_agent  # e2b5
+  clock: 1  # e2b5
+  nonce: e2b5  # e2b5
+  data:  # e2b5
+    kind: invariant  # e2b5
+    title: "Python emits only 'private' modifier; other languages only emit positive visibility (asymmetric)"  # e2b5
+    status: violated  # e2b5
+    priority: 2  # e2b5
+    parent:  # e2b5
+    tags:  # e2b5
+    - dogfooding  # e2b5
+    - pass17  # e2b5
+    - modifiers  # e2b5
+    isbefore: []  # e2b5
+    duplicate_of: []  # e2b5
+    not_duplicate_of: []  # e2b5
+    pr_ref:  # e2b5
+    description: "Pass 17 finding DDDDDD. Python: 3942 nodes have ['private'] modifier; 0 have public/exported. C#/Java: 8 nodes have ['public'] modifier; 0 have private. Go: 6 nodes have ['exported']. Rust: 4 have ['pub']. Solidity: 2 have ['external']. A consumer cannot ask 'is this symbol exported?' uniformly across languages: for Python they check absence-of-private; for others they check presence-of-public/pub/exported. The supply_chain.is_exported boolean (already separate, 25% true) is the proper unified field — but it sits alongside this inconsistent modifiers field as a conceptual duplicate."  # e2b5
+    fields:  # e2b5
+      statement: "Visibility-modifier emission should be consistent across languages: either all languages tag both visible and hidden symbols, or all use absence-as-default with one polarity. The current asymmetric pattern (python negative-only, all others positive-only) makes node.modifiers semantically inconsistent."  # e2b5
+      root_cause: "Python analyzer marks underscore-prefix symbols as 'private' (3942 emissions) and emits no modifier for non-underscore symbols. Other languages emit positive visibility markers (public, pub, exported, external) only when present in source and emit no modifier when default/private. Same field, opposite polarity defaults."  # e2b5

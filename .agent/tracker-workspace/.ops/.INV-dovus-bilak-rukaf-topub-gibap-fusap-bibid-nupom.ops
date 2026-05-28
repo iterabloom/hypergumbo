@@ -1,0 +1,25 @@
+- op: create  # b87f
+  at: '2026-05-28T22:15:58Z'  # b87f
+  by: agent  # b87f
+  actor: jgstern_agent  # b87f
+  clock: 1  # b87f
+  nonce: b87f  # b87f
+  data:  # b87f
+    kind: invariant  # b87f
+    title: "IIIII: evidence_type vocabulary fragmented: 4 names for imports (ast_import/import_static/import_declaration/import_statement) and 5 single-occurrence types"  # b87f
+    status: violated  # b87f
+    priority: 1  # b87f
+    parent:  # b87f
+    tags:  # b87f
+    - dogfooding  # b87f
+    - pass16  # b87f
+    - vocabulary  # b87f
+    - classification_axes  # b87f
+    isbefore: []  # b87f
+    duplicate_of: []  # b87f
+    not_duplicate_of: []  # b87f
+    pr_ref:  # b87f
+    description: ""  # b87f
+    fields:  # b87f
+      statement: "edge.meta.evidence_type has 31 distinct values. Four of them all describe imports with different names: ast_import (10462), import_static (15), import_declaration (1), import_statement (1). Several 1-occurrence values smell vestigial: callback_argument_reference (1), use_declaration (1), trait_impl (1), import_declaration (1), import_statement (1)"  # b87f
+      root_cause: "evidence_type is the registered heavyweight axis (ADR-0027/0028). The fact that imports have 4 names (ast_import vs import_static vs import_declaration vs import_statement) suggests linker-by-linker drift in vocabulary — each linker invented its own term for the same concept. The 1-occurrence types may be live (single test fixture) or dead code paths. Worth bundling under the classification_axes audit alongside extends/inherits/implements (VV)"  # b87f

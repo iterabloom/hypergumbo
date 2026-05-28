@@ -1,0 +1,25 @@
+- op: create  # 6498
+  at: '2026-05-28T22:41:35Z'  # 6498
+  by: agent  # 6498
+  actor: jgstern_agent  # 6498
+  clock: 1  # 6498
+  nonce: '6498'  # 6498
+  data:  # 6498
+    kind: invariant  # 6498
+    title: "framework_dispatch vocab includes 'registry_dispatch' (mechanism, not framework)"  # 6498
+    status: violated  # 6498
+    priority: 2  # 6498
+    parent:  # 6498
+    tags:  # 6498
+    - dogfooding  # 6498
+    - pass17  # 6498
+    - classification_axes_audit  # 6498
+    - framework_dispatch  # 6498
+    isbefore: []  # 6498
+    duplicate_of: []  # 6498
+    not_duplicate_of: []  # 6498
+    pr_ref:  # 6498
+    description: "Pass 17 finding KKKKKK. 328 edges total have framework_dispatch set: registry_dispatch (292, 89%), fastapi (18), starlette (7), npm_package (4), django_channels (4), html_script_src (1), rust_trait_dispatch (1), native_websocket (1). The dominant 89% value 'registry_dispatch' is not a framework — it is a mechanism category. 'npm_package' is also borderline (a packaging-system noun, not a runtime framework). 'rust_trait_dispatch' is also a mechanism not a framework. The field name 'framework_dispatch' implies a framework taxonomy but the values populated mix three axes (framework: fastapi/starlette/django_channels; mechanism: registry_dispatch/native_websocket/rust_trait_dispatch; packaging: npm_package/html_script_src). Same pattern as s8 VV (extends/inherits/implements) and s16 IIIII (evidence_type fragmentation)."  # 6498
+    fields:  # 6498
+      statement: "The edge.meta.framework_dispatch axis should hold a framework name (a specific named library/system) per its name, not a dispatch mechanism category. Mixing framework names ('fastapi', 'starlette', 'django_channels', 'npm_package') with mechanism names ('registry_dispatch', 'native_websocket') leaks two axes into one field."  # 6498
+      root_cause: "The decorator/registry-dispatch linker emits 'registry_dispatch' as a sentinel for the dispatch mechanism when no specific framework is identified; the field was originally intended for framework attribution but is now bifunctional."  # 6498

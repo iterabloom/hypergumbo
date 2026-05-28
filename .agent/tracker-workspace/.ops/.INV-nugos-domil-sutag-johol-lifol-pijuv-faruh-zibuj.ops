@@ -1,0 +1,24 @@
+- op: create  # 1fdb
+  at: '2026-05-28T22:41:03Z'  # 1fdb
+  by: agent  # 1fdb
+  actor: jgstern_agent  # 1fdb
+  clock: 1  # 1fdb
+  nonce: 1fdb  # 1fdb
+  data:  # 1fdb
+    kind: invariant  # 1fdb
+    title: "slice --language doesn't disambiguate when ambiguous matches share language"  # 1fdb
+    status: violated  # 1fdb
+    priority: 2  # 1fdb
+    parent:  # 1fdb
+    tags:  # 1fdb
+    - dogfooding  # 1fdb
+    - pass17  # 1fdb
+    - cli  # 1fdb
+    isbefore: []  # 1fdb
+    duplicate_of: []  # 1fdb
+    not_duplicate_of: []  # 1fdb
+    pr_ref:  # 1fdb
+    description: "Pass 17 finding GGGGGG. Running 'hypergumbo slice --entry cli:main --input bm.json' fails with: Ambiguous entry 'cli:main' matches 2 symbols in different files: [python] packages/hypergumbo-tracker/.../cli.py, [python] packages/hypergumbo-core/.../cli.py. Both are language=python. Error suggests 'Use a full node ID to disambiguate, or filter with --language.' Re-running with '--language python' produces the same error — both candidates share that language. The remedy text is false hope; users have no way to learn from the message that --language won't help here. Correct behavior: detect the shared-language case and suggest --file/--path instead, or emit module:name with package qualifier."  # 1fdb
+    fields:  # 1fdb
+      statement: "When slice rejects an ambiguous entry, its error message should not suggest --language as a remedy if the ambiguous candidates already share a language; the suggested fix should be applicable."  # 1fdb
+      root_cause: "Slice ambiguity error template unconditionally appends 'or filter with --language', without checking whether the language axis actually splits the candidate set."  # 1fdb

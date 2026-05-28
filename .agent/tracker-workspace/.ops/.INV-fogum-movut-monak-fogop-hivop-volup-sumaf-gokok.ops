@@ -1,0 +1,25 @@
+- op: create  # 904c
+  at: '2026-05-28T22:39:57Z'  # 904c
+  by: agent  # 904c
+  actor: jgstern_agent  # 904c
+  clock: 1  # 904c
+  nonce: 904c  # 904c
+  data:  # 904c
+    kind: invariant  # 904c
+    title: "TOML 99 dependency nodes have fingerprint without 'hgfp1:' prefix"  # 904c
+    status: violated  # 904c
+    priority: 3  # 904c
+    parent:  # 904c
+    tags:  # 904c
+    - dogfooding  # 904c
+    - pass17  # 904c
+    - classification_axes_audit  # 904c
+    - fingerprint  # 904c
+    isbefore: []  # 904c
+    duplicate_of: []  # 904c
+    not_duplicate_of: []  # 904c
+    pr_ref:  # 904c
+    description: "Pass 17 finding AAAAAA. Of 28225 nodes with non-null fingerprint, 99 nodes (ALL from packages/hypergumbo-tracker/pyproject.toml dependency declarations) carry raw 16-char hex strings as fingerprint (e.g. 'e6dd6c56c5bd48c6') instead of the canonical 'hgfp1:<hash>' format used by the other 28126 nodes. Sample id: 'toml:packages/hypergumbo-tracker/pyproject.toml:24-24:rich:dependency' fp='e6dd6c56c5bd48c6'. Schema declares one scheme, two formats are emitted."  # 904c
+    fields:  # 904c
+      statement: "All emitted node.fingerprint values must use the canonical 'hgfp1:<hash>' format declared by symbol_fingerprint_scheme='hypergumbo-symbol-fp-v1'."  # 904c
+      root_cause: "TOML dependency extraction path emits raw hex hashes without the 'hgfp1:' prefix; canonical format helper is bypassed in this code path."  # 904c

@@ -1,0 +1,25 @@
+- op: create  # 6b9e
+  at: '2026-05-28T22:15:29Z'  # 6b9e
+  by: agent  # 6b9e
+  actor: jgstern_agent  # 6b9e
+  clock: 1  # 6b9e
+  nonce: 6b9e  # 6b9e
+  data:  # 6b9e
+    kind: invariant  # 6b9e
+    title: "LLLLL: AnalysisRun.toolchain hardcoded to 'python 3.12.3' for all 84 passes; execution_id is per-pass not per-invocation (misleading name)"  # 6b9e
+    status: violated  # 6b9e
+    priority: 2  # 6b9e
+    parent:  # 6b9e
+    tags:  # 6b9e
+    - dogfooding  # 6b9e
+    - pass16  # 6b9e
+    - reproducibility  # 6b9e
+    - analysis_runs  # 6b9e
+    isbefore: []  # 6b9e
+    duplicate_of: []  # 6b9e
+    not_duplicate_of: []  # 6b9e
+    pr_ref:  # 6b9e
+    description: ""  # 6b9e
+    fields:  # 6b9e
+      statement: "AnalysisRun.toolchain field is HARDCODED to {name: 'python', version: '3.12.3'} for ALL 84 runs, regardless of pass language. The bash analyzer, JS analyzer, Solidity analyzer — all report toolchain as 'python 3.12.3'. AnalysisRun.execution_id is unique per run (84 UUIDs for 84 runs), not per CLI invocation — so it cannot group passes that came from the same hypergumbo invocation"  # 6b9e
+      root_cause: "(1) toolchain captures the HOST Python interpreter rather than the analysis tool. The bash analyzer's toolchain should record bash version or tree-sitter-bash grammar version; the JS analyzer should record its parser version. Current value is useless for cross-tool reproducibility. (2) execution_id is misnamed — it functions as a per-pass UUID identical in role to run_signature, not as a per-invocation group key. Schema-doc consumers would assume execution_id groups runs into invocations"  # 6b9e
