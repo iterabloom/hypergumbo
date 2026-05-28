@@ -1,0 +1,25 @@
+- op: create  # 0455
+  at: '2026-05-28T22:14:03Z'  # 0455
+  by: agent  # 0455
+  actor: jgstern_agent  # 0455
+  clock: 1  # 0455
+  nonce: '0455'  # 0455
+  data:  # 0455
+    kind: invariant  # 0455
+    title: "KKKKK: 76% of nodes (25584/33830) are test-classified; behavior map is dominated by test code by default"  # 0455
+    status: violated  # 0455
+    priority: 2  # 0455
+    parent:  # 0455
+    tags:  # 0455
+    - dogfooding  # 0455
+    - pass16  # 0455
+    - supply_chain  # 0455
+    - node_distribution  # 0455
+    isbefore: []  # 0455
+    duplicate_of: []  # 0455
+    not_duplicate_of: []  # 0455
+    pr_ref:  # 0455
+    description: ""  # 0455
+    fields:  # 0455
+      statement: "76% of nodes (25584 of 33830) have supply_chain.reason='test path matches (?:^|/)tests?/' — i.e. they are classified as test-tier symbols. Only 6180 nodes (18.3%) are from first-party src/. The behavior map is dominated by test code. Comparable: 1144 unresolved external (3.4%), 480 internal_dep (1.4%), 358 default-no-pattern (1.1%), 82 dependency declarations (0.2%), 2 npm_package (negligible)"  # 0455
+      root_cause: "Tests are not de-emphasized in the behavior map by default. Consumers wanting production-code-only views must filter is_test_file=True themselves (e.g., test-coverage subcommand does this internally, dead-code-maybe optionally via --seeds). The ratio reflects that hypergumbo's own test corpus is large (~5x production code), but downstream consumers and sketches may want a default that excludes or compresses test nodes"  # 0455

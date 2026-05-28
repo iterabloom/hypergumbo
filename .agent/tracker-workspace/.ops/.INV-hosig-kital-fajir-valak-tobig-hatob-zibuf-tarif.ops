@@ -1,0 +1,24 @@
+- op: create  # 2d0e
+  at: '2026-05-28T22:13:39Z'  # 2d0e
+  by: agent  # 2d0e
+  actor: jgstern_agent  # 2d0e
+  clock: 1  # 2d0e
+  nonce: 2d0e  # 2d0e
+  data:  # 2d0e
+    kind: invariant  # 2d0e
+    title: "OOOOO: di-resolution pass 2550ms produces 0 edges; no DI patterns in repo; should short-circuit early"  # 2d0e
+    status: violated  # 2d0e
+    priority: 3  # 2d0e
+    parent:  # 2d0e
+    tags:  # 2d0e
+    - dogfooding  # 2d0e
+    - pass16  # 2d0e
+    - linker  # 2d0e
+    isbefore: []  # 2d0e
+    duplicate_of: []  # 2d0e
+    not_duplicate_of: []  # 2d0e
+    pr_ref:  # 2d0e
+    description: ""  # 2d0e
+    fields:  # 2d0e
+      statement: "di-resolution pass runs for 2550ms (2.7% of total pass time) and emits ZERO edges. Origin 'di-resolution' does not appear in any edge.origin. Pass appears to do no productive work in this repo"  # 2d0e
+      root_cause: "di-resolution likely targets dependency-injection frameworks (Spring, Dagger, Autofac, etc.) — none present in this codebase. Pass should short-circuit on absence of DI markers (similar to how 66 language passes report 'no files matched') rather than spending 2.5s of CPU. files_analyzed=0 suggests it's reading the in-memory IR but finding no DI patterns"  # 2d0e

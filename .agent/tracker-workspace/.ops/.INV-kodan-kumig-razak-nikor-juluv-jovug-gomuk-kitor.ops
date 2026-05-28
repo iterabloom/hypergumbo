@@ -1,0 +1,24 @@
+- op: create  # f831
+  at: '2026-05-28T22:13:29Z'  # f831
+  by: agent  # f831
+  actor: jgstern_agent  # f831
+  clock: 1  # f831
+  nonce: f831  # f831
+  data:  # f831
+    kind: invariant  # f831
+    title: "NNNNN: pyffi-linker emits 10 edges ALL from test_pyffi_linker.py (own test fixtures), 4570ms for self-test edges; zero production-code coverage"  # f831
+    status: violated  # f831
+    priority: 3  # f831
+    parent:  # f831
+    tags:  # f831
+    - dogfooding  # f831
+    - pass16  # f831
+    - linker  # f831
+    isbefore: []  # f831
+    duplicate_of: []  # f831
+    not_duplicate_of: []  # f831
+    pr_ref:  # f831
+    description: ""  # f831
+    fields:  # f831
+      statement: "pyffi-linker pass runs for 4570ms (largest synthesis-pass duration) and emits exactly 10 edges, all originating from packages/hypergumbo-core/tests/test_pyffi_linker.py (its OWN test fixtures). Zero edges from production code. files_analyzed=0 because the pass reads in-memory AST, but the 10 edges show it only matches against test-internal C_stdlib references"  # f831
+      root_cause: "pyffi-linker pattern-matches Python ctypes/cffi/CDLL usage. The only such usages in the analyzed codebase are inside test_pyffi_linker.py (which contains string-literal C_stdlib references as test inputs). Production hypergumbo code uses no ctypes/cffi. Effect: 4.6s of CPU per analysis for a feature that only validates against its own test corpus"  # f831
