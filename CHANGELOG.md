@@ -77,6 +77,7 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 - **Orphan-node triage.** Orphan rate dropped from 5.5% to 2.0%; ratchet test prevents regression.
 - **Canonical dampener stack pinned end-to-end** — four tests catch internal-reorder regressions.
 - **RCT-consumer public-API surface pinned** via introspection tests.
+- **Bridge linker activation ↔ depends_on drift guard** — property test asserts every Bridge-subcategory linker that declares both `activation.language_pairs` and `depends_on` encodes the same constraint (after language→pass-id resolution for the JS/TS/Vue/Svelte sharing case). Adding an impl language to one declaration but not the other now fails CI rather than silently diverging the gate (INV-suhob).
 
 
 ### Changed
