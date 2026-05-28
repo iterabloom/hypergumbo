@@ -1,0 +1,24 @@
+- op: create  # 6dbc
+  at: '2026-05-28T21:05:54Z'  # 6dbc
+  by: agent  # 6dbc
+  actor: jgstern_agent  # 6dbc
+  clock: 1  # 6dbc
+  nonce: 6dbc  # 6dbc
+  data:  # 6dbc
+    kind: invariant  # 6dbc
+    title: "config_fingerprint is constant sha256('{}')='44136fa355b3678a' across all 84 analysis_runs; cache key collapses across configurations"  # 6dbc
+    status: violated  # 6dbc
+    priority: 2  # 6dbc
+    parent:  # 6dbc
+    tags:  # 6dbc
+    - dogfooding  # 6dbc
+    - pass13  # 6dbc
+    - cache_correctness  # 6dbc
+    isbefore: []  # 6dbc
+    duplicate_of: []  # 6dbc
+    not_duplicate_of: []  # 6dbc
+    pr_ref:  # 6dbc
+    description: "Pass 13: All 84 analysis_runs entries in self-analysis bm.json have config_fingerprint=sha256:44136fa355b3678a (the SHA256 prefix of literal '{}'). run_signature = hash(pass_id:version:config_fingerprint:toolchain), so within a single pass, run_signature is identical regardless of effective config. Cache keys based on run_signature cannot distinguish runs with different config (e.g., --backend tree-sitter vs --backend rust-analyzer have the same cache key for any given pass)."  # 6dbc
+    fields:  # 6dbc
+      statement: "AnalysisRun.config_fingerprint reflects a hash of the effective config that produced the run."  # 6dbc
+      root_cause: "ir.py:181 _default_config_fingerprint returns sha256(b\\\"{}\\\")[:16]=\\\"44136fa355b3678a\\\" and no pass overrides the default when constructing AnalysisRun, so config_fingerprint is constant regardless of actual config."  # 6dbc

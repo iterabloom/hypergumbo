@@ -1,0 +1,24 @@
+- op: create  # e7c6
+  at: '2026-05-28T21:05:56Z'  # e7c6
+  by: agent  # e7c6
+  actor: jgstern_agent  # e7c6
+  clock: 1  # e7c6
+  nonce: e7c6  # e7c6
+  data:  # e7c6
+    kind: invariant  # e7c6
+    title: "routes top-level field absent from bm.json; 'hypergumbo routes' prints 'No API routes found' despite 8 Route entries in usage_contexts"  # e7c6
+    status: violated  # e7c6
+    priority: 1  # e7c6
+    parent:  # e7c6
+    tags:  # e7c6
+    - dogfooding  # e7c6
+    - pass13  # e7c6
+    - disconnect  # e7c6
+    isbefore: []  # e7c6
+    duplicate_of: []  # e7c6
+    not_duplicate_of: []  # e7c6
+    pr_ref:  # e7c6
+    description: "Pass 13: hypergumbo routes /tmp/bm.json -> 'No API routes found in the behavior map.' BUT bm.json.usage_contexts has 8 entries with context_name='Route' from serve.py (e.g., '/health' GET _health, '/api/items' GET _api_list_items). Top-level bm.json keys do NOT include 'routes' (or 'frameworks'). Also: routes subcommand generates 5 sketch artifacts (4k/16k/64k/handler-slice/results) on a read-only operation, similar to U."  # e7c6
+    fields:  # e7c6
+      statement: "Route data extracted by analyzers is reachable via the hypergumbo routes subcommand."  # e7c6
+      root_cause: "Routes are emitted into bm.json.usage_contexts (8 entries with context_name=Route from serve.py) but the routes subcommand reads only the top-level bm.json.routes field, which is never populated; there is no promotion from usage_contexts to routes."  # e7c6

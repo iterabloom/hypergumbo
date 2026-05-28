@@ -1,0 +1,24 @@
+- op: create  # 2eee
+  at: '2026-05-28T21:06:22Z'  # 2eee
+  by: agent  # 2eee
+  actor: jgstern_agent  # 2eee
+  clock: 1  # 2eee
+  nonce: 2eee  # 2eee
+  data:  # 2eee
+    kind: invariant  # 2eee
+    title: "files_analyzed=0 reported by 8 synthesis-only passes (pyffi-linker, di-resolution, method-call-recovery, etc.) despite running 71ms-4570ms each"  # 2eee
+    status: violated  # 2eee
+    priority: 1  # 2eee
+    parent:  # 2eee
+    tags:  # 2eee
+    - dogfooding  # 2eee
+    - pass13  # 2eee
+    - metric_semantics  # 2eee
+    isbefore: []  # 2eee
+    duplicate_of: []  # 2eee
+    not_duplicate_of: []  # 2eee
+    pr_ref:  # 2eee
+    description: "Pass 13: 8 of 84 analysis_runs entries have files_analyzed=0 with nonzero duration_ms: pyffi-linker (4570ms), di-resolution (2550ms), method-call-recovery (364ms), annotation-convention-linker (247ms), containment-linker (126ms), inherited-calls-linker (71ms), inheritance-linker (49ms), requirements (42ms). Total: ~8s of work invisible to file-count throughput metrics. Confused dogfooding investigations in passes 12 and 13. Either rename files_analyzed (and add ir_units_processed) or document that 0 means 'graph-only synthesis pass'."  # 2eee
+    fields:  # 2eee
+      statement: "Every analysis_runs entry that contributes nonzero work to bm.json has files_analyzed > 0."  # 2eee
+      root_cause: "Synthesis passes (pyffi-linker, di-resolution, method-call-recovery, annotation-convention-linker, containment-linker, inherited-calls-linker, inheritance-linker, requirements) traverse the IR rather than files, so they have no natural files_analyzed counter; the AnalysisRun.files_analyzed field is initialized to 0 and never updated for these passes."  # 2eee

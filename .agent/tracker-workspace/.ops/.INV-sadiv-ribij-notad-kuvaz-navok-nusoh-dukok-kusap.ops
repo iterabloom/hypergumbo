@@ -1,0 +1,25 @@
+- op: create  # adc1
+  at: '2026-05-28T21:05:52Z'  # adc1
+  by: agent  # adc1
+  actor: jgstern_agent  # adc1
+  clock: 1  # adc1
+  nonce: adc1  # adc1
+  data:  # adc1
+    kind: invariant  # adc1
+    title: "Linker call_site nodes use '::' separator + path-prefix ID schema (not language-prefix); 218 such nodes break consumers that split IDs by ':'"  # adc1
+    status: violated  # adc1
+    priority: 2  # adc1
+    parent:  # adc1
+    tags:  # adc1
+    - dogfooding  # adc1
+    - pass13  # adc1
+    - classification_axes  # adc1
+    - ir_schema  # adc1
+    isbefore: []  # adc1
+    duplicate_of: []  # adc1
+    not_duplicate_of: []  # adc1
+    pr_ref:  # adc1
+    description: "Pass 13: 218 nodes have IDs like 'packages/hypergumbo-core/tests/test_http_linker.py::http_client::229'. Affects cross-language edge detection (50 spurious edges show 'language=packages/.../test_message_queue_linker.py'). Bundles with VV/JJJ/HHH/PPP under classification-axes audit."  # adc1
+    fields:  # adc1
+      statement: "All node.id values follow the schema <language>:<path>:<span>:<name>:<kind> with single-colon separators."  # adc1
+      root_cause: "Linker passes (http-linker, message-queue-linker, database-query-linker, subprocess-linker, graphql-resolver-linker) emit call_site nodes via a separate path-prefixed schema (<path>::<framework_role>::<line> with double-colon separators), bypassing the canonical node ID factory used by language analyzers."  # adc1
