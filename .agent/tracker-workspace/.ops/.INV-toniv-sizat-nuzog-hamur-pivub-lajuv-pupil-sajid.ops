@@ -1,0 +1,25 @@
+- op: create  # c5b5
+  at: '2026-05-28T16:18:42Z'  # c5b5
+  by: agent  # c5b5
+  actor: jgstern_agent  # c5b5
+  clock: 1  # c5b5
+  nonce: c5b5  # c5b5
+  data:  # c5b5
+    kind: invariant  # c5b5
+    title: "search header reports post-limit count not total matches; negative limits accepted silently"  # c5b5
+    status: violated  # c5b5
+    priority: 2  # c5b5
+    parent:  # c5b5
+    tags:  # c5b5
+    - dogfooding  # c5b5
+    - pass5  # c5b5
+    - cli_ux  # c5b5
+    - search  # c5b5
+    isbefore: []  # c5b5
+    duplicate_of: []  # c5b5
+    not_duplicate_of: []  # c5b5
+    pr_ref:  # c5b5
+    description: "Finding W (pass5): `hypergumbo search` header reports the post-truncation count, not the actual match count, hiding the true result total. Also accepts negative `--limit` via Python slice abuse.\n\nRepro (hypergumbo self-analysis @ dev 77a69627b8, 2026-05-28):\n  hypergumbo search \"Symbol\" --input /tmp/hg-dogfood-2026-05-28/behavior_map.json --limit 5\n  # Header: \"Found 5 symbol(s) matching 'Symbol':\"   ← 1468 actually matched\n  hypergumbo search \"Symbol\" --input … --limit 50\n  # Header: \"Found 50 symbol(s) matching 'Symbol':\"  ← still 1468 actually matched\n  hypergumbo search \"Symbol\" --input … --limit -5\n  # Header: \"Found 1463 symbol(s) matching 'Symbol':\"  ← negative limit silently does matches[:-5]\n\nRoot cause (cli.py:1598-1607):\n  if args.limit and len(matches) > args.limit:\n      matches = matches[: args.limit]\n  ...\n  print(f\"Found {len(matches)} symbol(s) matching '{args.pattern}':\\n\")\n\nThe header uses len(matches) AFTER the slice. With default --limit 20 (cli.py argparse default), users searching a common term cannot tell how many total matches exist. With negative --limit, the slice silently drops entries from the tail without erroring (e.g. --limit -5 returns N-5 entries when N matches exist; --limit -N where N>=total returns 0 with \"No symbols found\").\n\nSeverity: medium. The search header is a primary signal for \"how many things matched my query\"; reporting the displayed count instead of the total is actively misleading.\n\nSuggested fix:\n  total = len(matches)\n  if args.limit and args.limit > 0 and total > args.limit:\n      matches = matches[: args.limit]\n      print(f\"Found {total} symbol(s) matching '{args.pattern}' (showing {args.limit}):\\n\")\n  else:\n      print(f\"Found {total} symbol(s) matching '{args.pattern}':\\n\")\n  # ...and reject args.limit < 0 with an argparse type=positive_int"  # c5b5
+    fields:  # c5b5
+      statement: "hypergumbo search's result header must report the total number of matches found, not the count after --limit truncation. Negative --limit values must be rejected, not silently interpreted as Python tail-drop slicing."  # c5b5
+      root_cause: "cli.py:1599-1607: the header f-string uses len(matches) after the slice matches[:args.limit] has been applied, so it always reports min(total, args.limit). Negative args.limit values flow through unchecked since the guard 'len(matches) > args.limit' is True for any positive total vs. negative limit, and Python list[:negative_int] drops from the tail rather than erroring."  # c5b5

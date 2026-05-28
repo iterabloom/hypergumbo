@@ -1,0 +1,23 @@
+- op: create  # 84ed
+  at: '2026-05-28T16:18:58Z'  # 84ed
+  by: agent  # 84ed
+  actor: jgstern_agent  # 84ed
+  clock: 1  # 84ed
+  nonce: 84ed  # 84ed
+  data:  # 84ed
+    kind: work_item  # 84ed
+    title: "compact accepts invalid flag values silently (max<min, coverage>1, negative limits)"  # 84ed
+    status: todo_hard  # 84ed
+    priority: 2  # 84ed
+    parent:  # 84ed
+    tags:  # 84ed
+    - dogfooding  # 84ed
+    - pass5  # 84ed
+    - cli_ux  # 84ed
+    - compact  # 84ed
+    isbefore: []  # 84ed
+    duplicate_of: []  # 84ed
+    not_duplicate_of: []  # 84ed
+    pr_ref:  # 84ed
+    description: "Finding X (pass5): `hypergumbo compact` silently accepts numerically invalid flag values for --max-symbols, --min-symbols, --coverage. Inconsistent fallback behavior (max=0 returns 1 node, coverage outside [0,1] silently ignored).\n\nRepro (hypergumbo self-analysis @ dev 77a69627b8, 2026-05-28):\n\n  $ hypergumbo compact --input behavior_map.json --max-symbols 50 --min-symbols 100 --out cmp-mxlt-mn.json\n  # EXIT=0, nodes=50  (min=100 ignored; should error since min > max is incoherent)\n\n  $ hypergumbo compact --input behavior_map.json --max-symbols 100 --coverage 1.5 --out cmp-cov15.json\n  # EXIT=0, nodes=100  (coverage 1.5 silently accepted; range is documented as 0.0-1.0)\n\n  $ hypergumbo compact --input behavior_map.json --max-symbols 100 --coverage -0.5 --out cmp-covneg.json\n  # EXIT=0, nodes=100  (negative coverage silently accepted)\n\n  $ hypergumbo compact --input behavior_map.json --max-symbols 0 --out cmp-mx0.json\n  # EXIT=0, nodes=1   (asked for 0, got 1 — clamped to min without warning)\n\n  $ hypergumbo compact --input behavior_map.json --max-symbols -5 --out cmp-mxneg.json\n  # EXIT=0, nodes=1   (negative max silently clamped to 1, not rejected)\n\nNo warnings, no validation errors. Each silently picks an arbitrary fallback.\n\nSeverity: medium. `compact` ships in the documented LLM-targeting subcommand list. Letting users pass nonsense and silently producing an output that doesn't match their request is worse than failing fast — it produces compact maps that look like the user's request and aren't.\n\nSuggested fix: argparse type validators reject:\n  - --max-symbols < 1\n  - --min-symbols < 0\n  - --max-symbols < --min-symbols (post-parse check)\n  - --coverage outside [0.0, 1.0]"  # 84ed
+    fields: {}  # 84ed

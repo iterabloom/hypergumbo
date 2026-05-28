@@ -1,0 +1,25 @@
+- op: create  # cf75
+  at: '2026-05-28T16:18:23Z'  # cf75
+  by: agent  # cf75
+  actor: jgstern_agent  # cf75
+  clock: 1  # cf75
+  nonce: cf75  # cf75
+  data:  # cf75
+    kind: invariant  # cf75
+    title: "symbols Deg column truncates 4-digit centrality values on default terminal"  # cf75
+    status: violated  # cf75
+    priority: 2  # cf75
+    parent:  # cf75
+    tags:  # cf75
+    - dogfooding  # cf75
+    - pass5  # cf75
+    - cli_ux  # cf75
+    - symbols  # cf75
+    isbefore: []  # cf75
+    duplicate_of: []  # cf75
+    not_duplicate_of: []  # cf75
+    pr_ref:  # cf75
+    description: "Finding V (pass5): `hypergumbo symbols` truncates 4-digit Deg column values to \"19…\" / \"20…\" on default terminal width.\n\nRepro (hypergumbo self-analysis @ dev 77a69627b8, 2026-05-28):\n  hypergumbo symbols --input /tmp/hg-dogfood-2026-05-28/behavior_map.json --limit 5\n  # Row for `Symbol` shows: In=1934, Out=5, Deg=19…  (actual 1939)\n  # Row for `Span`  shows: In=2028, Out=2, Deg=20…  (actual 2030)\n  COLUMNS=300 hypergumbo symbols --input … --limit 5\n  # Same rows render correctly: Deg=1939, Deg=2030\n\nRoot cause: `_SYMBOLS_INNER_COLUMNS_OVERHEAD = 30` at cli.py:3403 reserves only ~30 chars for the four narrow inner columns (Kind/In/Out/Deg) plus Rich's padding. The Console width is then forced to `max(detected_width, required_width)`. On a default 120-col terminal (the get_terminal_size fallback at cli.py:3603) with default Symbol=60 and File=80, the 30-char overhead is insufficient when both In and Deg hit 4 digits — Rich proportionally squeezes Deg, producing the \"19…\" / \"20…\" truncation.\n\nSeverity: medium. The `symbols` subcommand exists specifically to surface connectivity rankings. Silently destroying the rank value (1939 → \"19\") is a fidelity loss that contradicts the command's purpose.\n\nSuggested fix: bump `_SYMBOLS_INNER_COLUMNS_OVERHEAD` to ~40 (or set explicit `min_width` on the In/Out/Deg columns based on the actual maximum value).\n\nRelated: --col-width 0 / -1 / 9999 are silently clamped to [1, 1000] without a warning (subset of input-validation pattern P)."  # cf75
+    fields:  # cf75
+      statement: "hypergumbo symbols's Deg column must render the full integer value of each row's total degree, not an ellipsis-truncated prefix, on the default terminal width (~120 cols) with default --col-width settings."  # cf75
+      root_cause: "_SYMBOLS_INNER_COLUMNS_OVERHEAD = 30 (cli.py:3403) is insufficient when In and Deg both hit 4-digit centrality values. Rich proportionally squeezes Deg, producing 'NN…' truncation that hides the actual rank."  # cf75
