@@ -523,6 +523,10 @@ AUTO_SINK_ZONE_MAP: dict[str, tuple[str, str]] = {
     "env_write": ("host_env", "untrusted"),
     "ipc_send": ("ipc", "untrusted"),
     "browser_storage_write": ("browser_storage", "untrusted"),
+    # WI-gofaz: previously undocumented exclusions — now mapped.
+    "db_write": ("database", "untrusted"),
+    "process_send": ("ipc", "untrusted"),
+    "logging": ("logging", "untrusted"),
 }
 
 AUTO_SOURCE_LABEL_MAP: dict[str, str] = {
@@ -530,6 +534,7 @@ AUTO_SOURCE_LABEL_MAP: dict[str, str] = {
     "env_read": "host_secret",
     "net_recv": "untrusted_input",
     "ipc_recv": "untrusted_input",
+    "db_read": "untrusted_input",
 }
 
 

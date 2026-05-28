@@ -1369,6 +1369,99 @@ class TestAutoImportFromIoPrimitives:
         ]
         assert len(matching) == 1
 
+    def test_auto_import_db_write_maps_to_database_zone(self) -> None:
+        """WI-gofaz: db_write primitives auto-derive as database sinks."""
+        from hypergumbo_core.taint import (
+            AUTO_SINK_ZONE_MAP,
+            load_builtin_taint_catalog,
+        )
+        zone, trust = AUTO_SINK_ZONE_MAP["db_write"]
+        assert zone == "database"
+        assert trust == "untrusted"
+
+        catalog = load_builtin_taint_catalog()
+        java_sinks = catalog.sinks_for_language("java")
+        by_qname = {s.qualified_name: s for s in java_sinks}
+        assert "java.sql.Statement.executeUpdate" in by_qname
+        assert by_qname["java.sql.Statement.executeUpdate"].zone == "database"
+
+    def test_auto_import_db_read_maps_to_untrusted_input_source(self) -> None:
+        """WI-gofaz: db_read primitives auto-derive as untrusted_input sources."""
+        from hypergumbo_core.taint import (
+            AUTO_SOURCE_LABEL_MAP,
+            load_builtin_taint_catalog,
+        )
+        assert AUTO_SOURCE_LABEL_MAP["db_read"] == "untrusted_input"
+
+        catalog = load_builtin_taint_catalog()
+        java_sources = catalog.sources_for_language("java")
+        by_qname = {s.qualified_name: s for s in java_sources}
+        assert "java.sql.Statement.executeQuery" in by_qname
+        assert by_qname["java.sql.Statement.executeQuery"].taint_label == "untrusted_input"
+
+    def test_auto_import_process_send_maps_to_ipc_zone(self) -> None:
+        """WI-gofaz: process_send primitives auto-derive as ipc sinks."""
+        from hypergumbo_core.taint import (
+            AUTO_SINK_ZONE_MAP,
+            load_builtin_taint_catalog,
+        )
+        zone, trust = AUTO_SINK_ZONE_MAP["process_send"]
+        assert zone == "ipc"
+        assert trust == "untrusted"
+
+        catalog = load_builtin_taint_catalog()
+        erl_sinks = catalog.sinks_for_language("erlang")
+        by_qname = {s.qualified_name: s for s in erl_sinks}
+        assert "erlang.send" in by_qname
+        assert by_qname["erlang.send"].zone == "ipc"
+
+    def test_auto_import_logging_maps_to_logging_zone(self) -> None:
+        """WI-gofaz: logging primitives auto-derive as logging sinks (CWE-532)."""
+        from hypergumbo_core.taint import (
+            AUTO_SINK_ZONE_MAP,
+            load_builtin_taint_catalog,
+        )
+        zone, trust = AUTO_SINK_ZONE_MAP["logging"]
+        assert zone == "logging"
+        assert trust == "untrusted"
+
+        catalog = load_builtin_taint_catalog()
+        py_sinks = catalog.sinks_for_language("python")
+        by_qname = {s.qualified_name: s for s in py_sinks}
+        assert "sys.stdout" in by_qname
+        assert by_qname["sys.stdout"].zone == "logging"
+
+    def test_every_boundary_type_has_auto_mapping_or_exclusion_comment(
+        self,
+    ) -> None:
+        """INV-zivah: regression guard — every boundary_type in io_boundary.py
+        must appear in AUTO_SINK_ZONE_MAP or AUTO_SOURCE_LABEL_MAP, or have
+        an explicit exclusion comment in taint.py.
+
+        This prevents silent taint-coverage gaps when new boundary types are
+        added to the io_primitives catalog.
+        """
+        from hypergumbo_core.taint import AUTO_SINK_ZONE_MAP, AUTO_SOURCE_LABEL_MAP
+
+        all_boundary_types = {
+            "fs_read", "fs_write", "net_send", "net_recv",
+            "ipc_recv", "ipc_send", "env_read", "env_write",
+            "subprocess", "db_read", "db_write",
+            "process_send", "logging",
+            "browser_storage_write", "browser_storage_read",
+        }
+
+        mapped = set(AUTO_SINK_ZONE_MAP) | set(AUTO_SOURCE_LABEL_MAP)
+
+        documented_exclusions = {"fs_read", "browser_storage_read"}
+
+        unmapped = all_boundary_types - mapped - documented_exclusions
+        assert unmapped == set(), (
+            f"boundary_types with no AUTO_SINK_ZONE_MAP / AUTO_SOURCE_LABEL_MAP "
+            f"entry and no documented exclusion: {sorted(unmapped)}. "
+            f"Either add the mapping or add an exclusion comment."
+        )
+
     def test_derive_auto_imports_from_missing_directory_returns_empty(
         self, tmp_path: Path,
     ) -> None:
