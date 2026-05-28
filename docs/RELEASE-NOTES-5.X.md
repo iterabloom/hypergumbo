@@ -53,7 +53,7 @@ own `RELEASE-NOTES-6.X.md` when it ships).
 - **Orphan-node rate cut from 5.5% to 2.0%** — intra-file variable
   references, nested function defs, and identity/dedup fixes reduce
   disconnected Symbols.
-- **JSON wire format evolves** — schema version 0.5.8 → 0.10.0,
+- **JSON wire format evolves** — schema version 0.5.8 → 0.11.0,
   retiring 71 `Symbol.kind` values and 111 `Edge.evidence_type`
   values into canonical names + `meta` keys, plus new provenance
   fields. JSON consumers should read
@@ -115,7 +115,7 @@ own `RELEASE-NOTES-6.X.md` when it ships).
 
 ### For JSON consumers
 
-**Schema version chain: 0.5.8 → 0.10.0.** Nine bumps in flight,
+**Schema version chain: 0.5.8 → 0.11.0.** Ten bumps in flight,
 two carrying breaking enum changes and one carrying a type change:
 
 | Version | What it brings |
@@ -128,6 +128,7 @@ two carrying breaking enum changes and one carrying a type change:
 | 0.9.0 | Self-analysis validates clean. `line=0` fix on module_exports edges; missing top-level keys added. |
 | 0.9.1 | `Edge.derived_from: list[str]` lands. `pass_id` suffix removal. `behavior_map["features"]` and `behavior_map["reproducibility_context"]` added. Additive. |
 | 0.10.0 | **Breaking:** `Symbol.origin` and `Edge.origin` change from `str` to `list[str]`. Multi-source attribution: when multiple passes contribute, all are credited. |
+| 0.11.0 | `origin_run_signature` removed from `Symbol` and `Edge` output. The field was never stamped by any producer, so emitted JSON is unchanged in practice; consumers that read it should drop the key. `from_dict()` silently ignores it for backward compatibility with pre-removal JSON. |
 
 If you consume the JSON output, **read
 [MIGRATION-5.X-CONCEPT-AXES.md](MIGRATION-5.X-CONCEPT-AXES.md)
@@ -180,6 +181,19 @@ on pass IDs, update your patterns.
 Top-level keys are locked: `schema_version`, `total_io_edges`,
 `boundaries`, `unsupported_languages`. Bumping rules live in the
 module docstring; a test fails loudly on silent drift.
+
+**Changed: `has_high_risk` coverage extends across 14 languages.**
+The `has_high_risk` field in the `io-boundaries --json` envelope
+will now flip `true` for many more subprocess-launching call
+sites. Coverage was previously concentrated on Python / Go / Java /
+Rust / JS / C; it now also covers Kotlin, Scala, Elixir, Erlang,
+Haskell, Swift, Objective-C, C++, and additional Go / Node / Rust /
+C surface (48 new qualified names; 100 entries total). 18
+wait/signal/PATH-lookup/self-exit entries are explicitly exempted —
+they're subprocess-boundary for taint tracking but don't represent
+arbitrary code execution. JSON consumers that filter on
+`has_high_risk` will see higher counts on repos using these
+languages.
 
 ### For specific languages and frameworks
 

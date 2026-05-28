@@ -28,7 +28,7 @@ Convention-based view-template linking, previously Rails-only, now covers five f
 
 #### Structured external-target IR (`Edge.dst_ref`)
 
-New `ExternalRef(lang, module_path, name)` frozen dataclass replaces the legacy colon-delimited `Edge.dst` string for cross-module call references. Adopted by Java, Go, Elixir, JS/TS, C++, Rust, and Ruby analyzers via a shared `ImportScope` abstraction. Consumers (io-boundary chain composition, boundary-node creation) prefer `dst_ref` over legacy colon-split heuristics. SCHEMA_VERSION 0.7.2 → 0.8.0.
+New `ExternalRef(lang, module_path, name)` frozen dataclass replaces the legacy colon-delimited `Edge.dst` string for cross-module call references. Adopted by Python, Java, Go, Elixir, JS/TS, C++, Rust, and Ruby analyzers via a shared `ImportScope` abstraction. Consumers (io-boundary chain composition, boundary-node creation) prefer `dst_ref` over legacy colon-split heuristics. SCHEMA_VERSION 0.7.2 → 0.8.0.
 
 #### Per-entry-point safety claims and wrapper-function discipline
 

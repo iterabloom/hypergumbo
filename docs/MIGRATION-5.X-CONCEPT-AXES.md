@@ -431,6 +431,7 @@ closure but affect JSON consumers:
 | 0.9.0 | Self-analysis validates clean. `line=0` fix on module_exports edges; missing top-level keys added. |
 | 0.9.1 | Additive. `Edge.derived_from: list[str]` (linker derivation provenance). `pass_id` suffix removal (`-v1` / `-ts-v1` / `-ast-v1` gone — **breaking** if you match on pass IDs). `behavior_map["features"]` and `behavior_map["reproducibility_context"]` added. |
 | 0.10.0 | **Breaking.** `Symbol.origin` and `Edge.origin` change from `str` to `list[str]`. Multi-source attribution: when multiple passes contribute, all are credited. |
+| 0.11.0 | `origin_run_signature` removed from `Symbol` and `Edge`. The field was never stamped by any producer, so emitted JSON is unchanged in practice. `from_dict()` silently ignores the key for backward compatibility with pre-removal cached JSON. |
 
 **`origin` migration.** If your code reads `symbol.origin` or
 `edge.origin` as a string, switch to list iteration:
@@ -452,6 +453,14 @@ if "python" in edge["origin"]:
 **`Edge.derived_from`.** New optional field (list of Symbol ID
 strings). Present on linker-produced edges; absent or empty on
 analyzer-produced edges. No migration needed — it's additive.
+
+**`origin_run_signature` removal (0.11.0).** No migration needed
+in practice: the field was declared on `Symbol` and `Edge` but
+never stamped by any producer, so emitted JSON has always carried
+either `null` or an absent key. Consumers that defensively read
+it should drop the key from their schema; `Edge.from_dict()` and
+`Symbol.from_dict()` silently ignore the key on cached pre-0.11.0
+JSON.
 
 ## See also
 
