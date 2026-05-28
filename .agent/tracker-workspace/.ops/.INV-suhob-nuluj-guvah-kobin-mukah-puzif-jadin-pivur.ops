@@ -21,3 +21,18 @@
     fields:  # 1a3b
       statement: "For every linker declaring both activation.language_pairs and depends_on, the CNF semantics of depends_on must be consistent with the language_pairs constraint"  # 1a3b
       root_cause: "Bridge linkers manually encode the same language constraint in two different syntaxes (activation and depends_on) with no sync guard; adding a new impl language to one but not the other silently diverges the constraint"  # 1a3b
+- op: update  # d2ec
+  at: '2026-05-28T03:28:04Z'  # d2ec
+  by: agent  # d2ec
+  actor: jgstern_agent  # d2ec
+  clock: 2  # d2ec
+  nonce: d2ec  # d2ec
+  set:  # d2ec
+    status: satisfied  # d2ec
+- op: discuss  # cdf6
+  at: '2026-05-28T03:28:05Z'  # cdf6
+  by: agent  # cdf6
+  actor: jgstern_agent  # cdf6
+  clock: 3  # cdf6
+  nonce: cdf6  # cdf6
+  message: "Drift guard added in PR #3952. The property test (TestBridgeLinkerConstraintConsistency::test_every_bridge_linker_with_pairs_and_depends_on_is_consistent) reads each linker's module-docstring subcategory marker (per ADR-0003-ext §2) and, for every Bridge linker declaring both activation.language_pairs and depends_on, asserts the CNF derived from the pairs (after language→pass-id resolution via the live _ANALYZER_REGISTRY) equals the declared depends_on. Currently green for all 10 Bridge linkers (cgo, jni, lua-ffi, napi, pyffi, ruby-ffi, solidity-abi, swift-objc, tauri-ipc, wasm-bindgen). Adding an impl language to one declaration but not the other will now fail CI."  # cdf6

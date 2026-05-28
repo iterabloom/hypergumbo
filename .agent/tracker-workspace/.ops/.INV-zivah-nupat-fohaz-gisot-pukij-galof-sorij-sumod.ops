@@ -37,3 +37,18 @@
   clock: 3  # 0e34
   nonce: '0e34'  # 0e34
   message: "Scope correction: original statement covered only write-side → AUTO_SINK_ZONE_MAP. Broadened to also cover read-side → AUTO_SOURCE_LABEL_MAP, since WI-gofaz flags db_read as missing from the source map. The property test should check both directions: for each boundary_type, it must appear as a key in at least one of the two maps, or have an inline comment starting with \"# intentionally excluded:\". Without this, the db_read gap from WI-gofaz would have no regression guard."  # 0e34
+- op: update  # 9e2c
+  at: '2026-05-28T00:31:54Z'  # 9e2c
+  by: agent  # 9e2c
+  actor: jgstern_agent  # 9e2c
+  clock: 4  # 9e2c
+  nonce: 9e2c  # 9e2c
+  set:  # 9e2c
+    status: satisfied  # 9e2c
+- op: discuss  # ee37
+  at: '2026-05-28T00:31:54Z'  # ee37
+  by: agent  # ee37
+  actor: jgstern_agent  # ee37
+  clock: 5  # ee37
+  nonce: ee37  # ee37
+  message: "Fixed in same PR as WI-gofaz. Property test asserts every boundary_type in io_boundary.py has a corresponding AUTO_SINK_ZONE_MAP or AUTO_SOURCE_LABEL_MAP entry, or is in the documented exclusion set (fs_read, browser_storage_read)."  # ee37

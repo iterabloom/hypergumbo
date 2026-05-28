@@ -19,3 +19,25 @@
     pr_ref:  # e2d5
     description: "Filed during fundamental concept audit 2026-05-27 (taint/dataflow/io-boundary layering).\n\nio_boundary.py:168-196 defines a frozenset HIGH_RISK_PRIMITIVES covering destructive fs, subprocess, and network outbound primitives across 6 languages (Python, Go, Java, Rust, JavaScript, C). This set is manually maintained with no automated sync against io_primitives/*.yaml.\n\nFailure mode: a primitive gets renamed or removed from a YAML catalog but stays in HIGH_RISK_PRIMITIVES (phantom entry — the high_risk flag never fires). Or a new high-risk primitive gets added to YAML but not to the frozenset (missing entry — no warning for dangerous calls).\n\nFix: property test that loads all io_primitives YAML catalogs and asserts:\n1. Every entry in HIGH_RISK_PRIMITIVES appears as a qualified_name in at least one catalog.\n2. (Aspirational) every subprocess/destructive-fs primitive in the catalogs appears in HIGH_RISK_PRIMITIVES or in an explicit exemption list.\n\nPart 1 catches phantom entries. Part 2 catches missing entries. Part 2 can be deferred if the exemption list is large initially.\n\nLower priority than the AUTO_SINK_ZONE_MAP gap (WI-gofaz) because HIGH_RISK_PRIMITIVES affects display only (has_high_risk flag in JSON output), not taint-flow correctness."  # e2d5
     fields: {}  # e2d5
+- op: update  # 2a6b
+  at: '2026-05-28T02:37:13Z'  # 2a6b
+  by: agent  # 2a6b
+  actor: jgstern_agent  # 2a6b
+  clock: 2  # 2a6b
+  nonce: 2a6b  # 2a6b
+  set:  # 2a6b
+    status: done  # 2a6b
+- op: discuss  # 462c
+  at: '2026-05-28T02:37:13Z'  # 462c
+  by: agent  # 462c
+  actor: jgstern_agent  # 462c
+  clock: 3  # 462c
+  nonce: 462c  # 462c
+  message: "Fixed in PR #3950. Added drift guard property test (TestHighRiskPrimitivesDriftGuard) that asserts every HIGH_RISK_PRIMITIVES entry exists as a qualified_name in at least one io_primitives YAML catalog. Caught and fixed phantom entry stdio.popen → stdlib.popen (C catalog's actual module attribution). Part 2 (catalog→frozenset direction) deferred as noted in the tracker — exemption list would have 344 entries on current corpus."  # 462c
+- op: discuss  # 5c77
+  at: '2026-05-28T02:50:41Z'  # 5c77
+  by: human  # 5c77
+  actor: jgstern  # 5c77
+  clock: 4  # 5c77
+  nonce: 5c77  # 5c77
+  message: "what would part 2 get us, in plain language? seems like a nontrivial amount of work. but is there a tracker item for it?"  # 5c77

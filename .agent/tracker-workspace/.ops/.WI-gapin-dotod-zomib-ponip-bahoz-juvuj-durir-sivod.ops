@@ -19,3 +19,18 @@
     pr_ref:  # be44
     description: "Filed during fundamental concept audit 2026-05-27 (provenance fields on IR dataclasses).\n\norigin_run_signature is declared on Symbol (ir.py:374) and Edge (ir.py:573), serialized in to_dict and deserialized in from_dict, but:\n- Zero producers ever set it (not in any analyzer or linker)\n- Zero consumers read it outside ser/deser\n- 13 total references, all in ir.py or test fixtures\n- Always None in fresh analysis output\n\nThe intended purpose was to link entities to their creating AnalysisRun's run_signature for config-based grouping. That link was never wired. The field is pure dead weight.\n\nFix: deprecate in next minor, remove in next schema bump. Update from_dict to silently ignore the key for back-compat with old JSON. Remove the field from Symbol and Edge dataclasses."  # be44
     fields: {}  # be44
+- op: update  # 92ed
+  at: '2026-05-28T01:51:36Z'  # 92ed
+  by: agent  # 92ed
+  actor: jgstern_agent  # 92ed
+  clock: 2  # 92ed
+  nonce: 92ed  # 92ed
+  set:  # 92ed
+    status: done  # 92ed
+- op: discuss  # 92e4
+  at: '2026-05-28T01:51:36Z'  # 92e4
+  by: agent  # 92e4
+  actor: jgstern_agent  # 92e4
+  clock: 3  # 92e4
+  nonce: '92e4'  # 92e4
+  message: "Fixed in PR #3949. Removed origin_run_signature from Symbol and Edge dataclasses, to_dict/from_dict, schema, spec, and ARCHITECTURE.md. from_dict silently ignores the key for back-compat. SCHEMA_VERSION 0.10.0 → 0.11.0."  # 92e4

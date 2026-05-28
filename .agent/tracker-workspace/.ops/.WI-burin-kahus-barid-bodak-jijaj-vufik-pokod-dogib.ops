@@ -19,3 +19,18 @@
     pr_ref:  # d017
     description: "Filed during fundamental concept audit 2026-05-27 (pass identity/dependency model).\n\nrequires_symbols on RegisteredAnalyzer was designed for future multi-pass scheduling (\"this analyzer needs symbols from another analyzer\"). It is:\n- Declared on RegisteredAnalyzer (analyze/registry.py:99)\n- Accepted as a decorator kwarg (analyze/registry.py:148)\n- Never passed by any of the ~45 registered analyzers\n- Never consumed by any runtime code (all_analyzers.py doesn't read it)\n- Superseded by depends_on (INV-hujog), which uses a richer CNF model and is actually validated\n\n17 total references, all in registry.py definition/signature.\n\nFix: remove the field from RegisteredAnalyzer, remove the kwarg from register_analyzer, remove the comment referencing it. One-commit change."  # d017
     fields: {}  # d017
+- op: update  # b937
+  at: '2026-05-28T03:14:33Z'  # b937
+  by: agent  # b937
+  actor: jgstern_agent  # b937
+  clock: 2  # b937
+  nonce: b937  # b937
+  set:  # b937
+    status: done  # b937
+- op: discuss  # 80e0
+  at: '2026-05-28T03:14:33Z'  # 80e0
+  by: agent  # 80e0
+  actor: jgstern_agent  # 80e0
+  clock: 3  # 80e0
+  nonce: '80e0'  # 80e0
+  message: "Fixed in PR #3951. Removed requires_symbols field from RegisteredAnalyzer and the kwarg from @register_analyzer decorator. The field was never passed by any of ~45 analyzers and never consumed by any runtime code — superseded by depends_on (INV-hujog), which carries CNF pass-id dependencies that are actually validated. Added drift-guard test (test_no_requires_symbols_field) to lock down the removal."  # 80e0
