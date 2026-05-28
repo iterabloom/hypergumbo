@@ -1,0 +1,24 @@
+- op: create  # 9b3c
+  at: '2026-05-28T18:30:20Z'  # 9b3c
+  by: agent  # 9b3c
+  actor: jgstern_agent  # 9b3c
+  clock: 1  # 9b3c
+  nonce: 9b3c  # 9b3c
+  data:  # 9b3c
+    kind: invariant  # 9b3c
+    title: "dead-code-maybe --seeds entrypoints (default) reports 89.5% dead-code rate on hypergumbo self-analysis"  # 9b3c
+    status: violated  # 9b3c
+    priority: 2  # 9b3c
+    parent:  # 9b3c
+    tags:  # 9b3c
+    - dogfooding  # 9b3c
+    - pass9  # 9b3c
+    - dead_code  # 9b3c
+    isbefore: []  # 9b3c
+    duplicate_of: []  # 9b3c
+    not_duplicate_of: []  # 9b3c
+    pr_ref:  # 9b3c
+    description: "Repro: hypergumbo dead-code-maybe --format json --input behavior_map.json | jq '.summary.dead_percent' -> 89.5. With --seeds all: 35.1. Sampled FPs from 8 random candidates: TreeSitterAnalyzer.analyze (base class dispatch), cmd_install_rust_analyzer (argparse dispatch), TrackerSet.promote (CLI command), _build_tsconfig_alias_index (helper called internally). High FP rate on a tool's own codebase suggests entrypoint detection has gaps. Found in dogfooding pass 9 (2026-05-28). Suggested fix: improve entrypoint detection for argparse subcommand dispatch and ABC dispatch, OR change default --seeds to 'all'."  # 9b3c
+    fields:  # 9b3c
+      statement: "Default invocation of 'hypergumbo dead-code-maybe' (which uses --seeds entrypoints) classifies 3855/4306 (89.5%) production functions as dead candidates on hypergumbo's own codebase. Switching to --seeds all drops the rate to 35.1% (1510/4306). Sampled candidates include base-class methods like TreeSitterAnalyzer.analyze (called via dispatch from every language analyzer) and CLI command handlers like cmd_install_rust_analyzer (called via argparse subcommand dispatch from main)."  # 9b3c
+      root_cause: "Entrypoint detection covers 104 seeds (CLI entry points, __main__.py shims) but misses two large reachability sources: (1) argparse subcommand dispatch from main() does not connect main -> cmd_* command functions, (2) ABC-style dispatch from a registry doesn't connect callers to virtual method bodies. Without these, BFS reachability from entrypoints leaves 89.5% unreached. The --seeds all alternative includes 21812 seeds and recovers most of the FPs but the default mode is the one most users hit."  # 9b3c

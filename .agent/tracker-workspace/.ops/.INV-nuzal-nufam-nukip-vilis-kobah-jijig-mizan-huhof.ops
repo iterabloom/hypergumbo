@@ -1,0 +1,25 @@
+- op: create  # 91c5
+  at: '2026-05-28T18:30:18Z'  # 91c5
+  by: agent  # 91c5
+  actor: jgstern_agent  # 91c5
+  clock: 1  # 91c5
+  nonce: 91c5  # 91c5
+  data:  # 91c5
+    kind: invariant  # 91c5
+    title: "edge.provenance dict empty on 100% of edges; node.quality and edge.quality also universally empty"  # 91c5
+    status: violated  # 91c5
+    priority: 1  # 91c5
+    parent:  # 91c5
+    tags:  # 91c5
+    - dogfooding  # 91c5
+    - pass9  # 91c5
+    - provenance  # 91c5
+    - ir  # 91c5
+    isbefore: []  # 91c5
+    duplicate_of: []  # 91c5
+    not_duplicate_of: []  # 91c5
+    pr_ref:  # 91c5
+    description: "Verified with: python3 -c 'sum(1 for e in edges if e.get(\"provenance\") and e[\"provenance\"]!={})' -> 0/108683. Same for edge.quality (0/108683) and node.quality (0/33830). Found in dogfooding pass 9 (2026-05-28). Impact: programmatic consumers cannot filter edges by linker pass, diff behavior_maps across hypergumbo versions, or debug edges. Documentation in IR dataclasses suggests these fields are populated; reality is empty across the board."  # 91c5
+    fields:  # 91c5
+      statement: "In hypergumbo's self-analysis behavior_map (108683 edges, 33830 nodes), edge.provenance is {} on 100% of edges, edge.quality is {} on 100%, and node.quality is {} on 100%. No analyzer or linker pass writes structured provenance or quality metadata into these schema fields."  # 91c5
+      root_cause: "Linker and analyzer code populates edge.meta (evidence_type 100%, access_mode 46%, call_construct 19%, resolution_quality 15%) but writes nothing into the provenance/quality slots. Either the slots are reserved for future passes and should be documented as such, or the IR dataclasses should drop them. Generalizes Finding E (explain --provenance invisible on analyzer edges) and Finding J (pass_version empty on lang analyzers) — those described per-feature symptoms; this is the structural cause."  # 91c5

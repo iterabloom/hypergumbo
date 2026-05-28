@@ -1,0 +1,25 @@
+- op: create  # 065b
+  at: '2026-05-28T18:50:53Z'  # 065b
+  by: agent  # 065b
+  actor: jgstern_agent  # 065b
+  clock: 1  # 065b
+  nonce: 065b  # 065b
+  data:  # 065b
+    kind: invariant  # 065b
+    title: "search command silently accepts invalid --kind, --language, --limit values"  # 065b
+    status: violated  # 065b
+    priority: 2  # 065b
+    parent:  # 065b
+    tags:  # 065b
+    - dogfooding  # 065b
+    - pass10  # 065b
+    - input_validation  # 065b
+    - search  # 065b
+    isbefore: []  # 065b
+    duplicate_of: []  # 065b
+    not_duplicate_of: []  # 065b
+    pr_ref:  # 065b
+    description: "Repro: hypergumbo search 'main' --kind nonexistent_kind  # No symbols found, exit 0. Same for --language nonexistent_language, --limit 0, --limit -5. Same fail-silent class as PP (config silently accepts non-language args), QQ (wrong-view JSON), RR (unknown boundary), AA (unknown type). Bundles into the broader input-validation audit PR. Found in dogfooding pass 10 (2026-05-28)."  # 065b
+    fields:  # 065b
+      statement: "hypergumbo search PATTERN --kind nonexistent_kind returns 'No symbols found' (exit 0) instead of erroring. Same for --language unknown_lang, --limit 0, --limit -5. No validation against the known kind/language vocabulary or limit range."  # 065b
+      root_cause: "The search command does not validate --kind / --language values against the actual enum of kinds (function, method, class, file, variable, ...) and languages (python, javascript, ...) present in the behavior_map or analyzer catalog. --limit accepts any int including 0 and negatives. The result is a silent empty response that may mask typos or missing filters in CI scripts."  # 065b

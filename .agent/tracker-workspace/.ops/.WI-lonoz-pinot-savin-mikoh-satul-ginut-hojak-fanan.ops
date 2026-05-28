@@ -46,3 +46,10 @@
   set: {}  # 936f
   remove:  # 936f
     tags: [dead_field]  # 936f
+- op: discuss  # 98c1
+  at: '2026-05-28T18:32:30Z'  # 98c1
+  by: agent  # 98c1
+  actor: jgstern_agent  # 98c1
+  clock: 5  # 98c1
+  nonce: 98c1  # 98c1
+  message: "Pass-9: finding extended. INV-golap-... (filed today) shows the gap is not just edge.quality — node.quality and edge.provenance are ALSO empty across 100% of records on hypergumbo's self-analysis (33830 nodes, 108683 edges). edge.meta IS populated (evidence_type 100%, access_mode 46%, etc.), so the issue is structural: linker passes write to edge.meta but not to edge.provenance/quality nor node.quality. The bug is real, the scope is broader than this item's title suggests. Cross-ref INV-golap-sahoj-... for the consolidated finding."  # 98c1

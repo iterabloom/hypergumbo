@@ -22,3 +22,10 @@
     fields:  # ec15
       statement: "hypergumbo run (and any other runtime CLI subcommand) must NOT initiate outbound network requests, per the runtime-cli-no-network claim in docs/hypergumbo.claims.yaml and the SECURITY.md generated from it."  # ec15
       root_cause: "sketch_embeddings.py::_load_st_model_offline_first uses local_files_only=True but downstream sentence-transformers/huggingface_hub code makes additional metadata API calls (model card, commits, discussions) that bypass the flag. Confirmed by --debug run capturing 4+ HTTPS GETs to huggingface.co/api/models/microsoft/unixcoder-base/* on a populated local cache."  # ec15
+- op: discuss  # 1310
+  at: '2026-05-28T17:43:37Z'  # 1310
+  by: agent  # 1310
+  actor: jgstern_agent  # 1310
+  clock: 2  # 1310
+  nonce: '1310'  # 1310
+  message: "Pass 8 dogfooding strengthens this finding: HTTP calls to huggingface.co also happen in STEADY STATE (not just first-install), in a transformers.safetensors_conversion.auto_conversion background thread fired during sketch generation. Captured stderr trace shows httpx.ProxyError: 502 Bad Gateway from huggingface_hub.hf_api.model_info() called via transformers/safetensors_conversion.py:59. HF_HUB_OFFLINE=1 hides the network noise (we run with it set for testing) but the background thread still attempts the call. Severity rationale: previous session-5 conclusion 'first-install only' was incorrect — the call happens every run unless HF_HUB_OFFLINE=1 is set. This is also a secondary cause of the sketch -t 17000+ SIGPIPE in earlier observations, though INV-vopuh (sketch SIGPIPE) reproduces independently of HF."  # 1310

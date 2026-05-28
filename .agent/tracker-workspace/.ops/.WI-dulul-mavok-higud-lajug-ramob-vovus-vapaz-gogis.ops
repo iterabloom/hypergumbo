@@ -1,0 +1,22 @@
+- op: create  # 927e
+  at: '2026-05-28T18:31:14Z'  # 927e
+  by: agent  # 927e
+  actor: jgstern_agent  # 927e
+  clock: 1  # 927e
+  nonce: 927e  # 927e
+  data:  # 927e
+    kind: work_item  # 927e
+    title: "cache-status has no --json: programmatic consumers can't inspect cache state"  # 927e
+    status: todo_hard  # 927e
+    priority: 2  # 927e
+    parent:  # 927e
+    tags:  # 927e
+    - dogfooding  # 927e
+    - pass9  # 927e
+    - cli_consistency  # 927e
+    isbefore: []  # 927e
+    duplicate_of: []  # 927e
+    not_duplicate_of: []  # 927e
+    pr_ref:  # 927e
+    description: "All other major hypergumbo subcommands have --json or --format json (config, search, symbols, slice via --out, compact, dead-code-maybe, io-boundaries, verify-claims, test-coverage). cache-status only produces plain text output: 'Cache directory: /path | Entries: N | Total size: X | Age range: 0-1 days'. Repro: hypergumbo cache-status --json -> exit 2, 'unrecognized arguments: --json'. Found in dogfooding pass 9 (2026-05-28). Same class as 'routes --json' / 'cache-status --json' gaps noted in pass-8 candidates. Programmatic consumers (CI cleanup scripts, dashboards) can't introspect cache state. Suggested fix: add --json flag that emits {cache_dir, entries: [{repo_id, size_bytes, age_days, entry_count}], total_size_bytes, total_entries, honk_threshold_gb}."  # 927e
+    fields: {}  # 927e

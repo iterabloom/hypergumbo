@@ -23,3 +23,10 @@
     fields:  # 4f32
       statement: "Every Symbol with a function-like kind should have non-null cyclomatic_complexity and lines_of_code when the source code is available, regardless of language. Current state: 100% non-Python languages have 0% CC populated; 8 of 12 non-Python langs have 0% LOC populated."  # 4f32
       root_cause: "Analyzers in hypergumbo-lang-mainstream and hypergumbo-lang-extended1 do not implement LOC/CC extraction for non-Python languages. The IR fields exist on Symbol but only python populates both; bash/go/rust populate only LOC. Downstream consumers (dead-code-maybe, supply-chain ranking, sketch centrality) cannot use these signals for non-Python code."  # 4f32
+- op: discuss  # 9adc
+  at: '2026-05-28T17:43:37Z'  # 9adc
+  by: agent  # 9adc
+  actor: jgstern_agent  # 9adc
+  clock: 2  # 9adc
+  nonce: 9adc  # 9adc
+  message: "Pass 8 dogfooding adds quantitative per-language coverage from the live behavior_map (33830 nodes): python LOC/CC 6623/6750 (98%/98%); bash LOC 155/155 (100%) but CC 0/155 (0%); javascript LOC/CC 0/10 (0%/0%); typescript LOC/CC 0/12 (0%/0%). So the gap is not uniform 'non-Python' — bash analyzer DOES compute LOC, just not CC. JS/TS compute neither. This argues for prioritizing JS/TS LOC/CC implementation over bash CC (because JS/TS are widely-used non-Python langs in the wild)."  # 9adc

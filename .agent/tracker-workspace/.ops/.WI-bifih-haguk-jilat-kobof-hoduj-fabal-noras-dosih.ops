@@ -1,0 +1,23 @@
+- op: create  # a3b7
+  at: '2026-05-28T18:51:23Z'  # a3b7
+  by: agent  # a3b7
+  actor: jgstern_agent  # a3b7
+  clock: 1  # a3b7
+  nonce: a3b7  # a3b7
+  data:  # a3b7
+    kind: work_item  # a3b7
+    title: "Python analyzer lacks explicit stdlib catalog: 4477 imports resolve as 'unresolved'"  # a3b7
+    status: todo_hard  # a3b7
+    priority: 3  # a3b7
+    parent:  # a3b7
+    tags:  # a3b7
+    - dogfooding  # a3b7
+    - pass10  # a3b7
+    - python  # a3b7
+    - resolution  # a3b7
+    isbefore: []  # a3b7
+    duplicate_of: []  # a3b7
+    not_duplicate_of: []  # a3b7
+    pr_ref:  # a3b7
+    description: "On hypergumbo's self-analysis behavior_map, 4477 import edges have dst='...:unresolved'. The top 20 unresolved import names are common Python stdlib/typing primitives: Path (677), annotations (467 — from __future__), pytest (327 — test framework dep), patch (196 — unittest.mock), TYPE_CHECKING (148), Optional (133), tree_sitter (133 — installed dep), Iterator (120), time (118), json (116), ClassVar (114), re (103), dataclass (100), Any (83), os (74), subprocess (69), field (60), sys (57), warnings (56), MagicMock (46).\n\nThese are stdlib (Path/typing/json/re/os/sys/subprocess/warnings/dataclass/MagicMock) or third-party deps (pytest, tree_sitter) — both knowable. The Python analyzer treats them all as 'unresolved external symbols' with no catalog distinguishing 'unknown reference' from 'known stdlib reference'.\n\nImpact: downstream consumers (sketch, slice, dead-code-maybe) treat 'imports Path' the same as 'imports does_not_exist' — both unresolved. A catalog-based resolution would mark Path as from_stdlib=pathlib, tree_sitter as from_external=tree-sitter, etc. Strengthens Finding N (LOC/CC gap) and CCC (dead-code-maybe high FP rate, since unresolved imports inflate the dead-candidate count). Found in dogfooding pass 10 (2026-05-28).\n\nSuggested fix: ship a sys.stdlib_module_names-derived catalog and resolve common imports against it before falling back to 'unresolved'."  # a3b7
+    fields: {}  # a3b7

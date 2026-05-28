@@ -1,0 +1,25 @@
+- op: create  # 76fc
+  at: '2026-05-28T18:31:30Z'  # 76fc
+  by: agent  # 76fc
+  actor: jgstern_agent  # 76fc
+  clock: 1  # 76fc
+  nonce: 76fc  # 76fc
+  data:  # 76fc
+    kind: invariant  # 76fc
+    title: "JavaScript analyzer populates signature on 0/10 function|method nodes (TypeScript: 25/26)"  # 76fc
+    status: violated  # 76fc
+    priority: 2  # 76fc
+    parent:  # 76fc
+    tags:  # 76fc
+    - dogfooding  # 76fc
+    - pass9  # 76fc
+    - javascript  # 76fc
+    - analyzer  # 76fc
+    isbefore: []  # 76fc
+    duplicate_of: []  # 76fc
+    not_duplicate_of: []  # 76fc
+    pr_ref:  # 76fc
+    description: "Verified with: from collections import Counter; sig_by_lang = Counter(); ...; bash 155/155 (100%), csharp 2/2 (100%), go 2/3 (67%), java 2/2 (100%), javascript 0/10 (0%), python 24750/24877 (99%), rust 2/2 (100%), solidity 2/2 (100%), swift 2/2 (100%), typescript 25/26 (96%), wgsl 3/3 (100%). The 10 JS function|method nodes is a small sample — could be more JS analyzed in larger corpus. Found in dogfooding pass 9 (2026-05-28)."  # 76fc
+    fields:  # 76fc
+      statement: "In the self-analysis behavior_map, JavaScript function/method nodes have signature: None on 100% (0/10). TypeScript, despite using a similar analyzer foundation, populates signature on 96% (25/26). All other languages with function/method nodes also populate signature: bash 155/155, csharp 2/2, go 2/3, java 2/2, python 24750/24877 (99%), rust 2/2, solidity 2/2, swift 2/2, wgsl 3/3."  # 76fc
+      root_cause: "The JS analyzer (likely hypergumbo-lang-mainstream/javascript.py or similar) doesn't extract function signatures. Either the tree-sitter JS query for parameter lists isn't producing the signature field, or the analyzer is skipping signature assignment. JS and TS share a parser family but the symbol-extraction paths diverge — TS populates, JS doesn't. Per-language gap analogous to Finding N (LOC/CC) but in a different field."  # 76fc

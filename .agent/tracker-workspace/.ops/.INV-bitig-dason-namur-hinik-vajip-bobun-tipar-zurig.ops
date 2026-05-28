@@ -1,0 +1,25 @@
+- op: create  # 4273
+  at: '2026-05-28T18:29:55Z'  # 4273
+  by: agent  # 4273
+  actor: jgstern_agent  # 4273
+  clock: 1  # 4273
+  nonce: '4273'  # 4273
+  data:  # 4273
+    kind: invariant  # 4273
+    title: "verify-claims silently confirms must_not_exist on empty source dir (security FP)"  # 4273
+    status: violated  # 4273
+    priority: 0  # 4273
+    parent:  # 4273
+    tags:  # 4273
+    - dogfooding  # 4273
+    - pass9  # 4273
+    - security  # 4273
+    - verify_claims  # 4273
+    isbefore: []  # 4273
+    duplicate_of: []  # 4273
+    not_duplicate_of: []  # 4273
+    pr_ref:  # 4273
+    description: "Repro: mkdir /tmp/empty && cd /tmp/empty && cat >claim.yml <<EOF\nclaims: [{id: c1, text: 'No file writes', constraint: {boundary: fs_write, must_not_exist: true}}]\nEOF\nhypergumbo verify-claims --claims claim.yml --json   # confirmed, exit 0.\n\nSecurity impact: CI runs verify-claims from a wrong cwd (build artifact dir, misconfigured pipeline) -> all security claims silently pass. Suggested fix: require behavior_map node count > N before any confirmed verdict; otherwise emit error/warning. Found in dogfooding pass 9 (2026-05-28)."  # 4273
+    fields:  # 4273
+      statement: "When verify-claims is invoked without --input from a directory containing no analyzable source files, every must_not_exist claim returns 'confirmed' with evidence_count=0 and exit 0, instead of producing an error or warning about the empty analysis."  # 4273
+      root_cause: "No guard checks that the auto-discovered/auto-run behavior_map contains a non-trivial node count before honoring 'no chains found -> confirmed' verdicts. The fail-silent path matches the empty-truth fallacy already documented for taint-* (II) and unknown constraint type (AA)."  # 4273

@@ -1,0 +1,25 @@
+- op: create  # cbf0
+  at: '2026-05-28T18:50:35Z'  # cbf0
+  by: agent  # cbf0
+  actor: jgstern_agent  # cbf0
+  clock: 1  # cbf0
+  nonce: cbf0  # cbf0
+  data:  # cbf0
+    kind: invariant  # cbf0
+    title: "supply_chain tier classifier mis-labels first-party workspace packages as internal_dep/external_dep"  # cbf0
+    status: violated  # cbf0
+    priority: 1  # cbf0
+    parent:  # cbf0
+    tags:  # cbf0
+    - dogfooding  # cbf0
+    - pass10  # cbf0
+    - supply_chain  # cbf0
+    - tier_classifier  # cbf0
+    isbefore: []  # cbf0
+    duplicate_of: []  # cbf0
+    not_duplicate_of: []  # cbf0
+    pr_ref:  # cbf0
+    description: "Verified with: nodes_by_tier = {'external_dep': 1228, 'internal_dep': 480}; hypergumbo_in_external = 24; hypergumbo_in_internal = 144. Affects supply_chain-tier-weighted ranking (sketch's first_party_priority deprioritizes hypergumbo's own linker modules), tier-based slicing, and any downstream consumer that relies on tier classification. Found in dogfooding pass 10 (2026-05-28)."  # cbf0
+    fields:  # cbf0
+      statement: "On hypergumbo's self-analysis behavior_map, 144 hypergumbo_* modules are classified as supply_chain.tier_name='internal_dep' (tier 2) with path='<external>' and reason='direct dependency (pyproject.toml)'. Examples: hypergumbo_core itself, hypergumbo_core.linkers.airflow_framework_dispatch, hypergumbo_core.linkers.build_target, hypergumbo_core.linkers.controller_routes. Additionally 24 hypergumbo_* nodes are classified as 'external_dep' (tier 3) — including hypergumbo-core, hypergumbo-lang-common, hypergumbo-lang-extended1 — because they appear in inter-package pyproject.toml dependency declarations."  # cbf0
+      root_cause: "The tier classifier (per supply_chain.py rules) treats every entry in pyproject.toml's [project.dependencies] / [tool.poetry.dependencies] as 'external/internal direct dep'. In a workspace/monorepo where sibling packages list each other as dependencies (the normal pattern), this mis-classifies every workspace package as 'external'. The classifier needs to recognize sibling workspace packages (presence of packages/<dep>/pyproject.toml in the same repo) and classify them as first_party."  # cbf0

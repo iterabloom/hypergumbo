@@ -1,0 +1,23 @@
+- op: create  # 3e71
+  at: '2026-05-28T18:50:55Z'  # 3e71
+  by: agent  # 3e71
+  actor: jgstern_agent  # 3e71
+  clock: 1  # 3e71
+  nonce: '3e71'  # 3e71
+  data:  # 3e71
+    kind: work_item  # 3e71
+    title: "Synthetic linker nodes (kafka:/redis:/ws:/Mutation./Query.) tagged kind=function language=python"  # 3e71
+    status: todo_hard  # 3e71
+    priority: 3  # 3e71
+    parent:  # 3e71
+    tags:  # 3e71
+    - dogfooding  # 3e71
+    - pass10  # 3e71
+    - conceptual_leak  # 3e71
+    - symbol_kind  # 3e71
+    isbefore: []  # 3e71
+    duplicate_of: []  # 3e71
+    not_duplicate_of: []  # 3e71
+    pr_ref:  # 3e71
+    description: "122 synthetic nodes created by message-queue / websocket / graphql linkers carry kind='function' and language='python' even though they represent framework endpoints, not Python functions. Example: 'websocket:packages/hypergumbo-tracker/src/hypergumbo_tracker/serve.py:433:/ws:endpoint' has kind=function, language=python, meta.framework_role=websocket_endpoint, origin=[websocket-linker]. The kind/language slot is being reused because there isn't a 'framework_endpoint' kind in the enum.\n\nFiltering: origin field correctly identifies them (origin=[<linker-name>]), and id has a synthetic prefix (websocket:, kafka:, redis:, etc.). So programmatic consumers can filter, but the kind=function tag conflates two concepts: Python functions in code vs. synthetic framework endpoints. Conceptual leak similar to VV (extends vs inherits vs implements).\n\nRecommendation: add 'framework_endpoint' or 'message_channel' kind to the symbol-kind axis, or document the origin-prefix discriminator. Found in dogfooding pass 10 (2026-05-28)."  # 3e71
+    fields: {}  # 3e71
