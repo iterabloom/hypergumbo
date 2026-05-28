@@ -111,6 +111,7 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 - **stdio → logging reclassification** applied to C, Rust, JavaScript, and Elixir catalogs. Cuts ipc_send false positives on non-Python codebases.
 - **Rust and Erlang catalogs promoted to `status: complete`** with `stdlib_provenance` audit trail.
 - **Taint auto-mapping coverage gap closed** — `db_write`, `db_read`, `process_send`, and `logging` boundary types now have `AUTO_SINK_ZONE_MAP` / `AUTO_SOURCE_LABEL_MAP` entries (WI-gofaz). Regression guard test prevents silent gaps when new boundary types are added (INV-zivah).
+- **HIGH_RISK_PRIMITIVES drift guard** — property test asserts every entry exists in at least one `io_primitives/*.yaml` catalog, preventing phantom entries. Fixed `stdio.popen` → `stdlib.popen` to match the C catalog (WI-gitad).
 
 #### Other changes
 

@@ -192,7 +192,7 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     "child_process.spawn", "child_process.spawnSync",
     # C
     "unistd.exec", "unistd.execl", "unistd.fork",
-    "stdlib.system", "stdio.popen",
+    "stdlib.system", "stdlib.popen",
 })
 
 

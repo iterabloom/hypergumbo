@@ -2218,6 +2218,29 @@ class TestHighRiskPrimitives:
         assert isinstance(HIGH_RISK_PRIMITIVES, frozenset)
 
 
+class TestHighRiskPrimitivesDriftGuard:
+    """WI-gitad: every HIGH_RISK_PRIMITIVES entry must exist in a YAML catalog."""
+
+    def test_every_high_risk_entry_exists_in_a_catalog(self) -> None:
+        """Phantom detection: no entry in HIGH_RISK_PRIMITIVES without a catalog match."""
+        catalog_languages = [
+            "python", "go", "java", "rust", "javascript", "c",
+            "cpp", "elixir", "erlang", "kotlin", "scala",
+            "swift", "objc", "haskell",
+        ]
+        all_qualified: set[str] = set()
+        for lang in catalog_languages:
+            cat = load_catalog(lang)
+            for p in cat.primitives:
+                all_qualified.add(p.qualified_name)
+
+        phantoms = sorted(HIGH_RISK_PRIMITIVES - all_qualified)
+        assert phantoms == [], (
+            f"HIGH_RISK_PRIMITIVES entries not found in any io_primitives YAML catalog "
+            f"(phantom entries — the high_risk flag never fires for these): {phantoms}"
+        )
+
+
 class TestIoChainToDict:
     """Tests for IoChain.to_dict() serialization."""
 
