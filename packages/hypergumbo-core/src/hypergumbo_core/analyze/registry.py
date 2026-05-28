@@ -17,7 +17,7 @@ Why This Design
 ---------------
 - Self-registration: the analyzer file is self-describing (decorator on the function)
 - Plugin extensibility: entry-points enable external language packages
-- Rich metadata: priority, supports_max_files, capture_symbols_as, requires_symbols
+- Rich metadata: priority, supports_max_files, capture_symbols_as, depends_on
 - Consistency: mirrors the linker registry pattern (ADR-0012 Step 1)
 
 Usage
@@ -61,8 +61,6 @@ class RegisteredAnalyzer:
         module_path: Module containing the function (for test patchability)
         func_name: Function name in the module (for test patchability)
         priority: Execution order (lower = earlier). Default 50.
-        requires_symbols: List of analyzer names whose symbols this
-            analyzer needs (for future multi-pass support)
         supports_max_files: Whether this analyzer accepts a max_files parameter
         capture_symbols_as: If set, store this analyzer's symbols under
             this key in captured_symbols dict for linkers (e.g., "java" for JNI)
@@ -96,7 +94,6 @@ class RegisteredAnalyzer:
     module_path: str | None = None
     func_name: str | None = None
     priority: int = 50
-    requires_symbols: list[str] | None = None
     supports_max_files: bool = False
     capture_symbols_as: str | None = None
     description: str = ""
@@ -109,9 +106,7 @@ class RegisteredAnalyzer:
     find_files: Callable[[Path], list[Path]] | None = None
     # WI-hupaz / WI-dilab / INV-hujog: pass-id dependencies surfaced into
     # ``Pass.depends_on``. CNF: outer-AND of inner-OR clauses. Empty default
-    # = no declared upstream. Distinct from the legacy ``requires_symbols``
-    # (a multi-pass-symbol-consumption stub that never got wired into
-    # production scheduling).
+    # = no declared upstream.
     depends_on: list[list[str]] = field(default_factory=list)
 
     def get_func(self) -> AnalyzerFunc:
@@ -145,7 +140,6 @@ _discovered: bool = False
 def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag strings, not passwords; bandit flags any "pass*" name with "" default
     name: str,
     priority: int = 50,
-    requires_symbols: list[str] | None = None,
     supports_max_files: bool = False,
     capture_symbols_as: str | None = None,
     description: str = "",
@@ -162,7 +156,6 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
     Args:
         name: Unique identifier for this analyzer (e.g., "go", "rust").
         priority: Execution order (lower = earlier). Default 50.
-        requires_symbols: Other analyzers whose symbols this one needs.
         supports_max_files: Whether the analyzer accepts max_files parameter.
         capture_symbols_as: Key for storing symbols in captured_symbols dict.
         description: Human-readable description (catalog display).
@@ -207,7 +200,6 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
             module_path=func.__module__,
             func_name=func.__name__,
             priority=priority,
-            requires_symbols=requires_symbols,
             supports_max_files=supports_max_files,
             capture_symbols_as=capture_symbols_as,
             description=description,

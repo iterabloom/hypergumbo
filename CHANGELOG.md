@@ -127,6 +127,7 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 
 - **`apply_sibling_impl_weights` removed from dampener stack** (8 → 7 stages). A 6-repo audit found zero top-100 movement; the upstream `apply_common_method_name_weights` already handled the same groups.
 - **`origin_run_signature` removed from Symbol and Edge** — never stamped by any producer (zero writes across all analyzers and linkers). `from_dict()` silently ignores the key for backward compatibility with pre-removal JSON (WI-gapin).
+- **`requires_symbols` removed from `RegisteredAnalyzer` and `@register_analyzer`** — a never-passed, never-consumed multi-pass-symbol-consumption stub superseded by `depends_on` (INV-hujog), which carries CNF pass-id dependencies that are actually validated (WI-burin).
 
 
 ### Fixed

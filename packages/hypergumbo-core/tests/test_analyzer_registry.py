@@ -65,11 +65,21 @@ class TestRegisteredAnalyzer:
         ra = RegisteredAnalyzer(name="test", func=lambda root: AnalysisResult())
         assert ra.name == "test"
         assert ra.priority == 50
-        assert ra.requires_symbols is None
         assert ra.supports_max_files is False
         assert ra.capture_symbols_as is None
         # WI-hupaz: depends_on defaults to an empty list (per-instance, not shared).
         assert ra.depends_on == []
+
+    def test_no_requires_symbols_field(self) -> None:
+        """WI-burin: the dead requires_symbols field has been removed.
+
+        It was a never-passed, never-consumed multi-pass-symbol-consumption
+        stub superseded by ``depends_on`` (INV-hujog), which carries CNF
+        pass-id dependencies that are actually validated.
+        """
+        import dataclasses
+        field_names = {f.name for f in dataclasses.fields(RegisteredAnalyzer)}
+        assert "requires_symbols" not in field_names
 
     def test_get_func_without_module_path(self) -> None:
         """get_func() returns stored func when module_path/func_name are not set."""
@@ -89,14 +99,12 @@ class TestRegisteredAnalyzer:
             name="java",
             func=func,
             priority=10,
-            requires_symbols=["python"],
             supports_max_files=True,
             capture_symbols_as="java",
         )
         assert ra.name == "java"
         assert ra.func is func
         assert ra.priority == 10
-        assert ra.requires_symbols == ["python"]
         assert ra.supports_max_files is True
         assert ra.capture_symbols_as == "java"
 
@@ -154,17 +162,6 @@ class TestRegisterAnalyzer:
         assert registered is not None
         assert registered.capture_symbols_as == "java"
 
-    def test_with_requires_symbols(self) -> None:
-        """Decorator accepts requires_symbols parameter."""
-
-        @register_analyzer("jni_bridge", requires_symbols=["java", "c"])
-        def analyze_jni(repo_root: Path) -> AnalysisResult:
-            return AnalysisResult()
-
-        registered = get_analyzer("jni_bridge")
-        assert registered is not None
-        assert registered.requires_symbols == ["java", "c"]
-
     def test_returns_original_function(self) -> None:
         """Decorator returns the function unchanged."""
 
@@ -200,7 +197,6 @@ class TestRegisterAnalyzer:
             priority=20,
             supports_max_files=True,
             capture_symbols_as="js",
-            requires_symbols=["html"],
         )
         def analyze_js(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
             return AnalysisResult()
@@ -211,7 +207,6 @@ class TestRegisterAnalyzer:
         assert registered.priority == 20
         assert registered.supports_max_files is True
         assert registered.capture_symbols_as == "js"
-        assert registered.requires_symbols == ["html"]
 
     def test_depends_on_defaults_to_empty_list(self) -> None:
         """WI-dilab: depends_on defaults to [] (CNF: empty outer list)."""
@@ -227,10 +222,8 @@ class TestRegisterAnalyzer:
     def test_with_depends_on_cnf(self) -> None:
         """WI-dilab: depends_on kwarg flows into RegisteredAnalyzer as CNF.
 
-        Distinct from the legacy ``requires_symbols`` (which is a per-analyzer
-        stub for future multi-pass symbol consumption); ``depends_on`` carries
-        pass-id dependencies in Conjunctive Normal Form (outer-AND of
-        inner-OR) surfaced via the catalog's ``Pass.depends_on`` field
+        Carries pass-id dependencies in Conjunctive Normal Form (outer-AND
+        of inner-OR) surfaced via the catalog's ``Pass.depends_on`` field
         (INV-hujog).
         """
 

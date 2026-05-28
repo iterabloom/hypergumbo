@@ -416,7 +416,7 @@ LICENSE: AGPL
 - `find_files(repo_root: Path, patterns: list[str], excludes: list[str] …` (function) ★ — Find files matching patterns while respecting exclude rules.
 
 ### `packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py`
-- `register_analyzer(name: str, priority: int=…, requires_symbols: list[str] | …` (function) — Decorator to register an analyzer function.
+- `register_analyzer(name: str, priority: int=…, supports_max_files: bool=…` (function) — Decorator to register an analyzer function.
 
 ### `packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py`
 - `register_linker(name: str, priority: int=…, description: str=…, requiremen…` (function) — Decorator to register a linker function.
