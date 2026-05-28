@@ -1,0 +1,23 @@
+- op: create  # a5b7
+  at: '2026-05-28T07:33:03Z'  # a5b7
+  by: agent  # a5b7
+  actor: jgstern_agent  # a5b7
+  clock: 1  # a5b7
+  nonce: a5b7  # a5b7
+  data:  # a5b7
+    kind: invariant  # a5b7
+    title: "Handler-slice filename collision: route-symbol overwrites function-symbol slice"  # a5b7
+    status: violated  # a5b7
+    priority: 1  # a5b7
+    parent:  # a5b7
+    tags:  # a5b7
+    - dogfooding  # a5b7
+    - handler_slice  # a5b7
+    isbefore: []  # a5b7
+    duplicate_of: []  # a5b7
+    not_duplicate_of: []  # a5b7
+    pr_ref:  # a5b7
+    description: "**Symptom.** `hypergumbo run .` emits per-handler slice files under `<out-stem>.slices/`, e.g. `slice.handler.GET.health.json`. On hypergumbo self-analysis (2026-05-28, branch dev @ 77a69627b8), all 8 emitted files exhibit a filename collision: the per-route slice (1 node / 0 edges in 7/8 cases) overwrites the per-function slice (5–17 nodes, 4–19 edges). Users only ever see the less-informative file on disk.\n\n**Root cause.** `_emit_handler_slices` in `packages/hypergumbo-core/src/hypergumbo_core/cli.py:7307` iterates the ranked symbol list and accepts both:\n- the function symbol (e.g. `python:.../serve.py:101-107:_health:function`)\n- the framework-materialized route symbol (e.g. `python:.../serve.py:426-426:GET:/health:route`)\n\nBoth pass `_is_route_symbol(...)`. `_handler_slice_filename(symbol, route_info)` ignores the symbol identity and builds the filename solely from `(method, path)`. Two iterations → same filename → second wins.\n\n**Observable artifacts.**\n- `slice.handler.index.json` lists BOTH handlers with the same `file` field; their `node_count`/`edge_count` disagree.\n- `behavior_map[\"features\"]` correctly contains both entries (the in-memory data is preserved).\n- Each per-handler slice file on disk reflects only the LAST writer (the route symbol).\n\nFilename collisions, full list (this run):\n```\nslice.handler.GET.health.json:                  n=5/e=4 vs n=1/e=0\nslice.handler.GET.api_items.json:               n=6/e=7 vs n=1/e=0\nslice.handler.GET.api_items_item_id.json:       n=6/e=7 vs n=1/e=0\nslice.handler.GET.api_ready.json:               n=6/e=7 vs n=1/e=0\nslice.handler.POST.api_items.json:              n=8/e=9 vs n=1/e=0\nslice.handler.POST.api_items_item_id_update.json: n=7/e=8 vs n=1/e=0\nslice.handler.POST.api_items_item_id_discuss.json: n=7/e=8 vs n=1/e=0\nslice.handler.WS.ws.json:                       n=17/e=19 vs n=2/e=1\n```\n\n**Suggested fix.** In `_emit_handler_slices` group handler symbols by `(method, path)` before slicing; for each group pick the symbol that yields the richer slice (or just always prefer the function symbol over the route symbol). Merge route metadata from the dropped sibling into the emitted file's `meta.routes` list. Alternative: disambiguate filenames with `.func.json` / `.route.json`.\n\n**Property test to lock down.** After `hypergumbo run`, each `slice.handler.*.json`'s `feature.node_ids` count must equal the matching `slice.handler.index.json` entry's `node_count`. The current run violates this on every emitted file.\n\n**Discovery context.** Self-analysis dogfooding session, 2026-05-28. Lab notebook: `~/hypergumbo_lab_notebook/notebookjournal_05282026_0707.md` (Finding C)."  # a5b7
+    fields:  # a5b7
+      statement: "For every detected route, the on-disk slice.handler.<METHOD>.<path>.json must contain the richest available slice for that (method, path) pair — i.e. the count in slice.handler.index.json must match the on-disk feature.node_ids length."  # a5b7
+      root_cause: "_emit_handler_slices iterates both the function-symbol and the framework-route symbol for each route; both produce the same filename via _handler_slice_filename, and the second write overwrites the first (the route symbol typically has 0 outbound edges)."  # a5b7

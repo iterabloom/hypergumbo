@@ -41,3 +41,17 @@
   clock: 4  # 5c77
   nonce: 5c77  # 5c77
   message: "what would part 2 get us, in plain language? seems like a nontrivial amount of work. but is there a tracker item for it?"  # 5c77
+- op: discuss  # b8fc
+  at: '2026-05-28T03:33:46Z'  # b8fc
+  by: agent  # b8fc
+  actor: jgstern_agent  # b8fc
+  clock: 5  # b8fc
+  nonce: b8fc  # b8fc
+  message: "Part 2 in plain language: catches the *missing-entry* direction. Today if someone adds a new subprocess primitive (say `subprocess.run_async`) to `python.yaml` to track it for taint analysis, but forgets to add it to `HIGH_RISK_PRIMITIVES`, the `has_high_risk` flag silently never fires for that primitive — even though the catalogs already know it's dangerous. Part 2 would fail CI in that scenario and force the contributor to either add it to the frozenset or add it to an explicit \"intentionally not high-risk\" exemption list.\n\nI was sloppy with the 344-entry estimate. Looking at the actual numbers:\n\n- `subprocess` kind: 127 catalog entries, 50 in HIGH_RISK_PRIMITIVES → **77 missing** (40% coverage). These are the real-value targets.\n- `fs_write`: 419 entries, 6 flagged. We *intentionally* don't flag most `fs_write` (file creation is normal); only destructive ones like rmtree/unlink belong in HIGH_RISK. Maybe 5-10 more truly-destructive entries to find.\n- `net_send`: 270 entries, 5 flagged. We *intentionally* don't flag most `net_send` (sending HTTP requests is too common to be \"high risk\" by itself); only low-level socket ops belong. Probably zero meaningful additions here.\n\nSo the realistic value is \"find the ~77 subprocess primitives we forgot to flag,\" not \"exempt 344 things.\" Most of the 77 are probably language coverage gaps — e.g., does HIGH_RISK_PRIMITIVES have all the Kotlin/Scala/Elixir/Erlang subprocess primitives the catalogs added since the frozenset was originally written? Almost certainly not.\n\nNo, there's no tracker item for it. Want me to file one (low-priority WI, \"audit subprocess-kind primitives missing from HIGH_RISK_PRIMITIVES\")? It's a clean medium-sized cleanup task — read the 77 missing entries, decide for each whether to add or exempt, write Part 2 with the residual exemption list (probably small, mostly net_send wrappers we don't want to flag)."  # b8fc
+- op: discuss  # 6f73
+  at: '2026-05-28T03:40:52Z'  # 6f73
+  by: agent  # 6f73
+  actor: jgstern_agent  # 6f73
+  clock: 6  # 6f73
+  nonce: 6f73  # 6f73
+  message: "Filed Part 2 as WI-sugav. Self-contained spec: failure mode, kind-by-kind data table, three-step implementation plan with a helper script for the 77-entry enumeration, exemption-set shape, and acceptance criteria. P4 to match the parent."  # 6f73
