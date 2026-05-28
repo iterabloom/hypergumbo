@@ -1,0 +1,25 @@
+- op: create  # 7744
+  at: '2026-05-28T23:42:35Z'  # 7744
+  by: agent  # 7744
+  actor: jgstern_agent  # 7744
+  clock: 1  # 7744
+  nonce: '7744'  # 7744
+  data:  # 7744
+    kind: invariant  # 7744
+    title: "node.id format escapes documented 'lang:path:span:name:kind' on 12 nodes (rust :: namespacing, npm packages, route IDs)"  # 7744
+    status: violated  # 7744
+    priority: 2  # 7744
+    parent:  # 7744
+    tags:  # 7744
+    - pass20  # 7744
+    - dogfooding  # 7744
+    - classification_axes_audit  # 7744
+    isbefore: []  # 7744
+    duplicate_of: []  # 7744
+    not_duplicate_of: []  # 7744
+    pr_ref:  # 7744
+    description: ""  # 7744
+    fields:  # 7744
+      severity: "medium"  # 7744
+      statement: "node.id is documented as 'lang:path:span:name:kind' (4 colons). 33818 of 33830 nodes (99.96%) follow this. 12 nodes break the format: (a) 2 npm packages with 3 colons ('typescript:npm:lit:npm_package' — missing path/span segment), (b) 2 Rust nodes with 6/8 colons because Rust namespacing uses '::' (e.g. 'rust:std::collections::HashMap:0-0:module:module'), (c) 7 Python route IDs with 5 colons because the route path '/api/items' contains a colon-style HTTP method prefix ('python:serve.py:428-428:POST:/api/items:route'), (d) 1 misc Solidity 'Not owner' carry-over. The schema id parser must handle 4 different colon-count cases without breaking."  # 7744
+      root_cause: "Different code paths (NPM-package emitter, Rust namespace emitter, route emitter) format node.id without escaping or normalizing colons in the embedded path/name fields. The lang:path:span:name:kind format breaks when any field contains a literal ':'."  # 7744

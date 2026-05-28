@@ -1,0 +1,25 @@
+- op: create  # f8e2
+  at: '2026-05-28T23:43:01Z'  # f8e2
+  by: agent  # f8e2
+  actor: jgstern_agent  # f8e2
+  clock: 1  # f8e2
+  nonce: f8e2  # f8e2
+  data:  # f8e2
+    kind: invariant  # f8e2
+    title: "8 node-level constant-value fields (extends pass-19 BBBBBBBB to node scope; +6 meta + 2 supply_chain constants)"  # f8e2
+    status: violated  # f8e2
+    priority: 2  # f8e2
+    parent:  # f8e2
+    tags:  # f8e2
+    - pass20  # f8e2
+    - dogfooding  # f8e2
+    - classification_axes_audit  # f8e2
+    isbefore: []  # f8e2
+    duplicate_of: []  # f8e2
+    not_duplicate_of: []  # f8e2
+    pr_ref:  # f8e2
+    description: ""  # f8e2
+    fields:  # f8e2
+      severity: "medium"  # f8e2
+      statement: "Node-level fields with entropy=0 (one value across all populated rows): supply_chain.is_example_file=False (33830/33830), supply_chain.is_generated_file=False (33830/33830), meta.external_boundary=True (1624 populated), meta.package_ecosystem='npm' (2), meta.dependency_scope='dev' (2), meta.parent_base_classes=['IService'] (1), meta.name='htrac-frontend' (1), meta.config_format='tsconfig' (1). Combined with pass-19 BBBBBBBB's 9 edge.meta constants = 17 total zero-entropy fields across the schema. Each occupies storage and conceptual surface but carries no information when populated."  # f8e2
+      root_cause: "Same family as BBBBBBBB: schema includes optional decoration fields populated by single linkers that emit one value. is_example_file/is_generated_file probably reflect dead-code paths in supply_chain heuristics that never fire on this codebase. Single-row meta fields (name/config_format/parent_base_classes) are likely tied to specific framework/manifest emitters."  # f8e2

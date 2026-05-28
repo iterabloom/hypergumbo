@@ -1,0 +1,25 @@
+- op: create  # c9fe
+  at: '2026-05-28T23:42:49Z'  # c9fe
+  by: agent  # c9fe
+  actor: jgstern_agent  # c9fe
+  clock: 1  # c9fe
+  nonce: c9fe  # c9fe
+  data:  # c9fe
+    kind: invariant  # c9fe
+    title: "modifiers and supply_chain.is_exported disagree on 7 nodes (5 python private+exported, 2 solidity external+not_exported)"  # c9fe
+    status: violated  # c9fe
+    priority: 2  # c9fe
+    parent:  # c9fe
+    tags:  # c9fe
+    - pass20  # c9fe
+    - dogfooding  # c9fe
+    - classification_axes_audit  # c9fe
+    isbefore: []  # c9fe
+    duplicate_of: []  # c9fe
+    not_duplicate_of: []  # c9fe
+    pr_ref:  # c9fe
+    description: ""  # c9fe
+    fields:  # c9fe
+      severity: "medium"  # c9fe
+      statement: "The modifiers field and supply_chain.is_exported are independently set and produce 7 direct contradictions: 5 Python functions with modifiers=['private'] AND is_exported=True (_controller_to_view_dir, _is_action_method, _camel_to_snake, _count_controller_methods, _probe_template_files — all underscore-prefixed but in packages/*/src/ paths). 2 Solidity functions with modifiers=['external'] AND is_exported=False (IToken.transfer, Token.transfer — both in tests/ paths). The supply_chain.reason field shows the conflict source: path-based heuristic 'path matches ^packages/[^/]+/src/' overrides language-level visibility, and 'test path matches (?:^|/)tests?/' overrides Solidity external modifier. Both are path-mediated overrides of language-mediated visibility."  # c9fe
+      root_cause: "Two independent visibility-classification systems: (1) language analyzer reads source-syntax modifiers; (2) supply_chain classifier reads file-path heuristics. They produce different answers for the same node and neither dominates. Pass-17 DDDDDD noted Python-only emits 'private'; this finding extends to the cross-field disagreement when both are present."  # c9fe

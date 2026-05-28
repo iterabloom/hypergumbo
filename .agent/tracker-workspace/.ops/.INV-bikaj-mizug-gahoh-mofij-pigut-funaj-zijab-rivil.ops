@@ -1,0 +1,24 @@
+- op: create  # f952
+  at: '2026-05-28T23:43:18Z'  # f952
+  by: agent  # f952
+  actor: jgstern_agent  # f952
+  clock: 1  # f952
+  nonce: f952  # f952
+  data:  # f952
+    kind: invariant  # f952
+    title: "61 of 84 AnalysisRun passes produce 0 edges; 8 of those analyze 100+ files each (linker scan-and-emit-nothing pattern)"  # f952
+    status: violated  # f952
+    priority: 2  # f952
+    parent:  # f952
+    tags:  # f952
+    - pass20  # f952
+    - dogfooding  # f952
+    isbefore: []  # f952
+    duplicate_of: []  # f952
+    not_duplicate_of: []  # f952
+    pr_ref:  # f952
+    description: ""  # f952
+    fields:  # f952
+      severity: "high"  # f952
+      statement: "72.6% of AnalysisRun entries (61 of 84) produce zero edges. Of those, 8 high-load passes scan many files for nothing: http-linker (849 files, 2950ms, 0 edges), graphql-resolver-linker (847 files, 2858ms, 0 edges), subprocess-linker (838 files, 2279ms, 0 edges), event-sourcing-linker (317 files, 2874ms, 0 edges), markdown (107 files, 3025ms, 0 edges, re-confirms QQQQ s14), toml (9 files, 558ms, 0 edges), xml (1 file, 432ms, 0 edges), gitignore (3 files, 54ms, 0 edges). These linkers consume substantial wall-clock time analyzing the codebase and report no findings. Combined ~14s of 92.8s total = 15% of analysis time produces nothing. Note toml DOES produce 99 nodes (per pass-17 AAAAAA) — the AnalysisRun edge-count can't distinguish node-only emitters from truly dead passes."  # f952
+      root_cause: "AnalysisRun records (files_analyzed, duration_ms) but no nodes_emitted/edges_emitted (pass-17 OOOOOO). Linkers scanning every file for patterns that aren't present spend O(repo-size) time per pass with no output. Pass-13 UUU noted 8 zero-files synthesis passes; pass-15 XXXX extended to 40; this finding identifies the 61-pass scope and the specific files-scanned-no-output cohort within it."  # f952
