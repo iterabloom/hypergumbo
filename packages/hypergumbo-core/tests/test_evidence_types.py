@@ -247,7 +247,6 @@ def test_edge_from_dict_missing_is_resolved_defaults_to_true():
         "confidence": 0.85,
         "origin": "test",
         "origin_run_id": "run-1",
-        "origin_run_signature": None,
         "quality": None,
         "meta": {"evidence_type": "ast_call_direct"},
         # NOTE: no "is_resolved" key — pre-0.4.2 shape.

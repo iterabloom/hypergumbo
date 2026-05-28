@@ -145,7 +145,6 @@ class TestSchemaValidation:
             span=Span(start_line=1, end_line=5, start_col=0, end_col=10),
             origin="python",
             origin_run_id="uuid:12345",
-            origin_run_signature="sha256:abc123",
             stable_id="sha256:stable123",
             shape_id="sha256:shape456",
             canonical_name="module.test_func",

@@ -376,10 +376,6 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             "span": {"$ref": "#/$defs/Span"},
             "origin": {"type": "array", "items": {"type": "string"}, "description": "Pass IDs that contributed to this symbol (INV-jidat)"},
             "origin_run_id": {"type": "string", "description": "Unique execution ID"},
-            "origin_run_signature": {
-                "oneOf": [{"type": "string"}, {"type": "null"}],
-                "description": "Run signature for cache keying"
-            },
             "stable_id": {
                 "oneOf": [{"type": "string"}, {"type": "null"}],
                 "description": "Semantic identity hash (survives renames)"
@@ -492,10 +488,6 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             },
             "origin": {"type": "array", "items": {"type": "string"}, "description": "Pass IDs that contributed to this edge (INV-jidat)"},
             "origin_run_id": {"type": "string", "description": "Unique execution ID"},
-            "origin_run_signature": {
-                "oneOf": [{"type": "string"}, {"type": "null"}],
-                "description": "Run signature for cache keying"
-            },
             "is_resolved": {
                 "type": "boolean",
                 "default": True,

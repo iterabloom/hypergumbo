@@ -1030,7 +1030,6 @@ def test_symbol_from_dict() -> None:
         "span": {"start_line": 10, "end_line": 20, "start_col": 0, "end_col": 30},
         "origin": "python",
         "origin_run_id": "uuid:12345",
-        "origin_run_signature": "sha256:abcdef",
         "stable_id": "stable:123",
         "canonical_name": "api.process_request",
         "supply_chain": {"tier": 1, "reason": "first_party"},
@@ -1233,7 +1232,6 @@ def test_edge_from_dict() -> None:
         "confidence": 0.95,
         "origin": "python",
         "origin_run_id": "uuid:12345",
-        "origin_run_signature": "sha256:abcdef",
         "quality": {"score": 0.9, "reason": "direct call"},
         "meta": {
             "evidence_type": "ast_call_direct",
@@ -2164,3 +2162,83 @@ def test_py_analyzer_populates_dst_ref_on_polyglot_imports(tmp_path: Path) -> No
         "urllib.request",
         "urlopen",
     ) in refs, f"Expected an ExternalRef to urllib.request:urlopen, got {refs!r}"
+
+
+# --- WI-gapin: origin_run_signature removal ---
+
+
+class TestOriginRunSignatureRemoved:
+    """WI-gapin: origin_run_signature was dead weight — never stamped by any producer."""
+
+    def test_symbol_has_no_origin_run_signature_field(self) -> None:
+        """Symbol dataclass must not have an origin_run_signature field."""
+        assert not hasattr(Symbol, "origin_run_signature"), (
+            "Symbol still has origin_run_signature — remove the dead field (WI-gapin)"
+        )
+
+    def test_edge_has_no_origin_run_signature_field(self) -> None:
+        """Edge dataclass must not have an origin_run_signature field."""
+        assert not hasattr(Edge, "origin_run_signature"), (
+            "Edge still has origin_run_signature — remove the dead field (WI-gapin)"
+        )
+
+    def test_symbol_from_dict_ignores_legacy_origin_run_signature(self) -> None:
+        """Old JSON with origin_run_signature must deserialize without error."""
+        d = {
+            "id": "python:a.py:1-5:f:function",
+            "name": "f",
+            "kind": "function",
+            "language": "python",
+            "path": "a.py",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            "origin": "python",
+            "origin_run_id": "uuid:123",
+            "origin_run_signature": "sha256:deadbeef",
+        }
+        sym = Symbol.from_dict(d)
+        assert sym.name == "f"
+        assert not hasattr(sym, "origin_run_signature")
+
+    def test_edge_from_dict_ignores_legacy_origin_run_signature(self) -> None:
+        """Old JSON with origin_run_signature must deserialize without error."""
+        d = {
+            "id": "edge:1",
+            "src": "python:a.py:1-5:f:function",
+            "dst": "python:b.py:1-5:g:function",
+            "type": "calls",
+            "line": 3,
+            "origin": "python",
+            "origin_run_id": "uuid:123",
+            "origin_run_signature": "sha256:deadbeef",
+        }
+        edge = Edge.from_dict(d)
+        assert edge.src == "python:a.py:1-5:f:function"
+        assert not hasattr(edge, "origin_run_signature")
+
+    def test_symbol_to_dict_omits_origin_run_signature(self) -> None:
+        """Symbol.to_dict() output must not contain origin_run_signature."""
+        span = Span(start_line=1, end_line=5, start_col=0, end_col=10)
+        sym = Symbol(
+            id="python:a.py:1-5:f:function",
+            name="f",
+            kind="function",
+            language="python",
+            path="a.py",
+            span=span,
+            origin="python",
+            origin_run_id="uuid:123",
+        )
+        assert "origin_run_signature" not in sym.to_dict()
+
+    def test_edge_to_dict_omits_origin_run_signature(self) -> None:
+        """Edge.to_dict() output must not contain origin_run_signature."""
+        edge = Edge(
+            id="edge:1",
+            src="python:a.py:1-5:f:function",
+            dst="python:b.py:1-5:g:function",
+            edge_type="calls",
+            line=3,
+            origin=["python"],
+            origin_run_id="uuid:123",
+        )
+        assert "origin_run_signature" not in edge.to_dict()

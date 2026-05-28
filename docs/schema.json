@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.10.0"
+      "const": "0.11.0"
     },
     "confidence_model": {
       "type": "string",
@@ -422,17 +422,6 @@
           "type": "string",
           "description": "Unique execution ID"
         },
-        "origin_run_signature": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Run signature for cache keying"
-        },
         "stable_id": {
           "oneOf": [
             {
@@ -787,17 +776,6 @@
         "origin_run_id": {
           "type": "string",
           "description": "Unique execution ID"
-        },
-        "origin_run_signature": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Run signature for cache keying"
         },
         "is_resolved": {
           "type": "boolean",

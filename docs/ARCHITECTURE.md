@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **279** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 56 core, 4 CLI, 32 tracker)
-- **29949** symbols (functions, classes, methods)
-- **101859** edges by type:
-  - calls: 56820
-  - contains: 21502
-  - imports: 10046
-  - instantiates: 7732
+- **29991** symbols (functions, classes, methods)
+- **101997** edges by type:
+  - calls: 56879
+  - contains: 21537
+  - imports: 10051
+  - instantiates: 7764
   - references: 3309
   - module_attr_ref: 1107
-  - other: 1343
+  - other: 1350
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 29949 Symbols + 101859 Edges + UsageContexts           │
+│  Output: 29991 Symbols + 101997 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -195,7 +195,6 @@ A code symbol (function, class, etc.) detected by analysis.
 - `span`: Source location with lines and columns
 - `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat.
 - `origin_run_id`: Unique execution ID of the analysis run
-- `origin_run_signature`: Run signature for grouping by analyzer config
 - `stable_id`: Semantic identity hash (survives renames/moves)
 - `shape_id`: Structural implementation fingerprint
 - `canonical_name`: Set only when ``name`` is unqualified but a fully-qualified path is known (e.g., proto RPCs, nested capnp messages, niche-language symbols). For mainstream-analyzer languages where ``name`` already encodes the parent (Python's ``ClassName.method``, Java's ``Class.method``, etc.), this field is deliberately ``None`` and consumers should fall back to ``name`` for fully-qualified identifiers. Populated by niche-language analyzers (nix, r_lang, hlsl, asm, capnp, ada, fish, verilog, powershell, css, wgsl), the yjs_crdt and wasm_bindgen linkers, and the external-boundary synthesis path.
@@ -226,7 +225,6 @@ A relationship between two symbols (e.g., function calls).
 - `confidence`: Confidence score (0.0-1.0)
 - `origin`: Pass IDs that contributed to this edge (INV-jidat). Auto-normalized from scalar str.
 - `origin_run_id`: Unique execution ID of the analysis run
-- `origin_run_signature`: Run signature for grouping
 - `evidence_type`: Type of evidence (e.g., ast_call_direct)
 - `evidence_lang`: Language for confidence scoring
 - `evidence_spans`: Structured locations of evidence
@@ -265,10 +263,10 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 5396.5 | ir.py |
-| `Span` | class | 4253.9 | ir.py |
+| `Symbol` | class | 5399.3 | ir.py |
+| `Span` | class | 4256.0 | ir.py |
 | `run_behavior_map` | function | 3004.4 | cli.py |
-| `LinkerContext` | class | 2038.6 | registry.py |
+| `LinkerContext` | class | 2158.7 | registry.py |
 | `TrackerApp` | class | 1872.3 | tui.py |
 | `load_framework_patterns` | function | 1730.6 | framework_patterns.py |
 | `main` | function | 1472.5 | cli.py |
@@ -812,7 +810,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 405baf5140ac
+  commit: 0d84e288c207
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

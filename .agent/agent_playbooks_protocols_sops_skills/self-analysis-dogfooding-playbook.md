@@ -100,7 +100,7 @@ for k, count in node_kinds.most_common(15):
 
 **Node schema reference** (from `Symbol.to_dict()` in `packages/hypergumbo-core/src/hypergumbo_core/ir.py`):
 top-level fields are `id`, `name`, `kind`, `language`, `path`, `span`, `origin`,
-`origin_run_id`, `origin_run_signature`, `stable_id`, `shape_id`, `canonical_name`,
+`origin_run_id`, `stable_id`, `shape_id`, `canonical_name`,
 `fingerprint`, `quality`, `meta`, `supply_chain` (nested: `tier`, `tier_name`,
 `reason`, `is_test_file`, `is_example_file`, `is_config_file`,
 `is_generated_file`, `is_exported`),

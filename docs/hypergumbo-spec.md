@@ -262,7 +262,6 @@ class Symbol:
     supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
     # Note: In JSON output (§9 Behavior map JSON), these flat fields are compiled
     # into a nested supply_chain object with a derived tier_name field.
-    origin_run_signature: Optional[str]  # references AnalysisRun.run_signature (for grouping)
     quality: QualityScore      # 🟪 QualityScore not defined; code: Optional[Dict[str, Any]] = None
 
 @dataclass
@@ -779,7 +778,7 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
 
 Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `quality`, etc.) are defined in [§6 Internal representation](#6-internal-representation). See `docs/schema.json` for the full field list. This section documents output-specific serialization rules.
 
-**Presence rule:** `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node. If unavailable, they MUST be set to `null` (not omitted). This supports forward-compatible consumers without forcing every pass to compute every field.
+**Presence rule:** `stable_id` and `shape_id` keys MUST be present on every node. If unavailable, they MUST be set to `null` (not omitted). This supports forward-compatible consumers without forcing every pass to compute every field.
 
 **supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. See [§14 Supply chain classification](#14-supply-chain-classification) for tier definitions.
 
@@ -791,7 +790,7 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 
 ### edges[] — relationships
 
-Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenance fields (`origin`, `origin_run_id`, `origin_run_signature`, `derived_from`), `quality`, and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
+Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenance fields (`origin`, `origin_run_id`, `derived_from`), `quality`, and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
 
 **origin (INV-jidat):** `origin: list[str]` records which pass IDs contributed to this Edge (or Symbol), ordered chronologically. Single-element lists are the common case; multi-element lists support multi-pass attribution. Schema-breaking change from scalar string (SCHEMA_VERSION 0.10.0). `from_dict()` auto-normalizes legacy scalar JSON to single-element list for backward compatibility.
 
@@ -1793,13 +1792,12 @@ This appendix defines the **technical contract** for output consumers: which fie
 **2. Optional fields:**
 - Any field marked "optional" can be absent
 - Consumers MUST handle absence gracefully (default value or skip)
-- Examples: `stable_id`, `shape_id`, `origin_run_signature`
+- Examples: `stable_id`, `shape_id`
 **Key presence vs. value presence:**
 - Some fields may be semantically optional but SHOULD be present as keys with `null` values to reduce consumer branching.
-- For v0.1.0, producers SHOULD include these keys with `null` when unknown:
+- Producers SHOULD include these keys with `null` when unknown:
   - `nodes[].stable_id`
   - `nodes[].shape_id`
-  - `nodes[].origin_run_signature`
 - Consumers MUST accept either form (missing key OR null), but producers prefer `null` keys for stability.
 
 **3. View types:**

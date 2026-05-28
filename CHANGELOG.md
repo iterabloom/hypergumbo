@@ -88,6 +88,7 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 - **CUDA / Android XML canonical-kind folds.** CUDA now emits `kind="function"` + `meta["cuda_execution_space"]`; Android XML emits `kind="component"` + `meta["component_type"]`.
 - **Producer-coherence linter extended** — inline ternary resolution, non-string Constant handling, f-string expansion mode, and variable-form backstop. Six new `AXIS_PENDING` values registered; SCHEMA_VERSION 0.7.0 → 0.7.1.
 - **`Symbol.origin` and `Edge.origin` changed from `str` to `list[str]`.** Multi-source attribution: when multiple passes contribute, all are credited. SCHEMA_VERSION 0.9.1 → 0.10.0.
+- **`origin_run_signature` removed from output schema.** SCHEMA_VERSION 0.10.0 → 0.11.0 (WI-gapin).
 
 #### Catalog and pass identity
 
@@ -124,6 +125,7 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 ### Removed
 
 - **`apply_sibling_impl_weights` removed from dampener stack** (8 → 7 stages). A 6-repo audit found zero top-100 movement; the upstream `apply_common_method_name_weights` already handled the same groups.
+- **`origin_run_signature` removed from Symbol and Edge** — never stamped by any producer (zero writes across all analyzers and linkers). `from_dict()` silently ignores the key for backward compatibility with pre-removal JSON (WI-gapin).
 
 
 ### Fixed

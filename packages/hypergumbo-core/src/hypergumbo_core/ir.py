@@ -27,7 +27,7 @@ Provenance Fields
 - execution_id: Unique per run (uuid)
 - run_signature: Deterministic hash of (pass_id, version, config_fingerprint, toolchain)
 - repo_fingerprint: Hash of git state for cache invalidation
-- origin_run_signature: Links nodes/edges to their creating run's signature
+- origin_run_signature: *Removed in 0.9.x (WI-gapin); never stamped by any producer.*
 """
 import hashlib
 import inspect
@@ -321,7 +321,6 @@ class Symbol:
             (originating pass first). Single-element lists are the common case.
             Auto-normalized from scalar str for backward compat.
         origin_run_id: Unique execution ID of the analysis run
-        origin_run_signature: Run signature for grouping by analyzer config
         stable_id: Semantic identity hash (survives renames/moves)
         shape_id: Structural implementation fingerprint
         canonical_name: Set only when ``name`` is unqualified but a
@@ -369,7 +368,6 @@ class Symbol:
     span: Span
     origin: List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
-    origin_run_signature: Optional[str] = None  # axis: identity
     stable_id: Optional[str] = None  # axis: identity
     shape_id: Optional[str] = None  # axis: identity
     canonical_name: Optional[str] = None  # axis: free-text — fully-qualified name from source; consumers display, never branch on the value itself.
@@ -413,7 +411,6 @@ class Symbol:
             "span": self.span.to_dict(),
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
-            "origin_run_signature": self.origin_run_signature,
             "stable_id": self.stable_id,
             "shape_id": self.shape_id,
             "canonical_name": self.canonical_name,
@@ -451,7 +448,6 @@ class Symbol:
             span=Span.from_dict(span_data),
             origin=_normalize_origin(d.get("origin", "")),
             origin_run_id=d.get("origin_run_id", ""),
-            origin_run_signature=d.get("origin_run_signature"),
             stable_id=d.get("stable_id"),
             shape_id=d.get("shape_id"),
             canonical_name=d.get("canonical_name"),
@@ -548,7 +544,6 @@ class Edge:
         confidence: Confidence score (0.0-1.0)
         origin: Pass IDs that contributed to this edge (INV-jidat). Auto-normalized from scalar str.
         origin_run_id: Unique execution ID of the analysis run
-        origin_run_signature: Run signature for grouping
         evidence_type: Type of evidence (e.g., ast_call_direct)
         evidence_lang: Language for confidence scoring
         evidence_spans: Structured locations of evidence
@@ -568,7 +563,6 @@ class Edge:
     confidence: float = 0.85
     origin: List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
-    origin_run_signature: Optional[str] = None  # axis: identity
     evidence_type: str = "ast_call_direct"  # axis: evidence-type
     evidence_lang: Optional[str] = None  # axis: language
     evidence_spans: Optional[List[Dict[str, Any]]] = None
@@ -691,7 +685,6 @@ class Edge:
             "confidence": self.confidence,
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
-            "origin_run_signature": self.origin_run_signature,
             "is_resolved": self.is_resolved,
             "quality": self.quality,
             "meta": meta,
@@ -726,7 +719,6 @@ class Edge:
             confidence=d.get("confidence", 0.85),
             origin=_normalize_origin(d.get("origin")) or [LEGACY_DESERIALIZED_SENTINEL],
             origin_run_id=d.get("origin_run_id") or LEGACY_DESERIALIZED_SENTINEL,
-            origin_run_signature=d.get("origin_run_signature"),
             evidence_type=meta.get("evidence_type", "ast_call_direct"),
             evidence_lang=meta.get("evidence_lang"),
             evidence_spans=meta.get("evidence_spans"),
