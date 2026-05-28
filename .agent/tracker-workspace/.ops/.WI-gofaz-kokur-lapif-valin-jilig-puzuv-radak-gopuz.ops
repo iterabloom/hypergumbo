@@ -19,3 +19,27 @@
     pr_ref:  # ba31
     description: "Filed during fundamental concept audit 2026-05-27 (taint/dataflow/io-boundary layering).\n\nGap: 6 of 15 io_boundary.boundary_types values have no entry in AUTO_SINK_ZONE_MAP or AUTO_SOURCE_LABEL_MAP (taint.py:511-533). Of these:\n- fs_read, browser_storage_read: documented exclusions (taint.py:506-508)\n- db_write: UNDOCUMENTED exclusion. Real sink — writing tainted data to a database is the same trust question as fs_write or net_send. 5 languages have populated db_write catalogs (Haskell, Java, Swift, Erlang, Elixir).\n- db_read: UNDOCUMENTED exclusion. Potential source (user-controlled data from DB). Same 5 languages.\n- process_send: UNDOCUMENTED exclusion (Erlang only).\n- logging: UNDOCUMENTED exclusion (C, Elixir, Erlang). Arguably a sink — sensitive data in log output is a real vulnerability class (CWE-532).\n\nFix: For each undocumented exclusion, either add an AUTO_SINK_ZONE_MAP/AUTO_SOURCE_LABEL_MAP entry with the appropriate zone/label, or add an explicit inline comment explaining why it's intentionally excluded (same shape as the fs_read comment). Proposed mappings:\n- db_write -> (\"database\", \"untrusted\")\n- db_read -> taint_label \"untrusted_input\"\n- logging -> (\"logging\", \"untrusted\") — CWE-532 sensitive data exposure via logs\n- process_send -> (\"ipc\", \"untrusted\") — structurally same as ipc_send\n\nAfter adding, update tests and verify no regressions in verify-claims on hypergumbo's own claims file."  # ba31
     fields: {}  # ba31
+- op: update  # 9d3d
+  at: '2026-05-27T21:25:57Z'  # 9d3d
+  by: agent  # 9d3d
+  actor: jgstern_agent  # 9d3d
+  clock: 2  # 9d3d
+  nonce: 9d3d  # 9d3d
+  set: {}  # 9d3d
+  add:  # 9d3d
+    isbefore: [INV-zivah-nupat-fohaz-gisot-pukij-galof-sorij-sumod]  # 9d3d
+- op: update  # 0265
+  at: '2026-05-28T00:31:04Z'  # 0265
+  by: agent  # 0265
+  actor: jgstern_agent  # 0265
+  clock: 3  # 0265
+  nonce: '0265'  # 0265
+  set:  # 0265
+    status: done  # 0265
+- op: discuss  # d42d
+  at: '2026-05-28T00:31:04Z'  # d42d
+  by: agent  # d42d
+  actor: jgstern_agent  # d42d
+  clock: 4  # d42d
+  nonce: d42d  # d42d
+  message: "Fixed in PR (pending merge). Added AUTO_SINK_ZONE_MAP entries for db_write→database, process_send→ipc, logging→logging; AUTO_SOURCE_LABEL_MAP entry for db_read→untrusted_input. verify-claims passes with no new violations."  # d42d

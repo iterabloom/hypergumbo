@@ -19,3 +19,27 @@
     pr_ref:  # 457f
     description: "Filed during fundamental concept audit 2026-05-27 (provenance fields on IR dataclasses).\n\nRegisteredLinker.pass_version is computed at decoration time via compute_pass_version (registry.py:539), giving each linker a real code-hash. But no linker body passes it to AnalysisRun.create() — all linkers call AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION) without pass_version=..., so every linker-created AnalysisRun has pass_version=\"\" (empty).\n\nThe code-hash exists on the registration but is dropped on the floor.\n\nFix: add pass_version to LinkerContext (which is already passed to every linker body), then update the linker template to include pass_version=ctx.pass_version in the AnalysisRun.create() call. This is a straightforward threading exercise across ~35 linker bodies, or better: make LinkerContext.create_run() a factory that stamps pass_version automatically.\n\nCompanion to INV-kohat (the version semantic split): once linkers pass pass_version, AnalysisRun.version can be clarified to always hold the package version, and pass_version always holds the code-hash."  # 457f
     fields: {}  # 457f
+- op: update  # 2520
+  at: '2026-05-27T21:25:56Z'  # 2520
+  by: agent  # 2520
+  actor: jgstern_agent  # 2520
+  clock: 2  # 2520
+  nonce: '2520'  # 2520
+  set: {}  # 2520
+  add:  # 2520
+    isbefore: [INV-kohat-hofar-lijud-fuzuv-balog-moduf-mutiv-situl]  # 2520
+- op: update  # b84b
+  at: '2026-05-27T22:14:45Z'  # b84b
+  by: agent  # b84b
+  actor: jgstern_agent  # b84b
+  clock: 3  # b84b
+  nonce: b84b  # b84b
+  set:  # b84b
+    status: done  # b84b
+- op: discuss  # 0dac
+  at: '2026-05-27T22:14:46Z'  # 0dac
+  by: agent  # 0dac
+  actor: jgstern_agent  # 0dac
+  clock: 4  # 0dac
+  nonce: 0dac  # 0dac
+  message: "Fixed in feat branch. run_all_linkers now stamps pass_version centrally via _stamp_pass_version(). LinkerContext gains create_run() factory and per-linker identity fields."  # 0dac

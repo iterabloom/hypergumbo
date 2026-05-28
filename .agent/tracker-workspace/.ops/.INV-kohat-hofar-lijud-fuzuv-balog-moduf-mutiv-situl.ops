@@ -21,3 +21,25 @@
     fields:  # 999a
       statement: "AnalysisRun.version must hold the same semantic content (code-hash or package-version, not both) regardless of whether the creating producer is an analyzer or a linker"  # 999a
       root_cause: "Analyzers pass self.pass_version (code-hash) as the version arg to AnalysisRun.create(); linkers pass PASS_VERSION (package version __version__). _compute_run_signature hashes version for cache keying, making run_signatures semantically incomparable across analyzer vs linker runs."  # 999a
+- op: discuss  # bf31
+  at: '2026-05-27T20:58:40Z'  # bf31
+  by: agent  # bf31
+  actor: jgstern_agent  # bf31
+  clock: 2  # bf31
+  nonce: bf31  # bf31
+  message: "Clarity fix: description referenced \"F4 companion item\" (internal audit finding number). The companion tracker item is WI-hupoz (wire RegisteredLinker.pass_version through LinkerContext). Once WI-hupoz lands, linkers will pass pass_version to AnalysisRun.create(), and AnalysisRun.version can be clarified to always hold the package version."  # bf31
+- op: update  # 0949
+  at: '2026-05-27T23:55:54Z'  # 0949
+  by: agent  # 0949
+  actor: jgstern_agent  # 0949
+  clock: 3  # 0949
+  nonce: '0949'  # 0949
+  set:  # 0949
+    status: satisfied  # 0949
+- op: discuss  # dd95
+  at: '2026-05-27T23:55:54Z'  # dd95
+  by: agent  # dd95
+  actor: jgstern_agent  # dd95
+  clock: 4  # dd95
+  nonce: dd95  # dd95
+  message: "Fixed in PR (pending merge). Analyzers now pass version=PASS_VERSION (package version) and pass_version=self.pass_version (code-hash), matching the linker semantic established by WI-hupoz. run_signature is now semantically comparable across all producer types."  # dd95

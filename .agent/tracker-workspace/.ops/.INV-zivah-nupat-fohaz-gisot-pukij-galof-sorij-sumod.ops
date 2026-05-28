@@ -21,3 +21,19 @@
     fields:  # 7630
       statement: "Every write-side io_boundary.boundary_types entry must have an AUTO_SINK_ZONE_MAP entry or explicit exclusion comment"  # 7630
       root_cause: "No drift guard between io_boundary.boundary_types list and taint auto-mapping tables; new boundary types silently get zero taint coverage"  # 7630
+- op: update  # b0fc
+  at: '2026-05-27T20:58:49Z'  # b0fc
+  by: agent  # b0fc
+  actor: jgstern_agent  # b0fc
+  clock: 2  # b0fc
+  nonce: b0fc  # b0fc
+  set:  # b0fc
+    fields:  # b0fc
+      statement: "Every io_boundary.boundary_types entry must have a corresponding entry in AUTO_SINK_ZONE_MAP (write/send-side) or AUTO_SOURCE_LABEL_MAP (read/recv-side), or an explicit inline exclusion comment"  # b0fc
+- op: discuss  # 0e34
+  at: '2026-05-27T20:58:49Z'  # 0e34
+  by: agent  # 0e34
+  actor: jgstern_agent  # 0e34
+  clock: 3  # 0e34
+  nonce: '0e34'  # 0e34
+  message: "Scope correction: original statement covered only write-side → AUTO_SINK_ZONE_MAP. Broadened to also cover read-side → AUTO_SOURCE_LABEL_MAP, since WI-gofaz flags db_read as missing from the source map. The property test should check both directions: for each boundary_type, it must appear as a key in at least one of the two maps, or have an inline comment starting with \"# intentionally excluded:\". Without this, the db_read gap from WI-gofaz would have no regression guard."  # 0e34
