@@ -1,0 +1,24 @@
+- op: create  # 7b9d
+  at: '2026-05-28T08:34:56Z'  # 7b9d
+  by: agent  # 7b9d
+  actor: jgstern_agent  # 7b9d
+  clock: 1  # 7b9d
+  nonce: 7b9d  # 7b9d
+  data:  # 7b9d
+    kind: invariant  # 7b9d
+    title: "Tiered behavior maps: nodes_summary reports pre-shrink counts, contradicts on-disk nodes/edges arrays"  # 7b9d
+    status: violated  # 7b9d
+    priority: 2  # 7b9d
+    parent:  # 7b9d
+    tags:  # 7b9d
+    - dogfooding  # 7b9d
+    - tier  # 7b9d
+    - compact  # 7b9d
+    isbefore: []  # 7b9d
+    duplicate_of: []  # 7b9d
+    not_duplicate_of: []  # 7b9d
+    pr_ref:  # 7b9d
+    description: "**Symptom.** Auto-emitted tiered behavior maps (`behavior_map.4k.json`, `behavior_map.16k.json`, `behavior_map.64k.json`) report `nodes_summary.included.count` and `nodes_summary.included_edges_count` that overstate the actual `nodes` / `edges` array contents.\n\nObserved on hypergumbo self-analysis (branch dev @ 77a69627b8, 2026-05-28):\n\n| Tier | summary.included.count | actual len(nodes) | summary.included_edges_count | actual len(edges) |\n|---|---|---|---|---|\n| 4k | 19 | 1 | 27 | 0 |\n| 16k | 43 | 13 | 115 | 11 |\n| 64k | 139 | 83 | 441 | 199 |\n\nThe `compact` CLI subcommand (explicit invocation) is NOT affected — its counters match (50/158/50/158). The bug is specific to the auto-tier emission path.\n\n**Root cause.** `packages/hypergumbo-core/src/hypergumbo_core/compact.py:format_tiered_behavior_map` (defined at line 1319) sets `tiered_map[\"nodes_summary\"] = conn_result.to_dict()` once at line 1448 (pre-shrink). The post-selection shrink loop (lines 1478–1518) then prunes nodes/edges to fit the token budget, updating `tiered_map[\"nodes\"]`, `tiered_map[\"edges\"]`, `tiered_map[\"entrypoints\"]` on each iteration — but **never re-writes `nodes_summary`**. The summary keeps the pre-shrink counts.\n\n**Fix sketch.** After the shrink while-loop exits, recompute `nodes_summary` from the post-shrink `tiered_map[\"nodes\"]` / `tiered_map[\"edges\"]`, or update `included.count` and `included_edges_count` in-place inside the loop.\n\n**Property test.** For every emitted tiered behavior map, `nodes_summary.included.count == len(nodes)` and `nodes_summary.included_edges_count == len(edges)`. The current run violates this on all three tiers.\n\n**Discovery context.** Self-analysis dogfooding session 2, 2026-05-28. Lab notebook: `~/hypergumbo_lab_notebook/notebookjournal_05282026_0707.md` (Finding I)."  # 7b9d
+    fields:  # 7b9d
+      statement: "For every emitted tiered behavior map (behavior_map.<budget>.json), the values reported in nodes_summary.included.count and nodes_summary.included_edges_count must equal len(nodes) and len(edges) respectively in the same file."  # 7b9d
+      root_cause: "format_tiered_behavior_map writes nodes_summary once at line 1448 (pre-shrink), then the post-selection while-loop at lines 1478-1518 prunes nodes/edges to fit the token budget without ever re-writing nodes_summary. Summary keeps pre-shrink counts; data arrays reflect post-shrink reality."  # 7b9d

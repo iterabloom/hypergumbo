@@ -1,0 +1,24 @@
+- op: create  # 8f8f
+  at: '2026-05-28T08:35:17Z'  # 8f8f
+  by: agent  # 8f8f
+  actor: jgstern_agent  # 8f8f
+  clock: 1  # 8f8f
+  nonce: 8f8f  # 8f8f
+  data:  # 8f8f
+    kind: invariant  # 8f8f
+    title: "AnalysisRun.pass_version uniformly empty for every language analyzer (44/44), populated for every linker (40/40)"  # 8f8f
+    status: violated  # 8f8f
+    priority: 2  # 8f8f
+    parent:  # 8f8f
+    tags:  # 8f8f
+    - dogfooding  # 8f8f
+    - pass_version  # 8f8f
+    - provenance  # 8f8f
+    isbefore: []  # 8f8f
+    duplicate_of: []  # 8f8f
+    not_duplicate_of: []  # 8f8f
+    pr_ref:  # 8f8f
+    description: "**Symptom.** Of 84 entries in `behavior_map.analysis_runs`, 44 have empty `pass_version` and 40 have a proper `sha256:<hex>`. The split is perfectly along producer-class lines:\n\n| Producer class | Count | pass_version populated |\n|---|---|---|\n| Linkers (containment-linker, http-linker, decorator-dispatch-linker, …) | 40 | 40/40 = 100% |\n| Language analyzers (python, go, java, javascript, rust, …) | 44 | **0/44 = 0%** |\n\n**Sample entries with empty pass_version:** apex, astro, bash, bibtex, bitbake, csharp, enclosure-linker, fennel, gitignore, gleam, go, hack, haxe, html, janet, java, javascript, json, kdl, luau, make, manifest_targets, markdown, odin, pascal, play-routes, pony, prisma, properties, python, requirements, rust, smithy, solidity, sparql, sql, swift, tcl, toml, twig, v, wgsl, xml, yaml_ansible.\n\n(Note: enclosure-linker is in the empty group despite the name — worth confirming whether it's actually wired through register_linker or register_analyzer.)\n\n**Sample entries with sha256 pass_version (all linkers):** airflow-framework-dispatch-linker, annotation-convention-linker, build-target-linker, containment-linker, controller-routes-linker, crypto-flow-linker, database-query-linker, decorator-dispatch-linker, dependency-linker, di-resolution, django-orm-dispatch-linker, event-sourcing-linker, ...\n\n**CHANGELOG claim that's violated:**\n> AnalysisRun.pass_version via code-hash. compute_pass_version returns sha256 of the pass module source, replacing the fake -v1 suffix that bumped on every release regardless of logic changes.\n\nThe implementation appears to wire `compute_pass_version` into `register_linker` but missed `register_analyzer`. Verify by grepping for `compute_pass_version` call sites.\n\n**Downstream impact.** Cache invalidation can't fall back to per-analyzer code-hash for the 44-pass cohort; the full repo_fingerprint has to carry all the load. Currently it does (content-based hashing on file changes is verified working).\n\n**Discovery context.** Self-analysis dogfooding session 2, 2026-05-28. Lab notebook: `~/hypergumbo_lab_notebook/notebookjournal_05282026_0707.md` (Finding J)."  # 8f8f
+    fields:  # 8f8f
+      statement: "Every AnalysisRun entry — analyzer or linker — must carry a non-empty pass_version derived from compute_pass_version (sha256 of pass module source)."  # 8f8f
+      root_cause: "compute_pass_version is invoked by register_linker but not by register_analyzer. The 44 analyzer-class AnalysisRuns all emit empty pass_version; the 40 linker-class AnalysisRuns all emit proper sha256 hashes."  # 8f8f

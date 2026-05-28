@@ -1,0 +1,21 @@
+- op: create  # 7c55
+  at: '2026-05-28T08:35:57Z'  # 7c55
+  by: agent  # 7c55
+  actor: jgstern_agent  # 7c55
+  clock: 1  # 7c55
+  nonce: 7c55  # 7c55
+  data:  # 7c55
+    kind: work_item  # 7c55
+    title: "Dogfooding playbook stale: claims no module:name shorthand, but it works"  # 7c55
+    status: todo_hard  # 7c55
+    priority: 4  # 7c55
+    parent:  # 7c55
+    tags:  # 7c55
+    - dogfooding  # 7c55
+    - docs  # 7c55
+    isbefore: []  # 7c55
+    duplicate_of: []  # 7c55
+    not_duplicate_of: []  # 7c55
+    pr_ref:  # 7c55
+    description: "**Symptom.** `.agent/agent_playbooks_protocols_sops_skills/self-analysis-dogfooding-playbook.md` line 150 states:\n\n> There is **no `module:name` shorthand**.\n\nBut the `hypergumbo slice --help` text says:\n\n> --entry ENTRY  Entrypoint to slice from: symbol name, file path, node ID, 'module:name' shorthand (e.g. cli:main), or 'auto' to detect automatically (default: auto)\n\nAnd it works in practice:\n\n```\n$ hypergumbo slice --entry cli:main\nError: Ambiguous entry 'cli:main' matches 2 symbols in different files:\n  [python] packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py:2955  ...\n  [python] packages/hypergumbo-core/src/hypergumbo_core/cli.py:8283        ...\n```\n\nThe shorthand resolves `<filename>:<symbol-name>` and disambiguates cleanly.\n\n**Fix.** Update the playbook to either (a) remove the \"no shorthand\" claim, or (b) document the actual `module:name` precedence (per slice.py docstring, `cli:main` matches all files containing `cli` in their path with a symbol named `main`).\n\nLower-priority but still worth fixing — the playbook is loaded into agent context and stale claims about CLI capabilities can cause agents to use longer-than-necessary node IDs.\n\n**Discovery context.** Self-analysis dogfooding session 2, 2026-05-28. Lab notebook: `~/hypergumbo_lab_notebook/notebookjournal_05282026_0707.md` (Finding L)."  # 7c55
+    fields: {}  # 7c55

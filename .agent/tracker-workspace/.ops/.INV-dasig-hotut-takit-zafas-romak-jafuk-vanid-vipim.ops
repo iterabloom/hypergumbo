@@ -1,0 +1,24 @@
+- op: create  # ec15
+  at: '2026-05-28T08:35:43Z'  # ec15
+  by: agent  # ec15
+  actor: jgstern_agent  # ec15
+  clock: 1  # ec15
+  nonce: ec15  # ec15
+  data:  # ec15
+    kind: invariant  # ec15
+    title: "hypergumbo run touches huggingface.co despite runtime-cli-no-network claim"  # ec15
+    status: violated  # ec15
+    priority: 1  # ec15
+    parent:  # ec15
+    tags:  # ec15
+    - dogfooding  # ec15
+    - security  # ec15
+    - network  # ec15
+    isbefore: []  # ec15
+    duplicate_of: []  # ec15
+    not_duplicate_of: []  # ec15
+    pr_ref:  # ec15
+    description: "**Symptom.** `hypergumbo run .` makes outbound HTTPS requests to `huggingface.co/api/models/microsoft/unixcoder-base*` during a normal analysis run — even when the embeddings model is fully cached locally and the user has not invoked `install-embeddings` in this session. Observed via `HYPERGUMBO_NO_HONK=1 hypergumbo --debug run .` (2026-05-28, branch dev @ 77a69627b8):\n\n```\nGET https://huggingface.co/api/models/microsoft/unixcoder-base                  → 200\nGET https://huggingface.co/api/models/microsoft/unixcoder-base/commits/main     → 200\nGET https://huggingface.co/api/models/microsoft/unixcoder-base/discussions?p=0  → 200\nGET https://huggingface.co/api/models/microsoft/unixcoder-base/commits/refs%2Fpr%2F8 → 404\n```\n\nThe HF Hub warning \"Warning: You are sending unauthenticated requests to the HF Hub\" appears on every `hypergumbo run` invocation in this repo. The embeddings model is locally cached at `~/.cache/huggingface/hub/models--microsoft--unixcoder-base/` (3 GB), so `local_files_only=True` should suppress these calls.\n\n**`runtime-cli-no-network` claim in docs/hypergumbo.claims.yaml says:**\n> Runtime CLI subcommands do not initiate network sends. Embeddings downloads happen only via the install-embeddings extras subcommand and downstream library calls — never from the analyze-my-code path.\n\nThe claim is false in practice. `verify-claims` flags this (`runtime-cli-no-network: 636 unsanitized flows`), but the short-name FPs (cmd_run → write) make it look like noise. The underlying claim violation is correctly identified at coarse granularity; the noise hides the real signal.\n\n**Root cause.** `packages/hypergumbo-core/src/hypergumbo_core/sketch_embeddings.py::_load_st_model_offline_first` (line 132). The function tries `SentenceTransformer(name, local_files_only=True)` first, falling back to `SentenceTransformer(name)` only on `(OSError, ValueError)`. But downstream `sentence-transformers` / `huggingface_hub` code makes additional metadata API calls (model card, commits, discussions) even when `local_files_only=True` is honored at the file-load level. The docstring acknowledges the \"HEAD request on the model's manifest\" issue — the workaround is incomplete.\n\n**Fix options (any one):**\n1. Gate sketch-embedding load behind an explicit `--with-embeddings` flag on `hypergumbo run`; default off (it's used only for the sketch precompute step, not for the behavior map itself).\n2. Set `HF_HUB_OFFLINE=1` in `_load_st_model_offline_first` before the first attempt — that hard-disables the HF Hub client's API calls regardless of which sub-API is invoked.\n3. Detect the model-card endpoint calls happening despite `local_files_only=True` and file an upstream issue.\n\n`huggingface.co` is in ALLOWED_WEBSITES.md, so this is not a sandbox violation; it is a documentation-vs-implementation gap on a user-facing security promise.\n\n**Severity.** High because SECURITY.md is auto-generated from the claims YAML and explicitly promises no network during runtime CLI use. If huggingface.co is unreachable, `hypergumbo run` still succeeds (the metadata calls return non-fatally), so functionally this is a soft failure — but the claim is wrong, and the warning gives the user a confusing signal on every invocation.\n\n**Discovery context.** Self-analysis dogfooding session 2, 2026-05-28. Lab notebook: `~/hypergumbo_lab_notebook/notebookjournal_05282026_0707.md` (Finding K)."  # ec15
+    fields:  # ec15
+      statement: "hypergumbo run (and any other runtime CLI subcommand) must NOT initiate outbound network requests, per the runtime-cli-no-network claim in docs/hypergumbo.claims.yaml and the SECURITY.md generated from it."  # ec15
+      root_cause: "sketch_embeddings.py::_load_st_model_offline_first uses local_files_only=True but downstream sentence-transformers/huggingface_hub code makes additional metadata API calls (model card, commits, discussions) that bypass the flag. Confirmed by --debug run capturing 4+ HTTPS GETs to huggingface.co/api/models/microsoft/unixcoder-base/* on a populated local cache."  # ec15
