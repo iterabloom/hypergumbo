@@ -1,0 +1,26 @@
+- op: create  # 50e3
+  at: '2026-05-28T16:34:59Z'  # 50e3
+  by: agent  # 50e3
+  actor: jgstern_agent  # 50e3
+  clock: 1  # 50e3
+  nonce: '50e3'  # 50e3
+  data:  # 50e3
+    kind: invariant  # 50e3
+    title: "dead-code-maybe JSON output lacks schema_version (inconsistent with behavior_map and slice JSON)"  # 50e3
+    status: violated  # 50e3
+    priority: 2  # 50e3
+    parent:  # 50e3
+    tags:  # 50e3
+    - dogfooding  # 50e3
+    - pass6  # 50e3
+    - cli_ux  # 50e3
+    - dead_code_maybe  # 50e3
+    - schema_version  # 50e3
+    isbefore: []  # 50e3
+    duplicate_of: []  # 50e3
+    not_duplicate_of: []  # 50e3
+    pr_ref:  # 50e3
+    description: "Finding BB (pass6): `dead-code-maybe --format json` output has no `schema_version` field — breaks consistency with other JSON outputs (behavior_map, slice both ship `schema_version: 0.11.0`).\n\nRepro (hypergumbo self-analysis @ dev 77a69627b8, 2026-05-28):\n\n  hypergumbo dead-code-maybe --format json --input behavior_map.json > dcm.json\n  python3 -c \"import json; d=json.load(open('dcm.json')); print(list(d.keys()))\"\n  # Output: ['summary', 'dead_candidates']\n  # Both 'schema_version' and 'view' (which slice has) are absent.\n\nFor comparison, the behavior_map JSON top-level keys include `schema_version`, `repo_fingerprint_scheme`, `shape_id_scheme`, `symbol_fingerprint_scheme`, `view`. The slice JSON has `schema_version`, `view: \"slice\"`. Both let downstream consumers code defensively against version drift.\n\ndead-code-maybe is the only documented JSON-output subcommand without a schema_version. Consumers can't tell which version of the schema they're parsing.\n\nSeverity: medium. Schema versioning is the contract by which downstream consumers (CI gates, dashboards) survive hypergumbo upgrades. The asymmetry between subcommands means consumers writing portable code have to special-case dead-code-maybe.\n\nSuggested fix: when emitting dead-code-maybe JSON, add `schema_version` (matching the behavior_map schema_version it was derived from) and a `view: \"dead_code_maybe\"` field at top level.\n\nRelated: dead-code-maybe also silently accepts `--min-confidence -0.5` and `--min-confidence 1.5` without warning — bundle with input-validation cluster (P / V / W / X / Y)."  # 50e3
+    fields:  # 50e3
+      statement: "Every JSON output subcommand must include a top-level schema_version field matching the source behavior_map. dead-code-maybe --format json currently emits {summary, dead_candidates} only, with no schema_version or view field."  # 50e3
+      root_cause: "The dead-code-maybe JSON serializer constructs an ad-hoc dict instead of going through a shared 'add_schema_envelope' helper. There is no CI test asserting every JSON-emitting subcommand carries schema_version."  # 50e3

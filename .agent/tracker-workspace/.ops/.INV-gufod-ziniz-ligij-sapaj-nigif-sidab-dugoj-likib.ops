@@ -1,0 +1,24 @@
+- op: create  # 900d
+  at: '2026-05-28T16:59:39Z'  # 900d
+  by: agent  # 900d
+  actor: jgstern_agent  # 900d
+  clock: 1  # 900d
+  nonce: 900d  # 900d
+  data:  # 900d
+    kind: invariant  # 900d
+    title: "config silently accepts framework/linker names as if they were languages"  # 900d
+    status: violated  # 900d
+    priority: 1  # 900d
+    parent:  # 900d
+    tags:  # 900d
+    - dogfooding  # 900d
+    - pass7  # 900d
+    - cli_ux  # 900d
+    isbefore: []  # 900d
+    duplicate_of: []  # 900d
+    not_duplicate_of: []  # 900d
+    pr_ref:  # 900d
+    description: ""  # 900d
+    fields:  # 900d
+      statement: "'hypergumbo config <X>' should reject (with a helpful 'did you mean ...' hint) when X is not a language analyzer — e.g., when X is a framework-linker name like 'airflow-framework-dispatch-linker' or 'akka-http'."  # 900d
+      root_cause: "config dispatches on whatever name the user gives, looking up in the catalog without distinguishing 'language analyzer' from 'framework linker' or 'cross-cutting linker'. Affected names include: airflow-framework-dispatch-linker, akka-http, adonisjs, aiohttp, annotation-convention-linker (and 60+ similar). User gets identically-shaped empty JSON, no error signal that the argument was wrong. Same fail-silent class as INV-furop (sketch --require-section)."  # 900d

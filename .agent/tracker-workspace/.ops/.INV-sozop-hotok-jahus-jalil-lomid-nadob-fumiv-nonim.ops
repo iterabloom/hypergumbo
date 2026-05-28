@@ -1,0 +1,25 @@
+- op: create  # b893
+  at: '2026-05-28T16:58:42Z'  # b893
+  by: agent  # b893
+  actor: jgstern_agent  # b893
+  clock: 1  # b893
+  nonce: b893  # b893
+  data:  # b893
+    kind: invariant  # b893
+    title: "All --input consumers produce unhandled Python traceback on malformed/wrong-type JSON"  # b893
+    status: violated  # b893
+    priority: 2  # b893
+    parent:  # b893
+    tags:  # b893
+    - dogfooding  # b893
+    - pass7  # b893
+    - cli_ux  # b893
+    - error_handling  # b893
+    isbefore: []  # b893
+    duplicate_of: []  # b893
+    not_duplicate_of: []  # b893
+    pr_ref:  # b893
+    description: ""  # b893
+    fields:  # b893
+      statement: "hypergumbo subcommands that accept '--input behavior_map.json' must produce a user-readable error and non-zero exit (not a Python traceback) when the file is malformed JSON or has the wrong top-level type."  # b893
+      root_cause: "None of the 8 consumers tested (search, explain, symbols, routes, test-coverage, dead-code-maybe, io-boundaries, compact) wrap the json.load() call in a try/except. Malformed JSON: json.JSONDecodeError traceback. Top-level array instead of dict: AttributeError 'list object has no attribute get' at cli.py:1576 (cmd_search) and analogous sites. Same root pattern as INV-zurih (verify-claims YAML traceback). Also: no schema_version validation — a behavior_map with schema_version stripped still 'works', creating a forward-compat trap."  # b893

@@ -1,0 +1,24 @@
+- op: create  # fe3c
+  at: '2026-05-28T16:58:15Z'  # fe3c
+  by: agent  # fe3c
+  actor: jgstern_agent  # fe3c
+  clock: 1  # fe3c
+  nonce: fe3c  # fe3c
+  data:  # fe3c
+    kind: invariant  # fe3c
+    title: "slice --out slice.json silently overridden by default-detection at cli.py:1377"  # fe3c
+    status: violated  # fe3c
+    priority: 2  # fe3c
+    parent:  # fe3c
+    tags:  # fe3c
+    - dogfooding  # fe3c
+    - pass7  # fe3c
+    - cli_ux  # fe3c
+    isbefore: []  # fe3c
+    duplicate_of: []  # fe3c
+    not_duplicate_of: []  # fe3c
+    pr_ref:  # fe3c
+    description: ""  # fe3c
+    fields:  # fe3c
+      statement: "When the user explicitly passes '--out slice.json' to 'hypergumbo slice', the output must be written to that path. Currently it is silently redirected to a cache directory because the code at cli.py:1377 checks 'if out_path_arg == \"slice.json\"' to detect the argparse default and substitute a cache path."  # fe3c
+      root_cause: "argparse default for --out is the literal string 'slice.json'. By the time cli.py:1377 runs, args.out == 'slice.json' regardless of whether the user typed it explicitly. The fix is to set the argparse default to None (or argparse.SUPPRESS) and substitute the default only when args.out is None. Reproduced with --out slice.json (overridden), --out=slice.json (overridden), --out plain.json (works), --out slice.x.json (works), --out slice.foo (works), --out myslice.json (works) — only the exact basename 'slice.json' triggers the bug."  # fe3c

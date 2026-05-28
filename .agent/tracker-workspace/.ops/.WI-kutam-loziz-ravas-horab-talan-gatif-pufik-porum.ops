@@ -1,0 +1,22 @@
+- op: create  # dc31
+  at: '2026-05-28T16:59:17Z'  # dc31
+  by: agent  # dc31
+  actor: jgstern_agent  # dc31
+  clock: 1  # dc31
+  nonce: dc31  # dc31
+  data:  # dc31
+    kind: work_item  # dc31
+    title: "slice --entry ambiguity error suggests --language even when all candidates are same language"  # dc31
+    status: todo_hard  # dc31
+    priority: 1  # dc31
+    parent:  # dc31
+    tags:  # dc31
+    - dogfooding  # dc31
+    - pass7  # dc31
+    - cli_ux  # dc31
+    isbefore: []  # dc31
+    duplicate_of: []  # dc31
+    not_duplicate_of: []  # dc31
+    pr_ref:  # dc31
+    description: "When 'hypergumbo slice --entry <name>' has multiple matches with the SAME language (e.g., real symbol vs python:external:0-0:<name>:unresolved synthetic), the error message says 'Use a full node ID to disambiguate, or filter with --language.' --language python doesn't disambiguate when both are python. Better hint: suggest --list-entries (which works and shows IDs) or copy-paste the full ID from the error message. Reproduce: hypergumbo slice --input behavior_map.json --entry find_files → 2 python candidates listed; --language python on retry → same ambiguity error."  # dc31
+    fields: {}  # dc31

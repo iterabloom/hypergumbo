@@ -21,3 +21,10 @@
     fields:  # fdea
       statement: "The Solidity analyzer emits imports edges only from import_directive nodes; string literals inside call_expression / call_argument / emit / revert must not produce imports edges or external_symbol nodes."  # fdea
       root_cause: "solidity.py line 356 for-loop calls _extract_import_aliases on every tree node without filtering on node.type == \"import_directive\". Looks like a deleted-guard regression — the body is over-indented relative to the for header."  # fdea
+- op: discuss  # 041a
+  at: '2026-05-28T16:59:51Z'  # 041a
+  by: agent  # 041a
+  actor: jgstern_agent  # 041a
+  clock: 2  # 041a
+  nonce: 041a  # 041a
+  message: "Pass 7 dogfooding adds a stronger symptom: the Solidity require-message string 'Not owner' (from BRANCHES_test_solidity.py:114 — require(msg.sender == owner, \"Not owner\")) propagates through the IR/linker chain to produce a synthetic external_symbol node with literal fields {language: \"Not owner\", name: \"Not owner\", canonical_name: \"Not owner:<unknown>:Not owner:Not owner\"}. The bogus 'Not owner' value then leaks into the io-boundaries language-coverage warning as a 'language without I/O primitive catalog'. Node has zero edges so analyses are not corrupted, but the language field has zero validation against a known enum. Reproducible from /tmp/hg-dogfood-2026-05-28/behavior_map.json — see schema_version 0.11.0 graph."  # 041a

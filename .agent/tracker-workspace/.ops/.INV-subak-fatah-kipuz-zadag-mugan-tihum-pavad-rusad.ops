@@ -1,0 +1,24 @@
+- op: create  # bc98
+  at: '2026-05-28T16:59:29Z'  # bc98
+  by: agent  # bc98
+  actor: jgstern_agent  # bc98
+  clock: 1  # bc98
+  nonce: bc98  # bc98
+  data:  # bc98
+    kind: invariant  # bc98
+    title: "config --format json: function_summaries empty for ALL 281 languages; dataflow/io populated only for 20 mainstream langs"  # bc98
+    status: violated  # bc98
+    priority: 2  # bc98
+    parent:  # bc98
+    tags:  # bc98
+    - dogfooding  # bc98
+    - pass7  # bc98
+    - coverage_gap  # bc98
+    isbefore: []  # bc98
+    duplicate_of: []  # bc98
+    not_duplicate_of: []  # bc98
+    pr_ref:  # bc98
+    description: ""  # bc98
+    fields:  # bc98
+      statement: "The 'hypergumbo config <lang>' output should signal to users (via empty-vs-null vs missing keys, or a top-level coverage flag) which languages have NO analyzer support vs which have partial support. Currently all 281 catalog entries return identically-shaped JSON ({dataflow_patterns, io_primitives, function_summaries}); 261 of those have empty content in all 3 fields."  # bc98
+      root_cause: "Inspection of config --format json output for all 281 catalog entries: 20 mainstream languages (c, cpp, csharp, dart, elixir, erlang, go, haskell, java, javascript, kotlin, lua, objc, perl, php, python, ruby, rust, scala, swift) have populated dataflow_patterns and/or io_primitives. Zero of 281 have non-empty function_summaries. The 261 'deeply empty' entries include both legitimate-but-unsupported languages (ada, agda, apex, asm, bash, csharp, etc.) AND framework-linker names (airflow-framework-dispatch-linker, akka-http, adonisjs, aiohttp, annotation-convention-linker) that shouldn't be queried as 'languages' at all (see PP)."  # bc98

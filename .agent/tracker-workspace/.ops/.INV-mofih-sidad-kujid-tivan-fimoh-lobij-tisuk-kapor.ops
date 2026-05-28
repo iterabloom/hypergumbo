@@ -1,0 +1,26 @@
+- op: create  # 9a33
+  at: '2026-05-28T16:34:43Z'  # 9a33
+  by: agent  # 9a33
+  actor: jgstern_agent  # 9a33
+  clock: 1  # 9a33
+  nonce: 9a33  # 9a33
+  data:  # 9a33
+    kind: invariant  # 9a33
+    title: "verify-claims silently reports unrecognized claim types as confirmed"  # 9a33
+    status: violated  # 9a33
+    priority: 2  # 9a33
+    parent:  # 9a33
+    tags:  # 9a33
+    - dogfooding  # 9a33
+    - pass6  # 9a33
+    - cli_ux  # 9a33
+    - verify_claims  # 9a33
+    - security  # 9a33
+    isbefore: []  # 9a33
+    duplicate_of: []  # 9a33
+    not_duplicate_of: []  # 9a33
+    pr_ref:  # 9a33
+    description: "Finding AA (pass6): `verify-claims` silently reports an invented/unrecognized claim type as \"confirmed\". A typo or invented `type:` field passes verification with no constraint check.\n\nRepro (hypergumbo self-analysis @ dev 77a69627b8, 2026-05-28):\n\n  cat > novel.yaml <<'YAML'\n  claims:\n    - id: pretend-claim\n      type: never-touches-network\n      sinks: []\n      sources: []\n  YAML\n  hypergumbo verify-claims --claims novel.yaml --input behavior_map.json\n\nObserved (exit 0):\n\n  ✓ [pretend-claim]\n    Verdict: confirmed\n    No constraint to check.\n\n  All 1 claim(s) CONFIRMED\n\nThe `type: never-touches-network` is not a documented claim type. The tool reports the claim as confirmed (with a \"No constraint to check\" annotation) — the user sees the desired green check, with no indication that the claim type was unrecognized.\n\nSeverity: medium (security-relevant). verify-claims exists to validate security-style claims about a codebase. Silently \"confirming\" claims with unrecognized types creates a false sense of security — a typo (`runtime-cli-no-network` → `runtime-cli-no-newtork`) or a deliberately-invented type would always pass.\n\nSuggested fix:\n  - Maintain a registered set of valid claim types in verify_claims (or a small JSON schema).\n  - Unknown types: report verdict \"unknown_claim_type\" (exit non-zero by default), or at minimum produce a prominent WARNING line + a non-zero exit code.\n  - Add an `--allow-unknown-types` escape hatch for forward-compat usage.\n\nRelated to but distinct from Finding O (verify-claims --taint-sources override layering) and the broader fail-silent input-validation pattern P/V/W/X."  # 9a33
+    fields:  # 9a33
+      statement: "verify-claims must reject (or at minimum loudly warn about) claim entries whose  field is not in the registered set of known claim types. Silently reporting unknown types as 'confirmed' creates a false-positive risk on the primary command users invoke to validate security claims."  # 9a33
+      root_cause: "The claim-type dispatch in verify_claims appears to fall through to a default 'no constraint to check → confirmed' branch when the type string doesn't match a known handler, instead of raising a 'unknown claim type' verdict."  # 9a33

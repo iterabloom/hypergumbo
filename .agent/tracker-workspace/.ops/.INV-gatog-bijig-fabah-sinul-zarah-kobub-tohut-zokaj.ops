@@ -1,0 +1,26 @@
+- op: create  # 2edf
+  at: '2026-05-28T16:58:05Z'  # 2edf
+  by: agent  # 2edf
+  actor: jgstern_agent  # 2edf
+  clock: 1  # 2edf
+  nonce: 2edf  # 2edf
+  data:  # 2edf
+    kind: invariant  # 2edf
+    title: "verify-claims --json returns bare JSON array (no envelope, breaks extension)"  # 2edf
+    status: violated  # 2edf
+    priority: 2  # 2edf
+    parent:  # 2edf
+    tags:  # 2edf
+    - dogfooding  # 2edf
+    - pass7  # 2edf
+    - cli_ux  # 2edf
+    - json_schema  # 2edf
+    - security  # 2edf
+    isbefore: []  # 2edf
+    duplicate_of: []  # 2edf
+    not_duplicate_of: []  # 2edf
+    pr_ref:  # 2edf
+    description: ""  # 2edf
+    fields:  # 2edf
+      statement: "The JSON output of 'hypergumbo verify-claims --json' must be a top-level object containing at minimum schema_version, view, and the claim verdicts list — not a bare JSON array as currently emitted."  # 2edf
+      root_cause: "Top-level type is list (array), not dict. No envelope means: no schema_version, no summary statistics, no way to add new metadata without breaking consumers. Worst envelope offender among the JSON-emitting subcommands."  # 2edf

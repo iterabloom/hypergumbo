@@ -1,0 +1,26 @@
+- op: create  # 571b
+  at: '2026-05-28T16:58:53Z'  # 571b
+  by: agent  # 571b
+  actor: jgstern_agent  # 571b
+  clock: 1  # 571b
+  nonce: 571b  # 571b
+  data:  # 571b
+    kind: invariant  # 571b
+    title: "verify-claims --taint-sources/--taint-sinks/--taint-sanitizers silently accept any input (security false positive)"  # 571b
+    status: violated  # 571b
+    priority: 3  # 571b
+    parent:  # 571b
+    tags:  # 571b
+    - dogfooding  # 571b
+    - pass7  # 571b
+    - cli_ux  # 571b
+    - security  # 571b
+    - error_handling  # 571b
+    isbefore: []  # 571b
+    duplicate_of: []  # 571b
+    not_duplicate_of: []  # 571b
+    pr_ref:  # 571b
+    description: ""  # 571b
+    fields:  # 571b
+      statement: "When 'hypergumbo verify-claims' is given --taint-sources / --taint-sinks / --taint-sanitizers PATH and that path is nonexistent, malformed YAML, or wrong-shape content, the command must error out (or at minimum print a warning) — not silently report 'All N claim(s) CONFIRMED' with exit 0."  # 571b
+      root_cause: "The taint-flag file loaders fall back to empty catalog on any failure (including FileNotFoundError, YAMLError, schema mismatch). Combined with INV-mofih (verify-claims accepts unknown/missing claim type as confirmed), a user can mis-spell their entire taint configuration AND get 'All CONFIRMED' with zero indication anything went wrong. Tested: --taint-sources nonexistent.yml → confirmed; --taint-sources <random_text>.yml → confirmed; --taint-sinks bad.json → confirmed. Strengthens INV-mofih severity argument — verify-claims is fail-silent on essentially every input failure mode on the security-critical command."  # 571b

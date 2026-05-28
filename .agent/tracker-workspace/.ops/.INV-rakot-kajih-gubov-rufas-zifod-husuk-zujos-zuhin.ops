@@ -1,0 +1,25 @@
+- op: create  # 984b
+  at: '2026-05-28T16:34:10Z'  # 984b
+  by: agent  # 984b
+  actor: jgstern_agent  # 984b
+  clock: 1  # 984b
+  nonce: 984b  # 984b
+  data:  # 984b
+    kind: invariant  # 984b
+    title: "slice JSON feature.query echo omits min_confidence, max_tier, hub_threshold, exclude_imports, language"  # 984b
+    status: violated  # 984b
+    priority: 2  # 984b
+    parent:  # 984b
+    tags:  # 984b
+    - dogfooding  # 984b
+    - pass6  # 984b
+    - cli_ux  # 984b
+    - slice  # 984b
+    isbefore: []  # 984b
+    duplicate_of: []  # 984b
+    not_duplicate_of: []  # 984b
+    pr_ref:  # 984b
+    description: "Finding Y (pass6): `slice` JSON output's `feature.query` field omits multiple parameters that influenced the slice — breaks reproducibility from the slice JSON alone.\n\nRepro (hypergumbo self-analysis @ dev 77a69627b8, 2026-05-28):\n\n  ENTRY=\"python:packages/hypergumbo-core/src/hypergumbo_core/discovery.py:878-976:find_files:function\"\n  hypergumbo slice --input behavior_map.json --entry \"$ENTRY\" \\\n    --min-confidence 1.5 --hub-threshold 0 --max-tier 2 --exclude-imports --language python \\\n    --out slice.json\n  jq .feature.query slice.json\n\nObserved `query` keys:\n  entrypoint, exclude_tests, exclude_utility, hops, max_files, method, pass_through_kinds, reverse\n\nMissing — passed by user but dropped from echo:\n  min_confidence, max_tier, hub_threshold, exclude_imports, language\n\nThe `query` field stores user-passed parameters but only echoes a SUBSET. Downstream consumers parsing the JSON cannot reproduce the slice without re-running with the original CLI invocation.\n\nAdditional silent-acceptance findings (bundle candidates with Finding X compact):\n  --max-files 0 / -5         → silently behaves as min(1) with file_limit hit (16 nodes either way)\n  --max-hops 0 / -5          → silently behaves as 0 hops (1 node, hop_limit hit)\n  --hub-threshold -5         → silently treats every node as a hub (25 nodes, hub_pruned hit). Help docs say \"Use --hub-threshold 0 to disable\", implying non-zero values are positive integers.\n  --min-confidence 1.5 / -0.5 → silently accepted; 1.5 produces 1 node (nothing meets impossible threshold), -0.5 acts as no filter.\n\nSeverity: medium. Reproducibility is the documented purpose of writing the JSON (`feature.query` field exists specifically to echo what produced the slice). Dropping flags makes the field a liar.\n\nSuggested fix: extend the query dict construction in slice.py / cli.py to include all influential flags. Add a CI test that for each slice CLI flag, the resulting JSON's `feature.query` contains the corresponding key."  # 984b
+    fields:  # 984b
+      statement: "The slice JSON output's feature.query field must echo all CLI-supplied parameters that influenced the slice (min_confidence, max_tier, hub_threshold, exclude_imports, language, in addition to the already-echoed subset). Otherwise the JSON cannot be used to reproduce the slice or document its provenance."  # 984b
+      root_cause: "The slice command's query-dict construction (slice.py / cli.py) only includes a hand-picked subset of args, omitting later-added flags. There is no automated check that every CLI flag round-trips through the query echo."  # 984b

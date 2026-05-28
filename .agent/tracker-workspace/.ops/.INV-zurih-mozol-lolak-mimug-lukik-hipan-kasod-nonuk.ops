@@ -1,0 +1,25 @@
+- op: create  # 7aef
+  at: '2026-05-28T16:34:25Z'  # 7aef
+  by: agent  # 7aef
+  actor: jgstern_agent  # 7aef
+  clock: 1  # 7aef
+  nonce: 7aef  # 7aef
+  data:  # 7aef
+    kind: invariant  # 7aef
+    title: "verify-claims raises unhandled Python traceback on malformed YAML claims file"  # 7aef
+    status: violated  # 7aef
+    priority: 2  # 7aef
+    parent:  # 7aef
+    tags:  # 7aef
+    - dogfooding  # 7aef
+    - pass6  # 7aef
+    - cli_ux  # 7aef
+    - verify_claims  # 7aef
+    isbefore: []  # 7aef
+    duplicate_of: []  # 7aef
+    not_duplicate_of: []  # 7aef
+    pr_ref:  # 7aef
+    description: "Finding Z (pass6): `verify-claims` raises an unhandled Python traceback when given a malformed YAML claims file. Should be caught and presented as a friendly error.\n\nRepro (hypergumbo self-analysis @ dev 77a69627b8, 2026-05-28):\n\n  echo \"not: valid: yaml: [\" > bad.yaml\n  hypergumbo verify-claims --claims bad.yaml --input behavior_map.json\n\nObserved (exit 1, full traceback on stderr):\n\n  Traceback (most recent call last):\n    File \"/home/jgstern_agent/hypergumbo/.venv/bin/hypergumbo\", line 6, in <module>\n      sys.exit(main())\n    ...\n    File \"verify_claims.py\", line 191, in load_claims\n      data = yaml.safe_load(content) or {}\n    ...\n    yaml.scanner.ScannerError: mapping values are not allowed here\n      in \"<unicode string>\", line 1, column 11:\n        not: valid: yaml: [\n                  ^\n\nContrast: missing file produces a clean message (\"Error: Claims file not found: ...\"). Empty claims produces a clean message (\"No claims found in file.\"). Only the malformed-YAML path is unhandled.\n\nSeverity: medium. verify-claims is a user-facing CLI command and the YAML format is user-authored. Raw Python tracebacks should never reach end users for user-input errors — only for internal bugs.\n\nSuggested fix: in `verify_claims.load_claims`, wrap `yaml.safe_load(content)` in `try / except yaml.YAMLError` and re-raise as a domain error caught by `cmd_verify_claims`, formatted as:\n\n  Error: Could not parse claims file <path>: <reason>"  # 7aef
+    fields:  # 7aef
+      statement: "A user-facing CLI command must never expose a raw Python traceback for input-validation failures. Specifically, verify-claims must catch yaml.YAMLError when parsing the claims file and present a clean error message naming the file path and the underlying reason."  # 7aef
+      root_cause: "verify_claims.load_claims (verify_claims.py:191) calls yaml.safe_load(content) with no try/except; yaml.scanner.ScannerError (subclass of yaml.YAMLError) propagates to main() unhandled."  # 7aef

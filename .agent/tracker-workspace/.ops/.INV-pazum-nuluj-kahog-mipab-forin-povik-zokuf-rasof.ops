@@ -1,0 +1,25 @@
+- op: create  # bcff
+  at: '2026-05-28T16:57:57Z'  # bcff
+  by: agent  # bcff
+  actor: jgstern_agent  # bcff
+  clock: 1  # bcff
+  nonce: bcff  # bcff
+  data:  # bcff
+    kind: invariant  # bcff
+    title: "config --format json lacks schema_version/view envelope"  # bcff
+    status: violated  # bcff
+    priority: 2  # bcff
+    parent:  # bcff
+    tags:  # bcff
+    - dogfooding  # bcff
+    - pass7  # bcff
+    - cli_ux  # bcff
+    - json_schema  # bcff
+    isbefore: []  # bcff
+    duplicate_of: []  # bcff
+    not_duplicate_of: []  # bcff
+    pr_ref:  # bcff
+    description: ""  # bcff
+    fields:  # bcff
+      statement: "The JSON output of 'hypergumbo config <lang> --format json' must include top-level schema_version and view fields for forward-compatibility, consistent with behavior_map.json, slice JSON, test-coverage and io-boundaries envelopes."  # bcff
+      root_cause: "cli.py cmd_config emits {dataflow_patterns, io_primitives, function_summaries} without an envelope wrap. Inconsistent with peer commands; downstream consumers cannot version-guard against drift."  # bcff

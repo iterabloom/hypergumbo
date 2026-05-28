@@ -1,0 +1,25 @@
+- op: create  # 04f9
+  at: '2026-05-28T17:40:13Z'  # 04f9
+  by: agent  # 04f9
+  actor: jgstern_agent  # 04f9
+  clock: 1  # 04f9
+  nonce: 04f9  # 04f9
+  data:  # 04f9
+    kind: invariant  # 04f9
+    title: "sketch -t budget >=17000 produces exit 141 SIGPIPE with 0 bytes output (broken pipe to early-exiting child)"  # 04f9
+    status: violated  # 04f9
+    priority: 3  # 04f9
+    parent:  # 04f9
+    tags:  # 04f9
+    - dogfooding  # 04f9
+    - pass8  # 04f9
+    - cli_ux  # 04f9
+    - critical  # 04f9
+    isbefore: []  # 04f9
+    duplicate_of: []  # 04f9
+    not_duplicate_of: []  # 04f9
+    pr_ref:  # 04f9
+    description: ""  # 04f9
+    fields:  # 04f9
+      statement: "'hypergumbo sketch --input behavior_map.json -t N --no-progress' must produce a sketch (or a clear error) for any N within the documented range. Currently every N >= 17000 reproducibly returns exit 141 (SIGPIPE) with stdout=0 bytes and stderr containing only a benign staleness note. Documented examples mention -t 16000 (last working value); -t 17000+ fails."  # 04f9
+      root_cause: "Strace shows the main sketch process writes ~50KB of markdown to fd 4 (pipe to child subprocess), child exits cleanly (SIGCHLD si_status=0 si_utime=0.34s), parent's next write hits EPIPE 'Broken pipe' and is killed by SIGPIPE. The trigger is content volume above ~16k tokens. Independent of network (reproduces with HF_HUB_OFFLINE=1) — confirmed earlier HF safetensors_conversion crash is a separate symptom from a background thread. Whatever process reads fd 4 has a budget-sensitive exit condition that races against parent's write completion. Affects -t 17000 thru at least -t 64000 tested. Does NOT affect smaller -t budgets (500-16000 all work) or fresh-run on tiny repos."  # 04f9

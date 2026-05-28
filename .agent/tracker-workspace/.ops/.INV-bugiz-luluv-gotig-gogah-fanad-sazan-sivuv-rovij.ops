@@ -1,0 +1,25 @@
+- op: create  # c56f
+  at: '2026-05-28T16:58:25Z'  # c56f
+  by: agent  # c56f
+  actor: jgstern_agent  # c56f
+  clock: 1  # c56f
+  nonce: c56f  # c56f
+  data:  # c56f
+    kind: invariant  # c56f
+    title: "--debug help text references removed ripgrep functionality (stale documentation)"  # c56f
+    status: violated  # c56f
+    priority: 1  # c56f
+    parent:  # c56f
+    tags:  # c56f
+    - dogfooding  # c56f
+    - pass7  # c56f
+    - cli_ux  # c56f
+    - docs  # c56f
+    isbefore: []  # c56f
+    duplicate_of: []  # c56f
+    not_duplicate_of: []  # c56f
+    pr_ref:  # c56f
+    description: ""  # c56f
+    fields:  # c56f
+      statement: "The global --debug flag's help text says 'Enable debug logging (shows ripgrep vs Python fallback decisions, etc.)'. Either ripgrep-vs-Python decisions must produce debug output, or the help text must be updated to accurately describe what --debug does."  # c56f
+      root_cause: "ranking.py contains the comment 'Note: ripgrep was tried here but removed due to complexity around regex' — ripgrep code path was removed but the --debug help text at cli.py:5741 still references it. Across 6 subcommands tested (catalog, sketch, config, test-coverage, search, cache-status), the --debug flag produces identical output to non-debug. Only 10 logger.debug calls exist in core, most for entry_point loading internals. Stale doc misleads users about flag scope."  # c56f
