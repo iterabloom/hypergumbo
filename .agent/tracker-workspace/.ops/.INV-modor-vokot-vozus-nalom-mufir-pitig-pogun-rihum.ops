@@ -1,0 +1,24 @@
+- op: create  # 0d4a
+  at: '2026-05-28T21:46:26Z'  # 0d4a
+  by: agent  # 0d4a
+  actor: jgstern_agent  # 0d4a
+  clock: 1  # 0d4a
+  nonce: 0d4a  # 0d4a
+  data:  # 0d4a
+    kind: invariant  # 0d4a
+    title: "GGGGG: sketch_precomputed.readme_description truncated at 207 chars mid-sentence; embeds raw markdown '> ' quote-block prefix"  # 0d4a
+    status: violated  # 0d4a
+    priority: 1  # 0d4a
+    parent:  # 0d4a
+    tags:  # 0d4a
+    - dogfooding  # 0d4a
+    - pass15  # 0d4a
+    - sketch  # 0d4a
+    isbefore: []  # 0d4a
+    duplicate_of: []  # 0d4a
+    not_duplicate_of: []  # 0d4a
+    pr_ref:  # 0d4a
+    description: ""  # 0d4a
+    fields:  # 0d4a
+      statement: "sketch_precomputed.readme_description is 207 chars long, includes a markdown quote-block prefix '> ' embedded mid-string, and is cut mid-sentence after 'Requires Python 3.10+'. Sample: 'hypergumbo is a local-first CLI...understand a codebase. > Requires Python 3.10+.'"  # 0d4a
+      root_cause: "README extraction truncates at a fixed character/sentence boundary without stripping markdown syntax. The '> ' quote prefix and mid-sentence cut suggest no markdown-aware extractor (e.g., parse first <p> block to clean text). Sketch consumers receive less useful descriptions"  # 0d4a

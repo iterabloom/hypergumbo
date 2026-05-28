@@ -1,0 +1,24 @@
+- op: create  # 0088
+  at: '2026-05-28T21:20:59Z'  # 0088
+  by: agent  # 0088
+  actor: jgstern_agent  # 0088
+  clock: 1  # 0088
+  nonce: '0088'  # 0088
+  data:  # 0088
+    kind: invariant  # 0088
+    title: "Markdown analyzer emits 0 file/section/heading nodes for 107 analyzed markdown files; CLAUDE.md, CHANGELOG.md, GEMINI.md, hypergumbo-spec.md all have centrality=0 (the only 102 markdown nodes are external :doc_link orphans from LLL)"  # 0088
+    status: violated  # 0088
+    priority: 2  # 0088
+    parent:  # 0088
+    tags:  # 0088
+    - dogfooding  # 0088
+    - pass14  # 0088
+    - analyzer_completeness  # 0088
+    isbefore: []  # 0088
+    duplicate_of: []  # 0088
+    not_duplicate_of: []  # 0088
+    pr_ref:  # 0088
+    description: "Pass 14: profile.languages.markdown.files=107 (26316 LOC). distinct markdown paths in nodes = 1 (just <external>). All 102 markdown nodes are kind=external_symbol (orphan :doc_link from LLL). CHANGELOG.md (199KB), CLAUDE.md (63B), GEMINI.md (65B), docs/hypergumbo-spec.md all in sketch_precomputed.centrality_scores with score=0.0. README.md and AGENTS.md DO have nonzero centrality (computed from cross-document link inbound counts, which the LLL nodes provide partially). Effect: the 'sketch' subcommand cannot rank markdown documents by content relevance; CHANGELOG.md is invisible to centrality."  # 0088
+    fields:  # 0088
+      statement: "An analyzer that reports files_analyzed=N produces at least one path-bearing node per non-empty input file (file-, section-, or heading-level)."  # 0088
+      root_cause: "The markdown analyzer extracts cross-document links into orphan external_symbol nodes (LLL) but does not emit file/section/heading nodes for the source markdown files themselves; centrality_scores receives a 0.0 for any file with no inbound/outbound edges in the IR graph."  # 0088

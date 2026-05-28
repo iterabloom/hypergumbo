@@ -1,0 +1,23 @@
+- op: create  # 2523
+  at: '2026-05-28T21:47:07Z'  # 2523
+  by: agent  # 2523
+  actor: jgstern_agent  # 2523
+  clock: 1  # 2523
+  nonce: '2523'  # 2523
+  data:  # 2523
+    kind: work_item  # 2523
+    title: "BBBBB: Vocabulary split: WS routes are 'http_route' in entrypoints but 'WebSocketRoute' (vs 'Route') in usage_contexts; same concept, two taxonomies"  # 2523
+    status: todo_hard  # 2523
+    priority: 1  # 2523
+    parent:  # 2523
+    tags:  # 2523
+    - dogfooding  # 2523
+    - pass15  # 2523
+    - taxonomy  # 2523
+    isbefore: []  # 2523
+    duplicate_of: []  # 2523
+    not_duplicate_of: []  # 2523
+    pr_ref:  # 2523
+    description: ""  # 2523
+    fields:  # 2523
+      rationale: "entrypoints groups WS routes under kind='http_route', but usage_contexts groups WS under context_name='WebSocketRoute' (separate from 'Route' which is HTTP-only). Same underlying concept, two different vocabularies in the same behavior map. Discovered while correcting pass-14 SSSS finding — the WS endpoint appears in both lists but under different category names"  # 2523

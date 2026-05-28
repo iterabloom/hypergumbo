@@ -1,0 +1,24 @@
+- op: create  # 27a6
+  at: '2026-05-28T21:45:51Z'  # 27a6
+  by: agent  # 27a6
+  actor: jgstern_agent  # 27a6
+  clock: 1  # 27a6
+  nonce: 27a6  # 27a6
+  data:  # 27a6
+    kind: invariant  # 27a6
+    title: "XXXX: 40 of 84 analysis_runs have files_analyzed=0 but duration_ms>0; synthesis/linker passes lack file-level provenance (extends UUU)"  # 27a6
+    status: violated  # 27a6
+    priority: 2  # 27a6
+    parent:  # 27a6
+    tags:  # 27a6
+    - dogfooding  # 27a6
+    - pass15  # 27a6
+    - provenance  # 27a6
+    isbefore: []  # 27a6
+    duplicate_of: []  # 27a6
+    not_duplicate_of: []  # 27a6
+    pr_ref:  # 27a6
+    description: ""  # 27a6
+    fields:  # 27a6
+      statement: "40 of 84 analysis_runs report files_analyzed=0 but duration_ms>0; total time consumed by file-less passes = ~7600ms of 92800ms total (8.2% of analysis time has no file-level provenance). Largest offenders: pyffi-linker (4570ms), di-resolution (2550ms), method-call-recovery (364ms), annotation-convention-linker (247ms)"  # 27a6
+      root_cause: "Synthesis/linker passes that operate on prior IR (not files) report files_analyzed=0 because their input is the in-memory graph, not files. But this conflates 'pass did not run' with 'pass ran on the graph'. Extends UUU (which covered the 8 worst offenders) to the broader 40-pass pattern"  # 27a6

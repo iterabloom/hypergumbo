@@ -1,0 +1,25 @@
+- op: create  # 1963
+  at: '2026-05-28T21:45:21Z'  # 1963
+  by: agent  # 1963
+  actor: jgstern_agent  # 1963
+  clock: 1  # 1963
+  nonce: '1963'  # 1963
+  data:  # 1963
+    kind: invariant  # 1963
+    title: "UUUU: centrality_scores excludes Python source files entirely (0 of 838 .py files in 274 entries; only yaml/md/json/toml)"  # 1963
+    status: violated  # 1963
+    priority: 3  # 1963
+    parent:  # 1963
+    tags:  # 1963
+    - dogfooding  # 1963
+    - pass15  # 1963
+    - sketch  # 1963
+    - centrality  # 1963
+    isbefore: []  # 1963
+    duplicate_of: []  # 1963
+    not_duplicate_of: []  # 1963
+    pr_ref:  # 1963
+    description: ""  # 1963
+    fields:  # 1963
+      statement: "sketch_precomputed.centrality_scores excludes Python source files entirely (0 of 838 .py files appear in 274 centrality entries); all entries are .yaml (167), .md (105), .json (1), .toml (1)"  # 1963
+      root_cause: "centrality is computed only for 'additional file candidates' (non-source docs/configs), excluding source files by design. The naming 'centrality' conflicts with graph-theory expectations — it's actually 'symbol-mention frequency among non-source files'. Effect: Python project's most important source files (cli.py, ir.py, sketch.py) never appear in centrality rankings"  # 1963

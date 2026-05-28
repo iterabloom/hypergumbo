@@ -1,0 +1,46 @@
+- op: create  # 4523
+  at: '2026-05-28T21:22:02Z'  # 4523
+  by: agent  # 4523
+  actor: jgstern_agent  # 4523
+  clock: 1  # 4523
+  nonce: '4523'  # 4523
+  data:  # 4523
+    kind: invariant  # 4523
+    title: "WebSocket route /ws appears in entrypoints (kind=http_route, confidence=1.0) but is missing from usage_contexts (8 vs 7); two route registries disagree on whether WS is a Route"  # 4523
+    status: violated  # 4523
+    priority: 2  # 4523
+    parent:  # 4523
+    tags:  # 4523
+    - dogfooding  # 4523
+    - pass14  # 4523
+    - registry_drift  # 4523
+    isbefore: []  # 4523
+    duplicate_of: []  # 4523
+    not_duplicate_of: []  # 4523
+    pr_ref:  # 4523
+    description: "Pass 14: entrypoints[kind=http_route] count: 8. usage_contexts[context_name=Route] count: 7. Intersection by symbol_ref/symbol_id: 7. The 1 entrypoint-only: 'HTTP WS /ws' -> python:packages/hypergumbo-tracker/src/hypergumbo_tracker/serve.py:215-250:_ws_handler:function (confidence=1.0, label='HTTP WS /ws'). The routes subcommand (when invoked with --input bm.json) correctly displays all 8 including [WS] /ws -> _ws_handler (line 215), so it reads from entrypoints not usage_contexts. Affects downstream consumers that build a route map from usage_contexts."  # 4523
+    fields:  # 4523
+      statement: "Every route emitted into entrypoints (kind=http_route) also appears in usage_contexts (context_name=Route) with the same symbol_id; the two registries agree on what is a route."  # 4523
+      root_cause: "The route-detector emits 8 http_route entrypoints from serve.py (7 HTTP GET/POST + 1 WS /ws -> _ws_handler) but usage_contexts only captures 7 (the WS handler is excluded by usage_contexts emission policy, which apparently filters to non-WS Routes). The two registries are populated by different code paths with divergent inclusion criteria."  # 4523
+- op: discuss  # 8f8c
+  at: '2026-05-28T21:47:24Z'  # 8f8c
+  by: agent  # 8f8c
+  actor: jgstern_agent  # 8f8c
+  clock: 2  # 8f8c
+  nonce: 8f8c  # 8f8c
+  message: "EEEEE pass 15 CORRECTION: SSSS was misdiagnosed. WS /ws IS present in usage_contexts — under context_name='WebSocketRoute' (1 entry), not context_name='Route' (7 HTTP entries). Total = 8, matching entrypoints[kind=http_route]=8. My pass 14 query filtered by context_name=='Route' only, missing the WebSocketRoute entry. The taxonomy split (entrypoints uses 'http_route' for both HTTP and WS, usage_contexts uses 'Route' vs 'WebSocketRoute') is now filed as BBBBB (WI-lomoz). SSSS as filed is INVALID — the registry drift does not exist. Closing as wont_do."  # 8f8c
+- op: update  # 7e87
+  at: '2026-05-28T21:47:42Z'  # 7e87
+  by: agent  # 7e87
+  actor: jgstern_agent  # 7e87
+  clock: 3  # 7e87
+  nonce: '7e87'  # 7e87
+  set:  # 7e87
+    status: satisfied  # 7e87
+- op: discuss  # cd52
+  at: '2026-05-28T21:47:42Z'  # cd52
+  by: agent  # cd52
+  actor: jgstern_agent  # cd52
+  clock: 4  # cd52
+  nonce: cd52  # cd52
+  message: "Closed as satisfied via pass-15 correction (EEEEE) — the invariant 'WS route appears in entrypoints but missing from usage_contexts' was FALSE. Re-probe shows WS /ws IS in usage_contexts under context_name='WebSocketRoute' (1 entry), separate from context_name='Route' (7 HTTP entries). Total usage_contexts = 8 matches entrypoints[http_route]=8. My pass-14 query filtered by context_name=='Route' only, missing the WebSocketRoute entry. The data is consistent — no registry drift. The vocabulary split (entrypoints uses single 'http_route' kind for both HTTP and WS; usage_contexts uses two context_names) is extracted as BBBBB (WI-lomoz)."  # cd52

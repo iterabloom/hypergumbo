@@ -1,0 +1,24 @@
+- op: create  # baa6
+  at: '2026-05-28T21:46:46Z'  # baa6
+  by: agent  # baa6
+  actor: jgstern_agent  # baa6
+  clock: 1  # baa6
+  nonce: baa6  # baa6
+  data:  # baa6
+    kind: invariant  # baa6
+    title: "HHHHH: dead-code-maybe flags function-factory closures (register_X.decorator) and descriptor patterns as dead; call-graph misses closure-factory and descriptor dispatch"  # baa6
+    status: violated  # baa6
+    priority: 1  # baa6
+    parent:  # baa6
+    tags:  # baa6
+    - dogfooding  # baa6
+    - pass15  # baa6
+    - dead_code  # baa6
+    isbefore: []  # baa6
+    duplicate_of: []  # baa6
+    not_duplicate_of: []  # baa6
+    pr_ref:  # baa6
+    description: ""  # baa6
+    fields:  # baa6
+      statement: "dead-code-maybe --seeds all reports function-factory closures (e.g. register_analyzer.decorator, register_linker.decorator, register_def_use_extractor.decorator) and dict-config-style attributes (Cache.delete, TrackerSet.config, Store.config) as potentially dead. These are all dispatched through closure-factory or descriptor patterns the call-graph doesn't traverse"  # baa6
+      root_cause: "Call-graph edge extraction doesn't model: (1) nested closures returned from factory functions and used as decorators, (2) descriptor protocol (property/staticmethod-like dispatch). Result: false-positive dead-code flags on the most-used dispatch primitives in the codebase. Compounds CCC dead-code FP issue with a specific structural cause"  # baa6

@@ -1,0 +1,25 @@
+- op: create  # 0ab3
+  at: '2026-05-28T21:45:41Z'  # 0ab3
+  by: agent  # 0ab3
+  actor: jgstern_agent  # 0ab3
+  clock: 1  # 0ab3
+  nonce: 0ab3  # 0ab3
+  data:  # 0ab3
+    kind: invariant  # 0ab3
+    title: "WWWW: supply_chain tier mis-classification: internal_dep has only <external> placeholder; external_dep includes workspace's own pyproject.toml files"  # 0ab3
+    status: violated  # 0ab3
+    priority: 2  # 0ab3
+    parent:  # 0ab3
+    tags:  # 0ab3
+    - dogfooding  # 0ab3
+    - pass15  # 0ab3
+    - supply_chain  # 0ab3
+    - tier_classification  # 0ab3
+    isbefore: []  # 0ab3
+    duplicate_of: []  # 0ab3
+    not_duplicate_of: []  # 0ab3
+    pr_ref:  # 0ab3
+    description: ""  # 0ab3
+    fields:  # 0ab3
+      statement: "supply_chain_summary.internal_dep reports 1 file/480 symbols where the sole path is '<external>' placeholder; supply_chain_summary.external_dep reports 10 files but includes ALL workspace pyproject.toml files (packages/hypergumbo-core/pyproject.toml, packages/hypergumbo-tracker/pyproject.toml, etc.) plus '<external>' and empty-string '' paths"  # 0ab3
+      root_cause: "Tier classifier maps symbols imported from internal_dep packages to the placeholder path '<external>' (treating them as out-of-tree). Workspace's own pyproject.toml files are tagged external_dep instead of first_party — they're not recognized as workspace-config files. Extends HHH/PPP (workspace recognition gap) with new symptoms"  # 0ab3

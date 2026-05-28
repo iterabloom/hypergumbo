@@ -1,0 +1,25 @@
+- op: create  # 6e8d
+  at: '2026-05-28T21:46:00Z'  # 6e8d
+  by: agent  # 6e8d
+  actor: jgstern_agent  # 6e8d
+  clock: 1  # 6e8d
+  nonce: 6e8d  # 6e8d
+  data:  # 6e8d
+    kind: invariant  # 6e8d
+    title: "YYYY: limits.supply_chain.classification_failures empty despite tier classifier demonstrably failing (HHH/PPP/WWWW); failure-capture is unwired"  # 6e8d
+    status: violated  # 6e8d
+    priority: 2  # 6e8d
+    parent:  # 6e8d
+    tags:  # 6e8d
+    - dogfooding  # 6e8d
+    - pass15  # 6e8d
+    - supply_chain  # 6e8d
+    - observability  # 6e8d
+    isbefore: []  # 6e8d
+    duplicate_of: []  # 6e8d
+    not_duplicate_of: []  # 6e8d
+    pr_ref:  # 6e8d
+    description: ""  # 6e8d
+    fields:  # 6e8d
+      statement: "limits.supply_chain.classification_failures = [] and limits.supply_chain.ambiguous_paths = [] despite tier classifier demonstrably mislabeling workspace packages (HHH: workspace packages mis-tiered; PPP: 331 first-party hypergumbo_* symbols emitted as external_symbol; WWWW: workspace pyproject.toml files tagged external_dep)"  # 6e8d
+      root_cause: "The classification_failures and ambiguous_paths fields are stubs — the tier classifier doesn't write to them when it mis-classifies. Consumers reading classification_failures=[] would conclude tier classification succeeded for all paths, but it doesn't. Observability gap"  # 6e8d

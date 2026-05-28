@@ -22,3 +22,10 @@
     fields:  # e7c6
       statement: "Route data extracted by analyzers is reachable via the hypergumbo routes subcommand."  # e7c6
       root_cause: "Routes are emitted into bm.json.usage_contexts (8 entries with context_name=Route from serve.py) but the routes subcommand reads only the top-level bm.json.routes field, which is never populated; there is no promotion from usage_contexts to routes."  # e7c6
+- op: discuss  # f147
+  at: '2026-05-28T21:22:04Z'  # f147
+  by: agent  # f147
+  actor: jgstern_agent  # f147
+  clock: 2  # f147
+  nonce: f147  # f147
+  message: "Pass 14 CORRECTION: YYY was misdiagnosed in pass 13. The claim 'routes subcommand reads only the top-level routes field' is WRONG. When invoked correctly with --input flag (e.g., 'hypergumbo routes --input bm.json'), the routes subcommand correctly displays all 8 API routes including [GET] /health, /api/items/* GET+POST endpoints, and [WS] /ws. My pass 13 test ran 'hypergumbo routes bm.json' (positional), which silently treats bm.json as 'repo root' path and ignores the file — that's the actual bug, now filed as OOOO (INV-jibof). The two REMAINING valid sub-findings under YYY: (a) bm.json has no top-level 'routes' or 'frameworks' field (routes data lives in entrypoints[kind=http_route] and usage_contexts[context_name=Route]), and (b) routes subcommand generates 5 sketch artifacts on a read-only operation similar to U. SUPERSEDE: most of YYY's body is invalidated. Sub-finding (a) lowered to LOW severity (just a schema-organization observation, not a bug). Sub-finding (b) extracted as a separate workitem candidate but bundled under U."  # f147

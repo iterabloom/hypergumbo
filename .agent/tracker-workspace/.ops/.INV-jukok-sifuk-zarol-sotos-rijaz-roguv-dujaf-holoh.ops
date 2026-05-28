@@ -23,3 +23,10 @@
     fields:  # 3d47
       statement: "The behavior map contains 23 edges whose src ID (python:packages/hypergumbo-core/src/hypergumbo_core/scip/_generated/scip_pb2.py:1-1:file:file) does not appear in the nodes list. scip_pb2.py is a real 15KB auto-generated protobuf file but has no file-level node; only 6 external_symbol nodes mention it. Edges of type 'calls' from this phantom src to google.protobuf:* targets are emitted. metrics.by_supply_chain_tier shows the inconsistency: 'unknown' tier reports 23 edges but 0 nodes. dst IDs are NOT dangling (0 violations) — only src side."  # 3d47
       root_cause: "Auto-generated protobuf file path is special-cased in node emission (likely skipped via a 'generated' file filter) but NOT in edge emission. Pipeline order: imports edges emitted before the file-node-filter runs, leaving dangling src refs."  # 3d47
+- op: discuss  # 21dd
+  at: '2026-05-28T21:07:21Z'  # 21dd
+  by: agent  # 21dd
+  actor: jgstern_agent  # 21dd
+  clock: 2  # 21dd
+  nonce: 21dd  # 21dd
+  message: "Pass 13 evidence-strengthening: dangling-src edges break down by source NODE (not just file pseudo-node). 4 unique src IDs across 23 edges: (a) scip_pb2.py:1-1:file:file (10 edges — original QQQ case), (b) test_scip_generated.py:54-78:test_index_roundtrip:function (5 edges), (c) test_scip_generated.py:1-1:file:file (5 edges), (d) test_scip_generated.py:81-88:test_source_commit_file_is_pinned_sha:function (3 edges). 8 of 23 dangling edges originate from FUNCTION nodes (not file pseudo-nodes) — the test functions exist in source but were not emitted as nodes. This extends QQQ from 'phantom file pseudo-node' to 'phantom function nodes in tests of generated code'. The dangling pattern follows the generated/tested-generated boundary, not the file/function boundary."  # 21dd

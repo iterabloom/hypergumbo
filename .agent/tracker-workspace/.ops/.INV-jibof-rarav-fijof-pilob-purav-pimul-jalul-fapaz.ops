@@ -1,0 +1,25 @@
+- op: create  # 77a8
+  at: '2026-05-28T21:20:57Z'  # 77a8
+  by: agent  # 77a8
+  actor: jgstern_agent  # 77a8
+  clock: 1  # 77a8
+  nonce: 77a8  # 77a8
+  data:  # 77a8
+    kind: invariant  # 77a8
+    title: "Positional path argument silently swallows non-directory inputs across routes/symbols/io-boundaries; 'hypergumbo X bm.json' returns 'No X found' instead of erroring or detecting JSON input"  # 77a8
+    status: violated  # 77a8
+    priority: 3  # 77a8
+    parent:  # 77a8
+    tags:  # 77a8
+    - dogfooding  # 77a8
+    - pass14  # 77a8
+    - cli_ux  # 77a8
+    - silent_accept  # 77a8
+    isbefore: []  # 77a8
+    duplicate_of: []  # 77a8
+    not_duplicate_of: []  # 77a8
+    pr_ref:  # 77a8
+    description: "Pass 14: 'hypergumbo symbols bm.json' -> 'No symbols found' but 'hypergumbo symbols --input bm.json' -> 31247 symbols. 'hypergumbo routes bm.json' -> 'No API routes found in the behavior map.' but 'hypergumbo routes --input bm.json' -> 'Found 8 API route(s)' with full GET/POST/WS list. 'hypergumbo io-boundaries bm.json' -> 'No I/O boundary calls detected.' but 'hypergumbo io-boundaries --input bm.json' -> 'I/O Boundary Map (843 boundary calls)'. The CLI should either detect 'bm.json' as a JSON file (not a directory) and dispatch as --input, or error 'bm.json is not a directory'. Affected subcommands all share the path+--input pattern. SUPERSEDES YYY's wrong claim that routes data was missing from bm.json."  # 77a8
+    fields:  # 77a8
+      statement: "When a user passes a behavior-map JSON file path positionally to a subcommand that takes both a positional path (repo root) and --input (behavior map), the subcommand either errors or recognizes the JSON input — never silently reports empty results."  # 77a8
+      root_cause: "Subcommands routes/symbols/io-boundaries declare the first positional arg as path (repo root, default current directory) and --input as a separate flag (default hypergumbo.results.json). Passing bm.json positionally is accepted as the repo root, then --input defaults to a non-existent file in cwd, and the subcommand returns empty output (\"No symbols found\", \"No API routes found in the behavior map.\", \"No I/O boundary calls detected.\") instead of erroring on the invalid path."  # 77a8

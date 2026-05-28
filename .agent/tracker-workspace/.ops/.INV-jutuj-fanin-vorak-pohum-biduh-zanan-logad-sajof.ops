@@ -1,0 +1,25 @@
+- op: create  # 412e
+  at: '2026-05-28T21:46:08Z'  # 412e
+  by: agent  # 412e
+  actor: jgstern_agent  # 412e
+  clock: 1  # 412e
+  nonce: 412e  # 412e
+  data:  # 412e
+    kind: invariant  # 412e
+    title: "AAAAA: routes subcommand has no --format json flag (text-only); inconsistent vs test-coverage/symbols/dead-code-maybe/search"  # 412e
+    status: violated  # 412e
+    priority: 1  # 412e
+    parent:  # 412e
+    tags:  # 412e
+    - dogfooding  # 412e
+    - pass15  # 412e
+    - cli  # 412e
+    - ux  # 412e
+    isbefore: []  # 412e
+    duplicate_of: []  # 412e
+    not_duplicate_of: []  # 412e
+    pr_ref:  # 412e
+    description: ""  # 412e
+    fields:  # 412e
+      statement: "hypergumbo routes subcommand has no --format json flag (text-only output), while test-coverage/symbols/dead-code-maybe/search all support --format {text,json}. Format-flag support is inconsistent across read subcommands"  # 412e
+      root_cause: "routes was added without parity to the --format json convention; the listing format isn't standardized. Extends RRR (catalog has no --json flag) to a different subcommand. Consumers wanting structured route data must scrape text output"  # 412e

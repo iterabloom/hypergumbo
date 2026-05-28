@@ -1,0 +1,24 @@
+- op: create  # 7e1b
+  at: '2026-05-28T21:21:38Z'  # 7e1b
+  by: agent  # 7e1b
+  actor: jgstern_agent  # 7e1b
+  clock: 1  # 7e1b
+  nonce: 7e1b  # 7e1b
+  data:  # 7e1b
+    kind: invariant  # 7e1b
+    title: "limits.skipped_passes (66 entries) is not reflected in analysis_runs[].skipped_passes (empty across all 84 runs); skipped-pass provenance lives in one place only"  # 7e1b
+    status: violated  # 7e1b
+    priority: 2  # 7e1b
+    parent:  # 7e1b
+    tags:  # 7e1b
+    - dogfooding  # 7e1b
+    - pass14  # 7e1b
+    - provenance  # 7e1b
+    isbefore: []  # 7e1b
+    duplicate_of: []  # 7e1b
+    not_duplicate_of: []  # 7e1b
+    pr_ref:  # 7e1b
+    description: "Pass 14: limits.skipped_passes: 66 entries all with reason='no files matched' (c, cpp, ruby, php, kotlin, scala, lua, perl, powershell, groovy, objc, css, ini, dockerfile, cmake, jupyter, asm, zig, nim, d, ada, agda, lean, tlaplus, cobol, circom, verilog, vhdl, gdscript, wolfram, and ~36 more). Union of analysis_runs[].skipped_passes across all 84 runs: 0 entries. Total catalog known to system: 84 (ran) + 66 (skipped) = 150 passes; profile.languages reports only 18 active languages. Effect: downstream consumers querying analysis_runs to see what didn't run for a pass get no answer; can't distinguish 'pass ran on 0 files because no files matched' from 'pass was never invoked'."  # 7e1b
+    fields:  # 7e1b
+      statement: "Skipped-pass information is reachable from both top-level limits and per-run analysis_runs entries (the IR has consistent provenance for what was skipped and why)."  # 7e1b
+      root_cause: "The IR records skipped passes only at top-level (limits.skipped_passes) when discovery emits them. analysis_runs[].skipped_passes is populated only by passes that themselves decide to skip sub-units, and no pass does so in self-analysis. Result: limits has 66 entries (c, cpp, ruby, php, kotlin, scala, lua, perl, powershell, ...), analysis_runs[].skipped_passes is empty in all 84 entries."  # 7e1b

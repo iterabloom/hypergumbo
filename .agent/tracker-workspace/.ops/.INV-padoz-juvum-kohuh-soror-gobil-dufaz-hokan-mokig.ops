@@ -1,0 +1,25 @@
+- op: create  # f60a
+  at: '2026-05-28T21:46:36Z'  # f60a
+  by: agent  # f60a
+  actor: jgstern_agent  # f60a
+  clock: 1  # f60a
+  nonce: f60a  # f60a
+  data:  # f60a
+    kind: invariant  # f60a
+    title: "FFFFF: sketch_precomputed.vocabulary is 12 entries with no lemmatization (symbol+symbols, edge+edges); dominated by analysis-domain noise"  # f60a
+    status: violated  # f60a
+    priority: 1  # f60a
+    parent:  # f60a
+    tags:  # f60a
+    - dogfooding  # f60a
+    - pass15  # f60a
+    - sketch  # f60a
+    - vocabulary  # f60a
+    isbefore: []  # f60a
+    duplicate_of: []  # f60a
+    not_duplicate_of: []  # f60a
+    pr_ref:  # f60a
+    description: ""  # f60a
+    fields:  # f60a
+      statement: "sketch_precomputed.vocabulary has only 12 entries: ['symbol', 'edges', 'edge', 'symbols', 'line', 'kind', 'make', 'method', 'files', 'hypergumbo', 'analyze', 'repo']. No lemmatization: 'symbol' and 'symbols' both present; 'edge' and 'edges' both present. Generic terms ('line', 'kind', 'make', 'method', 'files') dominate over domain concepts"  # f60a
+      root_cause: "Vocabulary extraction tokenizes raw identifiers without stemming/lemmatization and without stop-word filtering of analysis-domain noise (e.g., 'symbols/edges' are the data structure, not domain concepts). 12 entries is too sparse for a 1198-file project; consumers can't use this for semantic search or topic identification"  # f60a

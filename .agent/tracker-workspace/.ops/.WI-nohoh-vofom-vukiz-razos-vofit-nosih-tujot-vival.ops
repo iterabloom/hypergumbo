@@ -1,0 +1,24 @@
+- op: create  # 7402
+  at: '2026-05-28T21:46:58Z'  # 7402
+  by: agent  # 7402
+  actor: jgstern_agent  # 7402
+  clock: 1  # 7402
+  nonce: '7402'  # 7402
+  data:  # 7402
+    kind: work_item  # 7402
+    title: "ZZZZ: AnalysisRun JSON key is 'pass' not 'pass_id' (Python-keyword alias) — undocumented in schema; consumer pitfall"  # 7402
+    status: todo_hard  # 7402
+    priority: 1  # 7402
+    parent:  # 7402
+    tags:  # 7402
+    - dogfooding  # 7402
+    - pass15  # 7402
+    - cli  # 7402
+    - ux  # 7402
+    isbefore: []  # 7402
+    duplicate_of: []  # 7402
+    not_duplicate_of: []  # 7402
+    pr_ref:  # 7402
+    description: ""  # 7402
+    fields:  # 7402
+      rationale: "JSON serialization aliases AnalysisRun.pass_id → 'pass' key (because 'pass' is a Python reserved word). Discovered while consumer-debugging analysis_runs[].pass_id (missing — actual key is 'pass'). Code internally uses pass_id everywhere; only the JSON wire format differs"  # 7402

@@ -1,0 +1,25 @@
+- op: create  # 72ec
+  at: '2026-05-28T21:46:17Z'  # 72ec
+  by: agent  # 72ec
+  actor: jgstern_agent  # 72ec
+  clock: 1  # 72ec
+  nonce: 72ec  # 72ec
+  data:  # 72ec
+    kind: invariant  # 72ec
+    title: "CCCCC: slice errors on ambiguous entry name but explain silently picks first match; inconsistent ambiguous-name handling across read subcommands"  # 72ec
+    status: violated  # 72ec
+    priority: 1  # 72ec
+    parent:  # 72ec
+    tags:  # 72ec
+    - dogfooding  # 72ec
+    - pass15  # 72ec
+    - cli  # 72ec
+    - ux  # 72ec
+    isbefore: []  # 72ec
+    duplicate_of: []  # 72ec
+    not_duplicate_of: []  # 72ec
+    pr_ref:  # 72ec
+    description: ""  # 72ec
+    fields:  # 72ec
+      statement: "slice errors on ambiguous entry name ('Ambiguous entry main matches 13 symbols'), but explain silently picks the first match without warning. Same ambiguous input handled inconsistently across read subcommands"  # 72ec
+      root_cause: "explain and slice were implemented separately with different ambiguity policies. Either both should error (consistent strict) or both should auto-pick with a warning (consistent permissive). Current behavior: identical input, different outcomes"  # 72ec

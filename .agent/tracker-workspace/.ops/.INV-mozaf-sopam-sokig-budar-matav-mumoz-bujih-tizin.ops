@@ -1,0 +1,24 @@
+- op: create  # 1206
+  at: '2026-05-28T21:21:01Z'  # 1206
+  by: agent  # 1206
+  actor: jgstern_agent  # 1206
+  clock: 1  # 1206
+  nonce: '1206'  # 1206
+  data:  # 1206
+    kind: invariant  # 1206
+    title: "File-accounting gap: metrics.total_files=1198 but unique_paths_in_analysis=902 and distinct non-external paths in nodes=901 — 296 files counted but produce no path-bearing nodes (yaml: 174, markdown: 107, others)"  # 1206
+    status: violated  # 1206
+    priority: 2  # 1206
+    parent:  # 1206
+    tags:  # 1206
+    - dogfooding  # 1206
+    - pass14  # 1206
+    - metric_consistency  # 1206
+    isbefore: []  # 1206
+    duplicate_of: []  # 1206
+    not_duplicate_of: []  # 1206
+    pr_ref:  # 1206
+    description: "Pass 14: profile.languages sum: 1198 (yaml 174, python 838, markdown 107, bash 42, toml 9, json 9, typescript 8, javascript 1, html 1, csharp 1, go 1, java 1, rust 1, solidity 1, sql 1, swift 1, wgsl 1, xml 1). metrics.total_files: 1198. metrics.debug.unique_paths_in_analysis: 902. distinct non-external paths in nodes: 901. Gap: 1198-902=296 files counted as 'analyzed' that contribute no path-bearing IR. yaml has zero entries in metrics.languages (no analyzer or zero-emitting analyzer); markdown emits only orphan external_symbol nodes. Effect: throughput metrics overcount, downstream consumers (search/symbols/io-boundaries) can't find content in 25% of 'analyzed' files."  # 1206
+    fields:  # 1206
+      statement: "metrics.total_files equals the number of files that contributed at least one node (path-bearing) to the IR."  # 1206
+      root_cause: "metrics.total_files is the sum of profile.languages.<lang>.files (discovery-time recognition by extension), while unique_paths_in_analysis counts files that produced at least one path-bearing node. yaml (174 files) and markdown (107 files) recognize files at discovery time but their analyzers emit no file/section nodes (yaml has zero nodes in metrics.languages; markdown only emits external :doc_link nodes per LLL)."  # 1206

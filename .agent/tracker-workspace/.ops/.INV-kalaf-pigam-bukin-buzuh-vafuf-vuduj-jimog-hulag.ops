@@ -1,0 +1,24 @@
+- op: create  # cdc1
+  at: '2026-05-28T22:12:24Z'  # cdc1
+  by: agent  # cdc1
+  actor: jgstern_agent  # cdc1
+  clock: 1  # cdc1
+  nonce: cdc1  # cdc1
+  data:  # cdc1
+    kind: invariant  # cdc1
+    title: "JJJJJ: 'Not owner' Solidity require-msg string leaks into node.language and propagates to io-boundaries.unsupported_languages output"  # cdc1
+    status: violated  # cdc1
+    priority: 3  # cdc1
+    parent:  # cdc1
+    tags:  # cdc1
+    - dogfooding  # cdc1
+    - pass16  # cdc1
+    - schema_integrity  # cdc1
+    isbefore: []  # cdc1
+    duplicate_of: []  # cdc1
+    not_duplicate_of: []  # cdc1
+    pr_ref:  # cdc1
+    description: ""  # cdc1
+    fields:  # cdc1
+      statement: "Solidity require-msg string 'Not owner' from tests/fixtures/schema-coverage-corpus/solidity/Contract.sol propagates as the LITERAL VALUE of node.language on an external_symbol node (id='Not owner:<unknown>:0-0:Not owner:Not owner', name='Not owner', language='Not owner'). The garbage further propagates to io-boundaries --json unsupported_languages=['Not owner', 'ansible', 'bash', ...]"  # cdc1
+      root_cause: "Solidity analyzer treats require-msg string as an import (B/INV-hojak — pass 1). When creating the external_symbol node for the unresolved import 'Not owner', the symbol-creation code uses the string as language/name/canonical_name segments instead of routing through an unknown-language sentinel. The id format <lang>:<path>:<span>:<name>:<kind> with lang=path=name='Not owner' shows the analyzer had no language detection result and defaulted to the source-of-the-string value"  # cdc1

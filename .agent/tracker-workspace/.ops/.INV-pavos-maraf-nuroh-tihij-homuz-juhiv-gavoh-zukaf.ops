@@ -1,0 +1,25 @@
+- op: create  # 7e0f
+  at: '2026-05-28T21:45:30Z'  # 7e0f
+  by: agent  # 7e0f
+  actor: jgstern_agent  # 7e0f
+  clock: 1  # 7e0f
+  nonce: 7e0f  # 7e0f
+  data:  # 7e0f
+    kind: invariant  # 7e0f
+    title: "VVVV: features synthesis emits 7 of 16 graphs with edge_ids=[] (all :route entries from serve.py:426-432); route→handler edge missing in graph"  # 7e0f
+    status: violated  # 7e0f
+    priority: 2  # 7e0f
+    parent:  # 7e0f
+    tags:  # 7e0f
+    - dogfooding  # 7e0f
+    - pass15  # 7e0f
+    - features  # 7e0f
+    - route_handler  # 7e0f
+    isbefore: []  # 7e0f
+    duplicate_of: []  # 7e0f
+    not_duplicate_of: []  # 7e0f
+    pr_ref:  # 7e0f
+    description: ""  # 7e0f
+    fields:  # 7e0f
+      statement: "features synthesis emits 7 of 16 feature graphs with edge_ids=[] (entries 8-14, all :route-typed entrypoints from serve.py:426-432); the corresponding :function-typed entries 0-7 have edges; entry 15 (WS:/ws) has 1 edge"  # 7e0f
+      root_cause: "features pass slices BFS from each entrypoint, but for :route symbols (route registration line, not handler body), there is no outbound edge to the handler :function symbol. The route→handler relationship was detected for entrypoints/usage_contexts but is missing as a graph edge that features-BFS can traverse"  # 7e0f
