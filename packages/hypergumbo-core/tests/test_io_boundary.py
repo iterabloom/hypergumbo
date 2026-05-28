@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.io_boundary import (
+    HIGH_RISK_EXEMPTIONS_SUBPROCESS,
     HIGH_RISK_PRIMITIVES,
     IO_BOUNDARIES_SCHEMA_VERSION,
     BoundaryMap,
@@ -2218,18 +2219,91 @@ class TestHighRiskPrimitives:
         assert isinstance(HIGH_RISK_PRIMITIVES, frozenset)
 
 
+CATALOG_LANGUAGES: tuple[str, ...] = (
+    "python", "go", "java", "rust", "javascript", "c",
+    "cpp", "elixir", "erlang", "kotlin", "scala",
+    "swift", "objc", "haskell",
+)
+
+
+def _format_subprocess_drift_message(
+    unclassified: list[tuple[str, str]],
+) -> str:
+    """Format the assertion message for the Part 2 drift guard (WI-sugav).
+
+    The shape of this message is the human-facing UI of the drift guard:
+    when a contributor adds a subprocess-boundary primitive to a YAML
+    catalog but forgets to classify it in ``io_boundary.py``, this is
+    what they see in CI. WI-sugav specifies five required sections, in
+    this order, and the formatter unit test (below) locks the shape:
+
+    1. One-line header naming the rule, the count, and the WI ID.
+    2. WHY THIS MATTERS — plain-language explanation for a reader who
+       hasn't internalised what ``has_high_risk`` is.
+    3. UNCLASSIFIED PRIMITIVES — sorted, with source catalog in parens.
+    4. HOW TO FIX — absolute file path + (a)/(b) decision rule with
+       concrete examples.
+    5. Exact pytest command to re-run after the fix.
+    """
+    count = len(unclassified)
+    sorted_entries = sorted(unclassified)
+    max_name = max((len(q) for q, _ in sorted_entries), default=0)
+    primitive_lines = "\n".join(
+        f"  {q.ljust(max_name)}  ({lang}.yaml)"
+        for q, lang in sorted_entries
+    )
+    return (
+        "HIGH_RISK_PRIMITIVES drift guard (Part 2, WI-sugav): "
+        f"{count} subprocess-boundary\n"
+        "primitives are present in io_primitives YAML catalogs but not classified\n"
+        "in io_boundary.py.\n"
+        "\n"
+        "WHY THIS MATTERS:\n"
+        "  A primitive with boundary=subprocess is a process-launching API\n"
+        "  (subprocess.Popen, Runtime.exec, os.system, and friends). We want every\n"
+        "  such primitive to have an explicit \"high-risk\" classification so the\n"
+        "  has_high_risk=True flag fires consistently when a user analyzes a\n"
+        "  repo that calls into one. Each unclassified entry below is silently\n"
+        "  falling through — the catalog tracks it for taint analysis, but the\n"
+        "  high-risk display flag never fires.\n"
+        "\n"
+        "UNCLASSIFIED PRIMITIVES:\n"
+        f"{primitive_lines}\n"
+        "\n"
+        "HOW TO FIX:\n"
+        "  Edit packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py and,\n"
+        "  for each primitive above, pick ONE of:\n"
+        "\n"
+        "  (a) Add to HIGH_RISK_PRIMITIVES (the common case).\n"
+        "      Pick this if the primitive launches an arbitrary subprocess\n"
+        "      — i.e., calls of the shape \"run this command string with these\n"
+        "      args, give me the result.\" This is what subprocess.Popen,\n"
+        "      Runtime.exec, os.system, and Process.spawn all do.\n"
+        "\n"
+        "  (b) Add to HIGH_RISK_EXEMPTIONS_SUBPROCESS with an inline comment\n"
+        "      explaining why (the rare case). Pick this if the primitive is\n"
+        "      technically boundary=subprocess in the catalog but doesn't represent\n"
+        "      arbitrary code execution — e.g., it's a thin wrapper around a\n"
+        "      single known utility (`git`-only, `docker`-only) that's already\n"
+        "      classified elsewhere, or it operates on an already-launched\n"
+        "      process (wait, signal, cleanup).\n"
+        "\n"
+        "  After editing, re-run "
+        "`pytest packages/hypergumbo-core/tests/"
+        "test_io_boundary.py::TestHighRiskPrimitivesDriftGuard`\n"
+        "  and the test should pass.\n"
+        "\n"
+        "See WI-sugav (tracker item) for the design rationale."
+    )
+
+
 class TestHighRiskPrimitivesDriftGuard:
-    """WI-gitad: every HIGH_RISK_PRIMITIVES entry must exist in a YAML catalog."""
+    """WI-gitad / WI-sugav: HIGH_RISK_PRIMITIVES ↔ catalog drift guard (both directions)."""
 
     def test_every_high_risk_entry_exists_in_a_catalog(self) -> None:
-        """Phantom detection: no entry in HIGH_RISK_PRIMITIVES without a catalog match."""
-        catalog_languages = [
-            "python", "go", "java", "rust", "javascript", "c",
-            "cpp", "elixir", "erlang", "kotlin", "scala",
-            "swift", "objc", "haskell",
-        ]
+        """Phantom detection (Part 1, WI-gitad): no HIGH_RISK_PRIMITIVES entry without a catalog match."""
         all_qualified: set[str] = set()
-        for lang in catalog_languages:
+        for lang in CATALOG_LANGUAGES:
             cat = load_catalog(lang)
             for p in cat.primitives:
                 all_qualified.add(p.qualified_name)
@@ -2238,6 +2312,103 @@ class TestHighRiskPrimitivesDriftGuard:
         assert phantoms == [], (
             f"HIGH_RISK_PRIMITIVES entries not found in any io_primitives YAML catalog "
             f"(phantom entries — the high_risk flag never fires for these): {phantoms}"
+        )
+
+    def test_every_subprocess_boundary_primitive_is_classified(self) -> None:
+        """Missing-entry detection (Part 2, WI-sugav).
+
+        For every catalog entry with ``boundary == "subprocess"``, the
+        qualified name must be present in either ``HIGH_RISK_PRIMITIVES``
+        (the common case — entry represents arbitrary code execution) or
+        ``HIGH_RISK_EXEMPTIONS_SUBPROCESS`` (the rare case — entry is
+        subprocess-boundary for taint tracking but isn't arbitrary
+        execution, e.g., wait/signal/PATH-lookup).
+
+        The failure message conforms to the WI-sugav spec — see
+        ``_format_subprocess_drift_message`` for the contract, which is
+        independently verified by
+        ``test_subprocess_drift_message_formatter_shape``.
+        """
+        unclassified: list[tuple[str, str]] = []
+        for lang in CATALOG_LANGUAGES:
+            for p in load_catalog(lang).primitives:
+                if p.boundary != "subprocess":
+                    continue
+                q = p.qualified_name
+                if q in HIGH_RISK_PRIMITIVES:
+                    continue
+                if q in HIGH_RISK_EXEMPTIONS_SUBPROCESS:
+                    continue
+                unclassified.append((q, lang))
+
+        assert not unclassified, _format_subprocess_drift_message(unclassified)
+
+    def test_subprocess_drift_message_formatter_shape(self) -> None:
+        """Spec compliance: the formatter produces the verbatim WI-sugav shape.
+
+        Locks the five required structural elements (header, WHY, list,
+        HOW TO FIX, re-run command) and key prose anchors so a future
+        refactor can't silently drop the developer-facing scaffolding.
+        """
+        msg = _format_subprocess_drift_message([
+            ("kotlin.lang.Runtime.exec", "kotlin"),
+            ("scala.sys.process.Process.apply", "scala"),
+        ])
+        # (1) one-line header: rule name + count + WI ID
+        assert msg.startswith(
+            "HIGH_RISK_PRIMITIVES drift guard (Part 2, WI-sugav): 2 subprocess-boundary"
+        )
+        # (2) WHY THIS MATTERS section with plain-language anchor
+        assert "WHY THIS MATTERS:" in msg
+        assert "process-launching API" in msg
+        assert "has_high_risk=True flag fires" in msg
+        # (3) UNCLASSIFIED PRIMITIVES — sorted, with source catalog in parens
+        assert "UNCLASSIFIED PRIMITIVES:" in msg
+        kotlin_idx = msg.index("kotlin.lang.Runtime.exec")
+        scala_idx = msg.index("scala.sys.process.Process.apply")
+        assert kotlin_idx < scala_idx
+        assert "(kotlin.yaml)" in msg
+        assert "(scala.yaml)" in msg
+        # (4) HOW TO FIX — absolute path + (a)/(b) + decision rule with examples
+        assert "HOW TO FIX:" in msg
+        assert "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py" in msg
+        assert "(a) Add to HIGH_RISK_PRIMITIVES" in msg
+        assert "(b) Add to HIGH_RISK_EXEMPTIONS_SUBPROCESS" in msg
+        assert "subprocess.Popen" in msg
+        assert "Runtime.exec" in msg
+        # (5) exact pytest re-run command (one copy-paste away from verifying the fix)
+        assert (
+            "pytest packages/hypergumbo-core/tests/"
+            "test_io_boundary.py::TestHighRiskPrimitivesDriftGuard" in msg
+        )
+        # Tracker back-reference
+        assert "See WI-sugav (tracker item)" in msg
+
+    def test_subprocess_drift_message_empty_input_is_well_formed(self) -> None:
+        """Edge case: an empty list still produces a structurally valid message.
+
+        The drift-guard test never invokes the formatter with an empty
+        list (the assert short-circuits), but a unit test of the
+        formatter must cover the empty path so future refactors can't
+        regress it into raising on ``max(...)`` of an empty iterable.
+        """
+        msg = _format_subprocess_drift_message([])
+        assert msg.startswith(
+            "HIGH_RISK_PRIMITIVES drift guard (Part 2, WI-sugav): 0 subprocess-boundary"
+        )
+        assert "UNCLASSIFIED PRIMITIVES:" in msg
+
+    def test_high_risk_and_exemption_sets_are_disjoint(self) -> None:
+        """An entry can be HIGH_RISK_PRIMITIVES or HIGH_RISK_EXEMPTIONS_SUBPROCESS, not both.
+
+        The drift guard treats either set as "classified", so an entry
+        listed in both would silently bypass the gate. Explicit
+        disjointness check makes that mistake impossible.
+        """
+        overlap = HIGH_RISK_PRIMITIVES & HIGH_RISK_EXEMPTIONS_SUBPROCESS
+        assert overlap == set(), (
+            f"HIGH_RISK_PRIMITIVES and HIGH_RISK_EXEMPTIONS_SUBPROCESS overlap on "
+            f"{sorted(overlap)}; an entry must land in exactly one."
         )
 
 

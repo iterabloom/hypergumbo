@@ -182,17 +182,84 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     "socket.socket.connect", "socket.socket.send", "socket.socket.sendall",
     # Go
     "os/exec.Command", "os/exec.CommandContext",
-    # Java
+    "os/exec.Cmd.CombinedOutput", "os/exec.Cmd.Output",
+    "os/exec.Cmd.Run", "os/exec.Cmd.Start",
+    "golang.org/x/sys/execabs.Command", "golang.org/x/sys/execabs.CommandContext",
+    "syscall.Exec", "syscall.ForkExec",
+    # Java / Kotlin / Scala (JVM ProcessBuilder is shared)
     "java.lang.ProcessBuilder.start", "java.lang.Runtime.exec",
+    "java.lang.ProcessBuilder.command",
+    "scala.sys.process.Process.apply", "scala.sys.process.Process.run",
+    "scala.sys.process.ProcessBuilder.run",
+    "scala.sys.process.ProcessBuilder.lineStream",
+    "scala.sys.process.ProcessBuilder.lazyLines",
     # Rust
     "std::process::Command.spawn", "std::process::Command.output",
-    "std::process::Command.status",
+    "std::process::Command.status", "std::process::Command.new",
     # JavaScript / Node
     "child_process.exec", "child_process.execSync",
     "child_process.spawn", "child_process.spawnSync",
-    # C
+    "child_process.execFile", "child_process.execFileSync",
+    "child_process.fork",
+    # C / C++
     "unistd.exec", "unistd.execl", "unistd.fork",
     "stdlib.system", "stdlib.popen",
+    "unistd.execle", "unistd.execlp", "unistd.execv",
+    "unistd.execve", "unistd.execvp",
+    "spawn.posix_spawn", "spawn.posix_spawnp",
+    # Elixir
+    "System.cmd", "System.shell",
+    "Port.command", "Port.open",
+    # Haskell (System.Process — `process` package)
+    "System.Process.callCommand", "System.Process.callProcess",
+    "System.Process.createProcess", "System.Process.rawSystem",
+    "System.Process.readCreateProcess",
+    "System.Process.readCreateProcessWithExitCode",
+    "System.Process.readProcess",
+    "System.Process.readProcessWithExitCode",
+    "System.Process.spawnCommand", "System.Process.spawnProcess",
+    "System.Process.system",
+    "System.Process.Typed.readProcess", "System.Process.Typed.runProcess",
+    "System.Process.Typed.startProcess",
+    "System.Process.Typed.withProcessTerm",
+    "System.Process.Typed.withProcessWait",
+    # Swift (Foundation.Process — launchPath is the canonical launch site
+    # tracked by swift.yaml; there is no separate Process.launch entry).
+    "Process.launchPath",
+    # Objective-C (Foundation NSTask)
+    "NSTask.launch", "NSTask.launchAndReturnError:",
+})
+
+
+HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
+    # These qualified names appear in io_primitives YAML catalogs with
+    # boundary=subprocess (so taint analysis tracks them) but are
+    # intentionally NOT high-risk for display purposes: they operate on
+    # an already-launched process (signal, wait, cleanup), terminate the
+    # current process without spawning anything, or perform a PATH
+    # lookup without executing. The WI-sugav Part 2 drift guard
+    # (Tests::TestHighRiskPrimitivesDriftGuard) requires every
+    # boundary=subprocess catalog entry to land in either
+    # HIGH_RISK_PRIMITIVES or this set.
+    #
+    # Go — PATH-lookup helpers (string in, string out; no exec).
+    "os/exec.LookPath", "golang.org/x/sys/execabs.LookPath",
+    # C / C++ — wait on an already-launched child (does not spawn).
+    "sys/wait.wait", "sys/wait.waitpid",
+    # Rust — terminate the current process (no subprocess spawned).
+    "std::process.abort", "std::process.exit",
+    # Elixir — halts the BEAM VM (current-process exit).
+    "System.halt",
+    # Swift Foundation.Process — operate on existing process.
+    "Process.interrupt", "Process.terminate", "Process.waitUntilExit",
+    # Objective-C NSTask — operate on existing process.
+    "NSTask.interrupt", "NSTask.terminate", "NSTask.waitUntilExit",
+    # Haskell System.Process — signal / wait / cleanup on existing process.
+    "System.Process.cleanupProcess",
+    "System.Process.interruptProcessGroupOf",
+    "System.Process.terminateProcess",
+    "System.Process.waitForProcess",
+    "System.Process.Typed.stopProcess",
 })
 
 
@@ -200,9 +267,12 @@ def is_high_risk(primitive_name: str) -> bool:
     """Check whether a primitive is classified as high-risk.
 
     High-risk primitives include destructive filesystem operations
-    (rmtree, unlink), subprocess/code execution (Popen, exec*), and
-    outbound network calls (urlopen, socket.send). The classification
-    covers Python, Go, Java, Rust, JavaScript, and C primitives.
+    (rmtree, unlink), subprocess / code execution (Popen, exec*, NSTask
+    launch, JVM ProcessBuilder, BEAM Port spawning, Haskell
+    System.Process spawn family, …), and outbound network calls
+    (urlopen, socket.send). The classification covers all 14 catalog
+    languages (Python, Go, Java, Rust, JavaScript, C, C++, Elixir,
+    Erlang, Kotlin, Scala, Swift, Objective-C, Haskell).
     """
     return primitive_name in HIGH_RISK_PRIMITIVES
 
