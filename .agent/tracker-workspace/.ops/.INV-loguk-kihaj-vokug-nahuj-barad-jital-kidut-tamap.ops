@@ -1,0 +1,25 @@
+- op: create  # 4f32
+  at: '2026-05-28T15:36:03Z'  # 4f32
+  by: agent  # 4f32
+  actor: jgstern_agent  # 4f32
+  clock: 1  # 4f32
+  nonce: 4f32  # 4f32
+  data:  # 4f32
+    kind: invariant  # 4f32
+    title: "non-Python language analyzers don't populate cyclomatic_complexity (and most don't populate lines_of_code)"  # 4f32
+    status: violated  # 4f32
+    priority: 2  # 4f32
+    parent:  # 4f32
+    tags:  # 4f32
+    - dogfooding  # 4f32
+    - pass3  # 4f32
+    - analyzer_coverage  # 4f32
+    - low_hanging  # 4f32
+    isbefore: []  # 4f32
+    duplicate_of: []  # 4f32
+    not_duplicate_of: []  # 4f32
+    pr_ref:  # 4f32
+    description: "Whole-repo hypergumbo run on hypergumbo itself (2026-05-28 session 3, dogfooding pass 3) found that cyclomatic_complexity and lines_of_code are unpopulated across most languages:\n\nPer-language coverage (n=33830 symbols, 18 langs):\n  lang             n   loc%   cc%\n  python       33282    87%   87%\n  bash           218    71%    0%\n  markdown       102     0%    0%\n  toml            83     0%    0%\n  typescript      67     0%    0%\n  javascript      13     0%    0%\n  go               9    66%    0%\n  rust             9    55%    0%\n  solidity         9     0%    0%\n  json             8     0%    0%\n  swift            7     0%    0%\n  csharp           6     0%    0%\n  java             6     0%    0%\n  wgsl             5     0%    0%\n\nImpact: dead-code-maybe scoring, supply-chain ranking, and sketch centrality cannot use these signals for non-Python code. The IR Symbol fields exist (defined in ir.py) — analyzers in hypergumbo-lang-mainstream and hypergumbo-lang-extended1 simply don't populate them.\n\nDiscovery: dogfooding session 3 cross-language analytical-field-population audit.\nMethod: jq across whole-repo behavior_map.json (/tmp/hg-dogfood-2026-05-28/behavior_map.json)."  # 4f32
+    fields:  # 4f32
+      statement: "Every Symbol with a function-like kind should have non-null cyclomatic_complexity and lines_of_code when the source code is available, regardless of language. Current state: 100% non-Python languages have 0% CC populated; 8 of 12 non-Python langs have 0% LOC populated."  # 4f32
+      root_cause: "Analyzers in hypergumbo-lang-mainstream and hypergumbo-lang-extended1 do not implement LOC/CC extraction for non-Python languages. The IR fields exist on Symbol but only python populates both; bash/go/rust populate only LOC. Downstream consumers (dead-code-maybe, supply-chain ranking, sketch centrality) cannot use these signals for non-Python code."  # 4f32

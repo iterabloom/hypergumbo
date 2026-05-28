@@ -1,0 +1,25 @@
+- op: create  # 8fba
+  at: '2026-05-28T15:55:29Z'  # 8fba
+  by: agent  # 8fba
+  actor: jgstern_agent  # 8fba
+  clock: 1  # 8fba
+  nonce: 8fba  # 8fba
+  data:  # 8fba
+    kind: invariant  # 8fba
+    title: "linkers hard-code language=javascript for synthetic symbols on .ts files"  # 8fba
+    status: violated  # 8fba
+    priority: 2  # 8fba
+    parent:  # 8fba
+    tags:  # 8fba
+    - dogfooding  # 8fba
+    - pass4  # 8fba
+    - linker  # 8fba
+    - low_hanging  # 8fba
+    isbefore: []  # 8fba
+    duplicate_of: []  # 8fba
+    not_duplicate_of: []  # 8fba
+    pr_ref:  # 8fba
+    description: "Multiple linkers (event_sourcing.py, ipc.py, database_query.py, graphql_resolver.py) hard-code `language=\"javascript\"` when creating synthetic Symbol records, ignoring the actual file extension. .ts files therefore end up with Symbol.language=\"javascript\" on linker-produced symbols even though the same files' Symbol records from the JS/TS analyzer correctly use Symbol.language=\"typescript\".\n\nReproduction (2026-05-28, dogfooding pass 4):\n\n1. Whole-repo behavior_map.json from `hypergumbo run .` (branch dev @ 77a69627b8).\n\n2. Filter .ts file nodes by Symbol.language:\n   python3 -c \"\n   import json, collections\n   bm=json.load(open('/tmp/hg-dogfood-2026-05-28/behavior_map.json'))\n   c=collections.Counter()\n   for n in bm['nodes']:\n     if '.ts' in n.get('path','') and '.test.' not in n['path']:\n       c[n.get('language','?')] += 1\n   print(c)\"\n   → Counter({'typescript': 46, 'javascript': 7})\n\n3. Inspect the 7 mis-tagged JS-on-TS symbols:\n   - All have origin=['<linker-name>'] (event-sourcing-linker, etc.) — none are direct from the JS/TS analyzer.\n   - Sample: id=\"javascript:packages/htrac-frontend/src/components/item-detail.ts:196-196:back:event_publisher\",\n     name='back', language='javascript', origin=['event-sourcing-linker'].\n\n4. Source-of-bug confirmed at:\n   - packages/hypergumbo-core/src/hypergumbo_core/linkers/event_sourcing.py:319,333,347,361 (JS event publishers/subscribers)\n   - packages/hypergumbo-core/src/hypergumbo_core/linkers/ipc.py:509\n   - packages/hypergumbo-core/src/hypergumbo_core/linkers/database_query.py:270,284\n   - packages/hypergumbo-core/src/hypergumbo_core/linkers/graphql_resolver.py:235,248,263\n\n   Every one hard-codes `language=\"javascript\"` regardless of source file extension.\n   \n   By contrast, linkers/tauri_ipc.py and linkers/wasm_bindgen.py correctly use `language=\"typescript\"` for symbols they create — so the pattern is feasible per-linker.\n\nImpact:\n- behavior_map.json self-inconsistency: same .ts file produces TaintCatalog records under \"typescript\" (analyzer) and \"javascript\" (linker). Downstream consumers must remember which subset to expect.\n- dead-code-maybe candidates from .ts files appear with `language: \"javascript\"` (observed empirically in pass 4 on `back`/`item-select` synthetic event-publisher symbols).\n- Possible miscategorization in `routes --language typescript` and `io-boundaries` per-language summaries.\n- Cross-language linkers that look up symbols by `(language, path)` may miss the synthetic JS records on .ts files.\n\nFix sketch: each affected linker should infer the language from the file extension before constructing the Symbol. A small helper `_detect_js_family_language(file_path: str) -> str` returning \"typescript\" for .ts/.tsx/.mts/.cts and \"javascript\" otherwise. Apply uniformly across event_sourcing.py / ipc.py / database_query.py / graphql_resolver.py.\n\nDiscovery: dogfooding pass 4 dead-code-maybe candidate inspection on htrac-frontend .ts files."  # 8fba
+    fields:  # 8fba
+      statement: "A linker-created Symbol that lives in a .ts/.tsx/.mts/.cts file must have language=\"typescript\", consistent with what the JS/TS analyzer assigns to non-linker symbols in the same file. Current state: event_sourcing/ipc/database_query/graphql_resolver linkers all hard-code language=\"javascript\" regardless of extension, producing 7 of 53 (13%) .ts file Symbol records that disagree with the rest."  # 8fba
+      root_cause: "event_sourcing.py lines 319/333/347/361, ipc.py:509, database_query.py:270,284, graphql_resolver.py:235,248,263 all literally write language=\"javascript\" with no extension check. tauri_ipc.py and wasm_bindgen.py demonstrate the correct pattern (language=\"typescript\" for TS-targeting symbols), so the fix is a per-linker helper to infer language from file extension before constructing Symbol records."  # 8fba

@@ -1,0 +1,23 @@
+- op: create  # 742e
+  at: '2026-05-28T15:36:45Z'  # 742e
+  by: agent  # 742e
+  actor: jgstern_agent  # 742e
+  clock: 1  # 742e
+  nonce: 742e  # 742e
+  data:  # 742e
+    kind: work_item  # 742e
+    title: "sketch --require-section silently accepts invalid section names (no input validation)"  # 742e
+    status: todo_hard  # 742e
+    priority: 2  # 742e
+    parent:  # 742e
+    tags:  # 742e
+    - dogfooding  # 742e
+    - pass3  # 742e
+    - cli_ux  # 742e
+    - low_hanging  # 742e
+    isbefore: []  # 742e
+    duplicate_of: []  # 742e
+    not_duplicate_of: []  # 742e
+    pr_ref:  # 742e
+    description: "hypergumbo sketch --require-section <NAME> accepts arbitrary strings without validation against the documented valid set.\n\nThe cli.py help text for --require-section enumerates exactly seven valid section names:\n  Entry Points, Data Models, Source Files, Key Symbols, Additional Files,\n  Source Files Content, Additional Files Content\n\nReproduction (2026-05-28, branch dev):\n  hypergumbo sketch --input /tmp/hg-dogfood-2026-05-28/behavior_map.json \\\n    -t 2000 --require-section \"NONEXISTENT\"\n  → exit 0, full sketch produced, no \"NONEXISTENT\" section anywhere in output,\n    no warning to stderr.\n\nSame problem on search subcommand (smaller surface):\n  hypergumbo search \"main\" --language klingon  → \"No symbols found\" (exit 0)\n  hypergumbo search \"_load_source_yaml\" --kind nonexistent_kind → \"No symbols found\"\n\nThe intent of --require-section is to enforce that a section appears even under budget pressure. Silent acceptance of unknown names means a typo (e.g., \"Key Sympols\", \"key symbols\" lowercase) gets no feedback — the budget guarantee the user thought they bought never engages.\n\nImpact: LOW — usability cliff. Users who typo or mis-name a section think they're enforcing budget protection but aren't. No security or correctness impact, but undermines flag's documented contract.\n\nFix: parse --require-section values against the same set the help text documents, error on unknown. Same for --kind / --language on search if the corresponding registry is enumerable.\n\nDiscovery: dogfooding pass 3 sketch flag exercise."  # 742e
+    fields: {}  # 742e

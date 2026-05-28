@@ -1,0 +1,25 @@
+- op: create  # f109
+  at: '2026-05-28T15:36:32Z'  # f109
+  by: agent  # f109
+  actor: jgstern_agent  # f109
+  clock: 1  # f109
+  nonce: f109  # f109
+  data:  # f109
+    kind: invariant  # f109
+    title: "verify-claims --taint-sources cannot override claims-file extra_catalogs.sources entries"  # f109
+    status: violated  # f109
+    priority: 2  # f109
+    parent:  # f109
+    tags:  # f109
+    - dogfooding  # f109
+    - pass3  # f109
+    - verify_claims  # f109
+    - taint_flow  # f109
+    isbefore: []  # f109
+    duplicate_of: []  # f109
+    not_duplicate_of: []  # f109
+    pr_ref:  # f109
+    description: "verify-claims --taint-sources is documented to allow user override of built-in / claims-file taint sources: \"Entries whose (module, name, kind) matches an auto-derived or built-in source are overridden.\" Dogfooding pass 3 found that CLI --taint-sources can ADD sources but cannot OVERRIDE entries that the claims file declares via extra_catalogs.sources.\n\nReproduction (2026-05-28, branch dev @ 77a69627b8):\n\n1. Baseline:\n   hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml \\\n     --input /tmp/hg-dogfood-2026-05-28/behavior_map.json --json\n   → 4 violations: runtime-cli-no-host-fs (3956), -no-network (636), -no-subprocess (617), add-extras-no-host-fs (14).\n\n2. Override file (override_all.yaml) redirects all 16 cmd_* sources from runtime_cli_entry to a new label:\n   taint_label: redirected_entry\n   sources:\n     python:\n       - module: hypergumbo_core.cli\n         start_at: callee\n         functions: [cmd_sketch, cmd_run, cmd_slice, cmd_search, cmd_routes, cmd_explain,\n                     cmd_symbols, cmd_compact, cmd_io_boundaries, cmd_verify_claims,\n                     cmd_catalog, cmd_test_coverage, cmd_dead_code_maybe, cmd_config,\n                     cmd_cache_status, cmd_cache_clear]\n\n3. Re-run with the override:\n   hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml \\\n     --input /tmp/hg-dogfood-2026-05-28/behavior_map.json \\\n     --taint-sources /tmp/.../override_all.yaml --json\n   → Loaded project-local taint catalog: 7 source path(s) (file IS loaded).\n   → 4 violations: BYTE-IDENTICAL evidence counts to baseline.\n\nIf the override had taken effect, the cmd_* names should no longer seed runtime_cli_entry BFS, so the three runtime-cli-* violations should drop sharply or disappear. They don't.\n\nRoot cause (cli.py:4423-4433 + taint.py:437-477):\n- cli_sources and claims_sources are merged into ONE list `extra_source_paths` (cli.py:4431).\n- load_full_taint_catalog passes this as `extra_source_paths` to load_taint_catalog (taint.py:437-477).\n- load_taint_catalog CONCATENATES all sources from all files into one TaintCatalog (no within-layer dedup).\n- _merge_with_user_override (taint.py:586-608) only de-duplicates BETWEEN layers (built-in vs the merged extra catalog), not WITHIN the extra catalog.\n- Net effect: my override file ADDS a TaintSource with taint_label=redirected_entry for cmd_sketch, but the runtime_cli_sources.yaml TaintSource with taint_label=runtime_cli_entry remains. The BFS visits cmd_sketch as BOTH labels. The override semantics promised by the documentation and the CLI status line do not hold.\n\nThe code comment at cli.py:4419-4422 acknowledges the architecture's assumption (\"(module, name, kind) conflicts between two user entries would be a bug regardless\") but in practice the claims-file declares cmd_* entries that any user --taint-sources override needs to displace.\n\nImpact: HIGH — verify-claims is a security-claim verification tool. Silently failed overrides could give false negatives in downstream projects that try to narrow their threat model via --taint-sources.\n\nFix sketch: separate the user catalog into \"claims-file extras\" and \"CLI extras\" layers; apply _merge_with_user_override BETWEEN them (CLI wins), then between (claims+CLI) and built-in. OR add intra-layer dedup with documented later-wins ordering when the same (module, name, kind) appears in both.\n\nDiscovery: dogfooding pass 3 verify-claims custom-catalog probing."  # f109
+    fields:  # f109
+      statement: "When --taint-sources is provided AND the claims file declares extra_catalogs.sources for an overlapping (module, name, kind) triple, the CLI flag must replace the claims-file entry per documented \"User entries override auto-derived defaults on (module, name, kind) match\" semantics. Currently both entries coexist as duplicate TaintSources, breaking the override promise."  # f109
+      root_cause: "cli.py:4431 concatenates cli_sources + claims_sources into a single extra_source_paths list before load_full_taint_catalog. taint.py:load_taint_catalog (line 437-477) extends all entries from all files into one TaintCatalog without intra-layer dedup. _merge_with_user_override (taint.py:586-608) only de-duplicates between the built-in catalog and the merged extra catalog. The result: user CLI overrides become additions, not replacements, against claims-file declared sources."  # f109
