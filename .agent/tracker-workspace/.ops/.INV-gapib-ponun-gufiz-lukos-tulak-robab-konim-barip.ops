@@ -1,0 +1,25 @@
+- op: create  # d795
+  at: '2026-05-28T17:41:33Z'  # d795
+  by: agent  # d795
+  actor: jgstern_agent  # d795
+  clock: 1  # d795
+  nonce: d795  # d795
+  data:  # d795
+    kind: invariant  # d795
+    title: "All --input consumers silently accept wrong-view JSON; view field not checked"  # d795
+    status: violated  # d795
+    priority: 2  # d795
+    parent:  # d795
+    tags:  # d795
+    - dogfooding  # d795
+    - pass8  # d795
+    - cli_ux  # d795
+    - error_handling  # d795
+    isbefore: []  # d795
+    duplicate_of: []  # d795
+    not_duplicate_of: []  # d795
+    pr_ref:  # d795
+    description: ""  # d795
+    fields:  # d795
+      statement: "hypergumbo subcommands accepting --input must validate that the supplied JSON's 'view' field matches what they expect (or is the primary behavior_map artifact). Currently 5 of 6 consumers (search, explain, routes, test-coverage, dead-code-maybe, io-boundaries) accept a slice.json (with view='slice') as --input and emit benign-looking empty results without warning."  # d795
+      root_cause: "Consumers call behavior_map.get('nodes', []) and behavior_map.get('edges', []) without checking the top-level 'view' field. When fed an artifact whose top-level structure is different (e.g., slice JSON wraps nodes inside 'feature.node_ids'), they get an empty list and report 'No symbols found' / 'No I/O boundary calls detected' / etc. The view field exists (test-coverage='test-coverage', slice='slice', compact='compact') for exactly this discrimination but is never read by consumers. Same fail-silent class as Findings P/Y/etc but specifically for artifact-type validation."  # d795

@@ -1,0 +1,23 @@
+- op: create  # b1f4
+  at: '2026-05-28T17:42:08Z'  # b1f4
+  by: agent  # b1f4
+  actor: jgstern_agent  # b1f4
+  clock: 1  # b1f4
+  nonce: b1f4  # b1f4
+  data:  # b1f4
+    kind: work_item  # b1f4
+    title: "Edge kind vocabulary inconsistent across language analyzers: extends vs inherits vs implements (conceptual leak)"  # b1f4
+    status: todo_hard  # b1f4
+    priority: 1  # b1f4
+    parent:  # b1f4
+    tags:  # b1f4
+    - dogfooding  # b1f4
+    - pass8  # b1f4
+    - conceptual_leak  # b1f4
+    - edge_vocab  # b1f4
+    isbefore: []  # b1f4
+    duplicate_of: []  # b1f4
+    not_duplicate_of: []  # b1f4
+    pr_ref:  # b1f4
+    description: "Behavior map has edge kinds: 'extends' (147 — JS/TS/Java), 'implements' (6 — Java/TS interfaces), 'inherits' (1 — Solidity), 'overrides' (1 — Solidity). These represent overlapping conceptual relations (class inheritance, interface implementation, function override) but use language-specific edge kind names. A consumer that wants 'show me all subclass relationships' must enumerate {extends, inherits} and pray it covers everything. Per CLAUDE.md's Fundamental Concept Audit guidance, this is a conceptual leak — the same property (one symbol inheriting from another) is expressed with multiple silent vocabularies. Suggested resolutions: (1) consolidate to one canonical kind (e.g., 'extends') with optional meta.semantic_subtype for language-specific flavor; (2) document the cross-language synonym table; (3) add a registry-backed enum for edge kinds (ADR-0023-style heavy axis). All three closures are tracked elsewhere — this item is the discovery."  # b1f4
+    fields: {}  # b1f4

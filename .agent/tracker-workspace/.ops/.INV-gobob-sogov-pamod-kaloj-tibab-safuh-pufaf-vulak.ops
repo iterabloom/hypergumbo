@@ -1,0 +1,26 @@
+- op: create  # 8b35
+  at: '2026-05-28T17:41:45Z'  # 8b35
+  by: agent  # 8b35
+  actor: jgstern_agent  # 8b35
+  clock: 1  # 8b35
+  nonce: 8b35  # 8b35
+  data:  # 8b35
+    kind: invariant  # 8b35
+    title: "verify-claims accepts unknown constraint.boundary values as silently 'confirmed'"  # 8b35
+    status: violated  # 8b35
+    priority: 2  # 8b35
+    parent:  # 8b35
+    tags:  # 8b35
+    - dogfooding  # 8b35
+    - pass8  # 8b35
+    - cli_ux  # 8b35
+    - security  # 8b35
+    - error_handling  # 8b35
+    isbefore: []  # 8b35
+    duplicate_of: []  # 8b35
+    not_duplicate_of: []  # 8b35
+    pr_ref:  # 8b35
+    description: ""  # 8b35
+    fields:  # 8b35
+      statement: "When a claims YAML specifies an unknown boundary type (e.g., 'nonexistent_boundary' instead of net_send/fs_write/etc.), 'hypergumbo verify-claims' must error or warn, not report 'confirmed / No nonexistent_boundary chains found.' with exit 0."  # 8b35
+      root_cause: "verify_claims.py:239 does boundary_map.entries.get(claim.constraint_boundary) which returns None for unknown boundaries; chain_count=0 follows; then the must_not_exist branch reports 'confirmed / No <boundary> chains found.' Same root pattern as INV-mofih (unknown type confirms) but for boundary names. The valid boundary set is finite and known (env_read, external_potential, fs_read, fs_write, ipc_recv, logging, net_recv, net_send, subprocess) and should be validated at load_claims time with a 'did you mean' hint. Bundle with INV-mofih and INV-nufob for the verify-claims fail-silent cluster."  # 8b35

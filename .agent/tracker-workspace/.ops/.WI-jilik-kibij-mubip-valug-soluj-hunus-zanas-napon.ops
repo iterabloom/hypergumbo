@@ -1,0 +1,22 @@
+- op: create  # c5d7
+  at: '2026-05-28T17:41:55Z'  # c5d7
+  by: agent  # c5d7
+  actor: jgstern_agent  # c5d7
+  clock: 1  # c5d7
+  nonce: c5d7  # c5d7
+  data:  # c5d7
+    kind: work_item  # c5d7
+    title: "Undocumented HYPERGUMBO_* env vars and HF_HUB_OFFLINE not documented"  # c5d7
+    status: todo_hard  # c5d7
+    priority: 1  # c5d7
+    parent:  # c5d7
+    tags:  # c5d7
+    - dogfooding  # c5d7
+    - pass8  # c5d7
+    - docs  # c5d7
+    isbefore: []  # c5d7
+    duplicate_of: []  # c5d7
+    not_duplicate_of: []  # c5d7
+    pr_ref:  # c5d7
+    description: "HYPERGUMBO_VERBOSE (used in sketch.py:1719) and HYPERGUMBO_MIN_MEMORY_MB (used in analyze/base.py:56) are referenced in source but not documented in docs/, README, AGENTS.md, or CHANGELOG. Compare to HYPERGUMBO_CACHE_HONK_GB (documented in spec) and HYPERGUMBO_RUST_ANALYZER (documented in spec + CHANGELOG). Additionally: HF_HUB_OFFLINE=1 is the known workaround for INV-dasig (huggingface.co network on first install) but is not documented anywhere in hypergumbo's own docs — users have no way to discover this offline-mode opt-in. Suggested fix: add an 'Environment Variables' section to docs/hypergumbo-spec.md covering all four HYPERGUMBO_* vars plus the HF_HUB_OFFLINE workaround."  # c5d7
+    fields: {}  # c5d7
