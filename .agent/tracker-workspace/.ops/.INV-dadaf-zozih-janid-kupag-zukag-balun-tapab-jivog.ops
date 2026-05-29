@@ -1,0 +1,25 @@
+- op: create  # 24f7
+  at: '2026-05-29T03:09:03Z'  # 24f7
+  by: agent  # 24f7
+  actor: jgstern_agent  # 24f7
+  clock: 1  # 24f7
+  nonce: 24f7  # 24f7
+  data:  # 24f7
+    kind: invariant  # 24f7
+    title: "routes --input writes 5 sketch artifacts as side effect of read-only invocation (YYY-b residual)"  # 24f7
+    status: violated  # 24f7
+    priority: 3  # 24f7
+    parent:  # 24f7
+    tags:  # 24f7
+    - dogfooding  # 24f7
+    - routes  # 24f7
+    - read_only_side_effects  # 24f7
+    isbefore: []  # 24f7
+    duplicate_of: []  # 24f7
+    not_duplicate_of: []  # 24f7
+    pr_ref:  # 24f7
+    description: "**Symptom.** Invoking `hypergumbo routes --input bm.json` (a read-only command consuming a pre-built behavior map) writes 5 sketch artifact files to disk as a side effect of the invocation. This was observed during the pass-14 correction of dogfooding finding YYY (originally INV-pomol-horid-...).\n\n**Expected.** A read-only inspection subcommand should not write artifacts to disk. Side effects belong on `run` and explicit `sketch` / `compact` subcommands.\n\n**Scope.** Confirmed on `hypergumbo routes --input <bm.json>`. Other read-only subcommands that accept `--input` (search, slice, explain, symbols, io-boundaries, verify-claims, test-coverage, dead-code-maybe, routes, compact) have not been audited for the same pattern. The 5 specific artifacts written by routes were not enumerated in the original YYY observation; reproduction needed.\n\n**Exposure.** Side-effect filesystem writes during nominally-read-only CLI invocation.\n\n**Consequence.** Read-only invocations leave artifacts behind, confusing users about what each command does. May overwrite or conflict with intentional sketch outputs from prior commands. Reproducibility of read-only commands is undermined.\n\n**Origin.** Discovered as a residual sub-finding while correcting YYY (s13 dogfooding) in s14 of the dogfooding cycle. YYY's primary substance (a positional-swallow bug) was traced to OOOO (INV-jibof). YYY-(a) residual (schema organization — no top-level `routes` field in bm.json) is a docs/spec issue, not filed separately. YYY-(b) — this item — is the routes-side-effect residual filed in the substrate reorganization (post-s20).\n\n**Audit needed.** Enumerate which other read-only subcommands write sketch artifacts; either confirm routes is unique or expand scope."  # 24f7
+    fields:  # 24f7
+      severity: "low"  # 24f7
+      statement: "Read-only inspection subcommands invoked with --input MUST NOT write artifact files to disk. Side effects are reserved for run, sketch, and compact."  # 24f7
+      root_cause: "routes subcommand triggers sketch artifact emission as a side effect of its read path; the read path does not isolate from the artifact-writing code shared with run/sketch."  # 24f7

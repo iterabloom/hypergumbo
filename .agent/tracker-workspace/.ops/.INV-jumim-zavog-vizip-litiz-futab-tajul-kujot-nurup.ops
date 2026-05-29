@@ -1,0 +1,24 @@
+- op: create  # abd2
+  at: '2026-05-28T23:44:35Z'  # abd2
+  by: agent  # abd2
+  actor: jgstern_agent  # abd2
+  clock: 1  # abd2
+  nonce: abd2  # abd2
+  data:  # abd2
+    kind: invariant  # abd2
+    title: "sketch --input ignores cached test-file info and re-walks filesystem via _analyze_test_files (causes 60+ sec wall-clock on populated repos)"  # abd2
+    status: violated  # abd2
+    priority: 2  # abd2
+    parent:  # abd2
+    tags:  # abd2
+    - pass20  # abd2
+    - dogfooding  # abd2
+    isbefore: []  # abd2
+    duplicate_of: []  # abd2
+    not_duplicate_of: []  # abd2
+    pr_ref:  # abd2
+    description: ""  # abd2
+    fields:  # abd2
+      severity: "medium"  # abd2
+      statement: "hypergumbo sketch --input <bm.json> -t <N> performs a full filesystem rglob via sketch.py:_analyze_test_files() to count test files, even when --input is provided. Repro: sketching with --input /tmp/hg-dogfood-s11/bm.json from /home/jgstern_agent/hypergumbo cwd (large repo) hangs >30s without completing for any token budget (50/200/500/1000). With empty-target cwd (/tmp/empty-sketch-target), the same invocation takes ~60s. The bm.json already carries supply_chain.is_test_file on every node, so the filesystem walk is redundant. Traceback hangs at sketch.py:5968 _analyze_test_files → sketch.py:2502 find_files → discovery.py:954 repo_root.rglob(pattern). The rglob is the bottleneck. Test-file count derived from filesystem walk can DIVERGE from bm.json's test-file population, creating two truth sources."  # abd2
+      root_cause: "cmd_sketch() in cli.py:742 unconditionally calls generate_sketch(repo_root=...) which calls _analyze_test_files(repo_root, ...). No --input branch shortcut exists in _analyze_test_files. The bm.json's per-node is_test_file flag is computed by analysis_runs but not re-projected for sketch's test counting."  # abd2

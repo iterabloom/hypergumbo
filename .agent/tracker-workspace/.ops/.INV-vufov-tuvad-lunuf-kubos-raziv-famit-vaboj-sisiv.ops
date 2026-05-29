@@ -1,0 +1,25 @@
+- op: create  # 57c9
+  at: '2026-05-28T23:45:03Z'  # 57c9
+  by: agent  # 57c9
+  actor: jgstern_agent  # 57c9
+  clock: 1  # 57c9
+  nonce: 57c9  # 57c9
+  data:  # 57c9
+    kind: invariant  # 57c9
+    title: "5 meta field names (query_type/queue_type/topic/topic_type/url_path) exist on BOTH edge.meta and node.meta with different value distributions"  # 57c9
+    status: violated  # 57c9
+    priority: 2  # 57c9
+    parent:  # 57c9
+    tags:  # 57c9
+    - pass20  # 57c9
+    - dogfooding  # 57c9
+    - classification_axes_audit  # 57c9
+    isbefore: []  # 57c9
+    duplicate_of: []  # 57c9
+    not_duplicate_of: []  # 57c9
+    pr_ref:  # 57c9
+    description: ""  # 57c9
+    fields:  # 57c9
+      severity: "low"  # 57c9
+      statement: "Five field names appear in both edge.meta (22 distinct keys) and node.meta (42 distinct keys): query_type, queue_type, topic, topic_type, url_path. The value distributions differ between contexts: url_path on edges is {/ws: 12}; url_path on nodes is {/api/users: 10, /api/users/1: 1, /api: 1} — entirely disjoint value sets. queue_type on edges peaks at 'kafka' (85); on nodes peaks at 'kafka' (55) but with redis (9) appearing at node-scope only. The same field-name carries the same semantic concept but different mechanical scopes: edge-meta describes the edge relationship; node-meta describes the node. Schema does not document the dual-scope semantics; consumers may merge or split them inconsistently."  # 57c9
+      root_cause: "Two independent emitters (linker-side edge.meta vs analyzer-side node.meta) coined the same field name for related-but-distinct semantics. The schema treats edge.meta and node.meta as namespace-separate so the collision doesn't cause runtime issues but introduces conceptual confusion. Same family as pass-19 GGGGGGG (construct vs call_construct) but at the cross-scope level rather than within-scope."  # 57c9

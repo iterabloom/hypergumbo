@@ -1,0 +1,24 @@
+- op: create  # 04f7
+  at: '2026-05-28T23:45:16Z'  # 04f7
+  by: agent  # 04f7
+  actor: jgstern_agent  # 04f7
+  clock: 1  # 04f7
+  nonce: 04f7  # 04f7
+  data:  # 04f7
+    kind: invariant  # 04f7
+    title: "AnalysisRun.version inconsistent: 83 runs use semver '5.0.1', play-routes uses '1' (schema-version stamp drift)"  # 04f7
+    status: violated  # 04f7
+    priority: 2  # 04f7
+    parent:  # 04f7
+    tags:  # 04f7
+    - pass20  # 04f7
+    - dogfooding  # 04f7
+    isbefore: []  # 04f7
+    duplicate_of: []  # 04f7
+    not_duplicate_of: []  # 04f7
+    pr_ref:  # 04f7
+    description: ""  # 04f7
+    fields:  # 04f7
+      severity: "low"  # 04f7
+      statement: "Among 84 AnalysisRun records, 83 carry version='5.0.1' (the project's semver) and 1 (play-routes) carries version='1'. Both runs have identical toolchain={'name': 'python', 'version': '3.12.3'}. The version field carries two different value scales — semver vs single-digit revision. Either play-routes was developed against a v1 schema-version stamp and never updated to track the project version, OR the version field has different semantics per analyzer (semver for project, internal-revision for analyzers). Either way the same field carries two scales without schema-level distinction."  # 04f7
+      root_cause: "play-routes analyzer emits version='1' independently of the project semver injection. No central version-stamping policy enforces consistency across analyzers. Same family as pass-19 AAAAAAAA (canonical_name dual-format): one field, two formats."  # 04f7
