@@ -30,6 +30,9 @@ kinds:
         min: 0
         max: 100
         description: "Percentage of affected scope addressed"
+      dogfood_anon_id:
+        type: text
+        description: "Anon_id from a self-analysis-dogfooding blind-reassessment corpus (e.g., 'ITEM-7f81e9'). Optional; links this tracker item back to its corpus entry in ~/hypergumbo_lab_notebook/."
   meta_invariant:
     prefix: META
     allowed_statuses: [satisfied, pending_validation, violated, needs_human_review, deleted]
