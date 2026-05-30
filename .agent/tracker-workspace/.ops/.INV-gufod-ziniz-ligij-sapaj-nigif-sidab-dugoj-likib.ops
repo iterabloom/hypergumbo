@@ -41,3 +41,13 @@
   clock: 3  # d2d4
   nonce: d2d4  # d2d4
   message: "Cluster member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # d2d4
+- op: update  # 93aa
+  at: '2026-05-30T09:50:44Z'  # 93aa
+  by: agent  # 93aa
+  actor: jgstern_agent  # 93aa
+  clock: 4  # 93aa
+  nonce: 93aa  # 93aa
+  set:  # 93aa
+    parent: INV-murig-kanin-junur-tazot-gifin-hijad-momuf-bukoj  # 93aa
+  add:  # 93aa
+    tags: [dogfood_umbrella_member, fabov_face_registry_membership]  # 93aa

@@ -41,3 +41,20 @@
   clock: 3  # 3d75
   nonce: 3d75  # 3d75
   message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 3d75
+- op: update  # 5b1b
+  at: '2026-05-30T09:50:46Z'  # 5b1b
+  by: agent  # 5b1b
+  actor: jgstern_agent  # 5b1b
+  clock: 4  # 5b1b
+  nonce: 5b1b  # 5b1b
+  set:  # 5b1b
+    parent: INV-rugah-kijir-nufif-suzos-dipas-hubob-rabal-hapuv  # 5b1b
+  add:  # 5b1b
+    tags: [dogfood_umbrella_member, gogif_face_wire_format]  # 5b1b
+- op: discuss  # 62ee
+  at: '2026-05-30T09:51:52Z'  # 62ee
+  by: agent  # 62ee
+  actor: jgstern_agent  # 62ee
+  clock: 5  # 62ee
+  nonce: 62ee  # 62ee
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Axis-C (wire-format-vs-internal-API mismatch) member of WI-gogif; sibling of INV-pomol (post-correction). Verified at ir.py:275: AnalysisRun.to_dict() emits \"pass\": self.pass_id. The Python-keyword workaround is real and the only sane minimal fix is documentation — the AnalysisRun docstring should explicitly state \"wire-format key for pass_id is 'pass' due to Python reserved word\", and the bm.json schema document should mirror it. A more ambitious fix would be a dual-key emission (\"pass\" and \"pass_id\") with a deprecation cycle on \"pass\", but that's a breaking-change coordination problem."  # 62ee

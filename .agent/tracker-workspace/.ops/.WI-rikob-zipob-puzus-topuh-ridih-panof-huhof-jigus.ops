@@ -31,3 +31,10 @@
       dogfood_anon_id: "ITEM-7b63dd"  # 8d22
   add:  # 8d22
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # 8d22
+- op: discuss  # 7706
+  at: '2026-05-30T09:06:43Z'  # 7706
+  by: agent  # 7706
+  actor: jgstern_agent  # 7706
+  clock: 3  # 7706
+  nonce: '7706'  # 7706
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): inspection confirms WI-tukif-fuhug (the \"catalog completion\" umbrella) is a different artifact (LANGUAGE catalogs with stdlib_provenance YAML files); this item correctly stands alone. Verified: 158 register_analyzer decorator calls under packages/hypergumbo-lang-mainstream/src and hypergumbo-lang-extended1/src, zero pass description= — the gap is real and the fix is mechanical (description: str = \"\" default in registry.py:145; extra ts_pack analyzers fill it via the _ts helper in catalog.py:258-261 and core analyzers do not)."  # 7706

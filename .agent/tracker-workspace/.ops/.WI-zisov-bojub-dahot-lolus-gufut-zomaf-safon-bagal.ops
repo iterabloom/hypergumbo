@@ -28,3 +28,10 @@
   clock: 2  # ff05
   nonce: ff05  # ff05
   message: "Cross-ref backfill (2026-05-30, theme 7): closure of this item (extend polyglot fixture to 5-10 more languages) is the test substrate prerequisite for validating three May-28 dogfood-66 findings about non-Python analyzer gaps: (1) INV-loguk-kihaj-vokug-nahuj-barad-jital-kidut-tamap — non-Python analyzers don't populate cyclomatic_complexity/LOC; (2) INV-golap-sahoj-sipuk-fihof-gomik-jogug-dabid-sijuk — JS signature 0/10 function|method nodes; (3) INV-tofun-zimap-pusan-fofir-sorap-rofim-jafud-galob — linkers hardcode language=javascript for synthetic symbols on .ts files. Without this fixture extension, fixes to those three items ship under-tested."  # ff05
+- op: discuss  # fa54
+  at: '2026-05-30T09:39:23Z'  # fa54
+  by: agent  # fa54
+  actor: jgstern_agent  # fa54
+  clock: 3  # fa54
+  nonce: fa54  # fa54
+  message: "Cross-ref backfill (2026-05-30, linked-pile L6 investigation): polyglot fixture extension is the test substrate for three analyzer-quality items currently in the active set — INV-loguk (non-Python cyclomatic_complexity/LOC), INV-golap (JS signature 0/10), INV-tofun (linkers hard-code language=javascript for synthetic symbols on .ts). isbefore links deferred until L7 work activates; documenting the substrate dependency here so future fixers can find the prerequisite."  # fa54

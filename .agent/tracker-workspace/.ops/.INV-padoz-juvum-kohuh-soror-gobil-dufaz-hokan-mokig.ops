@@ -35,3 +35,20 @@
       dogfood_anon_id: "ITEM-e79401"  # 5126
   add:  # 5126
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # 5126
+- op: update  # 60b5
+  at: '2026-05-30T09:04:10Z'  # 60b5
+  by: agent  # 60b5
+  actor: jgstern_agent  # 60b5
+  clock: 3  # 60b5
+  nonce: 60b5  # 60b5
+  set:  # 60b5
+    parent: INV-jifus-parug-midub-nofip-mupil-zobak-vuzah-fokov  # 60b5
+  add:  # 60b5
+    tags: [dogfood_umbrella_member]  # 60b5
+- op: discuss  # 5673
+  at: '2026-05-30T09:06:42Z'  # 5673
+  by: agent  # 5673
+  actor: jgstern_agent  # 5673
+  clock: 4  # 5673
+  nonce: '5673'  # 5673
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): third text-pipeline helper feeding the untyped sketch_precomputed dict (cli.py:8060); sketch.py:_extract_domain_vocabulary uses raw Counter.most_common(12) with no plural collapse and no analysis-domain stop-list (_COMMON_TERMS only filters generic CS terms). Same theme as INV-modor-vokot (readme heuristic concat) and INV-napap-tatup (centrality field-name mismatch). A shared normalizer + a typed SketchPrecomputed dataclass would address all three together. No matching IDF / TF-IDF item exists in the active set."  # 5673

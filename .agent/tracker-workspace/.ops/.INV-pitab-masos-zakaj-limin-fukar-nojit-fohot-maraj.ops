@@ -23,3 +23,20 @@
       dogfood_anon_id: "ITEM-c96c76"  # eb8f
       statement: "Toolchain values should reflect the analyzer's actual toolchain. Per-invocation grouping should differ from per-pass keys. Version-bearing fields should follow one scheme. Per-pass productivity (node count, edge count) should be carried in the provenance record, not reverse-derived."  # eb8f
       root_cause: "The per-pass provenance record carries a fixed set of fields meant to describe a pass's execution. Multiple fields fail to capture what their name implies. One field meant to identify the analyzer toolchain (compiler/parser version) is hardcoded to the host Python interpreter version regardless of which language the analyzer parses. One field meant to group passes by invocation is emitted with a unique value per pass, so it behaves identically to the per-pass deterministic key and cannot be used to group passes by the single user invocation that produced them. One field meant to carry a pass version is empty for a substantial fraction of pass records. The record carries no per-pass node-count or edge-count, so answering \"how productive was each pass\" requires re-scanning the full edge list per pass. One field's value is emitted in one format for almost every pass and a different format for one pass."  # eb8f
+- op: update  # f70e
+  at: '2026-05-30T09:04:09Z'  # f70e
+  by: agent  # f70e
+  actor: jgstern_agent  # f70e
+  clock: 2  # f70e
+  nonce: f70e  # f70e
+  set:  # f70e
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # f70e
+  add:  # f70e
+    tags: [dogfood_umbrella_member]  # f70e
+- op: discuss  # 5f92
+  at: '2026-05-30T09:06:43Z'  # 5f92
+  by: agent  # 5f92
+  actor: jgstern_agent  # 5f92
+  clock: 3  # 5f92
+  nonce: 5f92  # 5f92
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): umbrella of the \"AnalysisRun producer drift\" cluster: INV-gizik (duration_ms=0 on IR passes), INV-lidul (config_fingerprint stuck at default), INV-nihug (skipped_passes path-split), INV-virik (failed_files/warnings never aggregated), WI-nohoh ('pass' JSON alias), INV-lifik (toolchain/version zero-entropy at AnalysisRun scale), INV-suvil (producer-side hardcoded confidence — same drift pattern). Root: register_analyzer (analyze/registry.py:140-217) computes RegisteredAnalyzer.pass_version via compute_pass_version(func) but no _stamp_pass_version-equivalent wires it onto the AnalysisRun emitted in TreeSitterAnalyzer.analyze (analyze/base.py:2272). Linkers get this stamping via linkers/registry.py:656; analyzers don't. Fix is one orchestrator-side factory, not per-pass plumbing."  # 5f92

@@ -42,3 +42,10 @@
   clock: 3  # 99d6
   nonce: 99d6  # 99d6
   message: "Cluster member of INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 99d6
+- op: discuss  # 8eba
+  at: '2026-05-30T09:39:22Z'  # 8eba
+  by: agent  # 8eba
+  actor: jgstern_agent  # 8eba
+  clock: 4  # 8eba
+  nonce: 8eba  # 8eba
+  message: "Cross-ref backfill (2026-05-30, linked-pile L2 investigation): under-scoped. Original claim names TOML 99 dependency nodes with fingerprint bypass; vhdl.py and verilog.py emit the identical raw-hex bypass pattern. Expand scope to 'analyzers using raw hex digests instead of canonical hgfp1: factory' — TOML, VHDL, Verilog all fit. Possibly more on a systematic grep."  # 8eba

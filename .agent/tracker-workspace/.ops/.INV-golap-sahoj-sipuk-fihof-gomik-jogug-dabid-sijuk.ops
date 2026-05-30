@@ -42,3 +42,20 @@
   clock: 3  # 482f
   nonce: 482f  # 482f
   message: "Cross-ref backfill (2026-05-30, theme 7): WI-zisov-bojub-dahot-lolus-gufut-zomaf-safon-bagal (Extend polyglot fixture to 5-10 additional languages) is the test substrate prerequisite for validating closure of this item. Without that fixture extension, a fix to JS signature emission ships without integration coverage across the language matrix."  # 482f
+- op: discuss  # 96cb
+  at: '2026-05-30T09:36:52Z'  # 96cb
+  by: agent  # 96cb
+  actor: jgstern_agent  # 96cb
+  clock: 4  # 96cb
+  nonce: 96cb  # 96cb
+  message: "Cross-ref backfill (2026-05-30, linked-pile L7 investigation): claim may be partially stale. js_ts.py:3185 assigns Symbol.signature and _extract_jsts_signature handles JS function/arrow/method. Pass-9 self-analysis showed 0/10 nodes populated, but the code path now exists. Recommend re-measure against current bm.json before deciding satisfied/violated. Status retained as violated pending the re-measurement."  # 96cb
+- op: update  # 4739
+  at: '2026-05-30T09:50:47Z'  # 4739
+  by: agent  # 4739
+  actor: jgstern_agent  # 4739
+  clock: 5  # 4739
+  nonce: '4739'  # 4739
+  set:  # 4739
+    parent: INV-jahiv-lugis-topum-totot-morin-somuv-pujoz-vijir  # 4739
+  add:  # 4739
+    tags: [dogfood_umbrella_member]  # 4739

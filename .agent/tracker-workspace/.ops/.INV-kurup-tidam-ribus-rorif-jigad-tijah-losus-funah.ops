@@ -23,3 +23,19 @@
       dogfood_anon_id: "ITEM-803289"  # d09f
       statement: "Every identifier value should conform to the field's declared scheme, with format enforcement at the emission boundary. A field declared as `<scheme>:<hash>` should always carry the prefix; a field declared as `<lang>:<path>:<span>:<name>:<kind>` should always have that colon count, with internal colons in any component escaped."  # d09f
       root_cause: "Several identifier-bearing fields declare schemes (a fingerprint scheme prefix, a stable-id hash prefix, a structured 4-colon shape for node IDs) but multiple emitter paths bypass the canonical factories that enforce those schemes. Result: the same field carries values in multiple incompatible formats simultaneously — some with the declared prefix, some without; some matching the structured-ID shape, some emitting raw hex, bare names, or extra-colon variants. Affected paths include language-specific analyzer paths for certain ecosystems, linker-emitted call-site nodes, and dependency-declaration emitters. The non-canonical fraction is small relative to total record count, but the pattern is consistent: emission boundaries do not validate against the declared scheme."  # d09f
+- op: discuss  # bd61
+  at: '2026-05-30T09:06:42Z'  # bd61
+  by: agent  # bd61
+  actor: jgstern_agent  # bd61
+  clock: 2  # bd61
+  nonce: bd61  # bd61
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): umbrella enrolled 5 members; three further active items address the same emission-format mechanic and should at minimum be cross-referenced (folded as members where the format-drift framing fits): INV-bazij (stable_id 60% collision, P0 — peer of member INV-hunup), INV-zudob (structurally-identical cross-module residue, pending_validation), INV-lidul (config_fingerprint constant across 84 runs — identifier-emitter-bypass). Deeper hypothesis: INV-kurup + INV-numat share a missing-architectural-layer root — \"no schema-vs-emission validator gate\" — and may merit a super-META once one of them sees a structural fix."  # bd61
+- op: update  # f789
+  at: '2026-05-30T09:50:48Z'  # f789
+  by: agent  # f789
+  actor: jgstern_agent  # f789
+  clock: 3  # f789
+  nonce: f789  # f789
+  set: {}  # f789
+  add:  # f789
+    tags: [super_meta_no_validator_stage]  # f789

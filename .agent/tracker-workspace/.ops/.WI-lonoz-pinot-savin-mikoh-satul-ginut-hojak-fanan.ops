@@ -60,3 +60,20 @@
   clock: 6  # e43d
   nonce: e43d  # e43d
   message: "Cross-ref backfill (2026-05-30): this item's empirical surface (Edge.quality 100% null on self-analysis) matches INV-nuzal-nufam-nukip-vilis-kobah-jijig-mizan-huhof, the May-28 dogfood singleton 'edge.provenance dict empty on 100% of edges; node.quality and edge.quality also universally empty' (ITEM-fb07ea). INV-nuzal documents the broader observation (edge.provenance + node.quality also null); this item adds the spec-level design-call framing (🟪 placeholder; advance-design vs retire-from-spec)."  # e43d
+- op: update  # ce46
+  at: '2026-05-30T09:39:22Z'  # ce46
+  by: agent  # ce46
+  actor: jgstern_agent  # ce46
+  clock: 7  # ce46
+  nonce: ce46  # ce46
+  set:  # ce46
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # ce46
+  add:  # ce46
+    tags: [dogfood_umbrella_member]  # ce46
+- op: discuss  # 9df0
+  at: '2026-05-30T09:39:22Z'  # 9df0
+  by: agent  # 9df0
+  actor: jgstern_agent  # 9df0
+  clock: 8  # 9df0
+  nonce: 9df0  # 9df0
+  message: "Cross-ref backfill (2026-05-30, linked-pile L4 investigation): Phase-1 omission patched. INV-luhur's description names this item as a member (Edge.quality 96864/96864 null is the most visible writer-contract violation surface) but the parent field was never set. Re-parenting forward. Member of the 'schema-declares-no-writer' sub-pattern face."  # 9df0

@@ -66,3 +66,10 @@
   clock: 7  # a5fa
   nonce: a5fa  # a5fa
   message: "Cross-ref backfill (2026-05-30, theme 5a): closure of this item (framework detection must promote from prod-non-test import edges, not just manifest declarations) directly addresses INV-nohod-najud-muzik-kamip-jozis-takun-pivik-jihaf — the May-28 dogfood singleton 'KKKKK: 76% of nodes (25584/33830) are test-classified; behavior map is dominated by test code by default'. KKKKK's empirical surface is what motivates this item's 'prod-non-test' filter."  # a5fa
+- op: discuss  # 0114
+  at: '2026-05-30T09:51:52Z'  # 0114
+  by: agent  # 0114
+  actor: jgstern_agent  # 0114
+  clock: 8  # 0114
+  nonce: '0114'  # 0114
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): cluster-coherence check: WI-palol (#3915, cohorts 1+4) and WI-pusad (#3917, cohorts 2+3 partial) both confirmed merged via all_items_status.tsv. INV-fomod is the orthogonal file-structure complement for the cohort-3-residue case (chatwoot Rails-without-Gemfile). Sub-pile B is internally coherent; no new sub-cluster needed. Awaiting awaits_bakeoff_validation strip via bakeoff-deep-reflect aggregate."  # 0114

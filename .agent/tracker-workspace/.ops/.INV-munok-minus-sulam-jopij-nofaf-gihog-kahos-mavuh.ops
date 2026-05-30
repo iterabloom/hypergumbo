@@ -22,3 +22,10 @@
     fields:  # 8a3b
       statement: "When yjsDocId metadata is stored on SpatialObjects (PlazaFlow data shape) in Yjs documents, that reference must become a traversable document_references (or equivalently named) edge from the SpatialObject node to the referenced Yjs document node."  # 8a3b
       root_cause: "Unknown pending empirical investigation. WI-mamuh (PR #2329) shipped general Yjs sub-document accessor detection (getMap/getArray/getText/getXmlFragment) and field-level awareness, but the SpatialObjects-with-yjsDocId-metadata shape was not specifically validated and is a PlazaFlow-specific data shape distinct from the accessor-call shape."  # 8a3b
+- op: discuss  # 4b72
+  at: '2026-05-30T09:51:52Z'  # 4b72
+  by: agent  # 4b72
+  actor: jgstern_agent  # 4b72
+  clock: 2  # 4b72
+  nonce: 4b72  # 4b72
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): parent META-sulor closed satisfied; this item's PlazaFlow-specific data shape has no validation substrate in the hypergumbo dogfood corpus. WI-mamuh and WI-zusig (broader Yjs API surface) both done. Recommended disposition: either (a) close as wont_do with note \"PlazaFlow-corpus-only; transitively likely addressed by WI-mamuh sub-document accessor work; no validation substrate available in hypergumbo dogfood corpus\", or (b) re-parent to WI-zusig and let it stay open as a future-empirical-validation item. Current state (parent points at a satisfied META) is structurally confused."  # 4b72

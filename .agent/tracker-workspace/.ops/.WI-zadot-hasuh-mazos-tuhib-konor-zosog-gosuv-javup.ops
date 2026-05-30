@@ -55,3 +55,13 @@
   clock: 5  # 1702
   nonce: '1702'  # 1702
   message: "Status needs_human_review (pending_validation is not allowed for work_item kind). kind=function half is closed-by-design per ADR-0027 Phase 3 / websocket.py:655-694; language=python half remains an open sub-question. Needs human decision: split into a new INV scoped to the language= question and close this WI as done, OR keep open with re-scoped description."  # 1702
+- op: update  # 2bfa
+  at: '2026-05-30T09:04:06Z'  # 2bfa
+  by: agent  # 2bfa
+  actor: jgstern_agent  # 2bfa
+  clock: 6  # 2bfa
+  nonce: 2bfa  # 2bfa
+  set:  # 2bfa
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # 2bfa
+  add:  # 2bfa
+    tags: [dogfood_umbrella_member]  # 2bfa

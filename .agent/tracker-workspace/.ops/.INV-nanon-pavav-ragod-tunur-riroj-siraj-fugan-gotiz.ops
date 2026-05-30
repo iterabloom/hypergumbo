@@ -30,3 +30,19 @@
   clock: 2  # a7be
   nonce: a7be  # a7be
   message: "Cross-ref backfill (2026-05-30, theme 8): INV-hujog-vamon-zafon-mikik-pisah-tanor-pumah-rogij (Pass.requires: list[str] — declare pass dependencies; pre-run validator catches missing prerequisites) is the schema-design correlate of this umbrella. INV-hujog adds the dependency-declaration mechanism that would enable an activation gate; this item documents the observed scan-and-emit-nothing behavior across 4 member items (INV-bikaj being the broadest at 61/84 passes producing 0 edges)."  # a7be
+- op: update  # 5923
+  at: '2026-05-30T09:50:48Z'  # 5923
+  by: agent  # 5923
+  actor: jgstern_agent  # 5923
+  clock: 3  # 5923
+  nonce: '5923'  # 5923
+  set: {}  # 5923
+  add:  # 5923
+    tags: [super_meta_no_validator_stage]  # 5923
+- op: discuss  # 6ebf
+  at: '2026-05-30T09:50:50Z'  # 6ebf
+  by: agent  # 6ebf
+  actor: jgstern_agent  # 6ebf
+  clock: 4  # 6ebf
+  nonce: 6ebf  # 6ebf
+  message: "Cross-ref backfill (2026-05-30, linked-pile L4 investigation): per-member sub-pattern articulation (description update via discussion since member-tag scheme is the source of truth): (1) no-analyzer-registered — INV-babuj (yaml emits 0 nodes for 174 files / 17027 LOC; only yaml_ansible runs because no analyzer is registered for generic yaml content); (2) pass-runs-empty — INV-hosig (di-resolution pass 2550ms produces 0 edges; framework patterns not in repo, but pass runs every time); (3) linker-self-test-only — INV-kodan (pyffi-linker emits 10 edges ALL from test_pyffi_linker.py — only matches its own test fixtures); (4) scan-many-emit-zero — INV-bikaj (61 of 84 AnalysisRun passes produce 0 edges; 8 of those scan 100+ files each — the broad pattern across all 4 faces). Each face has a different fix shape: register an analyzer (1) / gate by precondition (2) / widen pattern coverage (3) / remove or activate the pass (4). Member-tag scheme applied: nanon_face_no_analyzer_registered, nanon_face_pass_runs_empty, nanon_face_linker_self_test_only, nanon_face_scan_many_emit_zero."  # 6ebf

@@ -1,0 +1,26 @@
+- op: create  # 130d
+  at: '2026-05-30T09:48:35Z'  # 130d
+  by: agent  # 130d
+  actor: jgstern_agent  # 130d
+  clock: 1  # 130d
+  nonce: 130d  # 130d
+  data:  # 130d
+    kind: invariant  # 130d
+    title: "META(sub-C): JSON wire-format vs internal-API mismatch"  # 130d
+    status: violated  # 130d
+    priority: 2  # 130d
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # 130d
+    tags:  # 130d
+    - dogfood_corpus_20260528  # 130d
+    - dogfood_umbrella  # 130d
+    - dogfood_severity_moderate  # 130d
+    - json_wire_format  # 130d
+    - sub_meta_under_gogif  # 130d
+    isbefore: []  # 130d
+    duplicate_of: []  # 130d
+    not_duplicate_of: []  # 130d
+    pr_ref:  # 130d
+    description: "**Origin.** Filed 2026-05-30 as a sub-axis of WI-gogif following the linked-pile L3 investigation. Sub-axis C of the JSON-output-conventions umbrella.\n\n**The shape.** Two items describe wire-format vs. internal-API name/structure mismatches that consumers can't predict. The bm.json JSON key `pass` does not match the documented Python attribute `pass_id` (Python keyword workaround); the routes top-level field is documented in the schema but absent from bm.json (`hypergumbo routes` prints \"No API routes found\" because the field is missing, not because routes are absent).\n\n**Fix shape (different mechanic from A and B).** Generated wire-format schema doc — derive JSON-side keys + presence from the bm.json schema directly, not from prose. Plus a renaming policy for cases like `pass` → `pass_id` (either rename the JSON key, or document the alias explicitly in schema metadata). Different fix-site from \"missing flag\" or \"missing envelope\" — this is about the schema-to-JSON projection layer.\n\n**Members (2).** WI-nohoh (`AnalysisRun.pass` Python-keyword alias, `ir.py:275`), INV-pomol (routes top-level field absent from bm.json; partially self-superseded by pass-14 correction, only schema-organization observation + sketch-on-read side-finding remain).\n\n**Parent:** WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun."  # 130d
+    fields:  # 130d
+      statement: "Every JSON-side key and presence must agree with the bm.json schema; renamed keys (Python-keyword aliases like pass→pass_id) must be documented as schema metadata not discovered by consumers."  # 130d
+      root_cause: "Two faces of generated-schema-doc absence: AnalysisRun.pass Python-keyword workaround renames the JSON key without aliasing in schema (WI-nohoh, ir.py:275), routes top-level field documented but absent from bm.json (INV-pomol, partially self-superseded by pass-14 correction)."  # 130d

@@ -43,3 +43,20 @@
   clock: 3  # a184
   nonce: a184  # a184
   message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # a184
+- op: update  # c910
+  at: '2026-05-30T09:50:46Z'  # c910
+  by: agent  # c910
+  actor: jgstern_agent  # c910
+  clock: 4  # c910
+  nonce: c910  # c910
+  set:  # c910
+    parent: INV-pikob-diboh-patiz-hotum-pufog-daziv-kovor-gizov  # c910
+  add:  # c910
+    tags: [dogfood_umbrella_member, gogif_face_envelope_incomplete]  # c910
+- op: discuss  # c45a
+  at: '2026-05-30T09:51:52Z'  # c45a
+  by: agent  # c45a
+  actor: jgstern_agent  # c45a
+  clock: 5  # c45a
+  nonce: c45a  # c45a
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Worst-offender of the Axis-B (envelope-incomplete) sub-cluster within WI-gogif; sibling of INV-fipol and INV-pazum. Source code at the emission site has an explicit comment (\"Preserve the legacy flat-list schema for programmatic consumers\") flagging this as intentional backward-compat. Cluster-wide fix needs to address the migration path: either an opt-in --envelope flag, a deprecation cycle, or coordination with a schema_version major bump so the wrapped envelope arrives as a breaking change tied to a version transition."  # c45a

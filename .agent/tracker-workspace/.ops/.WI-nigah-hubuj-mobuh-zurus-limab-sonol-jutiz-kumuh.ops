@@ -45,3 +45,10 @@
   clock: 4  # c383
   nonce: c383  # c383
   message: "Cross-ref backfill (2026-05-30, theme 5b): closure of this long-tail dst_ref retrofit umbrella advances INV-tofun-zimap-pusan-fofir-sorap-rofim-jafud-galob, the May-28 dogfood singleton 'linkers hard-code language=javascript for synthetic symbols on .ts files'. Both items are about analyzer-side encoding of unresolved targets / synthetic symbols — this umbrella sweeps ~90 long-tail analyzers; INV-tofun is the JS/TS-specific manifestation on the linker side."  # c383
+- op: discuss  # 655b
+  at: '2026-05-30T09:51:52Z'  # 655b
+  by: agent  # 655b
+  actor: jgstern_agent  # 655b
+  clock: 5  # 655b
+  nonce: 655b  # 655b
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): umbrella scope is verified against the codebase — `lua.py` (3 call sites), `perl.py`, `swift.py`, `kotlin.py`, `scala.py`, `php.py`, `groovy.py`, `powershell.py`, `objc.py` still call `make_unresolved_edge` without a `dst_ref=` kwarg, confirming the long-tail backlog. Java / Cpp / Rust / Ruby / Elixir / JS-TS / Go are excluded (Phase 1 retrofitted). The `needs_human_review` status remains correct until WI-kaziv produces bakeoff data to scope which long-tail analyzers warrant the retrofit."  # 655b

@@ -23,3 +23,20 @@
       dogfood_anon_id: "ITEM-b4686b"  # fbf4
       statement: "Confidence should be computed from the inference evidence — for example, type-resolution success rate, ambiguity of dispatch resolution, or evidence-type tier. Hardcoded values should be the fallback when evidence-derived computation is not available, and the fallback should be documented."  # fbf4
       root_cause: "Per-edge confidence values are assigned by each emitter as a hardcoded constant (or one of a small fixed set of constants) rather than computed from the inference evidence used to produce the edge. One language emitter uses five hardcoded values across its edge-type buckets, with no documented semantic axis distinguishing the values within a single bucket — for example, the same edge type splits between two different confidence values with no apparent rule. Across the broader emitter set, every emitter except one ships a flat hardcoded value per origin, with only one emitter producing computed non-rounded values from actual inference quality. The schema documents confidence as evidence-derived but the production code is constant-per-bucket."  # fbf4
+- op: update  # 698a
+  at: '2026-05-30T09:04:09Z'  # 698a
+  by: agent  # 698a
+  actor: jgstern_agent  # 698a
+  clock: 2  # 698a
+  nonce: 698a  # 698a
+  set:  # 698a
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 698a
+  add:  # 698a
+    tags: [dogfood_umbrella_member, dogfood_writer_constant_face]  # 698a
+- op: discuss  # aef2
+  at: '2026-05-30T09:06:43Z'  # aef2
+  by: agent  # aef2
+  actor: jgstern_agent  # aef2
+  clock: 3  # aef2
+  nonce: aef2  # aef2
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Same writer-side root cause as INV-nuzal (edge.provenance/quality empty 100%) and INV-pitab (per-pass provenance field set does not carry consumer-needed data) — three faces of \"schema reserves slot for evidence-derived metadata, emitters write constants or nothing.\" ir.py:563 sets confidence: float = 0.85 as the canonical default, signaling the convention is a single number, and no confidence_source field exists in IR to distinguish calibrated from fallback. py.py:1988-3242 confirms 5+ hardcoded values across (edge-type, evidence-type) tuples. Two-state derivation pattern emerging in some linkers (cgo.py:189, jni.py:266, kafka_streams_dispatch.py:373: confidence = 0.5 if is_fallback else 0.X) is a partial fix shape worth generalizing. Candidate umbrella: \"evidence-derived metadata never gets emitted\" covering this + INV-nuzal + INV-pitab. Fix candidate: introduce confidence_source: Literal[\"evidence_derived\", \"hardcoded_fallback\"] with # axis: bounded-enum so consumers can filter."  # aef2

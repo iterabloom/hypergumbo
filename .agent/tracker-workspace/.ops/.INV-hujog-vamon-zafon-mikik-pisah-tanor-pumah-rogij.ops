@@ -44,3 +44,10 @@
   clock: 4  # 0f1f
   nonce: 0f1f  # 0f1f
   message: "Cross-ref backfill (2026-05-30, theme 8): closure of this item (Pass.requires: list[str] — declare pass dependencies; pre-run validator catches missing prerequisites) is the schema-design correlate of INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz, the May-28 dogfood-66 umbrella 'META: Passes execute and consume resources but emit no edges, with no activation gate'. INV-nanon documents the observed scan-and-emit-nothing behavior; this item adds the dependency-declaration mechanism that would enable an activation gate. Closure enables — but doesn't itself fix — INV-nanon's violations."  # 0f1f
+- op: discuss  # 6e0a
+  at: '2026-05-30T09:51:52Z'  # 6e0a
+  by: agent  # 6e0a
+  actor: jgstern_agent  # 6e0a
+  clock: 5  # 6e0a
+  nonce: 6e0a  # 6e0a
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Phase 2 wire-up of validate_pass_dependencies into run_behavior_map config-time filtering is still missing as of bm.json pass 11 verification — catalog.py:188 defines the function but a grep across packages/hypergumbo-core/src/ finds no callers. Closure of INV-nanon's \"pass-runs-but-no-target-patterns\" sub-pattern (di-resolution at INV-hosig) depends on this Phase 2 wire-up. Suggests filing an explicit sibling item for Phase 2 rather than tracking it implicitly under this pending_validation item."  # 6e0a

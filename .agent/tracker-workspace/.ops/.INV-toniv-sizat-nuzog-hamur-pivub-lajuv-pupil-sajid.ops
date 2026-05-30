@@ -35,3 +35,30 @@
       dogfood_anon_id: "ITEM-bf077e"  # e025
   add:  # e025
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # e025
+- op: update  # bef7
+  at: '2026-05-30T09:04:06Z'  # bef7
+  by: agent  # bef7
+  actor: jgstern_agent  # bef7
+  clock: 3  # bef7
+  nonce: bef7  # bef7
+  set:  # bef7
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # bef7
+  add:  # bef7
+    tags: [dogfood_umbrella_member]  # bef7
+- op: discuss  # c4fa
+  at: '2026-05-30T09:06:43Z'  # c4fa
+  by: agent  # c4fa
+  actor: jgstern_agent  # c4fa
+  clock: 4  # c4fa
+  nonce: c4fa  # c4fa
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): direct member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (META: CLI args silently accepted without validation) — INV-fabov's mechanic enumeration explicitly names \"search subcommand silently accepting invalid filter values for kind, language, and limit\". Substantive siblings under that META: INV-nonag (compact --max-symbols/--coverage), INV-nufob (verify-claims taint flags), INV-mofih (verify-claims unknown claim types), INV-gapib (all --input wrong-view JSON), INV-jibof (positional path swallows bm.json). Code reference confirmed at cli.py:1598-1607 (post-slice header) and cli.py:6323-6327 (type=int with no positive guard)."  # c4fa
+- op: update  # 98e4
+  at: '2026-05-30T09:50:44Z'  # 98e4
+  by: agent  # 98e4
+  actor: jgstern_agent  # 98e4
+  clock: 5  # 98e4
+  nonce: '98e4'  # 98e4
+  set:  # 98e4
+    parent: INV-dunof-zahof-zizon-huhor-vipot-tadul-kunib-sonah  # 98e4
+  add:  # 98e4
+    tags: [dogfood_umbrella_member, fabov_face_argparse_type_range]  # 98e4

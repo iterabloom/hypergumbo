@@ -41,3 +41,19 @@
   clock: 3  # a05f
   nonce: a05f  # a05f
   message: "Cluster member of INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # a05f
+- op: update  # 41ad
+  at: '2026-05-30T09:50:49Z'  # 41ad
+  by: agent  # 41ad
+  actor: jgstern_agent  # 41ad
+  clock: 4  # 41ad
+  nonce: 41ad  # 41ad
+  set: {}  # 41ad
+  add:  # 41ad
+    tags: [nanon_face_scan_many_emit_zero]  # 41ad
+- op: discuss  # 284c
+  at: '2026-05-30T09:51:51Z'  # 284c
+  by: agent  # 284c
+  actor: jgstern_agent  # 284c
+  clock: 5  # 284c
+  nonce: 284c  # 284c
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): This item is the umbrella-evidence claim within INV-nanon AND a direct instance of INV-luhur sub-pattern 1 (schema-declares-no-writer): AnalysisRun's lack of edges_emitted/nodes_emitted fields is the writer-contract gap that makes the 61/84 zero-edge condition invisible to provenance consumers. Adding edges_emitted to AnalysisRun would close both halves — making the scan-and-emit-nothing condition both detectable and provenance-queryable. Suggests this item is the natural bridge between INV-nanon and INV-luhur."  # 284c

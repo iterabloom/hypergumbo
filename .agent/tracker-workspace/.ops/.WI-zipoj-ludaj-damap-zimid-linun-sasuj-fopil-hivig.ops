@@ -42,3 +42,20 @@
   clock: 4  # c7e9
   nonce: c7e9  # c7e9
   message: "Cross-ref backfill (2026-05-30, theme 9): closure of this item (>1M LOC warm sketch 14-22 min) is part of a sketch-performance / write-amplification cluster that also contains INV-jumim-zavog-vizip-litiz-futab-tajul-kujot-nurup (May-28 dogfood singleton: sketch --input re-walks filesystem) and WI-ribag-bilav-ninum-visub-figog-vidim-putir-zofop (warm-cache sketch slow; centrality + per-file embedding not cached). Adjacent: INV-dadaf-zozih-janid-kupag-zukag-balun-tapab-jivog — routes --input write-amplification (different subcommand, same anti-pattern)."  # c7e9
+- op: update  # 2f16
+  at: '2026-05-30T09:50:47Z'  # 2f16
+  by: agent  # 2f16
+  actor: jgstern_agent  # 2f16
+  clock: 5  # 2f16
+  nonce: 2f16  # 2f16
+  set:  # 2f16
+    parent: INV-papuj-gatin-gojid-jodal-fasov-mofom-ziruh-vovuh  # 2f16
+  add:  # 2f16
+    tags: [dogfood_umbrella_member]  # 2f16
+- op: discuss  # 00ec
+  at: '2026-05-30T09:51:52Z'  # 00ec
+  by: agent  # 00ec
+  actor: jgstern_agent  # 00ec
+  clock: 6  # 00ec
+  nonce: 00ec  # 00ec
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): the May-30 backfill on this item names the cluster correctly. L8 review confirms a fourth co-member is INV-dadaf-zozih-janid-kupag-zukag-balun-tapab-jivog. Candidate sub-META framing for all four (this item + INV-jumim + WI-ribag + INV-dadaf): \"sketch read-path does redundant computation when authoritative data is already on bm.json or disk.\" This item is the scale face — at >1M LOC the recompute cost in WI-ribag's centrality/embedding loops dominates."  # 00ec

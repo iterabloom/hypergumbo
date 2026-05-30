@@ -1,0 +1,25 @@
+- op: create  # 40ad
+  at: '2026-05-30T09:48:39Z'  # 40ad
+  by: agent  # 40ad
+  actor: jgstern_agent  # 40ad
+  clock: 1  # 40ad
+  nonce: 40ad  # 40ad
+  data:  # 40ad
+    kind: invariant  # 40ad
+    title: "META: Analyzer parity — declared Symbol/Edge fields populated unevenly across languages"  # 40ad
+    status: violated  # 40ad
+    priority: 1  # 40ad
+    parent:  # 40ad
+    tags:  # 40ad
+    - dogfood_corpus_20260528  # 40ad
+    - dogfood_umbrella  # 40ad
+    - dogfood_severity_significant  # 40ad
+    - analyzer_parity  # 40ad
+    isbefore: []  # 40ad
+    duplicate_of: []  # 40ad
+    not_duplicate_of: []  # 40ad
+    pr_ref:  # 40ad
+    description: "**Origin.** Filed 2026-05-30 from the linked-pile L7 investigation (notebookjournal_05302026_0522_linked_L7_analyzer_framework_dcm.md sub-pile A). Standalone META, peer of INV-luhur (writer contract — bm.json meta-layer).\n\n**The shape.** Three active items describe the same anti-pattern: a dataclass field on `Symbol` / `Edge` is declared in the schema but populated unevenly across language analyzers. Python's analyzer populates the field; non-Python analyzers don't, or populate with wrong-shape values. The schema reads as a uniform contract; the data delivers a Python-only or sparse-coverage reality.\n\n**Distinct from INV-luhur** (writer contract for bm.json meta-layer fields like AnalysisRun, metrics, limits, config_fingerprint). This META is about per-analyzer Symbol/Edge field-population coverage parity, not meta-layer writers.\n\n**Members (3).** INV-golap (JavaScript analyzer populates Symbol.signature on 0/10 function|method nodes; TypeScript 25/26; may be partially fixed since pass-9 — re-measure pending), INV-loguk (non-Python analyzers don't populate cyclomatic_complexity; bash/rust LOC-only; only `py.py:1655` defines CC), INV-gilok (Solidity analyzer captures source-text string as the identifier value — `solidity.py:355-369` unconditional `_extract_import_aliases` with no `import_directive` guard).\n\n**Fix shape.** Per-analyzer parity audit: for each declared `Symbol` and `Edge` field, identify the canonical computation (the one Python does correctly) and apply analogous logic in non-Python analyzers. WI-zisov polyglot fixture is the test substrate for verification; add isbefore when L7 work begins.\n\n**Parent:** null (top-level META, peer of INV-luhur)."  # 40ad
+    fields:  # 40ad
+      statement: "Every Symbol and Edge field declared in the schema must be populated equivalently across all language analyzers; no field may be Python-only or sparse-coverage when the schema presents it as a uniform contract."  # 40ad
+      root_cause: "No analyzer-parity audit gate. Python analyzer populates Symbol/Edge fields; non-Python analyzers don't, or do so with wrong-shape values. Manifestations: JavaScript Symbol.signature 0/10 (INV-golap, may be partially fixed since pass-9 — re-measure), non-Python analyzers don't populate cyclomatic_complexity; bash/rust LOC-only (INV-loguk), Solidity analyzer captures source-text-string as identifier value (INV-gilok, solidity.py:355-369). WI-zisov polyglot fixture is the test substrate."  # 40ad

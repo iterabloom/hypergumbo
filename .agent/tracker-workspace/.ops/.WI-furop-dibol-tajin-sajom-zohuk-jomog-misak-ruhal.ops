@@ -33,3 +33,30 @@
       dogfood_anon_id: "ITEM-01a94e"  # 8795
   add:  # 8795
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 8795
+- op: update  # 4927
+  at: '2026-05-30T09:04:05Z'  # 4927
+  by: agent  # 4927
+  actor: jgstern_agent  # 4927
+  clock: 3  # 4927
+  nonce: '4927'  # 4927
+  set:  # 4927
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # 4927
+  add:  # 4927
+    tags: [dogfood_umbrella_member]  # 4927
+- op: discuss  # 7539
+  at: '2026-05-30T09:06:43Z'  # 7539
+  by: agent  # 7539
+  actor: jgstern_agent  # 7539
+  clock: 4  # 7539
+  nonce: '7539'  # 7539
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): instance of the silent-CLI-accept umbrella INV-fabov-kapit-mupit-tigoz; matches the umbrella's mechanic-statement exactly (\"a search subcommand silently accepting invalid filter values\"). Six siblings already parent under INV-fabov (INV-gufod, INV-nonag, INV-gobob, INV-jibof, INV-nufob, INV-votop, WI-vusaf, INV-mofih). Should set parent=INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun. Fix-class identical: argparse choices= or a post-parse validator against the seven section names enumerated in cli.py:5906-5907's help text."  # 7539
+- op: update  # 2bdb
+  at: '2026-05-30T09:50:45Z'  # 2bdb
+  by: agent  # 2bdb
+  actor: jgstern_agent  # 2bdb
+  clock: 5  # 2bdb
+  nonce: 2bdb  # 2bdb
+  set:  # 2bdb
+    parent: INV-murig-kanin-junur-tazot-gifin-hijad-momuf-bukoj  # 2bdb
+  add:  # 2bdb
+    tags: [dogfood_umbrella_member, fabov_face_registry_membership]  # 2bdb

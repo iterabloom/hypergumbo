@@ -35,3 +35,20 @@
       dogfood_anon_id: "ITEM-66ff2d"  # a4b5
   add:  # a4b5
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # a4b5
+- op: update  # cc47
+  at: '2026-05-30T09:04:07Z'  # cc47
+  by: agent  # cc47
+  actor: jgstern_agent  # cc47
+  clock: 3  # cc47
+  nonce: cc47  # cc47
+  set:  # cc47
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # cc47
+  add:  # cc47
+    tags: [dogfood_umbrella_member]  # cc47
+- op: discuss  # 048d
+  at: '2026-05-30T09:06:43Z'  # 048d
+  by: agent  # 048d
+  actor: jgstern_agent  # 048d
+  clock: 4  # 048d
+  nonce: 048d  # 048d
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Member candidate for INV-numat — the field is a vocabulary/axis question (derivable vs stored). Sibling to INV-jusot (modifiers): same writer-side pattern of per-emitter ad hoc field population without shared registry — 7 linker files at event_sourcing.py:787, message_queue.py:533, database_query.py:440, websocket.py:888, graphql_resolver.py:521,547, http.py:1500, graphql.py:303 each reinvent `is_cross_language = src.language != dst.language`. dependency-linker, enclosure-linker, html, solidity never added the check, producing the 35-edge undercount (26 of which are depends_on_manifest). cross_language=False on 103 within-language edges is a zero-entropy-when-derivable sub-pattern of INV-lifik §1. Structural fix: either drop the field (derivable from node.language on src/dst) or move to a sketch-build-time post-processing layer that uniformly stamps it — same shape as the access_mode centralization gap in INV-kudug."  # 048d

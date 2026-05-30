@@ -41,3 +41,30 @@
   clock: 3  # 7842
   nonce: '7842'  # 7842
   message: "Cross-ref backfill (2026-05-30, theme 1): INV-zudob-rohaj-nodaf-pifir-bunih-rimus-rikup-lasah (non-dogfood, pending_validation) is a cousin item — the structurally-identical-cross-module residue (18.94%) after INV-fusus's same-module fix. This item (Severe P0) is the broader 60% global stable_id collision observation. Different root causes (cross-module identity vs. global hash space) within the same uniqueness theme."  # 7842
+- op: update  # 4dbd
+  at: '2026-05-30T09:04:07Z'  # 4dbd
+  by: agent  # 4dbd
+  actor: jgstern_agent  # 4dbd
+  clock: 4  # 4dbd
+  nonce: 4dbd  # 4dbd
+  set:  # 4dbd
+    parent: INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah  # 4dbd
+  add:  # 4dbd
+    tags: [dogfood_umbrella_member]  # 4dbd
+- op: discuss  # b553
+  at: '2026-05-30T09:39:22Z'  # b553
+  by: agent  # b553
+  actor: jgstern_agent  # b553
+  clock: 5  # b553
+  nonce: b553  # b553
+  message: "Cross-ref backfill (2026-05-30, linked-pile L2 investigation): mis-parent flagged. Current parent INV-kurup (set during prior unlinked-campaign Phase 1) does not fit — the mechanic is 'hash inputs too coarse' (60% of nodes share stable_id because the hash doesn't include positional/path disambiguating info), which is a UNIQUENESS gap, not a FORMAT gap. INV-kurup's claim is non-canonical identifier FORMATS from emission paths. INV-bazij belongs under a future 'stable_id uniqueness' META (along with INV-zudob and INV-hunup) — deferred filing decision. Parent revert blocked by tracker limitation; will re-parent forward when the new META is filed."  # b553
+- op: update  # 9941
+  at: '2026-05-30T09:50:47Z'  # 9941
+  by: agent  # 9941
+  actor: jgstern_agent  # 9941
+  clock: 6  # 9941
+  nonce: '9941'  # 9941
+  set:  # 9941
+    parent: INV-tazaj-bufod-dinuh-damoh-lubaf-zadod-jisav-duzuj  # 9941
+  add:  # 9941
+    tags: [dogfood_umbrella_member]  # 9941

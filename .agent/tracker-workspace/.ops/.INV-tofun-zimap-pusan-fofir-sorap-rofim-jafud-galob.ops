@@ -42,3 +42,13 @@
   clock: 3  # b194
   nonce: b194  # b194
   message: "Cross-ref backfill (2026-05-30, theme 5b): two active non-dogfood items address the analyzer-side substrate this finding lives on: (1) WI-nigah-hubuj-mobuh-zurus-limab-sonol-jutiz-kumuh — long-tail dst_ref retrofit umbrella across ~90 analyzers; (2) WI-huzuv-fisuz-puman-lotaj-suduk-busiz-jasig-dahid — mechanical dst_ref sweep for analyzers using make_unresolved_edge with module hint. Both are about analyzer-side encoding of unresolved targets / synthetic symbols (the same substrate this item's JS-on-TS hardcoding lives on). (Separately, theme 7 also backfills this item to WI-zisov on the test-substrate side.)"  # b194
+- op: update  # 10dc
+  at: '2026-05-30T09:04:06Z'  # 10dc
+  by: agent  # 10dc
+  actor: jgstern_agent  # 10dc
+  clock: 4  # 10dc
+  nonce: 10dc  # 10dc
+  set:  # 10dc
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # 10dc
+  add:  # 10dc
+    tags: [dogfood_umbrella_member]  # 10dc

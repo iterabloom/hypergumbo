@@ -42,3 +42,20 @@
       dogfood_anon_id: "ITEM-8e838d"  # 433c
   add:  # 433c
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 433c
+- op: update  # 4cf0
+  at: '2026-05-30T09:04:08Z'  # 4cf0
+  by: agent  # 4cf0
+  actor: jgstern_agent  # 4cf0
+  clock: 4  # 4cf0
+  nonce: 4cf0  # 4cf0
+  set:  # 4cf0
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 4cf0
+  add:  # 4cf0
+    tags: [dogfood_umbrella_member]  # 4cf0
+- op: discuss  # 2815
+  at: '2026-05-30T09:06:42Z'  # 2815
+  by: agent  # 2815
+  actor: jgstern_agent  # 2815
+  clock: 5  # 2815
+  nonce: '2815'  # 2815
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): same \"closed-set check missing between writer stages\" cluster as INV-mozaf (1198 discovery vs 902 emitted) and INV-nuzas (workspace symbols collapsed to <external> placeholder). metrics.compute_metrics (metrics.py:102-108) buckets dangling-src edges to `unknown` tier, exposing the gap but not validating it. The 8-of-23 function-node origins in the existing pass-13 discussion confirm the filter boundary is generated/tested-generated, not file/function. A post-emit `assert set(e.src for e in edges) <= set(n.id for n in nodes)` would catch all three."  # 2815

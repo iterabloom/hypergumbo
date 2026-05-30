@@ -33,3 +33,20 @@
       dogfood_anon_id: "ITEM-0cf5c3"  # ad68
   add:  # ad68
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # ad68
+- op: update  # 3fa2
+  at: '2026-05-30T09:04:10Z'  # 3fa2
+  by: agent  # 3fa2
+  actor: jgstern_agent  # 3fa2
+  clock: 3  # 3fa2
+  nonce: 3fa2  # 3fa2
+  set:  # 3fa2
+    parent: INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik  # 3fa2
+  add:  # 3fa2
+    tags: [dogfood_umbrella_member]  # 3fa2
+- op: discuss  # b679
+  at: '2026-05-30T09:06:43Z'  # b679
+  by: agent  # b679
+  actor: jgstern_agent  # b679
+  clock: 4  # b679
+  nonce: b679  # b679
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): part of the sketch performance / write-amplification cluster already containing WI-zipoj-ludaj (>1M LOC warm sketch 14-22 min — discussion explicitly cites \"comparison-sketch passes optional\" as the suggested fix), WI-ribag-bilav (warm-cache sketch slow; centrality not cached at analysis level), INV-jumim-zavog (sketch --input re-walks filesystem). The 4x/16x re-run is cli.py:798-841, unconditionally re-entering generate_sketch with no caller opt-out. A shared \"comparison-sketch is opt-in, default off for non-TTY / --input\" rule would resolve this and reduce wall-clock for the perf siblings."  # b679

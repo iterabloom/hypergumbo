@@ -1,0 +1,26 @@
+- op: create  # 4ac7
+  at: '2026-05-30T09:48:26Z'  # 4ac7
+  by: agent  # 4ac7
+  actor: jgstern_agent  # 4ac7
+  clock: 1  # 4ac7
+  nonce: 4ac7  # 4ac7
+  data:  # 4ac7
+    kind: invariant  # 4ac7
+    title: "META(sub-B): argparse type/range validation gaps"  # 4ac7
+    status: violated  # 4ac7
+    priority: 2  # 4ac7
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # 4ac7
+    tags:  # 4ac7
+    - dogfood_corpus_20260528  # 4ac7
+    - dogfood_umbrella  # 4ac7
+    - dogfood_severity_moderate  # 4ac7
+    - argparse_type_range  # 4ac7
+    - sub_meta_under_fabov  # 4ac7
+    isbefore: []  # 4ac7
+    duplicate_of: []  # 4ac7
+    not_duplicate_of: []  # 4ac7
+    pr_ref:  # 4ac7
+    description: "**Origin.** Filed 2026-05-30 as a sub-META of INV-fabov following the linked-pile L1 investigation. Sub-META B.\n\n**The shape.** Five active items describe argparse-layer type/range validation gaps. CLI flags that accept any string are not type-checked; numeric flags that should reject `<0` / `>1` / `max<min` combinations don't. Same root: no shared argparse-action factory for \"bounded numeric\" / \"validated path\" / \"positive-int\" types — each subcommand reinvents.\n\n**Fix shape.** A common argparse-action factory: `bounded_int(min=0, max=...)`, `validated_path(must_exist=True, must_be_dir=False, ...)`, `positive_count(...)`. Plus argparse-type wrappers at each subcommand. Each member item becomes one wiring patch.\n\n**Members (5).** WI-vusaf (compact --max-symbols/--coverage/--negative-limits, canonical after INV-nonag duplicate-close), INV-toniv (search negative `--limit` accepted silently), INV-jibof (positional path silently swallows non-directory), INV-fapid (slice `--out slice.json` silently overridden by argparse-default), and the `--limit` slice of INV-votop (the type/range face; the registry-membership face goes to sub-META C).\n\n**Note on INV-votop.** This is the only multi-face item: `--kind` and `--language` are registry-membership (sub-META C); `--limit` is type/range (here). Item gets primary parent = sub-META C with a cross-reference discussion to sub-META B for the `--limit` face.\n\n**Parent:** INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun."  # 4ac7
+    fields:  # 4ac7
+      statement: "Every numeric / path / typed CLI flag must have argparse-layer validation (type-cast, range-check, existence-check); no flag may silently accept out-of-range or wrong-type values."  # 4ac7
+      root_cause: "No shared argparse-action factory for bounded-numeric / validated-path / positive-int types — each subcommand reinvents. Symptoms: compact accepts max<min and coverage>1 (WI-vusaf), search accepts negative --limit (INV-toniv), positional path silently swallows non-directory (INV-jibof), slice --out silently overridden by argparse-default (INV-fapid)."  # 4ac7

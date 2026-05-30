@@ -32,3 +32,10 @@
       dogfood_anon_id: "ITEM-9f2a93"  # b10c
   add:  # b10c
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # b10c
+- op: discuss  # 0c59
+  at: '2026-05-30T09:06:43Z'  # 0c59
+  by: agent  # 0c59
+  actor: jgstern_agent  # 0c59
+  clock: 3  # 0c59
+  nonce: 0c59  # 0c59
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): direct read of packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/bash.py — likeliest hot spot is _get_enclosing_function (lines 353-362) walking the parent chain for every command node with no memoization, called from extract_edges_from_file's iter_tree pass (line 364). Bash scripts are command-dense (~one command per executable line), so a 200-line script triggers ~200 parent-chain walks per pass. Suggested first probe: cProfile the bash pass on a single ~200-line script before optimizing; if confirmed, memoize via a single Pass-1 traversal that builds node_id → enclosing_function map and look it up in O(1) during Pass 2. Theme-adjacent (not same-mechanic): INV-bikaj-mizug (passes that burn budget on no-edge output)."  # 0c59

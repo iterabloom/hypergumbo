@@ -42,3 +42,13 @@
   clock: 3  # 8c27
   nonce: 8c27  # 8c27
   message: "Cluster member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 8c27
+- op: update  # efdb
+  at: '2026-05-30T09:50:45Z'  # efdb
+  by: agent  # efdb
+  actor: jgstern_agent  # efdb
+  clock: 4  # efdb
+  nonce: efdb  # efdb
+  set:  # efdb
+    parent: INV-murig-kanin-junur-tazot-gifin-hijad-momuf-bukoj  # efdb
+  add:  # efdb
+    tags: [dogfood_umbrella_member, fabov_face_registry_membership]  # efdb

@@ -23,3 +23,20 @@
       dogfood_anon_id: "ITEM-a7325f"  # 788c
       statement: "Visibility should have a single canonical encoding with explicit semantics. Either the path-based heuristic is canonical and the language-specific modifier set documents its polarity, or the modifier vocabulary is unified across languages. The two encodings should not be allowed to silently disagree."  # 788c
       root_cause: "A `modifiers` field on symbols carries language-specific visibility terms. Different language analyzers emit different vocabularies for what is semantically the same concept (whether a symbol is exported / publicly visible): one language emits `private` only (never positive markers), several emit only positive markers (`public`, `pub`, `exported`, `external`) and never negative ones. A separate boolean field captures visibility from a path-based heuristic. The two encodings of the same concept can contradict on a per-symbol basis, with the path-based heuristic disagreeing with the language-syntactic visibility on a small set of cases. Cases include underscore-prefixed private functions inside source paths that the heuristic marks as exported, and tests-directory symbols carrying the language's external marker that the heuristic marks as non-exported."  # 788c
+- op: update  # cd2f
+  at: '2026-05-30T09:04:07Z'  # cd2f
+  by: agent  # cd2f
+  actor: jgstern_agent  # cd2f
+  clock: 2  # cd2f
+  nonce: cd2f  # cd2f
+  set:  # cd2f
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # cd2f
+  add:  # cd2f
+    tags: [dogfood_umbrella_member]  # cd2f
+- op: discuss  # dcc0
+  at: '2026-05-30T09:06:42Z'  # dcc0
+  by: agent  # dcc0
+  actor: jgstern_agent  # dcc0
+  clock: 3  # dcc0
+  nonce: dcc0  # dcc0
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Belongs as a member of INV-numat — the umbrella covers vocabulary fields whose values mix axes from distinct conceptual dimensions, and `modifiers` exhibits the same per-emitter-dialect pattern that umbrella catalogues for framework_dispatch and call_construct. Sibling to WI-moliz (extends/inherits/implements divergence on edge.type — same cross-language vocabulary asymmetry on a different field). Distinct from the umbrella's existing members in that `modifiers` is `List[str]` not scalar — current axis-declaration check at multi_value_field_axis.py only covers scalar `str` / `Optional[str]` / `Literal`. Fixing this also requires extending the axis-declaration policy in ADR-0024 to cover list-valued and dict-valued vocabulary fields. Related to INV-zigup (cross_language meta same writer-side root cause: per-linker code paths with no shared emission policy)."  # dcc0

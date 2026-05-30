@@ -42,3 +42,19 @@
   clock: 3  # a1b0
   nonce: a1b0  # a1b0
   message: "Cluster member of INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # a1b0
+- op: update  # 142f
+  at: '2026-05-30T09:50:49Z'  # 142f
+  by: agent  # 142f
+  actor: jgstern_agent  # 142f
+  clock: 4  # 142f
+  nonce: 142f  # 142f
+  set: {}  # 142f
+  add:  # 142f
+    tags: [nanon_face_no_analyzer_registered]  # 142f
+- op: discuss  # 1cd6
+  at: '2026-05-30T09:51:51Z'  # 1cd6
+  by: agent  # 1cd6
+  actor: jgstern_agent  # 1cd6
+  clock: 5  # 1cd6
+  nonce: 1cd6  # 1cd6
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Within INV-nanon (umbrella), this item instantiates a distinct sub-pattern from di-resolution (INV-hosig) and pyffi-linker (INV-kodan): \"no-analyzer-registered-at-all\" — the language is counted in profile.languages but no pass extracts symbols. Distinct from \"pass-runs-but-no-target-patterns\" where the pass exists and runs but finds nothing. The two sub-patterns need different fixes — a registration gap vs. an activation-predicate gap. Markdown (INV-bikaj's high-load list) may belong to the same sub-pattern as yaml here."  # 1cd6

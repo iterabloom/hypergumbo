@@ -1,0 +1,26 @@
+- op: create  # b9d5
+  at: '2026-05-30T09:48:37Z'  # b9d5
+  by: agent  # b9d5
+  actor: jgstern_agent  # b9d5
+  clock: 1  # b9d5
+  nonce: b9d5  # b9d5
+  data:  # b9d5
+    kind: invariant  # b9d5
+    title: "META: Sketch read-path does redundant computation when authoritative data is on disk"  # b9d5
+    status: violated  # b9d5
+    priority: 1  # b9d5
+    parent:  # b9d5
+    tags:  # b9d5
+    - dogfood_corpus_20260528  # b9d5
+    - dogfood_umbrella  # b9d5
+    - dogfood_severity_significant  # b9d5
+    - sketch_pipeline  # b9d5
+    - sketch_redundant_computation  # b9d5
+    isbefore: []  # b9d5
+    duplicate_of: []  # b9d5
+    not_duplicate_of: []  # b9d5
+    pr_ref:  # b9d5
+    description: "**Origin.** Filed 2026-05-30 from the linked-pile L8 investigation (notebookjournal_05302026_0522_linked_L8_perf_infra.md sub-pile A). Standalone META, peer of INV-fanur (sketch budget coordination, prior campaign).\n\n**The shape.** Four active items describe the same anti-pattern: the sketch read-path does work that's already on disk. Cached data exists in bm.json or in `~/.cache/hypergumbo/...`, but sketch subcommands re-walk the filesystem, recompute centrality, or regenerate per-file embeddings as if no cache existed. The fix shape is per-site cache-lookup short-circuits; the architectural absence is a shared \"use-the-cache-when-available\" precondition check.\n\n**Distinct from INV-fanur** (sketch budget coordination), which is about budget-enforcement layering across compact-projection / multi-resolution / centrality components. INV-fanur addresses HOW MUCH work to do; this META addresses WHETHER to do already-done work.\n\n**Members (4).** INV-jumim (sketch --input ignores cached test-file info and re-walks filesystem), WI-ribag (hypergumbo sketch slow on fully-warm cache because centrality + per-file embedding not cached at the same level as analysis JSON), WI-zipoj (>1M LOC warm sketch takes 14-22+ minutes — the corpus-scale manifestation), INV-dadaf (routes --input writes 5 sketch artifacts as side effect of read-only invocation — status uncertain, may be partially fixed at `cli.py:476` `_get_or_run_analysis` short-circuit on --input).\n\n**Fix shape.** Single `SketchCachePolicy` helper that wraps the read-path: check disk for {analysis JSON, centrality, embeddings} freshness; short-circuit each step that has a fresh cache. Each member item is one cache-lookup retrofit site.\n\n**Parent:** null (top-level META, peer of INV-fanur)."  # b9d5
+    fields:  # b9d5
+      statement: "For any sketch subcommand invoked when fresh cached data exists on disk, the read-path must short-circuit and reuse the cache; no sketch subcommand may re-walk the filesystem or recompute derived data when an authoritative cached version is available."  # b9d5
+      root_cause: "No shared SketchCachePolicy helper at the read-path entry. Each component (centrality, per-file embedding, filesystem walk, sketch-artifact write) was added independently with no cache-lookup precondition. Manifestations: sketch --input re-walks filesystem (INV-jumim), warm-cache sketch slow because centrality + per-file embedding not cached (WI-ribag), >1M-LOC warm sketch 14-22 min (WI-zipoj corpus-scale), routes --input writes 5 sketch artifacts as side effect of read-only invocation (INV-dadaf, status uncertain)."  # b9d5

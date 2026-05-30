@@ -41,3 +41,18 @@
   clock: 3  # 943d
   nonce: 943d  # 943d
   message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 943d
+- op: update  # b804
+  at: '2026-05-30T09:39:23Z'  # b804
+  by: agent  # b804
+  actor: jgstern_agent  # b804
+  clock: 4  # b804
+  nonce: b804  # b804
+  set:  # b804
+    priority: 2  # b804
+- op: discuss  # 6fd6
+  at: '2026-05-30T09:39:23Z'  # 6fd6
+  by: agent  # 6fd6
+  actor: jgstern_agent  # 6fd6
+  clock: 5  # 6fd6
+  nonce: 6fd6  # 6fd6
+  message: "Severity reconsider (2026-05-30, linked-pile L3 investigation): P1 → P2. WI-pofas duplicates the WI-gogif umbrella's claim at different granularity (a count of 5 conventions × 15 subcommands). Better-classified as audit-evidence carrier than as load-bearing fix-claim. WI-gogif is the actual P2 fix-anchor; WI-pofas tracks the count for re-verification. Demoting priority avoids competing P1s for the same architectural fix."  # 6fd6

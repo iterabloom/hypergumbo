@@ -49,3 +49,10 @@
   clock: 4  # 0308
   nonce: '0308'  # 0308
   message: "Cross-ref backfill (2026-05-30, theme 10): two active non-dogfood dead-code-maybe items are adjacent to this finding: (1) WI-hagip-fanov-holan-ginif-korov-sakim-mojag-ridip — DCM OOM/crash on 3 largest repos (trino, envoy, vscode); (2) WI-botol-duhub-farad-vukih-fiput-tifit-luzur-lazaf — run DCM prospecting on 200-repo corpus. Test-classification dominance (this item's 76%) shapes DCM FP volume — adjacency, not claimed root cause. Sibling DCM issue (different mechanism): INV-nogof-hopol-morov-nufis-gobat-kimuf-rilaj-lovon — CCCCC ambiguous-entry handling inconsistent across read subcommands including dead-code-maybe."  # 0308
+- op: discuss  # ecfa
+  at: '2026-05-30T09:51:52Z'  # ecfa
+  by: agent  # ecfa
+  actor: jgstern_agent  # ecfa
+  clock: 5  # ecfa
+  nonce: ecfa  # ecfa
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): this item functions as the empirical anchor for the L7 analyzer/framework/DCM/routes cluster. Six active items in the pile cross-reference KKKKK as either motivation (INV-rojip prod-non-test filter, INV-fomod file-structure complement) or downstream consequence (WI-hagip OOM scaling, WI-botol corpus prospecting). The 76% test-domination remains the load-bearing structural observation. No new sub-pattern uncovered; existing Phase-1 cross-refs are substantive."  # ecfa

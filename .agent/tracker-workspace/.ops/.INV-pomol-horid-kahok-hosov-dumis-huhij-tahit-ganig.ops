@@ -36,3 +36,30 @@
   clock: 3  # c939
   nonce: c939  # c939
   message: "Cross-ref backfill (2026-05-30, theme 6): closure of this item (routes top-level field absent from bm.json; 'No API routes found' despite 8 Route entries in usage_contexts) is part of a routes-coverage cluster with INV-nubub-davag-vihut-zurib-kunuf-nukub-tidab-dogig (May-28 dogfood singleton 'Handler-slice filename collision: route-symbol overwrites function-symbol slice') and INV-dogif-mitim-todub-ruhoh-hiruk-nidal-bahur-bovaz (React Router not detected). Sibling JSON-output gap: AAAAA (umbrella-member under WI-gogif)."  # c939
+- op: update  # 2a9f
+  at: '2026-05-30T09:04:08Z'  # 2a9f
+  by: agent  # 2a9f
+  actor: jgstern_agent  # 2a9f
+  clock: 4  # 2a9f
+  nonce: 2a9f  # 2a9f
+  set:  # 2a9f
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # 2a9f
+  add:  # 2a9f
+    tags: [dogfood_umbrella_member]  # 2a9f
+- op: update  # 89e6
+  at: '2026-05-30T09:50:46Z'  # 89e6
+  by: agent  # 89e6
+  actor: jgstern_agent  # 89e6
+  clock: 5  # 89e6
+  nonce: '89e6'  # 89e6
+  set:  # 89e6
+    parent: INV-rugah-kijir-nufif-suzos-dipas-hubob-rabal-hapuv  # 89e6
+  add:  # 89e6
+    tags: [dogfood_umbrella_member, gogif_face_wire_format]  # 89e6
+- op: discuss  # 1ade
+  at: '2026-05-30T09:51:52Z'  # 1ade
+  by: agent  # 1ade
+  actor: jgstern_agent  # 1ade
+  clock: 6  # 1ade
+  nonce: 1ade  # 1ade
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Post-pass-14-correction, this item reduces to two sub-findings: (a) bm.json schema-organization observation that route data lives in entrypoints + usage_contexts with no top-level routes promotion (an Axis-C wire-format-vs-schema gap within WI-gogif, sibling of WI-nohoh's pass/pass_id rename); (b) the side observation that the routes subcommand generates 5 sketch artifacts on a read-only operation (a sketch-on-read mechanic that does not belong under WI-gogif). Recommend either splitting (b) into a separate item or moving the parent of (b) out of WI-gogif. Priority P1 reflects pass-13's original severity claim, which was largely retracted; consider P2/P3."  # 1ade

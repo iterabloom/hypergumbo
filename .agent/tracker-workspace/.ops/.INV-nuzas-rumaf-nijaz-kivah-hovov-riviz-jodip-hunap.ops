@@ -23,3 +23,20 @@
       dogfood_anon_id: "ITEM-30ba2a"  # f0e5
       statement: "Workspace-package source at `packages/*/src/` (or analogous monorepo layout) should be first-party. Workspace dependency declarations should be internal-dependency. First-party symbols should preserve their real path, not collapse to a placeholder."  # f0e5
       root_cause: "The supply-chain tier classifier assigns each file to a tier (first-party, internal-dependency, external-dependency, derived). The classifier mis-tiers files that match documented first-party and internal-dependency patterns: workspace-package source files at canonical monorepo paths are tagged as external-dependency despite the spec's explicit first-party path patterns covering them; first-party symbols from in-tree packages are emitted as external symbols, collapsing their path to a placeholder. The mis-tiering is not random; it concentrates on the project's own internal packages."  # f0e5
+- op: update  # e2f8
+  at: '2026-05-30T09:04:09Z'  # e2f8
+  by: agent  # e2f8
+  actor: jgstern_agent  # e2f8
+  clock: 2  # e2f8
+  nonce: e2f8  # e2f8
+  set:  # e2f8
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # e2f8
+  add:  # e2f8
+    tags: [dogfood_umbrella_member]  # e2f8
+- op: discuss  # c355
+  at: '2026-05-30T09:06:42Z'  # c355
+  by: agent  # c355
+  actor: jgstern_agent  # c355
+  clock: 3  # c355
+  nonce: c355  # c355
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): INV-nohod-najud (76% test-classified) is the sibling tier-classifier symptom — both items expose that tier is overloaded as a relevance signal. INV-pohik-jumos (call graph misses dispatch primitives) is adjacent — the 366 imports edges mis-routed to phantom externals here degrade the same downstream consumers (slice, dead-code) that INV-pohik's missing dispatch edges do. Root cause is two-layered and not in supply_chain.py path-classifier: the Python import resolver doesn't traverse packages/*/pyproject.toml to find workspace siblings, so internal symbols escape to ir.create_boundary_nodes (ir.py:1120-1205); the manifest classifier then assigns \"direct dependency (pyproject.toml)\" because the root pyproject lists the workspace siblings. Fix at resolver layer, not classifier layer."  # c355

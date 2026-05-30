@@ -42,3 +42,20 @@
       dogfood_anon_id: "ITEM-6090d0"  # 1c78
   add:  # 1c78
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 1c78
+- op: update  # 0c61
+  at: '2026-05-30T09:04:11Z'  # 0c61
+  by: agent  # 0c61
+  actor: jgstern_agent  # 0c61
+  clock: 4  # 0c61
+  nonce: 0c61  # 0c61
+  set:  # 0c61
+    parent: WI-himas-gohif-luroj-gilip-sudad-zalis-ravur-pidal  # 0c61
+  add:  # 0c61
+    tags: [dogfood_umbrella_member]  # 0c61
+- op: discuss  # a3bc
+  at: '2026-05-30T09:04:11Z'  # a3bc
+  by: agent  # a3bc
+  actor: jgstern_agent  # a3bc
+  clock: 5  # a3bc
+  nonce: a3bc  # a3bc
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): member of WI-himas-gohif-luroj-gilip-sudad-zalis-ravur-pidal (primary fix-site) and INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (secondary face: verify-claims input validation gap (malformed YAML claims file)). Parent assignment reflects the closer fix-site framing."  # a3bc

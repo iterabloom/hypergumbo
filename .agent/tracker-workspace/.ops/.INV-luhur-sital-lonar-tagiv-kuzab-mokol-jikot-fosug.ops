@@ -23,3 +23,12 @@
     fields:  # 6e0f
       statement: "Every field declared in the behavior map's meta-layer (analysis_runs[], metrics, limits, config_fingerprint, edge.src, provenance fields on edges/nodes) must be populated by some writer such that the value round-trips with the underlying record set across every producer."  # 6e0f
       root_cause: "The meta-layer was added incrementally without a single writer-contract owner. Producers wire fields independently at different pipeline stages — AnalysisRun.create() (ir.py:181-268), metrics.compute_metrics (metrics.py:103-108), Limits adders (limits.py:132-140), io_boundary tagging (io_boundary.py:1249) — and no validator stage asserts schema-conformance. Four symptom sub-patterns: (1) schema-declares-no-writer (INV-virik, INV-pitab partial), (2) default-only initializer never overridden (INV-lidul/INV-gizik/INV-nihug), (3) same-name two-definitions across paths (INV-pubom/INV-mozaf/INV-jukok), (4) writer-writes-constant where schema reserves evidence-derived slot (INV-suvil/INV-nuzal, tagged dogfood_writer_constant_face)."  # 6e0f
+- op: update  # 8bbb
+  at: '2026-05-30T09:50:48Z'  # 8bbb
+  by: agent  # 8bbb
+  actor: jgstern_agent  # 8bbb
+  clock: 2  # 8bbb
+  nonce: 8bbb  # 8bbb
+  set: {}  # 8bbb
+  add:  # 8bbb
+    tags: [super_meta_no_validator_stage]  # 8bbb

@@ -51,3 +51,30 @@
       dogfood_anon_id: "ITEM-7f81e9"  # 3b55
   add:  # 3b55
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_severe]  # 3b55
+- op: update  # 0f4b
+  at: '2026-05-30T09:04:06Z'  # 0f4b
+  by: agent  # 0f4b
+  actor: jgstern_agent  # 0f4b
+  clock: 5  # 0f4b
+  nonce: 0f4b  # 0f4b
+  set:  # 0f4b
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # 0f4b
+  add:  # 0f4b
+    tags: [dogfood_umbrella_member]  # 0f4b
+- op: discuss  # 64c8
+  at: '2026-05-30T09:06:42Z'  # 64c8
+  by: agent  # 64c8
+  actor: jgstern_agent  # 64c8
+  clock: 6  # 64c8
+  nonce: 64c8  # 64c8
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): same fail-silent dispatch geometry as INV-gobob (unknown boundary), INV-mofih (unknown claim type), and INV-nufob (taint-flag silent accept) — all hit the verify_claim \"chain_count=0 → confirmed\" or \"no constraint → confirmed\" fall-throughs in verify_claims.py:229-291. The shared root is the absence of a verdict=\"inconclusive\" state plus a missing-evidence precondition on the boundary map. Member of umbrella INV-fabov (META silent-input-acceptance). Precedent for the fix shape: INV-javam (satisfied) added unsupported-scope tracking for the taint-flow side. The test at test_verify_claims.py:241-251 currently codifies this bug as expected behavior and should flip when the structural fix lands."  # 64c8
+- op: update  # c1ec
+  at: '2026-05-30T09:50:43Z'  # c1ec
+  by: agent  # c1ec
+  actor: jgstern_agent  # c1ec
+  clock: 7  # c1ec
+  nonce: c1ec  # c1ec
+  set:  # c1ec
+    parent: INV-somut-lapar-furob-tovul-juhor-puhat-zujim-lobir  # c1ec
+  add:  # c1ec
+    tags: [dogfood_umbrella_member, fabov_face_verify_claims]  # c1ec

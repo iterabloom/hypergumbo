@@ -41,3 +41,19 @@
   clock: 3  # b991
   nonce: b991  # b991
   message: "Cluster member of INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # b991
+- op: update  # 49a1
+  at: '2026-05-30T09:50:49Z'  # 49a1
+  by: agent  # 49a1
+  actor: jgstern_agent  # 49a1
+  clock: 4  # 49a1
+  nonce: 49a1  # 49a1
+  set: {}  # 49a1
+  add:  # 49a1
+    tags: [nanon_face_pass_runs_empty]  # 49a1
+- op: discuss  # 745c
+  at: '2026-05-30T09:51:52Z'  # 745c
+  by: agent  # 745c
+  actor: jgstern_agent  # 745c
+  clock: 5  # 745c
+  nonce: 745c  # 745c
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Closure of this item depends on Phase 2 of INV-hujog (wire validate_pass_dependencies into the orchestrator at config time). The function exists in catalog.py:188 but has no callers in the run pipeline as of 2026-05-30 verification — confirmed by grep across packages/hypergumbo-core/src/. di-resolution will continue to emit 0 edges on every run until activation-gate enforcement lands. Suggests INV-hujog needs a Phase 2 sub-item filed to track the orchestrator wire-up specifically."  # 745c

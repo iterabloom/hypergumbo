@@ -23,3 +23,10 @@
       dogfood_anon_id: "ITEM-1c20b5"  # 4066
       statement: "Flags should produce their documented effect on output. Section labels should match the edge semantics of the entries they group. Either the headers partition by edge type, or by direction with documented inclusion semantics."  # 4066
       root_cause: "The explanation subcommand has several distinct quality problems. One subcommand flag intended to surface provenance information produces byte-identical output with or without the flag enabled — the flag is wholly unwired. Separately, the subcommand's section headers conflate edge direction with edge semantics: a \"Calls\" section under a symbol header may contain entries that are not invocations (containment relations, instantiations, references); a \"Called by\" section may contain entries that are class-creation rather than invocation. A consumer reading the section labels infers a relationship that does not match the underlying edge type."  # 4066
+- op: discuss  # 3705
+  at: '2026-05-30T09:06:43Z'  # 3705
+  by: agent  # 3705
+  actor: jgstern_agent  # 3705
+  clock: 2  # 3705
+  nonce: '3705'  # 3705
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Confirmed both mechanisms in code. (a) cli.py:1922 _print_edge_provenance early-returns on empty derived_from; analyzer-produced edges never populate derived_from, so --provenance produces zero visible output for analyzer-dominated symbols. (b) cli.py:2074-2091 collects edges where edge.dst == symbol_id with no edge-type filter; the \"Called by (N)\" header at cli.py:2225 sums across calls/contains/instantiates/references. Fix-direction: partition collected edges by edge.type and emit one section per type, or rename headers to \"Incoming (N)\" / \"Outgoing (N)\" and document union semantics. Same subcommand as INV-nogof (explain ambiguity policy); co-fix candidate."  # 3705

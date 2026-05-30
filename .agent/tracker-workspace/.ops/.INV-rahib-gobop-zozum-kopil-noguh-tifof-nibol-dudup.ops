@@ -207,3 +207,10 @@
   nonce: 89ac  # 89ac
   set:  # 89ac
     priority: 1  # 89ac
+- op: discuss  # 5ee2
+  at: '2026-05-30T09:51:52Z'  # 5ee2
+  by: agent  # 5ee2
+  actor: jgstern_agent  # 5ee2
+  clock: 27  # 5ee2
+  nonce: 5ee2  # 5ee2
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): cross-link to INV-dalup-fadol-harir-lipin-kipur-nitut-kirup-juvug. Both items are git-sync-adjacent convergence invariants; this one covers auto-pr's post-rebase poll loop (scripts/lib/forgejo-api.sh), INV-dalup covers tracker auto-sync's post-snapshot cleanup race (packages/hypergumbo-tracker/.../sync.py). Different scripts and different mechanics, but the same operator-experience surface (silent destruction of work in flight). A small sub-cluster but worth recording: changes to either codepath should consult the other to avoid re-introducing the sibling's failure mode."  # 5ee2

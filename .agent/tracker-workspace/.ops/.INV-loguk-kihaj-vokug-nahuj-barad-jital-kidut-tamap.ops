@@ -49,3 +49,20 @@
   clock: 4  # 7736
   nonce: '7736'  # 7736
   message: "Cross-ref backfill (2026-05-30, theme 7): WI-zisov-bojub-dahot-lolus-gufut-zomaf-safon-bagal (Extend polyglot fixture to 5-10 additional languages) is the test substrate prerequisite for validating closure of this item. Without that fixture extension, a fix to non-Python cyclomatic_complexity/LOC ships without per-language test coverage."  # 7736
+- op: update  # e967
+  at: '2026-05-30T09:50:47Z'  # e967
+  by: agent  # e967
+  actor: jgstern_agent  # e967
+  clock: 5  # e967
+  nonce: e967  # e967
+  set:  # e967
+    parent: INV-jahiv-lugis-topum-totot-morin-somuv-pujoz-vijir  # e967
+  add:  # e967
+    tags: [dogfood_umbrella_member]  # e967
+- op: discuss  # 5595
+  at: '2026-05-30T09:51:52Z'  # 5595
+  by: agent  # 5595
+  actor: jgstern_agent  # 5595
+  clock: 6  # 5595
+  nonce: '5595'  # 5595
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): peer of INV-golap (JS signature 0/10) under the unfiled \"Analyzer parity: declared Symbol fields populated unevenly across languages\" sub-cluster. Code inspection confirms cyclomatic_complexity is computed only in py.py:1655; bash.py and rust.py partially populate LOC; eight other non-Python analyzers leave both fields None. Sub-pile A candidate sub-META members: INV-golap, INV-loguk, and (with reservation) INV-gilok — though INV-gilok is closer to a wrong-value-emitted bug than an unpopulated-field bug."  # 5595

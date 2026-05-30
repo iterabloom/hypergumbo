@@ -1,0 +1,35 @@
+- op: create  # ca58
+  at: '2026-05-30T09:48:41Z'  # ca58
+  by: agent  # ca58
+  actor: jgstern_agent  # ca58
+  clock: 1  # ca58
+  nonce: ca58  # ca58
+  data:  # ca58
+    kind: invariant  # ca58
+    title: "META: stable_id uniqueness — hash input set too coarse"  # ca58
+    status: violated  # ca58
+    priority: 0  # ca58
+    parent:  # ca58
+    tags:  # ca58
+    - dogfood_corpus_20260528  # ca58
+    - dogfood_umbrella  # ca58
+    - dogfood_severity_severe  # ca58
+    - stable_id  # ca58
+    - identity  # ca58
+    isbefore: []  # ca58
+    duplicate_of: []  # ca58
+    not_duplicate_of: []  # ca58
+    pr_ref:  # ca58
+    description: "**Origin.** Filed 2026-05-30 from the linked-pile L2 investigation (notebookjournal_05302026_0522_linked_L2_numat_kurup.md). Peer of INV-kurup (identifier formats); distinct mechanic.\n\n**The shape.** Three active items describe the same anti-pattern: `stable_id` is meant to uniquely identify a Symbol but its hash input set is too coarse. The hash currently inputs structural shape (signature, kind, language) but omits positional / path-disambiguating information that semantic identity requires. Result: 60% of Symbol nodes share `stable_id` with at least one other.\n\n**Distinct from INV-kurup** (identifier-bearing fields emit non-canonical FORMATS from emission paths). This META is about UNIQUENESS — the field's value is in the right format but doesn't distinguish symbols that are semantically distinct. Per L2: \"the mechanic is 'hash inputs too coarse', not 'format bypass'.\"\n\n**Members (3).** INV-bazij (stable_id mass collisions, 60% of nodes share with at least one other — Severe P0; was mis-parented to INV-kurup in prior campaign Phase 1 and is re-parented here), INV-zudob (INV-fusus follow-up: structurally-identical classes in different modules still share stable_id at 18.94% post-fix), INV-hunup (stable_id has 5+ different formats; 176 nodes use non-canonical — partial format face overlaps with INV-kurup, but the uniqueness dimension belongs here).\n\n**Fix shape.** Augment the hash input set with positional info: parent module's canonical path, line span, full-qualified-name context. Then validate via a property test: distinct (qualified_name, module_path) tuples must have distinct stable_id. Cross-language consistency: every analyzer's `_compute_stable_id` must follow the same input-set convention.\n\n**Parent:** null (top-level META, peer of INV-kurup)."  # ca58
+    fields:  # ca58
+      statement: "Symbol.stable_id must distinguish symbols that are semantically distinct; the hash input set must include enough disambiguating information (parent module canonical path, line-span context, full-qualified-name) such that distinct (qualified_name, module_path) tuples have distinct stable_id."  # ca58
+      root_cause: "Hash input currently uses structural shape (signature, kind, language) only and omits positional/path-disambiguating info. Manifestations: 60% of Symbol nodes share stable_id with at least one other (INV-bazij P0), structurally-identical classes in different modules still share at 18.94% post-fix (INV-zudob), 5+ different formats with 176 nodes non-canonical (INV-hunup partial overlap — uniqueness face here, format face stays under INV-kurup)."  # ca58
+- op: update  # 1d2b
+  at: '2026-05-30T09:50:49Z'  # 1d2b
+  by: agent  # 1d2b
+  actor: jgstern_agent  # 1d2b
+  clock: 2  # 1d2b
+  nonce: 1d2b  # 1d2b
+  set: {}  # 1d2b
+  add:  # 1d2b
+    tags: [super_meta_no_validator_stage]  # 1d2b

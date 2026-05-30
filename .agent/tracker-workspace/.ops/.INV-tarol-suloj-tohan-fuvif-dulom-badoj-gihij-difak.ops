@@ -34,3 +34,10 @@
       dogfood_anon_id: "ITEM-8da5aa"  # a4f9
   add:  # a4f9
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # a4f9
+- op: discuss  # 0cc5
+  at: '2026-05-30T09:06:43Z'  # 0cc5
+  by: agent  # 0cc5
+  actor: jgstern_agent  # 0cc5
+  clock: 3  # 0cc5
+  nonce: 0cc5  # 0cc5
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Confirmed mechanism. slice.py:550-551 seeds add_file_imports(entry.path) during entry-node initialization regardless of whether the entry is a function or a file node. With --max-hops 0, the BFS loop at slice.py:588 immediately continues without traversing anything, leaving file-level imports as the sole contents of visited_edges. Two structural fixes: (i) only seed file-imports when the entry kind is a container/file kind; (ii) post-filter visited_edges to drop import edges whose src file-node was not itself walked as an in-scope node. Twin to INV-titid — both describe the same architectural choice (feature scope not re-derived from emitted graph): INV-tarol leaks above-scope content INTO feature.edge_ids; INV-titid leaks below-scope refs OUT OF features[].edge_ids when the referenced edges are pruned."  # 0cc5

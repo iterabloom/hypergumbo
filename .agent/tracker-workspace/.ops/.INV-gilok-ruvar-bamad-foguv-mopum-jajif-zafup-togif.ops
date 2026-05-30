@@ -23,3 +23,20 @@
       dogfood_anon_id: "ITEM-2ba53e"  # 48f2
       statement: "Analyzer-emitted language and identifier values should be drawn from the known-language catalog and canonical identifier vocabulary. When an analyzer cannot resolve an identifier, it should route through a documented \"unknown\" sentinel or omit the record rather than synthesizing it from arbitrary source text."  # 48f2
       root_cause: "One language's analyzer treats certain source-text strings as identifier targets. Specifically, when the analyzer encounters a runtime-check function whose argument is a string literal intended as an error message, it captures the message string as if it were an import or symbol identifier. The synthesized record then carries the message string in fields that should hold language and identifier values. Downstream linkers consuming the language field propagate the string into derived fields including a canonical-name suffix and the unsupported-languages list of an output view. One node ends up carrying a multi-word natural-language string as its language value."  # 48f2
+- op: update  # 60cb
+  at: '2026-05-30T09:50:47Z'  # 60cb
+  by: agent  # 60cb
+  actor: jgstern_agent  # 60cb
+  clock: 2  # 60cb
+  nonce: 60cb  # 60cb
+  set:  # 60cb
+    parent: INV-jahiv-lugis-topum-totot-morin-somuv-pujoz-vijir  # 60cb
+  add:  # 60cb
+    tags: [dogfood_umbrella_member]  # 60cb
+- op: discuss  # c6d1
+  at: '2026-05-30T09:51:52Z'  # c6d1
+  by: agent  # c6d1
+  actor: jgstern_agent  # c6d1
+  clock: 3  # c6d1
+  nonce: c6d1  # c6d1
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): this item is a concrete language-axis instance of INV-kurup's \"identifier-bearing fields emit non-canonical formats\" META — the language field receives the raw Solidity require() error-message string instead of a known-language catalog value, contaminating four downstream surfaces from one ingestion at solidity.py:355-369. Candidate for re-parenting under INV-kurup as a member, alongside the existing INV-hunup / INV-bazij / INV-zudob / INV-lidul cluster. Sub-pile A peer (mechanism: wrong-value emission, not field unpopulated): differs from INV-golap and INV-loguk which are unpopulated-field cases."  # c6d1

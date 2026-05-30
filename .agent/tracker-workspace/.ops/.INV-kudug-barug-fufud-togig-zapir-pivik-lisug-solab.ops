@@ -23,3 +23,20 @@
       dogfood_anon_id: "ITEM-2c3b8c"  # c7fe
       statement: "access-mode values should be derived from evidence type or call target — read operations labeled `read`, collection mutations labeled `mutate`, and only true assignments labeled `write`. The four-cell vocabulary (read / write / mutate / delete) exists; the emitter should use it."  # c7fe
       root_cause: "The emitter that writes a per-edge `access_mode` field defaults to the value `write` for several categories of read operation. Edges with evidence types that explicitly indicate a read (such as bare-name reads of variables, or function references) carry `access_mode='write'`. Module-attribute references — accessing attributes of imported modules without writing to them — are written as `write` on nearly every populated record. Calls to collection-mutator methods (append, add, extend, setdefault, write) are written as `write` rather than the `mutate` value the four-cell vocabulary provides for in-place modification. The emitter does not consult the evidence type or the call target when assigning the access-mode value."  # c7fe
+- op: update  # f4a3
+  at: '2026-05-30T09:04:07Z'  # f4a3
+  by: agent  # f4a3
+  actor: jgstern_agent  # f4a3
+  clock: 2  # f4a3
+  nonce: f4a3  # f4a3
+  set:  # f4a3
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # f4a3
+  add:  # f4a3
+    tags: [dogfood_umbrella_member]  # f4a3
+- op: discuss  # 0ba8
+  at: '2026-05-30T09:06:42Z'  # 0ba8
+  by: agent  # 0ba8
+  actor: jgstern_agent  # 0ba8
+  clock: 3  # 0ba8
+  nonce: 0ba8  # 0ba8
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Direct twin of INV-tibob — same field (access_mode), this item is the mislabel face (2082/4250 references edges have ast_name_read+access_mode=write contradiction), INV-tibob is the under-coverage face (0% population on 12 of 17 edge.types). They are facets of one defect: dataflow.py:313-398 _apply_access_modes_pass is Tier 1, but 18+ linkers hardcode access_mode=\"write\" in their own edge emissions (event_sourcing.py:780, jni.py:284, cgo.py:206, websocket.py:794, ipc.py:559, tauri_ipc.py:676 etc.) and dataflow.py:371-372 skips edges that already have access_mode — so the Tier-1 AST classifier never gets a chance to correct them. INV-lifik §1 (dest_access_mode='read' as zero-entropy field) is direct schema-side evidence the subsystem is unhealthy. Likely member of INV-numat since access_mode mixes data-flow direction with collection-mutation semantics. Structural fix candidate: derive at sketch-build time from evidence_type+edge.type rather than per-emitter hardcoding, OR add access_mode_source discriminator."  # 0ba8

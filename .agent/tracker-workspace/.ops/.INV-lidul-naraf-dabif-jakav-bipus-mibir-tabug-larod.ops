@@ -34,3 +34,20 @@
       dogfood_anon_id: "ITEM-49c006"  # aaf0
   add:  # aaf0
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # aaf0
+- op: update  # 75aa
+  at: '2026-05-30T09:04:08Z'  # 75aa
+  by: agent  # 75aa
+  actor: jgstern_agent  # 75aa
+  clock: 3  # 75aa
+  nonce: 75aa  # 75aa
+  set:  # 75aa
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 75aa
+  add:  # 75aa
+    tags: [dogfood_umbrella_member]  # 75aa
+- op: discuss  # 62ab
+  at: '2026-05-30T09:04:08Z'  # 62ab
+  by: agent  # 62ab
+  actor: jgstern_agent  # 62ab
+  clock: 4  # 62ab
+  nonce: 62ab  # 62ab
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): member of INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug (primary fix-site) and INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah (secondary face: identifier-bearing field (run_signature derives from config_fingerprint) emits a non-canonical-because-constant value — emission-bypass mechanic). Parent assignment reflects the closer fix-site framing."  # 62ab

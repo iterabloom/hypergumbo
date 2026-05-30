@@ -37,3 +37,10 @@
   clock: 3  # 0eee
   nonce: 0eee  # 0eee
   message: "Stripping tag under Phase 2 anomaly cleanup. Verdict: E-misapplied. This item is itself the bakeoff-validation WIRING task for WI-tihup + WI-mafik — its description is 'Bakeoff-validate WI-tihup + WI-mafik via BROAD cycle' with a 4-step workflow. It carries no own quantitative claim. The validation queue should track items whose fixes carry quantitative claims awaiting empirical confirmation, not the meta-orchestrator of validation work itself. Status stays needs_human_review (separate concern). When the user wants Phase 2 of the WI-nigah parent cohort to proceed, this item drives that work; tag was confusing because the item commands validation rather than awaiting it."  # 0eee
+- op: discuss  # b82d
+  at: '2026-05-30T09:51:52Z'  # b82d
+  by: agent  # b82d
+  actor: jgstern_agent  # b82d
+  clock: 4  # b82d
+  nonce: b82d  # b82d
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): the bakeoff-validation target set has narrowed since this item was filed. WI-mafik has closed (status=done); WI-tihup remains in needs_human_review. The cycle now validates one closed-but-untagged item (WI-mafik) plus one needs_human_review item (WI-tihup), not two pending items. Discussion entry from 2026-05-19 already established this item is the validation orchestrator, not itself queued (`awaits_bakeoff_validation` correctly absent)."  # b82d

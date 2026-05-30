@@ -34,3 +34,20 @@
       dogfood_anon_id: "ITEM-c56c08"  # 165f
   add:  # 165f
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # 165f
+- op: update  # da63
+  at: '2026-05-30T09:04:10Z'  # da63
+  by: agent  # da63
+  actor: jgstern_agent  # da63
+  clock: 3  # da63
+  nonce: da63  # da63
+  set:  # da63
+    parent: INV-jifus-parug-midub-nofip-mupil-zobak-vuzah-fokov  # da63
+  add:  # da63
+    tags: [dogfood_umbrella_member]  # da63
+- op: discuss  # 9a4b
+  at: '2026-05-30T09:06:42Z'  # 9a4b
+  by: agent  # 9a4b
+  actor: jgstern_agent  # 9a4b
+  clock: 4  # 9a4b
+  nonce: 9a4b  # 9a4b
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): one of three text-pipeline helpers populating the untyped sketch_precomputed dict in cli.py:8047-8140 with no per-field schema or validator. Sibling field-level issues: INV-padoz-juvum (vocabulary, 12-entry no-lemma), INV-napap-tatup (centrality_scores, excludes source files by design despite the name). Code path: _extract_readme_description_heuristic walks past the first blank line and concatenates continuation tokens; the skip-prefix list at sketch.py:3414 omits '>' so markdown blockquote lines are appended raw. Umbrella candidate: introduce a typed SketchPrecomputed dataclass with field invariants — would catch the missing-period concatenation, the lemmatization gap, and the field-name/contents mismatch in one place."  # 9a4b

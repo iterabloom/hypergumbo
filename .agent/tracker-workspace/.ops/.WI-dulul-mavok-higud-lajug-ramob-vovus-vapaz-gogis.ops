@@ -39,3 +39,20 @@
   clock: 3  # c164
   nonce: c164  # c164
   message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # c164
+- op: update  # 49ac
+  at: '2026-05-30T09:50:45Z'  # 49ac
+  by: agent  # 49ac
+  actor: jgstern_agent  # 49ac
+  clock: 4  # 49ac
+  nonce: 49ac  # 49ac
+  set:  # 49ac
+    parent: INV-fivar-nadut-bapib-fisuj-danip-litog-vabav-rifud  # 49ac
+  add:  # 49ac
+    tags: [dogfood_umbrella_member, gogif_face_missing_flag]  # 49ac
+- op: discuss  # 5f56
+  at: '2026-05-30T09:51:52Z'  # 5f56
+  by: agent  # 5f56
+  actor: jgstern_agent  # 5f56
+  clock: 5  # 5f56
+  nonce: 5f56  # 5f56
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Axis-A (missing-flag) sibling of WI-soroz (catalog) and INV-jutuj (routes) within WI-gogif. All three target the same standardization: add --format text|json to read subcommands that currently emit text-only. Proposed payload for cache-status (per the item's own description): {cache_dir, entries: [{repo_id, size_bytes, age_days, entry_count}], total_size_bytes, total_entries, honk_threshold_gb}, wrapped with the shared schema_version/view envelope."  # 5f56

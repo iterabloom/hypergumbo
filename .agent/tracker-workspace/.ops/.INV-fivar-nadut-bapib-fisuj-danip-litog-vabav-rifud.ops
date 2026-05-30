@@ -1,0 +1,26 @@
+- op: create  # f39b
+  at: '2026-05-30T09:48:30Z'  # f39b
+  by: agent  # f39b
+  actor: jgstern_agent  # f39b
+  clock: 1  # f39b
+  nonce: f39b  # f39b
+  data:  # f39b
+    kind: invariant  # f39b
+    title: "META(sub-A): JSON output missing --format flag"  # f39b
+    status: violated  # f39b
+    priority: 2  # f39b
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # f39b
+    tags:  # f39b
+    - dogfood_corpus_20260528  # f39b
+    - dogfood_umbrella  # f39b
+    - dogfood_severity_moderate  # f39b
+    - json_missing_flag  # f39b
+    - sub_meta_under_gogif  # f39b
+    isbefore: []  # f39b
+    duplicate_of: []  # f39b
+    not_duplicate_of: []  # f39b
+    pr_ref:  # f39b
+    description: "**Origin.** Filed 2026-05-30 as a sub-axis of WI-gogif following the linked-pile L3 investigation. Sub-axis A of the JSON-output-conventions umbrella.\n\n**The shape.** Three subcommands have NO JSON output at all — programmatic consumers cannot inspect their state. Each subcommand grew with text-only output and never had `--format json` retrofitted.\n\n**Fix shape.** Add `--format {text,json}` argparse action to each subcommand. Wire JSON output through the same shared envelope helper that test-coverage and slice already use (`cli.py:4878` and `cli.py:1532` for reference patterns).\n\n**Members (3).** WI-dulul (cache-status, `cli.py:6543`), WI-soroz (catalog, `cli.py:6452`), INV-jutuj (routes, `cli.py:6341` — currently routes has its own internal text-only renderer; INV-jutuj documents that --format json doesn't exist).\n\n**Parent:** WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (META: Multiple JSON output conventions)."  # f39b
+    fields:  # f39b
+      statement: "Every read-only subcommand whose output is structured data must expose a --format json flag using the shared envelope helper; no subcommand may have text-only output by default with no JSON pathway."  # f39b
+      root_cause: "Three subcommands grew text-only and never had --format json retrofitted. cache-status (WI-dulul, cli.py:6543), catalog (WI-soroz, cli.py:6452), routes (INV-jutuj, cli.py:6341) all need the shared add_schema_envelope() helper wired in."  # f39b

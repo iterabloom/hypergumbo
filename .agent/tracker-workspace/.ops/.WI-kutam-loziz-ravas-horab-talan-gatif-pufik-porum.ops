@@ -32,3 +32,10 @@
       dogfood_anon_id: "ITEM-c4e371"  # 369c
   add:  # 369c
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 369c
+- op: discuss  # cecc
+  at: '2026-05-30T09:06:43Z'  # cecc
+  by: agent  # cecc
+  actor: jgstern_agent  # cecc
+  clock: 3  # cecc
+  nonce: cecc  # cecc
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Duplicate of INV-nugos-domil-sutag-johol-lifol-pijuv-faruh-zibuj. Same mechanism (slice.py:153 ambiguity-error template appends --language suggestion unconditionally), same fix-direction (branch on len({c.language for c in candidates})). INV-nugos is the later-filed but more detailed write-up (reproduces with cli:main matching two same-language files); WI-kutam reproduces with find_files (real symbol vs python:external:0-0:<name>:unresolved synthetic — same language). Co-fix with INV-nogof under a shared ambiguity-resolution helper."  # cecc

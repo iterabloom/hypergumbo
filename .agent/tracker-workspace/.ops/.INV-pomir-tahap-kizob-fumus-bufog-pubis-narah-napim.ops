@@ -35,3 +35,10 @@
   nonce: '8817'  # 8817
   set:  # 8817
     priority: 2  # 8817
+- op: discuss  # 1dfb
+  at: '2026-05-30T09:51:52Z'  # 1dfb
+  by: agent  # 1dfb
+  actor: jgstern_agent  # 1dfb
+  clock: 4  # 1dfb
+  nonce: 1dfb  # 1dfb
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): 3 of 14 catalogs currently `status: complete` (python, rust, erlang); all 3 declare `stdlib_provenance.source_url` pointing at allowlisted hostnames. 11 remain `in_progress` and are correctly exempt from the invariant. The `pending_validation` status has been static since 2026-04-25; consider promoting to `satisfied` if the `_validate_catalog_dict()` enforcement path has been load-tested against the 3 complete catalogs in CI."  # 1dfb

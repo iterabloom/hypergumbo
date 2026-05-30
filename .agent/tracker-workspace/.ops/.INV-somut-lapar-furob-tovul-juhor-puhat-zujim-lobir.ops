@@ -1,0 +1,26 @@
+- op: create  # 237f
+  at: '2026-05-30T09:48:24Z'  # 237f
+  by: agent  # 237f
+  actor: jgstern_agent  # 237f
+  clock: 1  # 237f
+  nonce: 237f  # 237f
+  data:  # 237f
+    kind: invariant  # 237f
+    title: "META(sub-A): verify-claims silent-confirm verdict fall-through"  # 237f
+    status: violated  # 237f
+    priority: 1  # 237f
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # 237f
+    tags:  # 237f
+    - dogfood_corpus_20260528  # 237f
+    - dogfood_umbrella  # 237f
+    - dogfood_severity_significant  # 237f
+    - verify_claims  # 237f
+    - sub_meta_under_fabov  # 237f
+    isbefore: []  # 237f
+    duplicate_of: []  # 237f
+    not_duplicate_of: []  # 237f
+    pr_ref:  # 237f
+    description: "**Origin.** Filed 2026-05-30 as a sub-META of INV-fabov following the linked-pile L1 investigation (notebookjournal_05302026_0522_linked_L1_fabov.md). L1 identified three structural-fix axes inside INV-fabov; this is sub-META A.\n\n**The shape.** Six active items describe the same verify-claims silent-confirm pattern at six different check sites. All converge at `packages/hypergumbo-core/src/hypergumbo_core/verify_claims.py:229-291` — the verdict-dispatch fall-through. When the underlying data is missing or malformed (empty source dir, broken YAML, gitleaks v8.30+ `--pipe` no-op, taint catalog unoverridable, unknown claim-type, unknown constraint.boundary), the verdict falls through to `confirmed` instead of failing inconclusively. Translation: a security check that never actually ran reports as \"passed.\"\n\n**Fix shape (the L1 split).** A.1 verdict-vocabulary refactor: extend `ClaimVerdict` enum with `inconclusive`; refactor each check site so it returns `inconclusive` when it cannot determine. CLI exit-code: `confirmed → 0`, `not_confirmed → 1`, `inconclusive → 2`. A.2 taint-loader hardening: `cli.py:4423-4459` + `taint.py:437-477` need shape-validation on `--taint-*` flag inputs and on the claims-file `extra_catalogs.sources` merge path.\n\n**Members (5).** INV-bitig (must_not_exist on empty source dir, P0), INV-gobob (unknown constraint.boundary, P2), INV-mofih (unknown claim type, P2), INV-nufob (--taint-* silent accept, P3), INV-hukug (--taint-sources override gap, P1).\n\n**Out of scope.** INV-pirad's gitleaks v8.30 `--pipe` contract break is excluded — its mechanic is external-dep contract not verdict fall-through (Phase D.6 candidate, deferred). Items not yet filed: any future gitleaks-version-regression catches belong in the deferred external-dep META, not this one.\n\n**Closes once landed.** This sub-META + the WI-rolol trial-A (already filed as the structural-fix trial) together close the 5-member set. Trial-A's `ClaimVerdict.inconclusive` is the verdict-vocabulary refactor; A.2 taint-loader hardening is the additional scope this sub-META adds.\n\n**Parent:** INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (silent input acceptance META)."  # 237f
+    fields:  # 237f
+      statement: "When the underlying claim-verification data is missing or malformed at any check site, the verdict must return inconclusive rather than falling through to confirmed; today the fall-through produces security false-positives across 5 distinct check sites."  # 237f
+      root_cause: "verify_claims.py:229-291 dispatches to per-claim verifiers but the verdict-enum has no inconclusive state; every site that can't determine treats absence-of-evidence as evidence-of-absence and returns confirmed. Six check sites manifest: must_not_exist on empty source dir (INV-bitig), unknown constraint.boundary (INV-gobob), unknown claim type (INV-mofih), --taint-* silent accept (INV-nufob), --taint-sources override gap (INV-hukug)."  # 237f

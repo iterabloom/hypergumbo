@@ -43,3 +43,20 @@
   clock: 3  # fa8b
   nonce: fa8b  # fa8b
   message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # fa8b
+- op: update  # 1308
+  at: '2026-05-30T09:50:45Z'  # 1308
+  by: agent  # 1308
+  actor: jgstern_agent  # 1308
+  clock: 4  # 1308
+  nonce: '1308'  # 1308
+  set:  # 1308
+    parent: INV-pikob-diboh-patiz-hotum-pufog-daziv-kovor-gizov  # 1308
+  add:  # 1308
+    tags: [dogfood_umbrella_member, gogif_face_envelope_incomplete]  # 1308
+- op: discuss  # 792c
+  at: '2026-05-30T09:51:51Z'  # 792c
+  by: agent  # 792c
+  actor: jgstern_agent  # 792c
+  clock: 5  # 792c
+  nonce: 792c  # 792c
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Axis-B (envelope-incomplete) sibling of INV-gatog and INV-pazum within WI-gogif. The shared fix is a single helper that wraps the per-command payload as {schema_version, view: <view_name>, ...payload}; the envelope pattern is already implemented for test-coverage (cli.py:4878-4880) and slice (cli.py:1532) and just needs to be applied here, in cmd_verify_claims, and in cmd_config. A property test asserting \"for every --format json output, top-level keys include schema_version and view\" would gate regressions."  # 792c

@@ -35,3 +35,10 @@
       dogfood_anon_id: "ITEM-6e6c02"  # b2ed
   add:  # b2ed
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # b2ed
+- op: discuss  # f1ad
+  at: '2026-05-30T09:06:42Z'  # f1ad
+  by: agent  # f1ad
+  actor: jgstern_agent  # f1ad
+  clock: 3  # f1ad
+  nonce: f1ad  # f1ad
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): WI-gipop (done) unified the matcher rules used by slice and explain but did not unify the post-match policy: slice raises AmbiguousEntryError (slice.py:493), explain iterates all matches without warning (cli.py:2003 enumerate(matches)). The shared helper that resolves a user-supplied entry spec to a symbol should also decide ambiguity policy. Co-fixable with INV-nugos and WI-kutam — both file the slice ambiguity error template separately; consolidating the error path lets all three be fixed in one place."  # f1ad

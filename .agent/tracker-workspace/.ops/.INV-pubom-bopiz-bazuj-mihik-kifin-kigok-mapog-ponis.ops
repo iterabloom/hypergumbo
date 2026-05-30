@@ -23,3 +23,20 @@
       dogfood_anon_id: "ITEM-b94123"  # fbee
       statement: "A single named metric should represent one quantity regardless of request path. Inclusion flags should behave consistently across formats. If multiple related metrics exist, they should be named distinctly and their relationships documented."  # fbee
       root_cause: "A subcommand produces a summary metric (a total count of input/output edges) that is computed in two different ways depending on the request. The text-mode default path returns one count. The JSON-mode default path returns a different count (a different filtered sum, including categories that the text-mode path excludes). A flag intended to broaden inclusion behaves monotonically (count goes up) in text mode and non-monotonically (count goes down) in JSON mode. A third metric on the JSON response, intended to be the sum of per-chain edge counts, is yet a different total. None of these match, and there is no documented relationship between them."  # fbee
+- op: update  # d0fd
+  at: '2026-05-30T09:04:09Z'  # d0fd
+  by: agent  # d0fd
+  actor: jgstern_agent  # d0fd
+  clock: 2  # d0fd
+  nonce: d0fd  # d0fd
+  set:  # d0fd
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # d0fd
+  add:  # d0fd
+    tags: [dogfood_umbrella_member]  # d0fd
+- op: discuss  # 0b1c
+  at: '2026-05-30T09:06:43Z'  # 0b1c
+  by: agent  # 0b1c
+  actor: jgstern_agent  # 0b1c
+  clock: 3  # 0b1c
+  nonce: 0b1c  # 0b1c
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): io-boundaries instance of the WI-pofas / WI-gogif JSON-output-convention umbrellas. Mechanic isn't only \"name same, definition different\" — it's \"two writers, polarity decision on whether external_potential is in the count.\" io_boundary.py:1249 sets total_io_edges=tagged_count BEFORE external_potential is appended at :1242-1246; cli.py:3870 recomputes as sum(len(chains)) over filtered_entries which already includes external_potential. Same field name, two writers, opposite polarity. Self-contradicting in JSON --include-tests: total_io_edges=6432 vs sum-of-chains=25128 in same response. WI-pofas umbrella should explicitly enumerate this case; the fix is \"single writer for total_io_edges in BoundaryMap.to_dict after external_potential fold.\""  # 0b1c

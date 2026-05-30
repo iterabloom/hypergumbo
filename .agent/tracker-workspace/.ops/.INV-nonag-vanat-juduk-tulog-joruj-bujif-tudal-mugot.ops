@@ -42,3 +42,20 @@
   clock: 3  # f170
   nonce: f170  # f170
   message: "Cluster member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # f170
+- op: update  # b35c
+  at: '2026-05-30T09:39:22Z'  # b35c
+  by: agent  # b35c
+  actor: jgstern_agent  # b35c
+  clock: 4  # b35c
+  nonce: b35c  # b35c
+  set:  # b35c
+    status: needs_human_review  # b35c
+  add:  # b35c
+    duplicate_of: [WI-vusaf-vodup-jonim-vogoz-nurin-zuhud-ganij-sinon]  # b35c
+- op: discuss  # 69b0
+  at: '2026-05-30T09:39:22Z'  # 69b0
+  by: agent  # 69b0
+  actor: jgstern_agent  # 69b0
+  clock: 5  # 69b0
+  nonce: 69b0  # 69b0
+  message: "Cross-ref backfill (2026-05-30, linked-pile L1 investigation): duplicate of WI-vusaf at different granularity. Both describe 'compact silently accepts invalid flag values' — INV-nonag specifically --max-symbols / --coverage; WI-vusaf the broader set (max<min, coverage>1, negative). WI-vusaf stays canonical. Marking INV-nonag needs_human_review (wont_do not allowed for invariant kind); human can delete or convert."  # 69b0

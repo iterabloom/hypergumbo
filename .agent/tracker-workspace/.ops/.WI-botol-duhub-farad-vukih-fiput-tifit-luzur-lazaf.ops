@@ -52,3 +52,28 @@
   clock: 5  # e558
   nonce: e558  # e558
   message: "Cross-ref backfill (2026-05-30, theme 10): closure of this item (run dead-code-maybe prospecting on 200-repo corpus) interacts with INV-nohod-najud-muzik-kamip-jozis-takun-pivik-jihaf, the May-28 dogfood singleton 'KKKKK: 76% test-classified, behavior map dominated by test code'. Test-classification dominance shapes corpus-wide DCM FP volume; running the prospector at 200-repo scale without first addressing KKKKK risks calibrating dead-code thresholds against test-polluted node distributions. Sibling DCM issue: INV-nogof-hopol-morov-nufis-gobat-kimuf-rilaj-lovon (CCCCC)."  # e558
+- op: update  # ef78
+  at: '2026-05-30T09:39:22Z'  # ef78
+  by: agent  # ef78
+  actor: jgstern_agent  # ef78
+  clock: 6  # ef78
+  nonce: ef78  # ef78
+  set: {}  # ef78
+  add:  # ef78
+    isbefore: [WI-hagip-fanov-holan-ginif-korov-sakim-mojag-ridip]  # ef78
+- op: discuss  # 37b7
+  at: '2026-05-30T09:39:22Z'  # 37b7
+  by: agent  # 37b7
+  actor: jgstern_agent  # 37b7
+  clock: 7  # 37b7
+  nonce: 37b7  # 37b7
+  message: "Cross-ref backfill (2026-05-30, linked-pile L7 investigation): adding isbefore=WI-hagip as concrete structural gate. WI-hagip closure (DCM OOM/crash fix on 3 largest repos) is a prerequisite for this 200-repo prospecting run; 3 repos in the corpus (trino, envoy, vscode) will OOM until WI-hagip closes. Without the isbefore link the dependency was implicit in discussion only."  # 37b7
+- op: update  # cc29
+  at: '2026-05-30T09:39:44Z'  # cc29
+  by: agent  # cc29
+  actor: jgstern_agent  # cc29
+  clock: 8  # cc29
+  nonce: cc29  # cc29
+  set: {}  # cc29
+  remove:  # cc29
+    isbefore: [WI-hagip-fanov-holan-ginif-korov-sakim-mojag-ridip]  # cc29

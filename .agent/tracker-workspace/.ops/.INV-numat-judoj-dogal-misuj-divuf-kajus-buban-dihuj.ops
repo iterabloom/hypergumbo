@@ -23,3 +23,19 @@
       dogfood_anon_id: "ITEM-e7307c"  # f936
       statement: "Each vocabulary field should encode one axis. When a value mixes axes, it should be split across multiple fields (one per axis) with documented vocabularies. Similar names should encode similar concepts."  # f936
       root_cause: "Several vocabulary-bearing fields on edges and edge metadata carry values that mix axes from distinct conceptual dimensions. One framework-dispatch vocabulary mixes framework names (such as fastapi, starlette), dispatch mechanism names (such as registry-dispatch), and packaging-channel names (such as npm-package, html-script-src) into the same field. One call-construct vocabulary mixes construct types (method, function) with a relational property (cross-file). One edge-type vocabulary contains values that overlap semantically — a single-occurrence value for a relationship that is also covered by a much larger sibling value. One pair of similarly-named fields on edge metadata carry disjoint vocabularies — one captures a small set of WebSocket-and-event constructs, the other captures a much larger Python call-construct vocabulary — but their names invite consumers to treat them as the same axis."  # f936
+- op: discuss  # 2e8b
+  at: '2026-05-30T09:06:42Z'  # 2e8b
+  by: agent  # 2e8b
+  actor: jgstern_agent  # 2e8b
+  clock: 2  # 2e8b
+  nonce: 2e8b  # 2e8b
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): umbrella enrolled 6 members; five further active items instantiate the same axis-mix-on-emission mechanic and should be folded or cross-referenced: INV-tofun (linkers hard-code language=javascript on .ts files), WI-zadot (synthetic linker nodes tagged kind=function language=python), WI-lomoz (WS routes split http_route vs WebSocketRoute across entrypoints/usage_contexts), INV-zigup (cross_language meta misses 55%; redundant when False), INV-tibob (access_mode 0% on 12/17 edge.types; coverage policy implicit). Deeper hypothesis: shares \"no schema-vs-emission validator gate\" root with INV-kurup; the axis-declaration playbook checks declarations but not emitted-value-set conformance, so a CI gate that validates against an axis-value registry would address both METAs structurally."  # 2e8b
+- op: update  # d179
+  at: '2026-05-30T09:50:48Z'  # d179
+  by: agent  # d179
+  actor: jgstern_agent  # d179
+  clock: 3  # d179
+  nonce: d179  # d179
+  set: {}  # d179
+  add:  # d179
+    tags: [super_meta_no_validator_stage]  # d179

@@ -34,3 +34,30 @@
       dogfood_anon_id: "ITEM-29962d"  # 318b
   add:  # 318b
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # 318b
+- op: update  # 1c97
+  at: '2026-05-30T09:04:06Z'  # 1c97
+  by: agent  # 1c97
+  actor: jgstern_agent  # 1c97
+  clock: 3  # 1c97
+  nonce: 1c97  # 1c97
+  set:  # 1c97
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # 1c97
+  add:  # 1c97
+    tags: [dogfood_umbrella_member]  # 1c97
+- op: discuss  # 7f2f
+  at: '2026-05-30T09:04:06Z'  # 7f2f
+  by: agent  # 7f2f
+  actor: jgstern_agent  # 7f2f
+  clock: 4  # 7f2f
+  nonce: 7f2f  # 7f2f
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (primary fix-site) and WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (secondary face: JSON-payload completeness gap (function_summaries empty for all 281 langs)). Parent assignment reflects the closer fix-site framing."  # 7f2f
+- op: update  # a817
+  at: '2026-05-30T09:50:44Z'  # a817
+  by: agent  # a817
+  actor: jgstern_agent  # a817
+  clock: 5  # a817
+  nonce: a817  # a817
+  set:  # a817
+    parent: INV-murig-kanin-junur-tazot-gifin-hijad-momuf-bukoj  # a817
+  add:  # a817
+    tags: [dogfood_umbrella_member, fabov_face_registry_membership]  # a817

@@ -19,3 +19,10 @@
     pr_ref:  # 67e3
     description: "WI-lifal added `tracker tags` with a catalog at `.agent/tracker/tag_catalog.yaml` containing two distinct concerns:\n\n- **Cache fields** (derivable from op log): tag set membership, `created_on`, `last_used`, count.\n- **Editorial fields** (only present when a human/agent explicitly sets them): `description`, `deprecated`, `in_favor_of`, `last_modified`.\n\nRight now the file is gitignored (sibling to `tui_preferences.json`) because (a) it's pure cache as long as nobody uses `tags describe` / `tags deprecate`, and (b) committing it would create merge-conflict churn on `last_used` timestamps every time any agent ran the subcommand.\n\nOnce someone actually uses the editorial verbs, that intent needs to persist project-wide — but the current file shape mixes per-user telemetry with project-wide editorial decisions in the same YAML. Two plausible designs:\n\n1. Split into two files: `tag_descriptions.yaml` (committed, editorial fields only) + `tag_catalog.yaml` (gitignored cache).\n2. Keep one file, but write a normalization layer that strips telemetry fields when persisting and recomputes them on read. Then commit the whole thing.\n\nDefer until the first time someone actually invokes `tags describe` or `tags deprecate`. Until then, the gitignored-cache state is correct and stable.\n\nSurfaced 2026-04-29 during release prep for hypergumbo 3.0.0 / tracker 0.5.0 — the catalog showed up as a release-blocking untracked file with all-empty editorial fields."  # 67e3
     fields: {}  # 67e3
+- op: discuss  # d096
+  at: '2026-05-30T09:51:52Z'  # d096
+  by: agent  # d096
+  actor: jgstern_agent  # d096
+  clock: 2  # d096
+  nonce: d096  # d096
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): sibling to the recently-closed WI-sosig tracker-tag-hygiene work — both items concern .agent/tracker/tag_catalog.yaml shape and lifecycle. WI-sosig closed; this item remains deferred per its own filing (\"defer until the first time someone actually invokes `tags describe` or `tags deprecate`\"). Recording the sibling relationship here for the next pass that touches the catalog."  # d096

@@ -23,3 +23,19 @@
       dogfood_anon_id: "ITEM-bcd30e"  # d517
       statement: "Inputs should be validated at the parsing layer. Unknown values, wrong-shape inputs, and out-of-domain arguments should produce immediate errors with informative messages, not silent acceptance followed by downstream failure or wrong output."  # d517
       root_cause: "Across multiple subcommands, command-line flags, positional arguments, and configuration values are accepted without validation. Specific manifestations include: a flag-acceptance subcommand silently accepting flag names that do not exist; a configuration subcommand silently accepting non-language string arguments where language values are expected; a verification subcommand silently accepting unknown constraint types and unknown taint flag values, then proceeding as if the unknown values were valid; a search subcommand silently accepting invalid filter values for kind, language, and limit; a positional-path argument silently swallowed by an unrelated argument parser; numeric flags silently accepting non-numeric inputs; a JSON-input-consuming subcommand silently accepting JSON that represents the wrong view of the data. The pattern across all of these: parsing does not validate, and downstream logic proceeds without realizing the input is invalid."  # d517
+- op: discuss  # 6cd0
+  at: '2026-05-30T09:06:42Z'  # 6cd0
+  by: agent  # 6cd0
+  actor: jgstern_agent  # 6cd0
+  clock: 2  # 6cd0
+  nonce: 6cd0  # 6cd0
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): umbrella as filed enrolled 9 members from the dogfood_umbrella_member tag set, but at least 7 `dogfood_singleton` and non-dogfood active items instantiate this META's mechanic and should be folded as additional members: WI-furop (sketch --require-section), INV-fapid (slice --out argparse-default collision), INV-toniv (search negative limits), INV-bitig (verify-claims must_not_exist on empty dir, P0), INV-hukug (verify-claims --taint-sources override gap), INV-sozop (--input wrong-shape traceback), INV-zurih (verify-claims malformed YAML traceback). The umbrella's deeper-issue framing is \"no parser-layer validator stage in the architecture\" — same root absence as INV-numat (emission-vocabulary validator) and INV-kurup (emission-identifier validator); the three may share a future super-META."  # 6cd0
+- op: update  # a873
+  at: '2026-05-30T09:50:48Z'  # a873
+  by: agent  # a873
+  actor: jgstern_agent  # a873
+  clock: 3  # a873
+  nonce: a873  # a873
+  set: {}  # a873
+  add:  # a873
+    tags: [super_meta_no_validator_stage]  # a873

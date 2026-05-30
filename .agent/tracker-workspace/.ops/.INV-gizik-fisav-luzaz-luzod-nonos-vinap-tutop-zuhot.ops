@@ -23,3 +23,20 @@
       dogfood_anon_id: "ITEM-54b776"  # 2ecd
       statement: "Either the timer and counter should start before the IR-consumption branch as well (so every pass has accurate timing), or a distinct provenance field should distinguish IR-consuming from file-walking passes so consumers can interpret `files_analyzed=0` correctly."  # 2ecd
       root_cause: "Per-pass records in the provenance table carry `duration_ms` and `files_analyzed` fields meant to capture how much wall-clock and input each pass consumed. For passes that consume the in-memory intermediate representation rather than walking files (such as linkers and synthesis passes), both fields are not updated and stay at zero — even when the pass executes for non-trivial duration and emits substantial numbers of edges. Several IR-consuming passes report `duration_ms=0` and `files_analyzed=0` while contributing hundreds of edges to the output. The pattern is consistent: the timer/counter update path is wired only on the file-walking branch."  # 2ecd
+- op: update  # 8fe3
+  at: '2026-05-30T09:04:08Z'  # 8fe3
+  by: agent  # 8fe3
+  actor: jgstern_agent  # 8fe3
+  clock: 2  # 8fe3
+  nonce: 8fe3  # 8fe3
+  set:  # 8fe3
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 8fe3
+  add:  # 8fe3
+    tags: [dogfood_umbrella_member]  # 8fe3
+- op: discuss  # 6179
+  at: '2026-05-30T09:06:42Z'  # 6179
+  by: agent  # 6179
+  actor: jgstern_agent  # 6179
+  clock: 3  # 6179
+  nonce: '6179'  # 6179
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): same AnalysisRun-dataclass producer-drift cluster as INV-pitab (toolchain/pass_version/productivity fields), INV-lidul (config_fingerprint default), INV-nihug (skipped_passes path-split), INV-virik (failed_files/warnings never aggregated), WI-nohoh ('pass' JSON alias). Linkers hand-roll start_time/duration_ms increments (linkers/*.py: ~70 sites across 40 modules; go_memberlist.py:142 explicitly assigns 0); analyzers timer-start in TreeSitterAnalyzer.analyze (analyze/base.py:2272). No orchestrator-side run-with-timing wrapper. INV-hosig (di-resolution 2550ms/0 edges) and INV-kodan (pyffi-linker 4570ms/10 edges) are concrete instances. Umbrella: meta-layer writers operate per-producer with no cross-field consistency contract; a single property test against bm.json (no `nodes_emitted>0` with `duration_ms=0`, etc.) would catch this whole cluster."  # 6179

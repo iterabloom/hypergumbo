@@ -35,3 +35,20 @@
       dogfood_anon_id: "ITEM-19a247"  # ce9d
   add:  # ce9d
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_cosmetic]  # ce9d
+- op: update  # 88d5
+  at: '2026-05-30T09:04:11Z'  # 88d5
+  by: agent  # 88d5
+  actor: jgstern_agent  # 88d5
+  clock: 3  # 88d5
+  nonce: 88d5  # 88d5
+  set:  # 88d5
+    parent: WI-himas-gohif-luroj-gilip-sudad-zalis-ravur-pidal  # 88d5
+  add:  # 88d5
+    tags: [dogfood_umbrella_member]  # 88d5
+- op: discuss  # 0bc9
+  at: '2026-05-30T09:06:43Z'  # 0bc9
+  by: agent  # 0bc9
+  actor: jgstern_agent  # 0bc9
+  clock: 4  # 0bc9
+  nonce: 0bc9  # 0bc9
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): shares the \"no top-level CLI exception handler\" mechanic with INV-sozop (all --input consumers raw-traceback on malformed JSON) and INV-zurih (verify-claims raw-traceback on malformed YAML). cli.main() at cli.py:8283-8422 wraps args.func(args) with no try/except for KeyboardInterrupt, json.JSONDecodeError, or yaml.YAMLError; only signal.SIGPIPE → SIG_DFL is installed (cli.py:8292-8293). Suggest promoting to a META \"no top-level CLI exception handler\" — three confirmed members across three user-controllable failure modes (signal, JSON-parse, YAML-parse)."  # 0bc9

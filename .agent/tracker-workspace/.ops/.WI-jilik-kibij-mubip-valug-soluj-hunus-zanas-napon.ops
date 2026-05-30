@@ -32,3 +32,20 @@
       dogfood_anon_id: "ITEM-034c6c"  # 1e58
   add:  # 1e58
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # 1e58
+- op: update  # 0feb
+  at: '2026-05-30T09:39:22Z'  # 0feb
+  by: agent  # 0feb
+  actor: jgstern_agent  # 0feb
+  clock: 3  # 0feb
+  nonce: 0feb  # 0feb
+  set:  # 0feb
+    parent: INV-rotup-kipir-habuv-hitis-bajis-zozal-mudus-pimil  # 0feb
+  add:  # 0feb
+    tags: [dogfood_umbrella_member]  # 0feb
+- op: discuss  # db2d
+  at: '2026-05-30T09:39:22Z'  # db2d
+  by: agent  # db2d
+  actor: jgstern_agent  # db2d
+  clock: 4  # db2d
+  nonce: db2d  # db2d
+  message: "Cross-ref backfill (2026-05-30, linked-pile L8 investigation): re-parent to INV-rotup. Undocumented HYPERGUMBO_* env vars and HF_HUB_OFFLINE are a clean extension of the CLI-text-drift mechanic INV-rotup covers (CLI surface promises vs reality, no enforcement gate). Also relevant to INV-dasig (P0 huggingface.co touch) because HF_HUB_OFFLINE=1 is currently the only documented workaround."  # db2d

@@ -1,0 +1,32 @@
+- op: create  # 58a7
+  at: '2026-05-30T09:48:44Z'  # 58a7
+  by: agent  # 58a7
+  actor: jgstern_agent  # 58a7
+  clock: 1  # 58a7
+  nonce: 58a7  # 58a7
+  data:  # 58a7
+    kind: invariant  # 58a7
+    title: "META: No spec-vs-data validator stage exists in the pipeline (super-META, peer)"  # 58a7
+    status: violated  # 58a7
+    priority: 2  # 58a7
+    parent:  # 58a7
+    tags:  # 58a7
+    - dogfood_corpus_20260528  # 58a7
+    - dogfood_umbrella  # 58a7
+    - dogfood_severity_moderate  # 58a7
+    - super_meta_no_validator_stage  # 58a7
+    isbefore: []  # 58a7
+    duplicate_of: []  # 58a7
+    not_duplicate_of: []  # 58a7
+    pr_ref:  # 58a7
+    description: "**Origin.** Filed 2026-05-30 as a super-META capturing a cross-cutting architectural absence endorsed by 5 of 8 sub-agents in the linked-pile investigation (L1, L2, L4, L6, L7) — see `notebookjournal_05302026_0522_linked_MASTER.md`. Also reinforced by the unlinked-pile investigation (G6) two days earlier.\n\n**The shape.** Hypergumbo has multiple declared contracts that no validator stage enforces. Each contract layer has its own META; the architectural absence — that there's no validator stage anywhere in the pipeline — is itself a thing worth tracking. Constituent METAs (peers of this one, NOT children — see \"Why peer not parent\" below):\n\n| Contract layer | Constituent META | Validator absence |\n|---|---|---|\n| CLI inputs | INV-fabov | No parser-layer validator on arg values |\n| Vocabulary axes | INV-numat | No axis-value-registry conformance check at emission |\n| Identifier formats | INV-kurup | No canonical-identifier-factory enforcement at emission |\n| Identifier uniqueness | (D.7 newly filed) | Hash input set is too coarse; no uniqueness-property test |\n| Behavior-map meta-layer | INV-luhur | No writer-contract assertion on bm.json record set |\n| Pass-emit contracts | INV-nanon | No \"this pass MUST produce edges or be skipped\" gate |\n| Schema list-typed fields | INV-dubam | (mostly satisfied 2026-05-27, validator face) |\n\n**Why peer not parent.** Making this META the parent would demote each constituent META from top-level (queryable in `tracker ready` at its own claim) to sub-META under this one (queryable only as a child). The 6-7 constituent METAs each carry concrete-fix-shape members; their findability matters. Per L2's recommendation, this super-META exists as a queryable anchor for the cross-cutting pattern but not as a hierarchical owner.\n\n**Cross-reference mechanism.** All 6-7 constituent METAs plus this super-META carry the tag `super_meta_no_validator_stage`. `scripts/tracker list --tag super_meta_no_validator_stage` returns the full cluster.\n\n**What this super-META does NOT claim.** It does not claim a single unified fix exists. Each constituent META has its own structural-fix candidate. The super-META claims that across the constituent METAs, an architectural pattern is visible: validator stages are absent at multiple distinct boundaries. The action implied is \"evaluate filing a unified validator architecture once 2+ constituents close structurally and the abstraction has empirical evidence.\"\n\n**When to close.** When 4+ of the 6 constituent METAs have closed structurally (member sets emptied via per-member fixes), re-evaluate whether the super-pattern still applies or whether the remaining 2 are coincidental coexistence. Until then, status `violated`.\n\n**Parent:** null (top-level META, peer of all constituents)."  # 58a7
+    fields:  # 58a7
+      statement: "Where the codebase declares a contract (CLI args, vocabulary axes, identifier formats, identifier uniqueness, behavior-map meta-layer fields, pass-emit contracts), there must exist a validator stage that asserts the contract holds — at parse time, at emission boundaries, or in CI. Today no such stage exists at multiple distinct boundaries."  # 58a7
+      root_cause: "Peer (not parent) of 6 constituent METAs (INV-fabov, INV-numat, INV-kurup, INV-luhur, INV-nanon, INV-dubam) that each describe one face of this architectural absence. Empirical evidence: 5 of 8 sub-agents in the 2026-05-30 linked-pile investigation endorsed filing; the constituent METAs collectively span 7 contract layers with 25+ member items."  # 58a7
+- op: discuss  # d731
+  at: '2026-05-30T09:50:49Z'  # d731
+  by: agent  # d731
+  actor: jgstern_agent  # d731
+  clock: 2  # d731
+  nonce: d731  # d731
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation closure): super-META filed as PEER per L2 framing — all 7 constituent METAs (INV-fabov, INV-numat, INV-kurup, INV-luhur, INV-nanon, INV-dubam, plus newly-filed INV-tazaj-bufod-dinuh-damoh-lubaf-zadod-jisav-duzuj) tagged super_meta_no_validator_stage. Query `scripts/tracker list --tag super_meta_no_validator_stage` returns the full cluster (8 items: this META + 7 constituents)."  # d731

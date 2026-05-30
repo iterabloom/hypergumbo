@@ -28,3 +28,10 @@
   clock: 2  # 552a
   nonce: 552a  # 552a
   message: "Cross-ref backfill (2026-05-30, theme 5b): closure of this mechanical dst_ref sweep (analyzers using make_unresolved_edge with module hint) is parallel to WI-nigah and advances INV-tofun-zimap-pusan-fofir-sorap-rofim-jafud-galob, the May-28 dogfood singleton 'linkers hard-code language=javascript for synthetic symbols on .ts files'. The dst_ref + language-tag encoding is the same analyzer-side substrate."  # 552a
+- op: discuss  # e787
+  at: '2026-05-30T09:51:52Z'  # e787
+  by: agent  # e787
+  actor: jgstern_agent  # e787
+  clock: 3  # e787
+  nonce: e787  # e787
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): the target candidate list (`requirements.py`, `cmake.py`, `py_deps.py`, `jvm_deps.py`, `manifest_targets.py`) was sketched at filing time and should be re-validated against current `make_unresolved_edge` call sites before sweep authoring. The umbrella WI-nigah explicitly carves out tooling-lang analyzers with no call-edge concept, so the actual mechanical-sweep universe may be smaller than the initial sketch suggests. Verification grep before PR authoring is mandatory."  # e787

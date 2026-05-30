@@ -40,3 +40,18 @@
   clock: 3  # ea98
   nonce: ea98  # ea98
   message: "Cross-ref backfill (2026-05-30, theme 4): closure of this item (Python lacks explicit stdlib catalog; 4477 imports resolve as 'unresolved') is one specific instance of the gap WI-tukif-fuhug-tisiv-judor-pobat-fisat-hadap-zojol covers — that umbrella tracks promoting 12 language catalogs to status=complete with stdlib_provenance. Python is one of the 12. The invariant both serve is INV-pomir-tahap-kizob-fumus-bufog-pubis-narah-napim (every status=complete catalog MUST declare stdlib_provenance with allowlisted hostname suffix)."  # ea98
+- op: update  # 7ef2
+  at: '2026-05-30T09:39:22Z'  # 7ef2
+  by: agent  # 7ef2
+  actor: jgstern_agent  # 7ef2
+  clock: 4  # 7ef2
+  nonce: 7ef2  # 7ef2
+  set:  # 7ef2
+    title: "Wire python.yaml stdlib_modules into Python analyzer import resolution"  # 7ef2
+- op: discuss  # e821
+  at: '2026-05-30T09:39:22Z'  # e821
+  by: agent  # e821
+  actor: jgstern_agent  # e821
+  clock: 5  # e821
+  nonce: e821  # e821
+  message: "Cross-ref backfill (2026-05-30, linked-pile L6 investigation): item retitled. Original framing 'Python analyzer lacks explicit stdlib catalog' is FACTUALLY WRONG: python.yaml IS already status=complete with stdlib_provenance + populated stdlib_modules. The actual gap is that the Python analyzer's import-resolution path does NOT consume the catalog (grep stdlib_modules packages/hypergumbo-lang-python/src/ returns empty; only io_boundary.py consumes it for I/O tagging). Decoupled from WI-tukif (catalog-promotion sweep): this is an analyzer-wiring task. Fix scope: io_boundary.py:_load_stdlib_modules → Python analyzer _resolve_import."  # e821

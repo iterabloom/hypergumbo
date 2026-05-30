@@ -34,3 +34,30 @@
       dogfood_anon_id: "ITEM-6670df"  # aac7
   add:  # aac7
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # aac7
+- op: update  # 1277
+  at: '2026-05-30T09:04:06Z'  # 1277
+  by: agent  # 1277
+  actor: jgstern_agent  # 1277
+  clock: 3  # 1277
+  nonce: '1277'  # 1277
+  set:  # 1277
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # 1277
+  add:  # 1277
+    tags: [dogfood_umbrella_member]  # 1277
+- op: discuss  # 2301
+  at: '2026-05-30T09:06:42Z'  # 2301
+  by: agent  # 2301
+  actor: jgstern_agent  # 2301
+  clock: 4  # 2301
+  nonce: '2301'  # 2301
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Root-cause fix is the argparse sentinel: cli.py:6169 sets default=\"slice.json\" (string literal) and cli.py:1377 detects the default by string equality. Switching the default to None (or argparse.SUPPRESS) and substituting the cache path only when args.out is None resolves the bug structurally. Sibling round-trip leak in the same code region: cli.py:1396 collapses hub_threshold=0 to None, which then disappears from SliceQuery.to_dict() (slice.py:230) — see INV-rakot for the broader feature.query echo gap."  # 2301
+- op: update  # a369
+  at: '2026-05-30T09:50:44Z'  # a369
+  by: agent  # a369
+  actor: jgstern_agent  # a369
+  clock: 5  # a369
+  nonce: a369  # a369
+  set:  # a369
+    parent: INV-dunof-zahof-zizon-huhor-vipot-tadul-kunib-sonah  # a369
+  add:  # a369
+    tags: [dogfood_umbrella_member, fabov_face_argparse_type_range]  # a369

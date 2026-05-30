@@ -48,3 +48,10 @@
   clock: 5  # 7b20
   nonce: 7b20  # 7b20
   message: "Cross-ref backfill (2026-05-30, theme 4): WI-bifih-haguk-jilat-kobof-hoduj-fabal-noras-dosih is a May-28 dogfood-66 item that observes the gap on Python specifically (4477 imports resolve as 'unresolved' because Python's stdlib isn't catalogued). Python is one of the 12 catalogs this umbrella covers; WI-bifih's closure would be a partial closure of this item. The invariant both serve is INV-pomir-tahap-kizob-fumus-bufog-pubis-narah-napim."  # 7b20
+- op: discuss  # 434e
+  at: '2026-05-30T09:36:52Z'  # 434e
+  by: agent  # 434e
+  actor: jgstern_agent  # 434e
+  clock: 6  # 434e
+  nonce: 434e  # 434e
+  message: "Cross-ref backfill (2026-05-30, linked-pile L6 investigation): checklist is stale. Rust + Erlang shipped in PR #3893 (2026-05-24). python.yaml was already complete pre-filing. The remaining set is 10 catalogs (not 12). Decoupled from WI-bifih per L6 verdict — WI-bifih is an analyzer-wiring task, not a catalog-promotion task; python.yaml already declares stdlib_modules. Description retitle pending Phase C."  # 434e

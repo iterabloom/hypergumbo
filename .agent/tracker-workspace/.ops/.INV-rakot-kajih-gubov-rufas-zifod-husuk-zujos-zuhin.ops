@@ -42,3 +42,23 @@
   clock: 3  # 9bc8
   nonce: 9bc8  # 9bc8
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Status partial. Verified via direct SliceQuery.to_dict() invocation: 4 of the 5 originally-missing keys (max_tier, language, hub_threshold, exclude_imports) have been backfilled at slice.py:226-233. min_confidence is still missing — neither in the always-include block (lines 217-225) nor in the conditional block. Structural fix: replace the hand-maintained whitelist with dataclasses.asdict(self), plus a property test that every p_slice argparse action's dest appears as a key in feature.query. Related upstream silent-collapse: cli.py:1396 maps hub_threshold=0 to None, so even with the conditional echo present, --hub-threshold 0 drops from the JSON — that's a sibling round-trip leak (see INV-fapid for the analogous --out sentinel pattern)."  # 9bc8
+- op: update  # 27a6
+  at: '2026-05-30T09:04:07Z'  # 27a6
+  by: agent  # 27a6
+  actor: jgstern_agent  # 27a6
+  clock: 4  # 27a6
+  nonce: 27a6  # 27a6
+  set:  # 27a6
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # 27a6
+  add:  # 27a6
+    tags: [dogfood_umbrella_member]  # 27a6
+- op: update  # da28
+  at: '2026-05-30T09:50:46Z'  # da28
+  by: agent  # da28
+  actor: jgstern_agent  # da28
+  clock: 5  # da28
+  nonce: da28  # da28
+  set:  # da28
+    parent: INV-pikob-diboh-patiz-hotum-pufog-daziv-kovor-gizov  # da28
+  add:  # da28
+    tags: [dogfood_umbrella_member, gogif_face_envelope_incomplete]  # da28

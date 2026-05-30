@@ -28,3 +28,10 @@
   clock: 2  # d376
   nonce: d376  # d376
   message: "Discovered during notes-vs-tracker consistency check on 2026-05-27. Three mutations lost from the 2026-05-26 session: WI-dilab-hitub (entire item, recreated as WI-pusuk), WI-hupaz done transition (re-applied manually), INV-hujog pending_validation (survived because it was written after cleanup). Root cause confirmed via transcript forensics: sync.py cleanup at lines 1486-1527 deleted untracked ops and reset tracked ops between the git-add snapshot and the ff-only merge."  # d376
+- op: discuss  # 8690
+  at: '2026-05-30T09:51:51Z'  # 8690
+  by: agent  # 8690
+  actor: jgstern_agent  # 8690
+  clock: 3  # 8690
+  nonce: '8690'  # 8690
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): cross-link to INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup. Both are git-sync-adjacent convergence/data-integrity invariants on tracker-related infra: INV-rahib covers auto-pr's post-rebase poll loop (since-shipped in PR #3419), this item covers tracker auto-sync's post-snapshot cleanup race (sync.py:1486-1532, unshipped). Same operator-experience surface (silent destruction of work in flight); changes to either codepath should consult the other."  # 8690

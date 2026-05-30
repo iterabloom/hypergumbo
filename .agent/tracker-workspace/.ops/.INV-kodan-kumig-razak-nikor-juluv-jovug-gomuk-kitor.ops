@@ -41,3 +41,19 @@
   clock: 3  # 8016
   nonce: '8016'  # 8016
   message: "Cluster member of INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 8016
+- op: update  # a045
+  at: '2026-05-30T09:50:49Z'  # a045
+  by: agent  # a045
+  actor: jgstern_agent  # a045
+  clock: 4  # a045
+  nonce: a045  # a045
+  set: {}  # a045
+  add:  # a045
+    tags: [nanon_face_linker_self_test_only]  # a045
+- op: discuss  # 8569
+  at: '2026-05-30T09:51:52Z'  # 8569
+  by: agent  # 8569
+  actor: jgstern_agent  # 8569
+  clock: 5  # 8569
+  nonce: '8569'  # 8569
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Within INV-nanon, this is the canonical \"self-test-edges-only\" sub-pattern — the linker produces edges but every one of them originates from its own in-tree test fixture, not production code. Fix shape differs from di-resolution (INV-hosig) where 0 edges and no activation gate is the issue; here, the activation predicate would correctly fire (the fixture file uses ctypes), so an activation-gate-only fix would not close this. Needs either a self-test-exclusion rule or a test-fixture quarantine convention."  # 8569

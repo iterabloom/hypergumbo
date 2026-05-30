@@ -23,3 +23,20 @@
       severity: "low"  # 24f7
       statement: "Read-only inspection subcommands invoked with --input MUST NOT write artifact files to disk. Side effects are reserved for run, sketch, and compact."  # 24f7
       root_cause: "routes subcommand triggers sketch artifact emission as a side effect of its read path; the read path does not isolate from the artifact-writing code shared with run/sketch."  # 24f7
+- op: discuss  # 57ad
+  at: '2026-05-30T09:36:52Z'  # 57ad
+  by: agent  # 57ad
+  actor: jgstern_agent  # 57ad
+  clock: 2  # 57ad
+  nonce: 57ad  # 57ad
+  message: "Cross-ref backfill (2026-05-30, linked-pile L8 investigation): status uncertain. cli.py:476 _get_or_run_analysis short-circuits on --input, suggesting the symptom (5 sketch artifacts written as side effect of read-only invocation) may be partially fixed since s14. Status retained as violated pending reproduction with a fresh --input invocation. If symptom no longer reproduces, candidate for pending_validation."  # 57ad
+- op: update  # f201
+  at: '2026-05-30T09:50:47Z'  # f201
+  by: agent  # f201
+  actor: jgstern_agent  # f201
+  clock: 3  # f201
+  nonce: f201  # f201
+  set:  # f201
+    parent: INV-papuj-gatin-gojid-jodal-fasov-mofom-ziruh-vovuh  # f201
+  add:  # f201
+    tags: [dogfood_umbrella_member]  # f201

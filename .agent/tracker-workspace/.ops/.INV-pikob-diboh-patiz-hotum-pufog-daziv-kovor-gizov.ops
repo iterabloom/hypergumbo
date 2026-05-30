@@ -1,0 +1,26 @@
+- op: create  # cfe8
+  at: '2026-05-30T09:48:33Z'  # cfe8
+  by: agent  # cfe8
+  actor: jgstern_agent  # cfe8
+  clock: 1  # cfe8
+  nonce: cfe8  # cfe8
+  data:  # cfe8
+    kind: invariant  # cfe8
+    title: "META(sub-B): JSON envelope incomplete or non-standard"  # cfe8
+    status: violated  # cfe8
+    priority: 2  # cfe8
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # cfe8
+    tags:  # cfe8
+    - dogfood_corpus_20260528  # cfe8
+    - dogfood_umbrella  # cfe8
+    - dogfood_severity_moderate  # cfe8
+    - json_envelope_incomplete  # cfe8
+    - sub_meta_under_gogif  # cfe8
+    isbefore: []  # cfe8
+    duplicate_of: []  # cfe8
+    not_duplicate_of: []  # cfe8
+    pr_ref:  # cfe8
+    description: "**Origin.** Filed 2026-05-30 as a sub-axis of WI-gogif following the linked-pile L3 investigation. Sub-axis B of the JSON-output-conventions umbrella.\n\n**The shape.** Four subcommands emit JSON but the envelope is incomplete or non-standard — missing `schema_version`, missing `view` field, returning a bare JSON array, or skipping the documented `query` echo. Programmatic consumers can't recover the schema generation that produced the output.\n\n**Fix shape.** Single shared `add_schema_envelope()` helper that wraps subcommand-specific payloads in a consistent envelope: `{\"schema_version\": ..., \"view\": ..., \"query\": ..., \"data\": ...}`. Apply unevenly-deployed envelope to the 4 currently-missing-it sites. The pattern is correctly applied at `cli.py:4878` (test-coverage) and `cli.py:1532` (slice) for reference.\n\n**Members (4).** INV-fipol (dead-code-maybe lacks schema_version), INV-gatog (verify-claims returns bare JSON array — note: has explicit \"preserve legacy flat-list schema\" comment at `cli.py:4531`, backward-compat blocker), INV-pazum (config lacks schema_version/view envelope), INV-rakot (slice JSON feature.query incomplete — partially fixed at `slice.py:226-233` but `min_confidence` still missing; structural fix is `dataclasses.asdict` round-trip).\n\n**Parent:** WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun."  # cfe8
+    fields:  # cfe8
+      statement: "Every JSON output must carry a standard envelope (schema_version, view, query echo, data); no subcommand may emit a bare array or skip envelope fields."  # cfe8
+      root_cause: "Shared add_schema_envelope() helper is unevenly deployed. Symptoms: dead-code-maybe lacks schema_version (INV-fipol), verify-claims returns bare JSON array with explicit preserve-legacy-flat-list comment at cli.py:4531 backward-compat blocker (INV-gatog), config lacks schema_version/view (INV-pazum), slice query echo incomplete partial-fixed at slice.py:226-233 but min_confidence still missing (INV-rakot)."  # cfe8

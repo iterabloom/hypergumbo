@@ -42,3 +42,20 @@
   clock: 3  # 7c0d
   nonce: 7c0d  # 7c0d
   message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 7c0d
+- op: update  # c7a5
+  at: '2026-05-30T09:50:45Z'  # c7a5
+  by: agent  # c7a5
+  actor: jgstern_agent  # c7a5
+  clock: 4  # c7a5
+  nonce: c7a5  # c7a5
+  set:  # c7a5
+    parent: INV-fivar-nadut-bapib-fisuj-danip-litog-vabav-rifud  # c7a5
+  add:  # c7a5
+    tags: [dogfood_umbrella_member, gogif_face_missing_flag]  # c7a5
+- op: discuss  # 597a
+  at: '2026-05-30T09:51:52Z'  # 597a
+  by: agent  # 597a
+  actor: jgstern_agent  # 597a
+  clock: 5  # 597a
+  nonce: 597a  # 597a
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Axis-A (missing-flag) sibling of WI-dulul (cache-status) and INV-jutuj (routes) within WI-gogif. The standardization target is a consistent --format text|json on every read subcommand; catalog's fix is mechanically identical to the other two in this axis. Proposed shape: per-pass entries with id/availability/description; per-framework-pattern entries with id/path; wrapped in the shared schema_version/view envelope."  # 597a

@@ -49,3 +49,20 @@
   clock: 4  # 7247
   nonce: '7247'  # 7247
   message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 7247
+- op: update  # cdb9
+  at: '2026-05-30T09:50:45Z'  # cdb9
+  by: agent  # cdb9
+  actor: jgstern_agent  # cdb9
+  clock: 5  # cdb9
+  nonce: cdb9  # cdb9
+  set:  # cdb9
+    parent: INV-fivar-nadut-bapib-fisuj-danip-litog-vabav-rifud  # cdb9
+  add:  # cdb9
+    tags: [dogfood_umbrella_member, gogif_face_missing_flag]  # cdb9
+- op: discuss  # e9d7
+  at: '2026-05-30T09:51:52Z'  # e9d7
+  by: agent  # e9d7
+  actor: jgstern_agent  # e9d7
+  clock: 6  # e9d7
+  nonce: e9d7  # e9d7
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Axis-A (missing-flag) sibling of WI-dulul (cache-status) and WI-soroz (catalog) within WI-gogif. The standardization target is a consistent --format text|json across all read subcommands; routes' fix shares its mechanic with these two but is distinct from the sibling INV-pomol (bm.json schema-organization observation, not a CLI surface gap). Pass-16 self-correction noted that symbols and search are also text-only and should be enrolled."  # e9d7

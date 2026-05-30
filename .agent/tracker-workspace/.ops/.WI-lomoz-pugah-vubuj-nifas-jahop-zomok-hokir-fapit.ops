@@ -33,3 +33,27 @@
       dogfood_anon_id: "ITEM-cdc319"  # 6b58
   add:  # 6b58
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 6b58
+- op: update  # 713d
+  at: '2026-05-30T09:04:07Z'  # 713d
+  by: agent  # 713d
+  actor: jgstern_agent  # 713d
+  clock: 3  # 713d
+  nonce: 713d  # 713d
+  set:  # 713d
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # 713d
+  add:  # 713d
+    tags: [dogfood_umbrella_member]  # 713d
+- op: discuss  # 09d5
+  at: '2026-05-30T09:06:43Z'  # 09d5
+  by: agent  # 09d5
+  actor: jgstern_agent  # 09d5
+  clock: 4  # 09d5
+  nonce: 09d5  # 09d5
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Member candidate for INV-numat — exactly the umbrella's shape: \"similar names should encode similar concepts; when one construct is labeled two ways across emitters that's an axis problem.\" Sibling to WI-zadot (other half of WS taxonomy story — that item is about synthetic-node kind=function, this is about entrypoint kind=http_route). Code: entrypoints.py:152-179 EntrypointKind enum has HTTP_ROUTE + 20 framework-specific kinds (DJANGO_VIEW, EXPRESS_ROUTE, etc.) but NO WEBSOCKET_HANDLER; starlette.yaml:25-33 WebSocketRoute pattern emits to usage_contexts under a separate vocabulary. Two emitters (entrypoints subsystem and usage_contexts subsystem) operate on the same construct without shared normalization. Structural choice: (a) add WEBSOCKET_HANDLER + protocol-specific kinds to EntrypointKind for symmetry, OR (b) fold per-framework kinds back to HTTP_ROUTE + meta[\"framework\"]. Current state asymmetric and inviting drift."  # 09d5
+- op: discuss  # c9ec
+  at: '2026-05-30T09:39:22Z'  # c9ec
+  by: agent  # c9ec
+  actor: jgstern_agent  # c9ec
+  clock: 5  # c9ec
+  nonce: c9ec  # c9ec
+  message: "Cross-ref backfill (2026-05-30, linked-pile L2 investigation): claim partially stale. WEBSOCKET_HANDLER now exists at entrypoints.py:192 — half of the original split (entrypoints side) is closed. The remaining gap is the usage_contexts side still using 'WebSocketRoute' vs 'Route' for similar concepts. Re-scope: track only the usage_contexts vocabulary alignment."  # c9ec

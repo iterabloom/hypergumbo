@@ -34,3 +34,20 @@
       dogfood_anon_id: "ITEM-ec70c2"  # b0b0
   add:  # b0b0
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # b0b0
+- op: update  # 3e79
+  at: '2026-05-30T09:04:08Z'  # 3e79
+  by: agent  # 3e79
+  actor: jgstern_agent  # 3e79
+  clock: 3  # 3e79
+  nonce: '3e79'  # 3e79
+  set:  # 3e79
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 3e79
+  add:  # 3e79
+    tags: [dogfood_umbrella_member]  # 3e79
+- op: discuss  # 27e5
+  at: '2026-05-30T09:06:42Z'  # 27e5
+  by: agent  # 27e5
+  actor: jgstern_agent  # 27e5
+  clock: 4  # 27e5
+  nonce: '27e5'  # 27e5
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): same \"field declared but never populated\" mechanic as INV-virik (failed_files/warnings/classification_failures/ambiguous_paths) and the already-linked INV-nuzal (edge.provenance/quality 100% empty). Specifically: AnalysisRun.skipped_passes (ir.py:204) is declared but `grep -n \"run.skipped_passes\\|\\.skipped_passes\\.append\" packages/hypergumbo-core/src/` finds zero producer writes. limits.skipped_passes is wired (66 entries from analyze/all_analyzers.py:80,151). The two-channel split (pass-level vs sub-unit-level) was intentional design; the sub-unit producer never landed. INV-virik should subsume this as a 5th declared-empty field."  # 27e5

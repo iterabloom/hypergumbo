@@ -63,3 +63,20 @@
       dogfood_anon_id: "ITEM-eccd6d"  # aaf7
   add:  # aaf7
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # aaf7
+- op: update  # b54a
+  at: '2026-05-30T09:04:10Z'  # b54a
+  by: agent  # b54a
+  actor: jgstern_agent  # b54a
+  clock: 7  # b54a
+  nonce: b54a  # b54a
+  set:  # b54a
+    parent: INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik  # b54a
+  add:  # b54a
+    tags: [dogfood_umbrella_member]  # b54a
+- op: discuss  # 3f2d
+  at: '2026-05-30T09:06:43Z'  # 3f2d
+  by: agent  # 3f2d
+  actor: jgstern_agent  # 3f2d
+  clock: 8  # 3f2d
+  nonce: 3f2d  # 3f2d
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): the SIGPIPE happens inside ranking.py:_compute_centrality_with_python (pass-10 confirmed via DEBUG marker); the combined-alternation regex (4701+ names) over file content via ThreadPoolExecutor most likely catastrophic-backtracks on one specific file when one additional symbol enters the alternation at budget 16146. Cache hit on sketch_precomputed.centrality_scores does NOT bypass this — sketch.py:4313 unconditionally calls compute_symbol_mention_centrality_batch to populate symbols_per_file/name_to_in_degree even when normalized_scores are cached. Related perf items: WI-ribag-bilav (warm-cache sketch slow; centrality not at analysis cache level), WI-zipoj-ludaj (>1M LOC warm sketch 14-22 min), INV-jumim-zavog (sketch --input re-walks filesystem) — all live in the same sketch hot path. Next probe: catch BrokenPipeError / re.error inside _compute_one and log the offending file + matched-name list at budget=16146; suggested fix-class is to time-bound the per-file regex (re.search with timeout via signal) and treat overruns as score=0.0."  # 3f2d

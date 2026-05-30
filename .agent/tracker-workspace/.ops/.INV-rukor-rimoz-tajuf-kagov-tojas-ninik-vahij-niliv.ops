@@ -46,3 +46,18 @@
   clock: 4  # 1f56
   nonce: 1f56  # 1f56
   message: "Fixed in PR #3926 (merged). Edge.derived_from populated across all 55 linker files (88 sites). Schema 0.9.1. Needs BROAD bakeoff to validate derived_from appears on linker-originated edges in real repos."  # 1f56
+- op: update  # 98de
+  at: '2026-05-30T09:36:52Z'  # 98de
+  by: agent  # 98de
+  actor: jgstern_agent  # 98de
+  clock: 5  # 98de
+  nonce: 98de  # 98de
+  set:  # 98de
+    status: pending_validation  # 98de
+- op: discuss  # 131a
+  at: '2026-05-30T09:36:52Z'  # 131a
+  by: agent  # 131a
+  actor: jgstern_agent  # 131a
+  clock: 6  # 131a
+  nonce: 131a  # 131a
+  message: "Cross-ref backfill (2026-05-30, linked-pile L4 investigation): item LANDED. bm.json confirms 23501/108649 edges carry populated Edge.derived_from (the field exists and the linkers that compute it populate it). Moving to pending_validation; awaits bakeoff to confirm full producer coverage. Note: the partial coverage (~21%) is expected — only inheritance/dispatch linkers contribute; other linkers correctly leave it empty."  # 131a

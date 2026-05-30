@@ -60,3 +60,12 @@
   clock: 6  # eceb
   nonce: eceb  # eceb
   message: "All 5 closure criteria met. (1) Edge.derived_from: INV-rukor PR #3926. (2) origin as list: INV-jidat PR #3927. (3) Pass.depends_on CNF: INV-hujog PRs #3919/#3921. (4) explain provenance surfacing: this PR. (5) PROV-vocabulary ADR-0030: this PR."  # eceb
+- op: update  # 539f
+  at: '2026-05-30T09:50:49Z'  # 539f
+  by: agent  # 539f
+  actor: jgstern_agent  # 539f
+  clock: 7  # 539f
+  nonce: 539f  # 539f
+  set: {}  # 539f
+  add:  # 539f
+    tags: [super_meta_no_validator_stage]  # 539f

@@ -36,3 +36,51 @@
       dogfood_anon_id: "ITEM-5f60e8"  # 7d57
   add:  # 7d57
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_severe]  # 7d57
+- op: discuss  # 188a
+  at: '2026-05-30T09:06:42Z'  # 188a
+  by: agent  # 188a
+  actor: jgstern_agent  # 188a
+  clock: 3  # 188a
+  nonce: 188a  # 188a
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): reproduced on gitleaks v8.30.0 — `gitleaks detect --no-git --pipe` returns `INF scanned ~0 bytes` and `[]` when given a known AWS-key string on stdin, confirming the --pipe regression. The whole test_gitleaks.py file mocks subprocess.run, so a real-binary smoke test on a known-positive string would have flagged the v8.30 contract break immediately. Same fail-silent-on-external-dep pattern as the umbrella INV-fabov names for argparse/YAML inputs; here the silent layer is subprocess output instead. Suggested follow-up to consider when fixing: gitleaks 8.x prefers `gitleaks stdin` (new subcommand) or `gitleaks detect --source -` for stdin scanning; verify the working invocation against a known-positive fixture in a non-mocked test before re-enabling in the cache path."  # 188a
+- op: update  # 880c
+  at: '2026-05-30T09:15:31Z'  # 880c
+  by: agent  # 880c
+  actor: jgstern_agent  # 880c
+  clock: 4  # 880c
+  nonce: 880c  # 880c
+  set:  # 880c
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # 880c
+  add:  # 880c
+    tags: [dogfood_umbrella_member]  # 880c
+- op: discuss  # f8e8
+  at: '2026-05-30T09:15:31Z'  # f8e8
+  by: agent  # f8e8
+  actor: jgstern_agent  # f8e8
+  clock: 5  # f8e8
+  nonce: f8e8  # f8e8
+  message: "Phase 1 re-link miss caught during Phase 6 verification (2026-05-30, unlinked-investigation closure): INV-pirad is a silent-accept variant — verify-claims emits confirmed when the gitleaks --pipe stdin contract broke in v8.30+, treating the no-op as a passed check. Same INV-fabov family as INV-bitig (must_not_exist on empty dir) and INV-hukug (--taint-sources override gap). G1 sub-agent flagged all 4 verify-claims items as INV-fabov candidates; this one was overlooked in the Phase 1 batch and patched here."  # f8e8
+- op: discuss  # 8a83
+  at: '2026-05-30T09:39:22Z'  # 8a83
+  by: agent  # 8a83
+  actor: jgstern_agent  # 8a83
+  clock: 6  # 8a83
+  nonce: 8a83  # 8a83
+  message: "Cross-ref backfill (2026-05-30, linked-pile L1 investigation): mis-parent flagged. Current parent INV-fabov (set during prior unlinked-campaign Phase 6 catch) does not fit — the mechanic is external-dep contract break (gitleaks v8.30+ --pipe ignoring stdin silently makes secret scan a no-op) not CLI arg validation. INV-pirad belongs under a future 'no real-binary smoke tests for vendored CLIs' META (deferred filing decision). Parent revert blocked by tracker limitation (no --remove-parent); will re-parent forward when the new META is filed. Documenting here so the mis-fit is queryable."  # 8a83
+- op: update  # 1bb5
+  at: '2026-05-30T19:59:17Z'  # 1bb5
+  by: agent  # 1bb5
+  actor: jgstern_agent  # 1bb5
+  clock: 7  # 1bb5
+  nonce: 1bb5  # 1bb5
+  set:  # 1bb5
+    parent: INV-somut-lapar-furob-tovul-juhor-puhat-zujim-lobir  # 1bb5
+  add:  # 1bb5
+    tags: [fabov_face_verify_claims]  # 1bb5
+- op: discuss  # ee9e
+  at: '2026-05-30T19:59:17Z'  # ee9e
+  by: agent  # ee9e
+  actor: jgstern_agent  # ee9e
+  clock: 8  # ee9e
+  nonce: ee9e  # ee9e
+  message: "Mis-parent corrected (2026-05-30): re-parented forward from INV-fabov to INV-somut (sub-META A: verify-claims silent-confirm verdict fall-through). The earlier deferral was a self-contradiction — sub-META A`s own description names gitleaks v8.30+ --pipe no-op as one of the 6 verdict-fall-through check sites. ClaimVerdict.inconclusive (WI-rolol trial-A) is the structural fix; the verdict-fall-through lens is the correct primary framing. If a second vendored-CLI contract-break case surfaces, file a separate META for that distinct mechanic at that time."  # ee9e

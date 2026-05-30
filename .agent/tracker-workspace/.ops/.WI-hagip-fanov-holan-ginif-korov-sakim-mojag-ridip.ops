@@ -25,3 +25,19 @@
   clock: 2  # 89ce
   nonce: 89ce  # 89ce
   message: "Cross-ref backfill (2026-05-30, theme 10): closure of this item (dead-code-prospector OOM/crash on 3 largest repos: trino, envoy, vscode) is adjacent to INV-nohod-najud-muzik-kamip-jozis-takun-pivik-jihaf, the May-28 dogfood singleton 'KKKKK: 76% of nodes test-classified; behavior map dominated by test code'. Test-classification dominance contributes to DCM FP volume, which compounds memory pressure on huge repos. Not a claimed root-cause linkage — OOM scaling on >1M-node repos is its own factor — but a contributing dimension. Sibling DCM issue (different mechanism): INV-nogof-hopol-morov-nufis-gobat-kimuf-rilaj-lovon — CCCCC ambiguous-entry handling inconsistent across read subcommands, including dead-code-maybe."  # 89ce
+- op: update  # 5395
+  at: '2026-05-30T09:39:44Z'  # 5395
+  by: agent  # 5395
+  actor: jgstern_agent  # 5395
+  clock: 3  # 5395
+  nonce: '5395'  # 5395
+  set: {}  # 5395
+  add:  # 5395
+    isbefore: [WI-botol-duhub-farad-vukih-fiput-tifit-luzur-lazaf]  # 5395
+- op: discuss  # db82
+  at: '2026-05-30T09:39:44Z'  # db82
+  by: agent  # db82
+  actor: jgstern_agent  # db82
+  clock: 4  # db82
+  nonce: db82  # db82
+  message: "Cross-ref backfill (2026-05-30, linked-pile L7 investigation, direction fix): WI-hagip blocks WI-botol (the corrected direction). DCM OOM/crash fix is prerequisite for the 200-repo prospecting run; 3 corpus repos (trino, envoy, vscode) will OOM until WI-hagip closes."  # db82

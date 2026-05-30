@@ -223,3 +223,10 @@
   clock: 28  # e602
   nonce: e602  # e602
   message: "Cross-ref backfill (2026-05-30, theme 6): closure of this item (React Router routes must be detected in routes.txt) is part of a routes-coverage cluster that also contains INV-nubub-davag-vihut-zurib-kunuf-nukub-tidab-dogig (May-28 dogfood singleton 'Handler-slice filename collision: route-symbol overwrites function-symbol slice') and INV-pomol-horid-kahok-hosov-dumis-huhij-tahit-ganig (routes top-level field absent from bm.json; 'No API routes found' despite 8 Route entries). Sibling JSON-output gap: AAAAA (umbrella-member under WI-gogif)."  # e602
+- op: discuss  # fbe0
+  at: '2026-05-30T09:51:51Z'  # fbe0
+  by: agent  # fbe0
+  actor: jgstern_agent  # fbe0
+  clock: 29  # fbe0
+  nonce: fbe0  # fbe0
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): three-item routes-coverage cluster spans detection (this item, P4), slice emission (INV-nubub, P1), and bm.json output (INV-pomol, P1 under WI-gogif). No umbrella exists; the priority gap makes a META filing unattractive (P4 + P1 + P1 doesn't compose as a single closure criterion). Cross-references via Phase-1 backfill are already in place; recommend leaving as-is unless a fourth routes-related item surfaces."  # fbe0

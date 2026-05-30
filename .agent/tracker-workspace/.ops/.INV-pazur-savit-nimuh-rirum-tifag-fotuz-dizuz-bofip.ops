@@ -34,3 +34,20 @@
       dogfood_anon_id: "ITEM-7dbeda"  # b190
   add:  # b190
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # b190
+- op: update  # c91d
+  at: '2026-05-30T09:04:10Z'  # c91d
+  by: agent  # c91d
+  actor: jgstern_agent  # c91d
+  clock: 3  # c91d
+  nonce: c91d  # c91d
+  set:  # c91d
+    parent: INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik  # c91d
+  add:  # c91d
+    tags: [dogfood_umbrella_member]  # c91d
+- op: discuss  # 9855
+  at: '2026-05-30T09:04:10Z'  # 9855
+  by: agent  # 9855
+  actor: jgstern_agent  # 9855
+  clock: 4  # 9855
+  nonce: '9855'  # 9855
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): member of INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik (primary fix-site) and WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (secondary face: JSON-envelope-vs-payload internal inconsistency (nodes_summary pre-shrink contradicts on-disk arrays)). Parent assignment reflects the closer fix-site framing."  # 9855

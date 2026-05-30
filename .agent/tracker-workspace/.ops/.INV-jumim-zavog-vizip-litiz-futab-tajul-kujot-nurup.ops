@@ -41,3 +41,20 @@
   clock: 3  # 9635
   nonce: '9635'  # 9635
   message: "Cross-ref backfill (2026-05-30, theme 9): two active non-dogfood sketch-performance items form a cluster with this finding: (1) WI-ribag-bilav-ninum-visub-figog-vidim-putir-zofop — warm-cache sketch slow because centrality + per-file embedding not cached at the same level as analysis JSON; (2) WI-zipoj-ludaj-damap-zimid-linun-sasuj-fopil-hivig — >1M LOC warm sketch 14-22 min wall-clock. This item observes the test-file re-walk specifically; the cluster surfaces the broader 'sketch does work that's already on disk' anti-pattern. Adjacent (different subcommand, same shape): INV-dadaf-zozih-janid-kupag-zukag-balun-tapab-jivog — routes --input writes 5 sketch artifacts as read-only side effect."  # 9635
+- op: update  # 92a6
+  at: '2026-05-30T09:50:46Z'  # 92a6
+  by: agent  # 92a6
+  actor: jgstern_agent  # 92a6
+  clock: 4  # 92a6
+  nonce: 92a6  # 92a6
+  set:  # 92a6
+    parent: INV-papuj-gatin-gojid-jodal-fasov-mofom-ziruh-vovuh  # 92a6
+  add:  # 92a6
+    tags: [dogfood_umbrella_member]  # 92a6
+- op: discuss  # b0ba
+  at: '2026-05-30T09:51:52Z'  # b0ba
+  by: agent  # b0ba
+  actor: jgstern_agent  # b0ba
+  clock: 5  # b0ba
+  nonce: b0ba  # b0ba
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): the May-30 backfill already names the sketch-perf cluster with WI-ribag and WI-zipoj. L8 review confirms a fourth member is INV-dadaf-zozih-janid-kupag-zukag-balun-tapab-jivog (routes --input writes 5 sketch artifacts as side effect) — same anti-pattern at the write face. Distinct from INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik (sketch budget META), which is budget coordination not read-path caching; INV-fanur's \"adjacent cluster\" note correctly declines to absorb these four. Candidate sub-META framing for the four: \"sketch read-path does redundant computation when authoritative data is already on bm.json or disk.\""  # b0ba

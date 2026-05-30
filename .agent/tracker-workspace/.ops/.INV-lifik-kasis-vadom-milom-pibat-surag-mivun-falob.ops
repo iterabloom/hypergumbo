@@ -23,3 +23,20 @@
       dogfood_anon_id: "ITEM-c09542"  # 5200
       statement: "A schema field that consistently carries one value either should be promoted to a constant in the schema (not a per-record field) or should be expanded to carry the variation it implies. Duplicate field names across record types should either share a vocabulary or be renamed to distinguish their scopes."  # 5200
       root_cause: "Several declared schema fields populate with effectively one value across every populated record — a constant. One scope has a substantial set of metadata fields where every populated record carries the same value, suggesting either vestigial scaffolding from a partially-implemented feature or fields that should be derived rather than stored. A second scope (node-level rather than edge-level) has a similar set of zero-entropy fields. A separate but related issue: a handful of metadata field names appear on both the edge-level and node-level metadata records, with disjoint value distributions on each. The same field name carries different vocabularies depending on which record type it appears on; the dual-scope semantics are undocumented."  # 5200
+- op: update  # 9a67
+  at: '2026-05-30T09:04:09Z'  # 9a67
+  by: agent  # 9a67
+  actor: jgstern_agent  # 9a67
+  clock: 2  # 9a67
+  nonce: 9a67  # 9a67
+  set:  # 9a67
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 9a67
+  add:  # 9a67
+    tags: [dogfood_umbrella_member]  # 9a67
+- op: discuss  # e706
+  at: '2026-05-30T09:06:42Z'  # e706
+  by: agent  # e706
+  actor: jgstern_agent  # e706
+  clock: 3  # e706
+  nonce: e706  # e706
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Belongs as a member of INV-numat — the name-collision sub-finding (5 field names appearing on both edge.meta and node.meta with disjoint vocabularies) is the umbrella's exact shape (one name, multiple semantic axes). The zero-entropy sub-finding (17 fields) traces to three distinct shapes: dead-code-emitter (channel_kind='queue', protocol='ws' — field added during multi-mechanism design, only one mechanism shipped), defensive-flag (disambiguation_fallback=True only-when-populated), and single-emitter-constant (bridge_kind='ffi' because every bridge linker on hypergumbo's surface is FFI). dest_access_mode='read' as zero-entropy is also cross-evidence for INV-kudug — the access_mode subsystem is unhealthy. Candidate to split into three sub-items so each shape can resolve independently; alternatively absorb the name-collision half into INV-numat and keep this item focused on entropy."  # e706

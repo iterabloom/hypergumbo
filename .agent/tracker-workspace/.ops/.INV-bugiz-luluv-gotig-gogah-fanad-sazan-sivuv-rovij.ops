@@ -35,3 +35,20 @@
       dogfood_anon_id: "ITEM-569a42"  # acd9
   add:  # acd9
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # acd9
+- op: update  # 4adc
+  at: '2026-05-30T09:04:11Z'  # 4adc
+  by: agent  # 4adc
+  actor: jgstern_agent  # 4adc
+  clock: 3  # 4adc
+  nonce: 4adc  # 4adc
+  set:  # 4adc
+    parent: INV-rotup-kipir-habuv-hitis-bajis-zozal-mudus-pimil  # 4adc
+  add:  # 4adc
+    tags: [dogfood_umbrella_member]  # 4adc
+- op: discuss  # 0e02
+  at: '2026-05-30T09:06:42Z'  # 0e02
+  by: agent  # 0e02
+  actor: jgstern_agent  # 0e02
+  clock: 4  # 0e02
+  nonce: '0e02'  # 0e02
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): shares the \"help-text vs current behavior\" mechanic with WI-loloz (routes --help still documents deprecated -x/--exclude-tests no-op flag) and WI-figor (README implies --no-progress is general; only sketch/run accept it). All three are surfacing the absence of a doc-vs-impl gate over argparse help strings and README CLI examples. Suggest promoting to a META umbrella along the lines of \"CLI help text and README examples drift from argparse reality with no enforcement gate\". Code reference confirmed at cli.py:5741; the ripgrep path was removed but only the ranking.py:1599 comment and the cli.py:8069 internal comment survive — no live ripgrep dispatch."  # 0e02

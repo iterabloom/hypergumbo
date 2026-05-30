@@ -42,3 +42,20 @@
   clock: 3  # 74cb
   nonce: 74cb  # 74cb
   message: "Cross-ref backfill (2026-05-30): WI-lonoz-pinot-savin-mikoh-satul-ginut-hojak-fanan (non-dogfood, todo_soft) carries the spec-level design-call analysis for the edge.quality piece of this finding — 🟪 placeholder in docs/hypergumbo-spec.md:263, two-disposition framing (advance design from 🟪 to ⬜/🟨 with a concrete QualityScore producer, OR retire QualityScore from spec and drop the field). This item documents the broader observation (edge.provenance + node.quality also null, structural — linker passes write to edge.meta but not to provenance/quality)."  # 74cb
+- op: update  # 2fa9
+  at: '2026-05-30T09:04:09Z'  # 2fa9
+  by: agent  # 2fa9
+  actor: jgstern_agent  # 2fa9
+  clock: 4  # 2fa9
+  nonce: 2fa9  # 2fa9
+  set:  # 2fa9
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 2fa9
+  add:  # 2fa9
+    tags: [dogfood_umbrella_member, dogfood_writer_constant_face]  # 2fa9
+- op: discuss  # 8706
+  at: '2026-05-30T09:04:09Z'  # 8706
+  by: agent  # 8706
+  actor: jgstern_agent  # 8706
+  clock: 5  # 8706
+  nonce: '8706'  # 8706
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): member of INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug (primary fix-site) and WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (secondary face: wire-format vs schema gap (provenance/quality 100% empty across all edges)). Parent assignment reflects the closer fix-site framing."  # 8706

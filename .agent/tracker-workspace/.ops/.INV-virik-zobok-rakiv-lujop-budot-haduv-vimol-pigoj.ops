@@ -23,3 +23,20 @@
       dogfood_anon_id: "ITEM-703764"  # f124
       statement: "A schema field declared and serialized should be populated when the relevant condition arises. If a feature is acknowledged as planned-but-not-implemented, the field should be omitted or the schema should mark it as unimplemented so consumers do not read `[]` as \"no failures occurred.\""  # f124
       root_cause: "Two distinct sets of provenance fields are declared in the schema but never populated by production code. One set is on the per-pass provenance record — fields meant to surface analyzer failures and warnings — which are emitted as empty arrays on every record despite known analyzer failures in the same run. The other set is on the classification provenance record — fields meant to capture classification failures and ambiguities — which are emitted as empty arrays despite documented classification cases the project itself acknowledges are misclassified. The dataclasses and serialization exist; no writer code populates them."  # f124
+- op: update  # 4c4c
+  at: '2026-05-30T09:04:09Z'  # 4c4c
+  by: agent  # 4c4c
+  actor: jgstern_agent  # 4c4c
+  clock: 2  # 4c4c
+  nonce: 4c4c  # 4c4c
+  set:  # 4c4c
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 4c4c
+  add:  # 4c4c
+    tags: [dogfood_umbrella_member]  # 4c4c
+- op: discuss  # f3d5
+  at: '2026-05-30T09:06:43Z'  # f3d5
+  by: agent  # f3d5
+  actor: jgstern_agent  # f3d5
+  clock: 3  # f3d5
+  nonce: f3d5  # f3d5
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): umbrella of the \"declared field, no producer\" cluster across the schema. Members: INV-nuzal (edge.provenance/quality 100% empty — already linked), WI-lonoz (Edge.quality 100% None — already linked from nuzal), INV-tibob (access_mode 0% on 12/17 edge types), INV-nihug (AnalysisRun.skipped_passes never written by any analyzer). Concrete failures that should populate classification_failures are filed in INV-nuzas (workspace mis-tiered as external_dep). INV-lifik covers the sibling pattern at meta-field level (17 zero-entropy fields). Writer methods exist (limits.py:132-140 add_classification_failure/add_ambiguous_path) with zero producer callers. Fix is a property-test gate: every declared optional channel must be populated by at least one producer when run against a non-trivial fixture, or be annotated `unimplemented` in the schema."  # f3d5

@@ -34,3 +34,20 @@
       dogfood_anon_id: "ITEM-f97cf3"  # a8a5
   add:  # a8a5
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # a8a5
+- op: update  # 6d24
+  at: '2026-05-30T09:04:08Z'  # 6d24
+  by: agent  # 6d24
+  actor: jgstern_agent  # 6d24
+  clock: 3  # 6d24
+  nonce: 6d24  # 6d24
+  set:  # 6d24
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 6d24
+  add:  # 6d24
+    tags: [dogfood_umbrella_member]  # 6d24
+- op: discuss  # 6b54
+  at: '2026-05-30T09:06:42Z'  # 6b54
+  by: agent  # 6b54
+  actor: jgstern_agent  # 6b54
+  clock: 4  # 6b54
+  nonce: 6b54  # 6b54
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): same \"discovery counts diverge from emission counts; no closed-set check\" cluster as INV-jukok (23 dangling src IDs surface as 23-edges/0-nodes in metrics.by_supply_chain_tier `unknown` bucket). The 296-file gap here breaks down as INV-babuj (yaml 174) + INV-gosub (markdown 107) + 15 trailing — the per-language root causes are filed; the missing piece is the orchestrator-side reconciliation gate. WI-soraj intentionally splits total_files (profile) from unique_paths_in_analysis (emission); the consumer-facing field name doesn't disambiguate."  # 6b54

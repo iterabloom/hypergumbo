@@ -42,3 +42,20 @@
   clock: 3  # dddc
   nonce: dddc  # dddc
   message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # dddc
+- op: update  # e11b
+  at: '2026-05-30T09:50:46Z'  # e11b
+  by: agent  # e11b
+  actor: jgstern_agent  # e11b
+  clock: 4  # e11b
+  nonce: e11b  # e11b
+  set:  # e11b
+    parent: INV-pikob-diboh-patiz-hotum-pufog-daziv-kovor-gizov  # e11b
+  add:  # e11b
+    tags: [dogfood_umbrella_member, gogif_face_envelope_incomplete]  # e11b
+- op: discuss  # 2844
+  at: '2026-05-30T09:51:52Z'  # 2844
+  by: agent  # 2844
+  actor: jgstern_agent  # 2844
+  clock: 5  # 2844
+  nonce: '2844'  # 2844
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Axis-B (envelope-incomplete) sibling of INV-fipol and INV-gatog within WI-gogif. INV-pazum and INV-subak both target cmd_config (cli.py:4568-4630) — this item is the envelope/shape gap, INV-subak (parent INV-fabov, secondary face WI-gogif) is the payload/content gap (function_summaries empty for all 281 languages). The two should be fixed in a coordinated patch since they touch the same function and would otherwise produce two churn-only PRs against the same site."  # 2844

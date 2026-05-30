@@ -62,3 +62,20 @@
   clock: 6  # f414
   nonce: f414  # f414
   message: "Cross-ref backfill (2026-05-30, theme 1): cousin item (not parent/child) of INV-bazij-lazov-busog-humuh-jozov-bajod-jodum-sabun, the May-28 dogfood Severe P0 'stable_id mass collisions: 60% of nodes share with at least one other'. INV-bazij is the broader 60% global collision observation; this item is the structurally-identical-cross-module residue (18.94%) after INV-fusus's same-module fix. Different root causes within the same stable_id uniqueness theme."  # f414
+- op: update  # cf8d
+  at: '2026-05-30T09:50:48Z'  # cf8d
+  by: agent  # cf8d
+  actor: jgstern_agent  # cf8d
+  clock: 7  # cf8d
+  nonce: cf8d  # cf8d
+  set:  # cf8d
+    parent: INV-tazaj-bufod-dinuh-damoh-lubaf-zadod-jisav-duzuj  # cf8d
+  add:  # cf8d
+    tags: [dogfood_umbrella_member]  # cf8d
+- op: discuss  # a61e
+  at: '2026-05-30T09:51:52Z'  # a61e
+  by: agent  # a61e
+  actor: jgstern_agent  # a61e
+  clock: 8  # a61e
+  nonce: a61e  # a61e
+  message: "Cross-ref backfill (2026-05-30, linked-pile investigation): candidate for re-parenting under INV-kurup (META: identifier-bearing fields emit non-canonical formats from several emission paths) — INV-kurup's 2026-05-30 enrollment-deferral note already lists this item as one of three further active items addressing the same emission-format mechanic. The stable_id formula's interaction with module-stable_id collision is structurally the same kind of \"emitter bypasses canonical-format gate\" issue INV-kurup tracks. Recommended action: fold under INV-kurup once BROAD-cohort validates the 91% reduction holds at corpus scale."  # a61e

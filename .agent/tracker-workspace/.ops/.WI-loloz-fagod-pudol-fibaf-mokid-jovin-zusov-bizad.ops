@@ -34,3 +34,20 @@
       dogfood_anon_id: "ITEM-9c0822"  # 1cf7
   add:  # 1cf7
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_cosmetic]  # 1cf7
+- op: update  # 407d
+  at: '2026-05-30T09:04:11Z'  # 407d
+  by: agent  # 407d
+  actor: jgstern_agent  # 407d
+  clock: 3  # 407d
+  nonce: 407d  # 407d
+  set:  # 407d
+    parent: INV-rotup-kipir-habuv-hitis-bajis-zozal-mudus-pimil  # 407d
+  add:  # 407d
+    tags: [dogfood_umbrella_member]  # 407d
+- op: discuss  # 994a
+  at: '2026-05-30T09:06:43Z'  # 994a
+  by: agent  # 994a
+  actor: jgstern_agent  # 994a
+  clock: 4  # 994a
+  nonce: 994a  # 994a
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): shares the \"CLI help text describes behavior that no longer matches code\" mechanic with INV-bugiz (--debug help references removed ripgrep path) and WI-figor (README:139 implies --no-progress is general; only sketch/run accept it). Code reference confirmed at cli.py:6368-6374: the inline comment at cli.py:6358-6361 documents this as an intentional no-op backcompat alias, but the `help=` string still says \"Exclude routes from test files\" rather than \"deprecated no-op alias\". Suggest the structural fix is either honest help= text or `help=argparse.SUPPRESS` to hide the deprecated flag from --help. Worth promoting the three-item cluster to a META \"CLI help/README drift from argparse reality, no enforcement gate\"."  # 994a

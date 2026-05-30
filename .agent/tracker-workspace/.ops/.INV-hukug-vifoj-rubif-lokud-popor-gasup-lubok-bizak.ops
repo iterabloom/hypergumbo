@@ -35,3 +35,30 @@
       dogfood_anon_id: "ITEM-416ab1"  # 5141
   add:  # 5141
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 5141
+- op: update  # 2912
+  at: '2026-05-30T09:04:06Z'  # 2912
+  by: agent  # 2912
+  actor: jgstern_agent  # 2912
+  clock: 3  # 2912
+  nonce: '2912'  # 2912
+  set:  # 2912
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # 2912
+  add:  # 2912
+    tags: [dogfood_umbrella_member]  # 2912
+- op: discuss  # e680
+  at: '2026-05-30T09:06:42Z'  # e680
+  by: agent  # e680
+  actor: jgstern_agent  # e680
+  clock: 4  # e680
+  nonce: e680  # e680
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): completes the override contract that WI-votan (done) opened by adding extra_catalogs.sources to the claims schema — the schema landed but cli.py:4431 collapses claims-file extras and CLI extras into one user layer before load_taint_catalog (taint.py:437-477), and _merge_with_user_override only dedups between auto and user, never within. Sibling fail-silent of INV-nufob (--taint-* flags silently accept nonexistent files) and member of umbrella INV-fabov. Structural fix shape: reify the third \"claims-file extras\" layer and call _merge_with_user_override once between claims-file and CLI before merging against built-in."  # e680
+- op: update  # 9ed0
+  at: '2026-05-30T09:50:43Z'  # 9ed0
+  by: agent  # 9ed0
+  actor: jgstern_agent  # 9ed0
+  clock: 5  # 9ed0
+  nonce: 9ed0  # 9ed0
+  set:  # 9ed0
+    parent: INV-somut-lapar-furob-tovul-juhor-puhat-zujim-lobir  # 9ed0
+  add:  # 9ed0
+    tags: [dogfood_umbrella_member, fabov_face_verify_claims]  # 9ed0

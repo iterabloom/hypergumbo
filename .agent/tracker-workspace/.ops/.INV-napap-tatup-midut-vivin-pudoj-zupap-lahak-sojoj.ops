@@ -35,3 +35,35 @@
       dogfood_anon_id: "ITEM-9cce93"  # 308d
   add:  # 308d
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 308d
+- op: update  # 0409
+  at: '2026-05-30T09:04:10Z'  # 0409
+  by: agent  # 0409
+  actor: jgstern_agent  # 0409
+  clock: 3  # 0409
+  nonce: '0409'  # 0409
+  set:  # 0409
+    parent: INV-jifus-parug-midub-nofip-mupil-zobak-vuzah-fokov  # 0409
+  add:  # 0409
+    tags: [dogfood_umbrella_member]  # 0409
+- op: discuss  # 12a9
+  at: '2026-05-30T09:06:42Z'  # 12a9
+  by: agent  # 12a9
+  actor: jgstern_agent  # 12a9
+  clock: 4  # 12a9
+  nonce: 12a9  # 12a9
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): field-name vs. field-contents mismatch on sketch_precomputed.centrality_scores; cli.py:8094 explicitly skips source files (this is the Additional Files section's pre-compute, sketch.py:6473 is the sole correct consumer). Same untyped-dict pattern as INV-modor-vokot (readme_description heuristic concat bug) and INV-padoz-juvum (vocabulary 12-entry no-lemma); sketch_precomputed has no schema. Suggested rename: additional_file_centrality_scores, with a separate field reserved for whole-graph centrality if/when needed. Adjacent perf items in the linked bucket: WI-ribag-bilav (warm-cache sketch slow, centrality not cached at analysis level) and WI-zipoj-ludaj (>1M LOC warm sketch 14-22 min) — both touch the centrality cache mechanism but are independent of the naming/scope issue here."  # 12a9
+- op: update  # a878
+  at: '2026-05-30T09:07:05Z'  # a878
+  by: agent  # a878
+  actor: jgstern_agent  # a878
+  clock: 5  # a878
+  nonce: a878  # a878
+  set:  # a878
+    priority: 1  # a878
+- op: discuss  # 1a39
+  at: '2026-05-30T09:07:05Z'  # 1a39
+  by: agent  # 1a39
+  actor: jgstern_agent  # 1a39
+  clock: 6  # 1a39
+  nonce: 1a39  # 1a39
+  message: "Severity reconsider (2026-05-30, deeper-issue investigation): bumped P2 → P1. sketch_precomputed.centrality_scores is the primary signal agents consume from sketch outputs; the field excluding all 838 .py source files (cli.py:8094 by-design filter) is a structurally false-output condition. Per G3 sub-agent unlinked-investigation finding — INV-napap is now also a member of INV-jifus (META: sketch_precomputed has no schema) and the renaming-or-rescoping fix is part of that META."  # 1a39
