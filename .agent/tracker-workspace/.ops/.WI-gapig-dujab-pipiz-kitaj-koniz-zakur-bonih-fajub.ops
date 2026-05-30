@@ -1,0 +1,24 @@
+- op: create  # 9b4c
+  at: '2026-05-30T20:33:49Z'  # 9b4c
+  by: agent  # 9b4c
+  actor: jgstern_agent  # 9b4c
+  clock: 1  # 9b4c
+  nonce: 9b4c  # 9b4c
+  data:  # 9b4c
+    kind: work_item  # 9b4c
+    title: "mypy: audit pre-existing # type: ignore comments once strict mode lands"  # 9b4c
+    status: todo_soft  # 9b4c
+    priority: 3  # 9b4c
+    parent:  # 9b4c
+    tags:  # 9b4c
+    - mypy_adoption  # 9b4c
+    - developer_experience  # 9b4c
+    - tooling  # 9b4c
+    - static_typing  # 9b4c
+    - technical_debt  # 9b4c
+    isbefore: []  # 9b4c
+    duplicate_of: []  # 9b4c
+    not_duplicate_of: []  # 9b4c
+    pr_ref:  # 9b4c
+    description: "After W4 (strict mode) lands and the bulk of the codebase is clean, sweep the remaining `# type: ignore` comments. For each: (a) is it still needed? (b) does it have the specific error code `[error-code]`? (c) is the underlying issue actually a bug to fix or a justified suppression? Replace bare `# type: ignore` with codes; remove no-longer-needed suppressions; convert genuine-bug suppressions into tracker items."  # 9b4c
+    fields: {}  # 9b4c

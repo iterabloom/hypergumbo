@@ -1,0 +1,25 @@
+- op: create  # 66a0
+  at: '2026-05-30T20:33:03Z'  # 66a0
+  by: agent  # 66a0
+  actor: jgstern_agent  # 66a0
+  clock: 1  # 66a0
+  nonce: 66a0  # 66a0
+  data:  # 66a0
+    kind: work_item  # 66a0
+    title: "mypy: adopt TypedDict for bm.json schema sub-structures"  # 66a0
+    status: todo_soft  # 66a0
+    priority: 3  # 66a0
+    parent:  # 66a0
+    tags:  # 66a0
+    - mypy_adoption  # 66a0
+    - developer_experience  # 66a0
+    - tooling  # 66a0
+    - static_typing  # 66a0
+    - typeddict  # 66a0
+    - bm_json_schema  # 66a0
+    isbefore: []  # 66a0
+    duplicate_of: []  # 66a0
+    not_duplicate_of: []  # 66a0
+    pr_ref:  # 66a0
+    description: "Declare TypedDict classes for each bm.json schema sub-structure: AnalysisRunDict, SymbolDict, EdgeDict, MetricsDict, LimitsDict, SketchPrecomputedDict, etc. Consumers that read bm.json get keys-checked at member access. Closes some WI-gogif envelope-incomplete sub-cases (the new D.3b sub-axis) at type-check time: missing required envelope fields become type errors when constructing the dict, not runtime gaps. Use total=False where appropriate; document required-key sets explicitly. Cross-ref bakeoff-validation tag if the change is claimed to reduce missing-field defects on real-repo runs."  # 66a0
+    fields: {}  # 66a0

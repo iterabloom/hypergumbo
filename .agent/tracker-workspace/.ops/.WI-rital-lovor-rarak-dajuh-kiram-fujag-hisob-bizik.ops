@@ -1,0 +1,23 @@
+- op: create  # 2f2c
+  at: '2026-05-30T20:51:50Z'  # 2f2c
+  by: agent  # 2f2c
+  actor: jgstern_agent  # 2f2c
+  clock: 1  # 2f2c
+  nonce: 2f2c  # 2f2c
+  data:  # 2f2c
+    kind: work_item  # 2f2c
+    title: "survey-rename: decide whether to also rename verb `hypergumbo run` → `hypergumbo survey`"  # 2f2c
+    status: todo_soft  # 2f2c
+    priority: 3  # 2f2c
+    parent:  # 2f2c
+    tags:  # 2f2c
+    - survey_rename  # 2f2c
+    - naming  # 2f2c
+    - cli  # 2f2c
+    - user_gated  # 2f2c
+    isbefore: []  # 2f2c
+    duplicate_of: []  # 2f2c
+    not_duplicate_of: []  # 2f2c
+    pr_ref:  # 2f2c
+    description: "User-gated decision: should the verb migrate too? Arguments for: noun-verb consistency (`hypergumbo survey <repo>` produces `survey.json`); reads naturally in docs. Arguments against: breaking change for existing users with scripts using `hypergumbo run`; the verb is widely typed at command lines; backward-compat layer would be needed similar to S3 but for the verb. If the decision is yes: add `hypergumbo survey` as a primary verb and keep `hypergumbo run` as a deprecated alias for one minor version. Decision belongs in the ADR (S1)."  # 2f2c
+    fields: {}  # 2f2c

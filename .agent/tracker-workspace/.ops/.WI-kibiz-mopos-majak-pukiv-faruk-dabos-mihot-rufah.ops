@@ -1,0 +1,25 @@
+- op: create  # 4648
+  at: '2026-05-30T20:33:05Z'  # 4648
+  by: agent  # 4648
+  actor: jgstern_agent  # 4648
+  clock: 1  # 4648
+  nonce: '4648'  # 4648
+  data:  # 4648
+    kind: work_item  # 4648
+    title: "mypy: declare AnalyzerProtocol for language-analyzer structural interface"  # 4648
+    status: todo_soft  # 4648
+    priority: 3  # 4648
+    parent:  # 4648
+    tags:  # 4648
+    - mypy_adoption  # 4648
+    - developer_experience  # 4648
+    - tooling  # 4648
+    - static_typing  # 4648
+    - protocol  # 4648
+    - analyzer_interface  # 4648
+    isbefore: []  # 4648
+    duplicate_of: []  # 4648
+    not_duplicate_of: []  # 4648
+    pr_ref:  # 4648
+    description: "Declare a Protocol class (AnalyzerProtocol) in packages/hypergumbo-core that names every method + attribute a language analyzer must provide: analyze(), pass_version, supported_extensions, etc. Refactor each hypergumbo-lang-* analyzer to structurally fulfill the protocol (no inheritance required). mypy + pyright catch any analyzer that drifts. Closes some INV-jahiv analyzer-parity sub-cases (declared Symbol/Edge fields populated unevenly across languages) at type-check time — protocol requires the methods exist with correct signatures even if the runtime population coverage requires a separate property test."  # 4648
+    fields: {}  # 4648

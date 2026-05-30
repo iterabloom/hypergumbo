@@ -21,3 +21,39 @@
     pr_ref:  # daac
     description: "Add mypy to dev dependencies and bootstrap a basic [tool.mypy] section in pyproject.toml. Goal: zero-friction first-run that produces actionable output without overwhelming the team. Use `basic` mode equivalent: python_version=\"3.10\", ignore_missing_imports=True initially (later carve out per-import); no_implicit_optional=True; warn_unused_configs=True. Do NOT enable strict mode in this PR (that's W4). Verify mypy runs cleanly on at least one package's src tree without errors that aren't true bugs. Blocks all downstream mypy_adoption items."  # daac
     fields: {}  # daac
+- op: update  # b78a
+  at: '2026-05-30T20:34:10Z'  # b78a
+  by: agent  # b78a
+  actor: jgstern_agent  # b78a
+  clock: 2  # b78a
+  nonce: b78a  # b78a
+  set: {}  # b78a
+  add:  # b78a
+    isbefore: [WI-kotog-fijok-ranor-topok-kipor-jisib-jiruj-lapuk]  # b78a
+- op: update  # a93a
+  at: '2026-05-30T20:34:10Z'  # a93a
+  by: agent  # a93a
+  actor: jgstern_agent  # a93a
+  clock: 3  # a93a
+  nonce: a93a  # a93a
+  set: {}  # a93a
+  add:  # a93a
+    isbefore: [WI-rabum-nibak-tozig-navus-kufap-bamul-tumov-gogul]  # a93a
+- op: update  # 2ae3
+  at: '2026-05-30T20:34:10Z'  # 2ae3
+  by: agent  # 2ae3
+  actor: jgstern_agent  # 2ae3
+  clock: 4  # 2ae3
+  nonce: 2ae3  # 2ae3
+  set: {}  # 2ae3
+  add:  # 2ae3
+    isbefore: [WI-rokup-burob-rarit-vahug-kobat-pubar-misul-hojut]  # 2ae3
+- op: update  # b3b0
+  at: '2026-05-30T20:34:10Z'  # b3b0
+  by: agent  # b3b0
+  actor: jgstern_agent  # b3b0
+  clock: 5  # b3b0
+  nonce: b3b0  # b3b0
+  set: {}  # b3b0
+  add:  # b3b0
+    isbefore: [WI-totov-zavin-zonar-girub-sodib-pafab-hohim-dabib]  # b3b0

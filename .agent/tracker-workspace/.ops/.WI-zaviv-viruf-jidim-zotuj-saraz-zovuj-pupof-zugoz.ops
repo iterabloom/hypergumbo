@@ -1,0 +1,22 @@
+- op: create  # 871c
+  at: '2026-05-30T20:51:46Z'  # 871c
+  by: agent  # 871c
+  actor: jgstern_agent  # 871c
+  clock: 1  # 871c
+  nonce: 871c  # 871c
+  data:  # 871c
+    kind: work_item  # 871c
+    title: "survey-rename: update spec stability commitment language"  # 871c
+    status: todo_soft  # 871c
+    priority: 3  # 871c
+    parent:  # 871c
+    tags:  # 871c
+    - survey_rename  # 871c
+    - naming  # 871c
+    - spec  # 871c
+    isbefore: []  # 871c
+    duplicate_of: []  # 871c
+    not_duplicate_of: []  # 871c
+    pr_ref:  # 871c
+    description: "Update docs/hypergumbo-spec.md:1842 (currently \"No breaking changes to `behavior_map.json` view within v0.x series.\") to reference `survey.json`. Reframe the commitment as schema-level not filename-level: the JSON schema is what's stable; the filename can be renamed in a non-breaking way per the ADR (S1). Add an explicit rename-is-not-a-schema-break clause."  # 871c
+    fields: {}  # 871c

@@ -1,0 +1,23 @@
+- op: create  # d4be
+  at: '2026-05-30T20:51:38Z'  # d4be
+  by: agent  # d4be
+  actor: jgstern_agent  # d4be
+  clock: 1  # d4be
+  nonce: d4be  # d4be
+  data:  # d4be
+    kind: work_item  # d4be
+    title: "survey-rename: accept legacy filenames with deprecation warning"  # d4be
+    status: todo_soft  # d4be
+    priority: 3  # d4be
+    parent:  # d4be
+    tags:  # d4be
+    - survey_rename  # d4be
+    - naming  # d4be
+    - cli  # d4be
+    - backward_compat  # d4be
+    isbefore: []  # d4be
+    duplicate_of: []  # d4be
+    not_duplicate_of: []  # d4be
+    pr_ref:  # d4be
+    description: "Backward-compatibility layer: every `--input` consumer accepts `hypergumbo.results.json`, `hg.json`, `bm.json`, `behavior_map.json` as legacy aliases with a one-line deprecation warning to stderr. Warning text references the ADR (S1) and indicates the deprecation removal version (next major bump). Removes friction for users with scripts pinned to the old names. Document the deprecation in CHANGELOG.md."  # d4be
+    fields: {}  # d4be

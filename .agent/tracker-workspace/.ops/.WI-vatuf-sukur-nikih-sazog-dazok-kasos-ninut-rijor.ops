@@ -1,0 +1,59 @@
+- op: create  # 12f0
+  at: '2026-05-30T20:51:36Z'  # 12f0
+  by: agent  # 12f0
+  actor: jgstern_agent  # 12f0
+  clock: 1  # 12f0
+  nonce: 12f0  # 12f0
+  data:  # 12f0
+    kind: work_item  # 12f0
+    title: "survey-rename: change CLI default output filename to survey.json"  # 12f0
+    status: todo_soft  # 12f0
+    priority: 2  # 12f0
+    parent:  # 12f0
+    tags:  # 12f0
+    - survey_rename  # 12f0
+    - naming  # 12f0
+    - cli  # 12f0
+    - bootstrap  # 12f0
+    isbefore: []  # 12f0
+    duplicate_of: []  # 12f0
+    not_duplicate_of: []  # 12f0
+    pr_ref:  # 12f0
+    description: "Update `hypergumbo run` (or the eventual `hypergumbo survey` if S9 lands) to write its primary artifact as `survey.json` by default. Update every CLI subcommand that takes `--input` (slice, sketch, routes, symbols, search, explain, compact, verify-claims, config, etc.) to default to `survey.json`. Audit cli.py for hardcoded references to the old names. Tests under packages/hypergumbo-core/tests/ that exercise the default path will need parallel updates (see S5)."  # 12f0
+    fields: {}  # 12f0
+- op: update  # 1e41
+  at: '2026-05-30T20:52:02Z'  # 1e41
+  by: agent  # 1e41
+  actor: jgstern_agent  # 1e41
+  clock: 2  # 1e41
+  nonce: '1e41'  # 1e41
+  set: {}  # 1e41
+  add:  # 1e41
+    isbefore: [WI-didif-tudir-vogud-fopos-zimom-bitoj-lufib-hopip]  # 1e41
+- op: update  # dbf2
+  at: '2026-05-30T20:52:02Z'  # dbf2
+  by: agent  # dbf2
+  actor: jgstern_agent  # dbf2
+  clock: 3  # dbf2
+  nonce: dbf2  # dbf2
+  set: {}  # dbf2
+  add:  # dbf2
+    isbefore: [WI-kisoj-rarig-mubul-bivul-mimuf-titah-rozuj-lidif]  # dbf2
+- op: update  # b29e
+  at: '2026-05-30T20:52:02Z'  # b29e
+  by: agent  # b29e
+  actor: jgstern_agent  # b29e
+  clock: 4  # b29e
+  nonce: b29e  # b29e
+  set: {}  # b29e
+  add:  # b29e
+    isbefore: [WI-gakih-bihad-nikup-bujun-vuhor-fuhol-rikor-zakaz]  # b29e
+- op: update  # f9c5
+  at: '2026-05-30T20:52:02Z'  # f9c5
+  by: agent  # f9c5
+  actor: jgstern_agent  # f9c5
+  clock: 5  # f9c5
+  nonce: f9c5  # f9c5
+  set: {}  # f9c5
+  add:  # f9c5
+    isbefore: [WI-zaviv-viruf-jidim-zotuj-saraz-zovuj-pupof-zugoz]  # f9c5

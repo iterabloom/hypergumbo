@@ -1,0 +1,25 @@
+- op: create  # 1e95
+  at: '2026-05-30T20:33:47Z'  # 1e95
+  by: agent  # 1e95
+  actor: jgstern_agent  # 1e95
+  clock: 1  # 1e95
+  nonce: '1e95'  # 1e95
+  data:  # 1e95
+    kind: work_item  # 1e95
+    title: "mypy: set up dmypy daemon + IDE integration docs"  # 1e95
+    status: todo_soft  # 1e95
+    priority: 3  # 1e95
+    parent:  # 1e95
+    tags:  # 1e95
+    - mypy_adoption  # 1e95
+    - developer_experience  # 1e95
+    - tooling  # 1e95
+    - static_typing  # 1e95
+    - ide_integration  # 1e95
+    - dmypy  # 1e95
+    isbefore: []  # 1e95
+    duplicate_of: []  # 1e95
+    not_duplicate_of: []  # 1e95
+    pr_ref:  # 1e95
+    description: "Configure dmypy (mypy daemon) for fast incremental type-checking — closes the speed gap with pyright for editor/pre-commit use. Add a make target or scripts/mypy wrapper that spawns dmypy on first invocation and keeps it warm. Document the recommended VS Code / Pylance hybrid setup (Pylance for inline feedback; mypy via dmypy as authoritative gate). Add IDE-integration section to CONTRIBUTING / dev docs."  # 1e95
+    fields: {}  # 1e95

@@ -1,0 +1,24 @@
+- op: create  # 018c
+  at: '2026-05-30T20:33:51Z'  # 018c
+  by: agent  # 018c
+  actor: jgstern_agent  # 018c
+  clock: 1  # 018c
+  nonce: 018c  # 018c
+  data:  # 018c
+    kind: work_item  # 018c
+    title: "mypy: add external-dependency type stubs (tree-sitter, etc.)"  # 018c
+    status: todo_soft  # 018c
+    priority: 3  # 018c
+    parent:  # 018c
+    tags:  # 018c
+    - mypy_adoption  # 018c
+    - developer_experience  # 018c
+    - tooling  # 018c
+    - static_typing  # 018c
+    - external_stubs  # 018c
+    isbefore: []  # 018c
+    duplicate_of: []  # 018c
+    not_duplicate_of: []  # 018c
+    pr_ref:  # 018c
+    description: "Add stub files (.pyi) for external dependencies that lack types in typeshed: tree-sitter, tree-sitter-languages, any framework adapters hypergumbo touches that publish untyped APIs. Place under stubs/ at repo root with mypy_path = \"stubs\" in [tool.mypy]. Reduces noise from ignore_missing_imports usage; lets strict mode see real types instead of Any."  # 018c
+    fields: {}  # 018c

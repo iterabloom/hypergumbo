@@ -1,0 +1,24 @@
+- op: create  # aa90
+  at: '2026-05-30T20:51:52Z'  # aa90
+  by: agent  # aa90
+  actor: jgstern_agent  # aa90
+  clock: 1  # aa90
+  nonce: aa90  # aa90
+  data:  # aa90
+    kind: invariant  # aa90
+    title: "INV: hypergumbo's canonical artifact name is survey.json across CLI, code, tests, docs, tracker"  # aa90
+    status: violated  # aa90
+    priority: 3  # aa90
+    parent:  # aa90
+    tags:  # aa90
+    - survey_rename  # aa90
+    - naming  # aa90
+    - clean_state_invariant  # aa90
+    isbefore: []  # aa90
+    duplicate_of: []  # aa90
+    not_duplicate_of: []  # aa90
+    pr_ref:  # aa90
+    description: "Once the survey_rename campaign converges, this invariant captures the end-state: every reference to the hypergumbo primary output artifact — in CLI defaults, internal function/module names, test fixtures, README/spec/USE-CASES.md/ADRs/playbooks, and active tracker item descriptions — uses `survey.json` (with `survey` as the concept name for the JSON envelope). Status moves violated → satisfied when S1–S8 close. S9 is optional and doesn't gate INV closure if the verb rename is declined."  # aa90
+    fields:  # aa90
+      statement: "Every reference to hypergumbo's primary output artifact in CLI defaults, internal code, test fixtures, documentation, and active tracker item descriptions uses `survey.json` as the canonical filename; the concept name in functions/docstrings is `survey` (not `behavior_map`); the v0.x stability commitment references the new canonical name."  # aa90
+      root_cause: "Names accumulated organically: `behavior_map.json` in the original Dec-2025 MVP spec, `hg.json` as docs shorthand drift, `bm.json` as test/dogfood substrate convention, `hypergumbo.results.json` as the pre-release CLI polish default. No single naming decision was authored; the rename is the consolidation. Closure requires S1 (ADR), S2 (CLI bootstrap), and the various sweep + cleanup items to land."  # aa90

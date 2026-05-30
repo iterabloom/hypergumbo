@@ -1,0 +1,22 @@
+- op: create  # c5b8
+  at: '2026-05-30T20:51:42Z'  # c5b8
+  by: agent  # c5b8
+  actor: jgstern_agent  # c5b8
+  clock: 1  # c5b8
+  nonce: c5b8  # c5b8
+  data:  # c5b8
+    kind: work_item  # c5b8
+    title: "survey-rename: rename test fixtures + test files"  # c5b8
+    status: todo_soft  # c5b8
+    priority: 3  # c5b8
+    parent:  # c5b8
+    tags:  # c5b8
+    - survey_rename  # c5b8
+    - naming  # c5b8
+    - tests  # c5b8
+    isbefore: []  # c5b8
+    duplicate_of: []  # c5b8
+    not_duplicate_of: []  # c5b8
+    pr_ref:  # c5b8
+    description: "Sweep tests under packages/hypergumbo-core/tests/ that use `bm.json` or `behavior_map.json` as fixture paths: rename fixture paths to `survey.json`. Update the test file names where the test file itself encodes the old name (test_behavior_map_io.py → test_survey_io.py). 9+ existing references per the May-30 audit; double-check with grep before the rename PR."  # c5b8
+    fields: {}  # c5b8

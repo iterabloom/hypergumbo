@@ -1,0 +1,25 @@
+- op: create  # 1db5
+  at: '2026-05-30T20:33:45Z'  # 1db5
+  by: agent  # 1db5
+  actor: jgstern_agent  # 1db5
+  clock: 1  # 1db5
+  nonce: 1db5  # 1db5
+  data:  # 1db5
+    kind: work_item  # 1db5
+    title: "mypy: adopt @override decorator usage; enable explicit-override error code"  # 1db5
+    status: todo_soft  # 1db5
+    priority: 4  # 1db5
+    parent:  # 1db5
+    tags:  # 1db5
+    - mypy_adoption  # 1db5
+    - developer_experience  # 1db5
+    - tooling  # 1db5
+    - static_typing  # 1db5
+    - override_decorator  # 1db5
+    - mechanical_sweep  # 1db5
+    isbefore: []  # 1db5
+    duplicate_of: []  # 1db5
+    not_duplicate_of: []  # 1db5
+    pr_ref:  # 1db5
+    description: "Mechanical sweep: add @override (typing.override on 3.12+, typing_extensions.override on 3.10/3.11) to every method that overrides a base-class method. Then enable the explicit-override error code in [tool.mypy] (already proposed in W4's error-code list; this is the sweep that lets the gate close). Catches drift when a base-class method signature changes but a subclass doesn't update. Useful for the analyzer-base-class family and any linker subclasses that override base behavior."  # 1db5
+    fields: {}  # 1db5

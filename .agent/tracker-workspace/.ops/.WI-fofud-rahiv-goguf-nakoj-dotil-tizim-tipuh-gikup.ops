@@ -1,0 +1,25 @@
+- op: create  # 6fc0
+  at: '2026-05-30T20:33:09Z'  # 6fc0
+  by: agent  # 6fc0
+  actor: jgstern_agent  # 6fc0
+  clock: 1  # 6fc0
+  nonce: 6fc0  # 6fc0
+  data:  # 6fc0
+    kind: work_item  # 6fc0
+    title: "mypy: adopt Literal types for axis-bearing fields (per ADR-0024 registries)"  # 6fc0
+    status: todo_soft  # 6fc0
+    priority: 3  # 6fc0
+    parent:  # 6fc0
+    tags:  # 6fc0
+    - mypy_adoption  # 6fc0
+    - developer_experience  # 6fc0
+    - tooling  # 6fc0
+    - static_typing  # 6fc0
+    - literal_types  # 6fc0
+    - axis_declarations  # 6fc0
+    isbefore: []  # 6fc0
+    duplicate_of: []  # 6fc0
+    not_duplicate_of: []  # 6fc0
+    pr_ref:  # 6fc0
+    description: "Adopt Literal[...] types for the axis-bearing fields the ADR-0024 axis-declaration playbook enumerates: Language, EdgeKind, SymbolKind, AccessMode, FrameworkDispatch, etc. Derive the Literal type from the existing axis registries (hypergumbo_core.axes) so the registry remains source-of-truth. Catches typos and out-of-axis assignments at type-check time. Closes some INV-numat (vocab axes mix) sub-cases — emitters can't assign a string that isn't in the registered axis. Note: ADR-0024 currently exempts List[str] and Dict; this WI doesn't change that scope, only strengthens the scalar/Optional[str]/Literal checking inside the existing scope."  # 6fc0
+    fields: {}  # 6fc0

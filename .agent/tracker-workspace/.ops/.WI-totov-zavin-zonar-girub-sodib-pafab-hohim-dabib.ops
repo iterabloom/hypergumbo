@@ -1,0 +1,24 @@
+- op: create  # 4129
+  at: '2026-05-30T20:33:53Z'  # 4129
+  by: agent  # 4129
+  actor: jgstern_agent  # 4129
+  clock: 1  # 4129
+  nonce: '4129'  # 4129
+  data:  # 4129
+    kind: work_item  # 4129
+    title: "mypy: update AGENTS.md + CONTRIBUTING with mypy + type-design conventions"  # 4129
+    status: todo_soft  # 4129
+    priority: 3  # 4129
+    parent:  # 4129
+    tags:  # 4129
+    - mypy_adoption  # 4129
+    - developer_experience  # 4129
+    - tooling  # 4129
+    - static_typing  # 4129
+    - docs  # 4129
+    isbefore: []  # 4129
+    duplicate_of: []  # 4129
+    not_duplicate_of: []  # 4129
+    pr_ref:  # 4129
+    description: "Update AGENTS.md \"Required Checks\" / \"Pre-Commit Checklist\" sections to mention mypy as part of the standard gate. Document the type-design conventions: TypedDict for JSON-shaped data (W5), Protocol for language-analyzer interfaces (W6), NewType for identifier types (W7), Literal for axis-bearing fields (W8), @override decorator usage (W9). Reference dmypy IDE setup (W10). Add a short example showing how to add a new language analyzer with the type contract in place. Probably co-lands with W1 (small docs delta) or as a follow-up consolidation."  # 4129
+    fields: {}  # 4129

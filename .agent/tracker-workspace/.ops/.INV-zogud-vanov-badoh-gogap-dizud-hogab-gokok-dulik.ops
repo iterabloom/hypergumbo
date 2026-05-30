@@ -1,0 +1,26 @@
+- op: create  # 274e
+  at: '2026-05-30T20:33:55Z'  # 274e
+  by: agent  # 274e
+  actor: jgstern_agent  # 274e
+  clock: 1  # 274e
+  nonce: 274e  # 274e
+  data:  # 274e
+    kind: invariant  # 274e
+    title: "INV: hypergumbo codebase type-checks clean under mypy strict + pyright-resonant config"  # 274e
+    status: violated  # 274e
+    priority: 3  # 274e
+    parent:  # 274e
+    tags:  # 274e
+    - mypy_adoption  # 274e
+    - developer_experience  # 274e
+    - tooling  # 274e
+    - static_typing  # 274e
+    - clean_state_invariant  # 274e
+    isbefore: []  # 274e
+    duplicate_of: []  # 274e
+    not_duplicate_of: []  # 274e
+    pr_ref:  # 274e
+    description: "Once the mypy_adoption campaign converges, this invariant captures the end-state: running `mypy <repo>` with the pyright-resonant strict config from W4 produces zero errors and zero unsuppressed warnings, and every `# type: ignore[...]` comment is justified by a tracker item or an inline rationale comment. Status moves violated → satisfied when all W1–W13 close. Note: the invariant is about CODE typing, not DATA validation — WI-rolol Phase B remains the load-bearing data-side validator at a different layer."  # 274e
+    fields:  # 274e
+      statement: "Running `mypy <repo>` with the W4 pyright-resonant strict config from a clean working tree must produce zero errors and zero unsuppressed warnings; every remaining `# type: ignore[...]` must be justified by a tracker item or rationale comment."  # 274e
+      root_cause: "mypy was not used during hypergumbo's initial development, so the codebase accumulated patterns that strict-mode mypy flags: implicit Any from untyped imports, untyped function defs in test code, missing return-type annotations, Optional access without narrowing, scalar fields that should be list[str], stringly-typed axis values, etc. Closure requires the W1-W13 campaign to land plus per-package strict-mode ramp."  # 274e

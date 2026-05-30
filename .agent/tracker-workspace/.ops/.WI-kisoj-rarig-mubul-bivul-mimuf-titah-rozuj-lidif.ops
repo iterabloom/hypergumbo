@@ -1,0 +1,22 @@
+- op: create  # 7334
+  at: '2026-05-30T20:51:40Z'  # 7334
+  by: agent  # 7334
+  actor: jgstern_agent  # 7334
+  clock: 1  # 7334
+  nonce: '7334'  # 7334
+  data:  # 7334
+    kind: work_item  # 7334
+    title: "survey-rename: rename internal code (run_behavior_map → run_survey, behavior_map_io.py → survey_io.py)"  # 7334
+    status: todo_soft  # 7334
+    priority: 3  # 7334
+    parent:  # 7334
+    tags:  # 7334
+    - survey_rename  # 7334
+    - naming  # 7334
+    - refactor  # 7334
+    isbefore: []  # 7334
+    duplicate_of: []  # 7334
+    not_duplicate_of: []  # 7334
+    pr_ref:  # 7334
+    description: "Internal function and module renames so the codebase concept name matches the artifact: `run_behavior_map` → `run_survey` (or whatever the ADR chooses); `packages/hypergumbo-core/src/hypergumbo_core/behavior_map_io.py` → `survey_io.py`; any internal `behavior_map` variable / parameter names. Sweep symbol names across the codebase. Test names (test_behavior_map_io.py → test_survey_io.py) follow."  # 7334
+    fields: {}  # 7334

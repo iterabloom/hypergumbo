@@ -1,0 +1,22 @@
+- op: create  # 5595
+  at: '2026-05-30T20:51:48Z'  # 5595
+  by: agent  # 5595
+  actor: jgstern_agent  # 5595
+  clock: 1  # 5595
+  nonce: '5595'  # 5595
+  data:  # 5595
+    kind: work_item  # 5595
+    title: "survey-rename: sweep bm.json references in active tracker items"  # 5595
+    status: todo_soft  # 5595
+    priority: 3  # 5595
+    parent:  # 5595
+    tags:  # 5595
+    - survey_rename  # 5595
+    - naming  # 5595
+    - tracker_hygiene  # 5595
+    isbefore: []  # 5595
+    duplicate_of: []  # 5595
+    not_duplicate_of: []  # 5595
+    pr_ref:  # 5595
+    description: "Find/replace `bm.json` in active tracker items where the original 2026-05-30 campaigns propagated the substrate-file name. Targets: INV-luhur, INV-jifus, INV-fanur, INV-rotup, WI-himas, INV-tazaj, INV-jahiv, INV-papuj, INV-somut, INV-dunof, INV-fivar, INV-murig, INV-pikob, INV-rugah, INV-sugat, WI-rolol, and W5 from the mypy_adoption campaign. Add discussion notes pointing at the ADR (S1); update description text where the rename will not muddle the historical context. Lab notebook entries are left as historical record."  # 5595
+    fields: {}  # 5595

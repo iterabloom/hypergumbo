@@ -1,0 +1,22 @@
+- op: create  # 5906
+  at: '2026-05-30T20:51:44Z'  # 5906
+  by: agent  # 5906
+  actor: jgstern_agent  # 5906
+  clock: 1  # 5906
+  nonce: '5906'  # 5906
+  data:  # 5906
+    kind: work_item  # 5906
+    title: "survey-rename: documentation sweep (README, USE-CASES, spec, ADRs, playbooks)"  # 5906
+    status: todo_soft  # 5906
+    priority: 3  # 5906
+    parent:  # 5906
+    tags:  # 5906
+    - survey_rename  # 5906
+    - naming  # 5906
+    - documentation  # 5906
+    isbefore: []  # 5906
+    duplicate_of: []  # 5906
+    not_duplicate_of: []  # 5906
+    pr_ref:  # 5906
+    description: "Sweep `hg.json`, `bm.json`, `behavior_map.json` references across docs/ and .agent/agent_playbooks_protocols_sops_skills/ and replace with `survey.json` (or keep the historical name with a footnote where it documents history vs current state). 106 `hg.json` refs + 3 `behavior_map.json` refs per the May-30 audit. README is the single highest-leverage file. USE-CASES.md walks users through invocations; needs the verb settled (S9) before its examples land cleanly."  # 5906
+    fields: {}  # 5906

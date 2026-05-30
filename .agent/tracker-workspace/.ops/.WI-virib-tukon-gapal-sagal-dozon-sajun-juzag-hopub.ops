@@ -1,0 +1,32 @@
+- op: create  # 4c17
+  at: '2026-05-30T20:51:34Z'  # 4c17
+  by: agent  # 4c17
+  actor: jgstern_agent  # 4c17
+  clock: 1  # 4c17
+  nonce: 4c17  # 4c17
+  data:  # 4c17
+    kind: work_item  # 4c17
+    title: "survey-rename: author ADR for the rename decision"  # 4c17
+    status: todo_soft  # 4c17
+    priority: 2  # 4c17
+    parent:  # 4c17
+    tags:  # 4c17
+    - survey_rename  # 4c17
+    - naming  # 4c17
+    - adr  # 4c17
+    - documentation  # 4c17
+    isbefore: []  # 4c17
+    duplicate_of: []  # 4c17
+    not_duplicate_of: []  # 4c17
+    pr_ref:  # 4c17
+    description: "Author docs/adr/00XX-survey-rename.md capturing the rename decision: artifact filename moves from the current mix (CLI default `hypergumbo.results.json`, docs shorthand `hg.json`, test/dogfood `bm.json`, legacy `behavior_map.json`) to a single canonical name `survey.json`. Rationale: existing names lack one or more of [methodology, evidence, comprehensiveness, dignity]; survey captures all four and works as a verb. Document: (a) the chosen single canonical name, (b) the migration story (backward-compat window for old filenames), (c) the relationship to the v0.x stability commitment (the schema doesn't change; the filename does), (d) whether the verb `hypergumbo run` also moves to `hypergumbo survey` (separate decision; tracker item S9). Load-bearing decision document — must land before code changes."  # 4c17
+    fields: {}  # 4c17
+- op: update  # b00e
+  at: '2026-05-30T20:52:02Z'  # b00e
+  by: agent  # b00e
+  actor: jgstern_agent  # b00e
+  clock: 2  # b00e
+  nonce: b00e  # b00e
+  set: {}  # b00e
+  add:  # b00e
+    isbefore: [WI-vatuf-sukur-nikih-sazog-dazok-kasos-ninut-rijor]  # b00e

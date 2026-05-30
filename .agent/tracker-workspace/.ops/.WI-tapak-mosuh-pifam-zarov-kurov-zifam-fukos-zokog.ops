@@ -1,0 +1,25 @@
+- op: create  # 3b7c
+  at: '2026-05-30T20:33:07Z'  # 3b7c
+  by: agent  # 3b7c
+  actor: jgstern_agent  # 3b7c
+  clock: 1  # 3b7c
+  nonce: 3b7c  # 3b7c
+  data:  # 3b7c
+    kind: work_item  # 3b7c
+    title: "mypy: adopt NewType for identifier types (StableId, NodeId, EdgeId, ConfigFingerprint)"  # 3b7c
+    status: todo_soft  # 3b7c
+    priority: 3  # 3b7c
+    parent:  # 3b7c
+    tags:  # 3b7c
+    - mypy_adoption  # 3b7c
+    - developer_experience  # 3b7c
+    - tooling  # 3b7c
+    - static_typing  # 3b7c
+    - newtype  # 3b7c
+    - identifier_factories  # 3b7c
+    isbefore: []  # 3b7c
+    duplicate_of: []  # 3b7c
+    not_duplicate_of: []  # 3b7c
+    pr_ref:  # 3b7c
+    description: "Introduce NewType aliases for identifier-bearing fields: StableId, NodeId, EdgeId, ConfigFingerprint, etc. Pair each with a canonical factory function (compute_stable_id, make_node_id, etc.) that's the only entry point for constructing the NewType. Refactor emitters that currently use raw str for these fields. Closes some INV-kurup canonical-factory-bypass sub-cases at type-check time — direct str → NewType assignment becomes a type error, forcing the call site through the factory. Also closes part of INV-lidul (config_fingerprint constant) — the factory can refuse to construct a fingerprint from an empty config dict."  # 3b7c
+    fields: {}  # 3b7c
