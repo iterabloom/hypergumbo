@@ -1,0 +1,25 @@
+- op: create  # e74e
+  at: '2026-05-30T08:59:49Z'  # e74e
+  by: agent  # e74e
+  actor: jgstern_agent  # e74e
+  clock: 1  # e74e
+  nonce: e74e  # e74e
+  data:  # e74e
+    kind: invariant  # e74e
+    title: "META: Sketch budget enforcement layered without coordinator"  # e74e
+    status: violated  # e74e
+    priority: 1  # e74e
+    parent:  # e74e
+    tags:  # e74e
+    - dogfood_corpus_20260528  # e74e
+    - dogfood_umbrella  # e74e
+    - dogfood_severity_significant  # e74e
+    - sketch_pipeline  # e74e
+    isbefore: []  # e74e
+    duplicate_of: []  # e74e
+    not_duplicate_of: []  # e74e
+    pr_ref:  # e74e
+    description: "**Origin.** Filed 2026-05-30 from the unlinked-investigation G3 sub-agent (notebookjournal_05302026_0411_unlinked_G3_sketch.md Theme B). Three sketch-pipeline items fail in three different sites at three different stages of budget enforcement.\n\n**The shape.** `sketch` accepts a `-t/--budget` flag (target node/edge count). Budget enforcement is layered across three components (compact projection, multi-resolution generation, centrality computation), each implemented independently. Symptoms:\n\n1. **`nodes_summary` reports pre-shrink counts.** `compact.py:1448` writes `nodes_summary` from the input arrays before the projection loop at 1478-1517 mutates `nodes`/`edges` to the budget target. Result: the JSON envelope's summary contradicts its own arrays. (INV-pazur)\n\n2. **Multi-resolution comparison sketches always run.** `cli.py:798-841` unconditionally generates the 4x and 16x comparison sketches; there's no opt-out for batch use. On a corpus of repos this is wasted work. (WI-fufop)\n\n3. **Budget ≥ 16146 crashes via SIGPIPE.** `ranking.py:_compute_centrality_with_python` opens a subprocess but doesn't handle the early-exit case; budget ≥ 16146 causes exit 141 with 0 bytes output. (INV-vopuh)\n\n**Shared root: no budget-enforcement coordinator.** No single component owns \"given budget B, here is the pipeline that produces a single sketch of size ≤B with a self-consistent summary, no wasted comparison sketches, and graceful failure on resource-exhaustion.\" Each component does its piece in isolation.\n\n**Members at filing time.** INV-pazur (P1), WI-fufop (P1), INV-vopuh (P1).\n\n**Adjacent cluster (in linked-bucket).** WI-ribag (warm-cache sketch slow), WI-zipoj (>1M-LOC warm sketch 14-22 min), INV-jumim (sketch --input re-walks filesystem) — these are sketch-performance hot-path items, not budget-coordination items, but share substrate with this META.\n\n**Fix shape.** Single `SketchBudget` coordinator that wraps the three components: (a) pre-shrink summary lazy-evaluation, (b) `--no-comparisons` opt-out wired through to comparison generation, (c) SIGPIPE handler in the centrality subprocess path. Each member item is one fix-site.\n\n**Cross-cluster note.** INV-pazur ↔ INV-titid: both share the \"compact-shrink without reconciliation\" pattern. INV-titid lives in slice-projection territory (G2) but the architectural fix is parallel — finalize-after-shrink hook that re-derives metadata from the post-shrink arrays."  # e74e
+    fields:  # e74e
+      statement: "For a given sketch budget B, the pipeline must produce one sketch of size ≤B with a self-consistent summary, with no wasted secondary work (comparison sketches) unless explicitly requested, and with graceful failure on resource exhaustion."  # e74e
+      root_cause: "Budget enforcement is layered without a coordinator. Three independent failure sites: compact.py:1448 writes nodes_summary before the projection loop at 1478-1517 mutates the arrays; cli.py:798-841 unconditionally generates the 4x and 16x comparison sketches with no opt-out for batch use; ranking.py:_compute_centrality_with_python subprocess exits early with SIGPIPE at budget ≥ 16146 and has no handler."  # e74e

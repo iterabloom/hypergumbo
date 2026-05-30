@@ -1,0 +1,25 @@
+- op: create  # 1847
+  at: '2026-05-30T08:59:51Z'  # 1847
+  by: agent  # 1847
+  actor: jgstern_agent  # 1847
+  clock: 1  # 1847
+  nonce: '1847'  # 1847
+  data:  # 1847
+    kind: invariant  # 1847
+    title: "META: CLI help text and README claims drift from current behavior, no enforcement gate"  # 1847
+    status: violated  # 1847
+    priority: 2  # 1847
+    parent:  # 1847
+    tags:  # 1847
+    - dogfood_corpus_20260528  # 1847
+    - dogfood_umbrella  # 1847
+    - dogfood_severity_moderate  # 1847
+    - docs_drift  # 1847
+    isbefore: []  # 1847
+    duplicate_of: []  # 1847
+    not_duplicate_of: []  # 1847
+    pr_ref:  # 1847
+    description: "**Origin.** Filed 2026-05-30 from the unlinked-investigation G7 sub-agent (notebookjournal_05302026_0411_unlinked_G7_ux.md latent-META-1). Three dogfood items document the same regression class: help text and README claims drift from current CLI behavior with no enforcement gate.\n\n**The shape.** Hypergumbo's user-facing surface has two sources of truth: argparse-defined CLI behavior (in `cli.py` and subcommand modules) and the README/docs. The two sources are independently edited; nothing in CI asserts they agree. Symptoms:\n\n1. **`--debug` help text references removed ripgrep functionality.** The help string still describes a feature that was removed; the flag is now a no-op for that context. (INV-bugiz)\n\n2. **`routes --help` still documents the `-x/--exclude-tests` flag.** Tests are excluded by default; the flag is a no-op kept only for argparse backward compatibility. The help text doesn't say so. (WI-loloz)\n\n3. **`--no-progress` is accepted only by `sketch` and `run`, but the README implies it's general.** README:139 lists `--no-progress` as a top-level option; in practice the other subcommands reject it. (WI-figor)\n\n**Shared root: no spec-text-vs-behavior gate.** No CI smoke test diffs `--help` output against a removed-feature denylist, and no doctest harvests README code-blocks and confirms they execute. Every removed feature is a candidate to leave stale text; every README change is unanchored.\n\n**Members at filing time.** INV-bugiz (P3), WI-loloz (P4), WI-figor (P2).\n\n**Fix shape (cheap).** Add a CI smoke test: `pytest tests/test_help_text_drift.py` that (a) iterates every subcommand, runs `<subcmd> --help`, greps for a denylist of removed-feature substrings (ripgrep, exclude-tests-as-active-flag, etc.), and fails if any match; (b) parses README code-blocks of the form ` ```bash\\nhypergumbo ...\\n``` ` and confirms each invocation parses (`--help`-equivalent check). Cost: ~50 lines of test code.\n\n**Adjacent.** This META overlaps with INV-fabov (silent input acceptance) in that both surface gaps stem from absent input-text validators. They are distinct enough to file separately: INV-fabov is about runtime argument values not being validated; this META is about static spec-text not being validated against behavior."  # 1847
+    fields:  # 1847
+      statement: "Every spec-text claim (CLI --help string, README invocation example) must agree with current argparse-defined behavior; no removed-feature reference and no false-scope claim may persist in user-facing text."  # 1847
+      root_cause: "No CI gate diffs --help output against a removed-feature denylist; no doctest harvests README code-blocks. CLI behavior and spec text are independently edited; drift is the default. Symptoms: --debug help references removed ripgrep functionality (INV-bugiz); routes --help still documents the -x/--exclude-tests flag which is now a no-op (WI-loloz); README:139 implies --no-progress is general but only sketch/run accept it (WI-figor)."  # 1847

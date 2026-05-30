@@ -1,0 +1,26 @@
+- op: create  # a8d9
+  at: '2026-05-30T08:59:47Z'  # a8d9
+  by: agent  # a8d9
+  actor: jgstern_agent  # a8d9
+  clock: 1  # a8d9
+  nonce: a8d9  # a8d9
+  data:  # a8d9
+    kind: invariant  # a8d9
+    title: "META: sketch_precomputed has no schema"  # a8d9
+    status: violated  # a8d9
+    priority: 3  # a8d9
+    parent:  # a8d9
+    tags:  # a8d9
+    - dogfood_corpus_20260528  # a8d9
+    - dogfood_umbrella  # a8d9
+    - dogfood_severity_minor  # a8d9
+    - someday  # a8d9
+    - sketch_pipeline  # a8d9
+    isbefore: []  # a8d9
+    duplicate_of: []  # a8d9
+    not_duplicate_of: []  # a8d9
+    pr_ref:  # a8d9
+    description: "**Origin.** Filed 2026-05-30 from the unlinked-investigation G3 sub-agent (notebookjournal_05302026_0411_unlinked_G3_sketch.md Theme A). Filed at `someday` priority by user decision — the items remain individually trackable; the META exists as an anchor for the architectural fix when it's prioritized.\n\n**The shape.** `sketch_precomputed` is a JSON sub-object emitted as part of every sketch produced by `hypergumbo sketch`. It carries derived agent-friendly digests — `readme_description`, `vocabulary`, `centrality_scores`, etc. Today these fields are an untyped side-effect dict assembled by independent helpers in `sketch.py`. There is no `SketchPrecomputed` dataclass with declared field invariants, so three independent helpers each fail in their own way:\n\n1. **`readme_description` is concatenated from line-skip iteration that omits markdown-blockquote prefix.** The skip-prefix list at `sketch.py:3414` includes headings, code fences, HTML comments, and front-matter but NOT `> ` blockquote lines — so quoted text gets concatenated mid-sentence and the 207-char budget truncates inside the blockquote. (INV-modor)\n\n2. **`vocabulary` is a 12-entry Counter with no lemmatization.** The collector at `sketch.py:4066` does naïve `split()` on the readme text, so \"symbol\" and \"symbols\" are distinct tokens and the top-12 is dominated by analysis-domain singular/plural pairs. (INV-padoz)\n\n3. **`centrality_scores` is misnamed — it excludes source files by design.** `cli.py:8094` populates it from `compute_symbol_mention_centrality_batch` over readme/manifest/test/yaml/json/toml files only; the 838 `.py` source files in the repo are 0 of the 274 entries, by design. The name `centrality_scores` reads as \"centrality across all nodes,\" which it isn't. (INV-napap)\n\n**Why a META.** Each individual item is a one-helper bug; together they reveal that the surface contract is undeclared. A `SketchPrecomputed` dataclass with per-field invariants would catch all three (skip-prefix coverage, lemmatization toggle, name vs. scope), and would force any future precomputed field to declare its own invariants up front.\n\n**Members.** INV-modor (P3), INV-padoz (P3), INV-napap (P2 → P1 per Phase 4 of the unlinked-investigation TODO; recategorization happens at the same time as this META filing).\n\n**Fix shape.** Declare `@dataclass SketchPrecomputed` in `sketch.py` (or a new sub-module). Each field carries a docstring naming its scope and source. Validators: readme_description preserves no markdown structural prefixes; vocabulary is lemmatized; centrality_scores either covers all kinds or is renamed (`*_scores_text_kinds_only` or similar).\n\n**Why someday.** The members are P1/P2/P3; none is blocking. The META exists so that the next sketch-pipeline change has an anchor."  # a8d9
+    fields:  # a8d9
+      statement: "Every field of sketch_precomputed JSON must have (a) a declared scope listing which kinds it covers, (b) a normalization invariant naming the transformations applied, and (c) a name that accurately reflects the scope."  # a8d9
+      root_cause: "sketch_precomputed is an untyped side-effect dict assembled by independent helpers in sketch.py with no SketchPrecomputed dataclass owning the contract. Three faces: readme_description skip-prefix list at sketch.py:3414 omits the markdown blockquote prefix so quoted text gets concatenated mid-sentence; vocabulary collector at sketch.py:4066 doesn't lemmatize so singular/plural pairs each take a slot; centrality_scores at cli.py:8094 excludes source files by design but the field name doesn't communicate that scope."  # a8d9
