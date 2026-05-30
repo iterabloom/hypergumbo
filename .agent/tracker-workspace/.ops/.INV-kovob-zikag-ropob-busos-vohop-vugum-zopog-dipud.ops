@@ -23,3 +23,22 @@
       severity: "high"  # 0305
       statement: "node.canonical_name carries 3 different formats across the same field: bare name (0 colons, 99 nodes from kind=dependency/project/struct/view/etc., languages toml/json/wgsl/sql), 'lang:module:symbol:state' (3 colons, 1623 external_symbol nodes), and one 7-colon path-bearing form. Schema declares no single vocabulary for this field."  # 0305
       root_cause: "Multiple analyzer code paths populate canonical_name with different formats; no single enforced vocabulary."  # 0305
+- op: update  # 8519
+  at: '2026-05-30T05:43:43Z'  # 8519
+  by: agent  # 8519
+  actor: jgstern_agent  # 8519
+  clock: 2  # 8519
+  nonce: '8519'  # 8519
+  set:  # 8519
+    parent: INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah  # 8519
+    fields:  # 8519
+      dogfood_anon_id: "ITEM-803289"  # 8519
+  add:  # 8519
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 8519
+- op: discuss  # fa68
+  at: '2026-05-30T05:43:43Z'  # fa68
+  by: agent  # fa68
+  actor: jgstern_agent  # fa68
+  clock: 3  # fa68
+  nonce: fa68  # fa68
+  message: "Cluster member of INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # fa68

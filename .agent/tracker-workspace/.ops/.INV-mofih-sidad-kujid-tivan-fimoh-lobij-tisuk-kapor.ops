@@ -24,3 +24,22 @@
     fields:  # 9a33
       statement: "verify-claims must reject (or at minimum loudly warn about) claim entries whose  field is not in the registered set of known claim types. Silently reporting unknown types as 'confirmed' creates a false-positive risk on the primary command users invoke to validate security claims."  # 9a33
       root_cause: "The claim-type dispatch in verify_claims appears to fall through to a default 'no constraint to check → confirmed' branch when the type string doesn't match a known handler, instead of raising a 'unknown claim type' verdict."  # 9a33
+- op: update  # bac0
+  at: '2026-05-30T05:43:39Z'  # bac0
+  by: agent  # bac0
+  actor: jgstern_agent  # bac0
+  clock: 2  # bac0
+  nonce: bac0  # bac0
+  set:  # bac0
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # bac0
+    fields:  # bac0
+      dogfood_anon_id: "ITEM-bcd30e"  # bac0
+  add:  # bac0
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # bac0
+- op: discuss  # ed8d
+  at: '2026-05-30T05:43:39Z'  # ed8d
+  by: agent  # ed8d
+  actor: jgstern_agent  # ed8d
+  clock: 3  # ed8d
+  nonce: ed8d  # ed8d
+  message: "Cluster member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # ed8d

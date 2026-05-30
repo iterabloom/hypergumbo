@@ -22,3 +22,29 @@
     fields:  # 2eee
       statement: "Every analysis_runs entry that contributes nonzero work to bm.json has files_analyzed > 0."  # 2eee
       root_cause: "Synthesis passes (pyffi-linker, di-resolution, method-call-recovery, annotation-convention-linker, containment-linker, inherited-calls-linker, inheritance-linker, requirements) traverse the IR rather than files, so they have no natural files_analyzed counter; the AnalysisRun.files_analyzed field is initialized to 0 and never updated for these passes."  # 2eee
+- op: update  # 44bf
+  at: '2026-05-30T05:43:47Z'  # 44bf
+  by: agent  # 44bf
+  actor: jgstern_agent  # 44bf
+  clock: 2  # 44bf
+  nonce: 44bf  # 44bf
+  set:  # 44bf
+    fields:  # 44bf
+      dogfood_anon_id: "ITEM-54b776"  # 44bf
+  add:  # 44bf
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 44bf
+- op: discuss  # 775c
+  at: '2026-05-30T05:43:47Z'  # 775c
+  by: agent  # 775c
+  actor: jgstern_agent  # 775c
+  clock: 3  # 775c
+  nonce: 775c  # 775c
+  message: "Subsumed by INV-gizik-fisav-luzaz-luzod-nonos-vinap-tutop-zuhot 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 775c
+- op: update  # 6015
+  at: '2026-05-30T05:48:19Z'  # 6015
+  by: human  # 6015
+  actor: jgstern  # 6015
+  clock: 4  # 6015
+  nonce: '6015'  # 6015
+  set:  # 6015
+    status: deleted  # 6015

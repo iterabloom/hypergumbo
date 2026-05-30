@@ -22,3 +22,22 @@
     description: ""  # 7402
     fields:  # 7402
       rationale: "JSON serialization aliases AnalysisRun.pass_id → 'pass' key (because 'pass' is a Python reserved word). Discovered while consumer-debugging analysis_runs[].pass_id (missing — actual key is 'pass'). Code internally uses pass_id everywhere; only the JSON wire format differs"  # 7402
+- op: update  # d524
+  at: '2026-05-30T05:43:41Z'  # d524
+  by: agent  # d524
+  actor: jgstern_agent  # d524
+  clock: 2  # d524
+  nonce: d524  # d524
+  set:  # d524
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # d524
+    fields:  # d524
+      dogfood_anon_id: "ITEM-e5ca58"  # d524
+  add:  # d524
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # d524
+- op: discuss  # 3d75
+  at: '2026-05-30T05:43:41Z'  # 3d75
+  by: agent  # 3d75
+  actor: jgstern_agent  # 3d75
+  clock: 3  # 3d75
+  nonce: 3d75  # 3d75
+  message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 3d75

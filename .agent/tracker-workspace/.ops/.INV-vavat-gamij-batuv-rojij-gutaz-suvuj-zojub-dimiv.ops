@@ -22,3 +22,22 @@
     fields:  # 9848
       statement: "When an axis vocabulary contains values with exactly 1 occurrence across a population of 100K+, those values are either vestigial (left over from a removed code path) or evidence of an under-tested edge case. Either way, the vocabulary should be audited."  # 9848
       root_cause: "Three edge.type values were added historically but only get emitted in narrow code paths that rarely fire: 'inherits' (1 edge) is overshadowed by 'extends' (147), 'script_src' (1 edge, HTML-specific) is unique, 'overrides' (1 edge) lacks linker coverage."  # 9848
+- op: update  # 16ca
+  at: '2026-05-30T05:43:42Z'  # 16ca
+  by: agent  # 16ca
+  actor: jgstern_agent  # 16ca
+  clock: 2  # 16ca
+  nonce: 16ca  # 16ca
+  set:  # 16ca
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # 16ca
+    fields:  # 16ca
+      dogfood_anon_id: "ITEM-e7307c"  # 16ca
+  add:  # 16ca
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 16ca
+- op: discuss  # 0397
+  at: '2026-05-30T05:43:43Z'  # 0397
+  by: agent  # 0397
+  actor: jgstern_agent  # 0397
+  clock: 3  # 0397
+  nonce: '0397'  # 0397
+  message: "Cluster member of INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 0397

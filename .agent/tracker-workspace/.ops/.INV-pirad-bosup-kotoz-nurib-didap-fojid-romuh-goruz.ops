@@ -24,3 +24,15 @@
     fields:  # c755
       statement: "hypergumbo's secret_scan_cached invokes 'gitleaks detect --no-git --pipe', passing the sketch text on stdin. In gitleaks v8.30.0, --pipe mode ignores stdin and scans the cwd instead, so scan_content always returns []. The 'Secret scan complete' message is shown regardless. Sketches with detectable secrets (AWS keys, Slack tokens, RSA private keys) pass through unfiltered."  # c755
       root_cause: "gitleaks --pipe semantics changed; hypergumbo never validates the integration. The 'INF scanned ~169MB' line from gitleaks when given 41 bytes of stdin is the smoking gun — it never read stdin, it scanned cwd."  # c755
+- op: update  # 7d57
+  at: '2026-05-30T05:32:28Z'  # 7d57
+  by: agent  # 7d57
+  actor: jgstern_agent  # 7d57
+  clock: 2  # 7d57
+  nonce: 7d57  # 7d57
+  set:  # 7d57
+    priority: 0  # 7d57
+    fields:  # 7d57
+      dogfood_anon_id: "ITEM-5f60e8"  # 7d57
+  add:  # 7d57
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_severe]  # 7d57

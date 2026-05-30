@@ -23,3 +23,15 @@
       severity: "medium"  # ac68
       statement: "Among 64 edges where src.language != dst.language, only 29 carry meta.cross_language=True (45% coverage). The other 35 (depends_on_manifest 26, uses 7, script_src 1, imports 1) are silently untagged. Conversely, meta.cross_language=False appears on 103 edges where src.language == dst.language — fully redundant since derivable from node.language fields. The field has no informational value: True undercounts, False over-tags within-language."  # ac68
       root_cause: "Only some linkers (websocket-linker, message-queue-linker, http-linker) explicitly populate cross_language. Others (dependency-linker, enclosure-linker, html, solidity) emit cross-language edges without the field. The field design also doesn't distinguish 'unmarked' from 'within-language'."  # ac68
+- op: update  # a4b5
+  at: '2026-05-30T05:32:29Z'  # a4b5
+  by: agent  # a4b5
+  actor: jgstern_agent  # a4b5
+  clock: 2  # a4b5
+  nonce: a4b5  # a4b5
+  set:  # a4b5
+    priority: 1  # a4b5
+    fields:  # a4b5
+      dogfood_anon_id: "ITEM-66ff2d"  # a4b5
+  add:  # a4b5
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # a4b5

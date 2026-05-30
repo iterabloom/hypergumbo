@@ -23,3 +23,29 @@
     fields:  # 0ab3
       statement: "supply_chain_summary.internal_dep reports 1 file/480 symbols where the sole path is '<external>' placeholder; supply_chain_summary.external_dep reports 10 files but includes ALL workspace pyproject.toml files (packages/hypergumbo-core/pyproject.toml, packages/hypergumbo-tracker/pyproject.toml, etc.) plus '<external>' and empty-string '' paths"  # 0ab3
       root_cause: "Tier classifier maps symbols imported from internal_dep packages to the placeholder path '<external>' (treating them as out-of-tree). Workspace's own pyproject.toml files are tagged external_dep instead of first_party — they're not recognized as workspace-config files. Extends HHH/PPP (workspace recognition gap) with new symptoms"  # 0ab3
+- op: update  # b164
+  at: '2026-05-30T05:43:48Z'  # b164
+  by: agent  # b164
+  actor: jgstern_agent  # b164
+  clock: 2  # b164
+  nonce: b164  # b164
+  set:  # b164
+    fields:  # b164
+      dogfood_anon_id: "ITEM-30ba2a"  # b164
+  add:  # b164
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # b164
+- op: discuss  # bd2e
+  at: '2026-05-30T05:43:48Z'  # bd2e
+  by: agent  # bd2e
+  actor: jgstern_agent  # bd2e
+  clock: 3  # bd2e
+  nonce: bd2e  # bd2e
+  message: "Subsumed by INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # bd2e
+- op: update  # 3731
+  at: '2026-05-30T06:10:50Z'  # 3731
+  by: human  # 3731
+  actor: jgstern  # 3731
+  clock: 4  # 3731
+  nonce: '3731'  # 3731
+  set:  # 3731
+    status: deleted  # 3731

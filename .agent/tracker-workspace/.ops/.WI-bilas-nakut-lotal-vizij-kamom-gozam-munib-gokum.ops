@@ -23,3 +23,15 @@
     fields:  # afae
       statement: "Pressing Ctrl-C during 'hypergumbo run' produces a raw Python KeyboardInterrupt traceback (with concurrent.futures internals) rather than a graceful 'Aborted by user' message. Exit code is correctly 130. No partial output file is created (good). The traceback creates noise and looks like a crash even though the behavior is intentional."  # afae
       root_cause: "ThreadPoolExecutor's as_completed() blocks in a wait() loop; SIGINT bubbles up as KeyboardInterrupt with no top-level handler."  # afae
+- op: update  # ce9d
+  at: '2026-05-30T05:32:29Z'  # ce9d
+  by: agent  # ce9d
+  actor: jgstern_agent  # ce9d
+  clock: 2  # ce9d
+  nonce: ce9d  # ce9d
+  set:  # ce9d
+    priority: 4  # ce9d
+    fields:  # ce9d
+      dogfood_anon_id: "ITEM-19a247"  # ce9d
+  add:  # ce9d
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_cosmetic]  # ce9d

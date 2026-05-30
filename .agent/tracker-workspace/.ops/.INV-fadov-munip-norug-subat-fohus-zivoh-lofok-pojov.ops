@@ -23,3 +23,29 @@
     fields:  # ef74
       statement: "When the access_mode vocabulary distinguishes 'write' from 'mutate' as distinct values (4 values: read, write, mutate, delete), calls that semantically mutate (e.g. list.append, set.add, list.extend) should be labeled 'mutate' not 'write'. Using 'write' for mutations conflates the two."  # ef74
       root_cause: "The 'calls' edge emitter labels any call to a known mutating method (append/extend/add/setdefault) as access_mode='write' instead of routing to the 'mutate' value defined in the vocabulary; mutate is only used in 161 cases despite ~1616 calls to collection mutators."  # ef74
+- op: update  # 99ca
+  at: '2026-05-30T05:43:46Z'  # 99ca
+  by: agent  # 99ca
+  actor: jgstern_agent  # 99ca
+  clock: 2  # 99ca
+  nonce: 99ca  # 99ca
+  set:  # 99ca
+    fields:  # 99ca
+      dogfood_anon_id: "ITEM-2c3b8c"  # 99ca
+  add:  # 99ca
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 99ca
+- op: discuss  # b068
+  at: '2026-05-30T05:43:47Z'  # b068
+  by: agent  # b068
+  actor: jgstern_agent  # b068
+  clock: 3  # b068
+  nonce: b068  # b068
+  message: "Subsumed by INV-kudug-barug-fufud-togig-zapir-pivik-lisug-solab 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # b068
+- op: update  # e085
+  at: '2026-05-30T06:11:52Z'  # e085
+  by: human  # e085
+  actor: jgstern  # e085
+  clock: 4  # e085
+  nonce: e085  # e085
+  set:  # e085
+    status: deleted  # e085

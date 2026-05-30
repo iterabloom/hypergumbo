@@ -23,3 +23,22 @@
     fields:  # 3310
       statement: "hypergumbo compact silently accepts --max-symbols 0 (produces 1 node), --max-symbols -5 (output unclear), --coverage 2.0 (out of documented 0.0-1.0 range; returns 100 nodes = default max), --coverage -1 (negative; returns 100 nodes). No clamping warning, no rejection. Same input-validation pattern as PP/QQ/RR/III/X (compact silent invalid flags filed pass 5, this extends to numeric values)."  # 3310
       root_cause: "Compact CLI arg parsing accepts raw int/float without bounds-checking."  # 3310
+- op: update  # f239
+  at: '2026-05-30T05:43:40Z'  # f239
+  by: agent  # f239
+  actor: jgstern_agent  # f239
+  clock: 2  # f239
+  nonce: f239  # f239
+  set:  # f239
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # f239
+    fields:  # f239
+      dogfood_anon_id: "ITEM-bcd30e"  # f239
+  add:  # f239
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # f239
+- op: discuss  # f170
+  at: '2026-05-30T05:43:40Z'  # f170
+  by: agent  # f170
+  actor: jgstern_agent  # f170
+  clock: 3  # f170
+  nonce: f170  # f170
+  message: "Cluster member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # f170

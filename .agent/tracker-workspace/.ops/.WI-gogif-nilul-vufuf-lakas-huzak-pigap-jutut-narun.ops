@@ -1,0 +1,23 @@
+- op: create  # 2e83
+  at: '2026-05-30T05:41:03Z'  # 2e83
+  by: agent  # 2e83
+  actor: jgstern_agent  # 2e83
+  clock: 1  # 2e83
+  nonce: '2e83'  # 2e83
+  data:  # 2e83
+    kind: work_item  # 2e83
+    title: "META: Multiple JSON output conventions and gaps in JSON support across read subcommands"  # 2e83
+    status: todo_hard  # 2e83
+    priority: 2  # 2e83
+    parent:  # 2e83
+    tags:  # 2e83
+    - dogfood_corpus_20260528  # 2e83
+    - dogfood_umbrella  # 2e83
+    - dogfood_severity_moderate  # 2e83
+    isbefore: []  # 2e83
+    duplicate_of: []  # 2e83
+    not_duplicate_of: []  # 2e83
+    pr_ref:  # 2e83
+    description: "**Subject:** Multiple JSON output conventions and gaps in JSON support across read subcommands\n\n**Mechanic:** The tool's read subcommands emit machine-readable JSON output through several different conventions that coexist with no unified contract. Some subcommands use a `--format text|json` flag pair, some use a `--json` boolean flag, some use a `--flat` variant flag, some emit JSON unconditionally, and several read subcommands emit no JSON at all. Subcommands that do emit JSON often lack envelope fields (schema version, view name) that allow consumers to validate the structure they received. One field renamed in the wire format for language-reserved-word reasons is documented in the spec but the rename is not surfaced in any per-output schema, so consumers reading the internal name find it missing.\n\n**Expectation:** Read subcommands should follow one consistent convention for JSON output (such as a `--format text|json` flag pair) with consistent envelope fields. Subcommands without JSON should be brought into the convention.\n\n**Scope:** Affects roughly half of the read subcommands. The convention split is internally consistent within each subcommand but inconsistent across the set.\n\n**Exposure:** Command-line interface JSON outputs across many subcommands.\n\n**Consequence:** Consumers writing tooling that drives multiple subcommands programmatically must learn multiple conventions, write per-subcommand parsers, and detect schema drift case by case. Subcommands without JSON output cannot be driven programmatically at all.\n\nSee child member items for per-instance technical detail and per-symptom repro / fix scope."  # 2e83
+    fields:  # 2e83
+      dogfood_anon_id: "ITEM-e5ca58"  # 2e83

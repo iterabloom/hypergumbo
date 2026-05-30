@@ -23,3 +23,15 @@
     fields:  # cf75
       statement: "hypergumbo symbols's Deg column must render the full integer value of each row's total degree, not an ellipsis-truncated prefix, on the default terminal width (~120 cols) with default --col-width settings."  # cf75
       root_cause: "_SYMBOLS_INNER_COLUMNS_OVERHEAD = 30 (cli.py:3403) is insufficient when In and Deg both hit 4-digit centrality values. Rich proportionally squeezes Deg, producing 'NN…' truncation that hides the actual rank."  # cf75
+- op: update  # a653
+  at: '2026-05-30T05:32:26Z'  # a653
+  by: agent  # a653
+  actor: jgstern_agent  # a653
+  clock: 2  # a653
+  nonce: a653  # a653
+  set:  # a653
+    priority: 1  # a653
+    fields:  # a653
+      dogfood_anon_id: "ITEM-be12aa"  # a653
+  add:  # a653
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # a653

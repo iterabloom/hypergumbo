@@ -30,3 +30,29 @@
   clock: 2  # 7815
   nonce: '7815'  # 7815
   message: "Pass 13 root-cause refinement: tier asymmetry confirmed empirically. Tier counts on first-party hypergumbo_* externals: hypergumbo_core (154), hypergumbo_lang_common (40), hypergumbo_lang_extended1 (56), hypergumbo_lang_mainstream (52), hypergumbo_lang_rust_analyzer (2) ALL get supply_chain.tier_name='internal_dep' with reason='direct dependency (pyproject.toml)'. hypergumbo_tracker (27) gets supply_chain.tier_name='external_dep' with reason='unresolved external reference'. Root cause: the tier classifier reads the ROOT pyproject.toml dependency list (which names hypergumbo-core, hypergumbo-lang-*, but NOT hypergumbo-tracker). It does NOT scan workspace member pyproject.tomls. Fix: enumerate packages/*/pyproject.toml and treat all workspace members as internal_dep (or better, first_party once PPP's symbol-emission half is fixed)."  # 7815
+- op: update  # e41e
+  at: '2026-05-30T05:43:47Z'  # e41e
+  by: agent  # e41e
+  actor: jgstern_agent  # e41e
+  clock: 3  # e41e
+  nonce: e41e  # e41e
+  set:  # e41e
+    fields:  # e41e
+      dogfood_anon_id: "ITEM-30ba2a"  # e41e
+  add:  # e41e
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # e41e
+- op: discuss  # 82da
+  at: '2026-05-30T05:43:48Z'  # 82da
+  by: agent  # 82da
+  actor: jgstern_agent  # 82da
+  clock: 4  # 82da
+  nonce: 82da  # 82da
+  message: "Subsumed by INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 82da
+- op: update  # e8a2
+  at: '2026-05-30T05:51:52Z'  # e8a2
+  by: human  # e8a2
+  actor: jgstern  # e8a2
+  clock: 5  # e8a2
+  nonce: e8a2  # e8a2
+  set:  # e8a2
+    status: deleted  # e8a2

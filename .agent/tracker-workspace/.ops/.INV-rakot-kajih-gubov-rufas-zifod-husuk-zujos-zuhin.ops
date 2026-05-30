@@ -23,3 +23,15 @@
     fields:  # 984b
       statement: "The slice JSON output's feature.query field must echo all CLI-supplied parameters that influenced the slice (min_confidence, max_tier, hub_threshold, exclude_imports, language, in addition to the already-echoed subset). Otherwise the JSON cannot be used to reproduce the slice or document its provenance."  # 984b
       root_cause: "The slice command's query-dict construction (slice.py / cli.py) only includes a hand-picked subset of args, omitting later-added flags. There is no automated check that every CLI flag round-trips through the query echo."  # 984b
+- op: update  # bed4
+  at: '2026-05-30T05:32:30Z'  # bed4
+  by: agent  # bed4
+  actor: jgstern_agent  # bed4
+  clock: 2  # bed4
+  nonce: bed4  # bed4
+  set:  # bed4
+    priority: 1  # bed4
+    fields:  # bed4
+      dogfood_anon_id: "ITEM-c4eca6"  # bed4
+  add:  # bed4
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # bed4

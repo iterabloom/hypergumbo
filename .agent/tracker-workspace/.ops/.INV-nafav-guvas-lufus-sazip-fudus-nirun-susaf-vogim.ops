@@ -30,3 +30,29 @@
   clock: 2  # fef1
   nonce: fef1  # fef1
   message: "pass12: PPP (INV-mosar) extends this finding to the symbol-resolution layer. 366 'imports' edges target external_symbol nodes whose canonical_name begins with python:hypergumbo_, i.e., first-party workspace packages mis-routed as externals. HHH covers the tier-classifier surface; PPP covers the same root-cause at the import-resolution surface. Both stem from the analyzer not recognizing packages/*/pyproject.toml as workspace siblings. Recommend bundling the fix."  # fef1
+- op: update  # 5cc0
+  at: '2026-05-30T05:43:47Z'  # 5cc0
+  by: agent  # 5cc0
+  actor: jgstern_agent  # 5cc0
+  clock: 3  # 5cc0
+  nonce: 5cc0  # 5cc0
+  set:  # 5cc0
+    fields:  # 5cc0
+      dogfood_anon_id: "ITEM-30ba2a"  # 5cc0
+  add:  # 5cc0
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 5cc0
+- op: discuss  # 3267
+  at: '2026-05-30T05:43:47Z'  # 3267
+  by: agent  # 3267
+  actor: jgstern_agent  # 3267
+  clock: 4  # 3267
+  nonce: '3267'  # 3267
+  message: "Subsumed by INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 3267
+- op: update  # 28f7
+  at: '2026-05-30T06:08:07Z'  # 28f7
+  by: human  # 28f7
+  actor: jgstern  # 28f7
+  clock: 5  # 28f7
+  nonce: 28f7  # 28f7
+  set:  # 28f7
+    status: deleted  # 28f7

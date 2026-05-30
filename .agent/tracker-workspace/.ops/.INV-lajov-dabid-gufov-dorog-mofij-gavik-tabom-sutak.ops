@@ -23,3 +23,22 @@
       severity: "low"  # 9847
       statement: "edge.meta carries two name-similar fields with disjoint scopes and vocabularies: 'construct' (31 edges, values 'websocket_endpoint' 30 + 'event_emit' 1, all type=references) and 'call_construct' (21189 edges, values 'method' 20898 + 'function' 213 + 'cross_file' 78, all type=calls). Zero overlap in populated rows. A schema reader would reasonably believe these were related; they are not."  # 9847
       root_cause: "Two independent linkers (websocket-linker emits construct; python emits call_construct) coined name-similar field names without coordination. Pass-17 LLLLLL noted call_construct mixes construct-type with cross_file relational axis; this finding extends to the name-collision between the two distinct fields."  # 9847
+- op: update  # f86d
+  at: '2026-05-30T05:43:43Z'  # f86d
+  by: agent  # f86d
+  actor: jgstern_agent  # f86d
+  clock: 2  # f86d
+  nonce: f86d  # f86d
+  set:  # f86d
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # f86d
+    fields:  # f86d
+      dogfood_anon_id: "ITEM-e7307c"  # f86d
+  add:  # f86d
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # f86d
+- op: discuss  # c00d
+  at: '2026-05-30T05:43:43Z'  # c00d
+  by: agent  # c00d
+  actor: jgstern_agent  # c00d
+  clock: 3  # c00d
+  nonce: c00d  # c00d
+  message: "Cluster member of INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # c00d

@@ -23,3 +23,15 @@
     fields:  # 72ec
       statement: "slice errors on ambiguous entry name ('Ambiguous entry main matches 13 symbols'), but explain silently picks the first match without warning. Same ambiguous input handled inconsistently across read subcommands"  # 72ec
       root_cause: "explain and slice were implemented separately with different ambiguity policies. Either both should error (consistent strict) or both should auto-pick with a warning (consistent permissive). Current behavior: identical input, different outcomes"  # 72ec
+- op: update  # b2ed
+  at: '2026-05-30T05:32:30Z'  # b2ed
+  by: agent  # b2ed
+  actor: jgstern_agent  # b2ed
+  clock: 2  # b2ed
+  nonce: b2ed  # b2ed
+  set:  # b2ed
+    priority: 2  # b2ed
+    fields:  # b2ed
+      dogfood_anon_id: "ITEM-6e6c02"  # b2ed
+  add:  # b2ed
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # b2ed

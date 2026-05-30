@@ -23,3 +23,22 @@
       severity: "medium"  # 7744
       statement: "node.id is documented as 'lang:path:span:name:kind' (4 colons). 33818 of 33830 nodes (99.96%) follow this. 12 nodes break the format: (a) 2 npm packages with 3 colons ('typescript:npm:lit:npm_package' — missing path/span segment), (b) 2 Rust nodes with 6/8 colons because Rust namespacing uses '::' (e.g. 'rust:std::collections::HashMap:0-0:module:module'), (c) 7 Python route IDs with 5 colons because the route path '/api/items' contains a colon-style HTTP method prefix ('python:serve.py:428-428:POST:/api/items:route'), (d) 1 misc Solidity 'Not owner' carry-over. The schema id parser must handle 4 different colon-count cases without breaking."  # 7744
       root_cause: "Different code paths (NPM-package emitter, Rust namespace emitter, route emitter) format node.id without escaping or normalizing colons in the embedded path/name fields. The lang:path:span:name:kind format breaks when any field contains a literal ':'."  # 7744
+- op: update  # ea31
+  at: '2026-05-30T05:43:44Z'  # ea31
+  by: agent  # ea31
+  actor: jgstern_agent  # ea31
+  clock: 2  # ea31
+  nonce: ea31  # ea31
+  set:  # ea31
+    parent: INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah  # ea31
+    fields:  # ea31
+      dogfood_anon_id: "ITEM-803289"  # ea31
+  add:  # ea31
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # ea31
+- op: discuss  # 0db2
+  at: '2026-05-30T05:43:44Z'  # 0db2
+  by: agent  # 0db2
+  actor: jgstern_agent  # 0db2
+  clock: 3  # 0db2
+  nonce: 0db2  # 0db2
+  message: "Cluster member of INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 0db2

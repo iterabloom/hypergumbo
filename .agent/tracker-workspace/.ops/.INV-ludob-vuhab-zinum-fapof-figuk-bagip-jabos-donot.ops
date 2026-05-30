@@ -22,3 +22,29 @@
       severity: "medium"  # 872a
       statement: "hypergumbo explain <symbol> groups all incoming edges under 'Called by (N)' header and all outgoing under 'Calls (N)' header, but lists each edge with its actual type in brackets. For Symbol.from_dict (method): 'Called by (19)' header but first entry is 'Symbol [contains]' — the containing class, not a caller. For Span (class): 'Calls (2)' header but both entries are '[contains]' (the class containing its methods, not calling them). For Span 'Called by (2028)' header: entries are '[instantiates]' (creation, not call). The header counts include semantically different edge types: contains (containment) + instantiates (creation) + references (read) + calls (invocation) are all summed and labeled as 'Called by'. A user asking 'what calls Span' sees the containment hierarchy and instantiations in the answer, not pure callers."  # 872a
       root_cause: "cli.py cmd_explain groups all in/out edges by direction not by semantic relationship. The section labels conflate 'edges pointing at this node' with 'invocations of this node'. Pass-17 finding KKKKKK and pass-18 AAAAAAA noted axis-mixing in meta fields; this finding is the analogous CLI-output presentation drift."  # 872a
+- op: update  # c88b
+  at: '2026-05-30T05:43:48Z'  # c88b
+  by: agent  # c88b
+  actor: jgstern_agent  # c88b
+  clock: 2  # c88b
+  nonce: c88b  # c88b
+  set:  # c88b
+    fields:  # c88b
+      dogfood_anon_id: "ITEM-1c20b5"  # c88b
+  add:  # c88b
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # c88b
+- op: discuss  # 7aea
+  at: '2026-05-30T05:43:48Z'  # 7aea
+  by: agent  # 7aea
+  actor: jgstern_agent  # 7aea
+  clock: 3  # 7aea
+  nonce: 7aea  # 7aea
+  message: "Subsumed by INV-rarol-gogag-lapat-hirun-dolif-kavop-vutaj-larij 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 7aea
+- op: update  # 4bed
+  at: '2026-05-30T06:12:29Z'  # 4bed
+  by: human  # 4bed
+  actor: jgstern  # 4bed
+  clock: 4  # 4bed
+  nonce: 4bed  # 4bed
+  set:  # 4bed
+    status: deleted  # 4bed

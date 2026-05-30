@@ -22,3 +22,15 @@
     fields:  # 25d3
       statement: "node.stable_id values should be sufficiently distinguishing such that the share-rate is low; collision rates approaching half the population indicate the field is over-coarse or misnamed."  # 25d3
       root_cause: "stable_id computation hashes structural shape (signature, kind, language) rather than including positional or path-disambiguating information; 3762 collision groups exist with the largest (155 nodes) being functions in scripts/lib/forgejo-api.sh."  # 25d3
+- op: update  # 76bd
+  at: '2026-05-30T05:32:31Z'  # 76bd
+  by: agent  # 76bd
+  actor: jgstern_agent  # 76bd
+  clock: 2  # 76bd
+  nonce: 76bd  # 76bd
+  set:  # 76bd
+    priority: 0  # 76bd
+    fields:  # 76bd
+      dogfood_anon_id: "ITEM-b14cbf"  # 76bd
+  add:  # 76bd
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_severe]  # 76bd

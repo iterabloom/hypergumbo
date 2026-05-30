@@ -19,3 +19,15 @@
     pr_ref:  # cdb9
     description: "**Symptom.** README.md:139 documents `hypergumbo . --no-progress` as a general progress-suppression flag, and the README example list implies it works across subcommands. In practice, only `sketch` and `run` accept `--no-progress`. All other subcommands reject it with argparse `unrecognized arguments: --no-progress`:\n\n```\n$ hypergumbo routes --no-progress\nhypergumbo: error: unrecognized arguments: --no-progress\n$ hypergumbo io-boundaries --json --no-progress > out.json\nhypergumbo: error: unrecognized arguments: --no-progress\n```\n\nFailing list confirmed against branch dev @ 77a69627b8: `routes`, `symbols`, `io-boundaries`, `catalog`, `search`, `explain`, `test-coverage`, `dead-code-maybe`, `compact`, `verify-claims`, `config`, `cache-status`.\n\n**Two paths to fix.**\n\n(A) Promote the `--progress / --no-progress` mutually-exclusive group to the top-level parser so every subcommand inherits it. Cheapest.\n\n(B) Update README.md:139 to either name `sketch` specifically or remove the `--no-progress` example to avoid the doc-vs-CLI mismatch.\n\n(A) is preferable — half the subcommands print spinner output to stderr and the same suppression flag should silence all of them.\n\n**Discovery context.** Self-analysis dogfooding session, 2026-05-28. Lab notebook: `~/hypergumbo_lab_notebook/notebookjournal_05282026_0707.md` (Finding A)."  # cdb9
     fields: {}  # cdb9
+- op: update  # 6f69
+  at: '2026-05-30T05:32:28Z'  # 6f69
+  by: agent  # 6f69
+  actor: jgstern_agent  # 6f69
+  clock: 2  # 6f69
+  nonce: 6f69  # 6f69
+  set:  # 6f69
+    priority: 2  # 6f69
+    fields:  # 6f69
+      dogfood_anon_id: "ITEM-41ac6a"  # 6f69
+  add:  # 6f69
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 6f69

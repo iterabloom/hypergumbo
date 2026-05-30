@@ -23,3 +23,29 @@
     fields:  # ef17
       statement: "The node.modifiers field should use a single normalized vocabulary across languages; language-specific terms for the same semantic concept (visibility) violate the cross-language axis property."  # ef17
       root_cause: "Each language analyzer emits its own native visibility keyword (csharp/java->'public', rust->'pub', go->'exported', solidity->'external', python->'private'/'re_exported') without normalization to a shared vocabulary."  # ef17
+- op: update  # 31b2
+  at: '2026-05-30T05:43:49Z'  # 31b2
+  by: agent  # 31b2
+  actor: jgstern_agent  # 31b2
+  clock: 2  # 31b2
+  nonce: 31b2  # 31b2
+  set:  # 31b2
+    fields:  # 31b2
+      dogfood_anon_id: "ITEM-a7325f"  # 31b2
+  add:  # 31b2
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 31b2
+- op: discuss  # a53a
+  at: '2026-05-30T05:43:49Z'  # a53a
+  by: agent  # a53a
+  actor: jgstern_agent  # a53a
+  clock: 3  # a53a
+  nonce: a53a  # a53a
+  message: "Subsumed by INV-jusot-fazad-duvub-joruf-nugik-punod-diviz-zumup 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # a53a
+- op: update  # 95fb
+  at: '2026-05-30T06:11:30Z'  # 95fb
+  by: human  # 95fb
+  actor: jgstern  # 95fb
+  clock: 4  # 95fb
+  nonce: 95fb  # 95fb
+  set:  # 95fb
+    status: deleted  # 95fb

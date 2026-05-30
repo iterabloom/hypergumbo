@@ -22,3 +22,29 @@
     fields:  # cefc
       statement: "AnalysisRun.failed_files and AnalysisRun.warnings should report file-level errors and analyzer warnings encountered during a pass; universal emptiness across all 84 runs implies these fields are reserved-but-never-populated."  # cefc
       root_cause: "Each language analyzer reports its own failures/warnings through stdout/stderr or never reports them at all; the AnalysisRun structure exposes fields for these but no language analyzer populates them. The orchestrator never aggregates analyzer warnings into the structured record."  # cefc
+- op: update  # 2f52
+  at: '2026-05-30T05:43:50Z'  # 2f52
+  by: agent  # 2f52
+  actor: jgstern_agent  # 2f52
+  clock: 2  # 2f52
+  nonce: 2f52  # 2f52
+  set:  # 2f52
+    fields:  # 2f52
+      dogfood_anon_id: "ITEM-703764"  # 2f52
+  add:  # 2f52
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 2f52
+- op: discuss  # 958d
+  at: '2026-05-30T05:43:50Z'  # 958d
+  by: agent  # 958d
+  actor: jgstern_agent  # 958d
+  clock: 3  # 958d
+  nonce: 958d  # 958d
+  message: "Subsumed by INV-virik-zobok-rakiv-lujop-budot-haduv-vimol-pigoj 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 958d
+- op: update  # 491a
+  at: '2026-05-30T06:11:45Z'  # 491a
+  by: human  # 491a
+  actor: jgstern  # 491a
+  clock: 4  # 491a
+  nonce: 491a  # 491a
+  set:  # 491a
+    status: deleted  # 491a

@@ -23,3 +23,29 @@
     fields:  # 6166
       statement: "The markdown analyzer creates external_symbol nodes for relative documentation links (e.g., adr/0007-...md, ../audits/0005-...md) but emits no edges referencing them. 102 of 105 orphan <external> nodes are markdown:doc_link with zero inbound and zero outbound edges. Same target via different relative paths (adr/0003-...md, docs/adr/0003-...md, 0003-...md) creates duplicate nodes — no path canonicalization."  # 6166
       root_cause: "Markdown analyzer's doc_link emission and the markdown-link-resolver linker are decoupled — nodes get created but no link edges are emitted, so doc references aren't graph-navigable."  # 6166
+- op: update  # 3466
+  at: '2026-05-30T05:43:50Z'  # 3466
+  by: agent  # 3466
+  actor: jgstern_agent  # 3466
+  clock: 2  # 3466
+  nonce: '3466'  # 3466
+  set:  # 3466
+    fields:  # 3466
+      dogfood_anon_id: "ITEM-93e94a"  # 3466
+  add:  # 3466
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 3466
+- op: discuss  # 47d8
+  at: '2026-05-30T05:43:50Z'  # 47d8
+  by: agent  # 47d8
+  actor: jgstern_agent  # 47d8
+  clock: 3  # 47d8
+  nonce: 47d8  # 47d8
+  message: "Subsumed by INV-gosub-pihih-ligur-togak-fikoz-riboh-matop-bidud 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 47d8
+- op: update  # a068
+  at: '2026-05-30T05:47:10Z'  # a068
+  by: human  # a068
+  actor: jgstern  # a068
+  clock: 4  # a068
+  nonce: a068  # a068
+  set:  # a068
+    status: deleted  # a068

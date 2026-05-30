@@ -49,3 +49,29 @@
   clock: 5  # d2b9
   nonce: d2b9  # d2b9
   message: "pass12: 4th axis of leakage. metrics.languages aggregate emits a 'Not owner' KEY with nodes=1 edges=0. So the Solidity require() msg-string has now leaked into: (1) imports (pass 1), (2) io-boundaries unsupported_languages (pass 9), (3) external_symbol language field (pass 11), (4) metrics.languages tier aggregation (pass 12). Every axis derived from node.language inherits the contamination."  # d2b9
+- op: update  # f1be
+  at: '2026-05-30T05:43:48Z'  # f1be
+  by: agent  # f1be
+  actor: jgstern_agent  # f1be
+  clock: 6  # f1be
+  nonce: f1be  # f1be
+  set:  # f1be
+    fields:  # f1be
+      dogfood_anon_id: "ITEM-2ba53e"  # f1be
+  add:  # f1be
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # f1be
+- op: discuss  # 64e3
+  at: '2026-05-30T05:43:48Z'  # 64e3
+  by: agent  # 64e3
+  actor: jgstern_agent  # 64e3
+  clock: 7  # 64e3
+  nonce: '64e3'  # 64e3
+  message: "Subsumed by INV-gilok-ruvar-bamad-foguv-mopum-jajif-zafup-togif 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 64e3
+- op: update  # 15a8
+  at: '2026-05-30T06:09:39Z'  # 15a8
+  by: human  # 15a8
+  actor: jgstern  # 15a8
+  clock: 8  # 15a8
+  nonce: 15a8  # 15a8
+  set:  # 15a8
+    status: deleted  # 15a8

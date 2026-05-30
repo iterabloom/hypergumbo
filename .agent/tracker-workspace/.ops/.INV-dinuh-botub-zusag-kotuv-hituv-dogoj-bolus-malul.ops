@@ -22,3 +22,29 @@
       severity: "medium"  # 791f
       statement: "Python origin emits 5 hardcoded confidence values across its edges: 0.85 (calls=36663, references=2877, module_attr_ref=1323), 0.95 (imports=10457, instantiates=7803, decorated_by=270, extends=147), 0.4 (calls=16080), 0.5 (calls=7714, decorated_by=129), 0.8 (references=1322). type=calls splits 0.85 vs 0.4 vs 0.5 across 60567 edges with no apparent semantic axis distinguishing buckets. Only type-hierarchy origin (291 edges) emits non-rounded computed values. NNN noted broader pattern; this is the per-bucket detail."  # 791f
       root_cause: "Python analyzer code hardcodes confidence per (edge-type, evidence_type) tuple; no calibration loop, no input-dependent variability. Affects packages/hypergumbo-lang-python."  # 791f
+- op: update  # 25f7
+  at: '2026-05-30T05:43:51Z'  # 25f7
+  by: agent  # 25f7
+  actor: jgstern_agent  # 25f7
+  clock: 2  # 25f7
+  nonce: 25f7  # 25f7
+  set:  # 25f7
+    fields:  # 25f7
+      dogfood_anon_id: "ITEM-b4686b"  # 25f7
+  add:  # 25f7
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 25f7
+- op: discuss  # 19d3
+  at: '2026-05-30T05:43:51Z'  # 19d3
+  by: agent  # 19d3
+  actor: jgstern_agent  # 19d3
+  clock: 3  # 19d3
+  nonce: 19d3  # 19d3
+  message: "Subsumed by INV-suvil-jojoh-gifib-zirig-famom-sorim-tarar-hojok 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 19d3
+- op: update  # 15bf
+  at: '2026-05-30T05:45:58Z'  # 15bf
+  by: human  # 15bf
+  actor: jgstern  # 15bf
+  clock: 4  # 15bf
+  nonce: 15bf  # 15bf
+  set:  # 15bf
+    status: deleted  # 15bf

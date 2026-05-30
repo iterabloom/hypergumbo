@@ -22,3 +22,29 @@
     fields:  # 96ab
       statement: "Edge type 'module_attr_ref' (module attribute reference) is by name a read access — looking up an attribute on a module. Its access_mode should be 'read' unless evidence specifically indicates assignment (e.g. os.environ['X']=v). 95% labeling as 'write' implies the field is being set unconditionally rather than inferred from context."  # 96ab
       root_cause: "module_attr_ref emitter defaults access_mode='write' for any module attribute reference regardless of read-vs-write context; the disambiguation logic that should detect attribute assignment is either missing or inverted."  # 96ab
+- op: update  # 4074
+  at: '2026-05-30T05:43:46Z'  # 4074
+  by: agent  # 4074
+  actor: jgstern_agent  # 4074
+  clock: 2  # 4074
+  nonce: '4074'  # 4074
+  set:  # 4074
+    fields:  # 4074
+      dogfood_anon_id: "ITEM-2c3b8c"  # 4074
+  add:  # 4074
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 4074
+- op: discuss  # 4f13
+  at: '2026-05-30T05:43:46Z'  # 4f13
+  by: agent  # 4f13
+  actor: jgstern_agent  # 4f13
+  clock: 3  # 4f13
+  nonce: 4f13  # 4f13
+  message: "Subsumed by INV-kudug-barug-fufud-togig-zapir-pivik-lisug-solab 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 4f13
+- op: update  # 456b
+  at: '2026-05-30T05:46:19Z'  # 456b
+  by: human  # 456b
+  actor: jgstern  # 456b
+  clock: 4  # 456b
+  nonce: 456b  # 456b
+  set:  # 456b
+    status: deleted  # 456b

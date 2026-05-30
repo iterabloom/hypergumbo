@@ -22,3 +22,29 @@
     fields:  # baa6
       statement: "dead-code-maybe --seeds all reports function-factory closures (e.g. register_analyzer.decorator, register_linker.decorator, register_def_use_extractor.decorator) and dict-config-style attributes (Cache.delete, TrackerSet.config, Store.config) as potentially dead. These are all dispatched through closure-factory or descriptor patterns the call-graph doesn't traverse"  # baa6
       root_cause: "Call-graph edge extraction doesn't model: (1) nested closures returned from factory functions and used as decorators, (2) descriptor protocol (property/staticmethod-like dispatch). Result: false-positive dead-code flags on the most-used dispatch primitives in the codebase. Compounds CCC dead-code FP issue with a specific structural cause"  # baa6
+- op: update  # 78ec
+  at: '2026-05-30T05:43:45Z'  # 78ec
+  by: agent  # 78ec
+  actor: jgstern_agent  # 78ec
+  clock: 2  # 78ec
+  nonce: 78ec  # 78ec
+  set:  # 78ec
+    fields:  # 78ec
+      dogfood_anon_id: "ITEM-008e6d"  # 78ec
+  add:  # 78ec
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 78ec
+- op: discuss  # c97f
+  at: '2026-05-30T05:43:45Z'  # c97f
+  by: agent  # c97f
+  actor: jgstern_agent  # c97f
+  clock: 3  # c97f
+  nonce: c97f  # c97f
+  message: "Subsumed by INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # c97f
+- op: update  # f9f5
+  at: '2026-05-30T06:09:20Z'  # f9f5
+  by: human  # f9f5
+  actor: jgstern  # f9f5
+  clock: 4  # f9f5
+  nonce: f9f5  # f9f5
+  set:  # f9f5
+    status: deleted  # f9f5

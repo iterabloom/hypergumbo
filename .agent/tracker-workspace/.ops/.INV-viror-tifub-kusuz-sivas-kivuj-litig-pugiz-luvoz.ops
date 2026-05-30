@@ -22,3 +22,29 @@
     fields:  # 27a6
       statement: "40 of 84 analysis_runs report files_analyzed=0 but duration_ms>0; total time consumed by file-less passes = ~7600ms of 92800ms total (8.2% of analysis time has no file-level provenance). Largest offenders: pyffi-linker (4570ms), di-resolution (2550ms), method-call-recovery (364ms), annotation-convention-linker (247ms)"  # 27a6
       root_cause: "Synthesis/linker passes that operate on prior IR (not files) report files_analyzed=0 because their input is the in-memory graph, not files. But this conflates 'pass did not run' with 'pass ran on the graph'. Extends UUU (which covered the 8 worst offenders) to the broader 40-pass pattern"  # 27a6
+- op: update  # fb6c
+  at: '2026-05-30T05:43:47Z'  # fb6c
+  by: agent  # fb6c
+  actor: jgstern_agent  # fb6c
+  clock: 2  # fb6c
+  nonce: fb6c  # fb6c
+  set:  # fb6c
+    fields:  # fb6c
+      dogfood_anon_id: "ITEM-54b776"  # fb6c
+  add:  # fb6c
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # fb6c
+- op: discuss  # a676
+  at: '2026-05-30T05:43:47Z'  # a676
+  by: agent  # a676
+  actor: jgstern_agent  # a676
+  clock: 3  # a676
+  nonce: a676  # a676
+  message: "Subsumed by INV-gizik-fisav-luzaz-luzod-nonos-vinap-tutop-zuhot 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # a676
+- op: update  # 548b
+  at: '2026-05-30T05:44:47Z'  # 548b
+  by: human  # 548b
+  actor: jgstern  # 548b
+  clock: 4  # 548b
+  nonce: 548b  # 548b
+  set:  # 548b
+    status: deleted  # 548b

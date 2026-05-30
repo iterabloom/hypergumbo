@@ -22,3 +22,15 @@
       severity: "high"  # 7bed
       statement: "hypergumbo slice --entry='<function>' --max-hops 0 (and 1) returns feature.edge_ids containing edges of the *containing file*, not the function. Concretely: entry=_hash (function in fingerprint.py:242-244) with --max-hops 0 returns 12 edge_ids — ALL are 'imports' edges with src=fingerprint.py:1-1:file:file (file-level imports). The actual edges involving _hash (4 real call-graph edges) are NOT in feature.edge_ids. With --max-hops 1: 14 total edges, only 2 touch the entry. The slice subcommand conflates function-entry scope with containing-file scope."  # 7bed
       root_cause: "slice gathers edges by walking from the entry's containing FILE, not from the entry node itself, then bounds by hops. The reduction step doesn't filter file-level imports that don't reach the function. Affects packages/hypergumbo-core/src/hypergumbo_core/slice.py or analogous."  # 7bed
+- op: update  # a4f9
+  at: '2026-05-30T05:32:27Z'  # a4f9
+  by: agent  # a4f9
+  actor: jgstern_agent  # a4f9
+  clock: 2  # a4f9
+  nonce: a4f9  # a4f9
+  set:  # a4f9
+    priority: 1  # a4f9
+    fields:  # a4f9
+      dogfood_anon_id: "ITEM-8da5aa"  # a4f9
+  add:  # a4f9
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # a4f9

@@ -23,3 +23,29 @@
     fields:  # 0420
       statement: "When two metadata fields on the same edge encode the same underlying property (read-vs-write semantics), their values must agree. An edge whose evidence_type explicitly says 'ast_name_read' must not also carry access_mode='write'."  # 0420
       root_cause: "The references edge emitter sets access_mode='write' as a default for ast_name_read evidence, ignoring the evidence_type's own polarity. The two fields are written independently rather than derived from a shared inference."  # 0420
+- op: update  # 2f1c
+  at: '2026-05-30T05:43:46Z'  # 2f1c
+  by: agent  # 2f1c
+  actor: jgstern_agent  # 2f1c
+  clock: 2  # 2f1c
+  nonce: 2f1c  # 2f1c
+  set:  # 2f1c
+    fields:  # 2f1c
+      dogfood_anon_id: "ITEM-2c3b8c"  # 2f1c
+  add:  # 2f1c
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 2f1c
+- op: discuss  # e804
+  at: '2026-05-30T05:43:46Z'  # e804
+  by: agent  # e804
+  actor: jgstern_agent  # e804
+  clock: 3  # e804
+  nonce: e804  # e804
+  message: "Subsumed by INV-kudug-barug-fufud-togig-zapir-pivik-lisug-solab 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # e804
+- op: update  # c472
+  at: '2026-05-30T05:53:42Z'  # c472
+  by: human  # c472
+  actor: jgstern  # c472
+  clock: 4  # c472
+  nonce: c472  # c472
+  set:  # c472
+    status: deleted  # c472

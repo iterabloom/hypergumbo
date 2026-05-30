@@ -29,3 +29,15 @@
   clock: 2  # 1310
   nonce: '1310'  # 1310
   message: "Pass 8 dogfooding strengthens this finding: HTTP calls to huggingface.co also happen in STEADY STATE (not just first-install), in a transformers.safetensors_conversion.auto_conversion background thread fired during sketch generation. Captured stderr trace shows httpx.ProxyError: 502 Bad Gateway from huggingface_hub.hf_api.model_info() called via transformers/safetensors_conversion.py:59. HF_HUB_OFFLINE=1 hides the network noise (we run with it set for testing) but the background thread still attempts the call. Severity rationale: previous session-5 conclusion 'first-install only' was incorrect — the call happens every run unless HF_HUB_OFFLINE=1 is set. This is also a secondary cause of the sketch -t 17000+ SIGPIPE in earlier observations, though INV-vopuh (sketch SIGPIPE) reproduces independently of HF."  # 1310
+- op: update  # b598
+  at: '2026-05-30T05:32:31Z'  # b598
+  by: agent  # b598
+  actor: jgstern_agent  # b598
+  clock: 3  # b598
+  nonce: b598  # b598
+  set:  # b598
+    priority: 0  # b598
+    fields:  # b598
+      dogfood_anon_id: "ITEM-87fab4"  # b598
+  add:  # b598
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_severe]  # b598

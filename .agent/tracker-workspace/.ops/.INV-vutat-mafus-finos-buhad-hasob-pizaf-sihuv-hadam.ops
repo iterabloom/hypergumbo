@@ -22,3 +22,29 @@
       severity: "high"  # 9e3a
       statement: "Multiple linker passes report duration_ms=0 AND files_analyzed=0 in AnalysisRun while emitting many edges: type-hierarchy duration=0ms emits 324 edges; enclosure-linker duration=0ms emits 119 edges; decorator-dispatch-linker duration=0ms emits 292 dispatches_to edges. Producing 324+ edges in 0 milliseconds is structurally impossible. Of 84 runs, 17 have files=0 AND duration=0, yet several of those origins are credited with non-trivial edge production."  # 9e3a
       root_cause: "The duration_ms timer is not started (or rounds down to 0 below 1ms granularity) for passes that consume the IR rather than file streams. Same root cause family as files_analyzed=0 issue (pass-13 UUU + pass-15 XXXX), but compounds with duration=0 to produce 'this pass did nothing' record despite real edge production. Affects AnalysisRun emission in graph-consuming linkers."  # 9e3a
+- op: update  # 0c82
+  at: '2026-05-30T05:43:47Z'  # 0c82
+  by: agent  # 0c82
+  actor: jgstern_agent  # 0c82
+  clock: 2  # 0c82
+  nonce: 0c82  # 0c82
+  set:  # 0c82
+    fields:  # 0c82
+      dogfood_anon_id: "ITEM-54b776"  # 0c82
+  add:  # 0c82
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 0c82
+- op: discuss  # bb0d
+  at: '2026-05-30T05:43:47Z'  # bb0d
+  by: agent  # bb0d
+  actor: jgstern_agent  # bb0d
+  clock: 3  # bb0d
+  nonce: bb0d  # bb0d
+  message: "Subsumed by INV-gizik-fisav-luzaz-luzod-nonos-vinap-tutop-zuhot 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # bb0d
+- op: update  # 6367
+  at: '2026-05-30T05:48:37Z'  # 6367
+  by: human  # 6367
+  actor: jgstern  # 6367
+  clock: 4  # 6367
+  nonce: '6367'  # 6367
+  set:  # 6367
+    status: deleted  # 6367

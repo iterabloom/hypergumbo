@@ -22,3 +22,15 @@
     fields:  # 6dbc
       statement: "AnalysisRun.config_fingerprint reflects a hash of the effective config that produced the run."  # 6dbc
       root_cause: "ir.py:181 _default_config_fingerprint returns sha256(b\\\"{}\\\")[:16]=\\\"44136fa355b3678a\\\" and no pass overrides the default when constructing AnalysisRun, so config_fingerprint is constant regardless of actual config."  # 6dbc
+- op: update  # aaf0
+  at: '2026-05-30T05:32:30Z'  # aaf0
+  by: agent  # aaf0
+  actor: jgstern_agent  # aaf0
+  clock: 2  # aaf0
+  nonce: aaf0  # aaf0
+  set:  # aaf0
+    priority: 1  # aaf0
+    fields:  # aaf0
+      dogfood_anon_id: "ITEM-49c006"  # aaf0
+  add:  # aaf0
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # aaf0

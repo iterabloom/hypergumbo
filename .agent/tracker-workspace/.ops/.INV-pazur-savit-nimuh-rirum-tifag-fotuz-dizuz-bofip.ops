@@ -22,3 +22,15 @@
     fields:  # 7b9d
       statement: "For every emitted tiered behavior map (behavior_map.<budget>.json), the values reported in nodes_summary.included.count and nodes_summary.included_edges_count must equal len(nodes) and len(edges) respectively in the same file."  # 7b9d
       root_cause: "format_tiered_behavior_map writes nodes_summary once at line 1448 (pre-shrink), then the post-selection while-loop at lines 1478-1518 prunes nodes/edges to fit the token budget without ever re-writing nodes_summary. Summary keeps pre-shrink counts; data arrays reflect post-shrink reality."  # 7b9d
+- op: update  # b190
+  at: '2026-05-30T05:32:27Z'  # b190
+  by: agent  # b190
+  actor: jgstern_agent  # b190
+  clock: 2  # b190
+  nonce: b190  # b190
+  set:  # b190
+    priority: 1  # b190
+    fields:  # b190
+      dogfood_anon_id: "ITEM-7dbeda"  # b190
+  add:  # b190
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # b190

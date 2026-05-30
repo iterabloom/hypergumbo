@@ -23,3 +23,22 @@
     fields:  # 77a8
       statement: "When a user passes a behavior-map JSON file path positionally to a subcommand that takes both a positional path (repo root) and --input (behavior map), the subcommand either errors or recognizes the JSON input — never silently reports empty results."  # 77a8
       root_cause: "Subcommands routes/symbols/io-boundaries declare the first positional arg as path (repo root, default current directory) and --input as a separate flag (default hypergumbo.results.json). Passing bm.json positionally is accepted as the repo root, then --input defaults to a non-existent file in cwd, and the subcommand returns empty output (\"No symbols found\", \"No API routes found in the behavior map.\", \"No I/O boundary calls detected.\") instead of erroring on the invalid path."  # 77a8
+- op: update  # aeb5
+  at: '2026-05-30T05:43:40Z'  # aeb5
+  by: agent  # aeb5
+  actor: jgstern_agent  # aeb5
+  clock: 2  # aeb5
+  nonce: aeb5  # aeb5
+  set:  # aeb5
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # aeb5
+    fields:  # aeb5
+      dogfood_anon_id: "ITEM-bcd30e"  # aeb5
+  add:  # aeb5
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # aeb5
+- op: discuss  # a7f8
+  at: '2026-05-30T05:43:40Z'  # a7f8
+  by: agent  # a7f8
+  actor: jgstern_agent  # a7f8
+  clock: 3  # a7f8
+  nonce: a7f8  # a7f8
+  message: "Cluster member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # a7f8

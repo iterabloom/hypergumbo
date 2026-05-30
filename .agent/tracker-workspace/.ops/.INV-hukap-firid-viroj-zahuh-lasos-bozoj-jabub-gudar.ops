@@ -23,3 +23,29 @@
     fields:  # 7907
       statement: "Total wall-clock 1:54 (114s); cumulative pass duration 92.8s; pass wall-clock first-start to last-finish = 55.96s. ~58s (51%) of total wall-clock is non-pass overhead with NO line item in analysis_runs. Implied parallelism during pass phase: 1.66x (only 6 concurrent passes max despite 18 active languages)"  # 7907
       root_cause: "The 58s overhead presumably includes: framework discovery, file index build, embedding cache priming, schema validation, JSON serialization, gitleaks invocation (if installed), repo fingerprinting. None of these have AnalysisRun-style provenance entries, so consumers can't see where 50% of wall-clock goes. Compounds XXXX (40 of 84 passes already underprovenanced) — even tracked passes only account for half of wall-clock"  # 7907
+- op: update  # c101
+  at: '2026-05-30T05:43:45Z'  # c101
+  by: agent  # c101
+  actor: jgstern_agent  # c101
+  clock: 2  # c101
+  nonce: c101  # c101
+  set:  # c101
+    fields:  # c101
+      dogfood_anon_id: "ITEM-c96c76"  # c101
+  add:  # c101
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # c101
+- op: discuss  # f9eb
+  at: '2026-05-30T05:43:46Z'  # f9eb
+  by: agent  # f9eb
+  actor: jgstern_agent  # f9eb
+  clock: 3  # f9eb
+  nonce: f9eb  # f9eb
+  message: "Subsumed by INV-pitab-masos-zakaj-limin-fukar-nojit-fohot-maraj 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # f9eb
+- op: update  # e818
+  at: '2026-05-30T06:11:23Z'  # e818
+  by: human  # e818
+  actor: jgstern  # e818
+  clock: 4  # e818
+  nonce: e818  # e818
+  set:  # e818
+    status: deleted  # e818

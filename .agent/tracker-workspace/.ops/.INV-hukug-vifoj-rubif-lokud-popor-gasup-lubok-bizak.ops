@@ -23,3 +23,15 @@
     fields:  # f109
       statement: "When --taint-sources is provided AND the claims file declares extra_catalogs.sources for an overlapping (module, name, kind) triple, the CLI flag must replace the claims-file entry per documented \"User entries override auto-derived defaults on (module, name, kind) match\" semantics. Currently both entries coexist as duplicate TaintSources, breaking the override promise."  # f109
       root_cause: "cli.py:4431 concatenates cli_sources + claims_sources into a single extra_source_paths list before load_full_taint_catalog. taint.py:load_taint_catalog (line 437-477) extends all entries from all files into one TaintCatalog without intra-layer dedup. _merge_with_user_override (taint.py:586-608) only de-duplicates between the built-in catalog and the merged extra catalog. The result: user CLI overrides become additions, not replacements, against claims-file declared sources."  # f109
+- op: update  # 5141
+  at: '2026-05-30T05:32:31Z'  # 5141
+  by: agent  # 5141
+  actor: jgstern_agent  # 5141
+  clock: 2  # 5141
+  nonce: '5141'  # 5141
+  set:  # 5141
+    priority: 1  # 5141
+    fields:  # 5141
+      dogfood_anon_id: "ITEM-416ab1"  # 5141
+  add:  # 5141
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 5141

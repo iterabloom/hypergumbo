@@ -30,3 +30,24 @@
   clock: 2  # 7fa5
   nonce: 7fa5  # 7fa5
   message: "pass11: new schema manifestation. Claims with 'constraint' dict lacking must_not_exist=true/max_chains/taint_flow are silently confirmed as 'No constraint to check'. Boundary-centric schema (only must_not_exist=true|max_chains|taint_flow are recognized) silently no-ops any other constraint shape. Users writing structurally similar but unrecognized schemas (e.g., must_exist: kind: function) get false 'confirmed' verdicts with zero warning."  # 7fa5
+- op: update  # be22
+  at: '2026-05-30T04:24:05Z'  # be22
+  by: agent  # be22
+  actor: jgstern_agent  # be22
+  clock: 3  # be22
+  nonce: be22  # be22
+  set:  # be22
+    fields:  # be22
+      dogfood_anon_id: "ITEM-7f81e9"  # be22
+- op: update  # 3b55
+  at: '2026-05-30T05:32:29Z'  # 3b55
+  by: agent  # 3b55
+  actor: jgstern_agent  # 3b55
+  clock: 4  # 3b55
+  nonce: 3b55  # 3b55
+  set:  # 3b55
+    priority: 0  # 3b55
+    fields:  # 3b55
+      dogfood_anon_id: "ITEM-7f81e9"  # 3b55
+  add:  # 3b55
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_severe]  # 3b55

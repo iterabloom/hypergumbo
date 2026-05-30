@@ -22,3 +22,22 @@
     fields:  # f831
       statement: "pyffi-linker pass runs for 4570ms (largest synthesis-pass duration) and emits exactly 10 edges, all originating from packages/hypergumbo-core/tests/test_pyffi_linker.py (its OWN test fixtures). Zero edges from production code. files_analyzed=0 because the pass reads in-memory AST, but the 10 edges show it only matches against test-internal C_stdlib references"  # f831
       root_cause: "pyffi-linker pattern-matches Python ctypes/cffi/CDLL usage. The only such usages in the analyzed codebase are inside test_pyffi_linker.py (which contains string-literal C_stdlib references as test inputs). Production hypergumbo code uses no ctypes/cffi. Effect: 4.6s of CPU per analysis for a feature that only validates against its own test corpus"  # f831
+- op: update  # 2692
+  at: '2026-05-30T05:43:44Z'  # 2692
+  by: agent  # 2692
+  actor: jgstern_agent  # 2692
+  clock: 2  # 2692
+  nonce: '2692'  # 2692
+  set:  # 2692
+    parent: INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz  # 2692
+    fields:  # 2692
+      dogfood_anon_id: "ITEM-5a1949"  # 2692
+  add:  # 2692
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 2692
+- op: discuss  # 8016
+  at: '2026-05-30T05:43:44Z'  # 8016
+  by: agent  # 8016
+  actor: jgstern_agent  # 8016
+  clock: 3  # 8016
+  nonce: '8016'  # 8016
+  message: "Cluster member of INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 8016

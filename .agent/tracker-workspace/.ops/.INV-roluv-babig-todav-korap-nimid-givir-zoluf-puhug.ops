@@ -22,3 +22,29 @@
     fields:  # e2b5
       statement: "Visibility-modifier emission should be consistent across languages: either all languages tag both visible and hidden symbols, or all use absence-as-default with one polarity. The current asymmetric pattern (python negative-only, all others positive-only) makes node.modifiers semantically inconsistent."  # e2b5
       root_cause: "Python analyzer marks underscore-prefix symbols as 'private' (3942 emissions) and emits no modifier for non-underscore symbols. Other languages emit positive visibility markers (public, pub, exported, external) only when present in source and emit no modifier when default/private. Same field, opposite polarity defaults."  # e2b5
+- op: update  # 154f
+  at: '2026-05-30T05:43:49Z'  # 154f
+  by: agent  # 154f
+  actor: jgstern_agent  # 154f
+  clock: 2  # 154f
+  nonce: 154f  # 154f
+  set:  # 154f
+    fields:  # 154f
+      dogfood_anon_id: "ITEM-a7325f"  # 154f
+  add:  # 154f
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 154f
+- op: discuss  # 2e0c
+  at: '2026-05-30T05:43:50Z'  # 2e0c
+  by: agent  # 2e0c
+  actor: jgstern_agent  # 2e0c
+  clock: 3  # 2e0c
+  nonce: 2e0c  # 2e0c
+  message: "Subsumed by INV-jusot-fazad-duvub-joruf-nugik-punod-diviz-zumup 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 2e0c
+- op: update  # f670
+  at: '2026-05-30T06:11:38Z'  # f670
+  by: human  # f670
+  actor: jgstern  # f670
+  clock: 4  # f670
+  nonce: f670  # f670
+  set:  # f670
+    status: deleted  # f670

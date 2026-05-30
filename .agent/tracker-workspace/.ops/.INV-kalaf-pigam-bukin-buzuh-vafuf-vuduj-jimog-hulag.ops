@@ -22,3 +22,29 @@
     fields:  # cdc1
       statement: "Solidity require-msg string 'Not owner' from tests/fixtures/schema-coverage-corpus/solidity/Contract.sol propagates as the LITERAL VALUE of node.language on an external_symbol node (id='Not owner:<unknown>:0-0:Not owner:Not owner', name='Not owner', language='Not owner'). The garbage further propagates to io-boundaries --json unsupported_languages=['Not owner', 'ansible', 'bash', ...]"  # cdc1
       root_cause: "Solidity analyzer treats require-msg string as an import (B/INV-hojak — pass 1). When creating the external_symbol node for the unresolved import 'Not owner', the symbol-creation code uses the string as language/name/canonical_name segments instead of routing through an unknown-language sentinel. The id format <lang>:<path>:<span>:<name>:<kind> with lang=path=name='Not owner' shows the analyzer had no language detection result and defaulted to the source-of-the-string value"  # cdc1
+- op: update  # bff2
+  at: '2026-05-30T05:43:48Z'  # bff2
+  by: agent  # bff2
+  actor: jgstern_agent  # bff2
+  clock: 2  # bff2
+  nonce: bff2  # bff2
+  set:  # bff2
+    fields:  # bff2
+      dogfood_anon_id: "ITEM-2ba53e"  # bff2
+  add:  # bff2
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # bff2
+- op: discuss  # 7cb3
+  at: '2026-05-30T05:43:48Z'  # 7cb3
+  by: agent  # 7cb3
+  actor: jgstern_agent  # 7cb3
+  clock: 3  # 7cb3
+  nonce: 7cb3  # 7cb3
+  message: "Subsumed by INV-gilok-ruvar-bamad-foguv-mopum-jajif-zafup-togif 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 7cb3
+- op: update  # 695e
+  at: '2026-05-30T06:13:00Z'  # 695e
+  by: human  # 695e
+  actor: jgstern  # 695e
+  clock: 4  # 695e
+  nonce: 695e  # 695e
+  set:  # 695e
+    status: deleted  # 695e

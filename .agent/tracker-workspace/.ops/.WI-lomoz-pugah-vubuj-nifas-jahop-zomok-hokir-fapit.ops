@@ -21,3 +21,15 @@
     description: ""  # 2523
     fields:  # 2523
       rationale: "entrypoints groups WS routes under kind='http_route', but usage_contexts groups WS under context_name='WebSocketRoute' (separate from 'Route' which is HTTP-only). Same underlying concept, two different vocabularies in the same behavior map. Discovered while correcting pass-14 SSSS finding — the WS endpoint appears in both lists but under different category names"  # 2523
+- op: update  # 6b58
+  at: '2026-05-30T05:32:25Z'  # 6b58
+  by: agent  # 6b58
+  actor: jgstern_agent  # 6b58
+  clock: 2  # 6b58
+  nonce: 6b58  # 6b58
+  set:  # 6b58
+    priority: 1  # 6b58
+    fields:  # 6b58
+      dogfood_anon_id: "ITEM-cdc319"  # 6b58
+  add:  # 6b58
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 6b58

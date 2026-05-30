@@ -21,3 +21,15 @@
     pr_ref:  # 742e
     description: "hypergumbo sketch --require-section <NAME> accepts arbitrary strings without validation against the documented valid set.\n\nThe cli.py help text for --require-section enumerates exactly seven valid section names:\n  Entry Points, Data Models, Source Files, Key Symbols, Additional Files,\n  Source Files Content, Additional Files Content\n\nReproduction (2026-05-28, branch dev):\n  hypergumbo sketch --input /tmp/hg-dogfood-2026-05-28/behavior_map.json \\\n    -t 2000 --require-section \"NONEXISTENT\"\n  → exit 0, full sketch produced, no \"NONEXISTENT\" section anywhere in output,\n    no warning to stderr.\n\nSame problem on search subcommand (smaller surface):\n  hypergumbo search \"main\" --language klingon  → \"No symbols found\" (exit 0)\n  hypergumbo search \"_load_source_yaml\" --kind nonexistent_kind → \"No symbols found\"\n\nThe intent of --require-section is to enforce that a section appears even under budget pressure. Silent acceptance of unknown names means a typo (e.g., \"Key Sympols\", \"key symbols\" lowercase) gets no feedback — the budget guarantee the user thought they bought never engages.\n\nImpact: LOW — usability cliff. Users who typo or mis-name a section think they're enforcing budget protection but aren't. No security or correctness impact, but undermines flag's documented contract.\n\nFix: parse --require-section values against the same set the help text documents, error on unknown. Same for --kind / --language on search if the corresponding registry is enumerable.\n\nDiscovery: dogfooding pass 3 sketch flag exercise."  # 742e
     fields: {}  # 742e
+- op: update  # 8795
+  at: '2026-05-30T05:32:29Z'  # 8795
+  by: agent  # 8795
+  actor: jgstern_agent  # 8795
+  clock: 2  # 8795
+  nonce: '8795'  # 8795
+  set:  # 8795
+    priority: 1  # 8795
+    fields:  # 8795
+      dogfood_anon_id: "ITEM-01a94e"  # 8795
+  add:  # 8795
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 8795

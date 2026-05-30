@@ -22,3 +22,29 @@
     fields:  # 0088
       statement: "An analyzer that reports files_analyzed=N produces at least one path-bearing node per non-empty input file (file-, section-, or heading-level)."  # 0088
       root_cause: "The markdown analyzer extracts cross-document links into orphan external_symbol nodes (LLL) but does not emit file/section/heading nodes for the source markdown files themselves; centrality_scores receives a 0.0 for any file with no inbound/outbound edges in the IR graph."  # 0088
+- op: update  # f514
+  at: '2026-05-30T05:43:50Z'  # f514
+  by: agent  # f514
+  actor: jgstern_agent  # f514
+  clock: 2  # f514
+  nonce: f514  # f514
+  set:  # f514
+    fields:  # f514
+      dogfood_anon_id: "ITEM-93e94a"  # f514
+  add:  # f514
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # f514
+- op: discuss  # f048
+  at: '2026-05-30T05:43:51Z'  # f048
+  by: agent  # f048
+  actor: jgstern_agent  # f048
+  clock: 3  # f048
+  nonce: f048  # f048
+  message: "Subsumed by INV-gosub-pihih-ligur-togak-fikoz-riboh-matop-bidud 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # f048
+- op: update  # a384
+  at: '2026-05-30T06:10:35Z'  # a384
+  by: human  # a384
+  actor: jgstern  # a384
+  clock: 4  # a384
+  nonce: a384  # a384
+  set:  # a384
+    status: deleted  # a384

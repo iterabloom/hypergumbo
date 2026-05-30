@@ -22,3 +22,15 @@
     description: ""  # 608f
     fields:  # 608f
       rationale: "hypergumbo routes --help shows: '-x, --exclude-tests  (deprecated; excluded by default) Exclude routes from test files'. Test exclusion is default behavior; --exclude-tests is a no-op flag still documented in help text. Should be removed or hidden"  # 608f
+- op: update  # 1cf7
+  at: '2026-05-30T05:32:25Z'  # 1cf7
+  by: agent  # 1cf7
+  actor: jgstern_agent  # 1cf7
+  clock: 2  # 1cf7
+  nonce: 1cf7  # 1cf7
+  set:  # 1cf7
+    priority: 4  # 1cf7
+    fields:  # 1cf7
+      dogfood_anon_id: "ITEM-9c0822"  # 1cf7
+  add:  # 1cf7
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_cosmetic]  # 1cf7

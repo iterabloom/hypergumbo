@@ -24,3 +24,22 @@
     fields:  # 50e3
       statement: "Every JSON output subcommand must include a top-level schema_version field matching the source behavior_map. dead-code-maybe --format json currently emits {summary, dead_candidates} only, with no schema_version or view field."  # 50e3
       root_cause: "The dead-code-maybe JSON serializer constructs an ad-hoc dict instead of going through a shared 'add_schema_envelope' helper. There is no CI test asserting every JSON-emitting subcommand carries schema_version."  # 50e3
+- op: update  # 2311
+  at: '2026-05-30T05:43:40Z'  # 2311
+  by: agent  # 2311
+  actor: jgstern_agent  # 2311
+  clock: 2  # 2311
+  nonce: '2311'  # 2311
+  set:  # 2311
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # 2311
+    fields:  # 2311
+      dogfood_anon_id: "ITEM-e5ca58"  # 2311
+  add:  # 2311
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 2311
+- op: discuss  # fa8b
+  at: '2026-05-30T05:43:40Z'  # fa8b
+  by: agent  # fa8b
+  actor: jgstern_agent  # fa8b
+  clock: 3  # fa8b
+  nonce: fa8b  # fa8b
+  message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # fa8b

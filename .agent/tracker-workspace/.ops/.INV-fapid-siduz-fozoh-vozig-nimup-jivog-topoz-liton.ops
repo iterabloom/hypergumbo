@@ -22,3 +22,15 @@
     fields:  # fe3c
       statement: "When the user explicitly passes '--out slice.json' to 'hypergumbo slice', the output must be written to that path. Currently it is silently redirected to a cache directory because the code at cli.py:1377 checks 'if out_path_arg == \"slice.json\"' to detect the argparse default and substitute a cache path."  # fe3c
       root_cause: "argparse default for --out is the literal string 'slice.json'. By the time cli.py:1377 runs, args.out == 'slice.json' regardless of whether the user typed it explicitly. The fix is to set the argparse default to None (or argparse.SUPPRESS) and substitute the default only when args.out is None. Reproduced with --out slice.json (overridden), --out=slice.json (overridden), --out plain.json (works), --out slice.x.json (works), --out slice.foo (works), --out myslice.json (works) — only the exact basename 'slice.json' triggers the bug."  # fe3c
+- op: update  # aac7
+  at: '2026-05-30T05:32:31Z'  # aac7
+  by: agent  # aac7
+  actor: jgstern_agent  # aac7
+  clock: 2  # aac7
+  nonce: aac7  # aac7
+  set:  # aac7
+    priority: 2  # aac7
+    fields:  # aac7
+      dogfood_anon_id: "ITEM-6670df"  # aac7
+  add:  # aac7
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # aac7

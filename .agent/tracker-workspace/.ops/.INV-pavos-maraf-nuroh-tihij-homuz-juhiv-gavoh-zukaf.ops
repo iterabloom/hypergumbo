@@ -23,3 +23,29 @@
     fields:  # 7e0f
       statement: "features synthesis emits 7 of 16 feature graphs with edge_ids=[] (entries 8-14, all :route-typed entrypoints from serve.py:426-432); the corresponding :function-typed entries 0-7 have edges; entry 15 (WS:/ws) has 1 edge"  # 7e0f
       root_cause: "features pass slices BFS from each entrypoint, but for :route symbols (route registration line, not handler body), there is no outbound edge to the handler :function symbol. The route→handler relationship was detected for entrypoints/usage_contexts but is missing as a graph edge that features-BFS can traverse"  # 7e0f
+- op: update  # 733b
+  at: '2026-05-30T05:43:45Z'  # 733b
+  by: agent  # 733b
+  actor: jgstern_agent  # 733b
+  clock: 2  # 733b
+  nonce: 733b  # 733b
+  set:  # 733b
+    fields:  # 733b
+      dogfood_anon_id: "ITEM-008e6d"  # 733b
+  add:  # 733b
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 733b
+- op: discuss  # 32a9
+  at: '2026-05-30T05:43:45Z'  # 32a9
+  by: agent  # 32a9
+  actor: jgstern_agent  # 32a9
+  clock: 3  # 32a9
+  nonce: 32a9  # 32a9
+  message: "Subsumed by INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 32a9
+- op: update  # 0f7c
+  at: '2026-05-30T06:10:43Z'  # 0f7c
+  by: human  # 0f7c
+  actor: jgstern  # 0f7c
+  clock: 4  # 0f7c
+  nonce: 0f7c  # 0f7c
+  set:  # 0f7c
+    status: deleted  # 0f7c

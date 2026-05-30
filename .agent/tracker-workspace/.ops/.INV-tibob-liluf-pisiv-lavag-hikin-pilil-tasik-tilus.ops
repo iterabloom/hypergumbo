@@ -23,3 +23,15 @@
     fields:  # 30e3
       statement: "When a meta field is selectively populated across edge types, the schema should document which edge types carry the field and which don't. access_mode is unpopulated for 12 of 17 edge.type values without any explicit schema declaration of which types are in scope."  # 30e3
       root_cause: "access_mode population is wired in 5 edge-emission paths (calls 68%, instantiates 71%, references 59%, module_attr_ref 42%, event_publishes 100%) and the other 12 edge types never set the field. There is no declared policy that distinguishes 'access_mode applies' vs 'not applicable' edge types."  # 30e3
+- op: update  # fced
+  at: '2026-05-30T05:32:28Z'  # fced
+  by: agent  # fced
+  actor: jgstern_agent  # fced
+  clock: 2  # fced
+  nonce: fced  # fced
+  set:  # fced
+    priority: 3  # fced
+    fields:  # fced
+      dogfood_anon_id: "ITEM-3e7407"  # fced
+  add:  # fced
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # fced

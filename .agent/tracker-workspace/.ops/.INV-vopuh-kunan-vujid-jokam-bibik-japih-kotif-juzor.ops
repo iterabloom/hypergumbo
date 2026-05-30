@@ -51,3 +51,15 @@
   clock: 5  # 9440
   nonce: '9440'  # 9440
   message: "pass12: sketch cliff is monotonic above 16145. Tested t=17000, 20000, 32000, 64000, 128000 — ALL fail with exit 141 / 0 bytes stdout. Combined with pass-11 bisection (t=16145 last working value), the failure is permanent for any budget ≥16146 on hypergumbo's own self-analysis. Confirms TT is not a per-token edge case but a regime change: below 16145 sketch runs, ≥16146 it instantly SIGPIPEs from within _compute_centrality_with_python."  # 9440
+- op: update  # aaf7
+  at: '2026-05-30T05:32:29Z'  # aaf7
+  by: agent  # aaf7
+  actor: jgstern_agent  # aaf7
+  clock: 6  # aaf7
+  nonce: aaf7  # aaf7
+  set:  # aaf7
+    priority: 1  # aaf7
+    fields:  # aaf7
+      dogfood_anon_id: "ITEM-eccd6d"  # aaf7
+  add:  # aaf7
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # aaf7

@@ -1,0 +1,25 @@
+- op: create  # f936
+  at: '2026-05-30T05:41:05Z'  # f936
+  by: agent  # f936
+  actor: jgstern_agent  # f936
+  clock: 1  # f936
+  nonce: f936  # f936
+  data:  # f936
+    kind: invariant  # f936
+    title: "META: Vocabulary fields on edges and edge metadata mix multiple semantic axes"  # f936
+    status: violated  # f936
+    priority: 1  # f936
+    parent:  # f936
+    tags:  # f936
+    - dogfood_corpus_20260528  # f936
+    - dogfood_umbrella  # f936
+    - dogfood_severity_significant  # f936
+    isbefore: []  # f936
+    duplicate_of: []  # f936
+    not_duplicate_of: []  # f936
+    pr_ref:  # f936
+    description: "**Subject:** Vocabulary fields on edges and edge metadata mix multiple semantic axes\n\n**Mechanic:** Several vocabulary-bearing fields on edges and edge metadata carry values that mix axes from distinct conceptual dimensions. One framework-dispatch vocabulary mixes framework names (such as fastapi, starlette), dispatch mechanism names (such as registry-dispatch), and packaging-channel names (such as npm-package, html-script-src) into the same field. One call-construct vocabulary mixes construct types (method, function) with a relational property (cross-file). One edge-type vocabulary contains values that overlap semantically — a single-occurrence value for a relationship that is also covered by a much larger sibling value. One pair of similarly-named fields on edge metadata carry disjoint vocabularies — one captures a small set of WebSocket-and-event constructs, the other captures a much larger Python call-construct vocabulary — but their names invite consumers to treat them as the same axis.\n\n**Expectation:** Each vocabulary field should encode one axis. When a value mixes axes, it should be split across multiple fields (one per axis) with documented vocabularies. Similar names should encode similar concepts.\n\n**Scope:** Affects multiple vocabulary fields, each with a different mix of axes. Together these fields appear on the majority of edges in the output.\n\n**Exposure:** Behavior-map per-edge type and metadata fields.\n\n**Consequence:** Consumers querying for, say, \"all edges produced by framework X\" must enumerate which values in the vocabulary are framework names versus mechanism names versus packaging names. Cross-axis aggregations are unreliable. Adding a new value requires deciding which conceptual axis it belongs to without a clear schema.\n\nSee child member items for per-instance technical detail and per-symptom repro / fix scope."  # f936
+    fields:  # f936
+      dogfood_anon_id: "ITEM-e7307c"  # f936
+      statement: "Each vocabulary field should encode one axis. When a value mixes axes, it should be split across multiple fields (one per axis) with documented vocabularies. Similar names should encode similar concepts."  # f936
+      root_cause: "Several vocabulary-bearing fields on edges and edge metadata carry values that mix axes from distinct conceptual dimensions. One framework-dispatch vocabulary mixes framework names (such as fastapi, starlette), dispatch mechanism names (such as registry-dispatch), and packaging-channel names (such as npm-package, html-script-src) into the same field. One call-construct vocabulary mixes construct types (method, function) with a relational property (cross-file). One edge-type vocabulary contains values that overlap semantically — a single-occurrence value for a relationship that is also covered by a much larger sibling value. One pair of similarly-named fields on edge metadata carry disjoint vocabularies — one captures a small set of WebSocket-and-event constructs, the other captures a much larger Python call-construct vocabulary — but their names invite consumers to treat them as the same axis."  # f936

@@ -30,3 +30,36 @@
   clock: 2  # ba8f
   nonce: ba8f  # ba8f
   message: "Pass 18 DDDDDDD root-cause analysis: traced cli.py:3866-3886 + io_boundary.py:1249 (total_io_edges=tagged_count). The 7859→6432 inversion isn't a single-metric value being filtered — it's two DIFFERENT METRICS reported under the same field name 'total_io_edges'. (1) JSON default with exclude_tests=True falls into cli.py:3870's filtered_total = sum(len(e.chains) for e in filtered_entries.values()) which counts production-filtered chains INCLUDING the external_potential bucket: 7016 ep + 843 non-ep = 7859. (2) JSON --include-tests falls into cli.py:3882's else branch which uses bmap.to_dict() and that surfaces bmap.total_io_edges = tagged_count from io_boundary.py:1249 — the count of boundary-tagged edges BEFORE external_potential is added: 6432. Additional bug: in the --include-tests JSON response, the boundaries.chains lists SUM to 25128 (sub-totals: ep=18696, fs_read=1593, fs_write=4395, env_read=152, subprocess=152, logging=125, others ≤10) but total_io_edges field reports 6432 — the summary value disagrees with the contents of the same response object. Fix: pick ONE metric (probably sum-of-chains, since that's what the response contains) and use it consistently in both code paths."  # ba8f
+- op: update  # cb2e
+  at: '2026-05-30T05:43:51Z'  # cb2e
+  by: agent  # cb2e
+  actor: jgstern_agent  # cb2e
+  clock: 3  # cb2e
+  nonce: cb2e  # cb2e
+  set:  # cb2e
+    fields:  # cb2e
+      dogfood_anon_id: "ITEM-b94123"  # cb2e
+  add:  # cb2e
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # cb2e
+- op: discuss  # 786d
+  at: '2026-05-30T05:43:51Z'  # 786d
+  by: agent  # 786d
+  actor: jgstern_agent  # 786d
+  clock: 4  # 786d
+  nonce: 786d  # 786d
+  message: "Subsumed by INV-pubom-bopiz-bazuj-mihik-kifin-kigok-mapog-ponis 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 786d
+- op: discuss  # d3d1
+  at: '2026-05-30T05:44:50Z'  # d3d1
+  by: agent  # d3d1
+  actor: jgstern_agent  # d3d1
+  clock: 5  # d3d1
+  nonce: d3d1  # d3d1
+  message: "Extension finding observed in session s18 (label DDDDDDD, no separate tracker item, classification: extension-of-this-finding): io-boundaries total_io_edges is two different metrics across paths (JSON default = filtered_total including external_potential = 7859; JSON --include-tests = tagged_count excluding ep = 6432; chains in same response sum to 25128). Recorded in dogfooding_blind_mapping.tsv as extension of JJJJJJ (= this item)."  # d3d1
+- op: update  # 3abd
+  at: '2026-05-30T06:13:07Z'  # 3abd
+  by: human  # 3abd
+  actor: jgstern  # 3abd
+  clock: 6  # 3abd
+  nonce: 3abd  # 3abd
+  set:  # 3abd
+    status: deleted  # 3abd

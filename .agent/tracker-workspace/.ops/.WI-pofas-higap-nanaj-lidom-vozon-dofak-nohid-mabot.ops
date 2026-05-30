@@ -22,3 +22,22 @@
     description: ""  # 0eab
     fields:  # 0eab
       rationale: "hypergumbo has FIVE patterns for JSON output across 15 subcommands: (1) '--format text|json': config, test-coverage, dead-code-maybe; (2) '--json' flag: io-boundaries, verify-claims; (3) '--flat' flag: slice; (4) always JSON: run, compact; (5) no JSON: sketch, search, routes, explain, catalog, symbols, cache-status. This extends RRR (catalog), BBB (cache-status), AAAAA (routes) with two more text-only subcmds (symbols, explain) AND highlights the inconsistent flag naming (--format vs --json vs --flat) for the JSON-supporting ones"  # 0eab
+- op: update  # 8bbd
+  at: '2026-05-30T05:43:41Z'  # 8bbd
+  by: agent  # 8bbd
+  actor: jgstern_agent  # 8bbd
+  clock: 2  # 8bbd
+  nonce: 8bbd  # 8bbd
+  set:  # 8bbd
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # 8bbd
+    fields:  # 8bbd
+      dogfood_anon_id: "ITEM-e5ca58"  # 8bbd
+  add:  # 8bbd
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 8bbd
+- op: discuss  # 943d
+  at: '2026-05-30T05:43:42Z'  # 943d
+  by: agent  # 943d
+  actor: jgstern_agent  # 943d
+  clock: 3  # 943d
+  nonce: 943d  # 943d
+  message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 943d

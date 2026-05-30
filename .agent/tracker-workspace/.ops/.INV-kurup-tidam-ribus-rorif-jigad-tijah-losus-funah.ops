@@ -1,0 +1,25 @@
+- op: create  # d09f
+  at: '2026-05-30T05:41:07Z'  # d09f
+  by: agent  # d09f
+  actor: jgstern_agent  # d09f
+  clock: 1  # d09f
+  nonce: d09f  # d09f
+  data:  # d09f
+    kind: invariant  # d09f
+    title: "META: Identifier-bearing fields emit non-canonical formats from several emission paths"  # d09f
+    status: violated  # d09f
+    priority: 2  # d09f
+    parent:  # d09f
+    tags:  # d09f
+    - dogfood_corpus_20260528  # d09f
+    - dogfood_umbrella  # d09f
+    - dogfood_severity_moderate  # d09f
+    isbefore: []  # d09f
+    duplicate_of: []  # d09f
+    not_duplicate_of: []  # d09f
+    pr_ref:  # d09f
+    description: "**Subject:** Identifier-bearing fields emit non-canonical formats from several emission paths\n\n**Mechanic:** Several identifier-bearing fields declare schemes (a fingerprint scheme prefix, a stable-id hash prefix, a structured 4-colon shape for node IDs) but multiple emitter paths bypass the canonical factories that enforce those schemes. Result: the same field carries values in multiple incompatible formats simultaneously — some with the declared prefix, some without; some matching the structured-ID shape, some emitting raw hex, bare names, or extra-colon variants. Affected paths include language-specific analyzer paths for certain ecosystems, linker-emitted call-site nodes, and dependency-declaration emitters. The non-canonical fraction is small relative to total record count, but the pattern is consistent: emission boundaries do not validate against the declared scheme.\n\n**Expectation:** Every identifier value should conform to the field's declared scheme, with format enforcement at the emission boundary. A field declared as `<scheme>:<hash>` should always carry the prefix; a field declared as `<lang>:<path>:<span>:<name>:<kind>` should always have that colon count, with internal colons in any component escaped.\n\n**Scope:** Affects multiple identifier-bearing fields. Each individual field's non-canonical fraction is a small minority — well under one percent of records — but the non-canonical records are not random; they concentrate in linker-emitted nodes, externals from dependency manifests, and a handful of language-specific paths.\n\n**Exposure:** Behavior-map node-level identifier fields, queried by any consumer joining records by identity.\n\n**Consequence:** Consumers pattern-matching on a scheme prefix miss the non-canonical instances; joins across runs or analyses drop or misalign the affected records; schema validation cannot rely on declared schemes being honored, so downstream tooling must do format-detection at every join.\n\nSee child member items for per-instance technical detail and per-symptom repro / fix scope."  # d09f
+    fields:  # d09f
+      dogfood_anon_id: "ITEM-803289"  # d09f
+      statement: "Every identifier value should conform to the field's declared scheme, with format enforcement at the emission boundary. A field declared as `<scheme>:<hash>` should always carry the prefix; a field declared as `<lang>:<path>:<span>:<name>:<kind>` should always have that colon count, with internal colons in any component escaped."  # d09f
+      root_cause: "Several identifier-bearing fields declare schemes (a fingerprint scheme prefix, a stable-id hash prefix, a structured 4-colon shape for node IDs) but multiple emitter paths bypass the canonical factories that enforce those schemes. Result: the same field carries values in multiple incompatible formats simultaneously — some with the declared prefix, some without; some matching the structured-ID shape, some emitting raw hex, bare names, or extra-colon variants. Affected paths include language-specific analyzer paths for certain ecosystems, linker-emitted call-site nodes, and dependency-declaration emitters. The non-canonical fraction is small relative to total record count, but the pattern is consistent: emission boundaries do not validate against the declared scheme."  # d09f

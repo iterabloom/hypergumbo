@@ -20,3 +20,15 @@
     pr_ref:  # dc31
     description: "When 'hypergumbo slice --entry <name>' has multiple matches with the SAME language (e.g., real symbol vs python:external:0-0:<name>:unresolved synthetic), the error message says 'Use a full node ID to disambiguate, or filter with --language.' --language python doesn't disambiguate when both are python. Better hint: suggest --list-entries (which works and shows IDs) or copy-paste the full ID from the error message. Reproduce: hypergumbo slice --input behavior_map.json --entry find_files → 2 python candidates listed; --language python on retry → same ambiguity error."  # dc31
     fields: {}  # dc31
+- op: update  # 369c
+  at: '2026-05-30T05:32:30Z'  # 369c
+  by: agent  # 369c
+  actor: jgstern_agent  # 369c
+  clock: 2  # 369c
+  nonce: 369c  # 369c
+  set:  # 369c
+    priority: 2  # 369c
+    fields:  # 369c
+      dogfood_anon_id: "ITEM-c4e371"  # 369c
+  add:  # 369c
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 369c

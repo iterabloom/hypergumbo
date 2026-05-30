@@ -23,3 +23,15 @@
     fields:  # 8fba
       statement: "A linker-created Symbol that lives in a .ts/.tsx/.mts/.cts file must have language=\"typescript\", consistent with what the JS/TS analyzer assigns to non-linker symbols in the same file. Current state: event_sourcing/ipc/database_query/graphql_resolver linkers all hard-code language=\"javascript\" regardless of extension, producing 7 of 53 (13%) .ts file Symbol records that disagree with the rest."  # 8fba
       root_cause: "event_sourcing.py lines 319/333/347/361, ipc.py:509, database_query.py:270,284, graphql_resolver.py:235,248,263 all literally write language=\"javascript\" with no extension check. tauri_ipc.py and wasm_bindgen.py demonstrate the correct pattern (language=\"typescript\" for TS-targeting symbols), so the fix is a per-linker helper to infer language from file extension before constructing Symbol records."  # 8fba
+- op: update  # 1edd
+  at: '2026-05-30T05:32:28Z'  # 1edd
+  by: agent  # 1edd
+  actor: jgstern_agent  # 1edd
+  clock: 2  # 1edd
+  nonce: 1edd  # 1edd
+  set:  # 1edd
+    priority: 1  # 1edd
+    fields:  # 1edd
+      dogfood_anon_id: "ITEM-71e6e5"  # 1edd
+  add:  # 1edd
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 1edd

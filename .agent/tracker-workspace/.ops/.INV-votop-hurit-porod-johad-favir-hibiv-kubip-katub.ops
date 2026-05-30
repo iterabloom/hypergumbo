@@ -23,3 +23,22 @@
     fields:  # 065b
       statement: "hypergumbo search PATTERN --kind nonexistent_kind returns 'No symbols found' (exit 0) instead of erroring. Same for --language unknown_lang, --limit 0, --limit -5. No validation against the known kind/language vocabulary or limit range."  # 065b
       root_cause: "The search command does not validate --kind / --language values against the actual enum of kinds (function, method, class, file, variable, ...) and languages (python, javascript, ...) present in the behavior_map or analyzer catalog. --limit accepts any int including 0 and negatives. The result is a silent empty response that may mask typos or missing filters in CI scripts."  # 065b
+- op: update  # 1b75
+  at: '2026-05-30T05:43:39Z'  # 1b75
+  by: agent  # 1b75
+  actor: jgstern_agent  # 1b75
+  clock: 2  # 1b75
+  nonce: 1b75  # 1b75
+  set:  # 1b75
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # 1b75
+    fields:  # 1b75
+      dogfood_anon_id: "ITEM-bcd30e"  # 1b75
+  add:  # 1b75
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 1b75
+- op: discuss  # 8c27
+  at: '2026-05-30T05:43:40Z'  # 8c27
+  by: agent  # 8c27
+  actor: jgstern_agent  # 8c27
+  clock: 3  # 8c27
+  nonce: 8c27  # 8c27
+  message: "Cluster member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 8c27

@@ -30,3 +30,36 @@
   clock: 2  # ff9d
   nonce: ff9d  # ff9d
   message: "Pass 18 FFFFFFF: retested compact with --max-symbols 1000 (10x the default). Result: 1000 nodes / 8254 edges. Feature ref-check: TOTAL of 10/70 feature.edge_ids and 20/71 feature.node_ids present. Per-feature: f0=1/4 edges, 2/5 nodes; f1=0/7, 1/6; f2=1/7, 2/6; f3=0/7, 1/6; f4=3/9, 4/8. Dangling rate is ~85% even with 10x more symbols in the compact pool. Conclusion: IIIIII is structural — increasing --max-symbols does NOT shrink the dangling-references count proportionally. The compact selection criteria (centrality coverage) don't co-vary with feature membership; feature-bearing node IDs are not being preferentially selected. Fix needs to re-project features' edge_ids/node_ids onto the post-compaction node/edge sets, not just preserve them verbatim. Top-level edges/nodes self-consistency is 100% (350/350 with both endpoints; 8254/8254 at 1k): only features.edge_ids/features.node_ids have dangling refs."  # ff9d
+- op: update  # c882
+  at: '2026-05-30T05:43:51Z'  # c882
+  by: agent  # c882
+  actor: jgstern_agent  # c882
+  clock: 3  # c882
+  nonce: c882  # c882
+  set:  # c882
+    fields:  # c882
+      dogfood_anon_id: "ITEM-857994"  # c882
+  add:  # c882
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # c882
+- op: discuss  # 5d40
+  at: '2026-05-30T05:43:51Z'  # 5d40
+  by: agent  # 5d40
+  actor: jgstern_agent  # 5d40
+  clock: 4  # 5d40
+  nonce: 5d40  # 5d40
+  message: "Subsumed by INV-titid-favuv-kubam-kapib-vapon-kamub-talos-madoj 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 5d40
+- op: discuss  # 61b8
+  at: '2026-05-30T05:44:50Z'  # 61b8
+  by: agent  # 61b8
+  actor: jgstern_agent  # 61b8
+  clock: 5  # 61b8
+  nonce: 61b8  # 61b8
+  message: "Extension finding observed in session s18 (label FFFFFFF, no separate tracker item, classification: extension-of-this-finding): compact at --max-symbols 1000 still has ~85 percent dangling feature refs (10/70 edges, 20/71 nodes present); structural rather than size-dependent. Recorded in dogfooding_blind_mapping.tsv as extension of IIIIII (= this item)."  # 61b8
+- op: update  # 61c7
+  at: '2026-05-30T05:56:23Z'  # 61c7
+  by: human  # 61c7
+  actor: jgstern  # 61c7
+  clock: 6  # 61c7
+  nonce: 61c7  # 61c7
+  set:  # 61c7
+    status: deleted  # 61c7

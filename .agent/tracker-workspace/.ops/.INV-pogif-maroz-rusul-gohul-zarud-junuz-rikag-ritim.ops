@@ -23,3 +23,29 @@
     fields:  # 6e8d
       statement: "limits.supply_chain.classification_failures = [] and limits.supply_chain.ambiguous_paths = [] despite tier classifier demonstrably mislabeling workspace packages (HHH: workspace packages mis-tiered; PPP: 331 first-party hypergumbo_* symbols emitted as external_symbol; WWWW: workspace pyproject.toml files tagged external_dep)"  # 6e8d
       root_cause: "The classification_failures and ambiguous_paths fields are stubs — the tier classifier doesn't write to them when it mis-classifies. Consumers reading classification_failures=[] would conclude tier classification succeeded for all paths, but it doesn't. Observability gap"  # 6e8d
+- op: update  # 1291
+  at: '2026-05-30T05:43:50Z'  # 1291
+  by: agent  # 1291
+  actor: jgstern_agent  # 1291
+  clock: 2  # 1291
+  nonce: '1291'  # 1291
+  set:  # 1291
+    fields:  # 1291
+      dogfood_anon_id: "ITEM-703764"  # 1291
+  add:  # 1291
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 1291
+- op: discuss  # dbe2
+  at: '2026-05-30T05:43:50Z'  # dbe2
+  by: agent  # dbe2
+  actor: jgstern_agent  # dbe2
+  clock: 3  # dbe2
+  nonce: dbe2  # dbe2
+  message: "Subsumed by INV-virik-zobok-rakiv-lujop-budot-haduv-vimol-pigoj 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # dbe2
+- op: update  # b93c
+  at: '2026-05-30T06:10:57Z'  # b93c
+  by: human  # b93c
+  actor: jgstern  # b93c
+  clock: 4  # b93c
+  nonce: b93c  # b93c
+  set:  # b93c
+    status: deleted  # b93c

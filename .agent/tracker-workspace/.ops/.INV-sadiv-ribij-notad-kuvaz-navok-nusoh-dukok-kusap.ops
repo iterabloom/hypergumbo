@@ -23,3 +23,22 @@
     fields:  # adc1
       statement: "All node.id values follow the schema <language>:<path>:<span>:<name>:<kind> with single-colon separators."  # adc1
       root_cause: "Linker passes (http-linker, message-queue-linker, database-query-linker, subprocess-linker, graphql-resolver-linker) emit call_site nodes via a separate path-prefixed schema (<path>::<framework_role>::<line> with double-colon separators), bypassing the canonical node ID factory used by language analyzers."  # adc1
+- op: update  # b366
+  at: '2026-05-30T05:43:43Z'  # b366
+  by: agent  # b366
+  actor: jgstern_agent  # b366
+  clock: 2  # b366
+  nonce: b366  # b366
+  set:  # b366
+    parent: INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah  # b366
+    fields:  # b366
+      dogfood_anon_id: "ITEM-803289"  # b366
+  add:  # b366
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # b366
+- op: discuss  # 31a3
+  at: '2026-05-30T05:43:43Z'  # 31a3
+  by: agent  # 31a3
+  actor: jgstern_agent  # 31a3
+  clock: 3  # 31a3
+  nonce: 31a3  # 31a3
+  message: "Cluster member of INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 31a3

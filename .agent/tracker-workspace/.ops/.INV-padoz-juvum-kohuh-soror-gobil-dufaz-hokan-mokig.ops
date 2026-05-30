@@ -23,3 +23,15 @@
     fields:  # f60a
       statement: "sketch_precomputed.vocabulary has only 12 entries: ['symbol', 'edges', 'edge', 'symbols', 'line', 'kind', 'make', 'method', 'files', 'hypergumbo', 'analyze', 'repo']. No lemmatization: 'symbol' and 'symbols' both present; 'edge' and 'edges' both present. Generic terms ('line', 'kind', 'make', 'method', 'files') dominate over domain concepts"  # f60a
       root_cause: "Vocabulary extraction tokenizes raw identifiers without stemming/lemmatization and without stop-word filtering of analysis-domain noise (e.g., 'symbols/edges' are the data structure, not domain concepts). 12 entries is too sparse for a 1198-file project; consumers can't use this for semantic search or topic identification"  # f60a
+- op: update  # 5126
+  at: '2026-05-30T05:32:31Z'  # 5126
+  by: agent  # 5126
+  actor: jgstern_agent  # 5126
+  clock: 2  # 5126
+  nonce: '5126'  # 5126
+  set:  # 5126
+    priority: 3  # 5126
+    fields:  # 5126
+      dogfood_anon_id: "ITEM-e79401"  # 5126
+  add:  # 5126
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # 5126

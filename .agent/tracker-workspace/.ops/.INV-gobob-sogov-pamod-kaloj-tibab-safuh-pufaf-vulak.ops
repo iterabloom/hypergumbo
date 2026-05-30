@@ -24,3 +24,22 @@
     fields:  # 8b35
       statement: "When a claims YAML specifies an unknown boundary type (e.g., 'nonexistent_boundary' instead of net_send/fs_write/etc.), 'hypergumbo verify-claims' must error or warn, not report 'confirmed / No nonexistent_boundary chains found.' with exit 0."  # 8b35
       root_cause: "verify_claims.py:239 does boundary_map.entries.get(claim.constraint_boundary) which returns None for unknown boundaries; chain_count=0 follows; then the must_not_exist branch reports 'confirmed / No <boundary> chains found.' Same root pattern as INV-mofih (unknown type confirms) but for boundary names. The valid boundary set is finite and known (env_read, external_potential, fs_read, fs_write, ipc_recv, logging, net_recv, net_send, subprocess) and should be validated at load_claims time with a 'did you mean' hint. Bundle with INV-mofih and INV-nufob for the verify-claims fail-silent cluster."  # 8b35
+- op: update  # 4c10
+  at: '2026-05-30T05:43:39Z'  # 4c10
+  by: agent  # 4c10
+  actor: jgstern_agent  # 4c10
+  clock: 2  # 4c10
+  nonce: 4c10  # 4c10
+  set:  # 4c10
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # 4c10
+    fields:  # 4c10
+      dogfood_anon_id: "ITEM-bcd30e"  # 4c10
+  add:  # 4c10
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 4c10
+- op: discuss  # d78d
+  at: '2026-05-30T05:43:39Z'  # d78d
+  by: agent  # d78d
+  actor: jgstern_agent  # d78d
+  clock: 3  # d78d
+  nonce: d78d  # d78d
+  message: "Cluster member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # d78d

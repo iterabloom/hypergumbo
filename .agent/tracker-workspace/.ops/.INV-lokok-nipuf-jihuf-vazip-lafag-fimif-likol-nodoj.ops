@@ -23,3 +23,29 @@
       severity: "medium"  # f8e2
       statement: "Node-level fields with entropy=0 (one value across all populated rows): supply_chain.is_example_file=False (33830/33830), supply_chain.is_generated_file=False (33830/33830), meta.external_boundary=True (1624 populated), meta.package_ecosystem='npm' (2), meta.dependency_scope='dev' (2), meta.parent_base_classes=['IService'] (1), meta.name='htrac-frontend' (1), meta.config_format='tsconfig' (1). Combined with pass-19 BBBBBBBB's 9 edge.meta constants = 17 total zero-entropy fields across the schema. Each occupies storage and conceptual surface but carries no information when populated."  # f8e2
       root_cause: "Same family as BBBBBBBB: schema includes optional decoration fields populated by single linkers that emit one value. is_example_file/is_generated_file probably reflect dead-code paths in supply_chain heuristics that never fire on this codebase. Single-row meta fields (name/config_format/parent_base_classes) are likely tied to specific framework/manifest emitters."  # f8e2
+- op: update  # 9dc0
+  at: '2026-05-30T05:43:49Z'  # 9dc0
+  by: agent  # 9dc0
+  actor: jgstern_agent  # 9dc0
+  clock: 2  # 9dc0
+  nonce: 9dc0  # 9dc0
+  set:  # 9dc0
+    fields:  # 9dc0
+      dogfood_anon_id: "ITEM-c09542"  # 9dc0
+  add:  # 9dc0
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 9dc0
+- op: discuss  # 26c7
+  at: '2026-05-30T05:43:49Z'  # 26c7
+  by: agent  # 26c7
+  actor: jgstern_agent  # 26c7
+  clock: 3  # 26c7
+  nonce: 26c7  # 26c7
+  message: "Subsumed by INV-lifik-kasis-vadom-milom-pibat-surag-mivun-falob 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 26c7
+- op: update  # 2ced
+  at: '2026-05-30T06:12:07Z'  # 2ced
+  by: human  # 2ced
+  actor: jgstern  # 2ced
+  clock: 4  # 2ced
+  nonce: 2ced  # 2ced
+  set:  # 2ced
+    status: deleted  # 2ced

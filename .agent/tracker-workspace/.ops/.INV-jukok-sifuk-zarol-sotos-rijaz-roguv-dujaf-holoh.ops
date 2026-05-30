@@ -30,3 +30,15 @@
   clock: 2  # 21dd
   nonce: 21dd  # 21dd
   message: "Pass 13 evidence-strengthening: dangling-src edges break down by source NODE (not just file pseudo-node). 4 unique src IDs across 23 edges: (a) scip_pb2.py:1-1:file:file (10 edges — original QQQ case), (b) test_scip_generated.py:54-78:test_index_roundtrip:function (5 edges), (c) test_scip_generated.py:1-1:file:file (5 edges), (d) test_scip_generated.py:81-88:test_source_commit_file_is_pinned_sha:function (3 edges). 8 of 23 dangling edges originate from FUNCTION nodes (not file pseudo-nodes) — the test functions exist in source but were not emitted as nodes. This extends QQQ from 'phantom file pseudo-node' to 'phantom function nodes in tests of generated code'. The dangling pattern follows the generated/tested-generated boundary, not the file/function boundary."  # 21dd
+- op: update  # 433c
+  at: '2026-05-30T05:32:27Z'  # 433c
+  by: agent  # 433c
+  actor: jgstern_agent  # 433c
+  clock: 3  # 433c
+  nonce: 433c  # 433c
+  set:  # 433c
+    priority: 2  # 433c
+    fields:  # 433c
+      dogfood_anon_id: "ITEM-8e838d"  # 433c
+  add:  # 433c
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 433c

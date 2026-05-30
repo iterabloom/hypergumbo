@@ -23,3 +23,29 @@
       severity: "medium"  # c9fe
       statement: "The modifiers field and supply_chain.is_exported are independently set and produce 7 direct contradictions: 5 Python functions with modifiers=['private'] AND is_exported=True (_controller_to_view_dir, _is_action_method, _camel_to_snake, _count_controller_methods, _probe_template_files — all underscore-prefixed but in packages/*/src/ paths). 2 Solidity functions with modifiers=['external'] AND is_exported=False (IToken.transfer, Token.transfer — both in tests/ paths). The supply_chain.reason field shows the conflict source: path-based heuristic 'path matches ^packages/[^/]+/src/' overrides language-level visibility, and 'test path matches (?:^|/)tests?/' overrides Solidity external modifier. Both are path-mediated overrides of language-mediated visibility."  # c9fe
       root_cause: "Two independent visibility-classification systems: (1) language analyzer reads source-syntax modifiers; (2) supply_chain classifier reads file-path heuristics. They produce different answers for the same node and neither dominates. Pass-17 DDDDDD noted Python-only emits 'private'; this finding extends to the cross-field disagreement when both are present."  # c9fe
+- op: update  # 8589
+  at: '2026-05-30T05:43:50Z'  # 8589
+  by: agent  # 8589
+  actor: jgstern_agent  # 8589
+  clock: 2  # 8589
+  nonce: '8589'  # 8589
+  set:  # 8589
+    fields:  # 8589
+      dogfood_anon_id: "ITEM-a7325f"  # 8589
+  add:  # 8589
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 8589
+- op: discuss  # bb08
+  at: '2026-05-30T05:43:50Z'  # bb08
+  by: agent  # bb08
+  actor: jgstern_agent  # bb08
+  clock: 3  # bb08
+  nonce: bb08  # bb08
+  message: "Subsumed by INV-jusot-fazad-duvub-joruf-nugik-punod-diviz-zumup 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # bb08
+- op: update  # c5cb
+  at: '2026-05-30T06:12:00Z'  # c5cb
+  by: human  # c5cb
+  actor: jgstern  # c5cb
+  clock: 4  # c5cb
+  nonce: c5cb  # c5cb
+  set:  # c5cb
+    status: deleted  # c5cb

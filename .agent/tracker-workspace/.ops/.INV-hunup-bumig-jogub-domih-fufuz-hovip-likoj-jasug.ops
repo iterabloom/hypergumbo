@@ -23,3 +23,22 @@
       severity: "high"  # cfea
       statement: "node.stable_id is documented as 'hypergumbo-stableid-v4' (sha256:<16hex> prefix). In bm.json: 33518 of 33694 (99.5%) use the sha256: prefix form; 176 nodes use one of 5 alternative formats — raw 64-char hex without prefix (156, mostly python methods/functions like 'e324857529d1...'), 'lang:scheme:name:kind' 1-colon form (103, e.g. 'typescript:npm:lit:npm_package'), bare name with 0 colons (25, e.g. 'activate' from service-worker.js), 2-colons (6), 3-colons (2). The mass of 156 raw-hex python entries strongly suggests an early-emission path that skips the prefix wrapper."  # cfea
       root_cause: "Multiple analyzer code paths produce stable_id without going through the canonical-prefix helper. Python method/function analyzer emits raw 64-char hex directly (156 cases). Pass-17 BBBBBB found 60% collision rate; this finding adds the FORMAT-dispersion axis (5+ formats coexist in the same field)."  # cfea
+- op: update  # b3ea
+  at: '2026-05-30T05:43:43Z'  # b3ea
+  by: agent  # b3ea
+  actor: jgstern_agent  # b3ea
+  clock: 2  # b3ea
+  nonce: b3ea  # b3ea
+  set:  # b3ea
+    parent: INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah  # b3ea
+    fields:  # b3ea
+      dogfood_anon_id: "ITEM-803289"  # b3ea
+  add:  # b3ea
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # b3ea
+- op: discuss  # 53f2
+  at: '2026-05-30T05:43:44Z'  # 53f2
+  by: agent  # 53f2
+  actor: jgstern_agent  # 53f2
+  clock: 3  # 53f2
+  nonce: 53f2  # 53f2
+  message: "Cluster member of INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 53f2

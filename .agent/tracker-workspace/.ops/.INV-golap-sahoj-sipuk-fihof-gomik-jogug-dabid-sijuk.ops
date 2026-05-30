@@ -23,3 +23,15 @@
     fields:  # 76fc
       statement: "In the self-analysis behavior_map, JavaScript function/method nodes have signature: None on 100% (0/10). TypeScript, despite using a similar analyzer foundation, populates signature on 96% (25/26). All other languages with function/method nodes also populate signature: bash 155/155, csharp 2/2, go 2/3, java 2/2, python 24750/24877 (99%), rust 2/2, solidity 2/2, swift 2/2, wgsl 3/3."  # 76fc
       root_cause: "The JS analyzer (likely hypergumbo-lang-mainstream/javascript.py or similar) doesn't extract function signatures. Either the tree-sitter JS query for parameter lists isn't producing the signature field, or the analyzer is skipping signature assignment. JS and TS share a parser family but the symbol-extraction paths diverge — TS populates, JS doesn't. Per-language gap analogous to Finding N (LOC/CC) but in a different field."  # 76fc
+- op: update  # 8f23
+  at: '2026-05-30T05:32:29Z'  # 8f23
+  by: agent  # 8f23
+  actor: jgstern_agent  # 8f23
+  clock: 2  # 8f23
+  nonce: 8f23  # 8f23
+  set:  # 8f23
+    priority: 1  # 8f23
+    fields:  # 8f23
+      dogfood_anon_id: "ITEM-ac4c2a"  # 8f23
+  add:  # 8f23
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 8f23

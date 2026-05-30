@@ -23,3 +23,29 @@
     fields:  # e799
       statement: "The AnalysisRun record should expose nodes_emitted and edges_emitted fields directly so consumers can answer 'which pass produced how much output' without scanning the entire nodes/edges lists for matching origins."  # e799
       root_cause: "The AnalysisRun schema records files_analyzed/files_skipped/duration_ms but no production-output counters. Pipeline does not aggregate per-pass emission counts at orchestration time."  # e799
+- op: update  # 1c82
+  at: '2026-05-30T05:43:46Z'  # 1c82
+  by: agent  # 1c82
+  actor: jgstern_agent  # 1c82
+  clock: 2  # 1c82
+  nonce: 1c82  # 1c82
+  set:  # 1c82
+    fields:  # 1c82
+      dogfood_anon_id: "ITEM-c96c76"  # 1c82
+  add:  # 1c82
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 1c82
+- op: discuss  # 5f99
+  at: '2026-05-30T05:43:46Z'  # 5f99
+  by: agent  # 5f99
+  actor: jgstern_agent  # 5f99
+  clock: 3  # 5f99
+  nonce: 5f99  # 5f99
+  message: "Subsumed by INV-pitab-masos-zakaj-limin-fukar-nojit-fohot-maraj 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 5f99
+- op: update  # 8b70
+  at: '2026-05-30T05:55:39Z'  # 8b70
+  by: human  # 8b70
+  actor: jgstern  # 8b70
+  clock: 4  # 8b70
+  nonce: 8b70  # 8b70
+  set:  # 8b70
+    status: deleted  # 8b70

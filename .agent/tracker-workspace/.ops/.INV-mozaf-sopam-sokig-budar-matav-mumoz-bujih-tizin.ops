@@ -22,3 +22,15 @@
     fields:  # 1206
       statement: "metrics.total_files equals the number of files that contributed at least one node (path-bearing) to the IR."  # 1206
       root_cause: "metrics.total_files is the sum of profile.languages.<lang>.files (discovery-time recognition by extension), while unique_paths_in_analysis counts files that produced at least one path-bearing node. yaml (174 files) and markdown (107 files) recognize files at discovery time but their analyzers emit no file/section nodes (yaml has zero nodes in metrics.languages; markdown only emits external :doc_link nodes per LLL)."  # 1206
+- op: update  # a8a5
+  at: '2026-05-30T05:32:25Z'  # a8a5
+  by: agent  # a8a5
+  actor: jgstern_agent  # a8a5
+  clock: 2  # a8a5
+  nonce: a8a5  # a8a5
+  set:  # a8a5
+    priority: 3  # a8a5
+    fields:  # a8a5
+      dogfood_anon_id: "ITEM-f97cf3"  # a8a5
+  add:  # a8a5
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # a8a5

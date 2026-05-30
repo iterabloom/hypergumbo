@@ -22,3 +22,29 @@
       severity: "low"  # 04f7
       statement: "Among 84 AnalysisRun records, 83 carry version='5.0.1' (the project's semver) and 1 (play-routes) carries version='1'. Both runs have identical toolchain={'name': 'python', 'version': '3.12.3'}. The version field carries two different value scales — semver vs single-digit revision. Either play-routes was developed against a v1 schema-version stamp and never updated to track the project version, OR the version field has different semantics per analyzer (semver for project, internal-revision for analyzers). Either way the same field carries two scales without schema-level distinction."  # 04f7
       root_cause: "play-routes analyzer emits version='1' independently of the project semver injection. No central version-stamping policy enforces consistency across analyzers. Same family as pass-19 AAAAAAAA (canonical_name dual-format): one field, two formats."  # 04f7
+- op: update  # 8827
+  at: '2026-05-30T05:43:46Z'  # 8827
+  by: agent  # 8827
+  actor: jgstern_agent  # 8827
+  clock: 2  # 8827
+  nonce: '8827'  # 8827
+  set:  # 8827
+    fields:  # 8827
+      dogfood_anon_id: "ITEM-c96c76"  # 8827
+  add:  # 8827
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 8827
+- op: discuss  # 9b79
+  at: '2026-05-30T05:43:46Z'  # 9b79
+  by: agent  # 9b79
+  actor: jgstern_agent  # 9b79
+  clock: 3  # 9b79
+  nonce: 9b79  # 9b79
+  message: "Subsumed by INV-pitab-masos-zakaj-limin-fukar-nojit-fohot-maraj 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 9b79
+- op: update  # 13d0
+  at: '2026-05-30T06:12:45Z'  # 13d0
+  by: human  # 13d0
+  actor: jgstern  # 13d0
+  clock: 4  # 13d0
+  nonce: 13d0  # 13d0
+  set:  # 13d0
+    status: deleted  # 13d0

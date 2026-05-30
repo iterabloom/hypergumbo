@@ -22,3 +22,15 @@
     fields:  # 1fdb
       statement: "When slice rejects an ambiguous entry, its error message should not suggest --language as a remedy if the ambiguous candidates already share a language; the suggested fix should be applicable."  # 1fdb
       root_cause: "Slice ambiguity error template unconditionally appends 'or filter with --language', without checking whether the language axis actually splits the candidate set."  # 1fdb
+- op: update  # 948d
+  at: '2026-05-30T05:32:26Z'  # 948d
+  by: agent  # 948d
+  actor: jgstern_agent  # 948d
+  clock: 2  # 948d
+  nonce: 948d  # 948d
+  set:  # 948d
+    priority: 2  # 948d
+    fields:  # 948d
+      dogfood_anon_id: "ITEM-911ce4"  # 948d
+  add:  # 948d
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 948d

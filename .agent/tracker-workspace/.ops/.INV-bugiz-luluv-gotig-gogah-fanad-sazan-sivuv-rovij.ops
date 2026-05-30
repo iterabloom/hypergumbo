@@ -23,3 +23,15 @@
     fields:  # c56f
       statement: "The global --debug flag's help text says 'Enable debug logging (shows ripgrep vs Python fallback decisions, etc.)'. Either ripgrep-vs-Python decisions must produce debug output, or the help text must be updated to accurately describe what --debug does."  # c56f
       root_cause: "ranking.py contains the comment 'Note: ripgrep was tried here but removed due to complexity around regex' — ripgrep code path was removed but the --debug help text at cli.py:5741 still references it. Across 6 subcommands tested (catalog, sketch, config, test-coverage, search, cache-status), the --debug flag produces identical output to non-debug. Only 10 logger.debug calls exist in core, most for entry_point loading internals. Stale doc misleads users about flag scope."  # c56f
+- op: update  # acd9
+  at: '2026-05-30T05:32:25Z'  # acd9
+  by: agent  # acd9
+  actor: jgstern_agent  # acd9
+  clock: 2  # acd9
+  nonce: acd9  # acd9
+  set:  # acd9
+    priority: 3  # acd9
+    fields:  # acd9
+      dogfood_anon_id: "ITEM-569a42"  # acd9
+  add:  # acd9
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # acd9

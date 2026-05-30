@@ -23,3 +23,15 @@
     fields:  # c5b5
       statement: "hypergumbo search's result header must report the total number of matches found, not the count after --limit truncation. Negative --limit values must be rejected, not silently interpreted as Python tail-drop slicing."  # c5b5
       root_cause: "cli.py:1599-1607: the header f-string uses len(matches) after the slice matches[:args.limit] has been applied, so it always reports min(total, args.limit). Negative args.limit values flow through unchecked since the guard 'len(matches) > args.limit' is True for any positive total vs. negative limit, and Python list[:negative_int] drops from the tail rather than erroring."  # c5b5
+- op: update  # e025
+  at: '2026-05-30T05:32:27Z'  # e025
+  by: agent  # e025
+  actor: jgstern_agent  # e025
+  clock: 2  # e025
+  nonce: e025  # e025
+  set:  # e025
+    priority: 1  # e025
+    fields:  # e025
+      dogfood_anon_id: "ITEM-bf077e"  # e025
+  add:  # e025
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # e025

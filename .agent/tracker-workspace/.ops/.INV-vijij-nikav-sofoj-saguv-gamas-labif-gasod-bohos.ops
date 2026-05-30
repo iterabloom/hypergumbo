@@ -22,3 +22,29 @@
     fields:  # 8f8f
       statement: "Every AnalysisRun entry — analyzer or linker — must carry a non-empty pass_version derived from compute_pass_version (sha256 of pass module source)."  # 8f8f
       root_cause: "compute_pass_version is invoked by register_linker but not by register_analyzer. The 44 analyzer-class AnalysisRuns all emit empty pass_version; the 40 linker-class AnalysisRuns all emit proper sha256 hashes."  # 8f8f
+- op: update  # 3430
+  at: '2026-05-30T05:43:45Z'  # 3430
+  by: agent  # 3430
+  actor: jgstern_agent  # 3430
+  clock: 2  # 3430
+  nonce: '3430'  # 3430
+  set:  # 3430
+    fields:  # 3430
+      dogfood_anon_id: "ITEM-c96c76"  # 3430
+  add:  # 3430
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 3430
+- op: discuss  # 44ff
+  at: '2026-05-30T05:43:45Z'  # 44ff
+  by: agent  # 44ff
+  actor: jgstern_agent  # 44ff
+  clock: 3  # 44ff
+  nonce: 44ff  # 44ff
+  message: "Subsumed by INV-pitab-masos-zakaj-limin-fukar-nojit-fohot-maraj 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 44ff
+- op: update  # 96c7
+  at: '2026-05-30T06:09:52Z'  # 96c7
+  by: human  # 96c7
+  actor: jgstern  # 96c7
+  clock: 4  # 96c7
+  nonce: 96c7  # 96c7
+  set:  # 96c7
+    status: deleted  # 96c7

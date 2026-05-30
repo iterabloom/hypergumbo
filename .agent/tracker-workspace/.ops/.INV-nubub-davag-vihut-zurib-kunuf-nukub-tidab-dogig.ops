@@ -21,3 +21,15 @@
     fields:  # a5b7
       statement: "For every detected route, the on-disk slice.handler.<METHOD>.<path>.json must contain the richest available slice for that (method, path) pair — i.e. the count in slice.handler.index.json must match the on-disk feature.node_ids length."  # a5b7
       root_cause: "_emit_handler_slices iterates both the function-symbol and the framework-route symbol for each route; both produce the same filename via _handler_slice_filename, and the second write overwrites the first (the route symbol typically has 0 outbound edges)."  # a5b7
+- op: update  # 5734
+  at: '2026-05-30T05:32:30Z'  # 5734
+  by: agent  # 5734
+  actor: jgstern_agent  # 5734
+  clock: 2  # 5734
+  nonce: '5734'  # 5734
+  set:  # 5734
+    priority: 1  # 5734
+    fields:  # 5734
+      dogfood_anon_id: "ITEM-1c12b5"  # 5734
+  add:  # 5734
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 5734

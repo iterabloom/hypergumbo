@@ -23,3 +23,15 @@
     fields:  # 91c5
       statement: "In hypergumbo's self-analysis behavior_map (108683 edges, 33830 nodes), edge.provenance is {} on 100% of edges, edge.quality is {} on 100%, and node.quality is {} on 100%. No analyzer or linker pass writes structured provenance or quality metadata into these schema fields."  # 91c5
       root_cause: "Linker and analyzer code populates edge.meta (evidence_type 100%, access_mode 46%, call_construct 19%, resolution_quality 15%) but writes nothing into the provenance/quality slots. Either the slots are reserved for future passes and should be documented as such, or the IR dataclasses should drop them. Generalizes Finding E (explain --provenance invisible on analyzer edges) and Finding J (pass_version empty on lang analyzers) — those described per-feature symptoms; this is the structural cause."  # 91c5
+- op: update  # 74eb
+  at: '2026-05-30T05:32:26Z'  # 74eb
+  by: agent  # 74eb
+  actor: jgstern_agent  # 74eb
+  clock: 2  # 74eb
+  nonce: 74eb  # 74eb
+  set:  # 74eb
+    priority: 2  # 74eb
+    fields:  # 74eb
+      dogfood_anon_id: "ITEM-fb07ea"  # 74eb
+  add:  # 74eb
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 74eb

@@ -28,3 +28,36 @@
   clock: 2  # a281
   nonce: a281  # a281
   message: "Pass 17 FFFFFF re-confirmation: ran 'hypergumbo explain auto-pr --input /tmp/hg-dogfood-s11/bm.json --provenance' and the same without --provenance. Output was BYTE-IDENTICAL (3116 lines each, diff produced no output). The --provenance flag is a complete no-op in the explain code path, not just 'missing extra output'. Suggested fix: either remove the flag or wire it to emit derived_from chains under each Calls/Called by entry. Sample target: scripts/auto-pr."  # a281
+- op: update  # bd3e
+  at: '2026-05-30T05:43:48Z'  # bd3e
+  by: agent  # bd3e
+  actor: jgstern_agent  # bd3e
+  clock: 3  # bd3e
+  nonce: bd3e  # bd3e
+  set:  # bd3e
+    fields:  # bd3e
+      dogfood_anon_id: "ITEM-1c20b5"  # bd3e
+  add:  # bd3e
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # bd3e
+- op: discuss  # acc9
+  at: '2026-05-30T05:43:48Z'  # acc9
+  by: agent  # acc9
+  actor: jgstern_agent  # acc9
+  clock: 4  # acc9
+  nonce: acc9  # acc9
+  message: "Subsumed by INV-rarol-gogag-lapat-hirun-dolif-kavop-vutaj-larij 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # acc9
+- op: discuss  # 9f09
+  at: '2026-05-30T05:44:50Z'  # 9f09
+  by: agent  # 9f09
+  actor: jgstern_agent  # 9f09
+  clock: 5  # 9f09
+  nonce: 9f09  # 9f09
+  message: "Extension finding observed in session s17 (label FFFFFF, no separate tracker item, classification: extension-of-this-finding): explain --provenance produces byte-identical output (3116 lines diff produces 0); re-confirms this finding. Recorded in dogfooding_blind_mapping.tsv as extension of E (= this item)."  # 9f09
+- op: update  # 8ae0
+  at: '2026-05-30T06:12:52Z'  # 8ae0
+  by: human  # 8ae0
+  actor: jgstern  # 8ae0
+  clock: 6  # 8ae0
+  nonce: 8ae0  # 8ae0
+  set:  # 8ae0
+    status: deleted  # 8ae0

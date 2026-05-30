@@ -24,3 +24,22 @@
     fields:  # 571b
       statement: "When 'hypergumbo verify-claims' is given --taint-sources / --taint-sinks / --taint-sanitizers PATH and that path is nonexistent, malformed YAML, or wrong-shape content, the command must error out (or at minimum print a warning) — not silently report 'All N claim(s) CONFIRMED' with exit 0."  # 571b
       root_cause: "The taint-flag file loaders fall back to empty catalog on any failure (including FileNotFoundError, YAMLError, schema mismatch). Combined with INV-mofih (verify-claims accepts unknown/missing claim type as confirmed), a user can mis-spell their entire taint configuration AND get 'All CONFIRMED' with zero indication anything went wrong. Tested: --taint-sources nonexistent.yml → confirmed; --taint-sources <random_text>.yml → confirmed; --taint-sinks bad.json → confirmed. Strengthens INV-mofih severity argument — verify-claims is fail-silent on essentially every input failure mode on the security-critical command."  # 571b
+- op: update  # c3c8
+  at: '2026-05-30T05:43:39Z'  # c3c8
+  by: agent  # c3c8
+  actor: jgstern_agent  # c3c8
+  clock: 2  # c3c8
+  nonce: c3c8  # c3c8
+  set:  # c3c8
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # c3c8
+    fields:  # c3c8
+      dogfood_anon_id: "ITEM-bcd30e"  # c3c8
+  add:  # c3c8
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # c3c8
+- op: discuss  # 49d7
+  at: '2026-05-30T05:43:39Z'  # 49d7
+  by: agent  # 49d7
+  actor: jgstern_agent  # 49d7
+  clock: 3  # 49d7
+  nonce: 49d7  # 49d7
+  message: "Cluster member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 49d7

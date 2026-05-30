@@ -21,3 +21,15 @@
     pr_ref:  # 3e71
     description: "122 synthetic nodes created by message-queue / websocket / graphql linkers carry kind='function' and language='python' even though they represent framework endpoints, not Python functions. Example: 'websocket:packages/hypergumbo-tracker/src/hypergumbo_tracker/serve.py:433:/ws:endpoint' has kind=function, language=python, meta.framework_role=websocket_endpoint, origin=[websocket-linker]. The kind/language slot is being reused because there isn't a 'framework_endpoint' kind in the enum.\n\nFiltering: origin field correctly identifies them (origin=[<linker-name>]), and id has a synthetic prefix (websocket:, kafka:, redis:, etc.). So programmatic consumers can filter, but the kind=function tag conflates two concepts: Python functions in code vs. synthetic framework endpoints. Conceptual leak similar to VV (extends vs inherits vs implements).\n\nRecommendation: add 'framework_endpoint' or 'message_channel' kind to the symbol-kind axis, or document the origin-prefix discriminator. Found in dogfooding pass 10 (2026-05-28)."  # 3e71
     fields: {}  # 3e71
+- op: update  # 89e3
+  at: '2026-05-30T05:32:28Z'  # 89e3
+  by: agent  # 89e3
+  actor: jgstern_agent  # 89e3
+  clock: 2  # 89e3
+  nonce: '89e3'  # 89e3
+  set:  # 89e3
+    priority: 1  # 89e3
+    fields:  # 89e3
+      dogfood_anon_id: "ITEM-8b4eb5"  # 89e3
+  add:  # 89e3
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 89e3

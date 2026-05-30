@@ -20,3 +20,15 @@
     pr_ref:  # c5d7
     description: "HYPERGUMBO_VERBOSE (used in sketch.py:1719) and HYPERGUMBO_MIN_MEMORY_MB (used in analyze/base.py:56) are referenced in source but not documented in docs/, README, AGENTS.md, or CHANGELOG. Compare to HYPERGUMBO_CACHE_HONK_GB (documented in spec) and HYPERGUMBO_RUST_ANALYZER (documented in spec + CHANGELOG). Additionally: HF_HUB_OFFLINE=1 is the known workaround for INV-dasig (huggingface.co network on first install) but is not documented anywhere in hypergumbo's own docs — users have no way to discover this offline-mode opt-in. Suggested fix: add an 'Environment Variables' section to docs/hypergumbo-spec.md covering all four HYPERGUMBO_* vars plus the HF_HUB_OFFLINE workaround."  # c5d7
     fields: {}  # c5d7
+- op: update  # 1e58
+  at: '2026-05-30T05:32:26Z'  # 1e58
+  by: agent  # 1e58
+  actor: jgstern_agent  # 1e58
+  clock: 2  # 1e58
+  nonce: '1e58'  # 1e58
+  set:  # 1e58
+    priority: 3  # 1e58
+    fields:  # 1e58
+      dogfood_anon_id: "ITEM-034c6c"  # 1e58
+  add:  # 1e58
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # 1e58

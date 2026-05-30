@@ -30,3 +30,15 @@
   clock: 2  # 39b4
   nonce: 39b4  # 39b4
   message: "pass11: new invocation-path manifestation. --taint-sources pointing at malformed YAML now produces raw yaml.YAMLError traceback (in addition to the prior --claims invocation). Same fail-loud-with-Python-traceback pattern; clean errors needed across all YAML-consuming flags (--claims, --taint-sources, --taint-sinks, --taint-sanitizers)."  # 39b4
+- op: update  # 1c78
+  at: '2026-05-30T05:32:25Z'  # 1c78
+  by: agent  # 1c78
+  actor: jgstern_agent  # 1c78
+  clock: 3  # 1c78
+  nonce: 1c78  # 1c78
+  set:  # 1c78
+    priority: 2  # 1c78
+    fields:  # 1c78
+      dogfood_anon_id: "ITEM-6090d0"  # 1c78
+  add:  # 1c78
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 1c78

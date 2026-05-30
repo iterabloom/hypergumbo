@@ -22,3 +22,29 @@
     fields:  # 76c2
       statement: "Source-text strings extracted from one syntactic context (e.g. Solidity require-message argument) must not propagate into more than one node-identity axis. JJJJJ scoped this to node.language; canonical_name leakage proves the contamination is wider than originally captured."  # 76c2
       root_cause: "The unresolved-symbol synthesis path stores the source string as both language AND in the canonical_name 'state' suffix; the same garbage propagates across both axes from a single ingestion point. Fix at the source must include canonical_name re-mapping."  # 76c2
+- op: update  # 4c17
+  at: '2026-05-30T05:43:49Z'  # 4c17
+  by: agent  # 4c17
+  actor: jgstern_agent  # 4c17
+  clock: 2  # 4c17
+  nonce: 4c17  # 4c17
+  set:  # 4c17
+    fields:  # 4c17
+      dogfood_anon_id: "ITEM-2ba53e"  # 4c17
+  add:  # 4c17
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 4c17
+- op: discuss  # a7a4
+  at: '2026-05-30T05:43:49Z'  # a7a4
+  by: agent  # a7a4
+  actor: jgstern_agent  # a7a4
+  clock: 3  # a7a4
+  nonce: a7a4  # a7a4
+  message: "Subsumed by INV-gilok-ruvar-bamad-foguv-mopum-jajif-zafup-togif 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # a7a4
+- op: update  # 4708
+  at: '2026-05-30T05:50:36Z'  # 4708
+  by: human  # 4708
+  actor: jgstern  # 4708
+  clock: 4  # 4708
+  nonce: '4708'  # 4708
+  set:  # 4708
+    status: deleted  # 4708

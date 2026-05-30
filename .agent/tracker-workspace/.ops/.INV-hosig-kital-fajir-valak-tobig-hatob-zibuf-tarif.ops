@@ -22,3 +22,22 @@
     fields:  # 2d0e
       statement: "di-resolution pass runs for 2550ms (2.7% of total pass time) and emits ZERO edges. Origin 'di-resolution' does not appear in any edge.origin. Pass appears to do no productive work in this repo"  # 2d0e
       root_cause: "di-resolution likely targets dependency-injection frameworks (Spring, Dagger, Autofac, etc.) — none present in this codebase. Pass should short-circuit on absence of DI markers (similar to how 66 language passes report 'no files matched') rather than spending 2.5s of CPU. files_analyzed=0 suggests it's reading the in-memory IR but finding no DI patterns"  # 2d0e
+- op: update  # 7570
+  at: '2026-05-30T05:43:44Z'  # 7570
+  by: agent  # 7570
+  actor: jgstern_agent  # 7570
+  clock: 2  # 7570
+  nonce: '7570'  # 7570
+  set:  # 7570
+    parent: INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz  # 7570
+    fields:  # 7570
+      dogfood_anon_id: "ITEM-5a1949"  # 7570
+  add:  # 7570
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 7570
+- op: discuss  # b991
+  at: '2026-05-30T05:43:44Z'  # b991
+  by: agent  # b991
+  actor: jgstern_agent  # b991
+  clock: 3  # b991
+  nonce: b991  # b991
+  message: "Cluster member of INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # b991

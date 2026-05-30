@@ -22,3 +22,15 @@
     fields:  # bc98
       statement: "The 'hypergumbo config <lang>' output should signal to users (via empty-vs-null vs missing keys, or a top-level coverage flag) which languages have NO analyzer support vs which have partial support. Currently all 281 catalog entries return identically-shaped JSON ({dataflow_patterns, io_primitives, function_summaries}); 261 of those have empty content in all 3 fields."  # bc98
       root_cause: "Inspection of config --format json output for all 281 catalog entries: 20 mainstream languages (c, cpp, csharp, dart, elixir, erlang, go, haskell, java, javascript, kotlin, lua, objc, perl, php, python, ruby, rust, scala, swift) have populated dataflow_patterns and/or io_primitives. Zero of 281 have non-empty function_summaries. The 261 'deeply empty' entries include both legitimate-but-unsupported languages (ada, agda, apex, asm, bash, csharp, etc.) AND framework-linker names (airflow-framework-dispatch-linker, akka-http, adonisjs, aiohttp, annotation-convention-linker) that shouldn't be queried as 'languages' at all (see PP)."  # bc98
+- op: update  # 318b
+  at: '2026-05-30T05:32:27Z'  # 318b
+  by: agent  # 318b
+  actor: jgstern_agent  # 318b
+  clock: 2  # 318b
+  nonce: 318b  # 318b
+  set:  # 318b
+    priority: 3  # 318b
+    fields:  # 318b
+      dogfood_anon_id: "ITEM-29962d"  # 318b
+  add:  # 318b
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # 318b

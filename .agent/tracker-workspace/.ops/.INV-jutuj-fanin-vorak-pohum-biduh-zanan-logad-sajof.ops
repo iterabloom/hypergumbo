@@ -30,3 +30,22 @@
   clock: 2  # 5fe3
   nonce: 5fe3  # 5fe3
   message: "Pass 16 expansion/partial-correction: re-audit of all 15 hypergumbo subcommands shows the inconsistency is broader than I claimed. AAAAA said test-coverage/symbols/dead-code-maybe/search all support --format. INCORRECT: symbols has NO --format flag (text-only), search has NO --format flag (text-only). Verified --format supporters: config, test-coverage, dead-code-maybe (3 total). symbols, search, sketch, routes, explain, catalog, cache-status are all text-only (7 total). io-boundaries / verify-claims use --json. slice uses --flat. run / compact always emit JSON. Five different output conventions across 15 subcmds. Filed broader audit as QQQQQ (WI-pofas)."  # 5fe3
+- op: update  # c5e0
+  at: '2026-05-30T05:43:41Z'  # c5e0
+  by: agent  # c5e0
+  actor: jgstern_agent  # c5e0
+  clock: 3  # c5e0
+  nonce: c5e0  # c5e0
+  set:  # c5e0
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # c5e0
+    fields:  # c5e0
+      dogfood_anon_id: "ITEM-e5ca58"  # c5e0
+  add:  # c5e0
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # c5e0
+- op: discuss  # 7247
+  at: '2026-05-30T05:43:41Z'  # 7247
+  by: agent  # 7247
+  actor: jgstern_agent  # 7247
+  clock: 4  # 7247
+  nonce: '7247'  # 7247
+  message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 7247

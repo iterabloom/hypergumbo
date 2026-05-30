@@ -23,3 +23,29 @@
       severity: "medium"  # c191
       statement: "Nine edge.meta fields carry exactly one value across all populated rows: channel_kind='queue' (103), detection_pattern='table_name' (17), table_name='users' (17), disambiguation_fallback=True (11), dest_access_mode='read' (113), protocol='ws' (12), bridge_kind='ffi' (10), client_framework='native_websocket' (12), url_path='/ws' (12). Each field exists in the schema as if categorizing or routing, but stores a constant. Either intended for future expansion or vestigial."  # c191
       root_cause: "Schema includes optional decoration fields populated by linkers (websocket-linker, message-queue-linker, database-query-linker, dependency-linker). Each linker writes a constant value because it only emits one mechanism. Either the field should be derived from origin/edge.type, or other-value cases need linker support."  # c191
+- op: update  # 5757
+  at: '2026-05-30T05:43:49Z'  # 5757
+  by: agent  # 5757
+  actor: jgstern_agent  # 5757
+  clock: 2  # 5757
+  nonce: '5757'  # 5757
+  set:  # 5757
+    fields:  # 5757
+      dogfood_anon_id: "ITEM-c09542"  # 5757
+  add:  # 5757
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 5757
+- op: discuss  # f42a
+  at: '2026-05-30T05:43:49Z'  # f42a
+  by: agent  # f42a
+  actor: jgstern_agent  # f42a
+  clock: 3  # f42a
+  nonce: f42a  # f42a
+  message: "Subsumed by INV-lifik-kasis-vadom-milom-pibat-surag-mivun-falob 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # f42a
+- op: update  # f994
+  at: '2026-05-30T05:46:40Z'  # f994
+  by: human  # f994
+  actor: jgstern  # f994
+  clock: 4  # f994
+  nonce: f994  # f994
+  set:  # f994
+    status: deleted  # f994

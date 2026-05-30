@@ -23,3 +23,22 @@
     fields:  # bcff
       statement: "The JSON output of 'hypergumbo config <lang> --format json' must include top-level schema_version and view fields for forward-compatibility, consistent with behavior_map.json, slice JSON, test-coverage and io-boundaries envelopes."  # bcff
       root_cause: "cli.py cmd_config emits {dataflow_patterns, io_primitives, function_summaries} without an envelope wrap. Inconsistent with peer commands; downstream consumers cannot version-guard against drift."  # bcff
+- op: update  # 9e8a
+  at: '2026-05-30T05:43:40Z'  # 9e8a
+  by: agent  # 9e8a
+  actor: jgstern_agent  # 9e8a
+  clock: 2  # 9e8a
+  nonce: 9e8a  # 9e8a
+  set:  # 9e8a
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # 9e8a
+    fields:  # 9e8a
+      dogfood_anon_id: "ITEM-e5ca58"  # 9e8a
+  add:  # 9e8a
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 9e8a
+- op: discuss  # dddc
+  at: '2026-05-30T05:43:40Z'  # dddc
+  by: agent  # dddc
+  actor: jgstern_agent  # dddc
+  clock: 3  # dddc
+  nonce: dddc  # dddc
+  message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # dddc

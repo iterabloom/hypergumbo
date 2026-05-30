@@ -1,0 +1,25 @@
+- op: create  # d517
+  at: '2026-05-30T05:41:02Z'  # d517
+  by: agent  # d517
+  actor: jgstern_agent  # d517
+  clock: 1  # d517
+  nonce: d517  # d517
+  data:  # d517
+    kind: invariant  # d517
+    title: "META: Command-line arguments and configuration values silently accepted without validation"  # d517
+    status: violated  # d517
+    priority: 1  # d517
+    parent:  # d517
+    tags:  # d517
+    - dogfood_corpus_20260528  # d517
+    - dogfood_umbrella  # d517
+    - dogfood_severity_significant  # d517
+    isbefore: []  # d517
+    duplicate_of: []  # d517
+    not_duplicate_of: []  # d517
+    pr_ref:  # d517
+    description: "**Subject:** Command-line arguments and configuration values silently accepted without validation\n\n**Mechanic:** Across multiple subcommands, command-line flags, positional arguments, and configuration values are accepted without validation. Specific manifestations include: a flag-acceptance subcommand silently accepting flag names that do not exist; a configuration subcommand silently accepting non-language string arguments where language values are expected; a verification subcommand silently accepting unknown constraint types and unknown taint flag values, then proceeding as if the unknown values were valid; a search subcommand silently accepting invalid filter values for kind, language, and limit; a positional-path argument silently swallowed by an unrelated argument parser; numeric flags silently accepting non-numeric inputs; a JSON-input-consuming subcommand silently accepting JSON that represents the wrong view of the data. The pattern across all of these: parsing does not validate, and downstream logic proceeds without realizing the input is invalid.\n\n**Expectation:** Inputs should be validated at the parsing layer. Unknown values, wrong-shape inputs, and out-of-domain arguments should produce immediate errors with informative messages, not silent acceptance followed by downstream failure or wrong output.\n\n**Scope:** Affects roughly a third of the CLI subcommand set, across multiple flag families on each subcommand. The pattern is consistent — input validation is not a separate concern in the architecture.\n\n**Exposure:** Command-line interface of multiple subcommands.\n\n**Consequence:** Users invoking the tool with mis-typed or wrong-input arguments get no feedback that the invocation was invalid. Downstream consumers receive output that does not match the user's intent. Wrong analyses are produced silently.\n\nSee child member items for per-instance technical detail and per-symptom repro / fix scope."  # d517
+    fields:  # d517
+      dogfood_anon_id: "ITEM-bcd30e"  # d517
+      statement: "Inputs should be validated at the parsing layer. Unknown values, wrong-shape inputs, and out-of-domain arguments should produce immediate errors with informative messages, not silent acceptance followed by downstream failure or wrong output."  # d517
+      root_cause: "Across multiple subcommands, command-line flags, positional arguments, and configuration values are accepted without validation. Specific manifestations include: a flag-acceptance subcommand silently accepting flag names that do not exist; a configuration subcommand silently accepting non-language string arguments where language values are expected; a verification subcommand silently accepting unknown constraint types and unknown taint flag values, then proceeding as if the unknown values were valid; a search subcommand silently accepting invalid filter values for kind, language, and limit; a positional-path argument silently swallowed by an unrelated argument parser; numeric flags silently accepting non-numeric inputs; a JSON-input-consuming subcommand silently accepting JSON that represents the wrong view of the data. The pattern across all of these: parsing does not validate, and downstream logic proceeds without realizing the input is invalid."  # d517

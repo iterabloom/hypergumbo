@@ -20,3 +20,15 @@
     pr_ref:  # e305
     description: "Pass 13: bash pass in self-analysis: duration_ms=26518, files_analyzed=42. Per-file: 631ms. Compare Python (838 files, 34.5s = 41ms/file), markdown (107 files, 3s = 28ms/file). Bash analyzer dominates ~23% of the 114s wall-clock budget on ~5% of the file count. No failed_files / warnings. Worth profiling — possible candidate: shellcheck subprocess overhead, or tree-sitter-bash grammar."  # e305
     fields: {}  # e305
+- op: update  # b10c
+  at: '2026-05-30T05:32:28Z'  # b10c
+  by: agent  # b10c
+  actor: jgstern_agent  # b10c
+  clock: 2  # b10c
+  nonce: b10c  # b10c
+  set:  # b10c
+    priority: 3  # b10c
+    fields:  # b10c
+      dogfood_anon_id: "ITEM-9f2a93"  # b10c
+  add:  # b10c
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # b10c

@@ -23,3 +23,22 @@
     fields:  # a46e
       statement: "yaml analyzer produces 0 path-bearing nodes despite 174 yaml files / 17027 LOC (per profile.languages.yaml). No 'yaml' pass appears in analysis_runs at all — only 'yaml_ansible' exists (1 file, 6ms, 1 node for .yamllint.yaml). 173 of 174 yaml files are effectively unanalyzed: zero file/section/key nodes in the behavior map"  # a46e
       root_cause: "Either (a) the yaml analyzer is registered but doesn't emit any IR (broken extraction), or (b) there's no general yaml analyzer at all (only yaml_ansible covering ansible-specific YAML). profile.languages.yaml counts the files but no pass extracts symbols from them. yaml files include docs/hypergumbo-self-catalog/*.yaml (the highest-centrality entries via UUUU) and packages/*/frameworks/*.yaml — content is invisible to all downstream analysis"  # a46e
+- op: update  # 2cb1
+  at: '2026-05-30T05:43:44Z'  # 2cb1
+  by: agent  # 2cb1
+  actor: jgstern_agent  # 2cb1
+  clock: 2  # 2cb1
+  nonce: 2cb1  # 2cb1
+  set:  # 2cb1
+    parent: INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz  # 2cb1
+    fields:  # 2cb1
+      dogfood_anon_id: "ITEM-5a1949"  # 2cb1
+  add:  # 2cb1
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 2cb1
+- op: discuss  # a1b0
+  at: '2026-05-30T05:43:44Z'  # a1b0
+  by: agent  # a1b0
+  actor: jgstern_agent  # a1b0
+  clock: 3  # a1b0
+  nonce: a1b0  # a1b0
+  message: "Cluster member of INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # a1b0

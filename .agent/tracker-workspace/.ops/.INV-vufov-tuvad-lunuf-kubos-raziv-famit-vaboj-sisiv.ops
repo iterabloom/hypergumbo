@@ -23,3 +23,29 @@
       severity: "low"  # 57c9
       statement: "Five field names appear in both edge.meta (22 distinct keys) and node.meta (42 distinct keys): query_type, queue_type, topic, topic_type, url_path. The value distributions differ between contexts: url_path on edges is {/ws: 12}; url_path on nodes is {/api/users: 10, /api/users/1: 1, /api: 1} — entirely disjoint value sets. queue_type on edges peaks at 'kafka' (85); on nodes peaks at 'kafka' (55) but with redis (9) appearing at node-scope only. The same field-name carries the same semantic concept but different mechanical scopes: edge-meta describes the edge relationship; node-meta describes the node. Schema does not document the dual-scope semantics; consumers may merge or split them inconsistently."  # 57c9
       root_cause: "Two independent emitters (linker-side edge.meta vs analyzer-side node.meta) coined the same field name for related-but-distinct semantics. The schema treats edge.meta and node.meta as namespace-separate so the collision doesn't cause runtime issues but introduces conceptual confusion. Same family as pass-19 GGGGGGG (construct vs call_construct) but at the cross-scope level rather than within-scope."  # 57c9
+- op: update  # 874b
+  at: '2026-05-30T05:43:49Z'  # 874b
+  by: agent  # 874b
+  actor: jgstern_agent  # 874b
+  clock: 2  # 874b
+  nonce: 874b  # 874b
+  set:  # 874b
+    fields:  # 874b
+      dogfood_anon_id: "ITEM-c09542"  # 874b
+  add:  # 874b
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 874b
+- op: discuss  # 6db7
+  at: '2026-05-30T05:43:49Z'  # 6db7
+  by: agent  # 6db7
+  actor: jgstern_agent  # 6db7
+  clock: 3  # 6db7
+  nonce: 6db7  # 6db7
+  message: "Subsumed by INV-lifik-kasis-vadom-milom-pibat-surag-mivun-falob 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 6db7
+- op: update  # e105
+  at: '2026-05-30T06:12:37Z'  # e105
+  by: human  # e105
+  actor: jgstern  # e105
+  clock: 4  # e105
+  nonce: e105  # e105
+  set:  # e105
+    status: deleted  # e105

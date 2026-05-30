@@ -22,3 +22,22 @@
     fields:  # 900d
       statement: "'hypergumbo config <X>' should reject (with a helpful 'did you mean ...' hint) when X is not a language analyzer — e.g., when X is a framework-linker name like 'airflow-framework-dispatch-linker' or 'akka-http'."  # 900d
       root_cause: "config dispatches on whatever name the user gives, looking up in the catalog without distinguishing 'language analyzer' from 'framework linker' or 'cross-cutting linker'. Affected names include: airflow-framework-dispatch-linker, akka-http, adonisjs, aiohttp, annotation-convention-linker (and 60+ similar). User gets identically-shaped empty JSON, no error signal that the argument was wrong. Same fail-silent class as INV-furop (sketch --require-section)."  # 900d
+- op: update  # bed8
+  at: '2026-05-30T05:43:39Z'  # bed8
+  by: agent  # bed8
+  actor: jgstern_agent  # bed8
+  clock: 2  # bed8
+  nonce: bed8  # bed8
+  set:  # bed8
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # bed8
+    fields:  # bed8
+      dogfood_anon_id: "ITEM-bcd30e"  # bed8
+  add:  # bed8
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # bed8
+- op: discuss  # d2d4
+  at: '2026-05-30T05:43:39Z'  # d2d4
+  by: agent  # d2d4
+  actor: jgstern_agent  # d2d4
+  clock: 3  # d2d4
+  nonce: d2d4  # d2d4
+  message: "Cluster member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # d2d4

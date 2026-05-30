@@ -22,3 +22,15 @@
     fields:  # 7e1b
       statement: "Skipped-pass information is reachable from both top-level limits and per-run analysis_runs entries (the IR has consistent provenance for what was skipped and why)."  # 7e1b
       root_cause: "The IR records skipped passes only at top-level (limits.skipped_passes) when discovery emits them. analysis_runs[].skipped_passes is populated only by passes that themselves decide to skip sub-units, and no pass does so in self-analysis. Result: limits has 66 entries (c, cpp, ruby, php, kotlin, scala, lua, perl, powershell, ...), analysis_runs[].skipped_passes is empty in all 84 entries."  # 7e1b
+- op: update  # b0b0
+  at: '2026-05-30T05:32:26Z'  # b0b0
+  by: agent  # b0b0
+  actor: jgstern_agent  # b0b0
+  clock: 2  # b0b0
+  nonce: b0b0  # b0b0
+  set:  # b0b0
+    priority: 2  # b0b0
+    fields:  # b0b0
+      dogfood_anon_id: "ITEM-ec70c2"  # b0b0
+  add:  # b0b0
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # b0b0

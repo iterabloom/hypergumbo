@@ -23,3 +23,29 @@
     fields:  # e2b8
       statement: "Most linkers emit a single hardcoded confidence value across all their edges: decorator-dispatch always 0.7 (292 edges, 1 value), dependency-linker always 0.9 (26 edges, 1 value), enclosure-linker always 0.9 (119 edges, 1 value), pyffi-linker always 0.75, database-query-linker always 0.85, json always 0.95. Only type-hierarchy uses real variance (12 unique values across 324 edges). The confidence field exists, is 100% populated, but doesn't reflect per-edge uncertainty — it's just a per-linker label."  # e2b8
       root_cause: "Linkers were ported with hardcoded confidence constants. No calibration step computes per-edge confidence based on resolution method, ambiguity, or evidence quality."  # e2b8
+- op: update  # 80fb
+  at: '2026-05-30T05:43:51Z'  # 80fb
+  by: agent  # 80fb
+  actor: jgstern_agent  # 80fb
+  clock: 2  # 80fb
+  nonce: 80fb  # 80fb
+  set:  # 80fb
+    fields:  # 80fb
+      dogfood_anon_id: "ITEM-b4686b"  # 80fb
+  add:  # 80fb
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 80fb
+- op: discuss  # 44bf
+  at: '2026-05-30T05:43:51Z'  # 44bf
+  by: agent  # 44bf
+  actor: jgstern_agent  # 44bf
+  clock: 3  # 44bf
+  nonce: 44bf  # 44bf
+  message: "Subsumed by INV-suvil-jojoh-gifib-zirig-famom-sorim-tarar-hojok 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 44bf
+- op: update  # 302d
+  at: '2026-05-30T05:47:45Z'  # 302d
+  by: human  # 302d
+  actor: jgstern  # 302d
+  clock: 4  # 302d
+  nonce: 302d  # 302d
+  set:  # 302d
+    status: deleted  # 302d

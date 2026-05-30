@@ -21,3 +21,15 @@
     pr_ref:  # a3b7
     description: "On hypergumbo's self-analysis behavior_map, 4477 import edges have dst='...:unresolved'. The top 20 unresolved import names are common Python stdlib/typing primitives: Path (677), annotations (467 — from __future__), pytest (327 — test framework dep), patch (196 — unittest.mock), TYPE_CHECKING (148), Optional (133), tree_sitter (133 — installed dep), Iterator (120), time (118), json (116), ClassVar (114), re (103), dataclass (100), Any (83), os (74), subprocess (69), field (60), sys (57), warnings (56), MagicMock (46).\n\nThese are stdlib (Path/typing/json/re/os/sys/subprocess/warnings/dataclass/MagicMock) or third-party deps (pytest, tree_sitter) — both knowable. The Python analyzer treats them all as 'unresolved external symbols' with no catalog distinguishing 'unknown reference' from 'known stdlib reference'.\n\nImpact: downstream consumers (sketch, slice, dead-code-maybe) treat 'imports Path' the same as 'imports does_not_exist' — both unresolved. A catalog-based resolution would mark Path as from_stdlib=pathlib, tree_sitter as from_external=tree-sitter, etc. Strengthens Finding N (LOC/CC gap) and CCC (dead-code-maybe high FP rate, since unresolved imports inflate the dead-candidate count). Found in dogfooding pass 10 (2026-05-28).\n\nSuggested fix: ship a sys.stdlib_module_names-derived catalog and resolve common imports against it before falling back to 'unresolved'."  # a3b7
     fields: {}  # a3b7
+- op: update  # a4a3
+  at: '2026-05-30T05:32:27Z'  # a4a3
+  by: agent  # a4a3
+  actor: jgstern_agent  # a4a3
+  clock: 2  # a4a3
+  nonce: a4a3  # a4a3
+  set:  # a4a3
+    priority: 1  # a4a3
+    fields:  # a4a3
+      dogfood_anon_id: "ITEM-1a05ff"  # a4a3
+  add:  # a4a3
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # a4a3

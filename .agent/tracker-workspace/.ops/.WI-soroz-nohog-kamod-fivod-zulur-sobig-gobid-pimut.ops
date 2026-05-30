@@ -23,3 +23,22 @@
     fields:  # c556
       statement: "hypergumbo catalog returns only human-readable text. Neither --json nor --format json are accepted (silent reject with argparse 'unrecognized arguments'). Programmatic consumers (e.g., CI dashboards listing supported analyzers) must scrape the text format. Other subcommands inconsistently use --json (verify-claims) or --format json (test-coverage, dead-code-maybe); catalog has neither."  # c556
       root_cause: "catalog was implemented as a text-only subcommand; no JSON schema was designed for analyzer listings."  # c556
+- op: update  # bab2
+  at: '2026-05-30T05:43:41Z'  # bab2
+  by: agent  # bab2
+  actor: jgstern_agent  # bab2
+  clock: 2  # bab2
+  nonce: bab2  # bab2
+  set:  # bab2
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # bab2
+    fields:  # bab2
+      dogfood_anon_id: "ITEM-e5ca58"  # bab2
+  add:  # bab2
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # bab2
+- op: discuss  # 7c0d
+  at: '2026-05-30T05:43:41Z'  # 7c0d
+  by: agent  # 7c0d
+  actor: jgstern_agent  # 7c0d
+  clock: 3  # 7c0d
+  nonce: 7c0d  # 7c0d
+  message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 7c0d

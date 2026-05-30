@@ -30,3 +30,15 @@
   clock: 2  # 9adc
   nonce: 9adc  # 9adc
   message: "Pass 8 dogfooding adds quantitative per-language coverage from the live behavior_map (33830 nodes): python LOC/CC 6623/6750 (98%/98%); bash LOC 155/155 (100%) but CC 0/155 (0%); javascript LOC/CC 0/10 (0%/0%); typescript LOC/CC 0/12 (0%/0%). So the gap is not uniform 'non-Python' — bash analyzer DOES compute LOC, just not CC. JS/TS compute neither. This argues for prioritizing JS/TS LOC/CC implementation over bash CC (because JS/TS are widely-used non-Python langs in the wild)."  # 9adc
+- op: update  # 52d6
+  at: '2026-05-30T05:32:30Z'  # 52d6
+  by: agent  # 52d6
+  actor: jgstern_agent  # 52d6
+  clock: 3  # 52d6
+  nonce: 52d6  # 52d6
+  set:  # 52d6
+    priority: 1  # 52d6
+    fields:  # 52d6
+      dogfood_anon_id: "ITEM-4dc13c"  # 52d6
+  add:  # 52d6
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 52d6

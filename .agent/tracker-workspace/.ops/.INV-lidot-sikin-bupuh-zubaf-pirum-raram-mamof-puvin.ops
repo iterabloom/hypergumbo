@@ -22,3 +22,29 @@
     fields:  # 9b3c
       statement: "Default invocation of 'hypergumbo dead-code-maybe' (which uses --seeds entrypoints) classifies 3855/4306 (89.5%) production functions as dead candidates on hypergumbo's own codebase. Switching to --seeds all drops the rate to 35.1% (1510/4306). Sampled candidates include base-class methods like TreeSitterAnalyzer.analyze (called via dispatch from every language analyzer) and CLI command handlers like cmd_install_rust_analyzer (called via argparse subcommand dispatch from main)."  # 9b3c
       root_cause: "Entrypoint detection covers 104 seeds (CLI entry points, __main__.py shims) but misses two large reachability sources: (1) argparse subcommand dispatch from main() does not connect main -> cmd_* command functions, (2) ABC-style dispatch from a registry doesn't connect callers to virtual method bodies. Without these, BFS reachability from entrypoints leaves 89.5% unreached. The --seeds all alternative includes 21812 seeds and recovers most of the FPs but the default mode is the one most users hit."  # 9b3c
+- op: update  # 61d1
+  at: '2026-05-30T05:43:45Z'  # 61d1
+  by: agent  # 61d1
+  actor: jgstern_agent  # 61d1
+  clock: 2  # 61d1
+  nonce: 61d1  # 61d1
+  set:  # 61d1
+    fields:  # 61d1
+      dogfood_anon_id: "ITEM-008e6d"  # 61d1
+  add:  # 61d1
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 61d1
+- op: discuss  # 8f82
+  at: '2026-05-30T05:43:45Z'  # 8f82
+  by: agent  # 8f82
+  actor: jgstern_agent  # 8f82
+  clock: 3  # 8f82
+  nonce: 8f82  # 8f82
+  message: "Subsumed by INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # 8f82
+- op: update  # 7607
+  at: '2026-05-30T06:09:59Z'  # 7607
+  by: human  # 7607
+  actor: jgstern  # 7607
+  clock: 4  # 7607
+  nonce: '7607'  # 7607
+  set:  # 7607
+    status: deleted  # 7607

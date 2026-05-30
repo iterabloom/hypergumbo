@@ -1,0 +1,25 @@
+- op: create  # 2add
+  at: '2026-05-30T05:41:08Z'  # 2add
+  by: agent  # 2add
+  actor: jgstern_agent  # 2add
+  clock: 1  # 2add
+  nonce: 2add  # 2add
+  data:  # 2add
+    kind: invariant  # 2add
+    title: "META: Passes execute and consume resources but emit no edges, with no activation gate"  # 2add
+    status: violated  # 2add
+    priority: 2  # 2add
+    parent:  # 2add
+    tags:  # 2add
+    - dogfood_corpus_20260528  # 2add
+    - dogfood_umbrella  # 2add
+    - dogfood_severity_moderate  # 2add
+    isbefore: []  # 2add
+    duplicate_of: []  # 2add
+    not_duplicate_of: []  # 2add
+    pr_ref:  # 2add
+    description: "**Subject:** Passes execute and consume resources but emit no edges, with no activation gate\n\n**Mechanic:** Several passes (linkers and analyzers) run on every invocation regardless of whether the source patterns they target are present in the analyzed code. A linker scoped to a specific dependency-injection framework family runs even on repositories with no such framework, scanning the intermediate representation for a few seconds and emitting zero edges. A linker scoped to a specific FFI pattern matches only against its own test fixtures (in-tree tests of the linker), emitting edges that solely reflect the linker's self-test and not any production code. A language analyzer reads hundreds of files of a supported language and emits zero nodes. More broadly, the majority of per-pass records report zero edges emitted, and several of those high-load passes scan hundreds of files for no output.\n\n**Expectation:** Passes should consult an activation predicate (analogous to a `should_run(detected_frameworks, detected_languages)` check) and short-circuit when their target patterns are absent. The provenance record should report the pass as skipped with a documented reason rather than executing it. Scan-and-emit-nothing should be impossible for known-absent patterns.\n\n**Scope:** Majority of per-pass records report zero edges. A substantial minority of those are passes that scanned many files (hundreds each) for no output, consuming a meaningful fraction of wall-clock time.\n\n**Exposure:** Behavior-map per-pass provenance records, total run wall-clock, and downstream tooling that interprets per-pass productivity.\n\n**Consequence:** A meaningful fraction of analysis time is spent on passes that never emit output for the analyzed codebase. Consumers cannot distinguish \"pass ran and found nothing\" from \"pass should not have run\" from \"pass is dead.\" Provenance becomes unreliable for \"is this pass useful here?\"\n\nSee child member items for per-instance technical detail and per-symptom repro / fix scope."  # 2add
+    fields:  # 2add
+      dogfood_anon_id: "ITEM-5a1949"  # 2add
+      statement: "Passes should consult an activation predicate (analogous to a `should_run(detected_frameworks, detected_languages)` check) and short-circuit when their target patterns are absent. The provenance record should report the pass as skipped with a documented reason rather than executing it. Scan-and-emit-nothing should be impossible for known-absent patterns."  # 2add
+      root_cause: "Several passes (linkers and analyzers) run on every invocation regardless of whether the source patterns they target are present in the analyzed code. A linker scoped to a specific dependency-injection framework family runs even on repositories with no such framework, scanning the intermediate representation for a few seconds and emitting zero edges. A linker scoped to a specific FFI pattern matches only against its own test fixtures (in-tree tests of the linker), emitting edges that solely reflect the linker's self-test and not any production code. A language analyzer reads hundreds of files of a supported language and emits zero nodes. More broadly, the majority of per-pass records report zero edges emitted, and several of those high-load passes scan hundreds of files for no output."  # 2add

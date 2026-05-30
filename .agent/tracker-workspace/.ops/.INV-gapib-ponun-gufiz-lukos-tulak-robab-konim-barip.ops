@@ -23,3 +23,22 @@
     fields:  # d795
       statement: "hypergumbo subcommands accepting --input must validate that the supplied JSON's 'view' field matches what they expect (or is the primary behavior_map artifact). Currently 5 of 6 consumers (search, explain, routes, test-coverage, dead-code-maybe, io-boundaries) accept a slice.json (with view='slice') as --input and emit benign-looking empty results without warning."  # d795
       root_cause: "Consumers call behavior_map.get('nodes', []) and behavior_map.get('edges', []) without checking the top-level 'view' field. When fed an artifact whose top-level structure is different (e.g., slice JSON wraps nodes inside 'feature.node_ids'), they get an empty list and report 'No symbols found' / 'No I/O boundary calls detected' / etc. The view field exists (test-coverage='test-coverage', slice='slice', compact='compact') for exactly this discrimination but is never read by consumers. Same fail-silent class as Findings P/Y/etc but specifically for artifact-type validation."  # d795
+- op: update  # ed40
+  at: '2026-05-30T05:43:39Z'  # ed40
+  by: agent  # ed40
+  actor: jgstern_agent  # ed40
+  clock: 2  # ed40
+  nonce: ed40  # ed40
+  set:  # ed40
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # ed40
+    fields:  # ed40
+      dogfood_anon_id: "ITEM-bcd30e"  # ed40
+  add:  # ed40
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # ed40
+- op: discuss  # 4ca9
+  at: '2026-05-30T05:43:39Z'  # 4ca9
+  by: agent  # 4ca9
+  actor: jgstern_agent  # 4ca9
+  clock: 3  # 4ca9
+  nonce: 4ca9  # 4ca9
+  message: "Cluster member of INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 4ca9

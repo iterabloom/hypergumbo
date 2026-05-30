@@ -23,3 +23,15 @@
     fields:  # b893
       statement: "hypergumbo subcommands that accept '--input behavior_map.json' must produce a user-readable error and non-zero exit (not a Python traceback) when the file is malformed JSON or has the wrong top-level type."  # b893
       root_cause: "None of the 8 consumers tested (search, explain, symbols, routes, test-coverage, dead-code-maybe, io-boundaries, compact) wrap the json.load() call in a try/except. Malformed JSON: json.JSONDecodeError traceback. Top-level array instead of dict: AttributeError 'list object has no attribute get' at cli.py:1576 (cmd_search) and analogous sites. Same root pattern as INV-zurih (verify-claims YAML traceback). Also: no schema_version validation — a behavior_map with schema_version stripped still 'works', creating a forward-compat trap."  # b893
+- op: update  # 9937
+  at: '2026-05-30T05:32:26Z'  # 9937
+  by: agent  # 9937
+  actor: jgstern_agent  # 9937
+  clock: 2  # 9937
+  nonce: '9937'  # 9937
+  set:  # 9937
+    priority: 2  # 9937
+    fields:  # 9937
+      dogfood_anon_id: "ITEM-75a6cd"  # 9937
+  add:  # 9937
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 9937

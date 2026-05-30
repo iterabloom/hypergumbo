@@ -19,3 +19,15 @@
     pr_ref:  # eedc
     description: "**Symptom.** `hypergumbo catalog` emits an entry for every analyzer pass with format `  - <name> (<tier>): <description>`. On hypergumbo self-analysis (branch dev @ 77a69627b8), 52 of 112 core analyzers ship with an empty description. All 63 `extra` analyzers have non-empty descriptions.\n\n**Empty-description core analyzers (52):**\nrust_analyzer, apex, asm, astro, bibtex, bitbake, circom, commonlisp, fennel, gitignore, gleam, hack, haxe, ini, janet, ... (and 37 more — full list grep-able).\n\nThe output makes 46% of the catalog look broken / unmaintained.\n\n**Likely cause.** Missing `description=` kwarg on `@register_analyzer(...)` calls in those analyzer modules. Two-line fix per module.\n\n**Discovery context.** Self-analysis dogfooding session, 2026-05-28. Lab notebook: `~/hypergumbo_lab_notebook/notebookjournal_05282026_0707.md` (Finding D)."  # eedc
     fields: {}  # eedc
+- op: update  # 8d22
+  at: '2026-05-30T05:32:31Z'  # 8d22
+  by: agent  # 8d22
+  actor: jgstern_agent  # 8d22
+  clock: 2  # 8d22
+  nonce: 8d22  # 8d22
+  set:  # 8d22
+    priority: 3  # 8d22
+    fields:  # 8d22
+      dogfood_anon_id: "ITEM-7b63dd"  # 8d22
+  add:  # 8d22
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # 8d22

@@ -23,3 +23,22 @@
     fields:  # b87f
       statement: "edge.meta.evidence_type has 31 distinct values. Four of them all describe imports with different names: ast_import (10462), import_static (15), import_declaration (1), import_statement (1). Several 1-occurrence values smell vestigial: callback_argument_reference (1), use_declaration (1), trait_impl (1), import_declaration (1), import_statement (1)"  # b87f
       root_cause: "evidence_type is the registered heavyweight axis (ADR-0027/0028). The fact that imports have 4 names (ast_import vs import_static vs import_declaration vs import_statement) suggests linker-by-linker drift in vocabulary — each linker invented its own term for the same concept. The 1-occurrence types may be live (single test fixture) or dead code paths. Worth bundling under the classification_axes audit alongside extends/inherits/implements (VV)"  # b87f
+- op: update  # 1240
+  at: '2026-05-30T05:43:42Z'  # 1240
+  by: agent  # 1240
+  actor: jgstern_agent  # 1240
+  clock: 2  # 1240
+  nonce: '1240'  # 1240
+  set:  # 1240
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # 1240
+    fields:  # 1240
+      dogfood_anon_id: "ITEM-e7307c"  # 1240
+  add:  # 1240
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # 1240
+- op: discuss  # 1843
+  at: '2026-05-30T05:43:42Z'  # 1843
+  by: agent  # 1843
+  actor: jgstern_agent  # 1843
+  clock: 3  # 1843
+  nonce: '1843'  # 1843
+  message: "Cluster member of INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 1843

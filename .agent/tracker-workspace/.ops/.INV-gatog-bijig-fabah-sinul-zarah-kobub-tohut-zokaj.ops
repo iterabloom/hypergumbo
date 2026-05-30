@@ -24,3 +24,22 @@
     fields:  # 2edf
       statement: "The JSON output of 'hypergumbo verify-claims --json' must be a top-level object containing at minimum schema_version, view, and the claim verdicts list — not a bare JSON array as currently emitted."  # 2edf
       root_cause: "Top-level type is list (array), not dict. No envelope means: no schema_version, no summary statistics, no way to add new metadata without breaking consumers. Worst envelope offender among the JSON-emitting subcommands."  # 2edf
+- op: update  # 2f09
+  at: '2026-05-30T05:43:40Z'  # 2f09
+  by: agent  # 2f09
+  actor: jgstern_agent  # 2f09
+  clock: 2  # 2f09
+  nonce: 2f09  # 2f09
+  set:  # 2f09
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # 2f09
+    fields:  # 2f09
+      dogfood_anon_id: "ITEM-e5ca58"  # 2f09
+  add:  # 2f09
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # 2f09
+- op: discuss  # a184
+  at: '2026-05-30T05:43:41Z'  # a184
+  by: agent  # a184
+  actor: jgstern_agent  # a184
+  clock: 3  # a184
+  nonce: a184  # a184
+  message: "Cluster member of WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # a184

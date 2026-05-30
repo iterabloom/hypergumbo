@@ -23,3 +23,22 @@
     fields:  # 904c
       statement: "All emitted node.fingerprint values must use the canonical 'hgfp1:<hash>' format declared by symbol_fingerprint_scheme='hypergumbo-symbol-fp-v1'."  # 904c
       root_cause: "TOML dependency extraction path emits raw hex hashes without the 'hgfp1:' prefix; canonical format helper is bypassed in this code path."  # 904c
+- op: update  # aa33
+  at: '2026-05-30T05:43:43Z'  # aa33
+  by: agent  # aa33
+  actor: jgstern_agent  # aa33
+  clock: 2  # aa33
+  nonce: aa33  # aa33
+  set:  # aa33
+    parent: INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah  # aa33
+    fields:  # aa33
+      dogfood_anon_id: "ITEM-803289"  # aa33
+  add:  # aa33
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_moderate]  # aa33
+- op: discuss  # 99d6
+  at: '2026-05-30T05:43:43Z'  # 99d6
+  by: agent  # 99d6
+  actor: jgstern_agent  # 99d6
+  clock: 3  # 99d6
+  nonce: 99d6  # 99d6
+  message: "Cluster member of INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 99d6

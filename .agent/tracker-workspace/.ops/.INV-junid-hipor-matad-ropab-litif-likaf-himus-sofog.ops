@@ -23,3 +23,22 @@
     fields:  # 6498
       statement: "The edge.meta.framework_dispatch axis should hold a framework name (a specific named library/system) per its name, not a dispatch mechanism category. Mixing framework names ('fastapi', 'starlette', 'django_channels', 'npm_package') with mechanism names ('registry_dispatch', 'native_websocket') leaks two axes into one field."  # 6498
       root_cause: "The decorator/registry-dispatch linker emits 'registry_dispatch' as a sentinel for the dispatch mechanism when no specific framework is identified; the field was originally intended for framework attribution but is now bifunctional."  # 6498
+- op: update  # cee7
+  at: '2026-05-30T05:43:42Z'  # cee7
+  by: agent  # cee7
+  actor: jgstern_agent  # cee7
+  clock: 2  # cee7
+  nonce: cee7  # cee7
+  set:  # cee7
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # cee7
+    fields:  # cee7
+      dogfood_anon_id: "ITEM-e7307c"  # cee7
+  add:  # cee7
+    tags: [dogfood_umbrella_member, dogfood_corpus_20260528, dogfood_severity_significant]  # cee7
+- op: discuss  # d7eb
+  at: '2026-05-30T05:43:42Z'  # d7eb
+  by: agent  # d7eb
+  actor: jgstern_agent  # d7eb
+  clock: 3  # d7eb
+  nonce: d7eb  # d7eb
+  message: "Cluster member of INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # d7eb

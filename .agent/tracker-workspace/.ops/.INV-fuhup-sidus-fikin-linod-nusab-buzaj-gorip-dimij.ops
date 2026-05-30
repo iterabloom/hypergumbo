@@ -23,3 +23,29 @@
     fields:  # 6b9e
       statement: "AnalysisRun.toolchain field is HARDCODED to {name: 'python', version: '3.12.3'} for ALL 84 runs, regardless of pass language. The bash analyzer, JS analyzer, Solidity analyzer — all report toolchain as 'python 3.12.3'. AnalysisRun.execution_id is unique per run (84 UUIDs for 84 runs), not per CLI invocation — so it cannot group passes that came from the same hypergumbo invocation"  # 6b9e
       root_cause: "(1) toolchain captures the HOST Python interpreter rather than the analysis tool. The bash analyzer's toolchain should record bash version or tree-sitter-bash grammar version; the JS analyzer should record its parser version. Current value is useless for cross-tool reproducibility. (2) execution_id is misnamed — it functions as a per-pass UUID identical in role to run_signature, not as a per-invocation group key. Schema-doc consumers would assume execution_id groups runs into invocations"  # 6b9e
+- op: update  # e565
+  at: '2026-05-30T05:43:45Z'  # e565
+  by: agent  # e565
+  actor: jgstern_agent  # e565
+  clock: 2  # e565
+  nonce: e565  # e565
+  set:  # e565
+    fields:  # e565
+      dogfood_anon_id: "ITEM-c96c76"  # e565
+  add:  # e565
+    tags: [for_deletion, dogfood_integrated_member, dogfood_corpus_20260528, dogfood_severity_significant]  # e565
+- op: discuss  # abfa
+  at: '2026-05-30T05:43:45Z'  # abfa
+  by: agent  # abfa
+  actor: jgstern_agent  # abfa
+  clock: 3  # abfa
+  nonce: abfa  # abfa
+  message: "Subsumed by INV-pitab-masos-zakaj-limin-fukar-nojit-fohot-maraj 2026-05-29 per the May-28 dogfooding cluster reorganization. This item's original content remains intact in this record; the integrated cluster analysis lives in the new item."  # abfa
+- op: update  # fc08
+  at: '2026-05-30T06:11:15Z'  # fc08
+  by: human  # fc08
+  actor: jgstern  # fc08
+  clock: 4  # fc08
+  nonce: fc08  # fc08
+  set:  # fc08
+    status: deleted  # fc08

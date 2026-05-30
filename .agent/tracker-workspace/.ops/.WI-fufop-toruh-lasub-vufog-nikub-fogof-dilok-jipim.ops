@@ -21,3 +21,15 @@
     pr_ref:  # 3dd4
     description: "`hypergumbo sketch -t N` always generates two extra comparison sketches at 4x and 16x the requested token budget, even when the user only asks for one. The comparison sketches power the \"How Representative Is This Sketch?\" table — useful for interactive UX, but no opt-out exists for non-interactive / batch / scripted use cases.\n\nReproduction (2026-05-28, dogfooding pass 4):\n\n  time hypergumbo sketch --input /tmp/hg-dogfood-2026-05-28/behavior_map.json \\\n       -t 500 --config-extraction heuristic --no-secret-scan -v\n  → real 2m26s; stderr trail: \"[sketch] Profile ready in 0.0s ... [sketch] Config extracted in 0.0s\"\n  → Both profile and config are cache-hit (0.0s). The remaining 2m26s is dominated\n    by generate_sketch() being called THREE times: once at -t 500, once at -t 2000 (4x), once at -t 8000 (16x).\n\nSource: cli.py:796-841 unconditionally calls generate_sketch() at budget_4x and budget_16x after the main sketch. The comparison table on stderr is the only visible artifact; the 4x/16x sketches themselves go to the cache_dir (cli.py:856-870).\n\nComparison with fresh `hypergumbo run .`: full whole-repo analysis (cold cache) takes 1m54s. Sketch from cached behavior_map.json at -t 500 takes 2m26s. The `--input` flag's documented \"(faster)\" promise is therefore not observed — the cached input bypasses analysis, but the 3x comparison-sketch generation costs more wall-clock than the analysis itself.\n\nAffected use cases:\n- CI dumps a single sketch for archival → pays for two extra sketches it discards.\n- Agent invocations that programmatically call hypergumbo sketch → 3x latency tax.\n- Batch sketching at multiple budgets → 9x duplication when the user already calls sketch at each budget.\n\nProposed fix sketch: add `--no-comparison-sketches` / `--no-representativeness-table` flag that short-circuits the 4x/16x generation and the table emission. Default behavior unchanged. Alternative: make the comparison table emit fixed-size 4x/16x token counts from a simple heuristic (token-to-coverage curve precomputed at run-time) rather than re-running generate_sketch — but that's a larger rewrite.\n\nSeverity: low (perf UX). Discovered: dogfooding pass 4 sketch alternative-mode timing comparison (heuristic vs hybrid produced byte-near-identical outputs in byte-near-identical times, surfacing that the dominant cost is the comparison sketches, not config-extraction mode choice)."  # 3dd4
     fields: {}  # 3dd4
+- op: update  # ad68
+  at: '2026-05-30T05:32:26Z'  # ad68
+  by: agent  # ad68
+  actor: jgstern_agent  # ad68
+  clock: 2  # ad68
+  nonce: ad68  # ad68
+  set:  # ad68
+    priority: 1  # ad68
+    fields:  # ad68
+      dogfood_anon_id: "ITEM-0cf5c3"  # ad68
+  add:  # ad68
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # ad68

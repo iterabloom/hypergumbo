@@ -23,3 +23,15 @@
     fields:  # 0455
       statement: "76% of nodes (25584 of 33830) have supply_chain.reason='test path matches (?:^|/)tests?/' — i.e. they are classified as test-tier symbols. Only 6180 nodes (18.3%) are from first-party src/. The behavior map is dominated by test code. Comparable: 1144 unresolved external (3.4%), 480 internal_dep (1.4%), 358 default-no-pattern (1.1%), 82 dependency declarations (0.2%), 2 npm_package (negligible)"  # 0455
       root_cause: "Tests are not de-emphasized in the behavior map by default. Consumers wanting production-code-only views must filter is_test_file=True themselves (e.g., test-coverage subcommand does this internally, dead-code-maybe optionally via --seeds). The ratio reflects that hypergumbo's own test corpus is large (~5x production code), but downstream consumers and sketches may want a default that excludes or compresses test nodes"  # 0455
+- op: update  # 6dcd
+  at: '2026-05-30T05:32:29Z'  # 6dcd
+  by: agent  # 6dcd
+  actor: jgstern_agent  # 6dcd
+  clock: 2  # 6dcd
+  nonce: 6dcd  # 6dcd
+  set:  # 6dcd
+    priority: 1  # 6dcd
+    fields:  # 6dcd
+      dogfood_anon_id: "ITEM-c69cd6"  # 6dcd
+  add:  # 6dcd
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 6dcd

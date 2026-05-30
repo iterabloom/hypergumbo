@@ -22,3 +22,15 @@
     fields:  # 0d4a
       statement: "sketch_precomputed.readme_description is 207 chars long, includes a markdown quote-block prefix '> ' embedded mid-string, and is cut mid-sentence after 'Requires Python 3.10+'. Sample: 'hypergumbo is a local-first CLI...understand a codebase. > Requires Python 3.10+.'"  # 0d4a
       root_cause: "README extraction truncates at a fixed character/sentence boundary without stripping markdown syntax. The '> ' quote prefix and mid-sentence cut suggest no markdown-aware extractor (e.g., parse first <p> block to clean text). Sketch consumers receive less useful descriptions"  # 0d4a
+- op: update  # 165f
+  at: '2026-05-30T05:32:30Z'  # 165f
+  by: agent  # 165f
+  actor: jgstern_agent  # 165f
+  clock: 2  # 165f
+  nonce: 165f  # 165f
+  set:  # 165f
+    priority: 3  # 165f
+    fields:  # 165f
+      dogfood_anon_id: "ITEM-c56c08"  # 165f
+  add:  # 165f
+    tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_minor]  # 165f
