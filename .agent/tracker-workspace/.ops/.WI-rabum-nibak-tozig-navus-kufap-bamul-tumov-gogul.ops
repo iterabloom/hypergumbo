@@ -1,0 +1,24 @@
+- op: create  # 44c6
+  at: '2026-05-30T20:31:53Z'  # 44c6
+  by: agent  # 44c6
+  actor: jgstern_agent  # 44c6
+  clock: 1  # 44c6
+  nonce: 44c6  # 44c6
+  data:  # 44c6
+    kind: work_item  # 44c6
+    title: "mypy: add CI workflow (non-blocking, then blocking)"  # 44c6
+    status: todo_soft  # 44c6
+    priority: 2  # 44c6
+    parent:  # 44c6
+    tags:  # 44c6
+    - mypy_adoption  # 44c6
+    - developer_experience  # 44c6
+    - tooling  # 44c6
+    - static_typing  # 44c6
+    - ci_infrastructure  # 44c6
+    isbefore: []  # 44c6
+    duplicate_of: []  # 44c6
+    not_duplicate_of: []  # 44c6
+    pr_ref:  # 44c6
+    description: "Add a mypy job to .forgejo/workflows or analogous CI workflow. Phase 1: report-only annotations; PR doesn't fail on mypy errors. Phase 2 (after W4 clean): blocking. Coordinate with smart-test affected-tests selection — only re-run mypy on changed packages if feasible. Capture output to .ci/mypy-output.log per the output-capture-long-running playbook."  # 44c6
+    fields: {}  # 44c6

@@ -1,0 +1,24 @@
+- op: create  # 2b39
+  at: '2026-05-30T20:31:55Z'  # 2b39
+  by: agent  # 2b39
+  actor: jgstern_agent  # 2b39
+  clock: 1  # 2b39
+  nonce: 2b39  # 2b39
+  data:  # 2b39
+    kind: work_item  # 2b39
+    title: "mypy: enable pyright-resonant strict mode + extra error codes"  # 2b39
+    status: todo_soft  # 2b39
+    priority: 2  # 2b39
+    parent:  # 2b39
+    tags:  # 2b39
+    - mypy_adoption  # 2b39
+    - developer_experience  # 2b39
+    - tooling  # 2b39
+    - static_typing  # 2b39
+    - strict_mode  # 2b39
+    isbefore: []  # 2b39
+    duplicate_of: []  # 2b39
+    not_duplicate_of: []  # 2b39
+    pr_ref:  # 2b39
+    description: "Escalate the [tool.mypy] config to strict + pyright-resonant error codes. Add: strict=true, warn_unreachable=true, warn_unused_ignores=true, warn_redundant_casts=true, strict_equality=true, extra_checks=true. enable_error_code = [redundant-expr, truthy-bool, truthy-iterable, ignore-without-code, possibly-undefined, explicit-override, mutable-override, unused-awaitable, narrowed-type-not-subtype, redundant-self, unimported-reveal]. Per-package override blocks may be needed initially for packages that haven't been cleaned. The pyright-resonant rationale: this combination closes ~6-8% of the dogfood-66 corpus categories that the super-META INV-sugat names as a missing validator stage, at the code (not data) layer. Complementary to WI-rolol Phase B (bm.json property tests) — different abstraction layer."  # 2b39
+    fields: {}  # 2b39

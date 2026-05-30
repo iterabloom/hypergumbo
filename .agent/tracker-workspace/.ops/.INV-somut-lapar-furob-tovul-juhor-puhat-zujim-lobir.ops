@@ -24,3 +24,10 @@
     fields:  # 237f
       statement: "When the underlying claim-verification data is missing or malformed at any check site, the verdict must return inconclusive rather than falling through to confirmed; today the fall-through produces security false-positives across 5 distinct check sites."  # 237f
       root_cause: "verify_claims.py:229-291 dispatches to per-claim verifiers but the verdict-enum has no inconclusive state; every site that can't determine treats absence-of-evidence as evidence-of-absence and returns confirmed. Six check sites manifest: must_not_exist on empty source dir (INV-bitig), unknown constraint.boundary (INV-gobob), unknown claim type (INV-mofih), --taint-* silent accept (INV-nufob), --taint-sources override gap (INV-hukug)."  # 237f
+- op: discuss  # 3d83
+  at: '2026-05-30T20:00:56Z'  # 3d83
+  by: agent  # 3d83
+  actor: jgstern_agent  # 3d83
+  clock: 2  # 3d83
+  nonce: 3d83  # 3d83
+  message: "Member set expanded to 6 (2026-05-30): INV-pirad added. The description`s opening enumeration was correct (6 check sites including gitleaks v8.30+ --pipe); the \"Members (5)\" and \"Out of scope\" subsections were a transient deferral and are now superseded — INV-pirad IS a verdict-fall-through case, just with the underlying-data-missing cause being an external-CLI behavioral regression rather than a malformed local input."  # 3d83

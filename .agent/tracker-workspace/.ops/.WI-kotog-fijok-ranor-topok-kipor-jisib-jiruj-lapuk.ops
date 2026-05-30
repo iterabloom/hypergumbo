@@ -1,0 +1,24 @@
+- op: create  # cc7d
+  at: '2026-05-30T20:31:51Z'  # cc7d
+  by: agent  # cc7d
+  actor: jgstern_agent  # cc7d
+  clock: 1  # cc7d
+  nonce: cc7d  # cc7d
+  data:  # cc7d
+    kind: work_item  # cc7d
+    title: "mypy: add to .githooks pre-commit gate (warning-only initially, blocking after W4)"  # cc7d
+    status: todo_soft  # cc7d
+    priority: 3  # cc7d
+    parent:  # cc7d
+    tags:  # cc7d
+    - mypy_adoption  # cc7d
+    - developer_experience  # cc7d
+    - tooling  # cc7d
+    - static_typing  # cc7d
+    - pre_commit  # cc7d
+    isbefore: []  # cc7d
+    duplicate_of: []  # cc7d
+    not_duplicate_of: []  # cc7d
+    pr_ref:  # cc7d
+    description: "Wire mypy invocation into the pre-commit hook script (.githooks or scripts/install-hooks). Initial phase: warning-only output to stderr; don't fail the commit. Transition to blocking once W4 (strict mode) is clean. Aim for IDE-style fast feedback via dmypy (W10) rather than full mypy on every commit."  # cc7d
+    fields: {}  # cc7d

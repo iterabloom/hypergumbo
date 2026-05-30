@@ -1,0 +1,23 @@
+- op: create  # daac
+  at: '2026-05-30T20:31:49Z'  # daac
+  by: agent  # daac
+  actor: jgstern_agent  # daac
+  clock: 1  # daac
+  nonce: daac  # daac
+  data:  # daac
+    kind: work_item  # daac
+    title: "mypy: bootstrap — add pyproject.toml [tool.mypy] base config + dev-dep"  # daac
+    status: todo_soft  # daac
+    priority: 2  # daac
+    parent:  # daac
+    tags:  # daac
+    - mypy_adoption  # daac
+    - developer_experience  # daac
+    - tooling  # daac
+    - static_typing  # daac
+    isbefore: []  # daac
+    duplicate_of: []  # daac
+    not_duplicate_of: []  # daac
+    pr_ref:  # daac
+    description: "Add mypy to dev dependencies and bootstrap a basic [tool.mypy] section in pyproject.toml. Goal: zero-friction first-run that produces actionable output without overwhelming the team. Use `basic` mode equivalent: python_version=\"3.10\", ignore_missing_imports=True initially (later carve out per-import); no_implicit_optional=True; warn_unused_configs=True. Do NOT enable strict mode in this PR (that's W4). Verify mypy runs cleanly on at least one package's src tree without errors that aren't true bugs. Blocks all downstream mypy_adoption items."  # daac
+    fields: {}  # daac
