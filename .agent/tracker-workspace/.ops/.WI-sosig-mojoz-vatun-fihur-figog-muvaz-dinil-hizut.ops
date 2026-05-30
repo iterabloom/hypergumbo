@@ -35,3 +35,18 @@
   clock: 3  # 65fb
   nonce: 65fb  # 65fb
   message: "Duplicate of WI-fanus (created moments earlier in the same Phase 0 §0.6 filing). The first attempt errored on the dash-form 'tracker-hygiene' tag, then I retried with underscore form, but WI-fanus had already persisted. Marking this one as the duplicate; WI-fanus stays canonical."  # 65fb
+- op: discuss  # bd96
+  at: '2026-05-30T08:53:17Z'  # bd96
+  by: agent  # bd96
+  actor: jgstern_agent  # bd96
+  clock: 4  # bd96
+  nonce: bd96  # bd96
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): WI-fanus-pakon (the duplicate_of target) is now status=done, so this item is closable as wont_do. Per item's own 2026-05-13 discussion: \"WI-fanus stays canonical\". Tracker drift — closing the canonical didn't propagate to the dup. Possibly worth a follow-up: when an item's duplicate_of target moves to a resolved state, the tracker CLI could nudge or auto-close the dup."  # bd96
+- op: update  # 4964
+  at: '2026-05-30T08:53:17Z'  # 4964
+  by: agent  # 4964
+  actor: jgstern_agent  # 4964
+  clock: 5  # 4964
+  nonce: '4964'  # 4964
+  set:  # 4964
+    status: wont_do  # 4964

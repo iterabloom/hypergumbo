@@ -34,3 +34,27 @@
       dogfood_anon_id: "ITEM-911ce4"  # 948d
   add:  # 948d
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_moderate]  # 948d
+- op: discuss  # 294f
+  at: '2026-05-30T08:53:17Z'  # 294f
+  by: agent  # 294f
+  actor: jgstern_agent  # 294f
+  clock: 3  # 294f
+  nonce: 294f  # 294f
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): This item and WI-kutam describe the identical bug (slice.py:153 error template suggests --language unconditionally, regardless of whether the candidate set splits by language). The reproduction in INV-nugos (cli:main matches two python files) and in WI-kutam (find_files matches real + synthetic-unresolved, both python) are the same mechanism with different candidate-set shapes. Marking this one as the duplicate; WI-kutam stays canonical. Fix lives in AmbiguousEntryError.__init__ to branch on len({c.language for c in candidates})."  # 294f
+- op: update  # f646
+  at: '2026-05-30T08:54:42Z'  # f646
+  by: agent  # f646
+  actor: jgstern_agent  # f646
+  clock: 4  # f646
+  nonce: f646  # f646
+  set:  # f646
+    status: needs_human_review  # f646
+  add:  # f646
+    duplicate_of: [WI-kutam-loziz-ravas-horab-talan-gatif-pufik-porum]  # f646
+- op: discuss  # df48
+  at: '2026-05-30T08:54:42Z'  # df48
+  by: agent  # df48
+  actor: jgstern_agent  # df48
+  clock: 5  # df48
+  nonce: df48  # df48
+  message: "Status needs_human_review (rather than wont_do which is not allowed for invariant kind) — flagged for human to delete or convert. Marker duplicate_of WI-kutam set per the 2026-05-30 deeper-issue investigation: same bug at slice.py:153."  # df48

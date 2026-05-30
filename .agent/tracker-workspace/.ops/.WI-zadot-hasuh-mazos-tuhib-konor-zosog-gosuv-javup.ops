@@ -33,3 +33,25 @@
       dogfood_anon_id: "ITEM-8b4eb5"  # 89e3
   add:  # 89e3
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 89e3
+- op: discuss  # 270c
+  at: '2026-05-30T08:53:17Z'  # 270c
+  by: agent  # 270c
+  actor: jgstern_agent  # 270c
+  clock: 3  # 270c
+  nonce: 270c  # 270c
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Largely closed-by-design — websocket.py:655-694 explicitly folds kind=\"websocket_endpoint\" to kind=\"function\" + meta[\"framework_role\"]=\"websocket_endpoint\" per ADR-0027 Phase 3 / audit-findings 0013 (\"Symbol.kind framework-role leak — mechanism vs. category\"). Tracker item predates the fix. Sibling to WI-lomoz (the other half of the WS taxonomy story — entrypoints vs usage_contexts vocabulary split). The remaining open question is the language=python half: for synthetic protocol nodes (kafka:/redis:/ws: prefix) there is no source language; the current code picks the emitter-file's language but a sentinel like \"framework\" or per-protocol value might be cleaner. The language axis is catalog-derived per ADR-0024 §4 with no policy for synthetic protocol nodes — candidate for an audit-findings extension. Moving to pending_validation for the kind=function half; language= question remains."  # 270c
+- op: update  # cd40
+  at: '2026-05-30T08:54:42Z'  # cd40
+  by: agent  # cd40
+  actor: jgstern_agent  # cd40
+  clock: 4  # cd40
+  nonce: cd40  # cd40
+  set:  # cd40
+    status: needs_human_review  # cd40
+- op: discuss  # 1702
+  at: '2026-05-30T08:54:42Z'  # 1702
+  by: agent  # 1702
+  actor: jgstern_agent  # 1702
+  clock: 5  # 1702
+  nonce: '1702'  # 1702
+  message: "Status needs_human_review (pending_validation is not allowed for work_item kind). kind=function half is closed-by-design per ADR-0027 Phase 3 / websocket.py:655-694; language=python half remains an open sub-question. Needs human decision: split into a new INV scoped to the language= question and close this WI as done, OR keep open with re-scoped description."  # 1702

@@ -35,3 +35,10 @@
       dogfood_anon_id: "ITEM-c4eca6"  # bed4
   add:  # bed4
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # bed4
+- op: discuss  # 9bc8
+  at: '2026-05-30T08:53:17Z'  # 9bc8
+  by: agent  # 9bc8
+  actor: jgstern_agent  # 9bc8
+  clock: 3  # 9bc8
+  nonce: 9bc8  # 9bc8
+  message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Status partial. Verified via direct SliceQuery.to_dict() invocation: 4 of the 5 originally-missing keys (max_tier, language, hub_threshold, exclude_imports) have been backfilled at slice.py:226-233. min_confidence is still missing — neither in the always-include block (lines 217-225) nor in the conditional block. Structural fix: replace the hand-maintained whitelist with dataclasses.asdict(self), plus a property test that every p_slice argparse action's dest appears as a key in feature.query. Related upstream silent-collapse: cli.py:1396 maps hub_threshold=0 to None, so even with the conditional echo present, --hub-threshold 0 drops from the JSON — that's a sibling round-trip leak (see INV-fapid for the analogous --out sentinel pattern)."  # 9bc8
