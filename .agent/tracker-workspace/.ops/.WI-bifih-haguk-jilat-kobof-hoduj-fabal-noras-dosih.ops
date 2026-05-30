@@ -33,3 +33,10 @@
       dogfood_anon_id: "ITEM-1a05ff"  # a4a3
   add:  # a4a3
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # a4a3
+- op: discuss  # ea98
+  at: '2026-05-30T07:36:20Z'  # ea98
+  by: agent  # ea98
+  actor: jgstern_agent  # ea98
+  clock: 3  # ea98
+  nonce: ea98  # ea98
+  message: "Cross-ref backfill (2026-05-30, theme 4): closure of this item (Python lacks explicit stdlib catalog; 4477 imports resolve as 'unresolved') is one specific instance of the gap WI-tukif-fuhug-tisiv-judor-pobat-fisat-hadap-zojol covers — that umbrella tracks promoting 12 language catalogs to status=complete with stdlib_provenance. Python is one of the 12. The invariant both serve is INV-pomir-tahap-kizob-fumus-bufog-pubis-narah-napim (every status=complete catalog MUST declare stdlib_provenance with allowlisted hostname suffix)."  # ea98

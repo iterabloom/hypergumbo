@@ -35,3 +35,10 @@
   clock: 3  # 8dff
   nonce: 8dff  # 8dff
   message: "pf-prelim pivot: pf-prelim starts tiny; large-repo perf deferred until it matters. Deferred P3→P4."  # 8dff
+- op: discuss  # c7e9
+  at: '2026-05-30T07:36:21Z'  # c7e9
+  by: agent  # c7e9
+  actor: jgstern_agent  # c7e9
+  clock: 4  # c7e9
+  nonce: c7e9  # c7e9
+  message: "Cross-ref backfill (2026-05-30, theme 9): closure of this item (>1M LOC warm sketch 14-22 min) is part of a sketch-performance / write-amplification cluster that also contains INV-jumim-zavog-vizip-litiz-futab-tajul-kujot-nurup (May-28 dogfood singleton: sketch --input re-walks filesystem) and WI-ribag-bilav-ninum-visub-figog-vidim-putir-zofop (warm-cache sketch slow; centrality + per-file embedding not cached). Adjacent: INV-dadaf-zozih-janid-kupag-zukag-balun-tapab-jivog — routes --input write-amplification (different subcommand, same anti-pattern)."  # c7e9

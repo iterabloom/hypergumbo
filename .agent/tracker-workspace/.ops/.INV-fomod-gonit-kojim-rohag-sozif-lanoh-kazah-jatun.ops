@@ -24,3 +24,10 @@
     fields:  # ebe1
       statement: "Framework detection must detect autoload-by-convention frameworks (Rails, Phoenix, Spring Boot, Laravel) even when both the manifest is silent and no import edges to the framework exist, provided characteristic file-structure conventions (e.g., config/application.rb containing Rails::Application) are present."  # ebe1
       root_cause: "Hypergumbo today has three detection paths: manifest scanning (handles common case), WI-lohok autoload exemption (handles Gemfile-declared autoload), WI-palol/WI-pusad import-edge promotion (handles workspace + compound-submodule imports). All three fail for the residual case where manifest is silent AND no imports exist (rare: scrubbed-manifest forks, framework-housing monorepos, pathological CI artifacts). The only remaining signal is repo file structure — distinct mechanism class from import-edge data already in the IR."  # ebe1
+- op: discuss  # eba0
+  at: '2026-05-30T07:36:20Z'  # eba0
+  by: agent  # eba0
+  actor: jgstern_agent  # eba0
+  clock: 2  # eba0
+  nonce: eba0  # eba0
+  message: "Cross-ref backfill (2026-05-30, theme 5a): closure of this item (framework detection from file-structure signatures — autoload + manifest-silent + no-imports case) is parallel to INV-rojip and likewise advances INV-nohod-najud-muzik-kamip-jozis-takun-pivik-jihaf, the May-28 dogfood singleton 'KKKKK: 76% test-classified, behavior map dominated by test code'. Both items address frameworks that are invisible to import-based detection."  # eba0

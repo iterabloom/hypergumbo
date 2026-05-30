@@ -75,3 +75,10 @@
   clock: 8  # b42f
   nonce: b42f  # b42f
   message: "Scope assessment 2026-05-24: tackled WI-kofaf within this session's 5-item burndown (INV-dogif → WI-tukif → WI-kofaf → WI-bimar → WI-himas) and concluded the work doesn't fit a single-session PR alongside WI-bimar + WI-himas. Phase 2 alone requires three pieces of new Go infrastructure: (1) call-site detection for yaml.Unmarshal(b, &v) / json.Marshal(v) / decoder.Decode(&v) where 'decoder' is a yaml.Decoder/json.Decoder — needs qualified-function matching across the call_expression + selector_expression surface; (2) struct-tag transitive analysis ('yaml:\"...\"' / 'json:\"...\"' fields, propagated through Config-style types) — a new Go-specific dataflow pass; (3) type→call-sites map per receiver type that implements one of the 8 marshal/unmarshal interfaces — needs deeper Go type inference than the existing module_attr_ref / lookup_result path provides. Phase 3 then emits per-type dispatches_to edges (vs the all-call-sites→all-marshal-methods over-approximation that would be a regression). The Jackson dispatch linker is a class-centric template; WI-kofaf's call-site-centric design is qualitatively different and doesn't admit a simple template copy. WI-pimig Phase 1 is doing the dead-code FP-suppression work — the original motivation — so the precision improvement Phase 2/3 would add is genuinely follow-up. Item stays todo_soft P4 with someday tag. Recommend re-scoping as a standalone sprint when DEEP-mode slice-quality work resurfaces; the parent WI-pimig already framed this dependency in its own discussion."  # b42f
+- op: discuss  # 5eef
+  at: '2026-05-30T07:17:33Z'  # 5eef
+  by: agent  # 5eef
+  actor: jgstern_agent  # 5eef
+  clock: 9  # 5eef
+  nonce: 5eef  # 5eef
+  message: "Cross-ref backfill: closure of this item advances INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad, the May-28 dogfood integrated cluster on call-graph non-traversal of dispatch-primitive patterns. Go marshal callbacks (encoding/json/xml/yaml MarshalJSON, etc.) are one such primitive. Note: parent WI-pimig is closed (done), so this is now top-of-chain for that branch."  # 5eef

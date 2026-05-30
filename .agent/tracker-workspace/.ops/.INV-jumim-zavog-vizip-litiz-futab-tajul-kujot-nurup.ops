@@ -34,3 +34,10 @@
       dogfood_anon_id: "ITEM-f0b796"  # a590
   add:  # a590
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # a590
+- op: discuss  # 9635
+  at: '2026-05-30T07:36:21Z'  # 9635
+  by: agent  # 9635
+  actor: jgstern_agent  # 9635
+  clock: 3  # 9635
+  nonce: '9635'  # 9635
+  message: "Cross-ref backfill (2026-05-30, theme 9): two active non-dogfood sketch-performance items form a cluster with this finding: (1) WI-ribag-bilav-ninum-visub-figog-vidim-putir-zofop — warm-cache sketch slow because centrality + per-file embedding not cached at the same level as analysis JSON; (2) WI-zipoj-ludaj-damap-zimid-linun-sasuj-fopil-hivig — >1M LOC warm sketch 14-22 min wall-clock. This item observes the test-file re-walk specifically; the cluster surfaces the broader 'sketch does work that's already on disk' anti-pattern. Adjacent (different subcommand, same shape): INV-dadaf-zozih-janid-kupag-zukag-balun-tapab-jivog — routes --input writes 5 sketch artifacts as read-only side effect."  # 9635

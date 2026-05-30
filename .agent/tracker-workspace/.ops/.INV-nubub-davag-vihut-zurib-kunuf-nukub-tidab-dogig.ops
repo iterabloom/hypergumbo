@@ -33,3 +33,10 @@
       dogfood_anon_id: "ITEM-1c12b5"  # 5734
   add:  # 5734
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 5734
+- op: discuss  # 795f
+  at: '2026-05-30T07:36:21Z'  # 795f
+  by: agent  # 795f
+  actor: jgstern_agent  # 795f
+  clock: 3  # 795f
+  nonce: 795f  # 795f
+  message: "Cross-ref backfill (2026-05-30, theme 6): two active non-dogfood items form a routes-coverage cluster with this finding: (1) INV-dogif-mitim-todub-ruhoh-hiruk-nidal-bahur-bovaz — React Router routes must be detected in routes.txt; (2) INV-pomol-horid-kahok-hosov-dumis-huhij-tahit-ganig — routes top-level field absent from bm.json; 'No API routes found' despite 8 Route entries. This item is a slice-side collision (route-symbol overwrites function-symbol slice); the cluster spans detection + emission + slice consumption."  # 795f

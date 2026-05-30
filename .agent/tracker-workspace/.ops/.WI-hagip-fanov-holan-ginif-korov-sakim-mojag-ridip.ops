@@ -18,3 +18,10 @@
     pr_ref:  # 8a43
     description: "WI-tubot full-corpus run (2026-04-11) failed on 3 repos: trino (209 MB), envoy (181 MB), vscode (161 MB) — all above the 95 MB kafka threshold that succeeded. Per WI-tubot discussion (2026-04-10T22:01:00Z), kafka alone was 10+ min; these 3 are each 1.7×-2.2× larger. Most likely OOM in the behavior-map generation phase. Investigation: re-run each with memory profiling (/usr/bin/time -v hypergumbo run <repo>) to capture peak RSS, identify which stage spikes (analyzer, linker, ranking, sketch). If confirmed OOM, either (a) add streaming/batching to the offending stage, (b) expose a --max-files limit that's honoured through the full pipeline, or (c) document a size ceiling in CHANGELOG. Artifact for follow-up: ~/hypergumbo_lab_notebook/prospector_runs/run-2026-04-11-full/."  # 8a43
     fields: {}  # 8a43
+- op: discuss  # 89ce
+  at: '2026-05-30T07:36:21Z'  # 89ce
+  by: agent  # 89ce
+  actor: jgstern_agent  # 89ce
+  clock: 2  # 89ce
+  nonce: 89ce  # 89ce
+  message: "Cross-ref backfill (2026-05-30, theme 10): closure of this item (dead-code-prospector OOM/crash on 3 largest repos: trino, envoy, vscode) is adjacent to INV-nohod-najud-muzik-kamip-jozis-takun-pivik-jihaf, the May-28 dogfood singleton 'KKKKK: 76% of nodes test-classified; behavior map dominated by test code'. Test-classification dominance contributes to DCM FP volume, which compounds memory pressure on huge repos. Not a claimed root-cause linkage — OOM scaling on >1M-node repos is its own factor — but a contributing dimension. Sibling DCM issue (different mechanism): INV-nogof-hopol-morov-nufis-gobat-kimuf-rilaj-lovon — CCCCC ambiguous-entry handling inconsistent across read subcommands, including dead-code-maybe."  # 89ce

@@ -53,3 +53,10 @@
   clock: 5  # 98c1
   nonce: 98c1  # 98c1
   message: "Pass-9: finding extended. INV-golap-... (filed today) shows the gap is not just edge.quality — node.quality and edge.provenance are ALSO empty across 100% of records on hypergumbo's self-analysis (33830 nodes, 108683 edges). edge.meta IS populated (evidence_type 100%, access_mode 46%, etc.), so the issue is structural: linker passes write to edge.meta but not to edge.provenance/quality nor node.quality. The bug is real, the scope is broader than this item's title suggests. Cross-ref INV-golap-sahoj-... for the consolidated finding."  # 98c1
+- op: discuss  # e43d
+  at: '2026-05-30T07:23:12Z'  # e43d
+  by: agent  # e43d
+  actor: jgstern_agent  # e43d
+  clock: 6  # e43d
+  nonce: e43d  # e43d
+  message: "Cross-ref backfill (2026-05-30): this item's empirical surface (Edge.quality 100% null on self-analysis) matches INV-nuzal-nufam-nukip-vilis-kobah-jijig-mizan-huhof, the May-28 dogfood singleton 'edge.provenance dict empty on 100% of edges; node.quality and edge.quality also universally empty' (ITEM-fb07ea). INV-nuzal documents the broader observation (edge.provenance + node.quality also null); this item adds the spec-level design-call framing (🟪 placeholder; advance-design vs retire-from-spec)."  # e43d

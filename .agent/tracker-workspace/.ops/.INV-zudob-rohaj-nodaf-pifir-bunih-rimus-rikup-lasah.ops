@@ -55,3 +55,10 @@
   clock: 5  # 9e51
   nonce: '9e51'  # 9e51
   message: "Merged via PR #3891 (commit 2d62c818bf on dev). Self-analysis dogfood post-fix shows cross-module class collision rate 18.94% → 1.76% (91% reduction); 76 residual collisions are all same-file identical-body groups (12x MockEdge in test_io_boundary.py, 8x Args in test_cli_commands.py, etc.) preserved by design per the (stable_id, canonical_name) docstring contract. Status moves to pending_validation; awaits_bakeoff_validation tag remains until BROAD-cohort confirmation strips it via bakeoff-deep-reflect aggregate. Auto-pr hit the merge-accept gremlin (Codeberg server-side hiccup); merge confirmed by human via direct PR inspection."  # 9e51
+- op: discuss  # f414
+  at: '2026-05-30T07:36:20Z'  # f414
+  by: agent  # f414
+  actor: jgstern_agent  # f414
+  clock: 6  # f414
+  nonce: f414  # f414
+  message: "Cross-ref backfill (2026-05-30, theme 1): cousin item (not parent/child) of INV-bazij-lazov-busog-humuh-jozov-bajod-jodum-sabun, the May-28 dogfood Severe P0 'stable_id mass collisions: 60% of nodes share with at least one other'. INV-bazij is the broader 60% global collision observation; this item is the structurally-identical-cross-module residue (18.94%) after INV-fusus's same-module fix. Different root causes within the same stable_id uniqueness theme."  # f414

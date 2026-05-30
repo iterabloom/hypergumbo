@@ -37,3 +37,10 @@
   clock: 3  # db2b
   nonce: db2b  # db2b
   message: "Closure substrate + audit shipped via WI-hupaz (PR #3919, commit 128b44c737) + WI-dilab (PR #3921, commit 955ec5df7e). Pass.depends_on declared in CNF across all 57 linkers: 10 Bridge (anchor+impls), 29 Framework (single or multi-language), 11 Protocol (multi-language OR), 7 Infrastructure (6 with declarations + containment explicit empty + docstring). validate_pass_name_resolution catches typos at CI time; validate_pass_dependencies provides forward-looking runtime CNF gating. Full satisfaction requires Phase 2 wire-up of validate_pass_dependencies into run_behavior_map config-time pass filtering — separate future WI."  # db2b
+- op: discuss  # 0f1f
+  at: '2026-05-30T07:36:21Z'  # 0f1f
+  by: agent  # 0f1f
+  actor: jgstern_agent  # 0f1f
+  clock: 4  # 0f1f
+  nonce: 0f1f  # 0f1f
+  message: "Cross-ref backfill (2026-05-30, theme 8): closure of this item (Pass.requires: list[str] — declare pass dependencies; pre-run validator catches missing prerequisites) is the schema-design correlate of INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz, the May-28 dogfood-66 umbrella 'META: Passes execute and consume resources but emit no edges, with no activation gate'. INV-nanon documents the observed scan-and-emit-nothing behavior; this item adds the dependency-declaration mechanism that would enable an activation gate. Closure enables — but doesn't itself fix — INV-nanon's violations."  # 0f1f

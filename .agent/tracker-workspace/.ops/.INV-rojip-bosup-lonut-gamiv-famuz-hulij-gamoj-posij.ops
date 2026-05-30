@@ -59,3 +59,10 @@
   clock: 6  # bb45
   nonce: bb45  # bb45
   message: "WI-palol (PR #3915) + WI-pusad (PR #3917) shipped. Cohorts 1+4 (workspace-scoped imports) handled by WI-palol; cohorts 2+3 partial — bakerydemo Django bare-name handled by WI-pusad. Cohort 3 chatwoot Rails-without-Gemfile case explicitly out of scope (file-structure heuristic; INV-fomod is the orthogonal sibling for that). Bakeoff on 7 cases (3 synthetic positive, 1 synthetic regression, 3 real) confirmed: django source, flask-restful, hypergumbo-self all behave as expected (Django + Flask promoted from imports, hypergumbo self produces zero FPs). Transitions violated → pending_validation pending the BROAD cycle that confirms cohorts hold across the prospector corpus."  # bb45
+- op: discuss  # a5fa
+  at: '2026-05-30T07:36:20Z'  # a5fa
+  by: agent  # a5fa
+  actor: jgstern_agent  # a5fa
+  clock: 7  # a5fa
+  nonce: a5fa  # a5fa
+  message: "Cross-ref backfill (2026-05-30, theme 5a): closure of this item (framework detection must promote from prod-non-test import edges, not just manifest declarations) directly addresses INV-nohod-najud-muzik-kamip-jozis-takun-pivik-jihaf — the May-28 dogfood singleton 'KKKKK: 76% of nodes (25584/33830) are test-classified; behavior map is dominated by test code by default'. KKKKK's empirical surface is what motivates this item's 'prod-non-test' filter."  # a5fa

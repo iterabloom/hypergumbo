@@ -60,3 +60,10 @@
   clock: 6  # e025
   nonce: e025  # e025
   message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: optional follow-on; Phase 4 prerequisite."  # e025
+- op: discuss  # 5dda
+  at: '2026-05-30T07:17:53Z'  # 5dda
+  by: agent  # 5dda
+  actor: jgstern_agent  # 5dda
+  clock: 7  # 5dda
+  nonce: 5dda  # 5dda
+  message: "Cross-ref backfill: closure of this item advances INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad, the May-28 dogfood integrated cluster on call-graph non-traversal of dispatch-primitive patterns. Cross-linker integration of the return-type registry (consuming Phases 1-4 to drive call-graph resolution) is the final phase of the dispatch primitive INV-pohik names for typed multi-language code. Note: parent INV-dihos is closed (satisfied), so this is now effectively top-of-chain."  # 5dda

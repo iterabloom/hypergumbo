@@ -38,3 +38,10 @@
   clock: 3  # a1bc
   nonce: a1bc  # a1bc
   message: "Retitled and rewrote description (2026-05-14): dropped 'WI-mafik Phase 2' framing — the relationship is disjoint scope, not parent-child. Dropped first two children (bakeoff-validation + extend polyglot fixture) which were really WI-mafik's scope; kept only the long-tail sweep scope (~90 analyzers in lang-mainstream/lang-common/lang-extended1 that still emit Edge.dst with dst_ref=None). Removed phase_2 tag."  # a1bc
+- op: discuss  # c383
+  at: '2026-05-30T07:36:20Z'  # c383
+  by: agent  # c383
+  actor: jgstern_agent  # c383
+  clock: 4  # c383
+  nonce: c383  # c383
+  message: "Cross-ref backfill (2026-05-30, theme 5b): closure of this long-tail dst_ref retrofit umbrella advances INV-tofun-zimap-pusan-fofir-sorap-rofim-jafud-galob, the May-28 dogfood singleton 'linkers hard-code language=javascript for synthetic symbols on .ts files'. Both items are about analyzer-side encoding of unresolved targets / synthetic symbols — this umbrella sweeps ~90 long-tail analyzers; INV-tofun is the JS/TS-specific manifestation on the linker side."  # c383

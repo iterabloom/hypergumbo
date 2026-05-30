@@ -36,3 +36,10 @@
   clock: 3  # e52b
   nonce: e52b  # e52b
   message: "INV-nilud closed pending one BROAD bakeoff cycle. Campaign complete: PR-1 (WI-gifar, #3902), PR-2 (WI-hatip, #3904), PR-3 (WI-dukog, #3905), PR-4 (WI-sivuk, #3906), PR-5 (WI-puvil, #3908 / f447952fc9). Java analyzer's three inherited-call walks (Site 1: bare/this, Site 2: typed receiver, Site 3: inherited field) all lifted into the Tier-2 inherited_calls linker at priority 18. Single source of truth: linker module + per-class meta['fields'] populated by the Java analyzer. Ruby's _find_inherited_initialize and include/extend mixin coverage subsumed by the same substrate (PR-2 closed WI-puluf). 5-of-5 PRs tagged awaits_bakeoff_validation at merge. META transitions to satisfied after a full BROAD cycle confirms no regression — specifically: ast_call_inherited / ast_call_inherited_method / ast_call_inherited_field counts within stated tolerances on spring-petclinic, spring-boot, chatwoot, hypergumbo-self."  # e52b
+- op: discuss  # 40bb
+  at: '2026-05-30T07:17:32Z'  # 40bb
+  by: agent  # 40bb
+  actor: jgstern_agent  # 40bb
+  clock: 4  # 40bb
+  nonce: 40bb  # 40bb
+  message: "Cross-ref backfill: closure of this META item (and the 5-PR inherited_calls campaign it tracks) advances INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad, the May-28 dogfood integrated cluster on call-graph non-traversal of dispatch-primitive patterns. Inheritance-aware call resolution is one such primitive (MRO walks for Java/Kotlin/Python/Ruby/etc.)."  # 40bb

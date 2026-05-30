@@ -216,3 +216,10 @@
   clock: 27  # 9ee3
   nonce: 9ee3  # 9ee3
   message: "Partial closure: PR #3892 (21527cbba4) closes gaps (3), (4), (5) from the 2026-05-17 audit. Gap (5) — {path: someVar, ...} no longer emits junk routes (FP eliminated). Gap (4) — <Route path={var}> no longer emits junk routes (FP eliminated). Gap (3) — v5 <Route render={...}> now recognized for handler_ref. Status stays violated per 2026-03-16 discipline (held until all five aspects resolve). Remaining: gaps (1) JSX <Route index> and (2) {index: true, ...} object-config index routes — both still need the routes.txt output-shape design call documented in fields.root_cause (options a/b/c). Reopen as a focused item if either gap surfaces in bakeoff or UAT signal; otherwise let them sit on this item collectively."  # 9ee3
+- op: discuss  # e602
+  at: '2026-05-30T07:36:21Z'  # e602
+  by: agent  # e602
+  actor: jgstern_agent  # e602
+  clock: 28  # e602
+  nonce: e602  # e602
+  message: "Cross-ref backfill (2026-05-30, theme 6): closure of this item (React Router routes must be detected in routes.txt) is part of a routes-coverage cluster that also contains INV-nubub-davag-vihut-zurib-kunuf-nukub-tidab-dogig (May-28 dogfood singleton 'Handler-slice filename collision: route-symbol overwrites function-symbol slice') and INV-pomol-horid-kahok-hosov-dumis-huhij-tahit-ganig (routes top-level field absent from bm.json; 'No API routes found' despite 8 Route entries). Sibling JSON-output gap: AAAAA (umbrella-member under WI-gogif)."  # e602

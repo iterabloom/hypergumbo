@@ -41,3 +41,10 @@
   clock: 4  # 66c2
   nonce: 66c2  # 66c2
   message: "Batch 1 shipped: PR #3893 (0e2398a6f7) — Rust + Erlang catalogs flipped to status=complete with stdlib_provenance. Audited against doc.rust-lang.org/std/ (Rust 1.78 stable) and erlang.org/doc/ (OTP 26). Erlang gained code module (fs_read, .beam loader) and inet module (net_recv, DNS) before promotion. Two new tests pin the promotion in TestCatalogStatus. Remaining 10 catalogs still in_progress: c, elixir, go, haskell, java, javascript, kotlin, objc, scala, swift. Proposed sequencing for remaining work (smallest stdlib surface first to keep audit effort bounded per PR): batch 2 = haskell + kotlin + scala (smaller per-language stdlib surfaces on top of established parents); batch 3 = go + java (mid-tier with substantive db_* coverage); batch 4 = c + elixir + objc + swift (larger native/Foundation surfaces); batch 5 = javascript (Node.js + browser globals + completion of stdlib_other). Each batch ships as one PR per WI-tukif's 1-3 PRs guideline scaled to remaining work."  # 66c2
+- op: discuss  # 7b20
+  at: '2026-05-30T07:36:20Z'  # 7b20
+  by: agent  # 7b20
+  actor: jgstern_agent  # 7b20
+  clock: 5  # 7b20
+  nonce: 7b20  # 7b20
+  message: "Cross-ref backfill (2026-05-30, theme 4): WI-bifih-haguk-jilat-kobof-hoduj-fabal-noras-dosih is a May-28 dogfood-66 item that observes the gap on Python specifically (4477 imports resolve as 'unresolved' because Python's stdlib isn't catalogued). Python is one of the 12 catalogs this umbrella covers; WI-bifih's closure would be a partial closure of this item. The invariant both serve is INV-pomir-tahap-kizob-fumus-bufog-pubis-narah-napim."  # 7b20

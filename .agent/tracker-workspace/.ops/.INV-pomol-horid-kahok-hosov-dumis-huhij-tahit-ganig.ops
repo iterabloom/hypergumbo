@@ -29,3 +29,10 @@
   clock: 2  # f147
   nonce: f147  # f147
   message: "Pass 14 CORRECTION: YYY was misdiagnosed in pass 13. The claim 'routes subcommand reads only the top-level routes field' is WRONG. When invoked correctly with --input flag (e.g., 'hypergumbo routes --input bm.json'), the routes subcommand correctly displays all 8 API routes including [GET] /health, /api/items/* GET+POST endpoints, and [WS] /ws. My pass 13 test ran 'hypergumbo routes bm.json' (positional), which silently treats bm.json as 'repo root' path and ignores the file — that's the actual bug, now filed as OOOO (INV-jibof). The two REMAINING valid sub-findings under YYY: (a) bm.json has no top-level 'routes' or 'frameworks' field (routes data lives in entrypoints[kind=http_route] and usage_contexts[context_name=Route]), and (b) routes subcommand generates 5 sketch artifacts on a read-only operation similar to U. SUPERSEDE: most of YYY's body is invalidated. Sub-finding (a) lowered to LOW severity (just a schema-organization observation, not a bug). Sub-finding (b) extracted as a separate workitem candidate but bundled under U."  # f147
+- op: discuss  # c939
+  at: '2026-05-30T07:36:21Z'  # c939
+  by: agent  # c939
+  actor: jgstern_agent  # c939
+  clock: 3  # c939
+  nonce: c939  # c939
+  message: "Cross-ref backfill (2026-05-30, theme 6): closure of this item (routes top-level field absent from bm.json; 'No API routes found' despite 8 Route entries in usage_contexts) is part of a routes-coverage cluster with INV-nubub-davag-vihut-zurib-kunuf-nukub-tidab-dogig (May-28 dogfood singleton 'Handler-slice filename collision: route-symbol overwrites function-symbol slice') and INV-dogif-mitim-todub-ruhoh-hiruk-nidal-bahur-bovaz (React Router not detected). Sibling JSON-output gap: AAAAA (umbrella-member under WI-gogif)."  # c939

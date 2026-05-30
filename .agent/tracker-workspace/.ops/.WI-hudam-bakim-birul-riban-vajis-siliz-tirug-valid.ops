@@ -70,3 +70,10 @@
   clock: 7  # 8a7b
   nonce: 8a7b  # 8a7b
   message: "Phase 0 triage (RCT pin-readiness, 2026-05-13): deferred under close-to-ready AND major criterion. Re-pilot required if landed post-pin per RCT escape clause. Reason: Phase 3 prerequisite chain blocks close-to-ready."  # 8a7b
+- op: discuss  # de01
+  at: '2026-05-30T07:17:52Z'  # de01
+  by: agent  # de01
+  actor: jgstern_agent  # de01
+  clock: 8  # de01
+  nonce: de01  # de01
+  message: "Cross-ref backfill: closure of this item advances INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad, the May-28 dogfood integrated cluster on call-graph non-traversal of dispatch-primitive patterns. Return-type registry resolution (type-annotated Python — promoting py.py:1648 local extraction to a global registry) is one of the dispatch primitives the integrated cluster covers. Note: parent INV-dihos is closed (satisfied), so this is now effectively top-of-chain for the Python phase."  # de01

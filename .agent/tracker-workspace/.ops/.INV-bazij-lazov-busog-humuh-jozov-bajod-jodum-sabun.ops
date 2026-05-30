@@ -34,3 +34,10 @@
       dogfood_anon_id: "ITEM-b14cbf"  # 76bd
   add:  # 76bd
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_severe]  # 76bd
+- op: discuss  # 7842
+  at: '2026-05-30T07:36:20Z'  # 7842
+  by: agent  # 7842
+  actor: jgstern_agent  # 7842
+  clock: 3  # 7842
+  nonce: '7842'  # 7842
+  message: "Cross-ref backfill (2026-05-30, theme 1): INV-zudob-rohaj-nodaf-pifir-bunih-rimus-rikup-lasah (non-dogfood, pending_validation) is a cousin item — the structurally-identical-cross-module residue (18.94%) after INV-fusus's same-module fix. This item (Severe P0) is the broader 60% global stable_id collision observation. Different root causes (cross-module identity vs. global hash space) within the same uniqueness theme."  # 7842

@@ -23,3 +23,10 @@
       dogfood_anon_id: "ITEM-5a1949"  # 2add
       statement: "Passes should consult an activation predicate (analogous to a `should_run(detected_frameworks, detected_languages)` check) and short-circuit when their target patterns are absent. The provenance record should report the pass as skipped with a documented reason rather than executing it. Scan-and-emit-nothing should be impossible for known-absent patterns."  # 2add
       root_cause: "Several passes (linkers and analyzers) run on every invocation regardless of whether the source patterns they target are present in the analyzed code. A linker scoped to a specific dependency-injection framework family runs even on repositories with no such framework, scanning the intermediate representation for a few seconds and emitting zero edges. A linker scoped to a specific FFI pattern matches only against its own test fixtures (in-tree tests of the linker), emitting edges that solely reflect the linker's self-test and not any production code. A language analyzer reads hundreds of files of a supported language and emits zero nodes. More broadly, the majority of per-pass records report zero edges emitted, and several of those high-load passes scan hundreds of files for no output."  # 2add
+- op: discuss  # a7be
+  at: '2026-05-30T07:36:21Z'  # a7be
+  by: agent  # a7be
+  actor: jgstern_agent  # a7be
+  clock: 2  # a7be
+  nonce: a7be  # a7be
+  message: "Cross-ref backfill (2026-05-30, theme 8): INV-hujog-vamon-zafon-mikik-pisah-tanor-pumah-rogij (Pass.requires: list[str] — declare pass dependencies; pre-run validator catches missing prerequisites) is the schema-design correlate of this umbrella. INV-hujog adds the dependency-declaration mechanism that would enable an activation gate; this item documents the observed scan-and-emit-nothing behavior across 4 member items (INV-bikaj being the broadest at 61/84 passes producing 0 edges)."  # a7be

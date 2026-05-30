@@ -35,3 +35,17 @@
       dogfood_anon_id: "ITEM-c69cd6"  # 6dcd
   add:  # 6dcd
     tags: [dogfood_corpus_20260528, dogfood_singleton, dogfood_severity_significant]  # 6dcd
+- op: discuss  # 9864
+  at: '2026-05-30T07:36:20Z'  # 9864
+  by: agent  # 9864
+  actor: jgstern_agent  # 9864
+  clock: 3  # 9864
+  nonce: '9864'  # 9864
+  message: "Cross-ref backfill (2026-05-30, theme 5a): two active non-dogfood framework-detection items advance this finding: (1) INV-rojip-bosup-lonut-gamiv-famuz-hulij-gamoj-posij — promote frameworks from prod-non-test import edges; (2) INV-fomod-gonit-kojim-rohag-sozif-lanoh-kazah-jatun — detection from file-structure signatures (autoload + manifest-silent + no-imports case). KKKKK's 76% test-domination is the empirical motivation for both; their closure chips at this item's violation."  # 9864
+- op: discuss  # 0308
+  at: '2026-05-30T07:36:21Z'  # 0308
+  by: agent  # 0308
+  actor: jgstern_agent  # 0308
+  clock: 4  # 0308
+  nonce: '0308'  # 0308
+  message: "Cross-ref backfill (2026-05-30, theme 10): two active non-dogfood dead-code-maybe items are adjacent to this finding: (1) WI-hagip-fanov-holan-ginif-korov-sakim-mojag-ridip — DCM OOM/crash on 3 largest repos (trino, envoy, vscode); (2) WI-botol-duhub-farad-vukih-fiput-tifit-luzur-lazaf — run DCM prospecting on 200-repo corpus. Test-classification dominance (this item's 76%) shapes DCM FP volume — adjacency, not claimed root cause. Sibling DCM issue (different mechanism): INV-nogof-hopol-morov-nufis-gobat-kimuf-rilaj-lovon — CCCCC ambiguous-entry handling inconsistent across read subcommands including dead-code-maybe."  # 0308

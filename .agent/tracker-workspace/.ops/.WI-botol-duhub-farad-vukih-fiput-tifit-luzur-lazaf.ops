@@ -45,3 +45,10 @@
   clock: 4  # e57c
   nonce: e57c  # e57c
   message: "Remove stale isbefore: WI-juhov was already completed using partial data (alertmanager only), so this dependency is moot. The 200-repo prospecting run (this item) no longer blocks juhov."  # e57c
+- op: discuss  # e558
+  at: '2026-05-30T07:36:21Z'  # e558
+  by: agent  # e558
+  actor: jgstern_agent  # e558
+  clock: 5  # e558
+  nonce: e558  # e558
+  message: "Cross-ref backfill (2026-05-30, theme 10): closure of this item (run dead-code-maybe prospecting on 200-repo corpus) interacts with INV-nohod-najud-muzik-kamip-jozis-takun-pivik-jihaf, the May-28 dogfood singleton 'KKKKK: 76% test-classified, behavior map dominated by test code'. Test-classification dominance shapes corpus-wide DCM FP volume; running the prospector at 200-repo scale without first addressing KKKKK risks calibrating dead-code thresholds against test-polluted node distributions. Sibling DCM issue: INV-nogof-hopol-morov-nufis-gobat-kimuf-rilaj-lovon (CCCCC)."  # e558
