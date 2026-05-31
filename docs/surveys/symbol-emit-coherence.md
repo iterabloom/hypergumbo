@@ -5,7 +5,7 @@
 - Date: 2026-05-30
 - Informed (Dimension 1, RESOLVED): the analyzer-side language-tag drifts for `objective-c` and `ansible` (PR #3984); the linker-side non-catalog `protobuf` emit (PR #3986).
 - Tracks (UNRESOLVED, awaiting ADR-0031 migration): `unknown`, `wasm`, `openapi` linker-side sentinels.
-- Methodology: `~/hypergumbo_lab_notebook/symbol-emit-coherence-audit-playbook.md` (the playbook that produced this survey; it's a lab-notebook artifact, not under `docs/`). Companion artifacts: the original audit output at `/tmp/symbol_audit_output.md` (now subsumed by this document) and the linker-language-provenance supplement at `~/hypergumbo_lab_notebook/audit-supplement-linker-language-provenance-05302026.md` (integrated as §"Supplement").
+- Methodology: `~/hypergumbo_lab_notebook/symbol-emit-coherence-audit-playbook.md` (the playbook that produced this survey; it's a lab-notebook artifact, not under `docs/`). Companion artifact: the linker-language-provenance supplement at `~/hypergumbo_lab_notebook/audit-supplement-linker-language-provenance-05302026.md` (integrated as §"Supplement").
 
 ## Why this is a survey, not an audit-findings document
 
