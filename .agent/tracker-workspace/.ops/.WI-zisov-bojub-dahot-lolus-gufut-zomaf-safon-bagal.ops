@@ -43,3 +43,18 @@
   nonce: '83e7'  # 83e7
   set:  # 83e7
     status: todo_soft  # 83e7
+- op: update  # 60d6
+  at: '2026-05-31T10:39:22Z'  # 60d6
+  by: agent  # 60d6
+  actor: jgstern_agent  # 60d6
+  clock: 5  # 60d6
+  nonce: 60d6  # 60d6
+  set:  # 60d6
+    status: done  # 60d6
+- op: discuss  # 69d7
+  at: '2026-05-31T10:39:22Z'  # 69d7
+  by: agent  # 69d7
+  actor: jgstern_agent  # 69d7
+  clock: 6  # 69d7
+  nonce: 69d7  # 69d7
+  message: "Phase 2 audit fixture extension delivered via PR #3995 (merged 2026-05-31). Added 5 PolyglotFixture entries (kotlin/scala/php/swift/csharp) to test_polyglot_call_site_coverage.py with strict xfail markers documenting the analyzer gaps discovered at audit time. Swift passes cleanly; kotlin/scala/php pass for bare-named-import constructs but xfail for qualified-call constructs; csharp xfails entirely. The gap-closure scope (analyzer retrofits to flip the xfails) is delegated to WI-nigah Tier 2, per the xfail_reason citations. Closing WI-zisov as 'done' on the fixture-extension scope rather than holding open for the analyzer gap-closure work, since the audit substrate is the deliverable named in the title and the gap-closure work has natural home in WI-nigah."  # 69d7

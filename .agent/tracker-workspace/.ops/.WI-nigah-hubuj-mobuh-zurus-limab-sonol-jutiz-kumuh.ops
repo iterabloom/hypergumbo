@@ -60,3 +60,47 @@
   nonce: db71  # db71
   set:  # db71
     status: todo_soft  # db71
+- op: update  # a0eb
+  at: '2026-05-31T09:45:31Z'  # a0eb
+  by: agent  # a0eb
+  actor: jgstern_agent  # a0eb
+  clock: 7  # a0eb
+  nonce: a0eb  # a0eb
+  set:  # a0eb
+    status: todo_soft  # a0eb
+- op: discuss  # 8821
+  at: '2026-05-31T09:45:31Z'  # 8821
+  by: agent  # 8821
+  actor: jgstern_agent  # 8821
+  clock: 8  # 8821
+  nonce: '8821'  # 8821
+  message: "Scope re-evaluation 2026-05-31 (post-WI-huzuv merge + post-WI-kaziv data-gap collection). The original ~90-analyzer scope sketch was wrong on inspection — empirical grep + per-analyzer external-target edge counts produced a 22-analyzer residual with a tractable prioritization. Tier 1 (mechanical, sweep-equivalent): groovy — same shape as java/kotlin already-retrofitted analyzers; path_hint already in scope at the unresolved-call site; expected to be a single-PR follow-up. NB data shows low call-edge volume on the spring-boot rep but the data path is trivially-shippable. Tier 2 (per-analyzer threading work in lang-mainstream, ranked by unresolved-call-edge volume): lua (6893 unresolved per medium repo — HIGHEST PRIORITY), tcl (403), objc/perl/powershell (no data — large-repo or representative-failure blocker). Tier 3 (lang-extended1, ranked by data where available): d_lang (1121), pascal (73), plus 15 audit-pending — ada/asm/cobol/fennel/fish/gdscript/gleam/haxe/janet/nim/odin/pony/solidity/tcl-already-tier2/v_lang. Full data at /tmp/wi-nigah-data/summary.json (per-language counts of total edges, calls, unresolved, dst_ref percentage). Closing WI-huzuv (PR #3991 merged 2026-05-31) handled the 4 mechanical-sweep candidates that had module_hint at the emit site (kotlin/php/scala/swift); groovy is the 5th mechanical-equivalent. The remaining analyzers need per-analyzer threading of import-tracker output through to make_unresolved_edge — substantively similar to what WI-mafik did for the 7 originally-retrofitted analyzers. Status flips from needs_human_review to todo_soft per the original trigger condition."  # 8821
+- op: discuss  # 0d35
+  at: '2026-05-31T13:57:06Z'  # 0d35
+  by: agent  # 0d35
+  actor: jgstern_agent  # 0d35
+  clock: 9  # 0d35
+  nonce: 0d35  # 0d35
+  message: "WI-nigah Tier 1 + Tier 2 sweep complete 2026-05-31.\n\nShipped (in order):\n- Tier 1 — groovy retrofit (PR merged, threads path_hint from import_aliases)\n- Tier 2 — lua retrofit (PR merged, threads require_aliases via 2 call sites + coherence-fix for qualified dst)\n- Tier 2 — tcl retrofit (PR merged, rpartition(\"::\") namespace-split)\n- Tier 2 — objc retrofit (PR merged, _extract_message_receiver + PascalCase-receiver heuristic)\n- Tier 2 — perl retrofit (PR merged, rpartition(\"::\") package-split)\n- Tier 2 — powershell retrofit (PR merged, rpartition(\"\\\\\") module-split)\n\nAlso delivered alongside (PR #3995): WI-zisov Phase 2 polyglot-fixture audit, 5 new language fixtures with strict xfail markers documenting the analyzer gaps that future fix-side PRs will flip XPASSED.\n\nRemaining WI-nigah scope (not delivered in this round):\n- Tier 3 lang-extended1 long-tail (d_lang 1121 unresolved/repo, pascal 73, plus 15 audit-pending: ada/asm/cobol/fennel/fish/gdscript/gleam/haxe/janet/nim/odin/pony/solidity/v_lang). User scope-bounded today to Tier 1 + Tier 2 only.\n- Closing the WI-zisov xfail gaps (kotlin qualified-call, scala qualified-call, php static-method, csharp no-external-edges) — those are downstream analyzer-deepening work, not in this retrofit's shape.\n\nSuggest leaving WI-nigah at todo_soft pending the Tier 3 work, OR splitting into a separate Tier 3 umbrella + closing this one done. Not closing as 'done' here pending that decision."  # 0d35
+- op: discuss  # 636d
+  at: '2026-05-31T17:25:02Z'  # 636d
+  by: agent  # 636d
+  actor: jgstern_agent  # 636d
+  clock: 10  # 636d
+  nonce: 636d  # 636d
+  message: "Successor item created for outstanding Tier 3 + WI-zisov-gap-closure work: WI-bohih-pipib-libin-hazik-hinim-bamos-zahud-zokal (2026-05-31). All scope NOT shipped under WI-nigah Tier 1+2 has been copied verbatim into that item's description (Part 1: lang-extended1 d_lang + pascal + 14 audit-pending; Part 2: kotlin/scala/php/csharp xfail gap-closure). WI-nigah closing 'done' below."  # 636d
+- op: update  # 3aae
+  at: '2026-05-31T17:25:03Z'  # 3aae
+  by: agent  # 3aae
+  actor: jgstern_agent  # 3aae
+  clock: 11  # 3aae
+  nonce: 3aae  # 3aae
+  set:  # 3aae
+    status: done  # 3aae
+- op: discuss  # 183f
+  at: '2026-05-31T17:25:03Z'  # 183f
+  by: agent  # 183f
+  actor: jgstern_agent  # 183f
+  clock: 12  # 183f
+  nonce: 183f  # 183f
+  message: "Closing 'done' 2026-05-31 after Tier 1 (groovy) + all Tier 2 (lua/tcl/objc/perl/powershell) shipped today across 6 PRs, plus the WI-zisov Phase 2 polyglot audit fixture (PR #3995). Outstanding scope copied to successor WI-bohih-pipib-libin-hazik-hinim-bamos-zahud-zokal so this umbrella can close cleanly rather than carrying mixed shipped+pending state."  # 183f

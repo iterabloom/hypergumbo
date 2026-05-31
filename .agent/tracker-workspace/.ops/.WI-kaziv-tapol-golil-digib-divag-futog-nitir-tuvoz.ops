@@ -81,3 +81,10 @@
   clock: 9  # 02db
   nonce: 02db  # 02db
   message: "Closing as done. BROAD-cycle validation pattern exercised on 2026-05-31. Methodology finding recorded: random-cohort BROAD bakeoffs are not construct-targeted enough to validate analyzer-retrofit work; the polyglot fixture path (WI-pisab-furis Level 2, CI-gated) is the appropriate validation instrument for that class of claim. Cohort #1 A/B diff (pre-WI-mafik 036e94aa20 vs HEAD 416f843499) produced a conclusive NO_MOVE on call-resolution counts and MOVED on dst_ref-on-JS metadata. Neither target (WI-tihup unimplemented; WI-mafik already done and not in awaits_bakeoff_validation queue) needed manual tag-strip. Per-repo findings and methodology recommendation in ~/hypergumbo_lab_notebook/wi-kaziv-bakeoff-verdict-05312026.md."  # 02db
+- op: discuss  # c7ef
+  at: '2026-05-31T09:45:14Z'  # c7ef
+  by: agent  # c7ef
+  actor: jgstern_agent  # c7ef
+  clock: 10  # c7ef
+  nonce: c7ef  # c7ef
+  message: "Data-gap collection for WI-nigah Tier 3 prioritization (2026-05-31, post-WI-kaziv close): ran hypergumbo on a 6-repo per-language cohort. Per-analyzer unresolved external-target call-edge volume (all 0% dst_ref, confirming retrofit gap): lua/kong=6893, d_lang/dmd=1121, tcl/redis=403, pascal/sherpa-onnx=73, groovy/spring-boot=41, objc/feyncalc=0. The 0/13 totals for objc on feyncalc is a cohort failure — feyncalc .m files are Mathematica not Objective-C. Languages with no representative repo in the prospector pool (cobol, fennel, gdscript, gleam, janet, nim, odin, pony, solidity) or with the only candidate repo being prohibitively large (perl/powershell/asm in virtualbox, ada/fish/haxe/v_lang with too few files): no data collected. Data-driven Tier 3 prioritization for WI-nigah residual scope: HIGH-VOLUME RETROFIT TARGETS lua (6.9K unresolved) > d_lang > tcl; LOW-VOLUME OR INSUFFICIENT DATA pascal/groovy/objc + the no-data set. Full per-repo numbers and hg.json artifacts at /tmp/wi-nigah-data/. This closes the data gap that the WI-kaziv discussion called out and feeds the WI-nigah todo_soft conversion."  # c7ef
