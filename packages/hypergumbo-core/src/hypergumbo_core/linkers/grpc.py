@@ -227,7 +227,7 @@ def _scan_proto_file(
                 service_name=current_service,
                 line=i,
                 file_path=str(file_path),
-                language="protobuf",
+                language="proto",
                 package=package,
             ))
 
@@ -941,7 +941,7 @@ def link_grpc(
             id=route_id,
             name=route_name,
             kind="function",
-            language="protobuf",
+            language="proto",
             path=rpc.file_path,
             span=Span(rpc.line, rpc.line, 0, 0),
             origin=PASS_ID,
