@@ -24,6 +24,14 @@ other than Python).
   closed all seven gaps; the ``xfail_reason`` fields have been stripped
   and the test now demands all 8 fixtures pass. Re-introducing an
   ``xfail_reason`` later is a regression signal.
+- **Kotlin, Scala, PHP, Swift, C#** — WI-zisov Phase 2 audit extension
+  (2026-05-31). Swift passes cleanly. Kotlin/Scala/PHP partially work
+  (bare-named-import constructs resolve, qualified-call constructs do
+  not). C# is a deeper gap — the analyzer emits no unresolved external
+  call edges at all. The four gaps carry strict ``xfail_reason`` markers
+  pointing at the WI-nigah Tier 2 backlog; closing those analyzer
+  gaps flips XPASSED, which fails the test, forcing the fix-side PR to
+  strip the marker.
 
 ## Adding a new language
 
@@ -350,6 +358,156 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
         ),
         expected_targets=(
             ("Enum", "map"),
+        ),
+    ),
+    # WI-zisov Phase 2 audit extension (2026-05-31): 5 additional languages
+    # beyond WI-mafik's Level 1b audit set (java/go/elixir/js_ts/cpp/rust/ruby).
+    # Each fixture exercises the canonical import-times-call constructs for
+    # the language. ``xfail_reason`` captures gaps discovered at audit time;
+    # future analyzer fixes flip XPASSED, surfacing the regression signal.
+    PolyglotFixture(
+        language="kotlin",
+        filename="PolyglotKotlinFixture.kt",
+        source=(
+            "// SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "// WI-zisov Kotlin import-times-call coverage fixture.\n"
+            "import com.example.helpers.doWork\n"
+            "import com.example.types.Item\n"
+            "\n"
+            "fun exerciseAllStyles() {\n"
+            "    // Bare named import + bare call (WI-huzuv-validated path).\n"
+            "    doWork()\n"
+            "    // Qualified call through imported type — currently a gap:\n"
+            "    // the analyzer does not emit an edge for ``Type.method()``\n"
+            "    // when the type is imported.\n"
+            "    Item.create()\n"
+            "}\n"
+        ),
+        expected_targets=(
+            ("com.example.helpers", "doWork"),
+            ("com.example.types", "create"),
+        ),
+        xfail_reason=(
+            "Kotlin analyzer audit gap: imported-type qualified-call "
+            "``Item.create()`` emits no edge (only the bare-named import "
+            "construct resolves). See WI-nigah Tier 2 backlog."
+        ),
+    ),
+    PolyglotFixture(
+        language="scala",
+        filename="PolyglotScalaFixture.scala",
+        source=(
+            "// SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "// WI-zisov Scala import-times-call coverage fixture.\n"
+            "import com.example.helpers.doWork\n"
+            "import com.example.types.Item\n"
+            "\n"
+            "object Polyglot {\n"
+            "  def exerciseAllStyles(): Unit = {\n"
+            "    // Bare named import + bare call (WI-huzuv-validated path).\n"
+            "    doWork()\n"
+            "    // Qualified call through imported object — currently emits\n"
+            "    // an ``external`` sentinel instead of the imported module path.\n"
+            "    Item.create()\n"
+            "  }\n"
+            "}\n"
+        ),
+        expected_targets=(
+            ("com.example.helpers", "doWork"),
+            ("com.example.types", "create"),
+        ),
+        xfail_reason=(
+            "Scala analyzer audit gap: imported-object qualified-call "
+            "``Item.create()`` emits ``external`` sentinel for module_hint "
+            "instead of threading the import-tracker output. See WI-nigah "
+            "Tier 2 backlog."
+        ),
+    ),
+    PolyglotFixture(
+        language="php",
+        filename="polyglot_php_fixture.php",
+        source=(
+            "<?php\n"
+            "// SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "// WI-zisov PHP import-times-call coverage fixture.\n"
+            "use App\\Helpers\\doWork;\n"
+            "use App\\Helpers\\helperFn as helper;\n"
+            "use App\\Types\\Item;\n"
+            "\n"
+            "function exerciseAllStyles() {\n"
+            "    // Bare named import + bare call (WI-huzuv-validated path).\n"
+            "    doWork();\n"
+            "    // Aliased terminal (``use ... as ...``) + alias call.\n"
+            "    helper();\n"
+            "    // Static-method via use-imported class — currently a gap:\n"
+            "    // the analyzer does not emit an edge for ``Item::create()``.\n"
+            "    Item::create();\n"
+            "}\n"
+        ),
+        expected_targets=(
+            ("App", "doWork"),
+            ("App", "helper"),
+            ("App", "create"),
+        ),
+        xfail_reason=(
+            "PHP analyzer audit gap: static-method call ``Item::create()`` "
+            "through a ``use``-imported class emits no edge (only bare-named "
+            "and aliased-terminal constructs resolve). See WI-nigah Tier 2 "
+            "backlog."
+        ),
+    ),
+    PolyglotFixture(
+        language="swift",
+        filename="PolyglotSwiftFixture.swift",
+        source=(
+            "// SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "// WI-zisov Swift import-times-call coverage fixture.\n"
+            "import HelpersModule\n"
+            "import TypesModule\n"
+            "import UtilsModule\n"
+            "\n"
+            "func exerciseAllStyles() {\n"
+            "    // Module-qualified bare call.\n"
+            "    HelpersModule.doWork()\n"
+            "    // Module.Type.method() — analyzer attributes to module.\n"
+            "    TypesModule.Item.create()\n"
+            "    // Module-qualified bare call.\n"
+            "    UtilsModule.helper()\n"
+            "}\n"
+        ),
+        expected_targets=(
+            ("HelpersModule", "doWork"),
+            ("TypesModule", "create"),
+            ("UtilsModule", "helper"),
+        ),
+    ),
+    PolyglotFixture(
+        language="csharp",
+        filename="PolyglotCsharpFixture.cs",
+        source=(
+            "// SPDX-License-Identifier: AGPL-3.0-or-later\n"
+            "// WI-zisov C# import-times-call coverage fixture.\n"
+            "using System;\n"
+            "using static System.Console;\n"
+            "\n"
+            "class PolyglotCsharp {\n"
+            "    static void ExerciseAllStyles() {\n"
+            "        // ``using`` namespace + Type.method() call.\n"
+            "        Console.WriteLine(\"hi\");\n"
+            "        // ``using static`` + bare call.\n"
+            "        WriteLine(\"bye\");\n"
+            "    }\n"
+            "}\n"
+        ),
+        expected_targets=(
+            ("System", "WriteLine"),
+        ),
+        xfail_reason=(
+            "C# analyzer audit gap: ``using``-imported external calls emit "
+            "no unresolved-edge — the analyzer only resolves local methods. "
+            "Needs WI-mafik-style retrofit (import tracking + "
+            "make_unresolved_edge wiring with dst_ref=ExternalRef). See "
+            "WI-nigah Tier 2 backlog."
         ),
     ),
 ]

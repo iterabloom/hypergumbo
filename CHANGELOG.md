@@ -32,6 +32,8 @@ New `ExternalRef(lang, module_path, name)` frozen dataclass replaces the legacy 
 
 WI-huzuv mechanical sweep (2026-05-31): kotlin, php, scala, swift analyzers now also populate `dst_ref` at their `make_unresolved_edge` call sites when the analyzer has a non-sentinel `module_hint`. The retrofit is purely additive — module_hint stays as-is, dst_ref mirrors it as the structured form. Empirical grep narrowed the long-tail sweep universe (initially sketched as ~10 candidates) to these 4 analyzers; the others either lack module_hint at the emit site or use ad-hoc `Edge.create` paths outside the sweep scope.
 
+WI-zisov Phase 2 polyglot-fixture audit (2026-05-31): `test_polyglot_call_site_coverage.py` extended with 5 new language fixtures — kotlin, scala, php, swift, csharp. Swift passes cleanly; kotlin/scala/php each pass for the bare-named-import construct but xfail (strict) for qualified-call constructs (`Item.create()`, `Item::create()`); csharp xfails entirely (the analyzer emits no unresolved external-call edges). The 4 xfail markers cite WI-nigah Tier 2 as the gap-closure work; flipping XPASSED will fail the test, forcing fix-side PRs to strip the marker.
+
 #### Per-entry-point safety claims and wrapper-function discipline
 
 A per-entry-point taint-flow model distinguishes what each CLI subcommand is allowed to do, verified by `hypergumbo verify-claims`. Key pieces:
