@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -932,6 +932,10 @@ def _extract_edges(
                             "php", current_function.id, callee_name,
                             node.start_point[0] + 1, PASS_ID, run.execution_id,
                             module_hint=path_hint or "external",
+                            dst_ref=(
+                                ExternalRef(lang="php", module_path=path_hint, name=callee_name)
+                                if path_hint else None
+                            ),
                         ))
 
         # Method calls: $this->method() or $obj->method()

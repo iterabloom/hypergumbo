@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -1142,6 +1142,10 @@ def _extract_edges_from_file(
                                 "kotlin", current_function.id, callee_name,
                                 node.start_point[0] + 1, PASS_ID, run.execution_id,
                                 module_hint=import_hint or "external",
+                                dst_ref=(
+                                    ExternalRef(lang="kotlin", module_path=import_hint, name=callee_name)
+                                    if import_hint else None
+                                ),
                             ))
 
                     # Return type tracking for simple function calls

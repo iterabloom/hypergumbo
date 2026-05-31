@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -725,6 +725,10 @@ def _extract_edges_from_file(
                                 "scala", current_function.id, callee_name,
                                 node.start_point[0] + 1, PASS_ID, run_id,
                                 module_hint=path_hint or "external",
+                                dst_ref=(
+                                    ExternalRef(lang="scala", module_path=path_hint, name=callee_name)
+                                    if path_hint else None
+                                ),
                             ))
 
         # Scala eta-expansion: ``transform _`` produces a postfix_expression

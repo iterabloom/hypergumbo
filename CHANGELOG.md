@@ -30,6 +30,8 @@ Convention-based view-template linking, previously Rails-only, now covers five f
 
 New `ExternalRef(lang, module_path, name)` frozen dataclass replaces the legacy colon-delimited `Edge.dst` string for cross-module call references. Adopted by Python, Java, Go, Elixir, JS/TS, C++, Rust, and Ruby analyzers via a shared `ImportScope` abstraction. Consumers (io-boundary chain composition, boundary-node creation) prefer `dst_ref` over legacy colon-split heuristics. SCHEMA_VERSION 0.7.2 → 0.8.0.
 
+WI-huzuv mechanical sweep (2026-05-31): kotlin, php, scala, swift analyzers now also populate `dst_ref` at their `make_unresolved_edge` call sites when the analyzer has a non-sentinel `module_hint`. The retrofit is purely additive — module_hint stays as-is, dst_ref mirrors it as the structured form. Empirical grep narrowed the long-tail sweep universe (initially sketched as ~10 candidates) to these 4 analyzers; the others either lack module_hint at the emit site or use ad-hoc `Edge.create` paths outside the sweep scope.
+
 #### Per-entry-point safety claims and wrapper-function discipline
 
 A per-entry-point taint-flow model distinguishes what each CLI subcommand is allowed to do, verified by `hypergumbo verify-claims`. Key pieces:
