@@ -106,7 +106,6 @@ _LANG_PACK_OVERRIDES = {
     "typescript": "typescript",
     "csharp": "csharp",
     "cpp": "cpp",
-    "objective-c": "objc",
 }
 
 

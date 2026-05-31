@@ -3769,7 +3769,9 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         if catalog.primitives:
             catalogs[lang] = catalog
             # Also key by the catalog's base language so edge-prefix lookups
-            # work (e.g., nodes say "objective-c" but edges use "objc:" prefix)
+            # work when the catalog's base differs from the Symbol's language
+            # (e.g., catalog aliases like typescript→javascript or
+            # groovy→java in io_boundary._CATALOG_ALIASES).
             if catalog.language != lang:
                 catalogs[catalog.language] = catalog
 

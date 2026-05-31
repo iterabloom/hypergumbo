@@ -342,7 +342,7 @@ class TestObjCSymbolProperties:
         test_class = next((s for s in result.symbols if s.name == "TestClass"), None)
         assert test_class is not None
         assert test_class.span.start_line == 1
-        assert test_class.language == "objective-c"
+        assert test_class.language == "objc"
         assert test_class.origin == ["objc"]
 
 class TestObjCEdgeProperties:

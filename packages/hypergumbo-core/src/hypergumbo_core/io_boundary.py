@@ -729,8 +729,6 @@ _CATALOG_ALIASES: dict[str, str] = {
     "typescript": "javascript",
     # JVM languages that lack their own catalog share the Java IO catalog
     "groovy": "java",
-    # Objective-C nodes have language="objective-c" but edge prefixes use "objc"
-    "objective-c": "objc",
 }
 
 # Languages with their own catalog that also inherit from a parent.

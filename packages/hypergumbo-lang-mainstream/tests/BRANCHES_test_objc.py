@@ -241,7 +241,7 @@ class TestTreeSitterUnavailable:
         import pytest
 
         with patch.object(objc_module._analyzer, "_check_grammar_available", return_value=False):
-            with pytest.warns(UserWarning, match="objective-c analysis skipped"):
+            with pytest.warns(UserWarning, match="objc analysis skipped"):
                 result = objc_module.analyze_objc(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason

@@ -583,7 +583,7 @@ def is_yaml_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("yaml_ansible")
+@register_analyzer("yaml_ansible", languages=["ansible"])
 def analyze_ansible(root: Path) -> AnalysisResult:
     """Analyze Ansible YAML files in a directory.
 

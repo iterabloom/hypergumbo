@@ -1106,28 +1106,32 @@ def test_by_file_entry_points(tmp_path: Path, capsys) -> None:
     assert "main" in out
 
 
-def test_objc_io_boundaries_detected(tmp_path: Path, capsys) -> None:
-    """ObjC I/O boundaries are detected despite 'objective-c' vs 'objc' mismatch.
+def test_typescript_alias_io_boundaries_detected(tmp_path: Path, capsys) -> None:
+    """TypeScript I/O boundaries detected via 'typescript'→'javascript' catalog alias.
 
-    Nodes report language='objective-c' but symbol IDs use 'objc:' prefix.
-    The catalog loading must bridge this mismatch so tag_io_boundaries can
-    match ObjC I/O primitives.
+    Exercises the secondary keying branch in cli.py's io-boundaries setup:
+    when a Symbol has language='typescript' but the IO-primitive catalog is
+    the shared JavaScript one (catalog.language='javascript' ≠ lang),
+    catalogs[catalog.language] must also be keyed so edge-prefix lookups
+    find the catalog. Was previously the 'objective-c' alias case before
+    the objc language-tag harmonization; typescript→javascript is the
+    remaining alias in io_boundary._CATALOG_ALIASES.
     """
     bmap = _make_behavior_map(
         nodes=[
             {
-                "id": "objc:src/Manager.m:1-5:Manager.cleanup:method",
-                "name": "Manager.cleanup",
-                "kind": "method",
-                "language": "objective-c",
-                "path": "src/Manager.m",
+                "id": "typescript:src/io.ts:1-5:writeFile:function",
+                "name": "writeFile",
+                "kind": "function",
+                "language": "typescript",
+                "path": "src/io.ts",
                 "span": {"start_line": 1, "end_line": 5},
             },
         ],
         edges=[
             {
-                "src": "objc:src/Manager.m:1-5:Manager.cleanup:method",
-                "dst": "objc:external:0-0:removeItemAtPath:error::unresolved",
+                "src": "typescript:src/io.ts:1-5:writeFile:function",
+                "dst": "javascript:external:0-0:fs.writeFileSync:unresolved",
                 "type": "calls",
                 "confidence": 0.5,
             },
@@ -1139,7 +1143,7 @@ def test_objc_io_boundaries_detected(tmp_path: Path, capsys) -> None:
     assert rc == 0
     data = json.loads(capsys.readouterr().out)
     assert data["total_io_edges"] >= 1, (
-        f"Expected >=1 ObjC IO edges, got {data['total_io_edges']}. "
+        f"Expected >=1 TS IO edges, got {data['total_io_edges']}. "
         f"Boundaries: {list(data.get('boundaries', {}).keys())}"
     )
     assert "fs_write" in data["boundaries"]

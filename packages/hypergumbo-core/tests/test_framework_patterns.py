@@ -1152,7 +1152,7 @@ class TestPattern:
             id="objc:MBProgressHUD.m:50-60:MBProgressHUD.layoutSubviews:method",
             name="MBProgressHUD.layoutSubviews",
             kind="method",
-            language="objective-c",
+            language="objc",
             path="MBProgressHUD.m",
             span=Span(50, 60, 0, 0),
             meta={
@@ -1178,7 +1178,7 @@ class TestPattern:
             id="objc:MyVC.m:10-20:MyVC.viewDidLoad:method",
             name="MyVC.viewDidLoad",
             kind="method",
-            language="objective-c",
+            language="objc",
             path="MyVC.m",
             span=Span(10, 20, 0, 0),
             meta={

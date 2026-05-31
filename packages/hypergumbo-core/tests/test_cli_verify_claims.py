@@ -157,24 +157,26 @@ def test_verify_claims_empty(tmp_path: Path, capsys) -> None:
     assert rc == 0
 
 
-def test_verify_claims_objc_catalog_bridging(tmp_path: Path, capsys) -> None:
-    """Verify-claims detects ObjC I/O despite 'objective-c' / 'objc' mismatch.
+def test_verify_claims_typescript_alias_catalog_bridging(tmp_path: Path, capsys) -> None:
+    """Verify-claims detects TS I/O via 'typescript'→'javascript' catalog alias.
 
-    Nodes use language='objective-c' but symbol IDs prefix with 'objc:'.
-    The catalog loading must bridge this so verify-claims can detect violations.
+    Exercises the catalog secondary-keying branch when Symbol.language=
+    'typescript' but the catalog loaded is the shared JavaScript catalog
+    (catalog.language='javascript' ≠ lang). Was previously the
+    'objective-c' alias case before the objc language-tag harmonization.
     """
     bmap = _make_behavior_map(
         nodes=[{
-            "id": "objc:src/Cleanup.m:1-5:Cleanup.run:method",
-            "name": "Cleanup.run",
-            "kind": "method",
-            "language": "objective-c",
-            "path": "src/Cleanup.m",
+            "id": "typescript:src/cleanup.ts:1-5:cleanup:function",
+            "name": "cleanup",
+            "kind": "function",
+            "language": "typescript",
+            "path": "src/cleanup.ts",
             "span": {"start_line": 1, "end_line": 5},
         }],
         edges=[{
-            "src": "objc:src/Cleanup.m:1-5:Cleanup.run:method",
-            "dst": "objc:external:0-0:removeItemAtPath:error::unresolved",
+            "src": "typescript:src/cleanup.ts:1-5:cleanup:function",
+            "dst": "javascript:external:0-0:fs.unlinkSync:unresolved",
             "type": "calls",
             "confidence": 0.5,
         }],

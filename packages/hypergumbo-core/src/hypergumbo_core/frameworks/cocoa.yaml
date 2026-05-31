@@ -9,7 +9,7 @@
 # lifecycle hooks here are mostly parameterless (no colons in name).
 
 id: cocoa
-language: [objective-c]
+language: [objc]
 
 patterns:
   # UIViewController lifecycle hooks

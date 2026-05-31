@@ -898,8 +898,13 @@ net_send:
         assert hit4 is not None
         assert hit4.boundary == "logging"
 
-    def test_objective_c_alias_loads_objc_catalog(self) -> None:
-        """The 'objective-c' alias resolves to the 'objc' catalog."""
+    def test_objc_catalog_loads(self) -> None:
+        """The 'objc' catalog loads and contains Foundation IO primitives.
+
+        Was previously a test of the 'objective-c' → 'objc' alias before the
+        language-tag harmonization; the alias has been removed and 'objc' is
+        now the consistent canonical value across emit, IDs, and catalog.
+        """
         catalog = load_catalog("objc")
         assert len(catalog.primitives) > 0
         hit = catalog.lookup("removeItemAtPath:error:")

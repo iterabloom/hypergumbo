@@ -115,6 +115,11 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 - **Taint auto-mapping coverage gap closed** — `db_write`, `db_read`, `process_send`, and `logging` boundary types now have `AUTO_SINK_ZONE_MAP` / `AUTO_SOURCE_LABEL_MAP` entries (WI-gofaz). Regression guard test prevents silent gaps when new boundary types are added (INV-zivah).
 - **HIGH_RISK_PRIMITIVES drift guard** — property test asserts every entry exists in at least one `io_primitives/*.yaml` catalog, preventing phantom entries. Fixed `stdio.popen` → `stdlib.popen` to match the C catalog (WI-gitad).
 
+#### Language-tag harmonization
+
+- **Objective-C analyzer harmonized to `language="objc"`.** Previously `objc.py` emitted `Symbol.language="objective-c"` while every other consumer (Symbol IDs, edge prefixes, catalog registration, linker activation, file classification) used `"objc"`. Translation tables in `fingerprint.py:_LANG_PACK_OVERRIDES` and `io_boundary.py:_CATALOG_ALIASES` accommodated the mismatch; both entries removed. The `frozenset({"objective-c", "objc"})` in `sketch.py` collapses to `frozenset({"objc"})`. Two regression tests previously named `*_despite_mismatch` retitled and rewritten as consistent-canonical-form tests. Class attribute `lang = "objective-c"` on the analyzer (used in `analysis skipped` warning text) also harmonized to `"objc"`. Affected: stable_id values for Objective-C Symbols change in this release.
+- **Ansible analyzer's emitted language tag formalized.** `yaml_ansible.py` emits `Symbol.language="ansible"` and constructs IDs via `make_symbol_id("ansible", ...)`. The analyzer's registration now declares `languages=["ansible"]` so `all_known_languages()` returns `"ansible"` (catalog-conformant). Analyzer's pipeline identity (registration `name`, `PASS_ID`, depends-on references) remains `"yaml_ansible"`. No translation infrastructure or stable_id change.
+
 #### Other changes
 
 - **`io-boundaries` hides `external_potential` bucket** from default text output (was drowning per-primitive view). New `--show-external-potential` flag opts back in.

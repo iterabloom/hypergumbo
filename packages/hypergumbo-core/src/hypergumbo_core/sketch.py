@@ -5001,7 +5001,7 @@ LANGUAGE_ANALYZERS: list[tuple[frozenset[str], str, str, str]] = [
     (frozenset({"fortran"}), "fortran", "analyze_fortran", "Fortran"),
     (frozenset({"groovy"}), "groovy", "analyze_groovy", "Groovy"),
     (frozenset({"julia"}), "julia", "analyze_julia", "Julia"),
-    (frozenset({"objective-c", "objc"}), "objc", "analyze_objc", "Obj-C"),
+    (frozenset({"objc"}), "objc", "analyze_objc", "Obj-C"),
     (frozenset({"perl"}), "perl", "analyze_perl", "Perl"),
     (frozenset({"proto"}), "proto", "analyze_proto", "Proto"),
     (frozenset({"thrift"}), "thrift", "analyze_thrift", "Thrift"),

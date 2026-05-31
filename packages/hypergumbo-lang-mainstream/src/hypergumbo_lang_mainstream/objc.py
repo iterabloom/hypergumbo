@@ -295,7 +295,7 @@ def _extract_symbols_from_file(
                     id=symbol_id,
                     name=class_name,
                     kind="class",
-                    language="objective-c",
+                    language="objc",
                     path=rel_path,
                     span=Span(
                         start_line=start_line,
@@ -325,7 +325,7 @@ def _extract_symbols_from_file(
                     id=symbol_id,
                     name=protocol_name,
                     kind="protocol",
-                    language="objective-c",
+                    language="objc",
                     path=rel_path,
                     span=Span(
                         start_line=start_line,
@@ -358,7 +358,7 @@ def _extract_symbols_from_file(
                     id=symbol_id,
                     name=full_name,
                     kind="method",
-                    language="objective-c",
+                    language="objc",
                     path=rel_path,
                     span=Span(
                         start_line=start_line,
@@ -387,7 +387,7 @@ def _extract_symbols_from_file(
                     id=symbol_id,
                     name=full_name,
                     kind="property",
-                    language="objective-c",
+                    language="objc",
                     path=rel_path,
                     span=Span(
                         start_line=start_line,
@@ -576,7 +576,7 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
     cross-file message-send resolution.
     """
 
-    lang = "objective-c"
+    lang = "objc"
     file_patterns: ClassVar[list[str]] = ["*.m", "*.mm", "*.h"]
     grammar_module = "tree_sitter_objc"
 
