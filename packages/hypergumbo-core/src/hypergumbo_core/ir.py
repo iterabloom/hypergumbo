@@ -313,7 +313,13 @@ class Symbol:
         id: Location-based identifier in format {lang}:{file}:{start}-{end}:{name}:{kind}
         name: The symbol's name (e.g., function name, class name)
         kind: Type of symbol (function, class, etc.)
-        language: Programming language (python, javascript, etc.)
+        language: Programming language (python, javascript, etc.). Optional per
+            ADR-0031 — Symbols representing source-code declarations carry the
+            host language; synthetic-stand-in Symbols emitted by linkers for
+            protocol/framework patterns (Kafka topics, WASM modules, IPC
+            channels, etc.) leave this ``None`` and populate ``protocol_origin``
+            instead. Pre-ADR-0031 emits will continue passing a string for the
+            full ADR-0031 §"Phase 1 Producer migration" window.
         path: File path where the symbol is defined
         span: Source location with lines and columns
         origin: Provenance list (INV-jidat). Each element is a pass ID that
@@ -358,12 +364,28 @@ class Symbol:
         docstring: First-line summary of doc comment (truncated to 80 chars).
         modifiers: List of semantic modifiers (e.g., ["native", "public", "static"]).
             Used by linkers for cross-language matching (e.g., JNI needs 'native').
+        discovery_language: ADR-0031 typed sibling field. Names the host source
+            language where the linker discovered the pattern that produced this
+            Symbol. Populated by Class-B linker emits (synthetic stand-ins
+            discovered in real source files). ``None`` for real-source
+            declarations emitted by analyzers (``language`` already names that
+            information). Shares the ``language`` axis catalog with
+            ``Symbol.language``; the cross-language-detection consumer sites in
+            ``event_sourcing.py`` / ``database_query.py`` / ``message_queue.py``
+            / ``graphql_resolver.py`` read this rather than ``language``.
+        protocol_origin: ADR-0031 typed sibling field. Names the protocol or
+            framework family (kafka, websocket, ipc, wasm, openapi, grpc,
+            graphql, etc.) for synthetic stand-ins emitted by linkers fabricating
+            protocol identity from source patterns. Catalog at
+            :mod:`hypergumbo_core.protocol_origins`. ``None`` for real-source
+            declarations and for synthetic stand-ins that don't belong to a
+            recognized protocol family.
     """
 
     id: str  # axis: identity
     name: str  # axis: free-text — language identifier from source; consumers display/store/lookup, never branch on the value itself.
     kind: str  # axis: symbol-kind
-    language: str  # axis: language
+    language: Optional[str]  # axis: language
     path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself.
     span: Span
     origin: List[str] = field(default_factory=list)  # axis: pass-id
@@ -386,6 +408,8 @@ class Symbol:
     signature: Optional[str] = None  # axis: free-text — callable signature string in source-language grammar; consumers display, never branch on the value itself.
     docstring: Optional[str] = None  # axis: free-text — natural-language summary from the source comment; consumers display/log/hash, never branch on the value itself.
     modifiers: List[str] = field(default_factory=list)
+    discovery_language: Optional[str] = None  # axis: language
+    protocol_origin: Optional[str] = None  # axis: protocol-origin
 
     def __post_init__(self) -> None:
         if isinstance(self.origin, str):
@@ -432,6 +456,8 @@ class Symbol:
             "signature": self.signature,
             "docstring": self.docstring,
             "modifiers": self.modifiers,
+            "discovery_language": self.discovery_language,
+            "protocol_origin": self.protocol_origin,
         }
 
     @classmethod
@@ -466,6 +492,8 @@ class Symbol:
             signature=d.get("signature"),
             docstring=d.get("docstring"),
             modifiers=d.get("modifiers", []),
+            discovery_language=d.get("discovery_language"),
+            protocol_origin=d.get("protocol_origin"),
         )
 
 

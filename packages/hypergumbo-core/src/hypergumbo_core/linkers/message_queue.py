@@ -494,7 +494,16 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
             for sub in subs:
                 sub_symbol = symbol_by_location.get((sub.file_path, sub.line))
                 if pub_symbol and sub_symbol:
-                    is_cross_language = pub.language != sub.language
+                    # ADR-0031: read discovery_language for synthetic stand-ins
+                    # emitted by Class-B linker producers; fall back to language
+                    # for real-source declarations and for Symbols that haven't
+                    # migrated yet (double-write absorbs the Phase 1 window).
+                    # Prefer Symbol fields over the pattern object's language
+                    # because the Symbol is what consumers downstream of this
+                    # linker will see; the pattern is an internal intermediate.
+                    _pub_lang = pub_symbol.discovery_language or pub_symbol.language
+                    _sub_lang = sub_symbol.discovery_language or sub_symbol.language
+                    is_cross_language = _pub_lang != _sub_lang
                     # Confidence depends on whether topics are literal or variable
                     # Literal-to-literal: high confidence (exact match)
                     # Variable-to-variable: lower confidence (heuristic match)

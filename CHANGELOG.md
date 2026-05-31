@@ -103,6 +103,15 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 - **Stub `spec_validator` module** at `packages/hypergumbo-core/src/hypergumbo_core/spec_validator.py`. Phase-0 scaffolding — `ValidationViolation` dataclass + `validate_ir` entry point (returns `[]`) + `build_validation_report` + `emit_stderr_summary`. Wired into `cli.run_behavior_map` end-of-pipeline; every `hypergumbo run` now writes an empty-but-discoverable `validation_report` section into the behavior-map artifact. Phase 3 PRs progressively turn on each validator class.
 - **WI-rolol authorized.** `blocked_on_authorization` tag removed. Sub-task A (ClaimVerdict.inconclusive) folds into Phase 3 PR4. Sub-task B (AnalysisRun writer-contract test) folds into Phase 3 PR2.
 
+#### ADR-0031 Phase 1 PR1 — Symbol.language reshape (schema additions + consumer double-write)
+
+- **`Symbol.discovery_language: Optional[str]`** dormant typed sibling field with `# axis: language` annotation. ADR-0031's runtime home for the discovery-context semantic that four cross-language-detection consumer sites were reading out of `Symbol.language`.
+- **`Symbol.protocol_origin: Optional[str]`** dormant typed sibling field with `# axis: protocol-origin` annotation. ADR-0031's home for the protocol-identity semantic (kafka, websocket, ipc, wasm, openapi, grpc, etc.) that LITERAL-SENTINEL linkers were smuggling through `Symbol.language`.
+- **`Symbol.language: str → Optional[str]`** type relaxation. The field stays required-positional; Phase 1 PR2 starts emitting `None` for synthetic stand-ins, but Phase 1 PR1 doesn't change any producer.
+- **`protocol_origins` registry** at `packages/hypergumbo-core/src/hypergumbo_core/protocol_origins.py` — 19 initial values covering every Class-B linker in the ADR-0031 migration table (annotation, database_query, event_sourcing, graphql, grpc, http, ipc, js_module, message_queue, openapi, phoenix_ipc, solidity_abi, subprocess_cli, objc_bridge, tauri_ipc, wasm, websocket, yjs_crdt, plus crypto_flow / message_dispatch from the conditional-literal subset). `all_protocol_origin_names()` accessor; `ProtocolOriginSpec` frozen dataclass; `get_protocol_origin_spec` lookup. Property tests at `tests/test_protocol_origins.py` cover uniqueness, snake_case, description substance, lookup, and ADR-0031 migration-table seeding completeness.
+- **`protocol-origin` axis wired** into `multi_value_field_axis._known_axes()` so `# axis: protocol-origin` annotations on dataclass fields pass the static-AST linter.
+- **Consumer double-write** at the four cross-language-detection sites: `database_query.py:434`, `message_queue.py:497`, `event_sourcing.py:753`, `graphql_resolver.py:504,530`. Each now reads `sym.discovery_language or sym.language` (idempotent under either producer state — works whether Phase 1 PR2 has landed or not). The fallback is removed at Phase 2 PR3.
+
 
 ### Changed
 

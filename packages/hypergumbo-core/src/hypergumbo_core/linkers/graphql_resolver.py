@@ -501,7 +501,13 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
         field_key = f"{pattern.type_name.lower()}.{pattern.field_name.lower()}"
         if field_key in schema_lookup:
             schema_sym = schema_lookup[field_key]
-            is_cross_language = resolver_symbol.language != schema_sym.language
+            # ADR-0031: read discovery_language for synthetic stand-ins emitted
+            # by Class-B linker producers; fall back to language for real-source
+            # declarations and for Symbols that haven't migrated yet (double-
+            # write absorbs the Phase 1 window).
+            _r_lang = resolver_symbol.discovery_language or resolver_symbol.language
+            _s_lang = schema_sym.discovery_language or schema_sym.language
+            is_cross_language = _r_lang != _s_lang
 
             # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
             edge = Edge.create(
@@ -527,7 +533,10 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
         type_key = pattern.type_name.lower()
         if type_key in type_lookup:
             type_sym = type_lookup[type_key]
-            is_cross_language = resolver_symbol.language != type_sym.language
+            # ADR-0031: see comment at the schema-field comparison above.
+            _r_lang = resolver_symbol.discovery_language or resolver_symbol.language
+            _t_lang = type_sym.discovery_language or type_sym.language
+            is_cross_language = _r_lang != _t_lang
 
             # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
             edge = Edge.create(

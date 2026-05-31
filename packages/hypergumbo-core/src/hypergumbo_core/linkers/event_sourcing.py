@@ -750,7 +750,13 @@ def link_events(root: Path) -> EventSourcingLinkResult:
         event_key = publisher.event_name.lower()
         if event_key in subscriber_by_event:
             for sub_pattern, sub_symbol in subscriber_by_event[event_key]:
-                is_cross_language = pub_symbol.language != sub_symbol.language
+                # ADR-0031: read discovery_language for synthetic stand-ins
+                # emitted by Class-B linker producers; fall back to language
+                # for real-source declarations and for Symbols that haven't
+                # migrated yet (double-write absorbs the Phase 1 window).
+                _pub_lang = pub_symbol.discovery_language or pub_symbol.language
+                _sub_lang = sub_symbol.discovery_language or sub_symbol.language
+                is_cross_language = _pub_lang != _sub_lang
                 is_variable_event = (
                     publisher.event_type == "variable"
                     or sub_pattern.event_type == "variable"

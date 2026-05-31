@@ -14,15 +14,15 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **280** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 57 core, 4 CLI, 32 tracker)
-- **30063** symbols (functions, classes, methods)
-- **102264** edges by type:
-  - calls: 57008
-  - contains: 21555
-  - imports: 10131
+- **281** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 58 core, 4 CLI, 32 tracker)
+- **30078** symbols (functions, classes, methods)
+- **102291** edges by type:
+  - calls: 57017
+  - contains: 21556
+  - imports: 10143
   - instantiates: 7777
-  - references: 3334
-  - module_attr_ref: 1110
+  - references: 3338
+  - module_attr_ref: 1111
   - other: 1349
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30063 Symbols + 102264 Edges + UsageContexts           │
+│  Output: 30078 Symbols + 102291 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -190,7 +190,7 @@ A code symbol (function, class, etc.) detected by analysis.
 - `id`: Location-based identifier in format {lang}:{file}:{start}-{end}:{name}:{kind}
 - `name`: The symbol's name (e.g., function name, class name)
 - `kind`: Type of symbol (function, class, etc.)
-- `language`: Programming language (python, javascript, etc.)
+- `language`: Programming language (python, javascript, etc.). Optional per ADR-0031 — Symbols representing source-code declarations carry the host language; synthetic-stand-in Symbols emitted by linkers for protocol/framework patterns (Kafka topics, WASM modules, IPC channels, etc.) leave this ``None`` and populate ``protocol_origin`` instead. Pre-ADR-0031 emits will continue passing a string for the full ADR-0031 §"Phase 1 Producer migration" window.
 - `path`: File path where the symbol is defined
 - `span`: Source location with lines and columns
 - `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat.
@@ -213,6 +213,8 @@ A code symbol (function, class, etc.) detected by analysis.
 - `signature`: Function/method signature string, e.g., "(x: int, y: str) -> bool". Only populated for callable symbols (functions, methods). None for classes, etc.
 - `docstring`: First-line summary of doc comment (truncated to 80 chars).
 - `modifiers`: List of semantic modifiers (e.g., ["native", "public", "static"]). Used by linkers for cross-language matching (e.g., JNI needs 'native').
+- `discovery_language`: ADR-0031 typed sibling field. Names the host source language where the linker discovered the pattern that produced this Symbol. Populated by Class-B linker emits (synthetic stand-ins discovered in real source files). ``None`` for real-source declarations emitted by analyzers (``language`` already names that information). Shares the ``language`` axis catalog with ``Symbol.language``; the cross-language-detection consumer sites in ``event_sourcing.py`` / ``database_query.py`` / ``message_queue.py`` / ``graphql_resolver.py`` read this rather than ``language``.
+- `protocol_origin`: ADR-0031 typed sibling field. Names the protocol or framework family (kafka, websocket, ipc, wasm, openapi, grpc, graphql, etc.) for synthetic stand-ins emitted by linkers fabricating protocol identity from source patterns. Catalog at :mod:`hypergumbo_core.protocol_origins`. ``None`` for real-source declarations and for synthetic stand-ins that don't belong to a recognized protocol family.
 
 ### Edge (`ir.py`)
 A relationship between two symbols (e.g., function calls).
@@ -546,6 +548,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.paths`**: Centralized path handling utilities for hypergumbo.
 - **`hypergumbo_core.producer_coherence`**: Producer-side axis-coherence linter for Edge / Symbol constructors.
 - **`hypergumbo_core.profile`**: Repo profile detection - language and framework heuristics.
+- **`hypergumbo_core.protocol_origins`**: Canonical registry of ``Symbol.protocol_origin`` values (ADR-0031).
 - **`hypergumbo_core.ranking`**: Symbol and file ranking utilities for hypergumbo output.
 - **`hypergumbo_core.repo_fingerprint`**: Repository fingerprint: spec-defined hash of analyzed code state.
 - **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
@@ -812,7 +815,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 0653465b9bd3
+  commit: 12f5bb1ed600
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

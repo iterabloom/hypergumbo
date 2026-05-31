@@ -431,7 +431,14 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
             else:
                 table_sym = min(candidates, key=lambda c: c.id)
                 is_fallback = True
-            is_cross_language = query_symbol.language != table_sym.language
+            # ADR-0031: read discovery_language for synthetic stand-ins emitted
+            # by Class-B linker producers; fall back to language for real-source
+            # declarations and for Symbols that haven't migrated yet (double-
+            # write pattern absorbs the Phase 1 producer-consumer coordination
+            # window; the fallback is removed at Phase 2 PR3).
+            _q_lang = query_symbol.discovery_language or query_symbol.language
+            _t_lang = table_sym.discovery_language or table_sym.language
+            is_cross_language = _q_lang != _t_lang
 
             confidence = 0.5 if is_fallback else 0.85
             edge_meta: dict[str, object] = {

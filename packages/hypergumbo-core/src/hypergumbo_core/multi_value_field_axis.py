@@ -17,11 +17,15 @@ the linter requires a trailing source-line comment of the form
 be one of:
 
 - A **known axis name** (``edge-type``, ``symbol-kind``,
-  ``evidence-type``, ``language``) — the field's value space is the
-  legal set returned by the axis's all-names function. ``language``
-  is derived from the analyzer/linker catalog
-  (:func:`hypergumbo_core.catalog.all_known_languages`); the other
-  three live in dedicated ``*_types.py`` registry modules.
+  ``evidence-type``, ``language``, ``pass-id``, ``protocol-origin``) —
+  the field's value space is the legal set returned by the axis's
+  all-names function. ``language`` and ``pass-id`` are derived from
+  the analyzer/linker catalog (:func:`hypergumbo_core.catalog`); the
+  other four live in dedicated ``*_types.py`` / ``*_origins.py``
+  registry modules. The ``protocol-origin`` axis (ADR-0031) covers
+  ``Symbol.protocol_origin`` values for synthetic stand-ins emitted by
+  linkers that detect protocol patterns (Kafka, WebSocket, IPC, WASM,
+  GraphQL, etc.).
 - ``identity`` — the field's role is to uniquely identify a record
   (ids, hashes, signatures keyed per instance). Not enumerable.
 - ``bounded-enum`` — the field's value comes from a small fixed list
@@ -90,6 +94,7 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
     """
     from .edge_types import all_edge_type_names
     from .evidence_types import all_evidence_type_names
+    from .protocol_origins import all_protocol_origin_names
     from .symbol_kinds import all_symbol_kind_names
     from .catalog import all_known_languages, all_known_pass_ids
 
@@ -99,6 +104,7 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
         "evidence-type": all_evidence_type_names,
         "language": all_known_languages,
         "pass-id": all_known_pass_ids,
+        "protocol-origin": all_protocol_origin_names,
     }
 
 
