@@ -38,6 +38,8 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0029](0029-cross-language-inherited-call-linker.md) | Cross-Language Inherited-Call Linker | Accepted | 2026-05-25 |
 | [0030](0030-prov-vocabulary-mapping.md) | PROV Vocabulary Mapping for Behavior Map Provenance | Accepted | 2026-05-27 |
 | [0031](0031-symbol-language-reshape.md) | Symbol.language Reshape — discovery_language and protocol_origin Typed Fields | Draft | 2026-05-30 |
+| [0032](0032-canonical-name-fingerprint-reshape.md) | canonical_name and fingerprint Reshape — display_label and qualified_name Typed Fields; Format 1 Fingerprint Demolition | Accepted | 2026-05-31 |
+| [0033](0033-spec-vs-data-validator-stage.md) | Spec-vs-Data Validator Stage | Accepted | 2026-05-31 |
 
 > ADR numbers 0025 and 0026 were filed under the ADR series in error and have been **reclassified as audit-findings documents** (per-value verdicts under existing law from ADR-0023 and ADR-0024, not new architecture decisions). They now live at [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md) and [`docs/audits/0002-ipc-family.md`](../audits/0002-ipc-family.md). Stubs at the old paths are kept for URL-level discoverability but are not principles. The bucket boundary is documented in the next section.
 

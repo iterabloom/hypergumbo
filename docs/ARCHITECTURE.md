@@ -14,15 +14,15 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **279** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 56 core, 4 CLI, 32 tracker)
-- **30047** symbols (functions, classes, methods)
-- **102219** edges by type:
-  - calls: 56989
-  - contains: 21554
-  - imports: 10114
-  - instantiates: 7773
-  - references: 3332
-  - module_attr_ref: 1108
+- **280** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 57 core, 4 CLI, 32 tracker)
+- **30063** symbols (functions, classes, methods)
+- **102264** edges by type:
+  - calls: 57008
+  - contains: 21555
+  - imports: 10131
+  - instantiates: 7777
+  - references: 3334
+  - module_attr_ref: 1110
   - other: 1349
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30047 Symbols + 102219 Edges + UsageContexts           │
+│  Output: 30063 Symbols + 102264 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -265,7 +265,7 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 5399.3 | ir.py |
 | `Span` | class | 4256.0 | ir.py |
-| `run_behavior_map` | function | 3004.4 | cli.py |
+| `run_behavior_map` | function | 3028.8 | cli.py |
 | `LinkerContext` | class | 2158.7 | registry.py |
 | `TrackerApp` | class | 1877.7 | tui.py |
 | `load_framework_patterns` | function | 1730.6 | framework_patterns.py |
@@ -561,6 +561,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.selection.token_budget`**: Token estimation and budget management for LLM-aware output.
 - **`hypergumbo_core.sketch_embeddings`**: Embedding-based utilities for sketch generation.
 - **`hypergumbo_core.slice`**: Graph slicing for LLM context extraction.
+- **`hypergumbo_core.spec_validator`**: Spec-vs-data validator stage (ADR-0033, INV-sugat).
 - **`hypergumbo_core.supply_chain`**: Supply chain classification for code analysis.
 - **`hypergumbo_core.symbol_indexes`**: Multi-value Symbol-name indexes for analyzers and linkers (WI-sofaf).
 - **`hypergumbo_core.symbol_kinds`**: Canonical registry of Symbol.kind values in hypergumbo's behavior map.
@@ -811,7 +812,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 3d1c2050cdd5
+  commit: 0653465b9bd3
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

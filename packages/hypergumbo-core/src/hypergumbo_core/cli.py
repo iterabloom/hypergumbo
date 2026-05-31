@@ -8215,6 +8215,20 @@ def run_behavior_map(
             connectivity_aware=connectivity,
         )
 
+    # ADR-0033 (INV-sugat): spec-vs-data validator stage. Runs at the end
+    # of the pipeline against the final form of Symbols/Edges/AnalysisRuns,
+    # emits a structured validation_report into the behavior_map artifact,
+    # warns to stderr on non-empty. Does not fail the run; CI gate covers
+    # regressions. Phase 0 stub returns [].
+    from .spec_validator import (
+        build_validation_report,
+        emit_stderr_summary,
+        validate_ir,
+    )
+    _violations = validate_ir(all_symbols, all_edges, analysis_runs)
+    behavior_map["validation_report"] = build_validation_report(_violations)
+    emit_stderr_summary(_violations)
+
     # Free memory: Symbol/Edge objects no longer needed after tier/compact processing
     # All data is now in behavior_map as dicts. For large repos like tensorflow (154k
     # symbols, 505k edges), this can free several GB of memory before final write.
