@@ -52,7 +52,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -321,11 +321,31 @@ def _extract_powershell_edges(
                                 origin_run_id=run_id,
                             ))
                         else:
-                            # External cmdlet or function
-                            edges.append(make_unresolved_edge(
-                                "powershell", caller.id, command_name,
-                                node.start_point[0] + 1, PASS_ID, run_id,
-                            ))
+                            # External cmdlet or function. WI-nigah Tier 2:
+                            # PowerShell module-qualified calls use ``\``
+                            # (e.g., ``Microsoft.PowerShell.Management\Get-Process``).
+                            # Split at the rightmost ``\`` so the unresolved
+                            # edge carries a structured ``dst_ref`` keyed by
+                            # module. Bare cmdlets / functions have no
+                            # module signal at the call site — ``dst_ref``
+                            # stays None.
+                            if "\\" in command_name:
+                                mod, _, bare = command_name.rpartition("\\")
+                                edges.append(make_unresolved_edge(
+                                    "powershell", caller.id, bare,
+                                    node.start_point[0] + 1, PASS_ID, run_id,
+                                    module_hint=mod,
+                                    dst_ref=ExternalRef(
+                                        lang="powershell",
+                                        module_path=mod,
+                                        name=bare,
+                                    ),
+                                ))
+                            else:
+                                edges.append(make_unresolved_edge(
+                                    "powershell", caller.id, command_name,
+                                    node.start_point[0] + 1, PASS_ID, run_id,
+                                ))
 
 
 class PowerShellAnalyzer(TreeSitterAnalyzer):
