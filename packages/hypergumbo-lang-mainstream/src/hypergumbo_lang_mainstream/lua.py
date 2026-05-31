@@ -61,7 +61,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -625,13 +625,28 @@ def _extract_edges_from_file(
                                 )
                                 edges.append(edge)
                             else:
-                                # Unresolved call
+                                # Unresolved call. WI-nigah Tier 2: when
+                                # ``receiver_name`` is a require-alias, thread
+                                # the module path through as ``module_hint`` and
+                                # structured ``dst_ref``.
+                                hint = (
+                                    require_aliases.get(receiver_name)
+                                    if receiver_name else None
+                                )
                                 edges.append(make_unresolved_edge(
                                     "lua", caller.id, callee_name,
                                     node.start_point[0] + 1, PASS_ID, run_id,
+                                    module_hint=hint or "external",
+                                    dst_ref=(
+                                        ExternalRef(lang="lua", module_path=hint, name=callee_name)
+                                        if hint else None
+                                    ),
                                 ))
                     elif is_dot_call:
-                        # Dot call without require alias — try qualified name
+                        # Dot call — try qualified name. WI-nigah Tier 2: when
+                        # ``receiver_name`` is a require-alias, the unresolved
+                        # branch emits with module_hint=require_aliases[recv]
+                        # and the bare callee_name, plus structured dst_ref.
                         if receiver_name:
                             qualified = f"{receiver_name}.{callee_name}"
                             lookup_result = resolver.lookup(qualified, caller_path=_caller_path)
@@ -650,10 +665,23 @@ def _extract_edges_from_file(
                                 )
                                 edges.append(edge)
                             else:
-                                edges.append(make_unresolved_edge(
-                                    "lua", caller.id, qualified,
-                                    node.start_point[0] + 1, PASS_ID, run_id,
-                                ))
+                                hint = require_aliases.get(receiver_name)
+                                if hint:
+                                    edges.append(make_unresolved_edge(
+                                        "lua", caller.id, callee_name,
+                                        node.start_point[0] + 1, PASS_ID, run_id,
+                                        module_hint=hint,
+                                        dst_ref=ExternalRef(
+                                            lang="lua",
+                                            module_path=hint,
+                                            name=callee_name,
+                                        ),
+                                    ))
+                                else:
+                                    edges.append(make_unresolved_edge(
+                                        "lua", caller.id, qualified,
+                                        node.start_point[0] + 1, PASS_ID, run_id,
+                                    ))
                     else:
                         # Direct call: func(args)
                         lookup_result = resolver.lookup(callee_name, caller_path=_caller_path)

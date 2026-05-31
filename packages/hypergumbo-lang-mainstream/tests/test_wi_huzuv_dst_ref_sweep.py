@@ -13,6 +13,11 @@ Coverage:
 - WI-huzuv (PR #3991, 2026-05-31) — kotlin, php, scala, swift.
 - WI-nigah Tier 1 (2026-05-31) — groovy, the 5th mechanical-equivalent
   case (``path_hint`` already in scope at the call site).
+- WI-nigah Tier 2 (2026-05-31) — lua. Different shape from Tier 1:
+  the analyzer tracks ``require_aliases`` (``M = require("foo")``)
+  instead of ``import ... as`` aliases, and the retrofit threads
+  ``require_aliases[receiver]`` through both the method-call fallback
+  site and the dot-call fallback site.
 """
 import pytest
 from pathlib import Path
@@ -202,6 +207,123 @@ def run() {
     assert edge.dst_ref.lang == "groovy"
     assert "com.example.helpers" in edge.dst_ref.module_path
     assert edge.dst_ref.name == "doWork"
+
+
+def test_lua_unresolved_dot_call_carries_dst_ref(tmp_path: Path) -> None:
+    """WI-nigah Tier 2: lua dot call through a ``require_aliases`` receiver.
+
+    ``M.doWork()`` where ``M = require("foo.bar")`` and ``foo.bar.doWork``
+    is not a known project symbol reaches the dot-call unresolved-edge
+    branch (``lua.py`` site 2). The retrofit threads ``require_aliases[M]``
+    as both ``module_hint`` and structured ``dst_ref``.
+    """
+    from hypergumbo_lang_mainstream.lua import (
+        analyze_lua,
+        is_lua_tree_sitter_available,
+    )
+    _check_grammar_or_skip(is_lua_tree_sitter_available, "lua")
+
+    (tmp_path / "main.lua").write_text('''
+local M = require("foo.bar")
+
+function run()
+    M.doWork()
+end
+''')
+    result = analyze_lua(tmp_path)
+
+    unresolved_calls = [
+        e for e in result.edges
+        if e.edge_type == "calls"
+        and not e.is_resolved
+        and "doWork" in e.dst
+    ]
+    assert unresolved_calls, "expected an unresolved call edge for doWork"
+    edge = unresolved_calls[0]
+    assert edge.dst_ref is not None, (
+        f"dst_ref must be populated when require_aliases tracks the "
+        f"receiver; got dst={edge.dst!r}"
+    )
+    assert isinstance(edge.dst_ref, ExternalRef)
+    assert edge.dst_ref.lang == "lua"
+    assert edge.dst_ref.module_path == "foo.bar"
+    assert edge.dst_ref.name == "doWork"
+
+
+def test_lua_unresolved_method_call_carries_dst_ref(tmp_path: Path) -> None:
+    """WI-nigah Tier 2: lua method call through a ``require_aliases`` receiver.
+
+    ``M:doWork()`` where ``M = require("foo.bar")`` reaches the method-call
+    unresolved-edge fallback branch (``lua.py`` site 1). The retrofit
+    threads ``require_aliases[M]`` as both ``module_hint`` and structured
+    ``dst_ref``.
+    """
+    from hypergumbo_lang_mainstream.lua import (
+        analyze_lua,
+        is_lua_tree_sitter_available,
+    )
+    _check_grammar_or_skip(is_lua_tree_sitter_available, "lua")
+
+    (tmp_path / "main.lua").write_text('''
+local M = require("foo.bar")
+
+function run()
+    M:doWork()
+end
+''')
+    result = analyze_lua(tmp_path)
+
+    unresolved_calls = [
+        e for e in result.edges
+        if e.edge_type == "calls"
+        and not e.is_resolved
+        and "doWork" in e.dst
+    ]
+    assert unresolved_calls, "expected an unresolved call edge for doWork"
+    edge = unresolved_calls[0]
+    assert edge.dst_ref is not None, (
+        f"dst_ref must be populated when require_aliases tracks the "
+        f"receiver; got dst={edge.dst!r}"
+    )
+    assert isinstance(edge.dst_ref, ExternalRef)
+    assert edge.dst_ref.lang == "lua"
+    assert edge.dst_ref.module_path == "foo.bar"
+    assert edge.dst_ref.name == "doWork"
+
+
+def test_lua_direct_call_leaves_dst_ref_none(tmp_path: Path) -> None:
+    """WI-nigah Tier 2: lua bare-name direct call has no module info.
+
+    ``unknownFunc()`` with no receiver and no enclosing require alias
+    reaches the direct-call unresolved-edge branch (``lua.py`` site 3).
+    The retrofit must leave ``dst_ref`` as None — the analyzer has no
+    structured-module signal to attach.
+    """
+    from hypergumbo_lang_mainstream.lua import (
+        analyze_lua,
+        is_lua_tree_sitter_available,
+    )
+    _check_grammar_or_skip(is_lua_tree_sitter_available, "lua")
+
+    (tmp_path / "main.lua").write_text('''
+function run()
+    unknownFunc()
+end
+''')
+    result = analyze_lua(tmp_path)
+
+    unresolved_calls = [
+        e for e in result.edges
+        if e.edge_type == "calls"
+        and not e.is_resolved
+        and "unknownFunc" in e.dst
+    ]
+    if unresolved_calls:
+        edge = unresolved_calls[0]
+        assert edge.dst_ref is None, (
+            "dst_ref must be None for bare direct calls with no "
+            "import-tracker signal"
+        )
 
 
 def test_sweep_external_sentinel_leaves_dst_ref_none(tmp_path: Path) -> None:
