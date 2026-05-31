@@ -51,3 +51,33 @@
   clock: 5  # 4158
   nonce: '4158'  # 4158
   message: "BROAD cycle executed 2026-05-31 on session broad-20260531-022124, cohort #1 iter #1. Cohort: webtunnel(Go), catatonit(C), pobox(Erlang), webassembly-component-tutorial(Rust), socketio-chat-example(JS), SwiftyJSON(Swift+C). All 6 sub-agents returned MOSTLY_CORRECT. Full verdict synthesis at ~/hypergumbo_lab_notebook/wi-kaziv-bakeoff-verdict-05312026.md. WI-mafik observations: (1) Go aliased package imports verified working (positive signal); (2) JS dst_ref field present in structured {lang, module_path, name} form on JS edges only; (3) Rust grouped-use + qualified call for non-std crates still unresolved (adjacent to scope, not refuting); (4) JS constructor and default-import gaps surfaced but were not in WI-mafik's stated scope per WI-kujom. Verdict: INCONCLUSIVE — cohort too small/random to exercise WI-mafik's specific constructs cleanly. WI-tihup is unimplemented (still needs_human_review), so nothing to validate there. Recommendation: when the user wants Phase 2 to actually proceed, run a curated cohort with the specific WI-mafik constructs (synthetic fixture-shaped corpus, not random small projects). 5 MEDIUM diagnose findings (IO_OVER_TAGGING x2, LOW_ACCESS_MODE_RATE x2, NO_ACCESS_MODE_ANNOTATIONS x1) all validated as real by sub-agents. Several non-WI-mafik gaps captured in the verdict notebook for follow-up filing. Status stays needs_human_review per the item's original gating."  # 4158
+- op: update  # 7e72
+  at: '2026-05-31T07:13:55Z'  # 7e72
+  by: human  # 7e72
+  actor: jgstern  # 7e72
+  clock: 6  # 7e72
+  nonce: '7e72'  # 7e72
+  set:  # 7e72
+    status: todo_soft  # 7e72
+- op: discuss  # b59e
+  at: '2026-05-31T07:23:19Z'  # b59e
+  by: agent  # b59e
+  actor: jgstern_agent  # b59e
+  clock: 7  # b59e
+  nonce: b59e  # b59e
+  message: "A/B diff completed 2026-05-31 to convert the prior INCONCLUSIVE verdict into a conclusive one. Re-analyzed the same 6 cohort repos at pre-WI-mafik SHA 036e94aa20 (parent of be0ddcb8eb the analyzer-retrofit commit) vs post-WI-mafik HEAD 416f843499. Headline result on calls edges: 1109 total pre / 1109 total post; 485 resolved pre / 485 resolved post; 651 unresolved pre / 651 unresolved post. Zero net movement across all 6 repos. dst_ref structured field landed on JS only: 0 pre / 8 post on socketio-chat-example, 0/0 on the other 5. The +48 total-edge delta is entirely in contains edges from an unrelated improvement in the SHA range. Conclusive verdict: NO_MOVE on the headline call-resolution claim for this cohort, MOVED on dst_ref-on-JS. Interpretive note: this is a conclusive cohort verdict, not a global refutation. The polyglot-fixture path (WI-pisab-furis Level 2) is the actual contract spec for WI-mafik claims and CI confirms it passes. Real-world cohort BROAD bakeoffs aren't construct-targeted enough to validate analyzer-retrofit work; for future analyzer-retrofit validation, use the polyglot fixture path. Full A/B numbers in ~/hypergumbo_lab_notebook/wi-kaziv-bakeoff-verdict-05312026.md §Verdict (revised after A/B diff)."  # b59e
+- op: update  # 93a2
+  at: '2026-05-31T07:35:59Z'  # 93a2
+  by: agent  # 93a2
+  actor: jgstern_agent  # 93a2
+  clock: 8  # 93a2
+  nonce: 93a2  # 93a2
+  set:  # 93a2
+    status: done  # 93a2
+- op: discuss  # 02db
+  at: '2026-05-31T07:35:59Z'  # 02db
+  by: agent  # 02db
+  actor: jgstern_agent  # 02db
+  clock: 9  # 02db
+  nonce: 02db  # 02db
+  message: "Closing as done. BROAD-cycle validation pattern exercised on 2026-05-31. Methodology finding recorded: random-cohort BROAD bakeoffs are not construct-targeted enough to validate analyzer-retrofit work; the polyglot fixture path (WI-pisab-furis Level 2, CI-gated) is the appropriate validation instrument for that class of claim. Cohort #1 A/B diff (pre-WI-mafik 036e94aa20 vs HEAD 416f843499) produced a conclusive NO_MOVE on call-resolution counts and MOVED on dst_ref-on-JS metadata. Neither target (WI-tihup unimplemented; WI-mafik already done and not in awaits_bakeoff_validation queue) needed manual tag-strip. Per-repo findings and methodology recommendation in ~/hypergumbo_lab_notebook/wi-kaziv-bakeoff-verdict-05312026.md."  # 02db

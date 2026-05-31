@@ -35,3 +35,26 @@
   clock: 3  # e787
   nonce: e787  # e787
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): the target candidate list (`requirements.py`, `cmake.py`, `py_deps.py`, `jvm_deps.py`, `manifest_targets.py`) was sketched at filing time and should be re-validated against current `make_unresolved_edge` call sites before sweep authoring. The umbrella WI-nigah explicitly carves out tooling-lang analyzers with no call-edge concept, so the actual mechanical-sweep universe may be smaller than the initial sketch suggests. Verification grep before PR authoring is mandatory."  # e787
+- op: update  # df9d
+  at: '2026-05-31T07:36:38Z'  # df9d
+  by: human  # df9d
+  actor: jgstern  # df9d
+  clock: 4  # df9d
+  nonce: df9d  # df9d
+  set:  # df9d
+    status: todo_soft  # df9d
+- op: update  # 1890
+  at: '2026-05-31T08:02:18Z'  # 1890
+  by: agent  # 1890
+  actor: jgstern_agent  # 1890
+  clock: 5  # 1890
+  nonce: '1890'  # 1890
+  set:  # 1890
+    status: done  # 1890
+- op: discuss  # 653d
+  at: '2026-05-31T08:02:18Z'  # 653d
+  by: agent  # 653d
+  actor: jgstern_agent  # 653d
+  clock: 6  # 653d
+  nonce: 653d  # 653d
+  message: "Closed via PR #3991 (merged 2026-05-31). Mechanical retrofit applied to 4 analyzers (kotlin/php/scala/swift) — the empirical sweep universe under WI-huzuv's stated criterion 'make_unresolved_edge with module_hint != external'. New parametric test (tests/test_wi_huzuv_dst_ref_sweep.py) verifies dst_ref is populated on each retrofitted analyzer's emit path. 3655 mainstream tests pass. CHANGELOG documents the sweep. The other long-tail analyzers identified during scope re-evaluation (groovy mechanical-equivalent, plus lua/perl/powershell/objc/17-extended1 per-analyzer threading) move back under WI-nigah's residual scope (to be converted from needs_human_review to todo_soft separately)."  # 653d

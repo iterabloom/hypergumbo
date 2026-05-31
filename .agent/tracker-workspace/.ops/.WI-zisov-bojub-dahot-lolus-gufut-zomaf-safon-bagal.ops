@@ -35,3 +35,11 @@
   clock: 3  # fa54
   nonce: fa54  # fa54
   message: "Cross-ref backfill (2026-05-30, linked-pile L6 investigation): polyglot fixture extension is the test substrate for three analyzer-quality items currently in the active set — INV-loguk (non-Python cyclomatic_complexity/LOC), INV-golap (JS signature 0/10), INV-tofun (linkers hard-code language=javascript for synthetic symbols on .ts). isbefore links deferred until L7 work activates; documenting the substrate dependency here so future fixers can find the prerequisite."  # fa54
+- op: update  # 83e7
+  at: '2026-05-31T07:39:58Z'  # 83e7
+  by: human  # 83e7
+  actor: jgstern  # 83e7
+  clock: 4  # 83e7
+  nonce: '83e7'  # 83e7
+  set:  # 83e7
+    status: todo_soft  # 83e7

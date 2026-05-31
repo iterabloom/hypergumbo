@@ -52,3 +52,11 @@
   clock: 5  # 655b
   nonce: 655b  # 655b
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): umbrella scope is verified against the codebase — `lua.py` (3 call sites), `perl.py`, `swift.py`, `kotlin.py`, `scala.py`, `php.py`, `groovy.py`, `powershell.py`, `objc.py` still call `make_unresolved_edge` without a `dst_ref=` kwarg, confirming the long-tail backlog. Java / Cpp / Rust / Ruby / Elixir / JS-TS / Go are excluded (Phase 1 retrofitted). The `needs_human_review` status remains correct until WI-kaziv produces bakeoff data to scope which long-tail analyzers warrant the retrofit."  # 655b
+- op: update  # db71
+  at: '2026-05-31T07:56:23Z'  # db71
+  by: human  # db71
+  actor: jgstern  # db71
+  clock: 6  # db71
+  nonce: db71  # db71
+  set:  # db71
+    status: todo_soft  # db71
