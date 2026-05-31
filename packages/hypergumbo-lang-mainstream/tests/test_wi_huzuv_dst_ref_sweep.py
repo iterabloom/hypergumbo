@@ -18,6 +18,11 @@ Coverage:
   instead of ``import ... as`` aliases, and the retrofit threads
   ``require_aliases[receiver]`` through both the method-call fallback
   site and the dot-call fallback site.
+
+Tcl is part of the WI-nigah Tier 2 sweep but lives in the
+``hypergumbo-lang-extended1`` package; its dst_ref test lives in
+``packages/hypergumbo-lang-extended1/tests/test_tcl_dst_ref.py``
+(per the same-package test-placement rule).
 """
 import pytest
 from pathlib import Path

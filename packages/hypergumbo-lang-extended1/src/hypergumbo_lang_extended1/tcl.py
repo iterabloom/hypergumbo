@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -306,11 +306,28 @@ class TclAnalyzer(TreeSitterAnalyzer):
                             evidence_lang="tcl",
                         )
                     else:
-                        edge = make_unresolved_edge(
-                            "tcl", caller_id, callee_name,
-                            node.start_point[0] + 1,
-                            PASS_ID, run.execution_id,
-                        )
+                        # WI-nigah Tier 2: split namespace-qualified callee at
+                        # the rightmost ``::`` so the unresolved edge carries
+                        # a structured ``dst_ref=ExternalRef(...)`` mirroring
+                        # the legacy colon-separated dst shape. Bare callees
+                        # (no ``::``) keep the pre-WI-nigah behavior.
+                        if "::" in callee_name:
+                            ns, _, bare = callee_name.rpartition("::")
+                            edge = make_unresolved_edge(
+                                "tcl", caller_id, bare,
+                                node.start_point[0] + 1,
+                                PASS_ID, run.execution_id,
+                                module_hint=ns,
+                                dst_ref=ExternalRef(
+                                    lang="tcl", module_path=ns, name=bare,
+                                ),
+                            )
+                        else:
+                            edge = make_unresolved_edge(
+                                "tcl", caller_id, callee_name,
+                                node.start_point[0] + 1,
+                                PASS_ID, run.execution_id,
+                            )
                     edges.append(edge)
 
         # Recursively process children
