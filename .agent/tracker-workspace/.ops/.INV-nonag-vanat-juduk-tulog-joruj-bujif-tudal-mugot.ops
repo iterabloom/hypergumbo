@@ -59,3 +59,25 @@
   clock: 5  # 69b0
   nonce: 69b0  # 69b0
   message: "Cross-ref backfill (2026-05-30, linked-pile L1 investigation): duplicate of WI-vusaf at different granularity. Both describe 'compact silently accepts invalid flag values' — INV-nonag specifically --max-symbols / --coverage; WI-vusaf the broader set (max<min, coverage>1, negative). WI-vusaf stays canonical. Marking INV-nonag needs_human_review (wont_do not allowed for invariant kind); human can delete or convert."  # 69b0
+- op: discuss  # c974
+  at: '2026-05-30T21:12:33Z'  # c974
+  by: human  # c974
+  actor: jgstern  # c974
+  clock: 6  # c974
+  nonce: c974  # c974
+  message: "Reason for deleting:\nThis INV is a strict subset of WI-vusaf-vodup at the same dogfood_anon_id\n(ITEM-bcd30e — both items reference the same May-28 corpus entry). All four\nrepro cases here (--max-symbols 0/-5, --coverage 2.0/-1) are explicitly\ncaptured in WI-vusaf's description, alongside two additional cases\n(--min-symbols<0, max<min) that this item does not document. WI-vusaf's own\ndiscussion (2026-05-28T20:32:41Z) explicitly acknowledges INV-nonag was filed\nas an extension and folds the content back into the WI-vusaf scope.\nWI-vusaf also carries the parent link (INV-dunof) and the\nfabov_face_argparse_type_range tag that this item lacks. No information loss\non delete; duplicate_of marker already points at WI-vusaf."  # c974
+- op: update  # d4b0
+  at: '2026-05-30T21:12:55Z'  # d4b0
+  by: human  # d4b0
+  actor: jgstern  # d4b0
+  clock: 7  # d4b0
+  nonce: d4b0  # d4b0
+  set:  # d4b0
+    status: deleted  # d4b0
+- op: discuss  # 99d6
+  at: '2026-05-31T06:24:32Z'  # 99d6
+  by: agent  # 99d6
+  actor: jgstern_agent  # 99d6
+  clock: 8  # 99d6
+  nonce: 99d6  # 99d6
+  message: "Confirmed: WI-vusaf's description (verified 2026-05-31) covers all four INV-nonag repro cases (--max-symbols 0, --max-symbols -5, --coverage 2.0, --coverage -1) plus two additional cases this item did not document (--max-symbols < --min-symbols, --min-symbols < 0). The fold-back was complete before the delete; no information lost. Closing-out the reply thread."  # 99d6

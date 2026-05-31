@@ -58,3 +58,25 @@
   clock: 5  # df48
   nonce: df48  # df48
   message: "Status needs_human_review (rather than wont_do which is not allowed for invariant kind) — flagged for human to delete or convert. Marker duplicate_of WI-kutam set per the 2026-05-30 deeper-issue investigation: same bug at slice.py:153."  # df48
+- op: discuss  # b895
+  at: '2026-05-30T21:13:18Z'  # b895
+  by: human  # b895
+  actor: jgstern  # b895
+  clock: 6  # b895
+  nonce: b895  # b895
+  message: "Reason for deleting:\nUnique content (cli:main repro, --file/--path fix angle, explicit\nstatement/root_cause text, dogfood_anon_id ITEM-911ce4) folded into\nWI-kutam-loziz via discussion entry on 2026-05-30 ahead of this delete.\nWI-kutam now carries both ITEM-c4e371 (original) and ITEM-911ce4 (folded)\ncorpus pointers, both repro examples, and both fix-angle suggestions.\nCo-fix relationship with INV-nogof preserved in the WI-kutam thread.\nduplicate_of marker already points at WI-kutam."  # b895
+- op: update  # 9824
+  at: '2026-05-30T21:13:37Z'  # 9824
+  by: human  # 9824
+  actor: jgstern  # 9824
+  clock: 7  # 9824
+  nonce: '9824'  # 9824
+  set:  # 9824
+    status: deleted  # 9824
+- op: discuss  # 48eb
+  at: '2026-05-31T06:24:33Z'  # 48eb
+  by: agent  # 48eb
+  actor: jgstern_agent  # 48eb
+  clock: 8  # 48eb
+  nonce: 48eb  # 48eb
+  message: "Confirmed: WI-kutam (verified 2026-05-31) carries the 2026-05-30T21:08:14Z fold-in covering (1) the cli:main same-language same-name cross-package repro, (2) the --file/--path alternative fix angle, (3) the invariant phrasing for the eventual property test, (4) the INV-nogof co-fix scope. ITEM-911ce4 dogfood pointer preserved alongside WI-kutam's original ITEM-c4e371. No information lost on delete. Closing-out the reply thread."  # 48eb

@@ -44,3 +44,10 @@
   clock: 4  # b82d
   nonce: b82d  # b82d
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): the bakeoff-validation target set has narrowed since this item was filed. WI-mafik has closed (status=done); WI-tihup remains in needs_human_review. The cycle now validates one closed-but-untagged item (WI-mafik) plus one needs_human_review item (WI-tihup), not two pending items. Discussion entry from 2026-05-19 already established this item is the validation orchestrator, not itself queued (`awaits_bakeoff_validation` correctly absent)."  # b82d
+- op: discuss  # 4158
+  at: '2026-05-31T06:36:39Z'  # 4158
+  by: agent  # 4158
+  actor: jgstern_agent  # 4158
+  clock: 5  # 4158
+  nonce: '4158'  # 4158
+  message: "BROAD cycle executed 2026-05-31 on session broad-20260531-022124, cohort #1 iter #1. Cohort: webtunnel(Go), catatonit(C), pobox(Erlang), webassembly-component-tutorial(Rust), socketio-chat-example(JS), SwiftyJSON(Swift+C). All 6 sub-agents returned MOSTLY_CORRECT. Full verdict synthesis at ~/hypergumbo_lab_notebook/wi-kaziv-bakeoff-verdict-05312026.md. WI-mafik observations: (1) Go aliased package imports verified working (positive signal); (2) JS dst_ref field present in structured {lang, module_path, name} form on JS edges only; (3) Rust grouped-use + qualified call for non-std crates still unresolved (adjacent to scope, not refuting); (4) JS constructor and default-import gaps surfaced but were not in WI-mafik's stated scope per WI-kujom. Verdict: INCONCLUSIVE — cohort too small/random to exercise WI-mafik's specific constructs cleanly. WI-tihup is unimplemented (still needs_human_review), so nothing to validate there. Recommendation: when the user wants Phase 2 to actually proceed, run a curated cohort with the specific WI-mafik constructs (synthetic fixture-shaped corpus, not random small projects). 5 MEDIUM diagnose findings (IO_OVER_TAGGING x2, LOW_ACCESS_MODE_RATE x2, NO_ACCESS_MODE_ANNOTATIONS x1) all validated as real by sub-agents. Several non-WI-mafik gaps captured in the verdict notebook for follow-up filing. Status stays needs_human_review per the item's original gating."  # 4158
