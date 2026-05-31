@@ -114,11 +114,16 @@ def _extract_swift_objc_patterns(
         symbol_id = _make_symbol_id(rel_path, line_num, name, "objc_bridge")
 
         # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
+        # ADR-0031 Class B: synthetic stand-in for a Swift<->Objc bridge
+        # crossing. Was LITERAL-HOST ("swift") — Objc-bridge is the protocol
+        # identity; the host language is Swift (the discovery file extension).
         symbols.append(Symbol(
             id=symbol_id,
             name=name,
             kind="function",
-            language="swift",
+            language=None,
+            discovery_language="swift",
+            protocol_origin="objc_bridge",
             path=rel_path,
             span=Span(line_num, line_num, 0, len(lines[line_num - 1]) if line_num <= len(lines) else 0),
             origin=PASS_ID,
@@ -143,7 +148,9 @@ def _extract_swift_objc_patterns(
                 id=symbol_id,
                 name=name,
                 kind="function",
-                language="swift",
+                language=None,
+                discovery_language="swift",
+                protocol_origin="objc_bridge",
                 path=rel_path,
                 span=Span(line_num, line_num, 0, len(lines[line_num - 1]) if line_num <= len(lines) else 0),
                 origin=PASS_ID,
@@ -161,11 +168,14 @@ def _extract_swift_objc_patterns(
         # Per audit, selector_ref folds to canonical kind="reference" (not
         # function/method) — the _ref suffix names a use-site, not a
         # definition.
+        # ADR-0031 Class B: same protocol-origin family as the bridge above.
         symbols.append(Symbol(
             id=symbol_id,
             name=name,
             kind="reference",
-            language="swift",
+            language=None,
+            discovery_language="swift",
+            protocol_origin="objc_bridge",
             path=rel_path,
             span=Span(line_num, line_num, 0, 0),
             origin=PASS_ID,

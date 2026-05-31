@@ -54,6 +54,7 @@ from typing import Any, Iterator
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._concept_utils import get_concept, has_concept
+from ._text_filters import language_from_path
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -320,11 +321,17 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
 
         # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
         # Fold to canonical kind="function" + meta["framework_role"].
+        # ADR-0031 Class B: synthetic stand-in for an OpenAPI operation.
+        # Was LITERAL-SENTINEL ("openapi" — not a real language); now
+        # language=None, discovery_language records the spec-file language
+        # (yaml/json/openapi-document), protocol_origin="openapi".
         symbol = Symbol(
             id=symbol_id,
             name=op.operation_id or f"{op.method} {op.path}",
             kind="function",
-            language="openapi",
+            language=None,
+            discovery_language=language_from_path(Path(op.file_path)),
+            protocol_origin="openapi",
             path=op.file_path,
             span=Span(start_line=op.line, end_line=op.line, start_col=0, end_col=0),
             signature=f"{op.method} {op.path}",

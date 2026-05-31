@@ -52,6 +52,7 @@ from typing import Iterator
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._concept_utils import has_concept
+from ._text_filters import language_from_path
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 from ._text_filters import read_masked_source
 
@@ -320,6 +321,10 @@ def _create_call_symbol(call: SubprocessCall, root: Path) -> Symbol:
         name_parts.append(call.subcommand)
     name = " ".join(name_parts) if name_parts else "subprocess"
 
+    # ADR-0031 Class B: synthetic stand-in for a subprocess invocation.
+    # Was LITERAL-HOST ("python"); discovery_language now derives from
+    # the host file (subprocess.Popen calls can surface from non-Python
+    # bindings or from polyglot fixtures).
     return Symbol(
         id=f"{rel_path}::subprocess_call::{call.line}",
         name=name,
@@ -331,7 +336,9 @@ def _create_call_symbol(call: SubprocessCall, root: Path) -> Symbol:
             end_line=call.line,
             end_col=0,
         ),
-        language="python",
+        language=None,
+        discovery_language=language_from_path(Path(call.file_path)),
+        protocol_origin="subprocess_cli",
         meta={
             "executable": call.executable,
             "subcommand": call.subcommand,

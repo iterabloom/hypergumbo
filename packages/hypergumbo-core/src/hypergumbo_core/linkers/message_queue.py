@@ -424,7 +424,11 @@ def _create_symbol(pattern: MessageQueuePattern, root: Path) -> Symbol:
             end_line=pattern.line,
             end_col=0,
         ),
-        language=pattern.language,
+        # ADR-0031 Class B: synthetic stand-in for a message-queue
+        # publisher / subscriber.
+        language=None,
+        discovery_language=pattern.language,
+        protocol_origin="message_queue",
         stable_id=f"{pattern.queue_type}:{pattern.topic}",
         meta={
             "queue_type": pattern.queue_type,

@@ -677,11 +677,14 @@ def link_websocket(
     # Create symbols for endpoints
     symbols: list[Symbol] = []
     for ep in endpoints:
+        # ADR-0031 Class B: synthetic stand-in for a WebSocket endpoint.
         symbols.append(Symbol(
             id=_make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint"),
             name=f"ws:{ep.event}",
             kind="function",
-            language=_language_for_file(ep.file_path, ep.pattern_type),
+            language=None,
+            discovery_language=_language_for_file(ep.file_path, ep.pattern_type),
+            protocol_origin="websocket",
             path=ep.file_path,
             span=Span(start_line=ep.line, end_line=ep.line, start_col=0, end_col=0),
             origin=PASS_ID,

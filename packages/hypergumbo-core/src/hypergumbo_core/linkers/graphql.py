@@ -215,7 +215,10 @@ def _create_client_symbol(call: GraphQLClientCall, root: Path) -> Symbol:
             end_line=call.line,
             end_col=0,
         ),
-        language=call.language,
+        # ADR-0031 Class B: synthetic stand-in for a GraphQL client call.
+        language=None,
+        discovery_language=call.language,
+        protocol_origin="graphql",
         stable_id=call.operation_name,
         meta={
             "operation_type": call.operation_type,

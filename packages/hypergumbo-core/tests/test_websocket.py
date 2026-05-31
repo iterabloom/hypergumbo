@@ -1105,7 +1105,9 @@ data = await websocket.receive_json()
         assert len(result.symbols) >= 2
 
     def test_python_symbols_have_correct_language(self, tmp_path: Path) -> None:
-        """Python WebSocket symbols should have language='python'."""
+        """Python WebSocket synthetic stand-ins should carry
+        discovery_language='python' (ADR-0031 Class B).
+        """
         file = tmp_path / "main.py"
         file.write_text("""
 @app.websocket('/ws')
@@ -1116,10 +1118,15 @@ async def handler(websocket):
         endpoint_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "websocket_endpoint"]
         assert len(endpoint_symbols) >= 1
         for sym in endpoint_symbols:
-            assert sym.language == "python"
+            # ADR-0031 Class B: language=None, discovery_language carries host.
+            assert sym.language is None
+            assert sym.discovery_language == "python"
+            assert sym.protocol_origin == "websocket"
 
     def test_js_symbols_have_correct_language(self, tmp_path: Path) -> None:
-        """JavaScript WebSocket symbols should have language='javascript'."""
+        """JavaScript WebSocket synthetic stand-ins should carry
+        discovery_language='javascript' (ADR-0031 Class B).
+        """
         file = tmp_path / "server.js"
         file.write_text("""
 io.on('connection', handler);
@@ -1127,7 +1134,10 @@ io.on('connection', handler);
         result = link_websocket(tmp_path)
         endpoint_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "websocket_endpoint"]
         assert len(endpoint_symbols) == 1
-        assert endpoint_symbols[0].language == "javascript"
+        # ADR-0031 Class B: language=None, discovery_language carries host.
+        assert endpoint_symbols[0].language is None
+        assert endpoint_symbols[0].discovery_language == "javascript"
+        assert endpoint_symbols[0].protocol_origin == "websocket"
 
 
 class TestPythonIntegrationWithLinkWebSocket:
@@ -1514,9 +1524,11 @@ class TestWiZolotCrossLanguageBridge:
         # src is the TS client file; dst is the Python endpoint symbol.
         assert edge.src == _make_file_id("typescript", "ws-client.ts")
         # The Python endpoint Symbol id includes the event path.
+        # ADR-0031: Class B synthetic stand-ins carry language=None;
+        # discovery_language carries the host.
         py_endpoint = next(
             (s for s in result.symbols
-             if s.language == "python"
+             if s.discovery_language == "python"
              and (s.meta or {}).get("framework_role") == "websocket_endpoint"),
             None,
         )

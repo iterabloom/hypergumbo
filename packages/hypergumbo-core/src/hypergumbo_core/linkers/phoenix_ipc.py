@@ -40,6 +40,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ._text_filters import language_from_path
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
 PASS_ID = make_pass_id("phoenix-ipc-linker")
@@ -285,11 +286,19 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
             # shape; the L3 producer-coherence linter's f-string blind spot
             # (only catches literal-form kwargs) is what hid this site
             # through Wave 5.
+            # ADR-0031 Class B: synthetic stand-in for a Phoenix Channel IPC
+            # event. Was LITERAL-HOST ("elixir") — Phoenix is fundamentally
+            # an Elixir protocol but the protocol identity belongs in
+            # protocol_origin, not language. discovery_language records the
+            # actual host file's language (typically elixir, but Phoenix
+            # could surface from a non-elixir consumer in future bindings).
             symbols.append(Symbol(
                 id=sym_id,
                 name=f"phoenix:{pattern.type}:{event}",
                 kind="function",
-                language="elixir",
+                language=None,
+                discovery_language=language_from_path(Path(pattern.file_path)),
+                protocol_origin="phoenix_ipc",
                 path=pattern.file_path,
                 span=Span(
                     start_line=pattern.line,

@@ -550,7 +550,9 @@ class TestDatabaseQueryLinker:
         assert len(result.symbols) == 2
         assert len(result.edges) == 2
 
-        languages = {s.language for s in result.symbols}
+        # ADR-0031: Class B synthetic stand-ins carry language=None;
+        # discovery_language carries the host.
+        languages = {s.discovery_language for s in result.symbols}
         assert languages == {"python", "javascript"}
 
     def test_analysis_run_metadata(self, tmp_path: Path):

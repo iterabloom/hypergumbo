@@ -941,12 +941,16 @@ def link_grpc(
             id=route_id,
             name=route_name,
             kind="function",
-            language="proto",
+            # ADR-0031 Class B: Route synthetic has no host discovery
+            # context (it's derived from the proto service definition);
+            # language=None, discovery_language=None, protocol_origin="grpc".
+            language=None,
             path=rpc.file_path,
             span=Span(rpc.line, rpc.line, 0, 0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             stable_id=stable_id,
+            protocol_origin="grpc",
             meta={
                 "route_path": route_path,
                 "http_method": "RPC",

@@ -631,6 +631,8 @@ def link_tauri_ipc(
             # node_by_id.get(edge.src) returns None.
             if src_id not in seen_publisher_ids:
                 seen_publisher_ids.add(src_id)
+                # ADR-0031 Class B: synthetic stand-in for a Tauri invoke
+                # publisher.
                 result_symbols.append(Symbol(
                     id=src_id,
                     stable_id=None,
@@ -642,7 +644,9 @@ def link_tauri_ipc(
                     kind="function",
                     name=cmd_name,
                     path=rel_path,
-                    language="typescript",
+                    language=None,
+                    discovery_language="typescript",
+                    protocol_origin="tauri_ipc",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
@@ -751,6 +755,8 @@ def link_tauri_ipc(
 
                 if caller_id not in seen_caller_ids:
                     seen_caller_ids.add(caller_id)
+                    # ADR-0031 Class B: synthetic stand-in for a Tauri IPC
+                    # caller.
                     result_symbols.append(Symbol(
                         id=caller_id,
                         stable_id=None,
@@ -764,7 +770,9 @@ def link_tauri_ipc(
                         kind="function",
                         name=func_name,
                         path=rel_path,
-                        language="typescript",
+                        language=None,
+                        discovery_language="typescript",
+                        protocol_origin="tauri_ipc",
                         span=Span(
                             start_line=0, end_line=0,
                             start_col=0, end_col=0,
@@ -852,6 +860,8 @@ def link_tauri_ipc(
                     # Create synthetic symbols for emitter and listener
                     if src_id not in seen_publisher_ids:
                         seen_publisher_ids.add(src_id)
+                        # ADR-0031 Class B: synthetic stand-in for a Tauri
+                        # event emit (Rust-side).
                         result_symbols.append(Symbol(
                             id=src_id,
                             stable_id=None,
@@ -863,7 +873,9 @@ def link_tauri_ipc(
                             kind="function",
                             name=event_name,
                             path=rust_path,
-                            language="rust",
+                            language=None,
+                            discovery_language="rust",
+                            protocol_origin="tauri_ipc",
                             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
@@ -878,6 +890,8 @@ def link_tauri_ipc(
                     listener_seen_key = f"listener:{dst_id}"
                     if listener_seen_key not in seen_publisher_ids:
                         seen_publisher_ids.add(listener_seen_key)
+                        # ADR-0031 Class B: synthetic stand-in for a Tauri
+                        # event listen (TS-side).
                         result_symbols.append(Symbol(
                             id=dst_id,
                             stable_id=None,
@@ -889,7 +903,9 @@ def link_tauri_ipc(
                             kind="function",
                             name=event_name,
                             path=ts_path,
-                            language="typescript",
+                            language=None,
+                            discovery_language="typescript",
+                            protocol_origin="tauri_ipc",
                             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,

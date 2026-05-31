@@ -502,11 +502,16 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
             # kind="function" + meta["framework_role"] capturing the same
             # information dynamically. The framework_role meta key is
             # open-form per ADR-0024 §"Fold-residue discipline".
+            # ADR-0031 Class B: synthetic stand-in for an IPC send/receive
+            # site. Was LITERAL-HOST ("javascript"); now derives the host
+            # language from the file extension.
             symbols.append(Symbol(
                 id=sym_id,
                 name=f"ipc:{pattern.type}:{channel}",
                 kind="function",
-                language="javascript",
+                language=None,
+                discovery_language=_get_language(Path(pattern.file_path)),
+                protocol_origin="ipc",
                 path=pattern.file_path,
                 span=Span(
                     start_line=pattern.line,
@@ -646,11 +651,15 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 if caller_id not in created_symbol_ids:
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
+                    # ADR-0031 Class B: synthetic stand-in for an IPC bridge
+                    # caller (window.<namespace>.<method>).
                     symbols.append(Symbol(
                         id=caller_id,
                         name=f"window.{namespace}.{method_name}",
                         kind="function",
-                        language=_get_language(Path(file_str)),
+                        language=None,
+                        discovery_language=_get_language(Path(file_str)),
+                        protocol_origin="ipc",
                         path=rel_path,
                         span=Span(
                             start_line=call_line,
@@ -749,11 +758,15 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 if caller_id not in created_symbol_ids:
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
+                    # ADR-0031 Class B: synthetic stand-in for an IPC bridge
+                    # caller (window.<func>).
                     symbols.append(Symbol(
                         id=caller_id,
                         name=f"window.{func_name}",
                         kind="function",
-                        language=_get_language(Path(file_str)),
+                        language=None,
+                        discovery_language=_get_language(Path(file_str)),
+                        protocol_origin="ipc",
                         path=rel_path,
                         span=Span(
                             start_line=call_line,

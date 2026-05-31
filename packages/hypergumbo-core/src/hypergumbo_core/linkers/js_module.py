@@ -847,12 +847,17 @@ def link_js_modules(
 
             if pkg_name not in npm_package_cache:
                 pkg_id = _make_npm_package_id(pkg_name, lang)
+                # ADR-0031 Class B: synthetic stand-in for an npm package; the
+                # package has no source-language declaration of its own — the
+                # discovery context is the importing file's language.
                 pkg_sym = Symbol(
                     id=pkg_id,
                     stable_id=pkg_id,
                     name=pkg_name,
                     kind="package",
-                    language=lang,
+                    language=None,
+                    discovery_language=lang,
+                    protocol_origin="js_module",
                     path="",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,

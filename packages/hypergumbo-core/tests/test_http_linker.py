@@ -2431,8 +2431,10 @@ class TestElmFilesAreScanned:
 
         result = link_http(tmp_path, [route])
 
-        # Elm symbol should have been created
-        elm_syms = [s for s in result.symbols if s.language == "elm"]
+        # Elm symbol should have been created.
+        # ADR-0031: Class B synthetic stand-ins carry language=None;
+        # discovery_language carries the host.
+        elm_syms = [s for s in result.symbols if s.discovery_language == "elm"]
         assert len(elm_syms) == 1
         # And a cross-language edge should exist
         assert any(
@@ -2681,7 +2683,9 @@ class TestJsTemplateLiteralEndToEnd:
 
         result = link_http(tmp_path, [route])
 
-        ts_syms = [s for s in result.symbols if s.language == "javascript"]
+        # ADR-0031: Class B synthetic stand-ins carry language=None;
+        # discovery_language carries the host.
+        ts_syms = [s for s in result.symbols if s.discovery_language == "javascript"]
         assert len(ts_syms) == 1
         assert any(
             e.src == ts_syms[0].id

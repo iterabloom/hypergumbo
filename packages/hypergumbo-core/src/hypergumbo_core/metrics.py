@@ -69,7 +69,13 @@ def compute_metrics(
     node_id_to_lang: Dict[str, str] = {}
 
     for node in nodes:
-        lang = node.get("language", "unknown")
+        # ADR-0031: Class B synthetic stand-ins (linker-emitted protocol
+        # symbols) carry language=None and discovery_language=<host>. For
+        # per-language metric aggregation, attribute them to their host
+        # discovery language so cross-language metrics stay meaningful.
+        # node.get("language", "unknown") returns None when the key is
+        # present with value None, not the default — so handle explicitly.
+        lang = node.get("language") or node.get("discovery_language") or "unknown"
         node_id = node.get("id", "")
         node_id_to_lang[node_id] = lang
 

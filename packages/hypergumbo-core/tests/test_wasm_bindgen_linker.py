@@ -545,7 +545,11 @@ class TestWasmBindgenSyntheticSymbols:
             sym = sym_by_id[edge.src]
             assert sym.kind == "import"
             assert sym.meta.get("compilation_target") == "wasm"
-            assert sym.language == "typescript"
+            # ADR-0031: Class B synthetic stand-ins carry language=None;
+            # discovery_language carries the host.
+            assert sym.language is None
+            assert sym.discovery_language == "typescript"
+            assert sym.protocol_origin == "wasm"
 
     def test_synthetic_symbol_has_correct_fields(self, tmp_path: Path) -> None:
         """Synthetic Symbol has proper id, name, fingerprint, meta."""
@@ -563,7 +567,11 @@ class TestWasmBindgenSyntheticSymbols:
         assert sym.name == "greet"
         assert sym.kind == "import"
         assert sym.meta.get("compilation_target") == "wasm"
-        assert sym.language == "typescript"
+        # ADR-0031: Class B synthetic stand-ins carry language=None;
+        # discovery_language carries the host.
+        assert sym.language is None
+        assert sym.discovery_language == "typescript"
+        assert sym.protocol_origin == "wasm"
         assert sym.canonical_name == "import { greet }"
         assert sym.meta == {"wasm_export": "greet", "compilation_target": "wasm"}
         assert sym.fingerprint is not None

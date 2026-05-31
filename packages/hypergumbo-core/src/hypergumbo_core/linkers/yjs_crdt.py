@@ -396,6 +396,7 @@ def link_yjs_crdt(
 
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
+                # ADR-0031 Class B: synthetic stand-in for a Yjs CRDT write.
                 result_symbols.append(Symbol(
                     id=pub_id,
                     stable_id=None,
@@ -407,7 +408,9 @@ def link_yjs_crdt(
                     kind="function",
                     name=write.channel,
                     path=write.file_path,
-                    language="typescript",
+                    language=None,
+                    discovery_language="typescript",
+                    protocol_origin="yjs_crdt",
                     span=Span(
                         start_line=write.line, end_line=write.line,
                         start_col=0, end_col=0,
@@ -425,6 +428,7 @@ def link_yjs_crdt(
 
             if sub_id not in seen_sym_ids:
                 seen_sym_ids.add(sub_id)
+                # ADR-0031 Class B: synthetic stand-in for a Yjs CRDT observe.
                 result_symbols.append(Symbol(
                     id=sub_id,
                     stable_id=None,
@@ -436,7 +440,9 @@ def link_yjs_crdt(
                     kind="function",
                     name=read.channel,
                     path=read.file_path,
-                    language="typescript",
+                    language=None,
+                    discovery_language="typescript",
+                    protocol_origin="yjs_crdt",
                     span=Span(
                         start_line=read.line, end_line=read.line,
                         start_col=0, end_col=0,

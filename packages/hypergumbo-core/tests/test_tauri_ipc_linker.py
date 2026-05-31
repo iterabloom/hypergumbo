@@ -823,7 +823,11 @@ class TestTauriIPCSyntheticSymbols:
             sym = sym_by_id[edge.src]
             assert sym.kind == "function"
             assert (sym.meta or {}).get("framework_role") == "ipc_publisher"
-            assert sym.language == "typescript"
+            # ADR-0031: Class B synthetic stand-ins carry language=None;
+            # discovery_language carries the host.
+            assert sym.language is None
+            assert sym.discovery_language == "typescript"
+            assert sym.protocol_origin == "tauri_ipc"
 
     def test_synthetic_symbol_has_correct_fields(self, tmp_path: Path) -> None:
         """Synthetic Symbol has proper id, name, fingerprint, meta."""
@@ -849,7 +853,11 @@ class TestTauriIPCSyntheticSymbols:
         assert sym.name == "greet"
         assert sym.kind == "function"
         assert (sym.meta or {}).get("framework_role") == "ipc_publisher"
-        assert sym.language == "typescript"
+        # ADR-0031: Class B synthetic stand-ins carry language=None;
+        # discovery_language carries the host.
+        assert sym.language is None
+        assert sym.discovery_language == "typescript"
+        assert sym.protocol_origin == "tauri_ipc"
         assert sym.canonical_name == "invoke('greet')"
         assert sym.meta == {"tauri_command": "greet", "framework_role": "ipc_publisher"}
         assert sym.fingerprint is not None
@@ -1189,7 +1197,11 @@ class TestTauriSpectaWrapperResolution:
             if (s.meta or {}).get("framework_role") == "ipc_caller"
         ]
         assert len(caller_syms) == 1
-        assert caller_syms[0].language == "typescript"
+        # ADR-0031: Class B synthetic stand-ins carry language=None;
+        # discovery_language carries the host.
+        assert caller_syms[0].language is None
+        assert caller_syms[0].discovery_language == "typescript"
+        assert caller_syms[0].protocol_origin == "tauri_ipc"
         assert caller_syms[0].supply_chain_tier == 2
 
     def test_wrapper_dedup_same_import_same_file(self, tmp_path: Path) -> None:

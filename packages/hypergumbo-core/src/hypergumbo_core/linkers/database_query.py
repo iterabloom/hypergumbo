@@ -358,7 +358,12 @@ def _create_query_symbol(pattern: DatabaseQueryPattern, root: Path) -> Symbol:
             end_line=pattern.line,
             end_col=0,
         ),
-        language=pattern.language,
+        # ADR-0031 Class B: synthetic stand-in for a database query call
+        # site; pattern.language is the host source language of the file
+        # the query was discovered in.
+        language=None,
+        discovery_language=pattern.language,
+        protocol_origin="database_query",
         stable_id=f"{pattern.query_type}:{','.join(sorted(pattern.tables))}",
         meta={
             "query_type": pattern.query_type,

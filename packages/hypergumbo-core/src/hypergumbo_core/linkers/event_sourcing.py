@@ -672,7 +672,11 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
             end_line=pattern.line,
             end_col=0,
         ),
-        language=pattern.language,
+        # ADR-0031 Class B: synthetic stand-in for an event-sourcing
+        # publisher / subscriber discovered in pattern.file_path.
+        language=None,
+        discovery_language=pattern.language,
+        protocol_origin="event_sourcing",
         stable_id=f"{pattern.event_name}",
         meta={
             "event_name": pattern.event_name,

@@ -257,6 +257,8 @@ def link_wasm_bindgen(
             # node_by_id.get(edge.src) returns None.
             if src_id not in seen_import_ids:
                 seen_import_ids.add(src_id)
+                # ADR-0031 Class B: synthetic stand-in for a WASM import
+                # on the TS side. Was LITERAL ("typescript").
                 result_symbols.append(Symbol(
                     id=src_id,
                     stable_id=None,
@@ -266,7 +268,9 @@ def link_wasm_bindgen(
                     kind="import",
                     name=import_name,
                     path=rel_path,
-                    language="typescript",
+                    language=None,
+                    discovery_language="typescript",
+                    protocol_origin="wasm",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
@@ -396,6 +400,9 @@ def _create_wasm_load_edges(
             wasm_module_id = f"wasm:{wasm_ref}:0-0:module:wasm_module"
 
             if wasm_module_id not in {s.id for s in symbols}:
+                # ADR-0031 Class B: WASM module synthetic — has no host
+                # discovery context (it's referenced by URL/path). Was
+                # LITERAL-SENTINEL ("wasm" — not a real language tag).
                 symbols.append(Symbol(
                     id=wasm_module_id,
                     stable_id=None,
@@ -405,7 +412,8 @@ def _create_wasm_load_edges(
                     kind="module",
                     name=wasm_ref,
                     path=wasm_ref,
-                    language="wasm",
+                    language=None,
+                    protocol_origin="wasm",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,

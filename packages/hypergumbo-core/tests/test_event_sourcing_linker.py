@@ -760,7 +760,11 @@ class TestJavaEventPipeline:
             assert sym.id.startswith("java:"), (
                 f"Java event symbol '{sym.id}' should start with 'java:'"
             )
-            assert sym.language == "java"
+            # ADR-0031: Class B synthetic stand-ins carry language=None;
+            # discovery_language carries the host.
+            assert sym.language is None
+            assert sym.discovery_language == "java"
+            assert sym.protocol_origin == "event_sourcing"
 
 
 class TestEventSourcingLinkerRegistry:

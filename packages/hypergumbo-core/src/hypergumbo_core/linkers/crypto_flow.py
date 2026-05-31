@@ -282,6 +282,11 @@ def link_crypto_flow(
 
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
+                # ADR-0031 Class B: synthetic stand-in for a crypto-flow
+                # producer. Was CONDITIONAL-LITERAL ("typescript" or "rust"
+                # based on write.api). The conditional value remains as
+                # discovery_language (it IS the host language of the API
+                # family); protocol_origin classifies the crypto family.
                 result_symbols.append(Symbol(
                     id=pub_id,
                     stable_id=None,
@@ -293,7 +298,9 @@ def link_crypto_flow(
                     kind="function",
                     name=write.channel,
                     path=write.file_path,
-                    language=lang,
+                    language=None,
+                    discovery_language=lang,
+                    protocol_origin="crypto_flow",
                     span=Span(
                         start_line=write.line, end_line=write.line,
                         start_col=0, end_col=0,
@@ -311,6 +318,8 @@ def link_crypto_flow(
 
             if sub_id not in seen_sym_ids:
                 seen_sym_ids.add(sub_id)
+                # ADR-0031 Class B: synthetic stand-in for a crypto-flow
+                # consumer.
                 result_symbols.append(Symbol(
                     id=sub_id,
                     stable_id=None,
@@ -322,7 +331,9 @@ def link_crypto_flow(
                     kind="function",
                     name=read.channel,
                     path=read.file_path,
-                    language=lang,
+                    language=None,
+                    discovery_language=lang,
+                    protocol_origin="crypto_flow",
                     span=Span(
                         start_line=read.line, end_line=read.line,
                         start_col=0, end_col=0,

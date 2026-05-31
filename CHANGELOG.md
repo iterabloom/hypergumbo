@@ -112,6 +112,14 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 - **`protocol-origin` axis wired** into `multi_value_field_axis._known_axes()` so `# axis: protocol-origin` annotations on dataclass fields pass the static-AST linter.
 - **Consumer double-write** at the four cross-language-detection sites: `database_query.py:434`, `message_queue.py:497`, `event_sourcing.py:753`, `graphql_resolver.py:504,530`. Each now reads `sym.discovery_language or sym.language` (idempotent under either producer state — works whether Phase 1 PR2 has landed or not). The fallback is removed at Phase 2 PR3.
 
+#### ADR-0031 Phase 1 PR2 — linker producer migration (all classes)
+
+- **~21 linker files migrated to Class B** (synthetic stand-ins emit `language=None, discovery_language=<host>, protocol_origin=<family>`): `annotation_convention.py` (4 sites), `database_query.py`, `event_sourcing.py`, `graphql.py`, `graphql_resolver.py`, `grpc.py` (Route synthetic only), `http.py`, `ipc.py` (3 sites), `js_module.py` (npm package symbol), `message_queue.py`, `openapi.py`, `phoenix_ipc.py`, `solidity_abi.py`, `subprocess_cli.py`, `swift_objc.py` (3 sites), `tauri_ipc.py` (4 sites), `wasm_bindgen.py` (2 sites), `websocket.py` (endpoint sites; file Symbols stay Class A), `yjs_crdt.py` (2 sites), `crypto_flow.py` (2 sites), `message_dispatch.py` (2 sites). Roughly 33 Symbol() emit sites moved from LITERAL-HOST / LITERAL-SENTINEL / INHERIT-EMITTER to the canonical Class B shape.
+- **Class A preserved** for: file Symbols (`websocket.py`, `js_module.py` file-symbol case, `vue_component.py`), template Symbols (`_view_template_core.py`), proto-file scan + service / servicer / client Symbols (`grpc.py:734` — real declarations whether proto or impl-side), and any other real-source-declaration emit.
+- **Consumer migration in http.py** — added the `discovery_language or language` fallback at `http.py:1470` so cross-language confidence (0.9 same-language / 0.8 cross-language / 0.65 variable URL) computes correctly post-Class-B-migration. Mirrors the four consumer sites already updated in Phase 1 PR1.
+- **Metrics-aggregation consumer fallback** at `metrics.py:78` so `Symbol.language=None` no longer breaks `json.dump(sort_keys=True)` by appearing as a `None` dict key alongside string language keys. Class B Symbols now attribute to their `discovery_language` for per-language metric breakdowns.
+- **Test updates** in 6 test files (`test_database_query_linker.py`, `test_event_sourcing_linker.py`, `test_http_linker.py`, `test_tauri_ipc_linker.py`, `test_wasm_bindgen_linker.py`, `test_websocket.py`): assertions on synthetic-stand-in `sym.language` changed to verify the Class B shape (`language is None`, `discovery_language == <host>`, `protocol_origin == <family>`).
+
 
 ### Changed
 

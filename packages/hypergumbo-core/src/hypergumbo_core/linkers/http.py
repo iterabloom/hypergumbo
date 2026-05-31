@@ -1331,7 +1331,10 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
             end_line=call.line,
             end_col=0,
         ),
-        language=call.language,
+        # ADR-0031 Class B: synthetic stand-in for an HTTP client call.
+        language=None,
+        discovery_language=call.language,
+        protocol_origin="http",
         stable_id=make_route_stable_id(
             call.method, _extract_path_from_url(call.url) or call.url
         ),
@@ -1464,7 +1467,14 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                         break
 
         if matched_route is not None:
-            is_cross_language = client_symbol.language != matched_route.language
+            # ADR-0031: read discovery_language for synthetic stand-ins
+            # emitted by Class-B linker producers; fall back to language for
+            # real-source declarations. The HTTP client symbol is now Class
+            # B (language=None, discovery_language=<host>) so this fallback
+            # is what makes cross-language detection work post-migration.
+            _client_lang = client_symbol.discovery_language or client_symbol.language
+            _route_lang = matched_route.discovery_language or matched_route.language
+            is_cross_language = _client_lang != _route_lang
             is_variable_url = call.url_type == "variable"
 
             # Lower confidence for variable URLs (can't verify at static analysis)

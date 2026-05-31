@@ -257,6 +257,10 @@ def link_message_dispatch(
 
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
+                # ADR-0031 Class B: synthetic stand-in for a message-dispatch
+                # sender. Was CONDITIONAL-LITERAL ("typescript" or "rust"
+                # based on write.api); now classified as Class B with
+                # discovery_language carrying the conditional value.
                 result_symbols.append(Symbol(
                     id=pub_id,
                     stable_id=None,
@@ -268,7 +272,9 @@ def link_message_dispatch(
                     kind="function",
                     name=write.channel,
                     path=write.file_path,
-                    language=lang,
+                    language=None,
+                    discovery_language=lang,
+                    protocol_origin="message_dispatch",
                     span=Span(
                         start_line=write.line, end_line=write.line,
                         start_col=0, end_col=0,
@@ -286,6 +292,8 @@ def link_message_dispatch(
 
             if sub_id not in seen_sym_ids:
                 seen_sym_ids.add(sub_id)
+                # ADR-0031 Class B: synthetic stand-in for a message-dispatch
+                # handler.
                 result_symbols.append(Symbol(
                     id=sub_id,
                     stable_id=None,
@@ -297,7 +305,9 @@ def link_message_dispatch(
                     kind="function",
                     name=read.channel,
                     path=read.file_path,
-                    language=lang,
+                    language=None,
+                    discovery_language=lang,
+                    protocol_origin="message_dispatch",
                     span=Span(
                         start_line=read.line, end_line=read.line,
                         start_col=0, end_col=0,

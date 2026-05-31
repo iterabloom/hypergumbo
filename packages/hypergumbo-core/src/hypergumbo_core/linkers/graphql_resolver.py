@@ -437,7 +437,11 @@ def _create_resolver_symbol(pattern: ResolverPattern, root: Path) -> Symbol:
             end_line=pattern.line,
             end_col=0,
         ),
-        language=pattern.language,
+        # ADR-0031 Class B: synthetic stand-in for a GraphQL resolver
+        # implementation; pattern.language is the host file's language.
+        language=None,
+        discovery_language=pattern.language,
+        protocol_origin="graphql",
         stable_id=f"{pattern.type_name}.{pattern.field_name}",
         meta={
             "type_name": pattern.type_name,

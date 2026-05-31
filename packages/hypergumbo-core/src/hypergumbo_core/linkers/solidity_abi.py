@@ -203,11 +203,15 @@ def link_solidity_abi(
         syn_hash = hashlib.sha256(syn_id_input.encode()).hexdigest()[:12]
         syn_id = f"typescript:{rel_path}:{line_num}-{line_num}:abi_call:{func_name}:{syn_hash}"
 
+        # ADR-0031 Class B: synthetic stand-in for a Solidity ABI call
+        # site discovered in a JS/TS file. Was LITERAL-HOST ("typescript").
         syn_sym = Symbol(
             id=syn_id,
             name=f"abi_call:{func_name}",
             kind="call_site",
-            language="typescript",
+            language=None,
+            discovery_language="typescript",
+            protocol_origin="solidity_abi",
             path=rel_path,
             span=Span(
                 start_line=line_num,

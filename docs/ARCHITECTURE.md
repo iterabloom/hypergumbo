@@ -16,10 +16,10 @@ for focused LLM context.
 hypergumbo analyzed its own source code and found:
 - **281** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 58 core, 4 CLI, 32 tracker)
 - **30078** symbols (functions, classes, methods)
-- **102291** edges by type:
-  - calls: 57017
+- **102305** edges by type:
+  - calls: 57027
   - contains: 21556
-  - imports: 10143
+  - imports: 10147
   - instantiates: 7777
   - references: 3338
   - module_attr_ref: 1111
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30078 Symbols + 102291 Edges + UsageContexts           │
+│  Output: 30078 Symbols + 102305 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -815,7 +815,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 12f5bb1ed600
+  commit: 9d1fc65bae80
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

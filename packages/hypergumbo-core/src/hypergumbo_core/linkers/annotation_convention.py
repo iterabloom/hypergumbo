@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..paths import is_test_file
+from ._text_filters import language_from_path
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -194,7 +195,13 @@ def link_annotations(
                     kind="function",
                     name=channel,
                     path=pub.file_path,
-                    language="unknown",
+                    # ADR-0031 Class B: synthetic stand-in for an annotated
+                    # publisher; the language=None signals no source-language
+                    # declaration. discovery_language records the host file's
+                    # language; protocol_origin names the family ("annotation").
+                    language=None,
+                    discovery_language=language_from_path(Path(pub.file_path)),
+                    protocol_origin="annotation",
                     span=Span(
                         start_line=pub.line, end_line=pub.line,
                         start_col=0, end_col=0,
@@ -225,7 +232,11 @@ def link_annotations(
                         kind="function",
                         name=channel,
                         path=sub.file_path,
-                        language="unknown",
+                        # ADR-0031 Class B: synthetic stand-in for an annotated
+                        # subscriber.
+                        language=None,
+                        discovery_language=language_from_path(Path(sub.file_path)),
+                        protocol_origin="annotation",
                         span=Span(
                             start_line=sub.line, end_line=sub.line,
                             start_col=0, end_col=0,
@@ -275,7 +286,10 @@ def link_annotations(
                 kind="function",
                 name=route.argument,
                 path=route.file_path,
-                language="unknown",
+                # ADR-0031 Class B: synthetic stand-in for an annotated route.
+                language=None,
+                discovery_language=language_from_path(Path(route.file_path)),
+                protocol_origin="annotation",
                 span=Span(
                     start_line=route.line, end_line=route.line,
                     start_col=0, end_col=0,
@@ -320,7 +334,11 @@ def link_annotations(
                 kind="function",
                 name=target_name,
                 path=disp.file_path,
-                language="unknown",
+                # ADR-0031 Class B: synthetic stand-in for an annotated
+                # dispatcher.
+                language=None,
+                discovery_language=language_from_path(Path(disp.file_path)),
+                protocol_origin="annotation",
                 span=Span(
                     start_line=disp.line, end_line=disp.line,
                     start_col=0, end_col=0,
