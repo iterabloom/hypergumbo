@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **279** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 56 core, 4 CLI, 32 tracker)
-- **29991** symbols (functions, classes, methods)
-- **101997** edges by type:
-  - calls: 56879
-  - contains: 21537
-  - imports: 10051
-  - instantiates: 7764
-  - references: 3309
-  - module_attr_ref: 1107
-  - other: 1350
+- **30010** symbols (functions, classes, methods)
+- **102049** edges by type:
+  - calls: 56908
+  - contains: 21549
+  - imports: 10062
+  - instantiates: 7762
+  - references: 3311
+  - module_attr_ref: 1108
+  - other: 1349
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 29991 Symbols + 101997 Edges + UsageContexts           │
+│  Output: 30010 Symbols + 102049 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -274,7 +274,7 @@ These symbols have the highest bidirectional centrality
 | `find_files` | function | 1120.8 | discovery.py |
 | `match_patterns` | function | 873.0 | framework_patterns.py |
 | `TreeSitterAnalyzer` | class | 859.1 | base.py |
-| `register_analyzer` | function | 827.2 | registry.py |
+| `register_analyzer` | function | 822.0 | registry.py |
 | `detect_entrypoints` | function | 804.9 | entrypoints.py |
 | `Store` | class | 792.1 | store.py |
 
@@ -463,6 +463,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-schema-coverage` | Corpus-driven schema-coverage gate (WI-luzuh). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
+| `count-findings` | Count dogfooding findings recorded in agent_notes. |
 | `dead-code-prospector-run.py` | Lightweight one-shot dead-code-maybe prospecting run. |
 | `finetune-transcript-model` | G-Vendi-guided data selection and finetuning for the local transcript model. |
 | `generate-concept-axes` | Generate ``docs/concept-axes.md`` — a human-readable by-axis view |
@@ -810,7 +811,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 0d84e288c207
+  commit: 14ae46ac255b
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
