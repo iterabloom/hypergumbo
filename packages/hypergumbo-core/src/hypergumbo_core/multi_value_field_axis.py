@@ -17,15 +17,18 @@ the linter requires a trailing source-line comment of the form
 be one of:
 
 - A **known axis name** (``edge-type``, ``symbol-kind``,
-  ``evidence-type``, ``language``, ``pass-id``, ``protocol-origin``) —
-  the field's value space is the legal set returned by the axis's
-  all-names function. ``language`` and ``pass-id`` are derived from
-  the analyzer/linker catalog (:func:`hypergumbo_core.catalog`); the
-  other four live in dedicated ``*_types.py`` / ``*_origins.py``
-  registry modules. The ``protocol-origin`` axis (ADR-0031) covers
+  ``evidence-type``, ``language``, ``pass-id``, ``protocol-origin``,
+  ``qualified-name``) — the field's value space is the legal set
+  returned by the axis's all-names function. ``language`` and
+  ``pass-id`` are derived from the analyzer/linker catalog
+  (:func:`hypergumbo_core.catalog`); the other five live in dedicated
+  ``*_types.py`` / ``*_origins.py`` / ``*_axis.py`` registry modules.
+  The ``protocol-origin`` axis (ADR-0031) covers
   ``Symbol.protocol_origin`` values for synthetic stand-ins emitted by
   linkers that detect protocol patterns (Kafka, WebSocket, IPC, WASM,
-  GraphQL, etc.).
+  GraphQL, etc.). The ``qualified-name`` axis (ADR-0032) covers
+  ``Symbol.qualified_name`` and declares the per-language separator
+  policy (Python ``.``, Rust ``::``, PHP ``\\``, etc.).
 - ``identity`` — the field's role is to uniquely identify a record
   (ids, hashes, signatures keyed per instance). Not enumerable.
 - ``bounded-enum`` — the field's value comes from a small fixed list
@@ -95,6 +98,7 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
     from .edge_types import all_edge_type_names
     from .evidence_types import all_evidence_type_names
     from .protocol_origins import all_protocol_origin_names
+    from .qualified_name_axis import all_qualified_name_languages
     from .symbol_kinds import all_symbol_kind_names
     from .catalog import all_known_languages, all_known_pass_ids
 
@@ -105,6 +109,7 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
         "language": all_known_languages,
         "pass-id": all_known_pass_ids,
         "protocol-origin": all_protocol_origin_names,
+        "qualified-name": all_qualified_name_languages,
     }
 
 

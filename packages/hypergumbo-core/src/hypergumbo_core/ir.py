@@ -380,6 +380,13 @@ class Symbol:
             :mod:`hypergumbo_core.protocol_origins`. ``None`` for real-source
             declarations and for synthetic stand-ins that don't belong to a
             recognized protocol family.
+        display_label: ADR-0032 typed sibling field. Human-readable expression-
+            form string for UI display in commands like ``cmd_explain``.
+            Populated by linkers fabricating synthetic stand-ins (e.g.,
+            ``"invoke('save_data')"``, ``"@hg:publishes channel"``,
+            ``"yjs.write(doc)"``); real-source-declaration Symbols leave this
+            ``None``. ``# axis: free-text`` — consumers display the value; no
+            consumer mechanically branches on it.
     """
 
     id: str  # axis: identity
@@ -410,6 +417,7 @@ class Symbol:
     modifiers: List[str] = field(default_factory=list)
     discovery_language: Optional[str] = None  # axis: language
     protocol_origin: Optional[str] = None  # axis: protocol-origin
+    display_label: Optional[str] = None  # axis: free-text — human-readable UI display string for synthetic linker stand-ins; consumers display, never branch on the value itself.
 
     def __post_init__(self) -> None:
         if isinstance(self.origin, str):
@@ -458,6 +466,7 @@ class Symbol:
             "modifiers": self.modifiers,
             "discovery_language": self.discovery_language,
             "protocol_origin": self.protocol_origin,
+            "display_label": self.display_label,
         }
 
     @classmethod
@@ -494,6 +503,7 @@ class Symbol:
             modifiers=d.get("modifiers", []),
             discovery_language=d.get("discovery_language"),
             protocol_origin=d.get("protocol_origin"),
+            display_label=d.get("display_label"),
         )
 
 

@@ -14,14 +14,14 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **281** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 58 core, 4 CLI, 32 tracker)
-- **30078** symbols (functions, classes, methods)
-- **102305** edges by type:
-  - calls: 57027
+- **282** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 32 tracker)
+- **30089** symbols (functions, classes, methods)
+- **102326** edges by type:
+  - calls: 57037
   - contains: 21556
-  - imports: 10147
+  - imports: 10155
   - instantiates: 7777
-  - references: 3338
+  - references: 3341
   - module_attr_ref: 1111
   - other: 1349
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30078 Symbols + 102305 Edges + UsageContexts           │
+│  Output: 30089 Symbols + 102326 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -215,6 +215,8 @@ A code symbol (function, class, etc.) detected by analysis.
 - `modifiers`: List of semantic modifiers (e.g., ["native", "public", "static"]). Used by linkers for cross-language matching (e.g., JNI needs 'native').
 - `discovery_language`: ADR-0031 typed sibling field. Names the host source language where the linker discovered the pattern that produced this Symbol. Populated by Class-B linker emits (synthetic stand-ins discovered in real source files). ``None`` for real-source declarations emitted by analyzers (``language`` already names that information). Shares the ``language`` axis catalog with ``Symbol.language``; the cross-language-detection consumer sites in ``event_sourcing.py`` / ``database_query.py`` / ``message_queue.py`` / ``graphql_resolver.py`` read this rather than ``language``.
 - `protocol_origin`: ADR-0031 typed sibling field. Names the protocol or framework family (kafka, websocket, ipc, wasm, openapi, grpc, graphql, etc.) for synthetic stand-ins emitted by linkers fabricating protocol identity from source patterns. Catalog at :mod:`hypergumbo_core.protocol_origins`. ``None`` for real-source declarations and for synthetic stand-ins that don't belong to a recognized protocol family.
+- `display_label`: ADR-0032 typed sibling field. Human-readable expression- form string for UI display in commands like ``cmd_explain``. Populated by linkers fabricating synthetic stand-ins (e.g., ``"invoke('save_data')"``, ``"@hg:publishes channel"``, ``"yjs.write(doc)"``); real-source-declaration Symbols leave this
+- ```None``. ``# axis`: free-text`` — consumers display the value; no consumer mechanically branches on it.
 
 ### Edge (`ir.py`)
 A relationship between two symbols (e.g., function calls).
@@ -549,6 +551,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.producer_coherence`**: Producer-side axis-coherence linter for Edge / Symbol constructors.
 - **`hypergumbo_core.profile`**: Repo profile detection - language and framework heuristics.
 - **`hypergumbo_core.protocol_origins`**: Canonical registry of ``Symbol.protocol_origin`` values (ADR-0031).
+- **`hypergumbo_core.qualified_name_axis`**: Per-language separator policy for ``Symbol.qualified_name`` (ADR-00...
 - **`hypergumbo_core.ranking`**: Symbol and file ranking utilities for hypergumbo output.
 - **`hypergumbo_core.repo_fingerprint`**: Repository fingerprint: spec-defined hash of analyzed code state.
 - **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
@@ -815,7 +818,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 9d1fc65bae80
+  commit: 54cbaa0821ea
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
