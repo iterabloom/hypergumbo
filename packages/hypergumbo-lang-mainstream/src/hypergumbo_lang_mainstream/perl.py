@@ -51,7 +51,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -408,10 +408,30 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                                 )
                                 edges.append(edge)
                             else:
-                                edges.append(make_unresolved_edge(
-                                    "perl", caller.id, func_name,
-                                    node.start_point[0] + 1, PASS_ID, run_id,
-                                ))
+                                # WI-nigah Tier 2: Perl package-qualified
+                                # calls use ``::`` (e.g., ``Foo::bar()``).
+                                # Split at the rightmost ``::`` so the
+                                # unresolved edge carries structured
+                                # ``dst_ref=ExternalRef(...)`` keyed by
+                                # package name. Bare calls (no ``::``) have
+                                # no module signal — dst_ref stays None.
+                                if "::" in func_name:
+                                    pkg, _, bare = func_name.rpartition("::")
+                                    edges.append(make_unresolved_edge(
+                                        "perl", caller.id, bare,
+                                        node.start_point[0] + 1, PASS_ID, run_id,
+                                        module_hint=pkg,
+                                        dst_ref=ExternalRef(
+                                            lang="perl",
+                                            module_path=pkg,
+                                            name=bare,
+                                        ),
+                                    ))
+                                else:
+                                    edges.append(make_unresolved_edge(
+                                        "perl", caller.id, func_name,
+                                        node.start_point[0] + 1, PASS_ID, run_id,
+                                    ))
 
             # Handle method calls (arrow operator)
             elif node.type == "method_call_expression":
