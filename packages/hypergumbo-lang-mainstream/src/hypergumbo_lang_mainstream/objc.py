@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -465,6 +465,28 @@ def _extract_message_selector(node: "tree_sitter.Node", source: bytes) -> str | 
     return None  # pragma: no cover
 
 
+def _extract_message_receiver(node: "tree_sitter.Node", source: bytes) -> str | None:
+    """Extract the receiver identifier from a ``message_expression``.
+
+    Returns the receiver name when it is a simple identifier (e.g.,
+    ``self``, ``NSString``, ``viewModel``). Returns None for nested
+    message receivers like ``[[obj alloc] init]`` — there is no single
+    receiver name to attribute the call to.
+
+    WI-nigah Tier 2 uses this in conjunction with the ObjC convention
+    that class names are PascalCase: receivers whose first letter is
+    uppercase are treated as class-message targets and become the
+    ``module_path`` of the structured ``dst_ref``. Lowercase receivers
+    (``self``, ``super``, local vars) get no ``dst_ref``.
+    """
+    for child in node.children:
+        if child.type == "identifier":
+            return node_text(child, source)
+        if child.type == "message_expression":
+            return None
+    return None  # pragma: no cover - defensive
+
+
 def _get_enclosing_method_objc(
     node: "tree_sitter.Node",
     source: bytes,
@@ -560,10 +582,28 @@ def _extract_edges_from_file(
                             meta={"call_construct": "cross_file"},
                         ))
                     else:
-                        edges.append(make_unresolved_edge(
-                            "objc", current_method.id, selector,
-                            line, PASS_ID, run.execution_id,
-                        ))
+                        # WI-nigah Tier 2: if the receiver looks like an
+                        # ObjC class name (PascalCase), use it as the
+                        # ``module_path`` for the structured ``dst_ref``.
+                        # ``self`` / ``super`` / local-var receivers
+                        # (lowercase) get no dst_ref — no module signal.
+                        receiver_name = _extract_message_receiver(node, source)
+                        if receiver_name and receiver_name[0].isupper():
+                            edges.append(make_unresolved_edge(
+                                "objc", current_method.id, selector,
+                                line, PASS_ID, run.execution_id,
+                                module_hint=receiver_name,
+                                dst_ref=ExternalRef(
+                                    lang="objc",
+                                    module_path=receiver_name,
+                                    name=selector,
+                                ),
+                            ))
+                        else:
+                            edges.append(make_unresolved_edge(
+                                "objc", current_method.id, selector,
+                                line, PASS_ID, run.execution_id,
+                            ))
 
     return edges
 
