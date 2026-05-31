@@ -1,12 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Parametric test for the WI-huzuv mechanical dst_ref sweep.
 
-Verifies that the four sweep-target analyzers (kotlin, php, scala, swift)
-attach a structured ``dst_ref=ExternalRef(...)`` to unresolved-call edges
-whenever the analyzer already has a module hint at the emit site. Each
-fixture follows the same shape: declare an import, then call a function
+Verifies that the sweep-target analyzers attach a structured
+``dst_ref=ExternalRef(...)`` to unresolved-call edges whenever the
+analyzer already has a module hint at the emit site. Each fixture
+follows the same shape: declare an import, then call a function
 imported from that module so the analyzer reaches its
 ``make_unresolved_edge`` branch with a non-"external" ``module_hint``.
+
+Coverage:
+
+- WI-huzuv (PR #3991, 2026-05-31) — kotlin, php, scala, swift.
+- WI-nigah Tier 1 (2026-05-31) — groovy, the 5th mechanical-equivalent
+  case (``path_hint`` already in scope at the call site).
 """
 import pytest
 from pathlib import Path
@@ -150,6 +156,51 @@ func main() {
     assert isinstance(edge.dst_ref, ExternalRef)
     assert edge.dst_ref.lang == "swift"
     assert "HelpersModule" in edge.dst_ref.module_path
+    assert edge.dst_ref.name == "doWork"
+
+
+def test_groovy_unresolved_call_carries_dst_ref(tmp_path: Path) -> None:
+    """WI-nigah Tier 1: groovy is the 5th mechanical-equivalent case.
+
+    The analyzer already tracks ``import X as Y`` aliases and threads
+    ``path_hint`` into resolver lookups; the retrofit only needed to
+    propagate ``path_hint`` to ``make_unresolved_edge`` as the structured
+    ``dst_ref`` form. Test shape mirrors kotlin/scala/php/swift above.
+    """
+    from hypergumbo_lang_mainstream.groovy import (
+        analyze_groovy,
+        is_groovy_tree_sitter_available,
+    )
+    _check_grammar_or_skip(is_groovy_tree_sitter_available, "groovy")
+
+    # ``import com.example.helpers.Helpers as H`` registers H as an alias
+    # whose path_hint is the qualified module. Calling ``H.doWork()``
+    # inside a function routes the unresolved-edge through the
+    # import-aliased branch (groovy.py only emits edges from calls inside
+    # an enclosing function).
+    (tmp_path / "Main.groovy").write_text('''
+import com.example.helpers.Helpers as H
+
+def run() {
+    H.doWork()
+}
+''')
+    result = analyze_groovy(tmp_path)
+
+    unresolved_calls = [
+        e for e in result.edges
+        if e.edge_type == "calls"
+        and not e.is_resolved
+        and "doWork" in e.dst
+    ]
+    assert unresolved_calls, "expected an unresolved call edge for doWork"
+    edge = unresolved_calls[0]
+    assert edge.dst_ref is not None, (
+        f"dst_ref must be populated when path_hint is a real path; got dst={edge.dst!r}"
+    )
+    assert isinstance(edge.dst_ref, ExternalRef)
+    assert edge.dst_ref.lang == "groovy"
+    assert "com.example.helpers" in edge.dst_ref.module_path
     assert edge.dst_ref.name == "doWork"
 
 

@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -797,6 +797,11 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                     edges.append(make_unresolved_edge(
                                         "groovy", current_function.id, callee_name,
                                         node.start_point[0] + 1, PASS_ID, run.execution_id,
+                                        module_hint=path_hint or "external",
+                                        dst_ref=(
+                                            ExternalRef(lang="groovy", module_path=path_hint, name=callee_name)
+                                            if path_hint else None
+                                        ),
                                     ))
 
         return edges
