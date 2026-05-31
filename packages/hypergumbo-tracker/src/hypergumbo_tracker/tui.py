@@ -53,6 +53,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 from functools import partial
 from pathlib import Path
 from typing import Any, Callable, ClassVar
@@ -583,8 +584,48 @@ def _save_tui_preferences(
             data["race_log_path"] = race_log_path
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    except OSError:
+        # Atomic write: temp-file + os.replace. Non-atomic write_text can
+        # leave the file in a partial state when interrupted (kill, OOM)
+        # or racing against concurrent writes in the same dir (the
+        # two-user setup writes ops files alongside this file). A partial
+        # or empty file would corrupt all the v2 prefs — see the
+        # accompanying _move_selected fix where the v1-schema write used
+        # to drop human_read_state; even after that fix, an interrupted
+        # write here would still produce a degraded file.
+        #
+        # Permission preservation: tempfile.mkstemp creates files with
+        # mode 0600 by default. After os.replace, the destination inode
+        # is the new (tight-permission) one — silently destroying any
+        # group-readable / group-writable bits the existing file had.
+        # The tracker is designed to leverage OS user permissions
+        # (some files are deliberately user-only, others are shared via
+        # a project group), so the right behavior is to PRESERVE
+        # whatever mode the existing file has. For new files (no prior
+        # mode to preserve), fall through to the mkstemp default and
+        # let the project's perms-repair hook normalize on next git op.
+        import stat as _stat
+        try:
+            preserve_mode = _stat.S_IMODE(path.stat().st_mode)
+        except OSError:
+            preserve_mode = None
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            prefix=path.name + ".", suffix=".tmp", dir=str(path.parent),
+        )
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                f.write(json.dumps(data, indent=2) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            if preserve_mode is not None:
+                os.chmod(tmp_path, preserve_mode)
+            os.replace(tmp_path, path)
+        except OSError:
+            try:
+                os.unlink(tmp_path)
+            except OSError:  # pragma: no cover
+                pass
+            return False
+    except OSError:  # pragma: no cover
         return False
     return True
 
@@ -3304,8 +3345,18 @@ class TrackerApp(App):
         self._custom_order[a_idx], self._custom_order[b_idx] = (
             self._custom_order[b_idx], self._custom_order[a_idx]
         )
+        # Pass ALL v2 fields. The v1-schema fallback (when no v2 kwargs
+        # are passed) drops human_read_state, hidden_tags, toggle_sessions,
+        # last_filters, hide_tagged, and race_log_path from the file. The
+        # next TUI session that loads the file would see those as
+        # defaults / empty, silently corrupting user state.
         if not _save_tui_preferences(
             self._prefs_path, self._hidden_statuses, self._custom_order,
+            hidden_tags=self._hidden_tags,
+            toggle_sessions=self._toggle_sessions,
+            last_filters=self._last_filters,
+            hide_tagged=self._hide_tagged,
+            human_read_state=self._human_read_state,
         ):
             self.notify("Could not save display order (permission denied)",
                         severity="warning")

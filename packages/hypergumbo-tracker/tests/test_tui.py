@@ -5749,11 +5749,116 @@ class TestTuiPreferences:
         assert result["display_order"] == []
 
     def test_save_returns_false_on_permission_error(self, tmp_path: Path) -> None:
-        """_save_tui_preferences tolerates write failures gracefully."""
+        """_save_tui_preferences tolerates write failures gracefully.
+
+        Atomic-write implementation uses tempfile.mkstemp + os.replace.
+        Patching os.replace to raise OSError simulates a permission denial
+        on the final rename step.
+        """
+        from unittest.mock import patch
+        import os as _os
+        p = tmp_path / "prefs.json"
+        with patch.object(_os, "replace", side_effect=PermissionError("denied")):
+            assert _save_tui_preferences(p, {"done"}, ["A"]) is False
+        # Temp file must not leak after the failed write.
+        leftovers = list(tmp_path.glob("prefs.json.*.tmp"))
+        assert leftovers == [], f"atomic write must clean up tmp files; found {leftovers}"
+
+    def test_save_preserves_existing_file_mode(self, tmp_path: Path) -> None:
+        """The atomic-write tempfile defaults to mode 0600, which would
+        silently destroy any group-shared mode the existing file had on
+        os.replace. The tracker uses deliberate OS permissions for
+        two-user setups; preserve them.
+        """
+        import os as _os
+        import stat as _stat
+        p = tmp_path / "prefs.json"
+        # First save — establish file
+        assert _save_tui_preferences(p, {"done"}, ["A"]) is True
+        # Set a distinctive group-shared mode that mkstemp would NOT
+        # produce by default (0o664 = rw-rw-r--).
+        _os.chmod(p, 0o664)
+        before_mode = _stat.S_IMODE(p.stat().st_mode)
+        assert before_mode == 0o664
+        # Re-save (typical TUI behavior) — must preserve the mode.
+        assert _save_tui_preferences(
+            p, {"done", "wont_do"}, ["A", "B"],
+            human_read_state={"WI-foo": {"read": True, "discussion_len": 1}},
+        ) is True
+        after_mode = _stat.S_IMODE(p.stat().st_mode)
+        assert after_mode == 0o664, (
+            f"existing file mode 0o664 must be preserved across atomic "
+            f"re-save; got 0o{after_mode:o}"
+        )
+
+    def test_save_is_atomic_no_partial_file_visible(self, tmp_path: Path) -> None:
+        """Atomic-write: an interrupted write must not leave a partial
+        prefs.json. Either the old content survives or the new content
+        is fully present — never a half-written file.
+
+        Simulates interruption by raising mid-write (during the inner
+        tempfile fdopen/write).
+        """
         from unittest.mock import patch
         p = tmp_path / "prefs.json"
-        with patch.object(type(p), "write_text", side_effect=PermissionError("denied")):
-            assert _save_tui_preferences(p, {"done"}, ["A"]) is False
+        # First save a known-good v2 file
+        assert _save_tui_preferences(
+            p, {"done"}, ["A"], human_read_state={"WI-foo": {"read": True}},
+        ) is True
+        baseline = p.read_text(encoding="utf-8")
+        # Now simulate an interrupt during the second save: patch
+        # os.fsync to raise. The atomic implementation must not have
+        # replaced the original file at that point.
+        import os as _os
+        with patch.object(_os, "fsync", side_effect=OSError("simulated kill")):
+            result = _save_tui_preferences(
+                p, {"wont_do"}, ["B"],
+                human_read_state={"WI-bar": {"read": True}},
+            )
+        assert result is False
+        # Original file must be intact byte-for-byte
+        assert p.read_text(encoding="utf-8") == baseline
+        # Temp file must be cleaned up
+        leftovers = list(tmp_path.glob("prefs.json.*.tmp"))
+        assert leftovers == [], f"atomic write must clean up tmp files; found {leftovers}"
+
+    def test_save_preserves_human_read_state_across_concurrent_writes(
+        self, tmp_path: Path,
+    ) -> None:
+        """Regression for the line-3307 + non-atomic-write incident
+        (2026-05-31): pressing Shift+< / Shift+> in the TUI used to
+        trigger a v1-schema save that dropped human_read_state from disk;
+        when paired with a non-atomic write that could fail under
+        concurrent activity in the same dir, this silently wiped the
+        user's read-state. The fix passes all v2 kwargs from
+        _move_selected AND uses atomic temp+rename. This test verifies
+        the first half: a save that takes hidden_statuses + display_order
+        as positional but doesn't pass human_read_state must NOT clobber
+        the on-disk human_read_state if a prior save established it.
+
+        NB: this validates the new contract — callers like _move_selected
+        in the TUI now always pass human_read_state. The bare-positional
+        form documented by this test remains backward-compatible (v1
+        schema, no human_read_state field on disk) but the line-3307
+        call site no longer uses it.
+        """
+        p = tmp_path / "prefs.json"
+        # First save: full v2 with human_read_state
+        assert _save_tui_preferences(
+            p, {"done"}, ["A"],
+            human_read_state={"WI-foo": {"read": True, "discussion_len": 3}},
+        )
+        # Second save: only positional (v1 schema). This is the call
+        # shape line 3307 used to use. The on-disk file will lose
+        # human_read_state on this write — this test pins that
+        # behavior so anyone changing the v1/v2 boundary thinks about
+        # the human_read_state implication.
+        assert _save_tui_preferences(p, {"done"}, ["A"])
+        loaded = _load_tui_preferences(p)
+        # After a v1-schema save, the load fills human_read_state with
+        # the {} default (the field is absent from disk). The new
+        # _move_selected call site avoids this by passing v2 kwargs.
+        assert loaded["human_read_state"] == {}
 
     def test_v2_roundtrip_with_tags_and_sessions(self, tmp_path: Path) -> None:
         """V2 fields (hidden_tags, toggle_sessions, last_filters) roundtrip."""
@@ -6091,6 +6196,43 @@ class TestManualReorder:
             await pilot.pause()
             keys_after = [str(k.value) for k in table.rows.keys()]
             assert keys_before == keys_after
+
+    async def test_move_preserves_human_read_state_on_disk(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Regression for 2026-05-31 incident: Shift+< / Shift+> used to
+        trigger a v1-schema save that dropped human_read_state from
+        disk. Verifies that after a move action, the on-disk
+        human_read_state is preserved (not absent, not empty)."""
+        import json
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Seed an in-memory human_read_state entry that should
+            # survive a move-induced save.
+            app._human_read_state["FAKE-item-id"] = {
+                "read": True, "discussion_len": 5,
+            }
+            await pilot.press("greater_than_sign")
+            await pilot.pause()
+            # Read the file from disk and assert the field is present
+            # and non-empty.
+            prefs_path = app._prefs_path
+            disk = json.loads(prefs_path.read_text(encoding="utf-8"))
+            assert disk.get("version") == 2, (
+                f"move must persist v2 schema, got {disk.get('version')}"
+            )
+            assert "human_read_state" in disk, (
+                "move must not drop human_read_state from disk"
+            )
+            assert disk["human_read_state"].get("FAKE-item-id") == {
+                "read": True, "discussion_len": 5,
+            }, (
+                f"move must preserve seeded human_read_state entry; "
+                f"got {disk['human_read_state']}"
+            )
 
     async def test_move_down_at_bottom_noop(
         self, tracker_set: TrackerSet,
