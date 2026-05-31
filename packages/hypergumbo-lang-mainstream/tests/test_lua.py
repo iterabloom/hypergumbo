@@ -778,6 +778,38 @@ end
         # Non-require dot calls should not have require_alias_call evidence
         assert helper_edge.evidence_type != "require_alias_call"
 
+    def test_unresolved_non_require_dot_call_keeps_qualified_dst(
+        self, tmp_path: Path,
+    ) -> None:
+        """Dot calls whose receiver is not a require alias retain qualified-name dst.
+
+        WI-nigah Tier 2 split the dot-call fallback into two paths: when
+        the receiver is a require-alias, emit module-keyed dst + dst_ref;
+        otherwise (this test), keep the pre-WI-nigah behavior of passing
+        the qualified ``recv.callee`` string as the dst's callee_name.
+        """
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        make_lua_file(tmp_path, "main.lua", """
+function main()
+    SomeTable.unknownMethod()
+end
+""")
+
+        result = analyze_lua(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        unresolved_edge = next(
+            (e for e in call_edges
+             if not e.is_resolved and "unknownMethod" in e.dst),
+            None,
+        )
+        assert unresolved_edge is not None, (
+            f"expected an unresolved dot-call edge; got {call_edges}"
+        )
+        assert "SomeTable.unknownMethod" in unresolved_edge.dst
+        assert unresolved_edge.dst_ref is None
+
 
 class TestLuaStableShapeId:
     """Tests for stable_id and shape_id in Lua (ADR-0014 §1-2)."""
