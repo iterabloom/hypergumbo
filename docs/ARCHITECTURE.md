@@ -16,10 +16,10 @@ for focused LLM context.
 hypergumbo analyzed its own source code and found:
 - **282** Python modules (130 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 32 tracker)
 - **30089** symbols (functions, classes, methods)
-- **102326** edges by type:
-  - calls: 57037
+- **102302** edges by type:
+  - calls: 57014
   - contains: 21556
-  - imports: 10155
+  - imports: 10154
   - instantiates: 7777
   - references: 3341
   - module_attr_ref: 1111
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30089 Symbols + 102326 Edges + UsageContexts           │
+│  Output: 30089 Symbols + 102302 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -217,6 +217,8 @@ A code symbol (function, class, etc.) detected by analysis.
 - `protocol_origin`: ADR-0031 typed sibling field. Names the protocol or framework family (kafka, websocket, ipc, wasm, openapi, grpc, graphql, etc.) for synthetic stand-ins emitted by linkers fabricating protocol identity from source patterns. Catalog at :mod:`hypergumbo_core.protocol_origins`. ``None`` for real-source declarations and for synthetic stand-ins that don't belong to a recognized protocol family.
 - `display_label`: ADR-0032 typed sibling field. Human-readable expression- form string for UI display in commands like ``cmd_explain``. Populated by linkers fabricating synthetic stand-ins (e.g., ``"invoke('save_data')"``, ``"@hg:publishes channel"``, ``"yjs.write(doc)"``); real-source-declaration Symbols leave this
 - ```None``. ``# axis`: free-text`` — consumers display the value; no consumer mechanically branches on it.
+- `qualified_name`: ADR-0032 typed sibling field. Fully-qualified name including ancestor containers (e.g. ``module.OuterClass.InnerClass.method``). Replaces the prior ``meta["qualified_name"]`` shape. Per-language separator policy lives in :mod:`hypergumbo_core.qualified_name_axis`; the
+- ```# axis`: qualified-name`` classification keys into that catalog. ``None`` for analyzers whose ``name`` already encodes the fully-qualified form, or for languages that haven't declared a separator policy yet.
 
 ### Edge (`ir.py`)
 A relationship between two symbols (e.g., function calls).
@@ -818,7 +820,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 54cbaa0821ea
+  commit: 87ca29c7e88c
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

@@ -170,7 +170,7 @@ def _process_dockerfile_tree(
                 id=symbol_id,
                 stable_id=None,
                 shape_id=None,
-                canonical_name=stage_name,
+                # ADR-0032: canonical_name dropped (was redundant with name=).
                 fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
                 kind="stage",
                 name=stage_name,
@@ -216,7 +216,7 @@ def _process_dockerfile_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=port_value,
+                    # ADR-0032: canonical_name dropped (was redundant with name=).
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
                     kind="exposed_port",
                     name=port_value,
@@ -246,7 +246,7 @@ def _process_dockerfile_tree(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        canonical_name=var_name,
+                        # ADR-0032: canonical_name dropped (was redundant with name=).
                         fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
                         kind="env_var",
                         name=var_name,
@@ -274,7 +274,7 @@ def _process_dockerfile_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=arg_name,
+                    # ADR-0032: canonical_name dropped (was redundant with name=).
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
                     kind="build_arg",
                     name=arg_name,

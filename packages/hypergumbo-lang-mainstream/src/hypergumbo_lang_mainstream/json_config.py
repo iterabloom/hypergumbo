@@ -195,8 +195,7 @@ def _process_dependencies(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=pkg_name,
-                    fingerprint=hashlib.sha256(source[child.start_byte:child.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind=kind_value,
                     name=pkg_name,
                     path=rel_path,
@@ -262,7 +261,7 @@ def _process_scripts(
                     stable_id=None,
                     shape_id=None,
                     canonical_name=f"npm run {script_name}",
-                    fingerprint=hashlib.sha256(source[child.start_byte:child.end_byte]).hexdigest()[:16],
+                    # ADR-0032: fingerprint stamped by central post-pass.
                     kind="file",
                     name=script_name,
                     path=rel_path,
@@ -310,8 +309,7 @@ def _process_bin(
                 id=symbol_id,
                 stable_id=None,
                 shape_id=None,
-                canonical_name=pkg_name,
-                fingerprint=hashlib.sha256(source[bin_node.start_byte:bin_node.end_byte]).hexdigest()[:16],
+                # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                 kind="bin",
                 name=pkg_name,
                 path=rel_path,
@@ -366,8 +364,7 @@ def _process_bin(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=bin_name,
-                    fingerprint=hashlib.sha256(source[child.start_byte:child.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="bin",
                     name=bin_name,
                     path=rel_path,
@@ -430,8 +427,7 @@ def _process_main_entry(
         id=symbol_id,
         stable_id=None,
         shape_id=None,
-        canonical_name=entry_name,
-        fingerprint=hashlib.sha256(source[main_node.start_byte:main_node.end_byte]).hexdigest()[:16],
+        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
         kind="file",
         name=entry_name,
         path=rel_path,
@@ -545,9 +541,7 @@ def _process_exports(
                 stable_id=None,
                 shape_id=None,
                 canonical_name=f"{pkg_name or 'pkg'}:{entry_name}",
-                fingerprint=hashlib.sha256(
-                    source[exports_node.start_byte:exports_node.end_byte],
-                ).hexdigest()[:16],
+                # ADR-0032: fingerprint stamped by central post-pass.
                 kind="export",
                 name=entry_name,
                 path=rel_path,
@@ -607,9 +601,7 @@ def _process_exports(
             stable_id=None,
             shape_id=None,
             canonical_name=f"{pkg_name or 'pkg'}:{subpath}",
-            fingerprint=hashlib.sha256(
-                source[child.start_byte:child.end_byte],
-            ).hexdigest()[:16],
+            # ADR-0032: fingerprint stamped by central post-pass.
             kind="export",
             name=subpath,
             path=rel_path,
@@ -687,8 +679,7 @@ def _process_package_json(
             id=project_id,
             stable_id=None,
             shape_id=None,
-            canonical_name=pkg_name,
-            fingerprint=hashlib.sha256(source[obj_node.start_byte:obj_node.end_byte]).hexdigest()[:16],
+            # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
             kind="package",
             name=pkg_name,
             path=rel_path,
@@ -768,7 +759,7 @@ def _process_tsconfig(
         stable_id=None,
         shape_id=None,
         canonical_name=rel_path,
-        fingerprint=hashlib.sha256(source[obj_node.start_byte:obj_node.end_byte]).hexdigest()[:16],
+        # ADR-0032: fingerprint stamped by central post-pass.
         kind="file",
         is_config_file=True,
         name=Path(rel_path).name,
@@ -850,8 +841,7 @@ def _process_composer_json(
             id=project_id,
             stable_id=None,
             shape_id=None,
-            canonical_name=pkg_name,
-            fingerprint=hashlib.sha256(source[obj_node.start_byte:obj_node.end_byte]).hexdigest()[:16],
+            # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
             kind="package",
             name=pkg_name,
             path=rel_path,

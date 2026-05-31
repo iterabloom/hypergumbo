@@ -186,7 +186,7 @@ def _process_maven_dependency(
             stable_id=None,
             shape_id=None,
             canonical_name=dep_name,
-            fingerprint=hashlib.sha256(source[dep_node.start_byte:dep_node.end_byte]).hexdigest()[:16],
+            # ADR-0032: fingerprint stamped by central post-pass.
             kind="dependency",
             name=artifact_id,
             path=rel_path,
@@ -294,7 +294,7 @@ def _process_maven_pom(
             stable_id=None,
             shape_id=None,
             canonical_name=project_name,
-            fingerprint=hashlib.sha256(source[project_node.start_byte:project_node.end_byte]).hexdigest()[:16],
+            # ADR-0032: fingerprint stamped by central post-pass.
             kind="module",
             name=artifact_id,
             path=rel_path,
@@ -380,7 +380,7 @@ def _process_android_manifest(
                                 stable_id=None,
                                 shape_id=None,
                                 canonical_name=perm_name,
-                                fingerprint=hashlib.sha256(source[sub.start_byte:sub.end_byte]).hexdigest()[:16],
+                                # ADR-0032: fingerprint stamped by central post-pass.
                                 kind="permission",
                                 name=short_name,
                                 path=rel_path,
@@ -460,7 +460,7 @@ def _process_android_application(
                                 stable_id=None,
                                 shape_id=None,
                                 canonical_name=full_name,
-                                fingerprint=hashlib.sha256(source[sub.start_byte:sub.end_byte]).hexdigest()[:16],
+                                # ADR-0032: fingerprint stamped by central post-pass.
                                 # WI-razus: AndroidManifest.xml's activity /
                                 # service / receiver / provider elements are
                                 # all variants of the same source-language

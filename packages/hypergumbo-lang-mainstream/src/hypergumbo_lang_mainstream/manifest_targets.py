@@ -105,7 +105,7 @@ def _emit(
         id=sym_id,
         stable_id=None,
         shape_id=None,
-        canonical_name=name,
+        # ADR-0032: canonical_name dropped (was redundant with name=).
         fingerprint=None,
         kind=kind,
         name=name,

@@ -9106,7 +9106,7 @@ class TestResolveDeferredSymbolRefs:
             language="python",
             path="views.py",
             span=Span(10, 10, 0, 50),
-            meta={"qualified_name": "myapp.views.list_users"},
+            qualified_name="myapp.views.list_users",  # ADR-0032
         )
 
         ctx = UsageContext.create(

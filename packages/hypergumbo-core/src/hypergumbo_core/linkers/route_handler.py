@@ -668,8 +668,9 @@ def link_routes_to_handlers(
         if (s.meta or {}).get("framework_role") == "route":
             continue
         non_route_name_count[s.name] = non_route_name_count.get(s.name, 0) + 1
-        if s.meta and s.meta.get("qualified_name"):
-            qn = s.meta["qualified_name"]
+        # ADR-0032: read typed Symbol.qualified_name field
+        if s.qualified_name:
+            qn = s.qualified_name
             non_route_name_count[qn] = non_route_name_count.get(qn, 0) + 1
     name_collisions: frozenset[str] = frozenset(
         k for k, c in non_route_name_count.items() if c > 1
@@ -680,8 +681,9 @@ def link_routes_to_handlers(
         if existing is None or (existing.meta or {}).get("framework_role") == "route":
             symbol_by_name[s.name] = s
         # Also index by qualified name if available
-        if s.meta and s.meta.get("qualified_name"):
-            qn = s.meta["qualified_name"]
+        # ADR-0032: read typed Symbol.qualified_name field
+        if s.qualified_name:
+            qn = s.qualified_name
             existing_qn = symbol_by_name.get(qn)
             if existing_qn is None or (existing_qn.meta or {}).get("framework_role") == "route":
                 symbol_by_name[qn] = s
@@ -760,7 +762,8 @@ def link_routes_to_handlers(
             # wrong candidate at insertion time. Flag the edge and
             # drop confidence per the INV-zuhub contract. Edges whose
             # resolved name is unique stay at confidence=0.9.
-            handler_qn = (handler.meta or {}).get("qualified_name")
+            # ADR-0032: read typed Symbol.qualified_name field
+            handler_qn = handler.qualified_name
             handler_is_fallback = (
                 handler.name in name_collisions
                 or (handler_qn is not None and handler_qn in name_collisions)
@@ -801,7 +804,8 @@ def link_routes_to_handlers(
                 #
                 # WI-rusuh / INV-zuhub item 1: same fallback discipline
                 # as the main handler edge above.
-                target_qn = (target.meta or {}).get("qualified_name")
+                # ADR-0032: read typed Symbol.qualified_name field
+                target_qn = target.qualified_name
                 la_is_fallback = (
                     target.name in name_collisions
                     or (target_qn is not None and target_qn in name_collisions)

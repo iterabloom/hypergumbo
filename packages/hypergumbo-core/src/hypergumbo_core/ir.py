@@ -387,6 +387,15 @@ class Symbol:
             ``"yjs.write(doc)"``); real-source-declaration Symbols leave this
             ``None``. ``# axis: free-text`` — consumers display the value; no
             consumer mechanically branches on it.
+        qualified_name: ADR-0032 typed sibling field. Fully-qualified name
+            including ancestor containers (e.g.
+            ``module.OuterClass.InnerClass.method``). Replaces the prior
+            ``meta["qualified_name"]`` shape. Per-language separator policy
+            lives in :mod:`hypergumbo_core.qualified_name_axis`; the
+            ``# axis: qualified-name`` classification keys into that
+            catalog. ``None`` for analyzers whose ``name`` already encodes
+            the fully-qualified form, or for languages that haven't
+            declared a separator policy yet.
     """
 
     id: str  # axis: identity
@@ -418,6 +427,7 @@ class Symbol:
     discovery_language: Optional[str] = None  # axis: language
     protocol_origin: Optional[str] = None  # axis: protocol-origin
     display_label: Optional[str] = None  # axis: free-text — human-readable UI display string for synthetic linker stand-ins; consumers display, never branch on the value itself.
+    qualified_name: Optional[str] = None  # axis: qualified-name (ADR-0032)
 
     def __post_init__(self) -> None:
         if isinstance(self.origin, str):
@@ -467,6 +477,7 @@ class Symbol:
             "discovery_language": self.discovery_language,
             "protocol_origin": self.protocol_origin,
             "display_label": self.display_label,
+            "qualified_name": self.qualified_name,  # ADR-0032
         }
 
     @classmethod
@@ -504,6 +515,7 @@ class Symbol:
             discovery_language=d.get("discovery_language"),
             protocol_origin=d.get("protocol_origin"),
             display_label=d.get("display_label"),
+            qualified_name=d.get("qualified_name"),  # ADR-0032
         )
 
 

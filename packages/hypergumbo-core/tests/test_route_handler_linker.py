@@ -486,7 +486,7 @@ class TestRouteHandlerLinker:
             language="ruby",
             path="/app/controllers/users_controller.rb",
             span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
-            meta={"qualified_name": "UsersController#index"},
+            qualified_name="UsersController#index",  # ADR-0032
             origin="ruby",
             origin_run_id="test-run",
         )

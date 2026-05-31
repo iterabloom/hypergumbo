@@ -175,15 +175,13 @@ def _process_css_tree(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, var_name, "variable")
-                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
 
                 symbols.append(
                     Symbol(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        canonical_name=var_name,
-                        fingerprint=fingerprint,
+                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="variable",
                         name=var_name,
                         path=rel_path,
@@ -204,15 +202,13 @@ def _process_css_tree(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, name, "keyframes")
-                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
 
                 symbols.append(
                     Symbol(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        canonical_name=name,
-                        fingerprint=fingerprint,
+                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="keyframes",
                         name=name,
                         path=rel_path,
@@ -232,15 +228,13 @@ def _process_css_tree(
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
             symbol_id = _make_symbol_id(rel_path, start_line, query, "media")
-            fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
 
             symbols.append(
                 Symbol(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=query,
-                    fingerprint=fingerprint,
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="media",
                     name=query,
                     path=rel_path,
@@ -270,15 +264,13 @@ def _process_css_tree(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, name, "font_face")
-                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
 
                 symbols.append(
                     Symbol(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        canonical_name=name,
-                        fingerprint=fingerprint,
+                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="font_face",
                         name=name,
                         path=rel_path,
@@ -301,15 +293,13 @@ def _process_css_tree(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, class_name, "class_selector")
-                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
 
                 symbols.append(
                     Symbol(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        canonical_name=class_name,
-                        fingerprint=fingerprint,
+                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="class_selector",
                         name=class_name,
                         path=rel_path,
@@ -331,15 +321,13 @@ def _process_css_tree(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = _make_symbol_id(rel_path, start_line, id_name, "id_selector")
-                fingerprint = hashlib.sha256(source[node.start_byte : node.end_byte]).hexdigest()[:16]
 
                 symbols.append(
                     Symbol(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        canonical_name=id_name,
-                        fingerprint=fingerprint,
+                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="id_selector",
                         name=id_name,
                         path=rel_path,

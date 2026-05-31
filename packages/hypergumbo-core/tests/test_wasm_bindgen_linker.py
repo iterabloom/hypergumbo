@@ -572,10 +572,12 @@ class TestWasmBindgenSyntheticSymbols:
         assert sym.language is None
         assert sym.discovery_language == "typescript"
         assert sym.protocol_origin == "wasm"
-        assert sym.canonical_name == "import { greet }"
+        # ADR-0032: canonical_name → display_label for linker-synthetic stand-ins.
+        assert sym.display_label == "import { greet }"
+        assert sym.canonical_name is None
         assert sym.meta == {"wasm_export": "greet", "compilation_target": "wasm"}
-        assert sym.fingerprint is not None
-        assert len(sym.fingerprint) == 16
+        # ADR-0032: producer-side fingerprint demolished; central post-pass leaves None for language=None.
+        assert sym.fingerprint is None
         # Tier 2 prevents _classify_symbols from reclassifying to tier 4
         assert sym.supply_chain_tier == 2
         assert sym.supply_chain_reason == "synthetic WASM bridge node"

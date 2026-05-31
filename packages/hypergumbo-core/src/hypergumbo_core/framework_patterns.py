@@ -1585,8 +1585,9 @@ def resolve_deferred_symbol_refs(
         # Index by simple name
         symbol_by_name[s.name] = s
         # Also index by qualified name if available (e.g., "Class.method")
-        if s.meta and s.meta.get("qualified_name"):
-            symbol_by_name[s.meta["qualified_name"]] = s
+        # ADR-0032: read typed Symbol.qualified_name field
+        if s.qualified_name:
+            symbol_by_name[s.qualified_name] = s
 
     # Create NameResolver for suffix matching
     resolver = NameResolver(symbol_by_name)

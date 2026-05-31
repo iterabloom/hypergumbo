@@ -113,7 +113,8 @@ def test_analyze_package_json_bin_entries(tmp_path):
     assert my_cli is not None
     assert my_cli.meta is not None
     assert my_cli.meta.get("path") == "./bin/cli.js"
-    assert my_cli.canonical_name == "my-cli"  # CLI command name
+    # ADR-0032: canonical_name no longer set (was redundant with name=); name still holds the value.
+    assert my_cli.name == "my-cli"  # CLI command name
 
 def test_analyze_package_json_bin_string_form(tmp_path):
     """Test parsing package.json bin as a string (single binary).

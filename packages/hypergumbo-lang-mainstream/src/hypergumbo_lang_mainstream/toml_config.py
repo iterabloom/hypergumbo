@@ -189,15 +189,13 @@ def _process_toml_tree(
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
             symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, name, kind)
-            node_bytes = content[node.start_byte : node.end_byte].encode()
 
             symbols.append(
                 Symbol(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=name,
-                    fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind=kind,
                     name=name,
                     path=rel_path,
@@ -276,7 +274,6 @@ def _process_toml_tree(
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
             symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, name, kind)
-            node_bytes = content[node.start_byte : node.end_byte].encode()
 
             # Build meta with path if present
             meta = None
@@ -288,8 +285,7 @@ def _process_toml_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=name,
-                    fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind=kind,
                     name=name,
                     path=rel_path,
@@ -462,7 +458,6 @@ def _extract_cargo_dependencies(
                 start_line = child.start_point[0] + 1
                 end_line = child.end_point[0] + 1
                 symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, dep_name, "dependency")
-                node_bytes = content[child.start_byte : child.end_byte].encode()
 
                 meta = {"dependency_scope": scope} if scope else None
                 symbols.append(
@@ -470,8 +465,7 @@ def _extract_cargo_dependencies(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        canonical_name=dep_name,
-                        fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
+                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="dependency",
                         name=dep_name,
                         path=rel_path,
@@ -536,15 +530,13 @@ def _extract_pyproject_dependencies(
                         symbol_id = _make_toml_symbol_id(
                             rel_path, start_line, end_line, dep_name, "dependency"
                         )
-                        node_bytes = content[elem.start_byte : elem.end_byte].encode()
 
                         symbols.append(
                             Symbol(
                                 id=symbol_id,
                                 stable_id=None,
                                 shape_id=None,
-                                canonical_name=dep_name,
-                                fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
+                                # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                                 kind="dependency",
                                 name=dep_name,
                                 path=rel_path,
@@ -608,7 +600,6 @@ def _extract_pyproject_scripts(
                 start_line = child.start_point[0] + 1
                 end_line = child.end_point[0] + 1
                 symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, script_name, "script")
-                node_bytes = content[child.start_byte : child.end_byte].encode()
 
                 meta: dict = {"entry_role": "script"}
                 if entry_point:
@@ -619,8 +610,7 @@ def _extract_pyproject_scripts(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        canonical_name=script_name,
-                        fingerprint=hashlib.sha256(node_bytes).hexdigest()[:16],
+                        # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="file",
                         name=script_name,
                         path=rel_path,

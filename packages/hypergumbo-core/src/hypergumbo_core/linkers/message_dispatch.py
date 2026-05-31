@@ -265,7 +265,7 @@ def link_message_dispatch(
                     id=pub_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=f"dispatch.send({write.channel})",
+                    display_label=f"dispatch.send({write.channel})",  # ADR-0032
                     fingerprint=hashlib.sha256(pub_id.encode()).hexdigest()[:16],
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
@@ -298,7 +298,7 @@ def link_message_dispatch(
                     id=sub_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=f"dispatch.handle({read.channel})",
+                    display_label=f"dispatch.handle({read.channel})",  # ADR-0032
                     fingerprint=hashlib.sha256(sub_id.encode()).hexdigest()[:16],
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.

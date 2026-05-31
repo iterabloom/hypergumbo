@@ -153,7 +153,7 @@ def _make_powershell_symbol(
     return Symbol(
         id=sym_id,
         name=name,
-        canonical_name=name,
+        # ADR-0032: canonical_name dropped (was redundant with name=).
         kind=kind,
         language="powershell",
         path=file_path,

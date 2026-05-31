@@ -166,7 +166,8 @@ my-tool = "mypackage.tool:run"
     assert my_cli is not None
     assert my_cli.meta is not None
     assert my_cli.meta.get("entry_point") == "mypackage.cli:main"
-    assert my_cli.canonical_name == "my-cli"  # CLI command name
+    # ADR-0032: canonical_name no longer set (was redundant with name=); name still holds the value.
+    assert my_cli.name == "my-cli"  # CLI command name
 
 def test_pyproject_scripts_emit_defines_target_edges(tmp_path):
     """pyproject.toml [project.scripts] should emit defines_target edges.

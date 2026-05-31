@@ -637,7 +637,7 @@ def link_tauri_ipc(
                     id=src_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=f"invoke('{cmd_name}')",
+                    display_label=f"invoke('{cmd_name}')",  # ADR-0032
                     fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak. Fold to canonical kind="function" + meta key.
@@ -761,7 +761,7 @@ def link_tauri_ipc(
                         id=caller_id,
                         stable_id=None,
                         shape_id=None,
-                        canonical_name=f"{func_name}()",
+                        display_label=f"{func_name}()",  # ADR-0032
                         fingerprint=hashlib.sha256(
                             caller_id.encode(),
                         ).hexdigest()[:16],
@@ -866,7 +866,7 @@ def link_tauri_ipc(
                             id=src_id,
                             stable_id=None,
                             shape_id=None,
-                            canonical_name=f"emit('{event_name}')",
+                            display_label=f"emit('{event_name}')",  # ADR-0032
                             fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
                             # ADR-0027 Phase 3 / audit-findings 0013:
                             # framework-role leak.
@@ -896,7 +896,7 @@ def link_tauri_ipc(
                             id=dst_id,
                             stable_id=None,
                             shape_id=None,
-                            canonical_name=f"listen('{event_name}')",
+                            display_label=f"listen('{event_name}')",  # ADR-0032
                             fingerprint=hashlib.sha256(dst_id.encode()).hexdigest()[:16],
                             # ADR-0027 Phase 3 / audit-findings 0013:
                             # framework-role leak.

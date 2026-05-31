@@ -858,8 +858,11 @@ class TestTauriIPCSyntheticSymbols:
         assert sym.language is None
         assert sym.discovery_language == "typescript"
         assert sym.protocol_origin == "tauri_ipc"
-        assert sym.canonical_name == "invoke('greet')"
+        # ADR-0032: canonical_name → display_label for linker-synthetic stand-ins.
+        assert sym.display_label == "invoke('greet')"
+        assert sym.canonical_name is None
         assert sym.meta == {"tauri_command": "greet", "framework_role": "ipc_publisher"}
+        # tauri_ipc's fingerprint is the synthetic src_id hash (not source bytes); kept per ADR-0032.
         assert sym.fingerprint is not None
         assert len(sym.fingerprint) == 16  # sha256 hex truncated to 16
         # Tier 2 prevents _classify_symbols from reclassifying to tier 4

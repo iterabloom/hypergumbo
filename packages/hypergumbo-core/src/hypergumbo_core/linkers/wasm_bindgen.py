@@ -38,7 +38,6 @@ Why This Design
 """
 from __future__ import annotations
 
-import hashlib
 import re
 import time
 from dataclasses import dataclass, field
@@ -263,8 +262,8 @@ def link_wasm_bindgen(
                     id=src_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=f"import {{ {import_name} }}",
-                    fingerprint=hashlib.sha256(src_id.encode()).hexdigest()[:16],
+                    display_label=f"import {{ {import_name} }}",  # ADR-0032
+                    # ADR-0032: producer-side Format 1 fingerprint dropped; central post-pass stamps Format 2.
                     kind="import",
                     name=import_name,
                     path=rel_path,
@@ -407,8 +406,8 @@ def _create_wasm_load_edges(
                     id=wasm_module_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=f"WASM module: {wasm_ref}",
-                    fingerprint=hashlib.sha256(wasm_module_id.encode()).hexdigest()[:16],
+                    display_label=f"WASM module: {wasm_ref}",  # ADR-0032
+                    # ADR-0032: producer-side Format 1 fingerprint dropped; central post-pass stamps Format 2.
                     kind="module",
                     name=wasm_ref,
                     path=wasm_ref,

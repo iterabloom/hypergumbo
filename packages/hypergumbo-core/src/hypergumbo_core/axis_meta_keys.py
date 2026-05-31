@@ -364,10 +364,9 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Inferred return type for Symbols whose declared "
                 "type is missing. Set by the limited type-inference "
                 "passes (Python ``typing.get_type_hints``, etc.)."),
-    MetaKeySpec("qualified_name", AXIS_SYMBOL_META,
-                "Fully-qualified name including ancestor "
-                "containers (e.g. "
-                "``module.OuterClass.InnerClass.method``)."),
+    # ADR-0032 Phase 2 PR2: ``qualified_name`` retired from the meta axis
+    # in favour of the typed ``Symbol.qualified_name`` field. See
+    # :mod:`hypergumbo_core.qualified_name_axis`.
     MetaKeySpec("display_name", AXIS_SYMBOL_META,
                 "Human-readable display name overriding the "
                 "default. Set by analyzers where the source name "

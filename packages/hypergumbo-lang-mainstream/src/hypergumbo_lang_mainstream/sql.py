@@ -220,8 +220,7 @@ def _extract_sql_symbols(
                     id=symbol_id,
                     stable_id=_analyzer.compute_stable_id(node, kind="table"),
                     shape_id=None,
-                    canonical_name=name,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="table",
                     name=name,
                     path=rel_path,
@@ -249,8 +248,7 @@ def _extract_sql_symbols(
                     id=symbol_id,
                     stable_id=_analyzer.compute_stable_id(node, kind="view"),
                     shape_id=None,
-                    canonical_name=name,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="view",
                     name=name,
                     path=rel_path,
@@ -278,8 +276,7 @@ def _extract_sql_symbols(
                     id=symbol_id,
                     stable_id=_analyzer.compute_stable_id(node, kind="function"),
                     shape_id=None,
-                    canonical_name=name,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="function",
                     name=name,
                     path=rel_path,
@@ -308,8 +305,7 @@ def _extract_sql_symbols(
                     id=symbol_id,  # pragma: no cover
                     stable_id=_analyzer.compute_stable_id(node, kind="procedure"),  # pragma: no cover
                     shape_id=None,  # pragma: no cover
-                    canonical_name=name,  # pragma: no cover
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],  # pragma: no cover
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="procedure",  # pragma: no cover
                     name=name,  # pragma: no cover
                     path=rel_path,  # pragma: no cover
@@ -337,8 +333,7 @@ def _extract_sql_symbols(
                     id=symbol_id,
                     stable_id=_analyzer.compute_stable_id(node, kind="trigger"),
                     shape_id=None,
-                    canonical_name=name,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="trigger",
                     name=name,
                     path=rel_path,
@@ -366,8 +361,7 @@ def _extract_sql_symbols(
                     id=symbol_id,
                     stable_id=_analyzer.compute_stable_id(node, kind="index"),
                     shape_id=None,
-                    canonical_name=name,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="index",
                     name=name,
                     path=rel_path,

@@ -161,7 +161,7 @@ def _process_make_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=var_name,
+                    # ADR-0032: canonical_name dropped (was redundant with name=).
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
                     kind="variable",
                     name=var_name,
@@ -209,7 +209,7 @@ def _process_make_tree(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        canonical_name=target_name,
+                        # ADR-0032: canonical_name dropped (was redundant with name=).
                         fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
                         kind=kind,
                         name=target_name,
@@ -265,7 +265,7 @@ def _process_make_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=define_name,
+                    # ADR-0032: canonical_name dropped (was redundant with name=).
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
                     kind="function",
                     name=define_name,

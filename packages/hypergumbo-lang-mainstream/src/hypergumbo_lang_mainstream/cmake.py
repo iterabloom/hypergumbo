@@ -145,8 +145,7 @@ def _process_cmake_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=project_name,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="project",
                     name=project_name,
                     path=rel_path,
@@ -173,8 +172,7 @@ def _process_cmake_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=lib_name,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="library",
                     name=lib_name,
                     path=rel_path,
@@ -201,8 +199,7 @@ def _process_cmake_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=exe_name,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="executable",
                     name=exe_name,
                     path=rel_path,
@@ -263,8 +260,7 @@ def _process_cmake_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=subdir,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="subdirectory",
                     name=subdir,
                     path=rel_path,
@@ -290,8 +286,7 @@ def _process_cmake_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=pkg_name,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="package",
                     name=pkg_name,
                     path=rel_path,
@@ -320,8 +315,7 @@ def _process_cmake_tree(
                             id=symbol_id,
                             stable_id=None,
                             shape_id=None,
-                            canonical_name=func_name,
-                            fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                            # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                             kind="function",
                             name=func_name,
                             path=rel_path,
@@ -353,8 +347,7 @@ def _process_cmake_tree(
                             id=symbol_id,
                             stable_id=None,
                             shape_id=None,
-                            canonical_name=macro_name,
-                            fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                            # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                             kind="macro",
                             name=macro_name,
                             path=rel_path,

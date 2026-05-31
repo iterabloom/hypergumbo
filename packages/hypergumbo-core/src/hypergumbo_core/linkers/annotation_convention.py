@@ -188,7 +188,7 @@ def link_annotations(
                     id=pub_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=f"@hg:publishes {channel}",
+                    display_label=f"@hg:publishes {channel}",  # ADR-0032
                     fingerprint=hashlib.sha256(pub_id.encode()).hexdigest()[:16],
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
@@ -225,7 +225,7 @@ def link_annotations(
                         id=sub_id,
                         stable_id=None,
                         shape_id=None,
-                        canonical_name=f"@hg:subscribes {channel}",
+                        display_label=f"@hg:subscribes {channel}",  # ADR-0032
                         fingerprint=hashlib.sha256(sub_id.encode()).hexdigest()[:16],
                         # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                         # leak.
@@ -281,7 +281,7 @@ def link_annotations(
                 id=route_id,
                 stable_id=None,
                 shape_id=None,
-                canonical_name=f"@hg:route {route.argument}",
+                display_label=f"@hg:route {route.argument}",  # ADR-0032
                 fingerprint=hashlib.sha256(route_id.encode()).hexdigest()[:16],
                 kind="function",
                 name=route.argument,
@@ -328,7 +328,7 @@ def link_annotations(
                 id=disp_id,
                 stable_id=None,
                 shape_id=None,
-                canonical_name=f"@hg:dispatches {target_name}",
+                display_label=f"@hg:dispatches {target_name}",  # ADR-0032
                 fingerprint=hashlib.sha256(disp_id.encode()).hexdigest()[:16],
                 # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
                 kind="function",
