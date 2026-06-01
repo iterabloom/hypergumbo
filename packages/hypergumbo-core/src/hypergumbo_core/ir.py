@@ -336,19 +336,6 @@ class Symbol:
             (155 zero-param bash functions in one file shared one ID),
             so name + qualified_name are now part of the hash inputs.
         shape_id: Structural implementation fingerprint
-        canonical_name: **Deprecated (ADR-0032).** Removed in Phase 6
-            PR4 (one major version after the 0.12.0 schema bump). New
-            producers should write to the typed siblings
-            ``display_label`` (Use 2; UI-display strings on synthetic
-            stand-ins) or ``qualified_name`` (Use 3; fully-qualified
-            scoped identifiers) instead. Pre-migration semantics: set
-            only when ``name`` is unqualified but a fully-qualified
-            path is known. For mainstream-analyzer languages where
-            ``name`` already encodes the parent (Python's
-            ``ClassName.method``, Java's ``Class.method``, etc.), this
-            field is deliberately ``None``. Consumer-side fallback
-            order during the deprecation window:
-            ``qualified_name or canonical_name``.
         fingerprint: Content hash of source bytes (sha256)
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict for language-specific information
@@ -418,7 +405,6 @@ class Symbol:
     origin_run_id: str = ""  # axis: identity
     stable_id: Optional[str] = None  # axis: identity
     shape_id: Optional[str] = None  # axis: identity
-    canonical_name: Optional[str] = None  # axis: free-text — fully-qualified name from source; consumers display, never branch on the value itself.
     fingerprint: Optional[str] = None  # axis: identity
     quality: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
@@ -465,7 +451,6 @@ class Symbol:
             "origin_run_id": self.origin_run_id,
             "stable_id": self.stable_id,
             "shape_id": self.shape_id,
-            "canonical_name": self.canonical_name,
             "fingerprint": self.fingerprint,
             "quality": self.quality,
             "meta": self.meta,
@@ -506,7 +491,6 @@ class Symbol:
             origin_run_id=d.get("origin_run_id", ""),
             stable_id=d.get("stable_id"),
             shape_id=d.get("shape_id"),
-            canonical_name=d.get("canonical_name"),
             fingerprint=d.get("fingerprint"),
             quality=d.get("quality"),
             meta=d.get("meta"),

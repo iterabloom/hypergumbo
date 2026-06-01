@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **283** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 32 tracker)
-- **30373** symbols (functions, classes, methods)
-- **103150** edges by type:
-  - calls: 57496
-  - contains: 21741
-  - imports: 10251
-  - instantiates: 7841
-  - references: 3351
+- **30417** symbols (functions, classes, methods)
+- **103275** edges by type:
+  - calls: 57557
+  - contains: 21765
+  - imports: 10259
+  - instantiates: 7867
+  - references: 3352
   - module_attr_ref: 1111
-  - other: 1359
+  - other: 1364
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30373 Symbols + 103150 Edges + UsageContexts           │
+│  Output: 30417 Symbols + 103275 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -195,10 +195,8 @@ A code symbol (function, class, etc.) detected by analysis.
 - `span`: Source location with lines and columns
 - `origin`: Provenance list (INV-jidat). Each element is a pass ID that contributed to this Symbol's existence, ordered chronologically (originating pass first). Single-element lists are the common case. Auto-normalized from scalar str for backward compat.
 - `origin_run_id`: Unique execution ID of the analysis run
-- `stable_id`: Semantic identity hash (survives renames/moves)
+- `stable_id`: Structural-identity hash within a (qualified_name, module_path) scope (ADR-0014 amended by Phase 6 PR3 / INV-bazij). Survives BODY edits; does NOT survive rename or move — those are now identity-changing operations. Pre-Phase-6 the field was documented as "survives renames/moves", but on the dogfood corpus that promise produced a 60% collision rate (155 zero-param bash functions in one file shared one ID), so name + qualified_name are now part of the hash inputs.
 - `shape_id`: Structural implementation fingerprint
-- `canonical_name`: **Deprecated (ADR-0032).** Removed in Phase 6 PR4 (one major version after the 0.12.0 schema bump). New producers should write to the typed siblings ``display_label`` (Use 2; UI-display strings on synthetic stand-ins) or ``qualified_name`` (Use 3; fully-qualified
-- `scoped identifiers) instead. Pre-migration semantics`: set only when ``name`` is unqualified but a fully-qualified path is known. For mainstream-analyzer languages where ``name`` already encodes the parent (Python's ``ClassName.method``, Java's ``Class.method``, etc.), this field is deliberately ``None``. Consumer-side fallback order during the deprecation window: ``qualified_name or canonical_name``.
 - `fingerprint`: Content hash of source bytes (sha256)
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict for language-specific information
@@ -270,8 +268,8 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 5399.3 | ir.py |
-| `Span` | class | 4256.0 | ir.py |
+| `Symbol` | class | 5410.4 | ir.py |
+| `Span` | class | 4264.4 | ir.py |
 | `run_behavior_map` | function | 3028.8 | cli.py |
 | `LinkerContext` | class | 2158.7 | registry.py |
 | `TrackerApp` | class | 1877.7 | tui.py |
@@ -279,7 +277,7 @@ These symbols have the highest bidirectional centrality
 | `main` | function | 1472.5 | cli.py |
 | `clear_pattern_cache` | function | 1332.6 | framework_patterns.py |
 | `find_files` | function | 1120.8 | discovery.py |
-| `TreeSitterAnalyzer` | class | 903.0 | base.py |
+| `TreeSitterAnalyzer` | class | 944.2 | base.py |
 | `match_patterns` | function | 873.0 | framework_patterns.py |
 | `register_analyzer` | function | 822.0 | registry.py |
 | `detect_entrypoints` | function | 804.9 | entrypoints.py |
@@ -822,7 +820,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 9ba80b8ab8c4
+  commit: ea0154e54fc9
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

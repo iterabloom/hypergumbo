@@ -21,18 +21,14 @@ language-specific separators (``.``, ``#``, ``::``).  For example,
 When ``sym.name`` has no separator (e.g., proto RPCs where
 ``name="BidiHello"``), falls back to ``sym.qualified_name`` (the
 ADR-0032 typed sibling field that carries fully-qualified scoped
-identifiers, e.g., ``hello.HelloService.BidiHello``). For backward
-compatibility with the deprecated ``Symbol.canonical_name`` field
-(removed in Phase 6 PR4), this phase also reads ``canonical_name``
-when ``qualified_name`` is unset. This handles proto service→rpc
-containment and nested message containment.
+identifiers, e.g., ``hello.HelloService.BidiHello``). This handles
+proto service→rpc containment and nested message containment.
 This phase is reachable only for niche-language analyzers (proto,
 capnp, fish, etc.) that emit unqualified ``name`` plus a
 ``qualified_name``. Mainstream-analyzer languages (Python, JS/TS,
-Go, Rust, Java, C++, Ruby) leave both ``qualified_name=None`` and
-``canonical_name=None`` by design because ``name`` already encodes
-the parent, so containment falls through to span_overlap when
-naming convention doesn't match.
+Go, Rust, Java, C++, Ruby) leave ``qualified_name=None`` by design
+because ``name`` already encodes the parent, so containment falls
+through to span_overlap when naming convention doesn't match.
 
 **Phase 2 — Span-based fallback** (confidence=0.9):
 When neither naming convention nor qualified_name produces a parent,
@@ -220,13 +216,12 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
     # Also index by qualified_name (ADR-0032) for proto service→rpc and
     # nested message containment, where name is unqualified but
     # qualified_name is fully qualified (e.g., name="HelloService",
-    # qualified_name="hello.HelloService"). Reads canonical_name as a
-    # fallback for the deprecated-but-still-populated legacy field.
+    # qualified_name="hello.HelloService").
     container_by_name: dict[str, list[Symbol]] = {}
     for sym in ctx.symbols:
         if sym.kind in CONTAINER_KINDS:
             container_by_name.setdefault(sym.name, []).append(sym)
-            qualified = sym.qualified_name or sym.canonical_name
+            qualified = sym.qualified_name
             if qualified and qualified != sym.name:
                 container_by_name.setdefault(qualified, []).append(sym)
 
@@ -281,8 +276,6 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
     # Handles cases where sym.name is unqualified (no separator) but
     # sym.qualified_name is fully qualified (e.g., proto RPCs where
     # name="BidiHello" but qualified_name="hello.HelloService.BidiHello").
-    # Reads canonical_name as a fallback for the deprecated-but-still-
-    # populated legacy field (removed in Phase 6 PR4 per ADR-0032).
     for sym in ctx.symbols:
         if sym.kind not in CONTAINABLE_KINDS and sym.kind not in CONTAINER_KINDS:
             continue
@@ -291,8 +284,8 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
         if _extract_parent_name(sym.name) is not None:
             continue
 
-        # Need a qualified_name (or legacy canonical_name) with a separator
-        qualified = sym.qualified_name or sym.canonical_name
+        # Need a qualified_name with a separator
+        qualified = sym.qualified_name
         if not qualified:
             continue
         parent_name = _extract_parent_name(qualified)

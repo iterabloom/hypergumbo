@@ -364,6 +364,20 @@ Self-analysis collision rate dropped from 60.2% baseline.
 
 Out of scope: `Edge.id` schema check (deferred from Phase 6 PR1 carry-over). The typed-tier-collision floor for same-signature/same-module function pairs is intentionally retained — the typed-tier factory contract has signature as the disambiguator, and threading name into it would conflict with the "Don't modify make_*_stable_id factories" constraint in this PR's scope.
 
+#### Phase 6 PR4 — Remove deprecated `Symbol.canonical_name` field — **SCHEMA_VERSION 0.12.0 → 0.13.0** (breaking)
+
+One schema version after the 0.12.0 deprecation window (Phase 2 PR3 of the ADR-0033 campaign), the `Symbol.canonical_name` field is removed:
+
+- **`ir.py`**: field declaration removed; `to_dict` / `from_dict` drop the key. `Symbol.from_dict` silently ignores legacy `canonical_name` keys in pre-removal cached JSON.
+- **`linkers/containment.py`**: the Phase 1.5 fallback `qualified = sym.qualified_name or sym.canonical_name` collapses to `qualified = sym.qualified_name`. The `evidence_type="canonical_name"` tag stays — it's an evidence-type vocabulary entry (per `evidence_types.py`), not a field reference; same for the fallback test class name in `test_containment_linker.py`.
+- **`framework_patterns.py`**: `name = symbol.qualified_name or symbol.canonical_name or symbol.name` collapses to `name = symbol.qualified_name or symbol.name`.
+- **`docs/schema.json`**: `#/$defs/Symbol/properties/canonical_name` entry removed.
+- **`docs/MIGRATION-5.X-CONCEPT-AXES.md`**: 0.13.0 row added documenting the breaking change + consumer-side migration path (read `symbol.qualified_name` / `dict["qualified_name"]` instead).
+
+Test fixtures across `test_ir.py`, `test_dependency_linker.py`, `test_containment_linker.py`, `test_schema.py`, `test_tauri_ipc_linker.py`, `test_wasm_bindgen_linker.py` migrated from `canonical_name="..."` to `qualified_name="..."` Symbol kwargs.
+
+14552 smart-test passes (2 pre-existing `test_cli_symbols` rendering failures unrelated to this PR).
+
 #### Phase 6 PR2 — INV-luhur AnalysisRun + meta-layer writer-contract sweep
 
 Closes a batch of the 10 INV-luhur sub-members by codifying canonical definitions, wiring previously-unwired writer paths, and extending `_check_writer_contract` to fold in the structural pattern.

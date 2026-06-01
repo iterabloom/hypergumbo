@@ -574,7 +574,7 @@ class TestWasmBindgenSyntheticSymbols:
         assert sym.protocol_origin == "wasm"
         # ADR-0032: canonical_name → display_label for linker-synthetic stand-ins.
         assert sym.display_label == "import { greet }"
-        assert sym.canonical_name is None
+        assert sym.qualified_name is None or sym.qualified_name == sym.name
         assert sym.meta == {"wasm_export": "greet", "compilation_target": "wasm"}
         # ADR-0032: producer-side fingerprint demolished; central post-pass leaves None for language=None.
         assert sym.fingerprint is None

@@ -147,7 +147,7 @@ class TestSchemaValidation:
             origin_run_id="uuid:12345",
             stable_id="sha256:stable123",
             shape_id="sha256:shape456",
-            canonical_name="module.test_func",
+            qualified_name="module.test_func",
             fingerprint="sha256:content789",
             quality={"score": 0.95, "reason": "well-documented"},
             meta={"decorator": "@pytest.fixture"},

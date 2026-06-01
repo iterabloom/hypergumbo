@@ -194,8 +194,8 @@ def test_analysis_run_to_dict_includes_new_fields() -> None:
     assert "warnings" in d
 
 
-def test_symbol_has_canonical_name() -> None:
-    """Symbol should have canonical_name field for fully qualified name."""
+def test_symbol_has_qualified_name() -> None:
+    """Symbol should have qualified_name field for fully qualified name (ADR-0032)."""
     span = Span(start_line=1, end_line=2, start_col=0, end_col=10)
     symbol = Symbol(
         id="python:test.py:1-2:greet:function",
@@ -204,10 +204,10 @@ def test_symbol_has_canonical_name() -> None:
         language="python",
         path="test.py",
         span=span,
-        canonical_name="mymodule.greet",
+        qualified_name="mymodule.greet",
     )
 
-    assert symbol.canonical_name == "mymodule.greet"
+    assert symbol.qualified_name == "mymodule.greet"
 
 
 def test_symbol_has_fingerprint() -> None:
@@ -253,13 +253,13 @@ def test_symbol_to_dict_includes_new_fields() -> None:
         language="python",
         path="test.py",
         span=span,
-        canonical_name="mymodule.greet",
+        qualified_name="mymodule.greet",
         fingerprint="sha256:abc123",
         quality={"score": 0.95, "reason": "AST-based definition"},
     )
     d = symbol.to_dict()
 
-    assert "canonical_name" in d
+    assert "qualified_name" in d
     assert "fingerprint" in d
     assert "quality" in d
 
@@ -1120,7 +1120,7 @@ def test_symbol_from_dict() -> None:
         "origin": "python",
         "origin_run_id": "uuid:12345",
         "stable_id": "stable:123",
-        "canonical_name": "api.process_request",
+        "qualified_name": "api.process_request",
         "supply_chain": {"tier": 1, "reason": "first_party"},
         "cyclomatic_complexity": 5,
         "lines_of_code": 10,

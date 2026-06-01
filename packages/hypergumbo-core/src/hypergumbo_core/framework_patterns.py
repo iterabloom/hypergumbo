@@ -1093,9 +1093,8 @@ def _get_parent_class_name(symbol: "Symbol") -> str | None:
     if symbol.kind not in ("method", "function"):
         return None  # pragma: no cover - only called for method/function symbols
 
-    # Try qualified_name (ADR-0032) first, then canonical_name (deprecated
-    # legacy field, removed in Phase 6 PR4), fall back to name.
-    name = symbol.qualified_name or symbol.canonical_name or symbol.name
+    # Try qualified_name (ADR-0032) first, fall back to name.
+    name = symbol.qualified_name or symbol.name
     if "." in name:
         return name.rsplit(".", 1)[0]
     return None

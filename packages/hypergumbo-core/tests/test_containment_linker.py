@@ -21,7 +21,7 @@ def _sym(
     path: str = "app.py",
     start: int = 1,
     end: int = 5,
-    canonical_name: str | None = None,
+    qualified_name: str | None = None,
 ) -> Symbol:
     """Helper to create a Symbol with minimal boilerplate."""
     return Symbol(
@@ -34,7 +34,7 @@ def _sym(
         origin="test",
         origin_run_id="test-run",
         meta=None,
-        canonical_name=canonical_name,
+        qualified_name=qualified_name,
     )
 
 
@@ -893,7 +893,7 @@ class TestCanonicalNameContainment:
 
     Proto analyzers and some other analyzers emit unqualified symbol names
     (e.g., ``name="BidiHello"``) but provide a fully qualified canonical_name
-    (e.g., ``canonical_name="hello.HelloService.BidiHello"``).  The containment
+    (e.g., ``qualified_name="hello.HelloService.BidiHello"``).  The containment
     linker should fall back to canonical_name when the plain name has no
     separator, enabling service→rpc and nested message containment.
     """
@@ -904,13 +904,13 @@ class TestCanonicalNameContainment:
             "proto:hello.proto:3-15:HelloService:interface",
             "HelloService", "interface", language="proto", path="hello.proto",
             start=3, end=15,
-            canonical_name="hello.HelloService",
+            qualified_name="hello.HelloService",
         )
         rpc = _sym(
             "proto:hello.proto:5-5:BidiHello:method",
             "BidiHello", "method", language="proto", path="hello.proto",
             start=5, end=5,
-            canonical_name="hello.HelloService.BidiHello",
+            qualified_name="hello.HelloService.BidiHello",
         )
 
         ctx = LinkerContext(
@@ -930,13 +930,13 @@ class TestCanonicalNameContainment:
             "proto:types.proto:10-30:MemoryStats:message",
             "MemoryStats", "message", language="proto", path="types.proto",
             start=10, end=30,
-            canonical_name="kong.MemoryStats",
+            qualified_name="kong.MemoryStats",
         )
         inner_msg = _sym(
             "proto:types.proto:15-20:LuaSharedDicts:message",
             "LuaSharedDicts", "message", language="proto", path="types.proto",
             start=15, end=20,
-            canonical_name="kong.MemoryStats.LuaSharedDicts",
+            qualified_name="kong.MemoryStats.LuaSharedDicts",
         )
 
         ctx = LinkerContext(
@@ -956,19 +956,19 @@ class TestCanonicalNameContainment:
             "proto:a.proto:1-20:HelloService:interface",
             "HelloService", "interface", language="proto", path="a.proto",
             start=1, end=20,
-            canonical_name="hello.HelloService",
+            qualified_name="hello.HelloService",
         )
         svc_b = _sym(
             "proto:b.proto:1-20:HelloService:interface",
             "HelloService", "interface", language="proto", path="b.proto",
             start=1, end=20,
-            canonical_name="hello.HelloService",
+            qualified_name="hello.HelloService",
         )
         rpc = _sym(
             "proto:b.proto:5-5:BidiHello:method",
             "BidiHello", "method", language="proto", path="b.proto",
             start=5, end=5,
-            canonical_name="hello.HelloService.BidiHello",
+            qualified_name="hello.HelloService.BidiHello",
         )
 
         ctx = LinkerContext(
@@ -986,7 +986,7 @@ class TestCanonicalNameContainment:
             "proto:hello.proto:5-5:BidiHello:method",
             "BidiHello", "method", language="proto", path="hello.proto",
             start=5, end=5,
-            canonical_name="hello.MissingService.BidiHello",
+            qualified_name="hello.MissingService.BidiHello",
         )
 
         ctx = LinkerContext(
@@ -1003,13 +1003,13 @@ class TestCanonicalNameContainment:
             "proto:hello.proto:3-15:hello.HelloService:interface",
             "hello.HelloService", "interface", language="proto", path="hello.proto",
             start=3, end=15,
-            canonical_name="hello.HelloService",
+            qualified_name="hello.HelloService",
         )
         rpc = _sym(
             "proto:hello.proto:5-5:hello.HelloService.BidiHello:method",
             "hello.HelloService.BidiHello", "method", language="proto",
             path="hello.proto", start=5, end=5,
-            canonical_name="hello.HelloService.BidiHello",
+            qualified_name="hello.HelloService.BidiHello",
         )
 
         ctx = LinkerContext(
@@ -1028,19 +1028,19 @@ class TestCanonicalNameContainment:
             "proto:plugin.proto:1-50:Kong:interface",
             "Kong", "interface", language="proto", path="plugin.proto",
             start=1, end=50,
-            canonical_name="kong_plugin_protocol.Kong",
+            qualified_name="kong_plugin_protocol.Kong",
         )
         rpc1 = _sym(
             "proto:plugin.proto:5-5:Client_Authenticate:method",
             "Client_Authenticate", "method", language="proto", path="plugin.proto",
             start=5, end=5,
-            canonical_name="kong_plugin_protocol.Kong.Client_Authenticate",
+            qualified_name="kong_plugin_protocol.Kong.Client_Authenticate",
         )
         rpc2 = _sym(
             "proto:plugin.proto:8-8:Client_GetConsumer:method",
             "Client_GetConsumer", "method", language="proto", path="plugin.proto",
             start=8, end=8,
-            canonical_name="kong_plugin_protocol.Kong.Client_GetConsumer",
+            qualified_name="kong_plugin_protocol.Kong.Client_GetConsumer",
         )
 
         ctx = LinkerContext(
@@ -1060,7 +1060,7 @@ class TestCanonicalNameContainment:
             "proto:hello.proto:5-5:BidiHello:method",
             "BidiHello", "method", language="proto", path="hello.proto",
             start=5, end=5,
-            canonical_name="BidiHello",  # No separator
+            qualified_name="BidiHello",  # No separator
         )
 
         ctx = LinkerContext(
@@ -1077,20 +1077,20 @@ class TestCanonicalNameContainment:
             "proto:a.proto:1-20:HelloService:interface",
             "HelloService", "interface", language="proto", path="a.proto",
             start=1, end=20,
-            canonical_name="hello.HelloService",
+            qualified_name="hello.HelloService",
         )
         svc_b = _sym(
             "proto:b.proto:1-20:HelloService:interface",
             "HelloService", "interface", language="proto", path="b.proto",
             start=1, end=20,
-            canonical_name="hello.HelloService",
+            qualified_name="hello.HelloService",
         )
         # RPC is in a THIRD file — no same-file match
         rpc = _sym(
             "proto:c.proto:5-5:BidiHello:method",
             "BidiHello", "method", language="proto", path="c.proto",
             start=5, end=5,
-            canonical_name="hello.HelloService.BidiHello",
+            qualified_name="hello.HelloService.BidiHello",
         )
 
         ctx = LinkerContext(
@@ -1109,13 +1109,13 @@ class TestCanonicalNameContainment:
             "proto:hello.proto:3-15:HelloService:interface",
             "HelloService", "interface", language="proto", path="hello.proto",
             start=3, end=15,
-            canonical_name="hello.HelloService",
+            qualified_name="hello.HelloService",
         )
         rpc = _sym(
             "proto:hello.proto:5-5:BidiHello:method",
             "BidiHello", "method", language="proto", path="hello.proto",
             start=5, end=5,
-            canonical_name="hello.HelloService.BidiHello",
+            qualified_name="hello.HelloService.BidiHello",
         )
 
         existing_edge = Edge.create(
