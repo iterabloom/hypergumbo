@@ -463,6 +463,50 @@ _WRITER_CONTRACT_DEFAULT_SENTINELS: dict[
 }
 
 
+# Phase 6 PR2 sub-pattern-1 "schema-declares-no-writer" table.
+#
+# Each entry: (record_class_name, field_name, getter, expected_message).
+# When ALL records of that class have the field empty/None/default-list,
+# the validator emits a single umbrella violation. ``getter`` is a
+# callable that returns the field's truthy presence (False = empty).
+# Distinct from sub-pattern-2: this is about a field NEVER being
+# populated, not about being populated to a literal default value.
+def _is_truthy(record: Any, field_name: str) -> bool:
+    val = getattr(record, field_name, None)
+    if val is None:
+        return False
+    if isinstance(val, (list, dict, str)):
+        return len(val) > 0
+    return True
+
+
+# (record_class_name, field_name, sub-pattern-1 contract description)
+#
+# WI-lonoz (Edge.quality) is closed at construction time by
+# ``Edge.__post_init__`` (ir.py): ``quality`` is auto-derived from
+# evidence signals when the producer doesn't set it. The Phase 6 PR2
+# closure left this table EMPTY because every previously-unpopulated
+# field on the corpus is now wired by a producer; future
+# sub-pattern-1 candidates register here.
+_WRITER_CONTRACT_NEVER_POPULATED: tuple[tuple[str, str, str], ...] = ()
+
+
+# Phase 6 PR2 sub-pattern-3 "same-name two-definitions" cross-checks
+# (documentation-only).
+#
+# The two members closed in Phase 6 PR2 (INV-pubom: total_io_edges;
+# INV-mozaf: total_files) were resolved at the *producer* layer by
+# codifying ONE canonical definition for each name and updating every
+# write site to use it. The validator does not run a runtime
+# cross-check because the boundary/metrics-builder layer doesn't have
+# a record stream to inspect — but the contract is recorded here:
+#
+# - total_io_edges canonical = sum(len(e.chains) for e in entries.values())
+#   (post-external_potential chain count); see io_boundary.py.
+# - total_files canonical = len({n.path for n in nodes if n.path})
+#   (node-distinct-path count); see metrics.py:compute_metrics.
+
+
 def _check_writer_contract(
     symbols: Iterable[Any],
     edges: Iterable[Any],
@@ -472,13 +516,23 @@ def _check_writer_contract(
     evidence-derived values, not initialization defaults.
 
     See ADR-0033 §"Validator classes" #2 and INV-luhur META.
-    Phase-3-PR2 scope: sub-pattern 2 (default-only initializer) for
-    ``AnalysisRun.config_fingerprint``. Other sub-patterns + member-
-    specific assertions are tracked under INV-luhur's child items;
-    each closes via its own writer-side PR that extends this validator.
+
+    Phase 3 PR2 scope: sub-pattern 2 (default-only initializer) for
+    ``AnalysisRun.config_fingerprint``.
+
+    Phase 6 PR2 extension: sub-pattern 1 (schema-declares-no-writer)
+    table. The sub-pattern-1 checks fire when ALL records of a class
+    leave a field empty/None, signalling a structural gap (no producer
+    writes to that slot) rather than a missing value on one record.
+    Sub-patterns 3 (same-name two-definitions) and 4 (writer-writes-
+    constant) are codified at the producer side rather than detected
+    by the validator — the cross-checks would fire at the boundary
+    (orchestrator) layer, which doesn't have a record stream to inspect.
     """
     violations: list[ValidationViolation] = []
     runs_list = list(analysis_runs)
+    symbols_list = list(symbols)
+    edges_list = list(edges)
     if not runs_list:
         return violations
 
@@ -494,9 +548,9 @@ def _check_writer_contract(
         if record_class == "AnalysisRun":
             records = runs_list
         elif record_class == "Symbol":  # pragma: no cover — no Symbol sentinels yet
-            records = list(symbols)
+            records = symbols_list
         elif record_class == "Edge":  # pragma: no cover — no Edge sentinels yet
-            records = list(edges)
+            records = edges_list
         else:  # pragma: no cover — unknown record class is an internal bug
             continue
         if not records:  # pragma: no cover — guarded by outer truthiness
@@ -536,6 +590,68 @@ def _check_writer_contract(
                 ),
             ))
 
+    # Sub-pattern 1 (Phase 6 PR2): schema-declares-no-writer. For each
+    # registered (record_class, field) pair, check if every record of
+    # that class has the field empty/None/default-list. If so, no
+    # producer is wiring the field at all. Distinguishes from the
+    # axis_conformance "required field missing" check — sub-pattern-1
+    # targets Optional fields where the schema reserves a slot but no
+    # producer ever ships a value, leaving the slot dead.
+    violations.extend(
+        _check_sub_pattern_1_never_populated(symbols_list, edges_list, runs_list)
+    )
+
+    return violations
+
+
+def _check_sub_pattern_1_never_populated(
+    symbols_list: list[Any],
+    edges_list: list[Any],
+    runs_list: list[Any],
+) -> list[ValidationViolation]:
+    """Sub-pattern 1 helper extracted for explicit testability.
+
+    The ``_WRITER_CONTRACT_NEVER_POPULATED`` table is currently empty
+    (Phase 6 PR2 closes every previously-registered case at the producer
+    layer). When the table is empty the loop body is unreachable; future
+    registrations re-exercise it.
+    """
+    violations: list[ValidationViolation] = []
+    for record_class, field_name, contract_msg in _WRITER_CONTRACT_NEVER_POPULATED:  # pragma: no cover — table currently empty
+        if record_class == "Edge":
+            records = edges_list
+        elif record_class == "Symbol":
+            records = symbols_list
+        elif record_class == "AnalysisRun":
+            records = runs_list
+        else:
+            continue
+        if len(records) < 2:
+            continue
+        populated_count = sum(1 for r in records if _is_truthy(r, field_name))
+        if populated_count == 0:
+            example_id = getattr(
+                records[0],
+                "execution_id",
+                getattr(records[0], "id", None),
+            )
+            violations.append(ValidationViolation(
+                severity="warning",
+                validator_class="writer_contract",
+                axis=None,
+                field_name=f"{record_class}.{field_name}",
+                record_id=example_id,
+                observed="<empty across all records>",
+                expected=(
+                    "at least one producer populates the field "
+                    "(writer-contract sub-pattern 1: "
+                    "schema-declares-no-writer)"
+                ),
+                message=(
+                    f"All {len(records)} {record_class} records have "
+                    f"{field_name} unpopulated. {contract_msg}"
+                ),
+            ))
     return violations
 
 

@@ -541,6 +541,62 @@ def test_writer_contract_silent_with_no_runs() -> None:
 
 
 # ----------------------------------------------------------------------
+# Phase 6 PR2 — Writer-contract sub-pattern 1 helper tests
+# ----------------------------------------------------------------------
+
+
+def test_is_truthy_none_is_false() -> None:
+    """Phase 6 PR2: ``_is_truthy(record, field)`` returns False for None."""
+    from hypergumbo_core.spec_validator import _is_truthy
+
+    obj = _FakeSym(field_a=None)
+    assert _is_truthy(obj, "field_a") is False
+
+
+def test_is_truthy_empty_collection_is_false() -> None:
+    """Empty list/dict/str returns False."""
+    from hypergumbo_core.spec_validator import _is_truthy
+
+    obj = _FakeSym(field_list=[], field_dict={}, field_str="")
+    assert _is_truthy(obj, "field_list") is False
+    assert _is_truthy(obj, "field_dict") is False
+    assert _is_truthy(obj, "field_str") is False
+
+
+def test_is_truthy_populated_collection_is_true() -> None:
+    """Non-empty list/dict/str returns True."""
+    from hypergumbo_core.spec_validator import _is_truthy
+
+    obj = _FakeSym(field_list=[1], field_dict={"k": "v"}, field_str="x")
+    assert _is_truthy(obj, "field_list") is True
+    assert _is_truthy(obj, "field_dict") is True
+    assert _is_truthy(obj, "field_str") is True
+
+
+def test_is_truthy_scalar_non_none_is_true() -> None:
+    """A non-None scalar (e.g., int 0 is False per Python convention) —
+    we only treat None and empty containers as 'unpopulated'; other
+    scalars are populated."""
+    from hypergumbo_core.spec_validator import _is_truthy
+
+    obj = _FakeSym(field_int=0, field_bool=False, field_float=0.0)
+    assert _is_truthy(obj, "field_int") is True
+    assert _is_truthy(obj, "field_bool") is True
+    assert _is_truthy(obj, "field_float") is True
+
+
+def test_check_sub_pattern_1_never_populated_empty_table_is_no_op() -> None:
+    """The Phase 6 PR2 sub-pattern-1 table is empty (every documented
+    field is now wired). The helper must return [] when the table is
+    empty."""
+    from hypergumbo_core.spec_validator import (
+        _check_sub_pattern_1_never_populated,
+    )
+
+    assert _check_sub_pattern_1_never_populated([], [], []) == []
+
+
+# ----------------------------------------------------------------------
 # Phase 3 PR3 — Cross-field coherence validator class tests
 # ----------------------------------------------------------------------
 

@@ -641,6 +641,11 @@ class Edge:
                 f"edge_type={self.edge_type!r}). Stamp from AnalysisRun.create()"
                 "'s execution_id at the producer; see WI-higap.",
             )
+        # WI-lonoz / Phase 6 PR2: populate ``quality`` at construction so
+        # the field is never None on the in-memory IR. Producers that
+        # need a custom quality block pass it explicitly.
+        if self.quality is None:
+            self.quality = _derive_edge_quality(self)
 
     @classmethod
     def create(
@@ -716,7 +721,19 @@ class Edge:
         )
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for JSON serialization."""
+        """Convert to dictionary for JSON serialization.
+
+        WI-lonoz / Phase 6 PR2: when ``self.quality`` is None at
+        serialization time, derive a default quality block from the
+        evidence signals already present on the edge (confidence band,
+        resolution state, derived_from presence). The derivation is
+        deterministic and conservative — producers that pre-populate a
+        quality dict win. The contract:
+
+        - ``score``: float in ``[0.0, 1.0]``, anchored on ``confidence``.
+        - ``reason``: short tag naming the dominant signal; consumers
+          surface this in UIs and graph-quality summaries.
+        """
         meta: Dict[str, Any] = {
             "evidence_type": self.evidence_type,
         }
@@ -727,6 +744,8 @@ class Edge:
         # Merge any additional metadata (e.g., channel for IPC edges)
         if self.meta is not None:
             meta.update(self.meta)
+
+        quality = self.quality if self.quality is not None else _derive_edge_quality(self)
 
         out: Dict[str, Any] = {
             "id": self.id,
@@ -739,7 +758,7 @@ class Edge:
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
             "is_resolved": self.is_resolved,
-            "quality": self.quality,
+            "quality": quality,
             "meta": meta,
         }
         if self.dst_ref is not None:
@@ -781,6 +800,40 @@ class Edge:
             quality=d.get("quality"),
             meta=meta,
         )
+
+
+def _derive_edge_quality(edge: "Edge") -> Dict[str, Any]:
+    """Compute a default quality block from an Edge's evidence signals.
+
+    WI-lonoz / Phase 6 PR2 closure: when a producer doesn't explicitly
+    set ``Edge.quality``, derive a deterministic default so the schema-
+    declared slot is populated (writer-contract sub-pattern 1). The
+    derivation reads ``confidence``, ``is_resolved``, and
+    ``derived_from`` and produces a small ``{score, reason}`` dict.
+    Producers that need finer-grained quality (e.g., signal-strength
+    blending across multiple linker passes) win by pre-populating the
+    field.
+
+    Reason tags (stable enum-like values for consumer tooling):
+
+    - ``"high_confidence_direct"`` — confidence >= 0.95.
+    - ``"resolved_call_site"`` — confidence in [0.8, 0.95) and is_resolved.
+    - ``"derived_from_linker_evidence"`` — derived_from populated.
+    - ``"low_confidence_fallback"`` — confidence < 0.5.
+    - ``"medium_confidence"`` — everything else.
+    """
+    score = max(0.0, min(1.0, edge.confidence))
+    if edge.confidence >= 0.95:
+        reason = "high_confidence_direct"
+    elif edge.confidence < 0.5:
+        reason = "low_confidence_fallback"
+    elif edge.derived_from:
+        reason = "derived_from_linker_evidence"
+    elif edge.is_resolved and edge.confidence >= 0.8:
+        reason = "resolved_call_site"
+    else:
+        reason = "medium_confidence"
+    return {"score": round(score, 3), "reason": reason}
 
 
 def deduplicate_edges(

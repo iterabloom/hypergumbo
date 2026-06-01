@@ -40,7 +40,7 @@ from ..dataflow import annotate_dataflow, get_dataflow_config
 from ..discovery import find_files
 from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext,
-    make_pass_id,
+    compute_pass_version, make_pass_id,
 )
 from ..symbol_resolution import NameResolver
 
@@ -1710,6 +1710,101 @@ class TreeSitterAnalyzer:
 
     # -- Template methods: grammar setup -----------------------------------
 
+    def _get_config_dict(self) -> dict:
+        """Return the analyzer's effective configuration dict for
+        ``config_fingerprint`` derivation.
+
+        INV-lidul / Phase 6 PR2: ``AnalysisRun.config_fingerprint``
+        defaulted to ``sha256:44136fa355b3678a`` (sha256 of ``{}``) for
+        every analyzer + linker run on self-analysis (84 of 84 runs
+        identical), collapsing distinct passes onto the same
+        cache-keying fingerprint. The Phase 6 PR2 closure derives a
+        per-analyzer fingerprint from this class's identity + grammar
+        + file-pattern set — at least making the 84 runs distinct, and
+        giving subclasses a one-method override path to thread real
+        per-run config (e.g., file globs, language filters).
+        """
+        return {
+            "class": f"{type(self).__module__}.{type(self).__name__}",
+            "lang": self.lang,
+            "pass_id": self.pass_id or self.lang,
+            "file_patterns": list(self.file_patterns),
+            "grammar_module": self.grammar_module,
+            "language_pack_name": self.language_pack_name,
+            "create_file_symbols": self.create_file_symbols,
+        }
+
+    def _stamp_config_fingerprint(self, run: AnalysisRun) -> None:
+        """Replace the default config_fingerprint with one derived from
+        ``self._get_config_dict()``.
+
+        Pre-Phase-6 every run carried the literal ``sha256:44136fa355b3678a``
+        default; this method derives a stable fingerprint from the
+        analyzer's effective config so distinct analyzers register
+        distinct fingerprints and within-analyzer config changes
+        propagate via ``compute_pass_version``.
+        """
+        import hashlib
+        import json as _json
+        config = self._get_config_dict()
+        # Sort keys for determinism. The hash truncation (first 16
+        # hex chars) mirrors ``_compute_run_signature``'s convention.
+        payload = _json.dumps(config, sort_keys=True, default=str)
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+        run.config_fingerprint = f"sha256:{digest}"
+
+    def _extend_toolchain(self, run: AnalysisRun) -> None:
+        """Extend ``run.toolchain`` with grammar/library version info.
+
+        INV-nihug / Phase 6 PR2 closure: ``AnalysisRun.create`` defaults
+        ``toolchain`` to ``{"name": "python", "version": <host>}`` via
+        ``_get_python_toolchain``. That default is correct for the host
+        but doesn't capture the actual dependency chain that produced
+        this analysis — every TreeSitter analyzer depends on the
+        ``tree_sitter`` library + a grammar (either ``self.grammar_module``
+        like ``tree_sitter_go`` or a language-pack name like
+        ``self.language_pack_name``). This method appends those into
+        ``run.toolchain`` so cache fingerprinting and reproducibility
+        comparisons can tell apart two runs that used different grammar
+        versions on the same host Python.
+
+        The keys appended:
+        - ``tree_sitter_version``: package version of the ``tree_sitter`` lib.
+        - ``grammar_module``: name of the grammar source module (e.g.,
+          ``tree_sitter_go``), or ``language_pack:<lang>`` for pack-backed
+          grammars.
+        - ``grammar_version``: when the grammar package exposes
+          ``__version__``, capture it.
+        """
+        # tree_sitter library version (via importlib.metadata since
+        # tree_sitter doesn't expose ``__version__`` at the module level).
+        try:
+            from importlib.metadata import PackageNotFoundError, version as _pkg_version
+            try:
+                run.toolchain["tree_sitter_version"] = _pkg_version("tree_sitter")
+            except PackageNotFoundError:  # pragma: no cover - defensive
+                pass
+        except ImportError:  # pragma: no cover - defensive
+            pass
+        # Grammar source identifier (grammar module name or language-pack key)
+        if self.grammar_module is not None:
+            run.toolchain["grammar_module"] = self.grammar_module
+            try:
+                from importlib.metadata import (
+                    PackageNotFoundError as _PnfE,
+                    version as _pv,
+                )
+                try:
+                    run.toolchain["grammar_version"] = _pv(self.grammar_module)
+                except _PnfE:  # pragma: no cover - some grammars unpackaged
+                    pass
+            except ImportError:  # pragma: no cover - defensive
+                pass
+        elif self.language_pack_name is not None:
+            run.toolchain["grammar_module"] = (
+                f"language_pack:{self.language_pack_name}"
+            )
+
     def _check_grammar_available(self) -> bool:
         """Check if the tree-sitter grammar is available.
 
@@ -2323,14 +2418,66 @@ class TreeSitterAnalyzer:
             pass_version=self.pass_version,
         )
 
+        return self._analyze_body(repo_root, max_files, run, start_time)
+
+    def _analyze_body(
+        self,
+        repo_root: Path,
+        max_files: Optional[int],
+        run: AnalysisRun,
+        start_time: float,
+    ) -> AnalysisResult:
+        """Inner ``analyze()`` body that does the actual work.
+
+        Kept as a separate method so the outer ``analyze()`` is a thin
+        seam — handy for INV-pitab-style future wiring (e.g., per-call
+        instrumentation) without re-threading every analyzer."""
+        effective_pass_id = self.pass_id or make_pass_id(self.lang)
+        # INV-gizik / Phase 6 PR2: stamp pass_version from the concrete
+        # analyzer subclass's module hash when the subclass hasn't set
+        # one explicitly. Mirrors the linker-side stamping in
+        # registry.py:_stamp_pass_version. Without this, every
+        # TreeSitterAnalyzer subclass inherits the empty default and
+        # the field is unset for 44 of 84 runs on the self-analysis.
+        if not run.pass_version:
+            try:
+                run.pass_version = compute_pass_version(type(self))
+            except Exception:  # pragma: no cover - defensive
+                pass
+
+        # INV-nihug / Phase 6 PR2: extend the default
+        # ``{"name": "python", "version": <host>}`` toolchain with
+        # tree-sitter library / grammar-pack version info when this
+        # analyzer is grammar-backed. Not every analyzer runs purely on
+        # the host Python interpreter; the toolchain field must reflect
+        # the actual dependency chain that produced the analysis.
+        try:
+            self._extend_toolchain(run)
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+        # INV-lidul / Phase 6 PR2: replace the default empty-config
+        # fingerprint with a derived per-analyzer fingerprint. Without
+        # this, all 84 self-analysis runs share the literal default
+        # ``sha256:44136fa355b3678a`` (sha256 of ``{}``).
+        try:
+            self._stamp_config_fingerprint(run)
+        except Exception:  # pragma: no cover - defensive
+            pass
+
         # 1. Check grammar availability
         if not self._check_grammar_available():
-            warnings.warn(
+            msg = (
                 f"{self.lang} analysis skipped: grammar not available. "
-                f"Install the required tree-sitter grammar package.",
-                UserWarning,
-                stacklevel=2,
+                f"Install the required tree-sitter grammar package."
             )
+            # INV-pitab: structurally record the warning on the run so
+            # consumers reading the AnalysisRun later see the gap. Also
+            # call warnings.warn so existing stderr / pytest.warns
+            # consumers continue to see it. No thread-global state
+            # mutation (would race in the orchestrator's ThreadPoolExecutor).
+            run.warnings.append(f"UserWarning: {msg}")
+            warnings.warn(msg, UserWarning, stacklevel=2)
             run.duration_ms = int((time.time() - start_time) * 1000)
             return AnalysisResult(
                 run=run,

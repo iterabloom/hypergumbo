@@ -78,13 +78,17 @@ class TestComputeMetrics:
         # Should not crash, uses default or skips
         assert "avg_confidence" in metrics
 
-    def test_total_files_equals_profile_sum(self) -> None:
-        """WI-soraj: total_files is the canonical sum of profile.languages[*].files.
+    def test_total_files_equals_node_distinct_paths(self) -> None:
+        """INV-mozaf canonical re-definition (Phase 6 PR2): total_files is
+        the count of distinct ``node.path`` values, NOT the profile-language
+        files sum.
 
-        The headline number consumers see (`metrics.total_files`) must
-        agree with `sum(profile.languages[L].files)`. Introspection
-        numbers (unique paths across all node symbols, count of
-        file-kind Symbols) live in `metrics.debug`.
+        The post-analysis number consumers see when they group nodes by
+        path must match ``metrics.total_files``. The legacy WI-soraj
+        profile-sum value (``sum(profile.languages[L].files)``) over-
+        counts vs the node-distinct count by the number of files a
+        profile counted but no analyzer Symbol-emitted for; it now rides
+        in ``debug.profile_files_sum`` for introspection.
         """
         nodes = [
             {"id": "1", "language": "python", "path": "src/a.py", "kind": "function"},
@@ -100,9 +104,12 @@ class TestComputeMetrics:
         }
         metrics = compute_metrics(nodes=nodes, edges=[], profile=profile)
 
-        assert metrics["total_files"] == 8  # 5 python + 3 bash
-        assert metrics["debug"]["unique_paths_in_analysis"] == 3  # a.py, b.py, x.sh
+        # Canonical total_files = unique node paths = 3 (a.py, b.py, x.sh).
+        assert metrics["total_files"] == 3
+        assert metrics["debug"]["unique_paths_in_analysis"] == 3
         assert metrics["debug"]["analyzed_file_symbols"] == 2  # b.py + x.sh
+        # Profile-sum rides in debug for introspection.
+        assert metrics["debug"]["profile_files_sum"] == 8  # 5 python + 3 bash
 
     def test_total_files_without_profile_falls_back_to_unique_paths(self) -> None:
         """When no profile is supplied, total_files falls back to the unique
@@ -153,6 +160,35 @@ class TestComputeMetrics:
         assert metrics["by_supply_chain_tier"]["first_party"]["edges"] == 2
         assert metrics["by_supply_chain_tier"]["external_dep"]["nodes"] == 1
         assert metrics["by_supply_chain_tier"]["external_dep"]["edges"] == 0
+
+    def test_edges_with_unresolved_src_dont_mint_unknown_tier(self) -> None:
+        """INV-jukok: edges whose ``src`` doesn't resolve to a known node
+        must NOT mint an ``unknown`` tier entry in ``by_supply_chain_tier``.
+
+        Pre-Phase-6, dangling-src edges added a phantom
+        ``by_supply_chain_tier["unknown"]: {edges: N, nodes: 0}`` entry
+        (23 such edges on self-analysis). Tier counts must reference a
+        real classified node; edges without a known src are simply
+        excluded from the tier-edge total.
+        """
+        nodes = [
+            {
+                "id": "1",
+                "language": "python",
+                "path": "src/a.py",
+                "supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "src/"},
+            },
+        ]
+        edges = [
+            {"id": "e1", "src": "1", "dst": "phantom", "confidence": 0.9},
+            # phantom src — would have minted unknown tier pre-fix
+            {"id": "e2", "src": "missing_node", "dst": "1", "confidence": 0.8},
+        ]
+        metrics = compute_metrics(nodes=nodes, edges=edges)
+        # Only the first edge counts in first_party; the second is silently
+        # excluded. No "unknown" key minted by edges alone.
+        assert metrics["by_supply_chain_tier"]["first_party"]["edges"] == 1
+        assert "unknown" not in metrics["by_supply_chain_tier"]
 
     def test_supply_chain_tier_handles_missing_data(self) -> None:
         """Handles nodes without supply_chain field gracefully."""

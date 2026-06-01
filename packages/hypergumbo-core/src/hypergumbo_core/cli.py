@@ -130,6 +130,7 @@ from .schema import new_behavior_map
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
 from .selection.filters import is_excluded_kind
+from .limits import Limits
 from .supply_chain import classify_file, detect_package_roots
 from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
@@ -7177,7 +7178,10 @@ _DEPENDENCY_KINDS = frozenset({"dependency"})
 
 
 def _classify_symbols(
-    symbols: list[Symbol], repo_root: Path, package_roots: set[Path]
+    symbols: list[Symbol],
+    repo_root: Path,
+    package_roots: set[Path],
+    limits: "Limits | None" = None,
 ) -> None:
     """Apply supply chain classification to symbols in-place.
 
@@ -7189,7 +7193,15 @@ def _classify_symbols(
     Dependency-kind symbols (from Cargo.toml, package.json, etc.) are
     classified as tier 3 (EXTERNAL_DEP) since they represent references
     to external packages, not first-party code.
+
+    INV-virik: when ``limits`` is supplied, ``classify_file`` failures
+    (the default-fallback "outside repo" classification, or any uncaught
+    ValueError from ``Path.relative_to``) are recorded into
+    ``limits.supply_chain.classification_failures`` via
+    ``Limits.add_classification_failure``. Pre-Phase-6, the schema
+    declared this field but no producer ever wrote to it.
     """
+    seen_failures: set[str] = set()
     for symbol in symbols:
         if symbol.supply_chain_tier != 1 or symbol.supply_chain_reason:
             continue
@@ -7216,6 +7228,17 @@ def _classify_symbols(
             symbol.is_exported
             or is_exported_from_modifiers(symbol.modifiers)
         )
+        # INV-virik: a fall-through to the "outside repo" default-bucket
+        # classification means the path didn't match ANY tier policy.
+        # Record it as a classification failure so consumers can see the
+        # gap in the limits.supply_chain.classification_failures list.
+        if limits is not None and "outside repo" in classification.reason:
+            if symbol.path not in seen_failures:
+                seen_failures.add(symbol.path)
+                limits.add_classification_failure(
+                    path=symbol.path,
+                    reason=classification.reason,
+                )
 
 
 def _compute_supply_chain_summary(
@@ -7849,7 +7872,7 @@ def run_behavior_map(
 
     # Apply supply chain classification to all symbols
     show_progress("Classifying symbols", 60)
-    _classify_symbols(all_symbols, repo_root, package_roots)
+    _classify_symbols(all_symbols, repo_root, package_roots, limits=limits)
 
     # Promote route-bearing symbols from derived (tier 4) to internal (tier 2).
     # Routes represent the API surface and are valuable regardless of whether

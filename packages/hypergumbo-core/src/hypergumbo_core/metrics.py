@@ -28,19 +28,25 @@ def compute_metrics(
         nodes: List of node dicts (must have 'language', 'path' fields).
         edges: List of edge dicts (must have 'confidence', 'src' fields).
         profile: Optional repo profile dict (the ``behavior_map["profile"]``
-            block). When supplied, ``total_files`` is set to
-            ``sum(profile["languages"][L]["files"])`` — the canonical
-            per-language file count (WI-soraj). When omitted,
-            ``total_files`` falls back to the unique-path count across
-            ``nodes`` (legacy semantics for callers outside the full
-            run_behavior_map pipeline).
+            block). When supplied, the profile-language-sum file count
+            rides in ``debug.profile_files_sum`` (introspection only).
 
     Returns:
         Metrics dict with total_nodes, total_edges, avg_confidence,
-        total_files (see ``profile`` arg), per-language breakdowns, and
-        a ``debug`` sub-block exposing the two non-canonical file counts:
-        ``unique_paths_in_analysis`` (distinct ``node.path`` values) and
-        ``analyzed_file_symbols`` (count of ``kind == "file"`` nodes).
+        total_files, per-language breakdowns, and a ``debug`` sub-block
+        with introspection counts.
+
+        ``total_files`` is the **node-distinct-path** count — the number
+        of distinct ``node.path`` values that survive analysis. INV-mozaf
+        canonical definition: the count consumers see when they group
+        ``nodes`` by ``path`` is the same number that appears in
+        ``metrics.total_files``. The profile-language sum (legacy
+        WI-soraj value) over-counts because the profile counts files on
+        disk before analyzer filtering / ``find_files`` size caps /
+        skipped passes; it now rides in ``debug.profile_files_sum`` for
+        diagnostic use only. The ``analyzed_file_symbols`` count
+        (``kind == "file"`` Symbol entities) remains in ``debug`` for
+        introspection — it counts file-as-Symbol nodes, not distinct paths.
     """
     total_nodes = len(nodes)
     total_edges = len(edges)
@@ -49,20 +55,23 @@ def compute_metrics(
     confidences = [e.get("confidence", 0.0) for e in edges if "confidence" in e]
     avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
 
-    # WI-soraj: three distinct "file count" semantics. The canonical
-    # consumer-facing value is the profile-language sum (matches "files
-    # on disk after default-excludes" — agreed with analyzer enumeration
-    # via INV-hokig's per-language find_files delegation). The other two
-    # ride in metrics.debug for tooling that needs the introspection.
+    # INV-mozaf canonical definition (WI-soraj re-canonicalization):
+    # ``total_files`` = unique path count across nodes. Matches what
+    # consumers see when they group ``nodes`` by path. The profile-
+    # language sum (legacy "files on disk" semantics) over-counts vs the
+    # node-distinct path count by the number of files an analyzer
+    # discovered but couldn't fully analyze (e.g., over the size cap, or
+    # syntax-error fail) and now rides in ``debug.profile_files_sum``
+    # for introspection.
     unique_paths = len({n.get("path") for n in nodes if n.get("path")})
     file_kind_count = sum(1 for n in nodes if n.get("kind") == "file")
+    total_files = unique_paths
+    profile_files_sum: int | None = None
     if profile is not None:
         profile_languages = profile.get("languages") or {}
-        total_files = sum(
+        profile_files_sum = sum(
             (stats or {}).get("files", 0) for stats in profile_languages.values()
         )
-    else:
-        total_files = unique_paths
 
     # Group by language
     languages: Dict[str, Dict[str, int]] = {}
@@ -105,14 +114,27 @@ def compute_metrics(
             by_supply_chain_tier[tier_name] = {"nodes": 0, "edges": 0}
         by_supply_chain_tier[tier_name]["nodes"] += 1
 
-    # Count edges per supply chain tier (based on source node's tier)
+    # Count edges per supply chain tier (based on source node's tier).
+    # INV-jukok: skip edges whose src isn't resolved in node_id_to_tier
+    # rather than minting an "unknown" tier with 0 nodes. The phantom
+    # ``by_supply_chain_tier["unknown"]`` entry (23 edges, 0 nodes on
+    # self-analysis) was the writer-contract sub-pattern-3 symptom of
+    # this gap: tier counts must reference a real classified node.
     for edge in edges:
         src_id = edge.get("src", "")
-        tier_name = node_id_to_tier.get(src_id, "unknown")
-        if tier_name not in by_supply_chain_tier:
-            by_supply_chain_tier[tier_name] = {"nodes": 0, "edges": 0}
+        tier_name = node_id_to_tier.get(src_id)
+        if tier_name is None:
+            continue
+        # Tier was registered when the node was visited above; no new
+        # buckets are minted here, so unresolved srcs simply don't count.
         by_supply_chain_tier[tier_name]["edges"] += 1
 
+    debug: Dict[str, Any] = {
+        "unique_paths_in_analysis": unique_paths,
+        "analyzed_file_symbols": file_kind_count,
+    }
+    if profile_files_sum is not None:
+        debug["profile_files_sum"] = profile_files_sum
     return {
         "total_nodes": total_nodes,
         "total_edges": total_edges,
@@ -120,8 +142,5 @@ def compute_metrics(
         "avg_confidence": round(avg_confidence, 3),
         "languages": languages,
         "by_supply_chain_tier": by_supply_chain_tier,
-        "debug": {
-            "unique_paths_in_analysis": unique_paths,
-            "analyzed_file_symbols": file_kind_count,
-        },
+        "debug": debug,
     }

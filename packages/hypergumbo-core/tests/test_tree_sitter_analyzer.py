@@ -328,12 +328,116 @@ class TestAnalyzerVersionSemantic:
         assert result.run.pass_version == "test-0.1.0"
 
     def test_version_fallback_when_no_pass_version(self, tmp_path: Path) -> None:
-        """run.version still equals PASS_VERSION when pass_version is empty."""
+        """run.version still equals PASS_VERSION when pass_version is empty.
+
+        INV-gizik / Phase 6 PR2 closure: ``pass_version`` is now auto-stamped
+        from the concrete analyzer subclass's module hash when the subclass
+        leaves it empty (mirrors the linker-side stamping). The empty-string
+        default is therefore observable only briefly, replaced with a
+        ``sha256:<hex>`` code-hash by the time ``analyze`` returns. The
+        ``version`` field stays anchored to ``PASS_VERSION`` per INV-kohat.
+        """
         analyzer = StubAnalyzer()
         analyzer.pass_version = ""
         result = analyzer.analyze(tmp_path)
         assert result.run.version == PASS_VERSION
-        assert result.run.pass_version == ""
+        # INV-gizik: pass_version is now auto-stamped from the subclass
+        # module hash when not set explicitly.
+        assert result.run.pass_version.startswith("sha256:")
+
+
+class TestPhase6PR2WriterContractWiring:
+    """Phase 6 PR2: TreeSitterAnalyzer wires INV-lidul (config_fingerprint),
+    INV-gizik (pass_version), INV-nihug (toolchain extension), and INV-pitab
+    (warnings capture) at the base-class level."""
+
+    def test_config_fingerprint_is_not_default(self, tmp_path: Path) -> None:
+        """INV-lidul: config_fingerprint must not be the literal empty-dict
+        default after analyze() completes; each analyzer's effective config
+        produces a distinct fingerprint."""
+        from hypergumbo_core.ir import _default_config_fingerprint
+
+        analyzer = StubAnalyzer()
+        result = analyzer.analyze(tmp_path)
+        assert result.run.config_fingerprint != _default_config_fingerprint()
+        assert result.run.config_fingerprint.startswith("sha256:")
+
+    def test_two_distinct_subclasses_get_distinct_fingerprints(
+        self, tmp_path: Path,
+    ) -> None:
+        """INV-lidul: two analyzer subclasses with different config dicts
+        produce different config_fingerprints."""
+
+        class OtherStubAnalyzer(StubAnalyzer):
+            lang = "stub2"
+            pass_id = "stub2"
+            file_patterns: ClassVar[list[str]] = ["*.stub2"]
+
+        a1 = StubAnalyzer()
+        a2 = OtherStubAnalyzer()
+        r1 = a1.analyze(tmp_path)
+        r2 = a2.analyze(tmp_path)
+        assert r1.run.config_fingerprint != r2.run.config_fingerprint
+
+    def test_pass_version_auto_stamped(self, tmp_path: Path) -> None:
+        """INV-gizik: pass_version is auto-stamped from the subclass module
+        hash even when the subclass leaves it empty."""
+        analyzer = StubAnalyzer()
+        analyzer.pass_version = ""  # explicit empty
+        result = analyzer.analyze(tmp_path)
+        assert result.run.pass_version.startswith("sha256:")
+
+    def test_toolchain_extended_with_grammar_module(
+        self, tmp_path: Path,
+    ) -> None:
+        """INV-nihug: toolchain dict gets grammar_module appended for
+        grammar-backed analyzers. tree_sitter_version is also captured
+        when the ``tree_sitter`` library exposes a package version via
+        importlib.metadata (typical install)."""
+        analyzer = StubAnalyzer()
+        result = analyzer.analyze(tmp_path)
+        # Grammar module is always set on grammar-backed analyzers.
+        assert result.run.toolchain.get("grammar_module") == "tree_sitter_stub"
+        # tree_sitter library version captured via importlib.metadata when
+        # available — most installs expose it.
+        assert "tree_sitter_version" in result.run.toolchain
+
+    def test_toolchain_extended_with_language_pack(
+        self, tmp_path: Path,
+    ) -> None:
+        """INV-nihug: language-pack-backed analyzers get a
+        ``language_pack:<name>`` toolchain entry."""
+
+        class PackStubAnalyzer(StubAnalyzer):
+            grammar_module = None
+            language_pack_name = "stub_pack"
+
+        analyzer = PackStubAnalyzer()
+        result = analyzer.analyze(tmp_path)
+        assert (
+            result.run.toolchain.get("grammar_module")
+            == "language_pack:stub_pack"
+        )
+
+    def test_warnings_captured_for_grammar_unavailable_path(
+        self, tmp_path: Path,
+    ) -> None:
+        """INV-pitab: the grammar-unavailable branch explicitly populates
+        ``run.warnings`` so the per-run AnalysisRun record surfaces the
+        skip reason in machine-readable form (the schema declares the
+        field; the producer now writes to it)."""
+        import pytest as _pytest
+
+        class UnavailableStubAnalyzer(StubAnalyzer):
+            def _check_grammar_available(self) -> bool:
+                return False
+
+        (tmp_path / "test.stub").write_text("content")
+        analyzer = UnavailableStubAnalyzer()
+        with _pytest.warns(UserWarning):
+            result = analyzer.analyze(tmp_path)
+        assert result.skipped is True
+        assert any("not available" in w for w in result.run.warnings)
 
 
 class TestTreeSitterAnalyzerSkipped:

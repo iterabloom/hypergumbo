@@ -337,6 +337,39 @@ Out of scope (Phase 6 territory): `Symbol.stable_id` schema check (`sha256:<16he
 
 Lands `docs/adr/0034-id-construction-discipline.md` codifying the canonical-factory discipline for `Symbol.id` construction. The Phase 5 PR1 `id_format` validator is the runtime enforcement; this ADR is the rationale + reviewer checklist + Class B language-string policy (linker-emitted Symbols use the host's `discovery_language` as the canonical-ID first segment). Closes the documentation gap surfaced by the id-construction-discipline lab-notebook entry. Indexed in `docs/adr/README.md` under the Analysis-pipeline thematic group.
 
+#### Phase 6 PR2 — INV-luhur AnalysisRun + meta-layer writer-contract sweep
+
+Closes a batch of the 10 INV-luhur sub-members by codifying canonical definitions, wiring previously-unwired writer paths, and extending `_check_writer_contract` to fold in the structural pattern.
+
+Producer-side fixes:
+
+- **INV-lidul (`AnalysisRun.config_fingerprint` default-only initializer).** New `TreeSitterAnalyzer._get_config_dict()` and `_stamp_config_fingerprint()` derive a per-analyzer `sha256:<16hex>` fingerprint from class identity + grammar + file-pattern set. Pre-Phase-6 all 84 self-analysis runs carried the literal `sha256:44136fa355b3678a` (sha256 of `{}`) default; per-class fingerprints now distinguish the runs. Subclasses can override `_get_config_dict()` to thread real per-run config.
+- **INV-gizik (`AnalysisRun.pass_version` empty on 44 analyzers).** `TreeSitterAnalyzer._analyze_body` auto-stamps `pass_version = compute_pass_version(type(self))` when the subclass hasn't set one explicitly. Mirrors the linker-side stamping in `registry.py:_stamp_pass_version`. All 44 previously-unstamped tree-sitter analyzer runs now carry a real code-hash.
+- **INV-nihug (`AnalysisRun.toolchain` hardcoded to host Python).** New `_extend_toolchain()` extends the `{name: python, version: <host>}` default with `tree_sitter_version`, `grammar_module`, and `grammar_version` (when the grammar package exposes `__version__`). Captures the actual dependency chain that produced the analysis.
+- **WI-lonoz (`Edge.quality` empty across all edges).** New `_derive_edge_quality()` helper in `ir.py` derives a `{score, reason}` block from `confidence` / `is_resolved` / `derived_from` evidence. `Edge.__post_init__` populates `quality` when the producer doesn't set it. Reason tags: `high_confidence_direct` (≥0.95), `resolved_call_site` ([0.8, 0.95)), `derived_from_linker_evidence`, `low_confidence_fallback` (<0.5), `medium_confidence`.
+- **INV-pubom (`total_io_edges` two definitions).** Canonical definition codified in `io_boundary.py`: `total_io_edges = sum(len(e.chains) for e in entries.values())` (post-external_potential chain count). Replaces the pre-external_potential `tagged_count` reference at the unfiltered-serializer site. The filtered path in `cli.py:cmd_io_boundaries` already used the post-chain-sum convention; both paths now agree.
+- **INV-mozaf (`metrics.total_files` two definitions).** Canonical definition flipped in `metrics.py:compute_metrics` to `len({n.path for n in nodes if n.path})` (node-distinct-path count). The legacy profile-language sum (over-counted by ~296 vs node-distinct on self-analysis) now rides in `metrics.debug.profile_files_sum` for introspection.
+- **INV-jukok (`metrics.by_supply_chain_tier["unknown"]` phantom).** `compute_metrics` no longer mints an `unknown` tier when edge src isn't in `node_id_to_tier` — unresolved-src edges are silently excluded from the per-tier edge count. The pre-fix `unknown: {edges: 23, nodes: 0}` phantom on self-analysis is gone.
+- **INV-virik (`Limits.add_classification_failure` no callers).** `_classify_symbols` now accepts an optional `limits` kwarg and records each "outside repo" classification fall-through as a `Limits.add_classification_failure(path, reason)`. Per-path dedup avoids N duplicate failures for N symbols on the same un-classifiable path. Wired from `cli.py:run_behavior_map`.
+- **INV-pitab (`AnalysisRun.warnings` un-populated on grammar-unavailable path).** `TreeSitterAnalyzer._analyze_body` now explicitly appends the grammar-unavailable skip message to `run.warnings` before calling `warnings.warn`. The schema-declared field is now populated for the most common producer-side warning path. Thread-safe (no global `warnings.showwarning` mutation — the ThreadPoolExecutor in `run_all_analyzers` would race a global shim). Deferred for Phase 6 PR3+: capturing ad-hoc `warnings.warn(...)` calls deeper in extract_symbols_from_file (would require per-instance state plumbing).
+
+Validator extension (`spec_validator.py`):
+
+- New sub-pattern-1 ("schema-declares-no-writer") helper `_check_sub_pattern_1_never_populated` registered in `_check_writer_contract`. Per-`(record_class, field, contract_msg)` table currently empty (every previously-unpopulated field on the corpus is now wired); future sub-pattern-1 candidates register there.
+- New `_is_truthy(record, field)` helper for sub-pattern-1 emptiness probing. Returns `False` for `None` and empty list/dict/str; `True` for non-empty containers and non-None scalars (including `0` / `False`).
+- Documentation-only registration of the INV-pubom and INV-mozaf canonical definitions at the writer-contract producer-pair-checks docstring (cross-check is resolved at the producer layer rather than at validator runtime).
+
+Tests:
+
+- `tests/test_metrics.py::test_total_files_equals_node_distinct_paths` — assertion flipped to node-distinct count (was profile-sum); new `debug.profile_files_sum` covered.
+- `tests/test_metrics.py::test_edges_with_unresolved_src_dont_mint_unknown_tier` — new test pinning INV-jukok.
+- `tests/test_supply_chain.py::TestClassifySymbolsRecordsClassificationFailures` — four new tests covering INV-virik wiring (outside-repo path records failure; in-repo path does not; per-path dedup; `limits=None` is a legal no-op).
+- `tests/test_spec_validator_smoke.py` — five new tests covering `_is_truthy` truth-value semantics and the sub-pattern-1 helper's empty-table no-op contract.
+
+Out of scope (Phase 6 PR3+ territory): **INV-nuzal** (`derived_from` populated on 23K of 110K edges — large per-linker construction-site sweep deferred), **INV-suvil-style** producer-side confidence-derivation audit (`Edge.confidence` already varies across ~20 distinct values per self-analysis — the writer-contract sub-pattern-4 check would not fire). The `Edge.id` schema check and stable_id collision counting (INV-bazij P0) remain Phase 6 PR3+ candidates per Phase 6 PR1 carry-over.
+
+100% coverage on `spec_validator.py`, `metrics.py`, `io_boundary.py`, `ir.py`, `analyze/base.py`, and the changed paths in `cli.py`.
+
 #### Phase 6 PR1 — `stable_id_format` sub-check + INV-hunup / INV-dulah closure
 
 The `id_format` validator class extends to `Symbol.stable_id` (new `_check_stable_id_format` helper in `spec_validator.py`). Every populated `stable_id` is now pinned to the canonical `sha256:<16hex>` schema; `None` stays a pass (some Symbols legitimately omit it). Non-conforming values produce a structured `ValidationViolation` tagged with the inferred problem category — `raw_hex_no_prefix`, `bare_name_no_prefix`, `sha256_prefix_wrong_length`, `sha256_prefix_with_non_hex_suffix`, or `composite_no_sha_prefix (colon_count=N)`.

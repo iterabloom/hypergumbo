@@ -925,7 +925,12 @@ class BoundaryMap:
 
     Attributes:
         entries: Mapping from boundary type to aggregated entry.
-        total_io_edges: Total number of boundary-tagged edges found.
+        total_io_edges: Total number of distinct I/O chains across every
+            boundary entry (INV-pubom canonical definition: post-
+            external_potential chain count, i.e. ``sum(len(e.chains) for
+            e in entries.values())``). Both the unfiltered serializer
+            (``BoundaryMap.to_dict``) and the filtered ``cmd_io_boundaries``
+            JSON path agree on this definition.
     """
 
     entries: dict[str, BoundaryMapEntry] = field(default_factory=dict)
@@ -1172,7 +1177,11 @@ def compute_boundary_map(
     Returns:
         BoundaryMap with per-boundary-type aggregation.
     """
-    tagged_count = tag_io_boundaries(edges, catalogs)
+    # Phase 1b side effect: tag boundary-bearing edges in place. INV-pubom
+    # closure: ``total_io_edges`` on the returned ``BoundaryMap`` is the
+    # post-external_potential chain count (computed below), NOT the
+    # pre-external_potential ``tagged_count`` this call returns.
+    tag_io_boundaries(edges, catalogs)
 
     # Reverse call graph — shared by EP tracing and leaf-caller expansion
     reverse_graph = _build_reverse_graph(edges)
@@ -1244,13 +1253,21 @@ def compute_boundary_map(
             by_boundary["external_potential"] = ext_chains
 
     # Build boundary map entries, including WI-darad leaf-caller roll-ups.
-    bmap = BoundaryMap(total_io_edges=tagged_count)
+    # INV-pubom canonical definition: ``total_io_edges`` is the
+    # post-external_potential chain count — i.e., the number of distinct
+    # I/O chains the consumer sees in the artifact. The pre-external_potential
+    # ``tagged_count`` carries a different (and less consumer-meaningful)
+    # number of boundary-tagged edges before the second-pass external_potential
+    # bucket lands. Both the unfiltered (``BoundaryMap.to_dict``) and the
+    # filtered (``cmd_io_boundaries``) paths agree on this definition; see
+    # the writer-contract validator for the runtime check.
     leaf_ep_cache: dict[str, set[str]] = {}
+    entries: dict[str, BoundaryMapEntry] = {}
     for boundary, chains in by_boundary.items():
         leaf_callers, entry_points_per_leaf = compute_leaf_rollups(
             chains, reverse_graph, entrypoint_ids, leaf_ep_cache,
         )
-        bmap.entries[boundary] = BoundaryMapEntry(
+        entries[boundary] = BoundaryMapEntry(
             boundary=boundary,
             chains=chains,
             entry_points=sorted({ep for c in chains for ep in c.entry_points}),
@@ -1258,6 +1275,10 @@ def compute_boundary_map(
             leaf_callers=leaf_callers,
             entry_points_per_leaf=entry_points_per_leaf,
         )
+    bmap = BoundaryMap(
+        entries=entries,
+        total_io_edges=sum(len(e.chains) for e in entries.values()),
+    )
 
     return bmap
 

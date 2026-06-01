@@ -1677,6 +1677,105 @@ class TestSupplyChainLimits:
         assert len(result["supply_chain"]["ambiguous_paths"]) == 1
 
 
+class TestClassifySymbolsRecordsClassificationFailures:
+    """INV-virik: _classify_symbols wires Limits.add_classification_failure.
+
+    Pre-Phase-6 the schema declared the field but no producer wrote to it.
+    The Phase 6 PR2 fix passes the run-level ``Limits`` instance into
+    ``_classify_symbols`` so the "outside repo" default-fallback case
+    records into ``limits.supply_chain.classification_failures``.
+    """
+
+    def test_outside_repo_symbol_records_failure(self, tmp_path: Path) -> None:
+        """A Symbol whose path resolves outside repo_root records a
+        classification failure into the supplied Limits."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.limits import Limits
+
+        # Construct a Symbol whose path, when joined with tmp_path, is
+        # NOT under tmp_path — classify_file's relative_to() fails and
+        # falls back to the "outside repo" default bucket.
+        sym = Symbol(
+            id="python:/abs/somewhere/x.py:1-1:x:function",
+            name="x",
+            kind="function",
+            language="python",
+            path="/abs/somewhere/x.py",  # absolute, not under tmp_path
+            span=Span(1, 1, 0, 0),
+        )
+        limits = Limits()
+        _classify_symbols([sym], tmp_path, set(), limits=limits)
+        d = limits.to_dict()
+        assert len(d["supply_chain"]["classification_failures"]) == 1
+        entry = d["supply_chain"]["classification_failures"][0]
+        assert entry["path"] == "/abs/somewhere/x.py"
+        assert "outside repo" in entry["reason"]
+
+    def test_in_repo_symbol_does_not_record_failure(
+        self, tmp_path: Path,
+    ) -> None:
+        """Normal in-repo classification does NOT record a failure."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.limits import Limits
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("x = 1\n")
+        sym = Symbol(
+            id="python:src/app.py:1-1:x:function",
+            name="x",
+            kind="function",
+            language="python",
+            path="src/app.py",
+            span=Span(1, 1, 0, 0),
+        )
+        limits = Limits()
+        _classify_symbols([sym], tmp_path, set(), limits=limits)
+        d = limits.to_dict()
+        assert d["supply_chain"]["classification_failures"] == []
+
+    def test_failure_dedup_per_path(self, tmp_path: Path) -> None:
+        """Multiple symbols on the same failed path record one failure."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.limits import Limits
+
+        syms = [
+            Symbol(
+                id=f"python:/abs/somewhere/x.py:{i}-{i}:x_{i}:function",
+                name=f"x_{i}",
+                kind="function",
+                language="python",
+                path="/abs/somewhere/x.py",
+                span=Span(i, i, 0, 0),
+            )
+            for i in (1, 2, 3)
+        ]
+        limits = Limits()
+        _classify_symbols(syms, tmp_path, set(), limits=limits)
+        d = limits.to_dict()
+        assert len(d["supply_chain"]["classification_failures"]) == 1
+
+    def test_limits_none_is_legal_no_op(self, tmp_path: Path) -> None:
+        """Passing limits=None (the default) skips failure recording but
+        still classifies normally."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym = Symbol(
+            id="python:/abs/x.py:1-1:x:function",
+            name="x",
+            kind="function",
+            language="python",
+            path="/abs/x.py",
+            span=Span(1, 1, 0, 0),
+        )
+        # Should not raise; outside-repo gets tier=1 default classification.
+        _classify_symbols([sym], tmp_path, set())
+        assert sym.supply_chain_reason
+
+
 class TestClassifySymbolsPreservesTier:
     """_classify_symbols skips symbols that already have a linker-set tier."""
 
