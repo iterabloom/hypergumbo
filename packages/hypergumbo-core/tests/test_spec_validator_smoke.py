@@ -26,20 +26,9 @@ from hypergumbo_core.spec_validator import (
 )
 
 
-def test_validate_ir_phase0_returns_empty() -> None:
-    """Phase-0 stub: no checks enabled; must return ``[]`` for any input.
-
-    The stub accepts ``Iterable[Any]`` deliberately — the test passes
-    Python lists with placeholder objects to confirm the validator does
-    not depend on the IR module's dataclass shapes.
-    """
+def test_validate_ir_empty_inputs_returns_empty() -> None:
+    """No records → no violations. Floor invariant across all phases."""
     violations = validate_ir([], [], [])
-    assert violations == []
-
-    # Even with non-empty inputs, the stub returns []. When Phase-3 PR1
-    # lands, this assertion will need a fixture whose values are
-    # catalog-conformant; for now, anything goes.
-    violations = validate_ir([object()], [object()], [object()])
     assert violations == []
 
 
@@ -188,3 +177,312 @@ def test_emit_stderr_summary_uses_stderr_not_stdout(capsys) -> None:
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err  # non-empty
+
+
+# ----------------------------------------------------------------------
+# Phase 3 PR1 — Axis-conformance validator class tests
+# ----------------------------------------------------------------------
+
+
+class _FakeSym:
+    """Minimal stand-in for Symbol for axis-conformance unit testing.
+
+    The validator reads attributes by ``getattr(record, name, None)``, so
+    a dict-with-attribute-access via SimpleNamespace would also work — but
+    a class with the named attributes makes the intent of each test
+    fixture more readable.
+    """
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+def test_axis_conformance_passes_on_catalog_conformant_symbol() -> None:
+    """A Symbol with every axis-tagged field in its catalog produces no
+    violations.
+
+    Uses ``catalog.all_known_languages`` / ``symbol_kinds.all_symbol_kind_names``
+    to pick known-valid values rather than hardcoding; this couples the
+    test to the production catalogs intentionally so the test surfaces
+    catalog changes as a deliberate breakage.
+    """
+    from hypergumbo_core.catalog import all_known_languages
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    a_lang = next(iter(all_known_languages()))
+
+    sym = _FakeSym(
+        id="sym:1",
+        kind=a_kind,
+        language=a_lang,
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[],
+        qualified_name=None,
+    )
+    violations = validate_ir([sym], [], [])
+    assert violations == []
+
+
+def test_axis_conformance_flags_invalid_symbol_kind() -> None:
+    """Symbol.kind not in the symbol-kind catalog emits an axis_conformance
+    violation."""
+    from hypergumbo_core.catalog import all_known_languages
+
+    a_lang = next(iter(all_known_languages()))
+    sym = _FakeSym(
+        id="sym:bad-kind",
+        kind="totally-not-a-real-kind",
+        language=a_lang,
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[],
+        qualified_name=None,
+    )
+    violations = validate_ir([sym], [], [])
+    matched = [
+        v for v in violations
+        if v.field_name == "Symbol.kind" and v.observed == "totally-not-a-real-kind"
+    ]
+    assert len(matched) == 1
+    assert matched[0].severity == "error"
+    assert matched[0].axis == "symbol-kind"
+
+
+def test_axis_conformance_optional_language_accepts_none() -> None:
+    """Class B synthetic stand-ins have ``language=None`` per ADR-0031;
+    the validator must accept that for Optional axis-tagged fields."""
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    sym = _FakeSym(
+        id="sym:class-b",
+        kind=a_kind,
+        language=None,  # Class B
+        discovery_language="python",  # discovery context
+        protocol_origin="websocket",  # protocol identity
+        origin=[],
+        qualified_name=None,
+    )
+    violations = validate_ir([sym], [], [])
+    # No language violation (None is legal for Optional language).
+    assert not any(v.field_name == "Symbol.language" for v in violations)
+
+
+def test_axis_conformance_flags_invalid_protocol_origin() -> None:
+    """Symbol.protocol_origin not in the protocol-origin catalog emits
+    a violation."""
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    sym = _FakeSym(
+        id="sym:bad-protocol",
+        kind=a_kind,
+        language=None,
+        discovery_language="python",
+        protocol_origin="not-a-known-protocol-family",
+        origin=[],
+        qualified_name=None,
+    )
+    violations = validate_ir([sym], [], [])
+    matched = [
+        v for v in violations
+        if v.field_name == "Symbol.protocol_origin"
+    ]
+    assert len(matched) == 1
+    assert matched[0].axis == "protocol-origin"
+
+
+def test_axis_conformance_flags_invalid_origin_list_element() -> None:
+    """Each element of Symbol.origin is checked for pass-id membership.
+    A single bad element produces a single violation."""
+    from hypergumbo_core.catalog import all_known_languages, all_known_pass_ids
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    a_lang = next(iter(all_known_languages()))
+    a_pass = next(iter(all_known_pass_ids()))
+
+    sym = _FakeSym(
+        id="sym:mixed-origin",
+        kind=a_kind,
+        language=a_lang,
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[a_pass, "not-a-real-pass-id"],  # one good, one bad
+        qualified_name=None,
+    )
+    violations = validate_ir([sym], [], [])
+    matched = [
+        v for v in violations
+        if v.field_name == "Symbol.origin"
+        and v.observed == "not-a-real-pass-id"
+    ]
+    assert len(matched) == 1
+    assert matched[0].axis == "pass-id"
+
+
+def test_axis_conformance_qualified_name_separator_mismatch() -> None:
+    """Symbol.qualified_name using the wrong separator for the
+    Symbol.language is flagged as a warning."""
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    sym = _FakeSym(
+        id="sym:wrong-sep",
+        kind=a_kind,
+        language="python",  # Python uses "."
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[],
+        qualified_name="module::Class::method",  # Rust-style separator
+    )
+    violations = validate_ir([sym], [], [])
+    matched = [
+        v for v in violations
+        if v.field_name == "Symbol.qualified_name"
+    ]
+    assert len(matched) == 1
+    assert matched[0].severity == "warning"
+    assert matched[0].axis == "qualified-name"
+
+
+def test_axis_conformance_qualified_name_unqualified_is_legal() -> None:
+    """A single-segment qualified_name (no separator) is legal — the
+    name is unqualified, which is a permitted state."""
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    sym = _FakeSym(
+        id="sym:unqual",
+        kind=a_kind,
+        language="python",
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[],
+        qualified_name="just_a_name",
+    )
+    violations = validate_ir([sym], [], [])
+    assert not any(v.field_name == "Symbol.qualified_name" for v in violations)
+
+
+def test_axis_conformance_flags_invalid_edge_type() -> None:
+    """Edge.edge_type not in the edge-type catalog emits a violation."""
+    from hypergumbo_core.catalog import all_known_pass_ids
+    from hypergumbo_core.evidence_types import all_evidence_type_names
+
+    a_pass = next(iter(all_known_pass_ids()))
+    an_evidence = next(iter(all_evidence_type_names()))
+
+    edge = _FakeSym(
+        id="edge:bad",
+        edge_type="not-a-real-edge-type",
+        evidence_type=an_evidence,
+        evidence_lang=None,
+        origin=[a_pass],
+    )
+    violations = validate_ir([], [edge], [])
+    matched = [v for v in violations if v.field_name == "Edge.edge_type"]
+    assert len(matched) == 1
+    assert matched[0].axis == "edge-type"
+
+
+def test_axis_conformance_run_pass_id_required() -> None:
+    """AnalysisRun.pass_id not in the pass-id catalog emits a violation
+    (required field, allow_none=False)."""
+    run = _FakeSym(execution_id="run:bad-pass", pass_id="not-a-pass")
+    violations = validate_ir([], [], [run])
+    matched = [v for v in violations if v.field_name == "AnalysisRun.pass_id"]
+    assert len(matched) == 1
+    assert matched[0].axis == "pass-id"
+
+
+def test_axis_conformance_none_for_required_field_emits_violation() -> None:
+    """A required (allow_none=False) axis-tagged field being None emits
+    a violation. Symbol.kind is the canonical example — None is illegal
+    because Symbol's spec declares kind as a required str."""
+    sym = _FakeSym(
+        id="sym:none-kind",
+        kind=None,  # illegal — required field
+        language=None,
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[],
+        qualified_name=None,
+    )
+    violations = validate_ir([sym], [], [])
+    matched = [
+        v for v in violations
+        if v.field_name == "Symbol.kind" and v.observed is None
+    ]
+    assert len(matched) == 1
+    assert matched[0].severity == "error"
+    assert "non-None" in matched[0].expected
+
+
+def test_axis_conformance_origin_none_is_skipped() -> None:
+    """Symbol.origin=None (rather than empty list) skips per-element
+    checks gracefully — the field is documented as a list but consumers
+    may construct partial records during testing or migration."""
+    from hypergumbo_core.catalog import all_known_languages
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    a_lang = next(iter(all_known_languages()))
+
+    sym = _FakeSym(
+        id="sym:no-origin",
+        kind=a_kind,
+        language=a_lang,
+        discovery_language=None,
+        protocol_origin=None,
+        origin=None,  # None rather than []
+        qualified_name=None,
+    )
+    violations = validate_ir([sym], [], [])
+    assert not any(v.field_name == "Symbol.origin" for v in violations)
+
+
+def test_axis_conformance_edge_origin_bad_element_flagged() -> None:
+    """Edge.origin (list of pass-ids) flags bad elements just like
+    Symbol.origin does."""
+    from hypergumbo_core.evidence_types import all_evidence_type_names
+
+    an_evidence = next(iter(all_evidence_type_names()))
+    edge = _FakeSym(
+        id="edge:bad-origin",
+        edge_type="calls",
+        evidence_type=an_evidence,
+        evidence_lang=None,
+        origin=["not-a-real-pass-id"],
+    )
+    violations = validate_ir([], [edge], [])
+    matched = [
+        v for v in violations
+        if v.field_name == "Edge.origin"
+        and v.observed == "not-a-real-pass-id"
+    ]
+    assert len(matched) == 1
+
+
+def test_axis_conformance_qualified_name_unknown_language_is_skipped() -> None:
+    """When the Symbol's language has no declared qualified-name separator
+    policy, the structural check is skipped (no violation, no false
+    positive)."""
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    sym = _FakeSym(
+        id="sym:unknown-lang-sep",
+        kind=a_kind,
+        # A language with no entry in QUALIFIED_NAME_SEPARATORS.
+        language="brainfuck",
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[],
+        qualified_name="weird::format.thing",
+    )
+    violations = validate_ir([sym], [], [])
+    assert not any(v.field_name == "Symbol.qualified_name" for v in violations)

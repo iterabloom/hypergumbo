@@ -154,6 +154,20 @@ Combined release PR for both reshapes. Producer-side migrations landed in Phase 
 
 This release **closes**: INV-kovob (canonical_name format dual-mode → 3-mode → resolved by reshape), INV-fogum (TOML fingerprints without `hgfp1:` prefix → resolved by Format-1 demolition in Phase 2 PR2), INV-tofun (4 named linkers no longer hardcode language="javascript" on .ts/.tsx files — Class B migration in Phase 1 PR2). The canonical_name and fingerprint expressions of INV-numat (META: vocabulary fields mix axes) and INV-kurup (META: identifier-bearing fields emit non-canonical formats) are resolved; the remaining identifier-format expressions (stable_id under INV-hunup, node.id under INV-sadiv / INV-dulah) are addressed by Phase 5.
 
+#### ADR-0033 Phase 3 PR1 — axis-conformance validator class
+
+First of four validator classes lights up. The validator iterates every axis-tagged `str` / `Optional[str]` field on `Symbol` / `Edge` / `AnalysisRun` and verifies that emitted values are in the catalog (∪ `{None}` for `Optional` fields).
+
+- **Symbol-side checks**: `Symbol.kind` (symbol-kind catalog, required), `Symbol.language` (language catalog, optional), `Symbol.discovery_language` (language catalog, optional), `Symbol.protocol_origin` (protocol-origin catalog, optional), `Symbol.origin` (per-element pass-id catalog), and `Symbol.qualified_name` (structural per-language separator policy from `qualified_name_axis`).
+- **Edge-side checks**: `Edge.edge_type` (edge-type catalog, required), `Edge.evidence_type` (evidence-type catalog, required), `Edge.evidence_lang` (language catalog, optional), `Edge.origin` (per-element pass-id catalog).
+- **AnalysisRun-side checks**: `AnalysisRun.pass_id` (pass-id catalog, required).
+- **Three helper functions** (`_check_value`, `_check_list`, `_check_qualified_name_separator`) keep the per-field membership-check logic compact and reusable for Phase 3 PR2's writer-contract additions.
+- **Per-class behavior**: registry-backed axes use catalog membership; the `qualified-name` axis uses the structural separator check (a Symbol's qualified_name must use the separator declared for its language — single-segment unqualified names are legal); `identity` / `bounded-enum` / `free-text` categories are skipped here (deferred to Phase 3 PR3 for cross-field coherence and Phase 5 PR1 for identity uniqueness).
+- **13 new property tests** at `tests/test_spec_validator_smoke.py` cover the catalog-pass / catalog-fail / Optional-None-pass / required-None-fail / list-element-fail / separator-mismatch / unknown-language-skip cases for each Symbol / Edge / AnalysisRun axis.
+- **No CI gate landing yet.** Per ADR-0033 §"Default failure behavior", the validator emits violations to stderr + writes them to the artifact's `validation_report` section but does NOT fail `hypergumbo run`. The future `test_validation_report_empty.py` CI gate (Phase 6) catches non-empty self-analysis reports as regressions.
+
+100% coverage on changed source files (`spec_validator.py` at 97/0/100%). 14285 passed.
+
 
 ### Changed
 

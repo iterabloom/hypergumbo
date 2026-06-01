@@ -116,18 +116,275 @@ def validate_ir(
 ) -> list[ValidationViolation]:
     """Run all enabled validator classes against the emitted IR.
 
-    Phase-0 stub: returns ``[]``. Each Phase-3 PR adds one class's checks
-    to this function. The argument types are deliberately ``Iterable[Any]``
-    rather than typed `Symbol`/`Edge`/`AnalysisRun` to keep this module
-    decoupled from the IR module — `validate_ir` reads attributes by name
-    and is therefore tolerant of dataclass-shape evolution.
+    Each Phase-3 PR adds one class's checks to this function. The
+    argument types are deliberately ``Iterable[Any]`` rather than typed
+    `Symbol`/`Edge`/`AnalysisRun` to keep this module decoupled from
+    the IR module — `validate_ir` reads attributes by name and is
+    therefore tolerant of dataclass-shape evolution.
     """
     violations: list[ValidationViolation] = []
-    # Phase 3 PR1 — axis-conformance checks land here
+    violations.extend(_check_axis_conformance(symbols, edges, analysis_runs))
     # Phase 3 PR2 — writer-contract checks land here
     # Phase 3 PR3 — cross-field coherence checks land here
     # Phase 3 PR4 — verdict-enum completeness checks land here
     return violations
+
+
+# ----------------------------------------------------------------------
+# Phase 3 PR1 — Axis-conformance validator class
+# ----------------------------------------------------------------------
+#
+# For every (record_class, field, axis) tuple in _AXIS_TAGGED_FIELDS,
+# verify the emitted value is in the axis catalog (or None for Optional
+# fields). The (record, field, axis) mapping is hand-maintained: when
+# a new axis-tagged field lands on Symbol / Edge / AnalysisRun in
+# ir.py, the developer adding it MUST extend this table — the same
+# forcing function the static-AST validator at
+# multi_value_field_axis.py has at PR-review time.
+#
+# Categories from ADR-0024 are NOT all checked here:
+#   - "identity" — uniqueness invariant; checked by cross-field
+#     coherence (Phase 3 PR3) or by ID-format validator (Phase 5 PR1).
+#   - "bounded-enum" — small fixed list; checked here ad-hoc when the
+#     field's enum is documented in this module's bounded-enum dict.
+#   - "free-text" — no value check (the justification was the gate at
+#     source-write time).
+#   - "qualified-name" — structural per-language separator check; the
+#     axis catalog returns the set of LANGUAGES with declared
+#     separators (not a value set). Verified separately: the value
+#     must use the separator declared for the Symbol's language.
+#
+# The "edge_lang" / "discovery_language" fields share the language
+# axis with Symbol.language. The "origin" lists carry pass-id values
+# per element; that's a per-element membership check.
+
+_BOUNDED_ENUMS: dict[tuple[str, str], frozenset[str]] = {
+    # (record_class, field) -> legal value set documented in the
+    # dataclass docstring. Mirrors ADR-0024 "bounded-enum" category.
+    # Currently empty; new bounded-enum fields register here.
+}
+
+
+def _check_axis_conformance(
+    symbols: Iterable[Any],
+    edges: Iterable[Any],
+    analysis_runs: Iterable[Any],
+) -> list[ValidationViolation]:
+    """Axis-conformance class: every axis-tagged value in the catalog.
+
+    See ADR-0033 §"Validator classes" #1.
+    """
+    # Deferred imports keep this module importable without the catalog
+    # machinery initialised (mirrors multi_value_field_axis._known_axes).
+    from .catalog import all_known_languages, all_known_pass_ids
+    from .edge_types import all_edge_type_names
+    from .evidence_types import all_evidence_type_names
+    from .protocol_origins import all_protocol_origin_names
+    from .qualified_name_axis import separator_for_language
+    from .symbol_kinds import all_symbol_kind_names
+
+    languages = all_known_languages()
+    pass_ids = all_known_pass_ids()
+    symbol_kinds = all_symbol_kind_names()
+    evidence_types = all_evidence_type_names()
+    edge_types = all_edge_type_names()
+    protocol_origins = all_protocol_origin_names()
+
+    violations: list[ValidationViolation] = []
+
+    # ---- Symbol-side checks ----
+    for sym in symbols:
+        sym_id = getattr(sym, "id", None)
+        violations.extend(_check_value(
+            sym_id, "Symbol.kind", "symbol-kind",
+            getattr(sym, "kind", None), symbol_kinds, allow_none=False,
+        ))
+        violations.extend(_check_value(
+            sym_id, "Symbol.language", "language",
+            getattr(sym, "language", None), languages, allow_none=True,
+        ))
+        violations.extend(_check_value(
+            sym_id, "Symbol.discovery_language", "language",
+            getattr(sym, "discovery_language", None), languages,
+            allow_none=True,
+        ))
+        violations.extend(_check_value(
+            sym_id, "Symbol.protocol_origin", "protocol-origin",
+            getattr(sym, "protocol_origin", None), protocol_origins,
+            allow_none=True,
+        ))
+        for v in _check_list(
+            sym_id, "Symbol.origin", "pass-id",
+            getattr(sym, "origin", None), pass_ids,
+        ):
+            violations.append(v)
+        # qualified-name structural check: when populated, value must
+        # use the language's declared separator.
+        violations.extend(_check_qualified_name_separator(
+            sym_id,
+            getattr(sym, "qualified_name", None),
+            getattr(sym, "language", None),
+            separator_for_language,
+        ))
+
+    # ---- Edge-side checks ----
+    for edge in edges:
+        edge_id = getattr(edge, "id", None)
+        violations.extend(_check_value(
+            edge_id, "Edge.edge_type", "edge-type",
+            getattr(edge, "edge_type", None), edge_types, allow_none=False,
+        ))
+        violations.extend(_check_value(
+            edge_id, "Edge.evidence_type", "evidence-type",
+            getattr(edge, "evidence_type", None), evidence_types,
+            allow_none=False,
+        ))
+        violations.extend(_check_value(
+            edge_id, "Edge.evidence_lang", "language",
+            getattr(edge, "evidence_lang", None), languages,
+            allow_none=True,
+        ))
+        for v in _check_list(
+            edge_id, "Edge.origin", "pass-id",
+            getattr(edge, "origin", None), pass_ids,
+        ):
+            violations.append(v)
+
+    # ---- AnalysisRun-side checks ----
+    for run in analysis_runs:
+        run_id = getattr(run, "execution_id", None)
+        violations.extend(_check_value(
+            run_id, "AnalysisRun.pass_id", "pass-id",
+            getattr(run, "pass_id", None), pass_ids, allow_none=False,
+        ))
+
+    return violations
+
+
+def _check_value(
+    record_id: Optional[str],
+    field_name: str,
+    axis: str,
+    observed: Optional[str],
+    catalog: frozenset[str] | set[str],
+    *,
+    allow_none: bool,
+) -> list[ValidationViolation]:
+    """Single-value membership check. Empty list = pass.
+
+    Allowance rules:
+    - allow_none=True + observed=None → pass (Optional field, not populated).
+    - allow_none=False + observed=None → violation (required field missing).
+    - observed in catalog → pass.
+    - observed not in catalog → violation.
+    """
+    if observed is None:
+        if allow_none:
+            return []
+        return [ValidationViolation(
+            severity="error",
+            validator_class="axis_conformance",
+            axis=axis,
+            field_name=field_name,
+            record_id=record_id,
+            observed=None,
+            expected=f"non-None value in {axis} catalog",
+            message=(
+                f"{field_name} on record {record_id!r} is None but the "
+                f"axis ({axis}) is non-Optional in the IR spec."
+            ),
+        )]
+    if observed in catalog:
+        return []
+    return [ValidationViolation(
+        severity="error",
+        validator_class="axis_conformance",
+        axis=axis,
+        field_name=field_name,
+        record_id=record_id,
+        observed=observed,
+        expected=f"value in {axis} catalog ({len(catalog)} known values)",
+        message=(
+            f"{field_name} on record {record_id!r} has value "
+            f"{observed!r} which is not in the {axis} catalog."
+        ),
+    )]
+
+
+def _check_list(
+    record_id: Optional[str],
+    field_name: str,
+    axis: str,
+    observed: Optional[Iterable[str]],
+    catalog: frozenset[str] | set[str],
+) -> list[ValidationViolation]:
+    """Per-element membership check for list-of-str fields (e.g., origin)."""
+    if observed is None:
+        return []
+    violations: list[ValidationViolation] = []
+    for elem in observed:
+        if elem not in catalog:
+            violations.append(ValidationViolation(
+                severity="error",
+                validator_class="axis_conformance",
+                axis=axis,
+                field_name=field_name,
+                record_id=record_id,
+                observed=elem,
+                expected=(
+                    f"each list element in {axis} catalog "
+                    f"({len(catalog)} known values)"
+                ),
+                message=(
+                    f"{field_name} on record {record_id!r} contains "
+                    f"element {elem!r} not in the {axis} catalog."
+                ),
+            ))
+    return violations
+
+
+def _check_qualified_name_separator(
+    record_id: Optional[str],
+    qualified_name: Optional[str],
+    language: Optional[str],
+    separator_for_language,  # callable: str -> Optional[str]
+) -> list[ValidationViolation]:
+    """Structural check: ``qualified_name`` uses the language's separator.
+
+    ADR-0032 §"Per-language separator policy". When both fields are
+    populated, the qualified_name must contain the separator declared
+    for that language (or be unqualified — a single segment is legal).
+    """
+    if qualified_name is None or language is None:
+        return []
+    separator = separator_for_language(language)
+    if separator is None:
+        # No declared policy yet for this language; can't check format.
+        return []
+    # Reject the WRONG separators only — finding the right separator
+    # in the value is a sufficient condition for conformance, but a
+    # value with no separator at all is also legal (unqualified name).
+    wrong = {".", "::", "\\"} - {separator}
+    for w in wrong:
+        if w in qualified_name and separator not in qualified_name:
+            return [ValidationViolation(
+                severity="warning",
+                validator_class="axis_conformance",
+                axis="qualified-name",
+                field_name="Symbol.qualified_name",
+                record_id=record_id,
+                observed=qualified_name,
+                expected=(
+                    f"separator {separator!r} for language {language!r} "
+                    f"(per qualified_name_axis policy)"
+                ),
+                message=(
+                    f"Symbol {record_id!r} has qualified_name={qualified_name!r} "
+                    f"with separator {w!r} but the policy for language "
+                    f"{language!r} declares separator {separator!r}."
+                ),
+            )]
+    return []
 
 
 def build_validation_report(
