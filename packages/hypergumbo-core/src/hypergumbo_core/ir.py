@@ -329,16 +329,19 @@ class Symbol:
         origin_run_id: Unique execution ID of the analysis run
         stable_id: Semantic identity hash (survives renames/moves)
         shape_id: Structural implementation fingerprint
-        canonical_name: Set only when ``name`` is unqualified but a
-            fully-qualified path is known (e.g., proto RPCs, nested capnp
-            messages, niche-language symbols). For mainstream-analyzer
-            languages where ``name`` already encodes the parent
-            (Python's ``ClassName.method``, Java's ``Class.method``, etc.),
-            this field is deliberately ``None`` and consumers should fall
-            back to ``name`` for fully-qualified identifiers. Populated by
-            niche-language analyzers (nix, r_lang, hlsl, asm, capnp, ada,
-            fish, verilog, powershell, css, wgsl), the yjs_crdt and
-            wasm_bindgen linkers, and the external-boundary synthesis path.
+        canonical_name: **Deprecated (ADR-0032).** Removed in Phase 6
+            PR4 (one major version after the 0.12.0 schema bump). New
+            producers should write to the typed siblings
+            ``display_label`` (Use 2; UI-display strings on synthetic
+            stand-ins) or ``qualified_name`` (Use 3; fully-qualified
+            scoped identifiers) instead. Pre-migration semantics: set
+            only when ``name`` is unqualified but a fully-qualified
+            path is known. For mainstream-analyzer languages where
+            ``name`` already encodes the parent (Python's
+            ``ClassName.method``, Java's ``Class.method``, etc.), this
+            field is deliberately ``None``. Consumer-side fallback
+            order during the deprecation window:
+            ``qualified_name or canonical_name``.
         fingerprint: Content hash of source bytes (sha256)
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict for language-specific information
@@ -1108,8 +1111,9 @@ def create_boundary_nodes(
     Two universal effects (WI-fozoh):
 
     * **Cross-run identity.** Every boundary Symbol gets a non-null
-      ``stable_id`` and ``canonical_name`` derived from its dedupe key,
-      so consumers (sketch / slice / cross-run diff) can group and
+      ``stable_id`` and ``display_label`` (ADR-0032 typed sibling
+      replacing ``canonical_name``) derived from its dedupe key, so
+      consumers (sketch / slice / cross-run diff) can group and
       compare boundary nodes the same way ADR-0014 stable_ids work for
       first-party symbols.
     * **Targeted dedupe of file-id pseudo-symbols.** For
@@ -1234,7 +1238,7 @@ def create_boundary_nodes(
         sym = Symbol(
             id=canonical_id,
             stable_id=_canonical_external_stable_id(language, key_path, name, kind),
-            canonical_name=f"{language}:{key_path}:{name}:{kind}",
+            display_label=f"{language}:{key_path}:{name}:{kind}",
             name=name,
             kind="external_symbol",
             language=language,

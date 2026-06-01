@@ -1318,7 +1318,7 @@ class TestCreateBoundaryNodes:
         assert node.meta["external_boundary"] is True
         # Stable identity is populated for cross-run grouping (WI-fozoh).
         assert node.stable_id is not None
-        assert node.canonical_name == "go:fmt:Errorf:unresolved"
+        assert node.display_label == "go:fmt:Errorf:unresolved"
         # Canonical id == original id, so remap is empty (no rewrite needed).
         assert remap == {}
 
@@ -1490,7 +1490,7 @@ class TestCreateBoundaryNodes:
         assert result[0].supply_chain_tier == 2
         # stable_id is populated regardless of manifest match (WI-fozoh).
         assert result[0].stable_id is not None
-        assert result[0].canonical_name is not None
+        assert result[0].display_label is not None
 
     def test_manifest_classifies_direct_dep_as_tier2(self):
         """Boundary nodes for direct deps get tier 2 when manifest provided."""

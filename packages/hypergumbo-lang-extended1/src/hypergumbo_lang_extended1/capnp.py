@@ -156,11 +156,11 @@ def _extract_symbols_and_edges(
         start_col = node.start_point[1]
         end_col = node.end_point[1]
 
-        # Build canonical name with prefix
+        # Build qualified name with prefix
         if prefix:
-            canonical_name = f"{prefix}.{name}"
+            qualified_name = f"{prefix}.{name}"
         else:
-            canonical_name = name
+            qualified_name = name
 
         span = Span(
             start_line=start_line,
@@ -172,7 +172,7 @@ def _extract_symbols_and_edges(
         return Symbol(
             id=sym_id,
             name=name,
-            canonical_name=canonical_name,
+            qualified_name=qualified_name,
             kind=kind,
             language="capnp",
             path=file_path,

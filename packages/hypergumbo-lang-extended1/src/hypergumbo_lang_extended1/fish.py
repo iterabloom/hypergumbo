@@ -90,7 +90,6 @@ def _make_symbol(
     return Symbol(
         id=sym_id,
         name=name,
-        canonical_name=name,
         kind=kind,
         language="fish",
         path=rel_path,

@@ -238,7 +238,7 @@ service StreamService {
         assert "stream" in rpcs["ServerStream"].signature.lower()
 
     def test_service_has_package_in_canonical_name(self, temp_repo: Path) -> None:
-        """Service canonical_name should include package."""
+        """Service qualified_name should include package (ADR-0032: canonical_name → qualified_name)."""
         (temp_repo / "user.proto").write_text('''
 syntax = "proto3";
 
@@ -252,7 +252,7 @@ service UserService {
         result = analyze_proto(temp_repo)
 
         service = next(s for s in result.symbols if s.kind == "service")
-        assert "myservice.v1" in service.canonical_name
+        assert "myservice.v1" in service.qualified_name
 
     def test_multiple_services_in_file(self, temp_repo: Path) -> None:
         """Handles multiple services in a single file."""

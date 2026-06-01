@@ -84,7 +84,8 @@ def test_analyze_package_json_scripts(tmp_path):
     start_script = next((s for s in scripts if s.name == "start"), None)
     assert start_script is not None
     assert start_script.meta.get("command") == "node index.js"
-    assert start_script.canonical_name == "npm run start"
+    # ADR-0032: canonical_name → display_label for expression-form strings.
+    assert start_script.display_label == "npm run start"
 
 def test_analyze_package_json_bin_entries(tmp_path):
     """Test parsing package.json bin entries (CLI executables).

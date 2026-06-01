@@ -140,6 +140,20 @@ Combined producer migration across four sub-classes in one PR:
 
 100% coverage on all changed source files (29 files; ~+156 / −135 lines).
 
+#### ADR-0031 + ADR-0032 Phase 2 PR3 — combined consumer migration + SCHEMA_VERSION 0.12.0
+
+Combined release PR for both reshapes. Producer-side migrations landed in Phase 1 PR2 (ADR-0031) and Phase 2 PR2 (ADR-0032); this PR closes out the consumer surface and bumps the schema version.
+
+- **SCHEMA_VERSION 0.11.0 → 0.12.0** at `packages/hypergumbo-core/src/hypergumbo_core/schema.py:73` and matching `docs/schema.json` `const`.
+- **Migration guide** at `docs/MIGRATION-5.X-CONCEPT-AXES.md` adds Part 7 (~440 words) covering both ADR-0031 (Symbol.language reshape — `discovery_language` + `protocol_origin`) and ADR-0032 (canonical_name / fingerprint reshape — `display_label` + `qualified_name`; Format-1 fingerprint demolition). Includes consumer-migration patterns (prefer `sym.discovery_language or sym.language`; prefer `sym.qualified_name or sym.canonical_name`; read `sym.display_label` for synthetic-stand-in display strings), serialized-artifact impact (four new fields per node, typically null for real-source declarations), stable_id impact (~20-30 Class B Symbols' stable_ids change because `Symbol.language=None` hashes differently from a string value), and fingerprint impact (TOML 99 dependency nodes + ~6 other config-analyzer node sets move from `<16-char-hex>` to `hgfp1:<64-char-hex>`).
+- **Remaining `canonical_name=` producer migrations** Phase 2 PR2 missed (non-redundant uses): ~28 sites across `ir.py` (external-boundary synth → `display_label`), `json_config.py` (npm-run / rel_path → `display_label`; pkg-subpath exports → `qualified_name`), `xml_config.py` (Maven group:artifact / Android dotted names → `qualified_name`), `proto.py` / `thrift.py` (dotted namespace.Service.RPC → `qualified_name`), `capnp.py` (prefix.name → `qualified_name`), `graphql.py` (@directive → `display_label`; redundant cases dropped), `llvm_ir.py` (@symbol → `display_label`), `vhdl.py` (arch(entity) → `display_label`; redundant cases dropped), and 11 niche-language analyzers where `canonical_name=name` was a redundant duplicate (dropped): nix, hlsl, starlark, cuda, r_lang, wgsl, glsl, fortran, ada, nim, gdscript, d_lang, fish, asm, verilog.
+- **Consumer migrations**: `linkers/containment.py` (4 read sites updated to `sym.qualified_name or sym.canonical_name`; Phase 1.5 docstring rewritten to reference the new dual-field state) and `framework_patterns.py:1097` (`symbol.qualified_name or symbol.canonical_name or symbol.name`). The `Symbol` docstring in `ir.py` is updated to mark `canonical_name` deprecated for Phase 6 PR4 removal one major version later.
+- **Test updates** in 7 test files (test_ir.py, test_proto.py, test_thrift.py, test_graphql_analyzer.py, test_llvm_ir.py, test_json_analyzer.py, plus BRANCHES_test_proto.py / BRANCHES_test_thrift.py) for the migrated assertions.
+
+100% coverage on all changed source files. 14272 passed.
+
+This release **closes**: INV-kovob (canonical_name format dual-mode → 3-mode → resolved by reshape), INV-fogum (TOML fingerprints without `hgfp1:` prefix → resolved by Format-1 demolition in Phase 2 PR2), INV-tofun (4 named linkers no longer hardcode language="javascript" on .ts/.tsx files — Class B migration in Phase 1 PR2). The canonical_name and fingerprint expressions of INV-numat (META: vocabulary fields mix axes) and INV-kurup (META: identifier-bearing fields emit non-canonical formats) are resolved; the remaining identifier-format expressions (stable_id under INV-hunup, node.id under INV-sadiv / INV-dulah) are addressed by Phase 5.
+
 
 ### Changed
 

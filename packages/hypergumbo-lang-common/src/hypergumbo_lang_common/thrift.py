@@ -139,14 +139,14 @@ def _extract_symbols_and_edges(
         start_col = node.start_point[1]
         end_col = node.end_point[1]
 
-        # Build canonical name with namespace prefix
+        # Build qualified name with namespace prefix
         name_parts = []
         if namespace:
             name_parts.append(namespace)
         if prefix:
             name_parts.append(prefix)
         name_parts.append(name)
-        canonical_name = ".".join(name_parts)
+        qualified_name = ".".join(name_parts)
 
         span = Span(
             start_line=start_line,
@@ -158,7 +158,7 @@ def _extract_symbols_and_edges(
         return Symbol(
             id=sym_id,
             name=name,
-            canonical_name=canonical_name,
+            qualified_name=qualified_name,
             kind=kind,
             language="thrift",
             path=file_path,

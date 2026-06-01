@@ -95,7 +95,6 @@ def _make_symbol(
     return Symbol(
         id=make_symbol_id("d", rel_path, start_line, end_line, name, kind),
         name=name,
-        canonical_name=name,
         kind=kind,
         language="d",
         path=rel_path,

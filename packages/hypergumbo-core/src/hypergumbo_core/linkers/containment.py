@@ -17,20 +17,25 @@ Extracts the parent name from the symbol's ``name`` field using
 language-specific separators (``.``, ``#``, ``::``).  For example,
 ``User.save`` → parent ``User``.
 
-**Phase 1.5 — canonical_name fallback** (confidence=0.95):
+**Phase 1.5 — qualified_name fallback** (confidence=0.95):
 When ``sym.name`` has no separator (e.g., proto RPCs where
-``name="BidiHello"``), falls back to ``sym.canonical_name``
-(e.g., ``hello.HelloService.BidiHello``).  This handles proto
-service→rpc containment and nested message containment.
+``name="BidiHello"``), falls back to ``sym.qualified_name`` (the
+ADR-0032 typed sibling field that carries fully-qualified scoped
+identifiers, e.g., ``hello.HelloService.BidiHello``). For backward
+compatibility with the deprecated ``Symbol.canonical_name`` field
+(removed in Phase 6 PR4), this phase also reads ``canonical_name``
+when ``qualified_name`` is unset. This handles proto service→rpc
+containment and nested message containment.
 This phase is reachable only for niche-language analyzers (proto,
 capnp, fish, etc.) that emit unqualified ``name`` plus a
-``canonical_name``. Mainstream-analyzer languages (Python, JS/TS,
-Go, Rust, Java, C++, Ruby) leave ``canonical_name=None`` by design
-because ``name`` already encodes the parent, so containment falls
-through to span_overlap when naming convention doesn't match.
+``qualified_name``. Mainstream-analyzer languages (Python, JS/TS,
+Go, Rust, Java, C++, Ruby) leave both ``qualified_name=None`` and
+``canonical_name=None`` by design because ``name`` already encodes
+the parent, so containment falls through to span_overlap when
+naming convention doesn't match.
 
 **Phase 2 — Span-based fallback** (confidence=0.9):
-When neither naming convention nor canonical_name produces a parent,
+When neither naming convention nor qualified_name produces a parent,
 checks if any container symbol in the same file has a span that fully
 encloses the unqualified symbol.  Prefers the tightest (smallest span)
 enclosing container.
@@ -41,7 +46,7 @@ Naming Conventions by Language
 - Ruby instance methods use ``#``: ClassName#method_name
 - Ruby/Elixir modules use ``::``: Postal::HTTP, MyApp.Repo
 - Rust uses ``::``: ImplTarget::method_name
-- Proto uses ``.`` in canonical_name: hello.HelloService.BidiHello
+- Proto uses ``.`` in qualified_name: hello.HelloService.BidiHello
 
 Why a Linker Instead of Per-Analyzer Logic
 -----------------------------------------
@@ -212,15 +217,18 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
     # Multiple classes can share the same name (e.g., Django has 238 classes
     # named "Model" — 1 real + 237 test stubs). When linking methods, we
     # prefer the class in the same file as the method.
-    # Also index by canonical_name for proto service→rpc and nested message
-    # containment, where name is unqualified but canonical_name is fully
-    # qualified (e.g., name="HelloService", canonical_name="hello.HelloService").
+    # Also index by qualified_name (ADR-0032) for proto service→rpc and
+    # nested message containment, where name is unqualified but
+    # qualified_name is fully qualified (e.g., name="HelloService",
+    # qualified_name="hello.HelloService"). Reads canonical_name as a
+    # fallback for the deprecated-but-still-populated legacy field.
     container_by_name: dict[str, list[Symbol]] = {}
     for sym in ctx.symbols:
         if sym.kind in CONTAINER_KINDS:
             container_by_name.setdefault(sym.name, []).append(sym)
-            if sym.canonical_name and sym.canonical_name != sym.name:
-                container_by_name.setdefault(sym.canonical_name, []).append(sym)
+            qualified = sym.qualified_name or sym.canonical_name
+            if qualified and qualified != sym.name:
+                container_by_name.setdefault(qualified, []).append(sym)
 
     # Build set of existing contains edge keys for deduplication
     existing_contains: set[tuple[str, str]] = {
@@ -269,10 +277,12 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
         # Track to avoid duplicates within this run
         existing_contains.add(pair)
 
-    # --- Phase 1.5: canonical_name fallback ---
+    # --- Phase 1.5: qualified_name fallback ---
     # Handles cases where sym.name is unqualified (no separator) but
-    # sym.canonical_name is fully qualified (e.g., proto RPCs where
-    # name="BidiHello" but canonical_name="hello.HelloService.BidiHello").
+    # sym.qualified_name is fully qualified (e.g., proto RPCs where
+    # name="BidiHello" but qualified_name="hello.HelloService.BidiHello").
+    # Reads canonical_name as a fallback for the deprecated-but-still-
+    # populated legacy field (removed in Phase 6 PR4 per ADR-0032).
     for sym in ctx.symbols:
         if sym.kind not in CONTAINABLE_KINDS and sym.kind not in CONTAINER_KINDS:
             continue
@@ -281,10 +291,11 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
         if _extract_parent_name(sym.name) is not None:
             continue
 
-        # Need a canonical_name with a separator
-        if not sym.canonical_name:
+        # Need a qualified_name (or legacy canonical_name) with a separator
+        qualified = sym.qualified_name or sym.canonical_name
+        if not qualified:
             continue
-        parent_name = _extract_parent_name(sym.canonical_name)
+        parent_name = _extract_parent_name(qualified)
         if parent_name is None:
             continue
 

@@ -174,7 +174,7 @@ def _extract_symbols_from_tree(
                         ),
                         origin=PASS_ID,
                         origin_run_id=run_id,
-                        canonical_name=f"@{name}",
+                        display_label=f"@{name}",
                         signature=signature,
                     )
                     analysis.symbols.append(symbol)
@@ -212,7 +212,7 @@ def _extract_symbols_from_tree(
                         ),
                         origin=PASS_ID,
                         origin_run_id=run_id,
-                        canonical_name=f"@{name}",
+                        display_label=f"@{name}",
                         signature=signature,
                     )
                     analysis.symbols.append(symbol)
@@ -240,7 +240,7 @@ def _extract_symbols_from_tree(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    canonical_name=f"@{name}",
+                    display_label=f"@{name}",
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol

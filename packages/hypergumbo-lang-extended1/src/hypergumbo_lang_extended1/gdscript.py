@@ -157,7 +157,6 @@ def _make_gd_symbol(
     return Symbol(
         id=sym_id,
         name=name,
-        canonical_name=name,
         kind=kind,
         language="gdscript",
         path=file_path,

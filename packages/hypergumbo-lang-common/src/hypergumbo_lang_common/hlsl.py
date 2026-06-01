@@ -122,7 +122,6 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
     return Symbol(
         id=sym_id,
         name=name,
-        canonical_name=name,
         kind=kind,
         language="hlsl",
         path=rel_path,

@@ -432,6 +432,7 @@ closure but affect JSON consumers:
 | 0.9.1 | Additive. `Edge.derived_from: list[str]` (linker derivation provenance). `pass_id` suffix removal (`-v1` / `-ts-v1` / `-ast-v1` gone — **breaking** if you match on pass IDs). `behavior_map["features"]` and `behavior_map["reproducibility_context"]` added. |
 | 0.10.0 | **Breaking.** `Symbol.origin` and `Edge.origin` change from `str` to `list[str]`. Multi-source attribution: when multiple passes contribute, all are credited. |
 | 0.11.0 | `origin_run_signature` removed from `Symbol` and `Edge`. The field was never stamped by any producer, so emitted JSON is unchanged in practice. `from_dict()` silently ignores the key for backward compatibility with pre-removal cached JSON. |
+| 0.12.0 | **ADR-0031 + ADR-0032.** `Symbol.language` becomes `Optional[str]`; two new typed siblings `discovery_language` + `protocol_origin` carry the host-language and protocol-family concepts that the field previously overloaded. `Symbol.canonical_name` is deprecated (removed Phase 6 PR4); two new typed siblings `display_label` + `qualified_name` carry the UI-display and fully-qualified-name concepts. See Part 7 below. |
 
 **`origin` migration.** If your code reads `symbol.origin` or
 `edge.origin` as a string, switch to list iteration:
@@ -461,6 +462,79 @@ either `null` or an absent key. Consumers that defensively read
 it should drop the key from their schema; `Edge.from_dict()` and
 `Symbol.from_dict()` silently ignore the key on cached pre-0.11.0
 JSON.
+
+## Part 7 — `Symbol.language` Class A/B split + `Symbol.canonical_name` typed siblings (0.12.0)
+
+Two reshapes ship together at schema 0.12.0, covered by
+[ADR-0031](adr/0031-symbol-language-reshape.md) and
+[ADR-0032](adr/0032-canonical-name-fingerprint-reshape.md). Both
+address the same kind of conceptual leak: a single string field
+carrying two independent concepts. Each reshape splits the
+overloaded field into typed siblings and leaves the original
+field in place for one major-version deprecation window.
+
+**ADR-0031 — `Symbol.language` Class A/B split.** `Symbol.language`
+previously carried two distinct concepts: the discovery context
+(which host source language a linker scanned to find this symbol)
+and the protocol-family identity (which protocol or framework the
+symbol stands in for, e.g. `kafka` / `websocket` / `grpc`). The
+type changes to `Optional[str]`: real-source-declaration Symbols
+emitted by analyzers keep `language=<lang>`; synthetic stand-ins
+emitted by linkers set `language=None` and populate the two new
+typed siblings instead — `Symbol.discovery_language` (host
+language) and `Symbol.protocol_origin` (protocol-family catalog at
+`hypergumbo_core.protocol_origins`).
+
+**ADR-0032 — `Symbol.canonical_name` typed siblings.**
+`Symbol.canonical_name` previously carried three different things
+through one field: the fully-qualified scoped identifier (Use 3,
+e.g. `hello.HelloService.BidiHello`), an external-reference
+display string (Use 2), and the local unqualified name redundantly
+duplicating `Symbol.name` (Use 1). ADR-0032 splits the field into
+two typed siblings — `Symbol.display_label` (Use 2; UI display
+strings such as `npm run build`, `@MyDirective`, `arch_a(entity)`)
+and `Symbol.qualified_name` (Use 3; fully-qualified scoped
+identifiers, e.g. `module.OuterClass.InnerClass.method`). The
+deprecated `Symbol.canonical_name` field is removed one major
+version later (Phase 6 PR4).
+
+**What changes for consumers.** For cross-language detection
+(consumers that match symbols by what language a linker discovered
+them in), prefer `sym.discovery_language or sym.language`. For
+fully-qualified-name lookup (consumers that resolve qualified
+identifiers, e.g. the containment linker's parent-extraction step),
+prefer `sym.qualified_name or sym.canonical_name`. For display
+strings on synthetic stand-ins (consumers that render symbols in
+UI like `cmd_explain`), read `sym.display_label`. The fallbacks
+let consumers work through the deprecation window.
+
+**What changes in serialized artifacts.** Every behavior-map node
+gains four new fields: `discovery_language`, `protocol_origin`,
+`display_label`, `qualified_name`. For real-source-declaration
+nodes the new fields are typically null; only synthetic stand-ins
+and niche-language analyzers (proto, capnp, thrift, json_config,
+xml_config) populate them. `Symbol.language` may now be `null` on
+synthetic stand-ins where it previously held a host-language
+string.
+
+**Stable_id impact.** ~20–30 Class B synthetic-stand-in Symbols
+have new `stable_id` values across this release because
+`Symbol.language=None` hashes differently from a string value. The
+ten kind-specific `stable_id` factories at
+`packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py`
+(`_KIND_STABLE_ID_FACTORIES` — `file`, `module`, `dependency`,
+`variable`, `export`, `project`, `interface`, `type`, plus
+producer-side `function` / `method` / `class`) all hash language.
+Consumers pinning Symbol identity by cross-version `stable_id`
+diffing should expect those rows to move.
+
+**Fingerprint impact.** Per ADR-0032's "Fingerprint Format 1
+demolition" section, ~99 TOML dependency nodes plus ~6 other
+config-analyzer node sets move from Format 1 (`<16-char-hex>`) to
+Format 2 (`hgfp1:<64-char-hex>`). This closes INV-fogum.
+Consumers that pinned change-detection on the legacy hex form
+should prefer the new `hgfp1:` form going forward; the two formats
+do not collide because Format 2 carries the explicit scheme tag.
 
 ## See also
 

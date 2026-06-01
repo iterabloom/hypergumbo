@@ -185,7 +185,7 @@ def _process_maven_dependency(
             id=symbol_id,
             stable_id=None,
             shape_id=None,
-            canonical_name=dep_name,
+            qualified_name=dep_name,
             # ADR-0032: fingerprint stamped by central post-pass.
             kind="dependency",
             name=artifact_id,
@@ -293,7 +293,7 @@ def _process_maven_pom(
             id=project_id,
             stable_id=None,
             shape_id=None,
-            canonical_name=project_name,
+            qualified_name=project_name,
             # ADR-0032: fingerprint stamped by central post-pass.
             kind="module",
             name=artifact_id,
@@ -379,7 +379,7 @@ def _process_android_manifest(
                                 id=symbol_id,
                                 stable_id=None,
                                 shape_id=None,
-                                canonical_name=perm_name,
+                                qualified_name=perm_name,
                                 # ADR-0032: fingerprint stamped by central post-pass.
                                 kind="permission",
                                 name=short_name,
@@ -459,7 +459,7 @@ def _process_android_application(
                                 id=symbol_id,
                                 stable_id=None,
                                 shape_id=None,
-                                canonical_name=full_name,
+                                qualified_name=full_name,
                                 # ADR-0032: fingerprint stamped by central post-pass.
                                 # WI-razus: AndroidManifest.xml's activity /
                                 # service / receiver / provider elements are

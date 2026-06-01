@@ -158,7 +158,6 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                     sym = Symbol(
                         id=make_symbol_id("asm", rel_path, start_line, end_line, label_name, kind),
                         name=label_name,
-                        canonical_name=label_name,
                         kind=kind,
                         language="asm",
                         path=rel_path,

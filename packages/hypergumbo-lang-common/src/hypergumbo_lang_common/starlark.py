@@ -133,7 +133,6 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
     return Symbol(
         id=sym_id,
         name=name,
-        canonical_name=name,
         kind=kind,
         language="starlark",
         path=ctx.rel_path,

@@ -85,7 +85,6 @@ def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tre
     return Symbol(
         id=sym_id,
         name=name,
-        canonical_name=name,
         kind=kind,
         language="ada",
         path=rel_path,

@@ -140,14 +140,14 @@ def _make_proto_symbol(
     start_col = node.start_point[1]
     end_col = node.end_point[1]
 
-    # Build canonical name with package prefix
+    # Build qualified name with package prefix
     name_parts = []
     if package_name:
         name_parts.append(package_name)
     if prefix:
         name_parts.append(prefix)
     name_parts.append(name)
-    canonical_name = ".".join(name_parts)
+    qualified_name = ".".join(name_parts)
 
     span = Span(
         start_line=start_line,
@@ -159,7 +159,7 @@ def _make_proto_symbol(
     return Symbol(
         id=sym_id,
         name=name,
-        canonical_name=canonical_name,
+        qualified_name=qualified_name,
         kind=kind,
         language="proto",
         path=file_path,

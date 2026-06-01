@@ -260,7 +260,7 @@ def _process_scripts(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=f"npm run {script_name}",
+                    display_label=f"npm run {script_name}",
                     # ADR-0032: fingerprint stamped by central post-pass.
                     kind="file",
                     name=script_name,
@@ -540,7 +540,7 @@ def _process_exports(
                 id=symbol_id,
                 stable_id=None,
                 shape_id=None,
-                canonical_name=f"{pkg_name or 'pkg'}:{entry_name}",
+                qualified_name=f"{pkg_name or 'pkg'}:{entry_name}",
                 # ADR-0032: fingerprint stamped by central post-pass.
                 kind="export",
                 name=entry_name,
@@ -600,7 +600,7 @@ def _process_exports(
             id=symbol_id,
             stable_id=None,
             shape_id=None,
-            canonical_name=f"{pkg_name or 'pkg'}:{subpath}",
+            qualified_name=f"{pkg_name or 'pkg'}:{subpath}",
             # ADR-0032: fingerprint stamped by central post-pass.
             kind="export",
             name=subpath,
@@ -758,7 +758,7 @@ def _process_tsconfig(
         id=config_id,
         stable_id=None,
         shape_id=None,
-        canonical_name=rel_path,
+        display_label=rel_path,
         # ADR-0032: fingerprint stamped by central post-pass.
         kind="file",
         is_config_file=True,

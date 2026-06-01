@@ -95,7 +95,7 @@ message SimpleMessage {
         messages = [s for s in result.symbols if s.kind == "message"]
         assert len(messages) == 1
         # Without package, canonical name should just be message name
-        assert messages[0].canonical_name == "SimpleMessage"
+        assert messages[0].qualified_name == "SimpleMessage"
 
     def test_nested_package_name(self, tmp_path: Path) -> None:
         """Test deeply nested package name."""
@@ -111,7 +111,7 @@ message DeepMessage {
         result = analyze_proto(tmp_path)
         messages = [s for s in result.symbols if s.kind == "message"]
         assert len(messages) == 1
-        assert "com.example.myservice.v1.api" in messages[0].canonical_name
+        assert "com.example.myservice.v1.api" in messages[0].qualified_name
 
 class TestNestedTypes:
     """Branch coverage for nested message/enum handling."""
@@ -297,9 +297,9 @@ service UserService {
         result = analyze_proto(tmp_path)
         rpc = next(s for s in result.symbols if s.kind == "rpc")
         # Canonical name should include package and service
-        assert "myservice.v1" in rpc.canonical_name
-        assert "UserService" in rpc.canonical_name
-        assert "GetUser" in rpc.canonical_name
+        assert "myservice.v1" in rpc.qualified_name
+        assert "UserService" in rpc.qualified_name
+        assert "GetUser" in rpc.qualified_name
 
 class TestMessageCanonicalNames:
     """Branch coverage for message canonical name generation."""
@@ -320,9 +320,9 @@ message Response {
         result = analyze_proto(tmp_path)
         data_msg = next(s for s in result.symbols if s.name == "Data")
         # Canonical name should include package and parent message
-        assert "myservice.v1" in data_msg.canonical_name
-        assert "Response" in data_msg.canonical_name
-        assert "Data" in data_msg.canonical_name
+        assert "myservice.v1" in data_msg.qualified_name
+        assert "Response" in data_msg.qualified_name
+        assert "Data" in data_msg.qualified_name
 
 class TestFindProtoFilesEdgeCases:
     """Branch coverage for file discovery."""
@@ -370,7 +370,7 @@ enum Status {
         enums = [s for s in result.symbols if s.kind == "enum"]
         assert len(enums) == 1
         assert enums[0].name == "Status"
-        assert "myservice.v1" in enums[0].canonical_name
+        assert "myservice.v1" in enums[0].qualified_name
 
     def test_multiple_enums(self, tmp_path: Path) -> None:
         """Test multiple enum definitions."""

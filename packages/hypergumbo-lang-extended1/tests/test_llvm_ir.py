@@ -87,7 +87,8 @@ define i32 @add(i32 %a, i32 %b) {
         func = next((s for s in result.symbols if s.name == "add"), None)
         assert func is not None
         assert func.kind == "function"
-        assert func.canonical_name == "@add"
+        # ADR-0032: canonical_name → display_label for @-sigil-form expressions.
+        assert func.display_label == "@add"
         assert "i32 @add" in func.signature
 
     def test_detects_multiple_functions(self, tmp_path: Path) -> None:

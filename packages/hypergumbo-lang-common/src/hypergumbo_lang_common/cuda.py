@@ -240,7 +240,6 @@ def _extract_cuda_symbols(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    canonical_name=func_name,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
                     kind=kind,
                     name=func_name,

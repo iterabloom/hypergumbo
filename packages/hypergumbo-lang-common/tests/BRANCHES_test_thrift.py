@@ -65,7 +65,7 @@ service UserService {
         services = [s for s in result.symbols if s.kind == "service"]
         assert len(services) >= 1
         # Canonical name should include namespace
-        assert any("UserService" in s.canonical_name for s in services)
+        assert any("UserService" in s.qualified_name for s in services)
 
 class TestFunctionExtraction:
     """Branch coverage for function (RPC method) extraction."""
@@ -288,4 +288,4 @@ struct User {
         structs = [s for s in result.symbols if s.kind == "struct"]
         assert len(structs) >= 1
         # Should use first namespace
-        assert any("User" in s.canonical_name for s in structs)
+        assert any("User" in s.qualified_name for s in structs)

@@ -114,9 +114,9 @@ directive @deprecated(reason: String) on FIELD_DEFINITION
     names = [d.name for d in directives]
     assert "auth" in names
     assert "deprecated" in names
-    # Check canonical name has @ prefix
+    # Check display_label has @ prefix (ADR-0032: canonical_name → display_label for sigil-form expressions)
     auth = next(d for d in directives if d.name == "auth")
-    assert auth.canonical_name == "@auth"
+    assert auth.display_label == "@auth"
 
 def test_analyze_fragment(tmp_path):
     """Test detection of fragment definition."""

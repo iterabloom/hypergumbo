@@ -219,7 +219,7 @@ service ProductService {
         assert "ProductService" in services
 
     def test_namespace_in_canonical_name(self, temp_repo: Path) -> None:
-        """Canonical name includes namespace if present."""
+        """Qualified name includes namespace if present (ADR-0032: canonical_name → qualified_name)."""
         (temp_repo / "user.thrift").write_text('''
 namespace java com.example.service
 
@@ -231,8 +231,8 @@ service UserService {
         result = analyze_thrift(temp_repo)
 
         service = next(s for s in result.symbols if s.kind == "service")
-        # Should include namespace in canonical name
-        assert "com.example.service" in service.canonical_name
+        # Should include namespace in qualified name
+        assert "com.example.service" in service.qualified_name
 
 
 class TestThriftAnalysisUnavailable:
