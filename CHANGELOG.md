@@ -180,6 +180,18 @@ Second of four validator classes lights up per ADR-0033 §"Validator classes" #2
 
 100% coverage on `spec_validator.py` (120/0/100%). 14289 passed.
 
+#### ADR-0033 Phase 3 PR3 — cross-field coherence validator class
+
+Third of four validator classes lights up per ADR-0033 §"Validator classes" #3. The validator scans each record for field-pair coherence invariants the producer pipeline is expected to honor.
+
+- **`Edge.dst_ref ↔ Edge.dst` coherence**: when `dst_ref` is populated, the legacy `dst` string must also be populated. Per the `make_unresolved_edge` docstring, both shapes carry the same external-target identity for back-compat with the ~34 consumer sites that haven't migrated to `dst_ref`. Violation severity: `error`.
+- **ADR-0031 Class B coherence**: a Symbol must not have BOTH `language` and `protocol_origin` populated — Class A keeps `language`, Class B uses `protocol_origin` with `language=None`. File Symbols (`kind="file"`) are exempt per the ADR's per-linker producer policy. Violation severity: `warning`.
+- **ADR-0032 display_label scope**: `Symbol.display_label` is reserved for Class B synthetic stand-ins; a Class A real-source declaration carrying `display_label` is incoherent. Violation severity: `warning`.
+- **Generalizes WI-mafik / WI-huzuv / WI-nigah retrofit pattern**: future cross-field invariants extend the same per-record check shape (one block per invariant in `_check_cross_field_coherence`).
+- **7 new property tests** at `tests/test_spec_validator_smoke.py` cover: Class B coherent passes, Class A coherent passes, both-fields-populated warning, file-kind exempt, display_label-on-Class-A warning, dst_ref-without-dst error, dst_ref-with-dst passes, dst_ref-None skipped.
+
+100% coverage on `spec_validator.py` (142/0/100%). Full smart-test suite passes (2445+ scoped).
+
 
 ### Changed
 

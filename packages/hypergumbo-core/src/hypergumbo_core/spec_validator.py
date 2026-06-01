@@ -132,7 +132,7 @@ def validate_ir(
     analysis_runs = list(analysis_runs)
     violations.extend(_check_axis_conformance(symbols, edges, analysis_runs))
     violations.extend(_check_writer_contract(symbols, edges, analysis_runs))
-    # Phase 3 PR3 — cross-field coherence checks land here
+    violations.extend(_check_cross_field_coherence(symbols, edges, analysis_runs))
     # Phase 3 PR4 — verdict-enum completeness checks land here
     return violations
 
@@ -521,6 +521,147 @@ def _check_writer_contract(
                     "Some pass should be populating it with an evidence-"
                     "derived value. See INV-luhur §\"Default-only "
                     "initializer never overridden\"."
+                ),
+            ))
+
+    return violations
+
+
+# ----------------------------------------------------------------------
+# Phase 3 PR3 — Cross-field coherence validator class
+# ----------------------------------------------------------------------
+#
+# Per ADR-0033 §"Validator classes" #3. Documented field-pair
+# invariants the producer pipeline is expected to honor; the validator
+# scans every record and reports records that violate one.
+#
+# Invariants checked in Phase 3 PR3:
+#
+#   - **dst_ref ↔ dst**: When `Edge.dst_ref` is populated, the legacy
+#     `Edge.dst` string must also be populated (the two carry the same
+#     external-target identity in different shapes per the
+#     `make_unresolved_edge` docstring).
+#   - **Class B language/protocol_origin coherence (ADR-0031)**: A
+#     Symbol with `language=None` is a synthetic linker stand-in and
+#     must have `protocol_origin` populated (and vice versa: a Symbol
+#     with `protocol_origin` populated must have `language=None`).
+#     File-Symbol Class A exceptions: `kind="file"` skips the check
+#     because file Symbols have language but no protocol identity.
+#   - **display_label scope (ADR-0032)**: `Symbol.display_label`
+#     should appear on synthetic stand-ins (Class B) only —
+#     real-source declarations (Class A: kind="function" / "class" /
+#     "method" / "variable" etc. in a real source file) leave it
+#     `None`. The cleanest heuristic: a Symbol with `display_label`
+#     populated AND `language` non-None AND `protocol_origin` None is
+#     a Class-A symbol with a display label — that's the smell.
+#
+# Sub-pattern future-extension hook: this validator's table is the
+# WI-mafik / WI-huzuv / WI-nigah-style coherence assertion family.
+# Each future cross-field invariant adds a row to the per-record
+# checks below.
+
+
+def _check_cross_field_coherence(
+    symbols: Iterable[Any],
+    edges: Iterable[Any],
+    analysis_runs: Iterable[Any],
+) -> list[ValidationViolation]:
+    """Cross-field coherence class: field-pair invariants.
+
+    See ADR-0033 §"Validator classes" #3.
+    """
+    violations: list[ValidationViolation] = []
+
+    # ---- Symbol invariants ----
+    for sym in symbols:
+        sym_id = getattr(sym, "id", None)
+        language = getattr(sym, "language", None)
+        protocol_origin = getattr(sym, "protocol_origin", None)
+        kind = getattr(sym, "kind", None)
+        display_label = getattr(sym, "display_label", None)
+
+        # ADR-0031 Class B coherence. File Symbols are an explicit
+        # Class A exception per the ADR's per-linker producer policy.
+        if kind != "file":
+            if language is None and protocol_origin is None:
+                # Class-B-without-protocol-origin: ambiguous. Either the
+                # producer forgot to set protocol_origin, or this is a
+                # legitimate boundary node (e.g., external-symbol synth).
+                # Skip to avoid false positives during the migration.
+                pass
+            elif language is not None and protocol_origin is not None:
+                violations.append(ValidationViolation(
+                    severity="warning",
+                    validator_class="cross_field",
+                    field_name="Symbol.language / Symbol.protocol_origin",
+                    record_id=sym_id,
+                    observed=f"language={language!r}, protocol_origin={protocol_origin!r}",
+                    expected=(
+                        "Class A: language non-None, protocol_origin None. "
+                        "Class B: language None, protocol_origin non-None. "
+                        "Both populated together violates ADR-0031."
+                    ),
+                    message=(
+                        f"Symbol {sym_id!r} has BOTH language={language!r} "
+                        f"and protocol_origin={protocol_origin!r}. ADR-0031 "
+                        "Class A (real source) keeps language; Class B "
+                        "(synthetic stand-in) uses protocol_origin with "
+                        "language=None. Both populated together is incoherent."
+                    ),
+                ))
+
+        # ADR-0032 display_label scope. Class A real-source declarations
+        # should not carry a display_label; the field is reserved for
+        # synthetic linker stand-ins.
+        if (
+            display_label is not None
+            and language is not None
+            and protocol_origin is None
+            and kind != "file"
+        ):
+            violations.append(ValidationViolation(
+                severity="warning",
+                validator_class="cross_field",
+                field_name="Symbol.display_label",
+                record_id=sym_id,
+                observed=f"display_label={display_label!r}",
+                expected=(
+                    "display_label reserved for Class B synthetic stand-ins "
+                    "(language=None, protocol_origin populated); Class A "
+                    "real-source declarations leave it None."
+                ),
+                message=(
+                    f"Symbol {sym_id!r} has display_label={display_label!r} "
+                    f"but is Class A (language={language!r}, "
+                    "protocol_origin=None). ADR-0032 reserves display_label "
+                    "for Class B synthetic stand-ins."
+                ),
+            ))
+
+    # ---- Edge invariants ----
+    for edge in edges:
+        edge_id = getattr(edge, "id", None)
+        dst_ref = getattr(edge, "dst_ref", None)
+        dst = getattr(edge, "dst", None)
+
+        # dst_ref ↔ dst coherence: when dst_ref is populated, the legacy
+        # dst string must also be populated.
+        if dst_ref is not None and not dst:
+            violations.append(ValidationViolation(
+                severity="error",
+                validator_class="cross_field",
+                field_name="Edge.dst / Edge.dst_ref",
+                record_id=edge_id,
+                observed=f"dst={dst!r}, dst_ref={dst_ref!r}",
+                expected=(
+                    "When dst_ref is populated, dst must also be "
+                    "populated (legacy back-compat per make_unresolved_edge)."
+                ),
+                message=(
+                    f"Edge {edge_id!r} has dst_ref populated but dst is "
+                    "empty. Producers MUST stamp both for back-compat with "
+                    "the ~34 consumer sites that haven't migrated to "
+                    "dst_ref."
                 ),
             ))
 

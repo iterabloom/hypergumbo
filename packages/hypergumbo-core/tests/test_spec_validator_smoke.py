@@ -538,6 +538,193 @@ def test_writer_contract_silent_with_no_runs() -> None:
     assert not any(v.validator_class == "writer_contract" for v in violations)
 
 
+# ----------------------------------------------------------------------
+# Phase 3 PR3 — Cross-field coherence validator class tests
+# ----------------------------------------------------------------------
+
+
+def test_cross_field_class_b_coherent_passes() -> None:
+    """Class B synthetic stand-in (language=None, protocol_origin
+    populated) passes the cross-field check."""
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(k for k in all_symbol_kind_names() if k != "file")
+    sym = _FakeSym(
+        id="sym:class-b",
+        kind=a_kind,
+        language=None,
+        discovery_language="python",
+        protocol_origin="websocket",
+        display_label=None,
+        origin=[],
+        qualified_name=None,
+        dst_ref=None,
+        dst=None,
+    )
+    violations = validate_ir([sym], [], [])
+    assert not any(v.validator_class == "cross_field" for v in violations)
+
+
+def test_cross_field_class_a_coherent_passes() -> None:
+    """Class A real-source declaration (language populated,
+    protocol_origin None) passes."""
+    from hypergumbo_core.catalog import all_known_languages
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(k for k in all_symbol_kind_names() if k != "file")
+    a_lang = next(iter(all_known_languages()))
+    sym = _FakeSym(
+        id="sym:class-a",
+        kind=a_kind,
+        language=a_lang,
+        discovery_language=None,
+        protocol_origin=None,
+        display_label=None,
+        origin=[],
+        qualified_name=None,
+        dst_ref=None,
+        dst=None,
+    )
+    violations = validate_ir([sym], [], [])
+    assert not any(v.validator_class == "cross_field" for v in violations)
+
+
+def test_cross_field_flags_class_a_with_protocol_origin() -> None:
+    """A Symbol with both language AND protocol_origin populated is
+    incoherent per ADR-0031 — emits a warning."""
+    from hypergumbo_core.catalog import all_known_languages
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(k for k in all_symbol_kind_names() if k != "file")
+    a_lang = next(iter(all_known_languages()))
+    sym = _FakeSym(
+        id="sym:incoherent-both",
+        kind=a_kind,
+        language=a_lang,
+        discovery_language=None,
+        protocol_origin="websocket",
+        display_label=None,
+        origin=[],
+        qualified_name=None,
+        dst_ref=None,
+        dst=None,
+    )
+    violations = validate_ir([sym], [], [])
+    matched = [
+        v for v in violations
+        if v.validator_class == "cross_field"
+        and v.field_name == "Symbol.language / Symbol.protocol_origin"
+    ]
+    assert len(matched) == 1
+    assert matched[0].severity == "warning"
+
+
+def test_cross_field_file_kind_exempt_from_class_b_check() -> None:
+    """File Symbols (kind='file') keep both language and no protocol_origin
+    per ADR-0031 Class A — exempt from the Class-B coherence check."""
+    from hypergumbo_core.catalog import all_known_languages
+
+    a_lang = next(iter(all_known_languages()))
+    sym = _FakeSym(
+        id="file:main.py",
+        kind="file",
+        language=a_lang,
+        discovery_language=None,
+        protocol_origin=None,
+        display_label=None,
+        origin=[],
+        qualified_name=None,
+        dst_ref=None,
+        dst=None,
+    )
+    violations = validate_ir([sym], [], [])
+    assert not any(v.validator_class == "cross_field" for v in violations)
+
+
+def test_cross_field_flags_class_a_with_display_label() -> None:
+    """display_label on a Class-A real-source declaration is a smell
+    per ADR-0032 — emits a warning."""
+    from hypergumbo_core.catalog import all_known_languages
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(k for k in all_symbol_kind_names() if k != "file")
+    a_lang = next(iter(all_known_languages()))
+    sym = _FakeSym(
+        id="sym:label-on-class-a",
+        kind=a_kind,
+        language=a_lang,
+        discovery_language=None,
+        protocol_origin=None,
+        display_label="some_display_label",
+        origin=[],
+        qualified_name=None,
+        dst_ref=None,
+        dst=None,
+    )
+    violations = validate_ir([sym], [], [])
+    matched = [
+        v for v in violations
+        if v.validator_class == "cross_field"
+        and v.field_name == "Symbol.display_label"
+    ]
+    assert len(matched) == 1
+    assert matched[0].severity == "warning"
+
+
+def test_cross_field_flags_dst_ref_without_dst() -> None:
+    """An Edge with dst_ref populated but dst empty violates the
+    back-compat contract per make_unresolved_edge docstring."""
+    edge = _FakeSym(
+        id="edge:dst-mismatch",
+        edge_type="calls",
+        evidence_type="ast_call",
+        evidence_lang=None,
+        origin=[],
+        dst="",  # empty — should also be populated
+        dst_ref=object(),  # truthy ExternalRef stand-in
+    )
+    violations = validate_ir([], [edge], [])
+    matched = [
+        v for v in violations
+        if v.validator_class == "cross_field"
+        and v.field_name == "Edge.dst / Edge.dst_ref"
+    ]
+    assert len(matched) == 1
+    assert matched[0].severity == "error"
+
+
+def test_cross_field_dst_ref_with_dst_passes() -> None:
+    """When both dst_ref and dst are populated, the back-compat
+    invariant is satisfied — no violation."""
+    edge = _FakeSym(
+        id="edge:coherent",
+        edge_type="calls",
+        evidence_type="ast_call",
+        evidence_lang=None,
+        origin=[],
+        dst="external:python:os.path:join",
+        dst_ref=object(),  # truthy ExternalRef stand-in
+    )
+    violations = validate_ir([], [edge], [])
+    assert not any(v.field_name == "Edge.dst / Edge.dst_ref" for v in violations)
+
+
+def test_cross_field_dst_ref_none_passes() -> None:
+    """When dst_ref is None (in-repo dst), the back-compat check is
+    skipped."""
+    edge = _FakeSym(
+        id="edge:in-repo",
+        edge_type="calls",
+        evidence_type="ast_call",
+        evidence_lang=None,
+        origin=[],
+        dst="real-symbol-id",
+        dst_ref=None,
+    )
+    violations = validate_ir([], [edge], [])
+    assert not any(v.field_name == "Edge.dst / Edge.dst_ref" for v in violations)
+
+
 def test_axis_conformance_qualified_name_unknown_language_is_skipped() -> None:
     """When the Symbol's language has no declared qualified-name separator
     policy, the structural check is skipped (no violation, no false
