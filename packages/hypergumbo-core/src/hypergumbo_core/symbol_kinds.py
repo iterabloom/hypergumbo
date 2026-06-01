@@ -90,6 +90,13 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "`library-exports.yaml`'s `symbol_kind: ^contract$` rule "
                    "that surfaces deployable Solidity contracts as library "
                    "exports."),
+    SymbolKindSpec("modifier", AXIS_LANGUAGE_CONSTRUCT,
+                   "Solidity / Vyper modifier declaration. A function "
+                   "modifier is a reusable pre/post-condition block "
+                   "applied to contract functions (e.g., `onlyOwner`). "
+                   "Producer: `solidity.py:302` emits "
+                   "`add_symbol(mod_name, \"modifier\", ...)` for "
+                   "`modifier_definition` AST nodes."),
     SymbolKindSpec("struct", AXIS_LANGUAGE_CONSTRUCT,
                    "Struct / record-type declaration."),
     SymbolKindSpec("enum", AXIS_LANGUAGE_CONSTRUCT,

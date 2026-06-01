@@ -270,14 +270,35 @@ def _check_axis_conformance(
             violations.append(v)
 
     # ---- AnalysisRun-side checks ----
+    # AnalysisRuns reach validate_ir as dicts (cli.py accumulates
+    # ``linker_result.run.to_dict()`` rather than the dataclass), so
+    # use ``_read`` to handle both shapes. The serialized form names
+    # ``pass_id`` as ``"pass"`` (ir.py:to_dict line 275) — check both.
     for run in analysis_runs:
-        run_id = getattr(run, "execution_id", None)
+        run_id = _read(run, "execution_id", None)
+        pass_id_value = _read(run, "pass_id", None)
+        if pass_id_value is None:
+            pass_id_value = _read(run, "pass", None)
         violations.extend(_check_value(
             run_id, "AnalysisRun.pass_id", "pass-id",
-            getattr(run, "pass_id", None), pass_ids, allow_none=False,
+            pass_id_value, pass_ids, allow_none=False,
         ))
 
     return violations
+
+
+def _read(obj: Any, attr: str, default: Any = None) -> Any:
+    """Read an attribute or dict-key from a record, whichever shape it has.
+
+    AnalysisRuns frequently reach the validator as already-serialized
+    dicts (the orchestrator at ``cli.py`` accumulates
+    ``run.to_dict()`` instances). Symbols and Edges typically reach
+    as dataclass instances. This helper lets the same axis-conformance
+    code branch handle both without per-call ``isinstance`` checks.
+    """
+    if isinstance(obj, dict):
+        return obj.get(attr, default)
+    return getattr(obj, attr, default)
 
 
 def _check_value(

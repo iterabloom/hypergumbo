@@ -263,6 +263,7 @@
             "class": "language_construct",
             "interface": "language_construct",
             "contract": "language_construct",
+            "modifier": "language_construct",
             "struct": "language_construct",
             "enum": "language_construct",
             "union": "language_construct",

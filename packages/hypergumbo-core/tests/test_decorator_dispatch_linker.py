@@ -333,4 +333,4 @@ class TestLinkDecoratorDispatch:
         )
         result = link_decorator_dispatch(ctx)
         assert result.run is not None
-        assert "decorator-dispatch-linker" in result.run.pass_id
+        assert "decorator-dispatch" in result.run.pass_id

@@ -378,6 +378,19 @@ Test fixtures across `test_ir.py`, `test_dependency_linker.py`, `test_containmen
 
 14552 smart-test passes (2 pre-existing `test_cli_symbols` rendering failures unrelated to this PR).
 
+#### Phase 6 PR5 — axis-conformance catalog sweep (validator-driven cleanup tail)
+
+Closes 987 of 989 `axis_conformance` violations (~99%) surfaced by the validator's first self-analysis pass after Phase 6 PR4:
+
+- **`catalog.py::all_known_pass_ids`** extended with two new known-not-in-registry sets: `_BUILTIN_PIPELINE_PASS_IDS = {"enclosure-linker"}` (the synthetic post-pass at `linkers/registry.py:774` that connects synthetic stand-ins to enclosing functions; closes 119 `Edge.origin` violations) and `_SYNTHESIS_MECHANISMS = {"inheritance", "orchestrator_file_symbol_synthesis", "scip"}` (the synthesis-mechanism values overloaded onto `Symbol.origin` per the docstring's pending-split note; closes 492 `Symbol.origin` violations). The "pending split into a sibling `synthesis_mechanism` field" remains documented as a future ADR; until then, the catalog accepts these values as legitimate.
+- **`linkers/decorator_dispatch.py:47`**: `PASS_ID = make_pass_id("decorator-dispatch-linker")` corrected to `make_pass_id("decorator-dispatch")` — matches the linker's `@register_linker("decorator-dispatch", ...)` registration name (was: registered name and runtime PASS_ID differed; emitted `decorator-dispatch-linker` value didn't appear in the catalog). Closes 292 `Edge.origin` violations.
+- **`symbol_kinds.py`**: new `SymbolKindSpec("modifier", AXIS_LANGUAGE_CONSTRUCT, ...)` entry registers the Solidity/Vyper modifier kind that `solidity.py:302` emits via `add_symbol(mod_name, "modifier", ...)`. Closes 1 `Symbol.kind` violation.
+- **`spec_validator.py`**: new `_read(obj, attr, default)` helper makes the AnalysisRun-side axis-conformance check dict-aware. `cli.py:7817` accumulates `linker_result.run.to_dict()` rather than the dataclass, so the previous `getattr(run, "pass_id", None)` returned `None` for every dict-shaped run. The helper checks both attribute and key access; the validator also tries the serialized `"pass"` key (per `ir.py:to_dict line 275` where `pass_id` is renamed) when `"pass_id"` is absent. Closes 83 `AnalysisRun.pass_id` violations.
+
+The 2 residual `axis_conformance` violations are Solidity test-fixture data leaks (`Symbol.language='Not owner'` + 1 `AnalysisRun.pass_id` orphan) tracked for a separate cleanup. The 1639 `cross_field` and 17 `id_format` violations remain Phase 6 PR6 territory.
+
+162 spec-validator + catalog + decorator-dispatch tests pass. Self-analysis post-fix shows 989 → 2 axis_conformance violations (99.8% drop).
+
 #### Phase 6 PR2 — INV-luhur AnalysisRun + meta-layer writer-contract sweep
 
 Closes a batch of the 10 INV-luhur sub-members by codifying canonical definitions, wiring previously-unwired writer paths, and extending `_check_writer_contract` to fold in the structural pattern.

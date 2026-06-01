@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-PASS_ID = make_pass_id("decorator-dispatch-linker")
+PASS_ID = make_pass_id("decorator-dispatch")
 
 # Path segments that indicate test files
 _TEST_PATH_SEGMENTS = frozenset({"tests", "test", "testing", "conftest"})

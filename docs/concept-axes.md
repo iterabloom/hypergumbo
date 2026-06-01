@@ -204,6 +204,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`message`** — Protobuf ``message`` declaration (``proto.py:260``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``proto.py`` emits via ``_make_proto_symbol(..., 'message', ...)`` indirection).
 - **`method`** — Method on a class / struct / interface.
 - **`mixin`** — Mixin declaration (Ruby / Sass).
+- **`modifier`** — Solidity / Vyper modifier declaration. A function modifier is a reusable pre/post-condition block applied to contract functions (e.g., `onlyOwner`). Producer: `solidity.py:302` emits `add_symbol(mod_name, "modifier", ...)` for `modifier_definition` AST nodes.
 - **`module`** — Module declaration (the source-level construct).
 - **`namespace`** — Namespace declaration (C++ / TypeScript / C#).
 - **`node`** — Node symbol (k8s / DSL). CANONICAL per audit-findings 0007.

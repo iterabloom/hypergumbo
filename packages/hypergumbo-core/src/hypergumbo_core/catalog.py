@@ -490,30 +490,61 @@ def get_default_catalog() -> Catalog:
     return build_catalog_from_registries()
 
 
+# Pipeline-level synthetic passes that don't go through
+# ``@register_analyzer`` or ``@register_linker``. These are post-pass
+# steps the orchestrator runs after the registered linkers; their
+# pass_id values legitimately appear in ``AnalysisRun.pass_id``,
+# ``Symbol.origin``, and ``Edge.origin`` but are NOT registry entries.
+# Phase 6 PR5 (validator-driven cleanup tail) closes the corresponding
+# 411 ``axis_conformance`` violations on ``Edge.origin`` by accepting
+# these as legitimate pass-id values.
+_BUILTIN_PIPELINE_PASS_IDS: frozenset[str] = frozenset({
+    # registry.py:774 — synthetic post-pass that connects synthetic
+    # linker-emitted nodes (grpc_stub, mq_publisher, etc.) to their
+    # enclosing functions for slice traversal.
+    "enclosure-linker",
+})
+
+# Symbol-synthesis mechanisms that are NOT pass IDs. ``Symbol.origin``
+# overloads the pass-id axis with these synthesis-mechanism values per
+# the Symbol docstring's "pending split into a sibling
+# ``synthesis_mechanism`` field" note. Until that ADR ships, accept
+# them here as legitimate origin values.
+_SYNTHESIS_MECHANISMS: frozenset[str] = frozenset({
+    "inheritance",
+    "orchestrator_file_symbol_synthesis",
+    "scip",
+})
+
+
 def all_known_pass_ids() -> frozenset[str]:
     """Return the union of pass IDs across registered analyzers and linkers.
 
     Single source of truth for "what passes does this codebase
     declare?" — the answer is "the names of every ``@register_analyzer``
-    and ``@register_linker`` call site." Used by the WI-busij
-    multi-value-field-axis linter to resolve the ``# axis: pass-id``
-    annotation (covers ``AnalysisRun.pass_id``, ``Symbol.origin``,
-    ``Edge.origin``).
+    and ``@register_linker`` call site, plus the small set of
+    pipeline-level synthetic passes and Symbol synthesis mechanisms
+    documented in this module." Used by the WI-busij multi-value-field-
+    axis linter to resolve the ``# axis: pass-id`` annotation (covers
+    ``AnalysisRun.pass_id``, ``Symbol.origin``, ``Edge.origin``).
 
-    Known smuggling: ``Symbol.origin`` carries a small set of
-    synthesis-mechanism values (``inheritance``,
-    ``orchestrator_file_symbol_synthesis``, ``scip``) that aren't
-    pass IDs. The Symbol docstring documents this as a pending split
-    into a sibling ``synthesis_mechanism`` field. Until that ships,
-    those values are values-not-in-registry that a future consumer-
-    side check (Phase 2 of WI-busij) will surface as legitimate
-    drift, forcing the split.
+    ``Symbol.origin`` carries a small set of synthesis-mechanism values
+    (``inheritance``, ``orchestrator_file_symbol_synthesis``, ``scip``)
+    that aren't pass IDs; the Symbol docstring documents this as a
+    pending split into a sibling ``synthesis_mechanism`` field. Until
+    that ADR ships, ``_SYNTHESIS_MECHANISMS`` (above) carries them so
+    the axis-conformance check doesn't false-positive.
     """
     from .analyze.registry import _ANALYZER_REGISTRY, ensure_discovered
     from .linkers.registry import _LINKER_REGISTRY
 
     ensure_discovered()
-    return frozenset(_ANALYZER_REGISTRY) | frozenset(_LINKER_REGISTRY)
+    return (
+        frozenset(_ANALYZER_REGISTRY)
+        | frozenset(_LINKER_REGISTRY)
+        | _BUILTIN_PIPELINE_PASS_IDS
+        | _SYNTHESIS_MECHANISMS
+    )
 
 
 def all_known_languages() -> frozenset[str]:
