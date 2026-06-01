@@ -55,7 +55,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..analyze.base import make_symbol_id
+from ..analyze.base import make_protocol_stable_id, make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
@@ -365,7 +365,15 @@ def _create_query_symbol(pattern: DatabaseQueryPattern, root: Path) -> Symbol:
         language=None,
         discovery_language=pattern.language,
         protocol_origin="database_query",
-        stable_id=f"{pattern.query_type}:{','.join(sorted(pattern.tables))}",
+        # Phase 6 PR1 (INV-hunup): was ``f"{query_type}:{tables}"`` (1-colon
+        # form, escape category ``colon_1``). The new factory hashes the
+        # (category, query_type, tables) tuple into the canonical
+        # ``sha256:<16hex>`` shape the validator pins.
+        stable_id=make_protocol_stable_id(
+            "db_query",
+            pattern.query_type,
+            ",".join(sorted(pattern.tables)),
+        ),
         meta={
             "query_type": pattern.query_type,
             "tables": pattern.tables,

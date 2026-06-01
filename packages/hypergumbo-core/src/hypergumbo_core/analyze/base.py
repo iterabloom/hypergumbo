@@ -513,9 +513,14 @@ def make_unresolved_edge(
 def make_route_stable_id(method: str, path: str) -> str:
     """Compute a collision-free stable_id for route symbols.
 
-    Uses sha256("route:{method}:{path}") per ADR-0014 §4.  The previous
-    approach set stable_id to bare HTTP methods (e.g. "GET"), causing every
-    same-method route to collide.
+    Uses ``_short_sha256("route:{method}:{path}")`` per ADR-0014 §4 +
+    Phase 6 PR1 (INV-hunup). The previous approach set stable_id to
+    bare HTTP methods (e.g. "GET"), causing every same-method route to
+    collide; that was already fixed. Phase 6 PR1 additionally aligns the
+    output shape with the canonical ``sha256:<16hex>`` schema that the
+    other ``make_*_stable_id`` factories use, closing the
+    ``raw_hex_64`` escape category for ~20 call-site Symbols emitted by
+    the HTTP linker and ~N route Symbols emitted by various analyzers.
 
     Args:
         method: HTTP method (e.g. "GET", "POST", "ANY"). Case-insensitive —
@@ -523,33 +528,37 @@ def make_route_stable_id(method: str, path: str) -> str:
         path: Route path (e.g. "/users", "/posts/:id").
 
     Returns:
-        A hex-digest string that uniquely identifies the (method, path) pair.
+        A ``sha256:<16hex>``-shaped string that uniquely identifies the
+        (method, path) pair.
     """
     # Normalize empty paths to "/" — empty strings from annotation extraction
     # (e.g., @GetMapping("") or sub-resource locators without @Path) should
     # hash identically to the root path (INV-nimik).
     normalized = path if path else "/"
-    key = f"route:{method.upper()}:{normalized}"
-    return hashlib.sha256(key.encode()).hexdigest()
+    return _short_sha256(f"route:{method.upper()}:{normalized}")
 
 
 def make_entry_stable_id(entry_type: str, name: str) -> str:
     """Compute a collision-free stable_id for entry-point symbols.
 
-    Uses sha256("entry:{entry_type}:{name}") per ADR-0014 §4.  Used for
-    symbols like WGSL shader stages (@vertex, @fragment, @compute) where the
-    previous approach set stable_id to the bare entry type string, causing
-    same-type entry points to collide.
+    Uses ``_short_sha256("entry:{entry_type}:{name}")`` per ADR-0014 §4 +
+    Phase 6 PR1 (INV-hunup). Used for symbols like WGSL shader stages
+    (@vertex, @fragment, @compute) where the previous approach set
+    stable_id to the bare entry type string, causing same-type entry
+    points to collide. Phase 6 PR1 aligns the output shape with the
+    canonical ``sha256:<16hex>`` schema so consumers can match this
+    factory's output against the ``_check_stable_id_format`` regex
+    without a special case.
 
     Args:
         entry_type: Entry point category (e.g. "vertex", "fragment", "compute").
         name: Symbol name (e.g. the function name).
 
     Returns:
-        A hex-digest string that uniquely identifies the (entry_type, name) pair.
+        A ``sha256:<16hex>``-shaped string that uniquely identifies the
+        (entry_type, name) pair.
     """
-    key = f"entry:{entry_type}:{name}"
-    return hashlib.sha256(key.encode()).hexdigest()
+    return _short_sha256(f"entry:{entry_type}:{name}")
 
 
 def _short_sha256(payload: str) -> str:
@@ -638,6 +647,43 @@ def make_type_stable_id(language: str, name: str) -> str:
     statements, etc.).
     """
     return _short_sha256(f"type:{language}:{name}")
+
+
+def make_protocol_stable_id(category: str, *parts: str) -> str:
+    """Phase 6 PR1 (INV-hunup): canonical-shape stable_id for protocol
+    linker stand-ins.
+
+    Identity formula: ``sha256("{category}:{parts joined by colon}")[:16]``.
+    Used by linkers that emit ADR-0031 Class B synthetic Symbols where
+    the previous code constructed the stable_id with an ad-hoc f-string
+    (e.g., ``f"{queue_type}:{topic}"`` from message_queue or
+    ``f"{type_name}.{field_name}"`` from graphql_resolver). The escape
+    categories addressed:
+
+    * ``raw_hex_64`` — full ``hashlib.sha256(...).hexdigest()`` without
+      the ``sha256:`` prefix.
+    * ``colon_1`` / ``colon_2`` — composite name with no namespace prefix.
+    * ``no_colon`` — bare event/method name with no disambiguator.
+
+    All four shapes now route through this factory, which guarantees the
+    canonical ``sha256:<16hex>`` schema the new
+    ``_check_stable_id_format`` validator (Phase 6 PR1) enforces.
+
+    Args:
+        category: Linker family namespace (e.g. ``"db_query"``,
+            ``"message_queue"``, ``"event_sourcing"``,
+            ``"graphql_resolver"``). Keeps two linkers' Symbols with
+            structurally similar identity tuples from colliding.
+        parts: Identity-carrying values. Stringified and concatenated
+            with ``:`` separators before hashing. Order matters — the
+            caller controls disambiguator priority.
+
+    Returns:
+        A ``sha256:<16hex>``-shaped string suitable for direct use as
+        ``Symbol.stable_id``.
+    """
+    key = ":".join((category,) + tuple(parts))
+    return _short_sha256(key)
 
 
 # Mapping from Symbol.kind to the factory function used by

@@ -25,6 +25,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree_with_context,
     make_entry_stable_id,
     make_file_id,
+    make_protocol_stable_id,
     make_route_stable_id,
     make_symbol_id,
     make_typed_stable_id,
@@ -273,11 +274,19 @@ class TestMakeRouteStableId:
         id2 = make_route_stable_id("GET", "/users")
         assert id1 == id2
 
-    def test_returns_hex_digest(self) -> None:
-        """Result is a hex string (sha256 digest)."""
+    def test_returns_canonical_sha256_prefixed_form(self) -> None:
+        """Result uses the canonical ``sha256:<16hex>`` shape (Phase 6 PR1).
+
+        Pre-Phase-6 this returned a raw 64-char hexdigest; Phase 6 PR1
+        (INV-hunup) aligned the output with the rest of the
+        ``make_*_stable_id`` factory family so the ``id_format``
+        validator pins a single canonical shape.
+        """
         result = make_route_stable_id("GET", "/users")
-        assert len(result) == 64
-        assert all(c in "0123456789abcdef" for c in result)
+        assert result.startswith("sha256:")
+        suffix = result[len("sha256:"):]
+        assert len(suffix) == 16
+        assert all(c in "0123456789abcdef" for c in suffix)
 
     def test_deterministic(self) -> None:
         """Same inputs produce same output."""
@@ -307,17 +316,69 @@ class TestMakeEntryStableId:
         id2 = make_entry_stable_id("fragment", "main")
         assert id1 != id2
 
-    def test_returns_hex_digest(self) -> None:
-        """Result is a hex string (sha256 digest)."""
+    def test_returns_canonical_sha256_prefixed_form(self) -> None:
+        """Result uses the canonical ``sha256:<16hex>`` shape (Phase 6 PR1).
+
+        See ``TestMakeRouteStableId.test_returns_canonical_sha256_prefixed_form``
+        for the migration rationale.
+        """
         result = make_entry_stable_id("compute", "dispatch")
-        assert len(result) == 64
-        assert all(c in "0123456789abcdef" for c in result)
+        assert result.startswith("sha256:")
+        suffix = result[len("sha256:"):]
+        assert len(suffix) == 16
+        assert all(c in "0123456789abcdef" for c in suffix)
 
     def test_deterministic(self) -> None:
         """Same inputs produce same output."""
         id1 = make_entry_stable_id("fragment", "main_fs")
         id2 = make_entry_stable_id("fragment", "main_fs")
         assert id1 == id2
+
+
+class TestMakeProtocolStableId:
+    """Tests for ``make_protocol_stable_id`` — Phase 6 PR1 (INV-hunup)."""
+
+    def test_returns_canonical_sha256_prefixed_form(self) -> None:
+        """Result uses the canonical ``sha256:<16hex>`` shape."""
+        result = make_protocol_stable_id("db_query", "SELECT", "users")
+        assert result.startswith("sha256:")
+        suffix = result[len("sha256:"):]
+        assert len(suffix) == 16
+        assert all(c in "0123456789abcdef" for c in suffix)
+
+    def test_deterministic(self) -> None:
+        """Same inputs produce same output."""
+        id1 = make_protocol_stable_id("message_queue", "kafka", "publish", "users")
+        id2 = make_protocol_stable_id("message_queue", "kafka", "publish", "users")
+        assert id1 == id2
+
+    def test_different_categories_produce_different_ids(self) -> None:
+        """Same parts under different categories must NOT collide.
+
+        The category namespace protects against e.g. a graphql resolver
+        named ``Query.users`` colliding with a db_query SELECT on
+        ``users`` if both happened to hash the same identity tuple.
+        """
+        id1 = make_protocol_stable_id("db_query", "users")
+        id2 = make_protocol_stable_id("graphql_resolver", "users")
+        assert id1 != id2
+
+    def test_different_parts_produce_different_ids(self) -> None:
+        """Order matters: ``(a, b)`` and ``(b, a)`` produce distinct ids."""
+        id1 = make_protocol_stable_id("event_sourcing", "publish", "user.created")
+        id2 = make_protocol_stable_id("event_sourcing", "user.created", "publish")
+        assert id1 != id2
+
+    def test_accepts_zero_parts(self) -> None:
+        """``make_protocol_stable_id("category")`` hashes the bare category.
+
+        Defensive — no current caller passes zero parts, but the factory
+        accepts it (the join over an empty tuple yields just the
+        category) so the API doesn't blow up on a future caller.
+        """
+        result = make_protocol_stable_id("category_only")
+        assert result.startswith("sha256:")
+        assert len(result) == len("sha256:") + 16
 
 
 class TestMakeTypedStableId:

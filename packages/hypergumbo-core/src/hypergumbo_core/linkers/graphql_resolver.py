@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..analyze.base import make_symbol_id
+from ..analyze.base import make_protocol_stable_id, make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
@@ -443,7 +443,14 @@ def _create_resolver_symbol(pattern: ResolverPattern, root: Path) -> Symbol:
         language=None,
         discovery_language=pattern.language,
         protocol_origin="graphql",
-        stable_id=f"{pattern.type_name}.{pattern.field_name}",
+        # Phase 6 PR1 (INV-hunup): was ``f"{type_name}.{field_name}"``
+        # (escape category ``no_colon``). The factory hashes (type_name,
+        # field_name) into ``sha256:<16hex>``.
+        stable_id=make_protocol_stable_id(
+            "graphql_resolver",
+            pattern.type_name,
+            pattern.field_name,
+        ),
         meta={
             "type_name": pattern.type_name,
             "field_name": pattern.field_name,

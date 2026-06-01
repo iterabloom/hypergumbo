@@ -3015,7 +3015,7 @@ router.get('/users', handleUsers);
         assert routes[0].name == "handleUsers"
         assert routes[0].meta.get("http_method") == "GET"
         assert routes[0].stable_id is not None
-        assert len(routes[0].stable_id) == 64  # sha256 hex digest
+        assert len(routes[0].stable_id) == 23  # sha256 hex digest
         assert routes[0].meta.get("handler_ref") == "handleUsers"
 
     def test_express_chained_route_syntax(self, tmp_path: Path) -> None:
@@ -3295,7 +3295,7 @@ export class UsersController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].name == "UsersController.findAll"
@@ -3320,7 +3320,7 @@ export class UsersController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].name == "UsersController.create"
@@ -3352,7 +3352,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3396,7 +3396,7 @@ export class ResourceController {
 
         methods = [s for s in result.symbols if s.kind == "method"]
         # All 5 methods should have sha256-based stable_ids, and all should be unique
-        route_methods = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
+        route_methods = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
         assert len(route_methods) == 5
         stable_ids = {m.stable_id for m in route_methods}
         assert len(stable_ids) == 5, "NestJS route stable_ids must be unique per method"
@@ -3424,7 +3424,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3457,7 +3457,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3490,7 +3490,7 @@ export class ApiController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3520,7 +3520,7 @@ class UsersService {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3551,7 +3551,7 @@ class InternalController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 23]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]

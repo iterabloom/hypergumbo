@@ -70,7 +70,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..analyze.base import make_file_id, make_file_stable_id
+from ..analyze.base import make_file_id, make_file_stable_id, make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
@@ -280,9 +280,49 @@ def find_python_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.py"])
 
 
-def _make_symbol_id(path: str, line: int, event: str, kind: str) -> str:
-    """Generate ID for a WebSocket-related symbol."""
-    return f"websocket:{path}:{line}:{event}:{kind}"
+def _make_symbol_id(
+    path: str, line: int, event: str, kind: str, language: str = "python"
+) -> str:
+    """Generate ID for a WebSocket-related symbol.
+
+    Phase 6 PR1 (INV-dulah): migrates from the ad-hoc
+    ``websocket:{path}:{line}:{event}:{kind}`` shape to canonical
+    ``make_symbol_id`` output. Previously this emitted a non-canonical ID
+    that the ADR-0034 ``id_format`` validator flagged as
+    ``malformed_span_segment`` (single line ``818`` instead of span
+    ``818-818``) plus a ``non_canonical_language_prefix`` (the literal
+    ``websocket`` is a protocol_origin, not a value in
+    ``catalog.all_known_languages``).
+
+    The route path (``event``) lives in the **name** segment of the
+    canonical ID; we route it through ``_sanitize_event_for_id_segment``
+    to strip any ``:`` characters (which would push the colon count past
+    5 and re-trigger the validator). The kind segment is the actual
+    Symbol.kind (``function``), matching the kind axis catalog. The
+    ``kind`` parameter of this function is preserved as a name-segment
+    suffix so that an ``endpoint`` symbol and a (future) ``handler``
+    symbol at the same (file, line) get distinct IDs.
+
+    The ``language`` argument lets the caller pass the host file's
+    language (resolved via ``_language_for_file``) so the ID's language
+    slot matches the actual source. Defaults to ``"python"`` for the
+    legacy call sites in this module that previously used the protocol
+    name as the slot value.
+    """
+    safe_name = _sanitize_event_for_id_segment(event)
+    return make_symbol_id(
+        language, path, line, line, f"{safe_name}-{kind}", "function"
+    )
+
+
+def _sanitize_event_for_id_segment(event: str) -> str:
+    """Strip ``:`` from ``event`` so the canonical ID stays 5-segment.
+
+    Route paths normally don't contain ``:`` but defensive sanitisation
+    is cheaper than re-debugging the validator if a future framework
+    surfaces method-prefixed routes like ``POST:/api/items``.
+    """
+    return event.replace(":", "_")
 
 
 def _make_file_id(language: str, path: str) -> str:
@@ -678,12 +718,13 @@ def link_websocket(
     symbols: list[Symbol] = []
     for ep in endpoints:
         # ADR-0031 Class B: synthetic stand-in for a WebSocket endpoint.
+        ep_language = _language_for_file(ep.file_path, ep.pattern_type)
         symbols.append(Symbol(
-            id=_make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint"),
+            id=_make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint", ep_language),
             name=f"ws:{ep.event}",
             kind="function",
             language=None,
-            discovery_language=_language_for_file(ep.file_path, ep.pattern_type),
+            discovery_language=ep_language,
             protocol_origin="websocket",
             path=ep.file_path,
             span=Span(start_line=ep.line, end_line=ep.line, start_col=0, end_col=0),
@@ -818,12 +859,11 @@ def link_websocket(
     # framework identity into evidence_type. Fold to canonical ast_call_direct
     # + meta["framework_dispatch"]=<framework_name>.
     for ep in endpoints:
+        ep_language = _language_for_file(ep.file_path, ep.pattern_type)
+        ep_id = _make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint", ep_language)
         edges.append(Edge.create(
-            src=_make_file_id(
-                _language_for_file(ep.file_path, ep.pattern_type),
-                ep.file_path,
-            ),
-            dst=_make_symbol_id(ep.file_path, ep.line, ep.event, "endpoint"),
+            src=_make_file_id(ep_language, ep.file_path),
+            dst=ep_id,
             edge_type="references",
             line=ep.line,
             evidence_type="ast_call_direct",
@@ -836,7 +876,7 @@ def link_websocket(
                 "construct": "websocket_endpoint",
                 "framework_dispatch": _PATTERN_TYPE_TO_FRAMEWORK[ep.pattern_type],
             },
-            derived_from=[_make_file_id(_language_for_file(ep.file_path, ep.pattern_type), ep.file_path), _make_symbol_id(ep.file_path, ep.line, ep.event, 'endpoint')],
+            derived_from=[_make_file_id(ep_language, ep.file_path), ep_id],
         ))
 
     # WI-zolot: cross-language client↔server bridge.
@@ -869,14 +909,16 @@ def link_websocket(
             client_lang = _language_for_file(client_ep.file_path, client_ep.pattern_type)
             for server_ep in servers:
                 server_lang = _language_for_file(server_ep.file_path, server_ep.pattern_type)
+                server_ep_id = _make_symbol_id(
+                    server_ep.file_path,
+                    server_ep.line,
+                    server_ep.event,
+                    "endpoint",
+                    server_lang,
+                )
                 edges.append(Edge.create(
                     src=_make_file_id(client_lang, client_ep.file_path),
-                    dst=_make_symbol_id(
-                        server_ep.file_path,
-                        server_ep.line,
-                        server_ep.event,
-                        "endpoint",
-                    ),
+                    dst=server_ep_id,
                     edge_type="calls",
                     line=client_ep.line,
                     evidence_type="ast_call_direct",
@@ -896,7 +938,7 @@ def link_websocket(
                             server_ep.pattern_type
                         ],
                     },
-                    derived_from=[_make_file_id(client_lang, client_ep.file_path), _make_symbol_id(server_ep.file_path, server_ep.line, server_ep.event, 'endpoint')],
+                    derived_from=[_make_file_id(client_lang, client_ep.file_path), server_ep_id],
                 ))
 
     run.files_analyzed = files_analyzed

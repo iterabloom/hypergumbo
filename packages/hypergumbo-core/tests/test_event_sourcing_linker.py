@@ -432,7 +432,16 @@ class TestEventSourcingLinker:
         assert (symbol.meta or {}).get("framework_role") == "event_publisher"
         assert symbol.meta["event_name"] == "user:created"
         assert symbol.meta["framework"] == "event_bus"
-        assert symbol.stable_id == "user:created"
+        # Phase 6 PR1 (INV-hunup): stable_id now uses the canonical
+        # ``sha256:<16hex>`` shape from ``make_protocol_stable_id``. The
+        # event_name remains addressable via ``meta["event_name"]`` (asserted
+        # above) for any downstream consumer that needs the human-readable
+        # identity component.
+        from hypergumbo_core.analyze.base import make_protocol_stable_id
+        assert symbol.stable_id == make_protocol_stable_id(
+            "event_sourcing", "event_bus", "publish", "user:created"
+        )
+        assert symbol.stable_id.startswith("sha256:")
 
     def test_django_signal_linking(self, tmp_path: Path):
         """Links Django signal publishers to receivers."""

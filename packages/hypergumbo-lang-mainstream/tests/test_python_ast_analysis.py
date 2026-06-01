@@ -2017,8 +2017,8 @@ def test_django_cbv_http_methods(tmp_path: Path) -> None:
     assert "UserView.post" in method_by_name
     get_sid = method_by_name["UserView.get"]["stable_id"]
     post_sid = method_by_name["UserView.post"]["stable_id"]
-    assert len(get_sid) == 64  # sha256 hex digest
-    assert len(post_sid) == 64
+    assert len(get_sid) == 23  # sha256:<16hex> canonical form (Phase 6 PR1)
+    assert len(post_sid) == 23
     assert get_sid != post_sid  # Different methods must not collide
 
 
@@ -2095,7 +2095,7 @@ def test_django_route_stable_id_no_collision(tmp_path: Path) -> None:
     stable_ids = [r["stable_id"] for r in routes]
     assert stable_ids[0] != stable_ids[1], f"stable_id collision: {stable_ids}"
     # Both should be sha256 hex digests
-    assert all(len(sid) == 64 for sid in stable_ids)
+    assert all(len(sid) == 23 for sid in stable_ids)
 
 
 def test_django_path_empty_string_root_route(tmp_path: Path) -> None:

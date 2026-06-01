@@ -484,7 +484,14 @@ class TestGraphQLResolverLinker:
         assert (symbol.meta or {}).get("framework_role") == "graphql_resolver"
         assert symbol.meta["type_name"] == "Query"
         assert symbol.meta["field_name"] == "users"
-        assert symbol.stable_id == "Query.users"
+        # Phase 6 PR1 (INV-hunup): stable_id now uses the canonical
+        # ``sha256:<16hex>`` shape from ``make_protocol_stable_id``. The
+        # type_name/field_name remain in ``meta`` for downstream consumers.
+        from hypergumbo_core.analyze.base import make_protocol_stable_id
+        assert symbol.stable_id == make_protocol_stable_id(
+            "graphql_resolver", "Query", "users"
+        )
+        assert symbol.stable_id.startswith("sha256:")
 
 
 class TestGraphQLResolverLinkerRegistry:

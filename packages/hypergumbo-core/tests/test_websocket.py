@@ -312,10 +312,30 @@ socket.on('event-line-5', handler);
 class TestHelperFunctions:
     """Tests for helper functions."""
 
-    def test_make_symbol_id(self) -> None:
-        """Should generate valid symbol IDs."""
-        id = _make_symbol_id("src/app.js", 10, "connection", "endpoint")
-        assert id == "websocket:src/app.js:10:connection:endpoint"
+    def test_make_symbol_id_canonical_shape_with_explicit_language(self) -> None:
+        """Phase 6 PR1 (INV-dulah): ``_make_symbol_id`` emits canonical IDs.
+
+        The shape is ``{language}:{path}:{line}-{line}:{event}-{kind}:function``
+        — the language slot is the host file's language (not the literal
+        ``websocket`` protocol name); the span is the canonical
+        ``start-end`` form; the route + role get packed into the name
+        segment (no ``:``) and the kind slot is the canonical
+        ``function`` (matching the actual ``Symbol.kind``).
+        """
+        id = _make_symbol_id("src/app.js", 10, "connection", "endpoint", "javascript")
+        assert id == "javascript:src/app.js:10-10:connection-endpoint:function"
+
+    def test_make_symbol_id_default_language_is_python(self) -> None:
+        """The ``language`` arg defaults to ``"python"`` for legacy callers."""
+        id = _make_symbol_id("src/app.py", 10, "connection", "endpoint")
+        assert id == "python:src/app.py:10-10:connection-endpoint:function"
+
+    def test_make_symbol_id_sanitizes_colons_in_event(self) -> None:
+        """Route paths containing ``:`` get sanitized so the canonical 5-segment
+        ID shape is preserved (defensive; route paths rarely contain ``:``)."""
+        id = _make_symbol_id("src/app.py", 10, "POST:/api/items", "endpoint")
+        assert ":" not in id.split(":")[3]  # name segment has no colon
+        assert id == "python:src/app.py:10-10:POST_/api/items-endpoint:function"
 
     def test_language_for_file_extension_unknown_falls_back_to_pattern_type(self) -> None:
         """Vue/Svelte files (and other unknown extensions) fall back to pattern_type.

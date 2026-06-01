@@ -44,7 +44,11 @@ populates the violations list:
 5. **ID-format conformance** — every ``Symbol.id`` matches the canonical
    ``<language>:<path>:<start>-<end>:<name>:<kind>`` schema with single-colon
    separators. Lands in Phase 5 PR1 alongside the INV-sadiv six-site migration
-   to ``make_symbol_id(...)``. See ADR-0034 for the discipline rationale.
+   to ``make_symbol_id(...)``. Phase 6 PR1 (INV-hunup closure) extends the
+   same ``id_format`` validator class with a ``Symbol.stable_id`` sub-check
+   pinning the canonical ``sha256:<16hex>`` shape that every
+   ``make_*_stable_id`` factory produces. See ADR-0034 for the discipline
+   rationale.
 
 Why scaffold first
 ------------------
@@ -141,6 +145,7 @@ def validate_ir(
     violations.extend(_check_cross_field_coherence(symbols, edges, analysis_runs))
     violations.extend(_check_verdict_enum_completeness())
     violations.extend(_check_id_format(symbols))
+    violations.extend(_check_stable_id_format(symbols))
     return violations
 
 
@@ -856,6 +861,90 @@ def _check_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]:
                 f"Symbol.id does not match the canonical schema: "
                 f"{problem}. Use make_symbol_id(...) from analyze/base.py "
                 "rather than constructing IDs with f-strings."
+            ),
+        ))
+    return violations
+
+
+# ----------------------------------------------------------------------
+# Phase 6 PR1 — Stable-ID-format sub-check (INV-hunup closure)
+# ----------------------------------------------------------------------
+#
+# The ``id_format`` validator class extends to ``Symbol.stable_id`` to
+# enforce the canonical ``sha256:<16hex>`` shape produced by the
+# ``make_*_stable_id`` factory family in ``analyze/base.py``. Pre-Phase-6,
+# the same self-analysis run that surfaced 25 ``id_format`` violations
+# also surfaced ~130 ``stable_id`` violations across five escape
+# categories (raw 64-char hex, bare-name, 1-/2-/3-colon composites). The
+# fixes ride alongside the validator extension; see ADR-0034 for the
+# discipline rationale and the Phase 6 PR1 commit message for the
+# per-category source map.
+#
+# Canonical pattern: ``sha256:`` literal prefix + 16 lowercase hex chars.
+# Total length 23. The 16-char window comes from
+# ``_short_sha256`` (analyze/base.py:_short_sha256), which truncates the
+# 64-char hexdigest to 16 chars for footprint reasons documented at
+# ADR-0014 §4.
+
+_CANONICAL_STABLE_ID_PATTERN = re.compile(r"^sha256:[0-9a-f]{16}$")
+
+
+def _classify_stable_id_format_problem(stable_id: str) -> str:
+    """Return a short tag identifying why the stable_id is non-canonical.
+
+    Mirrors ``_classify_id_format_problem``'s shape. Order matters: the
+    most specific (and historically common) failure mode is checked
+    first so the violation messages point operators at the right fix.
+    The category names are stable enough to be referenced by issue
+    titles and tracker discussion entries.
+    """
+    if re.match(r"^[0-9a-f]{64}$", stable_id):
+        return "raw_hex_no_prefix (64-char hexdigest without sha256: prefix)"
+    if ":" not in stable_id:
+        return "bare_name_no_prefix"
+    if stable_id.startswith("sha256:"):
+        suffix = stable_id[len("sha256:"):]
+        if not re.match(r"^[0-9a-f]+$", suffix):
+            return f"sha256_prefix_with_non_hex_suffix ({suffix!r})"
+        return f"sha256_prefix_wrong_length (expected 16 chars, got {len(suffix)})"
+    colon_count = stable_id.count(":")
+    return f"composite_no_sha_prefix (colon_count={colon_count})"
+
+
+def _check_stable_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]:
+    """Stable-ID-format conformance: every Symbol.stable_id matches the
+    canonical ``sha256:<16hex>`` schema.
+
+    See ADR-0034 §"ID-format validator" + Phase 6 PR1 (INV-hunup
+    closure). ``None`` is treated as pass: some Symbols legitimately
+    have no stable_id (e.g., the message_dispatch sender/handler stand-
+    ins explicitly set it to ``None`` per their docstrings). The
+    ``axis_conformance`` validator owns required-field presence.
+    """
+    violations: list[ValidationViolation] = []
+    for sym in symbols:
+        sym_id = getattr(sym, "id", None)
+        stable_id = getattr(sym, "stable_id", None)
+        if stable_id is None:
+            continue
+        if not isinstance(stable_id, str):  # pragma: no cover - defensive
+            continue
+        if _CANONICAL_STABLE_ID_PATTERN.match(stable_id):
+            continue
+        problem = _classify_stable_id_format_problem(stable_id)
+        violations.append(ValidationViolation(
+            severity="error",
+            validator_class="id_format",
+            field_name="Symbol.stable_id",
+            record_id=sym_id,
+            observed=stable_id,
+            expected="sha256:<16hex>",
+            message=(
+                f"Symbol.stable_id does not match the canonical schema: "
+                f"{problem}. Use a make_*_stable_id factory from "
+                "analyze/base.py (or _short_sha256 directly) rather than "
+                "constructing stable_ids with f-strings or raw "
+                "hashlib.sha256(...).hexdigest()."
             ),
         ))
     return violations

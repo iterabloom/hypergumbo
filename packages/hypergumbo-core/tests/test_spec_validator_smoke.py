@@ -893,3 +893,157 @@ def test_build_validation_report_counts_id_format_violations() -> None:
     ]
     report = build_validation_report(violations)
     assert report["violations_by_class"]["id_format"] == 1
+
+
+# ----------------------------------------------------------------------
+# Phase 6 PR1 — Stable-ID-format sub-check tests (INV-hunup closure)
+# ----------------------------------------------------------------------
+
+
+def test_stable_id_format_validator_passes_on_canonical_short_sha256() -> None:
+    """A Symbol.stable_id built via ``_short_sha256`` passes the check."""
+    from hypergumbo_core.analyze.base import make_file_stable_id
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    canonical = make_file_stable_id("python", "pkg/foo.py")
+    sym = _FakeSym(id="python:pkg/foo.py:1-1:file:file", stable_id=canonical)
+    violations = _check_stable_id_format([sym])
+    assert violations == []
+
+
+def test_stable_id_format_validator_flags_raw_64_char_hex_without_prefix() -> None:
+    """A raw 64-char hexdigest (no ``sha256:`` prefix) is flagged.
+
+    Pre-Phase-6 ``make_route_stable_id`` and the HTTP linker's call_site
+    factory emitted this shape; the validator catches the regression.
+    """
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    raw_hex = "a" * 64
+    sym = _FakeSym(id="python:pkg/foo.py:1-1:bar:function", stable_id=raw_hex)
+    violations = _check_stable_id_format([sym])
+    assert len(violations) == 1
+    v = violations[0]
+    assert v.validator_class == "id_format"
+    assert v.field_name == "Symbol.stable_id"
+    assert "raw_hex_no_prefix" in v.message
+    assert v.expected == "sha256:<16hex>"
+
+
+def test_stable_id_format_validator_flags_bare_name_no_prefix() -> None:
+    """A colon-free bare name (e.g. ``dispatch``) is flagged.
+
+    Pre-Phase-6 ``event_sourcing`` and ``graphql_resolver`` linkers
+    emitted this shape.
+    """
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    sym = _FakeSym(id="python:pkg/foo.py:1-1:bar:function", stable_id="dispatch")
+    violations = _check_stable_id_format([sym])
+    assert len(violations) == 1
+    assert "bare_name_no_prefix" in violations[0].message
+
+
+def test_stable_id_format_validator_flags_sha256_wrong_length() -> None:
+    """``sha256:`` prefix with the wrong-length hex suffix is flagged."""
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    sym = _FakeSym(
+        id="python:pkg/foo.py:1-1:bar:function",
+        stable_id="sha256:deadbeef",  # 8 chars, not 16
+    )
+    violations = _check_stable_id_format([sym])
+    assert len(violations) == 1
+    assert "sha256_prefix_wrong_length" in violations[0].message
+
+
+def test_stable_id_format_validator_flags_sha256_non_hex_suffix() -> None:
+    """``sha256:`` prefix with a non-hex suffix is flagged."""
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    sym = _FakeSym(
+        id="python:pkg/foo.py:1-1:bar:function",
+        stable_id="sha256:not-hex-chars-here",
+    )
+    violations = _check_stable_id_format([sym])
+    assert len(violations) == 1
+    assert "sha256_prefix_with_non_hex_suffix" in violations[0].message
+
+
+def test_stable_id_format_validator_flags_composite_form() -> None:
+    """A composite ``foo:bar``-style stable_id (no sha256: prefix) is flagged.
+
+    Pre-Phase-6 ``database_query`` (1-colon) and ``message_queue``
+    (2-colon) linkers emitted this shape.
+    """
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    sym = _FakeSym(
+        id="python:pkg/foo.py:1-1:bar:function",
+        stable_id="DELETE:sessions",
+    )
+    violations = _check_stable_id_format([sym])
+    assert len(violations) == 1
+    assert "composite_no_sha_prefix" in violations[0].message
+    assert "colon_count=1" in violations[0].message
+
+
+def test_stable_id_format_validator_skips_none_stable_id() -> None:
+    """``stable_id=None`` is allowed (some Symbols legitimately omit it)."""
+    from hypergumbo_core.spec_validator import _check_stable_id_format
+
+    sym = _FakeSym(id="python:pkg/foo.py:1-1:bar:function", stable_id=None)
+    violations = _check_stable_id_format([sym])
+    assert violations == []
+
+
+def test_stable_id_format_violation_appears_in_validate_ir_report() -> None:
+    """``validate_ir`` wires the stable_id_format check alongside the others."""
+    sym = _FakeSym(
+        id="python:pkg/foo.py:1-1:bar:function",
+        stable_id="a" * 64,  # raw_hex_no_prefix
+        kind="function",
+        language="python",
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[],
+        qualified_name=None,
+    )
+    violations = validate_ir([sym], [], [])
+    stable_id_violations = [
+        v for v in violations
+        if v.validator_class == "id_format" and v.field_name == "Symbol.stable_id"
+    ]
+    assert len(stable_id_violations) == 1
+
+
+def test_make_route_stable_id_emits_canonical_shape() -> None:
+    """Phase 6 PR1: ``make_route_stable_id`` returns ``sha256:<16hex>``."""
+    from hypergumbo_core.analyze.base import make_route_stable_id
+    from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
+
+    out = make_route_stable_id("GET", "/users")
+    assert _CANONICAL_STABLE_ID_PATTERN.match(out)
+
+
+def test_make_entry_stable_id_emits_canonical_shape() -> None:
+    """Phase 6 PR1: ``make_entry_stable_id`` returns ``sha256:<16hex>``."""
+    from hypergumbo_core.analyze.base import make_entry_stable_id
+    from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
+
+    out = make_entry_stable_id("vertex", "main")
+    assert _CANONICAL_STABLE_ID_PATTERN.match(out)
+
+
+def test_make_protocol_stable_id_emits_canonical_shape() -> None:
+    """Phase 6 PR1: ``make_protocol_stable_id`` returns ``sha256:<16hex>``.
+
+    Sanity check on the new factory the four linkers
+    (database_query / message_queue / event_sourcing / graphql_resolver)
+    migrated to.
+    """
+    from hypergumbo_core.analyze.base import make_protocol_stable_id
+    from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
+
+    out = make_protocol_stable_id("db_query", "SELECT", "users,orders")
+    assert _CANONICAL_STABLE_ID_PATTERN.match(out)

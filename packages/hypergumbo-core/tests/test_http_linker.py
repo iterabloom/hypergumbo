@@ -1957,7 +1957,14 @@ class TestCreateClientSymbolStableId:
         assert sym_a.stable_id == sym_b.stable_id
 
     def test_stable_id_is_not_bare_method(self, tmp_path: Path):
-        """stable_id must not be a bare HTTP method string."""
+        """stable_id must not be a bare HTTP method string.
+
+        Phase 6 PR1 (INV-hunup): the underlying ``make_route_stable_id``
+        now returns the canonical ``sha256:<16hex>`` shape (23 chars
+        total) rather than the raw 64-char hexdigest. The test still
+        asserts non-bare-method semantics; the length expectation
+        migrates.
+        """
         call = HttpClientCall(
             method="POST", url="/api/users", line=5,
             file_path=str(tmp_path / "app.js"), language="javascript",
@@ -1965,8 +1972,9 @@ class TestCreateClientSymbolStableId:
         sym = _create_client_symbol(call, tmp_path)
         assert sym.stable_id != "POST"
         assert sym.stable_id != "post"
-        # Should be a hash digest (64 hex chars for sha256)
-        assert len(sym.stable_id) == 64
+        # Should be the canonical sha256:<16hex> shape (23 chars total).
+        assert sym.stable_id.startswith("sha256:")
+        assert len(sym.stable_id) == len("sha256:") + 16
 
     def test_different_methods_same_url_different_stable_ids(self, tmp_path: Path):
         """GET /api/users and POST /api/users are distinct."""

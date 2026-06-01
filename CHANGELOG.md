@@ -337,6 +337,38 @@ Out of scope (Phase 6 territory): `Symbol.stable_id` schema check (`sha256:<16he
 
 Lands `docs/adr/0034-id-construction-discipline.md` codifying the canonical-factory discipline for `Symbol.id` construction. The Phase 5 PR1 `id_format` validator is the runtime enforcement; this ADR is the rationale + reviewer checklist + Class B language-string policy (linker-emitted Symbols use the host's `discovery_language` as the canonical-ID first segment). Closes the documentation gap surfaced by the id-construction-discipline lab-notebook entry. Indexed in `docs/adr/README.md` under the Analysis-pipeline thematic group.
 
+#### Phase 6 PR1 — `stable_id_format` sub-check + INV-hunup / INV-dulah closure
+
+The `id_format` validator class extends to `Symbol.stable_id` (new `_check_stable_id_format` helper in `spec_validator.py`). Every populated `stable_id` is now pinned to the canonical `sha256:<16hex>` schema; `None` stays a pass (some Symbols legitimately omit it). Non-conforming values produce a structured `ValidationViolation` tagged with the inferred problem category — `raw_hex_no_prefix`, `bare_name_no_prefix`, `sha256_prefix_wrong_length`, `sha256_prefix_with_non_hex_suffix`, or `composite_no_sha_prefix (colon_count=N)`.
+
+`Symbol.id` migration (INV-dulah, 25 escapes in current self-analysis, all from the websocket linker):
+
+- `linkers/websocket.py::_make_symbol_id` — rebuilt on top of `make_symbol_id(...)` from `analyze/base.py`. Previously emitted `websocket:{path}:{line}:{event}:{kind}` — non-canonical language prefix (`websocket` is a `protocol_origin`, not a value in `catalog.all_known_languages`) and single-line span (`818` instead of `818-818`). The host file's language (resolved via `_language_for_file`) now occupies the language slot; the route and role pack into the colon-free name segment (`{event}-{kind}` with any `:` in the event sanitized to `_`); the kind slot is the canonical `function` matching the Symbol's `kind`. Three call sites (endpoint emit, file→endpoint reference edge, cross-language client↔server bridge edge) updated to pass the resolved language.
+
+`Symbol.stable_id` factory migrations (INV-hunup, ~130 escapes across five categories in current self-analysis):
+
+- `analyze/base.py::make_route_stable_id` and `make_entry_stable_id` rewired to call `_short_sha256(...)` so they emit `sha256:<16hex>` (23 chars) instead of the raw 64-char hexdigest. Removes the `raw_hex_no_prefix` escape category for routes materialised by `framework_patterns.py` and HTTP-client call_site Symbols emitted by `linkers/http.py`.
+- New `analyze/base.py::make_protocol_stable_id(category, *parts)` factory hashes `(category, parts...)` into the canonical shape. Four protocol linkers migrate off ad-hoc f-strings:
+  - `linkers/database_query.py:368` — was `f"{query_type}:{tables}"` (1-colon, escape category `colon_1`).
+  - `linkers/message_queue.py:433` — was `f"{queue_type}:{topic}"` (2-colon when topic contains `:`, e.g., SQS ARNs / redis subject patterns).
+  - `linkers/event_sourcing.py:680` — was bare `pattern.event_name` (`no_colon`).
+  - `linkers/graphql_resolver.py:446` — was `f"{type_name}.{field_name}"` (`no_colon`).
+
+The category prefix protects against cross-linker collisions where two unrelated identity tuples happen to hash the same bare-name value (e.g., a db_query SELECT on `users` vs. a graphql resolver named `users`).
+
+Tests updated to assert the new shape:
+
+- `tests/test_base.py` — `make_route_stable_id` / `make_entry_stable_id` length expectations migrate from 64 to 23 (`sha256:` + 16 hex). New `TestMakeProtocolStableId` covers the factory's canonical shape, determinism, category-namespace collision protection, parts-order significance, and zero-parts edge case.
+- `tests/test_spec_validator_smoke.py` — 10 new tests cover the five `stable_id_format` failure categories, the `None` pass-through, the `validate_ir` wire-up, and shape sanity checks for `make_route_stable_id` / `make_entry_stable_id` / `make_protocol_stable_id`.
+- `tests/test_websocket.py` — `test_make_symbol_id` rewritten to assert the new canonical-shape output (with explicit-language and default-language variants plus a colon-sanitization test).
+- Four linker tests (`test_database_query_linker.py`, `test_event_sourcing_linker.py`, `test_graphql_resolver_linker.py`, `test_message_queue_linker.py`) now derive the expected stable_id from `make_protocol_stable_id(...)` instead of hardcoding the ad-hoc f-string output, keeping the assertion pinned to the producer's contract.
+- `test_http_linker.py::test_stable_id_is_not_bare_method` length expectation migrates to 23 with a `startswith("sha256:")` check.
+- `test_framework_patterns.py::test_stable_id_assigned` likewise migrates the length expectation.
+
+Out of scope (Phase 6 PR2+ territory): the `message_dispatch` linker's `:0:message_sender` 6-segment id shape (no current corpus surfaces it, but the writer would violate the validator if exercised); the `grpc` linker's `_make_symbol_id` prefix-as-language pattern (mirrors the websocket-linker fix); `Edge.id` schema check; stable_id collision counting (INV-bazij P0).
+
+100% coverage on `spec_validator.py`, `linkers/{websocket,database_query,message_queue,event_sourcing,graphql_resolver}.py`, and the changed paths in `analyze/base.py`.
+
 ### Changed
 
 #### Schema — concept-axis closures

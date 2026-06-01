@@ -568,7 +568,17 @@ class TestDatabaseQueryLinker:
         assert result.run.duration_ms >= 0
 
     def test_symbol_stable_id(self, tmp_path: Path):
-        """Query symbols have stable IDs for deduplication."""
+        """Query symbols have canonical-shape stable IDs for deduplication.
+
+        Phase 6 PR1 (INV-hunup): the linker now routes its stable_id
+        through ``make_protocol_stable_id`` so the value matches the
+        ``sha256:<16hex>`` shape the validator enforces. The exact 16-hex
+        suffix is deterministic from the (category, query_type, tables)
+        tuple — we re-derive it here to keep the assertion pinned to the
+        producer's contract rather than to an opaque magic literal.
+        """
+        from hypergumbo_core.analyze.base import make_protocol_stable_id
+
         py_file = tmp_path / "app.py"
         py_file.write_text(dedent('''
             cursor.execute("SELECT * FROM users WHERE id = 1")
@@ -578,7 +588,9 @@ class TestDatabaseQueryLinker:
 
         assert len(result.symbols) == 1
         symbol = result.symbols[0]
-        assert symbol.stable_id == "SELECT:users"
+        expected = make_protocol_stable_id("db_query", "SELECT", "users")
+        assert symbol.stable_id == expected
+        assert symbol.stable_id.startswith("sha256:")
 
     def test_case_insensitive_table_matching(self, tmp_path: Path):
         """Table matching is case-insensitive."""

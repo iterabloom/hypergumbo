@@ -58,7 +58,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..analyze.base import make_symbol_id
+from ..analyze.base import make_protocol_stable_id, make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
@@ -430,7 +430,16 @@ def _create_symbol(pattern: MessageQueuePattern, root: Path) -> Symbol:
         language=None,
         discovery_language=pattern.language,
         protocol_origin="message_queue",
-        stable_id=f"{pattern.queue_type}:{pattern.topic}",
+        # Phase 6 PR1 (INV-hunup): was ``f"{queue_type}:{topic}"`` (2-colon
+        # form when topic contained ``:`` — e.g. SQS URLs and redis subject
+        # patterns). The factory hashes into ``sha256:<16hex>`` and lets the
+        # topic carry any embedded ``:`` without breaking the validator.
+        stable_id=make_protocol_stable_id(
+            "message_queue",
+            pattern.queue_type,
+            pattern.type,
+            pattern.topic,
+        ),
         meta={
             "queue_type": pattern.queue_type,
             "topic": pattern.topic,

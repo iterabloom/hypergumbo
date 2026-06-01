@@ -59,6 +59,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from ..analyze.base import make_protocol_stable_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..paths import is_test_file
@@ -677,7 +678,16 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
         language=None,
         discovery_language=pattern.language,
         protocol_origin="event_sourcing",
-        stable_id=f"{pattern.event_name}",
+        # Phase 6 PR1 (INV-hunup): was bare ``pattern.event_name`` (escape
+        # category ``no_colon``). The factory hashes (framework,
+        # pattern_type, event_name) into ``sha256:<16hex>`` so two events
+        # named ``dispatch`` from different frameworks remain distinct.
+        stable_id=make_protocol_stable_id(
+            "event_sourcing",
+            pattern.framework,
+            pattern.pattern_type,
+            pattern.event_name,
+        ),
         meta={
             "event_name": pattern.event_name,
             "framework": pattern.framework,

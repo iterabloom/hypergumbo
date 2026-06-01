@@ -815,7 +815,7 @@ func main() {
         assert len(routes) == 1
         assert routes[0].name == "submitHandler"
         assert (routes[0].meta or {}).get("framework_role") == "route"
-        assert len(routes[0].stable_id) == 64  # sha256 hex digest (ADR-0014 §4)
+        assert len(routes[0].stable_id) == 23  # sha256 hex digest (ADR-0014 §4)
 
     def test_no_routes_in_non_web_code(self, tmp_path: Path) -> None:
         """No routes detected in code without web framework patterns."""
@@ -1943,7 +1943,7 @@ func listUsers(w http.ResponseWriter, r *http.Request) {}
         # Mount stable_id uses hash-based format (ADR-0014 Phase 0)
         assert mount.stable_id is not None
         # make_route_stable_id returns raw hex digest
-        assert len(mount.stable_id) == 64  # SHA-256 hex length
+        assert len(mount.stable_id) == 23  # SHA-256 hex length
 
     def test_mount_creates_edge_to_handler(self, tmp_path: Path) -> None:
         """Mount creates a calls edge from enclosing function to handler."""

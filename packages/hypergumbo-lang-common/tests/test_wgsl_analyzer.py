@@ -66,7 +66,7 @@ fn vs_main(@location(0) position: vec4<f32>) -> @builtin(position) vec4<f32> {
     assert vs_main is not None
     assert vs_main.language == "wgsl"
     assert vs_main.stable_id is not None
-    assert len(vs_main.stable_id) == 64  # sha256 hex digest (ADR-0014 §4)
+    assert len(vs_main.stable_id) == 23  # sha256 hex digest (ADR-0014 §4)
     assert vs_main.meta is not None
     assert vs_main.meta.get("entry_point") == "vertex"
 
@@ -85,7 +85,7 @@ fn fs_main() -> @location(0) vec4<f32> {
     fs_main = next((f for f in functions if f.name == "fs_main"), None)
     assert fs_main is not None
     assert fs_main.stable_id is not None
-    assert len(fs_main.stable_id) == 64  # sha256 hex digest (ADR-0014 §4)
+    assert len(fs_main.stable_id) == 23  # sha256 hex digest (ADR-0014 §4)
     assert fs_main.meta.get("entry_point") == "fragment"
 
 def test_analyze_compute_shader(tmp_path):
@@ -103,7 +103,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     cs_main = next((f for f in functions if f.name == "cs_main"), None)
     assert cs_main is not None
     assert cs_main.stable_id is not None
-    assert len(cs_main.stable_id) == 64  # sha256 hex digest (ADR-0014 §4)
+    assert len(cs_main.stable_id) == 23  # sha256 hex digest (ADR-0014 §4)
     assert cs_main.meta.get("entry_point") == "compute"
 
 def test_analyze_struct(tmp_path):
@@ -282,7 +282,7 @@ fn main() -> @builtin(position) vec4<f32> {
     main_fn = next((f for f in functions if f.name == "main"), None)
     assert main_fn is not None
     assert main_fn.stable_id is not None
-    assert len(main_fn.stable_id) == 64  # Has @vertex → sha256 entry stable_id
+    assert len(main_fn.stable_id) == 23  # Has @vertex → sha256 entry stable_id
 
 def test_entry_point_stable_id_no_collision(tmp_path):
     """Different @vertex functions must have different stable_ids (ADR-0014 §4)."""
