@@ -55,6 +55,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from ..analyze.base import make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
@@ -348,7 +349,7 @@ def _create_query_symbol(pattern: DatabaseQueryPattern, root: Path) -> Symbol:
     tables_str = ", ".join(pattern.tables)
 
     return Symbol(
-        id=f"{rel_path}::db_query::{pattern.line}",
+        id=make_symbol_id(pattern.language, str(rel_path), pattern.line, pattern.line, "db_query", "call_site"),
         name=f"{pattern.query_type} {tables_str}",
         kind="call_site",
         path=pattern.file_path,

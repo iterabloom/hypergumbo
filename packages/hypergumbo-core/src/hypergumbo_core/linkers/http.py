@@ -92,7 +92,7 @@ from pathlib import Path
 from typing import Iterator
 from urllib.parse import urlparse
 
-from ..analyze.base import make_route_stable_id
+from ..analyze.base import make_route_stable_id, make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..url_folding import (
@@ -1321,7 +1321,7 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
     rel_path = Path(call.file_path).relative_to(root) if root else Path(call.file_path)
 
     return Symbol(
-        id=f"{rel_path}::http_client::{call.line}",
+        id=make_symbol_id(call.language, str(rel_path), call.line, call.line, "http_client", "call_site"),
         name=f"{call.method} {call.url}",
         kind="call_site",
         path=call.file_path,

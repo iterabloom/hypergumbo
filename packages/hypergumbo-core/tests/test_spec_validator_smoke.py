@@ -48,6 +48,7 @@ def test_build_validation_report_empty_is_clean() -> None:
         "writer_contract": 0,
         "cross_field": 0,
         "verdict_enum": 0,
+        "id_format": 0,
     }
 
 
@@ -81,6 +82,7 @@ def test_build_validation_report_counts_by_class() -> None:
         "writer_contract": 1,
         "cross_field": 0,
         "verdict_enum": 0,
+        "id_format": 0,
     }
     assert len(report["violations"]) == 3
     # Round-trip through asdict — every violation surfaces as a dict
@@ -214,7 +216,7 @@ def test_axis_conformance_passes_on_catalog_conformant_symbol() -> None:
     a_lang = next(iter(all_known_languages()))
 
     sym = _FakeSym(
-        id="sym:1",
+        id="python:test/fake.py:1-1:sym:function",
         kind=a_kind,
         language=a_lang,
         discovery_language=None,
@@ -233,7 +235,7 @@ def test_axis_conformance_flags_invalid_symbol_kind() -> None:
 
     a_lang = next(iter(all_known_languages()))
     sym = _FakeSym(
-        id="sym:bad-kind",
+        id="python:test/fake.py:1-1:bad-kind:function",
         kind="totally-not-a-real-kind",
         language=a_lang,
         discovery_language=None,
@@ -258,7 +260,7 @@ def test_axis_conformance_optional_language_accepts_none() -> None:
 
     a_kind = next(iter(all_symbol_kind_names()))
     sym = _FakeSym(
-        id="sym:class-b",
+        id="python:test/fake.py:1-1:class-b:function",
         kind=a_kind,
         language=None,  # Class B
         discovery_language="python",  # discovery context
@@ -278,7 +280,7 @@ def test_axis_conformance_flags_invalid_protocol_origin() -> None:
 
     a_kind = next(iter(all_symbol_kind_names()))
     sym = _FakeSym(
-        id="sym:bad-protocol",
+        id="python:test/fake.py:1-1:bad-protocol:function",
         kind=a_kind,
         language=None,
         discovery_language="python",
@@ -306,7 +308,7 @@ def test_axis_conformance_flags_invalid_origin_list_element() -> None:
     a_pass = next(iter(all_known_pass_ids()))
 
     sym = _FakeSym(
-        id="sym:mixed-origin",
+        id="python:test/fake.py:1-1:mixed-origin:function",
         kind=a_kind,
         language=a_lang,
         discovery_language=None,
@@ -331,7 +333,7 @@ def test_axis_conformance_qualified_name_separator_mismatch() -> None:
 
     a_kind = next(iter(all_symbol_kind_names()))
     sym = _FakeSym(
-        id="sym:wrong-sep",
+        id="python:test/fake.py:1-1:wrong-sep:function",
         kind=a_kind,
         language="python",  # Python uses "."
         discovery_language=None,
@@ -356,7 +358,7 @@ def test_axis_conformance_qualified_name_unqualified_is_legal() -> None:
 
     a_kind = next(iter(all_symbol_kind_names()))
     sym = _FakeSym(
-        id="sym:unqual",
+        id="python:test/fake.py:1-1:unqual:function",
         kind=a_kind,
         language="python",
         discovery_language=None,
@@ -404,7 +406,7 @@ def test_axis_conformance_none_for_required_field_emits_violation() -> None:
     a violation. Symbol.kind is the canonical example — None is illegal
     because Symbol's spec declares kind as a required str."""
     sym = _FakeSym(
-        id="sym:none-kind",
+        id="python:test/fake.py:1-1:none-kind:function",
         kind=None,  # illegal — required field
         language=None,
         discovery_language=None,
@@ -433,7 +435,7 @@ def test_axis_conformance_origin_none_is_skipped() -> None:
     a_lang = next(iter(all_known_languages()))
 
     sym = _FakeSym(
-        id="sym:no-origin",
+        id="python:test/fake.py:1-1:no-origin:function",
         kind=a_kind,
         language=a_lang,
         discovery_language=None,
@@ -550,7 +552,7 @@ def test_cross_field_class_b_coherent_passes() -> None:
 
     a_kind = next(k for k in all_symbol_kind_names() if k != "file")
     sym = _FakeSym(
-        id="sym:class-b",
+        id="python:test/fake.py:1-1:class-b:function",
         kind=a_kind,
         language=None,
         discovery_language="python",
@@ -574,7 +576,7 @@ def test_cross_field_class_a_coherent_passes() -> None:
     a_kind = next(k for k in all_symbol_kind_names() if k != "file")
     a_lang = next(iter(all_known_languages()))
     sym = _FakeSym(
-        id="sym:class-a",
+        id="python:test/fake.py:1-1:class-a:function",
         kind=a_kind,
         language=a_lang,
         discovery_language=None,
@@ -598,7 +600,7 @@ def test_cross_field_flags_class_a_with_protocol_origin() -> None:
     a_kind = next(k for k in all_symbol_kind_names() if k != "file")
     a_lang = next(iter(all_known_languages()))
     sym = _FakeSym(
-        id="sym:incoherent-both",
+        id="python:test/fake.py:1-1:incoherent-both:function",
         kind=a_kind,
         language=a_lang,
         discovery_language=None,
@@ -650,7 +652,7 @@ def test_cross_field_flags_class_a_with_display_label() -> None:
     a_kind = next(k for k in all_symbol_kind_names() if k != "file")
     a_lang = next(iter(all_known_languages()))
     sym = _FakeSym(
-        id="sym:label-on-class-a",
+        id="python:test/fake.py:1-1:label-on-class-a:function",
         kind=a_kind,
         language=a_lang,
         discovery_language=None,
@@ -772,7 +774,7 @@ def test_axis_conformance_qualified_name_unknown_language_is_skipped() -> None:
 
     a_kind = next(iter(all_symbol_kind_names()))
     sym = _FakeSym(
-        id="sym:unknown-lang-sep",
+        id="python:test/fake.py:1-1:unknown-lang-sep:function",
         kind=a_kind,
         # A language with no entry in QUALIFIED_NAME_SEPARATORS.
         language="brainfuck",
@@ -783,3 +785,111 @@ def test_axis_conformance_qualified_name_unknown_language_is_skipped() -> None:
     )
     violations = validate_ir([sym], [], [])
     assert not any(v.field_name == "Symbol.qualified_name" for v in violations)
+
+
+# ----------------------------------------------------------------------
+# Phase 5 PR1 — ID-format validator tests (ADR-0034)
+# ----------------------------------------------------------------------
+
+
+def test_id_format_validator_passes_on_canonical_make_symbol_id_output() -> None:
+    """A Symbol.id built via ``make_symbol_id`` produces no id_format violation."""
+    from hypergumbo_core.analyze.base import make_symbol_id
+    from hypergumbo_core.spec_validator import _check_id_format
+
+    canonical = make_symbol_id("python", "pkg/foo.py", 10, 12, "do_thing", "function")
+    sym = _FakeSym(id=canonical)
+    violations = _check_id_format([sym])
+    assert violations == []
+
+
+def test_id_format_validator_flags_inv_sadiv_double_colon_pattern() -> None:
+    """The historical INV-sadiv path-prefix ``::``-separated shape is flagged."""
+    from hypergumbo_core.spec_validator import _check_id_format
+
+    sym = _FakeSym(id="packages/foo/bar.py::http_client::42")
+    violations = _check_id_format([sym])
+    assert len(violations) == 1
+    v = violations[0]
+    assert v.validator_class == "id_format"
+    assert v.field_name == "Symbol.id"
+    assert "double_colon_separator" in v.message
+    assert "INV-sadiv" in v.message
+    assert v.expected.startswith("<language>:")
+
+
+def test_id_format_validator_flags_wrong_field_count() -> None:
+    """An id with the wrong number of colon-separated fields is flagged."""
+    from hypergumbo_core.spec_validator import _check_id_format
+
+    sym = _FakeSym(id="python:pkg/foo.py:42-42:name")
+    violations = _check_id_format([sym])
+    assert len(violations) == 1
+    assert "wrong_field_count" in violations[0].message
+
+
+def test_id_format_validator_flags_non_canonical_language_prefix() -> None:
+    """A first segment that isn't a lowercase identifier is flagged."""
+    from hypergumbo_core.spec_validator import _check_id_format
+
+    sym = _FakeSym(id="123badlang:pkg/foo.py:42-42:name:function")
+    violations = _check_id_format([sym])
+    assert len(violations) == 1
+    assert "non_canonical_language_prefix" in violations[0].message
+
+
+def test_id_format_validator_flags_malformed_span() -> None:
+    """The span segment must match digit-digit shape."""
+    from hypergumbo_core.spec_validator import _check_id_format
+
+    sym = _FakeSym(id="python:pkg/foo.py:line42:name:function")
+    violations = _check_id_format([sym])
+    assert len(violations) == 1
+    assert "malformed_span_segment" in violations[0].message
+
+
+def test_id_format_validator_flags_non_canonical_kind_suffix() -> None:
+    """The final kind segment must be a lowercase identifier."""
+    from hypergumbo_core.spec_validator import _check_id_format
+
+    sym = _FakeSym(id="python:pkg/foo.py:42-42:name:FUNCTION")
+    violations = _check_id_format([sym])
+    assert len(violations) == 1
+    assert "non_canonical_kind_suffix" in violations[0].message
+
+
+def test_id_format_validator_skips_symbols_with_none_id() -> None:
+    """A None id is not an id_format issue (axis_conformance owns that)."""
+    from hypergumbo_core.spec_validator import _check_id_format
+
+    sym = _FakeSym(id=None)
+    violations = _check_id_format([sym])
+    assert violations == []
+
+
+def test_id_format_violation_appears_in_validate_ir_report() -> None:
+    """``validate_ir`` wires the id_format check in alongside the others."""
+    sym = _FakeSym(
+        id="packages/foo/bar.py::http_client::42",
+        kind="call_site",
+        language=None,
+        discovery_language="python",
+        protocol_origin="http",
+        origin=[],
+        qualified_name=None,
+    )
+    violations = validate_ir([sym], [], [])
+    assert any(v.validator_class == "id_format" for v in violations)
+
+
+def test_build_validation_report_counts_id_format_violations() -> None:
+    """The report counter tallies id_format violations."""
+    violations = [
+        ValidationViolation(
+            severity="error",
+            validator_class="id_format",
+            message="example id-format violation",
+        ),
+    ]
+    report = build_validation_report(violations)
+    assert report["violations_by_class"]["id_format"] == 1

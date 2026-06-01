@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from ..analyze.base import make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._concept_utils import has_concept
@@ -326,7 +327,7 @@ def _create_call_symbol(call: SubprocessCall, root: Path) -> Symbol:
     # the host file (subprocess.Popen calls can surface from non-Python
     # bindings or from polyglot fixtures).
     return Symbol(
-        id=f"{rel_path}::subprocess_call::{call.line}",
+        id=make_symbol_id(language_from_path(Path(call.file_path)), str(rel_path), call.line, call.line, "subprocess_call", "call_site"),
         name=name,
         kind="call_site",
         path=call.file_path,

@@ -58,6 +58,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from ..analyze.base import make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
@@ -414,7 +415,7 @@ def _create_symbol(pattern: MessageQueuePattern, root: Path) -> Symbol:
     framework_role = "mq_publisher" if pattern.type == "publish" else "mq_subscriber"
 
     return Symbol(
-        id=f"{rel_path}::{framework_role}::{pattern.line}",
+        id=make_symbol_id(pattern.language, str(rel_path), pattern.line, pattern.line, framework_role, "function"),
         name=f"{pattern.queue_type}:{pattern.type}:{pattern.topic}",
         kind="function",
         path=pattern.file_path,

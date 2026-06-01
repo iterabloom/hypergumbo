@@ -312,6 +312,27 @@ Tests: 285 lines added to `test_symbol_introspection.py` covering the unknown-la
 
 100% coverage on `symbol_introspection.py` (64/64 stmts) and the full mainstream package (16438/16438 stmts). 3788 mainstream-package tests pass.
 
+#### Phase 5 PR1 — ID-format validator (5th class) + INV-sadiv six-site sweep
+
+New `id_format` validator class added to `spec_validator.py` and wired into `validate_ir`. Every `Symbol.id` is now checked against the canonical schema `<language>:<path>:<start>-<end>:<name>:<kind>` (single-colon separators). Non-conforming IDs produce a structured `ValidationViolation` tagged with the inferred problem category — `double_colon_separator (INV-sadiv)`, `wrong_field_count`, `non_canonical_language_prefix`, `malformed_span_segment`, or `non_canonical_kind_suffix`.
+
+Six INV-sadiv linker offenders migrated from their ad-hoc f-string id-construction (`{rel_path}::{role}::{line}` — path-prefix double-colon shape) to the canonical `make_symbol_id(...)` factory at `analyze/base.py`:
+
+- `linkers/http.py:1324` — HTTP call_site Symbols
+- `linkers/database_query.py:351` — db_query call_site Symbols
+- `linkers/subprocess_cli.py:329` — subprocess_call call_site Symbols
+- `linkers/message_queue.py:417` — mq_publisher / mq_subscriber function Symbols
+- `linkers/graphql_resolver.py:430` — resolver function Symbols
+- `linkers/graphql.py:208` — graphql_client function Symbols
+
+Closes INV-sadiv (218 legacy nodes per the dogfood corpus 20260528). The host's `discovery_language` (Class B stand-ins have `language=None`) is used as the canonical-ID language prefix so the canonical schema's first segment stays a real language string the cross-language edge detector can branch on.
+
+Tests: `_check_id_format` covers the 5 failure modes individually plus a happy-path canonical case; the report-counter test verifies `id_format` increments in `violations_by_class`. Pre-existing fixture IDs in `test_spec_validator_smoke.py` rewritten to canonical form (`python:test/fake.py:1-1:<name>:function`) so the existing axis-conformance and cross-field tests don't false-positive against the new ID validator.
+
+Out of scope (Phase 6 territory): `Symbol.stable_id` schema check (`sha256:<16hex>`); `Edge.id` schema check; stable_id collision counting (INV-bazij P0); stable_id multiplicity (INV-hunup).
+
+100% coverage on the new validator paths. 6305 smart-test passes (the two pre-existing `test_cli_symbols` rendering failures at commit `7959eddb13` remain unrelated to this PR).
+
 ### Changed
 
 #### Schema — concept-axis closures

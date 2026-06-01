@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from ..analyze.base import make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
@@ -427,7 +428,7 @@ def _create_resolver_symbol(pattern: ResolverPattern, root: Path) -> Symbol:
     # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
     # Fold to canonical kind="function" + meta["framework_role"].
     return Symbol(
-        id=f"{rel_path}::resolver::{pattern.line}",
+        id=make_symbol_id(pattern.language, str(rel_path), pattern.line, pattern.line, "resolver", "function"),
         name=f"{pattern.type_name}.{pattern.field_name}",
         kind="function",
         path=pattern.file_path,

@@ -41,6 +41,10 @@ populates the violations list:
 4. **Verdict-enum completeness** — verdict-emitting code paths must enumerate
    an ``inconclusive`` (or equivalent) branch for missing-data cases.
    Folds in WI-rolol sub-task A (``ClaimVerdict.inconclusive``).
+5. **ID-format conformance** — every ``Symbol.id`` matches the canonical
+   ``<language>:<path>:<start>-<end>:<name>:<kind>`` schema with single-colon
+   separators. Lands in Phase 5 PR1 alongside the INV-sadiv six-site migration
+   to ``make_symbol_id(...)``. See ADR-0034 for the discipline rationale.
 
 Why scaffold first
 ------------------
@@ -72,6 +76,7 @@ See ADR-0033 for the full architectural decision.
 """
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Iterable, Optional
@@ -86,6 +91,7 @@ _VALIDATOR_CLASSES = (
     "writer_contract",
     "cross_field",
     "verdict_enum",
+    "id_format",
 )
 
 
@@ -100,7 +106,7 @@ class ValidationViolation:
     """
 
     severity: str  # axis: bounded-enum {"error", "warning", "info"}
-    validator_class: str  # axis: bounded-enum {"axis_conformance", "writer_contract", "cross_field", "verdict_enum"}
+    validator_class: str  # axis: bounded-enum {"axis_conformance", "writer_contract", "cross_field", "verdict_enum", "id_format"}
     message: str  # axis: free-text — human-readable description for review
     axis: Optional[str] = None  # axis: free-text — axis name (axis_conformance only)
     field_name: Optional[str] = None  # axis: free-text — dataclass field name when applicable
@@ -134,6 +140,7 @@ def validate_ir(
     violations.extend(_check_writer_contract(symbols, edges, analysis_runs))
     violations.extend(_check_cross_field_coherence(symbols, edges, analysis_runs))
     violations.extend(_check_verdict_enum_completeness())
+    violations.extend(_check_id_format(symbols))
     return violations
 
 
@@ -749,6 +756,108 @@ def _check_verdict_enum_completeness() -> list[ValidationViolation]:
                         "a security false-positive class (INV-bitig P0)."
                     ),
                 ))
+    return violations
+
+
+# ----------------------------------------------------------------------
+# Phase 5 PR1 — ID-format validator class (ADR-0034)
+# ----------------------------------------------------------------------
+#
+# Every ``Symbol.id`` is required to follow the canonical schema
+# ``<language>:<path>:<start>-<end>:<name>:<kind>`` with **single-colon**
+# separators. This is the identity contract documented at
+# ``analyze/base.py:make_symbol_id`` — the same factory ten language
+# analyzers call.
+#
+# Historically, five linker passes (http, message-queue, database-query,
+# subprocess-cli, graphql-resolver, graphql) emitted call_site Symbols
+# via an ad-hoc f-string schema ``<path>::<role>::<line>`` with
+# **double-colon** separators and no language prefix. INV-sadiv
+# documented 218 such nodes; they break cross-language edge detection
+# because the path-prefix gets parsed as ``language=packages/...``.
+#
+# The check below pins the canonical shape at runtime. A non-conforming
+# ``Symbol.id`` produces one ``id_format`` violation with the observed
+# value and the inferred problem (double colons / wrong field count /
+# malformed span).
+#
+# Out of scope for this PR (Phase 6 PR1/PR3 territory):
+# - ``Symbol.stable_id`` format checks (``sha256:<16hex>`` schema).
+# - ``Edge.id`` format checks.
+# - Stable-id collision counting (INV-bazij P0).
+# - Stable-id multiplicity (one stable_id per logical symbol — INV-hunup).
+
+# Single-colon canonical pattern:
+# - lang: lowercase identifier (one or more alphanum/underscore chars
+#   starting with a letter; matches the strings in catalog.all_known_languages)
+# - path: anything without a colon
+# - span: digit+-digit+
+# - name: anything without a colon (may be empty — file pseudo-symbols use
+#   the literal "file"; in practice always non-empty)
+# - kind: lowercase identifier (matches symbol_kinds.all_symbol_kind_names)
+_CANONICAL_ID_PATTERN = re.compile(
+    r"^[a-z][a-z0-9_]*"        # language
+    r":[^:]+"                  # path
+    r":\d+-\d+"                # span
+    r":[^:]*"                  # name (allow empty — defensive)
+    r":[a-z][a-z0-9_]*$"       # kind
+)
+
+
+def _classify_id_format_problem(id_str: str) -> str:
+    """Return a short tag identifying why the ID is non-canonical.
+
+    Order matters: the most specific (and historically common) failure
+    mode is checked first so the validator's violation messages point
+    operators at the right fix.
+    """
+    if "::" in id_str:
+        return "double_colon_separator (INV-sadiv)"
+    parts = id_str.split(":")
+    if len(parts) != 5:
+        return f"wrong_field_count (expected 5, got {len(parts)})"
+    lang, _path, span, _name, kind = parts
+    if not re.match(r"^[a-z][a-z0-9_]*$", lang):
+        return f"non_canonical_language_prefix ({lang!r})"
+    if not re.match(r"^\d+-\d+$", span):
+        return f"malformed_span_segment ({span!r})"
+    if not re.match(r"^[a-z][a-z0-9_]*$", kind):
+        return f"non_canonical_kind_suffix ({kind!r})"
+    return "unknown"  # pragma: no cover - defensive; canonical regex covers shape
+
+
+def _check_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]:
+    """ID-format conformance class: every Symbol.id matches the canonical schema.
+
+    See ADR-0034 §"ID-format validator". The Phase 5 PR1 closure of
+    INV-sadiv ensures the six linker passes that previously emitted
+    ``<path>::<role>::<line>`` IDs now use ``make_symbol_id(...)``.
+    """
+    violations: list[ValidationViolation] = []
+    for sym in symbols:
+        sym_id = getattr(sym, "id", None)
+        if sym_id is None:
+            # Required-field absence is an axis_conformance issue, not
+            # an id_format issue. Skip here so we don't double-count.
+            continue
+        if not isinstance(sym_id, str):  # pragma: no cover - defensive
+            continue
+        if _CANONICAL_ID_PATTERN.match(sym_id):
+            continue
+        problem = _classify_id_format_problem(sym_id)
+        violations.append(ValidationViolation(
+            severity="error",
+            validator_class="id_format",
+            field_name="Symbol.id",
+            record_id=sym_id,
+            observed=sym_id,
+            expected="<language>:<path>:<start>-<end>:<name>:<kind>",
+            message=(
+                f"Symbol.id does not match the canonical schema: "
+                f"{problem}. Use make_symbol_id(...) from analyze/base.py "
+                "rather than constructing IDs with f-strings."
+            ),
+        ))
     return violations
 
 
