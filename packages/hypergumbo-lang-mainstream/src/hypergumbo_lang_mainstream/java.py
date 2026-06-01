@@ -74,6 +74,10 @@ Why This Design
 - Two-pass allows cross-file call resolution and inheritance tracking
 - Same pattern as C/PHP/JS analyzers for consistency
 - Uses iterative traversal to avoid RecursionError on deeply nested code
+
+Population of ``is_exported`` follows Java's access-modifier rule: a type
+or member is considered exported only when its declaration carries the
+``public`` keyword (package-private / protected / private items are not).
 """
 from __future__ import annotations
 
@@ -856,6 +860,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    is_exported="public" in modifiers,
                 )
                 symbols.append(symbol)
 
@@ -897,6 +902,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    is_exported="public" in modifiers,
                 )
                 symbols.append(symbol)
 
@@ -925,6 +931,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    is_exported="public" in modifiers,
                 )
                 symbols.append(symbol)
 
@@ -1009,6 +1016,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    is_exported="public" in modifiers,
                 )
                 symbols.append(symbol)
 
@@ -1050,6 +1058,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    is_exported="public" in modifiers,
                 )
                 symbols.append(symbol)
 

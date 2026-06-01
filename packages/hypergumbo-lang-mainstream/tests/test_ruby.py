@@ -5172,3 +5172,51 @@ class TestRubyLinesOfCode:
         result = analyze_ruby(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.lines_of_code == 5
+
+
+class TestRubyIsExported:
+    """Tests for is_exported on Ruby symbols (top-level default-public rule)."""
+
+    def test_top_level_class_and_method_exported(self, tmp_path: Path) -> None:
+        """Top-level classes and methods default to exported."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "lib.rb").write_text(
+            "class Foo\n"
+            "  def bar\n"
+            "    42\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        method = next(s for s in result.symbols if s.kind == "method")
+        assert cls.is_exported is True
+        assert method.is_exported is True
+
+    def test_method_nested_in_method_not_exported(self, tmp_path: Path) -> None:
+        """A ``def`` inside another ``def`` is locally scoped, not exported."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "lib.rb").write_text(
+            "class Foo\n"
+            "  def outer\n"
+            "    def inner\n"
+            "      1\n"
+            "    end\n"
+            "    inner\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.kind == "method"}
+        assert by_name["Foo#outer"].is_exported is True
+        # Nested def "inner" is registered under its bare name (no enclosing
+        # class binding for the second-level def — the analyzer's enclosing
+        # walk returns the outer ``method`` first); confirm it's marked
+        # non-exported regardless of which qualified name it lands under.
+        nested = next(
+            s for s in result.symbols
+            if s.kind == "method" and s.name.endswith("inner")
+        )
+        assert nested.is_exported is False

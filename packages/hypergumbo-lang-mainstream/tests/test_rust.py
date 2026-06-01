@@ -168,6 +168,57 @@ struct Point {
         assert point.lines_of_code == 4  # lines 1-4
 
 
+class TestRustIsExported:
+    """Tests for is_exported on Rust symbols (only unqualified ``pub``)."""
+
+    def test_pub_keyword_marks_exported(self, tmp_path: Path) -> None:
+        """``pub fn``/``pub struct``/``pub trait`` are exported; bare items aren't."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""\
+pub fn public_fn() {}
+fn private_fn() {}
+
+pub struct PublicStruct {
+    pub x: i32,
+}
+struct PrivateStruct;
+
+pub trait PublicTrait {}
+trait PrivateTrait {}
+
+pub enum PublicEnum { A, B }
+enum PrivateEnum { C, D }
+""")
+
+        result = analyze_rust(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        assert by_name["public_fn"].is_exported is True
+        assert by_name["private_fn"].is_exported is False
+        assert by_name["PublicStruct"].is_exported is True
+        assert by_name["PrivateStruct"].is_exported is False
+        assert by_name["PublicTrait"].is_exported is True
+        assert by_name["PrivateTrait"].is_exported is False
+        assert by_name["PublicEnum"].is_exported is True
+        assert by_name["PrivateEnum"].is_exported is False
+
+    def test_pub_crate_not_exported(self, tmp_path: Path) -> None:
+        """``pub(crate)`` is crate-private; not part of the package public API."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""\
+pub(crate) fn crate_only() {}
+pub(super) struct SuperOnly;
+""")
+
+        result = analyze_rust(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        assert by_name["crate_only"].is_exported is False
+        assert by_name["SuperOnly"].is_exported is False
+
+
 class TestRustStructExtraction:
     """Tests for extracting Rust structs."""
 

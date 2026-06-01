@@ -2165,3 +2165,28 @@ class TestCsharpLinesOfCode:
         result = analyze_csharp(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Foo")
         assert cls.lines_of_code == 5
+
+
+class TestCsharpIsExported:
+    """Tests for is_exported on C# symbols (only ``public`` is exported)."""
+
+    def test_public_vs_internal_class(self, tmp_path: Path) -> None:
+        """A public class is exported; the default (internal) is not."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "Mixed.cs").write_text(
+            "public class PublicClass {\n"
+            "    public int PublicMethod() { return 1; }\n"
+            "    private int PrivateMethod() { return 2; }\n"
+            "}\n"
+            "\n"
+            "internal class InternalClass {\n"
+            "    public void Helper() {}\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        assert by_name["PublicClass"].is_exported is True
+        assert by_name["InternalClass"].is_exported is False
+        assert by_name["PublicClass.PublicMethod"].is_exported is True
+        assert by_name["PublicClass.PrivateMethod"].is_exported is False

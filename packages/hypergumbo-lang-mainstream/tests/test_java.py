@@ -1814,6 +1814,36 @@ public class JNIBridge {
         assert "protected" in final_methods[0].modifiers
 
 
+class TestJavaIsExported:
+    """Tests for is_exported on Java symbols (only ``public`` is exported)."""
+
+    def test_public_vs_default_class(self, tmp_path: Path) -> None:
+        """A public class is exported; package-private is not."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Mixed.java"
+        java_file.write_text("""
+public class PublicClass {
+    public int publicMethod() { return 1; }
+    private int privateMethod() { return 2; }
+}
+
+class PackagePrivateClass {
+    void packagePrivateMethod() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        assert by_name["PublicClass"].is_exported is True
+        assert by_name["PackagePrivateClass"].is_exported is False
+        assert by_name["PublicClass.publicMethod"].is_exported is True
+        assert by_name["PublicClass.privateMethod"].is_exported is False
+        assert by_name[
+            "PackagePrivateClass.packagePrivateMethod"
+        ].is_exported is False
+
+
 class TestJavaClassInterfaceModifiers:
     """Tests for visibility modifier extraction on classes and interfaces.
 

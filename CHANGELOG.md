@@ -240,6 +240,22 @@ This is one of five mechanical Phase 4 PRs. Phase 4 PR2 (is_exported), PR3 (sign
 
 100% coverage on all changed source files. 5477 smart-test passes.
 
+#### Phase 4 PR2 — `is_exported` sweep across 10 analyzers (INV-jahiv visibility piece)
+
+Population of `Symbol.is_exported: bool` at every `Symbol(...)` emit site across the 8 analyzers in the Phase 4 plan that did not already derive it (Python via `__all__`, JS/TS via the `_mark_exported_symbols` post-pass, and Scala secondary-ctor handling were already populated). Each analyzer applies its language's visibility rule:
+
+- **Go** (`go.py`): lexical case rule — `is_exported = name[0].isupper()` at every Symbol emit (functions, methods, type declarations, vars, interface methods, middleware wrappers).
+- **Rust** (`rust.py`): explicit visibility — `is_exported = "pub" in modifiers`.
+- **Java** (`java.py`): explicit access — `is_exported = "public" in modifiers`.
+- **C#** (`csharp.py`): explicit access — `is_exported = "public" in modifiers`.
+- **Ruby** (`ruby.py`): default-public + lexical nesting check (`_is_nested_in_method`) — top-level / class-body `def`s are exported; methods nested in another `def` are not. Refined-visibility scope (`private`/`protected` directives) not yet tracked.
+- **PHP** (`php.py`): default-public with private/protected as opt-out — `is_exported = "private" not in modifiers and "protected" not in modifiers`.
+- **Kotlin** (`kotlin.py`): default-public — `is_exported = not any(m in modifiers for m in ("private", "internal", "protected"))`. Extends the pre-existing per-function pattern to classes, type aliases, and other declaration kinds.
+- **Swift** (`swift.py`): explicit opt-in — `is_exported = any(m in modifiers for m in ("public", "open"))`. Swift's default `internal` does NOT count.
+
+Each modified file's module docstring records the per-language rule in a one-sentence note. Test coverage adds at least one assertion per language verifying the derivation against a fixture exercising both exported and non-exported cases.
+
+100% coverage on all 8 changed source files. 3690 smart-test passes in mainstream package suite.
 
 ### Changed
 

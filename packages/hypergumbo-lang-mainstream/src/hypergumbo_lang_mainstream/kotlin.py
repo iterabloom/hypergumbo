@@ -29,6 +29,11 @@ Why This Design
 - Uses tree-sitter-kotlin package for grammar
 - Two-pass allows cross-file call resolution
 - Same pattern as Go/Ruby/Rust/Elixir/Java/PHP/C analyzers for consistency
+
+Population of ``is_exported`` follows Kotlin's default-public rule: a
+declaration is exported unless its modifier list contains ``private``,
+``internal``, or ``protected``. Extension functions are unconditionally
+treated as exported (see the ``receiver_type`` branch).
 """
 from __future__ import annotations
 
@@ -652,7 +657,9 @@ def _extract_symbols_from_file(
                 # as reachable. Also record the receiver type in meta
                 # for future linker use.
                 receiver_type = _extract_kotlin_receiver_type(node, source)
-                func_is_exported = False
+                func_is_exported = not any(
+                    m in modifiers for m in ("private", "internal", "protected")
+                )
                 if receiver_type is not None:
                     if func_meta is None:
                         func_meta = {}
@@ -714,6 +721,7 @@ def _extract_symbols_from_file(
                         meta = {}
                     meta["decorators"] = annotations
 
+                class_modifiers = _extract_modifiers(node)
                 symbol = Symbol(
                     id=make_symbol_id("kotlin", str(file_path), start_line, end_line, type_name, kind),
                     name=type_name,
@@ -729,9 +737,13 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    modifiers=_extract_modifiers(node),
+                    modifiers=class_modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
+                    is_exported=not any(
+                        m in class_modifiers
+                        for m in ("private", "internal", "protected")
+                    ),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
@@ -753,6 +765,7 @@ def _extract_symbols_from_file(
                 if obj_annotations:
                     obj_meta = {"decorators": obj_annotations}
 
+                obj_modifiers = _extract_modifiers(node)
                 symbol = Symbol(
                     id=make_symbol_id("kotlin", str(file_path), start_line, end_line, object_name, "object"),
                     name=object_name,
@@ -767,10 +780,14 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    modifiers=_extract_modifiers(node),
+                    modifiers=obj_modifiers,
                     meta=obj_meta,
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
+                    is_exported=not any(
+                        m in obj_modifiers
+                        for m in ("private", "internal", "protected")
+                    ),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[object_name] = symbol

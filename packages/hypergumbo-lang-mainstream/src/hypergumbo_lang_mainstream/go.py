@@ -65,6 +65,9 @@ Why This Design
 - Two-pass allows cross-file call resolution
 - Same pattern as Rust/Elixir/Java/PHP/C analyzers for consistency
 - Route detection enables `hypergumbo routes` command for Go
+
+Population of ``is_exported`` follows Go's lexical case rule: identifiers
+starting with an uppercase letter are exported (public).
 """
 from __future__ import annotations
 
@@ -1047,6 +1050,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
                     shape_id=_analyzer.compute_shape_id(node),
+                    is_exported=bool(func_name) and func_name[0].isupper(),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -1105,6 +1109,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
                     shape_id=_analyzer.compute_shape_id(node),
+                    is_exported=bool(method_name) and method_name[0].isupper(),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol
@@ -1189,6 +1194,7 @@ def _extract_symbols_from_file(
                                     modifiers=m_modifiers,
                                     lines_of_code=1,
                                     shape_id=_analyzer.compute_shape_id(iface_child),
+                                    is_exported=bool(mname) and mname[0].isupper(),
                                 )
                                 analysis.symbols.append(m_sym)
                                 analysis.symbol_by_name[qualified] = m_sym
@@ -1231,6 +1237,7 @@ def _extract_symbols_from_file(
                             meta={"base_classes": embedded_types} if embedded_types else None,
                             lines_of_code=end_line - start_line + 1,
                             shape_id=_analyzer.compute_shape_id(child),
+                            is_exported=bool(type_name) and type_name[0].isupper(),
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[type_name] = symbol
@@ -1285,6 +1292,7 @@ def _extract_symbols_from_file(
                         modifiers=modifiers,
                         lines_of_code=end_line - start_line + 1,
                         shape_id=_analyzer.compute_shape_id(child),
+                        is_exported=bool(vname) and vname[0].isupper(),
                     )
                     analysis.symbols.append(vsymbol)
                     analysis.symbol_by_name[vname] = vsymbol
@@ -2881,6 +2889,7 @@ def _maybe_create_wrapper_symbol(
         origin_run_id=run.execution_id,
         meta={"concepts": ["middleware"], "is_closure_wrapper": True},
         lines_of_code=end_line - start_line + 1,
+        is_exported=bool(wrapper_name) and wrapper_name[0].isupper(),
     )
     wrapper_symbols_created[wrapper_name] = sym
     return sym, True
@@ -3354,6 +3363,7 @@ def _extract_go_routes(
                                     origin_run_id=run.execution_id,
                                     meta=route_meta,
                                     lines_of_code=end_line - start_line + 1,
+                                    is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                                 )
                                 routes.append(route_sym)
 
@@ -3476,6 +3486,7 @@ def _extract_go_routes(
                                     origin_run_id=run.execution_id,
                                     meta=route_meta_g,
                                     lines_of_code=end_line - start_line + 1,
+                                    is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                                 )
                                 routes.append(route_sym)
 
@@ -3523,6 +3534,7 @@ def _extract_go_routes(
                                     "framework_role": "route",
                                 },
                                 lines_of_code=end_line - start_line + 1,
+                                is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                             )
                             routes.append(route_sym)
 
@@ -3581,6 +3593,7 @@ def _extract_go_routes(
                                             "framework_role": "route_mount",
                                         },
                                         lines_of_code=end_line - start_line + 1,
+                                        is_exported=bool(handler_ref) and handler_ref.rsplit(".", 1)[-1][:1].isupper(),
                                     )
                                     routes.append(mount_sym)
 

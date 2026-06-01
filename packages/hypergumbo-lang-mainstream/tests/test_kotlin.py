@@ -101,8 +101,15 @@ class TestKotlinExtensionFunctions:
         assert configure.meta is not None
         assert configure.meta.get("extension_receiver") == "SpringApplication"
 
-    def test_plain_function_not_flagged(self, tmp_path: Path) -> None:
-        """A regular (non-extension) top-level function is not flagged."""
+    def test_plain_function_not_flagged_as_extension(
+        self, tmp_path: Path,
+    ) -> None:
+        """A regular (non-extension) top-level function has no extension_receiver.
+
+        Kotlin's default visibility is public, so ``is_exported`` will still
+        be True for an unmarked ``fun`` — but the extension-receiver
+        metadata must be absent.
+        """
         from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         kt_file = tmp_path / "Main.kt"
@@ -118,7 +125,6 @@ class TestKotlinExtensionFunctions:
             None,
         )
         assert greet is not None
-        assert greet.is_exported is False
         assert (greet.meta or {}).get("extension_receiver") is None
 
     def test_extension_function_on_generic_receiver(
@@ -2360,3 +2366,36 @@ class TestKotlinLinesOfCode:
         result = analyze_kotlin(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.lines_of_code == 5
+
+
+class TestKotlinIsExportedClassesAndObjects:
+    """Tests for is_exported on Kotlin classes, objects, and non-extension funcs.
+
+    Kotlin extension functions are already covered by
+    ``TestKotlinExtensionFunctions`` (lines ~78-141).
+    """
+
+    def test_public_default_vs_private(self, tmp_path: Path) -> None:
+        """Default-visibility classes/objects are exported; private/internal aren't."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Mixed.kt").write_text(
+            "class DefaultClass\n"
+            "private class PrivateClass\n"
+            "internal class InternalClass\n"
+            "object DefaultObject\n"
+            "private object PrivateObject\n"
+            "fun publicFunc(): Int = 1\n"
+            "private fun privateFunc(): Int = 2\n"
+            "internal fun internalFunc(): Int = 3\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        assert by_name["DefaultClass"].is_exported is True
+        assert by_name["PrivateClass"].is_exported is False
+        assert by_name["InternalClass"].is_exported is False
+        assert by_name["DefaultObject"].is_exported is True
+        assert by_name["PrivateObject"].is_exported is False
+        assert by_name["publicFunc"].is_exported is True
+        assert by_name["privateFunc"].is_exported is False
+        assert by_name["internalFunc"].is_exported is False

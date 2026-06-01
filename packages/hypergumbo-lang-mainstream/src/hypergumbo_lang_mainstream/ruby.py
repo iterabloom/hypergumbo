@@ -35,6 +35,11 @@ Why This Design
 - Uses tree-sitter-ruby package for grammar
 - Two-pass allows cross-file call resolution
 - Same pattern as Go/Rust/Elixir/Java/PHP/C analyzers for consistency
+
+Population of ``is_exported`` follows Ruby's default-public rule: top-level
+methods, classes, and modules are exported; methods defined inside another
+method (locally scoped) are not. Refined visibility scope (``private`` /
+``protected`` directives within a class) is not yet tracked here.
 """
 from __future__ import annotations
 
@@ -259,6 +264,21 @@ def _get_enclosing_method(
                     return local_symbols[method_name]
         current = current.parent
     return None  # pragma: no cover - defensive
+
+
+def _is_nested_in_method(node: "tree_sitter.Node") -> bool:
+    """Return True if ``node`` is lexically inside another method definition.
+
+    Used to populate ``Symbol.is_exported``: a Ruby ``def`` that lives inside
+    another ``def`` is locally scoped (not public API), whereas a top-level
+    or class-body ``def`` defaults to public.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in ("method", "singleton_method"):
+            return True
+        current = current.parent
+    return False
 
 
 def _get_enclosing_method_params(
@@ -1107,6 +1127,7 @@ def _extract_rails_routes(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     lines_of_code=span.end_line - span.start_line + 1,
+                    is_exported=True,
                 )
                 route_symbols.append(route_symbol)
         elif method_name == "resource":
@@ -1157,6 +1178,7 @@ def _extract_rails_routes(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     lines_of_code=span.end_line - span.start_line + 1,
+                    is_exported=True,
                 )
                 route_symbols.append(route_symbol)
         else:
@@ -1188,6 +1210,7 @@ def _extract_rails_routes(
                 origin=PASS_ID,
                 origin_run_id=run_id,
                 lines_of_code=span.end_line - span.start_line + 1,
+                is_exported=True,
             )
             route_symbols.append(route_symbol)
 
@@ -1774,6 +1797,7 @@ def _extract_symbols_from_file(
                     stable_id=_analyzer.compute_stable_id(node, kind="method"),
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
+                    is_exported=not _is_nested_in_method(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1813,6 +1837,7 @@ def _extract_symbols_from_file(
                     stable_id=_analyzer.compute_stable_id(node, kind="method"),
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
+                    is_exported=not _is_nested_in_method(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1870,6 +1895,7 @@ def _extract_symbols_from_file(
                     stable_id=_analyzer.compute_stable_id(node, kind="class"),
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
+                    is_exported=not _is_nested_in_method(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1910,6 +1936,7 @@ def _extract_symbols_from_file(
                     stable_id=_analyzer.compute_stable_id(node, kind="module"),
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
+                    is_exported=not _is_nested_in_method(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

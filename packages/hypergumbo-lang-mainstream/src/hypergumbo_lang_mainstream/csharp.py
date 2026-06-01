@@ -31,6 +31,10 @@ Why This Design
 - Uses tree-sitter-c-sharp package for grammar
 - Two-pass allows cross-file call resolution
 - Same pattern as other language analyzers for consistency
+
+Population of ``is_exported`` follows C#'s access-modifier rule: a type
+or member is considered exported only when its declaration carries the
+``public`` keyword (internal / protected / private items are not).
 """
 from __future__ import annotations
 
@@ -627,6 +631,7 @@ def _extract_symbols_from_file(
                     if base_classes:
                         meta["base_classes"] = base_classes
 
+                class_modifiers = _extract_modifiers(node)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "class"),
                     name=name,
@@ -642,8 +647,9 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    modifiers=_extract_modifiers(node),
+                    modifiers=class_modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported="public" in class_modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -656,6 +662,7 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                iface_modifiers = _extract_modifiers(node)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "interface"),
                     name=name,
@@ -670,8 +677,9 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    modifiers=_extract_modifiers(node),
+                    modifiers=iface_modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported="public" in iface_modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -684,6 +692,7 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                struct_modifiers = _extract_modifiers(node)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "struct"),
                     name=name,
@@ -698,8 +707,9 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    modifiers=_extract_modifiers(node),
+                    modifiers=struct_modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported="public" in struct_modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -712,6 +722,7 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                enum_modifiers = _extract_modifiers(node)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "enum"),
                     name=name,
@@ -726,8 +737,9 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    modifiers=_extract_modifiers(node),
+                    modifiers=enum_modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported="public" in enum_modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -783,6 +795,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported="public" in modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -827,6 +840,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported="public" in modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -843,6 +857,7 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                prop_modifiers = _extract_modifiers(node)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, full_name, "property"),
                     name=full_name,
@@ -857,8 +872,9 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    modifiers=_extract_modifiers(node),
+                    modifiers=prop_modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported="public" in prop_modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

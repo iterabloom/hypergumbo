@@ -1629,3 +1629,41 @@ class TestPhpLinesOfCode:
         result = analyze_php(tmp_path)
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.lines_of_code == 5
+
+
+class TestPhpIsExported:
+    """Tests for is_exported on PHP symbols (default public except private/protected)."""
+
+    def test_class_method_visibility(self, tmp_path: Path) -> None:
+        """Class is exported; methods are exported unless private/protected."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "example.php").write_text(
+            "<?php\n"
+            "class Foo {\n"
+            "    public function publicMethod() { return 1; }\n"
+            "    private function privateMethod() { return 2; }\n"
+            "    protected function protectedMethod() { return 3; }\n"
+            "    function defaultMethod() { return 4; }\n"
+            "}\n"
+        )
+        result = analyze_php(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        assert by_name["Foo"].is_exported is True
+        assert by_name["Foo.publicMethod"].is_exported is True
+        assert by_name["Foo.privateMethod"].is_exported is False
+        assert by_name["Foo.protectedMethod"].is_exported is False
+        # Default visibility (no modifier) is public in PHP.
+        assert by_name["Foo.defaultMethod"].is_exported is True
+
+    def test_top_level_function_exported(self, tmp_path: Path) -> None:
+        """Top-level functions are always exported in PHP."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "example.php").write_text(
+            "<?php\n"
+            "function helper() { return 1; }\n"
+        )
+        result = analyze_php(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function")
+        assert fn.is_exported is True

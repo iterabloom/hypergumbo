@@ -35,6 +35,10 @@ Why This Design
 - Uses tree-sitter-rust package for grammar
 - Two-pass allows cross-file call resolution
 - Route detection enables `hypergumbo routes` command for Rust
+
+Population of ``is_exported`` follows Rust's visibility rule: an item is
+exported only when its declaration carries an unqualified ``pub`` modifier;
+``pub(crate)`` / ``pub(super)`` / private items are not exported.
 """
 from __future__ import annotations
 
@@ -914,6 +918,7 @@ def _extract_symbols_from_file(
                     meta=meta,
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported="pub" in modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -947,6 +952,7 @@ def _extract_symbols_from_file(
                         annotations = [*annotations, cfg_test_ann]
                 meta = {"annotations": annotations} if annotations else None
 
+                struct_modifiers = _extract_modifiers_rust(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, struct_name, "struct"),
                     name=struct_name,
@@ -962,8 +968,9 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
-                    modifiers=_extract_modifiers_rust(node, source),
+                    modifiers=struct_modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported="pub" in struct_modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -987,6 +994,7 @@ def _extract_symbols_from_file(
                         annotations = [*annotations, cfg_test_ann]
                 meta = {"annotations": annotations} if annotations else None
 
+                enum_modifiers = _extract_modifiers_rust(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, enum_name, "enum"),
                     name=enum_name,
@@ -1002,8 +1010,9 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
-                    modifiers=_extract_modifiers_rust(node, source),
+                    modifiers=enum_modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported="pub" in enum_modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1021,6 +1030,7 @@ def _extract_symbols_from_file(
                 annotations = _extract_rust_annotations(node, source)
                 meta = {"annotations": annotations} if annotations else None
 
+                trait_modifiers = _extract_modifiers_rust(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, trait_name, "trait"),
                     name=trait_name,
@@ -1033,11 +1043,12 @@ def _extract_symbols_from_file(
                         start_col=node.start_point[1],
                         end_col=node.end_point[1],
                     ),
-                    modifiers=_extract_modifiers_rust(node, source),
+                    modifiers=trait_modifiers,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported="pub" in trait_modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

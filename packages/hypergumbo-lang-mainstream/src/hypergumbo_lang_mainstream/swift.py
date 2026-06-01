@@ -33,6 +33,11 @@ Why This Design
 - Uses tree-sitter-swift package for grammar
 - Two-pass allows cross-file call resolution
 - Same pattern as other tree-sitter analyzers for consistency
+
+Population of ``is_exported`` follows Swift's default-internal rule: a
+declaration is exported only when its modifier list contains ``public`` or
+``open``; ``internal`` (the implicit default), ``fileprivate``, and
+``private`` items are not exported.
 """
 from __future__ import annotations
 
@@ -430,6 +435,7 @@ def _extract_symbols_from_file(
                     signature=signature,
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported=any(m in modifiers for m in ("public", "open")),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -467,6 +473,7 @@ def _extract_symbols_from_file(
                 base_classes = _extract_base_classes_swift(node, source)
                 meta = {"base_classes": base_classes} if base_classes else None
 
+                type_modifiers = _extract_modifiers_swift(node)
                 symbol = Symbol(
                     id=make_symbol_id("swift", str(file_path), start_line, end_line, type_name, kind),
                     name=type_name,
@@ -482,8 +489,9 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
-                    modifiers=_extract_modifiers_swift(node),
+                    modifiers=type_modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported=any(m in type_modifiers for m in ("public", "open")),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -501,6 +509,7 @@ def _extract_symbols_from_file(
                 base_classes = _extract_base_classes_swift(node, source)
                 meta = {"base_classes": base_classes} if base_classes else None
 
+                proto_modifiers = _extract_modifiers_swift(node)
                 symbol = Symbol(
                     id=make_symbol_id("swift", str(file_path), start_line, end_line, type_name, "protocol"),
                     name=type_name,
@@ -516,8 +525,9 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
-                    modifiers=_extract_modifiers_swift(node),
+                    modifiers=proto_modifiers,
                     lines_of_code=end_line - start_line + 1,
+                    is_exported=any(m in proto_modifiers for m in ("public", "open")),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -598,6 +608,7 @@ def _extract_symbols_from_file(
                         signature=signature,
                         modifiers=modifiers,
                         lines_of_code=end_line - start_line + 1,
+                        is_exported=any(m in modifiers for m in ("public", "open")),
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node
@@ -631,6 +642,7 @@ def _extract_symbols_from_file(
                 signature=signature,
                 modifiers=modifiers,
                 lines_of_code=end_line - start_line + 1,
+                is_exported=any(m in modifiers for m in ("public", "open")),
             )
             analysis.symbols.append(symbol)
             analysis.node_for_symbol[symbol.id] = node
@@ -1065,6 +1077,7 @@ def _extract_vapor_usage_contexts(
             origin=PASS_ID,
             origin_run_id=run_id,
             lines_of_code=span.end_line - span.start_line + 1,
+            is_exported=True,
         ))
 
     return contexts, route_symbols

@@ -5942,6 +5942,69 @@ type Config struct {
         assert config.lines_of_code == 5
 
 
+class TestGoIsExported:
+    """Tests for is_exported derivation on Go symbols (lexical case rule)."""
+
+    def test_function_visibility_by_case(self, tmp_path: Path) -> None:
+        """Uppercase-starting function names are exported, lowercase are not."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func Public() {}
+
+func private() {}
+""")
+
+        result = analyze_go(tmp_path)
+        public = next(s for s in result.symbols if s.name == "Public")
+        private = next(s for s in result.symbols if s.name == "private")
+        assert public.is_exported is True
+        assert private.is_exported is False
+
+    def test_method_visibility_by_case(self, tmp_path: Path) -> None:
+        """Method visibility uses the method name's case, not the receiver's."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type server struct{}
+
+func (s *server) Start() error { return nil }
+func (s *server) stop() error { return nil }
+""")
+
+        result = analyze_go(tmp_path)
+        start = next(s for s in result.symbols if s.name == "server.Start")
+        stop = next(s for s in result.symbols if s.name == "server.stop")
+        assert start.is_exported is True
+        assert stop.is_exported is False
+
+    def test_struct_visibility_by_case(self, tmp_path: Path) -> None:
+        """Type names follow the same case rule."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Config struct {
+    Host string
+}
+
+type config struct {
+    host string
+}
+""")
+
+        result = analyze_go(tmp_path)
+        public = next(s for s in result.symbols if s.name == "Config")
+        private = next(s for s in result.symbols if s.name == "config")
+        assert public.is_exported is True
+        assert private.is_exported is False
+
+
 class TestGoStructuralInterfaceMatching:
     """Tests for structural interface satisfaction detection.
 

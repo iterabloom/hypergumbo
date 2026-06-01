@@ -1721,3 +1721,32 @@ class TestSwiftLinesOfCode:
         result = analyze_swift(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Foo")
         assert cls.lines_of_code == 5
+
+
+class TestSwiftIsExported:
+    """Tests for is_exported on Swift symbols (only ``public``/``open``)."""
+
+    def test_public_open_vs_internal(self, tmp_path: Path) -> None:
+        """Public/open declarations are exported; default internal isn't."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "lib.swift").write_text(
+            "public class PublicClass {\n"
+            "    public func publicMethod() -> Int { return 1 }\n"
+            "    private func privateMethod() -> Int { return 2 }\n"
+            "}\n"
+            "\n"
+            "open class OpenClass {}\n"
+            "\n"
+            "class InternalClass {\n"
+            "    func internalMethod() -> Int { return 3 }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        by_name = {s.name: s for s in result.symbols}
+        assert by_name["PublicClass"].is_exported is True
+        assert by_name["OpenClass"].is_exported is True
+        assert by_name["InternalClass"].is_exported is False
+        assert by_name["PublicClass.publicMethod"].is_exported is True
+        assert by_name["PublicClass.privateMethod"].is_exported is False
+        assert by_name["InternalClass.internalMethod"].is_exported is False

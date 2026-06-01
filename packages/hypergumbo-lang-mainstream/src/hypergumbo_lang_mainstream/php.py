@@ -30,6 +30,10 @@ Why This Design
 - PHP support is separate from JS/TS to keep modules focused
 - Two-pass allows cross-file call resolution
 - Same pattern as JS/TS analyzer for consistency
+
+Population of ``is_exported`` follows PHP's default-public rule: top-level
+functions and classes are exported; class members are exported unless the
+declaration carries ``private`` or ``protected``.
 """
 from __future__ import annotations
 
@@ -644,6 +648,7 @@ def _extract_laravel_routes(
                         origin=run.pass_id,
                         origin_run_id=run.execution_id,
                         lines_of_code=span.end_line - span.start_line + 1,
+                        is_exported=True,
                     )
                     route_symbols.append(route_symbol)
         else:
@@ -671,6 +676,7 @@ def _extract_laravel_routes(
                 origin=run.pass_id,
                 origin_run_id=run.execution_id,
                 lines_of_code=span.end_line - span.start_line + 1,
+                is_exported=True,
             )
             if controller_action:
                 route_symbol.meta["controller_action"] = controller_action
@@ -803,6 +809,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    is_exported=True,
                 )
                 symbols.append(symbol)
 
@@ -834,6 +841,7 @@ def _extract_symbols(
                     modifiers=_extract_modifiers_php(node),
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    is_exported=True,
                 )
                 symbols.append(symbol)
 
@@ -872,6 +880,7 @@ def _extract_symbols(
                     modifiers=modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    is_exported="private" not in modifiers and "protected" not in modifiers,
                 )
                 symbols.append(symbol)
 
