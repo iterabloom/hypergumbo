@@ -5323,3 +5323,49 @@ class TestRubyQualifiedName:
         result = analyze_ruby(tmp_path)
         method = next(s for s in result.symbols if s.name == "helper")
         assert method.qualified_name == "helper"
+
+
+class TestRubyCyclomaticComplexity:
+    """Phase 4 PR5: cyclomatic_complexity populated on Ruby methods."""
+
+    def test_method_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "main.rb").write_text(
+            "def branchy(a)\n"
+            "  if a > 0 && a < 10\n"
+            "    return 1\n"
+            "  end\n"
+            "  while a > 0\n"
+            "    return 2\n"
+            "  end\n"
+            "  a > 0 ? 1 : 0\n"
+            "end\n"
+            "def simple\n"
+            "  0\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        branchy = next(s for s in result.symbols if s.name == "branchy")
+        simple = next(s for s in result.symbols if s.name == "simple")
+        assert simple.cyclomatic_complexity == 1
+        assert branchy.cyclomatic_complexity is not None
+        assert branchy.cyclomatic_complexity >= 4
+
+    def test_singleton_method_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "main.rb").write_text(
+            "class C\n"
+            "  def self.classy(a)\n"
+            "    if a > 0\n"
+            "      return 1\n"
+            "    end\n"
+            "    0\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        sym = next(s for s in result.symbols if s.name == "C.classy")
+        assert sym.cyclomatic_complexity is not None
+        assert sym.cyclomatic_complexity >= 2

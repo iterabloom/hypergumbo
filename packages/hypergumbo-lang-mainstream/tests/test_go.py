@@ -8088,3 +8088,44 @@ class TestGoQualifiedName:
         result = analyze_go(tmp_path)
         func = next(s for s in result.symbols if s.name == "helper")
         assert func.qualified_name == "main.helper"
+
+
+class TestGoCyclomaticComplexity:
+    """Phase 4 PR5: cyclomatic_complexity is populated on Go callables."""
+
+    def test_function_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text(
+            "package main\n"
+            "func branchy(x int) int {\n"
+            "    if x > 0 && x < 10 { return 1 }\n"
+            "    for i := 0; i < 3; i++ { x++ }\n"
+            "    return x\n"
+            "}\n"
+            "func simple() int { return 0 }\n"
+        )
+        result = analyze_go(tmp_path)
+        branchy = next(s for s in result.symbols if s.name == "branchy")
+        simple = next(s for s in result.symbols if s.name == "simple")
+        assert simple.cyclomatic_complexity == 1
+        # base + if + && + for == 4
+        assert branchy.cyclomatic_complexity is not None
+        assert branchy.cyclomatic_complexity >= 3
+        assert branchy.cyclomatic_complexity > simple.cyclomatic_complexity
+
+    def test_method_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text(
+            "package main\n"
+            "type Server struct{}\n"
+            "func (s *Server) Handle(x int) int {\n"
+            "    if x > 0 { return 1 }\n"
+            "    return 0\n"
+            "}\n"
+        )
+        result = analyze_go(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Server.Handle")
+        assert method.cyclomatic_complexity is not None
+        assert method.cyclomatic_complexity >= 2

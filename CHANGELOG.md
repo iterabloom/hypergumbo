@@ -295,6 +295,23 @@ Tests: one `TestXQualifiedName` class added to each per-analyzer test file with 
 
 100% coverage on all 9 modified analyzer source files. 3761 mainstream-package tests pass; 5559 smart-test passes in the affected scope.
 
+#### Phase 4 PR5 — `cyclomatic_complexity` sweep across 10 analyzers + Phase 4 closure (INV-loguk complexity piece)
+
+New shared branch-count walker `compute_cyclomatic_complexity(node, language) -> Optional[int]` added to `symbol_introspection.py`, plus module-level constants `BRANCH_NODE_TYPES` (per-language decision-point node-type sets) and `SHORT_CIRCUIT_OPS` (per-language short-circuit operator sets). Computes McCabe cyclomatic complexity (decision points + 1) by walking the subtree rooted at the callable's node and counting branch-node types matching the language's tree-sitter grammar.
+
+Wired into every callable Symbol emit site (functions, methods, constructors, lambdas) across the 9 analyzer files / 10 languages — NOT classes / vars / file pseudo-symbols / route Symbols (route registrations are framework-emitted proxies, not function bodies). Go's synthesized closure-wrapper Symbol leaves `cyclomatic_complexity=None` per writer-contract spec (no AST node available).
+
+Tree-sitter complications resolved:
+- **C#**: grammar uses `foreach_statement` (not `for_each_statement`).
+- **Ruby**: grammar uses bare names (`if`/`unless`/`while`/`case`/`when`/`rescue`/`ternary`) and `binary` (not `binary_expression`) for `&&`/`||`/`and`/`or`.
+- **TypeScript/JavaScript**: both keys map to identical branch-node sets; the `is_typescript` flag at emit time picks the appropriate language string.
+
+Tests: 285 lines added to `test_symbol_introspection.py` covering the unknown-language branch, base-1 case, per-language fixtures exercising every branch-node type, and short-circuit-op counting (including Ruby's `unless`/`and`). Each of the 9 per-analyzer test files gained a `TestXCyclomaticComplexity` class asserting `cyclomatic_complexity >= 1` on a real fixture.
+
+**Phase 4 structural closure verified**. Self-analysis spec-validator run produced `writer_contract` violations = **0** across the 7-field × 10-analyzer matrix. The remaining 519 `validation_report` entries (364 `cross_field` on `Symbol.display_label` for Class B synthetic stand-ins; 155 `axis_conformance` on `Symbol.origin`, `AnalysisRun.pass_id`, `Edge.origin`) are pre-existing Phase 6 cleanup territory and unrelated to Phase 4. INV-jahiv (visibility / reflection / scope / complexity for the 10 named analyzers) is structurally satisfied.
+
+100% coverage on `symbol_introspection.py` (64/64 stmts) and the full mainstream package (16438/16438 stmts). 3788 mainstream-package tests pass.
+
 ### Changed
 
 #### Schema — concept-axis closures

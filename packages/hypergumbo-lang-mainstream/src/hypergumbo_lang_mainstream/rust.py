@@ -66,6 +66,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
 
@@ -966,6 +967,7 @@ def _extract_symbols_from_file(
                     lines_of_code=end_line - start_line + 1,
                     is_exported="pub" in modifiers,
                     qualified_name=_make_rust_qualified_name(mod_path, impl_target, func_name),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "rust"),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

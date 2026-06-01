@@ -63,6 +63,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
 
@@ -750,6 +751,7 @@ def _extract_symbols_from_file(
                     is_exported=func_is_exported,
                     lines_of_code=end_line - start_line + 1,
                     qualified_name=_make_kotlin_qualified_name(package_name, cls_ancestors, func_name),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "kotlin"),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol

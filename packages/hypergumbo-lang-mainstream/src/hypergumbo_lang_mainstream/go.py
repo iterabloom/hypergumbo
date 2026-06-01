@@ -104,6 +104,7 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -1094,6 +1095,7 @@ def _extract_symbols_from_file(
                     shape_id=_analyzer.compute_shape_id(node),
                     is_exported=bool(func_name) and func_name[0].isupper(),
                     qualified_name=_make_go_qualified_name(package_name, None, func_name),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "go"),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -1155,6 +1157,7 @@ def _extract_symbols_from_file(
                     shape_id=_analyzer.compute_shape_id(node),
                     is_exported=bool(method_name) and method_name[0].isupper(),
                     qualified_name=_make_go_qualified_name(package_name, receiver_type or None, method_name),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "go"),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol
@@ -1241,6 +1244,7 @@ def _extract_symbols_from_file(
                                     shape_id=_analyzer.compute_shape_id(iface_child),
                                     is_exported=bool(mname) and mname[0].isupper(),
                                     qualified_name=_make_go_qualified_name(package_name, type_name, mname),
+                                    cyclomatic_complexity=compute_cyclomatic_complexity(iface_child, "go"),
                                 )
                                 analysis.symbols.append(m_sym)
                                 analysis.symbol_by_name[qualified] = m_sym
@@ -2937,6 +2941,10 @@ def _maybe_create_wrapper_symbol(
         meta={"concepts": ["middleware"], "is_closure_wrapper": True},
         lines_of_code=end_line - start_line + 1,
         is_exported=bool(wrapper_name) and wrapper_name[0].isupper(),
+        # No AST node available here (the wrapper Symbol is synthesized
+        # from positional data tracked in the closure-var pre-pass), so
+        # cyclomatic_complexity defaults to None per the
+        # writer-contract spec.
     )
     wrapper_symbols_created[wrapper_name] = sym
     return sym, True

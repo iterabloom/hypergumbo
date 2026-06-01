@@ -61,6 +61,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
@@ -859,6 +860,7 @@ def _extract_symbols(
                     lines_of_code=span.end_line - span.start_line + 1,
                     is_exported=True,
                     qualified_name=_make_php_qualified_name(namespace_name, None, name),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "php"),
                 )
                 symbols.append(symbol)
 
@@ -933,6 +935,7 @@ def _extract_symbols(
                     lines_of_code=span.end_line - span.start_line + 1,
                     is_exported="private" not in modifiers and "protected" not in modifiers,
                     qualified_name=_make_php_qualified_name(namespace_name, enclosing_class, name),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "php"),
                 )
                 symbols.append(symbol)
 

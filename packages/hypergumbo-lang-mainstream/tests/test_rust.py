@@ -5717,3 +5717,26 @@ class TestRustQualifiedName:
         result = analyze_rust(tmp_path)
         func = next(s for s in result.symbols if s.name == "helper")
         assert func.qualified_name == "helper"
+
+
+class TestRustCyclomaticComplexity:
+    """Phase 4 PR5: cyclomatic_complexity populated on Rust callables."""
+
+    def test_function_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "fn branchy(a: i32) -> i32 {\n"
+            "    if a > 0 || a < -1 { return 1; }\n"
+            "    for _i in 0..3 { }\n"
+            "    match a { 0 => 0, _ => 1, }\n"
+            "}\n"
+            "fn simple() -> i32 { 0 }\n"
+        )
+        result = analyze_rust(tmp_path)
+        branchy = next(s for s in result.symbols if s.name == "branchy")
+        simple = next(s for s in result.symbols if s.name == "simple")
+        assert simple.cyclomatic_complexity == 1
+        assert branchy.cyclomatic_complexity is not None
+        assert branchy.cyclomatic_complexity >= 4
+        assert branchy.cyclomatic_complexity > simple.cyclomatic_complexity

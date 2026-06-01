@@ -70,6 +70,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
 
@@ -1840,6 +1841,7 @@ def _extract_symbols_from_file(
                     lines_of_code=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
                     qualified_name=_make_ruby_qualified_name(ruby_chain, method_name),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "ruby"),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1883,6 +1885,7 @@ def _extract_symbols_from_file(
                     lines_of_code=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
                     qualified_name=_make_ruby_qualified_name(ruby_chain, method_name),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "ruby"),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

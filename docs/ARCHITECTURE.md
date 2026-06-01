@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **283** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 32 tracker)
-- **30237** symbols (functions, classes, methods)
-- **102750** edges by type:
-  - calls: 57252
-  - contains: 21658
-  - imports: 10205
-  - instantiates: 7820
-  - references: 3346
+- **30337** symbols (functions, classes, methods)
+- **103031** edges by type:
+  - calls: 57431
+  - contains: 21733
+  - imports: 10226
+  - instantiates: 7822
+  - references: 3349
   - module_attr_ref: 1111
-  - other: 1358
+  - other: 1359
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30237 Symbols + 102750 Edges + UsageContexts           │
+│  Output: 30337 Symbols + 103031 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,7 +279,7 @@ These symbols have the highest bidirectional centrality
 | `main` | function | 1472.5 | cli.py |
 | `clear_pattern_cache` | function | 1332.6 | framework_patterns.py |
 | `find_files` | function | 1120.8 | discovery.py |
-| `TreeSitterAnalyzer` | class | 899.0 | base.py |
+| `TreeSitterAnalyzer` | class | 903.0 | base.py |
 | `match_patterns` | function | 873.0 | framework_patterns.py |
 | `register_analyzer` | function | 822.0 | registry.py |
 | `detect_entrypoints` | function | 804.9 | entrypoints.py |
@@ -822,7 +822,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: f4957fb175b1
+  commit: 9c4541c8c574
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

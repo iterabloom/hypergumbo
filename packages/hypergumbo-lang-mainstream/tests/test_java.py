@@ -5273,3 +5273,30 @@ class TestJavaQualifiedName:
         result = analyze_java(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Bare")
         assert cls.qualified_name == "Bare"
+
+
+class TestJavaCyclomaticComplexity:
+    """Phase 4 PR5: cyclomatic_complexity populated on Java callables."""
+
+    def test_method_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "C.java").write_text(
+            "class C {\n"
+            "  int branchy(int a) {\n"
+            "    if (a > 0 && a < 10) return 1;\n"
+            "    for (int i = 0; i < 3; i++) {}\n"
+            "    return a > 0 ? 1 : 0;\n"
+            "  }\n"
+            "  int simple() { return 0; }\n"
+            "  public C() {}\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        branchy = next(s for s in result.symbols if s.name == "C.branchy")
+        simple = next(s for s in result.symbols if s.name == "C.simple")
+        ctor = next(s for s in result.symbols if s.kind == "constructor")
+        assert simple.cyclomatic_complexity == 1
+        assert ctor.cyclomatic_complexity == 1
+        assert branchy.cyclomatic_complexity is not None
+        assert branchy.cyclomatic_complexity >= 4

@@ -9306,3 +9306,55 @@ class TestJSTSQualifiedName:
         result = analyze_javascript(tmp_path)
         func = next(s for s in result.symbols if s.name == "helper")
         assert func.qualified_name == "helper"
+
+
+class TestJsTsCyclomaticComplexity:
+    """Phase 4 PR5: cyclomatic_complexity populated on JS/TS callables."""
+
+    def test_function_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "x.js").write_text(
+            "function branchy(a) {\n"
+            "  if (a > 0 && a < 10) return 1;\n"
+            "  for (let i = 0; i < 3; i++) {}\n"
+            "  return a > 0 ? 1 : 0;\n"
+            "}\n"
+            "function simple() { return 0; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        branchy = next(s for s in result.symbols if s.name == "branchy")
+        simple = next(s for s in result.symbols if s.name == "simple")
+        assert simple.cyclomatic_complexity == 1
+        assert branchy.cyclomatic_complexity is not None
+        assert branchy.cyclomatic_complexity >= 4
+
+    def test_arrow_function_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "x.js").write_text(
+            "const branchy = (a) => {\n"
+            "  if (a > 0) return 1;\n"
+            "  return 0;\n"
+            "};\n"
+        )
+        result = analyze_javascript(tmp_path)
+        branchy = next(s for s in result.symbols if s.name == "branchy")
+        assert branchy.cyclomatic_complexity is not None
+        assert branchy.cyclomatic_complexity >= 2
+
+    def test_method_definition_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "x.js").write_text(
+            "class C {\n"
+            "  branchy(a) {\n"
+            "    if (a > 0) return 1;\n"
+            "    return 0;\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        method = next(s for s in result.symbols if s.name == "C.branchy")
+        assert method.cyclomatic_complexity is not None
+        assert method.cyclomatic_complexity >= 2

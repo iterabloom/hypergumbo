@@ -2273,3 +2273,30 @@ class TestCSharpQualifiedName:
         result = analyze_csharp(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Bare")
         assert cls.qualified_name == "Bare"
+
+
+class TestCSharpCyclomaticComplexity:
+    """Phase 4 PR5: cyclomatic_complexity populated on C# callables."""
+
+    def test_method_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "C.cs").write_text(
+            "public class C {\n"
+            "  public int Branchy(int a) {\n"
+            "    if (a > 0 && a < 10) return 1;\n"
+            "    for (int i = 0; i < 3; i++) {}\n"
+            "    return a > 0 ? 1 : 0;\n"
+            "  }\n"
+            "  public int Simple() { return 0; }\n"
+            "  public C() {}\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        branchy = next(s for s in result.symbols if s.name == "C.Branchy")
+        simple = next(s for s in result.symbols if s.name == "C.Simple")
+        ctor = next(s for s in result.symbols if s.kind == "constructor")
+        assert simple.cyclomatic_complexity == 1
+        assert ctor.cyclomatic_complexity == 1
+        assert branchy.cyclomatic_complexity is not None
+        assert branchy.cyclomatic_complexity >= 4

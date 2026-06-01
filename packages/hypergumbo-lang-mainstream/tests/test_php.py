@@ -1745,3 +1745,26 @@ class TestPHPQualifiedName:
         result = analyze_php(tmp_path)
         func = next(s for s in result.symbols if s.name == "helperFunc")
         assert func.qualified_name == "helperFunc"
+
+
+class TestPhpCyclomaticComplexity:
+    """Phase 4 PR5: cyclomatic_complexity populated on PHP callables."""
+
+    def test_function_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "f.php").write_text(
+            "<?php\n"
+            "function branchy($a) {\n"
+            "    if ($a > 0 && $a < 10) return 1;\n"
+            "    for ($i = 0; $i < 3; $i++) {}\n"
+            "    return $a > 0 ? 1 : 0;\n"
+            "}\n"
+            "function simple() { return 0; }\n"
+        )
+        result = analyze_php(tmp_path)
+        branchy = next(s for s in result.symbols if s.name == "branchy")
+        simple = next(s for s in result.symbols if s.name == "simple")
+        assert simple.cyclomatic_complexity == 1
+        assert branchy.cyclomatic_complexity is not None
+        assert branchy.cyclomatic_complexity >= 4

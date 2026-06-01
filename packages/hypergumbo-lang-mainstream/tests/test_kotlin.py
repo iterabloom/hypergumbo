@@ -2489,3 +2489,26 @@ class TestKotlinQualifiedName:
         result = analyze_kotlin(tmp_path)
         func = next(s for s in result.symbols if s.name == "helper")
         assert func.qualified_name == "helper"
+
+
+class TestKotlinCyclomaticComplexity:
+    """Phase 4 PR5: cyclomatic_complexity populated on Kotlin callables."""
+
+    def test_function_complexity_populated(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "x.kt").write_text(
+            "fun branchy(a: Int): Int {\n"
+            "    if (a > 0 && a < 10) return 1\n"
+            "    for (i in 0..3) { }\n"
+            "    when (a) { 1 -> return 1; else -> return 0 }\n"
+            "    return 0\n"
+            "}\n"
+            "fun simple(): Int = 0\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        branchy = next(s for s in result.symbols if s.name == "branchy")
+        simple = next(s for s in result.symbols if s.name == "simple")
+        assert simple.cyclomatic_complexity == 1
+        assert branchy.cyclomatic_complexity is not None
+        assert branchy.cyclomatic_complexity >= 4

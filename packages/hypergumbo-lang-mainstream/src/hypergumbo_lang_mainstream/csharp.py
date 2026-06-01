@@ -61,6 +61,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
 
@@ -873,6 +874,7 @@ def _extract_symbols_from_file(
                     lines_of_code=end_line - start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "csharp"),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -922,6 +924,7 @@ def _extract_symbols_from_file(
                     lines_of_code=end_line - start_line + 1,
                     is_exported="public" in modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "csharp"),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

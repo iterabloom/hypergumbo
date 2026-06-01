@@ -91,6 +91,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
 
@@ -3234,6 +3235,7 @@ def _extract_symbols(
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, lang),
                 )
                 symbols.append(symbol)
 
@@ -3291,6 +3293,7 @@ def _extract_symbols(
                             qualified_name=_make_jsts_qualified_name(
                                 _get_jsts_class_ancestors(node, source), name, lang,
                             ),
+                            cyclomatic_complexity=compute_cyclomatic_complexity(value_node, lang),
                         )
                         symbols.append(symbol)
 
@@ -3481,6 +3484,7 @@ def _extract_symbols(
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, lang),
                 )
                 symbols.append(symbol)
 
@@ -3521,6 +3525,7 @@ def _extract_symbols(
                             qualified_name=_make_jsts_qualified_name(
                                 _get_jsts_class_ancestors(child, source), name, lang,
                             ),
+                            cyclomatic_complexity=compute_cyclomatic_complexity(child, lang),
                         )
                         symbols.append(symbol)
                     break  # Only handle one function_declaration per export
