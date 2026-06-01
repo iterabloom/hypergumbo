@@ -5140,3 +5140,22 @@ public class App {
             f"Case 4 fallback must not carry inherited_field_receiver; "
             f"got meta={meta}"
         )
+
+
+class TestJavaLinesOfCode:
+    """Tests for lines_of_code on Java symbols."""
+
+    def test_class_lines_of_code(self, tmp_path: Path) -> None:
+        """Class symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Foo.java").write_text(
+            "public class Foo {\n"
+            "    public int bar() {\n"
+            "        return 1;\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Foo")
+        assert cls.lines_of_code == 5

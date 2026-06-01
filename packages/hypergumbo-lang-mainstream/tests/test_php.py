@@ -1609,3 +1609,23 @@ class TestPhpShapeId:
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
         assert cls.shape_id.startswith("sha256:")
+
+
+class TestPhpLinesOfCode:
+    """Tests for lines_of_code on PHP symbols."""
+
+    def test_class_lines_of_code(self, tmp_path: Path) -> None:
+        """Class symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "example.php").write_text(
+            "<?php\n"
+            "class Foo {\n"
+            "    public function bar(): int {\n"
+            "        return 42;\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_php(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        assert cls.lines_of_code == 5

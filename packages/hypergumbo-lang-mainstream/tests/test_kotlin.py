@@ -2341,3 +2341,22 @@ class TestKotlinShapeId:
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
         assert cls.shape_id.startswith("sha256:")
+
+
+class TestKotlinLinesOfCode:
+    """Tests for lines_of_code on Kotlin symbols."""
+
+    def test_class_lines_of_code(self, tmp_path: Path) -> None:
+        """Class symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Example.kt").write_text(
+            "class Foo {\n"
+            "    fun bar(): Int {\n"
+            "        return 42\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        assert cls.lines_of_code == 5

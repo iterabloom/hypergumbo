@@ -5153,3 +5153,22 @@ class TestRubyStableShapeId:
         assert cls.stable_id.startswith("sha256:")
         assert cls.shape_id is not None
         assert cls.shape_id.startswith("sha256:")
+
+
+class TestRubyLinesOfCode:
+    """Tests for lines_of_code on Ruby symbols."""
+
+    def test_class_lines_of_code(self, tmp_path: Path) -> None:
+        """Class symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "example.rb").write_text(
+            "class Foo\n"
+            "  def bar\n"
+            "    42\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        cls = next(s for s in result.symbols if s.kind == "class")
+        assert cls.lines_of_code == 5

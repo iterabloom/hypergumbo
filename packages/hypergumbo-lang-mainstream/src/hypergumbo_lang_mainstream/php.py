@@ -643,6 +643,7 @@ def _extract_laravel_routes(
                         },
                         origin=run.pass_id,
                         origin_run_id=run.execution_id,
+                        lines_of_code=span.end_line - span.start_line + 1,
                     )
                     route_symbols.append(route_symbol)
         else:
@@ -669,6 +670,7 @@ def _extract_laravel_routes(
                 },
                 origin=run.pass_id,
                 origin_run_id=run.execution_id,
+                lines_of_code=span.end_line - span.start_line + 1,
             )
             if controller_action:
                 route_symbol.meta["controller_action"] = controller_action
@@ -763,6 +765,7 @@ def _extract_symbols(
         span=Span(start_line=1, end_line=end_line, start_col=0, end_col=0),
         origin=PASS_ID,
         origin_run_id=run.execution_id,
+        lines_of_code=end_line - 1 + 1,
     )
     symbols.append(module_symbol)
 
@@ -799,6 +802,7 @@ def _extract_symbols(
                     signature=signature,
                     modifiers=modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
+                    lines_of_code=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 
@@ -829,6 +833,7 @@ def _extract_symbols(
                     meta=meta,
                     modifiers=_extract_modifiers_php(node),
                     shape_id=_analyzer.compute_shape_id(node),
+                    lines_of_code=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 
@@ -866,6 +871,7 @@ def _extract_symbols(
                     signature=signature,
                     modifiers=modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
+                    lines_of_code=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 

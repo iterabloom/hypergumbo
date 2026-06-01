@@ -2719,6 +2719,7 @@ def _extract_edges_from_file(
             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            lines_of_code=1,
         )
         emit_module_attribute_refs(
             tree.root_node,
@@ -2879,6 +2880,7 @@ def _maybe_create_wrapper_symbol(
         origin=PASS_ID,
         origin_run_id=run.execution_id,
         meta={"concepts": ["middleware"], "is_closure_wrapper": True},
+        lines_of_code=end_line - start_line + 1,
     )
     wrapper_symbols_created[wrapper_name] = sym
     return sym, True
@@ -3351,6 +3353,7 @@ def _extract_go_routes(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta=route_meta,
+                                    lines_of_code=end_line - start_line + 1,
                                 )
                                 routes.append(route_sym)
 
@@ -3472,6 +3475,7 @@ def _extract_go_routes(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta=route_meta_g,
+                                    lines_of_code=end_line - start_line + 1,
                                 )
                                 routes.append(route_sym)
 
@@ -3518,6 +3522,7 @@ def _extract_go_routes(
                                     "handler_name": handler_name,
                                     "framework_role": "route",
                                 },
+                                lines_of_code=end_line - start_line + 1,
                             )
                             routes.append(route_sym)
 
@@ -3575,6 +3580,7 @@ def _extract_go_routes(
                                             "handler_ref": handler_ref,
                                             "framework_role": "route_mount",
                                         },
+                                        lines_of_code=end_line - start_line + 1,
                                     )
                                     routes.append(mount_sym)
 
@@ -3736,6 +3742,7 @@ def _extract_go_routes(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 meta=meta,
+                lines_of_code=end_line - start_line + 1,
             )
             routes.append(route_sym)
 

@@ -2005,6 +2005,7 @@ def _extract_edges_from_file(
         span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
         origin=PASS_ID,
         origin_run_id=run_id,
+        lines_of_code=1,
     )
     emit_module_attribute_refs(
         tree.root_node,

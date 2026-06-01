@@ -1702,3 +1702,22 @@ struct User {
 ''')
         result = analyze_swift(tmp_path)
         assert len(result.usage_contexts) == 0
+
+
+class TestSwiftLinesOfCode:
+    """Tests for lines_of_code on Swift symbols."""
+
+    def test_class_lines_of_code(self, tmp_path: Path) -> None:
+        """Class symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Foo.swift").write_text(
+            "class Foo {\n"
+            "    func bar() -> Int {\n"
+            "        return 42\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Foo")
+        assert cls.lines_of_code == 5

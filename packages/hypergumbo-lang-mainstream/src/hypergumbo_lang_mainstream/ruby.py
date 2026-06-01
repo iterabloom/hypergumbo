@@ -1106,6 +1106,7 @@ def _extract_rails_routes(
                     },
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    lines_of_code=span.end_line - span.start_line + 1,
                 )
                 route_symbols.append(route_symbol)
         elif method_name == "resource":
@@ -1155,6 +1156,7 @@ def _extract_rails_routes(
                     },
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    lines_of_code=span.end_line - span.start_line + 1,
                 )
                 route_symbols.append(route_symbol)
         else:
@@ -1185,6 +1187,7 @@ def _extract_rails_routes(
                 meta=route_meta,
                 origin=PASS_ID,
                 origin_run_id=run_id,
+                lines_of_code=span.end_line - span.start_line + 1,
             )
             route_symbols.append(route_symbol)
 
@@ -1770,6 +1773,7 @@ def _extract_symbols_from_file(
                     signature=_extract_ruby_signature(node, source),
                     stable_id=_analyzer.compute_stable_id(node, kind="method"),
                     shape_id=_analyzer.compute_shape_id(node),
+                    lines_of_code=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1808,6 +1812,7 @@ def _extract_symbols_from_file(
                     signature=_extract_ruby_signature(node, source),
                     stable_id=_analyzer.compute_stable_id(node, kind="method"),
                     shape_id=_analyzer.compute_shape_id(node),
+                    lines_of_code=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1864,6 +1869,7 @@ def _extract_symbols_from_file(
                     meta=meta,
                     stable_id=_analyzer.compute_stable_id(node, kind="class"),
                     shape_id=_analyzer.compute_shape_id(node),
+                    lines_of_code=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1903,6 +1909,7 @@ def _extract_symbols_from_file(
                     meta=module_meta,
                     stable_id=_analyzer.compute_stable_id(node, kind="module"),
                     shape_id=_analyzer.compute_shape_id(node),
+                    lines_of_code=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

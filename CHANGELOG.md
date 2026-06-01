@@ -228,6 +228,18 @@ Final of four validator classes lights up per ADR-0033 §"Validator classes" #4.
 
 100% coverage on `spec_validator.py` (155/0/100%), `verify_claims.py` (95/0/100%), and the new `cli.py` paths. 2780 smart-test passes.
 
+#### Phase 4 PR1 — `lines_of_code` sweep across 10 analyzers (closes INV-loguk LOC piece for these languages)
+
+Mechanical population of `Symbol.lines_of_code` across the 10 named-language analyzers in the Phase 4 plan. Every `Symbol(...)` emit site in the affected analyzers now passes `lines_of_code=span.end_line - span.start_line + 1` (or the equivalent inline-Span literal form). The pre-existing `Symbol.lines_of_code: Optional[int] = None` field was unchanged in `ir.py`; this PR only wires producers.
+
+- **Analyzer files updated**: `go.py`, `rust.py`, `js_ts.py` (covers both TypeScript and JavaScript per the ADR-0031 Symbol.language axis), `java.py`, `csharp.py`, `ruby.py`, `php.py`, `kotlin.py`, `swift.py` — 9 files (10 languages, since js_ts.py serves both TS and JS).
+- **Tests updated**: one assertion added per analyzer test file (`test_csharp.py`, `test_java.py`, `test_js_ts.py`, `test_kotlin.py`, `test_php.py`, `test_ruby.py`, `test_swift.py`, plus go and rust where applicable) verifying the first Symbol emitted by analyzing a minimal fixture carries `lines_of_code >= 1`.
+- **Synthetic stand-ins** with `span=Span(0, 0, ...)` legitimately get `lines_of_code=1` (the synthetic occupies one "line" in its conceptual space).
+
+This is one of five mechanical Phase 4 PRs. Phase 4 PR2 (is_exported), PR3 (signature + docstring shared helpers), PR4 (qualified_name + scope-tracking), and PR5 (cyclomatic_complexity + validation) follow.
+
+100% coverage on all changed source files. 5477 smart-test passes.
+
 
 ### Changed
 

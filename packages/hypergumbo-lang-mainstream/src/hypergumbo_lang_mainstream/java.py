@@ -855,6 +855,7 @@ def _extract_symbols(
                     meta=meta,
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
+                    lines_of_code=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 
@@ -895,6 +896,7 @@ def _extract_symbols(
                     meta=meta,
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
+                    lines_of_code=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 
@@ -922,6 +924,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
+                    lines_of_code=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 
@@ -1005,6 +1008,7 @@ def _extract_symbols(
                     signature=signature,
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
+                    lines_of_code=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 
@@ -1045,6 +1049,7 @@ def _extract_symbols(
                     signature=signature,
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
+                    lines_of_code=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 
@@ -2224,6 +2229,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            lines_of_code=1,
         )
         emit_module_attribute_refs(
             pf.tree.root_node,

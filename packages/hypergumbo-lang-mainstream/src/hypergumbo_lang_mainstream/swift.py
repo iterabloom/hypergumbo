@@ -429,6 +429,7 @@ def _extract_symbols_from_file(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    lines_of_code=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -482,6 +483,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     meta=meta,
                     modifiers=_extract_modifiers_swift(node),
+                    lines_of_code=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -515,6 +517,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     meta=meta,
                     modifiers=_extract_modifiers_swift(node),
+                    lines_of_code=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -545,6 +548,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    lines_of_code=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -593,6 +597,7 @@ def _extract_symbols_from_file(
                         origin_run_id=run_id,
                         signature=signature,
                         modifiers=modifiers,
+                        lines_of_code=end_line - start_line + 1,
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node
@@ -625,6 +630,7 @@ def _extract_symbols_from_file(
                 origin_run_id=run_id,
                 signature=signature,
                 modifiers=modifiers,
+                lines_of_code=end_line - start_line + 1,
             )
             analysis.symbols.append(symbol)
             analysis.node_for_symbol[symbol.id] = node
@@ -1058,6 +1064,7 @@ def _extract_vapor_usage_contexts(
             },
             origin=PASS_ID,
             origin_run_id=run_id,
+            lines_of_code=span.end_line - span.start_line + 1,
         ))
 
     return contexts, route_symbols

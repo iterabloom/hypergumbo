@@ -2146,3 +2146,22 @@ class TestCSharpMethodGroupReferences:
         result = analyze_csharp(tmp_path)
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(ref_edges) == 0
+
+
+class TestCsharpLinesOfCode:
+    """Tests for lines_of_code on C# symbols."""
+
+    def test_class_lines_of_code(self, tmp_path: Path) -> None:
+        """Class symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "Foo.cs").write_text(
+            "public class Foo {\n"
+            "    public int Bar() {\n"
+            "        return 1;\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Foo")
+        assert cls.lines_of_code == 5

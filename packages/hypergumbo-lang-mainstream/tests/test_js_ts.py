@@ -9216,3 +9216,20 @@ class TestAccessModeClassificationOnCallEdges:
         assert (edge.meta or {}).get("access_mode") == "mutate", (
             f"`.sort(` is in-place mutation; got meta={edge.meta}"
         )
+
+
+class TestJsTsLinesOfCode:
+    """Tests for lines_of_code on JS/TS symbols."""
+
+    def test_function_lines_of_code(self, tmp_path: Path) -> None:
+        """Function symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "function greet(name) {\n"
+            "  return 'Hello ' + name;\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        func = next(s for s in result.symbols if s.name == "greet")
+        assert func.lines_of_code == 3
