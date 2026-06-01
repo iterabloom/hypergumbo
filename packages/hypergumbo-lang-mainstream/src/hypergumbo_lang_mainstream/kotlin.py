@@ -61,6 +61,9 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    extract_preceding_doc_comment,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -682,6 +685,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, "kotlin"),
                     modifiers=modifiers,
                     meta=func_meta,
                     shape_id=_analyzer.compute_shape_id(node),

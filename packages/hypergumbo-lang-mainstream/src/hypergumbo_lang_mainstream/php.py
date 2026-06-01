@@ -55,9 +55,13 @@ from hypergumbo_core.analyze.base import (
     make_typed_stable_id,
     make_unresolved_edge,
     node_text,
+    populate_docstrings_from_tree,
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    extract_preceding_doc_comment,
+)
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 
 if TYPE_CHECKING:
@@ -806,6 +810,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, "php"),
                     modifiers=modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
@@ -877,12 +882,19 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, "php"),
                     modifiers=modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
                     is_exported="private" not in modifiers and "protected" not in modifiers,
                 )
                 symbols.append(symbol)
+
+    # INV-jahiv Phase 4 PR3: post-pass for symbols (e.g. classes) whose
+    # emit site does not call extract_preceding_doc_comment inline. PHP
+    # overrides analyze() and bypasses the base run_pipeline path, so
+    # we re-implement the same post-pass here.
+    populate_docstrings_from_tree(tree.root_node, source, symbols)
 
     return symbols
 

@@ -2190,3 +2190,41 @@ class TestCsharpIsExported:
         assert by_name["InternalClass"].is_exported is False
         assert by_name["PublicClass.PublicMethod"].is_exported is True
         assert by_name["PublicClass.PrivateMethod"].is_exported is False
+
+
+class TestCSharpDocstring:
+    """INV-jahiv Phase 4 PR3: Symbol.docstring on C# callable symbols."""
+
+    def test_method_with_xml_doc(self, tmp_path: Path) -> None:
+        """Method symbols populate docstring from preceding /// XML doc."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        cs_file = tmp_path / "Foo.cs"
+        cs_file.write_text(
+            "namespace N {\n"
+            "    public class Foo {\n"
+            "        /// <summary>Adds two integers.</summary>\n"
+            "        public int Add(int a, int b) { return a + b; }\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        add = next(s for s in result.symbols if s.name == "Foo.Add")
+        assert add.docstring is not None
+        assert "Adds two integers" in add.docstring
+
+    def test_method_without_doc(self, tmp_path: Path) -> None:
+        """Method symbols have docstring=None when no preceding doc."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        cs_file = tmp_path / "Foo.cs"
+        cs_file.write_text(
+            "namespace N {\n"
+            "    public class Foo {\n"
+            "        public int Sub(int a, int b) { return a - b; }\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        sub = next(s for s in result.symbols if s.name == "Foo.Sub")
+        assert sub.docstring is None

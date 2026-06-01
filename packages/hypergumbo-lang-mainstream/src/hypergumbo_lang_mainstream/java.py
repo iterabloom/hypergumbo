@@ -107,6 +107,9 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    extract_preceding_doc_comment,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -1013,6 +1016,7 @@ def _extract_symbols(
                     meta=meta,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, "java"),
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
@@ -1055,6 +1059,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, "java"),
                     modifiers=modifiers,
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,

@@ -5640,3 +5640,35 @@ pub fn os_name() -> &'static str {
         assert not any("mymod" in d for d in dsts), (
             f"unknown leftmost ``mymod`` should be skipped; got: {dsts}"
         )
+
+
+class TestRustDocstring:
+    """INV-jahiv Phase 4 PR3: Symbol.docstring on Rust callable symbols."""
+
+    def test_function_with_rustdoc_comment(self, tmp_path: Path) -> None:
+        """Function symbols populate docstring from preceding /// comments."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""/// Greets the world.
+/// Has a second line.
+pub fn greet() {
+    println!("hi");
+}
+""")
+        result = analyze_rust(tmp_path)
+        greet = next(s for s in result.symbols if s.name == "greet")
+        assert greet.docstring == "Greets the world."
+
+    def test_function_without_doc_comment(self, tmp_path: Path) -> None:
+        """Function symbols have docstring=None when no preceding comment."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""pub fn plain() {
+    println!("hi");
+}
+""")
+        result = analyze_rust(tmp_path)
+        plain = next(s for s in result.symbols if s.name == "plain")
+        assert plain.docstring is None

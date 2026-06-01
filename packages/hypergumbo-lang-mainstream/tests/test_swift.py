@@ -1750,3 +1750,49 @@ class TestSwiftIsExported:
         assert by_name["PublicClass.publicMethod"].is_exported is True
         assert by_name["PublicClass.privateMethod"].is_exported is False
         assert by_name["InternalClass.internalMethod"].is_exported is False
+
+
+class TestSwiftDocstringAndSignature:
+    """INV-jahiv Phase 4 PR3: Symbol.docstring + signature on Swift functions."""
+
+    def test_function_with_triple_slash_doc(self, tmp_path: Path) -> None:
+        """Function symbols populate docstring from preceding /// comments."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        sw = tmp_path / "Lib.swift"
+        sw.write_text("""/// Greets the user.
+/// Has a second line.
+func greet(name: String) -> String {
+    return "hi " + name
+}
+""")
+        result = analyze_swift(tmp_path)
+        greet = next(s for s in result.symbols if s.name == "greet")
+        assert greet.docstring == "Greets the user."
+
+    def test_function_without_doc(self, tmp_path: Path) -> None:
+        """Function symbols have docstring=None when no preceding /// comment."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        sw = tmp_path / "Lib.swift"
+        sw.write_text("""func plain() -> Int {
+    return 1
+}
+""")
+        result = analyze_swift(tmp_path)
+        plain = next(s for s in result.symbols if s.name == "plain")
+        assert plain.docstring is None
+
+    def test_function_signature_populated(self, tmp_path: Path) -> None:
+        """Swift functions have signature populated."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        sw = tmp_path / "Lib.swift"
+        sw.write_text("""func add(a: Int, b: Int) -> Int {
+    return a + b
+}
+""")
+        result = analyze_swift(tmp_path)
+        add = next(s for s in result.symbols if s.name == "add")
+        assert add.signature is not None
+        assert "Int" in add.signature

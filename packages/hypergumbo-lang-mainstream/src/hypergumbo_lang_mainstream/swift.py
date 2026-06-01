@@ -60,6 +60,9 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    extract_preceding_doc_comment,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -433,6 +436,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, "swift"),
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported=any(m in modifiers for m in ("public", "open")),

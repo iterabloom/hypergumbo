@@ -5189,3 +5189,43 @@ class TestJavaLinesOfCode:
         result = analyze_java(tmp_path)
         cls = next(s for s in result.symbols if s.name == "Foo")
         assert cls.lines_of_code == 5
+
+
+class TestJavaDocstring:
+    """INV-jahiv Phase 4 PR3: Symbol.docstring on Java callable symbols."""
+
+    def test_method_with_javadoc(self, tmp_path: Path) -> None:
+        """Method symbols populate docstring from preceding Javadoc."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Foo.java"
+        java_file.write_text(
+            "public class Foo {\n"
+            "    /**\n"
+            "     * Adds two numbers together.\n"
+            "     * @param a first\n"
+            "     */\n"
+            "    public int add(int a, int b) {\n"
+            "        return a + b;\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        add = next(s for s in result.symbols if s.name == "Foo.add")
+        assert add.docstring == "Adds two numbers together."
+
+    def test_method_without_javadoc(self, tmp_path: Path) -> None:
+        """Method symbols have docstring=None when no preceding Javadoc."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Foo.java"
+        java_file.write_text(
+            "public class Foo {\n"
+            "    public int sub(int a, int b) {\n"
+            "        return a - b;\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        sub = next(s for s in result.symbols if s.name == "Foo.sub")
+        assert sub.docstring is None

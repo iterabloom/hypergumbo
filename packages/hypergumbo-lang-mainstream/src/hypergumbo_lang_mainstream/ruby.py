@@ -68,6 +68,9 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    extract_preceding_doc_comment,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -1794,6 +1797,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=_extract_ruby_signature(node, source),
+                    docstring=extract_preceding_doc_comment(node, source, "ruby"),
                     stable_id=_analyzer.compute_stable_id(node, kind="method"),
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
@@ -1834,6 +1838,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=_extract_ruby_signature(node, source),
+                    docstring=extract_preceding_doc_comment(node, source, "ruby"),
                     stable_id=_analyzer.compute_stable_id(node, kind="method"),
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,

@@ -8010,3 +8010,39 @@ func main() {
                 f"Fallback edge must carry meta['disambiguation_fallback']"
                 f"=True; got meta={edge.meta}"
             )
+
+
+class TestGoDocstring:
+    """INV-jahiv Phase 4 PR3: Symbol.docstring on Go callable symbols."""
+
+    def test_function_with_preceding_doc_comment(self, tmp_path: Path) -> None:
+        """Function symbols populate docstring from preceding // comments."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+// Greet prints a greeting to stdout.
+// This is a second line of the doc.
+func Greet() {
+    println("hi")
+}
+""")
+        result = analyze_go(tmp_path)
+        greet = next(s for s in result.symbols if s.name == "Greet")
+        assert greet.docstring == "Greet prints a greeting to stdout."
+
+    def test_function_without_doc_comment(self, tmp_path: Path) -> None:
+        """Function symbols have docstring=None when no preceding comment."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func Plain() {
+    println("hi")
+}
+""")
+        result = analyze_go(tmp_path)
+        plain = next(s for s in result.symbols if s.name == "Plain")
+        assert plain.docstring is None

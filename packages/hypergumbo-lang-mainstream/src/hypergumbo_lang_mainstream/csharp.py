@@ -55,9 +55,13 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     make_typed_stable_id,
     node_text,
+    populate_docstrings_from_tree,
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    extract_preceding_doc_comment,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -793,6 +797,7 @@ def _extract_symbols_from_file(
                     meta=meta,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, "csharp"),
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="public" in modifiers,
@@ -838,6 +843,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, "csharp"),
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="public" in modifiers,
@@ -905,6 +911,13 @@ def _extract_symbols_from_file(
                             if enclosing not in analysis.class_field_types:
                                 analysis.class_field_types[enclosing] = {}
                             analysis.class_field_types[enclosing][field_name] = type_name
+
+    # INV-jahiv Phase 4 PR3: post-pass to populate docstrings on any
+    # symbols (e.g. class/interface/struct/enum/property) whose emit
+    # site does not call extract_preceding_doc_comment inline. CSharp
+    # overrides analyze() and bypasses the base run_pipeline path, so
+    # we re-implement the same post-pass here.
+    populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
 
     return analysis
 

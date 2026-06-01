@@ -5220,3 +5220,55 @@ class TestRubyIsExported:
             if s.kind == "method" and s.name.endswith("inner")
         )
         assert nested.is_exported is False
+
+
+class TestRubyDocstringAndSignature:
+    """INV-jahiv Phase 4 PR3: Symbol.docstring + signature on Ruby methods."""
+
+    def test_method_with_preceding_comment(self, tmp_path: Path) -> None:
+        """Method symbols populate docstring from preceding # comments."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb = tmp_path / "lib.rb"
+        rb.write_text("""class Foo
+  # Returns a greeting for the given name.
+  def greet(name)
+    "hi " + name
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        greet = next(s for s in result.symbols if s.name.endswith("greet"))
+        assert greet.docstring == "Returns a greeting for the given name."
+
+    def test_method_without_comment(self, tmp_path: Path) -> None:
+        """Method symbols have docstring=None when no preceding comment."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb = tmp_path / "lib.rb"
+        rb.write_text("""class Foo
+  def plain
+    1
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        plain = next(s for s in result.symbols if s.name.endswith("plain"))
+        assert plain.docstring is None
+
+    def test_method_signature_populated(self, tmp_path: Path) -> None:
+        """Ruby methods have signature populated."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb = tmp_path / "lib.rb"
+        rb.write_text("""class Foo
+  def add(a, b)
+    a + b
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        add = next(s for s in result.symbols if s.name.endswith("add"))
+        assert add.signature is not None
+        # Ruby signature must include the parameter names
+        assert "a" in add.signature and "b" in add.signature

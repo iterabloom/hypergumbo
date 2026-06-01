@@ -1667,3 +1667,35 @@ class TestPhpIsExported:
         result = analyze_php(tmp_path)
         fn = next(s for s in result.symbols if s.kind == "function")
         assert fn.is_exported is True
+
+
+class TestPhpDocstring:
+    """INV-jahiv Phase 4 PR3: Symbol.docstring on PHP callable symbols."""
+
+    def test_function_with_phpdoc(self, tmp_path: Path) -> None:
+        """Function symbols populate docstring from preceding /** PHPDoc. */"""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "lib.php").write_text(
+            "<?php\n"
+            "/**\n"
+            " * Greets the user.\n"
+            " * @return void\n"
+            " */\n"
+            "function greet() {}\n"
+        )
+        result = analyze_php(tmp_path)
+        greet = next(s for s in result.symbols if s.name == "greet")
+        assert greet.docstring == "Greets the user."
+
+    def test_function_without_phpdoc(self, tmp_path: Path) -> None:
+        """Function symbols have docstring=None when no PHPDoc."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "lib.php").write_text(
+            "<?php\n"
+            "function plain() {}\n"
+        )
+        result = analyze_php(tmp_path)
+        plain = next(s for s in result.symbols if s.name == "plain")
+        assert plain.docstring is None

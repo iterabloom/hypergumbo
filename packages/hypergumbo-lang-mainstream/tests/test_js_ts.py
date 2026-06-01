@@ -9233,3 +9233,35 @@ class TestJsTsLinesOfCode:
         result = analyze_javascript(tmp_path)
         func = next(s for s in result.symbols if s.name == "greet")
         assert func.lines_of_code == 3
+
+
+class TestJsTsDocstring:
+    """INV-jahiv Phase 4 PR3: Symbol.docstring on JS/TS callable symbols."""
+
+    def test_js_function_with_jsdoc(self, tmp_path: Path) -> None:
+        """Function symbols populate docstring from preceding JSDoc."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "/**\n"
+            " * Greets the user by name.\n"
+            " * @param {string} name\n"
+            " */\n"
+            "function greet(name) {\n"
+            "  return 'Hello ' + name;\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        func = next(s for s in result.symbols if s.name == "greet")
+        assert func.docstring == "Greets the user by name."
+
+    def test_js_function_without_jsdoc(self, tmp_path: Path) -> None:
+        """Function symbols have docstring=None when no JSDoc."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "function plain() { return 1; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        plain = next(s for s in result.symbols if s.name == "plain")
+        assert plain.docstring is None

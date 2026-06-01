@@ -257,6 +257,24 @@ Each modified file's module docstring records the per-language rule in a one-sen
 
 100% coverage on all 8 changed source files. 3690 smart-test passes in mainstream package suite.
 
+#### Phase 4 PR3 — `signature` + `docstring` shared dispatcher + 10-analyzer wire-up (INV-jahiv reflection piece)
+
+New shared dispatcher module `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/symbol_introspection.py` exposes two uniform entry points:
+
+- `extract_signature(node, source, language) -> Optional[str]` — dispatches to per-language `_extract_X_signature` helpers already in each analyzer module (and for `csharp.py`/`java.py`, passes through the constructor flag inferred from `node.type`).
+- `extract_preceding_doc_comment(node, source, language) -> Optional[str]` — gates on the `SUPPORTED_LANGUAGES` frozenset and delegates to `hypergumbo_core.analyze.base.extract_doc_comment`, which already handles `//`, `///`, `/** */`, and `#` styles via a unified regex. The dispatcher exists for API uniformity with `extract_signature` and to refuse unknown languages by returning `None`.
+
+Wire-up across 9 analyzer files (10 languages — `js_ts.py` covers both JS and TS): every callable Symbol emit site (function / method / constructor / arrow function / singleton_method) now passes `docstring=extract_preceding_doc_comment(node, source, "<lang>")`. The existing local `_extract_X_signature` calls stay in place for the six analyzers that already had them; the dispatcher reuses them. C# and PHP override `analyze()` and bypass the base-class `run_pipeline` automatic docstring post-pass, so explicit `populate_docstrings_from_tree(tree.root_node, source, symbols)` calls were added at the end of their `_extract_symbols` functions (the inline emit-site call covers callables precisely; the post-pass fills non-callable holders like classes and properties).
+
+Non-trivial cases:
+
+- **JS/TS arrow functions and export functions** — the doc comment lives before the outer `lexical_declaration` / `export_statement`, not the inner `arrow_function` / `function_declaration`. The wiring passes the outer node so JSDoc walks back from the correct anchor.
+- **Java/C# constructor dispatch** — the per-language helper takes `is_constructor: bool`; the dispatcher infers it from `node.type == "constructor_declaration"` so the public API stays uniform.
+
+Tests: `packages/hypergumbo-lang-mainstream/tests/test_symbol_introspection.py` (305 lines, 23 tests) covers the unknown-language branch + end-to-end dispatch for all 10 languages via real tree-sitter parses. Each per-analyzer test file gained a `TestXDocstring` class with at least two cases (docstring populated when comment precedes; `None` when absent).
+
+100% coverage on `symbol_introspection.py` (39/39) and 100% coverage on all 9 modified analyzers (8702 statements total). 3734 smart-test passes in mainstream package suite.
+
 ### Changed
 
 #### Schema — concept-axis closures

@@ -102,6 +102,9 @@ from hypergumbo_core.analyze.base import (
     node_text,
     visibility_from_modifiers,
 )
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    extract_preceding_doc_comment,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.symbol_resolution import ListNameResolver
 
@@ -1047,6 +1050,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, "go"),
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
                     shape_id=_analyzer.compute_shape_id(node),
@@ -1106,6 +1110,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, "go"),
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
                     shape_id=_analyzer.compute_shape_id(node),

@@ -89,6 +89,9 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    extract_preceding_doc_comment,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -3188,6 +3191,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, lang),
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
                 )
@@ -3241,6 +3245,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=stable_id,
                             signature=signature,
+                            docstring=extract_preceding_doc_comment(node, source, lang),
                             shape_id=_jsts_analyzer.compute_shape_id(value_node),
                             lines_of_code=span.end_line - span.start_line + 1,
                         )
@@ -3418,6 +3423,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     meta=meta,
                     signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, lang),
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
                 )
@@ -3454,6 +3460,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=stable_id,
                             signature=signature,
+                            docstring=extract_preceding_doc_comment(node, source, lang),
                             shape_id=_jsts_analyzer.compute_shape_id(child),
                             lines_of_code=span.end_line - span.start_line + 1,
                         )
