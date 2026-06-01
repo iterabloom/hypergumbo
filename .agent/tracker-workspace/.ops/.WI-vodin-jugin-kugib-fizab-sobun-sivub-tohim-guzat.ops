@@ -1,0 +1,22 @@
+- op: create  # cb5c
+  at: '2026-06-01T23:09:34Z'  # cb5c
+  by: agent  # cb5c
+  actor: jgstern_agent  # cb5c
+  clock: 1  # cb5c
+  nonce: cb5c  # cb5c
+  data:  # cb5c
+    kind: work_item  # cb5c
+    title: "Static-AST linter for Symbol(id=f\"...\") patterns + Edge.id schema validator extension (ADR-0034 gap closure)"  # cb5c
+    status: todo_hard  # cb5c
+    priority: 2  # cb5c
+    parent:  # cb5c
+    tags:  # cb5c
+    - analysis_quality  # cb5c
+    - spec_compliance  # cb5c
+    - identity  # cb5c
+    isbefore: []  # cb5c
+    duplicate_of: []  # cb5c
+    not_duplicate_of: []  # cb5c
+    pr_ref:  # cb5c
+    description: "ADR-0034 (`docs/adr/0034-id-construction-discipline.md` §\"Enforcement\") names a known gap: there is no source-level check that flags `Symbol(id=f\"...\")` patterns. The runtime spec-validator (`spec_validator.py::_check_id_format`) catches malformed IDs after the pipeline runs; reviewers are the first line of defense at PR-review time. Until the runtime check fires, a regression can land silently.\n\nA source-level (static-AST) check parallel to `multi_value_field_axis.py` would close this. The pattern to detect: any `Symbol(...)` constructor call whose `id=` keyword argument is either (a) an f-string literal, (b) a string concatenation, or (c) any expression other than a call to one of the canonical factories at `analyze/base.py:288-309` (`make_symbol_id`, `make_file_id`) or their wrappers.\n\nImplementation shape:\n- New module `packages/hypergumbo-core/src/hypergumbo_core/check_id_construction.py` (mirroring the shape of `multi_value_field_axis.py`).\n- A script at `scripts/check-id-construction` that walks the source tree, parses each `.py` file's AST, and reports violations.\n- A pytest at `packages/hypergumbo-core/tests/test_id_construction.py::test_live_tree_passes` that runs the check across `packages/` and asserts zero violations.\n- Wire into `.githooks/pre-commit` so violations block at commit time.\n\nAlso closes the deferred `Edge.id` schema check carry-over from Phase 6 PR1 — extend the runtime spec-validator's `_check_id_format` to scan `Edge.id` for the same canonical shape it enforces on `Symbol.id`. The static check above covers the producer side for both fields.\n\nReferences: ADR-0034 §\"Enforcement\" + \"Static check — known gap\"; Phase 6 PR1 deferred-items."  # cb5c
+    fields: {}  # cb5c

@@ -1,0 +1,21 @@
+- op: create  # 9ae7
+  at: '2026-06-01T23:09:41Z'  # 9ae7
+  by: agent  # 9ae7
+  actor: jgstern_agent  # 9ae7
+  clock: 1  # 9ae7
+  nonce: 9ae7  # 9ae7
+  data:  # 9ae7
+    kind: work_item  # 9ae7
+    title: "Spec doc cleanup: docs/hypergumbo-spec.md stableid scheme v2 → v5 + canonical_name removed past-tense"  # 9ae7
+    status: todo_hard  # 9ae7
+    priority: 3  # 9ae7
+    parent:  # 9ae7
+    tags:  # 9ae7
+    - spec  # 9ae7
+    - docstring_staleness  # 9ae7
+    isbefore: []  # 9ae7
+    duplicate_of: []  # 9ae7
+    not_duplicate_of: []  # 9ae7
+    pr_ref:  # 9ae7
+    description: "`docs/hypergumbo-spec.md` (the architectural spec) is the canonical reference for the analyzer output schema. Phase 6 PR3 (commit ea0154e54f) bumped `STABLE_ID_SCHEME` from `\"hypergumbo-stableid-v4\"` to `\"hypergumbo-stableid-v5\"` to record the hash-input change (`name` + `qualified_name` added). The version string in `schema.py` was updated; the spec doc still references `\"hypergumbo-stableid-v2\"` in places.\n\nThis is a contained docstring-staleness issue: walk the spec doc, find every reference to a stableid scheme version, update to the current `v5`. While doing so, audit adjacent text for other stale references (e.g., the `Symbol.canonical_name` field was removed in Phase 6 PR4; any spec text describing it as a current field needs to be revised to past-tense or removed).\n\nCould fold into the next scheduled docstring-staleness audit (per `.agent/agent_playbooks_protocols_sops_skills/docstring-staleness-audit-playbook.md`) rather than its own one-off PR — that playbook explicitly handles this kind of drift.\n\nLowest priority of the seven Phase 6 deferred-item buckets — pure documentation cleanup with no runtime impact.\n\nReferences: Phase 6 PR3 commit ea0154e54f deferred-items mentions this explicitly."  # 9ae7
+    fields: {}  # 9ae7

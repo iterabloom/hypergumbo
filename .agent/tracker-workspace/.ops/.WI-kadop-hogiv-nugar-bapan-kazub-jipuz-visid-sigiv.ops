@@ -1,0 +1,22 @@
+- op: create  # ed73
+  at: '2026-06-01T23:09:27Z'  # ed73
+  by: agent  # ed73
+  actor: jgstern_agent  # ed73
+  clock: 1  # ed73
+  nonce: ed73  # ed73
+  data:  # ed73
+    kind: work_item  # ed73
+    title: "Symbol.synthesis_mechanism sibling field (new ADR + IR change + producer/consumer migration)"  # ed73
+    status: todo_hard  # ed73
+    priority: 2  # ed73
+    parent:  # ed73
+    tags:  # ed73
+    - classification_axes  # ed73
+    - adr  # ed73
+    - analysis_quality  # ed73
+    isbefore: []  # ed73
+    duplicate_of: []  # ed73
+    not_duplicate_of: []  # ed73
+    pr_ref:  # ed73
+    description: "`Symbol.origin` carries pass-id values per its declared `# axis: pass-id` annotation. Most analyzers and linkers populate it with their `make_pass_id(...)` output, which is registered in `_ANALYZER_REGISTRY` / `_LINKER_REGISTRY` and surfaces via `catalog.all_known_pass_ids()`.\n\nBut some Symbols (~492 of the dogfood corpus 20260528) carry synthesis-mechanism values instead: `\"inheritance\"`, `\"orchestrator_file_symbol_synthesis\"`, `\"scip\"`. These name HOW the Symbol was synthesized (not WHICH pass synthesized it). The Symbol docstring (ir.py:990+) calls this out as \"pending split into a sibling `synthesis_mechanism` field.\"\n\nPhase 6 PR5 (commit 6376ecb95c) added `_SYNTHESIS_MECHANISMS = frozenset({\"inheritance\", \"orchestrator_file_symbol_synthesis\", \"scip\"})` to `catalog.all_known_pass_ids()` as a stopgap so the axis-conformance validator stops false-positive flagging — but the architectural fix (separating the synthesis-mechanism axis from the pass-id axis) remains deferred.\n\nImplementation shape:\n1. New ADR documenting the split rationale and the migration plan.\n2. New IR field `Symbol.synthesis_mechanism: Optional[str]` with its own `# axis: synthesis-mechanism` annotation and lightweight catalog (per ADR-0024 §4 \"use judgment\" carveout).\n3. Producer migration: every Symbol-emit site that currently sets `origin=[\"inheritance\"]` etc. moves the value to the new field; `Symbol.origin` reverts to carrying only pass-id values.\n4. Consumer migration: any reader that currently branches on `\"inheritance\" in symbol.origin` switches to `symbol.synthesis_mechanism == \"inheritance\"`.\n5. Remove `_SYNTHESIS_MECHANISMS` from the catalog stopgap.\n\nThe campaign's Phase 1-2 reshape of `Symbol.language` (into `discovery_language` + `protocol_origin`) and `Symbol.canonical_name` (into `display_label` + `qualified_name`) followed exactly this shape; this item is the same pattern applied to the third overloaded field.\n\nSchema-version implication: minor bump (additive field; backward-compatible read-side)."  # ed73
+    fields: {}  # ed73
