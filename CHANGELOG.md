@@ -391,6 +391,25 @@ The 2 residual `axis_conformance` violations are Solidity test-fixture data leak
 
 162 spec-validator + catalog + decorator-dispatch tests pass. Self-analysis post-fix shows 989 → 2 axis_conformance violations (99.8% drop).
 
+#### Phase 6 PR6 — `cross_field` + `id_format` validator-driven cleanup tail closure
+
+Drives the self-analysis `validation_report` from **2645 → 2 violations** (99.92% drop) across cross_field, id_format, and the residual axis_conformance carryover from PR5. The 2 remaining are the same Solidity test-fixture "Not owner" leak (1 conceptual root cause).
+
+**cross_field display_label leak (1639 → 0).** Root cause: every external boundary Symbol synthesized by `ir.py:synthesize_file_symbols_for_dangling_edges` carries `display_label=f"{language}:{path}:{name}:{kind}"` per the ADR-0032 typed-sibling pattern. The Phase 3 PR3 cross_field check exempted `kind="file"` but not `kind="external_symbol"`. The validator now exempts both (with a docstring note: external-symbol display_label is the canonical printable form for that synthesis path, not a Class A leak). Closes the 1294 python:unresolved + 210 python:attribute + 106 markdown:doc_link + smaller groups.
+
+**id_format residuals (17 → 1).**
+
+- **Python route IDs** (8 violations) — `py.py:2657` constructed Starlette route IDs as `f"{method}:{route_path}"`. The `:` in `GET:/health` broke the canonical 5-segment shape (parsed as 6 segments). Changed to `f"{method} {route_path}"` so the name segment stays colon-free.
+- **NPM package IDs** (4 violations: 2 `Symbol.id` + 2 `Symbol.stable_id`) — `linkers/js_module.py::_make_npm_package_id` produced `f"{lang}:npm:{name}:npm_package"` (4 segments, no path or span slots). Now produces the canonical `f"{lang}:npm:0-0:{name}:npm_package"`; `Symbol.stable_id` switched from the (id-shaped) string to `make_dependency_stable_id(lang, pkg_name)` which returns the canonical `sha256:<16hex>` form.
+- **JSON `devDependency` kind segment** (2 violations) — `json_config.py:181` used the pre-fold `dep_type="devDependency"` in the kind slot, producing a camelCase suffix that violated the kind-segment regex `^[a-z][a-z0-9_]*$`. Now uses `kind_value="dependency"` (the post-fold canonical kind that the Symbol's `kind` field already carries).
+- **Rust `::`-namespacing leak** (2 violations) — `rust.py:949` passed `full_name = f"{impl_target}::{func_name}"` (e.g., `MyStruct::method`) to `make_symbol_id`'s name slot. The `::` produced wrong_field_count=6. Now uses `id_name_segment = full_name.replace("::", ".")` for the ID slot only; `Symbol.name` and `Symbol.qualified_name` keep the native `::` form.
+- **Rust external module path** (1 violation) — `rust:std::collections::HashMap:0-0:module:module`. The IR's `_parse_dangling_id` parser (ir.py:1097) is explicitly colon-tolerant in the path slot via last-3-tokens parsing. The validator's `_CANONICAL_ID_PATTERN` was over-strict; updated to allow `:` in the path slot (greedy `.+` backtracks to find the span-name-kind suffix). External Rust module IDs now pass without producer-side changes.
+- **`inherited-calls-linker` PASS_ID typo** (closes 1 carry-over axis_conformance violation from PR5) — `linkers/inherited_calls.py:100` had the same registration vs runtime-emission mismatch as Phase 6 PR5's `decorator-dispatch-linker` case. Corrected `make_pass_id("inherited-calls-linker")` → `make_pass_id("inherited-calls")` matching the `@register_linker("inherited-calls", ...)` registration. `test_cli_explain.py` fixture updated.
+
+**Remaining 2 violations** (`Symbol.language='Not owner'` + `Symbol.id='Not owner:<unknown>:0-0:Not owner:Not owner'`) trace to one Solidity test-fixture string literal that leaks into the external-symbol synthesis path; the conceptual fix is a deeper Solidity analyzer audit and falls outside this PR's id_format/cross_field scope.
+
+14750 smart-test passes (2 pre-existing `test_cli_symbols` rendering failures unrelated). Validator-driven cleanup tail complete: writer_contract / verdict_enum / cross_field all at 0.
+
 #### Phase 6 PR2 — INV-luhur AnalysisRun + meta-layer writer-contract sweep
 
 Closes a batch of the 10 INV-luhur sub-members by codifying canonical definitions, wiring previously-unwired writer paths, and extending `_check_writer_contract` to fold in the structural pattern.

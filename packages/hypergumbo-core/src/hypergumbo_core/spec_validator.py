@@ -762,11 +762,21 @@ def _check_cross_field_coherence(
         # ADR-0032 display_label scope. Class A real-source declarations
         # should not carry a display_label; the field is reserved for
         # synthetic linker stand-ins.
+        #
+        # Exemptions:
+        # - kind="file": file pseudo-symbols have a synthesized
+        #   display_label as part of their boundary identity (per
+        #   ir.py:synthesize_file_symbols_for_dangling_edges).
+        # - kind="external_symbol": dangling-edge boundary nodes
+        #   (ir.py:1285) use display_label as the canonical printable
+        #   form (``f"{language}:{path}:{name}:{kind}"``); this is the
+        #   ADR-0032 typed-sibling pattern applied to externals, not a
+        #   Class A leak.
         if (
             display_label is not None
             and language is not None
             and protocol_origin is None
-            and kind != "file"
+            and kind not in ("file", "external_symbol")
         ):
             violations.append(ValidationViolation(
                 severity="warning",
@@ -999,19 +1009,26 @@ def _check_verdict_enum_completeness() -> list[ValidationViolation]:
 # - Stable-id collision counting (INV-bazij P0).
 # - Stable-id multiplicity (one stable_id per logical symbol — INV-hunup).
 
-# Single-colon canonical pattern:
+# Canonical ID pattern matching the IR's last-3-tokens parser (ir.py
+# ``_parse_dangling_id`` line 1093 — "the path slot may itself contain
+# colons"). The shape is fixed at five colon-separated segments where
+# the LAST THREE (span, name, kind) are colon-free; the path may
+# contain ``:`` (Windows drive prefixes, Rust ``::``-namespaced module
+# paths, etc.). The greedy ``.+`` in the path slot backtracks until
+# the span-name-kind suffix matches.
+#
 # - lang: lowercase identifier (one or more alphanum/underscore chars
 #   starting with a letter; matches the strings in catalog.all_known_languages)
-# - path: anything without a colon
+# - path: any non-empty string (may contain colons)
 # - span: digit+-digit+
-# - name: anything without a colon (may be empty — file pseudo-symbols use
-#   the literal "file"; in practice always non-empty)
+# - name: anything without a colon (may be empty — file pseudo-symbols
+#   use the literal "file"; in practice always non-empty)
 # - kind: lowercase identifier (matches symbol_kinds.all_symbol_kind_names)
 _CANONICAL_ID_PATTERN = re.compile(
     r"^[a-z][a-z0-9_]*"        # language
-    r":[^:]+"                  # path
+    r":.+"                     # path (may contain colons)
     r":\d+-\d+"                # span
-    r":[^:]*"                  # name (allow empty — defensive)
+    r":[^:]*"                  # name (colon-free)
     r":[a-z][a-z0-9_]*$"       # kind
 )
 
@@ -1021,14 +1038,33 @@ def _classify_id_format_problem(id_str: str) -> str:
 
     Order matters: the most specific (and historically common) failure
     mode is checked first so the validator's violation messages point
-    operators at the right fix.
+    operators at the right fix. The IR's permissive parser
+    (``_parse_dangling_id`` last-3-tokens shape) is the source of truth
+    for "valid"; this classifier explains why the value falls outside.
+
+    INV-sadiv detection: the legacy path-prefix shape
+    ``<path>::<role>::<line>`` produces an ID whose FIRST segment is
+    not a valid language identifier and which contains ``::``. Tag
+    these explicitly so reviewers know to migrate to ``make_symbol_id``
+    even though the surface-level failure (non_canonical_language_prefix
+    or wrong_field_count) would also fire.
     """
-    if "::" in id_str:
-        return "double_colon_separator (INV-sadiv)"
     parts = id_str.split(":")
-    if len(parts) != 5:
-        return f"wrong_field_count (expected 5, got {len(parts)})"
-    lang, _path, span, _name, kind = parts
+    if "::" in id_str:
+        # INV-sadiv pre-dates the canonical schema; surface the migration
+        # hint before the more-generic shape diagnostics. Note: legitimate
+        # canonical IDs with Rust ``::`` in the path slot do NOT reach
+        # here because they pass _CANONICAL_ID_PATTERN.match in
+        # _check_id_format before _classify_id_format_problem fires.
+        return "double_colon_separator (INV-sadiv)"
+    # The canonical shape has at least 5 segments; the last 3 are span,
+    # name, kind (colon-free).
+    if len(parts) < 5:
+        return f"wrong_field_count (expected at least 5, got {len(parts)})"
+    lang = parts[0]
+    span = parts[-3]
+    _name = parts[-2]
+    kind = parts[-1]
     if not re.match(r"^[a-z][a-z0-9_]*$", lang):
         return f"non_canonical_language_prefix ({lang!r})"
     if not re.match(r"^\d+-\d+$", span):

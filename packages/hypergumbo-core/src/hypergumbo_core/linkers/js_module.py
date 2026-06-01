@@ -52,7 +52,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..analyze.base import make_file_id, make_file_stable_id
+from ..analyze.base import make_dependency_stable_id, make_file_id, make_file_stable_id
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -214,14 +214,26 @@ def _probe_file(base_path: Path) -> Path | None:
 def _make_npm_package_id(package_name: str, lang: str) -> str:
     """Create a stable symbol ID for an npm_package symbol.
 
+    Phase 6 PR6 (ADR-0034 id_format closure): the canonical schema is
+    ``<language>:<path>:<start>-<end>:<name>:<kind>`` (5 colon-
+    separated segments). npm package stand-ins have no source file or
+    span, so the path slot uses ``"npm"`` as a synthetic locator and
+    the span slot uses ``0-0``. The colon-containing ``@scope/name``
+    form is preserved with the slash so it stays parseable.
+
     Args:
         package_name: The npm package name (e.g., 'lodash', '@vue/test-utils').
         lang: Language of the import.
 
     Returns:
-        Symbol ID in format '{lang}:npm:{package_name}:npm_package'
+        Symbol ID in canonical 5-segment form:
+        ``'{lang}:npm:0-0:{package_name}:npm_package'``.
     """
-    return f"{lang}:npm:{package_name}:npm_package"
+    # Sanitize any ``:`` in the name segment (defensive — npm names
+    # don't normally contain colons but the canonical schema requires
+    # the name segment be colon-free for parse round-tripping).
+    safe_name = package_name.replace(":", "_")
+    return f"{lang}:npm:0-0:{safe_name}:npm_package"
 
 
 def _is_relative_import(import_path: str) -> bool:
@@ -850,9 +862,12 @@ def link_js_modules(
                 # ADR-0031 Class B: synthetic stand-in for an npm package; the
                 # package has no source-language declaration of its own — the
                 # discovery context is the importing file's language.
+                # Phase 6 PR6 (ADR-0034 id_format): stable_id was a copy of
+                # the non-canonical f-string id pre-fix; now uses the
+                # canonical sha256:<16hex> dependency factory.
                 pkg_sym = Symbol(
                     id=pkg_id,
-                    stable_id=pkg_id,
+                    stable_id=make_dependency_stable_id(lang, pkg_name),
                     name=pkg_name,
                     kind="package",
                     language=None,

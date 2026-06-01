@@ -1945,7 +1945,7 @@ def test_cmd_explain_shows_multi_origin(tmp_path: Path, capsys) -> None:
                 "kind": "function",
                 "language": "python",
                 "path": "src/main.py",
-                "origin": ["python-analyzer", "inherited-calls-linker"],
+                "origin": ["python-analyzer", "inherited-calls"],
                 "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
             },
         ],
@@ -1964,7 +1964,7 @@ def test_cmd_explain_shows_multi_origin(tmp_path: Path, capsys) -> None:
 
     out, _ = capsys.readouterr()
     assert "python-analyzer" in out
-    assert "inherited-calls-linker" in out
+    assert "inherited-calls" in out
 
 
 def test_cmd_explain_shows_edge_type_in_callers(tmp_path: Path, capsys) -> None:

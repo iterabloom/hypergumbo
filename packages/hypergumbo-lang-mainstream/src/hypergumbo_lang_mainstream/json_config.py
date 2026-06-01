@@ -178,18 +178,22 @@ def _process_dependencies(
             if pkg_name:
                 start_line = child.start_point[0] + 1
                 end_line = child.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, pkg_name, dep_type)
 
                 meta: dict = {"package": pkg_name}
                 if version:
                     meta["version"] = version
                 # Wave 6 PR 5 fold per audit-findings 0006: devDependency
                 # → kind="dependency" + meta["dependency_scope"]="dev".
-                # The ID component retains the legacy dep_type literal for
-                # stable_id continuity.
+                # Phase 6 PR6 (ADR-0034 id_format closure): the ID's kind
+                # segment now uses the post-fold ``kind_value`` so the
+                # canonical 5-segment shape uses lowercase identifiers
+                # only (``devDependency`` violates the kind-segment regex
+                # ``^[a-z][a-z0-9_]*$``).
                 if dep_type == "devDependency":
                     meta["dependency_scope"] = "dev"
                 kind_value = "dependency" if dep_type == "devDependency" else dep_type
+
+                symbol_id = _make_symbol_id(rel_path, start_line, end_line, pkg_name, kind_value)
 
                 sym = Symbol(
                     id=symbol_id,

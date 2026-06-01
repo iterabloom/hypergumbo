@@ -97,7 +97,7 @@ from .type_hierarchy import (
     build_method_index,
 )
 
-PASS_ID = make_pass_id("inherited-calls-linker")
+PASS_ID = make_pass_id("inherited-calls")
 
 _INHERITED_CALL_EDGE_TYPES: tuple[str, ...] = (
     "extends", "implements", "includes",

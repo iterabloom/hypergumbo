@@ -2651,10 +2651,14 @@ def _extract_file_analysis(
         # Multiple methods → one route symbol per method, matching the
         # convention used elsewhere in this codebase.
         for method in methods:
+            # ADR-0034 / Phase 6 PR6: canonical IDs forbid ``:`` in the
+            # name segment (the same character is the segment separator).
+            # The method-disambiguated route name embeds the method and
+            # path via ``" "`` so the canonical 5-segment shape holds.
             symbol = Symbol(
                 id=_make_symbol_id(
                     str(py_file), ctx.span.start_line, ctx.span.end_line,
-                    f"{method}:{route_path}", "route",
+                    f"{method} {route_path}", "route",
                 ),
                 name=f"starlette:{view_name or 'unknown'}",
                 kind="function",

@@ -945,8 +945,14 @@ def _extract_symbols_from_file(
                 ) if norm_sig else None
 
                 mod_path = _get_rust_mod_path(node, source)
+                # Phase 6 PR6 (ADR-0034 id_format closure): canonical IDs
+                # forbid ``:`` in the name segment. Rust impl-method names
+                # use ``::`` (e.g., ``MyStruct::method``); the ID segment
+                # collapses to ``.`` while Symbol.name and Symbol.qualified_name
+                # keep the native ``::`` form.
+                id_name_segment = full_name.replace("::", ".")
                 symbol = Symbol(
-                    id=make_symbol_id("rust", str(file_path), start_line, end_line, full_name, kind),
+                    id=make_symbol_id("rust", str(file_path), start_line, end_line, id_name_segment, kind),
                     name=full_name,
                     kind=kind,
                     language="rust",
