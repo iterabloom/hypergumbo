@@ -467,6 +467,77 @@ def test_axis_conformance_edge_origin_bad_element_flagged() -> None:
     assert len(matched) == 1
 
 
+# ----------------------------------------------------------------------
+# Phase 3 PR2 — Writer-contract validator class tests
+# ----------------------------------------------------------------------
+
+
+def test_writer_contract_flags_all_default_config_fingerprint() -> None:
+    """All AnalysisRun records sharing the default config_fingerprint
+    (`sha256:44136fa355b3678a` = sha256 of '{}') trigger a writer-
+    contract violation per INV-luhur sub-pattern 2 ("Default-only
+    initializer never overridden")."""
+    from hypergumbo_core.ir import _default_config_fingerprint
+
+    default_fp = _default_config_fingerprint()
+    runs = [
+        _FakeSym(execution_id=f"run:{i}", pass_id="py_v1", config_fingerprint=default_fp)
+        for i in range(3)
+    ]
+    violations = validate_ir([], [], runs)
+    matched = [
+        v for v in violations
+        if v.validator_class == "writer_contract"
+        and v.field_name == "AnalysisRun.config_fingerprint"
+    ]
+    assert len(matched) == 1
+    assert matched[0].severity == "warning"
+    assert "Default-only" in matched[0].message
+
+
+def test_writer_contract_silent_when_at_least_one_run_overrides() -> None:
+    """If any AnalysisRun overrides the default, the writer-contract
+    check passes (the writer IS populating the field; the gap is
+    elsewhere)."""
+    from hypergumbo_core.ir import _default_config_fingerprint
+
+    default_fp = _default_config_fingerprint()
+    runs = [
+        _FakeSym(execution_id="run:1", pass_id="py_v1", config_fingerprint=default_fp),
+        _FakeSym(execution_id="run:2", pass_id="py_v1", config_fingerprint="sha256:differentvalue"),
+    ]
+    violations = validate_ir([], [], runs)
+    assert not any(
+        v.validator_class == "writer_contract"
+        and v.field_name == "AnalysisRun.config_fingerprint"
+        for v in violations
+    )
+
+
+def test_writer_contract_silent_for_single_run() -> None:
+    """A single run carrying the default isn't enough evidence — N=1
+    can't distinguish "writer never overrode" from "this one analyzer
+    legitimately has no config." Requires N>=2 of the same default."""
+    from hypergumbo_core.ir import _default_config_fingerprint
+
+    default_fp = _default_config_fingerprint()
+    runs = [
+        _FakeSym(execution_id="run:1", pass_id="py_v1", config_fingerprint=default_fp),
+    ]
+    violations = validate_ir([], [], runs)
+    assert not any(
+        v.validator_class == "writer_contract"
+        and v.field_name == "AnalysisRun.config_fingerprint"
+        for v in violations
+    )
+
+
+def test_writer_contract_silent_with_no_runs() -> None:
+    """Zero records skip the check (no signal possible)."""
+    violations = validate_ir([], [], [])
+    assert not any(v.validator_class == "writer_contract" for v in violations)
+
+
 def test_axis_conformance_qualified_name_unknown_language_is_skipped() -> None:
     """When the Symbol's language has no declared qualified-name separator
     policy, the structural check is skipped (no violation, no false

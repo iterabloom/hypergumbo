@@ -168,6 +168,18 @@ First of four validator classes lights up. The validator iterates every axis-tag
 
 100% coverage on changed source files (`spec_validator.py` at 97/0/100%). 14285 passed.
 
+#### ADR-0033 Phase 3 PR2 — writer-contract validator class (WI-rolol sub-task B scaffolding)
+
+Second of four validator classes lights up per ADR-0033 §"Validator classes" #2 and INV-luhur META. The validator now scans `(record_class, axis-tagged field)` pairs and detects the four sub-patterns of the writer-contract gap that INV-luhur named.
+
+- **Framework + first concrete sub-pattern-2 check**: `_WRITER_CONTRACT_DEFAULT_SENTINELS` is a lazy-resolved table of `(record_class_name, field_name) → default-sentinel callable`. For each entry, the validator scans records of that class; if every record's value matches the literal default (with N ≥ 2 for signal), it emits an umbrella `writer_contract` violation per ADR-0033 §"Output format". The first registered entry covers `AnalysisRun.config_fingerprint` — INV-luhur's canonical example (84 of 84 runs collapse to `sha256(b'{}')` because every analyzer / linker calls `AnalysisRun.create(pass_id, version)` with no config arg).
+- **One umbrella violation per (record_class, field) — not N per-record violations.** The issue is structural; flooding the report with N copies of the same finding would obscure the signal.
+- **Folds in WI-rolol sub-task B scaffolding**: this PR lands the validator-class framework + `_check_writer_contract` infrastructure. Each of the 10 INV-luhur member items closes via its own downstream PR adding its specific assertion to `_WRITER_CONTRACT_DEFAULT_SENTINELS` (per WI-rolol sub-task B's trial procedure). Phase 6 PR2's "INV-luhur AnalysisRun writer-contract residual sweep" picks up that member-by-member work.
+- **4 new property tests** at `tests/test_spec_validator_smoke.py` cover: all-default-trigger, single-override-silent, N=1-silent, no-runs-silent.
+- **N ≥ 2 threshold**: a single AnalysisRun with the default is not enough evidence — N=1 can't distinguish "writer never overrode" from "this one analyzer legitimately has no config." The 84 production runs satisfy this comfortably; tests use N=3 to test the path.
+
+100% coverage on `spec_validator.py` (120/0/100%). 14289 passed.
+
 
 ### Changed
 

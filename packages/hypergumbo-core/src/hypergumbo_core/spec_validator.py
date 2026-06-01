@@ -74,7 +74,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import asdict, dataclass
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 VALIDATION_REPORT_SCHEMA_VERSION = "0.1"
 
@@ -123,8 +123,15 @@ def validate_ir(
     therefore tolerant of dataclass-shape evolution.
     """
     violations: list[ValidationViolation] = []
+    # The argument may be a one-shot iterable; the writer-contract
+    # validator below scans the same lists multiple times, so we
+    # materialise once. (Axis-conformance also benefits but it's
+    # single-pass — materialising upstream is the safer composition.)
+    symbols = list(symbols)
+    edges = list(edges)
+    analysis_runs = list(analysis_runs)
     violations.extend(_check_axis_conformance(symbols, edges, analysis_runs))
-    # Phase 3 PR2 — writer-contract checks land here
+    violations.extend(_check_writer_contract(symbols, edges, analysis_runs))
     # Phase 3 PR3 — cross-field coherence checks land here
     # Phase 3 PR4 — verdict-enum completeness checks land here
     return violations
@@ -385,6 +392,139 @@ def _check_qualified_name_separator(
                 ),
             )]
     return []
+
+
+# ----------------------------------------------------------------------
+# Phase 3 PR2 — Writer-contract validator class (folds in WI-rolol sub-task B)
+# ----------------------------------------------------------------------
+#
+# Per ADR-0033 §"Validator classes" #2 and INV-luhur META, four
+# symptom sub-patterns of the writer-contract gap are checked:
+#
+#   1. **Schema-declares-no-writer.** Field declared on the dataclass +
+#      serialized via to_dict(), but no producer populates it — value
+#      stays at default across every record.
+#   2. **Default-only initializer.** Writer populates with a default-
+#      constant (e.g., AnalysisRun.config_fingerprint defaulting to
+#      `sha256(b'{}')`), so every record carries the same low-entropy
+#      value when the field is supposed to be evidence-derived.
+#   3. **Same-name two-definitions.** Two metrics with the same name
+#      disagree across serialization paths (e.g., `total_io_edges`
+#      meaning `tagged_count` in one place and `sum(len(.chains))` in
+#      another). Cross-checked via a small explicit allowlist of
+#      "names that should agree."
+#   4. **Writer-writes-constant.** Schema reserves an evidence-derived
+#      slot but the writer ships a constant. Detected like #2 — single-
+#      value-across-corpus signature — but flagged with a different
+#      severity since the field IS populated.
+#
+# Phase 3 PR2 lands the framework + ONE concrete sub-pattern-2 check
+# (AnalysisRun.config_fingerprint constant-default detection). Each of
+# the 10 INV-luhur member items closes via a downstream PR that adds
+# its specific assertion to the table below (per WI-rolol sub-task B's
+# trial procedure). The validator framework is the gate; each writer-
+# side fix is its own small per-producer PR.
+
+
+# (record_class_name, field_name) -> default-sentinel callable.
+# When ALL records of that class have the field set to the sentinel
+# value, the writer-contract validator flags it as a "default-only
+# initializer" sub-pattern-2 violation.
+def _all_runs_default_config_fingerprint() -> str:
+    """Compute the literal default config_fingerprint at runtime.
+
+    Mirrors `ir._default_config_fingerprint` exactly. Computed lazily so
+    this module stays decoupled from ir.py at import time.
+    """
+    from .ir import _default_config_fingerprint
+
+    return _default_config_fingerprint()
+
+
+# Each entry: (record_class_name, field_name) -> lazy-sentinel callable.
+_WRITER_CONTRACT_DEFAULT_SENTINELS: dict[
+    tuple[str, str],
+    "Callable[[], str]",
+] = {
+    ("AnalysisRun", "config_fingerprint"):
+        _all_runs_default_config_fingerprint,
+}
+
+
+def _check_writer_contract(
+    symbols: Iterable[Any],
+    edges: Iterable[Any],
+    analysis_runs: Iterable[Any],
+) -> list[ValidationViolation]:
+    """Writer-contract class: writers populate axis-tagged fields with
+    evidence-derived values, not initialization defaults.
+
+    See ADR-0033 §"Validator classes" #2 and INV-luhur META.
+    Phase-3-PR2 scope: sub-pattern 2 (default-only initializer) for
+    ``AnalysisRun.config_fingerprint``. Other sub-patterns + member-
+    specific assertions are tracked under INV-luhur's child items;
+    each closes via its own writer-side PR that extends this validator.
+    """
+    violations: list[ValidationViolation] = []
+    runs_list = list(analysis_runs)
+    if not runs_list:
+        return violations
+
+    # Sub-pattern 2: default-only initializer. For each registered
+    # (record_class, field) sentinel, check if every record of that
+    # class has the field set to exactly the sentinel value. If so,
+    # the writer side is wiring the field but never overriding the
+    # default — INV-luhur §"Default-only initializer never overridden".
+    for (record_class, field_name), sentinel_fn in (
+        _WRITER_CONTRACT_DEFAULT_SENTINELS.items()
+    ):
+        records: list[Any]
+        if record_class == "AnalysisRun":
+            records = runs_list
+        elif record_class == "Symbol":  # pragma: no cover — no Symbol sentinels yet
+            records = list(symbols)
+        elif record_class == "Edge":  # pragma: no cover — no Edge sentinels yet
+            records = list(edges)
+        else:  # pragma: no cover — unknown record class is an internal bug
+            continue
+        if not records:  # pragma: no cover — guarded by outer truthiness
+            continue
+        sentinel = sentinel_fn()
+        violating_records = [
+            r for r in records
+            if getattr(r, field_name, None) == sentinel
+        ]
+        if len(violating_records) == len(records) and len(records) >= 2:
+            # Every record has the literal default; the writer side
+            # never overrode it. Emit ONE umbrella violation rather
+            # than N per-record violations — the issue is structural,
+            # not per-record.
+            example_id = getattr(
+                violating_records[0],
+                "execution_id",
+                getattr(violating_records[0], "id", None),
+            )
+            violations.append(ValidationViolation(
+                severity="warning",
+                validator_class="writer_contract",
+                axis=None,
+                field_name=f"{record_class}.{field_name}",
+                record_id=example_id,
+                observed=sentinel,
+                expected=(
+                    "evidence-derived value (writer-contract sub-pattern 2: "
+                    "default-only initializer never overridden)"
+                ),
+                message=(
+                    f"All {len(records)} {record_class} records have "
+                    f"{field_name}={sentinel!r} (the literal default). "
+                    "Some pass should be populating it with an evidence-"
+                    "derived value. See INV-luhur §\"Default-only "
+                    "initializer never overridden\"."
+                ),
+            ))
+
+    return violations
 
 
 def build_validation_report(
