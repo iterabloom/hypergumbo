@@ -352,8 +352,16 @@ def _extract_edges_from_tree(
                         lib_name = node_text(id_node, source)
                         using_libraries.setdefault(contract_name, set()).add(lib_name)
 
-    # First pass: extract import aliases
+    # First pass: extract import aliases.
+    # Phase 6 PR7 (Solidity "Not owner" leak): gate on the
+    # ``import_directive`` node type — _extract_import_aliases scans
+    # children for the first ``string`` node, which would otherwise
+    # match the string argument of any call (e.g.,
+    # ``require(cond, "Not owner")``) and synthesize a bogus
+    # ``imports`` edge whose dst is the error-message literal.
     for node in iter_tree(tree.root_node):
+            if node.type != "import_directive":
+                continue
             import_path, aliases = _extract_import_aliases(node, source)
             if import_path:
                 edge = Edge.create(

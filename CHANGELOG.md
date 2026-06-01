@@ -391,6 +391,14 @@ The 2 residual `axis_conformance` violations are Solidity test-fixture data leak
 
 162 spec-validator + catalog + decorator-dispatch tests pass. Self-analysis post-fix shows 989 → 2 axis_conformance violations (99.8% drop).
 
+#### Phase 6 PR7 — Solidity import-alias leak fix (validator at 0)
+
+Closes the last 2 violations the campaign was tracking, both surfacing the same root cause: `solidity.py:356` called `_extract_import_aliases(node, source)` for EVERY node in the tree, not only `import_directive` nodes. The helper finds the first `string` child and uses its text as the import path; on any other node type with a string-literal argument (e.g., `require(msg.sender == owner, "Not owner")`), it falls back to that string. The Solidity analyzer was therefore emitting an `imports` edge with `dst="Not owner"` (the error-message string literal), which the dangling-edge synthesis at `ir.py:1255` then materialized as an `external_symbol` Symbol with `language="Not owner"`, `id="Not owner:<unknown>:0-0:Not owner:Not owner"`. Both axis_conformance (Symbol.language not in catalog) and id_format (non-canonical language prefix) violations resolve to this single Symbol.
+
+The fix gates the loop body on `node.type == "import_directive"` so the helper only sees actual import directives. 89 Solidity tests pass; analyzer probe confirms the bogus edge is gone and the legitimate `./Other.sol` import edge remains.
+
+**Self-analysis post-fix shows ZERO violations across all 5 validator classes** (writer_contract / verdict_enum / cross_field / axis_conformance / id_format). The INV-sugat campaign's structural goal — "no spec-vs-data mismatch in the emitted IR" — is now empirically met on the self-analysis corpus.
+
 #### Phase 6 PR6 — `cross_field` + `id_format` validator-driven cleanup tail closure
 
 Drives the self-analysis `validation_report` from **2645 → 2 violations** (99.92% drop) across cross_field, id_format, and the residual axis_conformance carryover from PR5. The 2 remaining are the same Solidity test-fixture "Not owner" leak (1 conceptual root cause).
