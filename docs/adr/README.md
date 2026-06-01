@@ -40,6 +40,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0031](0031-symbol-language-reshape.md) | Symbol.language Reshape — discovery_language and protocol_origin Typed Fields | Draft | 2026-05-30 |
 | [0032](0032-canonical-name-fingerprint-reshape.md) | canonical_name and fingerprint Reshape — display_label and qualified_name Typed Fields; Format 1 Fingerprint Demolition | Accepted | 2026-05-31 |
 | [0033](0033-spec-vs-data-validator-stage.md) | Spec-vs-Data Validator Stage | Accepted | 2026-05-31 |
+| [0034](0034-id-construction-discipline.md) | ID-Construction Discipline | Accepted | 2026-06-01 |
 
 > ADR numbers 0025 and 0026 were filed under the ADR series in error and have been **reclassified as audit-findings documents** (per-value verdicts under existing law from ADR-0023 and ADR-0024, not new architecture decisions). They now live at [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md) and [`docs/audits/0002-ipc-family.md`](../audits/0002-ipc-family.md). Stubs at the old paths are kept for URL-level discoverability but are not principles. The bucket boundary is documented in the next section.
 
@@ -63,7 +64,7 @@ Three buckets, each with its own home:
 
 ## Thematic grouping
 
-**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023, 0024, 0029, 0030
+**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023, 0024, 0029, 0030, 0031, 0032, 0033, 0034
 
 **Agent infrastructure and governance:** 0001, 0008, 0009, 0013, 0018, 0019, 0020, 0021
 

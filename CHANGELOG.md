@@ -333,6 +333,10 @@ Out of scope (Phase 6 territory): `Symbol.stable_id` schema check (`sha256:<16he
 
 100% coverage on the new validator paths. 6305 smart-test passes (the two pre-existing `test_cli_symbols` rendering failures at commit `7959eddb13` remain unrelated to this PR).
 
+#### Phase 5 PR2 — ADR-0034 ID-Construction Discipline (policy doc)
+
+Lands `docs/adr/0034-id-construction-discipline.md` codifying the canonical-factory discipline for `Symbol.id` construction. The Phase 5 PR1 `id_format` validator is the runtime enforcement; this ADR is the rationale + reviewer checklist + Class B language-string policy (linker-emitted Symbols use the host's `discovery_language` as the canonical-ID first segment). Closes the documentation gap surfaced by the id-construction-discipline lab-notebook entry. Indexed in `docs/adr/README.md` under the Analysis-pipeline thematic group.
+
 ### Changed
 
 #### Schema — concept-axis closures
