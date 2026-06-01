@@ -2228,3 +2228,48 @@ class TestCSharpDocstring:
         result = analyze_csharp(tmp_path)
         sub = next(s for s in result.symbols if s.name == "Foo.Sub")
         assert sub.docstring is None
+
+
+class TestCSharpQualifiedName:
+    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on C# symbols."""
+
+    def test_method_qualified_name_uses_dot_separator(self, tmp_path: Path) -> None:
+        """Methods inside a namespace carry Namespace.Class.Method with '.' separator."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "Foo.cs").write_text(
+            "namespace App.Service {\n"
+            "    public class Foo {\n"
+            "        public int Bar() { return 1; }\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Foo.Bar")
+        assert method.qualified_name == "App.Service.Foo.Bar"
+        assert "::" not in method.qualified_name
+        assert "\\" not in method.qualified_name
+
+    def test_class_qualified_name_includes_namespace(self, tmp_path: Path) -> None:
+        """Class symbols carry Namespace.Class qualified_name."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "Foo.cs").write_text(
+            "namespace App.Service {\n"
+            "    public class Foo {}\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Foo")
+        assert cls.qualified_name == "App.Service.Foo"
+
+    def test_top_level_class_without_namespace(self, tmp_path: Path) -> None:
+        """A class without a namespace has just its name as qualified_name."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "Bare.cs").write_text(
+            "public class Bare {}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Bare")
+        assert cls.qualified_name == "Bare"

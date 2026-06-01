@@ -74,6 +74,7 @@ from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
     make_pass_id,
 )
+from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -2730,6 +2731,42 @@ def _get_class_context(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None
 
 
+def _get_jsts_class_ancestors(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Walk up the tree collecting all enclosing class names.
+
+    Returns the chain from outermost to innermost (excluding the current
+    node itself). Used to build qualified names for nested classes/methods.
+    """
+    chain: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_declaration", "abstract_class_declaration"):
+            name = _find_name_in_children(current, source)
+            if name:
+                chain.append(name)
+        current = current.parent
+    return list(reversed(chain))
+
+
+def _make_jsts_qualified_name(
+    ancestors: list[str], name: str, lang: str
+) -> str:
+    """Build a JS/TS qualified name: ``Class1.Class2.symbol_name``.
+
+    JS/TS has no source-level package concept (modules are file-scoped),
+    so qualified_name comprises only the class-ancestor chain plus the
+    symbol name. The ``lang`` argument selects the separator (always ``.``
+    for both javascript and typescript, but passed through the catalog
+    for consistency with the other analyzers).
+    """
+    sep = separator_for_language(lang)  # "." for both ts and js
+    parts: list[str] = list(ancestors)
+    parts.append(name)
+    return sep.join(parts)
+
+
 def _ts_value_to_python(node: "tree_sitter.Node", source: bytes) -> str | int | float | bool | list | None:
     """Convert a tree-sitter AST node to a Python value representation.
 
@@ -3194,6 +3231,9 @@ def _extract_symbols(
                     docstring=extract_preceding_doc_comment(node, source, lang),
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    qualified_name=_make_jsts_qualified_name(
+                        _get_jsts_class_ancestors(node, source), name, lang,
+                    ),
                 )
                 symbols.append(symbol)
 
@@ -3248,6 +3288,9 @@ def _extract_symbols(
                             docstring=extract_preceding_doc_comment(node, source, lang),
                             shape_id=_jsts_analyzer.compute_shape_id(value_node),
                             lines_of_code=span.end_line - span.start_line + 1,
+                            qualified_name=_make_jsts_qualified_name(
+                                _get_jsts_class_ancestors(node, source), name, lang,
+                            ),
                         )
                         symbols.append(symbol)
 
@@ -3285,6 +3328,9 @@ def _extract_symbols(
                     meta=meta,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    qualified_name=_make_jsts_qualified_name(
+                        _get_jsts_class_ancestors(node, source), name, lang,
+                    ),
                 )
                 symbols.append(symbol)
 
@@ -3309,6 +3355,9 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    qualified_name=_make_jsts_qualified_name(
+                        _get_jsts_class_ancestors(node, source), name, lang,
+                    ),
                 )
                 symbols.append(symbol)
 
@@ -3361,6 +3410,9 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    qualified_name=_make_jsts_qualified_name(
+                        _get_jsts_class_ancestors(node, source), name, lang,
+                    ),
                 )
                 symbols.append(symbol)
 
@@ -3426,6 +3478,9 @@ def _extract_symbols(
                     docstring=extract_preceding_doc_comment(node, source, lang),
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
+                    qualified_name=_make_jsts_qualified_name(
+                        _get_jsts_class_ancestors(node, source), name, lang,
+                    ),
                 )
                 symbols.append(symbol)
 
@@ -3463,6 +3518,9 @@ def _extract_symbols(
                             docstring=extract_preceding_doc_comment(node, source, lang),
                             shape_id=_jsts_analyzer.compute_shape_id(child),
                             lines_of_code=span.end_line - span.start_line + 1,
+                            qualified_name=_make_jsts_qualified_name(
+                                _get_jsts_class_ancestors(child, source), name, lang,
+                            ),
                         )
                         symbols.append(symbol)
                     break  # Only handle one function_declaration per export

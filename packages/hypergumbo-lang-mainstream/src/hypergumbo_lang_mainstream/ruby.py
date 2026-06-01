@@ -54,6 +54,7 @@ from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
     make_pass_id,
 )
+from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -230,6 +231,41 @@ def _extract_require_hints(
                         hints[class_name] = require_path
 
     return hints
+
+
+def _get_ruby_class_or_module_chain(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Walk up the tree collecting all enclosing class/module names.
+
+    Returns the chain from outermost to innermost (excluding the current
+    node itself). Used to build qualified names for nested types.
+    """
+    chain: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type in ("class", "module"):
+            name_node = _find_child_by_field(current, "name")
+            if name_node:
+                chain.append(node_text(name_node, source))
+        current = current.parent
+    return list(reversed(chain))
+
+
+def _make_ruby_qualified_name(
+    chain: list[str], name: str
+) -> str:
+    """Build a Ruby qualified name using ``::`` separator.
+
+    Ruby's runtime convention is ``Mod::Class#instance_method`` /
+    ``Mod::Class.class_method``, but ``Symbol.qualified_name`` records a
+    coarse-grained identifier — the instance/class distinction lives on
+    ``Symbol.name`` and modifiers. We canonicalise to the ``::`` form here.
+    """
+    sep = separator_for_language("ruby")  # "::"
+    parts: list[str] = list(chain)
+    parts.append(name)
+    return sep.join(parts)
 
 
 def _get_enclosing_class_or_module(node: "tree_sitter.Node", source: bytes) -> tuple[Optional[str], str]:
@@ -1782,6 +1818,7 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                ruby_chain = _get_ruby_class_or_module_chain(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("ruby", str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
@@ -1802,6 +1839,7 @@ def _extract_symbols_from_file(
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
+                    qualified_name=_make_ruby_qualified_name(ruby_chain, method_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1823,6 +1861,7 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                ruby_chain = _get_ruby_class_or_module_chain(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("ruby", str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
@@ -1843,6 +1882,7 @@ def _extract_symbols_from_file(
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
+                    qualified_name=_make_ruby_qualified_name(ruby_chain, method_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1882,6 +1922,7 @@ def _extract_symbols_from_file(
                             meta = {}
                         meta["included_modules"] = included
 
+                ruby_chain = _get_ruby_class_or_module_chain(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("ruby", str(file_path), start_line, end_line, class_name, "class"),
                     name=class_name,
@@ -1901,6 +1942,7 @@ def _extract_symbols_from_file(
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
+                    qualified_name=_make_ruby_qualified_name(ruby_chain, class_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1923,6 +1965,7 @@ def _extract_symbols_from_file(
                     if included:
                         module_meta = {"included_modules": included}
 
+                ruby_chain = _get_ruby_class_or_module_chain(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("ruby", str(file_path), start_line, end_line, module_name, "module"),
                     name=module_name,
@@ -1942,6 +1985,7 @@ def _extract_symbols_from_file(
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
                     is_exported=not _is_nested_in_method(node),
+                    qualified_name=_make_ruby_qualified_name(ruby_chain, module_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

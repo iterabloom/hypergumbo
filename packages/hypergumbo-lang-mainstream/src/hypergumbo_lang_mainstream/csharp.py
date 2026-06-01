@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -499,6 +500,62 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None  # pragma: no cover - defensive
 
 
+def _get_csharp_class_ancestors(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Walk up the tree to find all enclosing class/interface/struct names.
+
+    Returns the chain from outermost to innermost (excluding the current
+    node itself). Used to build qualified names for nested types.
+    """
+    ancestors: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type in (
+            "class_declaration", "interface_declaration",
+            "struct_declaration", "enum_declaration", "record_declaration",
+        ):
+            name_node = find_child_by_type(current, "identifier")
+            if name_node:
+                ancestors.append(node_text(name_node, source))
+        current = current.parent
+    return list(reversed(ancestors))
+
+
+def _get_csharp_enclosing_namespace(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Walk up the tree to find the enclosing namespace (if any).
+
+    Handles both block-style ``namespace Foo.Bar { ... }`` and the C# 10
+    ``file_scoped_namespace_declaration`` form.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in (
+            "namespace_declaration", "file_scoped_namespace_declaration",
+        ):
+            # The name child can be an identifier or qualified_name
+            for child in current.children:
+                if child.type in ("qualified_name", "identifier"):
+                    return node_text(child, source)
+        current = current.parent
+    return None
+
+
+def _make_csharp_qualified_name(
+    namespace: Optional[str], ancestors: list[str], name: str
+) -> str:
+    """Build a C# qualified name from namespace + class chain + symbol name."""
+    sep = separator_for_language("csharp")  # "."
+    parts: list[str] = []
+    if namespace:
+        parts.append(namespace)
+    parts.extend(ancestors)
+    parts.append(name)
+    return sep.join(parts)
+
+
 def _extract_using_aliases(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -636,6 +693,8 @@ def _extract_symbols_from_file(
                         meta["base_classes"] = base_classes
 
                 class_modifiers = _extract_modifiers(node)
+                ns_name = _get_csharp_enclosing_namespace(node, source)
+                cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "class"),
                     name=name,
@@ -654,6 +713,7 @@ def _extract_symbols_from_file(
                     modifiers=class_modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="public" in class_modifiers,
+                    qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -667,6 +727,8 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 iface_modifiers = _extract_modifiers(node)
+                ns_name = _get_csharp_enclosing_namespace(node, source)
+                cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "interface"),
                     name=name,
@@ -684,6 +746,7 @@ def _extract_symbols_from_file(
                     modifiers=iface_modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="public" in iface_modifiers,
+                    qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -697,6 +760,8 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 struct_modifiers = _extract_modifiers(node)
+                ns_name = _get_csharp_enclosing_namespace(node, source)
+                cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "struct"),
                     name=name,
@@ -714,6 +779,7 @@ def _extract_symbols_from_file(
                     modifiers=struct_modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="public" in struct_modifiers,
+                    qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -727,6 +793,8 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 enum_modifiers = _extract_modifiers(node)
+                ns_name = _get_csharp_enclosing_namespace(node, source)
+                cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "enum"),
                     name=name,
@@ -744,6 +812,7 @@ def _extract_symbols_from_file(
                     modifiers=enum_modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="public" in enum_modifiers,
+                    qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -780,6 +849,8 @@ def _extract_symbols_from_file(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                 ) if norm_sig else None
 
+                ns_name = _get_csharp_enclosing_namespace(node, source)
+                cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
@@ -801,6 +872,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="public" in modifiers,
+                    qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -827,6 +899,8 @@ def _extract_symbols_from_file(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
                 ) if norm_sig else None
 
+                ns_name = _get_csharp_enclosing_namespace(node, source)
+                cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, full_name, "constructor"),
                     name=full_name,
@@ -847,6 +921,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="public" in modifiers,
+                    qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -864,6 +939,8 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 prop_modifiers = _extract_modifiers(node)
+                ns_name = _get_csharp_enclosing_namespace(node, source)
+                cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, full_name, "property"),
                     name=full_name,
@@ -881,6 +958,7 @@ def _extract_symbols_from_file(
                     modifiers=prop_modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="public" in prop_modifiers,
+                    qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

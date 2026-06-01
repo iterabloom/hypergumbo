@@ -8046,3 +8046,45 @@ func Plain() {
         result = analyze_go(tmp_path)
         plain = next(s for s in result.symbols if s.name == "Plain")
         assert plain.docstring is None
+
+
+class TestGoQualifiedName:
+    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on Go symbols."""
+
+    def test_method_qualified_name_uses_dot_separator(self, tmp_path: Path) -> None:
+        """Methods carry package.Receiver.method qualified_name with '.' separator."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "user.go").write_text(
+            "package svc\n"
+            "type User struct{}\n"
+            "func (u *User) Greet() string { return \"hi\" }\n"
+        )
+        result = analyze_go(tmp_path)
+        method = next(s for s in result.symbols if s.name == "User.Greet")
+        assert method.qualified_name == "svc.User.Greet"
+        assert "::" not in method.qualified_name
+
+    def test_struct_qualified_name_includes_package(self, tmp_path: Path) -> None:
+        """Top-level struct carries package.Struct as qualified_name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "user.go").write_text(
+            "package svc\n"
+            "type User struct{}\n"
+        )
+        result = analyze_go(tmp_path)
+        struct = next(s for s in result.symbols if s.name == "User" and s.kind == "struct")
+        assert struct.qualified_name == "svc.User"
+
+    def test_top_level_function_qualified_name(self, tmp_path: Path) -> None:
+        """A top-level function carries package.func as qualified_name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text(
+            "package main\n"
+            "func helper() int { return 1 }\n"
+        )
+        result = analyze_go(tmp_path)
+        func = next(s for s in result.symbols if s.name == "helper")
+        assert func.qualified_name == "main.helper"

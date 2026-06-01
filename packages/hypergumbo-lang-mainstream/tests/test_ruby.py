@@ -5272,3 +5272,54 @@ end
         assert add.signature is not None
         # Ruby signature must include the parameter names
         assert "a" in add.signature and "b" in add.signature
+
+
+class TestRubyQualifiedName:
+    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on Ruby symbols."""
+
+    def test_method_qualified_name_uses_double_colon(self, tmp_path: Path) -> None:
+        """Methods inside ``module Foo; class Bar`` carry Foo::Bar::method."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "bar.rb").write_text(
+            "module Foo\n"
+            "  class Bar\n"
+            "    def baz\n"
+            "      1\n"
+            "    end\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Bar#baz")
+        assert method.qualified_name == "Foo::Bar::baz"
+        # Ruby uses '::' for the qualified-name separator.
+        assert "::" in method.qualified_name
+        assert "\\" not in method.qualified_name
+
+    def test_class_qualified_name_includes_module(self, tmp_path: Path) -> None:
+        """Class symbol nested in a module carries Module::Class."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "bar.rb").write_text(
+            "module Foo\n"
+            "  class Bar\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Bar" and s.kind == "class")
+        assert cls.qualified_name == "Foo::Bar"
+
+    def test_top_level_method_qualified_name(self, tmp_path: Path) -> None:
+        """A top-level method has just its name as qualified_name."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "main.rb").write_text(
+            "def helper\n"
+            "  1\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        method = next(s for s in result.symbols if s.name == "helper")
+        assert method.qualified_name == "helper"

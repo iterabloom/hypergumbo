@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -328,6 +329,60 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
                 return node_text(name_node, source)
         current = current.parent
     return None  # pragma: no cover - defensive
+
+
+def _get_kotlin_class_ancestors(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Walk up the tree collecting all enclosing class/object names.
+
+    Returns the chain from outermost to innermost (excluding the current
+    node itself).
+    """
+    chain: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_declaration", "object_declaration"):
+            name_node = _find_child_by_field(current, "name")
+            if not name_node:  # pragma: no cover - defensive fallback
+                name_node = find_child_by_type(current, "identifier")
+                if not name_node:
+                    name_node = find_child_by_type(current, "type_identifier")
+            if name_node:
+                chain.append(node_text(name_node, source))
+        current = current.parent
+    return list(reversed(chain))
+
+
+def _extract_kotlin_package(
+    root: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract the Kotlin package from the ``package_header`` declaration.
+
+    Returns ``None`` for files without a package header (the default
+    unnamed package).
+    """
+    for child in root.children:
+        if child.type == "package_header":
+            for sub in child.children:
+                if sub.type in ("identifier", "qualified_identifier"):
+                    text = node_text(sub, source)
+                    if text and text != "package":
+                        return text
+    return None
+
+
+def _make_kotlin_qualified_name(
+    package: Optional[str], ancestors: list[str], name: str
+) -> str:
+    """Build a Kotlin qualified name: ``package.ClassChain.symbol_name``."""
+    sep = separator_for_language("kotlin")  # "."
+    parts: list[str] = []
+    if package:
+        parts.append(package)
+    parts.extend(ancestors)
+    parts.append(name)
+    return sep.join(parts)
 
 
 def _get_enclosing_function(
@@ -613,6 +668,8 @@ def _extract_symbols_from_file(
 
     analysis = FileAnalysis()
     analysis.imports = _extract_imports(tree, source)
+    # ADR-0032 Phase 4 PR4: extract package once for qualified_name population.
+    package_name = _extract_kotlin_package(tree.root_node, source)
 
     for node in iter_tree(tree.root_node):
         # Function declaration
@@ -669,6 +726,7 @@ def _extract_symbols_from_file(
                     func_meta["extension_receiver"] = receiver_type
                     func_is_exported = True
 
+                cls_ancestors = _get_kotlin_class_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("kotlin", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -691,6 +749,7 @@ def _extract_symbols_from_file(
                     shape_id=_analyzer.compute_shape_id(node),
                     is_exported=func_is_exported,
                     lines_of_code=end_line - start_line + 1,
+                    qualified_name=_make_kotlin_qualified_name(package_name, cls_ancestors, func_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -726,6 +785,7 @@ def _extract_symbols_from_file(
                     meta["decorators"] = annotations
 
                 class_modifiers = _extract_modifiers(node)
+                cls_ancestors = _get_kotlin_class_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("kotlin", str(file_path), start_line, end_line, type_name, kind),
                     name=type_name,
@@ -748,6 +808,7 @@ def _extract_symbols_from_file(
                         m in class_modifiers
                         for m in ("private", "internal", "protected")
                     ),
+                    qualified_name=_make_kotlin_qualified_name(package_name, cls_ancestors, type_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
@@ -770,6 +831,7 @@ def _extract_symbols_from_file(
                     obj_meta = {"decorators": obj_annotations}
 
                 obj_modifiers = _extract_modifiers(node)
+                cls_ancestors = _get_kotlin_class_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("kotlin", str(file_path), start_line, end_line, object_name, "object"),
                     name=object_name,
@@ -792,6 +854,7 @@ def _extract_symbols_from_file(
                         m in obj_modifiers
                         for m in ("private", "internal", "protected")
                     ),
+                    qualified_name=_make_kotlin_qualified_name(package_name, cls_ancestors, object_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[object_name] = symbol

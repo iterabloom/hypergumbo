@@ -2446,3 +2446,46 @@ fun greet(name: String): String {
         add = next(s for s in result.symbols if s.name == "add")
         assert add.signature is not None
         assert "Int" in add.signature
+
+
+class TestKotlinQualifiedName:
+    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on Kotlin symbols."""
+
+    def test_method_qualified_name_uses_dot_separator(self, tmp_path: Path) -> None:
+        """Methods inside a class with a package carry package.Class.method."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Foo.kt").write_text(
+            "package com.foo.bar\n"
+            "class Foo {\n"
+            "    fun bar(): Int = 1\n"
+            "}\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Foo.bar")
+        assert method.qualified_name == "com.foo.bar.Foo.bar"
+        # Kotlin uses '.' as the qualified-name separator.
+        assert "::" not in method.qualified_name
+
+    def test_class_qualified_name_includes_package(self, tmp_path: Path) -> None:
+        """Class symbols carry package.Class qualified_name."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Foo.kt").write_text(
+            "package com.foo.bar\n"
+            "class Foo {}\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Foo")
+        assert cls.qualified_name == "com.foo.bar.Foo"
+
+    def test_top_level_function_without_package(self, tmp_path: Path) -> None:
+        """A top-level function without a package has just its name as qualified_name."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Bare.kt").write_text(
+            "fun helper(): Int = 1\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        func = next(s for s in result.symbols if s.name == "helper")
+        assert func.qualified_name == "helper"

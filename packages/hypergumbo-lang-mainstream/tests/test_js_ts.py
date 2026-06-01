@@ -9265,3 +9265,44 @@ class TestJsTsDocstring:
         result = analyze_javascript(tmp_path)
         plain = next(s for s in result.symbols if s.name == "plain")
         assert plain.docstring is None
+
+
+class TestJSTSQualifiedName:
+    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on JS/TS symbols."""
+
+    def test_method_qualified_name_uses_dot_separator(self, tmp_path: Path) -> None:
+        """Methods inside a class carry Class.method qualified_name with '.' separator."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "Foo.ts").write_text(
+            "export class Foo {\n"
+            "    bar(): number { return 1; }\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Foo.bar")
+        assert method.qualified_name == "Foo.bar"
+        # JS/TS use '.' as the qualified-name separator.
+        assert "::" not in method.qualified_name
+
+    def test_class_qualified_name(self, tmp_path: Path) -> None:
+        """Top-level class symbol has just its name as qualified_name."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "Foo.ts").write_text(
+            "export class Foo {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Foo")
+        assert cls.qualified_name == "Foo"
+
+    def test_top_level_function_qualified_name(self, tmp_path: Path) -> None:
+        """A top-level function has just its name as qualified_name."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "bare.js").write_text(
+            "function helper() { return 1; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        func = next(s for s in result.symbols if s.name == "helper")
+        assert func.qualified_name == "helper"

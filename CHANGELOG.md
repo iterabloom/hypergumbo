@@ -275,6 +275,26 @@ Tests: `packages/hypergumbo-lang-mainstream/tests/test_symbol_introspection.py` 
 
 100% coverage on `symbol_introspection.py` (39/39) and 100% coverage on all 9 modified analyzers (8702 statements total). 3734 smart-test passes in mainstream package suite.
 
+#### Phase 4 PR4 — `qualified_name` sweep across 10 analyzers (ADR-0032 producer wire-up)
+
+Population of `Symbol.qualified_name: Optional[str]` at every declaration `Symbol(...)` emit site across the 9 analyzer files (10 languages — `js_ts.py` covers both JS and TS) named in the Phase 4 plan. Each analyzer extracts the file's package / namespace once (where the host language has such a concept) and walks up the tree to collect the enclosing class / mod chain, then joins via `separator_for_language()` from `packages/hypergumbo-core/src/hypergumbo_core/qualified_name_axis.py` — never hardcoding the separator.
+
+- **Go** (`go.py`) — `_extract_go_package` reads the `package_clause` once; `_make_go_qualified_name(pkg, receiver, name)` joins via `.`. Methods carry `pkg.Receiver.method`; functions / types carry `pkg.name`. Interface methods inherit their parent interface's name as the "receiver" segment.
+- **Rust** (`rust.py`) — `_get_rust_mod_path` walks ancestor `mod_item` nodes (inline `mod foo { ... }` blocks); `_make_rust_qualified_name(mod_path, impl_target, name)` joins via `::`. The existing `_get_impl_target` helper supplies the impl-block target type for methods.
+- **Java** (`java.py`) — `_extract_java_package` reads the top-level `package_declaration`; existing `_get_class_ancestors` supplies the nested-class chain; `_make_java_qualified_name(pkg, ancestors, name)` joins via `.`. Applied uniformly to class / interface / enum / method / constructor emit sites.
+- **C#** (`csharp.py`) — new `_get_csharp_enclosing_namespace` (handles both block-style `namespace Foo.Bar { ... }` and the C# 10 `file_scoped_namespace_declaration`) + new `_get_csharp_class_ancestors` (extends the previous single-level `_get_enclosing_class` to the full chain); `_make_csharp_qualified_name` joins via `.`.
+- **PHP** (`php.py`) — `_extract_php_namespace` reads the top-level `namespace_definition`; the existing `_get_enclosing_class` supplies the class name. `_make_php_qualified_name` uses `\` between namespace segments and `::` between the class and the method, canonicalising to `App\Service\HelloService::method`. Free-standing functions in the global namespace fall back to the bare name.
+- **JS / TS** (`js_ts.py`) — `_get_jsts_class_ancestors` extends the previous single-level `_get_class_context` to a full chain; `_make_jsts_qualified_name(ancestors, name, lang)` joins via `.` (the separator is identical for both languages but routed through the catalog for consistency). No package concept — file-scoped modules, so qualified_name comprises only the class chain + symbol name.
+- **Ruby** (`ruby.py`) — `_get_ruby_class_or_module_chain` walks ancestor `class` / `module` nodes; `_make_ruby_qualified_name` joins via `::`. The coarse-grained policy: `Foo::Bar::baz` even though Ruby's runtime convention is `Foo::Bar#instance_method` — the instance / class-method distinction lives on `Symbol.name` and modifiers.
+- **Kotlin** (`kotlin.py`) — `_extract_kotlin_package` reads `package_header`; `_get_kotlin_class_ancestors` walks ancestor `class_declaration` / `object_declaration` nodes; `_make_kotlin_qualified_name` joins via `.`.
+- **Swift** (`swift.py`) — `_get_swift_type_ancestors` walks ancestor `class_declaration` / `protocol_declaration` nodes; `_make_swift_qualified_name` joins via `.`. No source-level package concept in Swift, so qualified_name comprises only the type chain + symbol name. Computed properties and subscripts also receive the qualified_name treatment.
+
+Skipped per the ADR-0032 Phase 4 PR4 charter: variable aliases (Go `var X = expr`), TS type aliases, file pseudo-symbols (`kind="file"` / `kind="module"`), and route Symbols (whose semantics are URL-shaped, not identifier-shaped).
+
+Tests: one `TestXQualifiedName` class added to each per-analyzer test file with at least three assertions — qualified_name on a nested function / method, separator correctness for the host language (asserting the wrong separators are absent), and qualified_name on a top-level item without enclosing scope.
+
+100% coverage on all 9 modified analyzer source files. 3761 mainstream-package tests pass; 5559 smart-test passes in the affected scope.
+
 ### Changed
 
 #### Schema — concept-axis closures

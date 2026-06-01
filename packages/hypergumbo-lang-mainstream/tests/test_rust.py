@@ -5672,3 +5672,48 @@ pub fn greet() {
         result = analyze_rust(tmp_path)
         plain = next(s for s in result.symbols if s.name == "plain")
         assert plain.docstring is None
+
+
+class TestRustQualifiedName:
+    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on Rust symbols."""
+
+    def test_method_qualified_name_uses_double_colon(self, tmp_path: Path) -> None:
+        """Methods inside an impl carry ImplType::method with '::' separator."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "struct User { name: String }\n"
+            "impl User {\n"
+            "    fn greet(&self) -> &str { &self.name }\n"
+            "}\n"
+        )
+        result = analyze_rust(tmp_path)
+        method = next(s for s in result.symbols if s.name == "User::greet")
+        assert method.qualified_name == "User::greet"
+        # Rust separator is '::', not '.' or '\\'.
+        assert "::" in method.qualified_name
+        assert "." not in method.qualified_name
+
+    def test_nested_mod_qualified_name(self, tmp_path: Path) -> None:
+        """Items inside an inline mod carry mod_path::name."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "mod inner {\n"
+            "    pub struct Cfg {}\n"
+            "}\n"
+        )
+        result = analyze_rust(tmp_path)
+        struct = next(s for s in result.symbols if s.name == "Cfg")
+        assert struct.qualified_name == "inner::Cfg"
+
+    def test_top_level_function_qualified_name(self, tmp_path: Path) -> None:
+        """A top-level function has just its name as qualified_name."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "fn helper() -> i32 { 1 }\n"
+        )
+        result = analyze_rust(tmp_path)
+        func = next(s for s in result.symbols if s.name == "helper")
+        assert func.qualified_name == "helper"

@@ -5229,3 +5229,47 @@ class TestJavaDocstring:
         result = analyze_java(tmp_path)
         sub = next(s for s in result.symbols if s.name == "Foo.sub")
         assert sub.docstring is None
+
+
+class TestJavaQualifiedName:
+    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on Java symbols."""
+
+    def test_method_qualified_name_uses_dot_separator(self, tmp_path: Path) -> None:
+        """Methods carry package.Class.method qualified_name with '.' separator."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "User.java").write_text(
+            "package com.example.app;\n"
+            "public class User {\n"
+            "    public int getAge() { return 42; }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        method = next(s for s in result.symbols if s.name == "User.getAge")
+        assert method.qualified_name == "com.example.app.User.getAge"
+        # Separator is '.' for Java (no '::' or '\\').
+        assert "::" not in method.qualified_name
+        assert "\\" not in method.qualified_name
+
+    def test_class_qualified_name_includes_package(self, tmp_path: Path) -> None:
+        """Class symbols carry package.Class qualified_name."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "User.java").write_text(
+            "package com.example.app;\n"
+            "public class User {}\n"
+        )
+        result = analyze_java(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "User")
+        assert cls.qualified_name == "com.example.app.User"
+
+    def test_top_level_class_without_package(self, tmp_path: Path) -> None:
+        """A class without a package declaration has just its name as qualified_name."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Bare.java").write_text(
+            "public class Bare {}\n"
+        )
+        result = analyze_java(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Bare")
+        assert cls.qualified_name == "Bare"

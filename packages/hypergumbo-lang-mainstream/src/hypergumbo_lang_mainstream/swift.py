@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -239,6 +240,40 @@ def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str
     return None  # pragma: no cover - defensive
 
 
+def _get_swift_type_ancestors(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Walk up the tree collecting all enclosing class/struct/enum/protocol names.
+
+    Returns the chain from outermost to innermost (excluding the current
+    node itself).
+    """
+    chain: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_declaration", "protocol_declaration"):
+            name_node = find_child_by_type(current, "type_identifier")
+            if name_node:
+                chain.append(node_text(name_node, source))
+        current = current.parent
+    return list(reversed(chain))
+
+
+def _make_swift_qualified_name(
+    ancestors: list[str], name: str
+) -> str:
+    """Build a Swift qualified name: ``Type1.Type2.symbol_name``.
+
+    Swift has no source-level package concept (modules are at build level,
+    not in source), so qualified_name comprises only the type-ancestor
+    chain plus the symbol name.
+    """
+    sep = separator_for_language("swift")  # "."
+    parts: list[str] = list(ancestors)
+    parts.append(name)
+    return sep.join(parts)
+
+
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
@@ -420,6 +455,7 @@ def _extract_symbols_from_file(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
                 ) if norm_sig else None
 
+                type_ancestors = _get_swift_type_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("swift", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -440,6 +476,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported=any(m in modifiers for m in ("public", "open")),
+                    qualified_name=_make_swift_qualified_name(type_ancestors, func_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -478,6 +515,7 @@ def _extract_symbols_from_file(
                 meta = {"base_classes": base_classes} if base_classes else None
 
                 type_modifiers = _extract_modifiers_swift(node)
+                type_ancestors = _get_swift_type_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("swift", str(file_path), start_line, end_line, type_name, kind),
                     name=type_name,
@@ -496,6 +534,7 @@ def _extract_symbols_from_file(
                     modifiers=type_modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported=any(m in type_modifiers for m in ("public", "open")),
+                    qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -514,6 +553,7 @@ def _extract_symbols_from_file(
                 meta = {"base_classes": base_classes} if base_classes else None
 
                 proto_modifiers = _extract_modifiers_swift(node)
+                type_ancestors = _get_swift_type_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("swift", str(file_path), start_line, end_line, type_name, "protocol"),
                     name=type_name,
@@ -532,6 +572,7 @@ def _extract_symbols_from_file(
                     modifiers=proto_modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported=any(m in proto_modifiers for m in ("public", "open")),
+                    qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -548,6 +589,7 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                type_ancestors = _get_swift_type_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("swift", str(file_path), start_line, end_line, type_name, kind),
                     name=type_name,
@@ -563,6 +605,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     lines_of_code=end_line - start_line + 1,
+                    qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -595,6 +638,7 @@ def _extract_symbols_from_file(
                                 break
                     signature = f"() -> {ret_type}" if ret_type else None
 
+                    type_ancestors = _get_swift_type_ancestors(node, source)
                     symbol = Symbol(
                         id=make_symbol_id("swift", str(file_path), start_line, end_line, full_name, "property"),
                         name=full_name,
@@ -613,6 +657,7 @@ def _extract_symbols_from_file(
                         modifiers=modifiers,
                         lines_of_code=end_line - start_line + 1,
                         is_exported=any(m in modifiers for m in ("public", "open")),
+                        qualified_name=_make_swift_qualified_name(type_ancestors, prop_name),
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node
@@ -629,6 +674,7 @@ def _extract_symbols_from_file(
             modifiers = _extract_modifiers_swift(node)
             signature = _extract_subscript_signature(node, source)
 
+            type_ancestors = _get_swift_type_ancestors(node, source)
             symbol = Symbol(
                 id=make_symbol_id("swift", str(file_path), start_line, end_line, full_name, "subscript"),
                 name=full_name,
@@ -647,6 +693,7 @@ def _extract_symbols_from_file(
                 modifiers=modifiers,
                 lines_of_code=end_line - start_line + 1,
                 is_exported=any(m in modifiers for m in ("public", "open")),
+                qualified_name=_make_swift_qualified_name(type_ancestors, sub_label),
             )
             analysis.symbols.append(symbol)
             analysis.node_for_symbol[symbol.id] = node

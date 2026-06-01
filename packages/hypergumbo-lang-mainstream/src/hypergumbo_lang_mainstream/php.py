@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
+from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -216,6 +217,46 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
                 return name
         current = current.parent
     return None  # pragma: no cover - defensive
+
+
+def _extract_php_namespace(
+    root: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract the PHP namespace from the top-level ``namespace_definition``.
+
+    Returns ``None`` for files without a namespace declaration (the global
+    namespace).
+    """
+    for child in root.children:
+        if child.type == "namespace_definition":
+            for sub in child.children:
+                if sub.type in ("namespace_name", "qualified_name"):
+                    return node_text(sub, source)
+    return None
+
+
+def _make_php_qualified_name(
+    namespace: Optional[str], enclosing_class: Optional[str], name: str
+) -> str:
+    """Build a PHP qualified name.
+
+    PHP namespace separator is ``\\``; the class-to-method boundary uses
+    ``::`` (PHP's scope-resolution operator). Examples:
+
+        - top-level function in App\\Service: ``App\\Service\\helperFunc``
+        - method on class in App\\Service: ``App\\Service\\HelloService::method``
+        - method on a class in the global namespace: ``HelloService::method``
+    """
+    ns_sep = separator_for_language("php")  # "\\"
+    parts: list[str] = []
+    if namespace:
+        parts.append(namespace)
+    if enclosing_class:
+        parts.append(enclosing_class)
+        # Namespace + class joined by "\\"; method appended via "::".
+        return ns_sep.join(parts) + "::" + name
+    parts.append(name)
+    return ns_sep.join(parts)
 
 
 def _get_enclosing_function_php(
@@ -753,6 +794,8 @@ def _extract_symbols(
     ``str(file_path)`` for tests that call this helper directly.
     """
     symbols: list[Symbol] = []
+    # ADR-0032 Phase 4 PR4: extract namespace once for qualified_name population.
+    namespace_name = _extract_php_namespace(tree.root_node, source)
 
     # INV-kokaj: emit the file pseudo-node as kind="file" with the
     # canonical file-id shape so the orchestrator file-symbol synthesizer
@@ -815,6 +858,7 @@ def _extract_symbols(
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
                     is_exported=True,
+                    qualified_name=_make_php_qualified_name(namespace_name, None, name),
                 )
                 symbols.append(symbol)
 
@@ -847,6 +891,7 @@ def _extract_symbols(
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
                     is_exported=True,
+                    qualified_name=_make_php_qualified_name(namespace_name, None, name),
                 )
                 symbols.append(symbol)
 
@@ -887,6 +932,7 @@ def _extract_symbols(
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
                     is_exported="private" not in modifiers and "protected" not in modifiers,
+                    qualified_name=_make_php_qualified_name(namespace_name, enclosing_class, name),
                 )
                 symbols.append(symbol)
 

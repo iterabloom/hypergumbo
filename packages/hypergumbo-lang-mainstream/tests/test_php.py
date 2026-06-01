@@ -1699,3 +1699,49 @@ class TestPhpDocstring:
         result = analyze_php(tmp_path)
         plain = next(s for s in result.symbols if s.name == "plain")
         assert plain.docstring is None
+
+
+class TestPHPQualifiedName:
+    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on PHP symbols."""
+
+    def test_method_qualified_name_uses_namespace_and_scope_resolution(self, tmp_path: Path) -> None:
+        """Methods carry Namespace\\Class::method with '\\' for namespace and '::' for class-to-method."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "HelloService.php").write_text(
+            "<?php\n"
+            "namespace App\\Service;\n"
+            "class HelloService {\n"
+            "    public function greet(): string { return 'hi'; }\n"
+            "}\n"
+        )
+        result = analyze_php(tmp_path)
+        method = next(s for s in result.symbols if s.name == "HelloService.greet")
+        assert method.qualified_name == "App\\Service\\HelloService::greet"
+        # PHP namespace separator must be '\\'.
+        assert "\\" in method.qualified_name
+
+    def test_class_qualified_name_includes_namespace(self, tmp_path: Path) -> None:
+        """Class symbols carry Namespace\\Class qualified_name."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "HelloService.php").write_text(
+            "<?php\n"
+            "namespace App\\Service;\n"
+            "class HelloService {}\n"
+        )
+        result = analyze_php(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "HelloService")
+        assert cls.qualified_name == "App\\Service\\HelloService"
+
+    def test_free_function_without_namespace(self, tmp_path: Path) -> None:
+        """A free-standing function without a namespace has just its name as qualified_name."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "helpers.php").write_text(
+            "<?php\n"
+            "function helperFunc() { return 1; }\n"
+        )
+        result = analyze_php(tmp_path)
+        func = next(s for s in result.symbols if s.name == "helperFunc")
+        assert func.qualified_name == "helperFunc"

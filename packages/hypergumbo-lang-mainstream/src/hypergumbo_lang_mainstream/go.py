@@ -86,6 +86,7 @@ from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
     make_pass_id,
 )
+from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -951,6 +952,40 @@ def _get_enclosing_func_name(
     return None
 
 
+def _extract_go_package(
+    root: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract the Go package name from the file's ``package_clause``.
+
+    Returns ``None`` for malformed files lacking a package clause.
+    """
+    for child in root.children:
+        if child.type == "package_clause":
+            for sub in child.children:
+                if sub.type == "package_identifier":
+                    return node_text(sub, source)
+    return None  # pragma: no cover - well-formed Go always has a package clause
+
+
+def _make_go_qualified_name(
+    package: Optional[str], receiver_type: Optional[str], name: str
+) -> str:
+    """Build a Go qualified name: ``pkg.[Receiver.]name``.
+
+    For top-level functions / structs / interfaces, omit the receiver
+    segment. For methods on a receiver type, include it as the "class"
+    segment.
+    """
+    sep = separator_for_language("go")  # "."
+    parts: list[str] = []
+    if package:
+        parts.append(package)
+    if receiver_type:
+        parts.append(receiver_type)
+    parts.append(name)
+    return sep.join(parts)
+
+
 def _go_visibility_modifiers(name: str) -> list[str]:
     """Derive visibility modifiers from Go naming convention.
 
@@ -994,6 +1029,9 @@ def _extract_symbols_from_file(
                 break
         elif child.type == "package_clause":
             break  # past the preamble, no more build directives
+
+    # ADR-0032 Phase 4 PR4: extract package once for qualified_name population.
+    package_name = _extract_go_package(tree.root_node, source)
 
     # Extract import aliases for this file (used later in edge extraction)
     analysis.import_aliases = _extract_import_aliases(tree.root_node, source)
@@ -1055,6 +1093,7 @@ def _extract_symbols_from_file(
                     lines_of_code=end_line - start_line + 1,
                     shape_id=_analyzer.compute_shape_id(node),
                     is_exported=bool(func_name) and func_name[0].isupper(),
+                    qualified_name=_make_go_qualified_name(package_name, None, func_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -1115,6 +1154,7 @@ def _extract_symbols_from_file(
                     lines_of_code=end_line - start_line + 1,
                     shape_id=_analyzer.compute_shape_id(node),
                     is_exported=bool(method_name) and method_name[0].isupper(),
+                    qualified_name=_make_go_qualified_name(package_name, receiver_type or None, method_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol
@@ -1200,6 +1240,7 @@ def _extract_symbols_from_file(
                                     lines_of_code=1,
                                     shape_id=_analyzer.compute_shape_id(iface_child),
                                     is_exported=bool(mname) and mname[0].isupper(),
+                                    qualified_name=_make_go_qualified_name(package_name, type_name, mname),
                                 )
                                 analysis.symbols.append(m_sym)
                                 analysis.symbol_by_name[qualified] = m_sym
@@ -1243,6 +1284,7 @@ def _extract_symbols_from_file(
                             lines_of_code=end_line - start_line + 1,
                             shape_id=_analyzer.compute_shape_id(child),
                             is_exported=bool(type_name) and type_name[0].isupper(),
+                            qualified_name=_make_go_qualified_name(package_name, None, type_name),
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[type_name] = symbol

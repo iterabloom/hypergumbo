@@ -49,6 +49,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
 )
+from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -486,6 +487,46 @@ def _extract_base_type_name(type_node: "tree_sitter.Node", source: bytes) -> str
     return node_text(type_node, source)
 
 
+def _get_rust_mod_path(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Walk up the tree to find the enclosing ``mod`` chain (within a single file).
+
+    Returns the module names from outermost to innermost, excluding the
+    current node. The crate-level module (``lib.rs`` / ``main.rs``) is
+    not represented in the tree-sitter AST — only inline ``mod foo { ... }``
+    blocks contribute segments.
+    """
+    mods: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type == "mod_item":
+            name_node = _find_child_by_field(current, "name")
+            if name_node:
+                mods.append(node_text(name_node, source))
+        current = current.parent
+    return list(reversed(mods))
+
+
+def _make_rust_qualified_name(
+    mod_path: list[str], impl_target: Optional[str], name: str
+) -> str:
+    """Build a Rust qualified name from mod path + impl target + symbol name.
+
+    Examples:
+        - top-level function: ``func_name``
+        - method on a type: ``ImplType::method``
+        - function inside a mod: ``mod_path::func_name``
+        - method inside a mod: ``mod_path::ImplType::method``
+    """
+    sep = separator_for_language("rust")  # "::"
+    parts: list[str] = list(mod_path)
+    if impl_target:
+        parts.append(impl_target)
+    parts.append(name)
+    return sep.join(parts)
+
+
 def _get_impl_target(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Walk up the tree to find the enclosing impl block's target type.
 
@@ -902,6 +943,7 @@ def _extract_symbols_from_file(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
                 ) if norm_sig else None
 
+                mod_path = _get_rust_mod_path(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -923,6 +965,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="pub" in modifiers,
+                    qualified_name=_make_rust_qualified_name(mod_path, impl_target, func_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -957,6 +1000,7 @@ def _extract_symbols_from_file(
                 meta = {"annotations": annotations} if annotations else None
 
                 struct_modifiers = _extract_modifiers_rust(node, source)
+                mod_path = _get_rust_mod_path(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, struct_name, "struct"),
                     name=struct_name,
@@ -975,6 +1019,7 @@ def _extract_symbols_from_file(
                     modifiers=struct_modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="pub" in struct_modifiers,
+                    qualified_name=_make_rust_qualified_name(mod_path, None, struct_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -999,6 +1044,7 @@ def _extract_symbols_from_file(
                 meta = {"annotations": annotations} if annotations else None
 
                 enum_modifiers = _extract_modifiers_rust(node, source)
+                mod_path = _get_rust_mod_path(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, enum_name, "enum"),
                     name=enum_name,
@@ -1017,6 +1063,7 @@ def _extract_symbols_from_file(
                     modifiers=enum_modifiers,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="pub" in enum_modifiers,
+                    qualified_name=_make_rust_qualified_name(mod_path, None, enum_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1035,6 +1082,7 @@ def _extract_symbols_from_file(
                 meta = {"annotations": annotations} if annotations else None
 
                 trait_modifiers = _extract_modifiers_rust(node, source)
+                mod_path = _get_rust_mod_path(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, trait_name, "trait"),
                     name=trait_name,
@@ -1053,6 +1101,7 @@ def _extract_symbols_from_file(
                     meta=meta,
                     lines_of_code=end_line - start_line + 1,
                     is_exported="pub" in trait_modifiers,
+                    qualified_name=_make_rust_qualified_name(mod_path, None, trait_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

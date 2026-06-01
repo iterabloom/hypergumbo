@@ -92,6 +92,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id,
 )
+from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -168,6 +169,35 @@ def _find_identifier_in_children(node: "tree_sitter.Node", source: bytes) -> Opt
 def _get_class_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract class/interface/enum name from declaration."""
     return _find_identifier_in_children(node, source)
+
+
+def _extract_java_package(
+    root: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract the Java package name from the top-level ``package`` declaration.
+
+    Returns ``None`` for files without a package declaration (the default
+    unnamed package).
+    """
+    for child in root.children:
+        if child.type == "package_declaration":
+            for sub in child.children:
+                if sub.type in ("scoped_identifier", "identifier"):
+                    return _node_text(sub, source)
+    return None
+
+
+def _make_java_qualified_name(
+    package: Optional[str], ancestors: list[str], name: str
+) -> str:
+    """Build a Java qualified name from package, class ancestors, and symbol name."""
+    sep = separator_for_language("java")  # always "."
+    parts: list[str] = []
+    if package:
+        parts.append(package)
+    parts.extend(ancestors)
+    parts.append(name)
+    return sep.join(parts)
 
 
 def _get_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -823,6 +853,7 @@ def _extract_symbols(
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     symbols: list[Symbol] = []
+    package_name = _extract_java_package(tree.root_node, source)
 
     for node in iter_tree(tree.root_node):
         # Class declarations
@@ -864,6 +895,7 @@ def _extract_symbols(
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
+                    qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
                 symbols.append(symbol)
 
@@ -906,6 +938,7 @@ def _extract_symbols(
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
+                    qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
                 symbols.append(symbol)
 
@@ -935,6 +968,7 @@ def _extract_symbols(
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
+                    qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
                 symbols.append(symbol)
 
@@ -1021,6 +1055,7 @@ def _extract_symbols(
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
+                    qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
                 symbols.append(symbol)
 
@@ -1064,6 +1099,7 @@ def _extract_symbols(
                     shape_id=_java_analyzer.compute_shape_id(node),
                     lines_of_code=span.end_line - span.start_line + 1,
                     is_exported="public" in modifiers,
+                    qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 )
                 symbols.append(symbol)
 

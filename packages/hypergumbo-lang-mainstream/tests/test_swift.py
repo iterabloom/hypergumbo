@@ -1796,3 +1796,45 @@ func greet(name: String) -> String {
         add = next(s for s in result.symbols if s.name == "add")
         assert add.signature is not None
         assert "Int" in add.signature
+
+
+class TestSwiftQualifiedName:
+    """ADR-0032 Phase 4 PR4: Symbol.qualified_name on Swift symbols."""
+
+    def test_method_qualified_name_uses_dot_separator(self, tmp_path: Path) -> None:
+        """Methods inside a class carry Class.method qualified_name."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Foo.swift").write_text("""\
+class Foo {
+    func bar() -> Int { return 1 }
+}
+""")
+        result = analyze_swift(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Foo.bar")
+        assert method.qualified_name == "Foo.bar"
+        # Swift uses '.' as the qualified-name separator.
+        assert "::" not in method.qualified_name
+        assert "\\" not in method.qualified_name
+
+    def test_class_qualified_name(self, tmp_path: Path) -> None:
+        """Top-level class symbol has just its name as qualified_name (no package)."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Foo.swift").write_text("""\
+class Foo {}
+""")
+        result = analyze_swift(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "Foo")
+        assert cls.qualified_name == "Foo"
+
+    def test_top_level_function_qualified_name(self, tmp_path: Path) -> None:
+        """A top-level function has just its name as qualified_name."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Bare.swift").write_text("""\
+func helper() -> Int { return 1 }
+""")
+        result = analyze_swift(tmp_path)
+        func = next(s for s in result.symbols if s.name == "helper")
+        assert func.qualified_name == "helper"
