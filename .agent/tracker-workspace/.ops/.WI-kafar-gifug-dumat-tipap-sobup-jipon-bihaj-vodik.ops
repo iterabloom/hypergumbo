@@ -1,0 +1,23 @@
+- op: create  # 7988
+  at: '2026-06-01T23:07:13Z'  # 7988
+  by: agent  # 7988
+  actor: jgstern_agent  # 7988
+  clock: 1  # 7988
+  nonce: '7988'  # 7988
+  data:  # 7988
+    kind: work_item  # 7988
+    title: "Add CI gate: test_validation_report_empty.py asserts zero spec-validator violations"  # 7988
+    status: todo_hard  # 7988
+    priority: 1  # 7988
+    parent:  # 7988
+    tags:  # 7988
+    - analysis_quality  # 7988
+    - ci_infrastructure  # 7988
+    - spec_compliance  # 7988
+    - writer_contract  # 7988
+    isbefore: []  # 7988
+    duplicate_of: []  # 7988
+    not_duplicate_of: []  # 7988
+    pr_ref:  # 7988
+    description: "The INV-sugat validator stage at packages/hypergumbo-core/src/hypergumbo_core/spec_validator.py runs at end-of-pipeline, writes a `validation_report` section into the behavior-map artifact, and emits stderr summaries when non-empty. Per ADR-0033 §\"Default failure behavior\", `hypergumbo run` deliberately succeeds with exit 0 regardless of violations — the gate-not-fail posture lets violations land visibly during development.\n\nAfter the 26-PR INV-sugat closure campaign (Phase 0 through Phase 6 PR7), self-analysis reports zero violations across all five validator classes. The next step is locking that in: add a CI test that runs hypergumbo on its own source tree and fails when the `validation_report.violations` list is non-empty.\n\nImplementation shape:\n- New test at `packages/hypergumbo-core/tests/test_validation_report_empty.py`.\n- Runs `hypergumbo run` against the repo root (or against a representative fixture corpus to keep CI fast).\n- Parses the resulting JSON's `validation_report.violations_by_class` counter.\n- Asserts every counter is zero.\n\nWhen this lands, any future regression that introduces a new violation category (e.g., a new analyzer emitting a non-canonical id) trips CI on the regression's PR rather than accumulating silently.\n\nThis was Phase 5/6 PR5/6 territory in the original plan (`~/.claude/plans/happy-swimming-sketch.md`) but was deferred until the validator was at zero."  # 7988
+    fields: {}  # 7988

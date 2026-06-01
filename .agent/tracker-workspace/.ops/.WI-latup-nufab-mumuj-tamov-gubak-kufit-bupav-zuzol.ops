@@ -1,0 +1,21 @@
+- op: create  # c112
+  at: '2026-06-01T23:07:29Z'  # c112
+  by: agent  # c112
+  actor: jgstern_agent  # c112
+  clock: 1  # c112
+  nonce: c112  # c112
+  data:  # c112
+    kind: work_item  # c112
+    title: "INV-nuzal tail: populate Edge.derived_from at the ~20 linker construction sites"  # c112
+    status: todo_hard  # c112
+    priority: 2  # c112
+    parent:  # c112
+    tags:  # c112
+    - analysis_quality  # c112
+    - writer_contract  # c112
+    isbefore: []  # c112
+    duplicate_of: []  # c112
+    not_duplicate_of: []  # c112
+    pr_ref:  # c112
+    description: "`Edge.derived_from` is the linker-derivation provenance field added in INV-rukor / Phase 1 PR2. Each edge created by a linker pass should carry the source-record identifiers it was derived from (typically the matched config-file path or AST node ID).\n\nSelf-analysis post-Phase-6-PR2: 23,737 of 109,849 edges have `derived_from` populated (~22%). The remaining ~85K edges leave it empty, which means the linker-derivation provenance chain doesn't round-trip for them — consumers (cross-run diff, derivation-graph reconstruction, audit trails) can't trace how those edges were derived.\n\nPhase 6 PR2 deferred the full per-linker construction-site sweep because the scope was too large to bundle with the AnalysisRun writer-contract work. Each linker has its own `Edge.create(...)` call sites; the fix is mechanical (add `derived_from=[source_id_a, source_id_b, ...]` at each site) but spread across ~20 linker files.\n\nImplementation:\n- For each linker under `packages/hypergumbo-core/src/hypergumbo_core/linkers/`, audit `Edge.create` call sites.\n- Identify the source records each edge was derived FROM (matched config file path, AST node ID, captured-symbol ID, etc.).\n- Populate `derived_from=` at every call site.\n\nCloses the tail of INV-luhur sub-pattern-4 / INV-nuzal. The writer-contract validator class doesn't currently flag this because Phase 6 PR2's check only fires on never-populated-by-anyone fields; `derived_from` is populated by SOME linkers, just not all."  # c112
+    fields: {}  # c112

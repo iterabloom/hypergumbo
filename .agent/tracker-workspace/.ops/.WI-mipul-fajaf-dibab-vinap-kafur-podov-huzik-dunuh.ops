@@ -1,0 +1,23 @@
+- op: create  # 8696
+  at: '2026-06-01T23:07:21Z'  # 8696
+  by: agent  # 8696
+  actor: jgstern_agent  # 8696
+  clock: 1  # 8696
+  nonce: '8696'  # 8696
+  data:  # 8696
+    kind: work_item  # 8696
+    title: "INV-lidul/gizik/nihug tail: wire pass_version + config_fingerprint + toolchain on override-analyze() analyzers"  # 8696
+    status: todo_hard  # 8696
+    priority: 2  # 8696
+    parent:  # 8696
+    tags:  # 8696
+    - analysis_runs  # 8696
+    - analysis_quality  # 8696
+    - analyzer  # 8696
+    - writer_contract  # 8696
+    isbefore: []  # 8696
+    duplicate_of: []  # 8696
+    not_duplicate_of: []  # 8696
+    pr_ref:  # 8696
+    description: "Phase 6 PR2 (commit 98533c0fff) closed INV-lidul / INV-gizik / INV-nihug for the analyzers that inherit `TreeSitterAnalyzer._analyze_body` — that base-class method now auto-stamps `pass_version`, derives a per-class `config_fingerprint`, and extends `toolchain` with grammar metadata.\n\nBut ~14 analyzers override `analyze()` entirely (go, csharp, java, python, html, javascript, xml, yaml_ansible, json, toml, make, manifest_targets, play-routes, plus enclosure-linker variants — see commit 98533c0fff's deferred-items section). They bypass `_analyze_body` and therefore don't pick up the auto-stamping. Self-analysis still shows their `AnalysisRun` records with empty `pass_version` and the default `config_fingerprint` (`sha256:44136fa355b3678a` from `_default_config_fingerprint()`).\n\nThe fix is per-analyzer: at each override-`analyze()` site, either (a) call the base class's auto-stamping helpers explicitly before constructing the AnalysisRun, or (b) refactor the override to delegate to `_analyze_body` for the metadata-stamping portion.\n\nThis is a mechanical sweep across 14 files. The validator's writer-contract check is currently silent on these because the gap exists pre-validate_ir (the runs reach validate_ir already filled in with default values, not None), but the broken-cache-key concern (every analyzer using the same `config_fingerprint` means cache keys collapse across configurations) is real.\n\nCloses the tail of INV-lidul / INV-gizik / INV-nihug."  # 8696
+    fields: {}  # 8696
