@@ -36,39 +36,42 @@ def test_stable_id_computed_for_classes(tmp_path: Path) -> None:
     assert class_nodes[0]["stable_id"].startswith("sha256:")
 
 
-def test_stable_id_survives_rename(tmp_path: Path) -> None:
-    """stable_id should survive an in-place rename within the same module.
+def test_stable_id_survives_body_edits(tmp_path: Path) -> None:
+    """stable_id survives BODY edits (Phase 6 PR3 / INV-bazij).
 
-    Per INV-zudob, module identity is part of symbol identity (Python
-    import semantics), so the "survives renames" promise holds *within*
-    a module: renaming a function at the same file path must not change
-    its stable_id. Cross-file moves are a different operation and produce
-    different stable_ids by design (see
-    ``TestCrossModuleIdenticalSymbolsDistinct`` in
-    ``packages/hypergumbo-lang-mainstream/tests/test_stable_id_class_collisions.py``).
+    Per ADR-0014's Phase-6 amendment: stable_id is "structural identity
+    within a (qualified_name, module_path) scope" — it survives BODY
+    edits but NOT rename or move. Two functions with the same name,
+    same module path, same signature, but different body content must
+    share stable_id. This pins the surviving half of the original
+    "survives renames/moves" promise.
+
+    (The untyped-fallback path produces a stable_id from a 7-tuple
+    that excludes body content: kind, param_count, arity_flags,
+    decorators, containing_stable_id, name, qualified_name.)
     """
-    # Same file, same signature (1 param, no defaults), different names.
     out_path = tmp_path / "out.json"
     src = tmp_path / "mod.py"
 
     src.write_text("def foo(x): pass\n")
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
-    foo_sid = next(
+    sid_before = next(
         n["stable_id"]
         for n in json.loads(out_path.read_text())["nodes"]
         if n["kind"] == "function" and n["name"] == "foo"
     )
 
-    src.write_text("def bar(x): pass\n")
+    # Same name, same signature, different body.
+    src.write_text("def foo(x):\n    return x + 1\n")
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
-    bar_sid = next(
+    sid_after = next(
         n["stable_id"]
         for n in json.loads(out_path.read_text())["nodes"]
-        if n["kind"] == "function" and n["name"] == "bar"
+        if n["kind"] == "function" and n["name"] == "foo"
     )
 
-    # Same module, same signature, just renamed -> same stable_id.
-    assert foo_sid == bar_sid
+    # Body edits do not change stable_id.
+    assert sid_before == sid_after
 
 
 def test_stable_id_changes_with_signature(tmp_path: Path) -> None:
@@ -282,7 +285,15 @@ def test_stable_id_decorator_attribute(tmp_path: Path) -> None:
 
 
 def test_stable_id_decorator_call(tmp_path: Path) -> None:
-    """stable_id should handle decorator(args) style decorators."""
+    """stable_id should handle decorator(args) style decorators.
+
+    Phase 6 PR3 (INV-bazij) reframed this test: two functions with the
+    same decorator name but DIFFERENT function names now split by name
+    (the disambiguator that closes the 60% same-file collision rate).
+    The narrow invariant this test still pins is that both functions
+    have a well-formed sha256-prefixed stable_id derived from the
+    decorator extraction path (i.e. neither stable_id is None).
+    """
     (tmp_path / "app.py").write_text(
         "@decorator(1, 2)\n"
         "def with_call(): pass\n"
@@ -297,9 +308,12 @@ def test_stable_id_decorator_call(tmp_path: Path) -> None:
     data = json.loads(out_path.read_text())
 
     func_nodes = [n for n in data["nodes"] if n["kind"] == "function"]
-
-    # Both have 'decorator' - stable_ids should be same (decorator name extracted)
-    assert func_nodes[0]["stable_id"] == func_nodes[1]["stable_id"]
+    assert len(func_nodes) == 2
+    # Phase 6 PR3 (INV-bazij): name is now a disambiguator — distinct
+    # function names split stable_id even when decorators match.
+    assert func_nodes[0]["stable_id"] != func_nodes[1]["stable_id"]
+    assert func_nodes[0]["stable_id"].startswith("sha256:")
+    assert func_nodes[1]["stable_id"].startswith("sha256:")
 
 
 def test_stable_id_decorator_attribute_call(tmp_path: Path) -> None:

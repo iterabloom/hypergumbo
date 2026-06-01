@@ -96,7 +96,7 @@ def _make_symbol(
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        stable_id=analyzer.compute_stable_id(node, kind=kind),
+        stable_id=analyzer.compute_stable_id(node, kind=kind, name=name),
         signature=signature,
         meta=meta,
     )

@@ -169,7 +169,7 @@ def _extract_function(
 
         sym = Symbol(
             id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "function"),
-            stable_id=analyzer.compute_stable_id(node, kind="function"),
+            stable_id=analyzer.compute_stable_id(node, kind="function", name=name),
             name=name,
             kind="function",
             language="luau",
@@ -211,7 +211,7 @@ def _extract_type(
 
         sym = Symbol(
             id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "type"),
-            stable_id=analyzer.compute_stable_id(node, kind="type"),
+            stable_id=analyzer.compute_stable_id(node, kind="type", name=name),
             name=name,
             kind="type",
             language="luau",
@@ -248,7 +248,7 @@ def _extract_variable(
                             if name and name[0].isupper():
                                 sym = Symbol(
                                     id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "variable"),
-                                    stable_id=analyzer.compute_stable_id(node, kind="variable"),
+                                    stable_id=analyzer.compute_stable_id(node, kind="variable", name=name),
                                     name=name,
                                     kind="variable",
                                     language="luau",

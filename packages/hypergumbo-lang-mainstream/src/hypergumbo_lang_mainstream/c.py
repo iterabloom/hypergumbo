@@ -259,7 +259,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
-                    stable_id=_analyzer.compute_stable_id(node, kind="function"),
+                    stable_id=_analyzer.compute_stable_id(node, kind="function", name=name),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:
@@ -290,7 +290,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             signature=signature,
                             modifiers=["declaration"],
-                            stable_id=_analyzer.compute_stable_id(node, kind="function"),
+                            stable_id=_analyzer.compute_stable_id(node, kind="function", name=name),
                         )
                         symbols.append(symbol)
                         if node_for_symbol is not None:
@@ -317,7 +317,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="struct"),
+                    stable_id=_analyzer.compute_stable_id(node, kind="struct", name=name),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:
@@ -344,7 +344,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="enum"),
+                    stable_id=_analyzer.compute_stable_id(node, kind="enum", name=name),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:
@@ -373,7 +373,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="typedef"),
+                    stable_id=_analyzer.compute_stable_id(node, kind="typedef", name=name),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:

@@ -327,7 +327,14 @@ class Symbol:
             (originating pass first). Single-element lists are the common case.
             Auto-normalized from scalar str for backward compat.
         origin_run_id: Unique execution ID of the analysis run
-        stable_id: Semantic identity hash (survives renames/moves)
+        stable_id: Structural-identity hash within a (qualified_name,
+            module_path) scope (ADR-0014 amended by Phase 6 PR3 /
+            INV-bazij). Survives BODY edits; does NOT survive rename or
+            move — those are now identity-changing operations. Pre-Phase-6
+            the field was documented as "survives renames/moves", but on
+            the dogfood corpus that promise produced a 60% collision rate
+            (155 zero-param bash functions in one file shared one ID),
+            so name + qualified_name are now part of the hash inputs.
         shape_id: Structural implementation fingerprint
         canonical_name: **Deprecated (ADR-0032).** Removed in Phase 6
             PR4 (one major version after the 0.12.0 schema bump). New

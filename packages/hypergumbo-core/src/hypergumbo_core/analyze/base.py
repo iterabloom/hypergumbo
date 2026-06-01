@@ -2278,21 +2278,37 @@ class TreeSitterAnalyzer:
         node: "tree_sitter.Node",
         kind: str,
         containing_stable_id: str = "",
+        *,
+        name: str = "",
+        qualified_name: str = "",
     ) -> str:
         """Compute an untyped-tier stable_id for a function/class/method node.
 
-        Uses the formula from ADR-0014 §2::
+        Uses the formula from ADR-0014 §2 augmented by Phase 6 PR3 (INV-bazij)::
 
-            sha256({kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id})
+            sha256({kind}:{param_count}:{arity_flags}:{decorators}
+                   :{containing_stable_id}:{name}:{qualified_name})
 
-        The result survives renames and file moves because it captures
-        only the *interface shape*, not names or locations.
+        Per INV-tazaj fix shape: the previous interface-shape-only signature
+        produced ~60% collisions on the dogfood corpus because shape alone
+        does not distinguish 155 zero-parameter bash functions in a single
+        file (or 152 tests with empty bodies). Including `name` and
+        `qualified_name` gives a structural-identity-within-a-rename-scope
+        guarantee: stable_id survives BODY edits but NOT rename or move.
+        This is the right tradeoff for a field that must distinguish ~34K
+        symbols.
 
         Args:
             node: Tree-sitter node for the symbol's definition.
             kind: Symbol kind (``"function"``, ``"method"``, ``"class"``).
             containing_stable_id: Stable ID of the enclosing scope (class or
                 module).  Empty string for top-level definitions.
+            name: Symbol's local name (e.g., ``"poll_ci"``). Defaults to
+                empty for back-compat with legacy callers; new sites should
+                pass it for uniqueness.
+            qualified_name: Dotted full-qualified name (e.g.,
+                ``"module.Class.method"``). Defaults to empty when the
+                analyzer does not compute one at stable_id time.
 
         Returns:
             Stable ID in ``sha256:{16-hex-chars}`` format.
@@ -2317,6 +2333,7 @@ class TreeSitterAnalyzer:
         sig = (
             f"{kind}:{flags.param_count}:{flags.as_flags_str()}"
             f":{decorators_str}:{containing_stable_id}"
+            f":{name}:{qualified_name}"
         )
         hash_val = hashlib.sha256(sig.encode()).hexdigest()[:16]
         return f"sha256:{hash_val}"

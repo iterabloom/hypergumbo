@@ -793,6 +793,76 @@ def _check_cross_field_coherence(
                 ),
             ))
 
+    # ---- INV-bazij umbrella: stable_id collision rate -------------------
+    # Phase 6 PR3 (INV-bazij P0): stable_id was documented as carrying
+    # per-symbol structural identity but the original hash inputs
+    # (kind, param_count, arity_flags, decorators, containing_stable_id)
+    # collided at ~60% on the dogfood corpus — 155 bash functions in one
+    # file all shared one stable_id; 152 zero-parameter pytest tests
+    # collided likewise. The fix (`name` + `qualified_name` in the hash
+    # inputs) is regression-proofed by this umbrella check: emit ONE
+    # ValidationViolation summarizing the collision rate and the top-3
+    # largest collision groups, not one-per-Symbol (which would flood the
+    # report when a regression returns).
+    #
+    # Threshold: 5%. Self-analysis post-fix is expected to land well
+    # under this; CI fails fast if a future analyzer change loses the
+    # disambiguators.
+    _STABLE_ID_COLLISION_THRESHOLD = 0.05
+    counter: dict[str, list[Any]] = {}
+    total = 0
+    for sym in symbols:
+        sid = getattr(sym, "stable_id", None)
+        if sid is None:
+            continue
+        total += 1
+        counter.setdefault(sid, []).append(sym)
+    if total > 0:
+        collided = sum(len(g) for g in counter.values() if len(g) > 1)
+        rate = collided / total
+        if rate > _STABLE_ID_COLLISION_THRESHOLD:
+            # Top 3 largest collision groups, by member count.
+            top_groups = sorted(
+                ((sid, g) for sid, g in counter.items() if len(g) > 1),
+                key=lambda item: len(item[1]),
+                reverse=True,
+            )[:3]
+            top_descriptions = []
+            for sid, group in top_groups:
+                sample_names = sorted({
+                    (getattr(s, "name", None) or "?")[:40] for s in group[:5]
+                })
+                top_descriptions.append(
+                    f"{sid} ({len(group)} symbols, e.g. "
+                    f"{', '.join(sample_names)})"
+                )
+            top_str = "; ".join(top_descriptions) if top_descriptions else "(none)"
+            violations.append(ValidationViolation(
+                severity="warning",
+                validator_class="cross_field",
+                field_name="Symbol.stable_id",
+                record_id=None,
+                observed=(
+                    f"{collided}/{total} Symbols share stable_id "
+                    f"({rate*100:.1f}%)"
+                ),
+                expected=(
+                    f"Collision rate must stay below "
+                    f"{_STABLE_ID_COLLISION_THRESHOLD*100:.0f}% (INV-bazij). "
+                    "Augment compute_stable_id hash inputs with name+"
+                    "qualified_name when adding new symbol kinds."
+                ),
+                message=(
+                    f"stable_id collision rate {rate*100:.1f}% exceeds "
+                    f"{_STABLE_ID_COLLISION_THRESHOLD*100:.0f}% threshold "
+                    f"({collided}/{total} symbols). Top groups: {top_str}. "
+                    "Per INV-bazij, two symbols with the same shape "
+                    "(0-param + 0-decorator + same containing scope) must "
+                    "still get distinct stable_ids by virtue of name and "
+                    "qualified_name being in the hash inputs."
+                ),
+            ))
+
     return violations
 
 

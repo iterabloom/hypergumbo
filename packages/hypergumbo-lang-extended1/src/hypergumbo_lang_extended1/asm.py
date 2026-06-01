@@ -169,7 +169,7 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                         ),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        stable_id=self.compute_stable_id(node, kind=kind),
+                        stable_id=self.compute_stable_id(node, kind=kind, name=label_name),
                     )
                     analysis.symbols.append(sym)
                     analysis.node_for_symbol[sym.id] = node

@@ -784,6 +784,119 @@ def test_cross_field_dst_ref_none_passes() -> None:
 
 
 # ----------------------------------------------------------------------
+# Phase 6 PR3 — INV-bazij stable_id collision umbrella check
+# ----------------------------------------------------------------------
+
+
+def _make_sym_with_stable_id(idx: int, sid: str, name: str = "f") -> _FakeSym:
+    """Build a minimal Symbol stand-in with the given stable_id."""
+    return _FakeSym(
+        id=f"python:test/fake.py:{idx}-{idx}:sym{idx}:function",
+        kind="function",
+        language="python",
+        discovery_language=None,
+        protocol_origin=None,
+        display_label=None,
+        origin=[],
+        qualified_name=None,
+        stable_id=sid,
+        name=name,
+        dst_ref=None,
+        dst=None,
+    )
+
+
+def test_cross_field_stable_id_collisions_below_threshold_pass() -> None:
+    """A small number of collisions (under the 5% threshold) does not
+    emit the umbrella violation — the validator only flags when the rate
+    crosses the threshold."""
+    # 100 distinct stable_ids + 1 collision (1/101 ≈ 1%, under 5%).
+    syms: list[_FakeSym] = []
+    for i in range(100):
+        syms.append(_make_sym_with_stable_id(i, f"sha256:{i:016x}"))
+    # Add one collision against the first stable_id (sha256:{0:016x})
+    syms.append(_make_sym_with_stable_id(100, "sha256:0000000000000000", name="dup"))
+    syms.append(_make_sym_with_stable_id(101, "sha256:0000000000000000", name="dup2"))
+    violations = validate_ir(syms, [], [])
+    assert not any(
+        v.validator_class == "cross_field"
+        and v.field_name == "Symbol.stable_id"
+        for v in violations
+    )
+
+
+def test_cross_field_stable_id_collisions_above_threshold_flags() -> None:
+    """When >5% of Symbols share stable_id, the umbrella violation fires
+    with the collision rate and top-3 collision groups described in the
+    message — and exactly ONE violation, not one-per-Symbol."""
+    syms: list[_FakeSym] = []
+    # 10 distinct stable_ids
+    for i in range(10):
+        syms.append(_make_sym_with_stable_id(i, f"sha256:{i:016x}"))
+    # 5 colliding symbols (5/15 = 33%, well above 5%)
+    for i in range(5):
+        syms.append(_make_sym_with_stable_id(
+            100 + i, "sha256:cccccccccccccccc", name=f"colliding_{i}",
+        ))
+    violations = validate_ir(syms, [], [])
+    matched = [
+        v for v in violations
+        if v.validator_class == "cross_field"
+        and v.field_name == "Symbol.stable_id"
+    ]
+    # Exactly one umbrella, regardless of collision-group size.
+    assert len(matched) == 1
+    v = matched[0]
+    assert v.severity == "warning"
+    assert v.record_id is None
+    assert "33.3%" in (v.observed or "")
+    assert "sha256:cccccccccccccccc" in (v.message or "")
+    assert "colliding_0" in (v.message or "")
+
+
+def test_cross_field_stable_id_empty_inputs_pass() -> None:
+    """Zero symbols → no collision umbrella violation (division by zero
+    avoided)."""
+    violations = validate_ir([], [], [])
+    assert not any(
+        v.validator_class == "cross_field"
+        and v.field_name == "Symbol.stable_id"
+        for v in violations
+    )
+
+
+def test_cross_field_stable_id_none_values_skipped() -> None:
+    """Symbols whose stable_id is None do not contribute to the
+    collision count (they predate the universal stable_id stamping per
+    INV-hunup) — only populated ones are scored."""
+    syms = [
+        _make_sym_with_stable_id(0, "sha256:0000000000000000"),
+        _make_sym_with_stable_id(1, "sha256:1111111111111111"),
+        # stable_id=None — must not crash the validator
+        _FakeSym(
+            id="python:test/fake.py:2-2:nosid:function",
+            kind="function",
+            language="python",
+            discovery_language=None,
+            protocol_origin=None,
+            display_label=None,
+            origin=[],
+            qualified_name=None,
+            stable_id=None,
+            name="nosid",
+            dst_ref=None,
+            dst=None,
+        ),
+    ]
+    violations = validate_ir(syms, [], [])
+    assert not any(
+        v.validator_class == "cross_field"
+        and v.field_name == "Symbol.stable_id"
+        for v in violations
+    )
+
+
+# ----------------------------------------------------------------------
 # Phase 3 PR4 — Verdict-enum completeness validator tests
 # ----------------------------------------------------------------------
 

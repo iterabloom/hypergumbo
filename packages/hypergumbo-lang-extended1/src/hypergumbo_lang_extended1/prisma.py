@@ -117,7 +117,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                 field_count = sum(1 for c in node.children if c.type == "model_field")
                 sym = Symbol(
                     id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "model"),
-                    stable_id=self.compute_stable_id(node, kind="model"),
+                    stable_id=self.compute_stable_id(node, kind="model", name=name),
                     name=name,
                     kind="class",
                     language="prisma",
@@ -143,7 +143,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                 variant_count = len(identifiers) - 1  # Subtract 1 for the enum name
                 sym = Symbol(
                     id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
-                    stable_id=self.compute_stable_id(node, kind="enum"),
+                    stable_id=self.compute_stable_id(node, kind="enum", name=name),
                     name=name,
                     kind="enum",
                     language="prisma",
@@ -180,7 +180,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                     # retains ``block_type`` for stable_id continuity.
                     sym = Symbol(
                         id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, block_type),
-                        stable_id=self.compute_stable_id(node, kind=block_type),
+                        stable_id=self.compute_stable_id(node, kind=block_type, name=name),
                         name=name,
                         kind="block",
                         language="prisma",

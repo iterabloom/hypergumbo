@@ -199,7 +199,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "proc"),
-                    stable_id=self.compute_stable_id(node, kind="proc"),
+                    stable_id=self.compute_stable_id(node, kind="proc", name=qualified_name),
                     name=name,
                     kind="function",
                     language="tcl",
@@ -226,7 +226,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "namespace"),
-                    stable_id=self.compute_stable_id(node, kind="namespace"),
+                    stable_id=self.compute_stable_id(node, kind="namespace", name=name),
                     name=name,
                     kind="namespace",
                     language="tcl",

@@ -128,7 +128,7 @@ def _extract_symbols_recursive(
 
             sym = Symbol(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "proc"),
-                stable_id=analyzer.compute_stable_id(node, kind="proc"),
+                stable_id=analyzer.compute_stable_id(node, kind="proc", name=name),
                 name=name,
                 kind="function",
                 language="odin",
@@ -154,7 +154,7 @@ def _extract_symbols_recursive(
 
             sym = Symbol(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "struct"),
-                stable_id=analyzer.compute_stable_id(node, kind="struct"),
+                stable_id=analyzer.compute_stable_id(node, kind="struct", name=name),
                 name=name,
                 kind="class",
                 language="odin",
@@ -177,7 +177,7 @@ def _extract_symbols_recursive(
         if name:
             sym = Symbol(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
-                stable_id=analyzer.compute_stable_id(node, kind="enum"),
+                stable_id=analyzer.compute_stable_id(node, kind="enum", name=name),
                 name=name,
                 kind="enum",
                 language="odin",
@@ -199,7 +199,7 @@ def _extract_symbols_recursive(
         if name:
             sym = Symbol(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "union"),
-                stable_id=analyzer.compute_stable_id(node, kind="union"),
+                stable_id=analyzer.compute_stable_id(node, kind="union", name=name),
                 name=name,
                 kind="class",
                 language="odin",

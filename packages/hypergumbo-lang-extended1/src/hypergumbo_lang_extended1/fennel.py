@@ -180,7 +180,7 @@ class FennelAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "fn"),
-                    stable_id=self.compute_stable_id(node, kind="fn"),
+                    stable_id=self.compute_stable_id(node, kind="fn", name=name),
                     name=name,
                     kind="function",
                     language="fennel",
@@ -205,7 +205,7 @@ class FennelAnalyzer(TreeSitterAnalyzer):
             if name:
                 sym = Symbol(
                     id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "var"),
-                    stable_id=self.compute_stable_id(node, kind="var"),
+                    stable_id=self.compute_stable_id(node, kind="var", name=name),
                     name=name,
                     kind="variable",
                     language="fennel",

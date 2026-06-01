@@ -383,7 +383,7 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    stable_id=_analyzer.compute_stable_id(node, kind="class"),
+                    stable_id=_analyzer.compute_stable_id(node, kind="class", name=name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -423,7 +423,7 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    stable_id=_analyzer.compute_stable_id(node, kind="struct"),
+                    stable_id=_analyzer.compute_stable_id(node, kind="struct", name=name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -458,7 +458,7 @@ def _extract_symbols_from_tree(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="enum"),
+                    stable_id=_analyzer.compute_stable_id(node, kind="enum", name=name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -495,7 +495,7 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
-                    stable_id=_analyzer.compute_stable_id(node, kind=kind),
+                    stable_id=_analyzer.compute_stable_id(node, kind=kind, name=name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

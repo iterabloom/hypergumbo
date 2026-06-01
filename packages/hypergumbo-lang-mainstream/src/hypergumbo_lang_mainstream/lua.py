@@ -217,7 +217,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=_extract_lua_signature(node, source),
-                    stable_id=_analyzer.compute_stable_id(node, kind=kind),
+                    stable_id=_analyzer.compute_stable_id(node, kind=kind, name=name),
                     shape_id=_analyzer.compute_shape_id(node),
                 ))
 

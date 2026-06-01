@@ -215,7 +215,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
-                    stable_id=self.compute_stable_id(node, kind="class"),
+                    stable_id=self.compute_stable_id(node, kind="class", name=name),
                     name=name,
                     kind="class",
                     language="haxe",
@@ -244,7 +244,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
             if name:
                 sym = Symbol(
                     id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "interface"),
-                    stable_id=self.compute_stable_id(node, kind="interface"),
+                    stable_id=self.compute_stable_id(node, kind="interface", name=name),
                     name=name,
                     kind="interface",
                     language="haxe",
@@ -282,7 +282,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "fn"),
-                    stable_id=self.compute_stable_id(node, kind="fn"),
+                    stable_id=self.compute_stable_id(node, kind="fn", name=qualified_name),
                     name=qualified_name,
                     kind="function",
                     language="haxe",

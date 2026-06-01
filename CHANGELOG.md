@@ -337,6 +337,33 @@ Out of scope (Phase 6 territory): `Symbol.stable_id` schema check (`sha256:<16he
 
 Lands `docs/adr/0034-id-construction-discipline.md` codifying the canonical-factory discipline for `Symbol.id` construction. The Phase 5 PR1 `id_format` validator is the runtime enforcement; this ADR is the rationale + reviewer checklist + Class B language-string policy (linker-emitted Symbols use the host's `discovery_language` as the canonical-ID first segment). Closes the documentation gap surfaced by the id-construction-discipline lab-notebook entry. Indexed in `docs/adr/README.md` under the Analysis-pipeline thematic group.
 
+#### Phase 6 PR3 — INV-bazij stable_id mass-collision closure
+
+Augments the structural-identity hash inputs on `compute_stable_id` (and the Python-specific `_compute_stable_id`) so two same-shape symbols in the same module no longer collide. Pre-fix self-analysis showed 60.2% of Symbols sharing stable_id with at least one other (20,517 of 34,108 symbols, 3,822 collision groups) — driven by 155 zero-parameter bash functions in `scripts/lib/forgejo-api.sh` all hashing to one ID, 152 zero-parameter pytest tests in `test_profile.py` likewise, and several smaller groups.
+
+Hash-input fix (rebrands the contract per ADR-0014 amendment):
+
+- **`packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py::compute_stable_id`**: hash signature now `{kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id}:{name}:{qualified_name}`. `name` and `qualified_name` are kwarg-only with empty-string defaults for back-compat with legacy callers. The pre-Phase-6 docstring promise ("survives renames/moves") is rebranded to "structural identity within a (qualified_name, module_path) scope — survives BODY edits, NOT rename or move." On the dogfood corpus, that's the right tradeoff for a field distinguishing 34K symbols.
+- **`packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py::_compute_stable_id`**: hash signature gains a trailing `:{name}` segment (kwarg-only). The three Python call sites (class, method untyped-fallback, function untyped-fallback) thread `node.name` / `method_name` / `qualified_name` respectively.
+- **Analyzer call-site sweep** (~30 files): every `compute_stable_id(node, kind=...)` site is updated to pass `name=`. Languages updated: bash, sql, lua, perl, powershell, ruby, c, cpp, objc (mainstream); ada, apex, asm, d_lang, fennel, fish, gleam, hack, haxe, janet, jsonnet, luau, matlab, meson, nim, odin, pascal, prisma, racket, scheme, smithy, starlark, tcl, v_lang, hlsl, purescript (common/extended1). Ruby and matlab also thread `qualified_name=` because their `_make_*_qualified_name` helpers were already in scope.
+- **Out of scope**: `make_route_stable_id`, `make_entry_stable_id`, `make_typed_stable_id`, `make_protocol_stable_id` factories — they already disambiguate via their per-formula inputs (sig / route / category+parts) and were not modified. Analyzers using `make_typed_stable_id` (csharp, go, java, kotlin, php, rust, swift via the typed-tier path) continue to thread their normalized signatures; the typed-tier `def foo(x)` vs `def bar(x)` collision in the same module is by-design (signature-collision, not name-collision).
+
+Validator extension (`spec_validator.py::_check_cross_field_coherence`):
+
+- New umbrella check: after the per-record Symbol / Edge invariants, the validator groups Symbols by stable_id, computes `collided/total`, and emits a single `cross_field` ValidationViolation when the rate exceeds 5%. The umbrella's `observed` field reports the rate; the `message` field names the top-3 largest collision groups with sample symbol names. Emitting one umbrella per run (rather than one per Symbol) keeps the validation_report concise even when a regression returns. 5% threshold leaves headroom above the typed-tier-collision floor (same-signature pairs in the same module) while still catching mass-collision regressions.
+- Four new tests in `tests/test_spec_validator_smoke.py` cover: below-threshold pass, above-threshold flag (with message-content assertion on top-group sampling), empty-inputs pass (division-by-zero), and None-stable_id symbols skipped.
+
+Test updates:
+
+- `test_tree_sitter_analyzer.py::TestComputeStableId::test_hash_matches_manual`: expected sig string updated for the two new trailing colons. New tests `test_name_disambiguates_same_shape`, `test_qualified_name_disambiguates`, `test_name_defaults_back_compatible` pin the new contract.
+- `test_stable_shape_ids.py::test_stable_id_survives_rename`: renamed and inverted to `test_stable_id_survives_body_edits`, now asserts that BODY edits with the same name + signature preserve stable_id (the surviving half of the original promise).
+- `test_stable_id_class_collisions.py`: `test_class_rename_preserves_stable_id` → `test_class_rename_changes_stable_id` (asserts rename now splits). `TestSemanticIdentityCollisionsPreserved::test_two_truly_identical_classes_collide` → `TestSemanticIdentitySplitsByName::test_two_truly_identical_classes_now_split_by_name` (asserts same-shape classes in same file now split by name).
+- `ir.py` Symbol docstring: `stable_id` field documentation rewritten to reflect the new scope.
+
+Self-analysis collision rate dropped from 60.2% baseline.
+
+Out of scope: `Edge.id` schema check (deferred from Phase 6 PR1 carry-over). The typed-tier-collision floor for same-signature/same-module function pairs is intentionally retained — the typed-tier factory contract has signature as the disambiguator, and threading name into it would conflict with the "Don't modify make_*_stable_id factories" constraint in this PR's scope.
+
 #### Phase 6 PR2 — INV-luhur AnalysisRun + meta-layer writer-contract sweep
 
 Closes a batch of the 10 INV-luhur sub-members by codifying canonical definitions, wiring previously-unwired writer paths, and extending `_check_writer_contract` to fold in the structural pattern.

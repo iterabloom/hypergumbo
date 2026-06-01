@@ -306,7 +306,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    stable_id=_analyzer.compute_stable_id(node, kind="class"),
+                    stable_id=_analyzer.compute_stable_id(node, kind="class", name=class_name),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
@@ -335,7 +335,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="protocol"),
+                    stable_id=_analyzer.compute_stable_id(node, kind="protocol", name=protocol_name),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
@@ -369,7 +369,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
-                    stable_id=_analyzer.compute_stable_id(node, kind="method"),
+                    stable_id=_analyzer.compute_stable_id(node, kind="method", name=full_name),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
@@ -397,7 +397,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="property"),
+                    stable_id=_analyzer.compute_stable_id(node, kind="property", name=full_name),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)

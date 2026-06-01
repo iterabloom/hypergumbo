@@ -139,7 +139,7 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
         span=span,
         origin=PASS_ID,
         origin_run_id=ctx.run_id,
-        stable_id=analyzer.compute_stable_id(node, kind=kind),
+        stable_id=analyzer.compute_stable_id(node, kind=kind, name=name),
         signature=signature,
         meta=meta,
     )

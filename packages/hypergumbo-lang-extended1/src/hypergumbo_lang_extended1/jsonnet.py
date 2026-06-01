@@ -137,7 +137,7 @@ def _extract_symbols_recursive(
 
             sym = Symbol(
                 id=make_symbol_id("jsonnet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, kind),
-                stable_id=analyzer.compute_stable_id(node, kind=kind),
+                stable_id=analyzer.compute_stable_id(node, kind=kind, name=name),
                 name=name,
                 kind=kind,
                 language="jsonnet",
@@ -178,7 +178,7 @@ def _extract_symbols_recursive(
 
             sym = Symbol(
                 id=make_symbol_id("jsonnet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, field_name, kind),
-                stable_id=analyzer.compute_stable_id(node, kind=kind),
+                stable_id=analyzer.compute_stable_id(node, kind=kind, name=field_name),
                 name=field_name,
                 kind=kind,
                 language="jsonnet",

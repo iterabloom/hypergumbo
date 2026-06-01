@@ -177,7 +177,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "fn"),
-                    stable_id=self.compute_stable_id(node, kind="fn"),
+                    stable_id=self.compute_stable_id(node, kind="fn", name=name),
                     name=name,
                     kind="function",
                     language="gleam",
@@ -203,7 +203,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                 is_pub = _is_public(node)
                 sym = Symbol(
                     id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type"),
-                    stable_id=self.compute_stable_id(node, kind="type"),
+                    stable_id=self.compute_stable_id(node, kind="type", name=name),
                     name=name,
                     kind="class",
                     language="gleam",
@@ -226,7 +226,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                 is_pub = _is_public(node)
                 sym = Symbol(
                     id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type_alias"),
-                    stable_id=self.compute_stable_id(node, kind="type_alias"),
+                    stable_id=self.compute_stable_id(node, kind="type_alias", name=name),
                     name=name,
                     kind="type",
                     language="gleam",

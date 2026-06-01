@@ -187,7 +187,7 @@ class VAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "fn"),
-                    stable_id=self.compute_stable_id(node, kind="fn"),
+                    stable_id=self.compute_stable_id(node, kind="fn", name=name),
                     name=name,
                     kind="function",
                     language="v",
@@ -214,7 +214,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                 is_pub = _is_public(node)
                 sym = Symbol(
                     id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "struct"),
-                    stable_id=self.compute_stable_id(node, kind="struct"),
+                    stable_id=self.compute_stable_id(node, kind="struct", name=name),
                     name=name,
                     kind="class",
                     language="v",
@@ -239,7 +239,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                 is_pub = _is_public(node)
                 sym = Symbol(
                     id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
-                    stable_id=self.compute_stable_id(node, kind="enum"),
+                    stable_id=self.compute_stable_id(node, kind="enum", name=name),
                     name=name,
                     kind="enum",
                     language="v",
@@ -263,7 +263,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                 is_pub = _is_public(node)
                 sym = Symbol(
                     id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "interface"),
-                    stable_id=self.compute_stable_id(node, kind="interface"),
+                    stable_id=self.compute_stable_id(node, kind="interface", name=name),
                     name=name,
                     kind="interface",
                     language="v",

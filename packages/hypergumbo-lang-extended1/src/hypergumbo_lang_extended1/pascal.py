@@ -222,7 +222,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                 )
                 sym = Symbol(
                     id=sym_id,
-                    stable_id=self.compute_stable_id(node, kind="program"),
+                    stable_id=self.compute_stable_id(node, kind="program", name=name),
                     name=name,
                     kind="program",
                     language="pascal",
@@ -254,7 +254,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                 )
                 sym = Symbol(
                     id=sym_id,
-                    stable_id=self.compute_stable_id(node, kind="module"),
+                    stable_id=self.compute_stable_id(node, kind="module", name=name),
                     name=name,
                     kind="module",
                     language="pascal",
@@ -289,7 +289,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                 )
                 sym = Symbol(
                     id=sym_id,
-                    stable_id=self.compute_stable_id(node, kind="function"),
+                    stable_id=self.compute_stable_id(node, kind="function", name=name),
                     name=name,
                     kind="function",
                     language="pascal",

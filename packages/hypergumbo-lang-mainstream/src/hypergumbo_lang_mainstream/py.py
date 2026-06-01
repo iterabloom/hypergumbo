@@ -1574,17 +1574,25 @@ def _extract_class_body_sig(node: ast.ClassDef) -> str:
 def _compute_stable_id(
     node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
     containing_stable_id: str = "",
+    *,
+    name: str = "",
 ) -> str:
-    """Compute stable_id based on signature (survives renames/moves).
+    """Compute stable_id based on signature (survives body edits, not renames).
 
     Returns:
-    sha256({kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id}:{body_sig})
+    sha256({kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id}:{body_sig}:{name})
 
     arity_flags: has_defaults, has_varargs, has_kwargs
     decorators: sorted list of decorator names
     containing_stable_id: stable_id of the enclosing class/module (ADR-0014 §5)
     body_sig: for ClassDef, sorted method/field/base names (INV-fusus);
               empty string for functions
+    name: symbol's local name. Phase 6 PR3 (INV-bazij): without name in
+          the hash inputs, two distinct tests in the same module with
+          identical (kind, param_count, arity_flags, decorators, body_sig)
+          collide — observed on test_profile.py (152 tests sharing one
+          stable_id). Defaults to empty for back-compat; callers should
+          pass the AST node's `name`.
     """
     is_function = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     kind = "function" if is_function else "class"
@@ -1608,9 +1616,10 @@ def _compute_stable_id(
     # Build signature string and hash
     # ADR-0014 §5: includes containing_stable_id
     # INV-fusus: body_sig tiebreaker for ClassDef
+    # INV-bazij: name disambiguator for same-shape siblings
     sig = (
         f"{kind}:{param_count}:{arity_flags}:{decorators_str}:"
-        f"{containing_stable_id}:{body_sig}"
+        f"{containing_stable_id}:{body_sig}:{name}"
     )
     hash_val = hashlib.sha256(sig.encode()).hexdigest()[:16]
     return f"sha256:{hash_val}"
@@ -2327,7 +2336,8 @@ def _extract_file_analysis(
                 path=str(py_file),
                 span=span,
                 stable_id=_compute_stable_id(
-                    node, containing_stable_id=file_containing_id
+                    node, containing_stable_id=file_containing_id,
+                    name=node.name,
                 ),
                 shape_id=_compute_shape_id(node),
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
@@ -2359,20 +2369,29 @@ def _extract_file_analysis(
                     if item.name.lower() in HTTP_METHODS:
                         stable_id = make_route_stable_id(item.name, class_name)
                     else:
-                        # Try typed tier first (ADR-0014 §3), fall back to untyped
+                        # Try typed tier first (ADR-0014 §3), fall back to untyped.
+                        # INV-bazij (Phase 6 PR3): prepend the method's
+                        # qualified name into the normalized signature so
+                        # two same-signature test methods don't collide.
+                        # The make_typed_stable_id factory hashes the
+                        # signature opaquely; threading the name through
+                        # this slot is the analyzer's responsibility per
+                        # the "factories already disambiguate via their
+                        # per-formula inputs" constraint.
                         sig = _format_function_signature(item)
                         norm_sig = normalize_python_signature(sig)
                         modifiers = _python_visibility_modifiers(method_name)
                         if norm_sig:
                             stable_id = make_typed_stable_id(
-                                "method", norm_sig,
+                                "method", f"{method_name}{norm_sig}",
                                 visibility_from_modifiers(modifiers),
                                 symbol.stable_id,
                                 _extract_py_decorator_names(item),
                             )
                         else:
                             stable_id = _compute_stable_id(
-                                item, containing_stable_id=symbol.stable_id
+                                item, containing_stable_id=symbol.stable_id,
+                                name=method_name,
                             )
 
                     # Build rich metadata for method (ADR-0003)
@@ -2490,16 +2509,23 @@ def _extract_file_analysis(
                     # the containing scope for top-level functions, so
                     # two same-signature functions in different modules
                     # get distinct stable_ids.
+                    # INV-bazij (Phase 6 PR3): prepend qualified_name into
+                    # the normalized signature so two same-signature
+                    # top-level functions in the same module split.
                     func_stable_id = make_typed_stable_id(
-                        "function", norm_sig,
+                        "function", f"{qualified_name}{norm_sig}",
                         visibility_from_modifiers(func_modifiers),
                         file_containing_id,
                         decorators=_extract_py_decorator_names(node),
                     )
                 else:
                     # INV-zudob: same threading for the untyped fallback.
+                    # INV-bazij: thread qualified_name as the disambiguator
+                    # so nested functions and same-named top-level functions
+                    # in different modules stay distinct.
                     func_stable_id = _compute_stable_id(
-                        node, containing_stable_id=file_containing_id
+                        node, containing_stable_id=file_containing_id,
+                        name=qualified_name,
                     )
 
                 _fds = ast.get_docstring(node)

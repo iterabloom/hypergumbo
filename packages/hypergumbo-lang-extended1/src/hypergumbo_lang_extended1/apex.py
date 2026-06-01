@@ -216,7 +216,7 @@ def _extract_method_symbol(
 
     return Symbol(
         id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "method"),
-        stable_id=analyzer.compute_stable_id(node, kind="method"),
+        stable_id=analyzer.compute_stable_id(node, kind="method", name=qualified_name),
         name=qualified_name,
         kind="method",
         language="apex",
@@ -269,7 +269,7 @@ def _extract_constructor_symbol(
 
     return Symbol(
         id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "constructor"),
-        stable_id=analyzer.compute_stable_id(node, kind="constructor"),
+        stable_id=analyzer.compute_stable_id(node, kind="constructor", name=qualified_name),
         name=qualified_name,
         kind="constructor",
         language="apex",
@@ -326,7 +326,7 @@ def _extract_field_symbols(
 
                 sym = Symbol(
                     id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "field"),
-                    stable_id=analyzer.compute_stable_id(node, kind="field"),
+                    stable_id=analyzer.compute_stable_id(node, kind="field", name=qualified_name),
                     name=qualified_name,
                     kind="field",
                     language="apex",
@@ -411,7 +411,7 @@ def _extract_class_node(
 
         sym = Symbol(
             id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
-            stable_id=analyzer.compute_stable_id(node, kind="class"),
+            stable_id=analyzer.compute_stable_id(node, kind="class", name=name),
             name=name,
             kind="class",
             language="apex",
@@ -459,7 +459,7 @@ def _extract_interface_node(
 
         sym = Symbol(
             id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "interface"),
-            stable_id=analyzer.compute_stable_id(node, kind="interface"),
+            stable_id=analyzer.compute_stable_id(node, kind="interface", name=name),
             name=name,
             kind="interface",
             language="apex",
@@ -519,7 +519,7 @@ def _extract_enum_node(
 
         sym = Symbol(
             id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
-            stable_id=analyzer.compute_stable_id(node, kind="enum"),
+            stable_id=analyzer.compute_stable_id(node, kind="enum", name=name),
             name=name,
             kind="enum",
             language="apex",
@@ -560,7 +560,7 @@ def _extract_trigger_node(
 
         sym = Symbol(
             id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "trigger"),
-            stable_id=analyzer.compute_stable_id(node, kind="trigger"),
+            stable_id=analyzer.compute_stable_id(node, kind="trigger", name=name),
             name=name,
             kind="trigger",
             language="apex",

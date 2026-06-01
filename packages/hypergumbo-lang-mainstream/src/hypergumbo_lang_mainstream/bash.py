@@ -237,7 +237,9 @@ class BashAnalyzer(TreeSitterAnalyzer):
                         # bash function symbols render as ``? LOC`` in
                         # dead-code-maybe output.
                         lines_of_code=end_line - start_line + 1,
-                        stable_id=self.compute_stable_id(node, kind="function"),
+                        stable_id=self.compute_stable_id(
+                            node, kind="function", name=func_name,
+                        ),
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node

@@ -95,7 +95,7 @@ def _extract_namespace(
             if text != "namespace":  # Skip the keyword
                 sym = Symbol(
                     id=make_symbol_id("smithy", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, text, "namespace"),
-                    stable_id=analyzer.compute_stable_id(node, kind="namespace"),
+                    stable_id=analyzer.compute_stable_id(node, kind="namespace", name=text),
                     name=text,
                     kind="namespace",
                     language="smithy",
@@ -140,7 +140,7 @@ def _extract_shape(
 
         return Symbol(
             id=make_symbol_id("smithy", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, kind),
-            stable_id=analyzer.compute_stable_id(node, kind=kind),
+            stable_id=analyzer.compute_stable_id(node, kind=kind, name=qualified_name),
             name=qualified_name,
             kind=kind,
             language="smithy",
@@ -178,7 +178,7 @@ def _extract_simple_shape(
 
         return Symbol(
             id=make_symbol_id("smithy", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "simple_type"),
-            stable_id=analyzer.compute_stable_id(node, kind="simple_type"),
+            stable_id=analyzer.compute_stable_id(node, kind="simple_type", name=qualified_name),
             name=qualified_name,
             kind="simple_type",
             language="smithy",

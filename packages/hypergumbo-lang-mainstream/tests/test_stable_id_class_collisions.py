@@ -13,16 +13,19 @@ a second collision because the containing class identity was already lost.
 
 This file pins the fix: the class body signature (sorted method names,
 sorted field names, sorted base names) is folded into the hash for
-``ClassDef`` nodes. The body signature preserves the two halves of the
-``Symbol.stable_id`` docstring promise:
+``ClassDef`` nodes.
 
-* **Survives renames** — the class's own name is not in the body signature.
-* **Survives moves** — no line numbers, paths, or column offsets appear.
+Phase 6 PR3 (INV-bazij) amended the contract: ``name`` and
+``qualified_name`` are now also in the hash inputs, so stable_id no
+longer survives renames. The promises this file pins are now:
 
-Two classes with genuinely identical bodies in the same module still collide;
-that is semantic identity, not an artifact. Consumers that want absolute
-uniqueness should join on ``(stable_id, canonical_name)`` per the Symbol
-docstring contract.
+* **Survives BODY edits** — same name, same shape, different body
+  content produces the same stable_id.
+* **Does NOT survive rename or move** — those are identity-changing
+  operations (the dogfood-corpus 60% collision rate forced this).
+
+Two classes with identical body shapes in the same module now SPLIT by
+name (Phase 6 PR3); pre-Phase-6 they collided.
 
 INV-zudob extends this: structurally-identical classes (and top-level
 untyped functions) in *different* modules must get distinct stable_ids
@@ -217,14 +220,18 @@ class TestMethodCascadeDistinct:
 class TestSurvivesRenamesAndMoves:
     """The two halves of the Symbol.stable_id docstring promise."""
 
-    def test_class_rename_preserves_stable_id(self, tmp_path: Path) -> None:
-        """Renaming a class in-place (same module) keeps stable_id stable.
+    def test_class_rename_changes_stable_id(self, tmp_path: Path) -> None:
+        """Phase 6 PR3 (INV-bazij): renaming a class changes its stable_id.
 
-        Per INV-zudob, module identity is part of class identity (Python
-        import semantics), so the "survives renames" promise applies
-        *within* a module — renaming the class at the same file path must
-        not change its stable_id. Moving a class to a different file is a
-        different operation and produces a different stable_id by design.
+        The pre-Phase-6 semantic was "stable_id survives renames" (hash
+        inputs were shape-only). On the dogfood corpus that produced a
+        60% collision rate — 155 zero-parameter bash functions in one
+        file all shared one stable_id; 152 zero-parameter pytest tests
+        likewise. Per ADR-0014's amended rebrand, stable_id is now
+        "structural identity within a (qualified_name, module_path)
+        scope" — it survives BODY changes but NOT rename or move.
+
+        This test pins the new contract: rename must split stable_id.
         """
         data_old = _run_and_load(
             tmp_path,
@@ -242,9 +249,10 @@ class TestSurvivesRenamesAndMoves:
         )
         old_cls = next(c for c in data_old["nodes"] if c["kind"] == "class" and c["name"] == "OldName")
         new_cls = next(c for c in data_new["nodes"] if c["kind"] == "class" and c["name"] == "NewName")
-        assert old_cls["stable_id"] == new_cls["stable_id"], (
-            "Renaming a class within the same module should not change its "
-            "stable_id (survives renames)"
+        assert old_cls["stable_id"] != new_cls["stable_id"], (
+            "Phase 6 PR3 (INV-bazij): renaming a class must change "
+            "stable_id — name is now in the hash inputs to prevent the "
+            "60% same-file collision pattern."
         )
 
     def test_method_order_irrelevant(self, tmp_path: Path) -> None:
@@ -274,11 +282,20 @@ class TestSurvivesRenamesAndMoves:
         assert cls_a["stable_id"] == cls_b["stable_id"]
 
 
-class TestSemanticIdentityCollisionsPreserved:
-    """Genuinely identical-body classes still collide — that is correct."""
+class TestSemanticIdentitySplitsByName:
+    """Phase 6 PR3 (INV-bazij): identical-body classes split by name.
 
-    def test_two_truly_identical_classes_collide(self, tmp_path: Path) -> None:
-        """Two classes with byte-for-byte identical bodies share stable_id by design."""
+    The pre-Phase-6 semantic shared stable_id between two structurally
+    identical classes in the same file, on the theory that "same shape
+    means same identity". The dogfood corpus disagreed: 155 bash
+    functions and 152 pytest tests with identical zero-param shape all
+    sharing one stable_id is a useless identity, not a meaningful one.
+    Per the amended ADR-0014, name is now part of the hash inputs.
+    """
+
+    def test_two_truly_identical_classes_now_split_by_name(self, tmp_path: Path) -> None:
+        """Two same-shape classes in the same file get distinct stable_ids
+        because name is now part of the hash inputs."""
         data = _run_and_load(
             tmp_path,
             "class A:\n"
@@ -289,9 +306,9 @@ class TestSemanticIdentityCollisionsPreserved:
             "    def m(self): pass\n",
         )
         classes = {c["name"]: c for c in data["nodes"] if c["kind"] == "class"}
-        assert classes["A"]["stable_id"] == classes["B"]["stable_id"], (
-            "Two classes with identical structure should share stable_id "
-            "(semantic identity, joined with canonical_name for uniqueness)"
+        assert classes["A"]["stable_id"] != classes["B"]["stable_id"], (
+            "Phase 6 PR3 (INV-bazij): two same-shape classes must now "
+            "get distinct stable_ids — name is part of the hash inputs."
         )
 
 

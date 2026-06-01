@@ -1193,10 +1193,44 @@ class TestComputeStableId:
             MockNode(type="identifier"),
         ])
         sid = self.analyzer.compute_stable_id(node, kind="function")
-        # Manual: kind=function, param_count=2, arity=False,False,False, decorators="", containing=""
-        expected_sig = "function:2:False,False,False::"
+        # Manual: kind=function, param_count=2, arity=False,False,False,
+        # decorators="", containing="", name="", qualified_name=""
+        # (Phase 6 PR3 / INV-bazij added name and qualified_name; defaults
+        # are empty strings, so the trailing "::" pair is intentional.)
+        expected_sig = "function:2:False,False,False::::"
         expected_hash = hashlib.sha256(expected_sig.encode()).hexdigest()[:16]
         assert sid == f"sha256:{expected_hash}"
+
+    def test_name_disambiguates_same_shape(self) -> None:
+        """Phase 6 PR3 (INV-bazij): two same-shape symbols with different
+        names produce different stable_ids when name is passed."""
+        node = self._make_function_node()
+        sid_a = self.analyzer.compute_stable_id(node, kind="function", name="poll_ci")
+        sid_b = self.analyzer.compute_stable_id(node, kind="function", name="do_merge")
+        assert sid_a != sid_b
+
+    def test_qualified_name_disambiguates(self) -> None:
+        """Phase 6 PR3 (INV-bazij): same name, different qualified_name
+        (e.g., same method name in two different classes) produces
+        different stable_ids."""
+        node = self._make_function_node()
+        sid_a = self.analyzer.compute_stable_id(
+            node, kind="method", name="run", qualified_name="ClassA.run",
+        )
+        sid_b = self.analyzer.compute_stable_id(
+            node, kind="method", name="run", qualified_name="ClassB.run",
+        )
+        assert sid_a != sid_b
+
+    def test_name_defaults_back_compatible(self) -> None:
+        """Calls without name= remain valid (back-compat for legacy
+        analyzers that haven't migrated yet)."""
+        node = self._make_function_node()
+        sid_legacy = self.analyzer.compute_stable_id(node, kind="function")
+        sid_explicit_empty = self.analyzer.compute_stable_id(
+            node, kind="function", name="", qualified_name="",
+        )
+        assert sid_legacy == sid_explicit_empty
 
     def test_decorators_extracted(self) -> None:
         """Decorator names should be included in the hash."""
