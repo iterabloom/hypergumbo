@@ -725,6 +725,45 @@ def test_cross_field_dst_ref_none_passes() -> None:
     assert not any(v.field_name == "Edge.dst / Edge.dst_ref" for v in violations)
 
 
+# ----------------------------------------------------------------------
+# Phase 3 PR4 — Verdict-enum completeness validator tests
+# ----------------------------------------------------------------------
+
+
+def test_verdict_enum_validator_passes_with_inconclusive_documented() -> None:
+    """The validator passes when every registered verdict dataclass's
+    docstring mentions the required ``inconclusive`` value. With
+    ClaimVerdict's docstring updated in Phase 3 PR4, this should be the
+    happy path on the live tree."""
+    violations = validate_ir([], [], [])
+    assert not any(v.validator_class == "verdict_enum" for v in violations)
+
+
+def test_verdict_enum_validator_flags_missing_inconclusive(
+    monkeypatch,
+) -> None:
+    """A verdict-emitting dataclass whose docstring does NOT mention
+    ``inconclusive`` triggers a verdict_enum violation. Simulated via
+    monkeypatch on `_VERDICT_DATACLASSES` to a test dataclass that
+    lacks the required value."""
+    import hypergumbo_core.spec_validator as sv
+
+    fake_table = (
+        # Point at a stdlib class whose docstring doesn't mention
+        # "inconclusive" — `pathlib.PurePath` is a stable choice.
+        ("pathlib", "PurePath", "verdict", frozenset({"inconclusive"})),
+    )
+    monkeypatch.setattr(sv, "_VERDICT_DATACLASSES", fake_table)
+    violations = validate_ir([], [], [])
+    matched = [
+        v for v in violations
+        if v.validator_class == "verdict_enum"
+    ]
+    assert len(matched) == 1
+    assert matched[0].severity == "error"
+    assert "inconclusive" in matched[0].message
+
+
 def test_axis_conformance_qualified_name_unknown_language_is_skipped() -> None:
     """When the Symbol's language has no declared qualified-name separator
     policy, the structural check is skipped (no violation, no false

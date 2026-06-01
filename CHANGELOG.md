@@ -192,6 +192,42 @@ Third of four validator classes lights up per ADR-0033 §"Validator classes" #3.
 
 100% coverage on `spec_validator.py` (142/0/100%). Full smart-test suite passes (2445+ scoped).
 
+#### ADR-0033 Phase 3 PR4 — verdict-enum validator + `ClaimVerdict.inconclusive` (WI-rolol sub-task A)
+
+Final of four validator classes lights up per ADR-0033 §"Validator classes" #4. Adds the structurally-missing `inconclusive` value to `ClaimVerdict` and a generalised validator that catches any verdict-emitting dataclass missing an `inconclusive` (or equivalent) branch.
+
+**ClaimVerdict.inconclusive** (`verify_claims.py`):
+
+- **`ClaimVerdict.verdict`** documented enum now reads `confirmed` / `violated` / `inconclusive` (was just `confirmed` / `violated`). Annotation upgraded to `# axis: bounded-enum`.
+- **`verify_claim`** fall-through path (line 286-291 pre-change) was `verdict="confirmed", details="No constraint to check."` — silent confirm. Now returns `verdict="inconclusive"` with `details="No machine-checkable constraint on this claim. The claim may be true, but verify-claims has nothing to assert against."`
+- **`verify_taint_claim`** fall-through path (line 313-318 pre-change) same shape; now returns `inconclusive` when `claim.constraint_taint_flow is None`.
+- **Closes INV-bitig (P0)**, INV-gobob, INV-mofih, INV-nufob — the four silent-confirm members WI-rolol sub-task A was filed to close.
+
+**CLI verify-claims exit codes** (`cli.py:cmd_verify_claims`):
+
+- 0 = all confirmed (or no claims)
+- 1 = at least one violated
+- 2 = at least one inconclusive (and zero violated) — NEW. Distinguishes "machine-checkable claims all passed" from "couldn't actually check the claim."
+- Console output shows `?` icon for inconclusive verdicts and a per-verdict summary (`N VIOLATED, M INCONCLUSIVE (of K claim(s))`).
+
+**Verdict-enum validator class** (`spec_validator._check_verdict_enum_completeness`):
+
+- Runs against the static `_VERDICT_DATACLASSES` registry (currently 1 entry: `ClaimVerdict`).
+- For each entry, introspects the dataclass docstring and verifies the required `inconclusive` value is documented.
+- Per ADR-0033 §"Validator classes" #4: silent fall-through to a positive verdict is a security false-positive class; future verdict-emitting code registers here so the absence of an `inconclusive` branch is mechanically caught.
+
+**Tests** (~5 new):
+
+- `test_verify_claims.py` — 2 existing tests rewired: `test_no_constraint_returns_inconclusive`, `test_no_taint_flow_constraint_returns_inconclusive`.
+- `test_cli_verify_claims.py` — `test_verify_claims_inconclusive_exits_2` covers the new icon path, the per-verdict counter, the summary line, and the exit-code-2 path.
+- `test_spec_validator_smoke.py` — `test_verdict_enum_validator_passes_with_inconclusive_documented` (happy path) + `test_verdict_enum_validator_flags_missing_inconclusive` (monkeypatched failure path covers the violation-emit branch).
+
+**WI-rolol sub-task A status**: lands in full. Sub-task A is now done. Sub-task B (writer-contract) had its scaffolding landed in Phase 3 PR2; the per-member INV-luhur residual sweep lands in Phase 6 PR2. WI-rolol can now move to `pending_validation` once a 6-repo bakeoff confirms the inconclusive verdict surfaces correctly on real corpora.
+
+**Phase 3 complete.** All four validator classes are now active. The validator stage runs at `cli.py:end-of-pipeline` post-`stamp_symbol_fingerprints` and emits the structured `validation_report` artifact section. Per ADR-0033 §"Default failure behavior", it warns to stderr + writes the report; `hypergumbo run` exit code remains 0. The future `test_validation_report_empty.py` CI gate (Phase 6 PR5/6) closes the loop.
+
+100% coverage on `spec_validator.py` (155/0/100%), `verify_claims.py` (95/0/100%), and the new `cli.py` paths. 2780 smart-test passes.
+
 
 ### Changed
 

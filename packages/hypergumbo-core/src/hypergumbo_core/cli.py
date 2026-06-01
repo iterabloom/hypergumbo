@@ -4536,19 +4536,33 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         print(json.dumps([v.to_dict() for v in verdicts], indent=2))
     else:
         violated = 0
+        inconclusive = 0
         for v in verdicts:
-            icon = "✓" if v.verdict == "confirmed" else "✗"
+            # ADR-0033 Phase 3 PR4: "inconclusive" verdict now exists
+            # for claims that couldn't be machine-checked.
+            if v.verdict == "confirmed":
+                icon = "✓"
+            elif v.verdict == "violated":
+                icon = "✗"
+            else:  # inconclusive
+                icon = "?"
             print(f"  {icon} [{v.claim_id}] {v.claim_text}")
             print(f"    Verdict: {v.verdict}")
             if v.details:
                 print(f"    {v.details}")
             if v.verdict == "violated":
                 violated += 1
+            elif v.verdict == "inconclusive":
+                inconclusive += 1
         print()
+        summary_parts = []
         if violated:
-            print(f"{violated}/{len(verdicts)} claim(s) VIOLATED")
-        else:
-            print(f"All {len(verdicts)} claim(s) CONFIRMED")
+            summary_parts.append(f"{violated} VIOLATED")
+        if inconclusive:
+            summary_parts.append(f"{inconclusive} INCONCLUSIVE")
+        if not violated and not inconclusive:
+            summary_parts.append(f"all {len(verdicts)} CONFIRMED")
+        print(f"{', '.join(summary_parts)} (of {len(verdicts)} claim(s))")
 
     # INV-javam: warn to stderr when taint claims were evaluated against a
     # repo whose languages have no taint catalog coverage. Even a "all
@@ -4563,8 +4577,19 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
+    # ADR-0033 Phase 3 PR4 / WI-rolol sub-task A: exit codes
+    #   0 = all confirmed (or no claims to check)
+    #   1 = at least one violated
+    #   2 = at least one inconclusive (and zero violated) — distinguishes
+    #       "machine-checkable claims all passed" from "couldn't actually
+    #       check the claim." INV-bitig P0 silent-confirm.
     has_violations = any(v.verdict == "violated" for v in verdicts)
-    return 1 if has_violations else 0
+    has_inconclusive = any(v.verdict == "inconclusive" for v in verdicts)
+    if has_violations:
+        return 1
+    if has_inconclusive:
+        return 2
+    return 0
 
 
 def cmd_config(args: argparse.Namespace) -> int:

@@ -226,8 +226,11 @@ class TestVerifyClaim:
         assert verdict.verdict == "violated"
         assert verdict.evidence_count == 10
 
-    def test_no_constraint_defaults_confirmed(self) -> None:
-        """Claim with no constraint flags defaults to confirmed."""
+    def test_no_constraint_returns_inconclusive(self) -> None:
+        """ADR-0033 Phase 3 PR4 / WI-rolol sub-task A: a claim with no
+        machine-checkable constraint returns ``inconclusive`` rather
+        than silently falling through to ``confirmed`` (INV-bitig P0).
+        """
         bmap = _make_boundary_map(fs_read=5)
         claim = Claim(
             id="SC-X",
@@ -235,8 +238,8 @@ class TestVerifyClaim:
             constraint_boundary="fs_read",
         )
         verdict = verify_claim(claim, bmap)
-        assert verdict.verdict == "confirmed"
-        assert "No constraint" in verdict.details
+        assert verdict.verdict == "inconclusive"
+        assert "No machine-checkable" in verdict.details
 
     def test_must_not_exist_no_boundary_data(self) -> None:
         """Claim passes when boundary type has no data at all."""
@@ -458,11 +461,14 @@ class TestVerifyTaintClaim:
         verdict = verify_taint_claim(claim, findings)
         assert verdict.verdict == "confirmed"
 
-    def test_no_taint_flow_constraint(self) -> None:
-        """Claim without taint_flow constraint returns confirmed."""
+    def test_no_taint_flow_constraint_returns_inconclusive(self) -> None:
+        """ADR-0033 Phase 3 PR4 / WI-rolol sub-task A: a claim without a
+        taint_flow constraint returns ``inconclusive`` rather than
+        silently falling through to ``confirmed``.
+        """
         claim = Claim(id="X", text="X")
         verdict = verify_taint_claim(claim, [])
-        assert verdict.verdict == "confirmed"
+        assert verdict.verdict == "inconclusive"
         assert "No taint_flow constraint" in verdict.details
 
     def test_multiple_violations_truncated(self) -> None:

@@ -133,7 +133,7 @@ def validate_ir(
     violations.extend(_check_axis_conformance(symbols, edges, analysis_runs))
     violations.extend(_check_writer_contract(symbols, edges, analysis_runs))
     violations.extend(_check_cross_field_coherence(symbols, edges, analysis_runs))
-    # Phase 3 PR4 — verdict-enum completeness checks land here
+    violations.extend(_check_verdict_enum_completeness())
     return violations
 
 
@@ -665,6 +665,90 @@ def _check_cross_field_coherence(
                 ),
             ))
 
+    return violations
+
+
+# ----------------------------------------------------------------------
+# Phase 3 PR4 — Verdict-enum completeness validator class (folds in WI-rolol sub-task A)
+# ----------------------------------------------------------------------
+#
+# Per ADR-0033 §"Validator classes" #4. Generalizes the silent-confirm
+# fall-through that drove WI-rolol sub-task A: any verdict-emitting
+# code path must enumerate an "inconclusive" (or equivalent) branch
+# for the missing-data / malformed-input / broken-binary cases —
+# falling through to the positive verdict ("confirmed" / "ok" /
+# "pass") is a security false-positive class.
+#
+# This validator runs at **import time** rather than per-record: it
+# introspects the verdict-emitting dataclasses (currently only
+# ClaimVerdict) and confirms each has an "inconclusive" value in its
+# documented enum. Per-record violations would emit one per claim;
+# the structural absence is one violation total.
+#
+# The validator's table _VERDICT_DATACLASSES is hand-maintained. Each
+# entry: (module_path, class_name, field_name, allowed_inconclusive_values).
+# New verdict-emitting dataclasses register here; the validator checks
+# the documented enum (read from the field's # axis: comment in the
+# dataclass declaration via the same static-AST machinery the
+# multi_value_field_axis validator uses).
+
+
+_VERDICT_DATACLASSES: tuple[tuple[str, str, str, frozenset[str]], ...] = (
+    # (import_path, class_name, field_name, must-contain values)
+    (
+        "hypergumbo_core.verify_claims",
+        "ClaimVerdict",
+        "verdict",
+        frozenset({"inconclusive"}),
+    ),
+)
+
+
+def _check_verdict_enum_completeness() -> list[ValidationViolation]:
+    """Verdict-enum completeness class: every verdict-emitting dataclass
+    enumerates an "inconclusive" branch for missing-data cases.
+
+    See ADR-0033 §"Validator classes" #4. Runs at validator-invocation
+    time but is structurally a static check — the result depends only
+    on the verdict-dataclass declarations, not on emitted records. The
+    check is included here (rather than in the static-AST validator)
+    so the validator stage owns the entire spec-vs-data surface as a
+    single discoverable check set.
+    """
+    violations: list[ValidationViolation] = []
+    for module_path, class_name, field_name, must_contain in _VERDICT_DATACLASSES:
+        # Introspect the dataclass's documented enum from the field's
+        # type annotation or docstring. For ClaimVerdict, the verdict
+        # values are documented in the class docstring (we can't rely
+        # on Literal[...] type narrowing — the field is annotated `str`).
+        import importlib
+
+        module = importlib.import_module(module_path)
+        klass = getattr(module, class_name)
+        docstring = (klass.__doc__ or "").lower()
+        # Each must-contain value should appear in the docstring as
+        # part of the documented verdict enumeration.
+        for required_value in must_contain:
+            if required_value not in docstring:
+                violations.append(ValidationViolation(
+                    severity="error",
+                    validator_class="verdict_enum",
+                    field_name=f"{class_name}.{field_name}",
+                    record_id=None,
+                    observed=None,
+                    expected=(
+                        f"verdict enum includes {required_value!r} "
+                        "(per ADR-0033 §\"Validator classes\" #4 — "
+                        "missing-data / malformed-input cases must "
+                        "have a non-confirming verdict branch)"
+                    ),
+                    message=(
+                        f"{class_name}.{field_name} docstring does not "
+                        f"mention the {required_value!r} verdict value. "
+                        "Silent fall-through to the positive verdict is "
+                        "a security false-positive class (INV-bitig P0)."
+                    ),
+                ))
     return violations
 
 

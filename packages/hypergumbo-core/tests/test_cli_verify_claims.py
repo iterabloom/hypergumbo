@@ -157,6 +157,43 @@ def test_verify_claims_empty(tmp_path: Path, capsys) -> None:
     assert rc == 0
 
 
+def test_verify_claims_inconclusive_exits_2(tmp_path: Path, capsys) -> None:
+    """ADR-0033 Phase 3 PR4 / WI-rolol sub-task A: a claim without a
+    machine-checkable constraint returns ``inconclusive`` and the CLI
+    exits with code 2 (distinguishing it from confirmed=0 / violated=1).
+
+    Exercises the inconclusive icon ("?"), the per-verdict counter, the
+    summary line, and the exit-code-2 path.
+    """
+    bmap = _make_behavior_map(nodes=[], edges=[])
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    # A claim with NO must_not_exist, NO max_chains, NO taint_flow:
+    # the verify-claims machinery has no constraint to check, which
+    # post-Phase-3-PR4 returns inconclusive (was a silent confirm).
+    claims = {
+        "claims": [
+            {"id": "SC-001", "text": "No machine-checkable constraint",
+             "constraint": {"boundary": "fs_read"}},
+        ]
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    assert rc == 2
+    out = capsys.readouterr().out
+    assert "INCONCLUSIVE" in out
+    assert "?" in out
+
+
 def test_verify_claims_typescript_alias_catalog_bridging(tmp_path: Path, capsys) -> None:
     """Verify-claims detects TS I/O via 'typescript'→'javascript' catalog alias.
 

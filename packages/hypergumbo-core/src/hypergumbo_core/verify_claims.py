@@ -100,14 +100,21 @@ class ClaimVerdict:
     Attributes:
         claim_id: The claim's ID.
         claim_text: The claim's human-readable text.
-        verdict: One of "confirmed", "violated".
+        verdict: One of "confirmed", "violated", "inconclusive" (ADR-0033
+            Phase 3 PR4 / WI-rolol sub-task A). ``confirmed`` means the
+            claim was actively checked and held; ``violated`` means
+            specific evidence contradicted it; ``inconclusive`` means
+            the verification couldn't proceed (no matching constraint,
+            broken input data, missing catalog) — distinguished from
+            ``confirmed`` to close the silent-confirm fall-through
+            class (INV-bitig P0, INV-gobob, INV-mofih, INV-nufob).
         evidence_count: Number of I/O chains that violate the claim (0 if confirmed).
         details: Human-readable explanation.
     """
 
     claim_id: str
     claim_text: str
-    verdict: str  # "confirmed" or "violated"
+    verdict: str  # axis: bounded-enum — "confirmed" / "violated" / "inconclusive"
     evidence_count: int = 0
     details: str = ""
 
@@ -282,12 +289,18 @@ def verify_claim(claim: Claim, boundary_map: BoundaryMap) -> ClaimVerdict:
             ),
         )
 
-    # No constraint matched — inconclusive
+    # No constraint matched — inconclusive (ADR-0033 Phase 3 PR4 /
+    # WI-rolol sub-task A). Previously fell through to verdict="confirmed"
+    # with details="No constraint to check.", silently confirming claims
+    # that had no machinery to verify them (INV-bitig P0).
     return ClaimVerdict(
         claim_id=claim.id,
         claim_text=claim.text,
-        verdict="confirmed",
-        details="No constraint to check.",
+        verdict="inconclusive",
+        details=(
+            "No machine-checkable constraint on this claim. The claim "
+            "may be true, but verify-claims has nothing to assert against."
+        ),
     )
 
 
@@ -310,11 +323,19 @@ def verify_taint_claim(
     """
     tf = claim.constraint_taint_flow
     if tf is None:
+        # ADR-0033 Phase 3 PR4 / WI-rolol sub-task A: silent-confirm
+        # fall-through. Previously returned verdict="confirmed" with
+        # details="No taint_flow constraint to check.", which silently
+        # confirms claims that have no taint_flow machinery to verify
+        # them.
         return ClaimVerdict(
             claim_id=claim.id,
             claim_text=claim.text,
-            verdict="confirmed",
-            details="No taint_flow constraint to check.",
+            verdict="inconclusive",
+            details=(
+                "No taint_flow constraint on this claim. "
+                "verify_taint_claim cannot assert anything."
+            ),
         )
 
     # Filter findings matching this claim's taint label and sink zone
