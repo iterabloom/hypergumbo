@@ -1,0 +1,22 @@
+- op: create  # 89e2
+  at: '2026-06-02T03:20:36Z'  # 89e2
+  by: agent  # 89e2
+  actor: jgstern_agent  # 89e2
+  clock: 1  # 89e2
+  nonce: '89e2'  # 89e2
+  data:  # 89e2
+    kind: work_item  # 89e2
+    title: "Python analyzer: qualified_name assigned to Symbol.name instead of Symbol.qualified_name (post-ADR-0032 split missed py.py)"  # 89e2
+    status: todo_hard  # 89e2
+    priority: 1  # 89e2
+    parent: INV-jahiv-lugis-topum-totot-morin-somuv-pujoz-vijir  # 89e2
+    tags:  # 89e2
+    - pass21  # 89e2
+    - adr_0032  # 89e2
+    - language_parity  # 89e2
+    isbefore: []  # 89e2
+    duplicate_of: []  # 89e2
+    not_duplicate_of: []  # 89e2
+    pr_ref:  # 89e2
+    description: "**Pass-21 finding (F1).** Field population of `qualified_name` per language on internal symbol kinds (excludes external_symbol):\n\n| Language | total internal | qualified_name populated |\n|---|---|---|\n| python | 31,951 | **0 (0%)** |\n| typescript | 45 | 35 (78%) |\n| csharp | 6 | 6 (100%) |\n| java | 5 | 5 (100%) |\n| go | 9 | 5 (56%) |\n| rust | 9 | 5 (56%) |\n| swift | 7 | 5 (71%) |\n\n**Root cause:** `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py:2528, 2549` build a `qualified_name` variable then pass `name=qualified_name` to the `Symbol(...)` constructor — assigning the value to `Symbol.name`, not `Symbol.qualified_name`. By contrast, `js_ts.py` defines `_make_jsts_qualified_name()` and passes `qualified_name=...` as a separate kwarg (`js_ts.py:3235, 3293, 3334, ...`).\n\n**Significance.** INV-jahiv (analyzer parity) was marked `satisfied` 2026-06-01 by the Phase 4 sweep that nominally covered `qualified_name` across 10 mainstream analyzers, but py.py was missed for this specific field. ADR-0033 writer-contract validator class does NOT check qualified_name population per-language, so this slipped through both producer-side migration and runtime validation.\n\n**Fix:** route the existing qualified_name variable in py.py through a separate kwarg, mirroring the js_ts.py pattern: `Symbol(name=node.name, qualified_name=qualified_name, ...)` instead of `Symbol(name=qualified_name, ...)`. Add a writer-contract validator entry that requires qualified_name populated on the same kinds (function/method/class) for which it is populated by js_ts/csharp/java/go/rust/swift.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06012026_2310_pass21.md`."  # 89e2
+    fields: {}  # 89e2

@@ -1,0 +1,22 @@
+- op: create  # cb2c
+  at: '2026-06-02T03:21:21Z'  # cb2c
+  by: agent  # cb2c
+  actor: jgstern_agent  # cb2c
+  clock: 1  # cb2c
+  nonce: cb2c  # cb2c
+  data:  # cb2c
+    kind: work_item  # cb2c
+    title: "edge.meta.call_construct mixes axes — method/function (construct kind) + cross_file (location) on same field"  # cb2c
+    status: todo_hard  # cb2c
+    priority: 2  # cb2c
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # cb2c
+    tags:  # cb2c
+    - pass21  # cb2c
+    - axis_mix  # cb2c
+    - inv_numat_face  # cb2c
+    isbefore: []  # cb2c
+    duplicate_of: []  # cb2c
+    not_duplicate_of: []  # cb2c
+    pr_ref:  # cb2c
+    description: "**Pass-21 finding (F3).** Distribution of `edge.meta.call_construct` across `edge.type='calls'` edges:\n\n```\ncall_construct = method      → 21,085 edges\ncall_construct = function    →    213 edges\ncall_construct = cross_file  →     78 edges\n```\n\n`method` and `function` are AST-construct kinds (what kind of call syntax). `cross_file` is a location descriptor (the call crosses a file boundary). They belong on different axes.\n\n**Cluster.** Third face of the INV-numat META pattern (vocabulary fields mix multiple semantic axes), alongside:\n- ADR-0031 (Symbol.language → discovery_language + protocol_origin)\n- ADR-0032 (Symbol.canonical_name → display_label + qualified_name)\n- WI-kadop (Symbol.origin → discovery_pass + synthesis_mechanism, filed 2026-06-01)\n\nBelongs as a sibling of WI-kadop under INV-numat.\n\n**Suggested fix.** Either:\n- Sub-divide `call_construct` value space by axis: keep `method` / `function` on the construct axis, and move `cross_file` to a new `call_locality` or `call_scope` field with values like `same_file` / `cross_file`.\n- Or rename `call_construct` to `call_kind` and add a new field for cross-file marker.\n\nADR-0024 style four-artifact axis declaration scaffolding (registry + dataclass field comment + ADR + validator entry) applies.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06012026_2310_pass21.md`."  # cb2c
+    fields: {}  # cb2c

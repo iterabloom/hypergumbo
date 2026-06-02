@@ -1,0 +1,24 @@
+- op: create  # 5760
+  at: '2026-06-02T03:21:02Z'  # 5760
+  by: agent  # 5760
+  actor: jgstern_agent  # 5760
+  clock: 1  # 5760
+  nonce: '5760'  # 5760
+  data:  # 5760
+    kind: meta_invariant  # 5760
+    title: "META: display_label populated on Class C (unresolved external) instead of Class B (protocol synth); ADR-0033 cross_field invariant encoded against wrong granularity"  # 5760
+    status: violated  # 5760
+    priority: 0  # 5760
+    parent:  # 5760
+    tags:  # 5760
+    - pass21  # 5760
+    - adr_0033  # 5760
+    - validator_scope  # 5760
+    - class_inversion  # 5760
+    isbefore: []  # 5760
+    duplicate_of: []  # 5760
+    not_duplicate_of: []  # 5760
+    pr_ref:  # 5760
+    description: "**Pass-21 finding (F2).** ADR-0033 §\"Cross-field coherence\" line 55 states:\n\n> `Symbol.display_label` populated on synthetic stand-ins only, not on real-source declarations (per ADR-0032).\n\nThe actual pass-21 data, classified by ADR-0031 bucket:\n\n| Bucket | Definition | Count | display_label populated |\n|---|---|---|---|\n| A — real-source | `language` set, no display_label, no protocol_origin | 32,352 | 0 (0%) ✓ matches invariant |\n| **B — protocol synth (per ADR-0031 Class B)** | `language=None`, `protocol_origin` set, `discovery_language` set | **262** | **0 (0%)** ✗ |\n| **C — unresolved external** | `language=referrer`, `display_label` set, `protocol_origin=None`, `kind=external_symbol/file` | **1,639** | **1,639 (100%)** ✗ |\n\nClass B is the explicit \"synthetic stand-in\" per ADR-0031 Class B. ADR-0033 names *this* as the bucket display_label should populate. Pass-21 data shows display_label is populated on Class C (unresolved imports / doc_link references) instead, and not on Class B at all.\n\n**Why the validator missed it.** The cross_field validator class either (a) encoded the invariant against a different bucket definition or (b) encoded only the contrapositive (\"not on real-source declarations\") and Class C/B both lack `language=None`, so both pass. The validator reports 0 cross_field violations.\n\n**Interpretation candidates.** Either:\n- **Producer is inverted** — display_label should be moving to Class B (protocol-synth nodes) and OFF Class C, but the wiring crossed.\n- **ADR-0033 invariant is under-specified** — Class C (\"unresolved external\") is also a synthetic-stand-in kind that ADR-0033's two-bucket statement doesn't model. The fix is to extend the ADR with a third class and update the validator.\n\nThis is the highest-leverage pass-21 finding because it's a documented invariant with an entire validator class hooked up to enforce it — but the enforcement is encoded against an incomplete model. Likely META-level: every other future ADR cross-field invariant could have the same \"encoded against wrong granularity\" failure mode.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06012026_2310_pass21.md`."  # 5760
+    fields:  # 5760
+      statement: "Symbol.display_label is populated on the node class that ADR-0033's cross-field invariant says should NOT populate it (Class C unresolved external), and is NOT populated on the node class ADR-0033 says should populate it (Class B protocol synthesis per ADR-0031). The validator stage reports 0 cross_field violations because the encoded invariant operates on a two-class (real-source vs synthetic) model, but the actual schema has three classes."  # 5760
