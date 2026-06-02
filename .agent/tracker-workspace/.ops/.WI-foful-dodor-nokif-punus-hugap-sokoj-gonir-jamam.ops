@@ -19,3 +19,10 @@
     pr_ref:  # 9ae7
     description: "`docs/hypergumbo-spec.md` (the architectural spec) is the canonical reference for the analyzer output schema. Phase 6 PR3 (commit ea0154e54f) bumped `STABLE_ID_SCHEME` from `\"hypergumbo-stableid-v4\"` to `\"hypergumbo-stableid-v5\"` to record the hash-input change (`name` + `qualified_name` added). The version string in `schema.py` was updated; the spec doc still references `\"hypergumbo-stableid-v2\"` in places.\n\nThis is a contained docstring-staleness issue: walk the spec doc, find every reference to a stableid scheme version, update to the current `v5`. While doing so, audit adjacent text for other stale references (e.g., the `Symbol.canonical_name` field was removed in Phase 6 PR4; any spec text describing it as a current field needs to be revised to past-tense or removed).\n\nCould fold into the next scheduled docstring-staleness audit (per `.agent/agent_playbooks_protocols_sops_skills/docstring-staleness-audit-playbook.md`) rather than its own one-off PR — that playbook explicitly handles this kind of drift.\n\nLowest priority of the seven Phase 6 deferred-item buckets — pure documentation cleanup with no runtime impact.\n\nReferences: Phase 6 PR3 commit ea0154e54f deferred-items mentions this explicitly."  # 9ae7
     fields: {}  # 9ae7
+- op: discuss  # 9798
+  at: '2026-06-02T00:58:14Z'  # 9798
+  by: agent  # 9798
+  actor: jgstern_agent  # 9798
+  clock: 2  # 9798
+  nonce: '9798'  # 9798
+  message: "Investigated 2026-06-01 for cluster context. No parent set — pure docstring-staleness cleanup with no structural cluster. Could fold into the next scheduled docstring-staleness audit per .agent/agent_playbooks_protocols_sops_skills/docstring-staleness-audit-playbook.md rather than its own one-off PR. Doesn't duplicate any preexisting row. Lowest priority of the seven Phase 6 deferred-item buckets."  # 9798

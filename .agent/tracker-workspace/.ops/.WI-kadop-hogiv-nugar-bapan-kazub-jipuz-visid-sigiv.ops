@@ -20,3 +20,18 @@
     pr_ref:  # ed73
     description: "`Symbol.origin` carries pass-id values per its declared `# axis: pass-id` annotation. Most analyzers and linkers populate it with their `make_pass_id(...)` output, which is registered in `_ANALYZER_REGISTRY` / `_LINKER_REGISTRY` and surfaces via `catalog.all_known_pass_ids()`.\n\nBut some Symbols (~492 of the dogfood corpus 20260528) carry synthesis-mechanism values instead: `\"inheritance\"`, `\"orchestrator_file_symbol_synthesis\"`, `\"scip\"`. These name HOW the Symbol was synthesized (not WHICH pass synthesized it). The Symbol docstring (ir.py:990+) calls this out as \"pending split into a sibling `synthesis_mechanism` field.\"\n\nPhase 6 PR5 (commit 6376ecb95c) added `_SYNTHESIS_MECHANISMS = frozenset({\"inheritance\", \"orchestrator_file_symbol_synthesis\", \"scip\"})` to `catalog.all_known_pass_ids()` as a stopgap so the axis-conformance validator stops false-positive flagging — but the architectural fix (separating the synthesis-mechanism axis from the pass-id axis) remains deferred.\n\nImplementation shape:\n1. New ADR documenting the split rationale and the migration plan.\n2. New IR field `Symbol.synthesis_mechanism: Optional[str]` with its own `# axis: synthesis-mechanism` annotation and lightweight catalog (per ADR-0024 §4 \"use judgment\" carveout).\n3. Producer migration: every Symbol-emit site that currently sets `origin=[\"inheritance\"]` etc. moves the value to the new field; `Symbol.origin` reverts to carrying only pass-id values.\n4. Consumer migration: any reader that currently branches on `\"inheritance\" in symbol.origin` switches to `symbol.synthesis_mechanism == \"inheritance\"`.\n5. Remove `_SYNTHESIS_MECHANISMS` from the catalog stopgap.\n\nThe campaign's Phase 1-2 reshape of `Symbol.language` (into `discovery_language` + `protocol_origin`) and `Symbol.canonical_name` (into `display_label` + `qualified_name`) followed exactly this shape; this item is the same pattern applied to the third overloaded field.\n\nSchema-version implication: minor bump (additive field; backward-compatible read-side)."  # ed73
     fields: {}  # ed73
+- op: update  # ac55
+  at: '2026-06-02T00:58:12Z'  # ac55
+  by: agent  # ac55
+  actor: jgstern_agent  # ac55
+  clock: 2  # ac55
+  nonce: ac55  # ac55
+  set:  # ac55
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # ac55
+- op: discuss  # f554
+  at: '2026-06-02T00:58:12Z'  # f554
+  by: agent  # f554
+  actor: jgstern_agent  # f554
+  clock: 3  # f554
+  nonce: f554  # f554
+  message: "Investigated 2026-06-01 for cluster context. Parent set to INV-numat (P1 pending_validation, META: vocabulary fields mix multiple semantic axes). WI-kadop is the third application of the field-split pattern previously applied in this campaign: ADR-0031 split Symbol.language → discovery_language + protocol_origin; ADR-0032 split Symbol.canonical_name → display_label + qualified_name; WI-kadop splits Symbol.origin → origin (pass-id only) + new synthesis_mechanism field. ~492 Symbols in dogfood-corpus 20260528 carry synthesis-mechanism strings ('inheritance', 'orchestrator_file_symbol_synthesis', 'scip') in the origin field. Phase 6 PR5 added _SYNTHESIS_MECHANISMS frozenset as catalog stopgap; this WI is the architectural fix. Doesn't duplicate any preexisting row — it's a new face of INV-numat."  # f554

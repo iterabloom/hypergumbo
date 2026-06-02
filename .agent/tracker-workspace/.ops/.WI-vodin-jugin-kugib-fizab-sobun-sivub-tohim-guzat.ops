@@ -20,3 +20,18 @@
     pr_ref:  # cb5c
     description: "ADR-0034 (`docs/adr/0034-id-construction-discipline.md` §\"Enforcement\") names a known gap: there is no source-level check that flags `Symbol(id=f\"...\")` patterns. The runtime spec-validator (`spec_validator.py::_check_id_format`) catches malformed IDs after the pipeline runs; reviewers are the first line of defense at PR-review time. Until the runtime check fires, a regression can land silently.\n\nA source-level (static-AST) check parallel to `multi_value_field_axis.py` would close this. The pattern to detect: any `Symbol(...)` constructor call whose `id=` keyword argument is either (a) an f-string literal, (b) a string concatenation, or (c) any expression other than a call to one of the canonical factories at `analyze/base.py:288-309` (`make_symbol_id`, `make_file_id`) or their wrappers.\n\nImplementation shape:\n- New module `packages/hypergumbo-core/src/hypergumbo_core/check_id_construction.py` (mirroring the shape of `multi_value_field_axis.py`).\n- A script at `scripts/check-id-construction` that walks the source tree, parses each `.py` file's AST, and reports violations.\n- A pytest at `packages/hypergumbo-core/tests/test_id_construction.py::test_live_tree_passes` that runs the check across `packages/` and asserts zero violations.\n- Wire into `.githooks/pre-commit` so violations block at commit time.\n\nAlso closes the deferred `Edge.id` schema check carry-over from Phase 6 PR1 — extend the runtime spec-validator's `_check_id_format` to scan `Edge.id` for the same canonical shape it enforces on `Symbol.id`. The static check above covers the producer side for both fields.\n\nReferences: ADR-0034 §\"Enforcement\" + \"Static check — known gap\"; Phase 6 PR1 deferred-items."  # cb5c
     fields: {}  # cb5c
+- op: update  # 7a3e
+  at: '2026-06-02T00:58:14Z'  # 7a3e
+  by: agent  # 7a3e
+  actor: jgstern_agent  # 7a3e
+  clock: 2  # 7a3e
+  nonce: 7a3e  # 7a3e
+  set:  # 7a3e
+    parent: INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah  # 7a3e
+- op: discuss  # e21b
+  at: '2026-06-02T00:58:14Z'  # e21b
+  by: agent  # e21b
+  actor: jgstern_agent  # e21b
+  clock: 3  # e21b
+  nonce: e21b  # e21b
+  message: "Investigated 2026-06-01 for cluster context. Parent set to INV-kurup (P2 violated, META: identifier-bearing fields emit non-canonical formats). WI-vodin closes the static-enforcement gap named in ADR-0034 §'Enforcement' — the runtime spec-validator catches malformed IDs after the pipeline runs, but no source-level check flags Symbol(id=f'...') patterns at PR-review or commit time. Also extends the runtime spec-validator to scan Edge.id (Phase 6 PR1 deferred item). Parallel-in-shape to multi_value_field_axis.py for the id-construction discipline. Sibling of WI-bupim (stable_id uniqueness residuals) under the larger identity-axes cluster. Doesn't duplicate any preexisting row — it's the static-enforcement face of INV-kurup."  # e21b

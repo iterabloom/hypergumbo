@@ -21,3 +21,18 @@
     pr_ref:  # 8696
     description: "Phase 6 PR2 (commit 98533c0fff) closed INV-lidul / INV-gizik / INV-nihug for the analyzers that inherit `TreeSitterAnalyzer._analyze_body` — that base-class method now auto-stamps `pass_version`, derives a per-class `config_fingerprint`, and extends `toolchain` with grammar metadata.\n\nBut ~14 analyzers override `analyze()` entirely (go, csharp, java, python, html, javascript, xml, yaml_ansible, json, toml, make, manifest_targets, play-routes, plus enclosure-linker variants — see commit 98533c0fff's deferred-items section). They bypass `_analyze_body` and therefore don't pick up the auto-stamping. Self-analysis still shows their `AnalysisRun` records with empty `pass_version` and the default `config_fingerprint` (`sha256:44136fa355b3678a` from `_default_config_fingerprint()`).\n\nThe fix is per-analyzer: at each override-`analyze()` site, either (a) call the base class's auto-stamping helpers explicitly before constructing the AnalysisRun, or (b) refactor the override to delegate to `_analyze_body` for the metadata-stamping portion.\n\nThis is a mechanical sweep across 14 files. The validator's writer-contract check is currently silent on these because the gap exists pre-validate_ir (the runs reach validate_ir already filled in with default values, not None), but the broken-cache-key concern (every analyzer using the same `config_fingerprint` means cache keys collapse across configurations) is real.\n\nCloses the tail of INV-lidul / INV-gizik / INV-nihug."  # 8696
     fields: {}  # 8696
+- op: update  # 2436
+  at: '2026-06-02T00:58:13Z'  # 2436
+  by: agent  # 2436
+  actor: jgstern_agent  # 2436
+  clock: 2  # 2436
+  nonce: '2436'  # 2436
+  set:  # 2436
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 2436
+- op: discuss  # 5f60
+  at: '2026-06-02T00:58:13Z'  # 5f60
+  by: agent  # 5f60
+  actor: jgstern_agent  # 5f60
+  clock: 3  # 5f60
+  nonce: 5f60  # 5f60
+  message: "Investigated 2026-06-01 for cluster context. Parent set to INV-luhur (P1 violated, writer-contract META) because it spans three direct children: INV-lidul (config_fingerprint, still violated), INV-gizik (per-pass timer, still violated), INV-nihug (skipped_passes mirror, now pending_validation). Phase 6 PR2 (98533c0fff) closed these for analyzers inheriting TreeSitterAnalyzer._analyze_body via auto-stamping; ~14 analyzers that override analyze() entirely (go, csharp, java, python, html, javascript, xml, yaml_ansible, json, toml, make, manifest_targets, play-routes, plus enclosure-linker variants) bypass _analyze_body and remain affected. Doesn't duplicate any preexisting row — it's the override-path tail of three sibling INV-luhur children."  # 5f60

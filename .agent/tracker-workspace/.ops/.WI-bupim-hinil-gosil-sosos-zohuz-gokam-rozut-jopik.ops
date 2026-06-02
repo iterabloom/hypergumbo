@@ -20,3 +20,18 @@
     pr_ref:  # 5175
     description: "Phase 6 PR3 (commit ea0154e54f) drove the `Symbol.stable_id` collision rate from 60.2% to 0.8% by adding `name` and `qualified_name` to the hash inputs at `analyze/base.py::compute_stable_id` (the untyped-tier factory used by bash/ruby/scala/many extended1 analyzers) and at `py.py::_compute_stable_id`. INV-bazij P0 was closed structurally.\n\nTwo residual collision categories remain (~0.8% of the corpus, 289 collisions across 95 groups):\n\n**(a) Typed-tier `make_typed_stable_id` callers without name input.** Several mainstream analyzers (go, csharp, java, kotlin, php, rust, swift, scala, dart, js_ts) use `analyze/base.py::make_typed_stable_id(kind, normalized_signature, visibility)` — same-signature siblings (e.g., overloaded method `foo(int)` and `foo(string)` in the same class) still hash identically because the factory contract has signature as the disambiguator. Phase 6 PR3 fixed py.py by prepending qualified-name into normalized_signature; the same fix needs to land in the other 10 analyzers' callers.\n\n**(b) Linker-emitted call_site collisions.** Framework-pattern outputs (kafka:publish, http call_sites, etc.) collide on duplicate logical addresses — e.g., two `kafka.publish(\"topic-a\", ...)` calls in different files produce two Symbols with the same `stable_id` because the factory contract intentionally collapses them. Whether this is a bug or a feature depends on the consumer: cross-run identity (the original stable_id purpose) wants collision; per-emit-site identity wants distinction. Needs a design decision, then either expand the factory's hash inputs to include the source file/line OR document the policy.\n\nImplementation order: (a) is mechanical and fits one batched PR. (b) needs a tracker discussion to settle the design question first.\n\nReferences: ADR-0014 §\"Typed stable_id factories\"; Phase 6 PR3 commit ea0154e54f deferred-items."  # 5175
     fields: {}  # 5175
+- op: update  # 49b6
+  at: '2026-06-02T00:58:11Z'  # 49b6
+  by: agent  # 49b6
+  actor: jgstern_agent  # 49b6
+  clock: 2  # 49b6
+  nonce: 49b6  # 49b6
+  set:  # 49b6
+    parent: INV-bazij-lazov-busog-humuh-jozov-bajod-jodum-sabun  # 49b6
+- op: discuss  # 7638
+  at: '2026-06-02T00:58:11Z'  # 7638
+  by: agent  # 7638
+  actor: jgstern_agent  # 7638
+  clock: 3  # 7638
+  nonce: '7638'  # 7638
+  message: "Investigated 2026-06-01 for cluster context. Parent set to INV-bazij (P0 pending_validation, stable_id mass collisions). Phase 6 PR3 (ea0154e54f) closed INV-bazij structurally — 60.2% → 0.8% collision rate via name+qualified_name hash inputs at compute_stable_id and py.py::_compute_stable_id. WI-bupim addresses the residual ~0.8% (289 collisions across 95 groups) in two parts: (a) typed-tier make_typed_stable_id callers in 10 mainstream analyzers — mechanical sweep; (b) linker-emitted call_site collisions — needs design call. Sibling of WI-vodin (canonical-id format static check) under the larger INV-tazaj uniqueness META cluster. Doesn't duplicate any preexisting row — it's the residual tail of an in-flight P0."  # 7638

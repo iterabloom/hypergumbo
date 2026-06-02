@@ -19,3 +19,18 @@
     pr_ref:  # c112
     description: "`Edge.derived_from` is the linker-derivation provenance field added in INV-rukor / Phase 1 PR2. Each edge created by a linker pass should carry the source-record identifiers it was derived from (typically the matched config-file path or AST node ID).\n\nSelf-analysis post-Phase-6-PR2: 23,737 of 109,849 edges have `derived_from` populated (~22%). The remaining ~85K edges leave it empty, which means the linker-derivation provenance chain doesn't round-trip for them — consumers (cross-run diff, derivation-graph reconstruction, audit trails) can't trace how those edges were derived.\n\nPhase 6 PR2 deferred the full per-linker construction-site sweep because the scope was too large to bundle with the AnalysisRun writer-contract work. Each linker has its own `Edge.create(...)` call sites; the fix is mechanical (add `derived_from=[source_id_a, source_id_b, ...]` at each site) but spread across ~20 linker files.\n\nImplementation:\n- For each linker under `packages/hypergumbo-core/src/hypergumbo_core/linkers/`, audit `Edge.create` call sites.\n- Identify the source records each edge was derived FROM (matched config file path, AST node ID, captured-symbol ID, etc.).\n- Populate `derived_from=` at every call site.\n\nCloses the tail of INV-luhur sub-pattern-4 / INV-nuzal. The writer-contract validator class doesn't currently flag this because Phase 6 PR2's check only fires on never-populated-by-anyone fields; `derived_from` is populated by SOME linkers, just not all."  # c112
     fields: {}  # c112
+- op: update  # 167d
+  at: '2026-06-02T00:58:13Z'  # 167d
+  by: agent  # 167d
+  actor: jgstern_agent  # 167d
+  clock: 2  # 167d
+  nonce: 167d  # 167d
+  set:  # 167d
+    parent: INV-nuzal-nufam-nukip-vilis-kobah-jijig-mizan-huhof  # 167d
+- op: discuss  # 3006
+  at: '2026-06-02T00:58:13Z'  # 3006
+  by: agent  # 3006
+  actor: jgstern_agent  # 3006
+  clock: 3  # 3006
+  nonce: '3006'  # 3006
+  message: "Investigated 2026-06-01 for cluster context. Parent set to INV-nuzal (P2 violated, edge.provenance / edge.quality / node.quality 100% empty). Per WI-latup's description: 'Closes the tail of INV-luhur sub-pattern-4 / INV-nuzal.' Phase 1 PR2 added Edge.derived_from to the IR; ~22% of edges populated post-Phase-6, leaving ~85K edges without linker-derivation provenance. WI-latup is the per-linker construction-site sweep (~20 linker files). The writer-contract validator doesn't currently flag this because it only fires on never-populated-by-anyone fields — derived_from is populated by SOME linkers, just not all. Doesn't duplicate any preexisting row — it's the direct tail of INV-nuzal."  # 3006
