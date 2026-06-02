@@ -307,6 +307,7 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 - **ADR-0022** status update: by-category drift detection landed; by-language `LanguageProfile` deferred.
 - **ADR-0017** implementation note: sinks now derived from `io_primitives/*.yaml`; built-in `taint_sinks/` removed.
 - **SCIP generalization vision sketch** added (`docs/future/scip-generalization-vision.md`).
+- **`docs/surveys/` directory established** as the third documentation bucket alongside ADRs and audit-findings, with the symbol-emit-coherence audit (catalog conformance, ID-format conformance, per-language field-population parity) as the inaugural survey.
 
 
 

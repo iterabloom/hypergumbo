@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Added
+
+- **Optional `dogfood_anon_id` field on the invariant schema.** New text field in the tracker config template's invariant `fields_schema`, acting as a join key linking a tracker item back to its entry in a self-analysis-dogfooding blind-reassessment corpus. Optional (no `required: true`); existing items validate unchanged. Items carrying the field now render cleanly in `tracker show` / TUI instead of producing an "unknown field" warning.
+
 ### Fixed
 
 - **Tag-name validation now applies uniformly across every tag-write path.** The CLI validated tag names against the `^[a-z_][a-z0-9_]*$` regex, but the TUI and `serve.py` bypassed validation entirely. Tags with hyphens could be persisted via the TUI even though the catalog would refuse them. Validation is now centralized in `trackerset.add()` and `trackerset.update()`. `remove_fields["tags"]` is exempt so historically-bad tags remain cleanable.
@@ -14,6 +18,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 - **`tracker delete` now sweeps dangling `isbefore` references.** A deleted item's `isbefore` list and any inbound holders kept the now-dangling ID. `tracker show` / `tracker deps` treated the deleted ID as a real dependency. Delete now clears outbound and inbound `isbefore` references in the same op batch.
 
 - **`tracker tags rename` no longer rejects renames FROM legacy-format tags.** Renaming a hyphenated tag (e.g., `for-deep-bakeoff` → `for_deep_bakeoff`) succeeded per-item but left a regex-violating key in the catalog, causing the save to fail. Legacy-format source tags are now dropped from the catalog cleanly.
+
+- **TUI `tui_preferences.json` writes now atomic; `human_read_state` no longer wiped on `_move_selected`.** A 2026-05-31 incident silently lost ~800 `human_read_state` entries during a session with heavy concurrent ops-file writes. Two related causes: (1) `_move_selected` called `_save_tui_preferences` with positional-only args, taking the v1-schema write path that omits `human_read_state`; if a later save failed (e.g., `OSError` under concurrent activity) or the session ended non-cleanly, the next TUI startup loaded an empty `human_read_state`. (2) `_save_tui_preferences` used `path.write_text()`, which is not atomic — a partial write could leave a truncated or empty file. Fix: `_move_selected` now passes all v2 kwargs, and writes go through tempfile + `fsync` + `os.replace` for atomic rename semantics. Data lost in the original incident is not recoverable.
 
 ## [0.5.1] - 2026-05-08
 
