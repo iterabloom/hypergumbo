@@ -42,3 +42,20 @@
   clock: 3  # 0db2
   nonce: 0db2  # 0db2
   message: "Cluster member of INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 0db2
+- op: update  # f890
+  at: '2026-06-01T23:16:34Z'  # f890
+  by: agent  # f890
+  actor: jgstern_agent  # f890
+  clock: 4  # f890
+  nonce: f890  # f890
+  set:  # f890
+    status: pending_validation  # f890
+  add:  # f890
+    tags: [awaits_bakeoff_validation]  # f890
+- op: discuss  # a6b9
+  at: '2026-06-01T23:16:35Z'  # a6b9
+  by: agent  # a6b9
+  actor: jgstern_agent  # a6b9
+  clock: 5  # a6b9
+  nonce: a6b9  # a6b9
+  message: "Fix deployed by Phase 6 PR1 (commit dbaacdbb84) and Phase 6 PR6 (commit 80a0b09d11). Symbol.id format escapes resolved: websocket linker rebuilt on make_symbol_id; Rust ::-namespacing collapses to . in name segment only; Python route IDs use space separator; NPM packages get canonical 5-segment shape. Validator regex now permits : in path slot per IR's _parse_dangling_id last-3-tokens parser. Self-analysis at 0 id_format violations on Symbol.id. Needs bakeoff validation."  # a6b9

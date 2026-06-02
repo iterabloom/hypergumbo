@@ -40,3 +40,10 @@
   clock: 3  # 5f92
   nonce: 5f92  # 5f92
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): umbrella of the \"AnalysisRun producer drift\" cluster: INV-gizik (duration_ms=0 on IR passes), INV-lidul (config_fingerprint stuck at default), INV-nihug (skipped_passes path-split), INV-virik (failed_files/warnings never aggregated), WI-nohoh ('pass' JSON alias), INV-lifik (toolchain/version zero-entropy at AnalysisRun scale), INV-suvil (producer-side hardcoded confidence — same drift pattern). Root: register_analyzer (analyze/registry.py:140-217) computes RegisteredAnalyzer.pass_version via compute_pass_version(func) but no _stamp_pass_version-equivalent wires it onto the AnalysisRun emitted in TreeSitterAnalyzer.analyze (analyze/base.py:2272). Linkers get this stamping via linkers/registry.py:656; analyzers don't. Fix is one orchestrator-side factory, not per-pass plumbing."  # 5f92
+- op: discuss  # 1cac
+  at: '2026-06-01T23:17:07Z'  # 1cac
+  by: agent  # 1cac
+  actor: jgstern_agent  # 1cac
+  clock: 4  # 1cac
+  nonce: 1cac  # 1cac
+  message: "Partial close by Phase 6 PR2 (commit 98533c0fff). TreeSitterAnalyzer._analyze_body now appends grammar-unavailable skip messages to run.warnings. Inherited-analyze analyzers covered; override-analyze() analyzers still have empty warnings/failed_files because they bypass _analyze_body. Remaining work tracked in WI-mipul (per-analyzer override-analyze() wiring tail)."  # 1cac

@@ -51,3 +51,20 @@
   clock: 4  # 27e5
   nonce: '27e5'  # 27e5
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): same \"field declared but never populated\" mechanic as INV-virik (failed_files/warnings/classification_failures/ambiguous_paths) and the already-linked INV-nuzal (edge.provenance/quality 100% empty). Specifically: AnalysisRun.skipped_passes (ir.py:204) is declared but `grep -n \"run.skipped_passes\\|\\.skipped_passes\\.append\" packages/hypergumbo-core/src/` finds zero producer writes. limits.skipped_passes is wired (66 entries from analyze/all_analyzers.py:80,151). The two-channel split (pass-level vs sub-unit-level) was intentional design; the sub-unit producer never landed. INV-virik should subsume this as a 5th declared-empty field."  # 27e5
+- op: update  # 781b
+  at: '2026-06-01T23:17:06Z'  # 781b
+  by: agent  # 781b
+  actor: jgstern_agent  # 781b
+  clock: 5  # 781b
+  nonce: 781b  # 781b
+  set:  # 781b
+    status: pending_validation  # 781b
+  add:  # 781b
+    tags: [awaits_bakeoff_validation]  # 781b
+- op: discuss  # 46b5
+  at: '2026-06-01T23:17:07Z'  # 46b5
+  by: agent  # 46b5
+  actor: jgstern_agent  # 46b5
+  clock: 6  # 46b5
+  nonce: 46b5  # 46b5
+  message: "Closed by Phase 6 PR2 (commit 98533c0fff). TreeSitterAnalyzer._extend_toolchain appends tree_sitter_version + grammar_module + grammar_version (via importlib.metadata) to run.toolchain. 31 distinct toolchain shapes on self-analysis (was 1). Tests: test_toolchain_extended_with_grammar_module, test_toolchain_extended_with_language_pack. Needs bakeoff validation."  # 46b5

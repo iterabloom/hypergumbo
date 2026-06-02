@@ -51,3 +51,20 @@
   clock: 4  # 6b54
   nonce: 6b54  # 6b54
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): same \"discovery counts diverge from emission counts; no closed-set check\" cluster as INV-jukok (23 dangling src IDs surface as 23-edges/0-nodes in metrics.by_supply_chain_tier `unknown` bucket). The 296-file gap here breaks down as INV-babuj (yaml 174) + INV-gosub (markdown 107) + 15 trailing — the per-language root causes are filed; the missing piece is the orchestrator-side reconciliation gate. WI-soraj intentionally splits total_files (profile) from unique_paths_in_analysis (emission); the consumer-facing field name doesn't disambiguate."  # 6b54
+- op: update  # 0417
+  at: '2026-06-01T23:17:06Z'  # 0417
+  by: agent  # 0417
+  actor: jgstern_agent  # 0417
+  clock: 5  # 0417
+  nonce: '0417'  # 0417
+  set:  # 0417
+    status: pending_validation  # 0417
+  add:  # 0417
+    tags: [awaits_bakeoff_validation]  # 0417
+- op: discuss  # 9c88
+  at: '2026-06-01T23:17:06Z'  # 9c88
+  by: agent  # 9c88
+  actor: jgstern_agent  # 9c88
+  clock: 6  # 9c88
+  nonce: 9c88  # 9c88
+  message: "Closed by Phase 6 PR2 (commit 98533c0fff). metrics.compute_metrics canonical: total_files = unique_paths_in_analysis = len({n.path for n in nodes if n.path}). Profile-language sum moved to debug.profile_files_sum for introspection. Self-analysis: total_files=915 matches unique_paths_in_analysis (was 1217 vs 915, gap of 296). Needs bakeoff validation."  # 9c88

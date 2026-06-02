@@ -21,3 +21,18 @@
     pr_ref:  # 7988
     description: "The INV-sugat validator stage at packages/hypergumbo-core/src/hypergumbo_core/spec_validator.py runs at end-of-pipeline, writes a `validation_report` section into the behavior-map artifact, and emits stderr summaries when non-empty. Per ADR-0033 §\"Default failure behavior\", `hypergumbo run` deliberately succeeds with exit 0 regardless of violations — the gate-not-fail posture lets violations land visibly during development.\n\nAfter the 26-PR INV-sugat closure campaign (Phase 0 through Phase 6 PR7), self-analysis reports zero violations across all five validator classes. The next step is locking that in: add a CI test that runs hypergumbo on its own source tree and fails when the `validation_report.violations` list is non-empty.\n\nImplementation shape:\n- New test at `packages/hypergumbo-core/tests/test_validation_report_empty.py`.\n- Runs `hypergumbo run` against the repo root (or against a representative fixture corpus to keep CI fast).\n- Parses the resulting JSON's `validation_report.violations_by_class` counter.\n- Asserts every counter is zero.\n\nWhen this lands, any future regression that introduces a new violation category (e.g., a new analyzer emitting a non-canonical id) trips CI on the regression's PR rather than accumulating silently.\n\nThis was Phase 5/6 PR5/6 territory in the original plan (`~/.claude/plans/happy-swimming-sketch.md`) but was deferred until the validator was at zero."  # 7988
     fields: {}  # 7988
+- op: update  # 5c84
+  at: '2026-06-02T00:57:11Z'  # 5c84
+  by: agent  # 5c84
+  actor: jgstern_agent  # 5c84
+  clock: 2  # 5c84
+  nonce: 5c84  # 5c84
+  set:  # 5c84
+    parent: INV-sugat-vafaz-vibad-kavaz-pisur-zugum-lurim-zokos  # 5c84
+- op: discuss  # 4871
+  at: '2026-06-02T00:57:11Z'  # 4871
+  by: agent  # 4871
+  actor: jgstern_agent  # 4871
+  clock: 3  # 4871
+  nonce: '4871'  # 4871
+  message: "Investigated 2026-06-01 for cluster context. Parent set to INV-sugat (super-META 'No spec-vs-data validator stage', now satisfied). This WI locks in the zero-violation state via CI gate; without it, future regressions re-introduce violations silently per ADR-0033's gate-not-fail posture. Doesn't duplicate any preexisting tracker row — it's the lock-in for the super-META closure."  # 4871

@@ -39,3 +39,20 @@
   set: {}  # d179
   add:  # d179
     tags: [super_meta_no_validator_stage]  # d179
+- op: update  # 0e59
+  at: '2026-06-01T23:16:33Z'  # 0e59
+  by: agent  # 0e59
+  actor: jgstern_agent  # 0e59
+  clock: 4  # 0e59
+  nonce: '0e59'  # 0e59
+  set:  # 0e59
+    status: pending_validation  # 0e59
+  add:  # 0e59
+    tags: [awaits_bakeoff_validation]  # 0e59
+- op: discuss  # 9e8f
+  at: '2026-06-01T23:16:33Z'  # 9e8f
+  by: agent  # 9e8f
+  actor: jgstern_agent  # 9e8f
+  clock: 5  # 9e8f
+  nonce: 9e8f  # 9e8f
+  message: "Partially closed by Phase 3 PR1 (axis-conformance validator at commit 1c7d59f or thereabouts) — runtime checks now enforce that every axis-tagged str field's values come from its catalog. Self-analysis axis_conformance currently at 0 violations. The structural framework is in place; whether all axes are fully fold-residue clean across the corpus is the bakeoff question."  # 9e8f

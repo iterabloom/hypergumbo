@@ -77,3 +77,18 @@
   clock: 8  # 9df0
   nonce: 9df0  # 9df0
   message: "Cross-ref backfill (2026-05-30, linked-pile L4 investigation): Phase-1 omission patched. INV-luhur's description names this item as a member (Edge.quality 96864/96864 null is the most visible writer-contract violation surface) but the parent field was never set. Re-parenting forward. Member of the 'schema-declares-no-writer' sub-pattern face."  # 9df0
+- op: update  # 7066
+  at: '2026-06-01T23:17:19Z'  # 7066
+  by: agent  # 7066
+  actor: jgstern_agent  # 7066
+  clock: 9  # 7066
+  nonce: '7066'  # 7066
+  set:  # 7066
+    status: done  # 7066
+- op: discuss  # a4bc
+  at: '2026-06-01T23:17:19Z'  # a4bc
+  by: agent  # a4bc
+  actor: jgstern_agent  # a4bc
+  clock: 10  # a4bc
+  nonce: a4bc  # a4bc
+  message: "Closed by Phase 6 PR2 (commit 98533c0fff). ir._derive_edge_quality auto-derives {score, reason} from confidence/is_resolved/derived_from; Edge.__post_init__ populates quality when producer omits it. 5 distinct reason tags now surface on self-analysis (was None universally across 109K edges). Tests: 6 new in test_ir.py."  # a4bc

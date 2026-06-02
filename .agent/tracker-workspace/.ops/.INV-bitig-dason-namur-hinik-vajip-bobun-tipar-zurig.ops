@@ -78,3 +78,20 @@
     parent: INV-somut-lapar-furob-tovul-juhor-puhat-zujim-lobir  # c1ec
   add:  # c1ec
     tags: [dogfood_umbrella_member, fabov_face_verify_claims]  # c1ec
+- op: update  # fa4f
+  at: '2026-06-01T23:14:58Z'  # fa4f
+  by: agent  # fa4f
+  actor: jgstern_agent  # fa4f
+  clock: 8  # fa4f
+  nonce: fa4f  # fa4f
+  set:  # fa4f
+    status: satisfied  # fa4f
+  add:  # fa4f
+    tags: [awaits_bakeoff_validation]  # fa4f
+- op: discuss  # 668b
+  at: '2026-06-01T23:14:58Z'  # 668b
+  by: agent  # 668b
+  actor: jgstern_agent  # 668b
+  clock: 9  # 668b
+  nonce: 668b  # 668b
+  message: "Closed by Phase 3 PR4 (commit 020615f524). Added ClaimVerdict.inconclusive value + refactored verify_claims.py to return 'inconclusive' for missing-data / malformed-input cases instead of falling through to 'confirmed'. CLI exit-code mapping: confirmed→0, not_confirmed→1, inconclusive→2. The verdict_enum validator class enforces this at runtime; self-analysis at 0 violations."  # 668b

@@ -51,3 +51,10 @@
   clock: 4  # 62ab
   nonce: 62ab  # 62ab
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): member of INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug (primary fix-site) and INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah (secondary face: identifier-bearing field (run_signature derives from config_fingerprint) emits a non-canonical-because-constant value — emission-bypass mechanic). Parent assignment reflects the closer fix-site framing."  # 62ab
+- op: discuss  # a332
+  at: '2026-06-01T23:17:07Z'  # a332
+  by: agent  # a332
+  actor: jgstern_agent  # a332
+  clock: 5  # a332
+  nonce: a332  # a332
+  message: "Partial close by Phase 6 PR2 (commit 98533c0fff). TreeSitterAnalyzer._stamp_config_fingerprint derives per-analyzer sha256:<16hex> from class+grammar+file-patterns. 31 distinct fingerprints on self-analysis (was 1). Inherited-analyze analyzers covered; ~14 override-analyze() analyzers still use _default_config_fingerprint. Remaining work tracked in WI-mipul."  # a332

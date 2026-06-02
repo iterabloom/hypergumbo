@@ -40,3 +40,10 @@
   clock: 3  # 6179
   nonce: '6179'  # 6179
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): same AnalysisRun-dataclass producer-drift cluster as INV-pitab (toolchain/pass_version/productivity fields), INV-lidul (config_fingerprint default), INV-nihug (skipped_passes path-split), INV-virik (failed_files/warnings never aggregated), WI-nohoh ('pass' JSON alias). Linkers hand-roll start_time/duration_ms increments (linkers/*.py: ~70 sites across 40 modules; go_memberlist.py:142 explicitly assigns 0); analyzers timer-start in TreeSitterAnalyzer.analyze (analyze/base.py:2272). No orchestrator-side run-with-timing wrapper. INV-hosig (di-resolution 2550ms/0 edges) and INV-kodan (pyffi-linker 4570ms/10 edges) are concrete instances. Umbrella: meta-layer writers operate per-producer with no cross-field consistency contract; a single property test against bm.json (no `nodes_emitted>0` with `duration_ms=0`, etc.) would catch this whole cluster."  # 6179
+- op: discuss  # 529d
+  at: '2026-06-01T23:17:07Z'  # 529d
+  by: agent  # 529d
+  actor: jgstern_agent  # 529d
+  clock: 4  # 529d
+  nonce: 529d  # 529d
+  message: "Partial close by Phase 6 PR2 (commit 98533c0fff). TreeSitterAnalyzer._analyze_body auto-stamps pass_version = compute_pass_version(type(self)) when subclass empty. 70 of 84 runs now stamped (was 40). The remaining 14 are analyzers that override analyze() entirely and bypass _analyze_body. Remaining work tracked in WI-mipul."  # 529d

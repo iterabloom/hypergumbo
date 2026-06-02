@@ -40,3 +40,20 @@
   clock: 3  # f3d5
   nonce: f3d5  # f3d5
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): umbrella of the \"declared field, no producer\" cluster across the schema. Members: INV-nuzal (edge.provenance/quality 100% empty — already linked), WI-lonoz (Edge.quality 100% None — already linked from nuzal), INV-tibob (access_mode 0% on 12/17 edge types), INV-nihug (AnalysisRun.skipped_passes never written by any analyzer). Concrete failures that should populate classification_failures are filed in INV-nuzas (workspace mis-tiered as external_dep). INV-lifik covers the sibling pattern at meta-field level (17 zero-entropy fields). Writer methods exist (limits.py:132-140 add_classification_failure/add_ambiguous_path) with zero producer callers. Fix is a property-test gate: every declared optional channel must be populated by at least one producer when run against a non-trivial fixture, or be annotated `unimplemented` in the schema."  # f3d5
+- op: update  # e57a
+  at: '2026-06-01T23:17:05Z'  # e57a
+  by: agent  # e57a
+  actor: jgstern_agent  # e57a
+  clock: 4  # e57a
+  nonce: e57a  # e57a
+  set:  # e57a
+    status: pending_validation  # e57a
+  add:  # e57a
+    tags: [awaits_bakeoff_validation]  # e57a
+- op: discuss  # e4c3
+  at: '2026-06-01T23:17:05Z'  # e4c3
+  by: agent  # e4c3
+  actor: jgstern_agent  # e4c3
+  clock: 5  # e4c3
+  nonce: e4c3  # e4c3
+  message: "Closed by Phase 6 PR2 (commit 98533c0fff). cli._classify_symbols now accepts limits kwarg and records 'outside repo' fall-throughs into Limits.add_classification_failure. The previously zero-caller writer path is now wired. Test: test_supply_chain.TestClassifySymbolsRecordsClassificationFailures (4 new tests). Needs bakeoff validation."  # e4c3

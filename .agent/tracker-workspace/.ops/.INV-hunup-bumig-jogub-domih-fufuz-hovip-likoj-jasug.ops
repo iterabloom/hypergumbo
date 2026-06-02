@@ -42,3 +42,20 @@
   clock: 3  # 53f2
   nonce: 53f2  # 53f2
   message: "Cluster member of INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 53f2
+- op: update  # 5970
+  at: '2026-06-01T23:16:34Z'  # 5970
+  by: agent  # 5970
+  actor: jgstern_agent  # 5970
+  clock: 4  # 5970
+  nonce: '5970'  # 5970
+  set:  # 5970
+    status: pending_validation  # 5970
+  add:  # 5970
+    tags: [awaits_bakeoff_validation]  # 5970
+- op: discuss  # 7a51
+  at: '2026-06-01T23:16:34Z'  # 7a51
+  by: agent  # 7a51
+  actor: jgstern_agent  # 7a51
+  clock: 5  # 7a51
+  nonce: 7a51  # 7a51
+  message: "Fix deployed by Phase 6 PR1 (commit dbaacdbb84). stable_id_format sub-check in id_format validator class pins canonical sha256:<16hex> shape. Migrated make_route_stable_id, make_entry_stable_id to canonical form; new make_protocol_stable_id factory for 4 protocol linkers (database_query, message_queue, event_sourcing, graphql_resolver). Self-analysis at 0 id_format violations on Symbol.stable_id. Needs bakeoff validation."  # 7a51

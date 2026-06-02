@@ -36,3 +36,20 @@
   clock: 3  # 4f87
   nonce: 4f87  # 4f87
   message: "Authorized 2026-05-31 as part of the INV-sugat structural-fix campaign per the approved plan (see ~/.claude/plans/happy-swimming-sketch.md). Sub-task A (ClaimVerdict.inconclusive) folds into Phase 3 PR4 (verdict-enum validator class). Sub-task B (AnalysisRun writer-contract property test) folds into Phase 3 PR2 (writer-contract validator class). Phase 0 (this PR) lands ADR-0033 (validator-stage architecture), ADR-0032 (canonical_name/fingerprint reshape), and the stub spec_validator module. WI-rolol stays open until Phase 3 PRs 2 and 4 both land."  # 4f87
+- op: update  # 5d11
+  at: '2026-06-01T23:17:19Z'  # 5d11
+  by: agent  # 5d11
+  actor: jgstern_agent  # 5d11
+  clock: 4  # 5d11
+  nonce: 5d11  # 5d11
+  set:  # 5d11
+    status: done  # 5d11
+  add:  # 5d11
+    tags: [awaits_bakeoff_validation]  # 5d11
+- op: discuss  # eca4
+  at: '2026-06-01T23:17:19Z'  # eca4
+  by: agent  # eca4
+  actor: jgstern_agent  # eca4
+  clock: 5  # eca4
+  nonce: eca4  # eca4
+  message: "Both sub-tasks closed: Sub-task A (ClaimVerdict.inconclusive) landed in Phase 3 PR4 (commit 020615f524). Sub-task B (writer-contract test for AnalysisRun) landed structurally in Phase 3 PR2 (writer-contract validator class scaffolding) with the per-member tail closed in Phase 6 PR2 (commit 98533c0fff). The structural-fix trial methodology validated here: validator-class infrastructure is now the enforcement substrate for all future cleanup of this shape."  # eca4

@@ -32,3 +32,10 @@
   set: {}  # 8bbb
   add:  # 8bbb
     tags: [super_meta_no_validator_stage]  # 8bbb
+- op: discuss  # 9d94
+  at: '2026-06-01T23:17:08Z'  # 9d94
+  by: agent  # 9d94
+  actor: jgstern_agent  # 9d94
+  clock: 3  # 9d94
+  nonce: 9d94  # 9d94
+  message: "7 of 10 sub-members closed by Phase 6 PR2 (commit 98533c0fff): INV-virik, INV-jukok, INV-pubom, INV-mozaf, INV-nihug (all moved to pending_validation), plus WI-lonoz (Edge.quality now auto-derived) marked done. Sub-pattern-4 members INV-suvil + INV-nuzal had no current symptom (Edge.confidence already varies across ~20 values; derived_from populated on 23K/110K edges) — deferred as workspace items. 3 members remain in partial state (INV-pitab, INV-lidul, INV-gizik) — tail tracked in WI-mipul for the override-analyze() analyzer wiring sweep. INV-nuzal sweep tracked in WI-latup."  # 9d94

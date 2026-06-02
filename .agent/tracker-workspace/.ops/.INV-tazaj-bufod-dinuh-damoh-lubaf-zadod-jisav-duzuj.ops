@@ -33,3 +33,20 @@
   set: {}  # 1d2b
   add:  # 1d2b
     tags: [super_meta_no_validator_stage]  # 1d2b
+- op: update  # eecc
+  at: '2026-06-01T23:16:35Z'  # eecc
+  by: agent  # eecc
+  actor: jgstern_agent  # eecc
+  clock: 3  # eecc
+  nonce: eecc  # eecc
+  set:  # eecc
+    status: pending_validation  # eecc
+  add:  # eecc
+    tags: [awaits_bakeoff_validation]  # eecc
+- op: discuss  # 377d
+  at: '2026-06-01T23:16:35Z'  # 377d
+  by: agent  # 377d
+  actor: jgstern_agent  # 377d
+  clock: 4  # 377d
+  nonce: 377d  # 377d
+  message: "META closed by Phase 6 PR3 (commit ea0154e54f). Hash inputs to compute_stable_id and _compute_stable_id extended with name and qualified_name. STABLE_ID_SCHEME bumped v4 → v5. Trade-off documented: stable_id no longer survives renames but distinguishes distinct symbols (per the lab notebook's agreed direction). Self-analysis collision rate 60.2% → 0.8%. Two member items (Phase 6 PR3 residuals on typed-tier factory and linker call_site collisions) tracked in WI-bupim. Needs bakeoff validation."  # 377d

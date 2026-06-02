@@ -49,3 +49,20 @@
   clock: 4  # 8eba
   nonce: 8eba  # 8eba
   message: "Cross-ref backfill (2026-05-30, linked-pile L2 investigation): under-scoped. Original claim names TOML 99 dependency nodes with fingerprint bypass; vhdl.py and verilog.py emit the identical raw-hex bypass pattern. Expand scope to 'analyzers using raw hex digests instead of canonical hgfp1: factory' — TOML, VHDL, Verilog all fit. Possibly more on a systematic grep."  # 8eba
+- op: update  # fd0d
+  at: '2026-06-01T23:16:33Z'  # fd0d
+  by: agent  # fd0d
+  actor: jgstern_agent  # fd0d
+  clock: 5  # fd0d
+  nonce: fd0d  # fd0d
+  set:  # fd0d
+    status: pending_validation  # fd0d
+  add:  # fd0d
+    tags: [awaits_bakeoff_validation]  # fd0d
+- op: discuss  # af49
+  at: '2026-06-01T23:16:33Z'  # af49
+  by: agent  # af49
+  actor: jgstern_agent  # af49
+  clock: 6  # af49
+  nonce: af49  # af49
+  message: "Fix deployed by Phase 2 PR2 (commit 161). Format 1 fingerprint demolished from tree-sitter-supported analyzers; stamp_symbol_fingerprints post-pass now solely owns the hgfp1: form. Needs bakeoff validation."  # af49

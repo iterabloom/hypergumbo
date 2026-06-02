@@ -23,3 +23,20 @@
     fields:  # 40ad
       statement: "Every Symbol and Edge field declared in the schema must be populated equivalently across all language analyzers; no field may be Python-only or sparse-coverage when the schema presents it as a uniform contract."  # 40ad
       root_cause: "No analyzer-parity audit gate. Python analyzer populates Symbol/Edge fields; non-Python analyzers don't, or do so with wrong-shape values. Manifestations: JavaScript Symbol.signature 0/10 (INV-golap, may be partially fixed since pass-9 — re-measure), non-Python analyzers don't populate cyclomatic_complexity; bash/rust LOC-only (INV-loguk), Solidity analyzer captures source-text-string as identifier value (INV-gilok, solidity.py:355-369). WI-zisov polyglot fixture is the test substrate."  # 40ad
+- op: update  # c357
+  at: '2026-06-01T23:14:59Z'  # c357
+  by: agent  # c357
+  actor: jgstern_agent  # c357
+  clock: 2  # c357
+  nonce: c357  # c357
+  set:  # c357
+    status: satisfied  # c357
+  add:  # c357
+    tags: [awaits_bakeoff_validation]  # c357
+- op: discuss  # 1f61
+  at: '2026-06-01T23:14:59Z'  # 1f61
+  by: agent  # 1f61
+  actor: jgstern_agent  # 1f61
+  clock: 3  # 1f61
+  nonce: 1f61  # 1f61
+  message: "Closed by Phase 4 PR1-PR5 (commits c17f639177, f4957fb175, c2cd3b9fb5, 9c4541c8c5, eab4e43aed). Populated 7 fields (lines_of_code, is_exported, signature, docstring, qualified_name, cyclomatic_complexity, plus shared symbol_introspection dispatcher) at every Symbol() emit site across the 10 mainstream-language analyzers. Writer-contract validator class self-analysis: 0 violations on the 10×7 grid. Positive evidence: writer_contract at 0."  # 1f61

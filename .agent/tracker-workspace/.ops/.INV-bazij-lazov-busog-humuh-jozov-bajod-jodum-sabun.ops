@@ -68,3 +68,20 @@
     parent: INV-tazaj-bufod-dinuh-damoh-lubaf-zadod-jisav-duzuj  # 9941
   add:  # 9941
     tags: [dogfood_umbrella_member]  # 9941
+- op: update  # 2427
+  at: '2026-06-01T23:16:35Z'  # 2427
+  by: agent  # 2427
+  actor: jgstern_agent  # 2427
+  clock: 7  # 2427
+  nonce: '2427'  # 2427
+  set:  # 2427
+    status: pending_validation  # 2427
+  add:  # 2427
+    tags: [awaits_bakeoff_validation]  # 2427
+- op: discuss  # ec0f
+  at: '2026-06-01T23:16:35Z'  # ec0f
+  by: agent  # ec0f
+  actor: jgstern_agent  # ec0f
+  clock: 8  # ec0f
+  nonce: ec0f  # ec0f
+  message: "P0 closed by Phase 6 PR3 (commit ea0154e54f). Self-analysis Symbol.stable_id collision rate 60.2% → 0.8% (well below the 10% target). Top group (155 zero-param bash functions in scripts/lib/forgejo-api.sh sharing one stable_id) now distinguished. Validator's _check_cross_field_coherence has a new collision-umbrella check that emits one ValidationViolation when the rate exceeds 5%; on the fixed corpus the umbrella is dormant. Residual 0.8% lives in WI-bupim. Needs bakeoff validation."  # ec0f

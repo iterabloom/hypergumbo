@@ -66,3 +66,20 @@
   clock: 6  # 5595
   nonce: '5595'  # 5595
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): peer of INV-golap (JS signature 0/10) under the unfiled \"Analyzer parity: declared Symbol fields populated unevenly across languages\" sub-cluster. Code inspection confirms cyclomatic_complexity is computed only in py.py:1655; bash.py and rust.py partially populate LOC; eight other non-Python analyzers leave both fields None. Sub-pile A candidate sub-META members: INV-golap, INV-loguk, and (with reservation) INV-gilok — though INV-gilok is closer to a wrong-value-emitted bug than an unpopulated-field bug."  # 5595
+- op: update  # 7d9f
+  at: '2026-06-01T23:16:01Z'  # 7d9f
+  by: agent  # 7d9f
+  actor: jgstern_agent  # 7d9f
+  clock: 7  # 7d9f
+  nonce: 7d9f  # 7d9f
+  set:  # 7d9f
+    status: satisfied  # 7d9f
+  add:  # 7d9f
+    tags: [awaits_bakeoff_validation]  # 7d9f
+- op: discuss  # 91d7
+  at: '2026-06-01T23:16:01Z'  # 91d7
+  by: agent  # 91d7
+  actor: jgstern_agent  # 91d7
+  clock: 8  # 91d7
+  nonce: 91d7  # 91d7
+  message: "Closed by Phase 4 PR1 (lines_of_code, commit c17f639177) and Phase 4 PR5 (cyclomatic_complexity, commit eab4e43aed). Both fields populated across 9 analyzer files / 10 languages. Phase 4 PR5 validation confirmed writer_contract violations = 0 for the matrix."  # 91d7

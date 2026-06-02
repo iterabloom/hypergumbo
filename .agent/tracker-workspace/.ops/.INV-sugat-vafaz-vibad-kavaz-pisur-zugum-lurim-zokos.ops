@@ -30,3 +30,20 @@
   clock: 2  # d731
   nonce: d731  # d731
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation closure): super-META filed as PEER per L2 framing — all 7 constituent METAs (INV-fabov, INV-numat, INV-kurup, INV-luhur, INV-nanon, INV-dubam, plus newly-filed INV-tazaj-bufod-dinuh-damoh-lubaf-zadod-jisav-duzuj) tagged super_meta_no_validator_stage. Query `scripts/tracker list --tag super_meta_no_validator_stage` returns the full cluster (8 items: this META + 7 constituents)."  # d731
+- op: update  # 4d39
+  at: '2026-06-01T23:14:57Z'  # 4d39
+  by: agent  # 4d39
+  actor: jgstern_agent  # 4d39
+  clock: 3  # 4d39
+  nonce: 4d39  # 4d39
+  set:  # 4d39
+    status: satisfied  # 4d39
+  add:  # 4d39
+    tags: [awaits_bakeoff_validation]  # 4d39
+- op: discuss  # 08da
+  at: '2026-06-01T23:14:57Z'  # 08da
+  by: agent  # 08da
+  actor: jgstern_agent  # 08da
+  clock: 4  # 08da
+  nonce: 08da  # 08da
+  message: "Closed by the 26-PR INV-sugat campaign (Phase 0 through Phase 6 PR7). The spec-vs-data validator stage at packages/hypergumbo-core/src/hypergumbo_core/spec_validator.py runs at end-of-pipeline with 5 active validator classes (axis_conformance, writer_contract, cross_field, verdict_enum, id_format). Self-analysis post-campaign reports ZERO violations across all 5 classes. Final commit: d1f69b835e. See CHANGELOG.md \"Phase 0 through Phase 6 PR7\" entries for the full closure trail. Positive evidence: validator at 0 = no spec-vs-data mismatch in emitted IR."  # 08da

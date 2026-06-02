@@ -40,3 +40,20 @@
   clock: 3  # 0b1c
   nonce: 0b1c  # 0b1c
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): io-boundaries instance of the WI-pofas / WI-gogif JSON-output-convention umbrellas. Mechanic isn't only \"name same, definition different\" — it's \"two writers, polarity decision on whether external_potential is in the count.\" io_boundary.py:1249 sets total_io_edges=tagged_count BEFORE external_potential is appended at :1242-1246; cli.py:3870 recomputes as sum(len(chains)) over filtered_entries which already includes external_potential. Same field name, two writers, opposite polarity. Self-contradicting in JSON --include-tests: total_io_edges=6432 vs sum-of-chains=25128 in same response. WI-pofas umbrella should explicitly enumerate this case; the fix is \"single writer for total_io_edges in BoundaryMap.to_dict after external_potential fold.\""  # 0b1c
+- op: update  # f289
+  at: '2026-06-01T23:17:06Z'  # f289
+  by: agent  # f289
+  actor: jgstern_agent  # f289
+  clock: 4  # f289
+  nonce: f289  # f289
+  set:  # f289
+    status: pending_validation  # f289
+  add:  # f289
+    tags: [awaits_bakeoff_validation]  # f289
+- op: discuss  # 31fc
+  at: '2026-06-01T23:17:06Z'  # 31fc
+  by: agent  # 31fc
+  actor: jgstern_agent  # 31fc
+  clock: 5  # 31fc
+  nonce: 31fc  # 31fc
+  message: "Closed by Phase 6 PR2 (commit 98533c0fff). io_boundary.py canonical definition: total_io_edges = sum(len(e.chains) for e in entries.values()) (post-external_potential chain count). Both unfiltered serializer and cmd_io_boundaries filtered path now agree. Needs bakeoff validation."  # 31fc
