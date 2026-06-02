@@ -1,0 +1,23 @@
+- op: create  # 3593
+  at: '2026-06-02T04:35:37Z'  # 3593
+  by: agent  # 3593
+  actor: jgstern_agent  # 3593
+  clock: 1  # 3593
+  nonce: '3593'  # 3593
+  data:  # 3593
+    kind: work_item  # 3593
+    title: "Symbol.is_exported is None for 100% of 34,253 nodes across all 10 mainstream analyzers; Phase 4 sweep claim doesn't hold for this field (pass-23 F23.1; INV-jahiv residual, peer of WI-fagab)"  # 3593
+    status: todo_hard  # 3593
+    priority: 1  # 3593
+    parent: INV-jahiv-lugis-topum-totot-morin-somuv-pujoz-vijir  # 3593
+    tags:  # 3593
+    - pass23  # 3593
+    - adr_0033  # 3593
+    - language_parity  # 3593
+    - writer_contract  # 3593
+    isbefore: []  # 3593
+    duplicate_of: []  # 3593
+    not_duplicate_of: []  # 3593
+    pr_ref:  # 3593
+    description: "**Pass-23 finding (F23.1).** `Symbol.is_exported` is `None` for **100% of nodes** across all 10 mainstream languages in the post-INV-sugat-closure substrate:\n\n| Language | Total internal | is_exported=True | is_exported=False | is_exported=None |\n|---|---|---|---|---|\n| python | 33,703 | 0 | 0 | 33,703 (100%) |\n| bash | 218 | 0 | 0 | 218 (100%) |\n| typescript | 67 | 0 | 0 | 67 (100%) |\n| javascript | 13 | 0 | 0 | 13 (100%) |\n| go | 9 | 0 | 0 | 9 (100%) |\n| rust | 9 | 0 | 0 | 9 (100%) |\n\n(All other languages — markdown, toml, json, solidity, swift, csharp, java, wgsl, sql, html, ansible — same 100% None.)\n\n**Significance.** The Phase 4 sweep claim (\"`lines_of_code, is_exported, signature, docstring, qualified_name, cyclomatic_complexity` populated across 10 mainstream analyzers\") is verifiably false for this field. Coverage for the other Phase 4 fields holds at expected levels (python lines_of_code 88.2%, cyclomatic 88.2%, signature 74.9%, docstring 69.3%). Only `is_exported` and `qualified_name` (the latter covered by WI-fagab) are 0%.\n\n**Why the validator missed it.** The writer-contract validator class checks per-AnalysisRun field population. `is_exported` is a per-Symbol field and `Optional[bool]`, so `None` is a legal value — the validator doesn't fire even with universal None.\n\n**Suspect root cause.** Either (a) the Phase 4 PRs touched the producer signatures but the actual `is_exported=...` kwarg was passed as `None` from the analyzer (analogous to WI-fagab's `name=qualified_name` miswiring), or (b) is_exported was added to Symbol's dataclass but no analyzer was ever modified to populate it. Investigation needed at the same set of analyzer files Phase 4 PRs touched.\n\n**Cluster.** Peer of WI-fagab under INV-jahiv (analyzer parity META, satisfied as META but with WI-fagab and now this as residual direct rows in the dogfood corpus table).\n\n**Fix shape.** For each of the 10 mainstream analyzers (py, js_ts, java_kotlin, swift, csharp, go, rust, solidity, bash, sql + manifest variants), inspect the Symbol(...) construction sites and confirm whether is_exported is wired. For Python: a module-level def/class is conventionally \"exported\" iff its name doesn't start with `_` (or it appears in `__all__`); similar conventions per language. The fix is a per-analyzer kwarg sweep mirroring the Phase 4 PR pattern.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06022026_0010_pass23.md`."  # 3593
+    fields: {}  # 3593

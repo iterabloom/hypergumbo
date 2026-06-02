@@ -68,3 +68,10 @@
   clock: 6  # 9c88
   nonce: 9c88  # 9c88
   message: "Closed by Phase 6 PR2 (commit 98533c0fff). metrics.compute_metrics canonical: total_files = unique_paths_in_analysis = len({n.path for n in nodes if n.path}). Profile-language sum moved to debug.profile_files_sum for introspection. Self-analysis: total_files=915 matches unique_paths_in_analysis (was 1217 vs 915, gap of 296). Needs bakeoff validation."  # 9c88
+- op: discuss  # 728b
+  at: '2026-06-02T03:37:31Z'  # 728b
+  by: agent  # 728b
+  actor: jgstern_agent  # 728b
+  clock: 7  # 728b
+  nonce: 728b  # 728b
+  message: "Pass-22 confirmation observation — file-accounting gap still present.\n\nPass-22 substrate measures three different file counts in adjacent fields of `metrics.debug`:\n- metrics.debug.analyzed_file_symbols = 901\n- metrics.debug.unique_paths_in_analysis = 915\n- metrics.debug.profile_files_sum = 1217\n- metrics.total_files = 915\n\nThree of these (901, 915, 1217) disagree. Pass-20 INV-mozaf reported the same structural disagreement with different numbers (902 vs 1198). The disagreement persists; only the magnitudes shifted (likely because the substrate is now post-INV-sugat-closure with the new analyzer outputs).\n\nINV-mozaf is currently `pending_validation`; suggest flip pending_validation → violated.\n\nLab notebook entry: `~/hypergumbo_lab_notebook/notebookjournal_06012026_2340_pass22.md`."  # 728b

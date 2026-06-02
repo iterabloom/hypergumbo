@@ -59,3 +59,10 @@
   clock: 5  # 8706
   nonce: '8706'  # 8706
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): member of INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug (primary fix-site) and WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (secondary face: wire-format vs schema gap (provenance/quality 100% empty across all edges)). Parent assignment reflects the closer fix-site framing."  # 8706
+- op: discuss  # e8f7
+  at: '2026-06-02T03:37:16Z'  # e8f7
+  by: agent  # e8f7
+  actor: jgstern_agent  # e8f7
+  clock: 6  # e8f7
+  nonce: e8f7  # e8f7
+  message: "Pass-22 correction note (F12) — the title's \"edge.quality also\" clause is wrong as of pass-22 substrate (post-INV-sugat-closure).\n\nRe-measured on /tmp/hg-dogfood-s21/bm.json:\n- node.quality: 0 / 34,253 (0%) populated — matches title's claim\n- edge.quality: **109,915 / 109,915 (100%) populated** with shape `{'score': 0.95, 'reason': 'high_confidence_direct'}` — CONTRADICTS title\n- edge.provenance: absent from the edge sample entirely (field omitted) — matches title's claim (\"edge.provenance dict empty on 100% of edges\")\n\nEither INV-nuzal was inaccurate when filed, or Phase 4/6 sweep populated edge.quality without flipping this row. Pass-22 evidence suggests amending the title to drop the \"edge.quality\" clause (or move it to a satisfied-tail subnote like \"edge.quality 100% populated, addressed by Phase 4 sweep\").\n\nThe remaining real concerns from this invariant: node.quality (0%) and edge.provenance (absent/empty). Those are the live items.\n\nLab notebook entry: `~/hypergumbo_lab_notebook/notebookjournal_06012026_2340_pass22.md`."  # e8f7

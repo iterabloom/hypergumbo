@@ -76,3 +76,10 @@
   clock: 7  # da9f
   nonce: da9f  # da9f
   message: "Closed by Phase 6 PR2 (commit 98533c0fff). compute_metrics no longer mints an 'unknown' tier from edges with unresolved src; the 23-edges-0-nodes phantom is gone from by_supply_chain_tier on self-analysis. Test: test_edges_with_unresolved_src_dont_mint_unknown_tier. Needs bakeoff validation."  # da9f
+- op: discuss  # 09ea
+  at: '2026-06-02T03:37:23Z'  # 09ea
+  by: agent  # 09ea
+  actor: jgstern_agent  # 09ea
+  clock: 8  # 09ea
+  nonce: 09ea  # 09ea
+  message: "Pass-22 confirmation observation — still 23 dangling-src edges.\n\nPass-22 substrate (`/tmp/hg-dogfood-s21/bm.json`, post-INV-sugat-closure) measures:\n- 23 edges where edge.src is not in nodes (matches pass-20 INV-jukok count exactly)\n- Downstream: metrics.by_supply_chain_tier.edges sums to 109,892 (vs total_edges=109,915), losing exactly the same 23 edges\n- Downstream: metrics.languages.unknown has nodes=0, edges=23 (where 'unknown' is the language of edges whose src node doesn't exist)\n\nThe same exact 23-edge count under three different roll-up views is strong evidence the issue is unchanged from pass-20. INV-jukok is currently `pending_validation`; suggest flip pending_validation → violated.\n\nLab notebook entry: `~/hypergumbo_lab_notebook/notebookjournal_06012026_2340_pass22.md`."  # 09ea

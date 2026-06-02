@@ -64,3 +64,10 @@
   clock: 6  # 9711
   nonce: '9711'  # 9711
   message: "Pass-21 confirmation observation. Re-measured field population on fresh post-INV-sugat-closure substrate (`/tmp/hg-dogfood-s21/bm.json`, 84 AnalysisRuns):\n\n- AR.failed_files: 0/84 (0%) populated\n- AR.warnings: 0/84 (0%) populated  \n- AR.skipped_passes: 0/84 (0%) populated\n\nThe three 'reserved provenance fields' identified by this invariant remain 100% empty across all AnalysisRuns. Either (a) the fix was not actually deployed and INV-virik should flip pending_validation → violated, or (b) these fields are correctly empty when there are no failures/warnings/skips and the invariant title overclaims. Suggesting (a) given that we'd expect SOME warnings across 84 passes on a 902-file codebase — `warnings: []` for every single AnalysisRun is suspicious. Pass-21 notebook entry: `~/hypergumbo_lab_notebook/notebookjournal_06012026_2310_pass21.md`."  # 9711
+- op: discuss  # 463a
+  at: '2026-06-02T03:37:06Z'  # 463a
+  by: agent  # 463a
+  actor: jgstern_agent  # 463a
+  clock: 7  # 463a
+  nonce: 463a  # 463a
+  message: "Pass-22 sub-finding (F10) — the reserved-empty pattern extends to top-level `limits` (not just per-AnalysisRun records).\n\nPass-22 substrate shows the following always-empty lists at top level:\n- `limits.failed_files: []`\n- `limits.skipped_languages: []`\n- `limits.truncated_files: []`\n- `limits.supply_chain.ambiguous_paths: []`\n- `limits.supply_chain.classification_failures: []`\n\nSame INV-virik pattern (schema reserves the field, writer never populates), different surface. The top-level `limits` section is supposed to carry global rollups of per-AR failures/skips/truncations; the per-AR records also have these empty (the pass-21 INV-virik observation). Both layers leak.\n\nEither: widen INV-virik's title to cover both layers, or file a sibling for the top-level case. The fix is the same — populate the field when there are actual entries, and add a writer-contract validator entry that requires consistency between top-level rollup and per-AR sums.\n\nLab notebook entry: `~/hypergumbo_lab_notebook/notebookjournal_06012026_2340_pass22.md`."  # 463a

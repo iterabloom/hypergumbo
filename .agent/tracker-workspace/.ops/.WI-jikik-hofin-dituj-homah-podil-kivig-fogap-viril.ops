@@ -20,3 +20,19 @@
     pr_ref:  # 4f2c
     description: "**Pass-22 finding (F7).** `metrics.languages` has 18 entries (one per language). Each carries `nodes`, `edges`, `files`. The `nodes` and `edges` sub-fields are populated and consistent with actual counts; the `files` sub-field is **`0` for every single language**:\n\n```\nansible:    nodes=1,     edges=0,      files=0\nbash:       nodes=218,   edges=291,    files=0\npython:     nodes=33703, edges=109422, files=0\ntypescript: nodes=67,    edges=134,    files=0\nunknown:    nodes=0,     edges=23,     files=0\n... (all 18 entries have files=0)\n```\n\nTop-level `metrics.total_files=915` AND `metrics.debug.unique_paths_in_analysis=915` confirm the data exists at top level. The per-language rollup is not populated despite the data being available.\n\n**Why the validator missed it.** Writer-contract validator class only verifies per-AnalysisRun field population, not aggregate roll-ups. No invariant requires `sum(metrics.languages.*.files) == metrics.total_files`. Cross_field class doesn't model this.\n\n**Significance.** Any consumer reading `metrics.languages` to plot a per-language file-count breakdown gets 0 across the board. LLM consumers asked \"how many Python files?\" from metrics alone will mis-answer.\n\n**Fix.** Either populate `metrics.languages.<lang>.files` in the metrics writer using the same per-language file count that drives the analysis_runs[].files_analyzed sums (the data is already discovered during the discovery phase), OR remove the field from the schema. The current state — schema reserves the field but writer doesn't populate — is the same INV-virik / INV-luhur writer-contract pattern at the aggregate-metrics layer.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06012026_2340_pass22.md`."  # 4f2c
     fields: {}  # 4f2c
+- op: update  # 92ff
+  at: '2026-06-02T03:52:34Z'  # 92ff
+  by: agent  # 92ff
+  actor: jgstern_agent  # 92ff
+  clock: 2  # 92ff
+  nonce: 92ff  # 92ff
+  set:  # 92ff
+    status: todo_soft  # 92ff
+    priority: 3  # 92ff
+- op: discuss  # 7dce
+  at: '2026-06-02T03:52:34Z'  # 7dce
+  by: agent  # 7dce
+  actor: jgstern_agent  # 7dce
+  clock: 3  # 7dce
+  nonce: 7dce  # 7dce
+  message: "Pass-22 investigation correction.\n\nThe original framing claimed metrics.languages.<lang>.files=0 for all entries. After re-checking the probe script: my Python code used `entry.get('files', 0)` which returns the default 0 when the key is absent. metrics.py:60-103 only initializes `languages[lang] = {'nodes': 0, 'edges': 0}` — NO 'files' key is ever written.\n\nPer-language file counts DO exist in the bm.json, just in a DIFFERENT top-level section: `profile.languages.<lang>.files` (e.g., bash=42 files / 11662 LOC; python=N files / N loc; ...).\n\nCorrected scope:\n- This is a schema-consolidation gap rather than a writer-contract gap. metrics.languages exists as the 'aggregate per-language metrics' rollup but only carries node/edge counts. profile.languages exists as the 'file discovery profile' and carries files+loc but no node/edge.\n- Consumers wanting all per-language stats (nodes, edges, files, loc) must read both sections and join.\n- Priority downgrade P2 -> P3, status todo_hard -> todo_soft. Decision: should metrics.languages.<lang> add files+loc (consolidate via copying from profile.languages), or should this just be documented (the two sections cover different dimensions and that's intentional)?"  # 7dce

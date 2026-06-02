@@ -20,3 +20,18 @@
     pr_ref:  # 9076
     description: "**Pass-22 finding (F9).** Every edge in pass-22 substrate has TWO unique identifier fields:\n\n- `edge.id`: `edge:sha256:17ae7e43bd3ca98c` (109,915 / 109,915 populated, 109,915 distinct)\n- `edge.edge_key`: `edgekey:sha256:4ca7645b4389a13d` (109,915 / 109,915 populated, 109,915 distinct)\n\nBoth 100% populated, both 100% unique. Different prefix conventions (`edge:` vs `edgekey:`). Different sha256 values for the same edge (computed from different inputs).\n\n**Suspect intended semantics.** Likely `id` is per-edge-instance (changes when the edge is regenerated against new substrate) while `edge_key` is the structural-identity hash (stable across regenerations as long as (src, dst, type, evidence_type, ...) tuple is unchanged). Same pattern as `Symbol.id` vs `Symbol.stable_id`.\n\n**Issue.** The semantic difference is not surfaced in the field names or in obvious user-facing documentation. Consumers must read the producer code to know which to use. Worse, the naming convention diverges from Symbol's (`stable_id`), making the Edge case harder to recognize as the same pattern.\n\n**Suggested fix.** Either:\n- Rename `edge.edge_key → edge.stable_id` to mirror the Symbol convention.\n- Or document both fields' semantics in the IR docstring (and possibly the spec) — current Edge dataclass docstring does not say.\n\nIf the validator's id_format class is supposed to enforce these formats, it should also check that whatever the structural-identity field is named, it has a documented stability contract.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06012026_2340_pass22.md`."  # 9076
     fields: {}  # 9076
+- op: update  # 2127
+  at: '2026-06-02T03:52:46Z'  # 2127
+  by: agent  # 2127
+  actor: jgstern_agent  # 2127
+  clock: 2  # 2127
+  nonce: '2127'  # 2127
+  set:  # 2127
+    priority: 4  # 2127
+- op: discuss  # 1736
+  at: '2026-06-02T03:52:46Z'  # 1736
+  by: agent  # 1736
+  actor: jgstern_agent  # 1736
+  clock: 3  # 1736
+  nonce: '1736'  # 1736
+  message: "Pass-22 investigation correction.\n\nThe original framing claimed the semantic difference between edge.id and edge.edge_key is 'not documented'. After reading ir.py:\n- Line 15 (module docstring): 'edges carry a structured ID and edge_key for deduplication across passes' — mentions both fields.\n- Line 583 (Edge dataclass docstring on edge_key): 'Canonical identity for deduplication across passes'.\n- Line 516 (_compute_edge_key): docstring 'Compute canonical edge_key for deduplication across passes'.\n- Line 693-697: edge_key is computed from (src + dst + edge_type), line-insensitive — so edge_key is the structural identity (excludes line for cross-pass dedup), while edge.id is the line-included instance identity.\n\nBoth ARE documented. The earlier 'documentation gap' framing was wrong.\n\nThe real (much weaker) residual: NAMING-CONVENTION divergence from Symbol's id/stable_id pair. Symbol has id (location-based) and stable_id (structural-identity hash). Edge has id (presumably instance-unique with line) and edge_key (structural identity for dedup). The structural-identity field is called stable_id on Symbol and edge_key on Edge — same semantic, different name.\n\nDowngrade P3 -> P4 cosmetic. Either rename edge.edge_key -> edge.stable_id to mirror Symbol's convention, or document explicitly in the IR docstring that edge_key is the Edge counterpart of Symbol.stable_id. Minor naming-axis-uniformity issue; not worth surfacing in agent notes table."  # 1736
