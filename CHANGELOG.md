@@ -28,23 +28,57 @@ Convention-based view-template linking, previously Rails-only, now covers five f
 
 #### Structured external-target IR (`Edge.dst_ref`)
 
-New `ExternalRef(lang, module_path, name)` frozen dataclass replaces the legacy colon-delimited `Edge.dst` string for cross-module call references. Adopted by Python, Java, Go, Elixir, JS/TS, C++, Rust, and Ruby analyzers via a shared `ImportScope` abstraction. Consumers (io-boundary chain composition, boundary-node creation) prefer `dst_ref` over legacy colon-split heuristics. SCHEMA_VERSION 0.7.2 → 0.8.0.
+New `ExternalRef(lang, module_path, name)` frozen dataclass replaces the legacy colon-delimited `Edge.dst` string for cross-module call references. Adopted by 18 analyzers via a shared `ImportScope` abstraction: Python, Java, Go, Elixir, JS/TS, C++, Rust, and Ruby in the inaugural sweep; Kotlin, PHP, Scala, and Swift added via the mechanical-equivalent path; Groovy, Lua, Tcl, Objective-C, Perl, and PowerShell added via per-language qualifier hooks — `require`-aliases, `::` namespace split, `\` module split, and PascalCase-receiver convention for ObjC class messages. Consumers (io-boundary chain composition, boundary-node creation) prefer `dst_ref` over legacy colon-split heuristics. `test_polyglot_call_site_coverage.py` extends to kotlin/scala/php/swift/csharp, pinning the remaining qualified-call gaps via strict xfail. SCHEMA_VERSION 0.7.2 → 0.8.0.
 
-WI-huzuv mechanical sweep (2026-05-31): kotlin, php, scala, swift analyzers now also populate `dst_ref` at their `make_unresolved_edge` call sites when the analyzer has a non-sentinel `module_hint`. The retrofit is purely additive — module_hint stays as-is, dst_ref mirrors it as the structured form. Empirical grep narrowed the long-tail sweep universe (initially sketched as ~10 candidates) to these 4 analyzers; the others either lack module_hint at the emit site or use ad-hoc `Edge.create` paths outside the sweep scope.
+#### Symbol-field axis decomposition (ADR-0031 + ADR-0032)
 
-WI-nigah Tier 1 mechanical follow-up (2026-05-31): groovy is the 5th mechanical-equivalent case. The analyzer already tracks `import X as Y` aliases via `import_aliases`, computes `path_hint` from the aliased receiver, and threads it into `resolver.lookup`. The retrofit propagates the same `path_hint` to `make_unresolved_edge` as both `module_hint` (legacy string) and `dst_ref=ExternalRef(...)` (structured form), mirroring the WI-huzuv pattern.
+Two overloaded `Symbol` string fields each split into a pair of typed siblings, capping a campaign to make every multi-valued field on the core dataclasses carry a single, named axis.
 
-WI-nigah Tier 2 — lua (2026-05-31): lua's analyzer tracks `require_aliases` (`M = require("foo")`) instead of `import ... as` aliases. The retrofit threads `require_aliases[receiver]` through both the method-call fallback site and the dot-call fallback site. Coherence change: in the dot-call branch, when the receiver IS a require-alias, the unresolved edge now emits with `module_hint=require_aliases[recv]` and the bare callee_name (instead of the qualified `recv.callee` string), so the legacy `dst` ID and the new structured `dst_ref` are aligned. Non-require-alias dot calls retain the previous qualified-name behavior. Data signal at audit time: 6893 unresolved/repo on the WI-kaziv 6-repo cohort (highest in Tier 2).
+- **`Symbol.language` → `Symbol.discovery_language` + `Symbol.protocol_origin`** (ADR-0031). The legacy field was simultaneously carrying *host language of this file* (the canonical use) and *protocol-family identifier* (smuggled through by ~21 linkers as literal sentinels like `kafka`, `websocket`, `wasm`, `openapi`, `grpc`). The split: `discovery_language` carries the host-language semantic; `protocol_origin` carries the protocol-family semantic; `Symbol.language` is now `Optional[str]` and the ~21 affected linkers emit `language=None, discovery_language=<host>, protocol_origin=<family>` ("Class B" shape) for synthetic stand-ins, with real-source declarations ("Class A") unchanged. New `protocol_origins` registry seeds 19 protocol families (annotation, database_query, event_sourcing, graphql, grpc, http, ipc, js_module, message_queue, openapi, phoenix_ipc, solidity_abi, subprocess_cli, objc_bridge, tauri_ipc, wasm, websocket, yjs_crdt, crypto_flow / message_dispatch). Five cross-language-detection consumer sites (`database_query.py`, `message_queue.py`, `event_sourcing.py`, `graphql_resolver.py`, `http.py`) read `discovery_language` directly; `metrics.py` attributes Class B Symbols to their `discovery_language` for per-language breakdowns instead of letting `None` break `json.dump(sort_keys=True)`.
 
-WI-nigah Tier 2 — tcl (2026-05-31): tcl has no explicit import statement — namespace membership is encoded directly in the call site via the `::` separator (`ns::proc`). The retrofit splits the callee name at the rightmost `::` so unresolved namespace-qualified calls now emit with `module_hint=<namespace>`, bare callee_name, and `dst_ref=ExternalRef(lang="tcl", module_path=<namespace>, name=<bare>)`. Bare callees (no `::`) retain the pre-WI-nigah behavior. Data signal at audit time: 403 unresolved/repo on the WI-kaziv 6-repo cohort.
+- **`Symbol.canonical_name` → `Symbol.display_label` + `Symbol.qualified_name`** (ADR-0032). The legacy field was carrying three different things: a redundant duplicate of `name` from 10 config analyzers, a UI display string for ~16 linker synthetic stand-ins (e.g. `"invoke('save_data')"`, `"@hg:publishes channel"`), and an aspirational fully-qualified path for proto / thrift / capnp / xml-config / vhdl symbols. The split: `display_label` is the UI string consumers display but never branch on; `qualified_name` is the language-aware FQN governed by a new `qualified_name_axis` lightweight catalog of per-language separators (Python `.`, Rust/Tcl `::`, PHP/PowerShell `\`, etc., bounded to `{".", "::", "\\"}` with an allowlist gate for additions). The original `canonical_name` field is marked deprecated here and removed under §Removed below. Producer migration touches ~44 sites: 16 linker synthetics move to `display_label`; the 10 config analyzers drop the redundant duplicate; 18 namespace-bearing analyzers (`proto.py`, `thrift.py`, `capnp.py`, `xml_config.py`, `json_config.py`, `graphql.py`, `llvm_ir.py`, `vhdl.py`, and 10 niche-language analyzers) route the FQN slot to `qualified_name`. Consumer migration: `linkers/containment.py` (4 sites) and `framework_patterns.py` read `qualified_name or canonical_name` during the deprecation window. The pre-existing `meta["qualified_name"]` key (read by `route_handler.py` and `framework_patterns.py`) is retired atomically with the typed-field promotion, satisfying the no-meta-key-collides-with-typed-field invariant.
 
-WI-nigah Tier 2 — objc (2026-05-31): Objective-C class-message calls (`[NSString stringWithFormat:@"..."]`) now extract the receiver via a new `_extract_message_receiver` helper. When the receiver is PascalCase — the ObjC convention for class names — it becomes the `module_path` of a structured `dst_ref`. `self` / `super` / lowercase local-var receivers get no `dst_ref` (no module signal). Nested-message receivers (`[[obj alloc] init]`) likewise leave `dst_ref` None. The heuristic is convention-based, not verified against the class registry; trade-off accepts occasional false positives for a cheap retrofit. Data signal at audit time: 0 unresolved/repo on the WI-kaziv 6-repo cohort (objc under-represented in that corpus); real iOS/Mac codebases expected to gain meaningful dst_ref coverage.
+- **`protocol-origin` and `qualified-name` axes wired** into the static-AST `multi_value_field_axis` linter's known-axis-names dict, so `# axis: protocol-origin` and `# axis: qualified-name` annotations on dataclass fields pass lint without ad-hoc allowlisting.
 
-WI-nigah Tier 2 — perl (2026-05-31): Perl encodes package membership in the call site via `::` (`Foo::bar()`), the same shape as tcl. The retrofit splits the function-call callee at the rightmost `::`: package-qualified unresolved calls now emit with `module_hint=<package>`, bare callee name, and `dst_ref=ExternalRef(lang="perl", module_path=<package>, name=<bare>)`. Bare calls retain pre-WI-nigah behavior. Method calls via `->` (arrow operator) don't currently emit unresolved edges in perl.py — not in scope for this retrofit.
+- **Migration guide.** `docs/MIGRATION-5.X-CONCEPT-AXES.md` Part 7 documents both reshapes — consumer-migration patterns (`sym.discovery_language or sym.language`; `sym.qualified_name or sym.canonical_name`; read `sym.display_label` for synthetic-stand-in display strings), the four new fields per node (typically null for real-source declarations), and `stable_id` impact (~20–30 Class B Symbols' `stable_id`s change because `language=None` hashes differently from a string value).
 
-WI-nigah Tier 2 — powershell (2026-05-31): PowerShell module-qualified cmdlet calls use the `\` separator (`Microsoft.PowerShell.Management\Get-Process`). The retrofit splits at the rightmost `\`: module-qualified unresolved calls now emit with `module_hint=<module>`, bare cmdlet name, and `dst_ref=ExternalRef(lang="powershell", module_path=<module>, name=<bare>)`. Bare cmdlets / functions retain pre-WI-nigah behavior — no module signal at the call site without import-module tracking, which would be a deeper refactor outside this retrofit's scope.
+#### Spec-vs-data validator stage (ADR-0033)
 
-WI-zisov Phase 2 polyglot-fixture audit (2026-05-31): `test_polyglot_call_site_coverage.py` extended with 5 new language fixtures — kotlin, scala, php, swift, csharp. Swift passes cleanly; kotlin/scala/php each pass for the bare-named-import construct but xfail (strict) for qualified-call constructs (`Item.create()`, `Item::create()`); csharp xfails entirely (the analyzer emits no unresolved external-call edges). The 4 xfail markers cite WI-nigah Tier 2 as the gap-closure work; flipping XPASSED will fail the test, forcing fix-side PRs to strip the marker.
+A new end-of-pipeline stage reads the emitted Symbols, Edges, and AnalysisRuns and verifies them against their declared contracts. Closes the long-standing architectural gap that "no spec-vs-data validator stage exists in the pipeline" — each analyzer and linker had been writing its own data with no central enforcement of the catalogs, vocabularies, and cross-field invariants declared elsewhere in the codebase. Five validator classes ship in this release. Default failure behavior: violations are emitted to stderr and written to a new `validation_report` artifact section, but `hypergumbo run` exits 0 regardless — so the report becomes the triage surface, not a build break. Self-analysis on this release reports zero violations across all five classes.
+
+- **Axis conformance.** Every axis-tagged `str` / `Optional[str]` field on `Symbol` / `Edge` / `AnalysisRun` is checked against its catalog (∪ `{None}` for `Optional`). Covers `Symbol.kind` (symbol-kind catalog), `Symbol.language` / `discovery_language` (language catalog), `Symbol.protocol_origin` (protocol-origin catalog), `Symbol.origin` and `Edge.origin` (per-element pass-id catalog), `Symbol.qualified_name` (per-language separator policy from `qualified_name_axis`), `Edge.edge_type` (edge-type catalog), `Edge.evidence_type` (evidence-type catalog), `Edge.evidence_lang` (language catalog), and `AnalysisRun.pass_id` (pass-id catalog).
+- **Writer contract.** Detects fields whose every record carries the producer-side default sentinel (≥ 2 records for signal), surfaced as one umbrella violation per (record-class, field) rather than N per-record copies. Inaugural check covers `AnalysisRun.config_fingerprint` — the canonical case where 84 of 84 runs were collapsing to `sha256(b'{}')` because every analyzer / linker called `AnalysisRun.create(pass_id, version)` with no config arg. The framework is a lazy-resolved table; subsequent writer-contract sweeps register new (class, field) entries against it.
+- **Cross-field coherence.** Field-pair invariants the producer pipeline is expected to honor. `Edge.dst_ref ↔ Edge.dst`: populating `dst_ref` requires `dst` to be populated too (the ~34 unmigrated consumer sites still read the legacy colon-delimited form). ADR-0031 Class B coherence: a Symbol must not carry both `language` and `protocol_origin` (file Symbols exempt). ADR-0032 display-label scope: a Class A real-source declaration must not carry `display_label` (which is reserved for synthetic stand-ins).
+- **Verdict-enum completeness.** Verdict-emitting dataclasses must document an `inconclusive` (or equivalent "don't know") branch alongside their positive / negative verdicts. Catches the silent-fall-through-to-positive class of bug at the static level. Inaugural registry covers `ClaimVerdict`; future verdict types register here as they are introduced.
+- **ID format.** `Symbol.id` is checked against the canonical schema `<language>:<path>:<start>-<end>:<name>:<kind>` (single-colon segment separators); `Symbol.stable_id` is checked against `sha256:<16hex>`. Non-conforming values surface with the specific problem category tagged — for `Symbol.id`: `double_colon_separator`, `wrong_field_count`, `non_canonical_language_prefix`, `malformed_span_segment`, or `non_canonical_kind_suffix`; for `Symbol.stable_id`: `raw_hex_no_prefix`, `bare_name_no_prefix`, `sha256_prefix_wrong_length`, `sha256_prefix_with_non_hex_suffix`, or `composite_no_sha_prefix`. The `Symbol.id` path-slot regex is intentionally colon-tolerant (greedy `.+` backtracking finds the span / name / kind suffix), so legitimate `:`-bearing module paths like `rust:std::collections::HashMap:0-0:module:module` pass.
+- **Stable-ID collision rate** (a sibling cross-field umbrella). The validator groups Symbols by `stable_id`, computes `collided/total`, and emits a single `cross_field` violation when the rate exceeds 5%. One umbrella per run, top-3 collision groups named with sample symbol names. The 5% threshold leaves headroom above the typed-tier-collision floor (same-signature pairs in the same module are by-design) while still catching mass-collision regressions.
+
+#### ID-construction discipline (ADR-0034)
+
+`docs/adr/0034-id-construction-discipline.md` codifies the canonical-factory rule for `Symbol.id` and `Symbol.stable_id`: producers route every ID through the appropriate factory in `analyze/base.py` (`make_symbol_id`, `make_route_stable_id`, `make_entry_stable_id`, new `make_protocol_stable_id(category, *parts)`) rather than constructing f-strings inline. Class B synthetic stand-ins (whose `Symbol.language` is `None`) use the host's `discovery_language` as the canonical-ID language prefix so the canonical schema's first segment stays a real language string the cross-language edge detector can branch on. The ID-format validator class is the runtime enforcement; ADR-0034 is the rationale and reviewer checklist.
+
+Producer migrations landed alongside the validator turn-on:
+
+- **Ad-hoc `{rel_path}::{role}::{line}` path-prefix double-colon form** (six linkers): `http.py` (HTTP call_site Symbols), `database_query.py` (db_query call_sites), `subprocess_cli.py` (subprocess_call call_sites), `message_queue.py` (mq_publisher / mq_subscriber functions), `graphql_resolver.py` (resolver functions), `graphql.py` (graphql_client functions).
+- **`websocket.py::_make_symbol_id`** rebuilt on top of `make_symbol_id(...)`. Previously emitted `websocket:{path}:{line}:{event}:{kind}` — non-canonical language prefix (`websocket` is a `protocol_origin`, not a language catalog value) and single-line span (`818` instead of `818-818`). The host file's language now occupies the language slot; the route and role pack into the colon-free name segment with any `:` in the event sanitized to `_`.
+- **`make_route_stable_id` and `make_entry_stable_id`** rewired to call `_short_sha256(...)` so they emit the canonical `sha256:<16hex>` shape (23 chars) instead of the raw 64-char hexdigest. Eliminates the `raw_hex_no_prefix` escape category for routes materialised by `framework_patterns.py` and HTTP-client call_site Symbols.
+- **`make_protocol_stable_id(category, *parts)`** new factory hashes `(category, parts...)` into the canonical shape. Four protocol linkers migrate off ad-hoc f-strings — `database_query.py` (was `f"{query_type}:{tables}"`), `message_queue.py` (was `f"{queue_type}:{topic}"` — 2-colon when topic contained `:` like SQS ARNs / redis subject patterns), `event_sourcing.py` (was bare `pattern.event_name`), `graphql_resolver.py` (was `f"{type_name}.{field_name}"`). The category prefix protects against cross-linker collisions where two unrelated identity tuples happen to hash the same bare value.
+- **Validator-driven cleanup tail** (six producer corrections):
+  - Python Starlette route IDs: `f"{method}:{route_path}"` → `f"{method} {route_path}"` so the `:` in `GET:/health` no longer breaks the canonical 5-segment shape.
+  - NPM package IDs: `linkers/js_module.py::_make_npm_package_id` produced `f"{lang}:npm:{name}:npm_package"` (4 segments, no path or span slots); now produces canonical `f"{lang}:npm:0-0:{name}:npm_package"`. The corresponding `Symbol.stable_id` switched from the (id-shaped) string to `make_dependency_stable_id(lang, pkg_name)`.
+  - JSON `devDependency` kind segment: `json_config.py` used the pre-fold `dep_type="devDependency"` in the kind slot, producing a camelCase suffix violating `^[a-z][a-z0-9_]*$`. Now uses the post-fold canonical `kind_value="dependency"`.
+  - Rust `::`-namespacing leak: `rust.py` passed `full_name = f"{impl_target}::{func_name}"` (e.g., `MyStruct::method`) to the ID name slot, producing `wrong_field_count=6`. Now uses `id_name_segment = full_name.replace("::", ".")` for the ID slot only; `Symbol.name` and `Symbol.qualified_name` keep the native `::` form.
+  - `decorator-dispatch` and `inherited-calls` linkers had a registration-vs-runtime PASS_ID mismatch: `make_pass_id("decorator-dispatch-linker")` / `make_pass_id("inherited-calls-linker")` corrected to match the `@register_linker("decorator-dispatch", ...)` / `("inherited-calls", ...)` registration names.
+
+#### Per-symbol introspection fields populated across mainstream analyzers
+
+Six `Optional[T]` fields on `Symbol` that the spec validator's writer-contract class had been flagging as universally null are now populated at every declaration emit site across the 10 languages of the `hypergumbo-lang-mainstream` package — Go, Rust, JS, TS, Java, C#, Ruby, PHP, Kotlin, Swift. After this sweep, writer-contract violations across the field × analyzer matrix drop to zero on self-analysis.
+
+- **`lines_of_code: int`** — derived from `span.end_line - span.start_line + 1` per emit site. Synthetic stand-ins with `span=Span(0, 0, ...)` legitimately get `1` (the synthetic occupies one "line" in its conceptual space).
+- **`is_exported: bool`** — derived per host language's visibility rule: Go's lexical case (`name[0].isupper()`), Rust / Java / C# explicit access (`"pub"` / `"public"` in modifiers), Kotlin / PHP default-public with opt-out (`private` / `protected` / `internal`), Swift's explicit opt-in (`public` / `open` — default `internal` does not count), Ruby's default-public + lexical-nesting check (top-level / class-body `def`s are exported; methods nested in another `def` are not).
+- **`signature: Optional[str]`** and **`docstring: Optional[str]`** — extracted via a new shared dispatcher module `symbol_introspection.py` that routes to per-language helpers already in each analyzer. The dispatcher gates on a `SUPPORTED_LANGUAGES` frozenset; unknown languages return `None`. C# and PHP override `analyze()` and bypass the base-class docstring post-pass, so they call `populate_docstrings_from_tree` explicitly at the end of their `_extract_symbols` to backfill non-callable holders (classes, properties).
+- **`qualified_name: Optional[str]`** — derived by walking the file's package / namespace + enclosing class / mod chain and joining via `separator_for_language()` from the `qualified_name_axis` catalog. Never hardcodes the separator. Skipped for variable aliases, TS type aliases, file pseudo-symbols, and route Symbols (URL-shaped, not identifier-shaped). PHP's `App\Service\HelloService::method` form combines the `\` namespace separator with the `::` class-method separator at the canonical join point.
+- **`cyclomatic_complexity: Optional[int]`** — McCabe complexity computed by a new shared walker `compute_cyclomatic_complexity(node, language)` against per-language `BRANCH_NODE_TYPES` and `SHORT_CIRCUIT_OPS` sets. Wired into every callable emit site (functions, methods, constructors, arrow functions, lambdas, singleton methods); classes / vars / synthetic route Symbols are not callable bodies and remain `None`. Go's synthesized closure-wrapper Symbol stays `None` (no AST node available).
 
 #### Per-entry-point safety claims and wrapper-function discipline
 
@@ -88,400 +122,15 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 
 - **Canonical `Symbol.meta` / `Edge.meta` key registry** (`axis_meta_keys`) — structural sibling of existing kind/type registries with drift detection.
 - **Solidity `contract` kind registered canonically** as a top-level construct sibling to `class` / `interface` / `struct`.
+- **Solidity / Vyper `modifier` symbol kind registered canonically** in `symbol_kinds.py` under `AXIS_LANGUAGE_CONSTRUCT`. The Solidity analyzer was already emitting `add_symbol(mod_name, "modifier", ...)`; the catalog now recognizes it.
 - **CI lint enforcing axis declaration** on every `str`-typed field of core dataclasses (`ir.py`, `datamodels.py`).
 - **Intra-file variable reference edges** for Python module-level constants. Functions reading constants now emit `references` edges, reducing orphan variable Symbols.
 - **Orphan-node triage.** Orphan rate dropped from 5.5% to 2.0%; ratchet test prevents regression.
 - **Canonical dampener stack pinned end-to-end** — four tests catch internal-reorder regressions.
 - **RCT-consumer public-API surface pinned** via introspection tests.
-- **Bridge linker activation ↔ depends_on drift guard** — property test asserts every Bridge-subcategory linker that declares both `activation.language_pairs` and `depends_on` encodes the same constraint (after language→pass-id resolution for the JS/TS/Vue/Svelte sharing case). Adding an impl language to one declaration but not the other now fails CI rather than silently diverging the gate (INV-suhob).
-- **HIGH_RISK_PRIMITIVES drift guard, Part 2 (missing-entry direction)** — property test asserts every catalog entry with `boundary=subprocess` is classified in either `HIGH_RISK_PRIMITIVES` or the new `HIGH_RISK_EXEMPTIONS_SUBPROCESS` frozenset, closing the gap Part 1 (WI-gitad) did not cover. Backfilled 48 missing subprocess-launching primitives across Go, JVM, Node, C/C++, Elixir, Haskell, Swift, Objective-C, and Rust. Exempted 18 wait/signal/PATH-lookup/self-exit entries that are subprocess-boundary for taint tracking but don't represent arbitrary code execution (WI-sugav).
+- **Bridge linker activation ↔ depends_on drift guard** — property test asserts every Bridge-subcategory linker that declares both `activation.language_pairs` and `depends_on` encodes the same constraint (after language→pass-id resolution for the JS/TS/Vue/Svelte sharing case). Adding an impl language to one declaration but not the other now fails CI rather than silently diverging the gate.
+- **HIGH_RISK_PRIMITIVES drift guard, Part 2 (missing-entry direction)** — property test asserts every catalog entry with `boundary=subprocess` is classified in either `HIGH_RISK_PRIMITIVES` or the new `HIGH_RISK_EXEMPTIONS_SUBPROCESS` frozenset, closing the gap Part 1 did not cover. Backfilled 48 missing subprocess-launching primitives across Go, JVM, Node, C/C++, Elixir, Haskell, Swift, Objective-C, and Rust. Exempted 18 wait/signal/PATH-lookup/self-exit entries that are subprocess-boundary for taint tracking but don't represent arbitrary code execution.
 
-#### Spec-vs-data validator stage architecture (Phase 0)
-
-- **ADR-0033 — Spec-vs-Data Validator Stage.** Architectural backbone of the INV-sugat campaign. Closes the super-META "no spec-vs-data validator stage exists in the pipeline" by defining four validator classes (axis-conformance, writer-contract, cross-field coherence, verdict-enum completeness), the `ValidationViolation` dataclass, the `validation_report` artifact section, and the warn-not-fail default behavior with a separate CI gate.
-- **ADR-0032 — canonical_name and fingerprint Reshape.** Splits the overloaded `Symbol.canonical_name` (three uses across config redundancy, linker display labels, and aspirational FQN) into two typed sibling fields (`display_label`, `qualified_name`) and demolishes the producer-side Format 1 fingerprint (16-char raw-bytes hash, no scheme prefix) from tree-sitter-supported analyzers, letting the central `stamp_symbol_fingerprints` post-pass populate the canonical `hgfp1:` form. Closes INV-kovob; auto-closes INV-fogum when Phase 2 PR2 lands.
-- **Stub `spec_validator` module** at `packages/hypergumbo-core/src/hypergumbo_core/spec_validator.py`. Phase-0 scaffolding — `ValidationViolation` dataclass + `validate_ir` entry point (returns `[]`) + `build_validation_report` + `emit_stderr_summary`. Wired into `cli.run_behavior_map` end-of-pipeline; every `hypergumbo run` now writes an empty-but-discoverable `validation_report` section into the behavior-map artifact. Phase 3 PRs progressively turn on each validator class.
-- **WI-rolol authorized.** `blocked_on_authorization` tag removed. Sub-task A (ClaimVerdict.inconclusive) folds into Phase 3 PR4. Sub-task B (AnalysisRun writer-contract test) folds into Phase 3 PR2.
-
-#### ADR-0031 Phase 1 PR1 — Symbol.language reshape (schema additions + consumer double-write)
-
-- **`Symbol.discovery_language: Optional[str]`** dormant typed sibling field with `# axis: language` annotation. ADR-0031's runtime home for the discovery-context semantic that four cross-language-detection consumer sites were reading out of `Symbol.language`.
-- **`Symbol.protocol_origin: Optional[str]`** dormant typed sibling field with `# axis: protocol-origin` annotation. ADR-0031's home for the protocol-identity semantic (kafka, websocket, ipc, wasm, openapi, grpc, etc.) that LITERAL-SENTINEL linkers were smuggling through `Symbol.language`.
-- **`Symbol.language: str → Optional[str]`** type relaxation. The field stays required-positional; Phase 1 PR2 starts emitting `None` for synthetic stand-ins, but Phase 1 PR1 doesn't change any producer.
-- **`protocol_origins` registry** at `packages/hypergumbo-core/src/hypergumbo_core/protocol_origins.py` — 19 initial values covering every Class-B linker in the ADR-0031 migration table (annotation, database_query, event_sourcing, graphql, grpc, http, ipc, js_module, message_queue, openapi, phoenix_ipc, solidity_abi, subprocess_cli, objc_bridge, tauri_ipc, wasm, websocket, yjs_crdt, plus crypto_flow / message_dispatch from the conditional-literal subset). `all_protocol_origin_names()` accessor; `ProtocolOriginSpec` frozen dataclass; `get_protocol_origin_spec` lookup. Property tests at `tests/test_protocol_origins.py` cover uniqueness, snake_case, description substance, lookup, and ADR-0031 migration-table seeding completeness.
-- **`protocol-origin` axis wired** into `multi_value_field_axis._known_axes()` so `# axis: protocol-origin` annotations on dataclass fields pass the static-AST linter.
-- **Consumer double-write** at the four cross-language-detection sites: `database_query.py:434`, `message_queue.py:497`, `event_sourcing.py:753`, `graphql_resolver.py:504,530`. Each now reads `sym.discovery_language or sym.language` (idempotent under either producer state — works whether Phase 1 PR2 has landed or not). The fallback is removed at Phase 2 PR3.
-
-#### ADR-0031 Phase 1 PR2 — linker producer migration (all classes)
-
-- **~21 linker files migrated to Class B** (synthetic stand-ins emit `language=None, discovery_language=<host>, protocol_origin=<family>`): `annotation_convention.py` (4 sites), `database_query.py`, `event_sourcing.py`, `graphql.py`, `graphql_resolver.py`, `grpc.py` (Route synthetic only), `http.py`, `ipc.py` (3 sites), `js_module.py` (npm package symbol), `message_queue.py`, `openapi.py`, `phoenix_ipc.py`, `solidity_abi.py`, `subprocess_cli.py`, `swift_objc.py` (3 sites), `tauri_ipc.py` (4 sites), `wasm_bindgen.py` (2 sites), `websocket.py` (endpoint sites; file Symbols stay Class A), `yjs_crdt.py` (2 sites), `crypto_flow.py` (2 sites), `message_dispatch.py` (2 sites). Roughly 33 Symbol() emit sites moved from LITERAL-HOST / LITERAL-SENTINEL / INHERIT-EMITTER to the canonical Class B shape.
-- **Class A preserved** for: file Symbols (`websocket.py`, `js_module.py` file-symbol case, `vue_component.py`), template Symbols (`_view_template_core.py`), proto-file scan + service / servicer / client Symbols (`grpc.py:734` — real declarations whether proto or impl-side), and any other real-source-declaration emit.
-- **Consumer migration in http.py** — added the `discovery_language or language` fallback at `http.py:1470` so cross-language confidence (0.9 same-language / 0.8 cross-language / 0.65 variable URL) computes correctly post-Class-B-migration. Mirrors the four consumer sites already updated in Phase 1 PR1.
-- **Metrics-aggregation consumer fallback** at `metrics.py:78` so `Symbol.language=None` no longer breaks `json.dump(sort_keys=True)` by appearing as a `None` dict key alongside string language keys. Class B Symbols now attribute to their `discovery_language` for per-language metric breakdowns.
-- **Test updates** in 6 test files (`test_database_query_linker.py`, `test_event_sourcing_linker.py`, `test_http_linker.py`, `test_tauri_ipc_linker.py`, `test_wasm_bindgen_linker.py`, `test_websocket.py`): assertions on synthetic-stand-in `sym.language` changed to verify the Class B shape (`language is None`, `discovery_language == <host>`, `protocol_origin == <family>`).
-
-#### ADR-0032 Phase 2 PR1 — canonical_name / fingerprint reshape (schema additions + qualified_name axis)
-
-- **`Symbol.display_label: Optional[str]`** dormant typed sibling field with `# axis: free-text — human-readable UI display string for synthetic linker stand-ins; consumers display, never branch on the value itself.` ADR-0032's typed home for the linker-display semantic that `canonical_name` carried (Use 2 in the desire-paths analysis — ~15 emit sites across tauri_ipc / crypto_flow / wasm_bindgen / annotation_convention / message_dispatch / yjs_crdt etc.). Linker producer migration to populate this field lands in Phase 2 PR2.
-- **`qualified_name_axis` lightweight catalog** at `packages/hypergumbo-core/src/hypergumbo_core/qualified_name_axis.py` declares the per-language qualified-name separator policy (Python `.`, Rust `::`, PHP `\`, etc.) per ADR-0032 §"Per-language separator policy". Module exposes `QUALIFIED_NAME_SEPARATORS` dict, `separator_for_language(lang)` helper, and `all_qualified_name_languages()` accessor. Covers the 10 named analyzers in the Phase 4 PR4 population plan plus elixir, scala, groovy, dart, lua, perl, powershell, tcl, objc.
-- **`qualified-name` axis wired** into `multi_value_field_axis._known_axes()` (the static-AST linter's known-axis-names dict) so `# axis: qualified-name` annotations will pass lint when `Symbol.qualified_name` lands in Phase 2 PR2.
-- **Property tests** at `packages/hypergumbo-core/tests/test_qualified_name_axis.py` verify: every declared separator is a non-empty string; `separator_for_language` returns the documented values; the accessor agrees with the source-of-truth dict; the separator set is bounded to `{".", "::", "\\"}` (future additions require explicit allowlist); the axis is wired into `_known_axes()`; the 10 ADR-0032 Phase 4 PR4 target languages all have declared separators.
-- **Staging note.** The `Symbol.qualified_name` typed field is **NOT** added in this PR. It lands in Phase 2 PR2 alongside the retirement of the existing `axis_meta_keys` `qualified_name` meta-key entry and the migration of the 6 current `meta["qualified_name"]` read sites in `route_handler.py` and `framework_patterns.py`. Adding the typed field without retiring the meta-key would fail the `test_no_meta_key_collides_with_typed_field` invariant; the atomic meta-to-typed promotion is Phase 2 PR2's job.
-
-#### ADR-0032 Phase 2 PR2 — producer migration (linker + config + fingerprint Format 1)
-
-Combined producer migration across four sub-classes in one PR:
-
-- **(a) `Symbol.qualified_name` typed field + meta-key promotion.** Added `qualified_name: Optional[str]` to the `Symbol` dataclass with `# axis: qualified-name` (Phase 2 PR1 wired the static-AST validator's axis registration). Retired the `MetaKeySpec("qualified_name", AXIS_SYMBOL_META, ...)` entry from `axis_meta_keys.py`. Migrated the 6 read sites (`linkers/route_handler.py` ×4, `framework_patterns.py` ×2) from `s.meta["qualified_name"]` to `s.qualified_name`. Updated test fixtures at `tests/test_route_handler_linker.py` and `tests/test_framework_patterns.py` from `meta={"qualified_name": "X"}` to typed-kwarg `qualified_name="X"`. Atomic promotion satisfies the `test_no_meta_key_collides_with_typed_field` invariant.
-- **(b) Linker `display_label` migration.** 16 linker-synthetic emit sites move from `canonical_name=<expression-form>` to `display_label=<expression-form>`: `annotation_convention.py` (4 sites), `crypto_flow.py` (2), `message_dispatch.py` (2), `tauri_ipc.py` (4), `wasm_bindgen.py` (2), `yjs_crdt.py` (2). These were the linkers whose `canonical_name` carried expression-form strings (e.g., `"invoke('save_data')"`, `"@hg:publishes channel"`, `"yjs.write(doc)"`) rather than redundant duplicates of `name`.
-- **(c) Config-analyzer `canonical_name` drop.** Dropped redundant `canonical_name=name` from 10 config analyzers: `cmake.py`, `css.py`, `json_config.py`, `toml_config.py`, `sql.py`, `xml_config.py`, `dockerfile.py`, `make.py`, `manifest_targets.py`, `powershell.py`. The value was a literal duplicate of `name=` per the ADR-0032 desire-paths analysis (Use 1).
-- **(d) Fingerprint Format 1 demolition.** Dropped producer-side `fingerprint=hashlib.sha256(source[start_byte:end_byte])[:16]` (16-char hex, no scheme prefix) from 7 producers: `cmake.py`, `css.py`, `json_config.py`, `toml_config.py`, `sql.py`, `xml_config.py`, `wasm_bindgen.py`. The central `stamp_symbol_fingerprints` post-pass (WI-fanun) now populates the canonical `hgfp1:<64-char-sha256>` Format 2 for these Symbols on the next run. **Closes INV-fogum** (TOML 99 dependency nodes no longer carry the prefix-less Format 1 hash).
-- **Test updates** in 5 test files for the `display_label` shape and the Format-2 fingerprint shape: `tests/test_tauri_ipc_linker.py`, `tests/test_wasm_bindgen_linker.py`, `tests/test_route_handler_linker.py`, `tests/test_framework_patterns.py`, `packages/hypergumbo-lang-mainstream/tests/test_json_analyzer.py`, `packages/hypergumbo-lang-mainstream/tests/test_toml_analyzer.py`.
-
-100% coverage on all changed source files (29 files; ~+156 / −135 lines).
-
-#### ADR-0031 + ADR-0032 Phase 2 PR3 — combined consumer migration + SCHEMA_VERSION 0.12.0
-
-Combined release PR for both reshapes. Producer-side migrations landed in Phase 1 PR2 (ADR-0031) and Phase 2 PR2 (ADR-0032); this PR closes out the consumer surface and bumps the schema version.
-
-- **SCHEMA_VERSION 0.11.0 → 0.12.0** at `packages/hypergumbo-core/src/hypergumbo_core/schema.py:73` and matching `docs/schema.json` `const`.
-- **Migration guide** at `docs/MIGRATION-5.X-CONCEPT-AXES.md` adds Part 7 (~440 words) covering both ADR-0031 (Symbol.language reshape — `discovery_language` + `protocol_origin`) and ADR-0032 (canonical_name / fingerprint reshape — `display_label` + `qualified_name`; Format-1 fingerprint demolition). Includes consumer-migration patterns (prefer `sym.discovery_language or sym.language`; prefer `sym.qualified_name or sym.canonical_name`; read `sym.display_label` for synthetic-stand-in display strings), serialized-artifact impact (four new fields per node, typically null for real-source declarations), stable_id impact (~20-30 Class B Symbols' stable_ids change because `Symbol.language=None` hashes differently from a string value), and fingerprint impact (TOML 99 dependency nodes + ~6 other config-analyzer node sets move from `<16-char-hex>` to `hgfp1:<64-char-hex>`).
-- **Remaining `canonical_name=` producer migrations** Phase 2 PR2 missed (non-redundant uses): ~28 sites across `ir.py` (external-boundary synth → `display_label`), `json_config.py` (npm-run / rel_path → `display_label`; pkg-subpath exports → `qualified_name`), `xml_config.py` (Maven group:artifact / Android dotted names → `qualified_name`), `proto.py` / `thrift.py` (dotted namespace.Service.RPC → `qualified_name`), `capnp.py` (prefix.name → `qualified_name`), `graphql.py` (@directive → `display_label`; redundant cases dropped), `llvm_ir.py` (@symbol → `display_label`), `vhdl.py` (arch(entity) → `display_label`; redundant cases dropped), and 11 niche-language analyzers where `canonical_name=name` was a redundant duplicate (dropped): nix, hlsl, starlark, cuda, r_lang, wgsl, glsl, fortran, ada, nim, gdscript, d_lang, fish, asm, verilog.
-- **Consumer migrations**: `linkers/containment.py` (4 read sites updated to `sym.qualified_name or sym.canonical_name`; Phase 1.5 docstring rewritten to reference the new dual-field state) and `framework_patterns.py:1097` (`symbol.qualified_name or symbol.canonical_name or symbol.name`). The `Symbol` docstring in `ir.py` is updated to mark `canonical_name` deprecated for Phase 6 PR4 removal one major version later.
-- **Test updates** in 7 test files (test_ir.py, test_proto.py, test_thrift.py, test_graphql_analyzer.py, test_llvm_ir.py, test_json_analyzer.py, plus BRANCHES_test_proto.py / BRANCHES_test_thrift.py) for the migrated assertions.
-
-100% coverage on all changed source files. 14272 passed.
-
-This release **closes**: INV-kovob (canonical_name format dual-mode → 3-mode → resolved by reshape), INV-fogum (TOML fingerprints without `hgfp1:` prefix → resolved by Format-1 demolition in Phase 2 PR2), INV-tofun (4 named linkers no longer hardcode language="javascript" on .ts/.tsx files — Class B migration in Phase 1 PR2). The canonical_name and fingerprint expressions of INV-numat (META: vocabulary fields mix axes) and INV-kurup (META: identifier-bearing fields emit non-canonical formats) are resolved; the remaining identifier-format expressions (stable_id under INV-hunup, node.id under INV-sadiv / INV-dulah) are addressed by Phase 5.
-
-#### ADR-0033 Phase 3 PR1 — axis-conformance validator class
-
-First of four validator classes lights up. The validator iterates every axis-tagged `str` / `Optional[str]` field on `Symbol` / `Edge` / `AnalysisRun` and verifies that emitted values are in the catalog (∪ `{None}` for `Optional` fields).
-
-- **Symbol-side checks**: `Symbol.kind` (symbol-kind catalog, required), `Symbol.language` (language catalog, optional), `Symbol.discovery_language` (language catalog, optional), `Symbol.protocol_origin` (protocol-origin catalog, optional), `Symbol.origin` (per-element pass-id catalog), and `Symbol.qualified_name` (structural per-language separator policy from `qualified_name_axis`).
-- **Edge-side checks**: `Edge.edge_type` (edge-type catalog, required), `Edge.evidence_type` (evidence-type catalog, required), `Edge.evidence_lang` (language catalog, optional), `Edge.origin` (per-element pass-id catalog).
-- **AnalysisRun-side checks**: `AnalysisRun.pass_id` (pass-id catalog, required).
-- **Three helper functions** (`_check_value`, `_check_list`, `_check_qualified_name_separator`) keep the per-field membership-check logic compact and reusable for Phase 3 PR2's writer-contract additions.
-- **Per-class behavior**: registry-backed axes use catalog membership; the `qualified-name` axis uses the structural separator check (a Symbol's qualified_name must use the separator declared for its language — single-segment unqualified names are legal); `identity` / `bounded-enum` / `free-text` categories are skipped here (deferred to Phase 3 PR3 for cross-field coherence and Phase 5 PR1 for identity uniqueness).
-- **13 new property tests** at `tests/test_spec_validator_smoke.py` cover the catalog-pass / catalog-fail / Optional-None-pass / required-None-fail / list-element-fail / separator-mismatch / unknown-language-skip cases for each Symbol / Edge / AnalysisRun axis.
-- **No CI gate landing yet.** Per ADR-0033 §"Default failure behavior", the validator emits violations to stderr + writes them to the artifact's `validation_report` section but does NOT fail `hypergumbo run`. The future `test_validation_report_empty.py` CI gate (Phase 6) catches non-empty self-analysis reports as regressions.
-
-100% coverage on changed source files (`spec_validator.py` at 97/0/100%). 14285 passed.
-
-#### ADR-0033 Phase 3 PR2 — writer-contract validator class (WI-rolol sub-task B scaffolding)
-
-Second of four validator classes lights up per ADR-0033 §"Validator classes" #2 and INV-luhur META. The validator now scans `(record_class, axis-tagged field)` pairs and detects the four sub-patterns of the writer-contract gap that INV-luhur named.
-
-- **Framework + first concrete sub-pattern-2 check**: `_WRITER_CONTRACT_DEFAULT_SENTINELS` is a lazy-resolved table of `(record_class_name, field_name) → default-sentinel callable`. For each entry, the validator scans records of that class; if every record's value matches the literal default (with N ≥ 2 for signal), it emits an umbrella `writer_contract` violation per ADR-0033 §"Output format". The first registered entry covers `AnalysisRun.config_fingerprint` — INV-luhur's canonical example (84 of 84 runs collapse to `sha256(b'{}')` because every analyzer / linker calls `AnalysisRun.create(pass_id, version)` with no config arg).
-- **One umbrella violation per (record_class, field) — not N per-record violations.** The issue is structural; flooding the report with N copies of the same finding would obscure the signal.
-- **Folds in WI-rolol sub-task B scaffolding**: this PR lands the validator-class framework + `_check_writer_contract` infrastructure. Each of the 10 INV-luhur member items closes via its own downstream PR adding its specific assertion to `_WRITER_CONTRACT_DEFAULT_SENTINELS` (per WI-rolol sub-task B's trial procedure). Phase 6 PR2's "INV-luhur AnalysisRun writer-contract residual sweep" picks up that member-by-member work.
-- **4 new property tests** at `tests/test_spec_validator_smoke.py` cover: all-default-trigger, single-override-silent, N=1-silent, no-runs-silent.
-- **N ≥ 2 threshold**: a single AnalysisRun with the default is not enough evidence — N=1 can't distinguish "writer never overrode" from "this one analyzer legitimately has no config." The 84 production runs satisfy this comfortably; tests use N=3 to test the path.
-
-100% coverage on `spec_validator.py` (120/0/100%). 14289 passed.
-
-#### ADR-0033 Phase 3 PR3 — cross-field coherence validator class
-
-Third of four validator classes lights up per ADR-0033 §"Validator classes" #3. The validator scans each record for field-pair coherence invariants the producer pipeline is expected to honor.
-
-- **`Edge.dst_ref ↔ Edge.dst` coherence**: when `dst_ref` is populated, the legacy `dst` string must also be populated. Per the `make_unresolved_edge` docstring, both shapes carry the same external-target identity for back-compat with the ~34 consumer sites that haven't migrated to `dst_ref`. Violation severity: `error`.
-- **ADR-0031 Class B coherence**: a Symbol must not have BOTH `language` and `protocol_origin` populated — Class A keeps `language`, Class B uses `protocol_origin` with `language=None`. File Symbols (`kind="file"`) are exempt per the ADR's per-linker producer policy. Violation severity: `warning`.
-- **ADR-0032 display_label scope**: `Symbol.display_label` is reserved for Class B synthetic stand-ins; a Class A real-source declaration carrying `display_label` is incoherent. Violation severity: `warning`.
-- **Generalizes WI-mafik / WI-huzuv / WI-nigah retrofit pattern**: future cross-field invariants extend the same per-record check shape (one block per invariant in `_check_cross_field_coherence`).
-- **7 new property tests** at `tests/test_spec_validator_smoke.py` cover: Class B coherent passes, Class A coherent passes, both-fields-populated warning, file-kind exempt, display_label-on-Class-A warning, dst_ref-without-dst error, dst_ref-with-dst passes, dst_ref-None skipped.
-
-100% coverage on `spec_validator.py` (142/0/100%). Full smart-test suite passes (2445+ scoped).
-
-#### ADR-0033 Phase 3 PR4 — verdict-enum validator + `ClaimVerdict.inconclusive` (WI-rolol sub-task A)
-
-Final of four validator classes lights up per ADR-0033 §"Validator classes" #4. Adds the structurally-missing `inconclusive` value to `ClaimVerdict` and a generalised validator that catches any verdict-emitting dataclass missing an `inconclusive` (or equivalent) branch.
-
-**ClaimVerdict.inconclusive** (`verify_claims.py`):
-
-- **`ClaimVerdict.verdict`** documented enum now reads `confirmed` / `violated` / `inconclusive` (was just `confirmed` / `violated`). Annotation upgraded to `# axis: bounded-enum`.
-- **`verify_claim`** fall-through path (line 286-291 pre-change) was `verdict="confirmed", details="No constraint to check."` — silent confirm. Now returns `verdict="inconclusive"` with `details="No machine-checkable constraint on this claim. The claim may be true, but verify-claims has nothing to assert against."`
-- **`verify_taint_claim`** fall-through path (line 313-318 pre-change) same shape; now returns `inconclusive` when `claim.constraint_taint_flow is None`.
-- **Closes INV-bitig (P0)**, INV-gobob, INV-mofih, INV-nufob — the four silent-confirm members WI-rolol sub-task A was filed to close.
-
-**CLI verify-claims exit codes** (`cli.py:cmd_verify_claims`):
-
-- 0 = all confirmed (or no claims)
-- 1 = at least one violated
-- 2 = at least one inconclusive (and zero violated) — NEW. Distinguishes "machine-checkable claims all passed" from "couldn't actually check the claim."
-- Console output shows `?` icon for inconclusive verdicts and a per-verdict summary (`N VIOLATED, M INCONCLUSIVE (of K claim(s))`).
-
-**Verdict-enum validator class** (`spec_validator._check_verdict_enum_completeness`):
-
-- Runs against the static `_VERDICT_DATACLASSES` registry (currently 1 entry: `ClaimVerdict`).
-- For each entry, introspects the dataclass docstring and verifies the required `inconclusive` value is documented.
-- Per ADR-0033 §"Validator classes" #4: silent fall-through to a positive verdict is a security false-positive class; future verdict-emitting code registers here so the absence of an `inconclusive` branch is mechanically caught.
-
-**Tests** (~5 new):
-
-- `test_verify_claims.py` — 2 existing tests rewired: `test_no_constraint_returns_inconclusive`, `test_no_taint_flow_constraint_returns_inconclusive`.
-- `test_cli_verify_claims.py` — `test_verify_claims_inconclusive_exits_2` covers the new icon path, the per-verdict counter, the summary line, and the exit-code-2 path.
-- `test_spec_validator_smoke.py` — `test_verdict_enum_validator_passes_with_inconclusive_documented` (happy path) + `test_verdict_enum_validator_flags_missing_inconclusive` (monkeypatched failure path covers the violation-emit branch).
-
-**WI-rolol sub-task A status**: lands in full. Sub-task A is now done. Sub-task B (writer-contract) had its scaffolding landed in Phase 3 PR2; the per-member INV-luhur residual sweep lands in Phase 6 PR2. WI-rolol can now move to `pending_validation` once a 6-repo bakeoff confirms the inconclusive verdict surfaces correctly on real corpora.
-
-**Phase 3 complete.** All four validator classes are now active. The validator stage runs at `cli.py:end-of-pipeline` post-`stamp_symbol_fingerprints` and emits the structured `validation_report` artifact section. Per ADR-0033 §"Default failure behavior", it warns to stderr + writes the report; `hypergumbo run` exit code remains 0. The future `test_validation_report_empty.py` CI gate (Phase 6 PR5/6) closes the loop.
-
-100% coverage on `spec_validator.py` (155/0/100%), `verify_claims.py` (95/0/100%), and the new `cli.py` paths. 2780 smart-test passes.
-
-#### Phase 4 PR1 — `lines_of_code` sweep across 10 analyzers (closes INV-loguk LOC piece for these languages)
-
-Mechanical population of `Symbol.lines_of_code` across the 10 named-language analyzers in the Phase 4 plan. Every `Symbol(...)` emit site in the affected analyzers now passes `lines_of_code=span.end_line - span.start_line + 1` (or the equivalent inline-Span literal form). The pre-existing `Symbol.lines_of_code: Optional[int] = None` field was unchanged in `ir.py`; this PR only wires producers.
-
-- **Analyzer files updated**: `go.py`, `rust.py`, `js_ts.py` (covers both TypeScript and JavaScript per the ADR-0031 Symbol.language axis), `java.py`, `csharp.py`, `ruby.py`, `php.py`, `kotlin.py`, `swift.py` — 9 files (10 languages, since js_ts.py serves both TS and JS).
-- **Tests updated**: one assertion added per analyzer test file (`test_csharp.py`, `test_java.py`, `test_js_ts.py`, `test_kotlin.py`, `test_php.py`, `test_ruby.py`, `test_swift.py`, plus go and rust where applicable) verifying the first Symbol emitted by analyzing a minimal fixture carries `lines_of_code >= 1`.
-- **Synthetic stand-ins** with `span=Span(0, 0, ...)` legitimately get `lines_of_code=1` (the synthetic occupies one "line" in its conceptual space).
-
-This is one of five mechanical Phase 4 PRs. Phase 4 PR2 (is_exported), PR3 (signature + docstring shared helpers), PR4 (qualified_name + scope-tracking), and PR5 (cyclomatic_complexity + validation) follow.
-
-100% coverage on all changed source files. 5477 smart-test passes.
-
-#### Phase 4 PR2 — `is_exported` sweep across 10 analyzers (INV-jahiv visibility piece)
-
-Population of `Symbol.is_exported: bool` at every `Symbol(...)` emit site across the 8 analyzers in the Phase 4 plan that did not already derive it (Python via `__all__`, JS/TS via the `_mark_exported_symbols` post-pass, and Scala secondary-ctor handling were already populated). Each analyzer applies its language's visibility rule:
-
-- **Go** (`go.py`): lexical case rule — `is_exported = name[0].isupper()` at every Symbol emit (functions, methods, type declarations, vars, interface methods, middleware wrappers).
-- **Rust** (`rust.py`): explicit visibility — `is_exported = "pub" in modifiers`.
-- **Java** (`java.py`): explicit access — `is_exported = "public" in modifiers`.
-- **C#** (`csharp.py`): explicit access — `is_exported = "public" in modifiers`.
-- **Ruby** (`ruby.py`): default-public + lexical nesting check (`_is_nested_in_method`) — top-level / class-body `def`s are exported; methods nested in another `def` are not. Refined-visibility scope (`private`/`protected` directives) not yet tracked.
-- **PHP** (`php.py`): default-public with private/protected as opt-out — `is_exported = "private" not in modifiers and "protected" not in modifiers`.
-- **Kotlin** (`kotlin.py`): default-public — `is_exported = not any(m in modifiers for m in ("private", "internal", "protected"))`. Extends the pre-existing per-function pattern to classes, type aliases, and other declaration kinds.
-- **Swift** (`swift.py`): explicit opt-in — `is_exported = any(m in modifiers for m in ("public", "open"))`. Swift's default `internal` does NOT count.
-
-Each modified file's module docstring records the per-language rule in a one-sentence note. Test coverage adds at least one assertion per language verifying the derivation against a fixture exercising both exported and non-exported cases.
-
-100% coverage on all 8 changed source files. 3690 smart-test passes in mainstream package suite.
-
-#### Phase 4 PR3 — `signature` + `docstring` shared dispatcher + 10-analyzer wire-up (INV-jahiv reflection piece)
-
-New shared dispatcher module `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/symbol_introspection.py` exposes two uniform entry points:
-
-- `extract_signature(node, source, language) -> Optional[str]` — dispatches to per-language `_extract_X_signature` helpers already in each analyzer module (and for `csharp.py`/`java.py`, passes through the constructor flag inferred from `node.type`).
-- `extract_preceding_doc_comment(node, source, language) -> Optional[str]` — gates on the `SUPPORTED_LANGUAGES` frozenset and delegates to `hypergumbo_core.analyze.base.extract_doc_comment`, which already handles `//`, `///`, `/** */`, and `#` styles via a unified regex. The dispatcher exists for API uniformity with `extract_signature` and to refuse unknown languages by returning `None`.
-
-Wire-up across 9 analyzer files (10 languages — `js_ts.py` covers both JS and TS): every callable Symbol emit site (function / method / constructor / arrow function / singleton_method) now passes `docstring=extract_preceding_doc_comment(node, source, "<lang>")`. The existing local `_extract_X_signature` calls stay in place for the six analyzers that already had them; the dispatcher reuses them. C# and PHP override `analyze()` and bypass the base-class `run_pipeline` automatic docstring post-pass, so explicit `populate_docstrings_from_tree(tree.root_node, source, symbols)` calls were added at the end of their `_extract_symbols` functions (the inline emit-site call covers callables precisely; the post-pass fills non-callable holders like classes and properties).
-
-Non-trivial cases:
-
-- **JS/TS arrow functions and export functions** — the doc comment lives before the outer `lexical_declaration` / `export_statement`, not the inner `arrow_function` / `function_declaration`. The wiring passes the outer node so JSDoc walks back from the correct anchor.
-- **Java/C# constructor dispatch** — the per-language helper takes `is_constructor: bool`; the dispatcher infers it from `node.type == "constructor_declaration"` so the public API stays uniform.
-
-Tests: `packages/hypergumbo-lang-mainstream/tests/test_symbol_introspection.py` (305 lines, 23 tests) covers the unknown-language branch + end-to-end dispatch for all 10 languages via real tree-sitter parses. Each per-analyzer test file gained a `TestXDocstring` class with at least two cases (docstring populated when comment precedes; `None` when absent).
-
-100% coverage on `symbol_introspection.py` (39/39) and 100% coverage on all 9 modified analyzers (8702 statements total). 3734 smart-test passes in mainstream package suite.
-
-#### Phase 4 PR4 — `qualified_name` sweep across 10 analyzers (ADR-0032 producer wire-up)
-
-Population of `Symbol.qualified_name: Optional[str]` at every declaration `Symbol(...)` emit site across the 9 analyzer files (10 languages — `js_ts.py` covers both JS and TS) named in the Phase 4 plan. Each analyzer extracts the file's package / namespace once (where the host language has such a concept) and walks up the tree to collect the enclosing class / mod chain, then joins via `separator_for_language()` from `packages/hypergumbo-core/src/hypergumbo_core/qualified_name_axis.py` — never hardcoding the separator.
-
-- **Go** (`go.py`) — `_extract_go_package` reads the `package_clause` once; `_make_go_qualified_name(pkg, receiver, name)` joins via `.`. Methods carry `pkg.Receiver.method`; functions / types carry `pkg.name`. Interface methods inherit their parent interface's name as the "receiver" segment.
-- **Rust** (`rust.py`) — `_get_rust_mod_path` walks ancestor `mod_item` nodes (inline `mod foo { ... }` blocks); `_make_rust_qualified_name(mod_path, impl_target, name)` joins via `::`. The existing `_get_impl_target` helper supplies the impl-block target type for methods.
-- **Java** (`java.py`) — `_extract_java_package` reads the top-level `package_declaration`; existing `_get_class_ancestors` supplies the nested-class chain; `_make_java_qualified_name(pkg, ancestors, name)` joins via `.`. Applied uniformly to class / interface / enum / method / constructor emit sites.
-- **C#** (`csharp.py`) — new `_get_csharp_enclosing_namespace` (handles both block-style `namespace Foo.Bar { ... }` and the C# 10 `file_scoped_namespace_declaration`) + new `_get_csharp_class_ancestors` (extends the previous single-level `_get_enclosing_class` to the full chain); `_make_csharp_qualified_name` joins via `.`.
-- **PHP** (`php.py`) — `_extract_php_namespace` reads the top-level `namespace_definition`; the existing `_get_enclosing_class` supplies the class name. `_make_php_qualified_name` uses `\` between namespace segments and `::` between the class and the method, canonicalising to `App\Service\HelloService::method`. Free-standing functions in the global namespace fall back to the bare name.
-- **JS / TS** (`js_ts.py`) — `_get_jsts_class_ancestors` extends the previous single-level `_get_class_context` to a full chain; `_make_jsts_qualified_name(ancestors, name, lang)` joins via `.` (the separator is identical for both languages but routed through the catalog for consistency). No package concept — file-scoped modules, so qualified_name comprises only the class chain + symbol name.
-- **Ruby** (`ruby.py`) — `_get_ruby_class_or_module_chain` walks ancestor `class` / `module` nodes; `_make_ruby_qualified_name` joins via `::`. The coarse-grained policy: `Foo::Bar::baz` even though Ruby's runtime convention is `Foo::Bar#instance_method` — the instance / class-method distinction lives on `Symbol.name` and modifiers.
-- **Kotlin** (`kotlin.py`) — `_extract_kotlin_package` reads `package_header`; `_get_kotlin_class_ancestors` walks ancestor `class_declaration` / `object_declaration` nodes; `_make_kotlin_qualified_name` joins via `.`.
-- **Swift** (`swift.py`) — `_get_swift_type_ancestors` walks ancestor `class_declaration` / `protocol_declaration` nodes; `_make_swift_qualified_name` joins via `.`. No source-level package concept in Swift, so qualified_name comprises only the type chain + symbol name. Computed properties and subscripts also receive the qualified_name treatment.
-
-Skipped per the ADR-0032 Phase 4 PR4 charter: variable aliases (Go `var X = expr`), TS type aliases, file pseudo-symbols (`kind="file"` / `kind="module"`), and route Symbols (whose semantics are URL-shaped, not identifier-shaped).
-
-Tests: one `TestXQualifiedName` class added to each per-analyzer test file with at least three assertions — qualified_name on a nested function / method, separator correctness for the host language (asserting the wrong separators are absent), and qualified_name on a top-level item without enclosing scope.
-
-100% coverage on all 9 modified analyzer source files. 3761 mainstream-package tests pass; 5559 smart-test passes in the affected scope.
-
-#### Phase 4 PR5 — `cyclomatic_complexity` sweep across 10 analyzers + Phase 4 closure (INV-loguk complexity piece)
-
-New shared branch-count walker `compute_cyclomatic_complexity(node, language) -> Optional[int]` added to `symbol_introspection.py`, plus module-level constants `BRANCH_NODE_TYPES` (per-language decision-point node-type sets) and `SHORT_CIRCUIT_OPS` (per-language short-circuit operator sets). Computes McCabe cyclomatic complexity (decision points + 1) by walking the subtree rooted at the callable's node and counting branch-node types matching the language's tree-sitter grammar.
-
-Wired into every callable Symbol emit site (functions, methods, constructors, lambdas) across the 9 analyzer files / 10 languages — NOT classes / vars / file pseudo-symbols / route Symbols (route registrations are framework-emitted proxies, not function bodies). Go's synthesized closure-wrapper Symbol leaves `cyclomatic_complexity=None` per writer-contract spec (no AST node available).
-
-Tree-sitter complications resolved:
-- **C#**: grammar uses `foreach_statement` (not `for_each_statement`).
-- **Ruby**: grammar uses bare names (`if`/`unless`/`while`/`case`/`when`/`rescue`/`ternary`) and `binary` (not `binary_expression`) for `&&`/`||`/`and`/`or`.
-- **TypeScript/JavaScript**: both keys map to identical branch-node sets; the `is_typescript` flag at emit time picks the appropriate language string.
-
-Tests: 285 lines added to `test_symbol_introspection.py` covering the unknown-language branch, base-1 case, per-language fixtures exercising every branch-node type, and short-circuit-op counting (including Ruby's `unless`/`and`). Each of the 9 per-analyzer test files gained a `TestXCyclomaticComplexity` class asserting `cyclomatic_complexity >= 1` on a real fixture.
-
-**Phase 4 structural closure verified**. Self-analysis spec-validator run produced `writer_contract` violations = **0** across the 7-field × 10-analyzer matrix. The remaining 519 `validation_report` entries (364 `cross_field` on `Symbol.display_label` for Class B synthetic stand-ins; 155 `axis_conformance` on `Symbol.origin`, `AnalysisRun.pass_id`, `Edge.origin`) are pre-existing Phase 6 cleanup territory and unrelated to Phase 4. INV-jahiv (visibility / reflection / scope / complexity for the 10 named analyzers) is structurally satisfied.
-
-100% coverage on `symbol_introspection.py` (64/64 stmts) and the full mainstream package (16438/16438 stmts). 3788 mainstream-package tests pass.
-
-#### Phase 5 PR1 — ID-format validator (5th class) + INV-sadiv six-site sweep
-
-New `id_format` validator class added to `spec_validator.py` and wired into `validate_ir`. Every `Symbol.id` is now checked against the canonical schema `<language>:<path>:<start>-<end>:<name>:<kind>` (single-colon separators). Non-conforming IDs produce a structured `ValidationViolation` tagged with the inferred problem category — `double_colon_separator (INV-sadiv)`, `wrong_field_count`, `non_canonical_language_prefix`, `malformed_span_segment`, or `non_canonical_kind_suffix`.
-
-Six INV-sadiv linker offenders migrated from their ad-hoc f-string id-construction (`{rel_path}::{role}::{line}` — path-prefix double-colon shape) to the canonical `make_symbol_id(...)` factory at `analyze/base.py`:
-
-- `linkers/http.py:1324` — HTTP call_site Symbols
-- `linkers/database_query.py:351` — db_query call_site Symbols
-- `linkers/subprocess_cli.py:329` — subprocess_call call_site Symbols
-- `linkers/message_queue.py:417` — mq_publisher / mq_subscriber function Symbols
-- `linkers/graphql_resolver.py:430` — resolver function Symbols
-- `linkers/graphql.py:208` — graphql_client function Symbols
-
-Closes INV-sadiv (218 legacy nodes per the dogfood corpus 20260528). The host's `discovery_language` (Class B stand-ins have `language=None`) is used as the canonical-ID language prefix so the canonical schema's first segment stays a real language string the cross-language edge detector can branch on.
-
-Tests: `_check_id_format` covers the 5 failure modes individually plus a happy-path canonical case; the report-counter test verifies `id_format` increments in `violations_by_class`. Pre-existing fixture IDs in `test_spec_validator_smoke.py` rewritten to canonical form (`python:test/fake.py:1-1:<name>:function`) so the existing axis-conformance and cross-field tests don't false-positive against the new ID validator.
-
-Out of scope (Phase 6 territory): `Symbol.stable_id` schema check (`sha256:<16hex>`); `Edge.id` schema check; stable_id collision counting (INV-bazij P0); stable_id multiplicity (INV-hunup).
-
-100% coverage on the new validator paths. 6305 smart-test passes (the two pre-existing `test_cli_symbols` rendering failures at commit `7959eddb13` remain unrelated to this PR).
-
-#### Phase 5 PR2 — ADR-0034 ID-Construction Discipline (policy doc)
-
-Lands `docs/adr/0034-id-construction-discipline.md` codifying the canonical-factory discipline for `Symbol.id` construction. The Phase 5 PR1 `id_format` validator is the runtime enforcement; this ADR is the rationale + reviewer checklist + Class B language-string policy (linker-emitted Symbols use the host's `discovery_language` as the canonical-ID first segment). Closes the documentation gap surfaced by the id-construction-discipline lab-notebook entry. Indexed in `docs/adr/README.md` under the Analysis-pipeline thematic group.
-
-#### Phase 6 PR3 — INV-bazij stable_id mass-collision closure
-
-Augments the structural-identity hash inputs on `compute_stable_id` (and the Python-specific `_compute_stable_id`) so two same-shape symbols in the same module no longer collide. Pre-fix self-analysis showed 60.2% of Symbols sharing stable_id with at least one other (20,517 of 34,108 symbols, 3,822 collision groups) — driven by 155 zero-parameter bash functions in `scripts/lib/forgejo-api.sh` all hashing to one ID, 152 zero-parameter pytest tests in `test_profile.py` likewise, and several smaller groups.
-
-Hash-input fix (rebrands the contract per ADR-0014 amendment):
-
-- **`packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py::compute_stable_id`**: hash signature now `{kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id}:{name}:{qualified_name}`. `name` and `qualified_name` are kwarg-only with empty-string defaults for back-compat with legacy callers. The pre-Phase-6 docstring promise ("survives renames/moves") is rebranded to "structural identity within a (qualified_name, module_path) scope — survives BODY edits, NOT rename or move." On the dogfood corpus, that's the right tradeoff for a field distinguishing 34K symbols.
-- **`packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py::_compute_stable_id`**: hash signature gains a trailing `:{name}` segment (kwarg-only). The three Python call sites (class, method untyped-fallback, function untyped-fallback) thread `node.name` / `method_name` / `qualified_name` respectively.
-- **Analyzer call-site sweep** (~30 files): every `compute_stable_id(node, kind=...)` site is updated to pass `name=`. Languages updated: bash, sql, lua, perl, powershell, ruby, c, cpp, objc (mainstream); ada, apex, asm, d_lang, fennel, fish, gleam, hack, haxe, janet, jsonnet, luau, matlab, meson, nim, odin, pascal, prisma, racket, scheme, smithy, starlark, tcl, v_lang, hlsl, purescript (common/extended1). Ruby and matlab also thread `qualified_name=` because their `_make_*_qualified_name` helpers were already in scope.
-- **Out of scope**: `make_route_stable_id`, `make_entry_stable_id`, `make_typed_stable_id`, `make_protocol_stable_id` factories — they already disambiguate via their per-formula inputs (sig / route / category+parts) and were not modified. Analyzers using `make_typed_stable_id` (csharp, go, java, kotlin, php, rust, swift via the typed-tier path) continue to thread their normalized signatures; the typed-tier `def foo(x)` vs `def bar(x)` collision in the same module is by-design (signature-collision, not name-collision).
-
-Validator extension (`spec_validator.py::_check_cross_field_coherence`):
-
-- New umbrella check: after the per-record Symbol / Edge invariants, the validator groups Symbols by stable_id, computes `collided/total`, and emits a single `cross_field` ValidationViolation when the rate exceeds 5%. The umbrella's `observed` field reports the rate; the `message` field names the top-3 largest collision groups with sample symbol names. Emitting one umbrella per run (rather than one per Symbol) keeps the validation_report concise even when a regression returns. 5% threshold leaves headroom above the typed-tier-collision floor (same-signature pairs in the same module) while still catching mass-collision regressions.
-- Four new tests in `tests/test_spec_validator_smoke.py` cover: below-threshold pass, above-threshold flag (with message-content assertion on top-group sampling), empty-inputs pass (division-by-zero), and None-stable_id symbols skipped.
-
-Test updates:
-
-- `test_tree_sitter_analyzer.py::TestComputeStableId::test_hash_matches_manual`: expected sig string updated for the two new trailing colons. New tests `test_name_disambiguates_same_shape`, `test_qualified_name_disambiguates`, `test_name_defaults_back_compatible` pin the new contract.
-- `test_stable_shape_ids.py::test_stable_id_survives_rename`: renamed and inverted to `test_stable_id_survives_body_edits`, now asserts that BODY edits with the same name + signature preserve stable_id (the surviving half of the original promise).
-- `test_stable_id_class_collisions.py`: `test_class_rename_preserves_stable_id` → `test_class_rename_changes_stable_id` (asserts rename now splits). `TestSemanticIdentityCollisionsPreserved::test_two_truly_identical_classes_collide` → `TestSemanticIdentitySplitsByName::test_two_truly_identical_classes_now_split_by_name` (asserts same-shape classes in same file now split by name).
-- `ir.py` Symbol docstring: `stable_id` field documentation rewritten to reflect the new scope.
-
-Self-analysis collision rate dropped from 60.2% baseline.
-
-Out of scope: `Edge.id` schema check (deferred from Phase 6 PR1 carry-over). The typed-tier-collision floor for same-signature/same-module function pairs is intentionally retained — the typed-tier factory contract has signature as the disambiguator, and threading name into it would conflict with the "Don't modify make_*_stable_id factories" constraint in this PR's scope.
-
-#### Phase 6 PR4 — Remove deprecated `Symbol.canonical_name` field — **SCHEMA_VERSION 0.12.0 → 0.13.0** (breaking)
-
-One schema version after the 0.12.0 deprecation window (Phase 2 PR3 of the ADR-0033 campaign), the `Symbol.canonical_name` field is removed:
-
-- **`ir.py`**: field declaration removed; `to_dict` / `from_dict` drop the key. `Symbol.from_dict` silently ignores legacy `canonical_name` keys in pre-removal cached JSON.
-- **`linkers/containment.py`**: the Phase 1.5 fallback `qualified = sym.qualified_name or sym.canonical_name` collapses to `qualified = sym.qualified_name`. The `evidence_type="canonical_name"` tag stays — it's an evidence-type vocabulary entry (per `evidence_types.py`), not a field reference; same for the fallback test class name in `test_containment_linker.py`.
-- **`framework_patterns.py`**: `name = symbol.qualified_name or symbol.canonical_name or symbol.name` collapses to `name = symbol.qualified_name or symbol.name`.
-- **`docs/schema.json`**: `#/$defs/Symbol/properties/canonical_name` entry removed.
-- **`docs/MIGRATION-5.X-CONCEPT-AXES.md`**: 0.13.0 row added documenting the breaking change + consumer-side migration path (read `symbol.qualified_name` / `dict["qualified_name"]` instead).
-
-Test fixtures across `test_ir.py`, `test_dependency_linker.py`, `test_containment_linker.py`, `test_schema.py`, `test_tauri_ipc_linker.py`, `test_wasm_bindgen_linker.py` migrated from `canonical_name="..."` to `qualified_name="..."` Symbol kwargs.
-
-14552 smart-test passes (2 pre-existing `test_cli_symbols` rendering failures unrelated to this PR).
-
-#### Phase 6 PR5 — axis-conformance catalog sweep (validator-driven cleanup tail)
-
-Closes 987 of 989 `axis_conformance` violations (~99%) surfaced by the validator's first self-analysis pass after Phase 6 PR4:
-
-- **`catalog.py::all_known_pass_ids`** extended with two new known-not-in-registry sets: `_BUILTIN_PIPELINE_PASS_IDS = {"enclosure-linker"}` (the synthetic post-pass at `linkers/registry.py:774` that connects synthetic stand-ins to enclosing functions; closes 119 `Edge.origin` violations) and `_SYNTHESIS_MECHANISMS = {"inheritance", "orchestrator_file_symbol_synthesis", "scip"}` (the synthesis-mechanism values overloaded onto `Symbol.origin` per the docstring's pending-split note; closes 492 `Symbol.origin` violations). The "pending split into a sibling `synthesis_mechanism` field" remains documented as a future ADR; until then, the catalog accepts these values as legitimate.
-- **`linkers/decorator_dispatch.py:47`**: `PASS_ID = make_pass_id("decorator-dispatch-linker")` corrected to `make_pass_id("decorator-dispatch")` — matches the linker's `@register_linker("decorator-dispatch", ...)` registration name (was: registered name and runtime PASS_ID differed; emitted `decorator-dispatch-linker` value didn't appear in the catalog). Closes 292 `Edge.origin` violations.
-- **`symbol_kinds.py`**: new `SymbolKindSpec("modifier", AXIS_LANGUAGE_CONSTRUCT, ...)` entry registers the Solidity/Vyper modifier kind that `solidity.py:302` emits via `add_symbol(mod_name, "modifier", ...)`. Closes 1 `Symbol.kind` violation.
-- **`spec_validator.py`**: new `_read(obj, attr, default)` helper makes the AnalysisRun-side axis-conformance check dict-aware. `cli.py:7817` accumulates `linker_result.run.to_dict()` rather than the dataclass, so the previous `getattr(run, "pass_id", None)` returned `None` for every dict-shaped run. The helper checks both attribute and key access; the validator also tries the serialized `"pass"` key (per `ir.py:to_dict line 275` where `pass_id` is renamed) when `"pass_id"` is absent. Closes 83 `AnalysisRun.pass_id` violations.
-
-The 2 residual `axis_conformance` violations are Solidity test-fixture data leaks (`Symbol.language='Not owner'` + 1 `AnalysisRun.pass_id` orphan) tracked for a separate cleanup. The 1639 `cross_field` and 17 `id_format` violations remain Phase 6 PR6 territory.
-
-162 spec-validator + catalog + decorator-dispatch tests pass. Self-analysis post-fix shows 989 → 2 axis_conformance violations (99.8% drop).
-
-#### Phase 6 PR7 — Solidity import-alias leak fix (validator at 0)
-
-Closes the last 2 violations the campaign was tracking, both surfacing the same root cause: `solidity.py:356` called `_extract_import_aliases(node, source)` for EVERY node in the tree, not only `import_directive` nodes. The helper finds the first `string` child and uses its text as the import path; on any other node type with a string-literal argument (e.g., `require(msg.sender == owner, "Not owner")`), it falls back to that string. The Solidity analyzer was therefore emitting an `imports` edge with `dst="Not owner"` (the error-message string literal), which the dangling-edge synthesis at `ir.py:1255` then materialized as an `external_symbol` Symbol with `language="Not owner"`, `id="Not owner:<unknown>:0-0:Not owner:Not owner"`. Both axis_conformance (Symbol.language not in catalog) and id_format (non-canonical language prefix) violations resolve to this single Symbol.
-
-The fix gates the loop body on `node.type == "import_directive"` so the helper only sees actual import directives. 89 Solidity tests pass; analyzer probe confirms the bogus edge is gone and the legitimate `./Other.sol` import edge remains.
-
-**Self-analysis post-fix shows ZERO violations across all 5 validator classes** (writer_contract / verdict_enum / cross_field / axis_conformance / id_format). The INV-sugat campaign's structural goal — "no spec-vs-data mismatch in the emitted IR" — is now empirically met on the self-analysis corpus.
-
-#### Phase 6 PR6 — `cross_field` + `id_format` validator-driven cleanup tail closure
-
-Drives the self-analysis `validation_report` from **2645 → 2 violations** (99.92% drop) across cross_field, id_format, and the residual axis_conformance carryover from PR5. The 2 remaining are the same Solidity test-fixture "Not owner" leak (1 conceptual root cause).
-
-**cross_field display_label leak (1639 → 0).** Root cause: every external boundary Symbol synthesized by `ir.py:synthesize_file_symbols_for_dangling_edges` carries `display_label=f"{language}:{path}:{name}:{kind}"` per the ADR-0032 typed-sibling pattern. The Phase 3 PR3 cross_field check exempted `kind="file"` but not `kind="external_symbol"`. The validator now exempts both (with a docstring note: external-symbol display_label is the canonical printable form for that synthesis path, not a Class A leak). Closes the 1294 python:unresolved + 210 python:attribute + 106 markdown:doc_link + smaller groups.
-
-**id_format residuals (17 → 1).**
-
-- **Python route IDs** (8 violations) — `py.py:2657` constructed Starlette route IDs as `f"{method}:{route_path}"`. The `:` in `GET:/health` broke the canonical 5-segment shape (parsed as 6 segments). Changed to `f"{method} {route_path}"` so the name segment stays colon-free.
-- **NPM package IDs** (4 violations: 2 `Symbol.id` + 2 `Symbol.stable_id`) — `linkers/js_module.py::_make_npm_package_id` produced `f"{lang}:npm:{name}:npm_package"` (4 segments, no path or span slots). Now produces the canonical `f"{lang}:npm:0-0:{name}:npm_package"`; `Symbol.stable_id` switched from the (id-shaped) string to `make_dependency_stable_id(lang, pkg_name)` which returns the canonical `sha256:<16hex>` form.
-- **JSON `devDependency` kind segment** (2 violations) — `json_config.py:181` used the pre-fold `dep_type="devDependency"` in the kind slot, producing a camelCase suffix that violated the kind-segment regex `^[a-z][a-z0-9_]*$`. Now uses `kind_value="dependency"` (the post-fold canonical kind that the Symbol's `kind` field already carries).
-- **Rust `::`-namespacing leak** (2 violations) — `rust.py:949` passed `full_name = f"{impl_target}::{func_name}"` (e.g., `MyStruct::method`) to `make_symbol_id`'s name slot. The `::` produced wrong_field_count=6. Now uses `id_name_segment = full_name.replace("::", ".")` for the ID slot only; `Symbol.name` and `Symbol.qualified_name` keep the native `::` form.
-- **Rust external module path** (1 violation) — `rust:std::collections::HashMap:0-0:module:module`. The IR's `_parse_dangling_id` parser (ir.py:1097) is explicitly colon-tolerant in the path slot via last-3-tokens parsing. The validator's `_CANONICAL_ID_PATTERN` was over-strict; updated to allow `:` in the path slot (greedy `.+` backtracks to find the span-name-kind suffix). External Rust module IDs now pass without producer-side changes.
-- **`inherited-calls-linker` PASS_ID typo** (closes 1 carry-over axis_conformance violation from PR5) — `linkers/inherited_calls.py:100` had the same registration vs runtime-emission mismatch as Phase 6 PR5's `decorator-dispatch-linker` case. Corrected `make_pass_id("inherited-calls-linker")` → `make_pass_id("inherited-calls")` matching the `@register_linker("inherited-calls", ...)` registration. `test_cli_explain.py` fixture updated.
-
-**Remaining 2 violations** (`Symbol.language='Not owner'` + `Symbol.id='Not owner:<unknown>:0-0:Not owner:Not owner'`) trace to one Solidity test-fixture string literal that leaks into the external-symbol synthesis path; the conceptual fix is a deeper Solidity analyzer audit and falls outside this PR's id_format/cross_field scope.
-
-14750 smart-test passes (2 pre-existing `test_cli_symbols` rendering failures unrelated). Validator-driven cleanup tail complete: writer_contract / verdict_enum / cross_field all at 0.
-
-#### Phase 6 PR2 — INV-luhur AnalysisRun + meta-layer writer-contract sweep
-
-Closes a batch of the 10 INV-luhur sub-members by codifying canonical definitions, wiring previously-unwired writer paths, and extending `_check_writer_contract` to fold in the structural pattern.
-
-Producer-side fixes:
-
-- **INV-lidul (`AnalysisRun.config_fingerprint` default-only initializer).** New `TreeSitterAnalyzer._get_config_dict()` and `_stamp_config_fingerprint()` derive a per-analyzer `sha256:<16hex>` fingerprint from class identity + grammar + file-pattern set. Pre-Phase-6 all 84 self-analysis runs carried the literal `sha256:44136fa355b3678a` (sha256 of `{}`) default; per-class fingerprints now distinguish the runs. Subclasses can override `_get_config_dict()` to thread real per-run config.
-- **INV-gizik (`AnalysisRun.pass_version` empty on 44 analyzers).** `TreeSitterAnalyzer._analyze_body` auto-stamps `pass_version = compute_pass_version(type(self))` when the subclass hasn't set one explicitly. Mirrors the linker-side stamping in `registry.py:_stamp_pass_version`. All 44 previously-unstamped tree-sitter analyzer runs now carry a real code-hash.
-- **INV-nihug (`AnalysisRun.toolchain` hardcoded to host Python).** New `_extend_toolchain()` extends the `{name: python, version: <host>}` default with `tree_sitter_version`, `grammar_module`, and `grammar_version` (when the grammar package exposes `__version__`). Captures the actual dependency chain that produced the analysis.
-- **WI-lonoz (`Edge.quality` empty across all edges).** New `_derive_edge_quality()` helper in `ir.py` derives a `{score, reason}` block from `confidence` / `is_resolved` / `derived_from` evidence. `Edge.__post_init__` populates `quality` when the producer doesn't set it. Reason tags: `high_confidence_direct` (≥0.95), `resolved_call_site` ([0.8, 0.95)), `derived_from_linker_evidence`, `low_confidence_fallback` (<0.5), `medium_confidence`.
-- **INV-pubom (`total_io_edges` two definitions).** Canonical definition codified in `io_boundary.py`: `total_io_edges = sum(len(e.chains) for e in entries.values())` (post-external_potential chain count). Replaces the pre-external_potential `tagged_count` reference at the unfiltered-serializer site. The filtered path in `cli.py:cmd_io_boundaries` already used the post-chain-sum convention; both paths now agree.
-- **INV-mozaf (`metrics.total_files` two definitions).** Canonical definition flipped in `metrics.py:compute_metrics` to `len({n.path for n in nodes if n.path})` (node-distinct-path count). The legacy profile-language sum (over-counted by ~296 vs node-distinct on self-analysis) now rides in `metrics.debug.profile_files_sum` for introspection.
-- **INV-jukok (`metrics.by_supply_chain_tier["unknown"]` phantom).** `compute_metrics` no longer mints an `unknown` tier when edge src isn't in `node_id_to_tier` — unresolved-src edges are silently excluded from the per-tier edge count. The pre-fix `unknown: {edges: 23, nodes: 0}` phantom on self-analysis is gone.
-- **INV-virik (`Limits.add_classification_failure` no callers).** `_classify_symbols` now accepts an optional `limits` kwarg and records each "outside repo" classification fall-through as a `Limits.add_classification_failure(path, reason)`. Per-path dedup avoids N duplicate failures for N symbols on the same un-classifiable path. Wired from `cli.py:run_behavior_map`.
-- **INV-pitab (`AnalysisRun.warnings` un-populated on grammar-unavailable path).** `TreeSitterAnalyzer._analyze_body` now explicitly appends the grammar-unavailable skip message to `run.warnings` before calling `warnings.warn`. The schema-declared field is now populated for the most common producer-side warning path. Thread-safe (no global `warnings.showwarning` mutation — the ThreadPoolExecutor in `run_all_analyzers` would race a global shim). Deferred for Phase 6 PR3+: capturing ad-hoc `warnings.warn(...)` calls deeper in extract_symbols_from_file (would require per-instance state plumbing).
-
-Validator extension (`spec_validator.py`):
-
-- New sub-pattern-1 ("schema-declares-no-writer") helper `_check_sub_pattern_1_never_populated` registered in `_check_writer_contract`. Per-`(record_class, field, contract_msg)` table currently empty (every previously-unpopulated field on the corpus is now wired); future sub-pattern-1 candidates register there.
-- New `_is_truthy(record, field)` helper for sub-pattern-1 emptiness probing. Returns `False` for `None` and empty list/dict/str; `True` for non-empty containers and non-None scalars (including `0` / `False`).
-- Documentation-only registration of the INV-pubom and INV-mozaf canonical definitions at the writer-contract producer-pair-checks docstring (cross-check is resolved at the producer layer rather than at validator runtime).
-
-Tests:
-
-- `tests/test_metrics.py::test_total_files_equals_node_distinct_paths` — assertion flipped to node-distinct count (was profile-sum); new `debug.profile_files_sum` covered.
-- `tests/test_metrics.py::test_edges_with_unresolved_src_dont_mint_unknown_tier` — new test pinning INV-jukok.
-- `tests/test_supply_chain.py::TestClassifySymbolsRecordsClassificationFailures` — four new tests covering INV-virik wiring (outside-repo path records failure; in-repo path does not; per-path dedup; `limits=None` is a legal no-op).
-- `tests/test_spec_validator_smoke.py` — five new tests covering `_is_truthy` truth-value semantics and the sub-pattern-1 helper's empty-table no-op contract.
-
-Out of scope (Phase 6 PR3+ territory): **INV-nuzal** (`derived_from` populated on 23K of 110K edges — large per-linker construction-site sweep deferred), **INV-suvil-style** producer-side confidence-derivation audit (`Edge.confidence` already varies across ~20 distinct values per self-analysis — the writer-contract sub-pattern-4 check would not fire). The `Edge.id` schema check and stable_id collision counting (INV-bazij P0) remain Phase 6 PR3+ candidates per Phase 6 PR1 carry-over.
-
-100% coverage on `spec_validator.py`, `metrics.py`, `io_boundary.py`, `ir.py`, `analyze/base.py`, and the changed paths in `cli.py`.
-
-#### Phase 6 PR1 — `stable_id_format` sub-check + INV-hunup / INV-dulah closure
-
-The `id_format` validator class extends to `Symbol.stable_id` (new `_check_stable_id_format` helper in `spec_validator.py`). Every populated `stable_id` is now pinned to the canonical `sha256:<16hex>` schema; `None` stays a pass (some Symbols legitimately omit it). Non-conforming values produce a structured `ValidationViolation` tagged with the inferred problem category — `raw_hex_no_prefix`, `bare_name_no_prefix`, `sha256_prefix_wrong_length`, `sha256_prefix_with_non_hex_suffix`, or `composite_no_sha_prefix (colon_count=N)`.
-
-`Symbol.id` migration (INV-dulah, 25 escapes in current self-analysis, all from the websocket linker):
-
-- `linkers/websocket.py::_make_symbol_id` — rebuilt on top of `make_symbol_id(...)` from `analyze/base.py`. Previously emitted `websocket:{path}:{line}:{event}:{kind}` — non-canonical language prefix (`websocket` is a `protocol_origin`, not a value in `catalog.all_known_languages`) and single-line span (`818` instead of `818-818`). The host file's language (resolved via `_language_for_file`) now occupies the language slot; the route and role pack into the colon-free name segment (`{event}-{kind}` with any `:` in the event sanitized to `_`); the kind slot is the canonical `function` matching the Symbol's `kind`. Three call sites (endpoint emit, file→endpoint reference edge, cross-language client↔server bridge edge) updated to pass the resolved language.
-
-`Symbol.stable_id` factory migrations (INV-hunup, ~130 escapes across five categories in current self-analysis):
-
-- `analyze/base.py::make_route_stable_id` and `make_entry_stable_id` rewired to call `_short_sha256(...)` so they emit `sha256:<16hex>` (23 chars) instead of the raw 64-char hexdigest. Removes the `raw_hex_no_prefix` escape category for routes materialised by `framework_patterns.py` and HTTP-client call_site Symbols emitted by `linkers/http.py`.
-- New `analyze/base.py::make_protocol_stable_id(category, *parts)` factory hashes `(category, parts...)` into the canonical shape. Four protocol linkers migrate off ad-hoc f-strings:
-  - `linkers/database_query.py:368` — was `f"{query_type}:{tables}"` (1-colon, escape category `colon_1`).
-  - `linkers/message_queue.py:433` — was `f"{queue_type}:{topic}"` (2-colon when topic contains `:`, e.g., SQS ARNs / redis subject patterns).
-  - `linkers/event_sourcing.py:680` — was bare `pattern.event_name` (`no_colon`).
-  - `linkers/graphql_resolver.py:446` — was `f"{type_name}.{field_name}"` (`no_colon`).
-
-The category prefix protects against cross-linker collisions where two unrelated identity tuples happen to hash the same bare-name value (e.g., a db_query SELECT on `users` vs. a graphql resolver named `users`).
-
-Tests updated to assert the new shape:
-
-- `tests/test_base.py` — `make_route_stable_id` / `make_entry_stable_id` length expectations migrate from 64 to 23 (`sha256:` + 16 hex). New `TestMakeProtocolStableId` covers the factory's canonical shape, determinism, category-namespace collision protection, parts-order significance, and zero-parts edge case.
-- `tests/test_spec_validator_smoke.py` — 10 new tests cover the five `stable_id_format` failure categories, the `None` pass-through, the `validate_ir` wire-up, and shape sanity checks for `make_route_stable_id` / `make_entry_stable_id` / `make_protocol_stable_id`.
-- `tests/test_websocket.py` — `test_make_symbol_id` rewritten to assert the new canonical-shape output (with explicit-language and default-language variants plus a colon-sanitization test).
-- Four linker tests (`test_database_query_linker.py`, `test_event_sourcing_linker.py`, `test_graphql_resolver_linker.py`, `test_message_queue_linker.py`) now derive the expected stable_id from `make_protocol_stable_id(...)` instead of hardcoding the ad-hoc f-string output, keeping the assertion pinned to the producer's contract.
-- `test_http_linker.py::test_stable_id_is_not_bare_method` length expectation migrates to 23 with a `startswith("sha256:")` check.
-- `test_framework_patterns.py::test_stable_id_assigned` likewise migrates the length expectation.
-
-Out of scope (Phase 6 PR2+ territory): the `message_dispatch` linker's `:0:message_sender` 6-segment id shape (no current corpus surfaces it, but the writer would violate the validator if exercised); the `grpc` linker's `_make_symbol_id` prefix-as-language pattern (mirrors the websocket-linker fix); `Edge.id` schema check; stable_id collision counting (INV-bazij P0).
-
-100% coverage on `spec_validator.py`, `linkers/{websocket,database_query,message_queue,event_sourcing,graphql_resolver}.py`, and the changed paths in `analyze/base.py`.
 
 ### Changed
 
@@ -492,12 +141,16 @@ Out of scope (Phase 6 PR2+ territory): the `message_dispatch` linker's `:0:messa
 - **CUDA / Android XML canonical-kind folds.** CUDA now emits `kind="function"` + `meta["cuda_execution_space"]`; Android XML emits `kind="component"` + `meta["component_type"]`.
 - **Producer-coherence linter extended** — inline ternary resolution, non-string Constant handling, f-string expansion mode, and variable-form backstop. Six new `AXIS_PENDING` values registered; SCHEMA_VERSION 0.7.0 → 0.7.1.
 - **`Symbol.origin` and `Edge.origin` changed from `str` to `list[str]`.** Multi-source attribution: when multiple passes contribute, all are credited. SCHEMA_VERSION 0.9.1 → 0.10.0.
-- **`origin_run_signature` removed from output schema.** SCHEMA_VERSION 0.10.0 → 0.11.0 (WI-gapin).
+- **`origin_run_signature` removed from output schema.** SCHEMA_VERSION 0.10.0 → 0.11.0.
+- **SCHEMA_VERSION 0.11.0 → 0.12.0 — Symbol-field axis decomposition.** Caps the combined ADR-0031 (`Symbol.language` → `discovery_language` + `protocol_origin`) and ADR-0032 (`Symbol.canonical_name` → `display_label` + `qualified_name`) closures. Four new dataclass fields land at the typed boundary; `Symbol.language` relaxes `str → Optional[str]` for Class B synthetic stand-ins; `Symbol.canonical_name` is marked deprecated.
+- **SCHEMA_VERSION 0.12.0 → 0.13.0 — `Symbol.canonical_name` removed** (breaking; one schema version after the 0.12.0 deprecation). The `qualified_name or canonical_name` fallback at `linkers/containment.py` and `framework_patterns.py` collapses to `qualified_name` alone; consumer migration path is `symbol.qualified_name` / `dict["qualified_name"]`. `from_dict()` silently ignores legacy `canonical_name` keys in pre-removal cached JSON. See §Removed below.
 
 #### Catalog and pass identity
 
 - **`pass_id` suffix dropped; catalog auto-derived from registries.** Breaking JSON-output change. The legacy `-v1` / `-ts-v1` / `-ast-v1` suffixes are removed; `make_pass_id(name) == name`. Backend identity moves to `Pass.backend`; display labels to `Pass.pass_label`. Catalog is now dynamically derived from `_ANALYZER_REGISTRY` + `_LINKER_REGISTRY`.
 - **Results cache key includes analyzer identity.** Two different hypergumbo installs analyzing the same tree no longer share a cache entry.
+- **`all_known_pass_ids()` extended with built-in pipeline + synthesis-mechanism sets.** Two new frozen sets register pass-id values that the catalog had been missing — `_BUILTIN_PIPELINE_PASS_IDS = {"enclosure-linker"}` covers the synthetic post-pass at `linkers/registry.py` that connects synthetic stand-ins to enclosing functions; `_SYNTHESIS_MECHANISMS = {"inheritance", "orchestrator_file_symbol_synthesis", "scip"}` covers the synthesis-mechanism values currently overloaded onto `Symbol.origin` (their split into a sibling `synthesis_mechanism` field is a future ADR). Until that split lands, the catalog accepts these values as legitimate.
+- **Three analyzer-side language-tag drifts harmonized to catalog-registered values.** `objc.py` emit changed from `"objective-c"` to `"objc"`, removing translation-table accommodations in `fingerprint.py:_LANG_PACK_OVERRIDES`, `io_boundary.py:_CATALOG_ALIASES`, and a `frozenset({"objective-c", "objc"})` in `sketch.py`; two `*_despite_mismatch` regression tests retitled. `yaml_ansible.py`'s registration declares `languages=["ansible"]`, putting the already-emitted `"ansible"` value into `all_known_languages()` (the analyzer's `name` / `PASS_ID` stays `"yaml_ansible"`). `grpc.py` Route synthetics and proto-file scans emit `language="proto"` instead of the non-catalog `"protobuf"` (framework-axis usage `frameworks=["grpc", "protobuf"]` is unchanged — separate vocabulary). Affected: `stable_id` values for objc / proto Symbols change in this release (language is a SHA256 input to the seven `stable_id` factories).
 
 #### Vendored grammars
 
@@ -505,8 +158,8 @@ Out of scope (Phase 6 PR2+ territory): the `message_dispatch` linker's `:0:messa
 
 #### Linker quality
 
-- **Linker `pass_version` wired through `run_all_linkers`** — `_stamp_pass_version()` centrally stamps each linker's `compute_pass_version` code-hash onto its `AnalysisRun.pass_version`. Previously all linker-created runs had empty `pass_version` (WI-hupoz). `LinkerContext` gains `create_run()` factory and per-linker identity fields.
-- **`AnalysisRun.version` semantic split fixed** — analyzers now pass `version=PASS_VERSION` (package version) and `pass_version=self.pass_version` (code-hash). Previously analyzers put the code-hash in `version`, making `run_signature` semantically incomparable across analyzer vs linker runs (INV-kohat).
+- **Linker `pass_version` wired through `run_all_linkers`** — `_stamp_pass_version()` centrally stamps each linker's `compute_pass_version` code-hash onto its `AnalysisRun.pass_version`. Previously all linker-created runs had empty `pass_version`. `LinkerContext` gains `create_run()` factory and per-linker identity fields.
+- **`AnalysisRun.version` semantic split fixed** — analyzers now pass `version=PASS_VERSION` (package version) and `pass_version=self.pass_version` (code-hash). Previously analyzers put the code-hash in `version`, making `run_signature` semantically incomparable across analyzer vs linker runs.
 - **Disambiguation-fallback discipline** — thirteen linkers adopt `confidence ≤ 0.5` + `meta["disambiguation_fallback"]=True` for ambiguous simple-name resolutions. New fallback-coherence linter pins the contract statically.
 - **URL-folding logic extracted** from the HTTP linker into a per-idiom YAML + engine substrate (`url_folding/`), preparing for multi-language extension.
 
@@ -514,14 +167,8 @@ Out of scope (Phase 6 PR2+ territory): the `message_dispatch` linker's `:0:messa
 
 - **stdio → logging reclassification** applied to C, Rust, JavaScript, and Elixir catalogs. Cuts ipc_send false positives on non-Python codebases.
 - **Rust and Erlang catalogs promoted to `status: complete`** with `stdlib_provenance` audit trail.
-- **Taint auto-mapping coverage gap closed** — `db_write`, `db_read`, `process_send`, and `logging` boundary types now have `AUTO_SINK_ZONE_MAP` / `AUTO_SOURCE_LABEL_MAP` entries (WI-gofaz). Regression guard test prevents silent gaps when new boundary types are added (INV-zivah).
-- **HIGH_RISK_PRIMITIVES drift guard** — property test asserts every entry exists in at least one `io_primitives/*.yaml` catalog, preventing phantom entries. Fixed `stdio.popen` → `stdlib.popen` to match the C catalog (WI-gitad).
-
-#### Language-tag harmonization
-
-- **Objective-C analyzer harmonized to `language="objc"`.** Previously `objc.py` emitted `Symbol.language="objective-c"` while every other consumer (Symbol IDs, edge prefixes, catalog registration, linker activation, file classification) used `"objc"`. Translation tables in `fingerprint.py:_LANG_PACK_OVERRIDES` and `io_boundary.py:_CATALOG_ALIASES` accommodated the mismatch; both entries removed. The `frozenset({"objective-c", "objc"})` in `sketch.py` collapses to `frozenset({"objc"})`. Two regression tests previously named `*_despite_mismatch` retitled and rewritten as consistent-canonical-form tests. Class attribute `lang = "objective-c"` on the analyzer (used in `analysis skipped` warning text) also harmonized to `"objc"`. Affected: stable_id values for Objective-C Symbols change in this release.
-- **Ansible analyzer's emitted language tag formalized.** `yaml_ansible.py` emits `Symbol.language="ansible"` and constructs IDs via `make_symbol_id("ansible", ...)`. The analyzer's registration now declares `languages=["ansible"]` so `all_known_languages()` returns `"ansible"` (catalog-conformant). Analyzer's pipeline identity (registration `name`, `PASS_ID`, depends-on references) remains `"yaml_ansible"`. No translation infrastructure or stable_id change.
-- **gRPC linker's `language="protobuf"` collapsed to `language="proto"`.** `grpc.py:230` (GrpcPattern construction for proto-file scans) and `grpc.py:944` (Route synthetic emit) changed from the non-catalog `"protobuf"` value to `"proto"`, matching the proto analyzer's catalog registration at `proto.py:371` (`@register_analyzer("proto")`). Zero tests asserted `language="protobuf"` on Symbols, so no regression-test churn. Framework-axis usage (`LinkerActivation(frameworks=["grpc", "protobuf"])` at `grpc.py:1162` and the parallel sites in `profile.py`, `linker_activation.py` tests) is unaffected — that's a separate vocabulary from the language axis. Closes the third of the four catalog-conformance findings from the 2026-05-30 symbol-emit-coherence audit. Affected: stable_id values for gRPC service / Route Symbols emitted from .proto file scans change in this release (language is a SHA256 input to the seven `stable_id` factories).
+- **Taint auto-mapping coverage gap closed** — `db_write`, `db_read`, `process_send`, and `logging` boundary types now have `AUTO_SINK_ZONE_MAP` / `AUTO_SOURCE_LABEL_MAP` entries. Regression guard test prevents silent gaps when new boundary types are added.
+- **HIGH_RISK_PRIMITIVES drift guard** — property test asserts every entry exists in at least one `io_primitives/*.yaml` catalog, preventing phantom entries. Fixed `stdio.popen` → `stdlib.popen` to match the C catalog.
 
 #### Other changes
 
@@ -530,14 +177,15 @@ Out of scope (Phase 6 PR2+ territory): the `message_dispatch` linker's `:0:messa
 - **`hypergumbo run --out` help text lists side-output files** (compact-tier previews, handler slices).
 - **Ten `git rev-parse` call-sites hardened** against unverified-ref stdout contamination.
 - **Framework `Pattern.meta_match` field** re-binds YAML rules to post-fold emission shapes (canonical kind + meta keys).
-- **`Symbol.fingerprint` populated** for source-code Symbols via centralized AST/tree-sitter structural hashing.
+- **`Symbol.fingerprint` populated** for source-code Symbols via centralized AST/tree-sitter structural hashing. The seven config / data-language analyzers (`cmake.py`, `css.py`, `json_config.py`, `toml_config.py`, `sql.py`, `xml_config.py`, `wasm_bindgen.py`) that had been emitting a producer-side 16-char prefix-less hash now also funnel through this central post-pass, so every Symbol's `fingerprint` is now in canonical `hgfp1:<64-char-sha256>` (Format 2) form. TOML dependency nodes had been the visible drift case (99 nodes per run carried the Format-1 hash).
 
 
 ### Removed
 
 - **`apply_sibling_impl_weights` removed from dampener stack** (8 → 7 stages). A 6-repo audit found zero top-100 movement; the upstream `apply_common_method_name_weights` already handled the same groups.
-- **`origin_run_signature` removed from Symbol and Edge** — never stamped by any producer (zero writes across all analyzers and linkers). `from_dict()` silently ignores the key for backward compatibility with pre-removal JSON (WI-gapin).
-- **`requires_symbols` removed from `RegisteredAnalyzer` and `@register_analyzer`** — a never-passed, never-consumed multi-pass-symbol-consumption stub superseded by `depends_on` (INV-hujog), which carries CNF pass-id dependencies that are actually validated (WI-burin).
+- **`origin_run_signature` removed from Symbol and Edge** — never stamped by any producer (zero writes across all analyzers and linkers). `from_dict()` silently ignores the key for backward compatibility with pre-removal JSON.
+- **`requires_symbols` removed from `RegisteredAnalyzer` and `@register_analyzer`** — a never-passed, never-consumed multi-pass-symbol-consumption stub superseded by `depends_on`, which carries CNF pass-id dependencies that are actually validated.
+- **`Symbol.canonical_name` field removed** (breaking). One schema version after the 0.12.0 deprecation window; the field is dropped from the `Symbol` dataclass declaration, the `to_dict` / `from_dict` round-trip, and the JSON Schema's `#/$defs/Symbol/properties/canonical_name` entry. Consumers should read `symbol.qualified_name` / `dict["qualified_name"]` instead. `from_dict()` silently ignores legacy `canonical_name` keys in pre-removal cached JSON for backward compatibility. SCHEMA_VERSION 0.12.0 → 0.13.0; migration row added to `docs/MIGRATION-5.X-CONCEPT-AXES.md`.
 
 
 ### Fixed
@@ -558,6 +206,7 @@ Out of scope (Phase 6 PR2+ territory): the `message_dispatch` linker's `:0:messa
 
 - **Python class `stable_id` collisions fixed.** Class body signature (method names, field names, base names) now folded into the hash. Previously, five `@dataclass` classes in `ir.py` shared one `stable_id`. STABLE_ID_SCHEME bumped to v3.
 - **Cross-module `stable_id` collisions fixed.** File identity threaded into top-level class and function `stable_id` computation. Structurally-identical classes in different modules now produce distinct hashes. STABLE_ID_SCHEME bumped to v4.
+- **Same-module mass collisions fixed.** `compute_stable_id` and `py.py::_compute_stable_id` hash signatures gain `name` and `qualified_name` segments (kwarg-only for back-compat), threaded through every analyzer call site across ~30 analyzer files (bash, sql, lua, perl, powershell, ruby, c, cpp, objc; ada, apex, asm, d_lang, fennel, fish, gleam, hack, haxe, janet, jsonnet, luau, matlab, meson, nim, odin, pascal, prisma, racket, scheme, smithy, starlark, tcl, v_lang, hlsl, purescript). Pre-fix self-analysis showed 60.2% of Symbols sharing `stable_id` with at least one other (20,517 of 34,108 symbols, 3,822 collision groups) — driven by 155 zero-parameter bash functions in `scripts/lib/forgejo-api.sh` all hashing to one ID, 152 zero-parameter pytest tests in `test_profile.py` likewise, and several smaller groups. Trade-off: the contract is rebranded — `stable_id` now represents "structural identity within a (qualified_name, module_path) scope; survives BODY edits, NOT rename or move," not the pre-Phase-6 "survives renames" promise. STABLE_ID_SCHEME bumped to v5. The typed-tier factories (`make_route_stable_id`, `make_entry_stable_id`, `make_typed_stable_id`, `make_protocol_stable_id`) are unchanged — they already disambiguate via their per-formula inputs (sig / route / category+parts).
 - **Eight Symbol kinds now carry `stable_id`** (variable, module, dependency, export, project, interface, type, file). Previously 6.1% of Symbols had `stable_id=None`. A backstop pass stamps kind-specific values.
 - **Three file-id dedup fixes** (websocket, js_module, vue_component linkers). All emitted file Symbols with legacy id shapes that never collided with canonical ids, preventing cross-producer dedup. Each now uses `make_file_id()`.
 - **File/module double-representation collapsed.** Python (then JS/TS, Bash, Perl, PHP, PowerShell) no longer emit both `kind="module"` and `kind="file"` for the same path.
@@ -567,6 +216,7 @@ Out of scope (Phase 6 PR2+ territory): the `message_dispatch` linker's `:0:messa
 #### Analysis correctness
 
 - **SQL `CREATE TABLE` entities no longer dropped by `_NOISE_KINDS` filter.** The `"table"` entry intended to suppress TOML/INI sections also suppressed SQL tables, leaving the database_query linker unable to produce edges. Now language-gated.
+- **Solidity import-alias scan no longer misreads `require()` error-message strings as import paths.** `solidity.py::_extract_import_aliases` was being called on every AST node, not only `import_directive` nodes. The helper finds the first `string` child and uses its text as the import path; on a `require(condition, "Not owner")` call (and similar patterns with string-literal arguments), it was falling back to that string. The Solidity analyzer was emitting an `imports` edge with `dst="Not owner"`, which `ir.py:synthesize_file_symbols_for_dangling_edges` then materialized as an `external_symbol` Symbol with `language="Not owner"` and an `id` of the same shape. The loop body now gates on `node.type == "import_directive"`; legitimate imports continue to resolve.
 - **JS/TS HTTP/GraphQL server-handler UC extraction.** Framework pattern rules for Node HTTP and Apollo were silently no-ops because the analyzer only emitted UCs for a small bootstrap-names allowlist. New extractor covers the full target set.
 - **JS/TS `access_mode` annotation coverage on call edges.** Calls inside `return` / `throw` / `yield` / `await` were unclassified, leaving `--dataflow` slices empty on TypeScript repos. Adds positional rules for those contexts plus expanded `library_patterns` for mutators, ORM verbs, RxJS, EventEmitter, and Promise/Observable readers.
 - **Apollo HTTP-entrypoint patterns relocated** from framework-gated `graphql.yaml` to always-loaded `node-http.yaml`, fixing detection on workspace-imported Apollo repos.
@@ -597,7 +247,9 @@ Out of scope (Phase 6 PR2+ territory): the `message_dispatch` linker's `:0:messa
 - **Test directories no longer route to `supply_chain.tier=2` (internal_dep).** Tests are first-party. Previously 99.8% of tier-2 paths on self-analysis were test files.
 - **`profile.languages` no longer double-counts** shell scripts under both `bash` and `shell` keys.
 - **`profile.languages[L].files` agrees with `analysis_runs[L].files_analyzed`** for languages with custom file finders (e.g., bash extensionless shebang scripts).
-- **`metrics.total_files` is now canonical** — equals `sum(profile.languages[*].files)`. Non-canonical counts relocated to `metrics.debug`.
+- **`metrics.total_files` is now canonical** — equals `len({n.path for n in nodes if n.path})` (node-distinct path count). The legacy profile-language sum (over-counted by ~296 vs node-distinct on self-analysis) now rides in `metrics.debug.profile_files_sum` for introspection.
+- **`metrics.by_supply_chain_tier["unknown"]` no longer minted.** Edges whose `src` isn't in `node_id_to_tier` were producing a phantom `unknown: {edges: 23, nodes: 0}` bucket on self-analysis; they're now silently excluded from the per-tier edge count.
+- **`total_io_edges` canonical definition codified** in `io_boundary.py` as `sum(len(e.chains) for e in entries.values())` (post-`external_potential` chain count). The pre-external_potential `tagged_count` reference at the unfiltered-serializer site is gone; the filtered path in `cli.py:cmd_io_boundaries` already used the post-chain-sum convention, so both paths now agree.
 - **Sketch and `test-coverage` report the same percentage** on identical input. Previously a 34-point discrepancy due to edge-set and test-identification methodology differences.
 - **Sketch structure tree no longer renders `<external>` placeholder** as a root-level file.
 
@@ -611,13 +263,19 @@ Out of scope (Phase 6 PR2+ territory): the `message_dispatch` linker's `:0:messa
 
 - **`Edge.origin` / `Edge.origin_run_id` enforced non-empty at construction.** Previously 425 edges had empty provenance. 67 construction sites fixed; `from_dict()` injects a sentinel for legacy JSON.
 - **Every Symbol-producing linker now stamps `origin` and `origin_run_id`.** Previously 95 Symbols from 12 linkers had empty provenance.
-- **`AnalysisRun.config_fingerprint` consistently populated.** 11 analyzers bypassing the factory method now auto-default via `__post_init__`.
+- **`AnalysisRun.config_fingerprint` consistently populated with per-class fingerprints.** 11 analyzers that had been bypassing the factory method now auto-default via `__post_init__`. Pre-Phase-6 every one of the 84 self-analysis runs carried the literal `sha256:44136fa355b3678a` (sha256 of `{}`) because `AnalysisRun.create(pass_id, version)` was being called with no config arg; the new `TreeSitterAnalyzer._get_config_dict()` + `_stamp_config_fingerprint()` derive a per-analyzer `sha256:<16hex>` fingerprint from class identity + grammar + file-pattern set. Subclasses can override `_get_config_dict()` to thread real per-run config.
+- **`AnalysisRun.pass_version` auto-stamped for tree-sitter analyzers.** Mirrors the existing linker-side stamping. `TreeSitterAnalyzer._analyze_body` now auto-stamps `pass_version = compute_pass_version(type(self))` when the subclass hasn't set one explicitly. 44 previously-unstamped tree-sitter analyzer runs now carry a real code-hash.
+- **`AnalysisRun.toolchain` reflects the dependency chain that produced the analysis.** New `_extend_toolchain()` extends the default `{name: python, version: <host>}` with `tree_sitter_version`, `grammar_module`, and `grammar_version` (when the grammar package exposes `__version__`). Replaces the prior host-Python-only stamp.
+- **`AnalysisRun.warnings` populated on the grammar-unavailable producer path.** `TreeSitterAnalyzer._analyze_body` now explicitly appends the grammar-unavailable skip message to `run.warnings` before calling `warnings.warn` — thread-safe across the analyzer-runner `ThreadPoolExecutor`.
+- **`Edge.quality` derived from evidence.** New `_derive_edge_quality()` helper in `ir.py` populates `quality = {score, reason}` from `confidence` / `is_resolved` / `derived_from` when the producer doesn't set it. Reason tags: `high_confidence_direct` (≥ 0.95), `resolved_call_site` ([0.8, 0.95)), `derived_from_linker_evidence`, `medium_confidence`, `low_confidence_fallback` (< 0.5).
+- **`Limits.add_classification_failure` now wired up.** Pre-fix the method existed but had no callers, so `Limits.classification_failures` was always empty on disk. `_classify_symbols` now accepts an optional `limits` kwarg, records each "outside repo" classification fall-through with per-path dedup (no N-copies for N symbols on the same un-classifiable path), and is wired from `cli.run_behavior_map`.
 - **`AnalysisRun.repo_fingerprint` computed** per the spec algorithm. Previously `None` on 100% of runs.
 - **Self-analysis validates against `docs/schema.json`.** Fixed `line=0` on module_exports edges and added missing top-level keys. SCHEMA_VERSION 0.8.0 → 0.9.0.
 - **Schema conformance + coverage gates folded** into one ~5s CI step (was 3.5 min).
 - **HTTP linker emits `kind="call_site"`** for client call sites (was `kind="function"`, causing dead-code false positives).
 - **Orchestrator file-symbol synthesis** no longer stamps absolute paths into `Symbol.name` or hardcodes `span=1-1`.
 - **WebSocket linker no longer creates phantom `kind="file"` Symbols** with wrong language and missing `stable_id`.
+- **`verify-claims` no longer silently confirms unconstrained claims.** Both `verify_claim` and `verify_taint_claim` had a fall-through branch that returned `verdict="confirmed", details="No constraint to check."` when no machine-checkable constraint matched the claim. That made "claim has no constraint" indistinguishable from "claim was checked and passed" — a security-flavored false-positive class. A new `ClaimVerdict.verdict` value `inconclusive` covers the unconstrained case; the field's annotation upgrades to `# axis: bounded-enum`. The CLI gains exit code `2` for "at least one inconclusive (and zero violated)", a `?` icon for the inconclusive row in console output, and a per-verdict summary line (`N VIOLATED, M INCONCLUSIVE (of K claim(s))`). Exit 0 still means all claims confirmed; 1 still means at least one violated.
 
 #### Dead-code analysis
 
@@ -649,7 +307,6 @@ Out of scope (Phase 6 PR2+ territory): the `message_dispatch` linker's `:0:messa
 - **ADR-0022** status update: by-category drift detection landed; by-language `LanguageProfile` deferred.
 - **ADR-0017** implementation note: sinks now derived from `io_primitives/*.yaml`; built-in `taint_sinks/` removed.
 - **SCIP generalization vision sketch** added (`docs/future/scip-generalization-vision.md`).
-- **`Symbol.canonical_name` scope clarified** — populated only by Verilog/VHDL analyzers.
 
 
 
