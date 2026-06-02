@@ -1,0 +1,22 @@
+- op: create  # 9076
+  at: '2026-06-02T03:35:35Z'  # 9076
+  by: agent  # 9076
+  actor: jgstern_agent  # 9076
+  clock: 1  # 9076
+  nonce: '9076'  # 9076
+  data:  # 9076
+    kind: work_item  # 9076
+    title: "Edge has two unique-id fields (id + edge_key); semantic difference not documented, naming diverges from Symbol's id/stable_id convention"  # 9076
+    status: todo_soft  # 9076
+    priority: 3  # 9076
+    parent:  # 9076
+    tags:  # 9076
+    - pass22  # 9076
+    - naming_convention  # 9076
+    - documentation  # 9076
+    isbefore: []  # 9076
+    duplicate_of: []  # 9076
+    not_duplicate_of: []  # 9076
+    pr_ref:  # 9076
+    description: "**Pass-22 finding (F9).** Every edge in pass-22 substrate has TWO unique identifier fields:\n\n- `edge.id`: `edge:sha256:17ae7e43bd3ca98c` (109,915 / 109,915 populated, 109,915 distinct)\n- `edge.edge_key`: `edgekey:sha256:4ca7645b4389a13d` (109,915 / 109,915 populated, 109,915 distinct)\n\nBoth 100% populated, both 100% unique. Different prefix conventions (`edge:` vs `edgekey:`). Different sha256 values for the same edge (computed from different inputs).\n\n**Suspect intended semantics.** Likely `id` is per-edge-instance (changes when the edge is regenerated against new substrate) while `edge_key` is the structural-identity hash (stable across regenerations as long as (src, dst, type, evidence_type, ...) tuple is unchanged). Same pattern as `Symbol.id` vs `Symbol.stable_id`.\n\n**Issue.** The semantic difference is not surfaced in the field names or in obvious user-facing documentation. Consumers must read the producer code to know which to use. Worse, the naming convention diverges from Symbol's (`stable_id`), making the Edge case harder to recognize as the same pattern.\n\n**Suggested fix.** Either:\n- Rename `edge.edge_key → edge.stable_id` to mirror the Symbol convention.\n- Or document both fields' semantics in the IR docstring (and possibly the spec) — current Edge dataclass docstring does not say.\n\nIf the validator's id_format class is supposed to enforce these formats, it should also check that whatever the structural-identity field is named, it has a documented stability contract.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06012026_2340_pass22.md`."  # 9076
+    fields: {}  # 9076

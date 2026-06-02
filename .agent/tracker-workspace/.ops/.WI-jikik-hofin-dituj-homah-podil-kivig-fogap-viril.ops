@@ -1,0 +1,22 @@
+- op: create  # 4f2c
+  at: '2026-06-02T03:35:17Z'  # 4f2c
+  by: agent  # 4f2c
+  actor: jgstern_agent  # 4f2c
+  clock: 1  # 4f2c
+  nonce: 4f2c  # 4f2c
+  data:  # 4f2c
+    kind: work_item  # 4f2c
+    title: "metrics.languages.<lang>.files = 0 for all 18 language entries; per-language file rollup unpopulated"  # 4f2c
+    status: todo_hard  # 4f2c
+    priority: 2  # 4f2c
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 4f2c
+    tags:  # 4f2c
+    - pass22  # 4f2c
+    - writer_contract  # 4f2c
+    - metrics_rollup  # 4f2c
+    isbefore: []  # 4f2c
+    duplicate_of: []  # 4f2c
+    not_duplicate_of: []  # 4f2c
+    pr_ref:  # 4f2c
+    description: "**Pass-22 finding (F7).** `metrics.languages` has 18 entries (one per language). Each carries `nodes`, `edges`, `files`. The `nodes` and `edges` sub-fields are populated and consistent with actual counts; the `files` sub-field is **`0` for every single language**:\n\n```\nansible:    nodes=1,     edges=0,      files=0\nbash:       nodes=218,   edges=291,    files=0\npython:     nodes=33703, edges=109422, files=0\ntypescript: nodes=67,    edges=134,    files=0\nunknown:    nodes=0,     edges=23,     files=0\n... (all 18 entries have files=0)\n```\n\nTop-level `metrics.total_files=915` AND `metrics.debug.unique_paths_in_analysis=915` confirm the data exists at top level. The per-language rollup is not populated despite the data being available.\n\n**Why the validator missed it.** Writer-contract validator class only verifies per-AnalysisRun field population, not aggregate roll-ups. No invariant requires `sum(metrics.languages.*.files) == metrics.total_files`. Cross_field class doesn't model this.\n\n**Significance.** Any consumer reading `metrics.languages` to plot a per-language file-count breakdown gets 0 across the board. LLM consumers asked \"how many Python files?\" from metrics alone will mis-answer.\n\n**Fix.** Either populate `metrics.languages.<lang>.files` in the metrics writer using the same per-language file count that drives the analysis_runs[].files_analyzed sums (the data is already discovered during the discovery phase), OR remove the field from the schema. The current state — schema reserves the field but writer doesn't populate — is the same INV-virik / INV-luhur writer-contract pattern at the aggregate-metrics layer.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06012026_2340_pass22.md`."  # 4f2c
+    fields: {}  # 4f2c

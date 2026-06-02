@@ -68,3 +68,10 @@
   clock: 6  # 46b5
   nonce: 46b5  # 46b5
   message: "Closed by Phase 6 PR2 (commit 98533c0fff). TreeSitterAnalyzer._extend_toolchain appends tree_sitter_version + grammar_module + grammar_version (via importlib.metadata) to run.toolchain. 31 distinct toolchain shapes on self-analysis (was 1). Tests: test_toolchain_extended_with_grammar_module, test_toolchain_extended_with_language_pack. Needs bakeoff validation."  # 46b5
+- op: discuss  # 1fd2
+  at: '2026-06-02T03:24:10Z'  # 1fd2
+  by: agent  # 1fd2
+  actor: jgstern_agent  # 1fd2
+  clock: 7  # 1fd2
+  nonce: 1fd2  # 1fd2
+  message: "Pass-21 confirmation observation. Re-measured on fresh post-INV-sugat-closure substrate. `limits.skipped_passes` at the top level was not re-checked, but `AR.skipped_passes` is 0/84 (0%) across all AnalysisRuns — same as pre-fix state. Either the fix that flipped this to pending_validation was not actually deployed, or it was deployed but only the producer side (top-level limits) got it and the consumer side (per-AR skipped_passes copy) was left untouched. Suggesting flip pending_validation → violated unless someone can identify the deployed fix that should have addressed this. Pass-21 notebook entry: `~/hypergumbo_lab_notebook/notebookjournal_06012026_2310_pass21.md`."  # 1fd2

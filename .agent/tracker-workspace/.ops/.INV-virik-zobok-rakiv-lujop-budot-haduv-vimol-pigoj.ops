@@ -57,3 +57,10 @@
   clock: 5  # e4c3
   nonce: e4c3  # e4c3
   message: "Closed by Phase 6 PR2 (commit 98533c0fff). cli._classify_symbols now accepts limits kwarg and records 'outside repo' fall-throughs into Limits.add_classification_failure. The previously zero-caller writer path is now wired. Test: test_supply_chain.TestClassifySymbolsRecordsClassificationFailures (4 new tests). Needs bakeoff validation."  # e4c3
+- op: discuss  # 9711
+  at: '2026-06-02T03:24:04Z'  # 9711
+  by: agent  # 9711
+  actor: jgstern_agent  # 9711
+  clock: 6  # 9711
+  nonce: '9711'  # 9711
+  message: "Pass-21 confirmation observation. Re-measured field population on fresh post-INV-sugat-closure substrate (`/tmp/hg-dogfood-s21/bm.json`, 84 AnalysisRuns):\n\n- AR.failed_files: 0/84 (0%) populated\n- AR.warnings: 0/84 (0%) populated  \n- AR.skipped_passes: 0/84 (0%) populated\n\nThe three 'reserved provenance fields' identified by this invariant remain 100% empty across all AnalysisRuns. Either (a) the fix was not actually deployed and INV-virik should flip pending_validation → violated, or (b) these fields are correctly empty when there are no failures/warnings/skips and the invariant title overclaims. Suggesting (a) given that we'd expect SOME warnings across 84 passes on a 902-file codebase — `warnings: []` for every single AnalysisRun is suspicious. Pass-21 notebook entry: `~/hypergumbo_lab_notebook/notebookjournal_06012026_2310_pass21.md`."  # 9711
