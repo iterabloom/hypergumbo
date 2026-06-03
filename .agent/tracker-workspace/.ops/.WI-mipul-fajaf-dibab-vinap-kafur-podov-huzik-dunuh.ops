@@ -36,3 +36,10 @@
   clock: 3  # 5f60
   nonce: 5f60  # 5f60
   message: "Investigated 2026-06-01 for cluster context. Parent set to INV-luhur (P1 violated, writer-contract META) because it spans three direct children: INV-lidul (config_fingerprint, still violated), INV-gizik (per-pass timer, still violated), INV-nihug (skipped_passes mirror, now pending_validation). Phase 6 PR2 (98533c0fff) closed these for analyzers inheriting TreeSitterAnalyzer._analyze_body via auto-stamping; ~14 analyzers that override analyze() entirely (go, csharp, java, python, html, javascript, xml, yaml_ansible, json, toml, make, manifest_targets, play-routes, plus enclosure-linker variants) bypass _analyze_body and remain affected. Doesn't duplicate any preexisting row — it's the override-path tail of three sibling INV-luhur children."  # 5f60
+- op: discuss  # 94e5
+  at: '2026-06-02T04:38:34Z'  # 94e5
+  by: agent  # 94e5
+  actor: jgstern_agent  # 94e5
+  clock: 4  # 94e5
+  nonce: '94e5'  # 94e5
+  message: "**Pass-23 confirmation observation.** Pass 23 explicitly enumerated AR `pass_version=None`. Result: exactly 14/84 ARs (16.7%) have pass_version=None, and they are the exact override-analyze() set listed in this WI's description:\n\n```\n['html', 'go', 'csharp', 'javascript', 'play-routes', 'yaml_ansible',\n 'xml', 'json', 'java', 'manifest_targets', 'toml', 'make', 'python',\n 'enclosure-linker']\n```\n\nWI-mipul's framing verified empirically. No scope change.\n\n**Adjacent observation (filed as separate INV-luhur discussion, F23.2):** `AnalysisRun.toolchain.name='python'` for ALL 84 ARs, including grammar-based passes like rust (which DO have `grammar_module='tree_sitter_rust'` populated). The toolchain dict IS populated on every AR (so it's not a missing-extension gap that WI-mipul covers); but the `name` field carries the runtime name, not the analyzer language. Different concern; recorded on INV-luhur to keep WI-mipul scope tight.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06022026_0010_pass23.md`."  # 94e5
