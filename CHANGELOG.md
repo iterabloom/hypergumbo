@@ -10,6 +10,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+<!-- 2026-06-03: verifying auto-pr end-to-end after Codeberg combined-status aggregator recovery -->
+
 > **User-facing view:** see [docs/RELEASE-NOTES-5.X.md](docs/RELEASE-NOTES-5.X.md)
 > for the reader-friendly summary of what's changed. This file (CHANGELOG.md)
 > remains the implementer log.
