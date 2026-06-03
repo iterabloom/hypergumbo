@@ -46,6 +46,9 @@ from hypergumbo_tracker.store import (
 _VALID_OP_TYPES = frozenset({
     "create", "update", "discuss", "discuss_clear", "discuss_summarize",
     "lock", "unlock", "promote", "demote", "stealth", "unstealth", "reconcile",
+    # WI-zonur: edit-mode message ops
+    "edit-mode-on", "edit-mode-off",
+    "delete-msg", "undelete-msg", "edit-msg-text",
 })
 
 # Required common fields on every op
@@ -68,6 +71,13 @@ _OP_SPECIFIC_FIELD_ORDER: dict[str, list[str]] = {
     "stealth": [],
     "unstealth": [],
     "reconcile": ["from_tier", "reason"],
+    # WI-zonur — keep the canonical field order in lockstep with
+    # store._SerializeOp's input shape.
+    "edit-mode-on": ["ttl_seconds", "cap_max"],
+    "edit-mode-off": [],
+    "delete-msg": ["item", "target_nonce", "reason"],
+    "undelete-msg": ["item", "target_nonce", "reason"],
+    "edit-msg-text": ["item", "target_nonce", "new_text", "reason"],
 }
 
 

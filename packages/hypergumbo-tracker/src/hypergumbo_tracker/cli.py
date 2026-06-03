@@ -44,6 +44,7 @@ from hypergumbo_tracker.models import (
 from hypergumbo_tracker.store import (
     AmbiguousPrefixError,
     CorruptFileError,
+    EditModeNotActiveError,
     FrozenItemError,
     HumanAuthorityError,
     ItemExistsError,
@@ -79,6 +80,8 @@ _MUTATION_COMMANDS: frozenset[str] = frozenset({
     "promote", "demote", "stealth", "unstealth",
     "delete", "reconcile-reset", "fork-setup",
     "batch",
+    # WI-zonur — edit-mode message ops
+    "edit-mode", "delete-msg", "undelete-msg", "edit-msg-text",
 })
 # Note: "tui" is NOT here — it handles auto-sync internally,
 # only when it actually mutated data (see _cmd_tui).
@@ -160,8 +163,21 @@ def _format_item_short(item: CompiledItem, idx: int | None = None) -> str:
     return "  ".join(parts)
 
 
-def _format_item_full(item: CompiledItem) -> str:
-    """Format item as a detailed multi-line display."""
+def _format_item_full(
+    item: CompiledItem,
+    *,
+    include_deleted: bool = False,
+    include_history: bool = False,
+) -> str:
+    """Format item as a detailed multi-line display.
+
+    WI-zonur rendering:
+    - By default, tombstoned discussion entries are suppressed; a one-line
+      `(not shown: N deleted messages)` footer appears when N > 0.
+    - `include_deleted=True` renders tombstones with a `[DELETED]` marker.
+    - `include_history=True` adds an `edit-history:` line for each entry that
+      has prior text revisions, oldest first.
+    """
     lines: list[str] = []
     lines.append(f"{item.id}  {item.title}")
     lines.append(f"  status: {item.status}  priority: P{item.priority}  "
@@ -174,11 +190,28 @@ def _format_item_full(item: CompiledItem) -> str:
             lines.append(f"  fields.{k}: {v}")
     if item.description:
         lines.append(f"  description: {item.description}")
-    if item.discussion:
-        lines.append(f"  discussion: ({len(item.discussion)} entries)")
-        for entry in item.discussion:
+    rendered_entries = [
+        e for e in item.discussion
+        if include_deleted or not e.is_tombstoned
+    ]
+    hidden = sum(
+        1 for e in item.discussion
+        if e.is_tombstoned and not include_deleted
+    )
+    if rendered_entries or hidden:
+        lines.append(f"  discussion: ({len(rendered_entries)} entries)")
+        for entry in rendered_entries:
             prefix = "[summary] " if entry.is_summary else ""
-            lines.append(f"    [{entry.at}] {entry.actor} ({entry.by}): {prefix}{entry.message}")
+            tomb = "[DELETED] " if entry.is_tombstoned else ""
+            lines.append(
+                f"    {tomb}[{entry.at}] {entry.actor} ({entry.by}): "
+                f"{prefix}{entry.message}",
+            )
+            if include_history and entry.edit_history:
+                for prior in entry.edit_history:
+                    lines.append(f"      edit-history: {prior}")
+        if hidden > 0:
+            lines.append(f"  (not shown: {hidden} deleted messages)")
     else:
         lines.append("  discussion: (none)")
     if item.locked_fields:
@@ -197,9 +230,38 @@ def _format_item_full(item: CompiledItem) -> str:
     return "\n".join(lines)
 
 
-def _item_to_dict(item: CompiledItem) -> dict[str, Any]:
-    """Convert CompiledItem to a JSON-serializable dict."""
-    return {
+def _item_to_dict(
+    item: CompiledItem,
+    *,
+    include_deleted: bool = False,
+    include_history: bool = False,
+) -> dict[str, Any]:
+    """Convert CompiledItem to a JSON-serializable dict.
+
+    WI-zonur: tombstoned messages are excluded by default; pass
+    `include_deleted=True` to include them. Each entry's `nonce` and
+    `is_tombstoned` always serialize so downstream consumers can identify
+    targets. `edit_history` only serializes when `include_history=True`.
+    """
+    discussion_entries = [
+        d for d in item.discussion
+        if include_deleted or not d.is_tombstoned
+    ]
+    hidden = sum(
+        1 for d in item.discussion
+        if d.is_tombstoned and not include_deleted
+    )
+    discussion_payload = []
+    for d in discussion_entries:
+        entry: dict[str, Any] = {
+            "by": d.by, "actor": d.actor, "at": d.at,
+            "message": d.message, "is_summary": d.is_summary,
+            "nonce": d.nonce, "is_tombstoned": d.is_tombstoned,
+        }
+        if include_history:
+            entry["edit_history"] = list(d.edit_history)
+        discussion_payload.append(entry)
+    result: dict[str, Any] = {
         "id": item.id,
         "kind": item.kind,
         "title": item.title,
@@ -214,17 +276,16 @@ def _item_to_dict(item: CompiledItem) -> dict[str, Any]:
         "description": item.description,
         "fields": item.fields,
         "locked_fields": sorted(item.locked_fields),
-        "discussion": [
-            {"by": d.by, "actor": d.actor, "at": d.at,
-             "message": d.message, "is_summary": d.is_summary}
-            for d in item.discussion
-        ],
+        "discussion": discussion_payload,
         "frozen": item.frozen,
         "tier": item.tier.value if item.tier else None,
         "created_at": item.created_at,
         "updated_at": item.updated_at,
         "cross_tier_conflict": item.cross_tier_conflict,
     }
+    if hidden > 0:
+        result["hidden_deleted"] = hidden
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -235,10 +296,23 @@ def _item_to_dict(item: CompiledItem) -> dict[str, Any]:
 def _cmd_show(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'show' subcommand."""
     item = ts.get(args.item_id)
+    include_deleted = getattr(args, "include_deleted", False)
+    include_history = getattr(args, "include_history", False)
     if args.json:
-        print(json.dumps(_item_to_dict(item), indent=2))
+        print(json.dumps(
+            _item_to_dict(
+                item,
+                include_deleted=include_deleted,
+                include_history=include_history,
+            ),
+            indent=2,
+        ))
     else:
-        print(_format_item_full(item))
+        print(_format_item_full(
+            item,
+            include_deleted=include_deleted,
+            include_history=include_history,
+        ))
     return EXIT_SUCCESS
 
 
@@ -1036,6 +1110,91 @@ def _cmd_unlock(args: argparse.Namespace, ts: TrackerSet) -> int:
         print(json.dumps({"ok": True}))
     else:
         print("unlocked")
+    return EXIT_SUCCESS
+
+
+# ---------------------------------------------------------------------------
+# WI-zonur — edit-mode + per-message ops
+# ---------------------------------------------------------------------------
+
+
+def _parse_ttl_value(text: str) -> int:
+    """Parse a TTL value like '30m', '1h', '600s', or '600' into seconds.
+
+    Bounds enforcement (max 60 min, min 1 second) lives in Store.edit_mode_on,
+    not here — this helper only converts the surface form.
+    """
+    s = text.strip().lower()
+    if not s:
+        raise ValueError("ttl is empty")
+    if s.endswith("s"):
+        return int(s[:-1])
+    if s.endswith("m"):
+        return int(s[:-1]) * 60
+    if s.endswith("h"):
+        return int(s[:-1]) * 3600
+    return int(s)
+
+
+def _cmd_edit_mode(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'edit-mode' subcommand (on / off / status). Human-only for on/off."""
+    action = args.edit_mode_action
+    if action == "on":
+        ttl = _parse_ttl_value(args.ttl) if args.ttl else 1800
+        ts.edit_mode_on(ttl_seconds=ttl, cap_max=args.cap_max)
+        if args.json:
+            print(json.dumps({"ok": True, "ttl_seconds": ttl, "cap_max": args.cap_max}))
+        else:
+            print(f"edit-mode ON  (ttl={ttl}s, cap={args.cap_max})")
+        return EXIT_SUCCESS
+    if action == "off":
+        ts.edit_mode_off()
+        if args.json:
+            print(json.dumps({"ok": True}))
+        else:
+            print("edit-mode OFF")
+        return EXIT_SUCCESS
+    # status
+    status = ts.edit_mode_status()
+    if args.json:
+        print(json.dumps(status))
+    elif status["on"]:
+        print(
+            f"edit-mode ON  remaining={status['remaining_s']}s  "
+            f"ops_used={status['ops_used']}/{status['cap_max']}",
+        )
+    else:
+        print("edit-mode OFF")
+    return EXIT_SUCCESS
+
+
+def _cmd_delete_msg(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'delete-msg' subcommand (agent-issuable when window is open)."""
+    ts.delete_msg(args.item_id, args.target_nonce, args.reason)
+    if args.json:
+        print(json.dumps({"ok": True}))
+    else:
+        print(f"deleted message {args.target_nonce} on {args.item_id}")
+    return EXIT_SUCCESS
+
+
+def _cmd_undelete_msg(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'undelete-msg' subcommand (agent-issuable when window is open)."""
+    ts.undelete_msg(args.item_id, args.target_nonce, args.reason)
+    if args.json:
+        print(json.dumps({"ok": True}))
+    else:
+        print(f"undeleted message {args.target_nonce} on {args.item_id}")
+    return EXIT_SUCCESS
+
+
+def _cmd_edit_msg_text(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'edit-msg-text' subcommand (agent-issuable when window is open)."""
+    ts.edit_msg_text(args.item_id, args.target_nonce, args.new_text, args.reason)
+    if args.json:
+        print(json.dumps({"ok": True}))
+    else:
+        print(f"edited message {args.target_nonce} on {args.item_id}")
     return EXIT_SUCCESS
 
 
@@ -2163,6 +2322,16 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- show ---
     p_show = sub.add_parser("show", help="Show detailed item info")
     p_show.add_argument("item_id", help="Item ID or prefix")
+    # WI-zonur — undocumented from the front-page help on purpose; surfaces only
+    # in `show --help`. Default rendering suppresses tombstoned messages.
+    p_show.add_argument(
+        "--include-deleted", dest="include_deleted", action="store_true",
+        help="Render tombstoned discussion messages with a [DELETED] marker",
+    )
+    p_show.add_argument(
+        "--include-history", dest="include_history", action="store_true",
+        help="Show prior text revisions for edited discussion messages",
+    )
 
     # --- list ---
     p_list = sub.add_parser("list", help="List items with filters")
@@ -2461,6 +2630,79 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_batch.add_argument(
         "file", help="Path to .htrac batch file, or '-' for stdin",
+    )
+
+    # --- edit-mode (WI-zonur) ---
+    p_em = sub.add_parser(
+        "edit-mode",
+        help="Open/close/inspect the per-message edit-mode window (human only "
+             "for on/off; status is informational)",
+    )
+    em_sub = p_em.add_subparsers(dest="edit_mode_action", required=True)
+    p_em_on = em_sub.add_parser(
+        "on",
+        help="Open an edit-mode window authorizing delete-msg/undelete-msg/"
+             "edit-msg-text ops",
+    )
+    p_em_on.add_argument(
+        "--ttl", default=None,
+        help="Window TTL: '30m' (default), '1h', '600s', or raw seconds. "
+             "Max 60 min.",
+    )
+    p_em_on.add_argument(
+        "--cap-max", dest="cap_max", type=int, default=500,
+        help="Max delete-msg+edit-msg-text ops per window (default 500)",
+    )
+    em_sub.add_parser("off", help="Close any open edit-mode window early")
+    em_sub.add_parser("status", help="Show current edit-mode state")
+
+    # --- delete-msg (WI-zonur) ---
+    p_dm = sub.add_parser(
+        "delete-msg",
+        help="Tombstone a single discussion message by its nonce "
+             "(requires open edit-mode window)",
+    )
+    p_dm.add_argument("item_id", help="Item ID or prefix")
+    p_dm.add_argument(
+        "target_nonce", help="4-char hex nonce of the message to tombstone",
+    )
+    p_dm.add_argument(
+        "--reason", required=True,
+        help="Required free-text reason (<=100 chars)",
+    )
+
+    # --- undelete-msg (WI-zonur) ---
+    p_um = sub.add_parser(
+        "undelete-msg",
+        help="Restore a tombstoned discussion message "
+             "(requires open edit-mode window)",
+    )
+    p_um.add_argument("item_id", help="Item ID or prefix")
+    p_um.add_argument(
+        "target_nonce", help="4-char hex nonce of the message to restore",
+    )
+    p_um.add_argument(
+        "--reason", required=True,
+        help="Required free-text reason (<=100 chars)",
+    )
+
+    # --- edit-msg-text (WI-zonur) ---
+    p_em2 = sub.add_parser(
+        "edit-msg-text",
+        help="Replace the text of a discussion message "
+             "(requires open edit-mode window)",
+    )
+    p_em2.add_argument("item_id", help="Item ID or prefix")
+    p_em2.add_argument(
+        "target_nonce", help="4-char hex nonce of the message to edit",
+    )
+    p_em2.add_argument(
+        "--new-text", dest="new_text", required=True,
+        help="Replacement message text",
+    )
+    p_em2.add_argument(
+        "--reason", required=True,
+        help="Required free-text reason (<=100 chars)",
     )
 
     return parser
@@ -3071,6 +3313,11 @@ def main(argv: list[str] | None = None) -> None:
         "batch": _cmd_batch,
         "serve": _cmd_serve,
         "tags": _cmd_tags,
+        # WI-zonur — edit-mode message ops
+        "edit-mode": _cmd_edit_mode,
+        "delete-msg": _cmd_delete_msg,
+        "undelete-msg": _cmd_undelete_msg,
+        "edit-msg-text": _cmd_edit_msg_text,
     }
 
     handler = handler_map.get(args.command)
@@ -3085,6 +3332,7 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(EXIT_USER_ERROR) from e
     except (
         HumanAuthorityError, LockedFieldError, FrozenItemError, TierMovementError,
+        EditModeNotActiveError,
     ) as e:
         print(f"error: {e}", file=sys.stderr)
         raise SystemExit(EXIT_USER_ERROR) from e

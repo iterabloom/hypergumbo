@@ -34,6 +34,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import secrets
 import subprocess  # nosec B404
 import sys
@@ -104,6 +105,11 @@ class FrozenItemError(Exception):
     """Raised when an agent attempts to write to a frozen item."""
 
 
+class EditModeNotActiveError(Exception):
+    """Raised when a delete-msg/undelete-msg/edit-msg-text op is attempted
+    outside a valid edit-mode window (WI-zonur)."""
+
+
 class CycleError(Exception):
     """Raised when before links would create a cycle."""
 
@@ -172,6 +178,9 @@ _DISCUSSION_SOFT_CAP = 20
 # ---------------------------------------------------------------------------
 # YAML serialization
 # ---------------------------------------------------------------------------
+
+
+_NONCE_RE = re.compile(r"[0-9a-f]{4}")
 
 
 def _make_nonce() -> str:
@@ -272,6 +281,22 @@ def _prepare_op_for_yaml(op_dict: dict[str, Any]) -> CommentedMap:
     elif op_type == "reconcile":
         if "from_tier" in op_dict:
             result["from_tier"] = op_dict["from_tier"]
+        if "reason" in op_dict:
+            result["reason"] = _double_quote(op_dict["reason"])
+    elif op_type == "edit-mode-on":
+        if "ttl_seconds" in op_dict:
+            result["ttl_seconds"] = op_dict["ttl_seconds"]
+        if "cap_max" in op_dict:
+            result["cap_max"] = op_dict["cap_max"]
+    elif op_type == "edit-mode-off":
+        pass  # no op-specific fields
+    elif op_type in ("delete-msg", "undelete-msg", "edit-msg-text"):
+        if "item" in op_dict:
+            result["item"] = op_dict["item"]
+        if "target_nonce" in op_dict:
+            result["target_nonce"] = op_dict["target_nonce"]
+        if op_type == "edit-msg-text" and "new_text" in op_dict:
+            result["new_text"] = _double_quote(op_dict["new_text"])
         if "reason" in op_dict:
             result["reason"] = _double_quote(op_dict["reason"])
 
@@ -646,6 +671,7 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
                 actor=op_dict.get("actor", ""),
                 at=op_dict.get("at", ""),
                 message=op_dict.get("message", ""),
+                nonce=op_dict.get("nonce", ""),
             ))
 
         elif op_type == "discuss_clear":
@@ -658,6 +684,7 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
                 at=op_dict.get("at", ""),
                 message=op_dict.get("message", ""),
                 is_summary=True,
+                nonce=op_dict.get("nonce", ""),
             )]
 
         elif op_type == "lock":
@@ -673,6 +700,11 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
                 item.locked_fields.discard(fn)
 
         # promote, demote, stealth, unstealth, reconcile: audit-only, no state change
+        # edit-mode-on / edit-mode-off / delete-msg / undelete-msg / edit-msg-text:
+        # handled in the dedicated WI-zonur pass below (intentionally skipped here).
+
+    # WI-zonur: edit-mode window tracking + message-op application.
+    _apply_edit_mode_message_ops(item, sorted_ops)
 
     # Clamp updated_at: wall-clock timestamps may not correlate with
     # Lamport clock order (clock drift, cross-branch merges).
@@ -680,6 +712,147 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
         item.updated_at = item.created_at
 
     return item
+
+
+def _parse_iso_timestamp(value: str) -> datetime.datetime | None:
+    """Parse a tracker `at` ISO-8601 timestamp; return None on failure.
+
+    Tracker ops use `%Y-%m-%dT%H:%M:%SZ` (whole-second UTC), but
+    `discuss`-shorthand and historic ops may carry fractional seconds. We
+    accept either by stripping a trailing 'Z' and falling back to fromisoformat.
+    """
+    if not value:
+        return None
+    s = value.rstrip("Z")
+    try:
+        dt = datetime.datetime.fromisoformat(s)
+    except ValueError:  # pragma: no cover — malformed timestamp
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return dt
+
+
+def _apply_edit_mode_message_ops(
+    item: CompiledItem,
+    sorted_ops: list[dict[str, Any]],
+) -> None:
+    """WI-zonur: walk edit-mode ops + message-mutation ops, mutate item.discussion.
+
+    Builds the list of valid edit-mode windows from `edit-mode-on` (by:human only)
+    and `edit-mode-off` ops; then applies surviving `delete-msg` / `undelete-msg`
+    / `edit-msg-text` ops in clock order with per-window cap enforcement.
+
+    Rules:
+    - Windows are half-open: [start, min(start+ttl, next_terminator)).
+    - A later `edit-mode-on` REPLACES (preempts) any open window.
+    - `edit-mode-off` (by:human only) terminates the current window early.
+    - Message-mutation ops outside any valid window are filtered.
+    - Per-window cap counts only successful `delete-msg` + `edit-msg-text`;
+      `undelete-msg` is free.
+    - `edit-msg-text` targeting a currently-tombstoned message is rejected
+      (must undelete first).
+    - Unknown `target_nonce` is silently ignored.
+    """
+    # First, build the entry index by nonce for fast lookup.
+    by_nonce: dict[str, DiscussionEntry] = {
+        e.nonce: e for e in item.discussion if e.nonce
+    }
+    if not by_nonce:
+        # No discuss messages with nonces → nothing edit-mode can do.
+        # Bail out only if there are no edit-mode mutation ops at all.
+        has_msg_ops = any(
+            op.get("op") in ("delete-msg", "undelete-msg", "edit-msg-text")
+            for op in sorted_ops
+        )
+        if not has_msg_ops:
+            return
+
+    # Build window list: each window is (start_dt, end_dt, cap_max).
+    windows: list[tuple[datetime.datetime, datetime.datetime, int]] = []
+    open_start: datetime.datetime | None = None
+    open_end: datetime.datetime | None = None
+    open_cap: int = 0
+
+    for op in sorted_ops:
+        op_type = op.get("op")
+        if op_type == "edit-mode-on":
+            # By-human gate (defense in depth; OS-perm verification lives elsewhere)
+            if op.get("by") != "human":
+                continue
+            at = _parse_iso_timestamp(op.get("at", ""))
+            if at is None:
+                continue  # pragma: no cover — malformed timestamp
+            ttl = int(op.get("ttl_seconds", 1800))
+            cap = int(op.get("cap_max", 500))
+            # Close any open window at the new on op's `at` (preempt).
+            if open_start is not None and open_end is not None:
+                windows.append((open_start, min(open_end, at), open_cap))
+            open_start = at
+            open_end = at + datetime.timedelta(seconds=ttl)
+            open_cap = cap
+        elif op_type == "edit-mode-off":
+            if op.get("by") != "human":
+                continue
+            at = _parse_iso_timestamp(op.get("at", ""))
+            if at is None:
+                continue  # pragma: no cover — malformed timestamp
+            if open_start is not None and open_end is not None:
+                windows.append((open_start, min(open_end, at), open_cap))
+                open_start = open_end = None
+                open_cap = 0
+
+    if open_start is not None and open_end is not None:
+        windows.append((open_start, open_end, open_cap))
+
+    if not windows:
+        return  # Every message-mutation op is filtered.
+
+    # Per-window cap counter, indexed by window-start timestamp.
+    cap_used: dict[datetime.datetime, int] = {w[0]: 0 for w in windows}
+
+    def _window_for(at: datetime.datetime) -> tuple[datetime.datetime, int] | None:
+        """Return (window_start, window_cap) if `at` is inside any window."""
+        for ws, we, wc in windows:
+            if ws <= at < we:
+                return ws, wc
+        return None
+
+    # Apply message ops in clock order.
+    for op in sorted_ops:
+        op_type = op.get("op")
+        if op_type not in ("delete-msg", "undelete-msg", "edit-msg-text"):
+            continue
+        at = _parse_iso_timestamp(op.get("at", ""))
+        if at is None:
+            continue  # pragma: no cover — malformed timestamp
+        win = _window_for(at)
+        if win is None:
+            continue  # Outside any window — filtered.
+        ws, wc = win
+
+        target = op.get("target_nonce", "")
+        entry = by_nonce.get(target)
+        if entry is None:
+            continue  # Unknown target — silently dropped.
+
+        if op_type == "delete-msg":
+            if cap_used[ws] >= wc:
+                continue  # Cap exhausted.
+            entry.is_tombstoned = True
+            cap_used[ws] += 1
+        elif op_type == "undelete-msg":
+            # Uncapped; only flips state if currently tombstoned.
+            entry.is_tombstoned = False
+        elif op_type == "edit-msg-text":
+            if entry.is_tombstoned:
+                continue  # Reject edit on tombstoned (design decision #11).
+            if cap_used[ws] >= wc:
+                continue
+            new_text = op.get("new_text", "")
+            entry.edit_history.append(entry.message)
+            entry.message = new_text
+            cap_used[ws] += 1
 
 
 # ---------------------------------------------------------------------------
@@ -907,6 +1080,22 @@ class Store:
     def item_path(self, item_id: str) -> Path:
         """Get the filesystem path for an item's ops file."""
         return self._ops_dir / f".{item_id}.ops"
+
+    def edit_mode_log_path(self) -> Path:
+        """Path to the global edit-mode log file (WI-zonur).
+
+        Holds all `edit-mode-on` / `edit-mode-off` ops in this ops directory.
+        These ops authorize `delete-msg` / `undelete-msg` / `edit-msg-text` ops
+        on per-item files for a bounded time window.
+        """
+        return self._ops_dir / ".edit-mode.ops"
+
+    def _read_edit_mode_ops(self) -> list[dict[str, Any]]:
+        """Return all edit-mode-on/off ops from the global log; [] if absent."""
+        p = self.edit_mode_log_path()
+        if not p.exists():
+            return []
+        return _parse_ops_file(p)
 
     def frozen_path(self, item_id: str) -> Path:
         """Get the path for an item's freeze sentinel file."""
@@ -1334,6 +1523,307 @@ class Store:
             }
 
         self._append_op(item_path, op_dict)
+
+    # -----------------------------------------------------------------------
+    # WI-zonur: edit-mode + message ops
+    # -----------------------------------------------------------------------
+
+    def edit_mode_on(self, ttl_seconds: int = 1800, cap_max: int = 500) -> None:
+        """Open an edit-mode window. Human-authority only.
+
+        Per design decision #5: default ttl 30 min, max 60 min, half-open
+        `[start, start+ttl)`. Per #6: cap default 500.
+
+        Raises:
+            HumanAuthorityError: If called by an agent.
+            ValueError: If ttl_seconds or cap_max out of accepted range.
+        """
+        if ttl_seconds < 1 or ttl_seconds > 3600:
+            raise ValueError("ttl_seconds must be in [1, 3600]")
+        if cap_max < 1 or cap_max > 500:
+            raise ValueError("cap_max must be in [1, 500]")
+        by, actor = resolve_actor(self._config.agent_usernames)
+        if by == "agent":
+            raise HumanAuthorityError("edit-mode-on requires human authority")
+        op_dict: dict[str, Any] = {
+            "op": "edit-mode-on",
+            # microsecond precision keeps adjacent global-log ops well-ordered
+            "at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%S.%fZ",
+            ),
+            "by": by,
+            "actor": actor,
+            "clock": 0,
+            "nonce": _make_nonce(),
+            "ttl_seconds": ttl_seconds,
+            "cap_max": cap_max,
+        }
+        self._append_global_op(op_dict)
+
+    def edit_mode_off(self) -> None:
+        """Close any open edit-mode window early. Human-authority only.
+
+        Idempotent — writing edit-mode-off when no window is open is harmless
+        (the compile pass simply ignores terminator ops with no open window).
+
+        Raises:
+            HumanAuthorityError: If called by an agent.
+        """
+        by, actor = resolve_actor(self._config.agent_usernames)
+        if by == "agent":
+            raise HumanAuthorityError("edit-mode-off requires human authority")
+        op_dict: dict[str, Any] = {
+            "op": "edit-mode-off",
+            "at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%S.%fZ",
+            ),
+            "by": by,
+            "actor": actor,
+            "clock": 0,
+            "nonce": _make_nonce(),
+        }
+        self._append_global_op(op_dict)
+
+    def edit_mode_status(self) -> dict[str, Any]:
+        """Return the current edit-mode window state.
+
+        Result dict keys:
+        - on: True if a window is open at current wall-clock
+        - remaining_s: int seconds until the window closes (0 if off)
+        - ttl_seconds: window's full ttl
+        - cap_max: window's cap
+        - ops_used: total delete-msg + edit-msg-text ops issued in this window
+          across all items (uncapped undeletes excluded)
+
+        Surfaced for humans only. The agent's CLI never exposes this — agents
+        learn edit-mode state implicitly via try-and-fail per design decision #9.
+        """
+        ops = self._read_edit_mode_ops()
+        now = datetime.datetime.now(datetime.timezone.utc)
+        open_start: datetime.datetime | None = None
+        open_end: datetime.datetime | None = None
+        open_cap = 0
+        open_ttl = 0
+        for op in sorted(ops, key=_op_sort_key):
+            if op.get("by") != "human":
+                continue
+            op_type = op.get("op")
+            at = _parse_iso_timestamp(op.get("at", ""))
+            if at is None:
+                continue  # pragma: no cover — malformed timestamp
+            if op_type == "edit-mode-on":
+                ttl = int(op.get("ttl_seconds", 1800))
+                open_start = at
+                open_end = at + datetime.timedelta(seconds=ttl)
+                open_cap = int(op.get("cap_max", 500))
+                open_ttl = ttl
+            elif op_type == "edit-mode-off":
+                open_start = open_end = None
+                open_cap = 0
+                open_ttl = 0
+        # Auto-expire if past end
+        if open_end is not None and now >= open_end:
+            open_start = open_end = None
+            open_cap = 0
+            open_ttl = 0
+        if open_end is None or open_start is None:
+            return {
+                "on": False,
+                "remaining_s": 0,
+                "ttl_seconds": 0,
+                "cap_max": 0,
+                "ops_used": 0,
+            }
+        remaining = int((open_end - now).total_seconds())
+        # Count message-mutation ops issued inside this window across all items.
+        ops_used = 0
+        for path in self._list_item_files():
+            try:
+                item_ops = _parse_ops_file(path)
+            except (CorruptFileError, OSError):  # pragma: no cover — defensive
+                continue
+            for op in item_ops:
+                if op.get("op") not in ("delete-msg", "edit-msg-text"):
+                    continue
+                at = _parse_iso_timestamp(op.get("at", ""))
+                if at is None:
+                    continue  # pragma: no cover — malformed timestamp
+                if open_start <= at < open_end:
+                    ops_used += 1
+        return {
+            "on": True,
+            "remaining_s": max(0, remaining),
+            "ttl_seconds": open_ttl,
+            "cap_max": open_cap,
+            "ops_used": ops_used,
+        }
+
+    def delete_msg(self, item_id: str, target_nonce: str, reason: str) -> None:
+        """Tombstone a discussion message by its nonce. Edit-mode must be active.
+
+        Reason is required and capped at 100 chars per design decision #7.
+
+        Raises:
+            ItemNotFoundError: If item doesn't exist.
+            ValueError: If reason is empty / >100 chars, or target_nonce isn't
+                a 4-char hex string.
+            EditModeNotActiveError: If no edit-mode window is currently open.
+        """
+        self._write_msg_op(
+            op_type="delete-msg",
+            item_id=item_id,
+            target_nonce=target_nonce,
+            reason=reason,
+        )
+
+    def undelete_msg(self, item_id: str, target_nonce: str, reason: str) -> None:
+        """Restore a tombstoned discussion message. Edit-mode must be active.
+
+        Uncapped — undeletes do not consume the window's cap.
+
+        Raises:
+            ItemNotFoundError: If item doesn't exist.
+            ValueError: If reason is empty / >100 chars, or target_nonce isn't
+                a 4-char hex string.
+            EditModeNotActiveError: If no edit-mode window is currently open.
+        """
+        self._write_msg_op(
+            op_type="undelete-msg",
+            item_id=item_id,
+            target_nonce=target_nonce,
+            reason=reason,
+        )
+
+    def edit_msg_text(
+        self, item_id: str, target_nonce: str, new_text: str, reason: str,
+    ) -> None:
+        """Replace the text of a discussion message. Edit-mode must be active.
+
+        Rejects if the target is currently tombstoned (must undelete first,
+        per design decision #11). Preserves the target's nonce; latest text
+        wins on the rendering side.
+
+        Raises:
+            ItemNotFoundError: If item doesn't exist.
+            ValueError: If reason is empty/>100 chars, target_nonce malformed,
+                target is currently tombstoned, or target message doesn't
+                exist on the item.
+            EditModeNotActiveError: If no edit-mode window is currently open.
+        """
+        self._write_msg_op(
+            op_type="edit-msg-text",
+            item_id=item_id,
+            target_nonce=target_nonce,
+            reason=reason,
+            new_text=new_text,
+        )
+
+    def _write_msg_op(
+        self,
+        *,
+        op_type: str,
+        item_id: str,
+        target_nonce: str,
+        reason: str,
+        new_text: str | None = None,
+    ) -> None:
+        """Internal: validate + write a delete-msg/undelete-msg/edit-msg-text op."""
+        if not reason or len(reason) > 100:
+            raise ValueError("reason is required and must be 1-100 chars")
+        if not _NONCE_RE.fullmatch(target_nonce):
+            raise ValueError(
+                f"target_nonce must be 4 lowercase hex chars, got {target_nonce!r}"
+            )
+
+        item_id = self._resolve_id(item_id)
+        item_path = self.item_path(item_id)
+        if not item_path.exists():  # pragma: no cover — _resolve_id raises ItemNotFoundError first
+            raise ItemNotFoundError(f"Item not found: {item_id}")
+
+        # Implicit edit-mode check — agents get a clear error per design #9.
+        status = self.edit_mode_status()
+        if not status["on"]:
+            raise EditModeNotActiveError(
+                "Edit-mode is not active. This op cannot be applied. "
+                '(Human can run "tracker edit-mode on" to enable.)'
+            )
+
+        # Read current state to validate target message and tombstone status.
+        ops = _parse_ops_file(item_path) + self._read_edit_mode_ops()
+        compiled = compile_ops(ops, item_id)
+        target_entry: DiscussionEntry | None = next(
+            (d for d in compiled.discussion if d.nonce == target_nonce),
+            None,
+        )
+        if target_entry is None:
+            raise ValueError(
+                f"No discussion message with nonce {target_nonce!r} on {item_id}"
+            )
+        if op_type == "edit-msg-text" and target_entry.is_tombstoned:
+            raise ValueError(
+                f"Message {target_nonce!r} is tombstoned; "
+                "run undelete-msg first before editing"
+            )
+
+        by, actor = resolve_actor(self._config.agent_usernames)
+        # Microsecond precision matches edit-mode-on/off precision so windows
+        # bound the message ops correctly when they fall in the same wall-clock
+        # second (common in bulk-edit flows).
+        now_iso = datetime.datetime.now(datetime.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%S.%fZ",
+        )
+        op_dict: dict[str, Any] = {
+            "op": op_type,
+            "at": now_iso,
+            "by": by,
+            "actor": actor,
+            "clock": 0,
+            "nonce": _make_nonce(),
+            "item": item_id,
+            "target_nonce": target_nonce,
+            "reason": reason,
+        }
+        if op_type == "edit-msg-text":
+            # Canonical order: item, target_nonce, new_text, reason
+            op_dict = {
+                "op": op_type,
+                "at": now_iso,
+                "by": by,
+                "actor": actor,
+                "clock": 0,
+                "nonce": op_dict["nonce"],
+                "item": item_id,
+                "target_nonce": target_nonce,
+                "new_text": new_text or "",
+                "reason": reason,
+            }
+        self._append_op(item_path, op_dict)
+
+    def _append_global_op(self, op_dict: dict[str, Any]) -> None:
+        """Append an op to the global edit-mode log (WI-zonur).
+
+        Lighter than `_append_op` — no per-item Lamport clock, no freeze
+        check, no item-level locks. The log is single-writer-friendly enough
+        that we rely on flock for atomicity.
+        """
+        self._ensure_dir_group_writable(self._ops_dir)
+        log_path = self.edit_mode_log_path()
+        op_text = _serialize_op(op_dict) + "\n"
+        # Open in append mode with O_CREAT so the file is created if absent.
+        fd = os.open(
+            log_path,
+            os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+            0o664,
+        )
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                os.write(fd, op_text.encode("utf-8"))
+                os.fsync(fd)
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
 
     # -----------------------------------------------------------------------
     # CRUD: lock() / unlock()
@@ -2058,7 +2548,7 @@ class Store:
         item_path = self.item_path(item_id)
         if not item_path.exists():
             raise ItemNotFoundError(f"Item not found: {item_id}")
-        ops = _parse_ops_file(item_path)
+        ops = _parse_ops_file(item_path) + self._read_edit_mode_ops()
         item = compile_ops(ops, item_id)
         item.frozen = self.is_frozen(item_id)
         return item
@@ -2067,11 +2557,12 @@ class Store:
         """Compile all items in the store."""
         from . import race_log
 
+        edit_mode_ops = self._read_edit_mode_ops()
         items: list[CompiledItem] = []
         for path in self._list_item_files():
             item_id = self._id_from_filename(path)
             try:
-                ops = _parse_ops_file(path)
+                ops = _parse_ops_file(path) + edit_mode_ops
                 item = compile_ops(ops, item_id)
                 item.frozen = self.is_frozen(item_id)
                 items.append(item)
@@ -2089,8 +2580,19 @@ class Store:
         - Cache hit (mtime unchanged) → return cached CompiledItem directly
         - Cache miss → parse + compile + upsert into cache (write-through on read)
 
+        Falls back to _compile_all() when an edit-mode log exists: caching keys
+        on per-item mtime, which doesn't capture global-log changes — so any
+        edit-mode session bypasses the cache.
+
         Falls back to _compile_all() if cache is None.
         """
+        # When the global edit-mode log exists at all, bypass the per-item
+        # cache: cached items can't reflect tombstone/edit state derived from
+        # a file whose mtime isn't part of the cache key. This is the simple,
+        # correct invariant for phase 1 (WI-zonur); future PR can fine-grain.
+        if self.edit_mode_log_path().exists():
+            return self._compile_all()
+
         from . import race_log
 
         items: list[CompiledItem] = []

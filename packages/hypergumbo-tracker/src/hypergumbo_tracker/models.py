@@ -342,13 +342,25 @@ def dict_to_op(d: dict[str, Any]) -> Op:
 
 @dataclass
 class DiscussionEntry:
-    """A single discussion entry in a compiled item."""
+    """A single discussion entry in a compiled item.
+
+    WI-zonur fields (`nonce`, `is_tombstoned`, `edit_history`) drive the
+    edit-mode rendering: `nonce` is the source-of-truth identity used by
+    `delete-msg`/`undelete-msg`/`edit-msg-text` ops; `is_tombstoned` is True
+    when a surviving delete-msg targets this entry's nonce (overridden by a
+    later undelete-msg); `edit_history` holds prior message texts oldest-first
+    (the live `message` is the latest text and is NOT duplicated in
+    `edit_history`).
+    """
 
     by: str
     actor: str
     at: str
     message: str
     is_summary: bool = False
+    nonce: str = ""
+    is_tombstoned: bool = False
+    edit_history: list[str] = field(default_factory=list)
 
 
 @dataclass

@@ -414,6 +414,52 @@ class TrackerSet:
         store.discuss(full_id, message=message, **kwargs)
         self._cache_upsert_item(t, store, full_id)
 
+    def edit_mode_on(self, ttl_seconds: int = 1800, cap_max: int = 500) -> None:
+        """Enable edit-mode across all tiers (WI-zonur). Human-authority only.
+
+        Writes an edit-mode-on op to every tier's global log so subsequent
+        delete-msg / undelete-msg / edit-msg-text ops are authorized regardless
+        of which tier the targeted item lives on.
+        """
+        for store in self._tier_stores.values():
+            store.edit_mode_on(ttl_seconds=ttl_seconds, cap_max=cap_max)
+
+    def edit_mode_off(self) -> None:
+        """Close any open edit-mode window across all tiers. Human-authority only."""
+        for store in self._tier_stores.values():
+            store.edit_mode_off()
+
+    def edit_mode_status(self) -> dict[str, Any]:
+        """Return the workspace tier's edit-mode status as representative.
+
+        Cross-tier scope is single-window single-cap per design (all tiers
+        share the same opening); reading workspace gives the same `on`,
+        `remaining_s`, `ttl_seconds`, `cap_max`. `ops_used` aggregates only
+        workspace-tier items in phase 1 — sufficient for the current
+        fold-correction use case where all targets are workspace items.
+        """
+        return self._workspace.edit_mode_status()
+
+    def delete_msg(self, item_id: str, target_nonce: str, reason: str) -> None:
+        """Resolve item to its tier, delegate delete-msg to that Store (WI-zonur)."""
+        full_id, store, t = self._resolve_id(item_id)
+        store.delete_msg(full_id, target_nonce, reason)
+        self._cache_upsert_item(t, store, full_id)
+
+    def undelete_msg(self, item_id: str, target_nonce: str, reason: str) -> None:
+        """Resolve item to its tier, delegate undelete-msg to that Store (WI-zonur)."""
+        full_id, store, t = self._resolve_id(item_id)
+        store.undelete_msg(full_id, target_nonce, reason)
+        self._cache_upsert_item(t, store, full_id)
+
+    def edit_msg_text(
+        self, item_id: str, target_nonce: str, new_text: str, reason: str,
+    ) -> None:
+        """Resolve item to its tier, delegate edit-msg-text to that Store (WI-zonur)."""
+        full_id, store, t = self._resolve_id(item_id)
+        store.edit_msg_text(full_id, target_nonce, new_text, reason)
+        self._cache_upsert_item(t, store, full_id)
+
     def lock(self, item_id: str, field_names: list[str]) -> None:
         """Resolve item to its tier, delegate lock to that Store."""
         full_id, store, t = self._resolve_id(item_id)

@@ -9,6 +9,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Added
 
+- **WI-zonur phase 1 — per-message edit-mode for tracker discussions.** Three new ops (`delete-msg`, `undelete-msg`, `edit-msg-text`) tombstone, restore, or rewrite individual discussion entries by their existing 4-char nonce. Authorization is window-based: a human-only `edit-mode-on` op opens a half-open `[start, start+ttl)` window (default 30m, max 60m) capped at 500 mutation ops (`undelete-msg` is uncapped); `edit-mode-off` closes the window early; a new `edit-mode-on` preempts an open window. Ops outside any valid window are filtered at compile, not removed from disk. CLI: `tracker edit-mode {on|off|status}` (human only for on/off), `tracker delete-msg ITEM NONCE --reason TEXT`, `tracker undelete-msg ITEM NONCE --reason TEXT`, `tracker edit-msg-text ITEM NONCE --new-text TEXT --reason TEXT`. `tracker show` suppresses tombstones by default with a `(not shown: N deleted messages)` footer; `--include-deleted` renders them with a `[DELETED]` marker; `--include-history` shows prior text revisions for edited messages. OS-perm gate (`.agent/tracker/.edit_mode_ops/` ownership check), TUI keybind, and self-test materialization of the 56 fold-audit reconstructed-row proposals are phase 2/3 follow-ups.
+
 - **Optional `dogfood_anon_id` field on the invariant schema.** New text field in the tracker config template's invariant `fields_schema`, acting as a join key linking a tracker item back to its entry in a self-analysis-dogfooding blind-reassessment corpus. Optional (no `required: true`); existing items validate unchanged. Items carrying the field now render cleanly in `tracker show` / TUI instead of producing an "unknown field" warning.
 
 ### Fixed

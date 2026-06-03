@@ -3957,6 +3957,395 @@ class TestFormatItemFullDiscussion:
         result = _format_item_full(item)
         assert "[summary] Summary text" in result
 
+    def test_tombstones_suppressed_with_footer(self) -> None:
+        """WI-zonur: default `show` hides tombstones with a footer."""
+        item = CompiledItem(
+            id="WI-test", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="human", actor="jgstern",
+                    at="2026-01-15T10:00:00Z", message="visible",
+                    nonce="vvvv",
+                ),
+                DiscussionEntry(
+                    by="agent", actor="test_agent",
+                    at="2026-01-15T10:05:00Z", message="hidden",
+                    nonce="hhhh", is_tombstoned=True,
+                ),
+            ],
+        )
+        result = _format_item_full(item)
+        assert "(1 entries)" in result
+        assert "visible" in result
+        assert "hidden" not in result
+        assert "(not shown: 1 deleted messages)" in result
+
+    def test_include_deleted_renders_with_marker(self) -> None:
+        item = CompiledItem(
+            id="WI-test", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="test_agent",
+                    at="2026-01-15T10:05:00Z", message="hidden",
+                    nonce="hhhh", is_tombstoned=True,
+                ),
+            ],
+        )
+        result = _format_item_full(item, include_deleted=True)
+        assert "[DELETED]" in result
+        assert "hidden" in result
+        # No footer when nothing is suppressed
+        assert "not shown" not in result
+
+    def test_include_history_renders_edits(self) -> None:
+        item = CompiledItem(
+            id="WI-test", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="test_agent",
+                    at="2026-01-15T10:00:00Z", message="v3",
+                    nonce="aaaa", edit_history=["v1", "v2"],
+                ),
+            ],
+        )
+        result = _format_item_full(item, include_history=True)
+        assert "v3" in result
+        assert "edit-history: v1" in result
+        assert "edit-history: v2" in result
+
+
+class TestEditModeCLI:
+    """WI-zonur: CLI edit-mode + delete-msg/undelete-msg/edit-msg-text."""
+
+    def _setup_with_item(
+        self, tmp_path: Path, mock_uid_fixture: Any,
+    ) -> tuple[Path, str, str]:
+        tracker_root = _setup_tracker(tmp_path)
+        # write config so tracker root is initialized
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "init"])
+        # add item with one discuss message
+        ws = tracker_root / "tracker-workspace" / ".ops"
+        # We need to write through CLI to get a real nonce — but we'd have to
+        # then read it back. Easier: write directly with a known nonce.
+        textwrap_dedent = textwrap.dedent("""\
+            - op: create
+              at: "2026-06-03T00:00:00Z"
+              by: agent
+              actor: test_agent
+              clock: 1
+              nonce: a1b2
+              data:
+                kind: work_item
+                title: "Test item"
+                status: todo_hard
+                priority: 2
+            - op: discuss
+              at: "2026-06-03T00:00:10Z"
+              by: human
+              actor: jgstern
+              clock: 2
+              nonce: d001
+              message: "original message"
+        """)
+        # build the nonce-on-every-line format
+        out = []
+        for line in textwrap_dedent.splitlines():
+            stripped = line.rstrip()
+            if not stripped:
+                out.append("")
+                continue
+            # Lines under create op use nonce a1b2; lines under discuss use d001.
+            # Cheap heuristic: track which op we're under.
+            out.append(stripped)
+        # Easier: just write the helper-format file. We'll skip nonce-on-every
+        # line since the parser tolerates its absence in most paths.
+        (ws / ".WI-zonurcli-test-test-test-test-test-test-test.ops").write_text(
+            textwrap_dedent,
+        )
+        return tracker_root, "WI-zonurcli-test-test-test-test-test-test-test", "d001"
+
+    def test_edit_mode_status_default_off(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "init"])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "edit-mode", "status",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        captured = capsys.readouterr()
+        assert "edit-mode OFF" in captured.out
+
+    def test_edit_mode_on_off_human_path(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "init"])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "edit-mode", "on", "--ttl", "60s",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        captured = capsys.readouterr()
+        assert "edit-mode ON" in captured.out
+        # off
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "edit-mode", "off",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_edit_mode_on_rejected_for_agent(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "init"])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "edit-mode", "on",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_delete_msg_without_window_errors(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        tracker_root, iid, msg_nonce = self._setup_with_item(
+            tmp_path, mock_agent_uid,
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "delete-msg", iid, msg_nonce, "--reason", "test",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+        captured = capsys.readouterr()
+        assert "Edit-mode is not active" in captured.err
+
+    def test_ttl_parser_units(self) -> None:
+        from hypergumbo_tracker.cli import _parse_ttl_value
+
+        assert _parse_ttl_value("60") == 60
+        assert _parse_ttl_value("60s") == 60
+        assert _parse_ttl_value("5m") == 300
+        assert _parse_ttl_value("1h") == 3600
+        with pytest.raises(ValueError):
+            _parse_ttl_value("")
+        with pytest.raises(ValueError):
+            _parse_ttl_value("not-a-number")
+
+    def test_edit_mode_on_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "init"])
+        capsys.readouterr()  # discard init output
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "edit-mode", "on", "--ttl", "120s",
+            ])
+        out = capsys.readouterr().out.strip()
+        payload = json.loads(out.splitlines()[0])
+        assert payload["ok"] is True
+        assert payload["ttl_seconds"] == 120
+        assert payload["cap_max"] == 500
+
+    def test_edit_mode_off_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "init"])
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "edit-mode", "on", "--ttl", "60s",
+            ])
+        capsys.readouterr()
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "edit-mode", "off",
+            ])
+        out = capsys.readouterr().out.strip()
+        assert json.loads(out.splitlines()[0])["ok"] is True
+
+    def test_edit_mode_status_on_json_and_text(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "init"])
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "edit-mode", "on", "--ttl", "120s",
+            ])
+        capsys.readouterr()
+        # text mode while ON
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "edit-mode", "status",
+            ])
+        text_out = capsys.readouterr().out
+        assert "edit-mode ON" in text_out
+        # json mode while ON
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "edit-mode", "status",
+            ])
+        json_out = capsys.readouterr().out.strip()
+        payload = json.loads(json_out.splitlines()[0])
+        assert payload["on"] is True
+        assert payload["ttl_seconds"] == 120
+
+    def test_delete_undelete_edit_msg_e2e_through_cli(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        """Full flow: open window → delete → undelete → edit through CLI main()."""
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "init"])
+
+        # Hand-author one item with a known nonce.
+        ws = tracker_root / "tracker-workspace" / ".ops"
+        textwrap_dedent = textwrap.dedent("""\
+            - op: create
+              at: "2026-06-03T00:00:00Z"
+              by: agent
+              actor: test_agent
+              clock: 1
+              nonce: a1b2
+              data:
+                kind: work_item
+                title: "Test item"
+                status: todo_hard
+                priority: 2
+            - op: discuss
+              at: "2026-06-03T00:00:10Z"
+              by: human
+              actor: jgstern
+              clock: 2
+              nonce: d001
+              message: "original message"
+        """)
+        iid = "WI-zonurxyz-test-test-test-test-test-test-test"
+        (ws / f".{iid}.ops").write_text(textwrap_dedent)
+
+        # Open window (as human)
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "edit-mode", "on", "--ttl", "300s",
+            ])
+        capsys.readouterr()
+        # delete-msg (succeeds; reports text)
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "delete-msg", iid, "d001", "--reason", "extracted",
+            ])
+        assert "deleted message d001" in capsys.readouterr().out
+        # undelete-msg (succeeds; json)
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "undelete-msg", iid, "d001", "--reason", "reverting",
+            ])
+        out = capsys.readouterr().out.strip()
+        assert json.loads(out.splitlines()[0])["ok"] is True
+        # edit-msg-text (succeeds; text)
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "edit-msg-text", iid, "d001",
+                "--new-text", "fixed message",
+                "--reason", "wording",
+            ])
+        assert "edited message d001" in capsys.readouterr().out
+        # edit-msg-text (succeeds; json)
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "edit-msg-text", iid, "d001",
+                "--new-text", "even better",
+                "--reason", "wording v2",
+            ])
+        out = capsys.readouterr().out.strip()
+        assert json.loads(out.splitlines()[0])["ok"] is True
+        # delete-msg via --json output mode
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "delete-msg", iid, "d001", "--reason", "test",
+            ])
+        out = capsys.readouterr().out.strip()
+        assert json.loads(out.splitlines()[0])["ok"] is True
+        # undelete via text mode
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root),
+                "undelete-msg", iid, "d001", "--reason", "test2",
+            ])
+        assert "undeleted message d001" in capsys.readouterr().out
+
+
+class TestShowRenderingExtras:
+    def test_include_history_in_json(self) -> None:
+        item = CompiledItem(
+            id="WI-test", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="test_agent",
+                    at="2026-01-15T10:00:00Z", message="v3",
+                    nonce="aaaa", edit_history=["v1", "v2"],
+                ),
+            ],
+        )
+        d = _item_to_dict(item, include_history=True)
+        assert d["discussion"][0]["edit_history"] == ["v1", "v2"]
+
+    def test_hidden_deleted_count_in_json(self) -> None:
+        item = CompiledItem(
+            id="WI-test", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="test_agent",
+                    at="2026-01-15T10:00:00Z", message="hidden",
+                    nonce="aaaa", is_tombstoned=True,
+                ),
+            ],
+        )
+        d = _item_to_dict(item)
+        assert d.get("hidden_deleted") == 1
+        # And the entry list excludes the tombstoned one
+        assert d["discussion"] == []
+
 
 # ---------------------------------------------------------------------------
 # check-messages command
