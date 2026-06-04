@@ -20,3 +20,10 @@
     pr_ref:  # 254e
     description: "Soup-to-nuts methodology-comparable procedure for running 20-pass dogfooding tranches. Integrates 1-20's two-axis consolidation + per-cluster confidence + rejected-clusters log with 21-40's F-number provenance + INVALIDATION discipline + mid-stream audit posture. Architecture: sub-agent orchestration (no operator-babysat tmux), tunable --compact-every (default 2) / --judge-count (default 3) / --mid-tranch-pass (default 10) / --tranch-size (default 20) / --substrate-policy. Six phases: setup, discovery in chunks, mid-tranch checkpoint, two-axis consolidation + blind card writer, fan-out blind judging, trend report + retrospective + carry-forward. Three-artifact bundle per AGENTS.md 'Creating a New Playbook' convention: playbook file, AGENTS.md essentialization, on_transcript_change.py PLAYBOOKS tuple. Human gave explicit conversational approval to bypass the governance --gov gate; proceeding directly via auto-pr per that approval."  # 254e
     fields: {}  # 254e
+- op: discuss  # c219
+  at: '2026-06-04T23:09:54Z'  # c219
+  by: agent  # c219
+  actor: jgstern_agent  # c219
+  clock: 2  # c219
+  nonce: c219  # c219
+  message: "Conversational approval flow: human gave explicit 'I approve all of this and approve using auto-pr WITHOUT --gov' directive in conversation, so this PR proceeds via auto-pr instead of the standard governance approval workflow. Three artifacts in this PR: (1) the playbook file at .agent/agent_playbooks_protocols_sops_skills/twenty-pass-dogfood-procedure.md (~430 lines, six phases with sub-agent prompt templates, tranch-state schema, sentinel convention, recovery table, cost table, tmux fallback appendix), (2) AGENTS.md essentialization (2-sentence summary referencing the playbook), (3) hook tuple registered in .agent/hooks/_shared/on_transcript_change.py PLAYBOOKS list. No supervisor extension included — sub-agent architecture obsoletes the tmux-driver layer for this playbook, supervisor stays orthogonal for autonomous-mode respawn use."  # c219
