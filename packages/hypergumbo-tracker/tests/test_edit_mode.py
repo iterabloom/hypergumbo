@@ -699,10 +699,16 @@ class TestOsPermGate:
     removed from disk.
     """
 
-    def test_log_lives_in_subdir(
+    def test_log_lives_outside_ops_dir(
         self, tmp_path: Path, mock_human_uid: None,
     ) -> None:
-        """Log path moved into `.edit-mode/edit-mode.ops` subdir."""
+        """Log lives at `<ops_dir>/../.edit-mode/edit-mode.ops`, NOT in `.ops/`.
+
+        Out-of-sync-zone placement: the sync code's `_OPS_PATHS` covers
+        `.agent/tracker*/.ops/`, and the OS-perm gate makes the log
+        human-owned (un-deletable by the agent-run sync cleanup). Putting
+        the log outside `.ops/` keeps it out of every sync code path.
+        """
         store = _make_store(tmp_path)
         store.edit_mode_on(ttl_seconds=60)
         p = store.edit_mode_log_path()
@@ -710,6 +716,9 @@ class TestOsPermGate:
         assert p.name == "edit-mode.ops"
         assert p.exists()
         assert p.parent.is_dir()
+        # And — load-bearing — NOT inside the ops dir.
+        assert ".ops" not in p.parts
+        assert p.parent.parent == store.ops_dir.parent
 
     def test_agent_owned_log_is_filtered_at_read(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,

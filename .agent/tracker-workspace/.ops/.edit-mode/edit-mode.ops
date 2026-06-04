@@ -1,9 +1,0 @@
-- op: edit-mode-on  # e501
-  at: '2026-06-04T02:24:55.057124Z'  # e501
-  by: human  # e501
-  actor: jgstern  # e501
-  clock: 0  # e501
-  nonce: e501  # e501
-  ttl_seconds: 1800  # e501
-  cap_max: 500  # e501
-

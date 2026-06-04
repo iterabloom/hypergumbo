@@ -33,6 +33,15 @@ autonomous_intent.txt
 .agent/LOOP
 .agent/disabled.LOOP
 .agent/invariant-ledger.md
+# WI-zonur edit-mode log (per-checkout, OS-owned by the human user; the agent
+# can't unlink it, so it MUST never reach git or sync code paths).
+.agent/tracker/.edit-mode/
+.agent/tracker-workspace/.edit-mode/
+# Defense-in-depth: the previous (now-fixed) placement was inside .ops/. Match
+# any stray .edit-mode/ subdir so a stale checkout doesn't re-introduce the
+# files that PR #4045 accidentally committed.
+.agent/tracker/.ops/.edit-mode/
+.agent/tracker-workspace/.ops/.edit-mode/
 # Per-session transcript pipeline (ADR-0018, per-session amendment 2026-04-08).
 # Each session writes per-session-keyed files. The .last_*/.second_to_last_*
 # global slots are written at session END by rotate-on-session-end.sh.

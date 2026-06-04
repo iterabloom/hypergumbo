@@ -1084,13 +1084,19 @@ class Store:
     def edit_mode_log_path(self) -> Path:
         """Path to the global edit-mode log file (WI-zonur).
 
-        Phase 2 placement: under a dedicated `.edit-mode/` subdirectory whose
-        ownership and mode form the OS-permission gate. Holds all
-        `edit-mode-on` / `edit-mode-off` ops in this ops directory; these
-        authorize `delete-msg` / `undelete-msg` / `edit-msg-text` ops on
-        per-item files for a bounded time window.
+        Placement: a `.edit-mode/` subdirectory at the tier's root, NOT
+        inside `.ops/`. This is deliberate — the sync code (`_OPS_PATHS`
+        in sync.py) sweeps everything under `.ops/`, and the OS-perm gate
+        makes the file human-owned so the agent-run auto-sync cleanup
+        can't `unlink` it. Putting the log outside `.ops/` keeps it out
+        of every sync code path. The directory is also gitignored so it
+        never accidentally lands in commits.
+
+        Holds all `edit-mode-on` / `edit-mode-off` ops; these authorize
+        `delete-msg` / `undelete-msg` / `edit-msg-text` ops on per-item
+        files for a bounded time window.
         """
-        return self._ops_dir / ".edit-mode" / "edit-mode.ops"
+        return self._ops_dir.parent / ".edit-mode" / "edit-mode.ops"
 
     def _ensure_edit_mode_dir(self) -> None:
         """Create `.edit-mode/` subdir with mode 0755 if absent (WI-zonur ph2).

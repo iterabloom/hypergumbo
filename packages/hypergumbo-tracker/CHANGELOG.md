@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Fixed
+
+- **WI-zonur edit-mode log relocated out of the sync zone.** PR #4045 surfaced a structural bug: the phase-2 log path `<ops_dir>/.edit-mode/edit-mode.ops` lived inside `.ops/`, which `sync.py`'s `_OPS_PATHS` sweeps. Two failure modes followed: (1) the human-owned log file got picked up by the auto-sync diff and committed to dev (`58c8921309`); (2) the agent-run sync cleanup tried to `unlink` the file and failed with EACCES because the OS-perm gate (correctly) makes it human-owned. The log now lives at `<ops_dir>/../.edit-mode/edit-mode.ops` — a sibling of `.ops/`, outside every sync code path. The directory is also gitignored at `.agent/tracker*/.edit-mode/` plus a belt-and-suspenders rule for the legacy location `.agent/tracker*/.ops/.edit-mode/`. The two files committed by PR #4045 are `git rm --cached`'d so future syncs leave them alone; the orphaned local files (human-owned, agent-undeletable) can be manually `rm`'d at the user's convenience without affecting tool behavior. Users with an active edit-mode window from the old path will need to `tracker edit-mode on` once to seed the new location.
+
 ### Changed
 
 - **TUI activity-pane message-prefix styling.** Each discussion entry's `<ts> [by]:` prefix is now rendered bold-and-underlined so the boundary between adjacent messages is visually unmistakable. Body text is unstyled as before; no other format change.
