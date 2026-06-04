@@ -63,3 +63,12 @@
   clock: 6  # 7027
   nonce: '7027'  # 7027
   message: "Pass-34 F34.D1 — `hypergumbo search` silently filters `external_symbol` kind from results.\n\nTested 10 patterns against case-insensitive substring on `node.name` in `/tmp/hg-dogfood-s21/bm.json`, compared against `hypergumbo search PATTERN --limit 100000` header counts:\n- `parse`: substrate=571 vs search=545 (delta=26)\n- `test_`: substrate=20372 vs search=20368 (delta=4)\n- `analyze`: substrate=2566 vs search=2530 (delta=36)\n\nProbe D2 root-caused the delta by grouping search output records by kind: `{function:159, method:335, class:38, variable:2, call_site:9, file:2}`. Substrate grouping shows the same kinds plus `external_symbol:26`. **The delta of 26 matches exactly the external_symbol count.**\n\nVerified the filter is kind-based by running `search parse --kind call_site --limit 5` which DOES return call_site nodes — so search supports the kind filter, it just default-excludes external_symbol when no --kind is specified. No override; no `--include-externals` flag.\n\nThis is the same finding-family as F30.11 (INV-ripoh scope already): `symbols` subcommand silently filters file (901) + variable (1609) kinds. Pass-34 extends to `search` filtering `external_symbol`. Three subcommands now exhibit the silent-kind-filter pattern:\n- `symbols` (default): filters file, variable\n- `symbols --all`: filters 2613 nodes (per F30.11)\n- `search` (default): filters external_symbol\n\nThe three filters use different kind-exclusion sets with no documented rationale. INV-ripoh's \"display-contract gap\" framing extends from the column-truncation face (the original title) to the silent-kind-filter face (F30.11) to the search-kind-filter face (F34.D1).\n\n**Fix-path candidate.** Document each subcommand's default-excluded kinds in --help text; provide a flag (e.g., `--include-all-kinds`) to override; emit a footer line \"N additional symbols matched but filtered (excluded kinds: external_symbol)\" when filter activates.\n\n**Probe artifact:** `/tmp/p34_probeD.py`, `/tmp/p34_probeD2.py`, `/tmp/p34_outputD.log`, `/tmp/p34_outputD2.log`. No status change."  # 7027
+- op: delete-msg  # b81a
+  at: '2026-06-04T17:20:39.499644Z'  # b81a
+  by: agent  # b81a
+  actor: jgstern_agent  # b81a
+  clock: 7  # b81a
+  nonce: b81a  # b81a
+  item: INV-ripoh-hirom-lazan-konam-lolop-furot-tozuf-ditot  # b81a
+  target_nonce: '0545'  # b81a
+  reason: "F30.11 fully migrated to WI-sufuh per fold-audit Phase 2b"  # b81a

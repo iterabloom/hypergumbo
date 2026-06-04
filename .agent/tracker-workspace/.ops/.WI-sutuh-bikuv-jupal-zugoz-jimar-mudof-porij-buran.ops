@@ -1,0 +1,22 @@
+- op: create  # 254e
+  at: '2026-06-04T23:08:40Z'  # 254e
+  by: agent  # 254e
+  actor: jgstern_agent  # 254e
+  clock: 1  # 254e
+  nonce: 254e  # 254e
+  data:  # 254e
+    kind: work_item  # 254e
+    title: "Twenty-pass dogfood procedure playbook"  # 254e
+    status: todo_hard  # 254e
+    priority: 2  # 254e
+    parent:  # 254e
+    tags:  # 254e
+    - dogfood  # 254e
+    - methodology  # 254e
+    - playbook  # 254e
+    isbefore: []  # 254e
+    duplicate_of: []  # 254e
+    not_duplicate_of: []  # 254e
+    pr_ref:  # 254e
+    description: "Soup-to-nuts methodology-comparable procedure for running 20-pass dogfooding tranches. Integrates 1-20's two-axis consolidation + per-cluster confidence + rejected-clusters log with 21-40's F-number provenance + INVALIDATION discipline + mid-stream audit posture. Architecture: sub-agent orchestration (no operator-babysat tmux), tunable --compact-every (default 2) / --judge-count (default 3) / --mid-tranch-pass (default 10) / --tranch-size (default 20) / --substrate-policy. Six phases: setup, discovery in chunks, mid-tranch checkpoint, two-axis consolidation + blind card writer, fan-out blind judging, trend report + retrospective + carry-forward. Three-artifact bundle per AGENTS.md 'Creating a New Playbook' convention: playbook file, AGENTS.md essentialization, on_transcript_change.py PLAYBOOKS tuple. Human gave explicit conversational approval to bypass the governance --gov gate; proceeding directly via auto-pr per that approval."  # 254e
+    fields: {}  # 254e

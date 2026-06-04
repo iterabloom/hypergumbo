@@ -37,3 +37,12 @@
   clock: 3  # 3219
   nonce: '3219'  # 3219
   message: "Pass-34 F34.D3 — `hypergumbo search` has split case-sensitivity policy that is undocumented.\n\nThe positional `pattern` argument is case-INSENSITIVE — documented in `search --help`: \"Pattern to search for (case-insensitive substring match)\". This holds: pattern `User` matches `user_id` etc.\n\nThe `--language` and `--kind` flag values are case-SENSITIVE — NOT documented. Tested (`/tmp/p34_outputD.log` D.5):\n- `--language python` → 5 results\n- `--language PYTHON` → 0 results\n- `--language Python` → 0 results\n- `--kind function` → 5 results\n- `--kind FILE` → 0 results (canonical `file` kind matches uppercase substring `FILE` in pattern but not as --kind value)\n\nTwo case-sensitivity policies in the same command, both undocumented. INV-rotup's existing scope is \"CLI help text and README claims drift from current behavior, no enforcement.\" Pass-34 adds a new symptom class: undocumented case-sensitivity asymmetry. The user's mental model from --help is \"case-insensitive substring match\" — they then apply that to flag values and get silent zero-result, no error, no hint.\n\nCousin to pass-32 F32.6 (`hypergumbo config klingon` silent-accept) — both are flag-validation gaps but at different layers: F32.6 is registry-membership (INV-murig), F34.D3 is case-normalization asymmetry (INV-rotup scope). Fix-path: either case-fold flag values at parse time, or document the case-sensitive behavior in --help.\n\n**Probe artifact:** `/tmp/p34_outputD.log` D.5 (5 language values tested, only lowercase canonical matches). No status change."  # 3219
+- op: delete-msg  # edaf
+  at: '2026-06-04T17:20:25.532123Z'  # edaf
+  by: agent  # edaf
+  actor: jgstern_agent  # edaf
+  clock: 4  # edaf
+  nonce: edaf  # edaf
+  item: INV-rotup-kipir-habuv-hitis-bajis-zozal-mudus-pimil  # edaf
+  target_nonce: '3219'  # edaf
+  reason: "F34.D3 fully migrated to WI-runos per fold-audit Phase 2b"  # edaf

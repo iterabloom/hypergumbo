@@ -1,0 +1,58 @@
+- op: create  # c1a3
+  at: '2026-06-04T17:07:36Z'  # c1a3
+  by: agent  # c1a3
+  actor: jgstern_agent  # c1a3
+  clock: 1  # c1a3
+  nonce: c1a3  # c1a3
+  data:  # c1a3
+    kind: work_item  # c1a3
+    title: "Test item for TUI verification (2026-06-04)"  # c1a3
+    status: todo_soft  # c1a3
+    priority: 4  # c1a3
+    parent:  # c1a3
+    tags:  # c1a3
+    - test  # c1a3
+    isbefore: []  # c1a3
+    duplicate_of: []  # c1a3
+    not_duplicate_of: []  # c1a3
+    pr_ref:  # c1a3
+    description: "Throwaway test item — created 2026-06-04 to verify TUI rendering of tombstone footer and edit-mode banner after Phase 2a fold-audit pruning. Safe to delete."  # c1a3
+    fields: {}  # c1a3
+- op: discuss  # dc5a
+  at: '2026-06-04T17:07:46Z'  # dc5a
+  by: agent  # dc5a
+  actor: jgstern_agent  # dc5a
+  clock: 2  # dc5a
+  nonce: dc5a  # dc5a
+  message: "Test message 1 — first activity entry. Plain text, no special formatting."  # dc5a
+- op: discuss  # 0625
+  at: '2026-06-04T17:07:47Z'  # 0625
+  by: agent  # 0625
+  actor: jgstern_agent  # 0625
+  clock: 3  # 0625
+  nonce: '0625'  # 0625
+  message: "Test message 2 — second entry. Adding some structure: this entry is longer, spans multiple lines, and includes a list:\n- item alpha\n- item beta\n- item gamma\nto verify multi-line rendering in the TUI."  # 0625
+- op: discuss  # afab
+  at: '2026-06-04T17:07:47Z'  # afab
+  by: agent  # afab
+  actor: jgstern_agent  # afab
+  clock: 4  # afab
+  nonce: afab  # afab
+  message: "Test message 3 — third entry with a code block:\n```\ndef hello():\n    return 42\n```\nplus inline `code` and **bold** markers to see how the bold-underline prefix renders alongside body content."  # afab
+- op: discuss  # 45cb
+  at: '2026-06-04T17:07:47Z'  # 45cb
+  by: agent  # 45cb
+  actor: jgstern_agent  # 45cb
+  clock: 5  # 45cb
+  nonce: 45cb  # 45cb
+  message: "Test message 4 — fourth and final entry. Short one. Use this to test delete-msg if you want — note its nonce in the TUI before deleting."  # 45cb
+- op: edit-msg-text  # 34ab
+  at: '2026-06-04T17:15:39.524193Z'  # 34ab
+  by: agent  # 34ab
+  actor: jgstern_agent  # 34ab
+  clock: 6  # 34ab
+  nonce: 34ab  # 34ab
+  item: WI-tugab-pavim-mugip-vimab-laloz-sunok-dibum-lamid  # 34ab
+  target_nonce: '0625'  # 34ab
+  new_text: "Test message 2 — second entry. Adding some structure: this entry is longer, spans multiple lines, and includes a list:\n- item alpha\n- item yeet\n- item gamma\nto verify multi-line rendering in the TUI."  # 34ab
+  reason: "user-requested test edit: beta -> yeet"  # 34ab

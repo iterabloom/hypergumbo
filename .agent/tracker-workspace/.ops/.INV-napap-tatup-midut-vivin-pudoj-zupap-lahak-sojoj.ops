@@ -104,3 +104,31 @@
   item: INV-napap-tatup-midut-vivin-pudoj-zupap-lahak-sojoj  # 11fb
   target_nonce: 9d05  # 11fb
   reason: "F40.C1+C4 migrated to WI-vamih and WI-sibil per fold-audit 2026-06-03"  # 11fb
+- op: delete-msg  # 55f4
+  at: '2026-06-04T17:34:03.326884Z'  # 55f4
+  by: agent  # 55f4
+  actor: jgstern_agent  # 55f4
+  clock: 12  # 55f4
+  nonce: 55f4  # 55f4
+  item: INV-napap-tatup-midut-vivin-pudoj-zupap-lahak-sojoj  # 55f4
+  target_nonce: '6298'  # 55f4
+  reason: "F24.3 fully migrated to WI-rikaz per fold-audit Phase 2b"  # 55f4
+- op: delete-msg  # 3a9d
+  at: '2026-06-04T17:34:03.808508Z'  # 3a9d
+  by: agent  # 3a9d
+  actor: jgstern_agent  # 3a9d
+  clock: 13  # 3a9d
+  nonce: 3a9d  # 3a9d
+  item: INV-napap-tatup-midut-vivin-pudoj-zupap-lahak-sojoj  # 3a9d
+  target_nonce: 77bc  # 3a9d
+  reason: "F25.2+F25.15 fully migrated to WI-rajod+WI-garam per fold-audit Phase 2b"  # 3a9d
+- op: edit-msg-text  # d9d5
+  at: '2026-06-04T17:34:26.903054Z'  # d9d5
+  by: agent  # d9d5
+  actor: jgstern_agent  # d9d5
+  clock: 14  # d9d5
+  nonce: d9d5  # d9d5
+  item: INV-napap-tatup-midut-vivin-pudoj-zupap-lahak-sojoj  # d9d5
+  target_nonce: 8a78  # d9d5
+  new_text: "Pass-26 producer-consumer trace probes — sketch_precomputed derivation rules undocumented at the schema layer (F26.2 + F26.3 scs.files first_party + internal_dep phantom migrated to WI-mutuv-jipos per fold-audit Phase 2b; F26.4 external_dep + F26.8 retained as INV-napap extensions).\n\nF26.8 (centrality_scores producer attribution opaque): centrality_scores has 280 entries (111 .md + 167 .yaml + 1 .toml + 1 .json). No record-level provenance fields exist on CS entries. Producer attribution must be inferred via paths-vs-AR-claims and the inference doesn't reconcile:\n\n- markdown AR: files_analyzed=113; CS .md count = 111. Plausible producer (delta 2 unaccounted).\n- yaml_ansible AR: files_analyzed=0; CS .yaml count = 167. Producer mismatch — yaml_ansible analyzed 0 files but CS has 167 yaml entries. Some OTHER pass (probably the tree-sitter `yaml` pass, or `properties` AR, or a sketch-side yaml walker) contributes those entries.\n- toml AR: files_analyzed=9; CS .toml = 1. Producer attribution unclear — toml AR sees 9 files but only 1 reaches CS.\n- json AR: files_analyzed=9; CS .json = 1. Same pattern.\n\nCentrality_scores has its own analyzer pipeline disjoint from the node graph. Pass-26 sharpens: no analyzer's files_analyzed cleanly maps to CS contribution count except markdown (113→111). The schema-level fix would be to either (a) carry a per-entry `source_pass_id` field on CS records, or (b) document the pipeline (sketch.py reads which files? via what walker? feeds CS via which transform?) in spec.\n\nF26.4 (supply_chain_summary external_dep phantom count): scs.external_dep.files=10 vs 8 derived paths — 2 phantom files. The 1236 external_dep symbols mostly have path='<external>' (sentinel) and the 8 derived paths are the workspace npm packages. Producer rule undocumented; the +2 discrepancy is a derivation-rule gap (the spec doesn't say how scs.<tier>.files counts external paths, so consumers can't predict the delta). Sibling face to F26.2/F26.3 first_party/internal_dep gaps (now under WI-mutuv).\n\nINV-napap's existing scope is centrality_scores specifically; INV-jifus is the broader \"sketch_precomputed has no schema\" parent. Both umbrella the F26.8 finding. The cumulative pattern across pass-24/pass-25/pass-26 (now consolidated into discrete rows per fold-audit) is that sketch_precomputed is a high-information surface with weak schema discipline — derivation rules are tribal knowledge in sketch.py rather than wire-format contract."  # d9d5
+  reason: "fold-audit Phase 2b: F26.2+F26.3 migrated to WI-mutuv; F26.4+F26.8 kept"  # d9d5
