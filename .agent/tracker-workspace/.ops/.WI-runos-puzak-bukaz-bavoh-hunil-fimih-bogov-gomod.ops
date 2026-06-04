@@ -1,0 +1,22 @@
+- op: create  # 9aaa
+  at: '2026-06-04T08:10:38Z'  # 9aaa
+  by: agent  # 9aaa
+  actor: jgstern_agent  # 9aaa
+  clock: 1  # 9aaa
+  nonce: 9aaa  # 9aaa
+  data:  # 9aaa
+    kind: work_item  # 9aaa
+    title: "search subcommand: split case-sensitivity policy (positional pattern case-insensitive; --language and --kind case-sensitive); both undocumented"  # 9aaa
+    status: todo_hard  # 9aaa
+    priority: 2  # 9aaa
+    parent: INV-rotup-kipir-habuv-hitis-bajis-zozal-mudus-pimil  # 9aaa
+    tags:  # 9aaa
+    - dogfooding  # 9aaa
+    - cli_input_boundary  # 9aaa
+    - fold_audit_2026_06_03  # 9aaa
+    isbefore: []  # 9aaa
+    duplicate_of: []  # 9aaa
+    not_duplicate_of: []  # 9aaa
+    pr_ref:  # 9aaa
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family E). Stand-alone finding F34.D3 previously folded onto INV-rotup. Full evidence remains on INV-rotup's pass-34 discussion entry; this row provides discrete representation.\n\n## Symptom\n\n`hypergumbo search` has split case-sensitivity policy in one subcommand. Both halves are undocumented.\n\n**Positional `pattern` argument is case-INSENSITIVE** — documented in `search --help`: \"Pattern to search for (case-insensitive substring match)\". Holds in test: pattern `User` matches `user_id`.\n\n**`--language` and `--kind` flag values are case-SENSITIVE** — NOT documented. Verified on /tmp/p34_outputD.log D.5:\n- `--language python` → 5 results\n- `--language PYTHON` → 0 results\n- `--language Python` → 0 results\n\nTwo case-sensitivity policies, one subcommand, no documentation of the asymmetry. User's mental model from `--help` is \"case-insensitive substring match\"; user then applies that to flag values and gets silent zero-result with no error and no did-you-mean hint.\n\n## Invariant\n\nWithin a single subcommand, case-sensitivity policy is either (a) uniform across positional + flag values, or (b) explicitly documented per-argument in `--help`. The current state — uniformly-implied case-insensitive policy documented but non-uniform behavior in practice — is the bug.\n\n## Fix sketch\n\nTwo paths:\n\n**(a) Case-fold flag values at parse time.** argparse type-converter normalizes `--language` / `--kind` to lowercase. Matches the documented \"case-insensitive substring match\" expectation. Smallest patch, most user-friendly.\n\n**(b) Document the case-sensitive flag policy in `--help`.** Add per-argument note: `--language LANGUAGE  Filter by language (canonical lowercase: python, javascript, ...; case-sensitive)`. Preserves current behavior; requires user to learn the asymmetry.\n\nCousin to F32.6 (`config <unknown-language>` silent-accept; INV-murig registry-membership scope) and F34.D2 / F34.D4 (`search --kind/--language <invalid>` silent-accept; also INV-murig). The current row addresses the case-normalization asymmetry; the registry-membership rejection is the WI-verify-claims-silent-confirm-on-unknown-boundary family.\n\n## Source provenance\n\n- **F34.D3** — INV-rotup discussion entry 2026-06-02T17:13:29 (pass-34 batch; paragraph beginning \"Pass-34 F34.D3 — `hypergumbo search` has split case-sensitivity policy that is undocumented\").\n\nLab notebook: pass 34 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-rotup** (META: CLI help text and README claims drift) — natural umbrella.\n- Sibling: **WI-search-pattern-empty-undocumented** (Family D — adjacent search documentation gap).\n- Sibling: **WI-verify-claims-silent-confirm-on-unknown-boundary** (Family E — registry-membership rejection on flag values; complementary fix).\n- Sibling: **INV-murig** (registry-membership validation META) — multiple search-flag-value bindings affect the same META."  # 9aaa
+    fields: {}  # 9aaa

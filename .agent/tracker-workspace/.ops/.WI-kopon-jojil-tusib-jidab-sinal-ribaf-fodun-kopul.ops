@@ -1,0 +1,22 @@
+- op: create  # 087b
+  at: '2026-06-04T07:43:25Z'  # 087b
+  by: agent  # 087b
+  actor: jgstern_agent  # 087b
+  clock: 1  # 087b
+  nonce: 087b  # 087b
+  data:  # 087b
+    kind: work_item  # 087b
+    title: "search subcommand: empty pattern '' and shell-eaten pipe '|' return top-3 results without documentation"  # 087b
+    status: todo_soft  # 087b
+    priority: 4  # 087b
+    parent: INV-rotup-kipir-habuv-hitis-bajis-zozal-mudus-pimil  # 087b
+    tags:  # 087b
+    - dogfooding  # 087b
+    - cli_input_boundary  # 087b
+    - fold_audit_2026_06_03  # 087b
+    isbefore: []  # 087b
+    duplicate_of: []  # 087b
+    not_duplicate_of: []  # 087b
+    pr_ref:  # 087b
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (`~/hypergumbo_lab_notebook/notebookjournal_06022026_2100_fold_audit_passes_21-40.md`, Family D — flagged \"weak STANDALONE\" by the audit).\n\nF40.B6 was recorded only in the pass-40 lab notebook (`~/hypergumbo_lab_notebook/notebookjournal_06022026_1949_pass40.md`); no discussion entry was filed on a tracker parent — the original pass-40 batch judged it too minor for an inline annotation. This row exists to give the finding discrete representation per the audit's \"materialize all 57\" directive, even though it's the lowest-severity of Family D.\n\n## Symptom\n\n`search` documentation says \"case-insensitive substring match.\" Verified behaviors for non-empty patterns are consistent with that contract: `.*`, `^main$`, `[abc]`, `test\\\\` are all treated as literal substrings.\n\nBut the **empty pattern** (`hypergumbo search \"\"`) matches every symbol and returns the first 3 results (limited by output formatting; `--limit 20` default doesn't fire because the slice happens before that path). The **pipe pattern** (`hypergumbo search \"|\"`) gives the same 3 results — because the shell consumes the pipe character and the subcommand receives an empty positional argument.\n\nBoth behaviors are deterministic and harmless but undocumented. A user typing `search \"\"` reasonably expects either rc=2 (\"pattern required\") or some indication that the empty pattern means \"all symbols.\"\n\n## Invariant\n\n`hypergumbo search` either (a) rejects the empty/whitespace-only pattern with rc=2 + `\"Error: search pattern cannot be empty\"`, OR (b) documents in `--help` that an empty pattern matches all symbols (and the limit fires normally).\n\n## Fix sketch\n\nOption (a) is cleaner from an input-validation perspective and matches the rc=2 shape proposed for other input-validation fixes in Family D. Option (b) is more agent-friendly (some workflows might use empty pattern as a \"list everything\" shortcut). The audit's framing was \"low-severity edge case; document in --help that empty pattern matches all\" — option (b).\n\nEither way: the current undocumented behavior is the bug; the fix is one of the two stated options. P4 (cosmetic) reflects that this is documentation-level, not behavioral.\n\n## Source provenance\n\n- **F40.B6** — pass-40 lab notebook `notebookjournal_06022026_1949_pass40.md` (section \"F40.B6 — search pattern is documented substring, but empty `''` and pipe `|` return top-3\"). Not filed as a tracker discussion entry; this row is its first tracker representation.\n\n## Related rows\n\n- Parent: **INV-rotup** (META: CLI help text and README claims drift from current behavior) — closest existing umbrella for documentation-vs-behavior gaps.\n- Sibling: **WI-read-subcmd-schema-validate** (Family D — input-boundary scope; this row is the adjacent search-specific edge case).\n- Sibling: **WI-verify-claims-yaml-shape-validation** (Family D — input-boundary scope).\n- Sibling: **WI-search-case-sensitivity-split** (Family E — different search documentation gap, mixed case-sensitivity policy)."  # 087b
+    fields: {}  # 087b
