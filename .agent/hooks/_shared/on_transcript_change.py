@@ -513,6 +513,27 @@ PLAYBOOKS = [
      "modules, after changing analyzers or linkers, and when investigating bakeoff signals. "
      "Does not substitute for bakeoff on diverse repos."),
 
+    ("twenty-pass-dogfood-procedure",
+     ".agent/agent_playbooks_protocols_sops_skills/twenty-pass-dogfood-procedure.md",
+     "Soup-to-nuts methodology-comparable procedure for running 20-pass dogfooding tranches "
+     "with cross-tranch trend comparison as the goal. Six phases orchestrated via sub-agent "
+     "spawning (no operator-babysat tmux): Phase 0 freezes substrate + writes substrate guide "
+     "+ commits the 'judge underlying problems not symptoms' meta-criterion + pre-registers a "
+     "bucket-Σ-severity prediction; Phase 1 runs passes in --compact-every chunks (default 2) "
+     "with provisional KIND tagging (INDEPENDENT/AUDIT-AXIS/EXTENSION/CORRECTION/POINTER-ONLY/"
+     "INVALIDATION) and F39.A1-style fresh-substrate verification for repeated negative "
+     "findings; Phase 2 (mid-tranch, default pass 10) runs an interim audit catching real-time "
+     "over/under-folding before patterns amplify; Phase 3 runs TWO sequential consolidation "
+     "sub-agents (methodology-axis dedup, then causal-axis clustering with rejected-clusters "
+     "log) plus a context-blinded card-writer sub-agent; Phase 4 fans out --judge-count blind "
+     "judges per card (default 3) with pre-committed reconciliation rule; Phase 5 builds the "
+     "cluster-aware trend report (Methods A/B/C carbon-dating) and the prediction-vs-outcome "
+     "retrospective with a sycophancy review; Phase 6 writes carry-forward state for the next "
+     "tranch. Tranch-state JSON file is the single source of truth across sub-agents; sentinel "
+     "files signal phase transitions. Tunable: --compact-every, --judge-count, --mid-tranch-"
+     "pass, --tranch-size, --substrate-policy. Appendix A documents a tmux fallback for "
+     "vendors without sub-agent spawning."),
+
     ("trackerize",
      ".agent/agent_playbooks_protocols_sops_skills/trackerize-playbook.md",
      "When the user says 'trackerize', decompose the plan under discussion into individual "
