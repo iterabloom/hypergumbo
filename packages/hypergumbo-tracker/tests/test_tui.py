@@ -10015,3 +10015,73 @@ class TestCheckExternalWrites:
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
         assert 12.5 in captured
+
+
+class TestEditModeBindingAndBanner:
+    """WI-zonur phase 3: Ctrl-E toggle binding and edit-mode banner widget."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_edit_mode_binding_is_registered(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        keys = {b[0] for b in TrackerApp.BINDINGS}
+        assert "ctrl+e" in keys
+
+    async def test_banner_hidden_when_edit_mode_off(
+        self, tracker_set: TrackerSet, mock_human_uid: None,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            banner = app.query_one("#edit-mode-banner", Static)
+            assert banner.display is False
+
+    async def test_toggle_action_turns_edit_mode_on_and_off(
+        self, tracker_set: TrackerSet, mock_human_uid: None,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # First Ctrl-E: ON
+            app.action_toggle_edit_mode()
+            await pilot.pause()
+            status = tracker_set.edit_mode_status()
+            assert status["on"] is True
+            banner = app.query_one("#edit-mode-banner", Static)
+            assert banner.display is True
+            assert "EDIT MODE ON" in str(banner.content)
+            # Second Ctrl-E: OFF
+            app.action_toggle_edit_mode()
+            await pilot.pause()
+            assert tracker_set.edit_mode_status()["on"] is False
+            assert banner.display is False
+
+    async def test_agent_toggle_surfaces_error_in_notify(
+        self, tracker_set: TrackerSet, mock_agent_uid: None,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        captured: list[tuple[str, str]] = []
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app.notify = lambda msg, severity="information": captured.append(  # type: ignore[method-assign,assignment]
+                (msg, severity),
+            )
+            app.action_toggle_edit_mode()
+            await pilot.pause()
+            # Agent invocation must NOT enable edit-mode.
+            assert tracker_set.edit_mode_status()["on"] is False
+            # And the failure must have been notified.
+            assert any("failed" in m.lower() for m, _ in captured)

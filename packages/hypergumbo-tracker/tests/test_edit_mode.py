@@ -687,6 +687,123 @@ class TestCapEnforcement:
 # ---------------------------------------------------------------------------
 
 
+class TestOsPermGate:
+    """WI-zonur phase 2: OS-permission gate around the edit-mode log.
+
+    The agent's CLI calls run as a process whose OS uid maps to a username
+    matching the configured agent patterns. The phase-1 `by:human` field
+    check is forgeable by an agent that edits the YAML file directly.
+    Phase 2's defense-in-depth: the log file's OWNER UID is stat()'d, mapped
+    to a username, and rejected if that username matches an agent pattern.
+    Files owned by agents are filtered (whole-file) at read time, never
+    removed from disk.
+    """
+
+    def test_log_lives_in_subdir(
+        self, tmp_path: Path, mock_human_uid: None,
+    ) -> None:
+        """Log path moved into `.edit-mode/edit-mode.ops` subdir."""
+        store = _make_store(tmp_path)
+        store.edit_mode_on(ttl_seconds=60)
+        p = store.edit_mode_log_path()
+        assert p.parent.name == ".edit-mode"
+        assert p.name == "edit-mode.ops"
+        assert p.exists()
+        assert p.parent.is_dir()
+
+    def test_agent_owned_log_is_filtered_at_read(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        mock_human_uid: None,
+    ) -> None:
+        """A log file whose owner uid maps to an agent username is dropped."""
+        import pwd
+
+        store = _make_store(tmp_path)
+        store.edit_mode_on(ttl_seconds=60)
+        log_path = store.edit_mode_log_path()
+        assert log_path.exists()
+
+        owning_uid = log_path.stat().st_uid
+
+        class _FakeAgentEntry:
+            pw_name = "spoofed_agent"
+            pw_uid = owning_uid
+            pw_gid = owning_uid
+            pw_gecos = ""
+            pw_dir = "/tmp"
+            pw_shell = "/bin/false"
+
+        original_getpwuid = pwd.getpwuid
+
+        def fake_getpwuid(uid: int) -> Any:
+            if uid == owning_uid:
+                return _FakeAgentEntry()
+            return original_getpwuid(uid)
+
+        monkeypatch.setattr(pwd, "getpwuid", fake_getpwuid)
+
+        ops = store._read_edit_mode_ops()
+        assert ops == []
+
+    def test_human_owned_log_returns_ops(
+        self, tmp_path: Path, mock_human_uid: None,
+    ) -> None:
+        store = _make_store(tmp_path)
+        store.edit_mode_on(ttl_seconds=60)
+        ops = store._read_edit_mode_ops()
+        assert len(ops) == 1
+        assert ops[0]["op"] == "edit-mode-on"
+
+    def test_subdir_mode_is_0755_or_0775(
+        self, tmp_path: Path, mock_human_uid: None,
+    ) -> None:
+        store = _make_store(tmp_path)
+        store.edit_mode_on(ttl_seconds=60)
+        mode = store.edit_mode_log_path().parent.stat().st_mode & 0o777
+        # 0o775 is acceptable in shared-group setups (the global
+        # `_ensure_dir_group_writable` helper sets g+w).
+        assert mode in (0o755, 0o775), f"unexpected dir mode {oct(mode)}"
+
+    def test_missing_subdir_returns_empty_ops(
+        self, tmp_path: Path, mock_human_uid: None,
+    ) -> None:
+        store = _make_store(tmp_path)
+        ops = store._read_edit_mode_ops()
+        assert ops == []
+
+    def test_agent_owned_log_disables_delete_msg(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        mock_human_uid: None,
+    ) -> None:
+        import pwd
+
+        store = _make_store(tmp_path)
+        iid, mn = _add_item_with_discussion(store, "test item")
+        store.edit_mode_on(ttl_seconds=60)
+
+        owning_uid = store.edit_mode_log_path().stat().st_uid
+
+        class _FakeAgentEntry:
+            pw_name = "spoofed_agent"
+            pw_uid = owning_uid
+            pw_gid = owning_uid
+            pw_gecos = ""
+            pw_dir = "/tmp"
+            pw_shell = "/bin/false"
+
+        original_getpwuid = pwd.getpwuid
+
+        def fake_getpwuid(uid: int) -> Any:
+            if uid == owning_uid:
+                return _FakeAgentEntry()
+            return original_getpwuid(uid)
+
+        monkeypatch.setattr(pwd, "getpwuid", fake_getpwuid)
+
+        with pytest.raises(EditModeNotActiveError):
+            store.delete_msg(iid, mn, "test")
+
+
 class TestCompileAllCachedEditModeFallback:
     """Coverage for the cache-bypass branch when edit-mode log is present."""
 
@@ -720,6 +837,94 @@ class TestCompileAllCachedEditModeFallback:
             d.is_tombstoned
             for it in items for d in it.discussion if d.nonce == mn
         )
+
+
+class TestFoldAuditMaterializationSmoke:
+    """WI-zonur step 6 acceptance: one fold-audit-shaped extraction end-to-end.
+
+    Mirrors the fold-correction workflow that motivated the WI: a parent row
+    has a long discussion entry that bundles several reconstructed-row
+    proposals; the agent (1) opens edit-mode via the human, (2) creates new
+    discrete tracker items for each proposal, (3) deletes the original
+    bundled-text message with `extracted-to <new-id>` reasons. After the
+    window closes, `tracker show` on the parent should suppress the
+    extracted text and the new items should be retrievable independently.
+    """
+
+    def test_extract_then_delete_message_e2e(
+        self, tmp_path: Path, mock_human_uid: None,
+    ) -> None:
+        store = _make_store(tmp_path)
+
+        # Parent invariant with one long fold-bundled discussion entry.
+        parent_id = store.add(
+            kind="invariant",
+            title="Parent invariant carrying a fold-bundled proposal",
+            description="root",
+            fields={"statement": "x", "root_cause": "y"},
+        )
+        store.discuss(
+            parent_id,
+            "Pass-40 F40.A1+A2+A3 batch: three proposals bundled — "
+            "(1) tighten X, (2) repair Y, (3) re-derive Z.",
+        )
+        parent_before = store.get(parent_id)
+        assert len(parent_before.discussion) == 1
+        bundled_nonce = parent_before.discussion[0].nonce
+
+        # Step 1: human opens edit-mode.
+        store.edit_mode_on(ttl_seconds=60, cap_max=10)
+
+        # Step 2: agent creates the three new tracker items mirroring the
+        # proposals (the materialization moves goes through normal add()).
+        new_ids = [
+            store.add(
+                kind="invariant",
+                title=f"Materialized proposal {n}",
+                description=f"extracted from {parent_id} pass-40 F40.A{n}",
+                fields={
+                    "statement": f"proposal {n}",
+                    "root_cause": f"root {n}",
+                },
+            )
+            for n in (1, 2, 3)
+        ]
+
+        # Step 3: agent tombstones the parent's bundled-text message with
+        # an "extracted-to" reason.
+        reason = (
+            f"extracted to {new_ids[0][:14]} + 2 more (F40.A1/A2/A3)"
+        )[:100]
+        store.delete_msg(parent_id, bundled_nonce, reason)
+
+        # Verify: parent's only message is tombstoned, and the three new
+        # items exist and are individually retrievable.
+        parent_after = store.get(parent_id)
+        assert parent_after.discussion[0].is_tombstoned is True
+        assert parent_after.discussion[0].message.startswith(
+            "Pass-40 F40.A1+A2+A3",
+        )
+        for new_id in new_ids:
+            it = store.get(new_id)
+            assert it.title.startswith("Materialized proposal")
+
+        # And: rendered show output suppresses the tombstoned entry but
+        # surfaces the footer.
+        from hypergumbo_tracker.cli import _format_item_full
+
+        rendered = _format_item_full(parent_after)
+        assert "Pass-40 F40" not in rendered
+        assert "(not shown: 1 deleted messages)" in rendered
+
+        # With --include-deleted, the tombstone re-appears with marker.
+        rendered_all = _format_item_full(parent_after, include_deleted=True)
+        assert "[DELETED]" in rendered_all
+        assert "Pass-40 F40" in rendered_all
+
+        # Close the window; subsequent delete-msg attempts must fail.
+        store.edit_mode_off()
+        with pytest.raises(EditModeNotActiveError):
+            store.delete_msg(parent_id, bundled_nonce, "second attempt")
 
 
 class TestParseIsoTimestamp:
@@ -991,6 +1196,7 @@ class TestStoreEditMode:
         # Hand-craft an edit-mode-on op that opened deep in the past with a
         # short TTL — `now` is way past `at + ttl` so the auto-expire branch
         # fires.
+        store._ensure_edit_mode_dir()
         log = store.edit_mode_log_path()
         op = {
             "op": "edit-mode-on",

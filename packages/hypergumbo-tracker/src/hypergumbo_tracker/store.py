@@ -1084,16 +1084,72 @@ class Store:
     def edit_mode_log_path(self) -> Path:
         """Path to the global edit-mode log file (WI-zonur).
 
-        Holds all `edit-mode-on` / `edit-mode-off` ops in this ops directory.
-        These ops authorize `delete-msg` / `undelete-msg` / `edit-msg-text` ops
-        on per-item files for a bounded time window.
+        Phase 2 placement: under a dedicated `.edit-mode/` subdirectory whose
+        ownership and mode form the OS-permission gate. Holds all
+        `edit-mode-on` / `edit-mode-off` ops in this ops directory; these
+        authorize `delete-msg` / `undelete-msg` / `edit-msg-text` ops on
+        per-item files for a bounded time window.
         """
-        return self._ops_dir / ".edit-mode.ops"
+        return self._ops_dir / ".edit-mode" / "edit-mode.ops"
+
+    def _ensure_edit_mode_dir(self) -> None:
+        """Create `.edit-mode/` subdir with mode 0755 if absent (WI-zonur ph2).
+
+        The subdirectory inherits the writing process's uid via `mkdir`, which
+        is what the phase-2 OS-perm gate checks at read time. Idempotent — no
+        chmod is applied when the directory already exists, so a separate
+        `chmod` performed at setup time stays put.
+        """
+        d = self.edit_mode_log_path().parent
+        if not d.exists():
+            d.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+    @staticmethod
+    def _username_for_uid(uid: int) -> str | None:
+        """Look up the OS username for a uid; return None if unknown.
+
+        Wrapped for monkeypatch convenience in tests — production callers
+        always go through `pwd.getpwuid` directly via this helper.
+        """
+        import pwd
+
+        try:
+            return pwd.getpwuid(uid).pw_name
+        except KeyError:  # pragma: no cover — uid without pwd entry
+            return None
+
+    def _path_is_agent_owned(self, path: Path) -> bool:
+        """True when `path`'s OS owner uid maps to an agent username.
+
+        Phase-2 defense-in-depth: even if an agent forges the `by:human`
+        field by writing the YAML directly, the file's OS owner is the
+        agent's uid. Mapping the uid to a username and pattern-matching
+        against `agent_usernames` catches the forge.
+        """
+        from fnmatch import fnmatch
+
+        try:
+            st = path.stat()
+        except OSError:  # pragma: no cover — defensive
+            return False
+        owner_name = self._username_for_uid(st.st_uid)
+        if owner_name is None:  # pragma: no cover — defensive
+            return False
+        patterns = self._config.agent_usernames or ["*_agent"]
+        return any(fnmatch(owner_name, pat) for pat in patterns)
 
     def _read_edit_mode_ops(self) -> list[dict[str, Any]]:
-        """Return all edit-mode-on/off ops from the global log; [] if absent."""
+        """Return all edit-mode-on/off ops from the global log; [] if absent.
+
+        Phase-2 OS-perm gate: if the log file is owned by an agent (its uid
+        maps to an agent_usernames pattern), all ops are filtered. The file
+        is NOT removed — silent filtering preserves the forensic trail and
+        avoids destructive recovery if a misconfiguration is in play.
+        """
         p = self.edit_mode_log_path()
         if not p.exists():
+            return []
+        if self._path_is_agent_owned(p):
             return []
         return _parse_ops_file(p)
 
@@ -1805,8 +1861,12 @@ class Store:
         Lighter than `_append_op` — no per-item Lamport clock, no freeze
         check, no item-level locks. The log is single-writer-friendly enough
         that we rely on flock for atomicity.
+
+        Phase 2: ensures `.edit-mode/` subdir exists before writing so the
+        OS-perm gate at read time has something to stat.
         """
         self._ensure_dir_group_writable(self._ops_dir)
+        self._ensure_edit_mode_dir()
         log_path = self.edit_mode_log_path()
         op_text = _serialize_op(op_dict) + "\n"
         # Open in append mode with O_CREAT so the file is created if absent.

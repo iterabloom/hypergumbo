@@ -2277,6 +2277,7 @@ class TrackerApp(App):
         ("R", "repair_drift", "Repair Drift"),
         ("i", "toggle_full_ids", "Full IDs"),
         ("ctrl+c", "yank", "Copy"),
+        ("ctrl+e", "toggle_edit_mode", "Edit-Mode"),
         ("S", "capture_screenshot", "Screenshot"),
     ]
 
@@ -2352,6 +2353,7 @@ class TrackerApp(App):
         by _apply_layout() based on the current tier.
         """
         yield Header()
+        yield Static("", id="edit-mode-banner")
         yield Static("Terminal too small", id="too-small-msg")
         yield Input(placeholder="Filter...", id="filter-input")
         yield Static("", id="filter-status")
@@ -2436,6 +2438,7 @@ class TrackerApp(App):
         # doesn't spuriously reload, then start the periodic poller.
         self._last_ops_signature = self._tracker_set.ops_mtime_signature()
         self.set_interval(_TUI_RELOAD_INTERVAL, self._check_external_writes)
+        self._update_edit_mode_banner()
 
     def on_resize(self, event: Resize) -> None:
         """Re-evaluate layout tier when terminal is resized.
@@ -3271,6 +3274,55 @@ class TrackerApp(App):
         self._reload_active_table()
         self._restore_selection()
 
+    def action_toggle_edit_mode(self) -> None:
+        """WI-zonur: Ctrl-E toggles the per-message edit-mode window.
+
+        Human-authority only (the underlying `edit_mode_on/off` Store methods
+        raise `HumanAuthorityError` when invoked by an agent uid). The TUI is
+        typically driven by the human, so this is the common case; on
+        rejection we surface the error via a notify().
+        """
+        try:
+            status = self._tracker_set.edit_mode_status()
+            if status["on"]:
+                self._tracker_set.edit_mode_off()
+                self.notify("Edit-mode OFF")
+            else:
+                self._tracker_set.edit_mode_on()
+                self.notify("Edit-mode ON (30m)")
+        except Exception as exc:
+            self.notify(f"Edit-mode toggle failed: {exc}", severity="error")
+        self._update_edit_mode_banner()
+        # Tombstones may now be filtered/restored — pick that up.
+        self._reload_active_table()
+
+    def _update_edit_mode_banner(self) -> None:
+        """Refresh the edit-mode banner widget with current state.
+
+        Banner is hidden when edit-mode is OFF (saves screen real-estate)
+        and shows `EDIT MODE ON — N remaining — ops_used/cap_max` when ON.
+        """
+        try:
+            status = self._tracker_set.edit_mode_status()
+        except Exception:  # pragma: no cover — defensive; never block UI
+            return
+        try:
+            banner = self.query_one("#edit-mode-banner", Static)
+        except Exception:  # pragma: no cover — widget not mounted yet
+            return
+        if not status["on"]:
+            banner.display = False
+            banner.update("")
+            return
+        remaining_s = status["remaining_s"]
+        mins, secs = divmod(max(0, remaining_s), 60)
+        remaining_str = f"{mins}m {secs:02d}s"
+        banner.update(
+            f"[reverse yellow] EDIT MODE ON — {remaining_str} remaining — "
+            f"{status['ops_used']}/{status['cap_max']} ops [/]",
+        )
+        banner.display = True
+
     def _toggle_status(self, status: str) -> None:
         """Show or hide items with the given *status*.
 
@@ -3950,6 +4002,9 @@ class TrackerApp(App):
         """
         if len(self.screen_stack) > 1:
             return
+        # Refresh the WI-zonur edit-mode banner on every tick so the countdown
+        # ticks down smoothly even when no ops have changed.
+        self._update_edit_mode_banner()
         try:
             sig = self._tracker_set.ops_mtime_signature()
             if sig == self._last_ops_signature:
