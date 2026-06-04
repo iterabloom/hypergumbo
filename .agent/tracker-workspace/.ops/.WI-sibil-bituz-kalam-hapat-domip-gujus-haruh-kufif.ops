@@ -1,0 +1,23 @@
+- op: create  # 44ff
+  at: '2026-06-04T07:08:52Z'  # 44ff
+  by: agent  # 44ff
+  actor: jgstern_agent  # 44ff
+  clock: 1  # 44ff
+  nonce: 44ff  # 44ff
+  data:  # 44ff
+    kind: work_item  # 44ff
+    title: "tier classifier: returns None for 100% of markdown-kind nodes (absence-of-classification, distinct from INV-nuzas mis-classification)"  # 44ff
+    status: todo_hard  # 44ff
+    priority: 3  # 44ff
+    parent:  # 44ff
+    tags:  # 44ff
+    - dogfooding  # 44ff
+    - markdown  # 44ff
+    - tier_classifier  # 44ff
+    - fold_audit_2026_06_03  # 44ff
+    isbefore: []  # 44ff
+    duplicate_of: []  # 44ff
+    not_duplicate_of: []  # 44ff
+    pr_ref:  # 44ff
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (`~/hypergumbo_lab_notebook/notebookjournal_06022026_2100_fold_audit_passes_21-40.md`, Family B). Stand-alone finding F40.C4 previously folded onto INV-napap. Full evidence remains on INV-napap's pass-40 discussion entry (same batched entry as F40.C1).\n\n## Symptom\n\nThe tier classifier returns `None` (key absent from dict) for 100% of markdown-kind nodes on the DOCS substrate. On `/tmp/p40_docs_bm.json`: 2861/2861 nodes (all section / link / code_block / external_symbol) report `supply_chain_tier='?'` — the classifier doesn't classify markdown at all.\n\nDistinct mechanism from sibling tier-classifier issues:\n- **INV-nuzas** is about mis-classification (first_party / workspace incorrectly labeled external). Wrong tier assigned.\n- **This row (F40.C4)** is absence-of-classification — no tier ever assigned to markdown content. Mechanism: classifier's path-pattern matching has no markdown rule.\n\n## Coupling to WI-markdown-file-anchor-absent\n\nThe fix path is partially blocked by Family-B sibling **WI-markdown-file-anchor-absent**. Currently the markdown analyzer emits zero file-kind anchor nodes; the tier classifier operates per-file-kind-node in the conventional pipeline shape. Once file anchors exist, the tier classifier needs (a) the file-anchor to attach to AND (b) a markdown-specific path-tier rule. Either step alone is insufficient.\n\nIt is also possible to extend the tier classifier to operate on non-file-kind markdown nodes (sections/links/code_blocks) by deriving their tier from `path` directly, decoupling the fix from WI-markdown-file-anchor-absent. The two approaches have different downstream signatures:\n\n- **File-anchor-first:** centrality_scores and supply_chain_summary acquire markdown rows once the anchor exists; tier-on-anchor flows through to all surfaces uniformly.\n- **Per-node-tier:** tier appears on 2861 markdown nodes but per-file rollups remain blocked until anchors exist.\n\n## Invariant\n\nEvery node with a non-`<external>` path has a `supply_chain_tier` value drawn from the canonical tier vocabulary (`first_party`, `workspace`, `internal_dep`, `external_dep`, `derived_skipped`). Markdown content currently violates this universally.\n\n## Fix sketch\n\nAdd markdown to the tier classifier's recognized-language set, with default tier `first_party` for paths matching `docs/`, `adr/`, `**/CHANGELOG.md`, `**/README.md`. Ideally, gate the fix behind WI-markdown-file-anchor-absent so tier flows through the file-kind anchor uniformly across all surfaces. Document the per-language default-tier table at the same time (cousin to INV-rotup help-text drift).\n\n## Source provenance\n\n- **F40.C4** — INV-napap discussion entry 2026-06-03T00:12:55 (pass-40 batch; same entry as F40.C1, see paragraph beginning \"F40.C4 (sibling): all 2861 DOCS nodes report supply_chain_tier='?'\").\n\nLab notebook: pass 40 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Family B sibling: **WI-markdown-file-anchor-absent** (file-kind anchor emission gap — fix-path coupling; complete that first OR adopt per-node-tier as decoupled fix).\n- Family B sibling: **WI-markdown-stable-id-occurrence-index** (markdown stable_id correctness, different surface).\n- **INV-nuzas** (tier classifier mis-classifies workspace/first_party as external — different mechanism: this row is non-classification, INV-nuzas is mis-classification).\n- INV-napap (existing parent of the source discussion entry — centrality-side absence on .md files)."  # 44ff
+    fields: {}  # 44ff

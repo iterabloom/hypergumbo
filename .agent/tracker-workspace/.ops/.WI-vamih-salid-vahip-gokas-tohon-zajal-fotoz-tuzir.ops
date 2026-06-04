@@ -1,0 +1,23 @@
+- op: create  # bd49
+  at: '2026-06-04T07:08:40Z'  # bd49
+  by: agent  # bd49
+  actor: jgstern_agent  # bd49
+  clock: 1  # bd49
+  nonce: bd49  # bd49
+  data:  # bd49
+    kind: work_item  # bd49
+    title: "markdown analyzer: emits no file-kind anchor symbol per .md file"  # bd49
+    status: todo_hard  # bd49
+    priority: 2  # bd49
+    parent:  # bd49
+    tags:  # bd49
+    - dogfooding  # bd49
+    - markdown  # bd49
+    - analyzer_parity  # bd49
+    - fold_audit_2026_06_03  # bd49
+    isbefore: []  # bd49
+    duplicate_of: []  # bd49
+    not_duplicate_of: []  # bd49
+    pr_ref:  # bd49
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (`~/hypergumbo_lab_notebook/notebookjournal_06022026_2100_fold_audit_passes_21-40.md`, Family B). Stand-alone finding F40.C1 previously folded onto INV-napap. Full evidence remains on INV-napap's pass-40 discussion entry; this row provides discrete representation.\n\nThe audit's verdict: F40.C1 is structurally distinct from INV-napap's original \"centrality_scores excludes Python source files\" framing — INV-napap was about absence-of-scoring; this row is about absence-of-emission. Different mechanism, different fix-site.\n\n## Symptom\n\nThe markdown analyzer emits structured section / link / code_block nodes per .md file but never emits a file-kind anchor symbol for the file itself. Evidence on `/tmp/p40_docs_bm.json` (`hypergumbo run docs --include-docs` over docs/, 108 files, 92 .md):\n\n| Kind | Count |\n|---|---|\n| section | 1768 |\n| link | 502 |\n| code_block | 497 |\n| external_symbol | 92 |\n| **file** | **2** (both ansible YAML) |\n\nZero file-kind nodes for the 92 .md files. The markdown analyzer scaffolding has no per-file anchor emission step.\n\n## Consumer impact\n\nPer-file aggregation queries that walk file-kind nodes cannot enumerate markdown files at all. Affected surfaces:\n\n- `centrality_scores` — keys are file-kind nodes; markdown files invisible.\n- `supply_chain_summary` — counts file-kind nodes per tier; markdown invisible.\n- `file-language histograms` and `metrics.languages.<lang>.files` — markdown files counted in profile but absent from file-kind enumeration (related to WI-language-catalogs-disjoint / WI-mozaf in Family F).\n- WI-tier-classifier-markdown-coverage (this Family B sibling) cannot proceed — no anchor to attach a tier to.\n\n## Invariant\n\nFor every analyzed file regardless of language, the analyzer emits exactly one file-kind anchor symbol whose `path` is the file path and whose stable_id is content-derived from the file. The contract is uniform across analyzers; markdown is currently the conspicuous gap (yaml/ansible passes but emits only when file contains a top-level role mapping, per pass-40 evidence).\n\n## Fix sketch\n\nAdd file-anchor emission to `packages/hypergumbo-lang-markdown-analyzer` (or wherever the markdown analyzer lives). The anchor should carry standard file-kind attributes (path, language='markdown', supply_chain.is_test_file derived from path heuristic, etc.). After the anchor exists, the tier classifier and centrality scorer become applicable to markdown content; downstream surfaces start enumerating markdown without code changes.\n\n## Source provenance\n\n- **F40.C1** — INV-napap discussion entry 2026-06-03T00:12:55 (pass-40 batch; see paragraph beginning \"F40.C1: Generated /tmp/p40_docs_bm.json\").\n\nLab notebook: pass 40 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- **WI-tier-classifier-markdown-coverage** (Family B sibling — blocked by this row; tier classifier has nothing to classify until file anchors exist)\n- **WI-markdown-stable-id-occurrence-index** (Family B sibling — markdown stable_id correctness, different surface but same subsystem)\n- INV-napap (existing parent of the discussion entry; centrality-side absence, distinct mechanism from this emission gap)\n- WI-tier-classifier-markdown-coverage / INV-nuzas (tier classifier surfaces, both downstream)\n- WI-gosub (existing INV: markdown analyzer extraction incomplete) — sibling completeness gap; this row is about anchor emission specifically."  # bd49
+    fields: {}  # bd49
