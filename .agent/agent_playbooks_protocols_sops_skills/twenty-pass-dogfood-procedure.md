@@ -24,21 +24,36 @@ Use this procedure when you want a methodology-comparable dogfooding tranch — 
 
 ## Architecture: sub-agent orchestration
 
-The parent agent (the one reading this playbook) owns the phase loop, the tranch state file, and the final trend report. It does NOT directly run the 20 passes — it spawns sub-agents in chunks of `--compact-every` (default 2) and aggregates their return summaries.
+The parent agent (the one reading this playbook) owns the phase loop, the tranch state file, and the final trend report. It does NOT directly run the 20 passes — it spawns sub-agents in chunks of `--chunk-size` passes (default 2) and aggregates their return summaries.
+
+**The sub-agent boundary IS the compaction event.** No `/compact` keystroke is invoked anywhere during normal operation. Each sub-agent's full working context (substrate dumps, probe output, command logs, lab notebook drafting, tracker queries — easily 50-100K tokens per pass) lives only inside the sub-agent and dies on return. The parent never accumulates that bulk; it sees only the ~200-word return summaries. The `--chunk-size` parameter therefore controls how many passes-worth of context any single sub-agent has to hold at once. Default 2 matches the empirical observation that a single pass adds ~50K tokens and two passes brings a sub-agent close to typical Opus-class working-context comfort.
 
 Why sub-agent chunks instead of one long-running session:
-- **Context hygiene.** A single pass loads the substrate (~100 MB JSON), runs probe scripts, queries the tracker, and writes a lab notebook stanza. Two passes' worth of that bloats context to where the next pass's reasoning is compromised. Sub-agent boundaries are clean context resets.
-- **Vendor neutrality.** Every modern CLI agent supports sub-agent spawning (Claude Code: `Agent` tool; Codex CLI / Cursor / Gemini: equivalents in same family). The procedure does not assume a specific tool name; it assumes the abstraction.
+- **Context hygiene.** Sub-agent boundaries are clean context resets without operator intervention.
+- **Vendor neutrality.** Every modern CLI agent exposes sub-agent spawning OR can be approximated via the Appendix A tmux fallback. The procedure defines the abstraction (prompt-in, summary-out, dies-on-return); §Vendor parity table maps current vendors to that abstraction.
 - **Independent verifiability.** Sub-agents for blind judging see only the rubric + the deconfounded card, not the discovery context or trend goal. This is the structural countermeasure to the same-actor bias that bit the 21-40 campaign.
 
-For vendors that lack sub-agent spawning, Appendix A documents a tmux-based fallback that uses the `scripts/agent-supervisor` VENDOR_TABLE.
+For vendors that lack sub-agent spawning (or whose sub-agent primitive doesn't yet satisfy the contract above), Appendix A documents a tmux-based fallback that uses the `scripts/agent-supervisor` VENDOR_TABLE.
+
+## Vendor parity table
+
+Sub-agent spawn mechanism and Appendix-A fallback keystroke per vendor. Cross-references `scripts/agent-supervisor`'s `VENDOR_TABLE` for the underlying CLI invocation + graceful-exit keystroke that the fallback path reuses. Verification status mirrors the supervisor's convention: **Verified** = ground-truthed in production; **Unverified** = best-known value, must be confirmed in a throwaway session before running a real tranch.
+
+| Vendor | Preferred path: sub-agent mechanism | Fallback path: context-flush keystroke (for Appendix A tmux mode) | Verification status |
+| --- | --- | --- | --- |
+| Claude Code | `Agent` tool with `subagent_type` parameter; supports parallel spawn; supports schema-validated return via `schema` parameter | `/compact` | **Verified** |
+| Codex CLI | Codex's task-delegation primitive (verify name with `codex --help` before tranch); if absent, fall back to Appendix A | `/condense` candidate, or graceful-exit + respawn via supervisor | **Unverified** — verify both columns before first tranch |
+| Cursor | Cursor's agent task-spawn primitive (verify with `cursor --help` before tranch); if absent, fall back to Appendix A. Note: single-session-per-repo quirk per supervisor `VENDOR_TABLE` — parallel sub-agents within the same repo are unsupported, serialize them | `/clear` candidate, or graceful-exit + respawn via supervisor | **Unverified** — verify both columns and single-session quirk before first tranch |
+| Gemini CLI | Gemini's agent task-spawn primitive (verify with `gemini --help` before tranch); if absent, fall back to Appendix A. Note: before-model hook fires per LLM request not per turn, which may interact poorly with high-fan-out judging — measure overhead before committing to 3-judge ensemble | `/clear` candidate, or graceful-exit + respawn via supervisor | **Unverified** — verify both columns and per-request hook overhead before first tranch |
+
+**Verification protocol** (one-time per vendor, similar to the supervisor's WI-batob procedure): in a throwaway tmux session, spawn the vendor CLI, attempt the preferred sub-agent mechanism with a trivial prompt ("write 'hello' to /tmp/test.txt and return 'done'") and confirm capture of the return value. Then test the fallback context-flush keystroke (`tmux send-keys '<keystroke>' Enter`) and confirm the agent's working context is reset. Document the verified values in this table via a follow-up PR.
 
 ## Tunable parameters
 
 | Parameter | Default | Range | Notes |
 |---|---|---|---|
-| `--compact-every` | 2 | 1-5 | Chunk size for Phase 1 sub-agents. Default 2 matches the empirical compaction cadence from the 21-40 campaign. |
-| `--judge-count` | 3 | 1-5 | Blind-judge ensemble size in Phase 4. 3 matches passes 1-20; 1 matches passes 21-40 (cheaper, no inter-rater variance check). |
+| `--chunk-size` | 2 | 1-5 | Number of passes per Phase 1 sub-agent. The sub-agent boundary is the compaction event; this parameter controls how much per-pass context any single sub-agent has to hold (substrate dumps + probe output + lab notebook drafting ≈ 50K tokens per pass). Default 2 matches the empirical comfort zone for Opus-class working context. Lower if individual passes are unusually heavy. |
+| `--judge-count` | 1 | 1-5 | Blind-judge ensemble size in Phase 4. Default 1 matches the passes-21-40 panel methodology — cheap, fast, yields a usable severity distribution. Upgrade to 3 for inter-rater variance averaging (matches passes 1-20 baseline). The upgrade is **reversible**: re-running additional judges on the SAME cards later is supported — Phase 4 jsonl output is per-judge, so adding judge_2 and judge_3 to a tranch that ran with judge_count=1 is a follow-up sub-agent fan-out, not a redo. |
 | `--mid-tranch-pass` | 10 | 5-15 | Pass number to insert the Phase 2 interim audit. Default at half-tranch. |
 | `--tranch-size` | 20 | 10-30 | Total pass count. Above 30 the procedure starts losing coherence; below 10 the trend signal is too noisy. |
 | `--substrate-policy` | snapshot | snapshot \| regen-each \| regen-on-suspicion | When to regenerate the analysis substrate. snapshot = once, at Phase 0. regen-each = every pass (expensive). regen-on-suspicion = whenever F39.A1-style multi-pass negative findings need fresh-substrate verification. |
@@ -130,7 +145,7 @@ Output: `${TRANCH_DIR}/pass_NN.md` per pass (immutable after written), `${TRANCH
 
 ### Step 1.1 — Chunk loop
 
-For each chunk of `--compact-every` passes (default 2), spawn a Phase 1 sub-agent with this prompt template:
+For each chunk of `--chunk-size` passes (default 2), spawn a Phase 1 sub-agent with this prompt template:
 
 ```
 You are a Phase 1 discovery sub-agent for dogfooding tranch ${TRANCH_ID}.
@@ -457,15 +472,132 @@ Write to ${TRANCH_DIR}/retrospective.md. Touch
 ${TRANCH_DIR}/tranch.retrospective. Return a 200-word summary.
 ```
 
-## Phase 6 — Carry-forward
+## Phase 6 — Tracker materialization, agent-notes integration, and carry-forward
 
-Output: `${TRANCH_DIR}/carry_forward.md`; tranch state file finalized; cross-tranch comparison row appended to `~/hypergumbo_lab_notebook/dogfood_tranchen_index.md` (if it exists).
+Output: tracker rows for every cluster + INDEPENDENT singleton (tagged with the tranch ID); existing parent rows annotated with cross-references; `agent_notes.json` integrated with the new tranch's headline numbers and cohort summary; `${TRANCH_DIR}/carry_forward.md`; cross-tranch index appended; tranch state finalized.
+
+The end-of-tranch cohort must become **actionable work in the tracker** and **discoverable state in agent_notes**. Without these steps the tranch produces a beautiful but inert lab-notebook artifact. Past evidence: the 2026-06-04 fold-audit cohort had to be materialized via 56 manual `tracker add` calls and ~30 `replace_once` calls into agent_notes.json after the lab-notebook work was complete — exactly the toil this phase eliminates.
+
+### Step 6.1 — Tracker materialization sub-agent
+
+Spawn:
+
+```
+You are the Phase 6.1 tracker materialization sub-agent for tranch
+${TRANCH_ID}. Read ${TRANCH_DIR}/tranch_state.json,
+${TRANCH_DIR}/clusters.md, ${TRANCH_DIR}/classification.md,
+${TRANCH_DIR}/aggregate_summary.md (joined verdicts), and
+${TRANCH_DIR}/mapping_anon_to_source.tsv.
+
+For each consolidated finding that should become its own row (every
+cluster from clusters.md + every INDEPENDENT singleton from
+classification.md):
+
+  1. Derive priority from the blind-judge severity per the standard
+     mapping: 5 → P0, 4 → P1, 3 → P2, 2 → P3, 1 → P4.
+  2. Decide whether to attach an existing META as parent. Cross-
+     reference clusters.md's Root-cause text against existing META
+     rows via `scripts/tracker list --kind invariant --status violated`.
+     Attach only when the existing META's scope clearly covers the new
+     row's mechanism; default to standalone if uncertain.
+  3. Call `scripts/tracker add --kind work_item|invariant
+     --title <derived from card Subject> --priority P<N>
+     --status todo_hard --tag ${TRANCH_ID} --tag dogfood
+     [--parent <META_ID>] --description <derived from card body +
+     F-number provenance + 'filed via tranch ${TRANCH_ID}'>`.
+  4. Record the returned tracker ID in
+     ${TRANCH_DIR}/tracker_materialization.tsv with columns:
+     card_id | source_row | tracker_id | priority | parent_id
+
+For each EXISTING tracker row that received related-but-distinct
+GENUINE_EXTENSION findings during this tranch (per Phase 3a
+classification.md), call `scripts/tracker discuss <ROW_ID>
+"[+ ${TRANCH_ID}: F<NN>.X1 ... — <1-line summary>]"` to record the
+extension inline on the parent row's discussion thread.
+
+Return a 200-word summary covering: number of rows materialized
+(broken down by priority), number of existing rows annotated, parent-
+attachment decisions, any cases where you defaulted to standalone
+despite a near-miss META.
+
+The tracker has automatic .ops sync; do NOT manually push or commit
+.ops files. Do honor AGENTS.md's "do not mutate tracker while an
+auto-pr is in flight" rule; if a PR_PENDING gate exists, wait for it
+to clear before starting.
+```
+
+### Step 6.2 — Agent-notes integration sub-agent
+
+Spawn:
+
+```
+You are the Phase 6.2 agent-notes integration sub-agent for tranch
+${TRANCH_ID}. Read ${TRANCH_DIR}/tranch_state.json,
+${TRANCH_DIR}/aggregate_summary.md, ${TRANCH_DIR}/trend_cluster_aware.md,
+${TRANCH_DIR}/retrospective.md, and
+${TRANCH_DIR}/tracker_materialization.tsv (Phase 6.1 output).
+
+Read ~/hypergumbo_lab_notebook/guidance_log/agent_notes.json. The
+single editable field is `notes` (markdown). Plan the diff BEFORE
+writing — produce a plan with these sections, each tied to a specific
+replace_once OR append target in the current notes:
+
+  1. Top-of-file header update (if the notes have a "Session theme" or
+     "READ THIS FIRST" block, update it to reflect the new tranch's
+     headline numbers: cohort count, mean severity, bucket-Σ-severity
+     row, Significant+Severe percentage, link to the trend report).
+  2. Active set count update (e.g., "Current active set: ~X items
+     after tranch ${TRANCH_ID} materialization").
+  3. Issues table preamble update: scope=<total rows> after this
+     tranch's additions, cumulative summary by tranch.
+  4. New cohort sub-section under the corpus table: "Tranch
+     ${TRANCH_ID} cohort filed YYYY-MM-DD — N discrete rows" listing
+     the materialized rows by family/cluster with priority + parent.
+   5. Inline annotations on existing parent rows that received tranch
+     extensions: cross-reference the new child rows.
+  6. Severity / status distribution table: add a column for this
+     tranch's cohort.
+  7. Bucket-Σ-severity rollup: append a row to any existing trend
+     section, format matching the prior tranch's row.
+  8. Cross-tranch comparison note in the retrospective trace.
+
+Apply edits via a Python script using replace_once() semantics
+(exact-1-match guarantee) similar to the 2026-06-04 materialization
+script archetype:
+
+  def replace_once(old, new, label):
+      if notes.count(old) != 1:
+          raise RuntimeError(f'{label}: expected 1 match, found {notes.count(old)}')
+      notes = notes.replace(old, new)
+
+If a replace_once fails because the OLD literal doesn't match
+exactly-once, surface the diagnostic — do NOT fuzzy-replace. Stale
+text is better than a silent over-write.
+
+Back up the prior notes file to /tmp/agent_notes-pre-${TRANCH_ID}.json
+before any edits.
+
+Return a 200-word summary: edit count, sections updated, any
+replace_once failures and how resolved.
+```
+
+### Step 6.3 — Cross-tranch index append
+
+The parent agent appends a row to `~/hypergumbo_lab_notebook/dogfood_tranchen_index.md` summarizing the tranch: ordinal, date range, headline bucket-Σ-severity, judge count, cohort count, link to retrospective. Creates the file if it doesn't exist.
+
+### Step 6.4 — Optional retroactive cleanup (requires human edit-mode authorization)
+
+If Phase 2's mid-tranch audit identified content that should have been a new row but got folded into a parent row's discussion thread during real-time passes, the cleanup is structurally identical to the 2026-06-04 fold-audit Phase 2 pruning: surgically trim migrated content from parent discussion entries via `scripts/tracker delete-msg` (whole-entry tombstone) or `edit-msg-text` (in-place supersession) under the WI-zonur per-message edit-mode window.
+
+This step requires **human edit-mode authorization** — the operator must enable edit-mode via the OS-perm-gated TUI control before the parent agent invokes the cleanup sub-agent. The agent prompts the operator with the planned ops count and waits for authorization before proceeding. If authorization is not granted within a reasonable window, skip this step and document the deferred cleanup in `carry_forward.md`.
+
+### Step 6.5 — Carry-forward + tranch finalization
 
 The parent agent writes:
 
-- `${TRANCH_DIR}/carry_forward.md` with: open methodology questions, severity rubric calibration adjustments, saturated probe classes, recommended Phase 0 changes for the next tranch.
-- An entry in `~/hypergumbo_lab_notebook/dogfood_tranchen_index.md` summarizing the tranch: ordinal, date range, headline bucket-Σ-severity, judge count, cohort count, link to retrospective.
+- `${TRANCH_DIR}/carry_forward.md` with: open methodology questions, severity rubric calibration adjustments, saturated probe classes, recommended Phase 0 changes for the next tranch, deferred Step 6.4 cleanup notes if any.
 - The next tranch's Phase 0 sub-agent should be pointed at this `carry_forward.md` via the `carry_forward_in` field in its tranch state file.
+- Finalize `${TRANCH_DIR}/tranch_state.json`: set `phase` to `complete`, populate the per-step completion timestamps, touch `${TRANCH_DIR}/tranch.complete` sentinel.
 
 ## Tranch state file schema
 
@@ -535,7 +667,7 @@ For vendors without sub-agent spawning, see Appendix A.
 | INVALIDATION-RISK finding's fresh-substrate verification fails | Substrate regeneration command errors | Mark the finding KIND=INDETERMINATE in `tranch_state.json`; Phase 3 handles INDETERMINATE as a manual-review queue |
 | Phase 3 sub-agent diverges from brief (e.g., consolidates everything) | Cluster count drops > 50% from raw F-number count | Re-spawn with tightened prompt; if it diverges again, fall back to single-axis dedup and document in retrospective |
 | Judge verdicts have no clear majority | Phase 4 aggregator detects spread >= 2 tiers in >= 25% of cards | Spawn `--judge-count` additional judges; if still spread, escalate to operator and pause tranch |
-| Parent's own context fills up before Phase 5 | Parent agent's `/compact` equivalent gets close to limit | Parent invokes `/compact` (or vendor equivalent) between phases; tranch state file persists across compactions |
+| Parent's own context fills up before Phase 5 | Parent agent self-reports approaching context limit, OR Phase 4 / 5 needs to load many per-card files | Parent agents cannot programmatically self-`/compact` — the keystroke is user-typed. Two real recovery options: (a) delegate the file-heavy work to a Phase-4-aggregator or Phase-5-reporter sub-agent so the bulk reads happen in a dying sub-agent context, OR (b) split the parent's work across multiple sessions, using `tranch_state.json` + sentinels as the resumption point. Under normal operation the parent's context grows only by ~50-80K tokens across a full tranch (sub-agent return summaries + brief state reads), so this row should rarely fire. |
 | Token budget exceeded | Configurable; checked at phase boundaries | Halt at current phase, mark tranch partial, write a partial-retrospective covering completed phases only |
 
 ## Cost & budget estimation
@@ -548,30 +680,39 @@ Per-tranch token estimates assuming Opus-class models throughout:
 | 1 (discovery) | 10 (20 passes / 2-per-chunk) | ~400K each | 4M |
 | 2 (mid-tranch audit) | 1 | ~200K | 200K |
 | 3 (consolidation) | 3 (methodology + causal + card-writer) | ~250K each | 750K |
-| 4 (judging) | judge_count × card_count | ~80K each | 80K × (J × C) |
+| 4 (judging) | judge_count × card_count | ~80K each | 80K × J × C (≈4.8M at J=1, C=60) |
+| 6 (materialization + agent-notes integration) | 2 sub-agents | ~250K each | 500K |
 | 5 (retrospective) | 1 | ~150K | 150K |
 | 6 (carry-forward) | 0 (parent only) | ~50K parent | 50K |
 
-For a default tranch (J=3, C≈60), Phase 4 alone is ~14M; full tranch ~20M. Comparable to the passes-1-20 baseline's ~18M for 198 verdicts. Cost-optimization options: drop to J=1 (~5M total) at the cost of losing inter-rater variance; drop card-writer separation (~−500K) at the cost of reintroducing same-actor bias.
+For a **default tranch (J=1, C≈60)**, Phase 4 is ~4.8M; full tranch including Phase 6 materialization ~6.5M. Matches the passes-21-40 panel's ~4M and is the cheapest configuration that still yields the bucket-Σ-severity convergence signal. **Upgrade option (J=3, C≈60):** Phase 4 jumps to ~14M; full tranch ~16M. Matches the passes-1-20 baseline (~18M for 198 verdicts) and gains inter-rater variance averaging. Upgrade is reversible — additional judges can be fanned out against the same cards in a follow-up step. **Floor (J=1, no card-writer separation):** saves ~500K but reintroduces same-actor bias; not recommended.
 
 ## Appendix A — tmux fallback for vendors without sub-agents
 
-If the vendor doesn't expose sub-agent spawning, the procedure falls back to the `scripts/agent-supervisor` VENDOR_TABLE machinery. The operator runs:
+If the vendor doesn't expose sub-agent spawning, OR its sub-agent primitive doesn't yet satisfy the contract (prompt-in, summary-out, dies-on-return, optional parallelism), the procedure falls back to the `scripts/agent-supervisor` VENDOR_TABLE machinery. In the fallback, the agent runs all 20 passes in its own context window and the operator-run supervisor injects a context-flush keystroke (`/compact` for Claude Code; per-vendor equivalents from the §Vendor parity table; graceful-exit + respawn for any vendor without an equivalent) every `--chunk-size` passes via `tmux send-keys`.
+
+The operator invokes the fallback via:
 
 ```bash
 scripts/agent-supervisor dogfood-tranch start \
     --tranch-dir <path> \
     --first-pass <N+1> \
-    --compact-every 2 \
+    --chunk-size 2 \
     --judge-count 3 \
-    --vendor <vendor-name>
+    --vendor <claude-code|codex-cli|cursor|gemini-cli>
 ```
 
-(This subcommand does not yet exist as of the playbook's filing; if you actually need the fallback, file a tracker item to extend the supervisor with the necessary subcommand and the VENDOR_TABLE `context_flush_keystroke` column.)
+(This subcommand does not yet exist as of the playbook's filing. If you actually need the fallback, file a tracker item to extend the supervisor with the subcommand AND with a `context_flush_keystroke` column on `VENDOR_TABLE`. The supervisor's existing `cli_invocation` and `exit_keystroke` columns at `scripts/agent-supervisor:166-183` are reused, as is the WI-sakod session-start respawn branch for vendors whose context-flush degrades to graceful-exit + respawn.)
 
-The supervisor spawns the agent CLI in a managed tmux session, injects pass prompts via `tmux_send_line`, injects the context-flush keystroke (`/compact` for Claude Code; graceful-exit + respawn for others) every `--compact-every` passes, and watches sentinel files in the tranch directory. Recovery semantics are equivalent to the sub-agent path: the tranch state file is the single source of truth, and any respawn reads it to resume.
+The supervisor spawns the agent CLI in a managed tmux session via `tmux_spawn_session` (already implemented), injects pass prompts via `tmux_send_line` (already implemented), injects the context-flush keystroke (NEW — the operator implements once per vendor after verification), and watches sentinel files in the tranch directory. Recovery semantics are equivalent to the sub-agent path: the tranch state file is the single source of truth, and any respawn reads it to resume.
 
-The sub-agent path is preferred when available because it does not require operator intervention to start, does not depend on tmux being installed, and does not depend on the supervisor's vendor-specific keystroke table being verified for the vendor in use.
+The sub-agent path is preferred when available because:
+- It does not require operator intervention to start.
+- It does not depend on tmux being installed.
+- It does not depend on the supervisor's vendor-specific keystroke table being verified for the vendor in use.
+- Sub-agent contexts die deterministically; tmux-injected `/compact` depends on the CLI honoring the keystroke and the agent not having injected output that swallows it.
+
+The fallback path is preferred only when the vendor lacks a viable sub-agent primitive AND the operator has verified the context-flush keystroke per the §Vendor parity table verification protocol.
 
 ## References
 
