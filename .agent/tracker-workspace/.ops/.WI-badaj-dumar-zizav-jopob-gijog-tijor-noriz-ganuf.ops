@@ -1,0 +1,63 @@
+- op: create  # c8eb
+  at: '2026-06-04T02:04:06Z'  # c8eb
+  by: agent  # c8eb
+  actor: jgstern_agent  # c8eb
+  clock: 1  # c8eb
+  nonce: c8eb  # c8eb
+  data:  # c8eb
+    kind: work_item  # c8eb
+    title: "Test item — scratch row for verification"  # c8eb
+    status: todo_hard  # c8eb
+    priority: 4  # c8eb
+    parent:  # c8eb
+    tags: []  # c8eb
+    isbefore: []  # c8eb
+    duplicate_of: []  # c8eb
+    not_duplicate_of: []  # c8eb
+    pr_ref:  # c8eb
+    description: "Test tracker item created on request. Safe to delete."  # c8eb
+    fields: {}  # c8eb
+- op: discuss  # 48e4
+  at: '2026-06-04T02:10:20Z'  # 48e4
+  by: agent  # 48e4
+  actor: jgstern_agent  # 48e4
+  clock: 2  # 48e4
+  nonce: '48e4'  # 48e4
+  message: "Test message 1 — first scratch entry."  # 48e4
+- op: discuss  # 67ca
+  at: '2026-06-04T02:10:20Z'  # 67ca
+  by: agent  # 67ca
+  actor: jgstern_agent  # 67ca
+  clock: 3  # 67ca
+  nonce: 67ca  # 67ca
+  message: "Test message 2 — second scratch entry, slightly longer to exercise wrapping if the activity pane is narrow."  # 67ca
+- op: discuss  # 7748
+  at: '2026-06-04T02:10:20Z'  # 7748
+  by: agent  # 7748
+  actor: jgstern_agent  # 7748
+  clock: 4  # 7748
+  nonce: '7748'  # 7748
+  message: "Test message 3 — third entry."  # 7748
+- op: discuss  # 0ca8
+  at: '2026-06-04T02:10:20Z'  # 0ca8
+  by: agent  # 0ca8
+  actor: jgstern_agent  # 0ca8
+  clock: 5  # 0ca8
+  nonce: 0ca8  # 0ca8
+  message: "Test message 4 — fourth entry with a multi-line body.\nSecond line of the fourth entry to check that line breaks render correctly under the bold-underlined prefix."  # 0ca8
+- op: discuss  # 2380
+  at: '2026-06-04T02:10:21Z'  # 2380
+  by: agent  # 2380
+  actor: jgstern_agent  # 2380
+  clock: 6  # 2380
+  nonce: '2380'  # 2380
+  message: "Test message 5 — final entry. Safe to delete."  # 2380
+- op: delete-msg  # 68d7
+  at: '2026-06-04T02:25:25.397980Z'  # 68d7
+  by: agent  # 68d7
+  actor: jgstern_agent  # 68d7
+  clock: 7  # 68d7
+  nonce: 68d7  # 68d7
+  item: WI-badaj-dumar-zizav-jopob-gijog-tijor-noriz-ganuf  # 68d7
+  target_nonce: 0ca8  # 68d7
+  reason: "test deletion of msg 4 via WI-zonur"  # 68d7
