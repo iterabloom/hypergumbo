@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **283** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 32 tracker)
-- **30420** symbols (functions, classes, methods)
-- **103283** edges by type:
-  - calls: 57562
-  - contains: 21765
-  - imports: 10260
-  - instantiates: 7867
-  - references: 3354
-  - module_attr_ref: 1111
+- **30552** symbols (functions, classes, methods)
+- **103888** edges by type:
+  - calls: 57980
+  - contains: 21876
+  - imports: 10279
+  - instantiates: 7892
+  - references: 3368
+  - module_attr_ref: 1129
   - other: 1364
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30420 Symbols + 103283 Edges + UsageContexts           │
+│  Output: 30552 Symbols + 103888 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -272,16 +272,16 @@ These symbols have the highest bidirectional centrality
 | `Span` | class | 4264.4 | ir.py |
 | `run_behavior_map` | function | 3028.8 | cli.py |
 | `LinkerContext` | class | 2158.7 | registry.py |
-| `TrackerApp` | class | 1877.7 | tui.py |
+| `TrackerApp` | class | 1902.1 | tui.py |
 | `load_framework_patterns` | function | 1730.6 | framework_patterns.py |
-| `main` | function | 1472.5 | cli.py |
+| `main` | function | 1537.8 | cli.py |
 | `clear_pattern_cache` | function | 1332.6 | framework_patterns.py |
 | `find_files` | function | 1120.8 | discovery.py |
 | `TreeSitterAnalyzer` | class | 944.2 | base.py |
 | `match_patterns` | function | 873.0 | framework_patterns.py |
+| `Store` | class | 858.5 | store.py |
 | `register_analyzer` | function | 822.0 | registry.py |
 | `detect_entrypoints` | function | 804.9 | entrypoints.py |
-| `Store` | class | 792.1 | store.py |
 
 ## Pattern System
 
@@ -820,7 +820,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 80a0b09d1127
+  commit: 841bd7ededc1
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
