@@ -61,3 +61,21 @@
   item: WI-badaj-dumar-zizav-jopob-gijog-tijor-noriz-ganuf  # 68d7
   target_nonce: 0ca8  # 68d7
   reason: "test deletion of msg 4 via WI-zonur"  # 68d7
+- op: delete-msg  # 86f6
+  at: '2026-06-04T03:37:20.957913Z'  # 86f6
+  by: agent  # 86f6
+  actor: jgstern_agent  # 86f6
+  clock: 8  # 86f6
+  nonce: 86f6  # 86f6
+  item: WI-badaj-dumar-zizav-jopob-gijog-tijor-noriz-ganuf  # 86f6
+  target_nonce: 0ca8  # 86f6
+  reason: "test deletion of msg 4 via WI-zonur"  # 86f6
+- op: delete-msg  # a528
+  at: '2026-06-04T04:20:09.552107Z'  # a528
+  by: agent  # a528
+  actor: jgstern_agent  # a528
+  clock: 9  # a528
+  nonce: a528  # a528
+  item: WI-badaj-dumar-zizav-jopob-gijog-tijor-noriz-ganuf  # a528
+  target_nonce: '2380'  # a528
+  reason: "test deletion of msg 5 via WI-zonur"  # a528

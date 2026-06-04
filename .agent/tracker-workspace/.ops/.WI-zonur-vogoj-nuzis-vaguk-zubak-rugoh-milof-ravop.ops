@@ -26,3 +26,18 @@
   clock: 2  # ef3f
   nonce: ef3f  # ef3f
   message: "I approve. I approve using auto-pr WITHOUT --gov"  # ef3f
+- op: update  # cedb
+  at: '2026-06-04T04:35:12Z'  # cedb
+  by: agent  # cedb
+  actor: jgstern_agent  # cedb
+  clock: 3  # cedb
+  nonce: cedb  # cedb
+  set:  # cedb
+    status: done  # cedb
+- op: discuss  # 01db
+  at: '2026-06-04T04:35:12Z'  # 01db
+  by: agent  # 01db
+  actor: jgstern_agent  # 01db
+  clock: 4  # 01db
+  nonce: 01db  # 01db
+  message: "Feature shipped end-to-end across 4 PRs (2026-06-03): #4043 phases 1+2+3+step-6 smoke (data layer + agent CLI + OS-perm gate + TUI Ctrl-E binding + banner), #4044 TUI activity-pane bold-underline prefix styling, #4046 edit-mode log relocated out of sync zone (was triggering EACCES auto-sync failures), #4047 TUI tombstone suppression in activity + detail panes (deleted messages now render as '(not shown: N deleted messages)' footer). Live exercise: user opened edit-mode via TUI Ctrl-E, agent successfully ran delete-msg on WI-badaj-dumar nonces 0ca8 and 2380; TUI rendered the tombstones correctly. All design decisions from the 2026-06-03 interview (window-based auth via OS-perm gate, 4-char nonce identity, 30m default TTL, 500-op cap, terse-footer show semantics) are wired and tested. Downstream consumer (fold-audit materialization of ~57 reconstructed rows) is separate work and not part of WI-zonur's scope."  # 01db

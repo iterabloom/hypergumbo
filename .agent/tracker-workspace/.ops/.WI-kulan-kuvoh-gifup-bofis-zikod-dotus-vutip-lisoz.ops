@@ -1,0 +1,22 @@
+- op: create  # d92f
+  at: '2026-06-04T04:52:07Z'  # d92f
+  by: agent  # d92f
+  actor: jgstern_agent  # d92f
+  clock: 1  # d92f
+  nonce: d92f  # d92f
+  data:  # d92f
+    kind: work_item  # d92f
+    title: "compact subcommand: missing entrypoints_summary/features_summary/usage_contexts_summary markers"  # d92f
+    status: todo_hard  # d92f
+    priority: 2  # d92f
+    parent: INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik  # d92f
+    tags:  # d92f
+    - dogfooding  # d92f
+    - compact  # d92f
+    - fold_audit_2026_06_03  # d92f
+    isbefore: []  # d92f
+    duplicate_of: []  # d92f
+    not_duplicate_of: []  # d92f
+    pr_ref:  # d92f
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit of dogfood passes 21-40 (`~/hypergumbo_lab_notebook/notebookjournal_06022026_2100_fold_audit_passes_21-40.md`, Family A). Consolidates three findings previously folded onto INV-luhur (F36.B1, F37.B4) and INV-titid (F40.A3). Full evidence remains on those parent discussion threads; this row provides discrete-row representation so the gap can be triaged and closed on its own merits.\n\n## Symptom\n\nThe `compact` writer emits a rich `nodes_summary` (included.{count, centrality_sum, coverage} + omitted.{count, centrality_sum, max_centrality, kinds:26-entry, tiers, top_paths, top_words}) but no parallel `_summary` companion for the other top-level arrays it also truncates: `entrypoints`, `features`, `usage_contexts`.\n\nEvidence on /tmp/hg-dogfood-s21/bm.json at default `--max-symbols 100`:\n\n- **EPs:** 33/104 emitted; 71 dropped (68%). No marker — recoverable only by comparison with source bm.json.\n- **Features:** 16/16 preserved unchanged by compact (separate issue tracked under INV-titid: feature.node_ids / edge_ids may dangle after node-set truncation).\n- **UCs:** 8/8 preserved unchanged.\n\nPer-kind EP drop distribution at default (F37.B2 / F40.A4):\n\n| kind | total | survived | drop |\n|---|---|---|---|\n| library_export | 46 | 8 | 82.6% |\n| shell_script | 31 | 6 | 80.6% |\n| main_function | 22 | 14 | 36.4% |\n| http_route | 5 | 5 | 0% |\n| html_entry | 1 | 1 | 0% |\n| script_module | 1 | 1 | 0% |\n\nPer-package EP drop distribution (F37.B3 / F40.A5):\n\n| package | drop |\n|---|---|\n| scripts/ | 94.3% (bash subset 100%) |\n| hypergumbo-core/src | 88.2% |\n| lang-rust-analyzer/src | 77.8% |\n| hypergumbo-tracker/src | 6.7% |\n| .githooks, htrac-frontend | 0% |\n\nF37.B1: EP-truncation algorithm characterized as \"keep iff target node kept\" — 33/33 emitted EPs have their `symbol_id` in the compact node set; no independent EP-selection logic. Truncation is deterministic given node selection; consumer just can't see it from the substrate alone.\n\n## Invariant\n\nA compact behavior-map output must self-describe its projection on every top-level array it truncates. Either (a) per-array `<name>_summary` companions mirroring `nodes_summary`'s `{included, omitted}` shape, or (b) a single top-level `truncation` block with `{<array>: {original_count, truncated_flag}}`.\n\n## Fix sketch\n\nMirror `nodes_summary` for `entrypoints`, `features`, `usage_contexts` in the compact writer (cli.py compact subcommand). The omitted-side shape should at minimum carry `count`; for EPs and features, `kinds` and `packages` distributions parallel `nodes_summary.omitted.kinds` would let consumers reason about what was dropped without re-running.\n\n## Source provenance\n\n- **F36.B1** — INV-luhur discussion entry 2026-06-02T21:08 (pass-36 batch; see paragraph beginning \"F36.B1 (compact subcommand EP truncation)\")\n- **F37.B4** — INV-luhur discussion entry 2026-06-02T21:26 (pass-37 batch; see paragraph beginning \"F37.B4 (missing truncation marker on entrypoints)\")\n- **F40.A3** — INV-titid discussion entry 2026-06-03T00:10:06 (pass-40 batch; see paragraph beginning \"F40.A3 (EP-level truncation marker absent)\")\n\nLab notebooks: passes 36, 37, 40 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-fanur** (META: Sketch budget enforcement layered without coordinator)\n- Sibling: **INV-pazur** (nodes_summary pre-shrink — adjacent compact self-description gap)\n- Sibling: **WI-compact-summary-fields-disagree** (Family A, metrics-block self-disagreement)\n- Sibling: **WI-compact-selection-non-monotonic** (Family A, selection-algorithm ranking instability)\n- Sibling: **WI-compact-induced-subgraph-incomplete** (Family A, edge-selection leak)"  # d92f
+    fields: {}  # d92f
