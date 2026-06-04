@@ -305,12 +305,22 @@ def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
     *limit* with a ``"showing last N of M"`` header.  Returns
     ``["No recent activity"]`` when discussion is empty.
 
+    Tombstoned entries (WI-zonur) are suppressed; a single
+    ``(not shown: N deleted messages)`` footer is appended when N > 0.
+
     Prepends a ``[20+ msgs]`` badge when entry count >= 20 (D9).
     """
-    if not item.discussion:
+    # Filter tombstones first so the "no recent activity" / 20+ / limit
+    # logic operates on the user-visible set.
+    visible = [e for e in item.discussion if not e.is_tombstoned]
+    hidden = len(item.discussion) - len(visible)
+
+    if not visible:
+        if hidden > 0:
+            return [f"(not shown: {hidden} deleted messages)"]
         return ["No recent activity"]
 
-    entries = item.discussion
+    entries = visible
     lines: list[str] = []
 
     if len(entries) >= 20:
@@ -342,6 +352,9 @@ def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
                 lines.append(f"  {format_preview_placeholder(svg_path_str)}")
             elif not svg_path.exists():
                 lines.append(f"  \\[screenshot: {svg_path.name} — file not found]")
+
+    if hidden > 0:
+        lines.append(f"(not shown: {hidden} deleted messages)")
 
     return lines
 
@@ -868,14 +881,19 @@ def _format_detail_lines(
 
     # In wide mode, discussion is shown in the activity panel
     if tier != "wide" and item.discussion:
-        count = len(item.discussion)
+        # WI-zonur: suppress tombstoned entries; surface the count via footer.
+        visible = [e for e in item.discussion if not e.is_tombstoned]
+        hidden = len(item.discussion) - len(visible)
+        count = len(visible)
         badge = " [20+ msgs]" if count >= 20 else ""
         lock_d = " [locked]" if "discussion" in item.locked_fields else ""
         lines.append(f"\n{_label(f'Discussion{lock_d} ({count} entries){badge}:')}")
-        for entry in item.discussion[-5:]:
+        for entry in visible[-5:]:
             lines.append(
                 f"  \\[{entry.at}] {entry.by}: {_escape_user(entry.message)}"
             )
+        if hidden > 0:
+            lines.append(f"  (not shown: {hidden} deleted messages)")
 
     return lines
 

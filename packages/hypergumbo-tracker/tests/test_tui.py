@@ -884,6 +884,87 @@ class TestFormatActivityLines:
         # The message body is OUTSIDE the styled prefix.
         assert "[/] Human decision" in line
 
+    def test_tombstoned_entries_suppressed_with_footer(self) -> None:
+        """WI-zonur: tombstoned messages hidden; footer shows the count."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-abc",
+            kind="work_item",
+            title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-02-25T07:46:00Z",
+                    message="visible message", nonce="vvvv",
+                ),
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-02-25T07:47:00Z",
+                    message="tombstoned message", nonce="tttt",
+                    is_tombstoned=True,
+                ),
+            ],
+        )
+        lines = _format_activity_lines(item)
+        joined = "\n".join(lines)
+        assert "visible message" in joined
+        assert "tombstoned message" not in joined
+        assert "(not shown: 1 deleted messages)" in joined
+
+    def test_all_tombstoned_renders_only_footer(self) -> None:
+        """When every discussion entry is tombstoned, only the footer renders."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-abc",
+            kind="work_item",
+            title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-02-25T07:46:00Z",
+                    message="one", nonce="aaaa", is_tombstoned=True,
+                ),
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-02-25T07:47:00Z",
+                    message="two", nonce="bbbb", is_tombstoned=True,
+                ),
+            ],
+        )
+        lines = _format_activity_lines(item)
+        assert lines == ["(not shown: 2 deleted messages)"]
+
+
+class TestFormatDetailLinesTombstones:
+    """Discussion section of compact/standard detail pane filters tombstones."""
+
+    def test_compact_detail_hides_tombstoned_entries(self) -> None:
+        from hypergumbo_tracker.models import DiscussionEntry
+        from hypergumbo_tracker.tui import _format_detail_lines
+
+        item = CompiledItem(
+            id="INV-abc",
+            kind="work_item",
+            title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-02-25T07:46:00Z",
+                    message="visible", nonce="aaaa",
+                ),
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-02-25T07:47:00Z",
+                    message="hidden", nonce="bbbb", is_tombstoned=True,
+                ),
+            ],
+        )
+        rendered = "\n".join(_format_detail_lines(item, tier="compact"))
+        assert "visible" in rendered
+        assert "hidden" not in rendered
+        # Count in the heading reflects visible-only, not total.
+        assert "Discussion" in rendered and "(1 entries)" in rendered
+        assert "(not shown: 1 deleted messages)" in rendered
+
     def test_empty_discussion(self) -> None:
         item = CompiledItem(
             id="WI-abc",
