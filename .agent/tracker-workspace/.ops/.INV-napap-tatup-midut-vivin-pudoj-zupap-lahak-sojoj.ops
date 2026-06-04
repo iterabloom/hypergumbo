@@ -95,3 +95,12 @@
   clock: 10  # 9d05
   nonce: 9d05  # 9d05
   message: "Pass-40 F40.C1+C4 batch — markdown analyzer skips file-kind anchor emission entirely.\n\nF40.C1: Generated /tmp/p40_docs_bm.json via 'hypergumbo run docs --include-docs' on docs/ (108 files, 92 .md). Result: 2861 nodes, node-kind breakdown {section:1768, link:502, code_block:497, external_symbol:92, file:2}. The 2 file-kind nodes are both ansible (YAML). **ZERO file-kind nodes for the 92 .md files.** The markdown analyzer emits section/link/code_block synthesized symbols but never a file-kind anchor symbol per markdown file. Distinct from INV-napap's original framing of 'centrality_scores excludes Python source files' — there it was absence-of-scoring; here it's absence-of-emission.\n\nConsumer impact: per-file aggregation queries (centrality-by-file, tier-by-file, supply_chain by file) cannot enumerate markdown files at all from a substrate. centrality_scores, supply_chain_summary, file-language histograms all silently exclude markdown content. The 92 markdown files exist as 2861 internal section/link/code_block nodes only.\n\nF40.C4 (sibling): all 2861 DOCS nodes report supply_chain_tier='?' (key absent from dict). The tier classifier doesn't classify markdown nodes at all. Sibling of INV-nuzas (mis-labels first-party as external) and INV-napap original (centrality_scores excludes Python files). Here it's complete absence for markdown kind — neither tier emitted nor file-kind anchor to attach tier to.\n\nFix path: emit a file-kind anchor symbol for each analyzed file regardless of language (same fix path as INV-napap original). Tier classifier should default to first_party for nodes that have a non-<external> path. The markdown analyzer scaffolding gap is broader than centrality and tier — affects supply_chain_summary, file enumeration, centrality_scores, and tier classification simultaneously."  # 9d05
+- op: delete-msg  # 11fb
+  at: '2026-06-04T17:02:22.799636Z'  # 11fb
+  by: agent  # 11fb
+  actor: jgstern_agent  # 11fb
+  clock: 11  # 11fb
+  nonce: 11fb  # 11fb
+  item: INV-napap-tatup-midut-vivin-pudoj-zupap-lahak-sojoj  # 11fb
+  target_nonce: 9d05  # 11fb
+  reason: "F40.C1+C4 migrated to WI-vamih and WI-sibil per fold-audit 2026-06-03"  # 11fb

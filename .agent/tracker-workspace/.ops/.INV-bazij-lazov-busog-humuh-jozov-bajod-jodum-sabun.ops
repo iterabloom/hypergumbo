@@ -120,3 +120,21 @@
   clock: 13  # fea8
   nonce: fea8  # fea8
   message: "Pass-40 F40.C3 — INV-bazij 6th mechanism (within-file duplicate-heading markdown collisions) + 6-codebase matrix.\n\nDOCS substrate: 11/2861 = 0.38% collision rate. All 4 distinct colliders are markdown sections/links from ONE file: adr/0013-structured-tracker.md. The colliding stable_ids all share format markdown:<path>:1411-1411:<heading>:link — the same line-range across all collisions.\n\nMechanism: The markdown analyzer emits N copies of an 'internal-link' node when the source file has N occurrences of identical heading text. Specifically, adr/0013-structured-tracker.md has '## Key Design Decisions' appearing 4 times (in different sub-sections of the ADR), and each occurrence emits an identical-stable_id link node. Same for 'Compile Rules' (3 and 2 occurrences).\n\nThis is the 6th distinct INV-bazij mechanism, distinct from prior cohorts:\n- SQL parse-artifact ('SELECT users' 13×)\n- kafka-linker placeholder ('kafka:publish:*' 5-8× each)\n- bash export-VAR intrinsic (FORGEJO_TOKEN/CI_TIMEOUT_SECONDS within-name repetition)\n- HTTP-linker URL-variant collapse\n- TypeScript hash-input-insufficient cross-name (4 stable_ids collapse {connect, connectWebSocket, registerServiceWorker, scheduleReconnect})\n- **NEW: markdown within-file duplicate-heading** (multiple ## same-text occurrences in one file)\n\nUpdated 6-codebase INV-bazij matrix:\n| codebase | nodes | rate | dominant cohort |\n| ROOT default | 34253 | 0.84% | mixed |\n| TRACKER | 4959 | 0.81% | python residual |\n| SCRIPTS default | 416 | 7.0% **BREACH** | bash export-VAR intrinsic |\n| HTRAC default | 77 | 16.88% **BREACH** | TS hash-input-insufficient |\n| CLI_PKG | 32 | 0.00% | (nothing) |\n| **DOCS default | 2861 | 0.38% | markdown within-file-dup-heading (NEW)** |\n\nDOCS rate is below 5% threshold so no INV-bazij breach, but the within-file-dup-heading cohort is a NEW mechanism adding to WI-bupim multi-mechanism scope. Composition: markdown analyzer stable_id hash for internal-link kind excludes occurrence-index in same-line-range case. Fix-path: include heading-occurrence index in stable_id hash for markdown internal-link kind.\n\n6-codebase synthesis: codebase composition dominates over codebase SIZE as INV-bazij driver. Three different compositions (bash-heavy / TS-pure / markdown-pure) at small/medium sizes produce 7% / 17% / 0.38% — analyzer-specific hash bugs DOMINATE; ROOT 0.84% MASKS all these cohorts via large denominator."  # fea8
+- op: delete-msg  # 80b3
+  at: '2026-06-04T17:02:21.858333Z'  # 80b3
+  by: agent  # 80b3
+  actor: jgstern_agent  # 80b3
+  clock: 14  # 80b3
+  nonce: 80b3  # 80b3
+  item: INV-bazij-lazov-busog-humuh-jozov-bajod-jodum-sabun  # 80b3
+  target_nonce: b328  # 80b3
+  reason: "F39.C2 migrated to WI-zitod per fold-audit 2026-06-03"  # 80b3
+- op: delete-msg  # cd77
+  at: '2026-06-04T17:02:22.328862Z'  # cd77
+  by: agent  # cd77
+  actor: jgstern_agent  # cd77
+  clock: 15  # cd77
+  nonce: cd77  # cd77
+  item: INV-bazij-lazov-busog-humuh-jozov-bajod-jodum-sabun  # cd77
+  target_nonce: fea8  # cd77
+  reason: "F40.C3 migrated to WI-sirid per fold-audit 2026-06-03"  # cd77

@@ -73,3 +73,21 @@
   clock: 7  # ee4c
   nonce: ee4c  # ee4c
   message: "Pass-40 F40.B5 — verify-claims --claims 9-shape matrix (5 NEW unhandled-traceback shapes beyond F36.D2 list-root).\n\nverify-claims input shape matrix (9 cells):\n| shape | rc | tb | result |\n| missing path | 1 | 0 | clean 'Claims file not found' |\n| empty YAML | 0 | 0 | 'No claims found in file' |\n| scalar ('hello') | 1 | **1** | AttributeError: 'str' has no '.get' |\n| claims: null | 1 | **1** | TypeError: NoneType not iterable |\n| claims: ~ | 1 | **1** | same TypeError |\n| {} | 0 | 0 | 'No claims found in file' |\n| claims: [] | 0 | 0 | 'No claims found in file' |\n| binary file | 1 | **1** | yaml.reader.ReaderError: unacceptable character #x0000 |\n| directory path | 1 | **1** | IsADirectoryError from open() |\n\n5 NEW unhandled-traceback shapes beyond F36.D2's already-filed list-root case:\n1. scalar YAML root → AttributeError (str.get) — verify_claims.py:201\n2. claims: null → TypeError NoneType iter — verify_claims.py:201 (data.get returns None which propagates)\n3. claims: ~ → same path as null per YAML 1.2 spec for tilde\n4. binary file → yaml.reader.ReaderError leaks from PyYAML 5 layers deep\n5. directory path → IsADirectoryError from open() — no isdir check at file-load layer\n\nNotable asymmetry: empty_dict {} and claims: [] give clean rc=0 'No claims found' but their semantic siblings claims: null and claims: ~ traceback. All four are reasonable YAML representations of 'no claims' but only 2 are handled.\n\nFix-path at one location: dict-coerce + .get + null-check at load_claims:200-201 + isdir/binary-magic check at the open() layer. Combined with F36.D2 list-root case, INV-zurih scope now covers 6 distinct unhandled YAML shapes."  # ee4c
+- op: delete-msg  # acec
+  at: '2026-06-04T17:02:23.269055Z'  # acec
+  by: agent  # acec
+  actor: jgstern_agent  # acec
+  clock: 8  # acec
+  nonce: acec  # acec
+  item: INV-zurih-mozol-lolak-mimug-lukik-hipan-kasod-nonuk  # acec
+  target_nonce: 9b2f  # acec
+  reason: "F36.D2 migrated to WI-fuhaf per fold-audit 2026-06-03"  # acec
+- op: delete-msg  # f697
+  at: '2026-06-04T17:02:23.751383Z'  # f697
+  by: agent  # f697
+  actor: jgstern_agent  # f697
+  clock: 9  # f697
+  nonce: f697  # f697
+  item: INV-zurih-mozol-lolak-mimug-lukik-hipan-kasod-nonuk  # f697
+  target_nonce: ee4c  # f697
+  reason: "F40.B5 migrated to WI-fuhaf per fold-audit 2026-06-03"  # f697

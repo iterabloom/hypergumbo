@@ -44,3 +44,21 @@
   clock: 4  # e3b6
   nonce: e3b6  # e3b6
   message: "Pass 39 (2026-06-02, dogfooding) — 2 findings batched at compact --coverage characterization:\n\nF39.B1 (HEADLINE — UPGRADES pass-38 F38.C1 from 'silently ignored' to 'structurally dead-code'): --coverage flag is structurally dead-code in the DEFAULT connectivity-aware compact path. Code reading compact.py:\n- Default (connectivity_aware=True at compact.py:1046): calls select_by_connectivity(symbols, edges, seed_ids, max_additional, centrality) at line 1050. Function signature has NO target_coverage parameter. The flag value is stored in CompactConfig.target_coverage (default 0.8) but never read by the connectivity-aware selector.\n- --no-connectivity: calls select_by_coverage(symbols, edges, config, force_include_ids) at line 1071. This IS coverage-aware (at_coverage = coverage >= config.target_coverage at line 905).\n\nThe documented '--coverage / Target centrality coverage 0.0-1.0 (default: 0.8)' help text only takes effect when --no-connectivity is also set. Default-mode users see no behavioral change from --coverage. F38.C1 framing 'silently ignored at cardinality' was understated — flag is structurally inert in default path. Documentation/wiring gap: --help should either gate --coverage on --no-connectivity or wire --coverage through to select_by_connectivity (e.g., stop-condition at frontier expansion).\n\nF39.B2: Empirical verification of F39.B1 — --no-connectivity coverage sweep on /tmp/hg-dogfood-s21/bm.json:\n- cov=0.1 → 57 nodes / actual_coverage=0.1009 (stops at coverage 10.1%, before max-symbols 100)\n- cov=0.5 → 100 nodes / actual_coverage=0.1966 (max-symbols hit; coverage 50% UNREACHABLE)\n- cov=0.8 → 100 nodes / actual_coverage=0.1966 (max-symbols hit)\n- cov=0.99 → 100 nodes / actual_coverage=0.1966 (max-symbols hit)\n\nRoot substrate centrality is heavily distributed — top-100 nodes cover only 19.66% of total centrality. To make --coverage ≥0.5 actually trigger, user would need --max-symbols >> 100. No documented relationship between --coverage and --max-symbols in --help. 6th budget-coordination face joining INV-pazur / WI-fufop / INV-vopuh / pass-32 F32.9 / pass-38 F38.C1."  # e3b6
+- op: delete-msg  # 2340
+  at: '2026-06-04T17:02:20.906580Z'  # 2340
+  by: agent  # 2340
+  actor: jgstern_agent  # 2340
+  clock: 5  # 2340
+  nonce: '2340'  # 2340
+  item: INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik  # 2340
+  target_nonce: '8696'  # 2340
+  reason: "F32.9 migrated to WI-kolal and F32.13 to WI-hakom per fold-audit 2026-06-03"  # 2340
+- op: delete-msg  # 2ecf
+  at: '2026-06-04T17:02:21.388644Z'  # 2ecf
+  by: agent  # 2ecf
+  actor: jgstern_agent  # 2ecf
+  clock: 6  # 2ecf
+  nonce: 2ecf  # 2ecf
+  item: INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik  # 2ecf
+  target_nonce: e3b6  # 2ecf
+  reason: "F39.B1+B2 migrated to WI-fumut per fold-audit 2026-06-03"  # 2ecf
