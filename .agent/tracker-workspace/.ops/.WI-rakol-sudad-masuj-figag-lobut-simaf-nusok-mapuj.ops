@@ -1,0 +1,22 @@
+- op: create  # cab9
+  at: '2026-06-04T08:27:36Z'  # cab9
+  by: agent  # cab9
+  actor: jgstern_agent  # cab9
+  clock: 1  # cab9
+  nonce: cab9  # cab9
+  data:  # cab9
+    kind: work_item  # cab9
+    title: "test-coverage and dead-code-maybe share opaque 'production functions' derivation (4342); undocumented in --help and spec.md"  # cab9
+    status: todo_hard  # cab9
+    priority: 3  # cab9
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # cab9
+    tags:  # cab9
+    - dogfooding  # cab9
+    - spec_drift  # cab9
+    - fold_audit_2026_06_03  # cab9
+    isbefore: []  # cab9
+    duplicate_of: []  # cab9
+    not_duplicate_of: []  # cab9
+    pr_ref:  # cab9
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family N). Stand-alone finding F31.2 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-31 discussion entry.\n\n## Symptom\n\n`test-coverage` and `dead-code-maybe` subcommands share an opaque \"production functions\" derivation (count 4342 on root). The derivation is undocumented in `--help` or spec.md.\n\nA consumer running `hypergumbo test-coverage` sees `4342 production functions analyzed; X covered, Y uncovered` and cannot tell what defines \"production.\" Is it:\n- non-test files?\n- non-example files?\n- functions with `supply_chain.is_test_file=False`?\n- functions whose path doesn't match `test_*.py`?\n- something else?\n\nThe same number appears in `dead-code-maybe` output, suggesting a shared filter — but the filter logic is implicit.\n\n## Invariant\n\n`test-coverage --help` and `dead-code-maybe --help` document what counts as \"production functions\" using cross-references to `supply_chain.is_test_file` and any other filters applied. Consumers reading the output understand the denominator.\n\n## Fix sketch\n\nUpdate `--help` for both subcommands. Document the derivation in spec.md (likely as a sub-section under `usage_contexts` or `dead_code` if those have dedicated spec sections). Optionally surface the filter inputs at runtime: `production functions: 4342 (excludes 25584 test, ...)`.\n\n## Source provenance\n\n- **F31.2** — INV-luhur discussion entry 2026-06-02 (pass-31 batch).\n\nLab notebook: pass 31.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-dead-code-multilanguage-coverage** (Family N — adjacent dead-code-maybe scope).\n- Sibling: **WI-symbols-silently-filters-kinds** (Family N — adjacent subcommand-UX gap).\n- Family N siblings."  # cab9
+    fields: {}  # cab9

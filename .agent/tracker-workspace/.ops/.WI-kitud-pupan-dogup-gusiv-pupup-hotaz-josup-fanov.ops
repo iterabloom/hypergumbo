@@ -1,0 +1,23 @@
+- op: create  # e965
+  at: '2026-06-04T08:15:48Z'  # e965
+  by: agent  # e965
+  actor: jgstern_agent  # e965
+  clock: 1  # e965
+  nonce: e965  # e965
+  data:  # e965
+    kind: work_item  # e965
+    title: "JSON-output flag fragmentation across 12 read subcommands (3 conventions: --format json / --json / implicit)"  # e965
+    status: todo_hard  # e965
+    priority: 2  # e965
+    parent: WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun  # e965
+    tags:  # e965
+    - dogfooding  # e965
+    - cli_input_boundary  # e965
+    - json_output  # e965
+    - fold_audit_2026_06_03  # e965
+    isbefore: []  # e965
+    duplicate_of: []  # e965
+    not_duplicate_of: []  # e965
+    pr_ref:  # e965
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family F). Stand-alone finding F33.5 previously folded onto INV-luhur. Full evidence remains on INV-luhur's pass-33 discussion entry; this row provides discrete representation.\n\nThe audit's verdict: F33.5 generalizes pass-30 F30.15 from a 2-subcommand observation to a 12-subcommand survey, surfacing 3 distinct conventions. STANDALONE because the fix-site is a CLI argument-parsing uniformization, not a documentation drift.\n\n## Symptom\n\nJSON-output-flag fragmentation across 12 read subcommands. Three distinct conventions:\n\n| Convention | Flag | Subcommands |\n|---|---|---|\n| 1 | `--format json` | (some subset) |\n| 2 | `--json` | (other subset) |\n| 3 | (no flag; JSON is implicit on certain inputs) | (e.g., `verify-claims` via `--claims`) |\n\nPass-30 F30.15 catalogued the 2-subcommand `--format` vs `--input` divergence; pass-33 widens to a 12-subcommand inventory showing 3 conventions total. The audit also lists WI-gogif (META: Multiple JSON output conventions and gaps) as the existing umbrella for this scope — this row is a sibling under WI-gogif.\n\n## Invariant\n\nEvery read subcommand emitting JSON-or-other format output uses the SAME flag spelling (`--format json` recommended, since it generalizes to `--format yaml`, `--format ndjson`, etc.). The current 3-convention state is the bug.\n\n## Fix sketch\n\nUniformize to `--format <fmt>` across all 12 read subcommands. Existing `--json` flag becomes an alias for backward-compat or is removed in a major-version bump. Document the canonical form in `--help` for each subcommand.\n\nSibling rows under WI-gogif (META: JSON output conventions) capture other dimensions of JSON-API fragmentation: INV-fivar (missing --format flag), INV-pikob (envelope incomplete or non-standard), INV-rugah (wire-format vs internal-API mismatch).\n\n## Source provenance\n\n- **F33.5** — INV-luhur discussion entry 2026-06-02T16:12:13 (pass-33 batch; paragraph beginning \"F33.5 — JSON-output-flag fragmentation across 12 subcommands\").\n- Cousin pass-30 F30.15 (2-subcommand flag-parity drift between config and verify-claims).\n\nLab notebooks: passes 30, 33 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **WI-gogif** (META: Multiple JSON output conventions).\n- Sibling: **INV-fivar** (META(sub-A): JSON output missing --format flag) — direct overlap; this row is the broader inventory.\n- Sibling: **INV-pikob**, **INV-rugah** (META(sub-B) and (sub-C): JSON envelope / wire-format mismatch).\n- Sibling: **INV-rotup** (CLI help text drift) — cousin documentation gap."  # e965
+    fields: {}  # e965

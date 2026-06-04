@@ -1,0 +1,23 @@
+- op: create  # 4ce4
+  at: '2026-06-04T08:23:15Z'  # 4ce4
+  by: agent  # 4ce4
+  actor: jgstern_agent  # 4ce4
+  clock: 1  # 4ce4
+  nonce: 4ce4  # 4ce4
+  data:  # 4ce4
+    kind: work_item  # 4ce4
+    title: "edge.meta.evidence_type vocabulary drift: 33 distinct substrate values vs 9 documented; 27.1% of edges use undocumented values"  # 4ce4
+    status: todo_hard  # 4ce4
+    priority: 3  # 4ce4
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 4ce4
+    tags:  # 4ce4
+    - dogfooding  # 4ce4
+    - spec_drift  # 4ce4
+    - vocabulary  # 4ce4
+    - fold_audit_2026_06_03  # 4ce4
+    isbefore: []  # 4ce4
+    duplicate_of: []  # 4ce4
+    not_duplicate_of: []  # 4ce4
+    pr_ref:  # 4ce4
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family K). Stand-alone finding F30.5 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-30 discussion entry.\n\n## Symptom\n\n`edge.meta.evidence_type` substrate vocabulary has 33 distinct values; spec.md documents only 9. 27.1% of edges use undocumented values.\n\nThe documented vocabulary covers `ast_call_direct`, `import_*`, `inheritance`, etc. The substrate emits values like `decorator_dispatch`, `manifest_target`, framework-route-emitter prefixes, and synthetic-kind-specific evidence types that have no spec entry.\n\n## Invariant\n\nEither:\n1. **Spec amendment.** Document all 33 substrate values in spec.md §edge.meta.evidence_type.\n2. **Producer constraint.** Producers emit only from the documented 9-value vocabulary; the 24 undocumented values are normalized to one of the canonical 9 at emission.\n\nPath (1) preserves the existing producer behavior. Path (2) reduces the consumer-side vocabulary burden but loses producer-specific signal.\n\n## Fix sketch\n\nPath (1) is the audit's recommendation. Enumerate all substrate values, classify each into the documented category (or add new categories), update spec.md, add a vocabulary-membership check to WI-kafar's validator class.\n\n## Source provenance\n\n- **F30.5** — INV-luhur discussion entry 2026-06-02 (pass-30 batch).\n\nLab notebook: pass 30.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-edge-type-vocab-drift** (Family K — sibling vocabulary drift).\n- Sibling: **WI-feature-record-shape-drift**, **WI-node-meta-undocumented** (Family K)."  # 4ce4
+    fields: {}  # 4ce4

@@ -1,0 +1,22 @@
+- op: create  # 304c
+  at: '2026-06-04T08:27:38Z'  # 304c
+  by: agent  # 304c
+  actor: jgstern_agent  # 304c
+  clock: 1  # 304c
+  nonce: 304c  # 304c
+  data:  # 304c
+    kind: work_item  # 304c
+    title: "dead-code-maybe effectively Python-only on multi-language substrates (99.0% Python despite 17 languages); seed/EP coverage gap"  # 304c
+    status: todo_hard  # 304c
+    priority: 2  # 304c
+    parent: INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad  # 304c
+    tags:  # 304c
+    - dogfooding  # 304c
+    - dead_code  # 304c
+    - fold_audit_2026_06_03  # 304c
+    isbefore: []  # 304c
+    duplicate_of: []  # 304c
+    not_duplicate_of: []  # 304c
+    pr_ref:  # 304c
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family N). Stand-alone finding F33.23 previously folded onto INV-pohik. Full evidence on INV-pohik's pass-33 discussion entry.\n\n## Symptom\n\n`dead-code-maybe` is effectively Python-only on multi-language substrates. On root with 17 languages present, 99.0% of dead-code candidates are Python (≈3850/3891). The scorer's seed/EP coverage doesn't expand to non-Python entrypoints.\n\nThis is consistent with WI-feature-is-http-route-projection (Family I) — Python is the only language with HTTP route detection in the current substrate; other languages' entrypoints don't anchor reachability analysis the same way.\n\n## Invariant\n\n`dead-code-maybe` evaluates dead-code candidacy uniformly across all substrate languages. Either:\n1. Per-language entrypoint sets are populated for all 17 languages.\n2. The scorer documents \"Python-only by default\" and provides a `--language <X>` flag for other languages.\n\nPath (1) is the structural fix; path (2) is documentation-only and matches the current behavior.\n\n## Fix sketch\n\nTwo parts:\n\n**(a) Entrypoint coverage for non-Python languages.** Each language analyzer emits entrypoints for its main / library_export / shell_script / etc. equivalents. Feeds the dead-code-maybe scorer.\n\n**(b) Cross-language hit consumer fix (cross-reference WI-cross-language-hits-unused, Family M).** The scorer also consults `cross_language_hits` as a demoter — Python-only candidates with high CLH are less likely to be dead.\n\nCombined with WI-cross-language-hits-unused, this row tracks the per-language entrypoint coverage; the cousin tracks the FP demoter.\n\n## Source provenance\n\n- **F33.23** — INV-pohik discussion entry 2026-06-02 (pass-33 batch).\n\nLab notebook: pass 33.\n\n## Related rows\n\n- Parent: **INV-pohik**.\n- Sibling: **WI-cross-language-hits-unused** (Family M — adjacent dead-code-maybe surface).\n- Sibling: **WI-test-coverage-production-fns-doc** (Family N — adjacent subcommand-UX gap).\n- Family N siblings."  # 304c
+    fields: {}  # 304c

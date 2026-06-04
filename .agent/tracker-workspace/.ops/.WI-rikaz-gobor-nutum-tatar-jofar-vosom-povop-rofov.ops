@@ -1,0 +1,22 @@
+- op: create  # e02f
+  at: '2026-06-04T08:25:17Z'  # e02f
+  by: agent  # e02f
+  actor: jgstern_agent  # e02f
+  clock: 1  # e02f
+  nonce: e02f  # e02f
+  data:  # e02f
+    kind: work_item  # e02f
+    title: "centrality_scores semantics undocumented; CHANGELOG/spec/ADRs all score 0.0; misleading to 'most important files' consumers"  # e02f
+    status: todo_hard  # e02f
+    priority: 3  # e02f
+    parent: INV-napap-tatup-midut-vivin-pudoj-zupap-lahak-sojoj  # e02f
+    tags:  # e02f
+    - dogfooding  # e02f
+    - spec_drift  # e02f
+    - fold_audit_2026_06_03  # e02f
+    isbefore: []  # e02f
+    duplicate_of: []  # e02f
+    not_duplicate_of: []  # e02f
+    pr_ref:  # e02f
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family L). Stand-alone finding F24.3 previously folded onto INV-napap. Full evidence on INV-napap's pass-24 discussion entry.\n\n## Symptom\n\n`centrality_scores` semantics are undocumented. CHANGELOG.md, spec.md, and 5 ADRs all score 0.0 — yet they're documents that consumers reasonably expect to score nonzero for \"most important files.\" A consumer asking \"what's most central?\" gets misleading results without understanding why.\n\nThe 0.0 score for documentation files is a downstream consequence of CS being derived from import-edges. Documents are not import-edge targets, so they score 0.0. The score is technically correct under the import-edge-derived definition but misleading without context.\n\n## Invariant\n\n`centrality_scores` semantics are documented in spec.md AT MINIMUM. The documentation explains:\n1. The derivation (import-edge-based; doc nodes inherently score 0.0)\n2. The interpretation (\"imported-by frequency\" not \"importance to humans\")\n3. Any normalization applied\n\nConsumers reading the score know what it means and what it excludes.\n\n## Fix sketch\n\nSpec.md §9.centrality_scores documentation pass. Cross-reference to ADR-0031 (path-deriving language axis) and the import-edge producer. Optionally rename `centrality_scores` to `import_centrality_scores` for clarity.\n\n## Source provenance\n\n- **F24.3** — INV-napap discussion entry 2026-06-02 (pass-24 batch).\n\nLab notebook: pass 24.\n\n## Related rows\n\n- Parent: **INV-napap**.\n- Sibling: **WI-centrality-file-surface-disjoint** (Family L — adjacent CS gap).\n- Sibling: **INV-rotup** (CLI help text drift; cousin documentation gap).\n- Family L siblings."  # e02f
+    fields: {}  # e02f

@@ -1,0 +1,22 @@
+- op: create  # 3584
+  at: '2026-06-04T08:17:16Z'  # 3584
+  by: agent  # 3584
+  actor: jgstern_agent  # 3584
+  clock: 1  # 3584
+  nonce: '3584'  # 3584
+  data:  # 3584
+    kind: work_item  # 3584
+    title: "AR.files_analyzed non-deterministic across runs on 18/84 ARs (file-router race or dict-iteration-order assignment)"  # 3584
+    status: todo_hard  # 3584
+    priority: 2  # 3584
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 3584
+    tags:  # 3584
+    - dogfooding  # 3584
+    - determinism  # 3584
+    - fold_audit_2026_06_03  # 3584
+    isbefore: []  # 3584
+    duplicate_of: []  # 3584
+    not_duplicate_of: []  # 3584
+    pr_ref:  # 3584
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family G). Stand-alone finding F32.2 previously folded onto INV-luhur. Full evidence remains on INV-luhur's pass-32 discussion entry; this row provides discrete representation.\n\n## Symptom\n\n`AnalysisRun.files_analyzed` is non-deterministic across runs on 18/84 ARs. Re-running `hypergumbo run` on an unchanged corpus produces different `files_analyzed` counts on those 18 passes from one run to the next.\n\nLikely root cause: file-router race or dict-iteration-order assignment of files to passes (when multiple linker/language passes claim a file simultaneously, first-claim-wins varies based on dict iteration order, which Python 3.6+ guarantees insertion-order but the insertion order itself can vary if it depends on filesystem scanning order or parallel-pool completion timing).\n\n## Invariant\n\nFor an unchanged corpus, `hypergumbo run` produces identical AR records across re-runs. `files_analyzed` (and the file allocation underlying it) must be deterministic. Concretely: a re-run of `hypergumbo run` should produce an AR list that hashes to the same hash across runs (modulo timestamps).\n\n## Fix sketch\n\nTwo paths:\n\n**(a) Sort file-claim resolution.** When multiple passes are eligible to analyze a file, resolve by a documented tie-break (lexicographic pass_id, or topological order). Removes the race.\n\n**(b) Lock the file-pass assignment at file-walk time.** Each file gets a deterministic pass-set assignment up-front; runs cannot drift.\n\nEither fix would also stabilize downstream surfaces that depend on `files_analyzed` (e.g., `metrics`, `centrality_scores` derivation depends on which pass claimed which file).\n\n## Source provenance\n\n- **F32.2** — INV-luhur discussion entry 2026-06-02 (pass-32 batch).\n\nLab notebook: pass 32 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-pass-registry-dispatcher-divergence** (Family G — same AR-list contract surface).\n- Sibling: **WI-ar-zero-yield-contract** (Family G — AR.files_analyzed > 0 but emits 0 nodes)."  # 3584
+    fields: {}  # 3584

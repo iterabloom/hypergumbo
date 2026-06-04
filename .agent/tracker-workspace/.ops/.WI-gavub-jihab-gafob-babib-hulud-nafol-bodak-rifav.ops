@@ -1,0 +1,23 @@
+- op: create  # 8b82
+  at: '2026-06-04T08:26:38Z'  # 8b82
+  by: agent  # 8b82
+  actor: jgstern_agent  # 8b82
+  clock: 1  # 8b82
+  nonce: 8b82  # 8b82
+  data:  # 8b82
+    kind: work_item  # 8b82
+    title: "cross_language_hits populated per dead-code-maybe candidate but never consumed as FP demoter"  # 8b82
+    status: todo_hard  # 8b82
+    priority: 3  # 8b82
+    parent: INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad  # 8b82
+    tags:  # 8b82
+    - dogfooding  # 8b82
+    - producer_migration  # 8b82
+    - dead_code  # 8b82
+    - fold_audit_2026_06_03  # 8b82
+    isbefore: []  # 8b82
+    duplicate_of: []  # 8b82
+    not_duplicate_of: []  # 8b82
+    pr_ref:  # 8b82
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family M). Stand-alone finding F33.24 previously folded onto INV-pohik. Full evidence on INV-pohik's pass-33 discussion entry.\n\n## Symptom\n\n`cross_language_hits` is populated per dead-code candidate but never consumed as an FP demoter. Per pass-33 F33.24:\n\n- Every candidate row carries `cross_language_hits=<int>`.\n- The dead-code-maybe scorer ignores the field when ranking.\n- Top-3 dead-code candidates by `cross_language_hits` would correctly demote each: 3 Lit `*.render` symbols at CLH=94 each (these are NOT dead, they're called via Lit's framework dispatch from JS/CSS).\n\nThe signal is there; the consumer doesn't use it.\n\n## Invariant\n\nDead-code-maybe scorer consults `cross_language_hits` as a demoter: a candidate with high CLH is less likely to be dead. Either:\n1. **Hard exclusion**: CLH > 0 excludes the candidate.\n2. **Confidence demotion**: CLH > N reduces the candidate's dead-confidence score proportionally.\n\nPath (2) is the audit's recommendation since some genuine dead code does have low CLH; the demotion is calibration-friendly.\n\n## Fix sketch\n\nIn the dead-code-maybe scorer, after computing the base confidence, multiply by `1 / (1 + cross_language_hits)` (or a similar decay). Reduces false-positive rate on cross-language-called symbols.\n\n## Source provenance\n\n- **F33.24** — INV-pohik discussion entry 2026-06-02 (pass-33 batch).\n- Cousin: WI-dead-code-multilanguage-coverage (Family N — same dead-code scorer surface).\n\nLab notebook: pass 33.\n\n## Related rows\n\n- Parent: **INV-pohik**.\n- Sibling: **WI-dead-code-multilanguage-coverage** (Family N — adjacent dead-code scope).\n- Family M siblings."  # 8b82
+    fields: {}  # 8b82

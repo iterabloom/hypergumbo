@@ -1,0 +1,22 @@
+- op: create  # c63a
+  at: '2026-06-04T08:17:23Z'  # c63a
+  by: agent  # c63a
+  actor: jgstern_agent  # c63a
+  clock: 1  # c63a
+  nonce: c63a  # c63a
+  data:  # c63a
+    kind: work_item  # c63a
+    title: "11 ARs scan files (files_analyzed > 0) but emit 0 unique-path nodes; contract for files_analyzed → node-yield relationship undocumented"  # c63a
+    status: todo_hard  # c63a
+    priority: 3  # c63a
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # c63a
+    tags:  # c63a
+    - dogfooding  # c63a
+    - schema_drift  # c63a
+    - fold_audit_2026_06_03  # c63a
+    isbefore: []  # c63a
+    duplicate_of: []  # c63a
+    not_duplicate_of: []  # c63a
+    pr_ref:  # c63a
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family G). Stand-alone finding F25.15 previously folded onto INV-napap. Full evidence remains on INV-napap's pass-25 discussion entry; this row provides discrete representation.\n\n## Symptom\n\n11 ARs have `files_analyzed > 0` but emit 0 unique-path nodes. Per pass-25 enumeration:\n\n| AR | files_analyzed | unique-path nodes emitted |\n|---|---|---|\n| markdown | 113 | 0 |\n| json | 9 | 0 |\n| toml | 9 | 0 |\n| ipc-linker | 9 | 0 |\n| route-handler-linker | 8 | 0 |\n| js-module-linker | 5 | 0 |\n| gitignore | 3 | 0 |\n| sql | 1 | 0 |\n| xml | 1 | 0 |\n| wgsl | 1 | 0 |\n| go-cobra-linker | 1 | 0 |\n\nContract for `files_analyzed → node-yield` is undocumented. Two interpretations:\n\n1. (a) `files_analyzed` means \"files the pass touched (including for-discard analysis).\" Then the 0-node-yield is expected for analyzers that scan but emit nothing (or emit only metadata into sketch_precomputed without graph contribution).\n2. (b) `files_analyzed` means \"files the pass produced graph nodes from.\" Then the 11 ARs are reporting incorrect counts.\n\nPass-25 F25.15 finds this is the STRUCTURAL CAUSE of F25.2 (centrality_scores keys disjoint from file-kind node paths). Markdown scans 113 files into centrality_scores but produces 0 file-kind nodes — same gap as Family B's WI-markdown-file-anchor-absent for the markdown-specific case.\n\n## Invariant\n\n`AnalysisRun.files_analyzed` has documented semantics. Recommendation: rename to `files_scanned` (the current behavior) and add a parallel `nodes_emitted` field. Consumer-facing contract: `files_scanned >= 0`; `nodes_emitted` reflects graph contribution. Catches the 11 zero-yield ARs explicitly rather than silently.\n\n## Fix sketch\n\n**Schema addition.** Add `AnalysisRun.nodes_emitted: int` (count of unique-path nodes the AR contributed). Both `files_scanned` and `nodes_emitted` populate at AR-finalization time. Document the relationship in spec.md.\n\n**Per-analyzer review.** Eleven analyzers above. WI-vamih (Family B) addresses markdown specifically; others may need similar file-anchor emission OR explicit documentation that \"this pass intentionally yields no nodes (e.g., gitignore is metadata-only).\"\n\n## Source provenance\n\n- **F25.15** — INV-napap discussion entry 2026-06-02 (pass-25 batch).\n\nLab notebook: pass 25 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-luhur** (writer-contract scope).\n- Sibling: **INV-napap** (existing parent of source entry; centrality-side absence).\n- Sibling: **WI-markdown-file-anchor-absent** (Family B — markdown-specific instance of this contract gap).\n- Family G siblings."  # c63a
+    fields: {}  # c63a

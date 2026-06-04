@@ -1,0 +1,22 @@
+- op: create  # 878e
+  at: '2026-06-04T08:24:56Z'  # 878e
+  by: agent  # 878e
+  actor: jgstern_agent  # 878e
+  clock: 1  # 878e
+  nonce: 878e  # 878e
+  data:  # 878e
+    kind: work_item  # 878e
+    title: "supply_chain_summary.<tier>.files counts paths from ALL tier nodes (not file-kind); produces phantom 13 non-file paths"  # 878e
+    status: todo_hard  # 878e
+    priority: 3  # 878e
+    parent: INV-napap-tatup-midut-vivin-pudoj-zupap-lahak-sojoj  # 878e
+    tags:  # 878e
+    - dogfooding  # 878e
+    - schema_drift  # 878e
+    - fold_audit_2026_06_03  # 878e
+    isbefore: []  # 878e
+    duplicate_of: []  # 878e
+    not_duplicate_of: []  # 878e
+    pr_ref:  # 878e
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family L). Consolidates F26.2 + F26.3 previously folded onto INV-napap. Full evidence on INV-napap's pass-26 discussion entry.\n\n## Symptom\n\n`supply_chain_summary.<tier>.files` counts paths from ALL tier nodes, not just file-kind. Produces phantom 13 non-file paths in `scs.internal_dep` and `scs.external_dep`:\n\n- `scs.internal_dep.files=1` (phantom — no actual internal_dep path)\n- `scs.external_dep.files=10` vs 8 derived from file-kind nodes (2 phantom)\n- `scs.first_party.files` (under-counts via the inverse)\n\nThe derivation rule is implicit: walk all nodes with the given tier, collect distinct paths. But the consumer reading \"files\" expects file-kind nodes only.\n\n## Invariant\n\n`scs.<tier>.files` counts only `node.kind=='file' AND node.tier==<tier>` paths. Currently the count includes any node carrying the tier (including external_symbol nodes whose path is `<external>`).\n\n## Fix sketch\n\nFilter the counted nodes to `kind=='file'` at the metrics-aggregation step. Document the derivation rule in spec.md alongside `scs.<tier>` and the per-record provenance.\n\n## Source provenance\n\n- **F26.2 + F26.3** — INV-napap discussion entry 2026-06-03 (pass-26 batch).\n\nLab notebook: pass 26.\n\n## Related rows\n\n- Parent: **INV-napap**.\n- Sibling: **WI-metrics-language-nodes-attribution** (Family L — same attribution-rule pattern).\n- Sibling: **WI-supply-chain-tier-classifier-markdown-coverage** (Family B) — markdown-specific tier gap; this row is the general attribution gap.\n- Family L siblings."  # 878e
+    fields: {}  # 878e

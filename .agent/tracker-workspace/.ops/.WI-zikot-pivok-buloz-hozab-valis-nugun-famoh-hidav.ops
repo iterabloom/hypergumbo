@@ -1,0 +1,22 @@
+- op: create  # 0821
+  at: '2026-06-04T08:23:28Z'  # 0821
+  by: agent  # 0821
+  actor: jgstern_agent  # 0821
+  clock: 1  # 0821
+  nonce: '0821'  # 0821
+  data:  # 0821
+    kind: work_item  # 0821
+    title: "feature record shape drifts from spec.md §9.856 in three directions: summary documented-but-absent + node_depths/tiers undocumented + 5 query sub-fields undocumented"  # 0821
+    status: todo_hard  # 0821
+    priority: 3  # 0821
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 0821
+    tags:  # 0821
+    - dogfooding  # 0821
+    - spec_drift  # 0821
+    - fold_audit_2026_06_03  # 0821
+    isbefore: []  # 0821
+    duplicate_of: []  # 0821
+    not_duplicate_of: []  # 0821
+    pr_ref:  # 0821
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family K). Stand-alone finding F30.7 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-30 discussion entry.\n\n## Symptom\n\nFeature record drifts from spec.md in three directions:\n\n1. **`summary` is documented but absent from substrate.** Spec §9.856 declares `feature.summary` but no producer populates it.\n2. **`node_depths` and `tiers` are present in substrate but undocumented.** Producer emits per-feature node-depth/tier-distribution that spec doesn't describe.\n3. **5 query sub-fields are undocumented.** `feature.query.{language, hub_threshold, exclude_imports, max_tier, min_confidence}` are emitted by producer but missing from spec.\n\nNet effect: the documented feature record shape and the substrate-emitted shape disagree in 3 axes.\n\n## Invariant\n\nSpec.md §feature documents the actual emitted shape. The audit's WI-rakot tracks a partial-mitigation observation (2 of 5 originally-missing query fields now populate, per pass-33 F33.1) — this row consolidates the full 3-way drift.\n\n## Fix sketch\n\n(a) Add spec.md documentation for `node_depths`, `tiers`, and the 5 query sub-fields.\n(b) Either populate `summary` at producer side, or remove it from spec (likely the latter — producer doesn't compute summaries currently).\n\n## Source provenance\n\n- **F30.7** — INV-luhur discussion entry 2026-06-02 (pass-30 batch).\n- Related: INV-rakot existing tracking of partial query echo (pass-33 F33.1).\n\nLab notebook: pass 30.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **INV-rakot** (existing partial-mitigation tracking).\n- Family K siblings."  # 0821
+    fields: {}  # 0821

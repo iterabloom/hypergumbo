@@ -1,0 +1,23 @@
+- op: create  # aea6
+  at: '2026-06-04T08:23:22Z'  # aea6
+  by: agent  # aea6
+  actor: jgstern_agent  # aea6
+  clock: 1  # aea6
+  nonce: aea6  # aea6
+  data:  # aea6
+    kind: work_item  # aea6
+    title: "edge.type vocabulary drift: 18 distinct substrate values vs 8 documented; 13 undocumented"  # aea6
+    status: todo_hard  # aea6
+    priority: 3  # aea6
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # aea6
+    tags:  # aea6
+    - dogfooding  # aea6
+    - spec_drift  # aea6
+    - vocabulary  # aea6
+    - fold_audit_2026_06_03  # aea6
+    isbefore: []  # aea6
+    duplicate_of: []  # aea6
+    not_duplicate_of: []  # aea6
+    pr_ref:  # aea6
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family K). Stand-alone finding F30.6 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-30 discussion entry.\n\n## Symptom\n\n`edge.type` substrate vocabulary has 18 distinct values; spec.md documents 8. 13 substrate values are undocumented.\n\nDocumented vocabulary: `calls`, `contains`, `imports`, `extends`, `implements`, `decorated_by`, `derives_from`, `references`. Substrate also emits: `assigns_to`, `instantiates`, plus framework-specific edge types like `register_analyzer`, `dispatches_to`, etc.\n\n## Invariant\n\nSame as WI-edge-evidence-type-vocab-drift: spec amendment OR producer constraint to documented vocabulary.\n\n## Fix sketch\n\nEnumerate all substrate values, document or normalize, add membership check to validator.\n\n## Source provenance\n\n- **F30.6** — INV-luhur discussion entry 2026-06-02 (pass-30 batch).\n\nLab notebook: pass 30.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-edge-evidence-type-vocab-drift** (Family K — same pattern, sibling field).\n- Family K siblings."  # aea6
+    fields: {}  # aea6

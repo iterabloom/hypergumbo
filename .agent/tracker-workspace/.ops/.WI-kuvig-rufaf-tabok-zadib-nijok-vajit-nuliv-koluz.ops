@@ -1,0 +1,22 @@
+- op: create  # fe96
+  at: '2026-06-04T08:20:39Z'  # fe96
+  by: agent  # fe96
+  actor: jgstern_agent  # fe96
+  clock: 1  # fe96
+  nonce: fe96  # fe96
+  data:  # fe96
+    kind: work_item  # fe96
+    title: "WebSocket routes silently filed under entrypoint.kind='http_route' + meta.method='WS' instead of documented websocket_handler kind"  # fe96
+    status: todo_hard  # fe96
+    priority: 3  # fe96
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # fe96
+    tags:  # fe96
+    - dogfooding  # fe96
+    - schema_drift  # fe96
+    - fold_audit_2026_06_03  # fe96
+    isbefore: []  # fe96
+    duplicate_of: []  # fe96
+    not_duplicate_of: []  # fe96
+    pr_ref:  # fe96
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family I). Stand-alone finding F30.4 previously folded onto INV-numat. Full evidence remains on INV-numat's pass-30 discussion entry; this row provides discrete representation.\n\n## Symptom\n\nWebSocket routes are silently filed under `entrypoint.kind='http_route'` with `meta.method='WS'`, instead of the documented `websocket_handler` kind.\n\n10 of 102 entrypoints (10%) have this kind/meta mismatch on root substrate. The `websocket_handler` kind is documented at spec §13 entrypoint-kind catalog but never emitted by the producer — the route-handler-linker uses `http_route` for all routes regardless of protocol, with the protocol carried in `meta.method`.\n\nConsumer impact: a consumer filtering for \"all HTTP routes\" via `kind == 'http_route'` accidentally includes WebSocket handlers. A consumer filtering for WebSocket handlers via `kind == 'websocket_handler'` gets 0 results. The `websocket_handler` kind appears in the documented kind catalog but is structurally unreachable.\n\n## Invariant\n\nProducer emits the correct kind for each Entrypoint: HTTP routes → `kind='http_route'`; WebSocket handlers → `kind='websocket_handler'`. The kind axis matches the producer's actual detection, not a single catch-all `http_route` value.\n\n## Fix sketch\n\nAt route-handler-linker emission site: when the route framework annotates the route as WebSocket (Starlette WebSocketRoute, FastAPI websocket decorator, etc.), emit `kind='websocket_handler'` instead of `kind='http_route'`. Optionally retain `meta.method='WS'` for backward-compat. Validates against the documented kind catalog.\n\n## Source provenance\n\n- **F30.4** — INV-numat discussion entry 2026-06-02 (pass-30 batch).\n- F36.D1 — supporting (cli_command kind reframing, similar axis-mismatch pattern).\n\nLab notebook: pass 30 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-numat**.\n- Sibling: **WI-feature-is-http-route-projection** (Family I — adjacent EP+features derivation; this row's fix could broaden the features producer's input set).\n- Sibling: **WI-entrypoint-record-lacks-id** (Family I — EP record schema gap).\n- Family I siblings."  # fe96
+    fields: {}  # fe96

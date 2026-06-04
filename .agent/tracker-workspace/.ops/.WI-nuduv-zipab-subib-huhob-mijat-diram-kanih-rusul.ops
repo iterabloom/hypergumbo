@@ -1,0 +1,22 @@
+- op: create  # c56d
+  at: '2026-06-04T08:17:03Z'  # c56d
+  by: agent  # c56d
+  actor: jgstern_agent  # c56d
+  clock: 1  # c56d
+  nonce: c56d  # c56d
+  data:  # c56d
+    kind: work_item  # c56d
+    title: "5 linker passes lack '-linker' suffix in pass_id (decorator-dispatch, di-resolution, inherited-calls, method-call-recovery, type-hierarchy)"  # c56d
+    status: todo_hard  # c56d
+    priority: 4  # c56d
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # c56d
+    tags:  # c56d
+    - dogfooding  # c56d
+    - linker  # c56d
+    - fold_audit_2026_06_03  # c56d
+    isbefore: []  # c56d
+    duplicate_of: []  # c56d
+    not_duplicate_of: []  # c56d
+    pr_ref:  # c56d
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family G). Stand-alone finding F24.1 previously folded onto INV-numat. Full evidence remains on INV-numat's pass-24 discussion entry; this row provides discrete representation.\n\n## Symptom\n\n5 of 36+ linker-class passes lack the `-linker` suffix in their `pass_id` field:\n- `decorator-dispatch`\n- `di-resolution`\n- `inherited-calls`\n- `method-call-recovery`\n- `type-hierarchy`\n\nOther linker passes consistently use the suffix (e.g., `bash-source-linker`, `kafka-linker`, `http-linker`, `graphql-linker`).\n\n## Invariant\n\nEvery Tier-2 edge-recovery pass uses the `-linker` suffix in its `pass_id`, enabling consumers to filter linker passes via simple substring match. The 5 exceptions are inconsistent producer-side emissions.\n\n## Fix sketch\n\nRename the 5 pass_ids to add `-linker` suffix. Update any consumer-side references (substring filters in cli.py, agent-notes, downstream tooling). Subcategory-tag per the linker-subcategory-vocabulary convention (ADR-0003-ext) — these 5 are dispatch / di-resolution / inheritance-related, classify as Framework or Protocol per the subcategory rubric.\n\n## Source provenance\n\n- **F24.1** — INV-numat discussion entry 2026-06-02 (pass-24 batch).\n\nLab notebook: pass 24 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-numat** (vocabulary-axis-mixing META).\n- Sibling: **INV-kurup** (identifier-format META).\n- Sibling: **WI-rikob** (catalog descriptions backfill)."  # c56d
+    fields: {}  # c56d

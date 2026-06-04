@@ -1,0 +1,22 @@
+- op: create  # 8bd9
+  at: '2026-06-04T08:25:05Z'  # 8bd9
+  by: agent  # 8bd9
+  actor: jgstern_agent  # 8bd9
+  clock: 1  # 8bd9
+  nonce: 8bd9  # 8bd9
+  data:  # 8bd9
+    kind: work_item  # 8bd9
+    title: "profile.languages.<lang>.loc 1.66× double-counts vs Σ(node.lines_of_code) from nested-symbol aggregation; file-kind LOC=0; methodology undocumented"  # 8bd9
+    status: todo_hard  # 8bd9
+    priority: 3  # 8bd9
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 8bd9
+    tags:  # 8bd9
+    - dogfooding  # 8bd9
+    - schema_drift  # 8bd9
+    - fold_audit_2026_06_03  # 8bd9
+    isbefore: []  # 8bd9
+    duplicate_of: []  # 8bd9
+    not_duplicate_of: []  # 8bd9
+    pr_ref:  # 8bd9
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family L). Stand-alone finding F26.6 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-26 discussion entry.\n\n## Symptom\n\n`profile.languages.<lang>.loc` 1.66× double-counts vs `Σ(node.lines_of_code)`:\n\n- python: profile=481203 vs Σ=801588 (Σ exceeds profile; nested-symbol double-count)\n- file-kind LOC = 0\n- non-symbol analyzers Σ = 0\n\nThe discrepancy: `profile.compute_profile` reads LOC per-file once; `node.lines_of_code` is populated on every method/class/function — nested symbols inflate the sum.\n\n## Invariant\n\nEither:\n1. **`Σ(node.lines_of_code) == file's actual LOC`** — only file-kind nodes carry LOC; method/class/function nodes have LOC=None. Eliminates double-count by construction.\n2. **`Σ(node.lines_of_code where kind=='file')` is the canonical sum**, documented in spec.md; nested symbols carry their own LOC for span-aware queries.\n\nPath (2) preserves the per-symbol LOC signal for span-aware tooling. Path (1) is simpler but loses per-symbol granularity.\n\n## Fix sketch\n\nDocument the derivation rule. Add a `metrics.loc_methodology` field describing the aggregation rule. If choosing path (2), consumer tooling adjusts to filter on kind before summing.\n\n## Source provenance\n\n- **F26.6** — INV-luhur discussion entry 2026-06-03 (pass-26 batch).\n\nLab notebook: pass 26.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-metrics-languages-files-empty** (Family F — adjacent profile/metrics discrepancy).\n- Family L siblings."  # 8bd9
+    fields: {}  # 8bd9

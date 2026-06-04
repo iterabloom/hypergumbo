@@ -1,0 +1,23 @@
+- op: create  # bd20
+  at: '2026-06-04T08:20:24Z'  # bd20
+  by: agent  # bd20
+  actor: jgstern_agent  # bd20
+  clock: 1  # bd20
+  nonce: bd20  # bd20
+  data:  # bd20
+    kind: work_item  # bd20
+    title: "features array is derived solely from entrypoints[kind=http_route]; 92.3% of EPs have no feature; cross-codebase invariant verified 6/6; contradicts spec's 'named slices' framing"  # bd20
+    status: todo_hard  # bd20
+    priority: 2  # bd20
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # bd20
+    tags:  # bd20
+    - dogfooding  # bd20
+    - spec_drift  # bd20
+    - features_handler_slices  # bd20
+    - fold_audit_2026_06_03  # bd20
+    isbefore: []  # bd20
+    duplicate_of: []  # bd20
+    not_duplicate_of: []  # bd20
+    pr_ref:  # bd20
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family I). Consolidates F33.18 + F34.B1 + F40.C5 previously folded onto INV-luhur and INV-numat. Full evidence remains across multiple parent discussion entries; this row provides discrete representation.\n\nThe audit's verdict: STANDALONE because the empirical finding \"features = http_route projection\" contradicts spec's \"named slices\" framing — distinct from any documentation-drift parent. Cross-codebase verified 6/6 codebases.\n\n## Symptom\n\n`features` array is derived solely from `entrypoints[kind=http_route]`. 96 of 104 EPs (92.3% on root substrate) have NO corresponding feature. Pass-38 F38.A1 confirmed the producer at `cli.py:7488` (`_emit_handler_slices`) with selection criteria `_is_route_symbol(sym) AND not is_test_file(sym.path)`. `_is_route_symbol` (cli.py:7298) returns True when `meta.framework_role=='route'` OR `meta.concepts[].concept=='route'`.\n\n**Cross-codebase invariant (6 codebases, verified via pass-40 F40.C5):**\n\n| Codebase | EPs | http_route EPs | features |\n|---|---|---|---|\n| ROOT default | 104 | 8 | 16 (dedupes to 16 after non-test filter) |\n| ROOT --fw all | 105 | 8 framework_role=route + 141 concept=route | 16 |\n| ROOT --include-docs | 108 | 8+8 | 16 |\n| TRACKER | 15 | 8 | 16 |\n| HTRAC | various | 0 | **0** |\n| CLI_PKG | 32 | 0 | **0** |\n| DOCS | 13 | 0 | **0** |\n| SCRIPTS | 35 | 0 | **0** |\n\nPattern: features=count(features) iff http_route EPs present; if no HTTP framework, no features. The \"named slices of the codebase\" framing in spec §13 is wrong — features ARE handler slices specifically.\n\n## Invariant\n\nEither:\n1. **Spec amendment.** Spec §13 reframes \"features\" as \"HTTP route handler slices\" (matching producer behavior).\n2. **Producer extension.** Other entrypoint kinds (cli_command, main_function, library_export, ...) also produce feature slices via parallel emitter, broadening features into the actual \"named slices\" framing.\n\nPath (1) is documentation-only; path (2) is structural and expensive. The audit recommends (1) since the feature-set is empirically useful for HTTP-route triage and broadening would dilute that signal.\n\n## Fix sketch\n\nUpdate spec.md §13 to document features as the handler-slice projection. Add cross-references to `_emit_handler_slices` and the route-detection vocabulary. Optionally rename `features` → `handler_slices` in a major-version bump for clarity.\n\n## Source provenance\n\n- **F33.18** — INV-luhur discussion entry 2026-06-02T16:12:13 (pass-33 batch).\n- **F34.B1** — INV-numat discussion entry 2026-06-02 (pass-34 batch; 96/104 EPs lack feature).\n- **F40.C5** — INV-bikaj discussion entry 2026-06-03 (pass-40 batch; 6-codebase invariant).\n- F38.A1 — supporting (producer at cli.py:7488).\n- F36.B2 — supporting (--no-handler-slices zeros features).\n- F39.A1 — supporting (debunked the \"features=0 across modes\" earlier framing; F39.A1 confirms features=16 on tracker --fw all).\n\nLab notebooks: passes 33, 34, 36, 38, 39, 40 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-numat** (vocabulary-axis-mixing META; features kind currently mismatches spec).\n- Sibling: **WI-websocket-route-kind-mis-emission** (Family I — related but for WS routes; WS routes silently filed under http_route).\n- Sibling: **WI-entrypoint-record-lacks-id** (Family I — adjacent EP-record gap).\n- Family I siblings."  # bd20
+    fields: {}  # bd20

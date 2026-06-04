@@ -1,0 +1,22 @@
+- op: create  # 1759
+  at: '2026-06-04T08:23:35Z'  # 1759
+  by: agent  # 1759
+  actor: jgstern_agent  # 1759
+  clock: 1  # 1759
+  nonce: '1759'  # 1759
+  data:  # 1759
+    kind: work_item  # 1759
+    title: "Node.meta surface has 42 sub-keys undocumented in spec.md (Edge.meta is documented at §9.811-822; Node.meta only has top-level mention)"  # 1759
+    status: todo_hard  # 1759
+    priority: 3  # 1759
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 1759
+    tags:  # 1759
+    - dogfooding  # 1759
+    - spec_drift  # 1759
+    - fold_audit_2026_06_03  # 1759
+    isbefore: []  # 1759
+    duplicate_of: []  # 1759
+    not_duplicate_of: []  # 1759
+    pr_ref:  # 1759
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family K). Stand-alone finding F30.14 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-30 discussion entry.\n\n## Symptom\n\n`Node.meta` is 42 sub-keys in the substrate; spec.md documents only 1 (a top-level reference to \"meta carrying analyzer-specific data\"). `Edge.meta` by contrast is documented at spec §9.811-822 with a full sub-key catalog.\n\nThe 42 Node.meta sub-keys carry analyzer-emitted attributes (framework_role, concepts, dataflow tags, etc.) that consumers must reverse-engineer from substrate to discover.\n\n## Invariant\n\n`Node.meta` is documented in spec.md at the same level of detail as `Edge.meta`. Each sub-key has documented vocabulary and semantics.\n\n## Fix sketch\n\nEnumerate the 42 sub-keys from substrate (provides a working catalog). Group them by producer (which analyzer/linker emits each). Document in spec.md. Add validator membership check on Node.meta keys.\n\n## Source provenance\n\n- **F30.14** — INV-luhur discussion entry 2026-06-02 (pass-30 batch).\n\nLab notebook: pass 30.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Family K siblings."  # 1759
+    fields: {}  # 1759

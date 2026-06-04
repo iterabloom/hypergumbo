@@ -1,0 +1,22 @@
+- op: create  # 0267
+  at: '2026-06-04T08:17:10Z'  # 0267
+  by: agent  # 0267
+  actor: jgstern_agent  # 0267
+  clock: 1  # 0267
+  nonce: '0267'  # 0267
+  data:  # 0267
+    kind: work_item  # 0267
+    title: "Pass registry vs dispatcher diverge by 27 entries (26 catalog passes never fire; 1 substrate AR not in catalog)"  # 0267
+    status: todo_hard  # 0267
+    priority: 3  # 0267
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 0267
+    tags:  # 0267
+    - dogfooding  # 0267
+    - catalog  # 0267
+    - fold_audit_2026_06_03  # 0267
+    isbefore: []  # 0267
+    duplicate_of: []  # 0267
+    not_duplicate_of: []  # 0267
+    pr_ref:  # 0267
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family G). Stand-alone finding F32.4 previously folded onto INV-luhur. Full evidence remains on INV-luhur's pass-32 discussion entry; this row provides discrete representation.\n\n## Symptom\n\nPass registry vs dispatcher (the runtime AR producer) diverge by 27 entries on the root substrate:\n- 26 catalog-known passes never appear in `analysis_runs[]`\n- 1 substrate AR is not in the catalog\n\nThe catalog (`packages/hypergumbo-core/src/hypergumbo_core/catalog/passes/*`) is the declared registry; the substrate AR list is what the dispatcher actually ran. The 26-pass \"registered but never fired\" cohort and the 1-pass \"fired but not registered\" reveal a registry-dispatcher consistency gap.\n\n## Invariant\n\nFor every catalog pass, EITHER (a) it appears as an AR record in the substrate's `analysis_runs[]` (with `files_analyzed >= 0` documenting its activation), OR (b) it appears in `limits.skipped_passes[]` with a clear reason (`no files matched`, `language not in repo`, etc.). The current state where 26 passes silently never fire is the bug.\n\nFor every substrate AR, the corresponding catalog entry must exist.\n\n## Fix sketch\n\nTwo parts:\n\n**(a) Catalog → AR completeness.** At dispatch time, emit a skipped-AR record for every catalog pass that doesn't fire, with `skipped_reason` populated. Brings `skipped_passes` and `analysis_runs` into complementary coverage of the catalog.\n\n**(b) AR → catalog membership check.** At validation time, every substrate AR must reference a catalog entry. Add to the WI-kafar validator class.\n\n## Source provenance\n\n- **F32.4** — INV-luhur discussion entry 2026-06-02 (pass-32 batch).\n\nLab notebook: pass 32 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-ar-zero-yield-contract** (Family G — analog \"AR fires but does nothing\" contract gap).\n- Sibling: **WI-ar-files-analyzed-determinism** (Family G — AR.files_analyzed reproducibility).\n- Sibling: **WI-rikob** (catalog descriptions backfill)."  # 0267
+    fields: {}  # 0267

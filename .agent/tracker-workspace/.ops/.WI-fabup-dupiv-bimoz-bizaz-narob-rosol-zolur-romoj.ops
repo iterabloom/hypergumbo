@@ -1,0 +1,23 @@
+- op: create  # 3fc9
+  at: '2026-06-04T08:26:36Z'  # 3fc9
+  by: agent  # 3fc9
+  actor: jgstern_agent  # 3fc9
+  clock: 1  # 3fc9
+  nonce: 3fc9  # 3fc9
+  data:  # 3fc9
+    kind: work_item  # 3fc9
+    title: "Python ambiguous_names catalog not wired to receiver disambiguation; 2102 calls edges target python.yaml:ambiguous_names entries (get=962, patch=600, run=149, dump=76, start=68)"  # 3fc9
+    status: todo_hard  # 3fc9
+    priority: 2  # 3fc9
+    parent: WI-bifih-haguk-jilat-kobof-hoduj-fabal-noras-dosih  # 3fc9
+    tags:  # 3fc9
+    - dogfooding  # 3fc9
+    - producer_migration  # 3fc9
+    - python  # 3fc9
+    - fold_audit_2026_06_03  # 3fc9
+    isbefore: []  # 3fc9
+    duplicate_of: []  # 3fc9
+    not_duplicate_of: []  # 3fc9
+    pr_ref:  # 3fc9
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family M). Stand-alone finding F33.8 previously folded onto WI-bifih. Full evidence on WI-bifih's pass-33 discussion entry.\n\n## Symptom\n\nPython `ambiguous_names` catalog is not wired to receiver disambiguation. 2102 `calls` edges target Python python.yaml:ambiguous_names members:\n\n| Name | Edges targeting |\n|---|---|\n| get | 962 |\n| patch | 600 |\n| run | 149 |\n| dump | 76 |\n| start | 68 |\n\nThese are method names that appear across multiple stdlib + commonly-imported modules; without receiver disambiguation, the caller's `obj.get(...)` is ambiguous between `dict.get` / `requests.get` / `Field.get` / etc. The catalog exists (per WI-bifih) but the call-graph producer doesn't consult it.\n\nWI-bifih scope is broader (`stdlib_modules` + `ambiguous_names` + `dataflow_patterns` are all not-wired siblings); this row is the `ambiguous_names` instance.\n\n## Invariant\n\nThe call-graph producer consults `python.yaml:ambiguous_names` and emits a disambiguation step for each ambiguous call. Producer either resolves to one candidate (with confidence) or emits a multi-edge fan-out with explicit ambiguity.\n\n## Fix sketch\n\nWire `ambiguous_names` into the Python call-edge producer. For each method call with a receiver, if the method name appears in `ambiguous_names`, look up the receiver type and emit the disambiguated edge. Falls back to multi-edge fan-out when receiver type is unknown.\n\nCross-references existing call-graph disambiguation infrastructure (decorator-dispatch / inherited-calls / method-call-recovery linkers).\n\n## Source provenance\n\n- **F33.8** — WI-bifih discussion entry 2026-06-02 (pass-33 batch).\n\nLab notebook: pass 33.\n\n## Related rows\n\n- Parent: **WI-bifih** (broader catalog wire-up META — covers stdlib_modules + dataflow_patterns + ambiguous_names).\n- Family M siblings."  # 3fc9
+    fields: {}  # 3fc9

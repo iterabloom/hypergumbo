@@ -1,0 +1,22 @@
+- op: create  # f96a
+  at: '2026-06-04T08:14:32Z'  # f96a
+  by: agent  # f96a
+  actor: jgstern_agent  # f96a
+  clock: 1  # f96a
+  nonce: f96a  # f96a
+  data:  # f96a
+    kind: work_item  # f96a
+    title: "metrics.languages.<lang>.files = 0 for all 18 language entries despite metrics.total_files=915; per-language file rollup writer never wires up"  # f96a
+    status: todo_hard  # f96a
+    priority: 3  # f96a
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # f96a
+    tags:  # f96a
+    - dogfooding  # f96a
+    - schema_drift  # f96a
+    - fold_audit_2026_06_03  # f96a
+    isbefore: []  # f96a
+    duplicate_of: []  # f96a
+    not_duplicate_of: []  # f96a
+    pr_ref:  # f96a
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family F). Stand-alone finding F22.7 previously folded onto INV-luhur. Full evidence remains on INV-luhur's pass-22 discussion entry; this row provides discrete representation.\n\n## Symptom\n\n`metrics.languages.<lang>.files=0` for ALL 18 language entries in the metrics block, despite top-level `metrics.total_files=915`. Per-language file rollup writer never wires up — the field is declared in the dict shape but always reads 0.\n\nThis is structurally distinct from INV-luhur's broader spec-drift scope: this is a writer-contract gap at the metrics layer, not a documentation drift. The fix is wiring the per-language file-counter on the metrics path.\n\n## Invariant\n\nFor every language in `metrics.languages`, `metrics.languages.<lang>.files == count(node where node.kind=='file' AND node.language==lang)`. Currently 0 for all entries.\n\n## Fix sketch\n\nWire the per-language file counter on the metrics path. Either compute from `nodes` at metrics-serialization time (similar to how `nodes` and `edges` per-language are computed) OR reuse the per-language file-count derivation that already populates `profile.languages.<lang>.files` (which DOES populate per pass-25 F25.3). Audit-cross-ref: WI-language-catalogs-disjoint (Family F) notes profile.languages and metrics.languages have disjoint LANGUAGE SETS too — combined fix could unify the two writers.\n\n## Source provenance\n\n- **F22.7** — INV-luhur discussion entry 2026-06-02 (pass-22 batch; see paragraph beginning \"F22.7 metrics.languages.<lang>.files=0\").\n\nLab notebook: pass 22 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-luhur** (META: meta-layer writers have no validator).\n- Sibling: **WI-language-catalogs-disjoint** (Family F — disjoint language SETS between profile.languages and metrics.languages; complementary fix).\n- Sibling: **WI-mozaf** (file accounting gap — profile.languages.python.files=851 vs file-kind nodes=844 delta of 7).\n- Family F siblings."  # f96a
+    fields: {}  # f96a

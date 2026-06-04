@@ -1,0 +1,22 @@
+- op: create  # ce5a
+  at: '2026-06-04T08:25:07Z'  # ce5a
+  by: agent  # ce5a
+  actor: jgstern_agent  # ce5a
+  clock: 1  # ce5a
+  nonce: ce5a  # ce5a
+  data:  # ce5a
+    kind: work_item  # ce5a
+    title: "centrality_scores keys (280) and file-kind node paths (901) share 0 intersection by extension; two analyzer cohorts feed disjoint surfaces"  # ce5a
+    status: todo_hard  # ce5a
+    priority: 2  # ce5a
+    parent: INV-napap-tatup-midut-vivin-pudoj-zupap-lahak-sojoj  # ce5a
+    tags:  # ce5a
+    - dogfooding  # ce5a
+    - schema_drift  # ce5a
+    - fold_audit_2026_06_03  # ce5a
+    isbefore: []  # ce5a
+    duplicate_of: []  # ce5a
+    not_duplicate_of: []  # ce5a
+    pr_ref:  # ce5a
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family L). Stand-alone finding F25.2 previously folded onto INV-napap. Full evidence on INV-napap's pass-25 discussion entry.\n\n## Symptom\n\n`centrality_scores` keys (280) and file-kind node paths (901) share **0 intersection by extension**.\n\n- CS has 111 `.md` + 167 `.yaml` + 1 `.toml` + 1 `.json` (280 total)\n- file-kind nodes are 844 `.py` + 11 `.sh` + 8 `.ts` + 17 various others\n\nTwo analyzer cohorts feed the two surfaces, and they don't overlap:\n- Markdown/yaml analyzers feed centrality_scores (via the path-name-only emission)\n- Source-language analyzers feed nodes[]\n\nPass-25 F25.15 is the STRUCTURAL CAUSE (separately tracked as WI-ar-zero-yield-contract in Family G).\n\n## Invariant\n\nA consumer asking \"what files are in this codebase?\" gets the SAME answer from `centrality_scores` keys and file-kind node paths. Currently the two surfaces present disjoint snapshots.\n\n## Fix sketch\n\n(a) Either fold-and-emit file-kind anchor nodes for markdown/yaml/json/toml (cf. Family B WI-markdown-file-anchor-absent), OR\n(b) Centrality scorer skips paths without a corresponding file-kind node.\n\nPath (a) unifies the surfaces by emission; (b) by filtering. (a) is the audit's recommended direction because it also unblocks tier-classification and per-file aggregation.\n\n## Source provenance\n\n- **F25.2** — INV-napap discussion entry 2026-06-02 (pass-25 batch).\n\nLab notebook: pass 25.\n\n## Related rows\n\n- Parent: **INV-napap**.\n- Sibling: **WI-markdown-file-anchor-absent** (Family B — markdown subset of this gap).\n- Sibling: **WI-tier-classifier-markdown-coverage** (Family B — tier surface affected by same gap).\n- Sibling: **WI-ar-zero-yield-contract** (Family G — structural cause).\n- Sibling: **WI-centrality-semantics-doc** (Family L — adjacent CS documentation gap)."  # ce5a
+    fields: {}  # ce5a

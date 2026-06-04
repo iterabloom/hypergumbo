@@ -1,0 +1,22 @@
+- op: create  # d7a0
+  at: '2026-06-04T08:28:36Z'  # d7a0
+  by: agent  # d7a0
+  actor: jgstern_agent  # d7a0
+  clock: 1  # d7a0
+  nonce: d7a0  # d7a0
+  data:  # d7a0
+    kind: work_item  # d7a0
+    title: "supply_chain_summary.derived_skipped carries {files, paths} while sibling tiers carry {files, symbols}; per-enum-value writer divergence"  # d7a0
+    status: todo_hard  # d7a0
+    priority: 4  # d7a0
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # d7a0
+    tags:  # d7a0
+    - dogfooding  # d7a0
+    - schema_drift  # d7a0
+    - fold_audit_2026_06_03  # d7a0
+    isbefore: []  # d7a0
+    duplicate_of: []  # d7a0
+    not_duplicate_of: []  # d7a0
+    pr_ref:  # d7a0
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family O). Stand-alone finding F30.10 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-30 discussion entry.\n\n## Symptom\n\n`supply_chain_summary.derived_skipped` carries `{files, paths}` while sibling tiers (`first_party`, `internal_dep`, `external_dep`) carry `{files, symbols}` and the substrate-walked total carries `{files, symbols, edges}`.\n\nPer-enum-value writer divergence: the `derived_skipped` sub-block uses `paths` instead of `symbols`. The schema makes this look like a writer typo, but it might be intentional (skipped derivations don't have well-defined symbol counts).\n\n## Invariant\n\nEach enum value of `supply_chain_summary.<tier>` carries the same set of fields. Either:\n1. **`derived_skipped` adopts the standard `{files, symbols}` shape** (writer fix).\n2. **The schema documents per-enum-value field divergence** (spec.md acknowledgment).\n\nPath (1) is simpler; path (2) preserves an intentional distinction if `paths` carries different semantics than `symbols`.\n\n## Fix sketch\n\nInvestigate the derivation:\n- If `paths` is just the unique-paths count of the skipped nodes, rename to `symbols` for consistency.\n- If `paths` is a separately-meaningful count (e.g., distinct files where derivation skipped), document the difference.\n\nMost likely (1) — the writer accidentally diverged from sibling shape.\n\n## Source provenance\n\n- **F30.10** — INV-luhur discussion entry 2026-06-02 (pass-30 batch).\n\nLab notebook: pass 30.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-supply-chain-files-path-counts** (Family L — same surface, different gap).\n- Family O siblings."  # d7a0
+    fields: {}  # d7a0

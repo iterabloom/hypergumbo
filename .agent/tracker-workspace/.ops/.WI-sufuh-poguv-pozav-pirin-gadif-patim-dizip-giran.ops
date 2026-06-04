@@ -1,0 +1,22 @@
+- op: create  # e6c3
+  at: '2026-06-04T08:27:33Z'  # e6c3
+  by: agent  # e6c3
+  actor: jgstern_agent  # e6c3
+  clock: 1  # e6c3
+  nonce: e6c3  # e6c3
+  data:  # e6c3
+    kind: work_item  # e6c3
+    title: "symbols subcommand silently excludes file (901) and variable (1609) kinds; --kind file returns empty; --all excludes 2613 nodes (7.6%)"  # e6c3
+    status: todo_hard  # e6c3
+    priority: 3  # e6c3
+    parent: INV-ripoh-hirom-lazan-konam-lolop-furot-tozuf-ditot  # e6c3
+    tags:  # e6c3
+    - dogfooding  # e6c3
+    - cli_input_boundary  # e6c3
+    - fold_audit_2026_06_03  # e6c3
+    isbefore: []  # e6c3
+    duplicate_of: []  # e6c3
+    not_duplicate_of: []  # e6c3
+    pr_ref:  # e6c3
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family N). Stand-alone finding F30.11 previously folded onto INV-ripoh. Full evidence on INV-ripoh's pass-30 discussion entry.\n\n## Symptom\n\n`symbols` subcommand silently excludes `file` (901 nodes) and `variable` (1609 nodes) kinds. `--kind file` returns empty despite 901 nodes; `--all` excludes 2613 nodes (7.6%).\n\nDocumented behavior in `symbols --help`: `--all  Include all symbols`. Actual: `--all` includes everything EXCEPT file and variable. Two kinds silently filtered with no documentation.\n\nPattern joins INV-ripoh's other silent-kind-filter exhibits (F34.D1: search filters external_symbol; F35.D1 confirmed across 30+ patterns). Three subcommands with silent-kind-filters; each has a different exclusion set; none documented.\n\n## Invariant\n\n`symbols --all` includes ALL symbol kinds without silent exclusion. Either:\n1. `--all` documented as \"all kinds documented at /spec.md#kinds (excludes file, variable)\" — surfacing the filter.\n2. `--all` actually includes file and variable kinds (current default-exclusion happens at default invocation, not under --all).\n3. New flag `--include-meta-kinds` that user must explicitly request to see file/variable kinds.\n\nPath (2) matches the obvious reading of \"all\"; path (3) is most explicit.\n\n## Fix sketch\n\nIn the symbols subcommand, drop the silent file/variable filter when `--all` is set. Add documentation about the filter in the default behavior. Cousin work: WI-search-empty-pattern-doc (Family D — adjacent silent-input edge case).\n\n## Source provenance\n\n- **F30.11** — INV-ripoh discussion entry 2026-06-02 (pass-30 batch).\n- Cousin: F34.D1 + F35.D1 (search filters external_symbol; same pattern, different subcommand).\n\nLab notebook: pass 30.\n\n## Related rows\n\n- Parent: **INV-ripoh**.\n- Sibling: **WI-search-pattern-empty-undocumented** (Family D — adjacent silent-input edge case).\n- Sibling: **WI-test-coverage-production-fns-doc** (Family N — adjacent subcommand-UX gap).\n- Family N siblings."  # e6c3
+    fields: {}  # e6c3

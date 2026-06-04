@@ -1,0 +1,22 @@
+- op: create  # 2e2f
+  at: '2026-06-04T08:14:43Z'  # 2e2f
+  by: agent  # 2e2f
+  actor: jgstern_agent  # 2e2f
+  clock: 1  # 2e2f
+  nonce: 2e2f  # 2e2f
+  data:  # 2e2f
+    kind: work_item  # 2e2f
+    title: "Edge has two unique-id fields (id, edge_key) with semantic separation documented only in ir.py docstring, not in spec.md or consumer-facing materials"  # 2e2f
+    status: todo_hard  # 2e2f
+    priority: 4  # 2e2f
+    parent:  # 2e2f
+    tags:  # 2e2f
+    - dogfooding  # 2e2f
+    - schema_drift  # 2e2f
+    - fold_audit_2026_06_03  # 2e2f
+    isbefore: []  # 2e2f
+    duplicate_of: []  # 2e2f
+    not_duplicate_of: []  # 2e2f
+    pr_ref:  # 2e2f
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family F). Stand-alone finding F22.9 previously filed inline at pass-22 (\"minor\" per the audit). Existing tracker face: WI-niboh (P4 tracker-only, edge.id vs edge.edge_key naming-axis divergence; both fields documented in ir.py per pass-21 follow-up).\n\nThe audit's verdict: F22.9 is STANDALONE because there are TWO distinct hashed-id fields on a single Edge record (`id`, `edge_key`) and the SEMANTIC separation between them is not documented at spec.md or in consumer-facing materials — only in the ir.py module docstring. Distinct from the prefix-convention divergence (F27.2 fold-audit captures that as a separate finding under INV-kurup).\n\n## Symptom\n\nEvery Edge record has two unique-id fields:\n- `id` — prefixed `edge:sha256:<16hex>`, populated by the producer's id-construction\n- `edge_key` — prefixed `edgekey:sha256:<16hex>`, computed differently (per-instance vs structural-id)\n\nThe semantic separation is documented at `ir.py:583` (edge_key docstring: \"structural id used for dedup\") but NOT at spec.md or in the wire-format contract. A consumer reading the JSON has no signal which field to use for what purpose.\n\nPass-25 NULL finding A.5 verified: no Edge has duplication at (src, dst, type) triplet; `id` and `edge_key` would in fact agree for every emitted Edge in the current substrate, making the SEMANTIC distinction even harder to discover empirically.\n\n## Invariant\n\nEach unique-id field on a wire-format record has documented semantics in spec.md AT MINIMUM, ideally with example usage (which-field-to-use-when). For Edge:\n\n1. `id`: per-instance unique id; identifies THIS Edge record across the substrate's edge enumeration order.\n2. `edge_key`: structural id; identifies the (src, dst, type, ...) equivalence class for dedup.\n\nThese need spec.md callout AND consumer-facing documentation.\n\n## Fix sketch\n\nTwo parts:\n\n**(a) Spec.md addition.** Add §9 sub-section documenting Edge's two-id design: `id` is instance, `edge_key` is structural. Cross-reference INV-kurup's 6-sibling-hashed-id-fields catalog (pass-27 F27.2).\n\n**(b) Consumer-facing doc.** Update relevant README / explain subcommand docs to mention both fields and which to use.\n\nOptionally rename `edge_key → structural_id` for consistency with Symbol's `stable_id` ↔ `id` convention. The audit's WI-niboh tracker-only row tracked this rename consideration; this row formalizes the documentation-fix angle.\n\n## Source provenance\n\n- **F22.9** — originally noted in pass-22 lab notebook (inline annotation).\n- Cousin observation: pass-27 F27.2 (6 sibling hashed-id fields, 4 prefix conventions — under INV-kurup).\n- Cousin row: WI-niboh (P4 tracker-only, naming-uniformity cosmetic).\n\nLab notebooks: passes 22, 27 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- **WI-niboh** (P4 tracker-only — naming-uniformity sibling, broader scope).\n- **INV-kurup** (META: identifier-bearing fields emit non-canonical formats; cousin for the prefix-convention angle).\n- Family F siblings."  # 2e2f
+    fields: {}  # 2e2f

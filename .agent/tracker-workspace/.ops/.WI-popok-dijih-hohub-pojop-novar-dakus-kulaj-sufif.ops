@@ -1,0 +1,22 @@
+- op: create  # d7da
+  at: '2026-06-04T08:20:46Z'  # d7da
+  by: agent  # d7da
+  actor: jgstern_agent  # d7da
+  clock: 1  # d7da
+  nonce: d7da  # d7da
+  data:  # d7da
+    kind: work_item  # d7da
+    title: "Entrypoint detector uses test_*.py filename heuristic instead of Symbol.supply_chain.is_test_file (canonical verdict); misses test_*.py in src/ paths"  # d7da
+    status: todo_hard  # d7da
+    priority: 3  # d7da
+    parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # d7da
+    tags:  # d7da
+    - dogfooding  # d7da
+    - schema_drift  # d7da
+    - fold_audit_2026_06_03  # d7da
+    isbefore: []  # d7da
+    duplicate_of: []  # d7da
+    not_duplicate_of: []  # d7da
+    pr_ref:  # d7da
+    description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family I). Stand-alone finding F27.9 previously folded inline (no specific parent in audit). The pass-27 lab notebook entry classified this as \"single-instance subset-coverage gap, possibly design-intentional.\"\n\n## Symptom\n\nThe Entrypoint detector applies a `test_*.py` filename heuristic to filter out test entrypoints. This misses test files that don't use the `test_` prefix.\n\nConcrete miss: `test_masking.py:main` in `src/...` is filtered as a test (kept the prefix heuristic, but `supply_chain.is_test_file=False` because `src/` is not a test path). Detector should consult `Symbol.supply_chain.is_test_file` (which already encodes the tier classifier's verdict) instead of the filename heuristic.\n\n9 of 10 Python `name='main'` function nodes are in entrypoints; 1 missed (the above) despite being a legitimate main function. Sample size is small but the structural failure is real.\n\n## Invariant\n\nEntrypoint detector consults `Symbol.supply_chain.is_test_file` (the canonical tier-classifier verdict) instead of re-deriving from filename. Removes the filename-heuristic-vs-tier-classifier divergence.\n\n## Fix sketch\n\nIn the entrypoint detector (likely `entrypoints.py` or a similar pipeline location), replace `path.startswith('test_')` checks with `sym.supply_chain.is_test_file`. The tier classifier already handles the `test_` prefix AND other patterns; the EP detector inherits all of them.\n\n## Source provenance\n\n- **F27.9** — pass-27 lab notebook (not filed on a tracker parent; this row is its first tracker representation).\n\nLab notebook: pass 27 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-numat** (closest existing EP-record umbrella).\n- Sibling: **WI-feature-is-http-route-projection** (Family I — features producer uses similar `not is_test_file` check, same fix-path family).\n- Sibling: **INV-nohod** (76% of nodes test-classified — tier-classifier coverage; this row touches the same surface).\n- Family I siblings."  # d7da
+    fields: {}  # d7da
