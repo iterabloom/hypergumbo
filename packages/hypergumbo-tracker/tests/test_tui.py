@@ -858,6 +858,32 @@ class TestFormatActivityLines:
         assert "human" in lines[1]
         assert "Second entry" in lines[1]
 
+    def test_message_prefix_is_bold_underlined(self) -> None:
+        """The `<ts> [by]:` prefix gets `[bold underline]…[/]` Rich markup."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-abc",
+            kind="work_item",
+            title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-02-25T07:46:00Z",
+                    message="Human decision: keep both pipelines",
+                ),
+            ],
+        )
+        lines = _format_activity_lines(item)
+        assert len(lines) == 1
+        line = lines[0]
+        # Prefix is wrapped in `[bold underline]…[/]` and includes the
+        # bracketed `[by]:` author tag.
+        assert line.startswith("[bold underline]")
+        assert "\\[agent]:[/]" in line
+        # The message body is OUTSIDE the styled prefix.
+        assert "[/] Human decision" in line
+
     def test_empty_discussion(self) -> None:
         item = CompiledItem(
             id="WI-abc",

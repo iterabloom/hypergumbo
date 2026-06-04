@@ -327,7 +327,12 @@ def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
 
     for entry in entries:
         ts = _format_timestamp(entry.at)
-        lines.append(f"{ts} \\[{entry.by}]: {_escape_user(entry.message)}")
+        # The `<ts> [by]:` prefix is rendered bold + underlined so the
+        # message-boundary is easy to scan when the activity pane is dense.
+        lines.append(
+            f"[bold underline]{ts} \\[{entry.by}]:[/] "
+            f"{_escape_user(entry.message)}",
+        )
 
         # Detect SVG paths and add inline preview placeholders (ADR-0020)
         svg_paths = extract_svg_paths(entry.message)

@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Changed
+
+- **TUI activity-pane message-prefix styling.** Each discussion entry's `<ts> [by]:` prefix is now rendered bold-and-underlined so the boundary between adjacent messages is visually unmistakable. Body text is unstyled as before; no other format change.
+
 ### Added
 
 - **WI-zonur phase 2 + 3 — OS-perm gate, TUI keybind, fold-audit smoke test (closes WI-zonur).** The global edit-mode log moved to a dedicated `<ops_dir>/.edit-mode/edit-mode.ops` subdirectory whose ownership forms the defense-in-depth gate: at read time the file's OS owner uid is mapped to a username and pattern-matched against `agent_usernames`; agent-owned files have every op filtered (the file is preserved on disk for forensics, never auto-removed). The subdirectory is created mode 0755 by the writer; in single-user dev setups (where the only user matches `*_agent`) the gate is moot because `edit_mode_on` already raises `HumanAuthorityError` before any write. The TUI gains a `Ctrl-E` binding that toggles edit-mode via `TrackerSet.edit_mode_status / on / off` and a top-of-screen banner (`EDIT MODE ON — Nm SSs remaining — ops_used/cap_max`) that auto-updates on the existing reload tick and hides when off. The implementation-order step-6 self-test materializes one fold-audit-shaped extraction end-to-end: parent invariant carries a long bundled-text discussion entry → human opens window → agent creates three new tracker items mirroring the bundled proposals → agent tombstones the parent message with an `extracted to <new-id>` reason → window closes → subsequent delete attempts on the same nonce are rejected.
