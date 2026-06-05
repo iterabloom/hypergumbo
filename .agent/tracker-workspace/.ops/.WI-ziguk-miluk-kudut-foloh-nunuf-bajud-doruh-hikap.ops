@@ -1,0 +1,21 @@
+- op: create  # 9b5e
+  at: '2026-06-05T03:57:58Z'  # 9b5e
+  by: agent  # 9b5e
+  actor: jgstern_agent  # 9b5e
+  clock: 1  # 9b5e
+  nonce: 9b5e  # 9b5e
+  data:  # 9b5e
+    kind: work_item  # 9b5e
+    title: "validation_report top-level field undocumented in spec; independent schema_version 0.1"  # 9b5e
+    status: todo_hard  # 9b5e
+    priority: 2  # 9b5e
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 9b5e
+    tags:  # 9b5e
+    - dogfood_tranch_03  # 9b5e
+    - dogfood  # 9b5e
+    isbefore: []  # 9b5e
+    duplicate_of: []  # 9b5e
+    not_duplicate_of: []  # 9b5e
+    pr_ref:  # 9b5e
+    description: "**Mechanic**: The spec validator's source code calls the `validation_report` object \"a stable surface that consumers and CI\" depend on, and a separate test gates emptiness. The spec document never mentions `validation_report`; the top-level Behavior Map JSON example does not list it. The field carries its own independent `schema_version: \"0.1\"` distinct from the top-level `schema_version: \"0.13.0\"` with no documented relationship between the two.\n\n**Expectation**: Every consumer-visible top-level field of the behavior map is documented in the spec, with any independent schema version explicitly related to the document-level schema version.\n\n**Scope**: Top-level `validation_report` object in every emitted behavior map. The spec is silent on the field name and the secondary versioning scheme.\n\n**Exposure**: Any consumer writing a JSON-Schema parser from the spec, or any consumer expecting per-field versioning semantics consistent with the document version.\n\n**Consequence**: Strict consumers reject the substrate as carrying an unknown top-level key; lenient consumers silently drop the field. The \"stable\" promise made in the validator code carries no documented contract that consumers can rely on. Independent `schema_version` evolution can break consumers without warning.\n\n**Source**: F41.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 9b5e
+    fields: {}  # 9b5e

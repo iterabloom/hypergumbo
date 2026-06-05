@@ -1,0 +1,21 @@
+- op: create  # 4b48
+  at: '2026-06-05T03:58:10Z'  # 4b48
+  by: agent  # 4b48
+  actor: jgstern_agent  # 4b48
+  clock: 1  # 4b48
+  nonce: 4b48  # 4b48
+  data:  # 4b48
+    kind: work_item  # 4b48
+    title: "1645 external_symbol nodes carry empty origin: [] (4.8% of nodes)"  # 4b48
+    status: todo_hard  # 4b48
+    priority: 2  # 4b48
+    parent: INV-pitab-masos-zakaj-limin-fukar-nojit-fohot-maraj  # 4b48
+    tags:  # 4b48
+    - dogfood_tranch_03  # 4b48
+    - dogfood  # 4b48
+    isbefore: []  # 4b48
+    duplicate_of: []  # 4b48
+    not_duplicate_of: []  # 4b48
+    pr_ref:  # 4b48
+    description: "**Mechanic**: The spec says `origin: list[str]` \"records which pass IDs contributed to this Symbol\", with single-element lists as the common case. The Symbol dataclass `__post_init__` does not enforce non-empty origin (only the Edge dataclass does). Synthetic `external_symbol` nodes — minted to represent unresolved import targets like `python:pathlib:0-0:Path:unresolved` — are constructed without a provenance-stamping step, so all 1645 such nodes (4.8% of total) get `origin: []`. Other 32,751 nodes carry a non-empty single-element origin list.\n\n**Expectation**: Every node carries at least one origin pass-id; for synthetic external-symbol nodes, the origin would name the analyzer pass that surfaced them.\n\n**Scope**: 1645 of 34,396 nodes, all `kind=external_symbol`. No other kind has empty origin.\n\n**Exposure**: Any consumer building PROV `wasAttributedTo` chains, computing per-pass node attribution, or asking \"which pass produced this node?\".\n\n**Consequence**: The provenance-attribution query is silently un-answerable for 4.8% of nodes; the consumer must special-case `external_symbol` or fall back to a heuristic. The spec's promise that the answer is queryable does not hold.\n\n**Source**: F41.A3 (INDEPENDENT, HIGH; F45.A3 absorbed as EXTENSION re: shape_id/fingerprint on same external_symbol population).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 4b48
+    fields: {}  # 4b48

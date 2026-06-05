@@ -1,0 +1,21 @@
+- op: create  # b277
+  at: '2026-06-05T03:57:47Z'  # b277
+  by: agent  # b277
+  actor: jgstern_agent  # b277
+  clock: 1  # b277
+  nonce: b277  # b277
+  data:  # b277
+    kind: work_item  # b277
+    title: "pass_version empty on 14/84 analysis_runs incl python (852 files)"  # b277
+    status: todo_hard  # b277
+    priority: 1  # b277
+    parent: INV-pitab-masos-zakaj-limin-fukar-nojit-fohot-maraj  # b277
+    tags:  # b277
+    - dogfood_tranch_03  # b277
+    - dogfood  # b277
+    isbefore: []  # b277
+    duplicate_of: []  # b277
+    not_duplicate_of: []  # b277
+    pr_ref:  # b277
+    description: "**Mechanic**: The spec promises that `analysis_runs[*].pass_version` is populated from `sha256(inspect.getsource(<pass module>))` at every registration site (the registry decorators are claimed to enforce this automatically). In the emitted behavior map, 14 of 84 analyzer runs carry `pass_version: \"\"`, including the Python analyzer (852 files analyzed, the largest pass). The CI gate the spec attributes to this invariant only checks catalog-vs-runtime ID agreement and legacy suffix absence; it does not assert `pass_version != \"\"`.\n\n**Expectation**: Every entry in `analysis_runs` carries a non-empty `pass_version` string derived from the pass module's source hash, so two analyses produced by different analyzer implementations are distinguishable along this axis.\n\n**Scope**: `behavior-map.analysis_runs` — 14 of 84 (16.7%) runs affected, including the Python analyzer (which alone covers 852 files in a typical self-corpus run). The remaining 70 runs carry valid `sha256:...` values.\n\n**Exposure**: Any consumer applying the spec's diff-attribution algorithm (\"`pass_version` change → analyzer logic changed\") to two substrates that differ only in the affected analyzers' implementations.\n\n**Consequence**: The consumer-facing reproducibility claim silently degrades — diff-attribution treats the two analyses as identical on the affected passes when they may actually differ. CI gate naming misleads operators into believing the invariant is policed when it is not.\n\n**Source**: AUDIT-AXIS sweep `pass-version-sweep-pass-41`, F41.A1 (representative of 14/84 affected runs).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # b277
+    fields: {}  # b277
