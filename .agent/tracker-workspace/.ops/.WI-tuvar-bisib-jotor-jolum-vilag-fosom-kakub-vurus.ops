@@ -1,0 +1,21 @@
+- op: create  # b2b9
+  at: '2026-06-05T03:59:45Z'  # b2b9
+  by: agent  # b2b9
+  actor: jgstern_agent  # b2b9
+  clock: 1  # b2b9
+  nonce: b2b9  # b2b9
+  data:  # b2b9
+    kind: work_item  # b2b9
+    title: "catalog: 52/115 (core) entries have empty descriptions while all extras populated"  # b2b9
+    status: todo_hard  # b2b9
+    priority: 2  # b2b9
+    parent:  # b2b9
+    tags:  # b2b9
+    - dogfood_tranch_03  # b2b9
+    - dogfood  # b2b9
+    isbefore: []  # b2b9
+    duplicate_of: []  # b2b9
+    not_duplicate_of: []  # b2b9
+    pr_ref:  # b2b9
+    description: "**Mechanic**: The catalog output line-format is `<name> (core|extra): <description>`. Core entries are intended as primary, bundled, first-class analyzers; extras are optional add-ons. The implementation populates descriptions for 63 of 63 extras but only ~63 of 115 core entries, leaving 52 core rows as bare `<name> (core):`. The help text advertises the command as showing \"which languages and frameworks hypergumbo can analyze.\"\n\n**Expectation**: Every catalog entry carries a description distinguishing \"bundled tree-sitter via grammar X\" from \"stub registration with no analyzer logic\" so the consumer can plan language coverage.\n\n**Scope**: 52 of 115 (45%) core catalog entries with empty descriptions, including `apex`, `asm`, `astro`, `bibtex`, `bitbake`, `circom`, `commonlisp`, `fennel`, `gitignore`, `gleam`, `hack`, `pony`, and others.\n\n**Exposure**: Any developer or agent reading catalog output to decide whether a given tech stack will be analyzed.\n\n**Consequence**: The reader cannot tell core-but-stub apart from core-and-fully-implemented; language-coverage planning depends on inspecting source rather than reading documented output — a Tier 3 decision-corrupting gap.\n\n**Source**: F43.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # b2b9
+    fields: {}  # b2b9

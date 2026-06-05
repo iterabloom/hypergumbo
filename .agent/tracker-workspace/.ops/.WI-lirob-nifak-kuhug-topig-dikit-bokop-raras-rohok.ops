@@ -1,0 +1,21 @@
+- op: create  # 21b5
+  at: '2026-06-05T03:59:27Z'  # 21b5
+  by: agent  # 21b5
+  actor: jgstern_agent  # 21b5
+  clock: 1  # 21b5
+  nonce: 21b5  # 21b5
+  data:  # 21b5
+    kind: work_item  # 21b5
+    title: "dead-code-maybe default --seeds entrypoints flags 89.6% of production functions"  # 21b5
+    status: todo_hard  # 21b5
+    priority: 1  # 21b5
+    parent:  # 21b5
+    tags:  # 21b5
+    - dogfood_tranch_03  # 21b5
+    - dogfood  # 21b5
+    isbefore: []  # 21b5
+    duplicate_of: []  # 21b5
+    not_duplicate_of: []  # 21b5
+    pr_ref:  # 21b5
+    description: "**Mechanic**: With the documented default `--seeds entrypoints`, the analysis treats only declared entrypoints as reachable seeds. Decorator-registered analyzers and framework plugins (registered through patterns like `@register_analyzer`, `@register_linker`, custom-element registration) are not entrypoints by this definition, so their methods are flagged \"potentially dead\". On a typical self-decorating codebase, this produces 3,917 of 4,371 production functions flagged (89.6%). The `--seeds all` invocation drops the rate to 35% — a 50pp swing from a single flag the help text does not flag as load-bearing.\n\n**Expectation**: The documented default produces a defect-rate output low enough that a reasonable consumer can act on it without a 50pp flag flip, OR the help text warns that the default produces high false-positive rates on plugin-registration-heavy codebases.\n\n**Scope**: Default invocation on any codebase using decorator-based plugin registration (Django, Flask, pytest plugins, custom-element libraries, framework analyzers). On the self-corpus: 3,917 of 4,371 production functions flagged.\n\n**Exposure**: Any LLM agent or developer running `hypergumbo dead-code-maybe` with defaults and expecting actionable output.\n\n**Consequence**: Either the consumer ignores the tool (\"89% noise, untrustworthy\") and the feature is dead, or they take a wrong refactoring action (deleting a flagged but-actually-live function such as a registered analyzer) — a Tier 4 miscarriage of the documented contract.\n\n**Source**: F43.A1 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 21b5
+    fields: {}  # 21b5
