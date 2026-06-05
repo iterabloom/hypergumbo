@@ -1,0 +1,21 @@
+- op: create  # b886
+  at: '2026-06-05T15:58:55Z'  # b886
+  by: agent  # b886
+  actor: jgstern_agent  # b886
+  clock: 1  # b886
+  nonce: b886  # b886
+  data:  # b886
+    kind: work_item  # b886
+    title: "byte-level reproducibility fails despite §10 'same input -> same output': random execution_id + wall-clock timestamps + nondeterministic analysis_runs[] order"  # b886
+    status: todo_hard  # b886
+    priority: 1  # b886
+    parent:  # b886
+    tags:  # b886
+    - dogfood_tranch_04  # b886
+    - dogfood  # b886
+    isbefore: []  # b886
+    duplicate_of: []  # b886
+    not_duplicate_of: []  # b886
+    pr_ref:  # b886
+    description: "F64.A2 (blind severity 4/Significant; F64.A3 origin-churn + F75.A3 static array-order EXTENSIONs folded here). §10 claims 'same input -> same output' and 'reproducible diffs at the key level' (both marked done). sort_keys=True IS implemented, but two larger sources of nondeterminism defeat a whole-file diff: (1) every run gets a fresh random execution_id (uuid4) + wall-clock started_at/duration_ms/generated_at, and origin_run_id copies the random id — 342 of 568 differing sorted-key lines; (2) analysis_runs[] is serialized in thread as_completed() completion order, which races. No two runs byte-identical (cmp differs at byte 169). The project's own L2 reproducibility block promises only FUNCTIONAL identity, contradicting §10's stronger 'same input -> same output'. A consumer building a CI gate on 'diff old.json new.json == empty' gets a non-empty diff every run even when nothing changed (false 'map changed' signals). Fix: either §10 stops promising byte-equality, or output is byte-stable (non-semantic fields normalized/omitted + run array sorted by stable key). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # b886
+    fields: {}  # b886

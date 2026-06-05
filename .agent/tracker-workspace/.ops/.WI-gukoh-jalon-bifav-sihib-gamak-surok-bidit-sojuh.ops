@@ -1,0 +1,22 @@
+- op: create  # 6049
+  at: '2026-06-05T16:01:44Z'  # 6049
+  by: agent  # 6049
+  actor: jgstern_agent  # 6049
+  clock: 1  # 6049
+  nonce: '6049'  # 6049
+  data:  # 6049
+    kind: work_item  # 6049
+    title: "POSITIVE CONTROL: reverse slices clean/closed/useful on all 3 non-route entries (subgraph closure holds; isolates the forward-only file-import defect)"  # 6049
+    status: todo_hard  # 6049
+    priority: 4  # 6049
+    parent:  # 6049
+    tags:  # 6049
+    - dogfood_tranch_04  # 6049
+    - dogfood  # 6049
+    - positive_control  # 6049
+    isbefore: []  # 6049
+    duplicate_of: []  # 6049
+    not_duplicate_of: []  # 6049
+    pr_ref:  # 6049
+    description: "F66.A3 (blind severity 1/Cosmetic; positive control). Reverse slices do not invoke the file-import attachment that leaks into forward slices. On three non-route entries (a deep internal-library method, a leaf utility, a test fixture), every reverse-slice edge has both endpoints present in node_ids (subgraph closure holds: 1339/1339, 211/211, 234/234), callers are the correct producers, hop depths are monotone, over-inclusion is absent (a test fixture's reverse slice stays entirely within its own file), and max_files truncation is honestly signaled via limits_hit=[file_limit]. This is the control that isolates the forward-only file-import defect (INV-tarol/F66.A1, already-folded EXTENSION) to forward slicing. The asymmetry (reverse good, forward leaky) is the actionable signal: the file-import handling that breaks forward slices is simply not invoked on reverse. No negative consequence. Filed for trend-cohort completeness (clearing measurement). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 6049
+    fields: {}  # 6049

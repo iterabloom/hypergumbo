@@ -1,0 +1,21 @@
+- op: create  # c50b
+  at: '2026-06-05T15:59:44Z'  # c50b
+  by: agent  # c50b
+  actor: jgstern_agent  # c50b
+  clock: 1  # c50b
+  nonce: c50b  # c50b
+  data:  # c50b
+    kind: work_item  # c50b
+    title: "truncated slice signals file_limit flag but not the shortfall magnitude (no dropped/total count)"  # c50b
+    status: todo_hard  # c50b
+    priority: 2  # c50b
+    parent:  # c50b
+    tags:  # c50b
+    - dogfood_tranch_04  # c50b
+    - dogfood  # c50b
+    isbefore: []  # c50b
+    duplicate_of: []  # c50b
+    not_duplicate_of: []  # c50b
+    pr_ref:  # c50b
+    description: "F66.A4 (blind severity 3/Moderate; CORRECTED-kept-as-record; F79.A1 prevalence EXTENSION folded here). A reverse slice of a heavily-called symbol hits max_files=100, reports limits_hit=[file_limit], and echoes query.max_files (100) — but the feature JSON records NO separate 'you got 100 of N' signal: no count of dropped callers, no total (slice.py:733-735). A consumer sees a populated slice + a file_limit flag but cannot tell it is missing callers without independently recomputing in-degree from the global graph. F79.A1 quantified prevalence: 13/282 high-in-degree in-repo symbols truncate at default max_files=100; 4/13 lose >50% of caller-FILES (Symbol 66%, Edge 60%, Span 60%, Edge.create 52%); Edge.create drops 169/557 callers (30%), 107/207 caller-files (52%). An agent auditing 'every caller of X' to validate a signature change may trust an incomplete caller set. Fix: truncated slice carries the shortfall magnitude (dropped-count or total-callers field) alongside the cap value. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # c50b
+    fields: {}  # c50b

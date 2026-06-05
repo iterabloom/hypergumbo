@@ -1,0 +1,21 @@
+- op: create  # 6c79
+  at: '2026-06-05T16:00:57Z'  # 6c79
+  by: agent  # 6c79
+  actor: jgstern_agent  # 6c79
+  clock: 1  # 6c79
+  nonce: 6c79  # 6c79
+  data:  # 6c79
+    kind: work_item  # 6c79
+    title: "name 'hub_threshold' denotes two unrelated mechanisms with different defaults (slice hub-prune 50 vs ranking in-degree saturation 100)"  # 6c79
+    status: todo_hard  # 6c79
+    priority: 3  # 6c79
+    parent:  # 6c79
+    tags:  # 6c79
+    - dogfood_tranch_04  # 6c79
+    - dogfood  # 6c79
+    isbefore: []  # 6c79
+    duplicate_of: []  # 6c79
+    not_duplicate_of: []  # 6c79
+    pr_ref:  # 6c79
+    description: "F65.A4 (blind severity 2/Minor). Two separate modules expose a parameter literally named hub_threshold with different semantics and different defaults: the centrality-ranking module uses it for in-degree log-saturation in scoring (default 100), while the slice module uses it for traversal hub-pruning (default 50). They share no definition; the two distinct defaults confirm they are independent machinery. A slice feature's query.hub_threshold echo (50) and a centrality config's hub_threshold (100) are the same key name for unrelated knobs. A consumer who carries a value or mental model from one mechanism to the other configures the wrong behavior (mis-tuning). No emitted value is corrupted; the hazard is conceptual and invites configuration errors. Fix: distinct self-descriptive names (or a documented disambiguation) so a consumer reading 'hub_threshold' knows which mechanism and which default applies. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 6c79
+    fields: {}  # 6c79

@@ -41,3 +41,10 @@
   clock: 4  # 2f0c
   nonce: 2f0c  # 2f0c
   message: "Investigated 2026-06-01 for cluster context. No parent set — WI-bohih is itself an umbrella (successor to closed WI-nigah). Considered parenting under INV-jahiv (analyzer parity META) but INV-jahiv just transitioned to satisfied via Phase 4 sweep on cyclomatic_complexity / lines_of_code / signature / docstring / qualified_name. The dst_ref-construct gap is a structurally different angle than the declared-field-population gap that INV-jahiv tracked, so a forced re-parent would mislead. Cross-ref map theme 5b (dst_ref substrate) — anchor INV-tofun now pending_validation; WI-nigah + WI-huzuv both done; WI-bohih is where the substrate work lives going forward. Stays standalone. Doesn't duplicate any preexisting row."  # 2f0c
+- op: discuss  # 996b
+  at: '2026-06-05T16:02:25Z'  # 996b
+  by: agent  # 996b
+  actor: jgstern_agent  # 996b
+  clock: 5  # 996b
+  nonce: 996b  # 996b
+  message: "[+ tranch_04: WI-zuhon — related (card 004/F62.A2): 16438/24244 unresolved edges (67.8%) lack dst_ref; the dst_ref retrofit this row tracks should target every external/unresolved edge, not only the long tail.]"  # 996b

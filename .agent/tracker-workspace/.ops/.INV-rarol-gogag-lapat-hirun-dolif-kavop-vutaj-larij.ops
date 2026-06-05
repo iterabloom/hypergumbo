@@ -37,3 +37,17 @@
   clock: 3  # 34e6
   nonce: '34e6'  # 34e6
   message: "Pass-30 confirmation + face extension: `Called by` header includes `[decorated_by]` edges (F30.12).\n\nINV-rarol's symptom 2 lists 4 confounded edge types in the \"Calls\"/\"Called by\" sections: contains, instantiates, references, calls. Pass-30 finds a 5th: **decorated_by**.\n\n**Observation.** `hypergumbo explain register_analyzer --input /tmp/hg-dogfood-s21/bm.json` shows `Called by (315)` but **all 315 entries are tagged `[decorated_by]`**. None are actual `[calls]` edges. register_analyzer is a Python decorator function; every `@register_analyzer` site (in analyze_javascript, analyze_go, analyze_python, etc.) produces a `decorated_by` edge in the substrate. Substrate has 315 such edges; the explain CLI groups them under \"Called by\" — a category that implies invocation but means in-edge of any type.\n\nThis is the same root pattern at a 5th edge type. The CLI header taxonomy (\"Calls\"/\"Called by\") doesn't align with the substrate edge type vocabulary (`calls` / `instantiates` / `contains` / `references` / `decorated_by` / `extends` / `inherits` / `module_attr_ref` / `dispatches_to` / etc.). The current header-grouping is purely direction-based; it conflates 9+ semantic relationships into 2 directional buckets.\n\nSame finding-family as the 4 symptoms catalogued in INV-rarol's symptom 2. No new fix-path needed; the existing INV-rarol resolution proposals (partition by edge type OR document inclusion semantics in the header) already cover this case.\n\nStatus remains violated. Pass-30 supplies the 5th confounded edge type — decorated_by — to the existing 4 (contains, instantiates, references, calls). Substrate evidence: 315 incoming `decorated_by` edges on register_analyzer, all displayed under `Called by (315)` header.\n\nProbe artifact: pass-30 probe 3 CLI testing — `hypergumbo explain register_analyzer` output."  # 34e6
+- op: discuss  # ae9c
+  at: '2026-06-05T15:57:14Z'  # ae9c
+  by: agent  # ae9c
+  actor: jgstern_agent  # ae9c
+  clock: 4  # ae9c
+  nonce: ae9c  # ae9c
+  message: "[+ tranch_04: card 032 F80.A2 — cmd_explain (cli.py:2075-2117) partitions edges purely by direction (incoming->'Called by', outgoing->'Calls') with NO filter to invocation-type edges; relationship type demoted to a raw unmapped inline tag. 9 of 18 edge types (contains/imports/extends/implements/inherits/overrides/decorated_by/module_exports/module_attr_ref) = 35507/110533 = 32.1% of edges render under an invocation heading they do not satisfy (e.g. 'Calls IToken [inherits]', 'Calls customElement [decorated_by]'). This IS the section-labels-must-match-edge-semantics breach this invariant names. Folded as duplicate; blind severity 4. Already violated — no state change.]"  # ae9c
+- op: discuss  # 1028
+  at: '2026-06-05T16:02:42Z'  # 1028
+  by: agent  # 1028
+  actor: jgstern_agent  # 1028
+  clock: 5  # 1028
+  nonce: '1028'  # 1028
+  message: "[+ tranch_04: WI-dazob — related (card 020/F68.A3): explain ALSO silently degrades on stripped/renamed substrate fields (drops Supply-chain line, prints unknown edge type verbatim, no field-presence/unknown-type guard) and lacks a registry-backed friendly edge-type label table (F80.A1) — a distinct explain-renderer defect from this heading-partition breach.]"  # 1028

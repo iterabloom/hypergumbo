@@ -1,0 +1,21 @@
+- op: create  # 54d6
+  at: '2026-06-05T16:00:06Z'  # 54d6
+  by: agent  # 54d6
+  actor: jgstern_agent  # 54d6
+  clock: 1  # 54d6
+  nonce: 54d6  # 54d6
+  data:  # 54d6
+    kind: work_item  # 54d6
+    title: "the 3 coherence linters are source-AST call-site checkers that never run during 'hypergumbo run'; cannot catch incoherent emitted output"  # 54d6
+    status: todo_hard  # 54d6
+    priority: 2  # 54d6
+    parent:  # 54d6
+    tags:  # 54d6
+    - dogfood_tranch_04  # 54d6
+    - dogfood  # 54d6
+    isbefore: []  # 54d6
+    duplicate_of: []  # 54d6
+    not_duplicate_of: []  # 54d6
+    pr_ref:  # 54d6
+    description: "F67.A1 (blind severity 3/Moderate). The 3 producer/fallback/runtime coherence linters all walk the package SOURCE tree with ast and check producer call-sites (Edge.create(evidence_type='...')) against the canonical registries. None ever inspects an emitted behavior map, and the run orchestrator never imports them — they are invoked only by a CI wrapper, a property-test helper, and humans. So a long-tail analyzer that emits an incoherent SUBSTRATE (a dangling edge, a bad origin) passes all 3 'coherence' gates as long as its source call-sites use registry-valid literals. The only emit-time gate is the spec_validator, whose validation_report reports zero violations on the substrate and has no dangling-endpoint check. A maintainer trusting that 'coherence' enforcement covers the runtime-emitted graph is wrong: the name oversells a source-call-site gate. Fix: wire emit-time coherence enforcement on the produced graph, or rename to reflect source-only scope. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 54d6
+    fields: {}  # 54d6

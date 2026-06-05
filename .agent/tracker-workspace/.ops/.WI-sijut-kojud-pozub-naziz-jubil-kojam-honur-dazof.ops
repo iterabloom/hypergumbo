@@ -26,3 +26,10 @@
   clock: 2  # 51ad
   nonce: 51ad  # 51ad
   message: "[related to WI-fozoh — same external_symbol synthesis path missing several identity fields; WI-fozoh covers stable_id/canonical_name (done), this row covers origin=[]]"  # 51ad
+- op: discuss  # 7cdf
+  at: '2026-06-05T15:57:13Z'  # 7cdf
+  by: agent  # 7cdf
+  actor: jgstern_agent  # 7cdf
+  clock: 3  # 7cdf
+  nonce: 7cdf  # 7cdf
+  message: "[+ tranch_04: card 018 F67.A3 — canonical empty-origin-back-reference row: 2236/34396 (6.5%) nodes carry origin_run_id=='' — breakdown 1645 external_symbol (this row's exact population) + 493 file + 82 dependency + 16 stragglers (492 tagged orchestrator file-symbol synthesis — see WI-dizir for the file-node sub-population). All non-empty node/edge origin_run_id resolve cleanly; failure is binary present-and-valid-or-empty. Folded as duplicate; blind severity 3. Already todo_hard — no state change.]"  # 7cdf

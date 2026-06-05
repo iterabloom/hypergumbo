@@ -1,0 +1,21 @@
+- op: create  # eb88
+  at: '2026-06-05T15:59:42Z'  # eb88
+  by: agent  # eb88
+  actor: jgstern_agent  # eb88
+  clock: 1  # eb88
+  nonce: eb88  # eb88
+  data:  # eb88
+    kind: work_item  # eb88
+    title: "is_resolved=False does NOT mean dst-node-absent; all 24244 unresolved dsts exist as external_symbol placeholders, and that overloaded meaning is undocumented"  # eb88
+    status: todo_hard  # eb88
+    priority: 2  # eb88
+    parent:  # eb88
+    tags:  # eb88
+    - dogfood_tranch_04  # eb88
+    - dogfood  # eb88
+    isbefore: []  # eb88
+    duplicate_of: []  # eb88
+    not_duplicate_of: []  # eb88
+    pr_ref:  # eb88
+    description: "F62.A3 (blind severity 3/Moderate; F74.A2 placeholder-counting-convention EXTENSION folded here). A reasonable consumer reads is_resolved=False as 'the dst symbol does not exist in the graph.' Empirically 100% of the 24244 is_resolved=False edges point at a dst that DOES exist — every one an external_symbol-kind placeholder node — and 0 edges have is_resolved=True with a missing dst. So is_resolved is orthogonal to dst-node existence; its true meaning is 'the dst is a synthetic external placeholder, not a real in-repo symbol' — a meaning the docstring ('dst symbol was resolved at analysis time') leaves ambiguous. The graph is referentially complete (no dangling dst) but the flag is overloaded. A graph-traversal consumer that special-cases 'if not edge.is_resolved: skip # dst wont be in graph' wrongly skips edges whose dst IS a (placeholder) node. Fix: document that an unresolved edge still has a materialized placeholder node (present-but-synthetic, not absent). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # eb88
+    fields: {}  # eb88

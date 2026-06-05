@@ -42,3 +42,10 @@
   clock: 3  # 1843
   nonce: '1843'  # 1843
   message: "Cluster member of INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 1843
+- op: discuss  # a1fb
+  at: '2026-06-05T16:02:25Z'  # a1fb
+  by: agent  # a1fb
+  actor: jgstern_agent  # a1fb
+  clock: 4  # a1fb
+  nonce: a1fb  # a1fb
+  message: "[+ tranch_04: WI-motug — related (card 003/F61.A4): import_static (15 edges) is the import-family alias emitted only on TS; the §12 matrix keys it under python/javascript with no typescript row, so the lookup misses. WI-molit — related (card 006/F62.A4): the call-family analogue — ast_call vs ast_call_direct redundantly encodes is_resolved (resolution-state smuggling), a sibling of this import-family vocabulary fragmentation under the same evidence_type single-axis concern.]"  # a1fb

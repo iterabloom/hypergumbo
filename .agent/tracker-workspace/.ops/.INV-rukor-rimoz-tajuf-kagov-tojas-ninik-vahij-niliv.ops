@@ -61,3 +61,18 @@
   clock: 6  # 131a
   nonce: 131a  # 131a
   message: "Cross-ref backfill (2026-05-30, linked-pile L4 investigation): item LANDED. bm.json confirms 23501/108649 edges carry populated Edge.derived_from (the field exists and the linkers that compute it populate it). Moving to pending_validation; awaits bakeoff to confirm full producer coverage. Note: the partial coverage (~21%) is expected — only inheritance/dispatch linkers contribute; other linkers correctly leave it empty."  # 131a
+- op: update  # 3bd6
+  at: '2026-06-05T15:57:25Z'  # 3bd6
+  by: agent  # 3bd6
+  actor: jgstern_agent  # 3bd6
+  clock: 7  # 3bd6
+  nonce: 3bd6  # 3bd6
+  set:  # 3bd6
+    status: violated  # 3bd6
+- op: discuss  # 0a0c
+  at: '2026-06-05T15:57:25Z'  # 0a0c
+  by: agent  # 0a0c
+  actor: jgstern_agent  # 0a0c
+  clock: 8  # 0a0c
+  nonce: 0a0c  # 0a0c
+  message: "validation failed (pending_validation->violated): tranch_04 card 030 (F75.A1) reproduced the mechanism on substrate at HEAD eb5355917e (reused tranch-03 substrate sha256 a32c4a31). Edge.derived_from is DEGENERATE: all 23867 populated edges (21.59%, linker-only, 13 passes) have derived_from == {src,dst} EXACTLY, uniform chain-len 2, even for 1008 non-containment edges where the producer could name a 3rd consumed input; zero provenance beyond endpoints; the '(or Edge)' clause is unexercised. The PR #3926 'landed' state populated the field mechanically but did NOT achieve the invariant's intent (record the Symbols the linker CONSUMED beyond the endpoints) — so the goal is not met. blind severity 4. Active fix-work item: WI-latup (populate derived_from with real consumed inputs at ~20 linker sites). Duplicate finding WI-ratun is wont_do (flagged to operator)."  # 0a0c

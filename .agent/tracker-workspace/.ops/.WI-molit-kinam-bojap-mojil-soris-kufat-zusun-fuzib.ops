@@ -1,0 +1,21 @@
+- op: create  # 9a92
+  at: '2026-06-05T16:00:53Z'  # 9a92
+  by: agent  # 9a92
+  actor: jgstern_agent  # 9a92
+  clock: 1  # 9a92
+  nonce: 9a92  # 9a92
+  data:  # 9a92
+    kind: work_item  # 9a92
+    title: "resolution state smuggled into the evidence_type axis via ast_call (98.5% unresolved) vs ast_call_direct (8.3%) — call-family label redundantly encodes is_resolved"  # 9a92
+    status: todo_hard  # 9a92
+    priority: 3  # 9a92
+    parent:  # 9a92
+    tags:  # 9a92
+    - dogfood_tranch_04  # 9a92
+    - dogfood  # 9a92
+    isbefore: []  # 9a92
+    duplicate_of: []  # 9a92
+    not_duplicate_of: []  # 9a92
+    pr_ref:  # 9a92
+    description: "F62.A4 (blind severity 2/Minor; parent of the F76 family — F76.A1 5-value resolution-smuggling, F76.A3 14/33 leak bound — folded here). Per-evidence-type resolution rates are sharply bimodal: ast_call edges are 98.5% unresolved (21152/21474), ast_call_direct 8.3% (2957/35749); every other evidence type (28/33) is 100% resolved. So is_resolved=False is concentrated in exactly the 'couldnt pin the callee' pathways, and the ast_call vs ast_call_direct distinction essentially IS the resolution status encoded as two evidence-type labels — a redundancy violating the design axiom (per ADR-0028) that the evidence_type axis names the inference PATHWAY, not the resolution STATE (which should be queried from is_resolved). A consumer can filter is_resolved==True OR evidence_type=='ast_call_direct' and get nearly the same set. No edge gets a wrong value, but the vocabulary silently carries two dimensions in one name, so a future refactor assuming single-axis purity builds on a confused foundation. Related to WI-hubit (ast_call_method AXIS_PENDING) + INV-dovus (import-family vocab fragmentation). Fix: evidence_type names only the inference pathway; resolution state carried solely by is_resolved. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 9a92
+    fields: {}  # 9a92

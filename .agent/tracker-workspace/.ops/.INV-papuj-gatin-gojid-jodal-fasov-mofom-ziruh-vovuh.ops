@@ -24,3 +24,10 @@
     fields:  # b9d5
       statement: "For any sketch subcommand invoked when fresh cached data exists on disk, the read-path must short-circuit and reuse the cache; no sketch subcommand may re-walk the filesystem or recompute derived data when an authoritative cached version is available."  # b9d5
       root_cause: "No shared SketchCachePolicy helper at the read-path entry. Each component (centrality, per-file embedding, filesystem walk, sketch-artifact write) was added independently with no cache-lookup precondition. Manifestations: sketch --input re-walks filesystem (INV-jumim), warm-cache sketch slow because centrality + per-file embedding not cached (WI-ribag), >1M-LOC warm sketch 14-22 min (WI-zipoj corpus-scale), routes --input writes 5 sketch artifacts as side effect of read-only invocation (INV-dadaf, status uncertain)."  # b9d5
+- op: discuss  # 178f
+  at: '2026-06-05T16:02:53Z'  # 178f
+  by: agent  # 178f
+  actor: jgstern_agent  # 178f
+  clock: 2  # 178f
+  nonce: 178f  # 178f
+  message: "[+ tranch_04: WI-kipod — related (card 025/F70.A2): explain never reads Symbol.docstring and sketch renders the path not the captured docstring summary — captured docstrings (74-90% coverage) never reach the two agent-facing commands; adjacent to this sketch read-path concern.]"  # 178f

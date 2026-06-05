@@ -41,3 +41,10 @@
   clock: 4  # a0d5
   nonce: a0d5  # a0d5
   message: "[+ tranch_03: anon-card-tranch03-045 F59.A1+F59.A2 — Edge.derived_from tautological 100% [src,dst]; depth bounded to 1 (content-quality side of the same per-linker construction-site sweep; folded as duplicate; blind severity 4; new row WI-ratun wont_do)]"  # a0d5
+- op: discuss  # eb2c
+  at: '2026-06-05T15:57:36Z'  # eb2c
+  by: agent  # eb2c
+  actor: jgstern_agent  # eb2c
+  clock: 5  # eb2c
+  nonce: eb2c  # eb2c
+  message: "[+ tranch_04: card 030 F75.A1 — related: confirms the work this item tracks is still needed. On substrate HEAD eb5355917e all 23867 populated Edge.derived_from rows == {src,dst} exactly (tautological); INV-rukor flipped pending_validation->violated. Populating derived_from with the actual consumed inputs (decorator site, topic registration, consumed edges) at the ~20 linker sites is the fix.]"  # eb2c

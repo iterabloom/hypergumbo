@@ -1,0 +1,21 @@
+- op: create  # 4988
+  at: '2026-06-05T16:00:31Z'  # 4988
+  by: agent  # 4988
+  actor: jgstern_agent  # 4988
+  clock: 1  # 4988
+  nonce: '4988'  # 4988
+  data:  # 4988
+    kind: work_item  # 4988
+    title: "spec_validator has no dangling-endpoint check: 23 src-dangling edges pass clean (authoritative 110533-edge endpoint-integrity table: 72.75% both-real / 27.23% placeholder-dst / 0.02% src-dangling / 0% dst-dangling)"  # 4988
+    status: todo_hard  # 4988
+    priority: 2  # 4988
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 4988
+    tags:  # 4988
+    - dogfood_tranch_04  # 4988
+    - dogfood  # 4988
+    isbefore: []  # 4988
+    duplicate_of: []  # 4988
+    not_duplicate_of: []  # 4988
+    pr_ref:  # 4988
+    description: "F74.A1 (blind severity 3/Moderate; primarily a positive global-bounding measurement; F74.A2 src/dst placeholder-asymmetry EXTENSION folded here). A substrate-wide partition of all 110533 edges by endpoint resolution: 72.75% (80416) close to two real non-placeholder nodes; 27.23% (30094) have a dst that resolves only to an external_symbol placeholder (src real); exactly 0.02% (23) truly dangling — ALL on the src side; 0% truly-dangling dst. Mechanism behind the asymmetry: boundary-synthesis materializes every unresolved DST as a placeholder node (dst side fully closed by construction) but there is NO symmetric SRC-side synthesis, so the 23 tier-4-filtered source ids have no placeholder fallback and remain literally absent. Placeholders cushion dst but serve as src in 0 edges. The spec_validator reports zero violations and has no dangling-endpoint check, so the 23 pass clean. This SUBSUMES (but is distinct-fix from) the 23-edge tier-4 src-drop (INV-jukok) and the validator-all-zero (WI-moriz). Fix: validator gains a dangling-endpoint check so the 23 src-dangling edges surface; src side handled symmetrically with dst (placeholder synthesis or edge suppression). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 4988
+    fields: {}  # 4988

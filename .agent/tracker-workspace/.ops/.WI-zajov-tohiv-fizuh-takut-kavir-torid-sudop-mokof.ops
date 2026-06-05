@@ -1,0 +1,21 @@
+- op: create  # 6f23
+  at: '2026-06-05T16:00:55Z'  # 6f23
+  by: agent  # 6f23
+  actor: jgstern_agent  # 6f23
+  clock: 1  # 6f23
+  nonce: 6f23  # 6f23
+  data:  # 6f23
+    kind: work_item  # 6f23
+    title: "hub-prune boundary is inclusive-at-equality (strict > on per-node degree); cutoff semantics previously unspecified"  # 6f23
+    status: todo_hard  # 6f23
+    priority: 3  # 6f23
+    parent:  # 6f23
+    tags:  # 6f23
+    - dogfood_tranch_04  # 6f23
+    - dogfood  # 6f23
+    isbefore: []  # 6f23
+    duplicate_of: []  # 6f23
+    not_duplicate_of: []  # 6f23
+    pr_ref:  # 6f23
+    description: "F65.A1 (blind severity 2/Minor; ratchet-promoted from EXT-of-F57). The slice hub-prune predicate is len(non_dispatch_edges) > hub_threshold (strict >), where the comparand is a per-node degree (out-degree for forward, in-degree for reverse, excluding dispatches_to edges) — NOT centrality and NOT a raw all-edges count. So a node whose hub-count exactly equals the threshold is KEPT and traversed; pruning begins at threshold+1. The help text ('nodes with more edges than this threshold are included but not traversed') is technically correct on a careful reading of 'more than'=strictly greater, so the CONTRACT holds; this pins the exact cutoff semantics that were previously unspecified. Verified on a micro-graph (degree-10 node kept at threshold 10, pruned at 9) + monotone node-count widening on the real substrate. A consumer setting --hub-threshold N expecting 'prune N-or-more' is surprised that nodes with exactly N edges survive (recoverable by setting N-1). Fix: document the off-by-one relative to a naive >= reading explicitly. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 6f23
+    fields: {}  # 6f23

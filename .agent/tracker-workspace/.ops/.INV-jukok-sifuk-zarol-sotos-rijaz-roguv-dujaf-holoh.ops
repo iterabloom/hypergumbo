@@ -105,3 +105,17 @@
   clock: 11  # a361
   nonce: a361  # a361
   message: "[+ tranch_03: anon-card-tranch03-047 F56.A1 — 23 dangling-src edges all in generated-code subtree (identical defect in scip_pb2.py; folded as duplicate; blind severity 3; new row WI-vihof wont_do)]"  # a361
+- op: discuss  # b740
+  at: '2026-06-05T15:57:13Z'  # b740
+  by: agent  # b740
+  actor: jgstern_agent  # b740
+  clock: 12  # b740
+  nonce: b740  # b740
+  message: "[+ tranch_04: card 017 F67.A2 — substrate-wide sweep re-confirms exactly the same 23 calls/imports edges (13 calls + 10 imports) with src absent from all 34396 nodes, from scip_pb2.py (generated) + test_scip_generated.py (hand-written test mis-tiered), root = tier-4 supply-chain filter drops symbols while _is_valid_edge_src retains edges; validator has no dangling-endpoint check so validation_report=0. Folded as duplicate; blind severity 4. Already violated — no state change.]"  # b740
+- op: discuss  # d085
+  at: '2026-06-05T16:02:53Z'  # d085
+  by: agent  # d085
+  actor: jgstern_agent  # d085
+  clock: 13  # d085
+  nonce: d085  # d085
+  message: "[+ tranch_04: WI-mujor — related (card 029/F74.A1): the global endpoint-integrity table SUBSUMES this 23-edge src-dangling finding (0.02% truly-dangling, all src-side) but is a distinct fix-surface — the validator dangling-endpoint check + symmetric src-side placeholder synthesis vs this row's tier-4 supply-chain filter fix.]"  # d085

@@ -1,0 +1,21 @@
+- op: create  # da1a
+  at: '2026-06-05T15:58:58Z'  # da1a
+  by: agent  # da1a
+  actor: jgstern_agent  # da1a
+  clock: 1  # da1a
+  nonce: da1a  # da1a
+  data:  # da1a
+    kind: work_item  # da1a
+    title: "negative hub_threshold silently accepted (truthiness coercion, no <0 guard) collapses any slice to a 1-hop ball"  # da1a
+    status: todo_hard  # da1a
+    priority: 1  # da1a
+    parent: INV-fabov-kapit-mupit-tigoz-lurol-mulus-jivik-kajun  # da1a
+    tags:  # da1a
+    - dogfood_tranch_04  # da1a
+    - dogfood  # da1a
+    isbefore: []  # da1a
+    duplicate_of: []  # da1a
+    not_duplicate_of: []  # da1a
+    pr_ref:  # da1a
+    description: "F65.A2 (blind severity 4/Significant; F65.A3 false reason-code self-folded). CLI coercion is hub_threshold = raw if raw else None (cli.py:1397) — a truthiness test not ==0. A negative value is truthy, so it passes to the predicate len(edges) > threshold. Since every node has >=0 edges and 0 > -1 is True, EVERY non-exempt node (hop>=2) is pruned — the slice silently collapses to the entry node + its hop-1 neighbors regardless of real graph depth. No <0 guard exists in slice or CLI code. The slice is still well-formed JSON with resolvable ids but answers a structurally different question (reach in <=1 hop) than asked (reach). Verified on a micro-graph (5-node chain -> 3 nodes at -1) and the real substrate (forward 932->337, reverse 1519->943 at -1/-5). Any agent computing the threshold programmatically (mean_degree - k*stdev) can go negative. The only surface signal is hub_pruned in limits_hit, which ALSO fires for legitimate large slices, so it cannot distinguish 'pruned a real hub' from 'negative threshold nuked the graph'. Fix: reject negative threshold (a float already is) or guard. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # da1a
+    fields: {}  # da1a

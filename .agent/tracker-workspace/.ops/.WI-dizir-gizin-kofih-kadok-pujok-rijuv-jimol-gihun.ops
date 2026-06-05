@@ -26,3 +26,10 @@
   clock: 2  # a616
   nonce: a616  # a616
   message: "[related to INV-vaguj (satisfied; name/span fix for same producer) — this row reports adjacent gap: origin pass-id present on 492 nodes but no analysis_runs entry. Different field/consistency check from the closed name/span fix.]"  # a616
+- op: discuss  # 3036
+  at: '2026-06-05T15:57:14Z'  # 3036
+  by: agent  # 3036
+  actor: jgstern_agent  # 3036
+  clock: 3  # 3036
+  nonce: '3036'  # 3036
+  message: "[+ tranch_04: card 018 F67.A3 — the empty-origin_run_id cohort (2236 nodes) includes ~493 file-kind nodes overlapping this row's 492 orchestrator-synthesized file nodes; folded canonically into WI-sijut (external_symbol dominant). Cross-ref for the file-node sub-population.]"  # 3036

@@ -1,0 +1,21 @@
+- op: create  # d731
+  at: '2026-06-05T15:58:00Z'  # d731
+  by: agent  # d731
+  actor: jgstern_agent  # d731
+  clock: 1  # d731
+  nonce: d731  # d731
+  data:  # d731
+    kind: work_item  # d731
+    title: "completeness-signaling contract fires inconsistently across file-drop channels (analysis_incomplete never trips; partial_results_reason set while flag false, violating §9)"  # d731
+    status: todo_hard  # d731
+    priority: 1  # d731
+    parent:  # d731
+    tags:  # d731
+    - dogfood_tranch_04  # d731
+    - dogfood  # d731
+    isbefore: []  # d731
+    duplicate_of: []  # d731
+    not_duplicate_of: []  # d731
+    pr_ref:  # d731
+    description: "Cluster C1 (F63.A3 + F63.A4; blind severity 4/Significant). §9 says analysis_incomplete is 'set to true if analysis terminated early due to errors/timeouts/resource limits' and partial_results_reason is 'present only when analysis_incomplete: true'. In practice neither a parse-error file drop nor an oversize (truncated) file drop ever trips analysis_incomplete (stays false). Yet the parse-error/failed path DOES populate partial_results_reason='some files skipped during analysis' while analysis_incomplete is still false (direct §9 violation), and the truncated-file path leaves partial_results_reason EMPTY. Two equivalent soft file drops are treated asymmetrically. Exercised via injected failures on a 4-file scratch repo (syntax-error file + 4.5MB oversize over --max-file-bytes); both leave analysis_incomplete=false, the two channels disagree on partial_results_reason. Consumer gating on 'if not analysis_incomplete: trust_completeness()' wrongly concludes COMPLETE. Fix: one coherent rule — decide whether a soft file-level drop marks analysis incomplete, then make failed-file and truncated-file channels set both fields the same way, and make 'reason present only when incomplete=true' actually hold. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # d731
+    fields: {}  # d731

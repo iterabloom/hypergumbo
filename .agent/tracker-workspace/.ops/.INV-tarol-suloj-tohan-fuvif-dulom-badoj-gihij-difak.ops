@@ -41,3 +41,10 @@
   clock: 3  # 0cc5
   nonce: 0cc5  # 0cc5
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Confirmed mechanism. slice.py:550-551 seeds add_file_imports(entry.path) during entry-node initialization regardless of whether the entry is a function or a file node. With --max-hops 0, the BFS loop at slice.py:588 immediately continues without traversing anything, leaving file-level imports as the sole contents of visited_edges. Two structural fixes: (i) only seed file-imports when the entry kind is a container/file kind; (ii) post-filter visited_edges to drop import edges whose src file-node was not itself walked as an in-scope node. Twin to INV-titid — both describe the same architectural choice (feature scope not re-derived from emitted graph): INV-tarol leaks above-scope content INTO feature.edge_ids; INV-titid leaks below-scope refs OUT OF features[].edge_ids when the referenced edges are pruned."  # 0cc5
+- op: discuss  # cb58
+  at: '2026-06-05T16:03:19Z'  # cb58
+  by: agent  # cb58
+  actor: jgstern_agent  # cb58
+  clock: 4  # cb58
+  nonce: cb58  # cb58
+  message: "[+ tranch_04: F66.A1 (EXTENSION) — re-confirmed on substrate HEAD eb5355917e: every FORWARD slice's edge_ids include file-import edges with BOTH endpoints absent from node_ids (subgraph not closed; 33 dangling dsts exist as in-repo nodes); F66.A2 adds 1526/25504=6.0% of functions are zero-out-degree where file imports are substituted for callees, and --exclude-imports exposes the honest empty slice. F74.A1 proved this is ORTHOGONAL to the src-dangling/tier-4 hole (slice projection, globally closed).]"  # cb58

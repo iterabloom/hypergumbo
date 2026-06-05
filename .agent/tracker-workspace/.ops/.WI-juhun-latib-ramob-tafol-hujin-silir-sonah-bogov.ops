@@ -1,0 +1,22 @@
+- op: create  # 193e
+  at: '2026-06-05T16:01:42Z'  # 193e
+  by: agent  # 193e
+  actor: jgstern_agent  # 193e
+  clock: 1  # 193e
+  nonce: 193e  # 193e
+  data:  # 193e
+    kind: work_item  # 193e
+    title: "POSITIVE CONTROL: semantic graph perfectly reproducible across runs (L2 functional-identity contract holds; id/stable_id/edge-id/run_signature stable)"  # 193e
+    status: todo_hard  # 193e
+    priority: 4  # 193e
+    parent:  # 193e
+    tags:  # 193e
+    - dogfood_tranch_04  # 193e
+    - dogfood  # 193e
+    - positive_control  # 193e
+    isbefore: []  # 193e
+    duplicate_of: []  # 193e
+    not_duplicate_of: []  # 193e
+    pr_ref:  # 193e
+    description: "F64.A1 (blind severity 1/Cosmetic; positive control). Three independent runs of an identical fixture produce byte-identical output once five non-semantic field-classes (execution_id, origin_run_id, started_at, duration_ms, generated_at) are neutralized and the analysis_runs[]/nodes[]/edges[] arrays are sorted. Every content-derived identity field — nodes[].id, nodes[].stable_id, edges[].id, and the per-pass run_signature content hash — is bit-for-bit stable across runs. The documented L2 'functionally identical up to OS/hardware variation' reproducibility contract HOLDS; the only churn is in a handful of provenance/timing fields. This SCOPES the separate byte-reproducibility gap (card 010/WI-pifaj F64.A2) to provenance/timing fields only — the analysis itself is deterministic. No negative consequence. Filed for trend-cohort completeness (clearing measurement). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 193e
+    fields: {}  # 193e

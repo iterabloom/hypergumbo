@@ -1,0 +1,22 @@
+- op: create  # 7de3
+  at: '2026-06-05T16:01:40Z'  # 7de3
+  by: agent  # 7de3
+  actor: jgstern_agent  # 7de3
+  clock: 1  # 7de3
+  nonce: 7de3  # 7de3
+  data:  # 7de3
+    kind: work_item  # 7de3
+    title: "POSITIVE CONTROL: syntax-error Python file handled exactly per §17 contract (lands in failed_files[] with {path,reason,analyzer}, run continues exit 0)"  # 7de3
+    status: todo_hard  # 7de3
+    priority: 4  # 7de3
+    parent:  # 7de3
+    tags:  # 7de3
+    - dogfood_tranch_04  # 7de3
+    - dogfood  # 7de3
+    - positive_control  # 7de3
+    isbefore: []  # 7de3
+    duplicate_of: []  # 7de3
+    not_duplicate_of: []  # 7de3
+    pr_ref:  # 7de3
+    description: "F63.A2 (blind severity 1/Cosmetic; positive control). A deliberately broken source file is caught at the extraction site (its exception type IS one of the two the handler catches: SyntaxError/UnicodeDecodeError), the run continues (exit 0), the rest of the repo is analyzed (16 nodes/14 edges), and the file lands in failed_files[] with the three documented keys {path,reason,analyzer} where reason is '<ExceptionType>: <msg>'. This confirms the failed-file plumbing works WHEN the exception type is caught — and isolates the crash defect (card 007/WI-madal, uncaught PermissionError) specifically to the uncaught-exception-type gap, not a broken pipeline. No negative consequence — clearing result establishing the failed-file machinery is sound. Filed for trend-cohort completeness (clearing measurement). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 7de3
+    fields: {}  # 7de3

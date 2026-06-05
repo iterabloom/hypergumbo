@@ -1,0 +1,22 @@
+- op: create  # 0aa8
+  at: '2026-06-05T16:02:00Z'  # 0aa8
+  by: agent  # 0aa8
+  actor: jgstern_agent  # 0aa8
+  clock: 1  # 0aa8
+  nonce: 0aa8  # 0aa8
+  data:  # 0aa8
+    kind: work_item  # 0aa8
+    title: "POSITIVE CONTROL: module-qualified I/O calls classify into the correct boundary (7/7); isolates blame to upstream edge production not the catalog/matcher"  # 0aa8
+    status: todo_hard  # 0aa8
+    priority: 4  # 0aa8
+    parent:  # 0aa8
+    tags:  # 0aa8
+    - dogfood_tranch_04  # 0aa8
+    - dogfood  # 0aa8
+    - positive_control  # 0aa8
+    isbefore: []  # 0aa8
+    duplicate_of: []  # 0aa8
+    not_duplicate_of: []  # 0aa8
+    pr_ref:  # 0aa8
+    description: "F69.A3 (blind severity 1/Cosmetic; positive control). Every injected site where the analyzer preserved a real module qualifier on the dst (os.remove, os.system, subprocess.run, os.getenv, os.environ, urllib.request.urlopen, process.env) classified into the correct boundary — 7 of 7 module-qualified sites. All true-positive rows are module-qualified; all misclassified rows have module 'external' (F69.A2); all missing rows are JS (no edge produced, F69.A1). The classifier and catalog are accurate given good input; the failures are 100% upstream — a missing edge or a missing module hint, never a wrong-but-confident boundary (no false-positive classification observed). This bounds the blame surface for the io-boundary defects (cards 021/WI-zavad, 022/WI-fuvuj) to edge PRODUCTION, not the catalog/matcher. No negative consequence. Filed for trend-cohort completeness (clearing measurement). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 0aa8
+    fields: {}  # 0aa8

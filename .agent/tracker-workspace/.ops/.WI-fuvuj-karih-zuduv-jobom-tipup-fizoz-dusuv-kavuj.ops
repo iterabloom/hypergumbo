@@ -1,0 +1,21 @@
+- op: create  # f107
+  at: '2026-06-05T15:59:17Z'  # f107
+  by: agent  # f107
+  actor: jgstern_agent  # f107
+  clock: 1  # f107
+  nonce: f107  # f107
+  data:  # f107
+    kind: work_item  # f107
+    title: "method/bare-receiver Python I/O loses module qualifier (dst=external:read) -> misclassified into external_potential not the true boundary type"  # f107
+    status: todo_hard  # f107
+    priority: 1  # f107
+    parent:  # f107
+    tags:  # f107
+    - dogfood_tranch_04  # f107
+    - dogfood  # f107
+    isbefore: []  # f107
+    duplicate_of: []  # f107
+    not_duplicate_of: []  # f107
+    pr_ref:  # f107
+    description: "F69.A2 (blind severity 4/Significant). Python call sites whose target is a method on a local variable (f.read(), f.write(), s.send(), s.connect(), s.recv()) emit a dst of python:external:0-0:<name>:unresolved with module hint 'external' — the analyzer cannot type the receiver (open(...) returns a file object, socket.socket() returns a socket) so it cannot qualify the callee. The composed primitive is the bare name, which does not match the boundary catalog's module-qualified entries (socket.socket.send, builtins.open->read), so these sites fall into the undifferentiated external_potential bucket rather than the true boundary type (fs_read/fs_write/net_send/net_recv). By contrast function-style qualified calls (os.remove, subprocess.run) classify correctly because the module is preserved on the dst. 5 of 11 injected Python I/O sites (method/bare-receiver style) misclassify. A consumer filtering --boundary net_send or asking 'does this code write files?' gets the wrong answer — a net_send socket write and an fs_write file write both land in the same bucket. Distinct producer mechanism from F69.A1's total-edge-absence. Related to WI-fabup (Python ambiguous_names not wired to receiver disambiguation). Fix: receiver-type inference preserves/recovers the module qualifier on method-style I/O calls. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # f107
+    fields: {}  # f107

@@ -19,3 +19,10 @@
     pr_ref:  # 3b4d
     description: "**Mechanic**: The validation report exposes buckets `axis_conformance`, `cross_field`, `id_format`, `verdict_enum`, `writer_contract`, all reporting 0 defects. Direct substrate scan finds 492 dangling-pass-id violations (cross-field), 4,507 :unresolved-with-is_resolved=True violations (cross-field), 1,645 empty-origin violations (cross-field), and others. Either the validation rules are not wired to check these classes, or the report is generated against a frozen rule set that pre-dates the check categories.\n\n**Expectation**: `cross_field` and `id_format` counters reflect real violations in the substrate, or the report names which rules are wired (so a zero count signals \"no instances of the rules that exist\", not \"no instances of any cross-field defect\").\n\n**Scope**: All five `violations_by_class` counters report zero on the self-corpus; multiple cross-field defects in the same substrate are enumerable from a direct scan.\n\n**Exposure**: Any consumer reading `violations_by_class.cross_field=0` and concluding the substrate is clean on that dimension.\n\n**Consequence**: Consumers are led to believe whole defect classes are absent when they are merely unchecked; the validation report's apparent passing grade is misleading.\n\n**Source**: F51.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 3b4d
     fields: {}  # 3b4d
+- op: discuss  # b183
+  at: '2026-06-05T16:02:53Z'  # b183
+  by: agent  # b183
+  actor: jgstern_agent  # b183
+  clock: 2  # b183
+  nonce: b183  # b183
+  message: "[+ tranch_04: WI-mujor — related (card 029/F74.A1): the authoritative 110533-edge endpoint-integrity table shows 23 src-dangling edges (0.02%) pass the spec_validator clean because it has NO dangling-endpoint check — the same validator-all-zero gap this row tracks (cross_field/id_format counters report 0 despite enumerable defects).]"  # b183

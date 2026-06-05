@@ -1,0 +1,21 @@
+- op: create  # fb8f
+  at: '2026-06-05T15:58:33Z'  # fb8f
+  by: agent  # fb8f
+  actor: jgstern_agent  # fb8f
+  clock: 1  # fb8f
+  nonce: fb8f  # fb8f
+  data:  # fb8f
+    kind: work_item  # fb8f
+    title: "spec-mandated 0.30 default confidence for unknown evidence_type is wrong for 63% of the edge corpus"  # fb8f
+    status: todo_hard  # fb8f
+    priority: 1  # fb8f
+    parent:  # fb8f
+    tags:  # fb8f
+    - dogfood_tranch_04  # fb8f
+    - dogfood  # fb8f
+    isbefore: []  # fb8f
+    duplicate_of: []  # fb8f
+    not_duplicate_of: []  # fb8f
+    pr_ref:  # fb8f
+    description: "F61.A3 (blind severity 4/Significant). The §12 confidence matrix covers only 3 of 33 observed evidence types = 40759/110533 edges (36.9%). The spec issues an explicit MUST: 'Consumers MUST default unknown evidence_type to 0.30.' But the remaining 63.1% (~69774 edges) carry evidence types with no matrix entry, and the implementation hardcodes their confidence WELL above 0.30 (ast_call modal 0.4, naming_convention 1.0, ast_import 0.95, ast_new 0.95, span_overlap 0.9). Only ~62 edges actually sit near 0.30. A consumer obeying the documented .get((lang,et),0.30) lookup under-scores 69000+ edges by 0.5-0.7, corrupting any confidence-thresholded pruning/filtering. Fix: make the documented consumer default match what the implementation assigns, OR expand the matrix to cover the emitted vocabulary so the default rarely applies. CORRECTED-kept by F77.A1 (the strong 'confidence is blind to resolution' reading was refined — coupling is the evidence_type prior and is non-monotone — but the 0.30-default mismatch count/mechanism stand). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # fb8f
+    fields: {}  # fb8f

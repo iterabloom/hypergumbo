@@ -26,3 +26,10 @@
   clock: 2  # 2aa6
   nonce: 2aa6  # 2aa6
   message: "[related to WI-nibis (done; Cluster D apex/peer collapse Phase 3) — this row reports continued emission 6 versions later; deprecation-window close needed, or Python analyzer migration to canonical apex]"  # 2aa6
+- op: discuss  # 62b9
+  at: '2026-06-05T16:02:41Z'  # 62b9
+  by: agent  # 62b9
+  actor: jgstern_agent  # 62b9
+  clock: 3  # 62b9
+  nonce: 62b9  # 62b9
+  message: "[+ tranch_04: WI-molit — related (card 006/F62.A4): ast_call_method (this row, AXIS_PENDING fold candidate) is part of the same call-family resolution-state smuggling — ast_call 98.5% unresolved vs ast_call_direct 8.3% vs ast_call_method 0% — the evidence_type axis redundantly encoding is_resolved.]"  # 62b9

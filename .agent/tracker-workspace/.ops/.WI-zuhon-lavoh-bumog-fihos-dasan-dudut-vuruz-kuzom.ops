@@ -1,0 +1,21 @@
+- op: create  # a00b
+  at: '2026-06-05T15:58:36Z'  # a00b
+  by: agent  # a00b
+  actor: jgstern_agent  # a00b
+  clock: 1  # a00b
+  nonce: a00b  # a00b
+  data:  # a00b
+    kind: work_item  # a00b
+    title: "dst_ref null on 67.8% of is_resolved=False edges; structured external-reference and the flag are populated by disjoint producer sets"  # a00b
+    status: todo_hard  # a00b
+    priority: 1  # a00b
+    parent:  # a00b
+    tags:  # a00b
+    - dogfood_tranch_04  # a00b
+    - dogfood  # a00b
+    isbefore: []  # a00b
+    duplicate_of: []  # a00b
+    not_duplicate_of: []  # a00b
+    pr_ref:  # a00b
+    description: "F62.A2 (blind severity 4/Significant). Of 24244 edges flagged is_resolved=False, 16438 (67.8%) have NO dst_ref. dst_ref's docstring calls it 'the canonical source of truth for external dsts' and the design contract says it should co-occur with is_resolved=False on every external dst. But the call/decorator analyzers (Go, TypeScript, etc.) correctly set is_resolved=False while never populating dst_ref, leaving only the legacy dst string suffix. The two structured external-identity surfaces are populated by disjoint producers: the import producer fills dst_ref but not the flag; the call producers fill the flag but not dst_ref. Only 7806/24244 (32.2%) carry both consistently. A consumer doing external_targets=[e.dst_ref for e if e.dst_ref] recovers only 32% of external call/decorator targets and must fall back to string-parsing dst — the exact brittleness dst_ref was introduced to eliminate. Fix: every external/unresolved edge carries a populated dst_ref ExternalRef. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # a00b
+    fields: {}  # a00b

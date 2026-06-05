@@ -28,3 +28,10 @@
   clock: 2  # 6806
   nonce: '6806'  # 6806
   message: "[+ tranch_03: WI-razol covers third consumer of same ambiguous_names YAML (taint.py sink-matcher); P0 severity due to verify-claims FP cascade]"  # 6806
+- op: discuss  # 9f7a
+  at: '2026-06-05T16:02:42Z'  # 9f7a
+  by: agent  # 9f7a
+  actor: jgstern_agent  # 9f7a
+  clock: 3  # 9f7a
+  nonce: 9f7a  # 9f7a
+  message: "[+ tranch_04: WI-fuvuj — related (card 022/F69.A2): method/bare-receiver Python I/O (f.read(), s.send()) loses the module qualifier (dst=external:read) and misclassifies into external_potential — the same receiver-type-inference gap this ambiguous_names-wiring row addresses, here surfacing on the io-boundary classification.]"  # 9f7a

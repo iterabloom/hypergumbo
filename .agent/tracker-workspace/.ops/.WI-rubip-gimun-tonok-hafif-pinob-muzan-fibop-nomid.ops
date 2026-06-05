@@ -1,0 +1,21 @@
+- op: create  # 4335
+  at: '2026-06-05T16:01:17Z'  # 4335
+  by: agent  # 4335
+  actor: jgstern_agent  # 4335
+  clock: 1  # 4335
+  nonce: '4335'  # 4335
+  data:  # 4335
+    kind: work_item  # 4335
+    title: "WATCH-ITEM (low-confidence): language x edge-type matrix flags empty calls/instantiate cells for rust/swift/java/csharp/TS-instantiates, but n<=9 fixture stubs cannot separate analyzer-gap from no-such-construct"  # 4335
+    status: todo_hard  # 4335
+    priority: 3  # 4335
+    parent:  # 4335
+    tags:  # 4335
+    - dogfood_tranch_04  # 4335
+    - dogfood  # 4335
+    isbefore: []  # 4335
+    duplicate_of: []  # 4335
+    not_duplicate_of: []  # 4335
+    pr_ref:  # 4335
+    description: "F72.A2 (blind severity 2/Minor; AUDIT-AXIS representative, sweep lang-edgetype-emission-matrix-pass-72; LOW self-confidence by construction; NON-fold default honored). A full enumeration of edge production by source language flags several languages (Rust, Swift, Java, C#) with function/class nodes but zero calls or instantiates edges, plus TypeScript with class nodes but zero instantiates. On their face these look like producer gaps mirroring the JS hole (F69.A1/F72.A1). But each of these languages has only n=2-9 nodes — schema-coverage fixture stubs, not real code. A 2-function fixture may genuinely contain no internal calls, so '0 calls' is not distinguishable from 'analyzer cant emit calls' at this population, and the TS zero-instantiates is plausibly real (web components are created via decorator+DOM not new X()). Filed as a matrix OBSERVATION not a confirmed per-language gap. A consumer treating an empty matrix cell as 'this analyzer does not emit this edge type' could be wrong. Resolution: a dedicated injected-fixture pass per language (with known constructs) would be needed to confirm whether these empty cells are real producer gaps or fixture-absent constructs. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 4335
+    fields: {}  # 4335

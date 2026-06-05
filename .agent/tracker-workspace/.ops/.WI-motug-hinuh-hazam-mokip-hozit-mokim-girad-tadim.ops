@@ -1,0 +1,21 @@
+- op: create  # dcd1
+  at: '2026-06-05T15:59:40Z'  # dcd1
+  by: agent  # dcd1
+  actor: jgstern_agent  # dcd1
+  clock: 1  # dcd1
+  nonce: dcd1  # dcd1
+  data:  # dcd1
+    kind: work_item  # dcd1
+    title: "import_static evidence_type emitted only on TypeScript edges, but the §12 confidence matrix keys it under python/javascript (language-granularity mismatch)"  # dcd1
+    status: todo_hard  # dcd1
+    priority: 2  # dcd1
+    parent:  # dcd1
+    tags:  # dcd1
+    - dogfood_tranch_04  # dcd1
+    - dogfood  # dcd1
+    isbefore: []  # dcd1
+    duplicate_of: []  # dcd1
+    not_duplicate_of: []  # dcd1
+    pr_ref:  # dcd1
+    description: "F61.A4 (blind severity 3/Moderate; F76.A2 EXTENSION — import family are per-language aliases of ast_import — folded here). The substrate emits import_static (15 edges, all confidence 0.95) EXCLUSIVELY on edges whose source is typescript-prefixed. The §12 matrix has (python,import_static)=0.95 and (javascript,import_static)=0.95 rows but NO (typescript,import_static) row. The TS analyzer tags its language 'typescript', a finer granularity than the matrix's 'javascript' key anticipates. So the one shared evidence-type label the analyzers DO emit lands on a language the matrix cannot key — under the documented lookup it falls to the default despite being a clean static import. Narrow in volume but a clean demonstration that the matrix's language enum is brittle against the analyzers' actual labels. Fix: matrix language keys match the granularity analyzers populate (a typescript row, or TS edges normalized to javascript). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # dcd1
+    fields: {}  # dcd1
