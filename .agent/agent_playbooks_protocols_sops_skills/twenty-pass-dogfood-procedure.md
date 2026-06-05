@@ -8,6 +8,7 @@ A soup-to-nuts, vendor-neutral procedure for running a 20-pass dogfooding tranch
 A "tranch" is a contiguous block of 20 dogfooding passes against the same substrate (or substrate family). The procedure produces:
 
 - An immutable per-pass raw-observations record (lab notebook stanzas with F-numbered findings).
+- TWO audit passes — a Phase 2 mid-tranch checkpoint on the first-half passes and a Phase 2.5 post-discovery audit on the second-half passes — that both feed Phase 3 consolidation and Phase 6.4's optional retroactive-cleanup decision.
 - A two-axis consolidated cohort (methodology-axis + causal-axis) with per-cluster confidence and a rejected-clusters log.
 - A blind-judge severity panel (default 1-judge; tunable up to 3-judge or higher for inter-rater variance).
 - A cluster-aware trend report (carbon-dating Methods A / B / C: earliest member / latest member / 1-n distributed).
@@ -230,6 +231,70 @@ Touch ${TRANCH_DIR}/tranch.checkpoint. Return a 150-word summary.
 
 After Phase 2, the parent continues Phase 1 with the remaining passes. Sub-agents in the second half read `midtranch_audit.md` as part of their context.
 
+## Phase 2.5 — Post-discovery second-half audit
+
+Output: `${TRANCH_DIR}/post_discovery_audit.md`; `tranch.post_discovery_audit` sentinel; any second-half pass writeups annotated with KIND-tag ratchets.
+
+After the FINAL Phase 1 chunk completes (passes `--mid-tranch-pass + 1` through `--tranch-size` have all written their `pass_NN.md` + `pass_NN.complete`), and BEFORE Phase 3 starts, spawn a Phase 2.5 sub-agent that does the symmetric Phase 2 protocol on the second-half passes. Without this step, the first-half passes get a KIND-ratchet / amplification-warning audit but the second-half passes don't — they go straight into Phase 3 consolidation, which can absorb over-folding or amplification as if it were intentional.
+
+The motivating gap: the first run of this playbook (tranch 03, passes 41-60) skipped this step and the parent agent could not honestly answer "is there content to prune?" for the second-half passes — Phase 2 only covered passes 41-50, and Phase 3 / 5 looked at the second half but with different questions (consolidation, retrospective) rather than the Phase 2-style ratchet/amplification check.
+
+```
+You are the Phase 2.5 post-discovery audit sub-agent for tranch ${TRANCH_ID}.
+Read ${TRANCH_DIR}/tranch_state.json, ${TRANCH_DIR}/midtranch_audit.md
+(Phase 2's findings), and every ${TRANCH_DIR}/pass_NN.md file for the
+SECOND-HALF passes (passes from ${first_pass_number + mid_tranch_pass}
+to ${last_pass_number}).
+
+Your job is to catch over-folding, over-splitting, and amplification
+in the second half of the tranch — symmetrically to Phase 2 on the
+first half — BEFORE Phase 3 consolidation absorbs the patterns as if
+they were intentional. Do NOT attempt full consolidation; Phase 3
+runs after you.
+
+For each completed second-half pass:
+  1. Re-evaluate every finding's provisional KIND tag using the same
+     6-way taxonomy from substrate_guide.md. Promote EXTENSION →
+     STANDALONE / demote STANDALONE → EXTENSION as warranted.
+  2. Cross-check for INVALIDATION-RISK findings that were not flagged
+     at finding-time, including risks that would reach back into the
+     FIRST-HALF passes (i.e., a second-half finding that quietly
+     invalidates a first-half claim). Apply fresh-substrate verification
+     if you find any.
+  3. Flag pattern-amplification risks: claims re-asserted across 3+
+     second-half passes without fresh-substrate verification, OR claims
+     in the second half that re-cite first-half-derived denominators or
+     numbers without fresh derivation.
+  4. Flag would-have-been-pruned content: any finding whose evidence
+     base is thin enough that you would not have filed it as a tracker
+     row under Phase 6.1, OR any cross-pass repetition that would be a
+     better fit as a discussion entry on an earlier finding than as a
+     standalone finding.
+
+Write to ${TRANCH_DIR}/post_discovery_audit.md with sections:
+  - KIND ratchets (per-pass diffs across the second-half passes).
+  - New INVALIDATION-RISK flags (including any retroactively against
+    first-half findings).
+  - Pattern-amplification warnings.
+  - Would-have-been-pruned candidates (the new section vs Phase 2; this
+    is the explicit input to whether Phase 6.4 retroactive cleanup
+    should fire).
+
+Touch ${TRANCH_DIR}/tranch.post_discovery_audit. Return a 180-word summary.
+```
+
+The Phase 2.5 sub-agent's output feeds two downstream decisions:
+
+1. **Phase 3 consolidation** reads `post_discovery_audit.md` alongside `midtranch_audit.md` as input. Both audits' KIND ratchets are authoritative starting points for Phase 3a methodology-axis classification.
+2. **Phase 6.4 retroactive cleanup** decision: if `post_discovery_audit.md`'s "would-have-been-pruned candidates" section is non-empty, the parent agent surfaces those candidates to the operator at Phase 6.4 (with the planned ops count) and waits for human edit-mode authorization. If empty, Phase 6.4 is genuinely skippable. Without Phase 2.5, the "skip Phase 6.4" decision is unsound because the second-half passes' would-have-been-pruned content was never enumerated.
+
+**Tracker-tag surfacing (cross-session memory).** Immediately after Phase 2.5 returns:
+
+- If disposition is **"trigger Phase 6.4 with N candidates"**: the parent agent files a single tracker row tagged `awaits_edit_mode_authorization` (title: `Tranch ${TRANCH_ID} Phase 6.4 cleanup pending — N candidates`; description: the candidate list from `post_discovery_audit.md`; status: `todo_hard`; priority derived from the highest-severity candidate). This row IS the cross-session surfacing mechanism — subsequent sessions discover the pending work via standard `scripts/tracker list --tag awaits_edit_mode_authorization` queries and the stop-hook's `tracker check-messages` discovery. The tag is stripped by Step 6.4's cleanup sub-agent once the operator authorizes edit mode and the candidates have been applied (see Step 6.4).
+- If disposition is **"skip — confirmed"**: no tracker row is filed. The disposition still lands in `agent_notes` via Phase 6.2's edit-item 9 as the historical record-of-decision.
+
+Without this surfacing, a deferred Phase 6.4 becomes invisible across sessions — the disposition lives only in `post_discovery_audit.md`, which is a lab-notebook artifact not auto-loaded into agent context.
+
 ## Phase 3 — End-of-tranch consolidation
 
 Output: `${TRANCH_DIR}/classification.md` (methodology-axis), `${TRANCH_DIR}/clusters.md` (causal-axis), `${TRANCH_DIR}/rejected_clusters.md`, `tranch.consolidated` sentinel.
@@ -241,7 +306,10 @@ Phase 3 runs TWO sub-agents in sequence — not one. Methodology-axis dedup and 
 ```
 You are the Phase 3a methodology-axis dedup sub-agent for tranch
 ${TRANCH_ID}. Read ${TRANCH_DIR}/tranch_state.json, every
-${TRANCH_DIR}/pass_NN.md, and ${TRANCH_DIR}/midtranch_audit.md.
+${TRANCH_DIR}/pass_NN.md, ${TRANCH_DIR}/midtranch_audit.md (Phase 2
+first-half audit), and ${TRANCH_DIR}/post_discovery_audit.md (Phase 2.5
+second-half audit). Both audits' KIND ratchets are authoritative
+starting points; honor them unless you have evidence to reverse.
 
 For each finding (every F-number across every pass), assign a final
 KIND from the same 6-way taxonomy used at finding-time:
@@ -274,7 +342,8 @@ CORRECTION counts, INVALIDATION count, low-confidence cases.
 ```
 You are the Phase 3b causal-axis clustering sub-agent for tranch
 ${TRANCH_ID}. Read ${TRANCH_DIR}/tranch_state.json, every
-${TRANCH_DIR}/pass_NN.md, ${TRANCH_DIR}/midtranch_audit.md, and
+${TRANCH_DIR}/pass_NN.md, ${TRANCH_DIR}/midtranch_audit.md,
+${TRANCH_DIR}/post_discovery_audit.md, and
 ${TRANCH_DIR}/classification.md (Phase 3a output).
 
 The meta-criterion is in ${TRANCH_DIR}/meta_criterion.txt: "If two
@@ -492,19 +561,73 @@ classification.md):
 
   1. Derive priority from the blind-judge severity per the standard
      mapping: 5 → P0, 4 → P1, 3 → P2, 2 → P3, 1 → P4.
-  2. Decide whether to attach an existing META as parent. Cross-
+
+  2. **Card-level duplicate detection (broader-tracker scan).** BEFORE
+     deciding new-row vs new-row-with-parent, search the existing
+     tracker for potential duplicates of THIS card across ALL kinds and
+     ALL statuses, not just violated invariants:
+
+       - Extract 2-4 high-signal keywords from the card's Subject and
+         Mechanic (e.g., "evidence_lang null cross-language",
+         "stable_id collision route variants", "validation_report
+         silent zero violations").
+       - Run `scripts/tracker list --search <keyword>` for each keyword
+         (or `scripts/tracker list | grep -i <pattern>` if --search is
+         not supported); collect candidate IDs.
+       - For each candidate, run `scripts/tracker show <id>` and read
+         title + description + recent discussion thread. Classify the
+         match:
+           - **TRUE_DUPLICATE** — the existing row's mechanism is the
+             same as the card's mechanism, even if scope/magnitude
+             differs. Default action: do NOT create a new row. Instead
+             record the card as a tranch-NN extension on the existing
+             row in Step 5.
+           - **RELATED_BUT_DISTINCT** — the existing row touches the
+             same surface but the fix-surface diverges (different
+             root cause, different code path, etc.). Default action:
+             create the new row AND cross-reference the existing row
+             in Step 5.
+           - **NOT_A_DUPLICATE** — keyword collision only. No action.
+       - Record the classification per card in a fourth column of
+         tracker_materialization.tsv (NOT_A_DUPLICATE for cards with
+         no candidate hits). LOW-confidence calls default to
+         RELATED_BUT_DISTINCT, NOT TRUE_DUPLICATE, to avoid silent
+         loss-of-information.
+
+  3. Decide whether to attach an existing META as parent. Cross-
      reference clusters.md's Root-cause text against existing META
      rows via `scripts/tracker list --kind invariant --status violated`.
      Attach only when the existing META's scope clearly covers the new
      row's mechanism; default to standalone if uncertain.
-  3. Call `scripts/tracker add --kind work_item|invariant
-     --title <derived from card Subject> --priority P<N>
-     --status todo_hard --tag ${TRANCH_ID} --tag dogfood
-     [--parent <META_ID>] --description <derived from card body +
-     F-number provenance + 'filed via tranch ${TRANCH_ID}'>`.
-  4. Record the returned tracker ID in
+
+  4. **File the card** based on the Step 2 classification:
+       - **TRUE_DUPLICATE**: do NOT create a new row. Instead call
+         `scripts/tracker discuss <existing_id>
+         "[+ ${TRANCH_ID}: <card_id> F<NN> — <1-line summary>
+         (folded as duplicate; blind severity <N>)]"`. Record in
+         tracker_materialization.tsv with `tracker_id=FOLDED_INTO:<existing_id>`.
+       - **RELATED_BUT_DISTINCT or NOT_A_DUPLICATE**: call
+         `scripts/tracker add --kind work_item|invariant
+         --title <derived from card Subject> --priority <0-4 integer>
+         --status todo_hard --tag dogfood_tranch_${TRANCH_ID}
+         --tag dogfood [--parent <META_ID>] --description
+         <derived from card body + F-number provenance +
+         'filed via tranch ${TRANCH_ID}'>`. If RELATED_BUT_DISTINCT,
+         ALSO call `scripts/tracker discuss <related_existing_id>
+         "[+ ${TRANCH_ID}: <new_row_id> — related: <one-line how>]"`
+         so the relationship is bidirectionally discoverable.
+
+  5. Record the returned tracker ID in
      ${TRANCH_DIR}/tracker_materialization.tsv with columns:
-     card_id | source_row | tracker_id | priority | parent_id
+     card_id | source_row | tracker_id_or_FOLDED_INTO | priority |
+     parent_id | duplicate_classification | related_to (if applicable)
+
+**Spec correction (from tranch 03 first-run findings):** tracker
+enforces `kind=work_item` (not `invariant`) for `status=todo_hard`
+because invariants require `statement`/`root_cause` fields and reject
+todo_hard. Priority is an integer 0-4, not a "P"-prefixed string. The
+sub-agent's first add-call may need to retry once after hitting these
+constraints; that is normal and expected.
 
 For each EXISTING tracker row that received related-but-distinct
 GENUINE_EXTENSION findings during this tranch (per Phase 3a
@@ -531,8 +654,10 @@ Spawn:
 You are the Phase 6.2 agent-notes integration sub-agent for tranch
 ${TRANCH_ID}. Read ${TRANCH_DIR}/tranch_state.json,
 ${TRANCH_DIR}/aggregate_summary.md, ${TRANCH_DIR}/trend_cluster_aware.md,
-${TRANCH_DIR}/retrospective.md, and
-${TRANCH_DIR}/tracker_materialization.tsv (Phase 6.1 output).
+${TRANCH_DIR}/retrospective.md, ${TRANCH_DIR}/post_discovery_audit.md
+(Phase 2.5 disposition record — read its "Disposition for Phase 6.4"
+section verbatim), and ${TRANCH_DIR}/tracker_materialization.tsv
+(Phase 6.1 output).
 
 Read ~/hypergumbo_lab_notebook/guidance_log/agent_notes.json. The
 single editable field is `notes` (markdown). Plan the diff BEFORE
@@ -557,6 +682,18 @@ replace_once OR append target in the current notes:
   7. Bucket-Σ-severity rollup: append a row to any existing trend
      section, format matching the prior tranch's row.
   8. Cross-tranch comparison note in the retrospective trace.
+  9. Phase 2.5 disposition entry — record the post-discovery-audit
+     disposition verbatim as a one-line entry under the tranch's cohort
+     sub-section:
+       - "Tranch ${TRANCH_ID} Phase 6.4 disposition: skip — confirmed
+         YYYY-MM-DD (Phase 2.5 found 0 would-have-been-pruned candidates,
+         0 pattern-amplification warnings, 0 new INVALIDATION-RISKs)."
+       - OR "Tranch ${TRANCH_ID} Phase 6.4 disposition: trigger — N
+         candidates pending operator edit-mode authorization (see tracker
+         row tagged awaits_edit_mode_authorization filed YYYY-MM-DD)."
+     If trigger, ALSO surface as a top-of-file TODO that subsequent
+     sessions notice when they read agent_notes; the TODO is removed by
+     Phase 6.4 when the cleanup actually runs.
 
 Apply edits via a Python script using replace_once() semantics
 (exact-1-match guarantee) similar to the 2026-06-04 materialization
@@ -584,9 +721,13 @@ The parent agent appends a row to `~/hypergumbo_lab_notebook/dogfood_tranchen_in
 
 ### Step 6.4 — Optional retroactive cleanup (requires human edit-mode authorization)
 
-If Phase 2's mid-tranch audit identified content that should have been a new row but got folded into a parent row's discussion thread during real-time passes, the cleanup is structurally identical to the 2026-06-04 fold-audit Phase 2 pruning: surgically trim migrated content from parent discussion entries via `scripts/tracker delete-msg` (whole-entry tombstone) or `edit-msg-text` (in-place supersession) under the WI-zonur per-message edit-mode window.
+If EITHER Phase 2's mid-tranch audit OR Phase 2.5's post-discovery audit identified content that should have been a new row but got folded into a parent row's discussion thread during real-time passes, OR if Phase 2.5 enumerated would-have-been-pruned candidates, the cleanup is structurally identical to the 2026-06-04 fold-audit Phase 2 pruning: surgically trim migrated content from parent discussion entries via `scripts/tracker delete-msg` (whole-entry tombstone) or `edit-msg-text` (in-place supersession) under the per-message edit-mode window.
 
-This step requires **human edit-mode authorization** — the operator must enable edit-mode via the OS-perm-gated TUI control before the parent agent invokes the cleanup sub-agent. The agent prompts the operator with the planned ops count and waits for authorization before proceeding. If authorization is not granted within a reasonable window, skip this step and document the deferred cleanup in `carry_forward.md`.
+The decision rule: **skip Phase 6.4 only if BOTH `midtranch_audit.md`'s pattern-amplification warnings AND `post_discovery_audit.md`'s would-have-been-pruned candidates section are empty.** Skipping based on Phase 2 alone is unsound because Phase 2 only saw the first-half passes.
+
+This step requires **human edit-mode authorization** — the operator must enable edit-mode via the OS-perm-gated TUI control before the parent agent invokes the cleanup sub-agent. The agent prompts the operator with the planned ops count (derived from Phase 2 + Phase 2.5 candidates) and waits for authorization before proceeding. If authorization is not granted within a reasonable window, skip this step and document the deferred cleanup in `carry_forward.md`.
+
+**Tracker-tag stripping (cleanup-time bookkeeping).** When Step 6.4 actually runs (operator authorized + sub-agent applied the candidates), the parent agent — as its closing action — strips the `awaits_edit_mode_authorization` tag from the tracker row Phase 2.5 filed at the trigger event, and adds a tracker discussion entry summarizing what was deleted/edited (with op counts and timestamps). The row itself is NOT deleted — it's converted from a pending-authorization beacon into a permanent record of the cleanup. If Phase 6.4 is deferred (no operator authorization within the window), the tag is NOT stripped; the row persists across sessions until cleanup runs OR the operator explicitly closes it via `tracker update --status wont_do --note "rationale"`.
 
 ### Step 6.5 — Carry-forward + tranch finalization
 
@@ -613,11 +754,12 @@ Single source of truth for tranch state. Every sub-agent reads this file as its 
   "first_pass_number": "int",
   "last_pass_number": "int",
   "current_pass": "int",
-  "phase": "discovery | midtranch_audit | consolidation | judging | retrospective | carry_forward | complete",
+  "phase": "discovery | midtranch_audit | post_discovery_audit | consolidation | judging | retrospective | carry_forward | complete",
   "passes_complete": [
     {"pass_number": "int", "headline": "string", "invalidation_risks": ["string"]}
   ],
   "checkpoint_complete": "bool",
+  "post_discovery_audit_complete": "bool",
   "consolidated_complete": "bool",
   "judged_complete": "bool",
   "retrospective_complete": "bool",
@@ -637,6 +779,7 @@ Sentinels are zero-byte files that signal phase or step completion. The parent a
 |---|---|---|
 | `pass_NN.complete` | Phase 1 sub-agent | Pass NN's lab notebook stanza is committed |
 | `tranch.checkpoint` | Phase 2 sub-agent | Mid-tranch audit is complete |
+| `tranch.post_discovery_audit` | Phase 2.5 sub-agent | Second-half post-discovery audit is complete |
 | `tranch.consolidated` | Phase 3 sub-agent | Two-axis dedup is complete |
 | `tranch.judged` | Phase 4 aggregator | All verdicts collected, aggregate summary written |
 | `tranch.retrospective` | Phase 5 sub-agent | Retrospective is written |
@@ -675,13 +818,14 @@ Per-tranch token estimates assuming Opus-class models throughout:
 | 0 (setup) | 0 (parent only) | ~50K parent | 50K |
 | 1 (discovery) | 10 (20 passes / 2-per-chunk) | ~400K each | 4M |
 | 2 (mid-tranch audit) | 1 | ~200K | 200K |
+| 2.5 (post-discovery audit) | 1 | ~200K | 200K |
 | 3 (consolidation) | 3 (methodology + causal + card-writer) | ~250K each | 750K |
 | 4 (judging) | judge_count × card_count | ~80K each | 80K × J × C (≈4.8M at J=1, C=60) |
 | 6 (materialization + agent-notes integration) | 2 sub-agents | ~250K each | 500K |
 | 5 (retrospective) | 1 | ~150K | 150K |
 | 6 (carry-forward) | 0 (parent only) | ~50K parent | 50K |
 
-For a **default tranch (J=1, C≈60)**, Phase 4 is ~4.8M; full tranch including Phase 6 materialization ~6.5M. Matches the passes-21-40 panel's ~4M and is the cheapest configuration that still yields the bucket-Σ-severity convergence signal. **Upgrade option (J=3, C≈60):** Phase 4 jumps to ~14M; full tranch ~16M. Matches the passes-1-20 baseline (~18M for 198 verdicts) and gains inter-rater variance averaging. Upgrade is reversible — additional judges can be fanned out against the same cards in a follow-up step. **Floor (J=1, no card-writer separation):** saves ~500K but reintroduces same-actor bias; not recommended.
+For a **default tranch (J=1, C≈60)**, Phase 4 is ~4.8M; full tranch including Phase 2.5 + Phase 6 materialization ~6.7M. Matches the passes-21-40 panel's ~4M and is the cheapest configuration that still yields the bucket-Σ-severity convergence signal. **Upgrade option (J=3, C≈60):** Phase 4 jumps to ~14M; full tranch ~16M. Matches the passes-1-20 baseline (~18M for 198 verdicts) and gains inter-rater variance averaging. Upgrade is reversible — additional judges can be fanned out against the same cards in a follow-up step. **Floor (J=1, no card-writer separation):** saves ~500K but reintroduces same-actor bias; not recommended.
 
 ## Appendix A — tmux fallback for vendors without sub-agents
 
@@ -710,7 +854,14 @@ The sub-agent path is preferred when available because:
 
 The fallback path is preferred only when the vendor lacks a viable sub-agent primitive AND the operator has verified the context-flush keystroke per the §Vendor parity table verification protocol.
 
-## References
+## Tracker-tag discipline
+
+The playbook uses two tracker-tag conventions for cross-session state-of-decision discovery, both mirroring AGENTS.md's existing `awaits_bakeoff_validation` pattern:
+
+- **`dogfood_tranch_${TRANCH_ID}`** (set at Phase 6.1, permanent): every materialized row for the tranch's cohort carries this tag for cohort-level queryability. Stripping is not part of the playbook — the tag is the cohort's permanent membership marker.
+- **`awaits_edit_mode_authorization`** (set at Phase 2.5 if disposition is "trigger", stripped at Phase 6.4 when cleanup runs): a single per-tranch row exists ONLY when Phase 2.5's disposition is "trigger Phase 6.4 with N candidates" AND the cleanup has not yet been executed. The tag is the cross-session surfacing mechanism — the next session's agent discovers the pending work via standard `scripts/tracker list --tag awaits_edit_mode_authorization` queries.
+
+The single source of truth for the pending-cleanup queue is `scripts/tracker list --tag awaits_edit_mode_authorization`. Stop-hook nudging for this tag (similar to the `awaits_bakeoff_validation` nudge integration) is a separate hook-code change outside this playbook's scope; until that ships, the discoverability path is: agent starts session → reads agent_notes (Phase 6.2 wrote the disposition there) → finds tranch-NN Phase 6.4 TODO → queries the tracker tag → surfaces to operator. Skip-confirmed dispositions do not create a tagged row; their record-of-decision lives in agent_notes only.
 
 - `dogfooding_blind_judge_primer.md` — the severity rubric and 6-field card format from the 1-20 baseline.
 - `dogfooding_classification.md` — the methodology-axis dedup precedent (1-20 baseline).

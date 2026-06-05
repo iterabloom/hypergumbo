@@ -516,7 +516,7 @@ PLAYBOOKS = [
     ("twenty-pass-dogfood-procedure",
      ".agent/agent_playbooks_protocols_sops_skills/twenty-pass-dogfood-procedure.md",
      "Soup-to-nuts methodology-comparable procedure for running 20-pass dogfooding tranches "
-     "with cross-tranch trend comparison as the goal. Six phases orchestrated via sub-agent "
+     "with cross-tranch trend comparison as the goal. Seven phases orchestrated via sub-agent "
      "spawning (no operator-babysat tmux): Phase 0 freezes substrate + writes substrate guide "
      "+ commits the 'judge underlying problems not symptoms' meta-criterion; Phase 1 runs "
      "passes in --chunk-size sub-agent chunks "
@@ -524,7 +524,10 @@ PLAYBOOKS = [
      "needed) with provisional KIND tagging (INDEPENDENT/AUDIT-AXIS/EXTENSION/CORRECTION/"
      "POINTER-ONLY/INVALIDATION) and F39.A1-style fresh-substrate verification for repeated "
      "negative findings; Phase 2 (mid-tranch, default pass 10) runs an interim audit catching "
-     "real-time over/under-folding before patterns amplify; Phase 3 runs TWO sequential "
+     "real-time over/under-folding before patterns amplify; Phase 2.5 (post-discovery, after "
+     "the final Phase 1 chunk) symmetrically audits the second-half passes plus enumerates "
+     "would-have-been-pruned candidates that feed Phase 6.4's retroactive-cleanup decision; "
+     "Phase 3 runs TWO sequential "
      "consolidation sub-agents (methodology-axis dedup, then causal-axis clustering with "
      "rejected-clusters log) plus a STRUCTURALLY-blinded card-writer sub-agent (parent stages "
      "allowed files in a per-sub-agent staging directory rather than relying on declarative "
