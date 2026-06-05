@@ -1,0 +1,23 @@
+- op: create  # 136c
+  at: '2026-06-05T15:55:41Z'  # 136c
+  by: agent  # 136c
+  actor: jgstern_agent  # 136c
+  clock: 1  # 136c
+  nonce: 136c  # 136c
+  data:  # 136c
+    kind: work_item  # 136c
+    title: "verify-claims silently CONFIRMS false must_not_exist boundary claims on a provably-I/O service (empty boundary_map via uncovered language, not via true absence)"  # 136c
+    status: todo_hard  # 136c
+    priority: 0  # 136c
+    parent: INV-somut-lapar-furob-tovul-juhor-puhat-zujim-lobir  # 136c
+    tags:  # 136c
+    - dogfood_tranch_04  # 136c
+    - dogfood  # 136c
+    - verify_claims  # 136c
+    - security  # 136c
+    isbefore: []  # 136c
+    duplicate_of: []  # 136c
+    not_duplicate_of: []  # 136c
+    pr_ref:  # 136c
+    description: "F71.A1 (blind severity 5/Severe; rubric tier-5 archetype; DEPENDS-ON F69.A1/WI-zavad). For a must_not_exist boundary constraint, verify_claims computes chain_count = len(entry.chains) if entry else 0 and returns 'confirmed' whenever chain_count==0 — with NO distinction between 'boundary truly has zero I/O' and 'boundary map could not see the I/O'. Because the verifier consumes the same boundary map that is blind to JS body-call I/O (F69.A1) and to receiver-typed Python I/O (F69.A2), the map is empty for the WRONG reason. A Node+Python service that PROVABLY does network/filesystem/subprocess I/O (http.get, https.request, socket.send, fs.readFileSync, child_process.exec) receives verdict=confirmed on ALL FOUR must_not_exist:true claims, exit 0, 'all CONFIRMED'. The ADR-0033 'inconclusive' escape hatch does NOT fire because it keys on 'constraint clause matched' (F71.A2) NOT 'analysis actually covered this language'. INV-javam guard is taint-only (cli.py:4571). Proven 3 paths. NEW ROOT vs the boundary-silent-confirm family (INV-bitig/INV-somut): the empty-map cause here is missing-EDGE-PRODUCTION (uncovered language), not missing-vocab-validation or empty-source-dir — so the existing inconclusive-on-missing-data fix (INV-bitig PR4) does NOT catch it. Fix: verify_claim must return inconclusive when the boundary map is empty BECAUSE the relevant language/construct was never covered, rather than treating an uncovered boundary as verified-clean. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 136c
+    fields: {}  # 136c

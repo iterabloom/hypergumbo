@@ -1,0 +1,21 @@
+- op: create  # f3e3
+  at: '2026-06-05T15:55:13Z'  # f3e3
+  by: agent  # f3e3
+  actor: jgstern_agent  # f3e3
+  clock: 1  # f3e3
+  nonce: f3e3  # f3e3
+  data:  # f3e3
+    kind: work_item  # f3e3
+    title: "JS (.js) analyzer emits zero body-call/import/function-node edges; JS I/O invisible to io-boundaries (sole substrate .js file emits 0 calls vs TS in same package)"  # f3e3
+    status: todo_hard  # f3e3
+    priority: 0  # f3e3
+    parent:  # f3e3
+    tags:  # f3e3
+    - dogfood_tranch_04  # f3e3
+    - dogfood  # f3e3
+    isbefore: []  # f3e3
+    duplicate_of: []  # f3e3
+    not_duplicate_of: []  # f3e3
+    pr_ref:  # f3e3
+    description: "F69.A1 (blind severity 5/Severe; F72.A1 EXTENSION folded in). The JS analyzer emits imports edges (file->module) and function-to-function calls edges, but NO calls edge from a function body to an imported-module member like fs.readFileSync / http.get. With no call-edge dst to match, the io-boundary catalog has nothing to classify. On injected fixtures, 8 of 9 JS I/O sites (fs.readFileSync/writeFileSync/unlinkSync, http.get/request/createServer, child_process.exec/spawn) are entirely MISSING — not even in external_potential. On the frozen substrate the sole real JS file (service-worker.js, full of caches.open()/fetch()/cache.put()) emits only 3 event-subscriber 'uses' edges and ZERO calls/imports/instantiates/function nodes, while TypeScript in the SAME package with the SAME constructs emits 25 nodes + 40 calls + 27 imports — a decisive same-package asymmetry isolating the gap to the JS (.js) analyzer specifically. The INV-javam unsupported-language guard does NOT fire because the catalog DOES exist (is_supported=True). Consequence: io-boundaries gives a SILENT clean bill of health on a Node service — fs.writeFileSync/child_process.exec/http.get all report zero I/O, output identical to a genuinely I/O-free file. Distinct from INV-judod (JS import-edge src wiring, fixed PR #3852) and WI-banaf/WI-vurop (which added unresolved-call edges for namespace/default member calls on TS but the .js path emits nothing at all). Fix surface: JS analyzer body-call/import/function-node emission (likely a .js-vs-.ts dispatch gap). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # f3e3
+    fields: {}  # f3e3

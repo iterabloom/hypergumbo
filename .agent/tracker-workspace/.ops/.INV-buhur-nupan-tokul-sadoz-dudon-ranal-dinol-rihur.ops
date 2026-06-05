@@ -67,3 +67,10 @@
   clock: 7  # 56d7
   nonce: 56d7  # 56d7
   message: "Wired in PR #3785 (merge commit 5c37faacb6). 29 producer sites in 18 files: tree-sitter base (covers ~30 lang analyzers), 4 linkers (ipc/otp/phoenix_ipc/go_cobra), Python AST (SyntaxError + UnicodeDecodeError via _extract_file_analysis tuple return), and 13 per-language analyzers (csharp/kotlin/java/php/ruby/go/c/html/js_ts × 3 + cmake/css/dockerfile/json_config/make/r_lang/toml_config/xml_config). AnalysisRun grows failed_files: list[dict] + record_failed_file() helper; collect_analyzer_result drains into Limits.failed_files auto-stamping analyzer=run.pass_id. run_all_analyzers normalizes absolute paths (helper functions don't always have repo_root in scope). Reproduction confirmed: failed_files now contains broken.py with 'SyntaxError: invalid syntax (broken.py, line 3)'. All 5 packages 100% coverage in isolation via check-package-coverage."  # 56d7
+- op: discuss  # fcb3
+  at: '2026-06-05T15:55:00Z'  # fcb3
+  by: agent  # fcb3
+  actor: jgstern_agent  # fcb3
+  clock: 8  # fcb3
+  nonce: fcb3  # fcb3
+  message: "[+ tranch_04: WI-madal — related: card 027/F63.A1 found the COMPLEMENTARY hard-crash mechanism — py.py:2169 extraction site catches only (SyntaxError,UnicodeDecodeError), so an UNCAUGHT PermissionError aborts the whole run (exit 1, no JSON) BEFORE the failed_files plumbing INV-buhur wired in PR #3785 can record it. Adding PermissionError/OSError to that tuple would route the file into failed_files instead of crashing.]"  # fcb3

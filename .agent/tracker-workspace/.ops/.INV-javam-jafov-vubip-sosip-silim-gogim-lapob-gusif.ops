@@ -96,3 +96,10 @@
     tags: [taint_flow]  # f2cf
   remove:  # f2cf
     tags: [taint-flow]  # f2cf
+- op: discuss  # ea75
+  at: '2026-06-05T15:55:26Z'  # ea75
+  by: agent  # ea75
+  actor: jgstern_agent  # ea75
+  clock: 11  # ea75
+  nonce: ea75  # ea75
+  message: "[+ tranch_04: WI-zavad — related: card 021/F69.A1 shows the gap INV-javam's fix does NOT cover. The JS catalog DOES exist (is_supported=True) so the unsupported-language notice never fires, yet the JS analyzer emits zero body-call edges, so io-boundaries silently returns CLEAN on a provably-I/O Node service — the exact 'no I/O vs unsupported' confusion INV-javam targeted, but via missing-edge-production rather than missing-catalog.]"  # ea75

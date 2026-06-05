@@ -61,3 +61,10 @@
     tags: [io_boundary]  # 5d5d
   remove:  # 5d5d
     tags: [io-boundary]  # 5d5d
+- op: discuss  # eb23
+  at: '2026-06-05T15:55:27Z'  # eb23
+  by: agent  # eb23
+  actor: jgstern_agent  # eb23
+  clock: 7  # eb23
+  nonce: eb23  # eb23
+  message: "[+ tranch_04: WI-zavad — related: card 021/F69.A1 on the frozen substrate the sole real .js file (service-worker.js) emits 0 calls/imports/function nodes entirely, so the namespace/default-import member-call edge fixes here do not reach it; the .js analyzer path appears to produce nothing vs the .ts path in the same package.]"  # eb23

@@ -95,3 +95,18 @@
   clock: 9  # 668b
   nonce: 668b  # 668b
   message: "Closed by Phase 3 PR4 (commit 020615f524). Added ClaimVerdict.inconclusive value + refactored verify_claims.py to return 'inconclusive' for missing-data / malformed-input cases instead of falling through to 'confirmed'. CLI exit-code mapping: confirmed→0, not_confirmed→1, inconclusive→2. The verdict_enum validator class enforces this at runtime; self-analysis at 0 violations."  # 668b
+- op: update  # fb62
+  at: '2026-06-05T15:56:02Z'  # fb62
+  by: agent  # fb62
+  actor: jgstern_agent  # fb62
+  clock: 10  # fb62
+  nonce: fb62  # fb62
+  set:  # fb62
+    status: violated  # fb62
+- op: discuss  # 09de
+  at: '2026-06-05T15:56:02Z'  # 09de
+  by: agent  # 09de
+  actor: jgstern_agent  # 09de
+  clock: 11  # 09de
+  nonce: 09de  # 09de
+  message: "reopened (satisfied->violated): tranch_04 card 027 (F71.A1) reproduces the invariant breach on substrate at HEAD eb5355917e (reused tranch-03 substrate sha256 a32c4a31). The PR4 inconclusive fix guards the EMPTY-SOURCE-DIR case but NOT the empty-boundary-map-via-uncovered-language case: a provably-I/O Node+Python service still gets verdict=confirmed on all 4 must_not_exist boundary claims because chain_count==0 (the JS body-call I/O is never produced — F69.A1/WI-zavad). Same 'no chains found -> confirmed' security false-positive, new empty-map cause. blind severity 5 — regression evidence. New distinct row WI-kajil filed for the new root (missing-edge-production)."  # 09de
