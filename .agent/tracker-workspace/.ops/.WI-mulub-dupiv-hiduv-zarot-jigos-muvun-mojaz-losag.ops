@@ -19,3 +19,10 @@
     pr_ref:  # 8494
     description: "**Mechanic**: Five linker families (graphql_resolver, graphql, http, event_sourcing, message_queue) emit a cross-language boolean and four sibling meta keys on 29 edges. The meta-key registry (`MetaKeySpec`) contains ~30 entries; a grep for the five emitted keys returns one hit, and that one is a different key (`channel_kind`, not the emitted `channel`). The axis-comment rule on dataclass fields does not apply because these are inside `meta: Dict`; the parallel registry that does cover meta-bag keys lacks entries for all five.\n\n**Expectation**: Every meta-bag key emitted by any producer is registered in `MetaKeySpec` (or equivalent), so the writer-contract validator and consumer-side registry-drift check both police the key.\n\n**Scope**: 5 unregistered meta keys emitted on 29 edges by 5 linker families.\n\n**Exposure**: Any consumer relying on `validation_report.writer_contract` or `axis_conformance` to catch unknown meta keys; any future addition that depends on the registry for vocabulary discovery.\n\n**Consequence**: Schema-conformance audits miss the unregistered keys silently; the writer-contract bucket reports zero violations when there are 29 emitted but unregistered key-instances per edge × multiple keys.\n\n**Source**: F54.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 8494
     fields: {}  # 8494
+- op: discuss  # 3223
+  at: '2026-06-05T06:02:00Z'  # 3223
+  by: agent  # 3223
+  actor: jgstern_agent  # 3223
+  clock: 2  # 3223
+  nonce: '3223'  # 3223
+  message: "[related to WI-vusot (done; axis_meta_keys infrastructure) — this row reports 5 keys (cross_language/client_framework/server_framework/url_path/channel) not registered in the established infrastructure]"  # 3223

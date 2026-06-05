@@ -19,3 +19,10 @@
     pr_ref:  # 8c41
     description: "**Mechanic**: Every pass-id referenced by `node.origin` should resolve to a row in `analysis_runs`. The producer (the orchestrator's file-symbol synthesis step) emits `origin=\"orchestrator_file_symbol_synthesis\"` for file-kind Symbol records synthesized when an analyzer references a file without producing an explicit file Symbol. The pass catalog lists the identifier but the orchestrator pass entry is not appended to `analysis_runs` at run time. 492 nodes are affected (all `kind=file`).\n\n**Expectation**: Every distinct origin pass-id used by any node appears in `analysis_runs` with its execution metadata.\n\n**Scope**: 492 nodes (all `kind=file`) cite a dangling pass-id; this is a distinct defect from the empty-origin defect (where origin is `[]`) — here origin is populated but unresolvable.\n\n**Exposure**: Any consumer building \"for each node, which pass produced it?\" by joining node.origin against analysis_runs; any internal-consistency checker.\n\n**Consequence**: The join silently drops 492 nodes; orchestrator-synthesized files appear \"unattributed\"; the project's own validation_report fails to report this as a cross-field violation despite enumerating a `cross_field` bucket.\n\n**Source**: F51.A1 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 8c41
     fields: {}  # 8c41
+- op: discuss  # a616
+  at: '2026-06-05T06:01:59Z'  # a616
+  by: agent  # a616
+  actor: jgstern_agent  # a616
+  clock: 2  # a616
+  nonce: a616  # a616
+  message: "[related to INV-vaguj (satisfied; name/span fix for same producer) — this row reports adjacent gap: origin pass-id present on 492 nodes but no analysis_runs entry. Different field/consistency check from the closed name/span fix.]"  # a616

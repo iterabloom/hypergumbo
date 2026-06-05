@@ -19,3 +19,10 @@
     pr_ref:  # b60a
     description: "**Mechanic**: Two coupled defects on compact output schema. (a) The substrate's per-node `centrality` is null on all 34,396 nodes; compact preserves the null on its 100 included even though it internally computes centrality and uses it as the basis for the emitted `nodes_summary.included.coverage` aggregate. A consumer cannot answer \"which of these 100 nodes has the highest individual centrality?\" from compact output. (b) The default (connectivity-aware) compact emits `nodes_summary.included_edges_count: 370`; the `--no-connectivity` compact has no `included_edges_count` field at all. Root cause: two different result-classes have two different `to_dict()` implementations, only one emits the field.\n\n**Expectation**: Per-node centrality is surfaced on every included node so consumers can rank-cross-check; both CLI modes emit the same output schema (every field present in both, or both absent).\n\n**Scope**: Per-node centrality null on 100% of compact output nodes; `included_edges_count` asymmetry across the two CLI modes.\n\n**Exposure**: Any consumer using compact output for downstream re-ranking; any consumer using `nodes_summary.included_edges_count` for budget accounting and switching between default and `--no-connectivity` modes.\n\n**Consequence**: Compact output is un-rank-able by its own selection criterion; mode-switching produces `KeyError` on the missing field in downstream consumers; schema parity between modes is broken.\n\n**Source**: F58.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # b60a
     fields: {}  # b60a
+- op: discuss  # 0e68
+  at: '2026-06-05T06:02:00Z'  # 0e68
+  by: agent  # 0e68
+  actor: jgstern_agent  # 0e68
+  clock: 2  # 0e68
+  nonce: '0e68'  # 0e68
+  message: "[related to INV-pazur — same compact-output schema surface; INV-pazur tracks nodes_summary count consistency, this tracks per-node centrality null + mode-asymmetric included_edges_count]"  # 0e68

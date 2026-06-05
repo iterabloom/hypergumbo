@@ -19,3 +19,10 @@
     pr_ref:  # 666c
     description: "**Mechanic**: The summary's `derived_skipped` object is supposed to list files excluded from analysis under the derived-artifact patterns. Empirically the field is empty and the substrate contains zero nodes whose path includes `/dist/`, `node_modules/`, or `__pycache__/`. The repo contains all three at substrate generation time. The only consistent explanation: the gitignore short-circuit fires before the derived-pattern check, so the directories are skipped silently without being routed through the derived-skip accounting.\n\n**Expectation**: Either `derived_skipped.paths` enumerates the derived directories actually present, or the spec documents that gitignore-skipped paths are excluded from the accounting (and provides a separate visibility surface for them).\n\n**Scope**: Top-level `supply_chain_summary.derived_skipped` on any repo whose derived directories are also gitignored (the common case).\n\n**Exposure**: Any consumer reading `supply_chain_summary` for a \"what did we ignore?\" view; any tier-4 (derived) downstream code path that depends on derived nodes existing.\n\n**Consequence**: Consumers see an apparently-clean empty list when the truth is \"ignored upstream, never even considered for derived classification\". Tier-4 derived-artifact code paths are entirely untested on the self-corpus because no tier-4 node ever exists.\n\n**Source**: F48.A4 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 666c
     fields: {}  # 666c
+- op: discuss  # 469e
+  at: '2026-06-05T06:01:47Z'  # 469e
+  by: agent  # 469e
+  actor: jgstern_agent  # 469e
+  clock: 2  # 469e
+  nonce: 469e  # 469e
+  message: "[related to WI-gabos — same derived_skipped field; WI-gabos tracks {files,paths} shape divergence, this tracks gitignore short-circuit suppressing accounting]"  # 469e

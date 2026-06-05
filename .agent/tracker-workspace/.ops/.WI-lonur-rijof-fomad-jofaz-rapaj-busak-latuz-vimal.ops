@@ -19,3 +19,18 @@
     pr_ref:  # 44e3
     description: "**Mechanic**: `compact --input <substrate>` with defaults (`--max-symbols 100`, `--coverage 0.8`) produces output with `nodes_summary.included.coverage = 0.0893` — 9x below the requested target. The CLI exits 0 with one stdout line and no stderr. The compact result has no `analysis_incomplete` flag set, no warning message, no diagnostic field. Raising `--max-symbols 5000` (50x default) finally reaches 0.8093 coverage. The implementation respects `--max-symbols` as a hard cap and silently stops; the help text describes `--coverage` as a \"Target centrality coverage\" without documenting the cap-vs-target precedence.\n\n**Expectation**: When the cap precludes reaching the target, the output sets an \"incomplete\" or \"target-missed\" flag, emits a warning, or surfaces the gap as a top-level field; default values are tuned so the documented target is reachable on typical projects.\n\n**Scope**: Every `compact` invocation where `--max-symbols` × per-symbol centrality contribution falls short of the `--coverage` target; the documented defaults trigger this on any substrate larger than ~1000 nodes.\n\n**Exposure**: Any LLM consumer pasting `hypergumbo compact --input X.json` into a prompt template; any agent invoking compact for LLM-context production with defaults.\n\n**Consequence**: The consumer silently gets a 9% summary of a typical project and believes it is 80%; downstream reasoning is anchored on a misleading coverage figure.\n\n**Source**: F55.A1 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 44e3
     fields: {}  # 44e3
+- op: update  # d923
+  at: '2026-06-05T06:00:52Z'  # d923
+  by: agent  # d923
+  actor: jgstern_agent  # d923
+  clock: 2  # d923
+  nonce: d923  # d923
+  set:  # d923
+    status: wont_do  # d923
+- op: discuss  # 099d
+  at: '2026-06-05T06:00:52Z'  # 099d
+  by: agent  # 099d
+  actor: jgstern_agent  # 099d
+  clock: 3  # 099d
+  nonce: 099d  # 099d
+  message: "superseded by WI-fumut — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # 099d

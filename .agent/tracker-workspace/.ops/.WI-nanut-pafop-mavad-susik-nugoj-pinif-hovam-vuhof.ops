@@ -19,3 +19,10 @@
     pr_ref:  # c3cb
     description: "**Mechanic**: `explain` accepts only `--path`, `--input`, `-x`, `--with-source`, `--no-source`, `-t TOKENS`, `--provenance`. There is no flag to limit, filter by language, restrict to a single file, or pick the first match. When the same symbol name occurs N times (10 functions named `main` on a typical multi-script repo), the command emits N full sections, despite a help-doc that describes \"Symbol\" (singular).\n\n**Expectation**: The command provides at least one of: language filter, file filter, \"first match\" mode, or per-section limit — bringing its flag set into parity with the sibling `symbols` command.\n\n**Scope**: `explain <name>` for any name that resolves to multiple symbols; common in Python monorepos, Node projects with multiple package.json files, and multi-binary Go projects. On the self-corpus, `explain \"main\"` produces 15,713 stdout lines.\n\n**Exposure**: Any LLM agent budgeting ~10K tokens for \"what does X do?\" who passes an ambiguous name; any developer running interactive exploration on a multi-binary repo.\n\n**Consequence**: Token budgets blow mid-output; the agent loses any chance of seeing the callees of the symbol it actually wanted; the single-section-per-symbol mental model implied by the docs is wrong on every multi-binary codebase.\n\n**Source**: F43.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # c3cb
     fields: {}  # c3cb
+- op: discuss  # c1d6
+  at: '2026-06-05T06:01:31Z'  # c1d6
+  by: agent  # c1d6
+  actor: jgstern_agent  # c1d6
+  clock: 2  # c1d6
+  nonce: c1d6  # c1d6
+  message: "[related to INV-nogof — same explain ambiguity surface; INV-nogof tracks pick-vs-error policy, this tracks --limit/--language/--first flag parity with symbols]"  # c1d6

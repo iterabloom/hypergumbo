@@ -19,3 +19,10 @@
     pr_ref:  # 4b48
     description: "**Mechanic**: The spec says `origin: list[str]` \"records which pass IDs contributed to this Symbol\", with single-element lists as the common case. The Symbol dataclass `__post_init__` does not enforce non-empty origin (only the Edge dataclass does). Synthetic `external_symbol` nodes — minted to represent unresolved import targets like `python:pathlib:0-0:Path:unresolved` — are constructed without a provenance-stamping step, so all 1645 such nodes (4.8% of total) get `origin: []`. Other 32,751 nodes carry a non-empty single-element origin list.\n\n**Expectation**: Every node carries at least one origin pass-id; for synthetic external-symbol nodes, the origin would name the analyzer pass that surfaced them.\n\n**Scope**: 1645 of 34,396 nodes, all `kind=external_symbol`. No other kind has empty origin.\n\n**Exposure**: Any consumer building PROV `wasAttributedTo` chains, computing per-pass node attribution, or asking \"which pass produced this node?\".\n\n**Consequence**: The provenance-attribution query is silently un-answerable for 4.8% of nodes; the consumer must special-case `external_symbol` or fall back to a heuristic. The spec's promise that the answer is queryable does not hold.\n\n**Source**: F41.A3 (INDEPENDENT, HIGH; F45.A3 absorbed as EXTENSION re: shape_id/fingerprint on same external_symbol population).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 4b48
     fields: {}  # 4b48
+- op: discuss  # 51ad
+  at: '2026-06-05T06:01:31Z'  # 51ad
+  by: agent  # 51ad
+  actor: jgstern_agent  # 51ad
+  clock: 2  # 51ad
+  nonce: 51ad  # 51ad
+  message: "[related to WI-fozoh — same external_symbol synthesis path missing several identity fields; WI-fozoh covers stable_id/canonical_name (done), this row covers origin=[]]"  # 51ad

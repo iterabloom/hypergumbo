@@ -43,3 +43,10 @@
   clock: 4  # 94e5
   nonce: '94e5'  # 94e5
   message: "**Pass-23 confirmation observation.** Pass 23 explicitly enumerated AR `pass_version=None`. Result: exactly 14/84 ARs (16.7%) have pass_version=None, and they are the exact override-analyze() set listed in this WI's description:\n\n```\n['html', 'go', 'csharp', 'javascript', 'play-routes', 'yaml_ansible',\n 'xml', 'json', 'java', 'manifest_targets', 'toml', 'make', 'python',\n 'enclosure-linker']\n```\n\nWI-mipul's framing verified empirically. No scope change.\n\n**Adjacent observation (filed as separate INV-luhur discussion, F23.2):** `AnalysisRun.toolchain.name='python'` for ALL 84 ARs, including grammar-based passes like rust (which DO have `grammar_module='tree_sitter_rust'` populated). The toolchain dict IS populated on every AR (so it's not a missing-extension gap that WI-mipul covers); but the `name` field carries the runtime name, not the analyzer language. Different concern; recorded on INV-luhur to keep WI-mipul scope tight.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06022026_0010_pass23.md`."  # 94e5
+- op: discuss  # 4179
+  at: '2026-06-05T06:00:12Z'  # 4179
+  by: agent  # 4179
+  actor: jgstern_agent  # 4179
+  clock: 5  # 4179
+  nonce: '4179'  # 4179
+  message: "[+ tranch_03: anon-card-tranch03-001 F41.A1 — pass_version empty 14/84 incl python (folded as duplicate; blind severity 4; new row WI-mifok wont_do)]"  # 4179

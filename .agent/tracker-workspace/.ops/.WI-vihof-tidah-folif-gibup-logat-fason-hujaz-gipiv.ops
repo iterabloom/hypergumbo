@@ -19,3 +19,18 @@
     pr_ref:  # 62c6
     description: "**Mechanic**: Direct substrate scan finds 23 edges (0.021%) whose `src` ID does not appear in the substrate's node ID set; zero edges have a dangling `dst`. The 23 resolve to 4 distinct source IDs, all in a generated-protobuf subtree (`scip/_generated/`). The generated file exists on disk at the recorded source HEAD. The likely mechanism: file-discovery excludes the generated file from node emission (e.g., a generated-code filter) while a downstream call/import-edge synthesizer still constructs the file-identity string as `src` without verifying the node was emitted — a structural asymmetry where the filter applies to nodes but not to edges. The 23 edges carry `is_resolved=True` despite pointing at a non-existent node, so the resolution flag is misleading too.\n\n**Expectation**: Every edge's `src` and `dst` reference an ID present in the node set; any exclusion that drops a file from node emission also drops the edges that reference it (or stamps them with a clear \"node was excluded\" indicator).\n\n**Scope**: 23 of 110,533 edges (0.021%) with dangling src; 0 dangling dst (the inverse asymmetry is clean). All 23 are in one generated-code subtree.\n\n**Exposure**: Any consumer walking edges and dereferencing `src` to fetch the source node — `KeyError` on these 23.\n\n**Consequence**: A per-edge invariant the contract claims to hold fails on 23 cases; consumers walking the graph hit lookup failures with no warning; consistency checkers depending on this invariant cannot detect the generated-code source-emission asymmetry.\n\n**Source**: AUDIT-AXIS sweep `green-marker-substrate-sweep-pass-56`, F56.A1 (representative; sweep includes F56.A2 evidence_spans key-absent and F56.A3 stable_id-null in addition to this dangling-src row).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 62c6
     fields: {}  # 62c6
+- op: update  # 5fd2
+  at: '2026-06-05T06:01:01Z'  # 5fd2
+  by: agent  # 5fd2
+  actor: jgstern_agent  # 5fd2
+  clock: 2  # 5fd2
+  nonce: 5fd2  # 5fd2
+  set:  # 5fd2
+    status: wont_do  # 5fd2
+- op: discuss  # 66de
+  at: '2026-06-05T06:01:01Z'  # 66de
+  by: agent  # 66de
+  actor: jgstern_agent  # 66de
+  clock: 3  # 66de
+  nonce: 66de  # 66de
+  message: "superseded by INV-jukok — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # 66de

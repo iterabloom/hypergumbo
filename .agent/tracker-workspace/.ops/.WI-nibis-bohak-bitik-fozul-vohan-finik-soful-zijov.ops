@@ -137,3 +137,10 @@
   clock: 15  # fd19
   nonce: fd19  # fd19
   message: "Bakeoff validation: MOVED (cohort cohort-003/iter-001). Plurality verdict across repos: moved=2 no_move=0 inconclusive=0. Evidence: airflow=moved: meta['call_construct'] populated with method:49123, function:147, cross_file:43; legacy peer evidence_types like functio…; ansible=moved: meta.call_construct is populated on 906 edges (870 'method' + 36 'function') across 'calls' edges in hg.json; evidence_t… — awaits_bakeoff_validation tag stripped automatically by bakeoff-deep-reflect aggregate."  # fd19
+- op: discuss  # 4ced
+  at: '2026-06-05T06:02:15Z'  # 4ced
+  by: agent  # 4ced
+  actor: jgstern_agent  # 4ced
+  clock: 16  # 4ced
+  nonce: 4ced  # 4ced
+  message: "[OPERATOR-REVIEW: tranch_03 anon-card-tranch03-043 F60.A2 may reproduce this row's mechanism via fix-surface variation — ast_call_method continues emitting at 4.52% of substrate (4995 edges) after Phase 3 close (severity 2). Reproduction substrate HEAD 9a18959071 sha256 a32c4a31. Python analyzer not migrated to canonical apex + meta['call_construct']='method'. Recommend reopen if mechanism reproduction confirmed by operator.]"  # 4ced

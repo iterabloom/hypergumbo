@@ -42,3 +42,10 @@
   clock: 3  # f1ad
   nonce: f1ad  # f1ad
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): WI-gipop (done) unified the matcher rules used by slice and explain but did not unify the post-match policy: slice raises AmbiguousEntryError (slice.py:493), explain iterates all matches without warning (cli.py:2003 enumerate(matches)). The shared helper that resolves a user-supplied entry spec to a symbol should also decide ambiguity policy. Co-fixable with INV-nugos and WI-kutam — both file the slice ambiguity error template separately; consolidating the error path lets all three be fixed in one place."  # f1ad
+- op: discuss  # 9b83
+  at: '2026-06-05T06:01:31Z'  # 9b83
+  by: agent  # 9b83
+  actor: jgstern_agent  # 9b83
+  clock: 4  # 9b83
+  nonce: 9b83  # 9b83
+  message: "[+ tranch_03: WI-nanut reports adjacent explain flag-set gap (no disambiguation flags); 15713-line stdout on 'explain main']"  # 9b83

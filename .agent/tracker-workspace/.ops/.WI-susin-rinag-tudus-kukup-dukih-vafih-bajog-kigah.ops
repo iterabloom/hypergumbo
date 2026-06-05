@@ -19,3 +19,18 @@
     pr_ref:  # d2fa
     description: "**Mechanic**: `supply_chain_summary.first_party.files` reports 915. `metrics.debug.analyzed_file_symbols` reports 902 (matches the file-kind node count). `metrics.debug.unique_paths_in_analysis` reports 916. The 13-file delta corresponds to paths with first-party symbols but no file-kind node: 7 `pyproject.toml`, 1 `package.json`, 5 schema-coverage-corpus fixture files. The summary uses path-based counting; everything downstream uses file-node-based counting.\n\n**Expectation**: The summary's `first_party.files` count matches the file-kind-node count, or the two counts are documented with their definitions so a consumer can reconcile.\n\n**Scope**: Top-level `supply_chain_summary.first_party.files` versus `node.kind == \"file\"` count; consistently 13 apart on the self-corpus.\n\n**Exposure**: Any consumer reconciling \"how many files are in this map\".\n\n**Consequence**: Two different file counts coexist with no documented rule for reconciliation; consumers cannot trust either as authoritative.\n\n**Source**: F48.A5 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # d2fa
     fields: {}  # d2fa
+- op: update  # 5ce6
+  at: '2026-06-05T06:00:36Z'  # 5ce6
+  by: agent  # 5ce6
+  actor: jgstern_agent  # 5ce6
+  clock: 2  # 5ce6
+  nonce: 5ce6  # 5ce6
+  set:  # 5ce6
+    status: wont_do  # 5ce6
+- op: discuss  # e1bd
+  at: '2026-06-05T06:00:37Z'  # e1bd
+  by: agent  # e1bd
+  actor: jgstern_agent  # e1bd
+  clock: 3  # e1bd
+  nonce: e1bd  # e1bd
+  message: "superseded by INV-mozaf — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # e1bd

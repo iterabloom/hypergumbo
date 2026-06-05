@@ -54,3 +54,10 @@
   clock: 6  # c1c0
   nonce: c1c0  # c1c0
   message: "Shipped in PR #3632 (commit 77a6a896d6) — axis_meta_keys.py parallel registry with 56 seeded entries (17 Edge.meta + 39 Symbol.meta), 15 invariant + accessor tests at 100% coverage. Drift detection (subscript-access AST walker, distinct from axis_drift.find_drift's set-literal shape) deferred as a separate follow-on per the module docstring rationale. Closes WI-runod Wave 9."  # c1c0
+- op: discuss  # b0df
+  at: '2026-06-05T06:02:00Z'  # b0df
+  by: agent  # b0df
+  actor: jgstern_agent  # b0df
+  clock: 7  # b0df
+  nonce: b0df  # b0df
+  message: "[+ tranch_03: WI-mulub reports 5 meta keys emitted on 29 edges by 5 linkers (graphql_resolver/graphql/http/event_sourcing/message_queue) but not registered post-WI-vusot infrastructure landing]"  # b0df

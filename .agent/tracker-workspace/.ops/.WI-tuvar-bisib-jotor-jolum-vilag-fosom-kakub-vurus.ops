@@ -19,3 +19,18 @@
     pr_ref:  # b2b9
     description: "**Mechanic**: The catalog output line-format is `<name> (core|extra): <description>`. Core entries are intended as primary, bundled, first-class analyzers; extras are optional add-ons. The implementation populates descriptions for 63 of 63 extras but only ~63 of 115 core entries, leaving 52 core rows as bare `<name> (core):`. The help text advertises the command as showing \"which languages and frameworks hypergumbo can analyze.\"\n\n**Expectation**: Every catalog entry carries a description distinguishing \"bundled tree-sitter via grammar X\" from \"stub registration with no analyzer logic\" so the consumer can plan language coverage.\n\n**Scope**: 52 of 115 (45%) core catalog entries with empty descriptions, including `apex`, `asm`, `astro`, `bibtex`, `bitbake`, `circom`, `commonlisp`, `fennel`, `gitignore`, `gleam`, `hack`, `pony`, and others.\n\n**Exposure**: Any developer or agent reading catalog output to decide whether a given tech stack will be analyzed.\n\n**Consequence**: The reader cannot tell core-but-stub apart from core-and-fully-implemented; language-coverage planning depends on inspecting source rather than reading documented output — a Tier 3 decision-corrupting gap.\n\n**Source**: F43.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # b2b9
     fields: {}  # b2b9
+- op: update  # d11a
+  at: '2026-06-05T06:00:24Z'  # d11a
+  by: agent  # d11a
+  actor: jgstern_agent  # d11a
+  clock: 2  # d11a
+  nonce: d11a  # d11a
+  set:  # d11a
+    status: wont_do  # d11a
+- op: discuss  # cf94
+  at: '2026-06-05T06:00:24Z'  # cf94
+  by: agent  # cf94
+  actor: jgstern_agent  # cf94
+  clock: 3  # cf94
+  nonce: cf94  # cf94
+  message: "superseded by WI-rikob — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # cf94

@@ -38,3 +38,10 @@
   clock: 3  # 810d
   nonce: 810d  # 810d
   message: "Fixed in this PR. Both halves of the bug (workspace inner loop at supply_chain.py:619-625 + non-workspace TEST_DIR_PATTERNS loop at :661-667) now return Tier.FIRST_PARTY with is_test=True. Empirical self-analysis: tier-2 unique paths 509→1 (-99.8%), tier-2 Symbol nodes 24180→467 (-98%), test paths in tier 2 508→0. The remaining 467 tier-2 entries all share path='<external>' (synthetic boundary sentinel, pre-existing, separate concern). 12 existing pinning tests flipped from INTERNAL_DEP→FIRST_PARTY; 2 new regression guards added (Cargo workspace test dir, drown-out comparator)."  # 810d
+- op: discuss  # 8bac
+  at: '2026-06-05T06:02:16Z'  # 8bac
+  by: agent  # 8bac
+  actor: jgstern_agent  # 8bac
+  clock: 4  # 8bac
+  nonce: 8bac  # 8bac
+  message: "[+ tranch_03: WI-golov reports spec §14 documentation drift from the refactor INV-tisid fixed in code; tier 2 still named 'Internal libraries, monorepo packages' and lists test paths. Doc-only surface, not a code reopen.]"  # 8bac

@@ -67,3 +67,25 @@
   nonce: 5c45  # 5c45
   set:  # 5c45
     status: satisfied  # 5c45
+- op: discuss  # e446
+  at: '2026-06-05T06:01:46Z'  # e446
+  by: agent  # e446
+  actor: jgstern_agent  # e446
+  clock: 8  # e446
+  nonce: e446  # e446
+  message: "[OPERATOR-REVIEW: tranch_03 anon-card-tranch03-014 F46.A1 may reproduce this row's mechanism via fix-surface variation — same ambiguous_names-not-consulted root pattern in taint.py sink-matcher (third consumer, severity 5). Reproduction substrate HEAD 9a18959071 sha256 a32c4a31. INV-maluk closed io-boundaries chain-matcher consumer; the root pattern recurs at taint.py:match_sink. Recommend reopen if mechanism reproduction confirmed by operator.]"  # e446
+- op: update  # f2fe
+  at: '2026-06-05T06:09:58Z'  # f2fe
+  by: agent  # f2fe
+  actor: jgstern_agent  # f2fe
+  clock: 9  # f2fe
+  nonce: f2fe  # f2fe
+  set:  # f2fe
+    status: violated  # f2fe
+- op: discuss  # f315
+  at: '2026-06-05T06:09:58Z'  # f315
+  by: agent  # f315
+  actor: jgstern_agent  # f315
+  clock: 10  # f315
+  nonce: f315  # f315
+  message: "Reopened: tranch_03 card 014 (anon-card-tranch03-014, sourced from F46.A1, filed as WI-razol) reproduces the original mechanism on substrate at HEAD 9a18959071 sha256 a32c4a31...; blind severity 5 (Severe). The verify-claims FP cascade (5541 violations on self-claims due to taint.py:match_sink ignoring ambiguous_names that io_boundary.py honors) reproduces the original INV-maluk pattern in a third consumer that the 2026-04-23 audit fix did not cover. Regression evidence per twenty-pass-dogfood-procedure Phase 6.1 Step 4a status-adjustment rule. Cross-referenced in WI-razol discussion thread."  # f315

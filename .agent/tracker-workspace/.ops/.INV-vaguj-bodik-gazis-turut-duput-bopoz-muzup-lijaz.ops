@@ -88,3 +88,10 @@
   clock: 9  # 0635
   nonce: '0635'  # 0635
   message: "Stripping tag under Phase 2 anomaly cleanup (process-validation-queue-with-bakeoffs-and-uat playbook). Verdict: D-stale — empirical validation is already in this thread's 2026-05-18T09:01:12Z closing entry: 'Self-analysis post-fix: 0 Symbols with absolute-path names (was 798); 9/812 file-kind Symbols still have span 1-1 (was 800/809; remaining 9 are real 1-line files or synthetic boundaries).' The 798→0 / 800→9 deltas measured on the self-analysis dogfood ARE the bakeoff signal for this claim. Cohort re-run would only re-measure the same self-analysis property. No cohort needed."  # 0635
+- op: discuss  # 3737
+  at: '2026-06-05T06:01:59Z'  # 3737
+  by: agent  # 3737
+  actor: jgstern_agent  # 3737
+  clock: 10  # 3737
+  nonce: '3737'  # 3737
+  message: "[+ tranch_03: WI-dizir reports orchestrator-pass cross-field gap (492 nodes cite origin pass-id missing from analysis_runs); not addressed by name/span fix]"  # 3737

@@ -19,3 +19,18 @@
     pr_ref:  # 02d9
     description: "**Mechanic**: The substrate scan finds 262 nodes with `language is None` whose ID-prefix is in {python, typescript, javascript} (distribution: python 248, typescript 3, javascript 11). These are mostly linker-synthesized nodes (e.g., starlette-route-linker-synthesized) where the producer creates the node without stamping the language field. A strict cross-language detector (joining on `node.language`) yields 27 cross-language edges; the prefix-fallback detector yields 63. The 34-edge gap is fully accounted for by these 262 None-language nodes.\n\n**Expectation**: The language field is populated on every node — either by the producer at creation time or by a normalization pass that reads the ID-prefix; the two detectors agree.\n\n**Scope**: 262 nodes affected; the consequence is a 57% under-count on cross-language edge detection via the strict detector.\n\n**Exposure**: Any consumer using `node.language` to filter or join cross-language analyses; any downstream detector that strictly checks the field.\n\n**Consequence**: Cross-language analyses miss more than half of real cross-language edges; consumers cannot trust the field on linker-synthesized populations.\n\n**Source**: F54.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 02d9
     fields: {}  # 02d9
+- op: update  # 21ce
+  at: '2026-06-05T06:00:51Z'  # 21ce
+  by: agent  # 21ce
+  actor: jgstern_agent  # 21ce
+  clock: 2  # 21ce
+  nonce: 21ce  # 21ce
+  set:  # 21ce
+    status: wont_do  # 21ce
+- op: discuss  # 2045
+  at: '2026-06-05T06:00:51Z'  # 2045
+  by: agent  # 2045
+  actor: jgstern_agent  # 2045
+  clock: 3  # 2045
+  nonce: '2045'  # 2045
+  message: "superseded by WI-movah — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # 2045

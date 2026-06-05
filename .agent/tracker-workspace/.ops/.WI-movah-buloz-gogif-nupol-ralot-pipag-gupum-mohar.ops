@@ -20,3 +20,10 @@
     pr_ref:  # 01ff
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family L). Stand-alone finding F26.1 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-26 discussion entry.\n\n## Symptom\n\n`metrics.languages.<lang>.nodes` aggregates synthetic linker-emitted nodes with `language=None` into specific languages. Total exceeds `Σ(node.language)` by 262.\n\nDistribution on root:\n- python: +248\n- javascript: +11\n- typescript: +3\n\nThese are linker-synth nodes that don't have a primary `node.language` but are heuristically assigned to a target language by the metrics aggregator. The aggregation rule is undocumented.\n\n## Invariant\n\nEither:\n1. **Document the attribution rule** in spec.md (e.g., \"linker-synth nodes are attributed to their target language\").\n2. **Separate the categories**: `metrics.languages.<lang>.nodes` counts only `node.language==<lang>`; add `metrics.languages.<lang>.linker_synth_attributed` for the heuristic-attribution count.\n\n## Fix sketch\n\nPath (2) is cleaner — consumer can sum both for the current behavior or use just `.nodes` for strict-language-attribution. Path (1) is documentation-only.\n\n## Source provenance\n\n- **F26.1** — INV-luhur discussion entry 2026-06-03 (pass-26 batch).\n\nLab notebook: pass 26.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-metrics-languages-files-empty** (Family F).\n- Sibling: **WI-supply-chain-files-path-counts** (Family L — analogous attribution gap).\n- Family L siblings."  # 01ff
     fields: {}  # 01ff
+- op: discuss  # 0786
+  at: '2026-06-05T06:00:52Z'  # 0786
+  by: agent  # 0786
+  actor: jgstern_agent  # 0786
+  clock: 2  # 0786
+  nonce: '0786'  # 0786
+  message: "[+ tranch_03: anon-card-tranch03-035 F54.A3 — 262 nodes language=None; strict detector undercounts 57% (identical 248/11/3 per-language breakdown; folded as duplicate; blind severity 4; new row WI-nagam wont_do)]"  # 0786

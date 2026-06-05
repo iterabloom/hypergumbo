@@ -20,3 +20,10 @@
     pr_ref:  # d7a0
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family O). Stand-alone finding F30.10 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-30 discussion entry.\n\n## Symptom\n\n`supply_chain_summary.derived_skipped` carries `{files, paths}` while sibling tiers (`first_party`, `internal_dep`, `external_dep`) carry `{files, symbols}` and the substrate-walked total carries `{files, symbols, edges}`.\n\nPer-enum-value writer divergence: the `derived_skipped` sub-block uses `paths` instead of `symbols`. The schema makes this look like a writer typo, but it might be intentional (skipped derivations don't have well-defined symbol counts).\n\n## Invariant\n\nEach enum value of `supply_chain_summary.<tier>` carries the same set of fields. Either:\n1. **`derived_skipped` adopts the standard `{files, symbols}` shape** (writer fix).\n2. **The schema documents per-enum-value field divergence** (spec.md acknowledgment).\n\nPath (1) is simpler; path (2) preserves an intentional distinction if `paths` carries different semantics than `symbols`.\n\n## Fix sketch\n\nInvestigate the derivation:\n- If `paths` is just the unique-paths count of the skipped nodes, rename to `symbols` for consistency.\n- If `paths` is a separately-meaningful count (e.g., distinct files where derivation skipped), document the difference.\n\nMost likely (1) — the writer accidentally diverged from sibling shape.\n\n## Source provenance\n\n- **F30.10** — INV-luhur discussion entry 2026-06-02 (pass-30 batch).\n\nLab notebook: pass 30.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-supply-chain-files-path-counts** (Family L — same surface, different gap).\n- Family O siblings."  # d7a0
     fields: {}  # d7a0
+- op: discuss  # 6bfe
+  at: '2026-06-05T06:01:47Z'  # 6bfe
+  by: agent  # 6bfe
+  actor: jgstern_agent  # 6bfe
+  clock: 2  # 6bfe
+  nonce: 6bfe  # 6bfe
+  message: "[+ tranch_03: WI-jafoz reports adjacent derived_skipped defect (paths=[] despite dist/node_modules/__pycache__ present)]"  # 6bfe

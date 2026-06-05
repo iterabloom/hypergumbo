@@ -19,3 +19,18 @@
     pr_ref:  # 427c
     description: "**Mechanic**: Of 36 registered linker passes, 26 contribute zero rows to `edges[*].origin` while several still pay nontrivial wall-clock cost (one linker walks 863 files in 3 seconds, another 861 files in 2.7 seconds). The substrate exposes neither a \"no targets found\" signal nor a \"matched 0 of N candidates\" signal per linker; consumers cannot distinguish a Protocol linker with no internal routes from a Framework linker whose pattern keys are mis-keyed and silently never fire.\n\n**Expectation**: Either every registered linker that runs reports a per-run match-attempt count (candidates considered, matches emitted) so consumers can tell apart \"0 because no targets\" from \"0 because broken\", or the substrate carries enough metadata for a consumer to infer the distinction.\n\n**Scope**: 26 of 36 linker passes silent on a typical self-corpus (72%). At least one of those 26 is silent due to a pattern-keying defect, not absent targets; the consumer has no way to know without reading source.\n\n**Exposure**: Any operator running diagnostics (\"which linker isn't firing?\"), any agent maintaining linker yaml patterns, any consumer estimating coverage breadth from `analysis_runs`.\n\n**Consequence**: Real pattern-keying defects hide behind legitimate empty-target cases; coverage health is uninspectable; bakeoff loops cannot triage silent linkers from active feedback.\n\n**Source**: AUDIT-AXIS sweep `linker-zero-emit-sweep-pass-42`, F42.A1 (representative of 26/36 silent linkers).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 427c
     fields: {}  # 427c
+- op: update  # 36e4
+  at: '2026-06-05T06:00:24Z'  # 36e4
+  by: agent  # 36e4
+  actor: jgstern_agent  # 36e4
+  clock: 2  # 36e4
+  nonce: '36e4'  # 36e4
+  set:  # 36e4
+    status: wont_do  # 36e4
+- op: discuss  # bd95
+  at: '2026-06-05T06:00:24Z'  # bd95
+  by: agent  # bd95
+  actor: jgstern_agent  # bd95
+  clock: 3  # bd95
+  nonce: bd95  # bd95
+  message: "superseded by INV-bikaj — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # bd95

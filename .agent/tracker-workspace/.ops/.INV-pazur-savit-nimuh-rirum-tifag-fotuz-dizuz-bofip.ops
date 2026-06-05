@@ -51,3 +51,10 @@
   clock: 4  # 9855
   nonce: '9855'  # 9855
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): member of INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik (primary fix-site) and WI-gogif-nilul-vufuf-lakas-huzak-pigap-jutut-narun (secondary face: JSON-envelope-vs-payload internal inconsistency (nodes_summary pre-shrink contradicts on-disk arrays)). Parent assignment reflects the closer fix-site framing."  # 9855
+- op: discuss  # f890
+  at: '2026-06-05T06:02:00Z'  # f890
+  by: agent  # f890
+  actor: jgstern_agent  # f890
+  clock: 5  # f890
+  nonce: f890  # f890
+  message: "[+ tranch_03: WI-zotam reports adjacent compact schema defects (centrality null on 100%, included_edges_count missing in --no-connectivity mode)]"  # f890

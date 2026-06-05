@@ -19,3 +19,18 @@
     pr_ref:  # bd3b
     description: "**Mechanic**: Each route node carries a `meta.handler_ref` field pointing at the actual handler function. The slice subsystem persists files like `slice.handler.GET.health.json` but invokes traversal from the route-metadata symbol (the `Route(...)` constructor call on the routes-list), which has no outgoing `calls`/`uses` edges and so terminates immediately. The substrate already contains the full call graph from the handler function (e.g., 12 outgoing edges from a websocket handler) — only the slice persistence path picks the wrong entry. Compounding this, the accompanying `slice.handler.index.json` double-lists each handler with both a \"promise\" row (counts the slice would have, e.g. nodes=5/edges=4) and a \"delivered\" row (counts of the actual file, e.g. nodes=1/edges=0) pointing at the same filename, so the system knows the correct slice but persists the wrong one.\n\n**Expectation**: Each `slice.handler.<METHOD>.<path>.json` contains the call-graph reachable from the actual handler function (5+ nodes, 4+ edges for non-trivial handlers); the index reports counts that match the on-disk file content.\n\n**Scope**: 7 of 8 precomputed handler slices degenerate to 1-node/0-edge on the self-corpus; all 8 are mis-keyed. Every consumer of the `substrate.slices/slice.handler.*.json` batch is affected. The accompanying index double-lists every handler.\n\n**Exposure**: Any LLM agent or developer reading the precomputed handler-slice batch to understand handler behavior; any downstream tool ranking handlers by graph size from the index.\n\n**Consequence**: An agent reading the precomputed slice concludes endpoints have no behavior (a substantively wrong audit). A downstream tool ranking by index node-count opens the highest-ranked file and finds the data missing — a trust violation between the index and the artifacts it references. Tier 4 severity.\n\n**Source**: F44.A1 (INDEPENDENT, HIGH; F44.A2 absorbed as EXTENSION re: smoking-gun index file).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # bd3b
     fields: {}  # bd3b
+- op: update  # 2205
+  at: '2026-06-05T06:00:35Z'  # 2205
+  by: agent  # 2205
+  actor: jgstern_agent  # 2205
+  clock: 2  # 2205
+  nonce: '2205'  # 2205
+  set:  # 2205
+    status: wont_do  # 2205
+- op: discuss  # a9b7
+  at: '2026-06-05T06:00:36Z'  # a9b7
+  by: agent  # a9b7
+  actor: jgstern_agent  # a9b7
+  clock: 3  # a9b7
+  nonce: a9b7  # a9b7
+  message: "superseded by INV-nubub — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # a9b7

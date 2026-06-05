@@ -66,3 +66,10 @@
   clock: 6  # af49
   nonce: af49  # af49
   message: "Fix deployed by Phase 2 PR2 (commit 161). Format 1 fingerprint demolished from tree-sitter-supported analyzers; stamp_symbol_fingerprints post-pass now solely owns the hgfp1: form. Needs bakeoff validation."  # af49
+- op: discuss  # f8c9
+  at: '2026-06-05T06:01:31Z'  # f8c9
+  by: agent  # f8c9
+  actor: jgstern_agent  # f8c9
+  clock: 7  # f8c9
+  nonce: f8c9  # f8c9
+  message: "[+ tranch_03: WI-lisog reports parallel WGSL bare-hex emission (5 nodes), same format-drift mechanism as TOML]"  # f8c9

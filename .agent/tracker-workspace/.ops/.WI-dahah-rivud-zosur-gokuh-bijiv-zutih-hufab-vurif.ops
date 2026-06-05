@@ -19,3 +19,18 @@
     pr_ref:  # e33f
     description: "**Mechanic**: The `symbols` command filters out 15 kinds via an `EXCLUDED_KINDS` set including `variable, dependency, project, package` (collectively 1,702 nodes on the self-corpus). When `--kind <excluded>` is requested, the filter applies before the kind-check, so the result is \"No symbols found\" — the same message the user would see for a truly absent kind. Meanwhile, `search` consults the substrate directly and returns 5 hits for `search \"VERSION\" --kind variable` on the same substrate. The help text for `--kind` lists three examples (`function, class, method`) with no flag that the other 22 substrate-present kinds are filtered. The user has no way to learn which kinds the `symbols` command excludes.\n\n**Expectation**: Either `symbols --kind <excluded>` reports the exclusion (e.g., \"kind 'variable' is excluded from symbols listing; use search\"), or both commands honor the same kind-visibility rules.\n\n**Scope**: All 15 kinds in `EXCLUDED_KINDS` — `variable`, `dependency`, `project`, `package`, `target`, `special_target`, `class_selector`, `id_selector`, `keyframes`, `media`, `font_face`, `section`, `code_block`, `link`, `file`. On the self-corpus, 1,702 nodes are silently filtered.\n\n**Exposure**: Any consumer running `symbols --kind <X>` for one of the 15 excluded kinds and trusting \"No symbols found\" to mean absence.\n\n**Consequence**: The consumer concludes a kind has zero instances when it has 1,610 (for `variable`); two documented CLI surfaces give incompatible answers for the same kind filter; no help-text signal warns about the divergence.\n\n**Source**: F55.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # e33f
     fields: {}  # e33f
+- op: update  # adbd
+  at: '2026-06-05T06:00:52Z'  # adbd
+  by: agent  # adbd
+  actor: jgstern_agent  # adbd
+  clock: 2  # adbd
+  nonce: adbd  # adbd
+  set:  # adbd
+    status: wont_do  # adbd
+- op: discuss  # 080f
+  at: '2026-06-05T06:00:52Z'  # 080f
+  by: agent  # 080f
+  actor: jgstern_agent  # 080f
+  clock: 3  # 080f
+  nonce: 080f  # 080f
+  message: "superseded by WI-sufuh — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # 080f

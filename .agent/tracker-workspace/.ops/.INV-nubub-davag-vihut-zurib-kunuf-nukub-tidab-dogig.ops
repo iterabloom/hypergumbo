@@ -47,3 +47,10 @@
   clock: 4  # 15cb
   nonce: 15cb  # 15cb
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): bug confirmed present on dev @ 77a69627b8 — _emit_handler_slices at cli.py:7307 still groups by symbol.id (both function-symbol and route-symbol ids are distinct and both pass _is_route_symbol), and _handler_slice_filename at 7420 still keys by (method, path) only. The suggested fix (group by (method, path) before slicing, prefer richer slice) and the property test (slice.handler.index.json node_count must equal on-disk feature.node_ids length) remain unimplemented. Routes-coverage sibling cluster: INV-dogif (detection), INV-pomol (bm.json output, under WI-gogif)."  # 15cb
+- op: discuss  # 068a
+  at: '2026-06-05T06:00:36Z'  # 068a
+  by: agent  # 068a
+  actor: jgstern_agent  # 068a
+  clock: 5  # 068a
+  nonce: 068a  # 068a
+  message: "[+ tranch_03: anon-card-tranch03-009 F44.A1 — Handler slices route-keyed not handler-keyed; 7/8 degenerate (folded as duplicate; blind severity 5; new row WI-fazoj wont_do)]"  # 068a

@@ -38,3 +38,10 @@
   clock: 3  # 7706
   nonce: '7706'  # 7706
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): inspection confirms WI-tukif-fuhug (the \"catalog completion\" umbrella) is a different artifact (LANGUAGE catalogs with stdlib_provenance YAML files); this item correctly stands alone. Verified: 158 register_analyzer decorator calls under packages/hypergumbo-lang-mainstream/src and hypergumbo-lang-extended1/src, zero pass description= — the gap is real and the fix is mechanical (description: str = \"\" default in registry.py:145; extra ts_pack analyzers fill it via the _ts helper in catalog.py:258-261 and core analyzers do not)."  # 7706
+- op: discuss  # 6990
+  at: '2026-06-05T06:00:24Z'  # 6990
+  by: agent  # 6990
+  actor: jgstern_agent  # 6990
+  clock: 4  # 6990
+  nonce: '6990'  # 6990
+  message: "[+ tranch_03: anon-card-tranch03-008 F43.A3 — 52/115 core catalog entries with empty descriptions (folded as duplicate; blind severity 4; new row WI-tuvar wont_do)]"  # 6990
