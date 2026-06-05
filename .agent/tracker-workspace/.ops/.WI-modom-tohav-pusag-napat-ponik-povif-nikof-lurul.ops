@@ -1,0 +1,21 @@
+- op: create  # 5b33
+  at: '2026-06-05T04:02:17Z'  # 5b33
+  by: agent  # 5b33
+  actor: jgstern_agent  # 5b33
+  clock: 1  # 5b33
+  nonce: 5b33  # 5b33
+  data:  # 5b33
+    kind: work_item  # 5b33
+    title: "metrics.by_supply_chain_tier.edges=0 for tier 2/3 despite 2881/27272 incident edges"  # 5b33
+    status: todo_hard  # 5b33
+    priority: 1  # 5b33
+    parent:  # 5b33
+    tags:  # 5b33
+    - dogfood_tranch_03  # 5b33
+    - dogfood  # 5b33
+    isbefore: []  # 5b33
+    duplicate_of: []  # 5b33
+    not_duplicate_of: []  # 5b33
+    pr_ref:  # 5b33
+    description: "**Mechanic**: The metric reports `internal_dep: edges=0` and `external_dep: edges=0`, while direct counting over the edge list finds 2,881 edges incident on tier-2 nodes and 27,272 incident on tier-3 nodes. The first-party row reports 110,510 edges; total edges are 110,533. The arithmetic does not reconcile under any single projection convention. The spec says \"Per-tier breakdowns include nodes and edges counts\" without defining whether \"edges\" means \"both endpoints in tier\", \"either endpoint in tier\", or \"sole-tier interior edges\".\n\n**Expectation**: The metric reports a defined projection of edges per tier, either documented in the spec or self-evidently non-zero for tiers with substantial node populations; the per-tier counts sum (or otherwise reconcile) to the total edge count via the documented rule.\n\n**Scope**: Top-level `metrics.by_supply_chain_tier.{tier}.edges` for tiers 2, 3, and 4.\n\n**Exposure**: Any agent or dashboard treating `by_supply_chain_tier.edges` as \"size of this tier's graph contribution\"; any consumer asking \"do my internal deps actually use my external deps?\".\n\n**Consequence**: A useless 110,510:0:0 ratio; the consumer cannot answer cross-tier questions; arithmetic does not even reconcile against the total edge count.\n\n**Source**: F48.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 5b33
+    fields: {}  # 5b33

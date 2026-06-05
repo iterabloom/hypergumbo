@@ -1,0 +1,21 @@
+- op: create  # bd3b
+  at: '2026-06-05T04:00:47Z'  # bd3b
+  by: agent  # bd3b
+  actor: jgstern_agent  # bd3b
+  clock: 1  # bd3b
+  nonce: bd3b  # bd3b
+  data:  # bd3b
+    kind: work_item  # bd3b
+    title: "Handler slices route-keyed not handler-keyed; 7/8 degenerate 1n/0e"  # bd3b
+    status: todo_hard  # bd3b
+    priority: 1  # bd3b
+    parent: INV-nubub-davag-vihut-zurib-kunuf-nukub-tidab-dogig  # bd3b
+    tags:  # bd3b
+    - dogfood_tranch_03  # bd3b
+    - dogfood  # bd3b
+    isbefore: []  # bd3b
+    duplicate_of: []  # bd3b
+    not_duplicate_of: []  # bd3b
+    pr_ref:  # bd3b
+    description: "**Mechanic**: Each route node carries a `meta.handler_ref` field pointing at the actual handler function. The slice subsystem persists files like `slice.handler.GET.health.json` but invokes traversal from the route-metadata symbol (the `Route(...)` constructor call on the routes-list), which has no outgoing `calls`/`uses` edges and so terminates immediately. The substrate already contains the full call graph from the handler function (e.g., 12 outgoing edges from a websocket handler) — only the slice persistence path picks the wrong entry. Compounding this, the accompanying `slice.handler.index.json` double-lists each handler with both a \"promise\" row (counts the slice would have, e.g. nodes=5/edges=4) and a \"delivered\" row (counts of the actual file, e.g. nodes=1/edges=0) pointing at the same filename, so the system knows the correct slice but persists the wrong one.\n\n**Expectation**: Each `slice.handler.<METHOD>.<path>.json` contains the call-graph reachable from the actual handler function (5+ nodes, 4+ edges for non-trivial handlers); the index reports counts that match the on-disk file content.\n\n**Scope**: 7 of 8 precomputed handler slices degenerate to 1-node/0-edge on the self-corpus; all 8 are mis-keyed. Every consumer of the `substrate.slices/slice.handler.*.json` batch is affected. The accompanying index double-lists every handler.\n\n**Exposure**: Any LLM agent or developer reading the precomputed handler-slice batch to understand handler behavior; any downstream tool ranking handlers by graph size from the index.\n\n**Consequence**: An agent reading the precomputed slice concludes endpoints have no behavior (a substantively wrong audit). A downstream tool ranking by index node-count opens the highest-ranked file and finds the data missing — a trust violation between the index and the artifacts it references. Tier 4 severity.\n\n**Source**: F44.A1 (INDEPENDENT, HIGH; F44.A2 absorbed as EXTENSION re: smoking-gun index file).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # bd3b
+    fields: {}  # bd3b

@@ -1,0 +1,21 @@
+- op: create  # 5c30
+  at: '2026-06-05T04:02:14Z'  # 5c30
+  by: agent  # 5c30
+  actor: jgstern_agent  # 5c30
+  clock: 1  # 5c30
+  nonce: 5c30  # 5c30
+  data:  # 5c30
+    kind: work_item  # 5c30
+    title: "Framework matcher lacks call/instantiates/constructor_call entry families"  # 5c30
+    status: todo_hard  # 5c30
+    priority: 1  # 5c30
+    parent:  # 5c30
+    tags:  # 5c30
+    - dogfood_tranch_03  # 5c30
+    - dogfood  # 5c30
+    isbefore: []  # 5c30
+    duplicate_of: []  # 5c30
+    not_duplicate_of: []  # 5c30
+    pr_ref:  # 5c30
+    description: "**Mechanic**: The matcher implementation enumerates 8 supported match surfaces, all of which key off declared decorators, inheritance, parameter types, or name patterns. The substrate already contains 7,939 `instantiates` edges and 619 `dispatches_to` edges, so the underlying graph data is present; the matcher simply does not consume it. Libraries that expose their framework surface as constructor calls (`app = FastAPI()`, `app = Flask(__name__)`, `Base = declarative_base()`, `runner = CliRunner()`) or as factory calls have no key a YAML author can use. A new framework integration for such a library is structurally unwritable.\n\n**Expectation**: Match surfaces include call/instantiates/constructor_call so framework authors can key patterns to construction sites; OR the docs explicitly mark the call-based framework family as out of scope and consumers know they must hand-stitch downstream linkers.\n\n**Scope**: All frameworks whose primary surface is call/instantiation: argparse, fire, Flask/FastAPI app construction, SQLAlchemy declarative_base, gRPC service stubs, anything Pydantic, anything metaclass-driven. Affects the long tail of inert YAMLs and any future call-based framework.\n\n**Exposure**: Any YAML author writing a new framework integration for a call-based library; any consumer of a substrate produced from a codebase that uses such a library.\n\n**Consequence**: A whole class of frameworks is structurally invisible to YAML-driven pattern matching, with no error or warning; the only path is hand-stitched downstream linkers, reproducing the exact silent-failure mode the YAML system was supposed to abstract.\n\n**Source**: F47.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 5c30
+    fields: {}  # 5c30

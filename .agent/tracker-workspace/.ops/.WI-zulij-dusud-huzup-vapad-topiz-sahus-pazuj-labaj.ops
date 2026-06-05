@@ -1,0 +1,21 @@
+- op: create  # 02ac
+  at: '2026-06-05T04:04:26Z'  # 02ac
+  by: agent  # 02ac
+  actor: jgstern_agent  # 02ac
+  clock: 1  # 02ac
+  nonce: 02ac  # 02ac
+  data:  # 02ac
+    kind: work_item  # 02ac
+    title: "compact default is connectivity-aware not centrality-ranked; sketch and compact disagree on top symbols"  # 02ac
+    status: todo_hard  # 02ac
+    priority: 1  # 02ac
+    parent:  # 02ac
+    tags:  # 02ac
+    - dogfood_tranch_03  # 02ac
+    - dogfood  # 02ac
+    isbefore: []  # 02ac
+    duplicate_of: []  # 02ac
+    not_duplicate_of: []  # 02ac
+    pr_ref:  # 02ac
+    description: "**CLUSTER tranch03-cluster-001 (HIGH confidence) — members F58.A1 + F58.A4.**\n\n**Mechanic**: The spec marks compact's centrality-ranked selection as 🟩 (delivered): \"Nodes sorted by centrality score (most important first) ... Used in JSON output, sketch output, and compact/tiered views.\" The actual default compact selection is `select_by_connectivity`, whose explicit priorities are (1) component growth (bridges isolated seeds), (2) edges added, (3) centrality as tiebreaker. End-to-end: default compact's top 100 omits TreeSitterAnalyzer (a class sketch headlines under \"★ Key Symbols\"); `--no-connectivity` includes it. The omitted-population's max centrality (1.40) exceeds the included-population's average (0.114) by over 12x — a single excluded node outranks 12 included nodes combined. As a consumer-facing manifestation, two CLI surfaces both advertise \"important symbols\" and produce different top-100 prefixes on the same input. Compounded by the absence of per-node centrality in the output (a sibling defect), consumers cannot cross-check the two outputs from the substrate alone.\n\n**Expectation**: Either the spec is updated to document connectivity-aware as the default and centrality-ranked as `--no-connectivity`, or the default is switched to centrality-ranked so both surfaces agree.\n\n**Scope**: Default compact selection on every invocation; sketch's \"★ Key Symbols\" and compact's top 100 disagree on every substrate. Coverage achieved by `--no-connectivity` on the same node budget is 2.2x higher (0.0893 → 0.1963).\n\n**Exposure**: Any LLM agent given both outputs of the same repo forms two different mental models of \"what matters\"; any consumer reading the spec and writing automation against the centrality-ranked contract.\n\n**Consequence**: Agents drafting \"what should I care about?\" prompts get inconsistent priors depending on which command is invoked; the documented contract (centrality-ranked) does not match the default behavior (connectivity-aware); the disagreement is invisible because per-node centrality is null in the output (consumers cannot rank-cross-check).\n\n**Source**: CLUSTER (F58.A1 + F58.A4, HIGH). A single change to compact's default selection algorithm resolves both the spec violation (F58.A1) and the empirical sketch-vs-compact ranking disagreement (F58.A4).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 02ac
+    fields: {}  # 02ac

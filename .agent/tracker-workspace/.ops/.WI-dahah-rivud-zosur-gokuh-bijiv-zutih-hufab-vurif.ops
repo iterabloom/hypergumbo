@@ -1,0 +1,21 @@
+- op: create  # e33f
+  at: '2026-06-05T04:03:55Z'  # e33f
+  by: agent  # e33f
+  actor: jgstern_agent  # e33f
+  clock: 1  # e33f
+  nonce: e33f  # e33f
+  data:  # e33f
+    kind: work_item  # e33f
+    title: "symbols --kind variable returns 'No symbols found' while search --kind variable returns hits"  # e33f
+    status: todo_hard  # e33f
+    priority: 2  # e33f
+    parent:  # e33f
+    tags:  # e33f
+    - dogfood_tranch_03  # e33f
+    - dogfood  # e33f
+    isbefore: []  # e33f
+    duplicate_of: []  # e33f
+    not_duplicate_of: []  # e33f
+    pr_ref:  # e33f
+    description: "**Mechanic**: The `symbols` command filters out 15 kinds via an `EXCLUDED_KINDS` set including `variable, dependency, project, package` (collectively 1,702 nodes on the self-corpus). When `--kind <excluded>` is requested, the filter applies before the kind-check, so the result is \"No symbols found\" — the same message the user would see for a truly absent kind. Meanwhile, `search` consults the substrate directly and returns 5 hits for `search \"VERSION\" --kind variable` on the same substrate. The help text for `--kind` lists three examples (`function, class, method`) with no flag that the other 22 substrate-present kinds are filtered. The user has no way to learn which kinds the `symbols` command excludes.\n\n**Expectation**: Either `symbols --kind <excluded>` reports the exclusion (e.g., \"kind 'variable' is excluded from symbols listing; use search\"), or both commands honor the same kind-visibility rules.\n\n**Scope**: All 15 kinds in `EXCLUDED_KINDS` — `variable`, `dependency`, `project`, `package`, `target`, `special_target`, `class_selector`, `id_selector`, `keyframes`, `media`, `font_face`, `section`, `code_block`, `link`, `file`. On the self-corpus, 1,702 nodes are silently filtered.\n\n**Exposure**: Any consumer running `symbols --kind <X>` for one of the 15 excluded kinds and trusting \"No symbols found\" to mean absence.\n\n**Consequence**: The consumer concludes a kind has zero instances when it has 1,610 (for `variable`); two documented CLI surfaces give incompatible answers for the same kind filter; no help-text signal warns about the divergence.\n\n**Source**: F55.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # e33f
+    fields: {}  # e33f

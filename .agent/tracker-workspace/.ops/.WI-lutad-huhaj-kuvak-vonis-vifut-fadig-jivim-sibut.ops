@@ -1,0 +1,21 @@
+- op: create  # be0c
+  at: '2026-06-05T04:02:43Z'  # be0c
+  by: agent  # be0c
+  actor: jgstern_agent  # be0c
+  clock: 1  # be0c
+  nonce: be0c  # be0c
+  data:  # be0c
+    kind: work_item  # be0c
+    title: "18388 linker edges exceed 0.95 ceiling; 81/104 entrypoints below 0.70 floor"  # be0c
+    status: todo_hard  # be0c
+    priority: 1  # be0c
+    parent: INV-suvil-jojoh-gifib-zirig-famom-sorim-tarar-hojok  # be0c
+    tags:  # be0c
+    - dogfood_tranch_03  # be0c
+    - dogfood  # be0c
+    isbefore: []  # be0c
+    duplicate_of: []  # be0c
+    not_duplicate_of: []  # be0c
+    pr_ref:  # be0c
+    description: "**Mechanic**: The spec's confidence-range table specifies analyzer-edge range 0.30-0.95, linker-edge range 0.40-0.95, entrypoint range 0.70-0.99. The containment linker emits 18,388 `naming_convention` edges at exactly 1.0 (16.6% of all edges). On entrypoints, the spec's 4-tier table (Declared=0.99 / Decorator=0.95 / Structural=0.85 / Naming=0.70 floor) is violated at both ends: 13 entrypoints sit at 1.0 (above the 0.99 ceiling), and 81 of 104 sit below 0.70 (including the entire `library_export` kind at 0.6750 and many `main_function` at 0.6500).\n\n**Expectation**: Linker-edge confidence stays inside [0.40, 0.95]; entrypoint confidence stays inside [0.70, 0.99]; the four documented entrypoint tiers map to ranges as specified.\n\n**Scope**: 18,388 of 110,533 edges (16.6%) above the linker ceiling; 81 of 104 entrypoints (78%) below the entrypoint floor; 13 entrypoints above the entrypoint ceiling.\n\n**Exposure**: Any consumer setting `--confidence-threshold 0.70` after reading the spec and expecting to keep entrypoints; any consumer reading \"Declared=0.99\" and writing `entrypoints[c >= 0.99]` to capture the Declared tier.\n\n**Consequence**: A documented 0.70 threshold drops 78% of entrypoints, including most library_exports the spec calls Structural (0.85 floor); a 0.99 filter captures heuristic detections the consumer would not call Declared. The documented ranges are not load-bearing.\n\n**Source**: F49.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # be0c
+    fields: {}  # be0c

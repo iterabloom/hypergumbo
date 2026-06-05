@@ -1,0 +1,21 @@
+- op: create  # b60a
+  at: '2026-06-05T04:04:19Z'  # b60a
+  by: agent  # b60a
+  actor: jgstern_agent  # b60a
+  clock: 1  # b60a
+  nonce: b60a  # b60a
+  data:  # b60a
+    kind: work_item  # b60a
+    title: "compact per-node centrality null 100% + included_edges_count asymmetric across modes"  # b60a
+    status: todo_hard  # b60a
+    priority: 1  # b60a
+    parent:  # b60a
+    tags:  # b60a
+    - dogfood_tranch_03  # b60a
+    - dogfood  # b60a
+    isbefore: []  # b60a
+    duplicate_of: []  # b60a
+    not_duplicate_of: []  # b60a
+    pr_ref:  # b60a
+    description: "**Mechanic**: Two coupled defects on compact output schema. (a) The substrate's per-node `centrality` is null on all 34,396 nodes; compact preserves the null on its 100 included even though it internally computes centrality and uses it as the basis for the emitted `nodes_summary.included.coverage` aggregate. A consumer cannot answer \"which of these 100 nodes has the highest individual centrality?\" from compact output. (b) The default (connectivity-aware) compact emits `nodes_summary.included_edges_count: 370`; the `--no-connectivity` compact has no `included_edges_count` field at all. Root cause: two different result-classes have two different `to_dict()` implementations, only one emits the field.\n\n**Expectation**: Per-node centrality is surfaced on every included node so consumers can rank-cross-check; both CLI modes emit the same output schema (every field present in both, or both absent).\n\n**Scope**: Per-node centrality null on 100% of compact output nodes; `included_edges_count` asymmetry across the two CLI modes.\n\n**Exposure**: Any consumer using compact output for downstream re-ranking; any consumer using `nodes_summary.included_edges_count` for budget accounting and switching between default and `--no-connectivity` modes.\n\n**Consequence**: Compact output is un-rank-able by its own selection criterion; mode-switching produces `KeyError` on the missing field in downstream consumers; schema parity between modes is broken.\n\n**Source**: F58.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # b60a
+    fields: {}  # b60a

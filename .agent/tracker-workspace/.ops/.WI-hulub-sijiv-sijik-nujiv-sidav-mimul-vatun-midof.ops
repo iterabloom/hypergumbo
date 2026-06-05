@@ -1,0 +1,21 @@
+- op: create  # ad29
+  at: '2026-06-05T04:03:07Z'  # ad29
+  by: agent  # ad29
+  actor: jgstern_agent  # ad29
+  clock: 1  # ad29
+  nonce: ad29  # ad29
+  data:  # ad29
+    kind: work_item  # ad29
+    title: "Registry coverage self-corpus: 18/54 edge_types, 26/140 symbol_kinds, 33/125 evidence_types"  # ad29
+    status: todo_hard  # ad29
+    priority: 3  # ad29
+    parent:  # ad29
+    tags:  # ad29
+    - dogfood_tranch_03  # ad29
+    - dogfood  # ad29
+    isbefore: []  # ad29
+    duplicate_of: []  # ad29
+    not_duplicate_of: []  # ad29
+    pr_ref:  # ad29
+    description: "**Mechanic**: All three multi-value axis registries (edge_types, symbol_kinds, evidence_types) are deliberately over-permissive to accommodate future linkers and analyzers. On the project's own self-corpus (Python + sidecar HTML/CSS/JS + a small fixture corpus), edge_types coverage is 33%, symbol_kinds 19%, evidence_types 26%. Top in-registry-but-never-observed values include `abi_call`, `crypto_flow`, `graphql_calls`, `grpc_calls`, `http_calls`, `kernel_launch`, plus most of the specialized AST sub-vocabularies (`ast_method_*`, `ast_call_*` variants).\n\n**Expectation**: Either the self-corpus exercises a representative slice of the registry (e.g., via fixture corpora), or the registry maintainers have an alternative validation channel (cross-language polyglot test repos) that prevents registry-drift bugs on the long tail from hiding indefinitely.\n\n**Scope**: 36 of 54 edge_types (67%), 114 of 140 symbol_kinds (81%), 92 of 125 evidence_types (74%) unobserved on the self-corpus.\n\n**Exposure**: Registry-drift bugs in the ~75% unobserved rows — invisible to verify-claims runs, axis-coherence audits, and ad-hoc inspection on the self-corpus.\n\n**Consequence**: A registry value with no real producer on the self-corpus is invisible to the project's standard validation; the bakeoff feedback loop cannot detect drift in three-quarters of each registry's vocabulary.\n\n**Source**: F50.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # ad29
+    fields: {}  # ad29

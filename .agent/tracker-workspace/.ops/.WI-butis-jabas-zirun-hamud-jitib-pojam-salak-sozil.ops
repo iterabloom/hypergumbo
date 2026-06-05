@@ -1,0 +1,21 @@
+- op: create  # ab42
+  at: '2026-06-05T04:01:49Z'  # ab42
+  by: agent  # ab42
+  actor: jgstern_agent  # ab42
+  clock: 1  # ab42
+  nonce: ab42  # ab42
+  data:  # ab42
+    kind: work_item  # ab42
+    title: "195 stable_id collisions across 96 groups: bash run() and HTTP route variants"  # ab42
+    status: todo_hard  # ab42
+    priority: 1  # ab42
+    parent: INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah  # ab42
+    tags:  # ab42
+    - dogfood_tranch_03  # ab42
+    - dogfood  # ab42
+    isbefore: []  # ab42
+    duplicate_of: []  # ab42
+    not_duplicate_of: []  # ab42
+    pr_ref:  # ab42
+    description: "**Mechanic**: The spec's untyped-tier formula `sha256({kind}:{parameter_count}:{arity_flags}:{decorator_presence}:{containing_module_stable_id})` is supposed to differentiate distinct definitions. Empirically, three different `run()` shell functions in three separate scripts share one stable_id (the bash analyzer apparently hashes a constant for \"containing_module\" because bash has no module concept), and the framework-endpoint route formula `sha256(\"route:{method}:{path}\")` is too loose: `/api/users` and `http://localhost/api/users` and `http://localhost:8000/api/users` all canonicalize to the same path and produce 7 colliding call-sites in one group.\n\n**Expectation**: Within a single substrate, `stable_id` uniquely identifies a symbol's interface identity so that \"for stable_id X, fetch source\" returns exactly one location; per-analyzer formulas account for the language's actual module/file boundaries.\n\n**Scope**: 195 colliding nodes across 96 collision groups. Cross-file collisions: 26 groups span 2-5 distinct paths. Bash-script `run()` collision (3 files), HTTP-call-site collisions (up to 7 nodes per group, 2 files).\n\n**Exposure**: Any consumer doing \"for stable_id X, fetch source\" reverse-lookup; any tool building an index of symbols by stable_id.\n\n**Consequence**: The reverse-lookup picks one candidate (first or arbitrary) and the consumer gets the wrong source in N-1 of N cases. Cross-symbol identity is corrupted for the framework-endpoint variant — same-route stable_id is supposed to match across analyzers, but here different URLs match each other within one project. Tier 4 severity.\n\n**Source**: F45.A4 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # ab42
+    fields: {}  # ab42

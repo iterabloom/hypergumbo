@@ -1,0 +1,21 @@
+- op: create  # fef2
+  at: '2026-06-05T04:03:11Z'  # fef2
+  by: agent  # fef2
+  actor: jgstern_agent  # fef2
+  clock: 1  # fef2
+  nonce: fef2  # fef2
+  data:  # fef2
+    kind: work_item  # fef2
+    title: "4507 edges have dst :unresolved suffix while is_resolved=True (sibling-field disagreement)"  # fef2
+    status: todo_hard  # fef2
+    priority: 1  # fef2
+    parent:  # fef2
+    tags:  # fef2
+    - dogfood_tranch_03  # fef2
+    - dogfood  # fef2
+    isbefore: []  # fef2
+    duplicate_of: []  # fef2
+    not_duplicate_of: []  # fef2
+    pr_ref:  # fef2
+    description: "**Mechanic**: The ID-construction rule reserves the `…:0-0:{name}:unresolved` suffix for external module references, unresolved import targets, and boundary placeholders. The `Edge.is_resolved` boolean is the sibling-field representation of resolution status. On 4,507 edges (4,497 imports + 10 calls), the two contracts disagree: the dst-suffix says \"unresolved\", the sibling field says \"resolved\". The inverse direction is clean (zero edges with non-`:unresolved` dst and `is_resolved=False`). Example: `from __future__ import annotations` is a real Python builtin so `is_resolved=True` is semantically reasonable, but the dst-id-suffix still flags `:unresolved`.\n\n**Expectation**: The dst-id-suffix and `is_resolved` agree on every edge, or the spec explicitly documents the partition (e.g., \"id-suffix is for placeholder-shape; `is_resolved` is for resolution-status; these are independent axes and the 4,507 represent legitimate module-name-matches without a backing Symbol record\"). A fundamental-concept reconciliation is required.\n\n**Scope**: 4,507 of 110,533 edges (4.1%); the direction is one-way only (resolved=True with :unresolved suffix, not the inverse).\n\n**Exposure**: Any consumer joining on edge dst (to fetch the target node) and using `is_resolved` as a precondition; any reasoner treating the two surfaces as equivalent.\n\n**Consequence**: Joins yield no target node (because the `:unresolved` ID has no backing node record) for an `is_resolved=True` edge; the consumer hits an internal-contradiction case the contract did not warn about.\n\n**Source**: F51.A2 (INDEPENDENT, MED — fundamental-concept-audit candidate per author).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # fef2
+    fields: {}  # fef2

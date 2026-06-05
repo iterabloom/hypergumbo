@@ -1,0 +1,21 @@
+- op: create  # 69fb
+  at: '2026-06-05T04:03:05Z'  # 69fb
+  by: agent  # 69fb
+  actor: jgstern_agent  # 69fb
+  clock: 1  # 69fb
+  nonce: 69fb  # 69fb
+  data:  # 69fb
+    kind: work_item  # 69fb
+    title: "DEFAULT_EDGE_TYPE_WEIGHTS covers 12/54 types; 14118 edges silently get 0.0 centrality weight"  # 69fb
+    status: todo_hard  # 69fb
+    priority: 1  # 69fb
+    parent:  # 69fb
+    tags:  # 69fb
+    - dogfood_tranch_03  # 69fb
+    - dogfood  # 69fb
+    isbefore: []  # 69fb
+    duplicate_of: []  # 69fb
+    not_duplicate_of: []  # 69fb
+    pr_ref:  # 69fb
+    description: "**Mechanic**: The ranking module's `DEFAULT_EDGE_TYPE_WEIGHTS` enumerates 12 edge types (calls, implements_rpc, event_publishes, crypto_flow, dispatches_to, imports, module_exports, contains, extends, implements, depends_on, depends_on_manifest). The 42 other registered edge types are missing; `compute_centrality` looks them up and the dict-get returns the 0.0 default. On the self-corpus, 14,118 of 110,533 edges (12.8%) hit the 0.0 fallback — including `instantiates` (7,939; the 5th-largest edge type), `references` (4,307), `module_attr_ref` (1,347), `decorated_by` (403). 1,790 nodes have only `instantiates`/`references` incoming and therefore zero weighted incoming, making them invisible to centrality ranking. The consumer-side registry-drift gate catches frozen sets whose values escape the registry but does NOT catch the inverse — a weights dict missing registered values.\n\n**Expectation**: The weights dict covers every registered edge type, or the registry-drift gate also catches missing-from-consumer-side rows so dashboards surface the gap.\n\n**Scope**: 42 of 54 registered edge types missing from the weights dict; 14,118 edges silently weighted 0.0; 1,790 nodes invisible to centrality on the self-corpus (1,293 variables, 275 functions, 219 external_symbols, others).\n\n**Exposure**: Any consumer running sketch or compact on a constructor-driven (class-instantiation-heavy) codebase; any consumer using centrality to rank \"important symbols\".\n\n**Consequence**: Class-constructor-heavy modules disappear from \"Key Symbols\" outputs; sketch ranking systematically demotes 275 functions whose only callers are `instantiates`/`references`; no error or warning. Tier 3-4.\n\n**Source**: F50.A1 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 69fb
+    fields: {}  # 69fb

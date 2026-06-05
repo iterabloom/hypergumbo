@@ -1,0 +1,21 @@
+- op: create  # e027
+  at: '2026-06-05T04:04:24Z'  # e027
+  by: agent  # e027
+  actor: jgstern_agent  # e027
+  clock: 1  # e027
+  nonce: e027  # e027
+  data:  # e027
+    kind: work_item  # e027
+    title: "4995 edges emit ast_call_method which registry flags AXIS_PENDING fold candidate"  # e027
+    status: todo_hard  # e027
+    priority: 2  # e027
+    parent:  # e027
+    tags:  # e027
+    - dogfood_tranch_03  # e027
+    - dogfood  # e027
+    isbefore: []  # e027
+    duplicate_of: []  # e027
+    not_duplicate_of: []  # e027
+    pr_ref:  # e027
+    description: "**Mechanic**: The substrate has 5,100 edges with evidence types on the `pending_classification` axis (registry-self-declared \"long-tail awaiting classification\"). Of those, 4,995 (97.9%) carry `ast_call_method`. The registry entry for this value reads literally \"At-risk Cluster D peer of `ast_call_direct`: fold candidate to `ast_call_direct` + `meta['call_construct']='method'`. Pending cluster-D audit.\" The Python analyzer continues to emit the value at a known source line. Six of 11 pending_classification members are never emitted at all, leaving one dominant load-bearing emitter that is officially a \"pending\" value.\n\n**Expectation**: Either the registry's \"pending\" axis is small and draining toward canonical values, or the Python analyzer's emission is migrated to the canonical `ast_call_direct` with `meta.call_construct='method'` per the registry's own fold-candidacy note.\n\n**Scope**: 4,995 of 110,533 edges (4.52%); 1 of 11 pending values dominates the axis.\n\n**Exposure**: Any consumer whitelisting by axis (\"only build dashboards from `inference_pathway` evidence_types\") and silently dropping 4.52% of edges; any consumer trusting the partition to be balanced.\n\n**Consequence**: A canonical-quality observation (Python AST method-call inference) is classified as long-tail; whitelist consumers drop it silently; the partition is asymmetric in a way the contract does not signal.\n\n**Source**: F60.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # e027
+    fields: {}  # e027

@@ -1,0 +1,21 @@
+- op: create  # 8c41
+  at: '2026-06-05T04:03:09Z'  # 8c41
+  by: agent  # 8c41
+  actor: jgstern_agent  # 8c41
+  clock: 1  # 8c41
+  nonce: 8c41  # 8c41
+  data:  # 8c41
+    kind: work_item  # 8c41
+    title: "492 file-kind nodes cite orchestrator_file_symbol_synthesis pass-id absent from analysis_runs"  # 8c41
+    status: todo_hard  # 8c41
+    priority: 1  # 8c41
+    parent: INV-pitab-masos-zakaj-limin-fukar-nojit-fohot-maraj  # 8c41
+    tags:  # 8c41
+    - dogfood_tranch_03  # 8c41
+    - dogfood  # 8c41
+    isbefore: []  # 8c41
+    duplicate_of: []  # 8c41
+    not_duplicate_of: []  # 8c41
+    pr_ref:  # 8c41
+    description: "**Mechanic**: Every pass-id referenced by `node.origin` should resolve to a row in `analysis_runs`. The producer (the orchestrator's file-symbol synthesis step) emits `origin=\"orchestrator_file_symbol_synthesis\"` for file-kind Symbol records synthesized when an analyzer references a file without producing an explicit file Symbol. The pass catalog lists the identifier but the orchestrator pass entry is not appended to `analysis_runs` at run time. 492 nodes are affected (all `kind=file`).\n\n**Expectation**: Every distinct origin pass-id used by any node appears in `analysis_runs` with its execution metadata.\n\n**Scope**: 492 nodes (all `kind=file`) cite a dangling pass-id; this is a distinct defect from the empty-origin defect (where origin is `[]`) — here origin is populated but unresolvable.\n\n**Exposure**: Any consumer building \"for each node, which pass produced it?\" by joining node.origin against analysis_runs; any internal-consistency checker.\n\n**Consequence**: The join silently drops 492 nodes; orchestrator-synthesized files appear \"unattributed\"; the project's own validation_report fails to report this as a cross-field violation despite enumerating a `cross_field` bucket.\n\n**Source**: F51.A1 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 8c41
+    fields: {}  # 8c41

@@ -1,0 +1,21 @@
+- op: create  # d2fa
+  at: '2026-06-05T04:02:36Z'  # d2fa
+  by: agent  # d2fa
+  actor: jgstern_agent  # d2fa
+  clock: 1  # d2fa
+  nonce: d2fa  # d2fa
+  data:  # d2fa
+    kind: work_item  # d2fa
+    title: "supply_chain_summary.first_party.files=915 != 902 file-kind nodes; 13-file gap"  # d2fa
+    status: todo_hard  # d2fa
+    priority: 2  # d2fa
+    parent:  # d2fa
+    tags:  # d2fa
+    - dogfood_tranch_03  # d2fa
+    - dogfood  # d2fa
+    isbefore: []  # d2fa
+    duplicate_of: []  # d2fa
+    not_duplicate_of: []  # d2fa
+    pr_ref:  # d2fa
+    description: "**Mechanic**: `supply_chain_summary.first_party.files` reports 915. `metrics.debug.analyzed_file_symbols` reports 902 (matches the file-kind node count). `metrics.debug.unique_paths_in_analysis` reports 916. The 13-file delta corresponds to paths with first-party symbols but no file-kind node: 7 `pyproject.toml`, 1 `package.json`, 5 schema-coverage-corpus fixture files. The summary uses path-based counting; everything downstream uses file-node-based counting.\n\n**Expectation**: The summary's `first_party.files` count matches the file-kind-node count, or the two counts are documented with their definitions so a consumer can reconcile.\n\n**Scope**: Top-level `supply_chain_summary.first_party.files` versus `node.kind == \"file\"` count; consistently 13 apart on the self-corpus.\n\n**Exposure**: Any consumer reconciling \"how many files are in this map\".\n\n**Consequence**: Two different file counts coexist with no documented rule for reconciliation; consumers cannot trust either as authoritative.\n\n**Source**: F48.A5 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # d2fa
+    fields: {}  # d2fa

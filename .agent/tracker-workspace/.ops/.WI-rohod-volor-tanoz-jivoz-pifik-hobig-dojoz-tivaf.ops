@@ -1,0 +1,21 @@
+- op: create  # 4369
+  at: '2026-06-05T04:04:21Z'  # 4369
+  by: agent  # 4369
+  actor: jgstern_agent  # 4369
+  clock: 1  # 4369
+  nonce: '4369'  # 4369
+  data:  # 4369
+    kind: work_item  # 4369
+    title: "Spec line 307 cites 3 f-string evidence_type sites; only 1 still live (2/3 doc drift)"  # 4369
+    status: todo_hard  # 4369
+    priority: 4  # 4369
+    parent: INV-rotup-kipir-habuv-hitis-bajis-zozal-mudus-pimil  # 4369
+    tags:  # 4369
+    - dogfood_tranch_03  # 4369
+    - dogfood  # 4369
+    isbefore: []  # 4369
+    duplicate_of: []  # 4369
+    not_duplicate_of: []  # 4369
+    pr_ref:  # 4369
+    description: "**Mechanic**: The spec sentence reads \"production has dynamic f-string emits at `websocket.py`, `inheritance.py`, `di_resolution.py`\". On the current tree, only `inheritance.py:368` emits `evidence_type=f\"ast_{edge_type}\"`. The other two files contain only static-string evidence_type literals; comments at multiple lines explicitly describe how earlier f-string-style emits were folded to canonical inference labels and retired. The producer-coherence check on the live tree finds one dynamic emit total, not three.\n\n**Expectation**: The spec's evidence base for the open-enum schema posture cites only the files that actually contain the construct.\n\n**Scope**: Spec line 307; 2 of 3 cited files are documentation drift from prior refactors.\n\n**Exposure**: Any consumer reading the spec line to understand why the schema posture is open-enum and inspecting the cited files for canonical patterns.\n\n**Consequence**: The reader overstates the dynamic-emit prevalence by 3x; the open-enum justification rests on partially-fictional evidence; consumers reasoning about schema posture cannot trust the spec's count of live justifiers. (The choice of open-enum may still be correct — one dynamic emit is enough to forbid closed-enum — but the rationale is outdated.)\n\n**Source**: F60.A1 (INDEPENDENT, HIGH). Severity: Cosmetic (1).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 4369
+    fields: {}  # 4369

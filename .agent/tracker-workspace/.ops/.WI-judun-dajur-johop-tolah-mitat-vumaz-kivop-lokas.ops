@@ -1,0 +1,21 @@
+- op: create  # 90b1
+  at: '2026-06-05T04:04:02Z'  # 90b1
+  by: agent  # 90b1
+  actor: jgstern_agent  # 90b1
+  clock: 1  # 90b1
+  nonce: 90b1  # 90b1
+  data:  # 90b1
+    kind: work_item  # 90b1
+    title: "usage_contexts 100% retained in compact despite spec promise 'stripped from compact'"  # 90b1
+    status: todo_hard  # 90b1
+    priority: 2  # 90b1
+    parent: INV-titid-favuv-kubam-kapib-vapon-kamub-talos-madoj  # 90b1
+    tags:  # 90b1
+    - dogfood_tranch_03  # 90b1
+    - dogfood  # 90b1
+    isbefore: []  # 90b1
+    duplicate_of: []  # 90b1
+    not_duplicate_of: []  # 90b1
+    pr_ref:  # 90b1
+    description: "**Mechanic**: The top-level `usage_contexts` array (8 entries on the self-corpus) is preserved byte-identical between the substrate and the compact output in both default and `--no-connectivity` modes. Other \"should-be-stripped\"-feeling top-level fields (`view`, `sketch_precomputed`, `validation_report`) are also retained. The compact output's top-level key set is a strict superset of the substrate's (`compact_keys - substrate_keys = {nodes_summary}`); no keys are dropped.\n\n**Expectation**: `usage_contexts` and other fields the spec marks as stripped from compact are actually absent from compact output; the top-level key set of compact is a strict subset of substrate's (minus the explicit compact-only additions).\n\n**Scope**: Top-level `usage_contexts` array on every compact invocation; the same stripping contract presumably applies to other fields not yet probed.\n\n**Exposure**: Any consumer building an LLM-context pipeline expecting compact to remove `usage_contexts` per the spec promise.\n\n**Consequence**: Payload bloat on substrates with large usage_context arrays; the documented size-reduction motive of compact is not delivered for this field; LLM-context budgets are blown silently.\n\n**Source**: F58.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 90b1
+    fields: {}  # 90b1

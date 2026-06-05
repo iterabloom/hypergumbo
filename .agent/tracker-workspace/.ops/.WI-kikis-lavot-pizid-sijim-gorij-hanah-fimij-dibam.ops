@@ -1,0 +1,21 @@
+- op: create  # 7e40
+  at: '2026-06-05T04:02:10Z'  # 7e40
+  by: agent  # 7e40
+  actor: jgstern_agent  # 7e40
+  clock: 1  # 7e40
+  nonce: '7e40'  # 7e40
+  data:  # 7e40
+    kind: work_item  # 7e40
+    title: "verify-claims violation details collapse 3969 evidence rows to 5 deduped strings"  # 7e40
+    status: todo_hard  # 7e40
+    priority: 1  # 7e40
+    parent: INV-somut-lapar-furob-tovul-juhor-puhat-zujim-lobir  # 7e40
+    tags:  # 7e40
+    - dogfood_tranch_03  # 7e40
+    - dogfood  # 7e40
+    isbefore: []  # 7e40
+    duplicate_of: []  # 7e40
+    not_duplicate_of: []  # 7e40
+    pr_ref:  # 7e40
+    description: "**Mechanic**: The `details` string for a violated claim takes the form \"N flow(s) to Y zone: cmd_A -> b; cmd_A -> b; cmd_A -> b; cmd_A -> b; cmd_A -> b (and N-5 more)\". Each row collapses to `<source_func> -> <sink_callee_name>` only. The shown rows are duplicated (the same `cmd_run -> replace` repeated five times verbatim). There is no source file, no line number, no edge ID, no path through the call graph. With 3,969 hits and 5 shown (mostly duplicates), 99.87% of evidence is invisible. Meanwhile, the spec advertises path-level analysis (\"Catches missing sanitizers on entire call paths\").\n\n**Expectation**: The `details` field surfaces enough per-flow evidence (file:line, edge-ID, or path-through-graph) to let a consumer triage true positives from false positives, even at high evidence counts.\n\n**Scope**: Every violated claim with more than 5 evidence rows. On the self-corpus, applies to all 4 violated claims (3,969 + 939 + 619 + 14 flows).\n\n**Exposure**: Any consumer trying to validate a specific reported violation against source code.\n\n**Consequence**: Consumers see \"4 VIOLATED\" with no actionable next step — they cannot tell which one of the 3,969 flows is real. They must either re-run with a different tool, read source by hand, or write their own path enumerator. The \"approximate\" confidence label admits false positives may be present; the lack of per-row drill-down means they cannot be filtered out.\n\n**Source**: F46.A3 (INDEPENDENT, MED).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 7e40
+    fields: {}  # 7e40

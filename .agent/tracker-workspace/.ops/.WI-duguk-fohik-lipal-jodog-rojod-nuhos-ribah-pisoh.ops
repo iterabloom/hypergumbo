@@ -1,0 +1,21 @@
+- op: create  # b196
+  at: '2026-06-05T04:03:59Z'  # b196
+  by: agent  # b196
+  actor: jgstern_agent  # b196
+  clock: 1  # b196
+  nonce: b196  # b196
+  data:  # b196
+    kind: work_item  # b196
+    title: "Reverse-slice class-expansion vacuous for trait/enum/module (3 of 6 kinds with 0 contains-out)"  # b196
+    status: todo_hard  # b196
+    priority: 1  # b196
+    parent:  # b196
+    tags:  # b196
+    - dogfood_tranch_03  # b196
+    - dogfood  # b196
+    isbefore: []  # b196
+    duplicate_of: []  # b196
+    not_duplicate_of: []  # b196
+    pr_ref:  # b196
+    description: "**Mechanic**: The slicer's expansion code-path runs unconditionally on all listed kinds, but its effect depends on the analyzer having emitted `contains` edges between the container and its members. Substrate distribution: class 4,462 nodes with 4,224 (94.7%) carrying ≥1 contains-out edge; interface 7 nodes, 3 (42.9%) with contains-out; struct 5 nodes, 2 (40%) with contains-out; trait 1 node with 0 contains-out; enum 5 nodes with 0 contains-out; module 0 nodes. The slicer expansion fires correctly for class/interface/struct; for trait/enum the expansion is a no-op because the analyzer never emits contained members (enum variants, trait method signatures); module is untestable because the analyzer produces zero module-kind nodes. The spec's 🟩 (delivered) mark on this line implies coverage across all six kinds.\n\n**Expectation**: Each of the 6 enumerated kinds emits `contains` edges to its members so reverse-slice expansion is meaningful; or the spec lists which kinds the expansion is vacuous on.\n\n**Scope**: trait (1 node, 0% effective), enum (5 nodes, 0% effective), module (0 nodes, untestable). End-to-end tests confirm reverse-slicing from an enum or trait returns only the container itself, missing all use sites.\n\n**Exposure**: Any consumer reverse-slicing from an enum to find switch-case branches; any consumer reverse-slicing from a trait to find implementer call-sites.\n\n**Consequence**: A consumer acting on an empty reverse slice infers \"this enum is dead\" or \"this trait has no users\" when neither is true; the documented contract is delivered for half the enumerated kinds.\n\n**Source**: F57.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # b196
+    fields: {}  # b196

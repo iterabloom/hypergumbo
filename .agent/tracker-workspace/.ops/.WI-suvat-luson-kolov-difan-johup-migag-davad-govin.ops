@@ -1,0 +1,21 @@
+- op: create  # 9c25
+  at: '2026-06-05T04:02:41Z'  # 9c25
+  by: agent  # 9c25
+  actor: jgstern_agent  # 9c25
+  clock: 1  # 9c25
+  nonce: 9c25  # 9c25
+  data:  # 9c25
+    kind: work_item  # 9c25
+    title: "EVIDENCE_CONFIDENCE_MATRIX: 1/10 rows match observed; modal value diverges from spec"  # 9c25
+    status: todo_hard  # 9c25
+    priority: 1  # 9c25
+    parent: INV-suvil-jojoh-gifib-zirig-famom-sorim-tarar-hojok  # 9c25
+    tags:  # 9c25
+    - dogfood_tranch_03  # 9c25
+    - dogfood  # 9c25
+    isbefore: []  # 9c25
+    duplicate_of: []  # 9c25
+    not_duplicate_of: []  # 9c25
+    pr_ref:  # 9c25
+    description: "**Mechanic**: The spec's `EVIDENCE_CONFIDENCE_MATRIX` is keyed on `(language, evidence_type)` with 10 documented rows. Of the substrate's 33 observed evidence types, 26 are not in the spec MATRIX at all (including the second-largest bucket `ast_call` at 21,474 edges and `naming_convention` at 18,405 edges, hardcoded at 0.40 and 1.0 respectively). Of the 10 spec rows, 8 yield zero matches. The two that match: `(python, ast_call_direct)` spec=0.95 but observed modal=0.85 across 32,444 edges; `(python, ast_call_method)` spec=0.85 matches across 4,995 edges. Single-row hit rate is 1 of 10 (the modal-match), with the largest matching row's modal value differing from spec.\n\n**Expectation**: The spec MATRIX rows match the producer-emitted vocabulary; documented (language, evidence_type) pairs are non-vacuous on at least one realistic corpus; spec values match the modal observed confidence within tolerance.\n\n**Scope**: The 10 documented MATRIX rows; only 1 of 10 produces a match, and the match-row has a spec-vs-impl value gap. The 26 unmapped evidence_types account for the bulk of substrate confidence noise.\n\n**Exposure**: Any consumer reading the spec MATRIX to filter or interpret confidence values (e.g., \"drop ast_getattr_call edges\" — that evidence_type never appears; \"ast_call_direct is high-confidence per spec\" — applies a 0.95 threshold and drops 32K edges scored 0.85).\n\n**Consequence**: Documented filter semantics become noise; the MATRIX is functionally inert; consumers acting on spec-documented thresholds get substantively wrong slices of the edge set.\n\n**Source**: F49.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 9c25
+    fields: {}  # 9c25

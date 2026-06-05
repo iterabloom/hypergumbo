@@ -1,0 +1,21 @@
+- op: create  # 4708
+  at: '2026-06-05T04:01:11Z'  # 4708
+  by: agent  # 4708
+  actor: jgstern_agent  # 4708
+  clock: 1  # 4708
+  nonce: '4708'  # 4708
+  data:  # 4708
+    kind: work_item  # 4708
+    title: "fingerprint null on 3911 Python test methods + 1645 external_symbol; WGSL bare-hex format drift"  # 4708
+    status: todo_hard  # 4708
+    priority: 1  # 4708
+    parent: INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah  # 4708
+    tags:  # 4708
+    - dogfood_tranch_03  # 4708
+    - dogfood  # 4708
+    isbefore: []  # 4708
+    duplicate_of: []  # 4708
+    not_duplicate_of: []  # 4708
+    pr_ref:  # 4708
+    description: "**Mechanic**: The spec defines `fingerprint` as `sha256(source_bytes)` for change detection. The implementation emits `hgfp1:<16-hex-char>` (an apparent truncation) on most nodes, but: (a) Python test-method nodes get `null` while non-test methods get `hgfp1:...`, suggesting a conditional that excludes test paths; (b) all 1,645 external-symbol nodes are null (no source bytes); (c) WGSL emits 5 bare-hex fingerprints (`1b86eea11f129a27` etc.) without the `hgfp1:` prefix, leaking an analyzer-internal serialization. The spec gives no carveout for \"may be null when source bytes unavailable\" and does not document the `hgfp1:` prefix or the truncation length.\n\n**Expectation**: Either every applicable node carries a non-null fingerprint in a single documented format (`hgfp1:<hex>`), or the spec documents the conditions under which null is acceptable and forbids analyzer-internal serializations from leaking.\n\n**Scope**: ~16 node kinds in the null-set across 3 distinct null populations (Python-test-methods, external-symbols, scattered-other) plus one format-drift population (5 WGSL nodes with bare-hex).\n\n**Exposure**: Any consumer doing change-detection (\"did this implementation change since last analysis\"); any consumer parsing fingerprint values.\n\n**Consequence**: Change-detection silently degrades to \"compare nothing, conclude nothing changed\" or \"treat as always-changed\" on ~20% of Python methods (all test code); consumers parsing fingerprint must accept both `^hgfp1:[0-9a-f]{16}$` and bare `^[0-9a-f]{16}$` shapes.\n\n**Source**: AUDIT-AXIS sweep `fingerprint-presence-sweep-pass-45`, F45.A2 (representative of 3 null populations + 1 format-drift population).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 4708
+    fields: {}  # 4708
