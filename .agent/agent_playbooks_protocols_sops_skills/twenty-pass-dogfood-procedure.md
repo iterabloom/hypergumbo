@@ -9,9 +9,9 @@ A "tranch" is a contiguous block of 20 dogfooding passes against the same substr
 
 - An immutable per-pass raw-observations record (lab notebook stanzas with F-numbered findings).
 - A two-axis consolidated cohort (methodology-axis + causal-axis) with per-cluster confidence and a rejected-clusters log.
-- A blind-judge severity panel (default 3-judge ensemble; tunable down to 1-judge for cost-constrained runs).
+- A blind-judge severity panel (default 1-judge; tunable up to 3-judge or higher for inter-rater variance).
 - A cluster-aware trend report (carbon-dating Methods A / B / C: earliest member / latest member / 1-n distributed).
-- A retrospective audit comparing the tranch's pre-registered prediction to its measured outcome.
+- A retrospective audit covering KIND-tag stability, rejected-clusters scoring, and methodology-question carry-forward.
 - A carry-forward queue for the next tranch.
 
 Use this procedure when you want a methodology-comparable dogfooding tranch — i.e., when you expect to compare its trend report to a prior tranch's, or treat it as a baseline for future ones. For one-off audit sweeps that don't need cross-tranch comparison, the lighter-weight `self-analysis-dogfooding-playbook.md` is appropriate.
@@ -39,12 +39,12 @@ For vendors that lack sub-agent spawning (or whose sub-agent primitive doesn't y
 
 Sub-agent spawn mechanism and Appendix-A fallback keystroke per vendor. Cross-references `scripts/agent-supervisor`'s `VENDOR_TABLE` for the underlying CLI invocation + graceful-exit keystroke that the fallback path reuses. Verification status mirrors the supervisor's convention: **Verified** = ground-truthed in production; **Unverified** = best-known value, must be confirmed in a throwaway session before running a real tranch.
 
-| Vendor | Preferred path: sub-agent mechanism | Fallback path: context-flush keystroke (for Appendix A tmux mode) | Verification status |
-| --- | --- | --- | --- |
-| Claude Code | `Agent` tool with `subagent_type` parameter; supports parallel spawn; supports schema-validated return via `schema` parameter | `/compact` | **Verified** |
-| Codex CLI | Codex's task-delegation primitive (verify name with `codex --help` before tranch); if absent, fall back to Appendix A | `/condense` candidate, or graceful-exit + respawn via supervisor | **Unverified** — verify both columns before first tranch |
-| Cursor | Cursor's agent task-spawn primitive (verify with `cursor --help` before tranch); if absent, fall back to Appendix A. Note: single-session-per-repo quirk per supervisor `VENDOR_TABLE` — parallel sub-agents within the same repo are unsupported, serialize them | `/clear` candidate, or graceful-exit + respawn via supervisor | **Unverified** — verify both columns and single-session quirk before first tranch |
-| Gemini CLI | Gemini's agent task-spawn primitive (verify with `gemini --help` before tranch); if absent, fall back to Appendix A. Note: before-model hook fires per LLM request not per turn, which may interact poorly with high-fan-out judging — measure overhead before committing to 3-judge ensemble | `/clear` candidate, or graceful-exit + respawn via supervisor | **Unverified** — verify both columns and per-request hook overhead before first tranch |
+| Vendor | Preferred path: sub-agent mechanism | Structural blinding mechanism (Phase 3 card writer + Phase 4 judges) | Fallback path: context-flush keystroke (Appendix A tmux mode) | Verification status |
+| --- | --- | --- | --- | --- |
+| Claude Code | `Agent` tool with `subagent_type` parameter; supports parallel spawn; supports schema-validated return via `schema` parameter | Stage allowed files in `${TRANCH_DIR}/.staging/<sub-agent-name>/`; pass staging directory as the working directory in the Agent prompt. The Agent tool does not currently restrict filesystem access, so blinding is enforced by (a) staging only allowed files, (b) the prompt directing the sub-agent to its working directory, and (c) avoiding `cwd` directives that would expose the broader repo. Strongest blinding pattern available for this vendor today | `/compact` | **Verified** for spawn + flush; **partial** for blinding (declarative-plus-staging, not filesystem-enforced) |
+| Codex CLI | Codex's task-delegation primitive (verify name with `codex --help` before tranch); if absent, fall back to Appendix A | Same staging-directory pattern as Claude Code; verify Codex sub-agent file-access model before tranch | `/condense` candidate, or graceful-exit + respawn via supervisor | **Unverified** — verify all three columns before first tranch |
+| Cursor | Cursor's agent task-spawn primitive (verify with `cursor --help` before tranch); if absent, fall back to Appendix A. Note: single-session-per-repo quirk per supervisor `VENDOR_TABLE` — parallel sub-agents within the same repo are unsupported, serialize them | Same staging-directory pattern; the single-session quirk means Phase 4 fan-out cannot be parallel, but blinding still works per sub-agent invocation | `/clear` candidate, or graceful-exit + respawn via supervisor | **Unverified** — verify all three columns and single-session quirk before first tranch |
+| Gemini CLI | Gemini's agent task-spawn primitive (verify with `gemini --help` before tranch); if absent, fall back to Appendix A. Note: before-model hook fires per LLM request not per turn, which may interact poorly with high-fan-out judging — measure overhead before committing to high `--judge-count` | Same staging-directory pattern; verify Gemini sub-agent file-access model before tranch | `/clear` candidate, or graceful-exit + respawn via supervisor | **Unverified** — verify all three columns and per-request hook overhead before first tranch |
 
 **Verification protocol** (one-time per vendor, similar to the supervisor's WI-batob procedure): in a throwaway tmux session, spawn the vendor CLI, attempt the preferred sub-agent mechanism with a trivial prompt ("write 'hello' to /tmp/test.txt and return 'done'") and confirm capture of the return value. Then test the fallback context-flush keystroke (`tmux send-keys '<keystroke>' Enter`) and confirm the agent's working context is reset. Document the verified values in this table via a follow-up PR.
 
@@ -60,7 +60,7 @@ Sub-agent spawn mechanism and Appendix-A fallback keystroke per vendor. Cross-re
 
 ## Phase 0 — Pre-tranch setup
 
-Output: `${TRANCH_DIR}/tranch_state.json` populated; substrate frozen; pre-registered prediction committed; rubric locked.
+Output: `${TRANCH_DIR}/tranch_state.json` populated; substrate frozen; rubric locked.
 
 ### Step 0.1 — Pick the tranch directory
 
@@ -98,17 +98,7 @@ symptoms individually.
 
 This is the load-bearing user-provided rule from the 2026-05-29 baseline campaign. It governs all consolidation work in Phase 3.
 
-### Step 0.5 — Pre-register a prediction
-
-In `${TRANCH_DIR}/prediction.md`, write:
-- Predicted bucket-level Σ-severity at end-of-tranch (one number per 5-pass bucket).
-- Predicted singleton/cluster split.
-- Predicted Significant+Severe percentage.
-- Brief rationale.
-
-Pre-registration forces future-you to explain a divergence rather than rationalize a confirmation. Without it, end-of-tranch interpretation drifts toward the agent's narrative prior.
-
-### Step 0.6 — Initialize tranch state
+### Step 0.5 — Initialize tranch state
 
 ```json
 {
@@ -129,7 +119,6 @@ Pre-registration forces future-you to explain a divergence rather than rationali
   "consolidated_complete": false,
   "judged_complete": false,
   "retrospective_complete": false,
-  "prediction_file": "prediction.md",
   "meta_criterion_file": "meta_criterion.txt",
   "substrate_guide_file": "substrate_guide.md",
   "carry_forward_in": "<path to prior tranch's carry_forward.md or null>",
@@ -331,18 +320,26 @@ Touch ${TRANCH_DIR}/tranch.consolidated. Return a 200-word summary.
 
 ### Step 3.3 — Card generation
 
-After both consolidation sub-agents complete, the parent spawns a card-writer sub-agent. CRITICAL: this sub-agent must NOT see the trend-analysis goal, the prediction, or the prior-tranch baseline. It sees only the consolidated findings and the substrate guide. This is the structural countermeasure to the same-actor bias.
+After both consolidation sub-agents complete, the parent spawns a card-writer sub-agent. The card writer must see ONLY the consolidated findings and the substrate guide — not the trend-analysis goal, not the prior-tranch baseline, not the cross-tranch index. This is the structural countermeasure to the same-actor bias.
+
+**Structural blinding via staging directory** (not declarative).
+
+Christian & Mazor (2026) and the introspection-reliability literature established that telling a model "ignore the biasing info" fails and sometimes backfires. The fix is to make the biasing info *unavailable* to the sub-agent, not to ask it not to read. The parent agent therefore stages allowed inputs in `${TRANCH_DIR}/.staging/card_writer/` and points the sub-agent at the staging directory:
+
+```bash
+mkdir -p "${TRANCH_DIR}/.staging/card_writer"
+cp "${TRANCH_DIR}/substrate_guide.md" "${TRANCH_DIR}/.staging/card_writer/"
+cp "${TRANCH_DIR}/classification.md" "${TRANCH_DIR}/.staging/card_writer/"
+cp "${TRANCH_DIR}/clusters.md" "${TRANCH_DIR}/.staging/card_writer/"
+cp "${TRANCH_DIR}"/pass_*.md "${TRANCH_DIR}/.staging/card_writer/"
+```
+
+The sub-agent prompt then constrains tool use to the staging directory. Vendor-specific guidance is in the §Vendor parity table column "Structural blinding mechanism." If the vendor cannot constrain sub-agent file access, the staging directory is still the right pattern — the sub-agent can `ls` outside the directory but the prompt + the absence of the file content in its prepared inputs makes accidental contamination far less likely than the pure-declarative pattern. Document this as a known weakness in the retrospective when running on unrestricted-vendor sub-agents.
 
 ```
-You are the Phase 3c card writer for tranch ${TRANCH_ID}. You are
-deliberately blinded from the trend-analysis context. Do NOT read
-${TRANCH_DIR}/prediction.md or ${TRANCH_DIR}/tranch_state.json's
-prior-tranch fields.
-
-Read only: ${TRANCH_DIR}/substrate_guide.md (for the rubric),
-${TRANCH_DIR}/classification.md (for the methodology-axis unit count),
-${TRANCH_DIR}/clusters.md (for cluster identity), and the per-pass
-${TRANCH_DIR}/pass_NN.md files for finding detail.
+You are the Phase 3c card writer for tranch ${TRANCH_ID}. Your working
+directory is ${TRANCH_DIR}/.staging/card_writer. Read only files within
+this directory; the parent has staged exactly the files you need.
 
 For each consolidated finding (clusters become one card per cluster;
 INDEPENDENT singletons become one card each; EXTENSION/CORRECTION
@@ -378,19 +375,25 @@ Output: `${TRANCH_DIR}/verdicts_judge_N.jsonl` per judge; `${TRANCH_DIR}/aggrega
 
 ### Step 4.1 — Fan-out judge sub-agents
 
-For each card × each judge in the `--judge-count` ensemble (default 3), spawn a judge sub-agent in parallel:
+For each card × each judge in the `--judge-count` ensemble (default 1), spawn a judge sub-agent in parallel. Same structural-blinding pattern as Phase 3.3: the parent stages exactly the allowed inputs in a per-judge staging directory before spawning.
+
+```bash
+mkdir -p "${TRANCH_DIR}/.staging/judge_${JUDGE_INDEX}_card_${CARD_ID}"
+cp "${TRANCH_DIR}/substrate_guide.md" \
+   "${TRANCH_DIR}/.staging/judge_${JUDGE_INDEX}_card_${CARD_ID}/"
+# Extract the single card matching ${CARD_ID} from cards_blinded.md
+python3 extract_card.py "${TRANCH_DIR}/cards_blinded.md" "${CARD_ID}" \
+   > "${TRANCH_DIR}/.staging/judge_${JUDGE_INDEX}_card_${CARD_ID}/card.md"
+```
+
+Sub-agent prompt:
 
 ```
 You are a Phase 4 blind judge sub-agent for tranch ${TRANCH_ID},
-assigned to card ${CARD_ID}, judge index ${JUDGE_INDEX}.
-
-Read ONLY:
-  - ${TRANCH_DIR}/substrate_guide.md (severity rubric).
-  - The single card in ${TRANCH_DIR}/cards_blinded.md matching ${CARD_ID}.
-
-Do NOT read other cards. Do NOT read tranch_state.json. Do NOT read
-the mapping file. Do NOT read any pass writeup. You are deliberately
-blind to context.
+assigned to card ${CARD_ID}, judge index ${JUDGE_INDEX}. Your working
+directory is ${TRANCH_DIR}/.staging/judge_${JUDGE_INDEX}_card_${CARD_ID}.
+Read only files within this directory; the parent has staged exactly
+substrate_guide.md (the rubric) and card.md (the single card you judge).
 
 Score the card on the 1-5 severity scale per the rubric. Emit a JSON
 object on stdout:
@@ -400,6 +403,8 @@ object on stdout:
 
 Do not write to any file. The orchestrator captures your stdout.
 ```
+
+The staging-directory pattern is the structural countermeasure. Where the vendor's sub-agent primitive permits constraining filesystem access (a sandbox flag, a working-directory restriction), use that in addition. See §Vendor parity table column "Structural blinding mechanism" for vendor specifics.
 
 The parent collects each judge's verdict and writes `verdicts_judge_${JUDGE_INDEX}.jsonl` for each judge.
 
@@ -443,7 +448,6 @@ Spawn a retrospective sub-agent:
 You are the Phase 5 retrospective sub-agent for tranch ${TRANCH_ID}.
 
 Read:
-  - ${TRANCH_DIR}/prediction.md (your pre-registered prediction).
   - ${TRANCH_DIR}/trend_cluster_aware.md (the measured outcome).
   - ${TRANCH_DIR}/midtranch_audit.md (mid-tranch KIND ratchets).
   - ${TRANCH_DIR}/classification.md and ${TRANCH_DIR}/clusters.md
@@ -451,20 +455,13 @@ Read:
   - ${TRANCH_DIR}/rejected_clusters.md (the consolidation decisions log).
 
 Produce a retrospective covering:
-  1. Pre-registered prediction vs measured outcome. Numeric divergence
-     per bucket. Honest assessment of whether the prediction shape was
-     right.
-  2. KIND tag stability: how many real-time tags survived the
+  1. KIND tag stability: how many real-time tags survived the
      mid-tranch audit and Phase 3 reclassification? Where did real-time
      tagging fail?
-  3. Rejected-clusters scoring: did the rejected-clusters log catch any
+  2. Rejected-clusters scoring: did the rejected-clusters log catch any
      cluster you would have collapsed under one-shot consolidation?
      Name specific cases.
-  4. Sycophancy review: did the consolidation work lean toward
-     producing a prediction-matching outcome? Cite specific decisions
-     that could have gone either way and explain why they went the way
-     they did.
-  5. Carry-forward to the next tranch: methodology questions raised,
+  3. Carry-forward to the next tranch: methodology questions raised,
      calibration adjustments suggested, probe classes saturated vs
      fresh.
 
@@ -624,7 +621,6 @@ Single source of truth for tranch state. Every sub-agent reads this file as its 
   "consolidated_complete": "bool",
   "judged_complete": "bool",
   "retrospective_complete": "bool",
-  "prediction_file": "string (relative path)",
   "meta_criterion_file": "string",
   "substrate_guide_file": "string",
   "carry_forward_in": "string (absolute path or null)",
@@ -698,7 +694,7 @@ scripts/agent-supervisor dogfood-tranch start \
     --tranch-dir <path> \
     --first-pass <N+1> \
     --chunk-size 2 \
-    --judge-count 3 \
+    --judge-count 1 \
     --vendor <claude-code|codex-cli|cursor|gemini-cli>
 ```
 
@@ -726,3 +722,4 @@ The fallback path is preferred only when the vendor lacks a viable sub-agent pri
 - `output-capture-long-running-playbook.md` — output capture discipline referenced in Phase 1 sub-agent prompt.
 - `self-analysis-dogfooding-playbook.md` — lighter alternative for one-off audit sweeps.
 - `scripts/agent-supervisor` — the vendor parity infrastructure referenced in Appendix A.
+- `sycophancy-lit-review.md` (lab notebook) — empirical basis for the structural-blinding design choice; see Christian & Mazor (2026) on why declarative blinding ("ignore the biasing info") fails, and the broader literature on why introspection-based bias defenses are theatrical.
