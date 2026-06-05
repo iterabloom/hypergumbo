@@ -54,6 +54,11 @@ SKIP_PREFIXES = [
     ".agent/tracker/.ops",
     ".agent/tracker-workspace/.ops",
     ".agent/tracker-workspace/stealth",
+    # Agent-adapter stubs: scripts/validate-agents.sh requires these to be
+    # EXACTLY "@AGENTS.md" / "@./AGENTS.md" with no leading SPDX comment, so the
+    # license-header tool must leave them pristine (no header to add or check).
+    "CLAUDE.md",
+    "GEMINI.md",
 ]
 
 # The SPDX marker that appears in all header variants
