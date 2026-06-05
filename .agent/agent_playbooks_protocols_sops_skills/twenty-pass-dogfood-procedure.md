@@ -656,7 +656,11 @@ classification.md):
       original's even with fix-surface variation: log reasoning in the
       discussion entry, then either reopen (if mechanism reproduction
       is unambiguous) or escalate to operator (if surface variation
-      makes the regression call ambiguous).
+      makes the regression call HIGHLY ambiguous — but err on the side
+      of reopening without asking). The default is action, not
+      escalation; a reopened ticket has no cost the playbook cares
+      about, while a missed regression silently buries a real defect on
+      a closed row.
 
       Without this rule, Severe blind-judge verdicts get silently
       buried on `done` rows, the tracker's actionable-work view doesn't
