@@ -3,6 +3,26 @@
 
 A soup-to-nuts, vendor-neutral procedure for running a 20-pass dogfooding tranche on hypergumbo (or any comparable tool that ships a CLI, an analysis substrate, and a tracker). Integrates the strengths of the passes-1-20 and passes-21-40 campaigns: 1-20's up-front two-axis consolidation criteria + per-cluster confidence levels + rejected-clusters log, 21-40's F-number provenance + INVALIDATION discipline + mid-stream audit posture. Uses sub-agent orchestration so the operator does not have to babysit a tmux session.
 
+## Design principle: de-primed discovery, parent-owned numbering
+
+Two structural invariants govern every sub-agent prompt in this procedure. They exist because a line-by-line review of an earlier run found that the per-prompt scaffolding was, on balance, *adding* bias rather than catching it: workers were starved of the project's real-issue list, so the orchestrator compensated with scaffolding (a thin distilled digest, parent-pre-assigned probes, workers reading each other's raw output) and leaked campaign-position and expectation cues into every prompt — which biased discovery toward finding less and pre-judging novelty, then reported the resulting low yield as a trend signal, partly circularly.
+
+1. **Discovery workers receive the real-issue registry, not a biased expectation.** The cumulative, de-duplicated ledger of every distinct defect surfaced across prior tranches lives in `agent_notes.json` (see §The real-issue registry below). Every discovery and audit sub-agent is handed that registry and navigates toward what is **not** already in it. Workers are never told to "expect re-confirmation," never told to pre-judge a finding's novelty, and never handed another worker's raw findings. The downstream dedup gates (Phase 2/2.5 ratchets, Phase 3a/3b causal+methodology dedup, Phase 6.1 broad-tracker scan) remain the authoritative novelty decision — the discoverer's job is to observe and describe, not to decide what is new.
+
+2. **The parent owns all global numbering; workers are campaign-position-blind.** A worker never sees "tranche NN" or a global pass number. It works in terms of local, opaque labels (this chunk's pass 1, 2; findings `A1`, `A2`); the parent stamps the global identity (`pass_61.md`, `F61.A1`, the chunk→{61,62} map) only on aggregation, and holds the ordinal↔token mapping its trend carbon-dating needs. This mirrors how Phase 3c already mints `anon-card-NNN` and keeps the unblinding key parent-side.
+
+A worker prompt therefore contains exactly three things: its **task**, its **inputs**, and its **output format** — nothing about its place in the campaign, nothing about being evaluated, nothing pre-judging its findings. Every prompt template below is written to that rule; §Appendix B — de-priming rationale records, per cut, what was removed and why.
+
+## The real-issue registry
+
+`agent_notes.json` (at `~/hypergumbo_lab_notebook/guidance_log/`, the agent's persistent handoff document) doubles as the **canonical, complete registry of every distinct issue discovered across the dogfood tranches** — the cumulative cross-tranche discovery ledger. It is maintained as an **issues table** — one row per distinct issue, columns `Tracker ID | Pri | Status | Parent | Title` — complete and validated and consistent with its materialized tracker rows. "Curated" means **complete and clean, not thinned**. Every discovery worker (and every audit worker) is handed this registry as a primary input so it can navigate toward unmapped ground with real information instead of a biased expectation.
+
+New findings enter the registry the same way they leave it — **as appended table rows** (Step 1.2 #5). That is precisely what keeps the per-chunk fold distilled and neutral: a row has columns for an id, a priority, a status, a parent, and a one-line title, and **no column for a severity rationale, a KIND tag, a novelty judgment, or a fold disposition**. The table schema structurally cannot carry the anchoring content that a raw findings-file dump (the removed D1 cross-worker read) would. In-tranche, the appended rows use a provisional handle in the `Tracker ID` slot (the real tracker ID is minted at Phase 6.1); priority may be blank until materialization.
+
+**Two senses of "all real issues" — do not conflate them.** (1) The *discovery ledger* — what this registry is, and what loads into workers: the cross-tranche set of distinct dogfood-discovered issues. (2) *Integration into the entire tracker* — a separate operation (Phase 6.1 materialization) that reconciles those discovered issues against the project-wide tracker, which holds issues from all sources (human-filed, non-dogfood). "Kept in sync with the tracker" means narrowly that each ledger entry stays consistent with its tracker row (id/status) — **not** that the registry ingests every tracker item. The registry is the discovery subset; the tracker is the superset source of truth.
+
+**De-primed by relocation, not deletion.** The registry must carry no campaign-measurement framing — trend means, bucket-Σ tables, "READ THIS FIRST tranche NN" headers, cohort-by-tranche rollups, "expect re-confirmation." That content is *not a real issue*; it lives in the parent-facing trend/index files (`trend_cluster_aware.md`, `dogfooding_trend_combined.md`, `dogfood_tranches_index.md`), which are the canonical home for it. The per-issue registry stays in full, **priorities included** — priorities are attributes of issues, not campaign expectations. Phase 7's coherence sweep is the ongoing enforcer of this boundary: keep the ledger complete, keep measurement-framing out, and don't let it bloat into a tracker clone.
+
 ## Purpose & scope
 
 A "tranche" is a contiguous block of 20 dogfooding passes against the same substrate (or substrate family). The procedure produces:
@@ -11,7 +31,7 @@ A "tranche" is a contiguous block of 20 dogfooding passes against the same subst
 - TWO audit passes — a Phase 2 mid-tranche checkpoint on the first-half passes and a Phase 2.5 post-discovery audit on the second-half passes — that both feed Phase 3 consolidation and Phase 6.4's optional retroactive-cleanup decision.
 - A two-axis consolidated cohort (methodology-axis + causal-axis) with per-cluster confidence and a rejected-clusters log.
 - A blind-judge severity panel (default 1-judge; tunable up to 3-judge or higher for inter-rater variance).
-- A cluster-aware trend report (carbon-dating Methods A / B / C: earliest member / latest member / 1-n distributed).
+- A cluster-aware trend report (single carbon-dating attribution: earliest cluster member; the former Methods B/C collapse to it while every cluster is same-pass, which has held to date — see Phase 5.1).
 - A retrospective audit covering KIND-tag stability, rejected-clusters scoring, and methodology-question carry-forward.
 - A carry-forward queue for the next tranche.
 
@@ -25,7 +45,7 @@ Use this procedure when you want a methodology-comparable dogfooding tranche —
 
 ## Architecture: sub-agent orchestration
 
-The parent agent (the one reading this playbook) owns the phase loop, the tranche state file, and the final trend report. It does NOT directly run the 20 passes — it spawns sub-agents in chunks of `--chunk-size` passes (default 2) and aggregates their return summaries.
+The parent agent (the one reading this playbook) owns the phase loop, the tranche state file, the final trend report, **all global numbering** (the chunk→pass map and the local-label→F-number map; see §Design principle), and the **curated real-issue registry** it injects into every discovery and audit worker. It does NOT directly run the 20 passes — it spawns sub-agents in chunks of `--chunk-size` passes (default 2) and aggregates their return summaries, stamping the global identity onto each returned artifact at aggregation time.
 
 **The sub-agent boundary IS the compaction event.** No `/compact` keystroke is invoked anywhere during normal operation. Each sub-agent's full working context (substrate dumps, probe output, command logs, lab notebook drafting, tracker queries — easily 50-100K tokens per pass) lives only inside the sub-agent and dies on return. The parent never accumulates that bulk; it sees only the ~200-word return summaries. The `--chunk-size` parameter therefore controls how many passes-worth of context any single sub-agent has to hold at once. Default 2 matches the empirical observation that a single pass adds ~50K tokens and two passes brings a sub-agent close to typical Opus-class working-context comfort.
 
@@ -57,7 +77,8 @@ Sub-agent spawn mechanism and Appendix-A fallback keystroke per vendor. Cross-re
 | `--judge-count` | 1 | 1-5 | Blind-judge ensemble size in Phase 4. Default 1 matches the passes-21-40 panel methodology — cheap, fast, yields a usable severity distribution. Upgrade to 3 for inter-rater variance averaging (matches passes 1-20 baseline). The upgrade is **reversible**: re-running additional judges on the SAME cards later is supported — Phase 4 jsonl output is per-judge, so adding judge_2 and judge_3 to a tranche that ran with judge_count=1 is a follow-up sub-agent fan-out, not a redo. |
 | `--mid-tranche-pass` | 10 | 5-15 | Pass number to insert the Phase 2 interim audit. Default at half-tranche. |
 | `--tranche-size` | 20 | 10-30 | Total pass count. Above 30 the procedure starts losing coherence; below 10 the trend signal is too noisy. |
-| `--substrate-policy` | snapshot | snapshot \| regen-each \| regen-on-suspicion | When to regenerate the analysis substrate. snapshot = once, at Phase 0. regen-each = every pass (expensive). regen-on-suspicion = whenever F39.A1-style multi-pass negative findings need fresh-substrate verification. |
+| `--substrate-policy` | snapshot | snapshot \| regen-each \| regen-on-suspicion | When to regenerate the analysis substrate. snapshot = once, at Phase 0. regen-each = every pass (expensive). regen-on-suspicion = whenever a multi-pass negative finding needs fresh-substrate verification. |
+| `--discovery-mode` | region-parallel | region-parallel \| sequential | How Phase 1 chunks avoid colliding on the same surface. `region-parallel`: the parent assigns each chunk a broad *region* of the analysis output (multi-modal-sweep style) and folds each wave's accepted issues into the registry between waves — faster wall-clock. `sequential`: chunks run one after another, each handed the registry updated with the prior wave's accepted issues — cleaner shared state, slower. Both rely on the registry (not narrow pre-scripted probe checklists, and not cross-worker raw-output reads) for collision-avoidance. |
 
 ## Phase 0 — Pre-tranche setup
 
@@ -87,6 +108,8 @@ If `regen-each` or `regen-on-suspicion`, document the substrate-generation comma
 
 Copy or generate `${TRANCHE_DIR}/substrate_guide.md` covering: severity rubric (1=Cosmetic ... 5=Severe), status reconciliation rules, substrate file references. This locks the rubric so it can't drift mid-tranche. The 5-tier rubric and 6-field card format from `dogfooding_blind_judge_primer.md` is the proven baseline; reuse it unless you have a documented reason to diverge.
 
+Also assemble `${TRANCHE_DIR}/judge_primer.md` — the **domain primer + the full project spec (`docs/hypergumbo-spec.md`, inlined) + the severity rubric** (the proven `dogfooding_blind_judge_primer.md` baseline, ≈155 KB). This is a superset of `substrate_guide.md`: the Phase 4 blind judges receive it (not the lighter substrate guide) because deciding whether a substrate observation is *wrong* requires the spec's statement of correct behavior, not just the rubric. Lock it at Phase 0 alongside the substrate guide so neither drifts mid-tranche.
+
 ### Step 0.4 — Commit the meta-criterion verbatim
 
 In `${TRANCHE_DIR}/meta_criterion.txt`, write:
@@ -108,9 +131,10 @@ This is the load-bearing user-provided rule from the 2026-05-29 baseline campaig
   "vendor": "<claude-code|codex-cli|cursor|gemini-cli>",
   "tranche_size": 20,
   "compact_every": 2,
-  "judge_count": 3,
+  "judge_count": 1,
   "mid_tranche_pass": 10,
   "substrate_policy": "snapshot",
+  "discovery_mode": "region-parallel",
   "first_pass_number": <N+1>,
   "last_pass_number": <N+20>,
   "current_pass": <N+1>,
@@ -122,12 +146,29 @@ This is the load-bearing user-provided rule from the 2026-05-29 baseline campaig
   "retrospective_complete": false,
   "meta_criterion_file": "meta_criterion.txt",
   "substrate_guide_file": "substrate_guide.md",
+  "registry_file": "<absolute path to the curated real-issue registry staged in Step 0.6>",
   "carry_forward_in": "<path to prior tranche's carry_forward.md or null>",
   "started_at_utc": "<ISO 8601>"
 }
 ```
 
-Write to `${TRANCHE_DIR}/tranche_state.json`. All sub-agents read this file as their first action; the parent updates it after every sub-agent return.
+Write to `${TRANCHE_DIR}/tranche_state.json`. The parent reads and updates it across the whole loop. Discovery and audit workers do **NOT** read it — it carries global numbering and campaign position, which would break their blinding; they read only their staging directory. Consolidation-stage sub-agents (Phase 3), which legitimately work over the full provenance, may read it.
+
+### Step 0.6 — Seed the tranche's working registry
+
+Seed the tranche's **working registry** from the canonical real-issue ledger (see §The real-issue registry). This file is the parent's live known-state for the tranche: it starts as a copy of the canonical `agent_notes.json` registry and **accrues each chunk's new findings as the tranche runs** (Step 1.2 #5). Every discovery and audit worker reads it, so it is the sole collision-avoidance mechanism — workers never read each other's raw output.
+
+```bash
+cp ~/hypergumbo_lab_notebook/guidance_log/agent_notes.json \
+   "${TRANCHE_DIR}/registry.json"
+```
+
+Before seeding, confirm the canonical ledger is **complete and clean** — every distinct prior-tranche issue present with id/description/mechanism/status/priority, and **no campaign-measurement framing** (no trend means, bucket-Σ tables, "READ THIS FIRST tranche NN" headers, or "expect re-confirmation" language). If measurement framing is present, it is a Phase 7 coherence-sweep debt from the prior tranche; relocate it to the trend/index files now rather than injecting it into this tranche's workers. Record `registry.json`'s absolute path in `tranche_state.json`'s `registry_file` field.
+
+Two properties make the working registry a navigation aid (what ground is already mapped) rather than a biasing expectation (what a worker is likely to find) or an anchor (another worker's dispositions):
+
+- **It is distilled and neutral.** Each entry is one issues-table row (`Tracker ID | Pri | Status | Parent | Title`) — the schema has no column for a severity, a novelty judgment, a KIND tag, or a fold disposition, so the fold structurally cannot carry them. The parent distills the worker's prose into that row when folding a chunk's findings in (Step 1.2 #5). This is the difference between the registry and the removed cross-worker raw-output read.
+- **In-tranche updates are local; canonical reconciliation is deferred.** The working registry may hold provisional in-tranche findings; the *validated, deduped* cohort is reconciled back into the canonical `agent_notes.json` only at Phase 6.2. A finding the dedup stages later reject therefore never permanently pollutes the cross-tranche ledger.
 
 ## Phase 1 — Discovery (per-pass sub-agent chunks)
 
@@ -135,101 +176,123 @@ Output: `${TRANCHE_DIR}/pass_NN.md` per pass (immutable after written), `${TRANC
 
 ### Step 1.1 — Chunk loop
 
-For each chunk of `--chunk-size` passes (default 2), spawn a Phase 1 sub-agent with this prompt template:
+For each chunk of `--chunk-size` passes (default 2), the parent prepares two things, then spawns a discovery sub-agent:
+
+- **A staging/working directory** `${TRANCHE_DIR}/.staging/discovery_<chunk>/` containing the curated real-issue registry (`registry.json`), the substrate guide (probe-class catalog + severity rubric), and — under `--discovery-mode=region-parallel` — a one-line `region.txt` naming a broad surface of the analysis output to probe (multi-modal-sweep style, chosen to avoid colliding with concurrent chunks). Under `--discovery-mode=sequential`, the staged registry already reflects the prior wave's accepted issues and no region need be assigned.
+- **The local↔global mapping**, kept parent-side and never given to the worker: chunk → {global pass numbers}, and (after return) local-label → F-number.
+
+The worker is campaign-position-blind: it never learns its tranche ordinal or its global pass numbers. Prompt template:
 
 ```
-You are a Phase 1 discovery sub-agent for dogfooding tranche ${TRANCHE_ID}.
-Read ${TRANCHE_DIR}/tranche_state.json first. You will run passes
-${chunk_start} through ${chunk_end} against substrate ${substrate_file}.
+You are a discovery sub-agent. Your working directory is
+${working_dir}. Read only files within it; the parent has staged
+exactly what you need: registry.json (the registry of issues
+already discovered), substrate_guide.md (probe-class catalog + severity
+rubric), and — if present — region.txt (the surface to probe this run).
 
-For each pass:
-  1. Pick a probe class. Use the substrate guide's probe-class catalog.
-     Avoid probe classes already saturated by prior passes in this tranche
-     (see passes_complete in tranche state for prior pass summaries).
+Your task: run ${chunk_size} independent discovery passes over the
+analysis substrate at ${substrate_file}, surfacing defects in its
+output. Number your passes locally 1..${chunk_size}. For each pass:
+
+  1. Choose a probe from the substrate guide's probe-class catalog.
+     registry.json lists the issues already discovered — steer
+     toward surfaces it does NOT already cover. If region.txt is present,
+     stay within that surface. You are not assigned specific probes;
+     pick what looks most informative.
   2. Execute the probe. Capture all command output to files under
-     /tmp/pass_${pass_n}_*.log per the output-capture-long-running
-     playbook.
-  3. Write findings with F-numbers: F${pass_n}.A1, F${pass_n}.A2, etc.
-     Each finding gets:
-       - A 1-2 sentence headline.
+     ${working_dir}/probe_<local_pass>_*.log per the output-capture-
+     long-running discipline.
+  3. Record findings, labeled A1, A2, … per local pass. Each finding:
+       - A 1-2 sentence neutral headline (describe what you observed;
+         do not assess novelty or severity).
        - The substrate evidence (file:line + values, OR command + output).
-       - A provisional KIND tag (INDEPENDENT / AUDIT-AXIS / EXTENSION /
-         CORRECTION / POINTER-ONLY / INVALIDATION). Do NOT load-bear on
-         this tag — it is provisional and will be revisited in Phase 3.
-       - A provisional fold/standalone hint. Default to STANDALONE when
-         uncertain. Default does NOT bind Phase 3 consolidation.
-       - For any substantive NEGATIVE finding (something is absent/zero/
-         broken) that conceptually reproduces a finding from a prior pass
-         in this tranche, mark it INVALIDATION-RISK and trigger fresh-
-         substrate regeneration before amplifying the claim. This is the
-         F39.A1 multi-pass mismeasurement countermeasure.
-  4. Write the pass writeup to ${TRANCHE_DIR}/pass_${pass_n}.md as
-     immutable lab-notebook stanzas.
-  5. Touch ${TRANCHE_DIR}/pass_${pass_n}.complete to signal completion.
+       - Whether it is a POSITIVE observation (output looks correct) or
+         a NEGATIVE one (something absent / zero / broken).
+     Do NOT assign a KIND tag, a fold/standalone hint, or a novelty
+     judgment — dedicated dedup stages decide those downstream, and a
+     discoverer's guess only anchors them.
+  4. NEGATIVE findings are the highest-risk class for multi-pass
+     mismeasurement. Before recording any substantive negative finding,
+     regenerate the substrate fresh and confirm the finding reproduces.
+     Note the verification outcome inline ("regenerated at <path>;
+     reproduced" / "did NOT reproduce — likely a substrate artifact").
+  5. Write each pass's findings to
+     ${working_dir}/observations_<local_pass>.md as immutable
+     lab-notebook stanzas, and touch
+     ${working_dir}/observations_<local_pass>.complete.
 
-Return a 200-word summary covering:
-  - Pass numbers run.
-  - Headline findings (F-numbers + 1-line each).
-  - INVALIDATION-RISK flags raised (if any) and how resolved.
-  - Probe classes still un-sampled, suggested for next chunk.
-DO NOT return the full pass writeups — they live in the per-pass files.
-
-When done, exit. The parent agent will spawn the next chunk after
-absorbing your summary into tranche_state.json.
+Return a short summary (<=200 words):
+  - Headline findings (local labels + 1 line each).
+  - Negative findings and their fresh-substrate verification outcome.
+  - Probe classes / surfaces you did NOT reach, for the parent to route
+    to another chunk.
+  - Optionally, plainly: if anything about the data or tooling slowed
+    or misled you, note it.
+Do NOT return the full writeups — they live in the per-pass files. Do
+NOT report timing or token counts; the parent reads those from the
+tool result.
 ```
 
-### Step 1.2 — Parent aggregation
+### Step 1.2 — Parent aggregation (numbering + registry update)
 
-After each sub-agent returns, the parent:
-1. Reads the chunk summary from the sub-agent's return value.
-2. Updates `tranche_state.json`: `current_pass` advances, `passes_complete` array gets each pass + its 1-line headline.
-3. If `--mid-tranche-pass` was just reached, transitions to Phase 2 (next chunk is the audit chunk).
-4. Otherwise spawns the next Phase 1 chunk.
+After each sub-agent returns, the parent — and ONLY the parent — stamps global identity onto the worker's local artifacts:
+
+1. Reads the chunk summary from the sub-agent's return value, plus the worker's per-pass observation files from its working directory.
+2. **Stamps global numbering.** For each local pass `k` in the chunk, moves `observations_k.md` → `${TRANCHE_DIR}/pass_<global>.md`, rewriting the local finding labels (`A1`, `A2`, …) to global F-numbers (`F<global>.A1`, …) in that canonical copy, and touches `pass_<global>.complete`. Records the chunk→{global passes} map and the local-label→F-number map in `tranche_state.json` (the trend carbon-dating needs this ordinal↔token mapping parent-side anyway).
+3. **Captures resource stats** from the tool result (duration, tokens, tool uses) into the chunk's `tranche_state.json` record — never from a worker self-report.
+4. Updates `tranche_state.json`: `current_pass` advances; `passes_complete` gets each global pass + its 1-line headline.
+5. **Folds new issues into the working registry as table rows.** For each genuinely-new finding the chunk surfaced, the parent appends ONE row to `registry.json`'s issues table — `<provisional-handle> | <pri or blank> | new-this-tranche | <parent or blank> | <neutral one-line title>` — distilling the worker's prose into the structured row and dropping any severity / novelty / disposition language. This is the whole collision-avoidance mechanism: the next worker reads the updated table and steers away from mapped ground, without ever seeing another worker's raw output. Under `--discovery-mode=sequential` the parent does this before spawning the next chunk; under `region-parallel` it folds each returned wave between waves and assigns the next chunk a non-overlapping region. (Provisional handles become real tracker IDs at Phase 6.1; the canonical `agent_notes.json` is reconciled at Phase 6.2.)
+6. If `--mid-tranche-pass` was just reached, transitions to Phase 2 (next chunk is the audit chunk). Otherwise spawns the next Phase 1 chunk.
 
 ### Step 1.3 — Fresh-substrate verification protocol
 
-When an INVALIDATION-RISK flag is raised, the sub-agent's response must include either:
-- "verification ran: substrate regenerated at <path>; finding reproduced" — finding proceeds as substantive, NOT as INVALIDATION.
-- "verification ran: substrate regenerated at <path>; finding did NOT reproduce" — finding gets KIND=INVALIDATION and the previously-cited prior pass's finding gets marked-for-review in tranche state. Phase 3 consolidation will decide whether to invalidate the prior finding or keep it as a methodology-calibration record.
+Every substantive NEGATIVE finding carries an inline verification outcome (Step 1.1 #4). The parent handles the two outcomes at aggregation:
 
-This is the procedure that catches multi-pass false-claim chains before they amplify into 4-pass-deep mistakes (the F34→F37 chain in the 21-40 campaign).
+- "regenerated at <path>; reproduced" — the finding proceeds as substantive.
+- "regenerated at <path>; did NOT reproduce" — the finding is recorded as a substrate artifact, not a defect, and the parent checks whether any registry entry it appeared to contradict needs a Phase 3 review flag (a non-reproducing negative can be evidence that a previously-recorded negative was itself a mismeasurement). Phase 3 consolidation decides whether to invalidate the prior entry or keep it as a methodology-calibration record.
+
+This catches multi-pass false-claim chains before they amplify into deep mistakes. The discipline is applied at finding-time by every worker, not retroactively by an auditor who must reconstruct which pass first asserted the claim — so no worker needs to see another worker's findings to apply it.
 
 ## Phase 2 — Mid-tranche checkpoint
 
 Output: `${TRANCHE_DIR}/midtranche_audit.md`; `tranche.checkpoint` sentinel; any pass writeups annotated with KIND-tag ratchets.
 
-After pass `--mid-tranche-pass` completes (default pass 10 of the 20-pass tranche), spawn a Phase 2 sub-agent:
+After pass `--mid-tranche-pass` completes (default pass 10 of the 20-pass tranche), the parent stages the first-half passes into `${TRANCHE_DIR}/.staging/audit_first_half/`, renamed `local_1.md … local_<k>.md` (relative order within this tranche — the global numbering is stripped so the auditor stays campaign-position-blind), plus `registry.json`. Then it spawns a Phase 2 sub-agent:
 
 ```
-You are the Phase 2 mid-tranche audit sub-agent for tranche ${TRANCHE_ID}.
-Read ${TRANCHE_DIR}/tranche_state.json and every ${TRANCHE_DIR}/pass_NN.md
-file for completed passes.
+You are a mid-tranche audit sub-agent. Your working directory is
+${working_dir}; the parent staged the first-half passes there as
+local_1.md … local_${k}.md (relative order within this tranche — you
+are not told their global numbering) plus registry.json.
 
-Your job is to catch over-folding or over-splitting in the first half
-of the tranche, BEFORE patterns amplify across the second half. Do NOT
-attempt full consolidation — that is Phase 3 work. Phase 2 is a check.
+Your job is a CHECK, not a consolidation: catch over-folding, over-
+splitting, or amplification in these passes before the second half
+runs, symmetrically with the post-discovery audit on the second half.
+Do NOT attempt full consolidation (Phase 3 does that), and do NOT
+decide novelty against prior tranches (the dedup stages do that).
 
-For each completed pass:
-  1. Re-evaluate every finding's provisional KIND tag. Promote
-     EXTENSION → STANDALONE if you find the finding is actually a
-     distinct invariant. Demote STANDALONE → EXTENSION if you find the
-     finding is genuinely a sibling of a prior one.
-  2. Cross-check for INVALIDATION-RISK findings that were not flagged
-     at finding-time. Apply the same fresh-substrate verification
-     protocol as Phase 1 if you find any.
-  3. Flag pattern-amplification risks: any claim that has been re-
-     asserted across 3+ passes without fresh-substrate verification.
+Across the staged passes:
+  1. Flag over-splitting (distinct findings that look like one
+     underlying issue stated twice) AND over-folding (findings recorded
+     together that are actually separate issues). Name the candidates
+     neutrally; do not assign final dispositions.
+  2. Flag negative findings recorded without a fresh-substrate
+     verification outcome; apply the Step 1.3 fresh-substrate protocol
+     to any you find.
+  3. Flag pattern-amplification: a claim re-asserted across 3+ of these
+     passes without fresh-substrate verification, or a number re-cited
+     without fresh derivation.
 
-Write findings to ${TRANCHE_DIR}/midtranche_audit.md with sections:
-  - KIND ratchets (per-pass diffs).
-  - New INVALIDATION-RISK flags.
+Write to ${working_dir}/midtranche_audit.md with sections:
+  - Over-split / over-fold candidates (named neutrally).
+  - Negative findings missing fresh-substrate verification.
   - Pattern-amplification warnings.
-  - Recommendation on whether second-half probe direction should adjust.
+  - Whether the un-probed surfaces suggest a second-half direction.
 
-Touch ${TRANCHE_DIR}/tranche.checkpoint. Return a 150-word summary.
+Return a <=150-word summary.
 ```
 
-After Phase 2, the parent continues Phase 1 with the remaining passes. Sub-agents in the second half read `midtranche_audit.md` as part of their context.
+On return, the parent moves `midtranche_audit.md` to `${TRANCHE_DIR}/`, restoring global pass references from its local↔global map, and touches `${TRANCHE_DIR}/tranche.checkpoint`. The parent then continues Phase 1 with the remaining passes, using the audit's "second-half direction" note to route the next chunk's region. The midtranche audit is **parent-facing**: it informs region routing but is NOT staged into second-half discovery workers (whose only inputs remain the registry, the region assignment, and the substrate guide — staging the audit's within-tranche findings would prime them).
 
 ## Phase 2.5 — Post-discovery second-half audit
 
@@ -239,53 +302,54 @@ After the FINAL Phase 1 chunk completes (passes `--mid-tranche-pass + 1` through
 
 The motivating gap: the first run of this playbook (tranche 03, passes 41-60) skipped this step and the parent agent could not honestly answer "is there content to prune?" for the second-half passes — Phase 2 only covered passes 41-50, and Phase 3 / 5 looked at the second half but with different questions (consolidation, retrospective) rather than the Phase 2-style ratchet/amplification check.
 
+The parent stages the second-half passes into `${TRANCHE_DIR}/.staging/audit_second_half/`, renamed `local_1.md … local_<k>.md` (global numbering stripped), plus the first-half audit as `prior_audit.md` (also de-globalized) and `registry.json`. Then it spawns a Phase 2.5 sub-agent:
+
 ```
-You are the Phase 2.5 post-discovery audit sub-agent for tranche ${TRANCHE_ID}.
-Read ${TRANCHE_DIR}/tranche_state.json, ${TRANCHE_DIR}/midtranche_audit.md
-(Phase 2's findings), and every ${TRANCHE_DIR}/pass_NN.md file for the
-SECOND-HALF passes (passes from ${first_pass_number + mid_tranche_pass}
-to ${last_pass_number}).
+You are a post-discovery audit sub-agent. Your working directory is
+${working_dir}; the parent staged the SECOND-HALF passes there as
+local_1.md … local_${k}.md (relative order within this tranche — you
+are not told their global numbering), the first-half audit as
+prior_audit.md, and registry.json.
 
-Your job is to catch over-folding, over-splitting, and amplification
-in the second half of the tranche — symmetrically to Phase 2 on the
-first half — BEFORE Phase 3 consolidation absorbs the patterns as if
-they were intentional. Do NOT attempt full consolidation; Phase 3
-runs after you.
+Your job is a CHECK, not a consolidation: catch over-folding, over-
+splitting, and amplification in these passes — symmetrically with the
+mid-tranche audit on the first half — before Phase 3 consolidation
+absorbs the patterns as intentional. Do NOT attempt full consolidation
+(Phase 3 runs after you), and do NOT decide novelty against prior
+tranches.
 
-For each completed second-half pass:
-  1. Re-evaluate every finding's provisional KIND tag using the same
-     6-way taxonomy from substrate_guide.md. Promote EXTENSION →
-     STANDALONE / demote STANDALONE → EXTENSION as warranted.
-  2. Cross-check for INVALIDATION-RISK findings that were not flagged
-     at finding-time, including risks that would reach back into the
-     FIRST-HALF passes (i.e., a second-half finding that quietly
-     invalidates a first-half claim). Apply fresh-substrate verification
-     if you find any.
-  3. Flag pattern-amplification risks: claims re-asserted across 3+
-     second-half passes without fresh-substrate verification, OR claims
-     in the second half that re-cite first-half-derived denominators or
-     numbers without fresh derivation.
+Across the staged passes:
+  1. Flag over-splitting and over-folding candidates, named neutrally;
+     no final dispositions.
+  2. Flag negative findings recorded without a fresh-substrate
+     verification outcome — including any that would reach back and
+     contradict a finding in prior_audit.md (a second-half observation
+     that quietly invalidates a first-half claim). Apply the Step 1.3
+     fresh-substrate protocol to any you find.
+  3. Flag pattern-amplification: claims re-asserted across 3+ of these
+     passes without fresh-substrate verification, or numbers re-cited
+     from earlier passes without fresh derivation.
   4. Flag would-have-been-pruned content: any finding whose evidence
-     base is thin enough that you would not have filed it as a tracker
-     row under Phase 6.1, OR any cross-pass repetition that would be a
-     better fit as a discussion entry on an earlier finding than as a
-     standalone finding.
+     base is too thin to file as a tracker row under Phase 6.1, or any
+     cross-pass repetition better recorded as a note on an earlier
+     finding than as a standalone one.
 
-Write to ${TRANCHE_DIR}/post_discovery_audit.md with sections:
-  - KIND ratchets (per-pass diffs across the second-half passes).
-  - New INVALIDATION-RISK flags (including any retroactively against
-    first-half findings).
+Write to ${working_dir}/post_discovery_audit.md with sections:
+  - Over-split / over-fold candidates (named neutrally).
+  - Negative findings missing fresh-substrate verification (including
+    any reaching back to first-half findings).
   - Pattern-amplification warnings.
-  - Would-have-been-pruned candidates (the new section vs Phase 2; this
-    is the explicit input to whether Phase 6.4 retroactive cleanup
-    should fire).
+  - Would-have-been-pruned candidates (the explicit input to whether
+    Phase 6.4 retroactive cleanup should fire).
 
-Touch ${TRANCHE_DIR}/tranche.post_discovery_audit. Return a 180-word summary.
+Return a <=180-word summary.
 ```
+
+On return, the parent moves `post_discovery_audit.md` to `${TRANCHE_DIR}/`, restoring global pass references from its local↔global map, and touches `${TRANCHE_DIR}/tranche.post_discovery_audit`.
 
 The Phase 2.5 sub-agent's output feeds two downstream decisions:
 
-1. **Phase 3 consolidation** reads `post_discovery_audit.md` alongside `midtranche_audit.md` as input. Both audits' KIND ratchets are authoritative starting points for Phase 3a methodology-axis classification.
+1. **Phase 3 consolidation** reads `post_discovery_audit.md` alongside `midtranche_audit.md` as input. Both audits' over-split / over-fold candidates and pattern-amplification warnings are authoritative starting points for Phase 3a methodology-axis classification.
 2. **Phase 6.4 retroactive cleanup** decision: if `post_discovery_audit.md`'s "would-have-been-pruned candidates" section is non-empty, the parent agent surfaces those candidates to the operator at Phase 6.4 (with the planned ops count) and waits for human edit-mode authorization. If empty, Phase 6.4 is genuinely skippable. Without Phase 2.5, the "skip Phase 6.4" decision is unsound because the second-half passes' would-have-been-pruned content was never enumerated.
 
 **Tracker-tag surfacing (cross-session memory).** Immediately after Phase 2.5 returns:
@@ -308,11 +372,13 @@ You are the Phase 3a methodology-axis dedup sub-agent for tranche
 ${TRANCHE_ID}. Read ${TRANCHE_DIR}/tranche_state.json, every
 ${TRANCHE_DIR}/pass_NN.md, ${TRANCHE_DIR}/midtranche_audit.md (Phase 2
 first-half audit), and ${TRANCHE_DIR}/post_discovery_audit.md (Phase 2.5
-second-half audit). Both audits' KIND ratchets are authoritative
-starting points; honor them unless you have evidence to reverse.
+second-half audit). Both audits' over-split / over-fold candidates and
+pattern-amplification warnings are authoritative starting points;
+honor them unless you have evidence to reverse.
 
 For each finding (every F-number across every pass), assign a final
-KIND from the same 6-way taxonomy used at finding-time:
+KIND from the 6-way taxonomy (findings are NOT pre-tagged at discovery
+time, so this is a fresh assignment, not a re-evaluation):
   - INDEPENDENT — single investigation; no co-emitted siblings.
   - AUDIT-AXIS — one of N rows produced by a single enumerative sweep.
     Mark with the sweep identifier.
@@ -322,8 +388,8 @@ KIND from the same 6-way taxonomy used at finding-time:
   - INVALIDATION — negates a prior finding via fresh-substrate evidence.
 
 For each finding, also assign a confidence level (HIGH / MED / LOW)
-to the KIND assignment. HIGH = the kind is explicit in the lab
-notebook stanza. MED = inferable from context. LOW = judgment call.
+to the KIND assignment. HIGH = the kind is unambiguous from the
+finding's evidence. MED = inferable from context. LOW = judgment call.
 
 For trend analysis, AUDIT-AXIS rows collapse to 1 finding per sweep
 (first row of the sweep is the representative). EXTENSION and
@@ -368,7 +434,8 @@ For each cluster, write:
   - Members (F-numbers).
   - Root cause (1-3 sentences).
   - Confidence with justification.
-  - Earliest pass (the carbon-dating Method A anchor).
+  - Earliest pass (the carbon-dating anchor — earliest cluster member;
+    this is the single attribution method, see Phase 5.1).
   - Why-clustered (1 sentence: what unified fix would address it).
 
 Write to ${TRANCHE_DIR}/clusters.md.
@@ -444,11 +511,13 @@ Output: `${TRANCHE_DIR}/verdicts_judge_N.jsonl` per judge; `${TRANCHE_DIR}/aggre
 
 ### Step 4.1 — Fan-out judge sub-agents
 
-For each card × each judge in the `--judge-count` ensemble (default 1), spawn a judge sub-agent in parallel. Same structural-blinding pattern as Phase 3.3: the parent stages exactly the allowed inputs in a per-judge staging directory before spawning.
+For each card × each judge in the `--judge-count` ensemble (default 1), spawn a judge sub-agent. Same structural-blinding pattern as Phase 3.3: the parent stages exactly the allowed inputs in a per-judge staging directory before spawning.
+
+The staged primer is `judge_primer.md` — the **domain primer + the full project spec + the 1-5 severity rubric** (the proven `dogfooding_blind_judge_primer.md` baseline, ≈155 KB with `docs/hypergumbo-spec.md` inlined), assembled once at Phase 0. It is NOT merely the tranche-local `substrate_guide.md`: a judge that must decide whether the substrate is *wrong* needs the spec's statement of what correct looks like, not just the rubric. Describe it accurately to the judge so it actually consults the spec sections.
 
 ```bash
 mkdir -p "${TRANCHE_DIR}/.staging/judge_${JUDGE_INDEX}_card_${CARD_ID}"
-cp "${TRANCHE_DIR}/substrate_guide.md" \
+cp "${TRANCHE_DIR}/judge_primer.md" \
    "${TRANCHE_DIR}/.staging/judge_${JUDGE_INDEX}_card_${CARD_ID}/"
 # Extract the single card matching ${CARD_ID} from cards_blinded.md
 python3 extract_card.py "${TRANCHE_DIR}/cards_blinded.md" "${CARD_ID}" \
@@ -458,24 +527,28 @@ python3 extract_card.py "${TRANCHE_DIR}/cards_blinded.md" "${CARD_ID}" \
 Sub-agent prompt:
 
 ```
-You are a Phase 4 blind judge sub-agent for tranche ${TRANCHE_ID},
-assigned to card ${CARD_ID}, judge index ${JUDGE_INDEX}. Your working
-directory is ${TRANCHE_DIR}/.staging/judge_${JUDGE_INDEX}_card_${CARD_ID}.
-Read only files within this directory; the parent has staged exactly
-substrate_guide.md (the rubric) and card.md (the single card you judge).
+You are a blind severity judge. Your working directory is
+${working_dir}. Read only files within it; the parent has staged
+exactly judge_primer.md (the domain primer + full project spec +
+1-5 severity rubric) and card.md (the single card you judge).
 
-Score the card on the 1-5 severity scale per the rubric. Emit a JSON
-object on stdout:
-  {"card_id": "...", "judge_index": N, "severity": INT,
+Score the card on the 1-5 severity scale per the rubric. The card
+describes a defect; consult the project-spec sections of the primer
+when the card's severity hinges on what the tool is supposed to do.
+Emit a JSON object on stdout (read card_id from the `Card ID:` line of
+card.md; the orchestrator stamps the judge index):
+  {"card_id": "<from card.md>", "severity": INT,
    "severity_label": "Cosmetic|Minor|Moderate|Significant|Severe",
    "rationale": "<2-4 sentence justification anchored in the rubric>"}
 
 Do not write to any file. The orchestrator captures your stdout.
 ```
 
+**Per-card vs batched isolation (document which you used).** At `--judge-count >= 2`, spawn **strictly one sub-agent per (card, judge)** and run them in parallel where the vendor allows — inter-rater independence is the whole point of an ensemble, and it is destroyed if one judge sees multiple cards or another judge's score. At `--judge-count == 1`, there is no inter-rater comparison to corrupt, so batching several cards into one judge sub-agent is acceptable **iff** the prompt scores each card on an absolute rubric basis (never "card X is worse than card Y"); this trades strict per-card isolation for far fewer spawns. Record which mode was used in `aggregate_summary.md` so a later reader knows whether the isolation guarantee was strict or batched.
+
 The staging-directory pattern is the structural countermeasure. Where the vendor's sub-agent primitive permits constraining filesystem access (a sandbox flag, a working-directory restriction), use that in addition. See §Vendor parity table column "Structural blinding mechanism" for vendor specifics.
 
-The parent collects each judge's verdict and writes `verdicts_judge_${JUDGE_INDEX}.jsonl` for each judge.
+The parent collects each judge's verdict, stamps the `judge_index` it spawned that sub-agent with, and writes `verdicts_judge_${JUDGE_INDEX}.jsonl` for each judge.
 
 ### Step 4.2 — Reconciliation rule
 
@@ -501,13 +574,15 @@ Inputs:
 - `${TRANCHE_DIR}/verdicts_judge_*.jsonl` (joined into per-card severity).
 
 Outputs (in `${TRANCHE_DIR}/trend_cluster_aware.md`):
-- Per-pass COUNT table (Methods A / B / C).
+- Per-pass COUNT table (single attribution method: earliest cluster member — see the carbon-dating note below).
 - Per-pass MEAN BLIND SEVERITY table.
 - Per-pass SEVERITY SUM table (the column the 1-20 baseline didn't ship; included by default here).
 - Count + severity summary metrics (slope, early/late means, late-minus-early delta).
-- Sanity checks (Σ over methods agrees; singletons identical under A/B/C; etc.).
+- Sanity checks (Σ-severity total matches the cohort; every cluster confirmed same-pass, validating the single-method collapse; etc.).
 - Cluster inventory.
 - Bucket-level 5-pass Σ-severity rollup for cross-tranche comparison.
+
+**Carbon-dating: single method until a multi-pass cluster appears.** The original design carried three carbon-dating methods — A (earliest cluster member), B (latest member), C (1/n distributed across members). They differ only for *multi-pass* clusters; for a single-pass cluster (or a singleton) A = B = C identically. Every cluster across every tranche to date has been same-pass, so the three methods have produced identical numbers every time and the breakdown has never once disambiguated anything. This procedure therefore reports a **single** per-pass attribution — earliest cluster member (the former Method A) — and a same-pass sanity assertion. The first time a genuinely multi-pass cluster appears, the same-pass assertion fails loudly; re-enable the A/B/C three-method breakdown at that point. Collapsing now removes three near-duplicate tables that added reader load without adding signal.
 
 **Canonical cohort for the trend report (CRITICAL).** The cohort that contributes severity to the per-pass + bucket Σ-sev tables is **strict-dedup + state-change fold-triggers**, NOT the full set of judged cards. Specifically:
 
@@ -528,15 +603,17 @@ You are the Phase 5 retrospective sub-agent for tranche ${TRANCHE_ID}.
 
 Read:
   - ${TRANCHE_DIR}/trend_cluster_aware.md (the measured outcome).
-  - ${TRANCHE_DIR}/midtranche_audit.md (mid-tranche KIND ratchets).
+  - ${TRANCHE_DIR}/midtranche_audit.md and
+    ${TRANCHE_DIR}/post_discovery_audit.md (the two audits).
   - ${TRANCHE_DIR}/classification.md and ${TRANCHE_DIR}/clusters.md
     (the consolidated cohort).
   - ${TRANCHE_DIR}/rejected_clusters.md (the consolidation decisions log).
 
 Produce a retrospective covering:
-  1. KIND tag stability: how many real-time tags survived the
-     mid-tranche audit and Phase 3 reclassification? Where did real-time
-     tagging fail?
+  1. KIND assignment stability: did the two audits' over-split /
+     over-fold candidates survive Phase 3 classification, or did Phase 3
+     reverse them? Where the audits and Phase 3 disagreed, which call
+     held up against the evidence?
   2. Rejected-clusters scoring: did the rejected-clusters log catch any
      cluster you would have collapsed under one-shot consolidation?
      Name specific cases.
@@ -552,16 +629,16 @@ ${TRANCHE_DIR}/tranche.retrospective. Return a 200-word summary.
 
 Output: `~/hypergumbo_lab_notebook/dogfooding_trend_combined.md` (overwritten, not appended; this file is auto-generated and must not be hand-edited).
 
-The parent agent runs `python3 ~/hypergumbo_lab_notebook/build_combined_trend.py` (no arguments). The script auto-discovers every tranche's `trend_cluster_aware.md` plus its `tranche_state.json` (if present), then produces a single combined report containing:
+The parent agent runs `python3 ~/hypergumbo_lab_notebook/build_combined_trend.py` (no arguments). The script **auto-discovers** every tranche's `trend_cluster_aware.md` plus its `tranche_state.json` (if present) by globbing the lab-notebook directory — and it must match **both** directory spellings: `dogfood_tranch_*/` (the frozen pre-rename tranches 01–04) and `dogfood_tranche_*/` (tranches created after the PR #4073 `tranch`→`tranche` rename). The source list is NOT hardcoded; a new tranche is picked up purely by its directory existing. The script then produces a single combined report containing:
 
 - A per-tranche metadata table (judge count, card count, methodology note, Σ-severity sub-total, parse path).
-- A per-pass Method C Σ-severity table covering ALL completed passes (one row per pass, s1 through the last completed pass).
+- A per-pass Σ-severity table covering ALL completed passes (one row per pass, s1 through the last completed pass). The value is the single-method attribution (earliest cluster member) from each per-tranche trend file's `## Per-pass SEVERITY SUM` table — the parser reads the 4th column of that table, so every per-tranche `trend_cluster_aware.md` must carry it (Phase 5.1 emits it by default).
 - A 5-pass bucket Σ-severity rollup, all buckets across all tranches.
 - An ASCII sparkline of the per-pass series.
 - A per-chunk resource-consumption table (sub-agent tokens, tool uses, wall-clock seconds) for every Phase 1 chunk in tranches that have `tranche_state.json` data (pre-playbook tranches are absent from this section; the script notes that explicitly).
 - An "Other-phase sub-agents" sub-section with the same fields for Phase 2 mid-tranche checkpoint and Phase 2.5 post-discovery audit.
 
-The script lives in the lab notebook (not the repo) at `~/hypergumbo_lab_notebook/build_combined_trend.py`. To add a future tranche's data, just generate its `trend_cluster_aware.md` per Phase 5.1 and ensure its `tranche_state.json` records per-chunk stats; the script picks up the new tranche on next run without code changes.
+The script lives in the lab notebook (not the repo) at `~/hypergumbo_lab_notebook/build_combined_trend.py`. To add a future tranche's data, just generate its `trend_cluster_aware.md` per Phase 5.1 (including the `## Per-pass SEVERITY SUM` table the parser reads) and ensure its `tranche_state.json` records per-chunk stats; the script picks up the new tranche on next run without code changes, regardless of which directory spelling the tranche uses. If you ever find yourself editing a hardcoded tranche list in the script, that is the F3 regression — restore the dual-spelling glob instead.
 
 Why this step exists separately from the per-tranche trend report: Phase 5.1 produces a tranche-scoped view useful for the per-tranche retrospective and PR; Phase 5.3 produces the cross-tranche view useful for comparing trend signals (convergence question, within-tranche peak-then-decline pattern, per-chunk resource scaling). Without Phase 5.3, the cross-tranche view has to be hand-assembled by reading every per-tranche trend file each time, which is what produced multiple counting errors in tranche 03's session (off-by-one in tail flags, prose-vs-table count drift).
 
@@ -766,7 +843,7 @@ replace_once OR append target in the current notes:
      sub-section:
        - "Tranche ${TRANCHE_ID} Phase 6.4 disposition: skip — confirmed
          YYYY-MM-DD (Phase 2.5 found 0 would-have-been-pruned candidates,
-         0 pattern-amplification warnings, 0 new INVALIDATION-RISKs)."
+         0 pattern-amplification warnings, 0 unverified negative findings)."
        - OR "Tranche ${TRANCHE_ID} Phase 6.4 disposition: trigger — N
          candidates pending operator edit-mode authorization (see tracker
          row tagged awaits_edit_mode_authorization filed YYYY-MM-DD)."
@@ -827,6 +904,8 @@ Output: `agent_notes.json` restructured for coherence; `${TRANCHE_DIR}/coherence
 Runs ONCE per tranche, after Phase 6 has finalized. NOT after every Phase 6 edit — per-edit coherence checks risk myopia (the sub-agent tweaks based on per-step context rather than seeing the full picture). This phase steps back and audits the whole `agent_notes.json` once the tranche's contributions have settled.
 
 The motivating gap, identified during tranche 03 review: `agent_notes.json` grows across sessions as each new tranche / fold-audit / materialization event appends its own "READ THIS FIRST" header + cohort listing + cross-tranche table. Phase 6.2 instructs the sub-agent to APPEND content; nothing was deduplicating. After three tranches the notes had three competing READ-THIS-FIRST headers, asymmetric cohort coverage (tranche 01 not enumerated; 02 and 03 yes), and redundant cross-tranche comparison tables in slightly different formats. Future agents reading the notes were inheriting drift.
+
+**This sweep is also the ongoing enforcer of the registry/measurement-framing boundary** (see §The real-issue registry). The registry that every next-tranche discovery worker reads is seeded from `agent_notes.json`; if campaign-measurement framing (trend means, bucket-Σ tables, "READ THIS FIRST tranche NN" headers, cohort-by-tranche rollups, "expect re-confirmation" language) is allowed to live in the registry, it will be injected straight into those workers and re-introduce the exact priming this redesign removed. Phase 7 therefore relocates such framing OUT of the registry and into the canonical parent-facing trend/index files (`dogfooding_trend_combined.md`, `dogfood_tranches_index.md`) where it belongs — and leaves the per-issue ledger (the issues table, priorities included) complete. The relocation is one-time-from-now-on: do it each sweep so the next tranche always seeds from a clean registry.
 
 Spawn:
 
@@ -899,6 +978,20 @@ Audit pass (read-only first, ALL audits before any edits):
      sections into a "Historical sessions" appendix, keeping the
      current tranche and the immediate-prior tranche fully detailed.
 
+  8. **Measurement-framing in the registry (de-prime enforcement).**
+     The issues table must contain only issue rows. Any campaign-
+     measurement framing physically present in agent_notes — trend
+     means / slopes, bucket-Σ-severity rollups, "READ THIS FIRST
+     tranche NN" headers, cohort-by-tranche comparison tables, "expect
+     re-confirmation" or "heavy re-confirmation" language — is framing,
+     not a real issue. Relocate it to the canonical trend/index files
+     (`dogfooding_trend_combined.md`, `dogfood_tranches_index.md`),
+     leaving at most a one-line pointer in agent_notes. The per-issue
+     ledger (issues table + priorities) stays in full. The goal: the
+     next tranche's Step 0.6 can seed a clean registry with no relocation
+     work left to do. Flag anything you cannot confidently relocate
+     rather than deleting it.
+
 After audit, plan the diff. Apply edits via replace_once() with
 exact-1-match guarantee (NO fuzzy-replace; stale text is better than
 silent overwrite). Document each edit in
@@ -925,7 +1018,7 @@ Phase 6 ends when tranche finalization writes `tranche.complete`. The agent_note
 
 ## Tranche state file schema
 
-Single source of truth for tranche state. Every sub-agent reads this file as its first action. The parent updates it after every sub-agent return.
+Single source of truth for tranche state, owned by the parent. The parent updates it after every sub-agent return. Discovery and audit workers do **NOT** read it (it carries the global numbering and campaign position that would break campaign-position blinding); they read only their staging directory. Consolidation-stage sub-agents may read it.
 
 ```json
 {
@@ -937,12 +1030,18 @@ Single source of truth for tranche state. Every sub-agent reads this file as its
   "judge_count": "int (1-5)",
   "mid_tranche_pass": "int",
   "substrate_policy": "snapshot | regen-each | regen-on-suspicion",
+  "discovery_mode": "region-parallel | sequential",
   "first_pass_number": "int",
   "last_pass_number": "int",
   "current_pass": "int",
   "phase": "discovery | midtranche_audit | post_discovery_audit | consolidation | judging | retrospective | carry_forward | complete",
   "passes_complete": [
     {"pass_number": "int", "headline": "string", "invalidation_risks": ["string"]}
+  ],
+  "chunk_to_passes": {"<chunk index>": ["int"]},
+  "local_label_to_fnumber": {"<chunk>:<local_pass>:<local_label>": "string (F-number)"},
+  "chunk_resource_stats": [
+    {"chunk": "int", "duration_ms": "int", "tokens": "int", "tool_uses": "int"}
   ],
   "checkpoint_complete": "bool",
   "post_discovery_audit_complete": "bool",
@@ -951,6 +1050,8 @@ Single source of truth for tranche state. Every sub-agent reads this file as its
   "retrospective_complete": "bool",
   "meta_criterion_file": "string",
   "substrate_guide_file": "string",
+  "judge_primer_file": "string",
+  "registry_file": "string (absolute path to the tranche's working registry)",
   "carry_forward_in": "string (absolute path or null)",
   "started_at_utc": "string (ISO 8601)",
   "last_update_utc": "string (ISO 8601)"
@@ -990,7 +1091,7 @@ For vendors without sub-agent spawning, see Appendix A.
 |---|---|---|
 | Sub-agent crashes mid-chunk | Parent times out waiting for return | Re-spawn the sub-agent with the same prompt; the tranche state file lets it resume at the failed pass |
 | Pass writeup partially written | Lab notebook file exists but no sentinel | Phase 1 sub-agent's first action is to check for incomplete writeups and continue them |
-| INVALIDATION-RISK finding's fresh-substrate verification fails | Substrate regeneration command errors | Mark the finding KIND=INDETERMINATE in `tranche_state.json`; Phase 3 handles INDETERMINATE as a manual-review queue |
+| A negative finding's fresh-substrate verification command errors | Substrate regeneration command exits non-zero | Mark the finding KIND=INDETERMINATE in `tranche_state.json`; Phase 3 handles INDETERMINATE as a manual-review queue |
 | Phase 3 sub-agent diverges from brief (e.g., consolidates everything) | Cluster count drops > 50% from raw F-number count | Re-spawn with tightened prompt; if it diverges again, fall back to single-axis dedup and document in retrospective |
 | Judge verdicts have no clear majority | Phase 4 aggregator detects spread >= 2 tiers in >= 25% of cards | Spawn `--judge-count` additional judges; if still spread, escalate to operator and pause tranche |
 | Parent's own context fills up before Phase 5 | Parent agent self-reports approaching context limit, OR Phase 4 / 5 needs to load many per-card files | Parent agents cannot programmatically self-`/compact` — the keystroke is user-typed. Two real recovery options: (a) delegate the file-heavy work to a Phase-4-aggregator or Phase-5-reporter sub-agent so the bulk reads happen in a dying sub-agent context, OR (b) split the parent's work across multiple sessions, using `tranche_state.json` + sentinels as the resumption point. Under normal operation the parent's context grows only by ~50-80K tokens across a full tranche (sub-agent return summaries + brief state reads), so this row should rarely fire. |
@@ -1040,6 +1141,23 @@ The sub-agent path is preferred when available because:
 - Sub-agent contexts die deterministically; tmux-injected `/compact` depends on the CLI honoring the keystroke and the agent not having injected output that swallows it.
 
 The fallback path is preferred only when the vendor lacks a viable sub-agent primitive AND the operator has verified the context-flush keystroke per the §Vendor parity table verification protocol.
+
+## Appendix B — de-priming rationale
+
+A line-by-line review of an earlier run's as-run sub-agent prompts found that much of the per-prompt scaffolding was *adding* bias rather than catching it. The root cause was a single omission — **discovery workers were never given the project's real-issue registry** — for which the orchestrator compensated with scaffolding (a thin distilled digest, parent-pre-assigned narrow probes, workers reading each other's raw output) and position/expectation primes. Give the workers the registry and the scaffolding becomes unnecessary; almost every specific defect below then dissolves. This appendix records, per cut, what was removed and where the design now handles the underlying need.
+
+| Removed cue (and why it biased) | Where the redesign handles it |
+|---|---|
+| **Playbook name in the worker prompt** — invites a narrow worker to read a 1000-line orchestrator-POV doc and absorb parent-role framing. | §Design principle: a worker prompt is task + inputs + output format only. The worker never names or reads this playbook. |
+| **Mini-trial / "the parent will assess your output + timing" framing** — evaluation-awareness makes an agent perform to the grader; also redundant since the tool result already carries duration + token counts. | Step 1.1 prompt carries no evaluation language; Step 1.2 #3 captures resource stats from the tool result, never a worker self-report. |
+| **Campaign position** — "tranche 04", "passes 61-80" signal campaign maturity/lateness and bias effort downward; smeared across log paths, output filenames, finding labels, sentinels, return echoes, and cross-refs so a prose-only scrub misses it. | §Design principle #2 + Step 1.1/1.2: workers use local opaque labels on every surface (working dir, `probe_<local>.log`, `observations_<local>.md`, findings `A1`/`A2`, local sentinels); the parent stamps the global identity (`pass_61.md`, `F61.A1`) only on aggregation and keeps the ordinal↔token map parent-side. |
+| **"Expect heavy re-confirmation / tag EXTENSION"** — pushes the worst-positioned actor to pre-judge novelty toward "fold"; redundant with ≥3 downstream dedup gates and circular (workers told to fold → cohort comes out fold-heavy → trend reads the fold as a discovery signal). | §The real-issue registry: workers get the registry (data, not an expectation) and navigate toward unmapped ground; the dedup stages, not the discoverer, decide novelty. |
+| **Audit "folds are expected" preamble + pre-named verdicts** — hands the auditor (the one actor meant to *catch* over-folding) the answers before it evaluates. | §5.4 / Phase 2 + 2.5: neutral, symmetric job statement; no pre-named findings or verdicts; auditor gets the passes' local relative structure, never the global position. |
+| **"Read the prior chunk's pass files so you don't duplicate"** — dumps a prior worker's raw findings (with self-severities + dispositions) into a later worker, anchoring severity/novelty and propagating the prime. | Step 0.6 + Step 1.2 #5: the working registry is the shared known-state, updated by the parent as distilled neutral table rows between chunks — no cross-worker raw-output read. |
+| **Discovery-time provisional KIND tag + fold/standalone hint** — a biased provisional tag anchors the very ratchet audits that exist to make that call. | Step 1.1 drops it; KIND is assigned fresh by Phase 3a, which is the stage equipped to do it. |
+| **Carbon-dating Methods A/B/C** — three methods that differ only for multi-pass clusters; every cluster to date has been same-pass, so A=B=C every time and the breakdown never disambiguated anything. | Phase 5.1: a single attribution (earliest cluster member) plus a same-pass sanity assertion that fails loudly the first time a multi-pass cluster appears. |
+
+What the review **affirmed as correct and left unchanged**: the 20-pass tranche as the comparable unit; the structurally-blinded card writer (Phase 3c) and blind judges (Phase 4); two-axis consolidation (methodology then causal) with the rejected-clusters log as the authoritative novelty gate; parent-owned phase loop + state file; and cross-tranche Σ-severity bucket comparison. The redesign subtracts scaffolding; it does not weaken the parts that were working.
 
 ## Tracker — agent_notes consistency discipline
 
