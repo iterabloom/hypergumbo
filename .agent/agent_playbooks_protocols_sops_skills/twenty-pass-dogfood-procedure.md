@@ -729,6 +729,10 @@ This step requires **human edit-mode authorization** — the operator must enabl
 
 **Tracker-tag stripping (cleanup-time bookkeeping).** When Step 6.4 actually runs (operator authorized + sub-agent applied the candidates), the parent agent — as its closing action — strips the `awaits_edit_mode_authorization` tag from the tracker row Phase 2.5 filed at the trigger event, and adds a tracker discussion entry summarizing what was deleted/edited (with op counts and timestamps). The row itself is NOT deleted — it's converted from a pending-authorization beacon into a permanent record of the cleanup. If Phase 6.4 is deferred (no operator authorization within the window), the tag is NOT stripped; the row persists across sessions until cleanup runs OR the operator explicitly closes it via `tracker update --status wont_do --note "rationale"`.
 
+**Agent-notes re-sync (post-mutation consistency).** Any retroactive tracker mutation to a tranch's cohort — whether Phase 6.4 cleanup, a follow-up duplicate-audit supersession, an off-by-one backfill, or any other tracker write touching `dogfood_tranch_${TRANCH_ID}`-tagged rows — MUST be paired with a corresponding `agent_notes.json` update. Phase 6.2 ran ONCE during the initial Phase 6 (before any subsequent retroactive ops) and wrote a cohort listing that reflects the tracker state AT THAT MOMENT. Without a re-sync, the agent_notes listing drifts: headline counts become stale ("47 rows" when 12 are now superseded), supersession arrows go unrecorded, off-by-one fills don't appear. The re-sync uses the same `replace_once`-with-exact-match discipline Phase 6.2 used; the tranch-NN cohort sub-section is the anchor.
+
+Concrete: every retroactive-tracker-mutation operation MUST be expressed as a paired (tracker op, agent_notes diff) tuple in the operation log. The sub-agent that performs the retroactive ops surfaces both halves; the parent agent verifies post-condition that the agent_notes cohort listing's effective-distinct count + per-row annotations match the tracker query result for `--tag dogfood_tranch_${TRANCH_ID}` after the mutations land. Mismatch → halt and report.
+
 ### Step 6.5 — Carry-forward + tranch finalization
 
 The parent agent writes:
@@ -853,6 +857,18 @@ The sub-agent path is preferred when available because:
 - Sub-agent contexts die deterministically; tmux-injected `/compact` depends on the CLI honoring the keystroke and the agent not having injected output that swallows it.
 
 The fallback path is preferred only when the vendor lacks a viable sub-agent primitive AND the operator has verified the context-flush keystroke per the §Vendor parity table verification protocol.
+
+## Tracker — agent_notes consistency discipline
+
+The playbook treats the tracker and `agent_notes.json` as **paired representations of the same cohort** that must stay in sync across any operation that touches the cohort:
+
+- **Initial materialization** (Phase 6.1 + 6.2): tracker rows are filed, then Phase 6.2 immediately writes the matching cohort listing to agent_notes. Single coordinated write.
+- **Retroactive mutations** (Phase 6.4 cleanup, duplicate-audit supersessions, off-by-one fills, any tracker write touching `dogfood_tranch_${TRANCH_ID}`-tagged rows): paired (tracker op, agent_notes diff) tuples. The sub-agent that performs the retroactive op MUST also perform the matching agent_notes edit, OR the parent agent does it as the closing action. Either way, the cohort listing's effective-distinct count + per-row annotations must equal the tracker query result for the tag.
+- **Post-condition check** after any retroactive batch: `scripts/tracker list --tag dogfood_tranch_${TRANCH_ID}` row count == count claimed in agent_notes cohort listing; supersession status reflected in agent_notes; off-by-one fills present in agent_notes.
+
+Without this discipline, the tranch's cohort drifts between representations and future agents reading agent_notes get a stale picture (wrong headline numbers, missing supersessions, unrecorded fills). The drift is invisible until a third party tries to reconcile.
+
+The first run of this playbook (tranch 03) exposed this gap directly: Phase 6.2 wrote the cohort listing once during initial Phase 6, then a retroactive duplicate audit found 12 supersession candidates and the playbook did not remind the operator that the agent_notes listing also needed updating. The discipline above is the corrective.
 
 ## Tracker-tag discipline
 
