@@ -191,14 +191,21 @@ already discovered), substrate_guide.md (probe-class catalog + severity
 rubric), and — if present — region.txt (the surface to probe this run).
 
 Your task: run ${chunk_size} independent discovery passes over the
-analysis substrate at ${substrate_file}, surfacing defects in its
-output. Number your passes locally 1..${chunk_size}. For each pass:
+analysis substrate at ${substrate_file}, recording what its output
+actually shows — defects where they exist, AND correct behavior where
+you verify it (a confirmed-correct surface is a real finding, not a
+non-result). Number your passes locally 1..${chunk_size}. For each pass:
 
   1. Choose a probe from the substrate guide's probe-class catalog.
-     registry.json lists the issues already discovered — steer
-     toward surfaces it does NOT already cover. If region.txt is present,
-     stay within that surface. You are not assigned specific probes;
-     pick what looks most informative.
+     registry.json lists the issues already discovered. Use it to make
+     an INFORMED choice, not to avoid known ground: usually the most
+     information is on surfaces it does NOT yet cover, but deliberately
+     re-testing a KNOWN issue on fresh substrate is legitimate and
+     valuable — it catches regressions and confirms or overturns a prior
+     claim. The registry tells you what is known so you can aim where the
+     truth is most uncertain, not so you must steer clear of it. If
+     region.txt is present, stay within that surface. You are not
+     assigned specific probes; pick what looks most informative.
   2. Execute the probe. Capture all command output to files under
      ${working_dir}/probe_<local_pass>_*.log per the output-capture-
      long-running discipline.
@@ -349,7 +356,7 @@ On return, the parent moves `post_discovery_audit.md` to `${TRANCHE_DIR}/`, rest
 
 The Phase 2.5 sub-agent's output feeds two downstream decisions:
 
-1. **Phase 3 consolidation** reads `post_discovery_audit.md` alongside `midtranche_audit.md` as input. Both audits' over-split / over-fold candidates and pattern-amplification warnings are authoritative starting points for Phase 3a methodology-axis classification.
+1. **Phase 3 consolidation** reads `post_discovery_audit.md` alongside `midtranche_audit.md` as input. Both audits' over-split / over-fold candidates and pattern-amplification warnings are starting points for Phase 3a methodology-axis classification — to confirm or reverse on the evidence, not verdicts to defer to.
 2. **Phase 6.4 retroactive cleanup** decision: if `post_discovery_audit.md`'s "would-have-been-pruned candidates" section is non-empty, the parent agent surfaces those candidates to the operator at Phase 6.4 (with the planned ops count) and waits for human edit-mode authorization. If empty, Phase 6.4 is genuinely skippable. Without Phase 2.5, the "skip Phase 6.4" decision is unsound because the second-half passes' would-have-been-pruned content was never enumerated.
 
 **Tracker-tag surfacing (cross-session memory).** Immediately after Phase 2.5 returns:
@@ -373,8 +380,8 @@ ${TRANCHE_ID}. Read ${TRANCHE_DIR}/tranche_state.json, every
 ${TRANCHE_DIR}/pass_NN.md, ${TRANCHE_DIR}/midtranche_audit.md (Phase 2
 first-half audit), and ${TRANCHE_DIR}/post_discovery_audit.md (Phase 2.5
 second-half audit). Both audits' over-split / over-fold candidates and
-pattern-amplification warnings are authoritative starting points;
-honor them unless you have evidence to reverse.
+pattern-amplification warnings are starting points to confirm or
+reverse on the evidence — not verdicts to defer to.
 
 For each finding (every F-number across every pass), assign a final
 KIND from the 6-way taxonomy (findings are NOT pre-tagged at discovery
@@ -391,11 +398,13 @@ For each finding, also assign a confidence level (HIGH / MED / LOW)
 to the KIND assignment. HIGH = the kind is unambiguous from the
 finding's evidence. MED = inferable from context. LOW = judgment call.
 
-For trend analysis, AUDIT-AXIS rows collapse to 1 finding per sweep
-(first row of the sweep is the representative). EXTENSION and
-CORRECTION rows fold into their parent. INVALIDATION rows do not
-contribute to the new-finding count but are preserved as methodology-
-calibration records.
+Record the structural fact each label implies: an AUDIT-AXIS row's
+sweep identifier, an EXTENSION/CORRECTION row's parent F-number, an
+INVALIDATION row's invalidated target. Do NOT compute or reason about
+how any label rolls up into a count or a trend total — assign each
+label purely on what the finding is. The parent applies the rollup
+downstream; coupling your classification to the metric would be
+labeling to the test.
 
 Write the classification to ${TRANCHE_DIR}/classification.md with
 session-by-session tables matching the 1-20 baseline format. Return a
@@ -482,13 +491,19 @@ INDEPENDENT singletons become one card each; EXTENSION/CORRECTION
 folded findings do NOT become cards), write a deconfounded card in
 the 6-field format:
 
-  Card ID: anon-card-${TRANCHE_ID}-NNN (NNN zero-padded).
+  Card ID: anon-card-NNN (NNN zero-padded; OPAQUE — it must carry no
+    tranche ordinal and no pass/F-number, because the blind judge reads
+    this line. The parent keeps the tranche<->card association in
+    mapping_anon_to_source.tsv, never in the card itself).
   Subject: 1-line topic.
-  Mechanic: how the defect produces the symptom.
+  Mechanic: how the behavior is produced.
   Expectation: what the substrate would look like if correct.
   Scope: which surface / kind / command is affected, with magnitude.
-  Exposure: who hits the defect under what circumstances.
-  Consequence: what downstream decisions get corrupted.
+  Exposure: under what circumstances the behavior occurs, and what (if
+    anything) encounters it — state it factually, do not assume a victim.
+  Consequence: what, if anything, downstream depends on this being
+    correct — state it neutrally and let the judge weigh severity; do
+    not assert harm the evidence does not show.
 
 Cards must contain NO references to:
   - Tracker IDs (INV-*, WI-*, META-*).
@@ -511,7 +526,7 @@ Output: `${TRANCHE_DIR}/verdicts_judge_N.jsonl` per judge; `${TRANCHE_DIR}/aggre
 
 ### Step 4.1 — Fan-out judge sub-agents
 
-For each card × each judge in the `--judge-count` ensemble (default 1), spawn a judge sub-agent. Same structural-blinding pattern as Phase 3.3: the parent stages exactly the allowed inputs in a per-judge staging directory before spawning.
+For each card × each judge in the `--judge-count` ensemble (default 1), spawn a judge sub-agent. Same structural-blinding pattern as Phase 3.3: the parent stages exactly the allowed inputs in a per-judge staging directory before spawning. `${CARD_ID}` here is the **opaque** `anon-card-NNN` minted in Phase 3c — it carries no tranche ordinal or pass identity, so neither the staging path nor `card.md` leaks campaign position to the judge.
 
 The staged primer is `judge_primer.md` — the **domain primer + the full project spec + the 1-5 severity rubric** (the proven `dogfooding_blind_judge_primer.md` baseline, ≈155 KB with `docs/hypergumbo-spec.md` inlined), assembled once at Phase 0. It is NOT merely the tranche-local `substrate_guide.md`: a judge that must decide whether the substrate is *wrong* needs the spec's statement of what correct looks like, not just the rubric. Describe it accurately to the judge so it actually consults the spec sections.
 
@@ -617,9 +632,16 @@ Produce a retrospective covering:
   2. Rejected-clusters scoring: did the rejected-clusters log catch any
      cluster you would have collapsed under one-shot consolidation?
      Name specific cases.
-  3. Carry-forward to the next tranche: methodology questions raised,
-     calibration adjustments suggested, probe classes saturated vs
-     fresh.
+  3. Carry-forward to the next tranche: methodology questions and
+     calibration adjustments ONLY. Do NOT pre-steer the next tranche's
+     discovery — no "these probe classes are saturated, look elsewhere",
+     no forecast of what it will find. The registry already conveys what
+     has been found, and the next tranche's workers navigate from it.
+     Carry-forward is for process facts (e.g., "the judge primer needed
+     the spec inlined", "judge_count=1 drift was about +/-0.3"), not a
+     findings forecast. It will be read by the next tranche's parent, so
+     it must not carry an expectation about what that tranche will
+     surface (Step 5.4 discipline).
 
 Write to ${TRANCHE_DIR}/retrospective.md. Touch
 ${TRANCHE_DIR}/tranche.retrospective. Return a 200-word summary.
@@ -641,6 +663,15 @@ The parent agent runs `python3 ~/hypergumbo_lab_notebook/build_combined_trend.py
 The script lives in the lab notebook (not the repo) at `~/hypergumbo_lab_notebook/build_combined_trend.py`. To add a future tranche's data, just generate its `trend_cluster_aware.md` per Phase 5.1 (including the `## Per-pass SEVERITY SUM` table the parser reads) and ensure its `tranche_state.json` records per-chunk stats; the script picks up the new tranche on next run without code changes, regardless of which directory spelling the tranche uses. If you ever find yourself editing a hardcoded tranche list in the script, that is the F3 regression — restore the dual-spelling glob instead.
 
 Why this step exists separately from the per-tranche trend report: Phase 5.1 produces a tranche-scoped view useful for the per-tranche retrospective and PR; Phase 5.3 produces the cross-tranche view useful for comparing trend signals (convergence question, within-tranche peak-then-decline pattern, per-chunk resource scaling). Without Phase 5.3, the cross-tranche view has to be hand-assembled by reading every per-tranche trend file each time, which is what produced multiple counting errors in tranche 03's session (off-by-one in tail flags, prose-vs-table count drift).
+
+### Step 5.4 — Instrument-change seams (analysis-surface only)
+
+When the procedure itself changes between tranches — a prompt redesign, a judge-count change, a card-pipeline change, a de-prime like this one — the *measurement instrument* changed, and any cross-seam trend comparison confounds the instrument change with genuine discovery dynamics. Handle a seam by **declaring it descriptively on the analysis surfaces and nowhere else**:
+
+- **Declare it** on the post-hoc, analyst-facing surfaces only: the combined-trend report (`build_combined_trend.py` emits a "Methodological seams" section) and `dogfood_tranches_index.md`. State it as a fact about how the data was collected — "tranches X and Y ran under different instruments, so a cross-seam difference confounds the instrument change with discovery dynamics." State **no** expectation about the *direction* of the effect.
+- **Quarantine it** from every run-time agent context. Do NOT put a seam caveat — or any expectation about its direction — into a discovery/audit worker, into the orchestrating parent *during a run*, or into the registry / `agent_notes.json`. A seam caveat is campaign-measurement framing: for a human analyst reading the trend it is healthy skepticism, but for an agent at a discovery moment it is an expectation-prime — and on the parent it is the worst case, because the parent's expectations propagate into every region assignment and every registry row the workers then read. (Knowing *which* procedure it is running is unavoidable and fine; carrying an expectation about *what the trend should show* is the prime to prevent.)
+
+This is the de-prime discipline applied to the measurement of the de-prime itself: a seam note tells the analyst the comparison is confounded; it must never tell a working agent what to expect to find. The registry/measurement-framing boundary (§The real-issue registry, Phase 7) is what keeps the caveat out of blinded workers automatically; this step is the rule for the surfaces Phase 7 does not police.
 
 ## Phase 6 — Tracker materialization, agent-notes integration, and carry-forward
 
@@ -820,10 +851,25 @@ single editable field is `notes` (markdown). Plan the diff BEFORE
 writing — produce a plan with these sections, each tied to a specific
 replace_once OR append target in the current notes:
 
-  1. Top-of-file header update (if the notes have a "Session theme" or
-     "READ THIS FIRST" block, update it to reflect the new tranche's
-     headline numbers: cohort count, mean severity, bucket-Σ-severity
-     row, Significant+Severe percentage, link to the trend report).
+BOUNDARY (see §The real-issue registry): agent_notes carries the
+per-issue LEDGER ONLY — the issues table, cohort row listings, and
+ledger metadata (active counts, scope, cross-refs). It must NOT carry
+campaign-measurement framing: trend means, bucket-Σ rollups,
+cross-tranche comparison tables, per-tranche severity rollups, or a
+"READ THIS FIRST" block of headline trend numbers. That framing is an
+expectation-prime for the next tranche's discovery workers, which seed
+their working registry from this file. Any item below that would
+produce such framing writes it to `dogfood_tranches_index.md` + the
+trend files (Phase 6.3 / Step 5.3) instead — NOT here. Phase 7 item 8
+is only the backstop; the job is to not produce the framing in the
+first place.
+
+  1. Top-of-file header update: keep at most ONE current-state header —
+     a date plus a one-line pointer ("tranche ${TRANCHE_ID} cohort
+     filed; cross-tranche trend lives in dogfood_tranches_index.md +
+     dogfooding_trend_combined.md"). Do NOT put trend numbers here: no
+     mean severity, no bucket-Σ row, no Significant+Severe percentage.
+     Those are framing and live only in the index/trend files.
   2. Active set count update (e.g., "Current active set: ~X items
      after tranche ${TRANCHE_ID} materialization").
   3. Issues table preamble update: scope=<total rows> after this
@@ -833,11 +879,17 @@ replace_once OR append target in the current notes:
      the materialized rows by family/cluster with priority + parent.
    5. Inline annotations on existing parent rows that received tranche
      extensions: cross-reference the new child rows.
-  6. Severity / status distribution table: add a column for this
-     tranche's cohort.
-  7. Bucket-Σ-severity rollup: append a row to any existing trend
-     section, format matching the prior tranche's row.
-  8. Cross-tranche comparison note in the retrospective trace.
+  6. Severity / status distribution: update the CURRENT-STATE table
+     (all open issues by priority/status — this describes the ledger's
+     present composition, which is ledger metadata and belongs here). Do
+     NOT add a per-tranche-cohort column; a cohort-by-tranche rollup is
+     framing → put it in `dogfood_tranches_index.md`.
+  7. Bucket-Σ-severity rollup: append the tranche's row to
+     `dogfood_tranches_index.md` (Phase 6.3), NOT to agent_notes. The
+     combined per-pass + bucket view is regenerated by
+     `build_combined_trend.py` (Step 5.3). Neither belongs in the registry.
+  8. Cross-tranche comparison: record it in `dogfood_tranches_index.md`
+     (its canonical home), NOT in agent_notes.
   9. Phase 2.5 disposition entry — record the post-discovery-audit
      disposition verbatim as a one-line entry under the tranche's cohort
      sub-section:
@@ -893,7 +945,7 @@ Concrete: every retroactive-tracker-mutation operation MUST be expressed as a pa
 
 The parent agent writes:
 
-- `${TRANCHE_DIR}/carry_forward.md` with: open methodology questions, severity rubric calibration adjustments, saturated probe classes, recommended Phase 0 changes for the next tranche, deferred Step 6.4 cleanup notes if any.
+- `${TRANCHE_DIR}/carry_forward.md` with: open methodology questions, severity-rubric calibration adjustments, recommended Phase 0 changes (tunables, primer fixes), deferred Step 6.4 cleanup notes if any. Carry **no** findings-forecast and **no** probe-steer ("class X is saturated, look at Y") — that would prime the next tranche's parent and is redundant with the registry, which already conveys what has been found (Step 5.2 item 3 / Step 5.4 discipline).
 - The next tranche's Phase 0 sub-agent should be pointed at this `carry_forward.md` via the `carry_forward_in` field in its tranche state file.
 - Finalize `${TRANCHE_DIR}/tranche_state.json`: set `phase` to `complete`, populate the per-step completion timestamps, touch `${TRANCHE_DIR}/tranche.complete` sentinel.
 
