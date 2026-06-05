@@ -606,6 +606,7 @@ classification.md):
          "[+ ${TRANCH_ID}: <card_id> F<NN> — <1-line summary>
          (folded as duplicate; blind severity <N>)]"`. Record in
          tracker_materialization.tsv with `tracker_id=FOLDED_INTO:<existing_id>`.
+         **THEN apply Step 4a status-adjustment rule below.**
        - **RELATED_BUT_DISTINCT or NOT_A_DUPLICATE**: call
          `scripts/tracker add --kind work_item|invariant
          --title <derived from card Subject> --priority <0-4 integer>
@@ -616,11 +617,58 @@ classification.md):
          ALSO call `scripts/tracker discuss <related_existing_id>
          "[+ ${TRANCH_ID}: <new_row_id> — related: <one-line how>]"`
          so the relationship is bidirectionally discoverable.
+         **THEN apply Step 4a status-adjustment rule below.**
+
+  4a. **Status-adjustment rule for resolved-state fold targets.** Before
+      proceeding to Step 5, check the existing row's current status via
+      `scripts/tracker show <existing_id>`. If the fold target is in a
+      resolved state — `done`, `satisfied`, `pending_validation`, or
+      `wont_do` — a new tranch finding reproducing the mechanism is
+      direct evidence that the resolved state may no longer be accurate.
+      Apply per-status:
+
+       - `done` or `satisfied`: REOPEN. Call
+         `scripts/tracker update <existing_id> --status todo_hard --note
+         "reopened: tranch-${TRANCH_ID} <card_id> F<NN> reproduces the
+         original mechanism on substrate at HEAD <SHA>; blind severity
+         <N> — regression evidence"`. The card stays folded as a
+         discussion entry; the existing row's status now reflects the
+         regression. Do NOT silently leave it as `done` / `satisfied`.
+       - `pending_validation`: VALIDATION JUST FAILED. Call
+         `scripts/tracker update <existing_id> --status violated --note
+         "validation failed: tranch-${TRANCH_ID} <card_id> F<NN>
+         reproduced the original mechanism"`. The card stays folded.
+       - `wont_do`: SURFACE TO OPERATOR — do not auto-reopen. The
+         deferral may have explicit rationale that new evidence does
+         not override. Add a discussion entry on the existing row
+         (`tracker discuss`) flagging the new evidence and the
+         disposition decision the operator owes. If the playbook is
+         running autonomously without an operator-in-the-loop, leave
+         status as `wont_do` and surface to `carry_forward.md` for the
+         next-tranch's Phase 0 sub-agent to escalate.
+       - `todo_*` / `blocked` / `in_progress` / `needs_human_review`:
+         no status change. The work is already actionable; the card
+         fold adds evidence without changing disposition.
+
+      The same status-adjustment rule applies to RELATED_BUT_DISTINCT
+      cross-references when the related-existing row is in a resolved
+      state AND the new card's mechanism clearly reproduces the
+      original's even with fix-surface variation: log reasoning in the
+      discussion entry, then either reopen (if mechanism reproduction
+      is unambiguous) or escalate to operator (if surface variation
+      makes the regression call ambiguous).
+
+      Without this rule, Severe blind-judge verdicts get silently
+      buried on `done` rows, the tracker's actionable-work view doesn't
+      see them, and the same defect keeps getting "rediscovered" in
+      every subsequent tranch.
 
   5. Record the returned tracker ID in
      ${TRANCH_DIR}/tracker_materialization.tsv with columns:
      card_id | source_row | tracker_id_or_FOLDED_INTO | priority |
-     parent_id | duplicate_classification | related_to (if applicable)
+     parent_id | duplicate_classification | related_to (if applicable) |
+     fold_target_status_at_fold (resolved state pre-mutation if any) |
+     fold_target_status_after (status post-mutation; same if no change)
 
 **Spec correction (from tranch 03 first-run findings):** tracker
 enforces `kind=work_item` (not `invariant`) for `status=todo_hard`
