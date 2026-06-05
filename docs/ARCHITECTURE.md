@@ -468,7 +468,6 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-schema-coverage` | Corpus-driven schema-coverage gate (WI-luzuh). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
-| `count-findings` | Count dogfooding findings recorded in agent_notes. |
 | `dead-code-prospector-run.py` | Lightweight one-shot dead-code-maybe prospecting run. |
 | `finetune-transcript-model` | G-Vendi-guided data selection and finetuning for the local transcript model. |
 | `generate-concept-axes` | Generate ``docs/concept-axes.md`` — a human-readable by-axis view |
@@ -820,7 +819,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: b5ccbe0d03e3
+  commit: e6dd6e07c645
   hypergumbo: 5.0.1
   python: 3.12.3
 -->

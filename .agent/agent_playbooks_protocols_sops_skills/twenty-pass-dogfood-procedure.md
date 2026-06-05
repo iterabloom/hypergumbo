@@ -210,16 +210,3 @@ Zero-byte sentinels signal step completion: `pass_NN.complete`, `tranche.checkpo
 ## Vendor neutrality
 
 The procedure assumes the vendor can: spawn a sub-agent and capture its return value; read/write local files; run shell commands. Structural blinding uses a staging directory (stage only allowed inputs; point the sub-agent at that dir). For vendors that can constrain sub-agent filesystem access, use that in addition. For vendors without sub-agent spawning, a tmux-supervisor fallback (context-flush keystroke every `--chunk-size` passes) is possible but unverified; prefer the sub-agent path.
-
-## Cost (rough, Opus-class)
-
-Discovery dominates: ~`tranche_size/chunk_size` sub-agents at a few hundred K tokens each. Phase 4 scales with `judge_count × card_count`. A default tranche (judge_count 1, ~30–60 cards) is the cheapest configuration that still yields per-pass severity data for the human's plot; raising `judge_count` to 3 adds inter-rater averaging and is reversible.
-
-## What changed from earlier versions (and why)
-
-Earlier versions had the agent doing too much and seeing too much. The corrections:
-
-- **Sequential, not parallel/independent.** A `region-parallel` discovery mode and "independent passes" framing existed; both defeat accumulation (parallel/independent workers can't steer away from each other's findings). Discovery is sequential; each pass avoids what's already in the ledger.
-- **Full ledger via `--show`, worker integrates.** Earlier the orchestrator staged a distilled registry copy and folded findings itself. Now the worker loads the whole ledger via the script and integrates each finding (add row / enrich row) — the only way it can correctly decide new-vs-existing.
-- **Campaign-position-free ledger + separate map.** The ledger had accreted per-tranche/per-pass cohort sections, which leaked cadence into every worker that loaded it. The ledger is now a flat cadence-free issue list; pass→row→severity provenance (needed for the human's trend plot) lives in the separate `pass_row_map.json`, never read by workers.
-- **Agent produces data; the human decides trend/convergence/done/next.** The agent still runs every phase (including the post-tranche trend-data assembly, materialization, and coherence sweep) — but it presents the trend as *tables*, not as a convergence verdict or a "done" call, and it does not forecast or decide what comes next. The point is also structural: during discovery the agent must not *perceive* campaign cadence (campaign-free ledger + separate map), so a low yield can never be a self-fulfilling artifact.
