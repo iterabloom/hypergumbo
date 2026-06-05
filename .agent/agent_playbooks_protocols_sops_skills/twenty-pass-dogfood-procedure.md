@@ -538,6 +538,23 @@ Write to ${TRANCH_DIR}/retrospective.md. Touch
 ${TRANCH_DIR}/tranch.retrospective. Return a 200-word summary.
 ```
 
+### Step 5.3 — Combined cross-tranch trend regeneration
+
+Output: `~/hypergumbo_lab_notebook/dogfooding_trend_combined.md` (overwritten, not appended; this file is auto-generated and must not be hand-edited).
+
+The parent agent runs `python3 ~/hypergumbo_lab_notebook/build_combined_trend.py` (no arguments). The script auto-discovers every tranch's `trend_cluster_aware.md` plus its `tranch_state.json` (if present), then produces a single combined report containing:
+
+- A per-tranch metadata table (judge count, card count, methodology note, Σ-severity sub-total, parse path).
+- A per-pass Method C Σ-severity table covering ALL completed passes (one row per pass, s1 through the last completed pass).
+- A 5-pass bucket Σ-severity rollup, all buckets across all tranchen.
+- An ASCII sparkline of the per-pass series.
+- A per-chunk resource-consumption table (sub-agent tokens, tool uses, wall-clock seconds) for every Phase 1 chunk in tranchen that have `tranch_state.json` data (pre-playbook tranchen are absent from this section; the script notes that explicitly).
+- An "Other-phase sub-agents" sub-section with the same fields for Phase 2 mid-tranch checkpoint and Phase 2.5 post-discovery audit.
+
+The script lives in the lab notebook (not the repo) at `~/hypergumbo_lab_notebook/build_combined_trend.py`. To add a future tranch's data, just generate its `trend_cluster_aware.md` per Phase 5.1 and ensure its `tranch_state.json` records per-chunk stats; the script picks up the new tranch on next run without code changes.
+
+Why this step exists separately from the per-tranch trend report: Phase 5.1 produces a tranch-scoped view useful for the per-tranch retrospective and PR; Phase 5.3 produces the cross-tranch view useful for comparing trend signals (convergence question, within-tranch peak-then-decline pattern, per-chunk resource scaling). Without Phase 5.3, the cross-tranch view has to be hand-assembled by reading every per-tranch trend file each time, which is what produced multiple counting errors in tranch 03's session (off-by-one in tail flags, prose-vs-table count drift).
+
 ## Phase 6 — Tracker materialization, agent-notes integration, and carry-forward
 
 Output: tracker rows for every cluster + INDEPENDENT singleton (tagged with the tranch ID); existing parent rows annotated with cross-references; `agent_notes.json` integrated with the new tranch's headline numbers and cohort summary; `${TRANCH_DIR}/carry_forward.md`; cross-tranch index appended; tranch state finalized.
