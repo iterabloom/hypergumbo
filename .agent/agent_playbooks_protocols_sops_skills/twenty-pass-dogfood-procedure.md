@@ -810,6 +810,109 @@ The parent agent writes:
 - The next tranch's Phase 0 sub-agent should be pointed at this `carry_forward.md` via the `carry_forward_in` field in its tranch state file.
 - Finalize `${TRANCH_DIR}/tranch_state.json`: set `phase` to `complete`, populate the per-step completion timestamps, touch `${TRANCH_DIR}/tranch.complete` sentinel.
 
+## Phase 7 — End-of-tranch agent_notes coherence sweep
+
+Output: `agent_notes.json` restructured for coherence; `${TRANCH_DIR}/coherence_sweep_report.md`; `tranch.coherence_swept` sentinel.
+
+Runs ONCE per tranch, after Phase 6 has finalized. NOT after every Phase 6 edit — per-edit coherence checks risk myopia (the sub-agent tweaks based on per-step context rather than seeing the full picture). This phase steps back and audits the whole `agent_notes.json` once the tranch's contributions have settled.
+
+The motivating gap, identified during tranch 03 review: `agent_notes.json` grows across sessions as each new tranch / fold-audit / materialization event appends its own "READ THIS FIRST" header + cohort listing + cross-tranche table. Phase 6.2 instructs the sub-agent to APPEND content; nothing was deduplicating. After three tranches the notes had three competing READ-THIS-FIRST headers, asymmetric cohort coverage (tranch 01 not enumerated; 02 and 03 yes), and redundant cross-tranche comparison tables in slightly different formats. Future agents reading the notes were inheriting drift.
+
+Spawn:
+
+```
+You are the Phase 7 agent_notes coherence sweep sub-agent for tranch
+${TRANCH_ID}. Tranch ${TRANCH_ID} just finished Phase 6.5. Your job is
+to step back and restructure ~/hypergumbo_lab_notebook/guidance_log/
+agent_notes.json's `notes` field once for the whole tranch — not to
+make incremental edits, not to add new tranch-specific content (that
+already happened in Phase 6.2), but to RESOLVE accumulated drift.
+
+Read first:
+  - ~/hypergumbo_lab_notebook/guidance_log/agent_notes.json (full
+    notes field).
+  - ~/hypergumbo_lab_notebook/dogfooding_trend_combined.md (the
+    auto-generated cross-tranch canonical source; use this to resolve
+    contradictions between cross-tranche tables in agent_notes).
+  - ~/hypergumbo_lab_notebook/dogfood_tranchen_index.md (the canonical
+    cross-tranche metadata table).
+  - For each tranch NN with a dogfood_tranch_${NN} tag: `scripts/
+    tracker list --tag dogfood_tranch_${NN}` row count.
+
+Back up the current notes to /tmp/agent_notes-pre-phase7-${TRANCH_ID}.json
+BEFORE any edit.
+
+Audit pass (read-only first, ALL audits before any edits):
+
+  1. **READ-THIS-FIRST header proliferation.** Identify every section
+     header labeled "READ THIS FIRST" or "CURRENT STATE" or equivalent.
+     Each should be dated. Only the most recent (the just-completed
+     tranch's) should remain in that role; older ones get demoted to
+     "Historical: <date>" entries below, with their content preserved
+     verbatim but no longer competing for top-of-file priority.
+
+  2. **Cohort listing symmetry.** For each completed tranch (1-20,
+     21-40, 41-60, etc. discovered via dogfooding_trend_combined.md or
+     dogfood_tranchen_index.md), check whether agent_notes enumerates
+     its cohort rows. If NOT and the cohort has a tracker tag, the row
+     count must match the tracker query — flag for backfill. If NOT
+     and the cohort predates tracker tagging (e.g., tranch 01), surface
+     this as an asymmetry; do NOT silently backfill, since the
+     operator may have explicit reasons for the gap.
+
+  3. **Cross-tranche comparison drift.** Identify all cross-tranche
+     comparison tables in agent_notes. For each, compare against the
+     canonical numbers in dogfooding_trend_combined.md + dogfood_
+     tranchen_index.md. Any divergence is staleness — replace with
+     canonical, OR (if the table is making a different point) annotate
+     why it diverges.
+
+  4. **Cohort listing count vs tracker tag count.** For each tranch's
+     cohort listing in agent_notes (where present), the enumerated
+     active-row count must match `scripts/tracker list --tag dogfood_
+     tranch_${NN} | wc -l` (or post-supersession effective count, if
+     the listing is annotated for that). Mismatch → flag for fix.
+
+  5. **Stale tracker IDs.** Spot-check tracker IDs mentioned in the
+     notes against current tracker state via `scripts/tracker show
+     <id>`. Specifically check rows mentioned with a specific status
+     in the notes ("WI-foo (done)"); if the tracker now shows that
+     row as todo_hard or violated, the parenthetical is stale.
+
+  6. **Redundant table consolidation.** If two tables in agent_notes
+     express the same cross-tranch comparison with different formatting
+     or row order, keep one (the most complete) and reference it from
+     the other.
+
+  7. **Size and load-bearing-ness.** If agent_notes exceeds ~250K
+     characters, flag for restructuring — fold older session-state
+     sections into a "Historical sessions" appendix, keeping the
+     current tranch and the immediate-prior tranch fully detailed.
+
+After audit, plan the diff. Apply edits via replace_once() with
+exact-1-match guarantee (NO fuzzy-replace; stale text is better than
+silent overwrite). Document each edit in
+${TRANCH_DIR}/coherence_sweep_report.md with:
+  - Audit findings (per item above).
+  - Edit plan (replace_once calls intended).
+  - Replace_once outcomes (successes + failures).
+  - Backfill recommendations surfaced to operator (e.g., tranch 01
+    cohort listing if absent).
+  - Post-sweep size of agent_notes.
+
+Touch ${TRANCH_DIR}/tranch.coherence_swept. Return a 220-word summary.
+```
+
+### Step 7.1 — Operator review of surfaced asymmetries
+
+If the Phase 7 audit surfaced a cohort-listing asymmetry that requires backfill (e.g., a pre-tagging tranch whose cohort isn't enumerated in agent_notes), the parent agent surfaces this to the operator for explicit authorization. Do NOT auto-backfill — the operator may have reasons for the asymmetry (e.g., the older tranch's enumeration would touch a large number of historical tracker rows, or the cohort is fluid).
+
+If authorization is granted, spawn a backfill sub-agent that produces the missing cohort listing using whatever data is available (the older tranch's classification.md / clusters.md / verdicts file). The listing matches the format of the most recent tranch's cohort sub-section for symmetry.
+
+### Step 7.2 — Why this is Phase 7 not Phase 6.6
+
+Phase 6 ends when tranch finalization writes `tranch.complete`. The agent_notes coherence sweep operates on the WHOLE notes file across multiple tranches, not just this tranch's contribution — it's structurally a meta-phase. Numbering it Phase 7 marks the conceptual boundary: Phase 6 is tranch-scoped; Phase 7 is agent-notes-scoped. The new Phase 7 sentinel `tranch.coherence_swept` lives in the tranch directory because the sweep was triggered BY this tranch's completion, even though the artifact being modified is shared across all tranches.
+
 ## Tranch state file schema
 
 Single source of truth for tranch state. Every sub-agent reads this file as its first action. The parent updates it after every sub-agent return.
@@ -856,7 +959,8 @@ Sentinels are zero-byte files that signal phase or step completion. The parent a
 | `tranch.consolidated` | Phase 3 sub-agent | Two-axis dedup is complete |
 | `tranch.judged` | Phase 4 aggregator | All verdicts collected, aggregate summary written |
 | `tranch.retrospective` | Phase 5 sub-agent | Retrospective is written |
-| `tranch.complete` | Parent agent | All phases done; carry-forward written |
+| `tranch.complete` | Parent agent | All Phase 0-6 done; carry-forward written |
+| `tranch.coherence_swept` | Phase 7 sub-agent | End-of-tranch agent_notes coherence sweep is done |
 
 Sentinels are advisory, not load-bearing. If a sub-agent crashes after writing its work but before touching the sentinel, the parent can detect the work artifacts directly and proceed.
 
