@@ -509,6 +509,16 @@ Outputs (in `${TRANCH_DIR}/trend_cluster_aware.md`):
 - Cluster inventory.
 - Bucket-level 5-pass Σ-severity rollup for cross-tranch comparison.
 
+**Canonical cohort for the trend report (CRITICAL).** The cohort that contributes severity to the per-pass + bucket Σ-sev tables is **strict-dedup + state-change fold-triggers**, NOT the full set of judged cards. Specifically:
+
+- **Include** every card classified by Phase 6.1 Step 2 as `NOT_A_DUPLICATE` or `RELATED_BUT_DISTINCT` (these are novel discoveries that get their own tracker rows — they're the "new distinct invariants" the trend is measuring).
+- **Include** every card classified as `TRUE_DUPLICATE` whose fold caused a state change on the fold target (per Step 4a: `done`/`satisfied` → `todo_hard`/`violated` reopen, or `pending_validation` → `violated` failed-validation). These cards' evidence MATERIALLY CHANGED PROJECT STATE on a previously-closed row — that's real discovery work even though no new row was created. Detect via `tracker_materialization.tsv`'s `fold_target_status_at_fold` ≠ `fold_target_status_after` (or `fold_target_status_after` contains "reopened").
+- **Exclude** every card classified as `TRUE_DUPLICATE` that folded into an already-actionable (`todo_hard` / `violated` / `pending_validation`-not-flipped / `blocked` / `in_progress`) row WITHOUT triggering a state change. These were redundant discovery on known-open work — counting them inflates the severity total without representing distinct discovery or state change.
+
+The trend builder script auto-detects state-change fold-triggers from the `fold_target_status_at_fold` and `fold_target_status_after` columns of `tracker_materialization.tsv`. The trend file's header must call out the cohort composition explicitly (e.g., "37 cards = 35 strict-dedup + 2 state-change fold-triggers").
+
+This method evolved during tranche-03 review when the original "strict dedup" view (35 cards / 127 Σ-sev) was found to under-count 2 state-changing fold-triggers (cards 021 + 047, each severity 3 = 6 Σ-sev) that broke pending_validation on INV-mozaf + INV-jukok. The "canonical" view adds those 6 points back to give 37 cards / 133 Σ-sev. Tranches 01 and 02 predate this discipline; their trend files carry a "Methodology disclaimer (added 2026-06-05 retroactively)" footer noting they may slightly under-count their own fold-trigger state-changes. The cross-tranche apples-to-apples comparison via `dogfooding_trend_combined.md` is therefore very slightly biased toward post-tranche-03 cohorts, by an irreducible amount (the historical fold-audit work was not re-run with state-change tracking).
+
 ### Step 5.2 — Retrospective
 
 Spawn a retrospective sub-agent:
