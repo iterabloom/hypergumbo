@@ -40,3 +40,10 @@
   clock: 3  # 0ba8
   nonce: 0ba8  # 0ba8
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Direct twin of INV-tibob — same field (access_mode), this item is the mislabel face (2082/4250 references edges have ast_name_read+access_mode=write contradiction), INV-tibob is the under-coverage face (0% population on 12 of 17 edge.types). They are facets of one defect: dataflow.py:313-398 _apply_access_modes_pass is Tier 1, but 18+ linkers hardcode access_mode=\"write\" in their own edge emissions (event_sourcing.py:780, jni.py:284, cgo.py:206, websocket.py:794, ipc.py:559, tauri_ipc.py:676 etc.) and dataflow.py:371-372 skips edges that already have access_mode — so the Tier-1 AST classifier never gets a chance to correct them. INV-lifik §1 (dest_access_mode='read' as zero-entropy field) is direct schema-side evidence the subsystem is unhealthy. Likely member of INV-numat since access_mode mixes data-flow direction with collection-mutation semantics. Structural fix candidate: derive at sketch-build time from evidence_type+edge.type rather than per-emitter hardcoding, OR add access_mode_source discriminator."  # 0ba8
+- op: discuss  # a0cb
+  at: '2026-06-05T22:45:51Z'  # a0cb
+  by: agent  # a0cb
+  actor: jgstern_agent  # a0cb
+  clock: 4  # a0cb
+  nonce: a0cb  # a0cb
+  message: "[+ tranche-05 chunk-1 F82.A5 — related] access_mode='write' also stamped on constructors (instantiates/ast_new) and collection mutations (append/add/extend) — a write-position-vs-I/O-write conflation distinct from the read-as-write mislabeling this invariant tracks. Filed as WI-hapab-tapav-lalav-moloz-dopap-gipap-hovin-karuj."  # a0cb

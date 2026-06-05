@@ -1,0 +1,20 @@
+- op: create  # 5160
+  at: '2026-06-05T22:45:31Z'  # 5160
+  by: agent  # 5160
+  actor: jgstern_agent  # 5160
+  clock: 1  # 5160
+  nonce: '5160'  # 5160
+  data:  # 5160
+    kind: work_item  # 5160
+    title: "edge.quality.score = round(confidence,3) diverges from top-level confidence for 257 dispatches_to/type_hierarchy edges"  # 5160
+    status: todo_hard  # 5160
+    priority: 4  # 5160
+    parent:  # 5160
+    tags:  # 5160
+    - dogfood  # 5160
+    isbefore: []  # 5160
+    duplicate_of: []  # 5160
+    not_duplicate_of: []  # 5160
+    pr_ref:  # 5160
+    description: "tranche-05 chunk-1 (pass 82 / F82.A6; preserved per operator). edge.quality.score = round(confidence,3) at ir.py:827 (_derive_edge_quality), so quality.score != top-level confidence for the 257 edges whose confidence carries >3 decimals (entire dispatches_to/type_hierarchy family). Cosmetic/minor consumer confusion. Reproduced fresh. Evidence: agent_notes + dogfood_tranche_05/pass_82.md."  # 5160
+    fields: {}  # 5160

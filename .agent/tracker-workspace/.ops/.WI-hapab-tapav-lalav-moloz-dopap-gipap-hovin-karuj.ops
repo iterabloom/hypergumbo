@@ -1,0 +1,20 @@
+- op: create  # 1492
+  at: '2026-06-05T22:45:28Z'  # 1492
+  by: agent  # 1492
+  actor: jgstern_agent  # 1492
+  clock: 1  # 1492
+  nonce: '1492'  # 1492
+  data:  # 1492
+    kind: work_item  # 1492
+    title: "access_mode='write' stamped on constructors + in-memory collection mutations, not just I/O writes (dataflow-write vs I/O-write conflation)"  # 1492
+    status: todo_hard  # 1492
+    priority: 2  # 1492
+    parent:  # 1492
+    tags:  # 1492
+    - dogfood  # 1492
+    isbefore: []  # 1492
+    duplicate_of: []  # 1492
+    not_duplicate_of: []  # 1492
+    pr_ref:  # 1492
+    description: "tranche-05 chunk-1 (pass 82 / F82.A5; preserved per operator). Of 10294 write-tagged edges, top dst names are Symbol/LinkerContext (instantiates/ast_new constructor calls) and append/add/extend collection mutations — dataflow-write-position conflated with I/O-write semantics. Direct-I/O counter-positive verified. Reproduced fresh. RELATED to INV-kudug (read-ops-as-write) but a distinct facet: write-position vs I/O-write, not read-as-write. Evidence: agent_notes + dogfood_tranche_05/pass_82.md."  # 1492
+    fields: {}  # 1492

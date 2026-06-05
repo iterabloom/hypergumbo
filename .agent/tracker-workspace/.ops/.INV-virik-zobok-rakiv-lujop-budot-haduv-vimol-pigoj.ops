@@ -176,3 +176,18 @@
   target_nonce: 37fc  # 3aff
   new_text: "Pass-28 INV-virik — reserved-empty face (F28.5 kind-conditioned-writer pattern across 5 introspection fields migrated to WI-libib-bapij per fold-audit Phase 2b; F28.2 retained as INV-virik extension).\n\n**F28.2: edge.evidence_lang + edge.evidence_spans dataclass-declared but ABSENT from substrate.**\n\nir.py Edge dataclass declares:\n- `evidence_lang: Optional[str] = None` (line 611)\n- `evidence_spans: Optional[List[Dict[str, Any]]] = None` (line 612)\n\nSpec.md line 799 documents:\n> The top-level `meta.evidence_type`, `meta.evidence_lang`, and `meta.evidence_spans` always reflect the primary (highest-confidence) record.\n\nBut `Edge.to_dict()` (ir.py:728-734) writes these CONDITIONALLY:\n```python\nmeta: Dict[str, Any] = {\"evidence_type\": self.evidence_type}\nif self.evidence_lang is not None:\n    meta[\"evidence_lang\"] = self.evidence_lang\nif self.evidence_spans is not None:\n    meta[\"evidence_spans\"] = self.evidence_spans\n```\n\nSubstrate verification: 0 of 109,915 edges has `evidence_lang` in meta; 0 has `evidence_spans`. Every producer leaves both at the dataclass default (None), and the conditional writer skips the key entirely. Two ir.py-declared + spec.md-documented fields are 100% absent from the substrate.\n\nReserved-empty pattern face: declared-and-documented + writer-suppresses-default → field never appears. Cousin of F26.14 (AR.warnings=[] all 84) and F25.6 (origin_run_pass_id=None all 34253), but with a NEW sentinel-mechanism: the conditional write means absence-rather-than-None on the wire.\n\nProbe artifact: /tmp/pass28_probe2.py (evidence_lang/spans absence verification) / output at /tmp/pass28_output2.log."  # 3aff
   reason: "fold-audit Phase 2b: F28.5 migrated to WI-libib; F28.2 kept"  # 3aff
+- op: update  # 6c79
+  at: '2026-06-05T22:45:51Z'  # 6c79
+  by: agent  # 6c79
+  actor: jgstern_agent  # 6c79
+  clock: 21  # 6c79
+  nonce: 6c79  # 6c79
+  set:  # 6c79
+    status: violated  # 6c79
+- op: discuss  # 2c4f
+  at: '2026-06-05T22:45:51Z'  # 2c4f
+  by: agent  # 2c4f
+  actor: jgstern_agent  # 2c4f
+  clock: 22  # 2c4f
+  nonce: 2c4f  # 2c4f
+  message: "[+ tranche-05 chunk-1 F81.A2] validation failed: edge.meta.evidence_spans and sibling meta.evidence[] are populated on 0/110533 edges on fresh substrate, despite spec §13 listing evidence_spans under a 🟩 'Required field presence' claim. evidence_lang + evidence_spans are dataclass-declared Optional[T]=None with a conditional ir.py writer that never fires. Reproduced fresh; flipped pending_validation→violated. Evidence: dogfood_tranche_05/pass_81.md."  # 2c4f
