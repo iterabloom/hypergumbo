@@ -95,3 +95,18 @@
   clock: 10  # 3737
   nonce: '3737'  # 3737
   message: "[+ tranch_03: WI-dizir reports orchestrator-pass cross-field gap (492 nodes cite origin pass-id missing from analysis_runs); not addressed by name/span fix]"  # 3737
+- op: update  # 6fa5
+  at: '2026-06-05T06:15:43Z'  # 6fa5
+  by: agent  # 6fa5
+  actor: jgstern_agent  # 6fa5
+  clock: 11  # 6fa5
+  nonce: 6fa5  # 6fa5
+  set:  # 6fa5
+    status: violated  # 6fa5
+- op: discuss  # 8a0c
+  at: '2026-06-05T06:15:43Z'  # 8a0c
+  by: agent  # 8a0c
+  actor: jgstern_agent  # 8a0c
+  clock: 12  # 8a0c
+  nonce: 8a0c  # 8a0c
+  message: "Reopened: tranch_03 card 028 (anon-card-tranch03-028, sourced from F51.A1, filed as WI-dizir) reports 492 file-kind nodes citing origin pass-id 'orchestrator_file_symbol_synthesis' with no matching analysis_runs entry. Same producer pipeline INV-vaguj's name/span fix addressed, adjacent provenance-stamping gap on a different field. Substrate HEAD 9a18959071. Blind severity 4 (Significant). Reopened per playbook Phase 6.1 Step 4a status-adjustment rule (default-to-reopen branch)."  # 8a0c

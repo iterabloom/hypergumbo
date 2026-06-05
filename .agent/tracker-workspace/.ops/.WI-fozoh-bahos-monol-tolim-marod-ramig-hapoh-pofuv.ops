@@ -72,3 +72,18 @@
   clock: 8  # f894
   nonce: f894  # f894
   message: "[+ tranch_03: WI-sijut reports parallel origin=[] gap on same external_symbol synthesis pathway (different field, separate fix surface from this done row)]"  # f894
+- op: update  # 39a5
+  at: '2026-06-05T06:15:42Z'  # 39a5
+  by: agent  # 39a5
+  actor: jgstern_agent  # 39a5
+  clock: 9  # 39a5
+  nonce: 39a5  # 39a5
+  set:  # 39a5
+    status: todo_hard  # 39a5
+- op: discuss  # ae77
+  at: '2026-06-05T06:15:42Z'  # ae77
+  by: agent  # ae77
+  actor: jgstern_agent  # ae77
+  clock: 10  # ae77
+  nonce: ae77  # ae77
+  message: "Reopened: tranch_03 card 003 (anon-card-tranch03-003, sourced from F41.A3, filed as WI-sijut) reports origin=[] null on the same external_symbol synthesis path WI-fozoh covered for stable_id/canonical_name. Same producer, same incomplete-emission pattern, additional field still un-stamped. Substrate HEAD 9a18959071. Blind severity 3 (Moderate). Reopened per playbook Phase 6.1 Step 4a status-adjustment rule (default-to-reopen branch)."  # ae77

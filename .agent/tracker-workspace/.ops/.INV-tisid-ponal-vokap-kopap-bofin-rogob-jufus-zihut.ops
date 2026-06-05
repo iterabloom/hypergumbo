@@ -45,3 +45,18 @@
   clock: 4  # 8bac
   nonce: 8bac  # 8bac
   message: "[+ tranch_03: WI-golov reports spec §14 documentation drift from the refactor INV-tisid fixed in code; tier 2 still named 'Internal libraries, monorepo packages' and lists test paths. Doc-only surface, not a code reopen.]"  # 8bac
+- op: update  # 6995
+  at: '2026-06-05T06:15:43Z'  # 6995
+  by: agent  # 6995
+  actor: jgstern_agent  # 6995
+  clock: 5  # 6995
+  nonce: '6995'  # 6995
+  set:  # 6995
+    status: violated  # 6995
+- op: discuss  # 9e3b
+  at: '2026-06-05T06:15:44Z'  # 9e3b
+  by: agent  # 9e3b
+  actor: jgstern_agent  # 9e3b
+  clock: 6  # 9e3b
+  nonce: 9e3b  # 9e3b
+  message: "Reopened: tranch_03 card 046 (anon-card-tranch03-046, sourced from F48.A1+F48.A3 cluster-002, filed as WI-golov) reports spec §14 docs still describe tier 2 as 'Internal libraries, monorepo packages' and list test paths under tier 2, while INV-tisid's code refactor routed tests to tier 1. Code+docs out of sync; INV-tisid satisfied is misleading because consumer-facing contract (the spec doc) still asserts the pre-fix behavior. Substrate HEAD 9a18959071. Blind severity 4 (Significant). Reopened per playbook Phase 6.1 Step 4a status-adjustment rule (default-to-reopen branch)."  # 9e3b

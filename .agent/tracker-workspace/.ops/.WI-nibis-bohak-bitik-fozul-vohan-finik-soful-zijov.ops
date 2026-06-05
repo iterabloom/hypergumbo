@@ -144,3 +144,18 @@
   clock: 16  # 4ced
   nonce: 4ced  # 4ced
   message: "[OPERATOR-REVIEW: tranch_03 anon-card-tranch03-043 F60.A2 may reproduce this row's mechanism via fix-surface variation — ast_call_method continues emitting at 4.52% of substrate (4995 edges) after Phase 3 close (severity 2). Reproduction substrate HEAD 9a18959071 sha256 a32c4a31. Python analyzer not migrated to canonical apex + meta['call_construct']='method'. Recommend reopen if mechanism reproduction confirmed by operator.]"  # 4ced
+- op: update  # cec3
+  at: '2026-06-05T06:10:50Z'  # cec3
+  by: agent  # cec3
+  actor: jgstern_agent  # cec3
+  clock: 17  # cec3
+  nonce: cec3  # cec3
+  set:  # cec3
+    status: todo_hard  # cec3
+- op: discuss  # b94a
+  at: '2026-06-05T06:10:51Z'  # b94a
+  by: agent  # b94a
+  actor: jgstern_agent  # b94a
+  clock: 18  # b94a
+  nonce: b94a  # b94a
+  message: "Reopened: tranch_03 card 043 (anon-card-tranch03-043, sourced from F60.A2, filed as WI-hubit) reproduces the original mechanism on substrate at HEAD 9a18959071 sha256 a32c4a31...; blind severity 3 (Moderate). The ast_call_method evidence_type continues emitting on 4995 substrate edges (4.52% of all edges, 97.9% of the pending axis) six schema-minor-versions past the WI-nibis Cluster D close. Regression evidence per twenty-pass-dogfood-procedure Phase 6.1 Step 4a status-adjustment rule. Cross-referenced in WI-hubit discussion thread."  # b94a

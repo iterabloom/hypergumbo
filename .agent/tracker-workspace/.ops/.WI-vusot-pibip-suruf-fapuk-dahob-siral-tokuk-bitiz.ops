@@ -61,3 +61,18 @@
   clock: 7  # b0df
   nonce: b0df  # b0df
   message: "[+ tranch_03: WI-mulub reports 5 meta keys emitted on 29 edges by 5 linkers (graphql_resolver/graphql/http/event_sourcing/message_queue) but not registered post-WI-vusot infrastructure landing]"  # b0df
+- op: update  # 9db2
+  at: '2026-06-05T06:15:43Z'  # 9db2
+  by: agent  # 9db2
+  actor: jgstern_agent  # 9db2
+  clock: 8  # 9db2
+  nonce: 9db2  # 9db2
+  set:  # 9db2
+    status: todo_hard  # 9db2
+- op: discuss  # be87
+  at: '2026-06-05T06:15:43Z'  # be87
+  by: agent  # be87
+  actor: jgstern_agent  # be87
+  clock: 9  # be87
+  nonce: be87  # be87
+  message: "Reopened: tranch_03 card 034 (anon-card-tranch03-034, sourced from F54.A2, filed as WI-mulub) reports 5 meta keys (cross_language/client_framework/server_framework/url_path/channel) emitted on 29 edges by 5 linker families but never added to the axis_meta_keys registry WI-vusot established. Infrastructure landed; coverage gap remains. Substrate HEAD 9a18959071. Blind severity 2 (Minor). Reopened per playbook Phase 6.1 Step 4a status-adjustment rule (default-to-reopen branch)."  # be87

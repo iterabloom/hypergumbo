@@ -92,3 +92,18 @@
   clock: 6  # a6fa
   nonce: a6fa  # a6fa
   message: "Merged as PR #3812, dev SHA 77bdfad076da."  # a6fa
+- op: update  # afb1
+  at: '2026-06-05T06:15:42Z'  # afb1
+  by: agent  # afb1
+  actor: jgstern_agent  # afb1
+  clock: 10  # afb1
+  nonce: afb1  # afb1
+  set:  # afb1
+    status: todo_hard  # afb1
+- op: discuss  # 8b3d
+  at: '2026-06-05T06:15:42Z'  # 8b3d
+  by: agent  # 8b3d
+  actor: jgstern_agent  # 8b3d
+  clock: 11  # 8b3d
+  nonce: 8b3d  # 8b3d
+  message: "Reopened: tranch_03 card 012 (anon-card-tranch03-012, sourced from F45.A2, filed as WI-lisog) reports 3911 Python test methods + 1645 external_symbol nodes still null after the WI-fanun 'global null' fix landed. The fix did not extend to Python test methods or external_symbol synthesis path. Substrate HEAD 9a18959071. Blind severity 4 (Significant). Reopened per playbook Phase 6.1 Step 4a status-adjustment rule (default-to-reopen branch)."  # 8b3d
