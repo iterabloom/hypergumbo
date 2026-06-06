@@ -478,13 +478,23 @@ def main() -> int:
     deleaked, n_back = backfill(notes, deleaked, rows)
 
     out.write_text(json.dumps({"notes": deleaked}, indent=2, ensure_ascii=False))
-    mapp.write_text(json.dumps(pass_map, indent=2, ensure_ascii=False))
+    # Never clobber a populated --map with an empty reconstruction. A modern
+    # campaign-position-free ledger has no embedded F-numbers, so extract_map()
+    # returns {}; writing that would destroy the orchestrator-maintained
+    # pass_row_map.json (the human's sole severity-over-time source). Only write
+    # when we actually reconstructed rows, or when the target does not yet exist
+    # (default-path init / migration aid for an old cadence-bearing ledger).
+    if pass_map or not mapp.exists():
+        mapp.write_text(json.dumps(pass_map, indent=2, ensure_ascii=False))
+        map_action = "wrote"
+    else:
+        map_action = "preserved existing (empty reconstruction not written)"
     rc = verify(notes, deleaked, report, known_ids=frozenset(rows))
 
     mapped_rows = sum(len(v) for v in pass_map.values())
     print(f"in:      {args.inp}")
     print(f"out:     {out}  ({len(notes)} -> {len(deleaked)} chars)")
-    print(f"map:     {mapp}  ({len(pass_map)} passes, {mapped_rows} row-associations)")
+    print(f"map:     {mapp}  ({len(pass_map)} passes, {mapped_rows} row-associations) [{map_action}]")
     print(f"backfill: {n_back} narrative-only IDs sourced from the tracker")
     print(f"report:  {report}")
     print(f"verify:  rc={rc} "
