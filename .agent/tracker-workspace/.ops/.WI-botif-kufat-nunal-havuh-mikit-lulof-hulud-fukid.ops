@@ -1,0 +1,21 @@
+- op: create  # c241
+  at: '2026-06-06T10:29:04Z'  # c241
+  by: agent  # c241
+  actor: jgstern_agent  # c241
+  clock: 1  # c241
+  nonce: c241  # c241
+  data:  # c241
+    kind: work_item  # c241
+    title: "type-hierarchy linker dispatches_to edges undershoot documented 0.40 linker confidence floor (313 edges <0.40, min ~0.094)"  # c241
+    status: todo_hard  # c241
+    priority: 1  # c241
+    parent:  # c241
+    tags:  # c241
+    - dogfood  # c241
+    - dogfood_tranche_06  # c241
+    isbefore: []  # c241
+    duplicate_of: []  # c241
+    not_duplicate_of: []  # c241
+    pr_ref:  # c241
+    description: "**Defect.** The type-hierarchy linker emits `dispatches_to` edges whose computed confidence falls far below the documented linker-edge confidence floor.\n\n**Evidence.** Spec §12 documents linker edge confidence range as 0.40–0.95 (analyzer edges 0.30–0.95). On a full behavior map, 313 edges have confidence < 0.40 — all from the type-hierarchy linker (origin=type-hierarchy, evidence_type=type_hierarchy, type=dispatches_to). 236 are below even the 0.30 analyzer floor; the minimum is ~0.0939. Of 326 type_hierarchy edges, 96% are below 0.40. quality.reason on these is low_confidence_fallback (325/326). Values are genuinely computed (e.g. 0.09386679716361955, 0.13610893073432406), not rounded — a real scoring path undershooting the documented floor by ~4×.\n\n**Contract.** Edges from a linker should carry confidence within the documented linker range (≥0.40), or the documented per-category range should be corrected to match the producer.\n\n**Consequence.** A consumer filtering linker edges at the documented 0.40 minimum, believing that retains every edge a linker can emit, silently drops all 313 dispatch edges, corrupting dispatch-coverage reasoning and under-counting dynamic-dispatch resolution."  # c241
+    fields: {}  # c241

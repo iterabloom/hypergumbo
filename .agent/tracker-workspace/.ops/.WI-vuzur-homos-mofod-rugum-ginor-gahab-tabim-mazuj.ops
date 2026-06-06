@@ -1,0 +1,21 @@
+- op: create  # d093
+  at: '2026-06-06T10:29:20Z'  # d093
+  by: agent  # d093
+  actor: jgstern_agent  # d093
+  clock: 1  # d093
+  nonce: d093  # d093
+  data:  # d093
+    kind: work_item  # d093
+    title: "framework matcher ignores file-level language gate: lit reactive_property fires on 31 Python @property getters"  # d093
+    status: todo_hard  # d093
+    priority: 1  # d093
+    parent:  # d093
+    tags:  # d093
+    - dogfood  # d093
+    - dogfood_tranche_06  # d093
+    isbefore: []  # d093
+    duplicate_of: []  # d093
+    not_duplicate_of: []  # d093
+    pr_ref:  # d093
+    description: "**Defect.** A web-framework reactive-property concept fires on ordinary Python `@property` getters because the framework matcher ignores the framework YAML's file-level `language` gate.\n\n**Evidence.** `match_patterns` (framework_patterns.py:967) honors per-pattern `language` regexes (matches.py:317) but ignores each framework YAML's file-level `language` field. The lit framework declares `language: javascript` (lit.yaml:13) and a `reactive_property` pattern keyed solely on `decorator: \"^property$\"` with no per-pattern language. So the JavaScript-scoped pattern matches Python's stdlib `@property` decorator. The concept fires on 31 symbols, all Python `@property` getters (SliceResult.feature_id, Cache.db_path, ...) and on 0 TypeScript symbols. A fresh run of the live matcher reproduces the false match on a Python @property method.\n\n**Contract.** A framework whose file-level language is JavaScript should not match symbols in another language; the file-level language gate should be enforced.\n\n**Consequence.** An agent reading the concept annotations believes 31 Python data classes are web-component reactive properties — a false positive that misdescribes the architecture and could drive a wrong framework-migration or review. Generalizes to any framework whose sole decorator name collides with a builtin in another detected language."  # d093
+    fields: {}  # d093

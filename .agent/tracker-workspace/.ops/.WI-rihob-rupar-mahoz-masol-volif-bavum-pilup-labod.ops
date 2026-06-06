@@ -1,0 +1,21 @@
+- op: create  # a674
+  at: '2026-06-06T10:29:06Z'  # a674
+  by: agent  # a674
+  actor: jgstern_agent  # a674
+  clock: 1  # a674
+  nonce: a674  # a674
+  data:  # a674
+    kind: work_item  # a674
+    title: "container/declaration symbol kinds lack stable_id (TS class 0/4 incl. 3 real app classes); js_ts.py:3322 omits stable_id="  # a674
+    status: todo_hard  # a674
+    priority: 1  # a674
+    parent:  # a674
+    tags:  # a674
+    - dogfood  # a674
+    - dogfood_tranche_06  # a674
+    isbefore: []  # a674
+    duplicate_of: []  # a674
+    not_duplicate_of: []  # a674
+    pr_ref:  # a674
+    description: "**Defect.** Container/declaration symbol kinds systematically lack `stable_id`, including real TypeScript application classes.\n\n**Evidence.** For TypeScript, the analyzer constructs `class` Symbols at `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py:3322` passing `shape_id=...` but never passing `stable_id=`, so it defaults to None — whereas functions/methods (js_ts.py:3217) DO compute make_typed_stable_id. All 4 TS `class` nodes have stable_id=None, including 3 real production app classes (ItemDetail, TrackerApp, ItemList). The omission spans container/declaration kinds across languages: per-language null rates reach solidity 75%, csharp 50%, swift 43%, rust 33%, go 22%. Fresh run on a widget.ts fixture: class is the only kind emitting null while interface, method, and function all get a stable_id.\n\n**Contract.** `stable_id` is the spec's signature-based rename/move survival key for typed languages; a typed language's classes should carry one (null is reserved for true unavailability, not a producer omission).\n\n**Consequence.** Cross-version class tracking, rename-survival, and refactor-impact analysis fail for container kinds — the survival key the spec promises is absent exactly where renames matter most; the only other identity (path+span id) changes on rename/move.\n\n**Related (not duplicate).** INV-sotiv (satisfied) closed stable_id gaps for {variable, module, export, dependency, project, interface, type}+file but its scope did NOT include `class`; this finding is the container/declaration-kind gap, root-caused at js_ts.py:3322."  # a674
+    fields: {}  # a674
