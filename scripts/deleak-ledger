@@ -49,8 +49,18 @@ PROCEDURE (iterate to fully de-leaked)
 USAGE
     scripts/deleak-ledger --in <agent_notes.json> --out <deleaked.json> \\
         --map <pass_row_map.json> --report <residual.md>
+    scripts/deleak-ledger --check --in <file>   # lint-only: exit 1 if the file
+                                                # carries any cadence (no output)
     (--in defaults to the canonical agent_notes; --out/--map/--report default
     alongside it. The input is never modified.)
+
+LINT GUARD
+    --check is the guard for content that lands in a worker-loaded ledger. The
+    issue ledger workers --show must always pass --check (rc=0). If a handoff /
+    session-notes role is ever reintroduced (a thing this ledger used to double
+    as), keep it in a SEPARATE file that workers never load, OR run --check on it
+    before merging anything into agent_notes — so handoff prose can never sneak
+    campaign cadence back into the worker-facing ledger.
 """
 
 from __future__ import annotations
@@ -340,6 +350,44 @@ def verify(original: str, deleaked: str, report_path: Path,
     return 1 if residual else 0
 
 
+def lint(notes: str) -> list[tuple[int, list[str], str]]:
+    """Scan text for cadence (linter mode). Returns [(line_no, hits, line)].
+
+    Unlike the post-strip residual scan, this reads the INPUT directly, so it
+    answers "does this file leak campaign position?" — the guard for any content
+    (e.g. reintroduced handoff notes) that lands in a worker-loaded ledger.
+    """
+    out: list[tuple[int, list[str], str]] = []
+    for i, line in enumerate(notes.splitlines(), 1):
+        low = line.lower()
+        if "issue ledger" in low or "index/trend" in low:
+            continue  # the allowed header pointer
+        hits = [name for name, pat in CADENCE_TOKENS if pat.search(line)]
+        if CADENCE_LINE.search(line):
+            hits.append("cadence_line")
+        if hits:
+            out.append((i, sorted(set(hits)), line))
+    return out
+
+
+def check_mode(notes: str, report_path: Path) -> int:
+    """Lint-only: report cadence in the input; rc=1 if any, else 0. No output."""
+    findings = lint(notes)
+    lines = [
+        "# deleak-ledger --check (lint) report",
+        "",
+        f"cadence-bearing lines: {len(findings)}",
+        "",
+        *([f"  L{i} [{','.join(h)}]: {ln[:110]}" for i, h, ln in findings[:200]]
+          or ["  (none — campaign-position-free)"]),
+    ]
+    report_path.write_text("\n".join(lines) + "\n")
+    print(f"check: {len(findings)} cadence-bearing line(s) -> {report_path}")
+    print(f"verify: rc={1 if findings else 0} "
+          f"({'CADENCE PRESENT' if findings else 'clean'})")
+    return 1 if findings else 0
+
+
 def fetch_tracker_rows(repo_root: Path) -> dict[str, tuple[str, str, int | None]]:
     """{short_id: (full_id, title, severity)} from ``scripts/tracker list``.
 
@@ -398,6 +446,9 @@ def main() -> int:
     ap.add_argument("--tracker-titles", dest="titles", type=Path, default=None,
                     help="JSON {short_id:[full,title]} for backfill; "
                          "if omitted, auto via scripts/tracker list")
+    ap.add_argument("--check", action="store_true",
+                    help="lint-only: scan --in for cadence, write --report, "
+                         "exit 1 if any is present (no de-leak, no output written)")
     args = ap.parse_args()
 
     out = args.out or args.inp.with_suffix(".deleaked.json")
@@ -410,6 +461,9 @@ def main() -> int:
 
     data = json.loads(args.inp.read_text())
     notes = data["notes"]
+
+    if args.check:
+        return check_mode(notes, report)
 
     if args.titles and args.titles.exists():
         raw = json.loads(args.titles.read_text())
