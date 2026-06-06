@@ -1,0 +1,28 @@
+- op: create  # a126
+  at: '2026-06-06T04:10:32Z'  # a126
+  by: agent  # a126
+  actor: jgstern_agent  # a126
+  clock: 1  # a126
+  nonce: a126  # a126
+  data:  # a126
+    kind: work_item  # a126
+    title: "message-queue linker synthesizes 103 event_publishes from test-file MQ pattern string literals; 26 cross-link unrelated test files by topic"  # a126
+    status: todo_hard  # a126
+    priority: 1  # a126
+    parent:  # a126
+    tags:  # a126
+    - dogfood  # a126
+    - dogfood_tranche_05  # a126
+    isbefore: []  # a126
+    duplicate_of: []  # a126
+    not_duplicate_of: []  # a126
+    pr_ref:  # a126
+    description: "All 103 event_publishes edges are synthesized by the message-queue linker from MQ pattern example strings (producer.send('topic'), consumer.subscribe(['topic'])) embedded as STRING LITERALS in three regression-test files; 26 of them link a 'publisher' in one test file to a 'subscriber' in a different, unrelated test file by topic match. src files: test_linker_docstring_fp_regression.py(15), test_linkers_text_filters.py(20), test_message_queue_linker.py(68). Node records: kind=function, origin=['message-queue-linker'], name='kafka:publish:topic'/'kafka:subscribe:topic', supply_chain.is_test_file=True. Sample edge: test_linker_docstring_fp_regression.py:27-27:mq_publisher -> test_linkers_text_filters.py:52-52:mq_subscriber (evidence_type=topic_match, conf=0.9). Consequence: a consumer reading the behavior map sees phantom event-flow edges between unrelated modules; an LLM auditing pub/sub coupling concludes these test files communicate via Kafka. False positives in a Tier-2 edge-recovery linker."  # a126
+    fields: {}  # a126
+- op: discuss  # 9845
+  at: '2026-06-06T04:10:43Z'  # 9845
+  by: agent  # 9845
+  actor: jgstern_agent  # 9845
+  clock: 2  # 9845
+  nonce: '9845'  # 9845
+  message: "Materialized from dogfood tranche 05 (F83.A1 / anon-card-007). Mechanism: message-queue linker matches MQ pattern strings in TEST-FILE string literals and cross-links publisher↔subscriber across unrelated test files by topic. Evidence: frozen substrate.json — 103 event_publishes total, 26 cross-file; sample edge test_linker_docstring_fp_regression.py:27-27 -> test_linkers_text_filters.py:52-52 (topic_match, conf=0.9). Fresh repro: hypergumbo run /tmp/mqtest on copies of the 3 test files reproduced 103 event_publishes / 26 cross-file. Blind severity 4/5, reproduced (genuine repo files, not injection). RELATED_BUT_DISTINCT from WI-vavur (done — linkers regex-match their own module DOCSTRINGS/prose → phantom nodes; this is test-BODY string literals plus a cross-file topic-join) and WI-vurig (done — yjs_crdt linker should gate on manifest-detected framework presence; same family of unconditional text-pattern linker FPs but different linker and no cross-file join). Also distinct from WI-zadot (kind tagging) and WI-popok (entrypoint test heuristic)."  # 9845

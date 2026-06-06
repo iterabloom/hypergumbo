@@ -1,0 +1,21 @@
+- op: create  # c64d
+  at: '2026-06-06T04:11:10Z'  # c64d
+  by: agent  # c64d
+  actor: jgstern_agent  # c64d
+  clock: 1  # c64d
+  nonce: c64d  # c64d
+  data:  # c64d
+    kind: work_item  # c64d
+    title: "2236 nodes carry empty-string origin_run_id sentinel, breaking node->AnalysisRun referential integrity"  # c64d
+    status: todo_hard  # c64d
+    priority: 1  # c64d
+    parent:  # c64d
+    tags:  # c64d
+    - dogfood  # c64d
+    - dogfood_tranche_05  # c64d
+    isbefore: []  # c64d
+    duplicate_of: []  # c64d
+    not_duplicate_of: []  # c64d
+    pr_ref:  # c64d
+    description: "2236 of 34396 nodes have origin_run_id='' (empty-string sentinel, not null) which resolves to no AnalysisRun; the other 32160 non-empty origin_run_ids resolve 100% to a real AR execution_id (84 distinct). No node uses null — the unprovenanced set uses ''. Breakdown by (kind,language,origin): external_symbol python 1511 / markdown 106 / typescript 19 / rust 3 / go 2 / java 1 / javascript 1 (all origin=[] too — zero provenance at all); file python orchestrator_file_symbol_synthesis 489; toml dependency 76 + project 7; json dependency 6 + package 1; wgsl function 3 + struct 2; sql view 1. 1645 of the 2236 are external_symbol placeholders carrying BOTH origin=[] and origin_run_id='' → totally untraceable provenance. For orchestrator_file_symbol_synthesis nodes there is also no AR whose pass is that synthesis pass. Consequence: a consumer cannot JOIN these 2236 nodes to provenance; node→AR referential integrity silently breaks via an empty-string sentinel."  # c64d
+    fields: {}  # c64d

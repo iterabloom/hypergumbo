@@ -1,0 +1,28 @@
+- op: create  # c28a
+  at: '2026-06-06T04:10:52Z'  # c28a
+  by: agent  # c28a
+  actor: jgstern_agent  # c28a
+  clock: 1  # c28a
+  nonce: c28a  # c28a
+  data:  # c28a
+    kind: work_item  # c28a
+    title: "Edge.create evidence_type default 'ast_call_direct' leaks onto 326 non-call edges (dispatches_to/references/inherits/overrides)"  # c28a
+    status: todo_hard  # c28a
+    priority: 1  # c28a
+    parent:  # c28a
+    tags:  # c28a
+    - dogfood  # c28a
+    - dogfood_tranche_05  # c28a
+    isbefore: []  # c28a
+    duplicate_of: []  # c28a
+    not_duplicate_of: []  # c28a
+    pr_ref:  # c28a
+    description: "Edge.create's evidence_type parameter defaults to 'ast_call_direct' (ir.py:650; EdgeMeta default ir.py:610). Producers that emit non-call edges without explicitly passing evidence_type inherit this call-specific value, so 326 structurally-non-call edges are stamped as direct function calls on the evidence_type axis: dispatches_to 293 (decorator-dispatch 292 + rust-trait-dispatch-linker 1), references 31 (websocket-linker 30 + solidity 1), inherits 1 (solidity), overrides 1 (solidity). Within a single edge type the axis is inconsistent: dispatches_to splits 293 ast_call_direct vs 326 type_hierarchy for the same relationship. Concrete: inherits Token:contract --(ast_call_direct)--> IToken:interface (a contract→interface inheritance labeled as a direct call); overrides Token.transfer --(ast_call_direct)--> IToken.transfer. Source: solidity.py:395-404 builds the inherits edge via Edge.create() with NO evidence_type kwarg; ir.py:650 default = 'ast_call_direct'. Consequence: a consumer selecting 'all call sites' by filtering edge.meta.evidence_type == 'ast_call_direct' silently pulls in 326 inheritance/override/dispatch/reference edges — wrong call-graph membership for any LLM audit or refactor that trusts the evidence axis."  # c28a
+    fields: {}  # c28a
+- op: discuss  # c7e6
+  at: '2026-06-06T04:11:02Z'  # c7e6
+  by: agent  # c7e6
+  actor: jgstern_agent  # c7e6
+  clock: 2  # c7e6
+  nonce: c7e6  # c7e6
+  message: "Materialized from dogfood tranche 05 (F88.A1 / anon-card-009). Mechanism: call-specific Edge.create DEFAULT evidence_type='ast_call_direct' leaks onto non-call edges. Evidence: frozen substrate + source — ir.py:650 / ir.py:610 default; solidity.py:395-404 emits inherits via Edge.create() with no evidence_type kwarg. Magnitude: 326 non-call edges stamped ast_call_direct (dispatches_to 293, references 31, inherits 1, overrides 1) + intra-edge-type axis inconsistency on dispatches_to (293 ast_call_direct vs 326 type_hierarchy). Fresh repro: hypergumbo run on the tracker package reproduces websocket-linker references edges carrying call-evidence. Blind severity 4/5, reproduced (grounded at source, not injection). RELATED_BUT_DISTINCT from WI-molit (resolution-state smuggling ast_call vs ast_call_direct), WI-guvup (evidence_type vocabulary-drift count 33 vs 9), INV-dovus (evidence_type fragmentation for imports), and parent META INV-numat (edge vocab fields mix axes). New mechanism = the call-specific Edge.create DEFAULT bleeding onto non-call edges + intra-edge-type inconsistency."  # c7e6
