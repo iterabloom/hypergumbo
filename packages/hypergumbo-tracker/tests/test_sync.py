@@ -46,6 +46,8 @@ from hypergumbo_tracker.sync import (
     _log,
     _merge_pr,
     _poll_ci,
+    _short_item_ids,
+    _format_sync_title,
     _sum_added_lines,
     check_sync_gate_held,
     do_sync,
@@ -1837,7 +1839,7 @@ class TestDoSync:
     """Tests for do_sync — full workflow with all externals mocked.
 
     The plumbing call sequence is:
-      fetch, rev-parse, read-tree, add, write-tree,
+      fetch, rev-parse, read-tree, add, write-tree, diff --numstat,
       config user.name, config user.email, commit-tree, update-ref,
 
     Note: init_sync_log is auto-mocked via the fixture below to prevent
@@ -1859,6 +1861,9 @@ class TestDoSync:
             _make_completed_process(),                       # read-tree
             _make_completed_process(),                       # add
             _make_completed_process(stdout="tree456\n"),      # write-tree
+            _make_completed_process(
+                stdout="12\t0\t.agent/tracker/.ops/.WI-test.ops\n"
+            ),  # diff --numstat (op count for title)
             _make_completed_process(stdout="Test User\n"),    # config user.name
             _make_completed_process(stdout="t@e.com\n"),      # config user.email
             _make_completed_process(stdout="commit789\n"),    # commit-tree
@@ -1962,6 +1967,65 @@ class TestDoSync:
         merge_args = cleanup_calls[3][0]
         assert "merge" in merge_args
         assert "--ff-only" in merge_args
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_pushes_rich_varied_title(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """The push title and the PR-lookup title carry the rich, varied
+        format (count + ops + item IDs) — distinct and informative per sync —
+        not the legacy ``tracker: sync N file(s)`` template."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(
+            tmp_path,
+            changed_files=[
+                ".agent/tracker/.ops/.WI-test.ops",
+                ".agent/tracker/.ops/.INV-luhur-davag.ops",
+            ],
+        )
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
+            *self._cleanup(),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
+
+        expected_title = "tracker: 2 files (12 ops) — WI-test, INV-luhur"
+        # The PR lookup is given the same varied title (AGit-flow fallback).
+        assert mock_find_pr.call_args.kwargs["title"] == expected_title
+        # The push carries it via the -o title= option.
+        push_call = next(
+            c for c in mock_git.call_args_list if "push" in c[0]
+        )
+        assert f"title={expected_title}" in push_call[0]
+        # And the commit subject matches (sign-off trailer appended).
+        commit_call = next(
+            c for c in mock_git.call_args_list if "commit-tree" in c[0]
+        )
+        commit_args = commit_call[0]
+        msg = commit_args[list(commit_args).index("-m") + 1]
+        assert msg.startswith(expected_title)
+        assert "Signed-off-by:" in msg
+        # Legacy template must not appear anywhere.
+        assert "tracker: sync 2 file(s)" not in msg
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._merge_pr")
@@ -2088,8 +2152,9 @@ class TestDoSync:
         result = do_sync(repo_root=tmp_path, preflight=pre)
         assert result.success
 
-        # Find the commit-tree call (8th git call, index 7)
-        commit_call = mock_git.call_args_list[7]
+        # Find the commit-tree call (9th git call, index 8 — the numstat
+        # call for the title sits between write-tree and config user.name)
+        commit_call = mock_git.call_args_list[8]
         commit_args = commit_call[0]  # positional args
         # Should include -c commit.gpgSign=false before "commit-tree"
         assert "-c" in commit_args
@@ -2137,6 +2202,9 @@ class TestDoSync:
             _make_completed_process(),                       # read-tree
             _make_completed_process(),                       # add
             _make_completed_process(stdout="tree456\n"),      # write-tree
+            _make_completed_process(
+                stdout="12\t0\t.agent/tracker/.ops/.WI-test.ops\n"
+            ),  # diff --numstat (op count for title)
             _make_completed_process(stdout="Test User\n"),    # config user.name
             _make_completed_process(stdout="t@e.com\n"),      # config user.email
             _make_completed_process(
@@ -2577,7 +2645,7 @@ class TestDoSync:
         assert result.success
 
         # Verify commit-tree uses origin/dev SHA as parent
-        commit_tree_call = mock_git.call_args_list[7]
+        commit_tree_call = mock_git.call_args_list[8]
         args = commit_tree_call[0]
         assert "commit-tree" in args
         assert "-p" in args
@@ -2585,7 +2653,7 @@ class TestDoSync:
         assert args[p_idx + 1] == "abc123"  # base SHA from rev-parse
 
         # Verify push uses explicit ref, not HEAD
-        push_call = mock_git.call_args_list[9]
+        push_call = mock_git.call_args_list[10]
         push_args = push_call[0]
         push_ref = [
             a for a in push_args
@@ -2663,6 +2731,9 @@ class TestDoSync:
             _make_completed_process(),                       # read-tree
             _make_completed_process(),                       # add
             _make_completed_process(stdout="tree456\n"),      # write-tree
+            _make_completed_process(
+                stdout="12\t0\t.agent/tracker/.ops/.WI-test.ops\n"
+            ),  # diff --numstat (op count for title)
             _make_completed_process(stdout="Test User\n"),    # config user.name
             _make_completed_process(stdout="t@e.com\n"),      # config user.email
             _make_completed_process(stdout="commit789\n"),    # commit-tree
@@ -2747,23 +2818,24 @@ class TestDoSync:
         assert result.pr_number == 42
 
         # Verify the rebase sequence happened:
-        # After push (index 9), we expect:
-        #   10: fetch (re-fetch)
-        #   11: rev-parse (returns newbase999)
-        #   12: read-tree (new base)
-        #   13: add (stage ops)
-        #   14: write-tree
-        #   15: commit-tree
-        #   16: update-ref
-        #   17: force-push
+        # After push (index 10 — the numstat call for the title shifts the
+        # initial plumbing by one), we expect:
+        #   11: fetch (re-fetch)
+        #   12: rev-parse (returns newbase999)
+        #   13: read-tree (new base)
+        #   14: add (stage ops)
+        #   15: write-tree
+        #   16: commit-tree
+        #   17: update-ref
+        #   18: force-push
         calls = mock_git.call_args_list
 
         # rev-parse after CI should return new base
-        rebase_rev = calls[11]
+        rebase_rev = calls[12]
         assert "rev-parse" in rebase_rev[0]
 
         # The rebased commit-tree should use new base as parent
-        rebase_commit = calls[15]
+        rebase_commit = calls[16]
         commit_args = rebase_commit[0]
         assert "commit-tree" in commit_args
         assert "-p" in commit_args
@@ -2771,7 +2843,7 @@ class TestDoSync:
         assert commit_args[p_idx + 1] == "newbase999"
 
         # Force-push should be present
-        force_push_call = calls[17]
+        force_push_call = calls[18]
         assert "--force" in force_push_call[0]
 
     @patch("hypergumbo_tracker.sync.time")
@@ -3131,6 +3203,81 @@ class TestSumAddedLines:
     def test_short_lines_ignored(self) -> None:
         output = "incomplete\n5\t2\tgood.txt\n"
         assert _sum_added_lines(output) == 5
+
+
+# ---------------------------------------------------------------------------
+# TestShortItemIds
+# ---------------------------------------------------------------------------
+
+
+class TestShortItemIds:
+    """Tests for _short_item_ids — derive short tracker IDs from ops paths."""
+
+    def test_wi_inv_meta_prefixes(self) -> None:
+        files = [
+            ".agent/tracker-workspace/.ops/.WI-jafat-jujih-rulon.ops",
+            ".agent/tracker/.ops/.INV-luhur-davag-vihut.ops",
+            ".agent/tracker/.ops/.META-huvuh-gugir-tuhur.ops",
+        ]
+        assert _short_item_ids(files) == ["WI-jafat", "INV-luhur", "META-huvuh"]
+
+    def test_first_seen_order_preserved_and_deduped(self) -> None:
+        files = [
+            ".agent/tracker/.ops/.WI-jafat-aaa.ops",
+            ".agent/tracker/.ops/.INV-luhur-bbb.ops",
+            ".agent/tracker/.ops/.WI-jafat-aaa.ops",  # duplicate id
+        ]
+        assert _short_item_ids(files) == ["WI-jafat", "INV-luhur"]
+
+    def test_non_item_files_skipped(self) -> None:
+        files = [
+            ".agent/tracker/.ops/.gitattributes",
+            ".agent/tracker/.ops/.edit-mode",
+            ".agent/tracker/.ops/.WI-jafat-aaa.ops",
+        ]
+        assert _short_item_ids(files) == ["WI-jafat"]
+
+    def test_empty_list(self) -> None:
+        assert _short_item_ids([]) == []
+
+
+# ---------------------------------------------------------------------------
+# TestFormatSyncTitle
+# ---------------------------------------------------------------------------
+
+
+class TestFormatSyncTitle:
+    """Tests for _format_sync_title — the rich, varied sync-PR title."""
+
+    def test_rich_variant_with_items(self) -> None:
+        title = _format_sync_title(6, 142, ["INV-luhur", "INV-virik", "INV-numat"])
+        assert title == "tracker: 6 files (142 ops) — INV-luhur, INV-virik, INV-numat"
+
+    def test_singular_file_word(self) -> None:
+        title = _format_sync_title(1, 12, ["WI-test"])
+        assert title == "tracker: 1 file (12 ops) — WI-test"
+
+    def test_more_than_max_ids_summarized(self) -> None:
+        ids = ["WI-a", "INV-b", "WI-c", "META-d", "WI-e"]
+        title = _format_sync_title(5, 90, ids)
+        assert title == "tracker: 5 files (90 ops) — WI-a, INV-b, WI-c +2 more"
+
+    def test_no_item_ids_falls_back_to_count_only(self) -> None:
+        # Defensive: only non-item tracker files changed → no IDs extractable.
+        title = _format_sync_title(2, 7, [])
+        assert title == "tracker: 2 files (7 ops)"
+
+    def test_huge_batch_does_not_enumerate_all_ids(self) -> None:
+        # A 100-item sync must stay a short title: at most max_ids names,
+        # then a "+N more" summary — never a 100-ID enumeration.
+        ids = [f"WI-i{n:03d}" for n in range(100)]
+        title = _format_sync_title(100, 4200, ids)
+        assert title == "tracker: 100 files (4200 ops) — WI-i000, WI-i001, WI-i002 +97 more"
+        # Title length stays bounded regardless of batch size.
+        assert len(title) < 80
+        # Only the first max_ids IDs appear verbatim; the rest are summarized.
+        assert "WI-i003" not in title
+        assert title.count(", ") == 2  # exactly max_ids (3) names listed
 
 
 # ---------------------------------------------------------------------------
@@ -4048,6 +4195,9 @@ class TestDoSyncCleanupFailures:
             _make_completed_process(),                       # read-tree
             _make_completed_process(),                       # add
             _make_completed_process(stdout="tree456\n"),      # write-tree
+            _make_completed_process(
+                stdout="12\t0\t.agent/tracker/.ops/.WI-test.ops\n"
+            ),  # diff --numstat (op count for title)
             _make_completed_process(stdout="Test User\n"),    # config user.name
             _make_completed_process(stdout="t@e.com\n"),      # config user.email
             _make_completed_process(stdout="commit789\n"),    # commit-tree

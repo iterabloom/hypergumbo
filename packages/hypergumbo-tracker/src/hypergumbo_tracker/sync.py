@@ -816,6 +816,82 @@ def _sum_added_lines(numstat_output: str) -> int:
     return total
 
 
+# Match the short, human-recognizable head of a tracker item ID — the kind
+# prefix plus the first mnemonic segment, e.g. ``WI-jafat`` out of the full
+# ``WI-jafat-jujih-rulon-...`` slug.  Non-item ops-dir files (``.edit-mode``,
+# ``.gitattributes``) start lower-case and never match.
+_ITEM_ID_RE = re.compile(r"\.([A-Z]+-[a-z0-9]+)")
+
+
+def _short_item_ids(changed_files: list[str]) -> list[str]:
+    """Derive short tracker item IDs from a list of changed ops file paths.
+
+    Each tracker ops file is named ``.<ID>.ops`` where ``<ID>`` is the full
+    eight-segment slug (e.g. ``WI-jafat-jujih-...``).  This returns the short
+    head of each ID (``WI-jafat``) — recognizable in a PR title without being
+    unwieldy — in first-seen order, de-duplicated.  Files that are not item
+    ops (``.edit-mode``, ``.gitattributes``) are skipped.
+
+    Args:
+        changed_files: Repo-relative paths of dirty tracker ops files.
+
+    Returns:
+        Ordered, de-duplicated list of short item IDs.
+    """
+    ids: list[str] = []
+    seen: set[str] = set()
+    for path in changed_files:
+        match = _ITEM_ID_RE.search(os.path.basename(path))
+        if not match:
+            continue
+        short = match.group(1)
+        if short not in seen:
+            seen.add(short)
+            ids.append(short)
+    return ids
+
+
+def _format_sync_title(
+    file_count: int,
+    op_count: int,
+    item_ids: list[str],
+    max_ids: int = 3,
+) -> str:
+    """Build a rich, varied PR title for a tracker auto-sync.
+
+    A tracker sync runs frequently and unattended, so its PR title should be
+    both informative and distinct from the previous sync's.  The legacy
+    template ``tracker: sync N file(s)`` differed only by a small integer, so
+    consecutive syncs looked near-identical; a forge-side title-similarity
+    check then flagged them as duplicate submissions — a false positive on
+    legitimately-templated automation that rejected the PR and opened the
+    auto-sync circuit breaker.  Naming the op count and the most-touched item
+    IDs makes each title genuinely distinct and useful when browsing the PR
+    list, so the duplicate-detection misfire no longer triggers.
+
+    Args:
+        file_count: Number of ops files in this sync.
+        op_count: Number of op-lines (added lines) in this sync.
+        item_ids: Short item IDs (see :func:`_short_item_ids`), most-touched
+            first.
+        max_ids: Maximum number of IDs to name before summarizing the rest.
+
+    Returns:
+        A title such as
+        ``tracker: 6 files (142 ops) — INV-luhur, INV-virik, INV-numat``.
+    """
+    files_word = "file" if file_count == 1 else "files"
+    head = f"tracker: {file_count} {files_word} ({op_count} ops)"
+    if not item_ids:
+        return head
+    shown = item_ids[:max_ids]
+    suffix = ", ".join(shown)
+    remaining = len(item_ids) - len(shown)
+    if remaining > 0:
+        suffix += f" +{remaining} more"
+    return f"{head} — {suffix}"
+
+
 def pending_sync_lines(repo_root: Path) -> int:
     """Count pending tracker ops lines (not yet synced to origin/dev).
 
@@ -1160,6 +1236,23 @@ def do_sync(
             )
         tree_sha = write_result.stdout.strip()
 
+        # 4a. Compose the PR/commit title.  Counting the synced op-lines and
+        #     naming the most-touched item IDs makes each sync's title
+        #     distinct and informative.  The legacy template differed only by
+        #     a small integer, so consecutive syncs looked near-identical and
+        #     a forge-side title-similarity check flagged them as duplicate
+        #     submissions — a false positive on legitimately-templated
+        #     automation that rejected the PR and tripped the auto-sync
+        #     circuit breaker.  Distinct, descriptive titles avoid that.
+        numstat_result = _git(
+            repo_root, "diff", "--numstat", base_sha, tree_sha, "--",
+            *_TRACKER_PATHS, check=False,
+        )
+        op_count = _sum_added_lines(numstat_result.stdout)
+        sync_title = _format_sync_title(
+            file_count, op_count, _short_item_ids(preflight.changed_files)
+        )
+
         # 5. Build sign-off trailer (mirrors git commit -s)
         name_r = _git(repo_root, "config", "user.name", check=False)
         email_r = _git(repo_root, "config", "user.email", check=False)
@@ -1171,7 +1264,7 @@ def do_sync(
             )
 
         # 6. Create commit object (parent = base_sha)
-        commit_msg = f"tracker: sync {file_count} file(s){signoff}"
+        commit_msg = f"{sync_title}{signoff}"
         commit_result = _git(
             repo_root,
             "-c", "commit.gpgSign=false",
@@ -1202,7 +1295,7 @@ def do_sync(
 
         # 9. Push with retries
         push_ref = f"refs/heads/{sync_branch}:refs/for/{base_branch}/{sync_branch}"
-        push_title = f"tracker: sync {file_count} file(s)"
+        push_title = sync_title
         push_success = False
         cred_helper = (
             f"!f() {{ echo username={preflight.forgejo_user}; "

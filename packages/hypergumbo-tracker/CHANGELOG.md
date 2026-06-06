@@ -15,6 +15,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Changed
 
+- **Tracker auto-sync PR titles are now distinct and descriptive.** The previous template `tracker: sync N file(s)` differed only by a small integer between syncs, so consecutive syncs produced near-identical titles — which a forge-side title-similarity check could flag as duplicate submissions, rejecting the PR and opening the auto-sync circuit breaker (a false positive on legitimately-templated automation). Titles now read e.g. `tracker: 6 files (142 ops) — INV-luhur, INV-virik, INV-numat`: the op-line count plus the most-touched item IDs (capped at 3, then a `+N more` summary so a large batch never enumerates every ID) make each title both informative and distinct. The branch-ref-based orphan-sync-PR detection in `find_open_tracker_sync_prs` is unaffected — it matches on `head.ref` (`tracker-sync/…`), not the title. New pure helpers `_short_item_ids` and `_format_sync_title` carry the logic; the commit subject and the AGit-flow PR-lookup fallback both use the same composed title.
+
 - **TUI activity-pane message-prefix styling.** Each discussion entry's `<ts> [by]:` prefix is now rendered bold-and-underlined so the boundary between adjacent messages is visually unmistakable. Body text is unstyled as before; no other format change.
 
 ### Added
