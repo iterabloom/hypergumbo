@@ -26,3 +26,10 @@
   clock: 2  # 2d4d
   nonce: 2d4d  # 2d4d
   message: "[related to WI-rukam — same entrypoint records surface; WI-rukam tracks missing evidence_type/source fields, this tracks confidence-range-violation per documented tiers]"  # 2d4d
+- op: discuss  # 4205
+  at: '2026-06-06T04:05:15Z'  # 4205
+  by: agent  # 4205
+  actor: jgstern_agent  # 4205
+  clock: 3  # 4205
+  nonce: '4205'  # 4205
+  message: "Dogfood tranche 05 facet (F85.A2 / anon-card-001): the entrypoint sub-floor breach is dominated by AND exhaustive within the library_export kind — ALL 46 library_export entrypoints sit below the 0.70 floor (min 0.185, max 0.675), no member ever reaches 0.70, accounting for 46 of the 81 sub-floor entrypoints. The floor is structurally unreachable for that kind, not a long tail. Other kinds below floor: shell_script 29, main_function 6. Evidence: frozen substrate.json entrypoints[] confidence-by-kind histogram. Blind severity 4/5, reproduced on frozen substrate."  # 4205

@@ -1,0 +1,21 @@
+- op: create  # 5a3f
+  at: '2026-06-06T04:08:49Z'  # 5a3f
+  by: agent  # 5a3f
+  actor: jgstern_agent  # 5a3f
+  clock: 1  # 5a3f
+  nonce: 5a3f  # 5a3f
+  data:  # 5a3f
+    kind: work_item  # 5a3f
+    title: "calls-edge src endpoint resolves to wrong same-base-name sibling method (506 edges out-of-span; 504 attributed to same-named peer in same file)"  # 5a3f
+    status: todo_hard  # 5a3f
+    priority: 0  # 5a3f
+    parent:  # 5a3f
+    tags:  # 5a3f
+    - dogfood  # 5a3f
+    - dogfood_tranche_05  # 5a3f
+    isbefore: []  # 5a3f
+    duplicate_of: []  # 5a3f
+    not_duplicate_of: []  # 5a3f
+    pr_ref:  # 5a3f
+    description: "506 of 110510 'calls' edges (with non-null line) have a src method whose span does NOT contain the edge's line; in 504/506 (99.6%) the call line is actually owned by a DIFFERENT method/function with the SAME base name in the same file. The call-graph src is attributed to the wrong same-named symbol. All 506 are type=calls, origin=['python'], src kind=method. 100% of attributed src base names have multiplicity >1 in their file. Scope: 506 edges, 201 distinct src methods, 68 files (top base names: analyze 36, compose 12, _build 10, create 8, to_dict 7). Concrete: edge src=python:.../io_boundary.py:939-954:BoundaryMap.to_dict:method dst=...:266-277:is_high_risk:function line=863 — but BoundaryMap.to_dict spans 939-954; the true owner of line 863 is IoChain.to_dict (855-870). NOT a stable_id collision (node IDs are distinct by span); the EDGE's src endpoint resolves to the wrong same-named peer. Consequence: call graph asserts X calls Y where X does not contain the call site; an LLM agent attributes behavior to the wrong method."  # 5a3f
+    fields: {}  # 5a3f

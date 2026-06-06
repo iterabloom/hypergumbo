@@ -18,3 +18,18 @@
     pr_ref:  # 27b2
     description: "Operator clarifications during tranche 05 invalidate how discovery is specified. Required edits to .agent/agent_playbooks_protocols_sops_skills/twenty-pass-dogfood-procedure.md: (A) Discovery is SEQUENTIAL only; remove --discovery-mode region-parallel (concurrent workers miss each other's findings, defeating accumulation); drop region.txt/region assignment. (B) Drop 'independent passes' language in Step 1.1 — passes are neither independent nor dependent; each finds issues NOT already in the ledger; ledger updated between passes. (C) A chunk is a context-management unit ONLY (context fills after ~N passes); no parallelism/independence semantics. (D) Worker loads the FULL agent-notes ledger via scripts/agent-notes --show at chunk start; remove the distilled registry.json staging (Step 0.6 becomes 'ensure agent_notes de-primed/clean'). (E) Worker INTEGRATES each finding into the ledger — add new row OR enrich existing row by judgment — replacing Step 1.2 #5's parent-folds-distilled-rows; parent retains only immutable pass_NN.md global numbering/F-numbers. (F) Reconcile de-prime principle: worker makes a provisional new-vs-enrich integration call for live ledger coherence, Phase 3 two-axis dedup remains the AUTHORITATIVE cohort/novelty decision. F ALSO requires correcting the AGENTS.md essentialization ('downstream dedup stages decide novelty, not the worker') and the on_transcript_change.py hook summary — GOVERNANCE files, need human approval, do not self-merge. (G) Update tunables table, Appendix B de-prime table, vendor-table staging refs to match. Origin: tranche 05 (first de-primed tranche) operator corrections 2026-06-05. Do the revision PR AFTER tranche 05 completes so the run is evidence."  # 27b2
     fields: {}  # 27b2
+- op: update  # 40e0
+  at: '2026-06-06T01:31:02Z'  # 40e0
+  by: agent  # 40e0
+  actor: jgstern_agent  # 40e0
+  clock: 2  # 40e0
+  nonce: '40e0'  # 40e0
+  set:  # 40e0
+    status: done  # 40e0
+- op: discuss  # cdef
+  at: '2026-06-06T01:31:02Z'  # cdef
+  by: agent  # cdef
+  actor: jgstern_agent  # cdef
+  clock: 3  # cdef
+  nonce: cdef  # cdef
+  message: "Playbook revised per the operator clarifications. Shipped: PR #4079 (rewrite — sequential discovery, campaign-position-free ledger, separate pass→row map, worker-integrates-ledger, agent-produces-data/human-decides-trend; AGENTS.md essentialization + on_transcript_change hook summary updated), PR #4082 (deleak-ledger --check linter + Phase 0.5/Phase 7 wiring + handoff/lint guard), PR #4083 (cut redundant historical backstory). New tool: scripts/deleak-ledger (delete-only de-leaker + pass→row→severity map)."  # cdef

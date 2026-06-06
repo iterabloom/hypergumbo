@@ -18,3 +18,10 @@
     pr_ref:  # 5160
     description: "tranche-05 chunk-1 (pass 82 / F82.A6; preserved per operator). edge.quality.score = round(confidence,3) at ir.py:827 (_derive_edge_quality), so quality.score != top-level confidence for the 257 edges whose confidence carries >3 decimals (entire dispatches_to/type_hierarchy family). Cosmetic/minor consumer confusion. Reproduced fresh. Evidence: agent_notes + dogfood_tranche_05/pass_82.md."  # 5160
     fields: {}  # 5160
+- op: discuss  # 99ae
+  at: '2026-06-06T04:08:37Z'  # 99ae
+  by: agent  # 99ae
+  actor: jgstern_agent  # 99ae
+  clock: 2  # 99ae
+  nonce: 99ae  # 99ae
+  message: "Dogfood tranche 05 reproduction (F91.A2 / anon-card-002): TRUE-DUPLICATE confirmation on frozen substrate. For 110276/110533 edges quality.score == confidence exactly; the remaining 257 — ALL type=dispatches_to, evidence_type=type_hierarchy, quality.reason=low_confidence_fallback — have quality.score == round(confidence,3) != confidence (e.g. confidence=0.3470110468942836 vs quality.score=0.347). One producer (the type-hierarchy linker) rounds its score to 3 decimals while every other producer copies confidence verbatim. A consumer comparing edge.confidence to edge.quality.score for equality finds 257 false mismatches; a consumer trusting quality.score as authoritative confidence loses precision. (exact:110276 / rounded_match:257 / neither:0.) Blind severity 2/5, reproduced on frozen substrate."  # 99ae
