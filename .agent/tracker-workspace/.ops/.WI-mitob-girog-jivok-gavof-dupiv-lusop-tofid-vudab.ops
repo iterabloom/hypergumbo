@@ -1,0 +1,28 @@
+- op: create  # 050c
+  at: '2026-06-06T04:15:04Z'  # 050c
+  by: agent  # 050c
+  actor: jgstern_agent  # 050c
+  clock: 1  # 050c
+  nonce: 050c  # 050c
+  data:  # 050c
+    kind: work_item  # 050c
+    title: "usage_contexts[].id emits 'usage:' prefix but spec §9.901 documents 'uc:'; 0/8 use the documented prefix -> consumer filter/join gets 0 matches"  # 050c
+    status: todo_hard  # 050c
+    priority: 2  # 050c
+    parent:  # 050c
+    tags:  # 050c
+    - dogfood  # 050c
+    - dogfood_tranche_05  # 050c
+    isbefore: []  # 050c
+    duplicate_of: []  # 050c
+    not_duplicate_of: []  # 050c
+    pr_ref:  # 050c
+    description: "Spec §9.901 documents the usage_context id form as 'id': 'uc:...'; the substrate (and a fresh run) emit 'usage:sha256:...'. 0/8 usage_contexts use the documented prefix. Substrate: all 8 usage_contexts ids have prefix 'usage' (e.g. usage:sha256:20d859135eb74337). Spec docs/hypergumbo-spec.md:909 example: 'id': 'uc:...'; §923 'id: Unique identifier'. Fresh hypergumbo run on packages/hypergumbo-tracker reproduces: id usage:sha256:20d859135eb74337. Scope: all usage_context records (8/8 in this corpus). Consequence: a consumer matching the documented uc: id prefix to filter/join usage_contexts gets 0 matches. Cosmetic-ish but the spec marks this surface 🟩 done."  # 050c
+    fields: {}  # 050c
+- op: discuss  # ce8c
+  at: '2026-06-06T04:15:13Z'  # ce8c
+  by: agent  # ce8c
+  actor: jgstern_agent  # ce8c
+  clock: 2  # ce8c
+  nonce: ce8c  # ce8c
+  message: "Materialized from dogfood tranche 05 (F98.A1 / anon-card-004). Mechanism: usage_contexts[].id emits 'usage:' prefix where spec §9.901 documents 'uc:'. Evidence: frozen substrate.json (8/8 ids prefix 'usage') + spec docs/hypergumbo-spec.md:909/923; fresh tracker run reproduces (usage:sha256:20d859135eb74337). Magnitude: 8/8 usage_contexts (0 documented-prefix matches); 🟩-marked spec surface. Blind severity 3/5, reproduced on frozen substrate + fresh run. RELATED_BUT_DISTINCT from parent META INV-kurup (identifier-bearing fields emit non-canonical formats — this is the usage_context id-prefix instance) and WI-sulaz (done — the Starlette UsageContext extractor / producer). Carded separately from F98.A2 (the metadata.methods vs http_method drift) though both are usage_contexts-shape-vs-spec drifts."  # ce8c

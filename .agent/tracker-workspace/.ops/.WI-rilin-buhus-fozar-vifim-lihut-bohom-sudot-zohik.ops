@@ -1,0 +1,28 @@
+- op: create  # cd8b
+  at: '2026-06-06T04:23:09Z'  # cd8b
+  by: agent  # cd8b
+  actor: jgstern_agent  # cd8b
+  clock: 1  # cd8b
+  nonce: cd8b  # cd8b
+  data:  # cd8b
+    kind: work_item  # cd8b
+    title: "database-query-linker emits phantom cross-package table 'references' (no file/package scoping)"  # cd8b
+    status: todo_hard  # cd8b
+    priority: 1  # cd8b
+    parent:  # cd8b
+    tags:  # cd8b
+    - dogfood  # cd8b
+    - dogfood_tranche_05  # cd8b
+    isbefore: []  # cd8b
+    duplicate_of: []  # cd8b
+    not_duplicate_of: []  # cd8b
+    pr_ref:  # cd8b
+    description: ""  # cd8b
+    fields: {}  # cd8b
+- op: discuss  # daa5
+  at: '2026-06-06T04:23:11Z'  # daa5
+  by: agent  # daa5
+  actor: jgstern_agent  # daa5
+  clock: 2  # daa5
+  nonce: daa5  # daa5
+  message: "Materialized in Phase-7 reconciliation (F94.A1). Consolidation 3a folded this as an EXTENSION of the MQ test-string event_publishes finding (WI-nitob, same false-positive CLASS), so it was not independently carded/judged; but the producers and fixes differ (database_query.py:430-478 matches table names repo-wide, no scoping, vs the MQ linker), making it RELATED_BUT_DISTINCT. Evidence: frozen substrate.json — all 17 references edges with meta.table_name link SQL-string literals in the linker's OWN test files to a 'users' table in an unrelated fixture, conf 0.85. INVALIDATION-RISK at discovery (synthetic 2-file repro=0) but substrate+source mechanism direct. Priority P1 by analogy to the FP-linker family (blind sev 4); NOT independently blind-judged. RELATED_BUT_DISTINCT to WI-nitob."  # daa5

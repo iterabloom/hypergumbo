@@ -1,0 +1,29 @@
+- op: create  # 606b
+  at: '2026-06-06T04:49:17Z'  # 606b
+  by: agent  # 606b
+  actor: jgstern_agent  # 606b
+  clock: 1  # 606b
+  nonce: 606b  # 606b
+  data:  # 606b
+    kind: work_item  # 606b
+    title: "node.id name-slot uses Rust '.' separator while node.name uses '::' (MyStruct.method vs MyStruct::method)"  # 606b
+    status: todo_hard  # 606b
+    priority: 3  # 606b
+    parent:  # 606b
+    tags:  # 606b
+    - dogfood  # 606b
+    - dogfood_tranche_05  # 606b
+    - overfold_split  # 606b
+    isbefore: []  # 606b
+    duplicate_of: []  # 606b
+    not_duplicate_of: []  # 606b
+    pr_ref:  # 606b
+    description: ""  # 606b
+    fields: {}  # 606b
+- op: discuss  # bba0
+  at: '2026-06-06T04:49:44Z'  # bba0
+  by: agent  # bba0
+  actor: jgstern_agent  # bba0
+  clock: 2  # bba0
+  nonce: bba0  # bba0
+  message: "Split out of WI-vuzaf in Phase-7 over-fold reconciliation (the audit flagged WI-vuzaf's 255-node finding as over-folding three mechanisms). THIS item = the Rust separator case: node.id name-slot carries 'MyStruct.method' (dot) while node.name carries 'MyStruct::method' (double-colon) — a separator-normalization bug in the Rust analyzer, a DISTINCT fix from the synthetic-linker category-constant name-slots that WI-vuzaf retains. Evidence: frozen substrate.json (tranche-05 F100.A1). Priority P3 (1 node on this substrate; scope grows on Rust-heavy repos); priority by judgment, not independently blind-judged. Sibling/remainder: WI-vuzaf retains the linker category-constant + starlette route method+path name-slots (one shared producer-id-construction fix)."  # bba0

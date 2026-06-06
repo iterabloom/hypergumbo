@@ -1,0 +1,64 @@
+- op: create  # 2e03
+  at: '2026-06-06T04:14:27Z'  # 2e03
+  by: agent  # 2e03
+  actor: jgstern_agent  # 2e03
+  clock: 1  # 2e03
+  nonce: '2e03'  # 2e03
+  data:  # 2e03
+    kind: work_item  # 2e03
+    title: "node.id trailing kind-segment disagrees with node.kind field on 1670 nodes; 8 starlette routes carry id-kind ':route' but kind-field 'function'"  # 2e03
+    status: todo_hard  # 2e03
+    priority: 2  # 2e03
+    parent:  # 2e03
+    tags:  # 2e03
+    - dogfood  # 2e03
+    - dogfood_tranche_05  # 2e03
+    isbefore: []  # 2e03
+    duplicate_of: []  # 2e03
+    not_duplicate_of: []  # 2e03
+    pr_ref:  # 2e03
+    description: "The documented node.id format is lang:path:span:name:kind, so the trailing colon segment IS the kind. But 1670 nodes have an id whose trailing segment differs from the actual kind field. (idkind, kindfield) pairs: unresolved->external_symbol 1312, attribute->external_symbol 214, doc_link->external_symbol 106, module->external_symbol 11, route->function 8, event_subscriber->function 11, event_publisher->function 3, npm_package->package 2, script->external_symbol 1, package->external_symbol 1, tsconfig->file 1. The external_symbol rows are arguably expected (id encodes reference syntax, kind normalizes to external_symbol); the route->function, event_subscriber->function, event_publisher->function rows are real producer disagreements where the id segment encodes a role the kind field does not carry. The 8 starlette route nodes (origin=['python'], a real analyzer NOT a linker) sit at route-REGISTRATION lines (span 428-428 etc.), separate from the actual handler-function nodes (serve.py:141-168, span 141-168) that the 8 http_route entrypoints correctly point to (0 of 8 entrypoint symbol_ids are :route nodes). Each starlette route is represented by TWO nodes — the handler function (referenced by the entrypoint) and a synthetic registration-line node with id-kind=route/kind-field=function/name='starlette:<handler>'. Fresh repro: hypergumbo run on a copy of serve.py -> 8 :route nodes, all kind=function. Consequence: a consumer parsing node.id per the documented ...:kind format gets 'route' while a consumer reading node.kind gets 'function' — the two disagree for 1670 nodes."  # 2e03
+    fields: {}  # 2e03
+- op: discuss  # 031b
+  at: '2026-06-06T04:14:38Z'  # 031b
+  by: agent  # 031b
+  actor: jgstern_agent  # 031b
+  clock: 2  # 031b
+  nonce: 031b  # 031b
+  message: "Materialized from dogfood tranche 05 (F84.A1 / anon-card-003). Mechanism: node.id trailing kind-segment value contradicts the node.kind field. Evidence: frozen substrate.json (probe_2_kindmismatch.log, probe_2_pyweird.log) — 1670 nodes total; 8 starlette route nodes id=...:route kind=function name='starlette:_<handler>'; fresh run on serve.py copy reproduces. Magnitude: 1670 nodes (1312/214/106 external_symbol arguably-expected + route->function 8, event_subscriber->function 11, event_publisher->function 3 real disagreements). Blind severity 3/5, reproduced on frozen substrate + fresh run. RELATED_BUT_DISTINCT from INV-dulah (id FORMAT escaping the 5-segment shape — here the format is intact but the kind segment's VALUE contradicts the kind field), parent META INV-kurup (identifier-bearing non-canonical formats), F100.A1/WI-vuzaf (id NAME-segment vs node.name — the sibling slot mismatch), and INV-nubub (handler-slice route/function collision — same starlette double-node root)."  # 031b
+- op: discuss  # da27
+  at: '2026-06-06T04:49:44Z'  # da27
+  by: agent  # da27
+  actor: jgstern_agent  # da27
+  clock: 3  # da27
+  nonce: da27  # da27
+  message: "OVER-FOLD SPLIT (Phase-7 reconciliation): the route/event role-disagreement portion (22 nodes: route->function 8 + event_subscriber->function 11 + event_publisher->function 3) is now tracked separately as WI-kugaj-vaguj-bisog-nupod-dahur-guzir-konom-bukun (distinct producer fix). THIS item is now scoped to the external_symbol id-kind normalization (~1645 nodes: unresolved 1312 + attribute 214 + doc_link 106 + module 11 + script 1 + package 1), which is arguably-EXPECTED behavior (the id encodes reference syntax; kind normalizes to external_symbol) — candidate for demotion/document-as-expected rather than a fix. NOTE: the title and the earlier description/discussion still reflect the pre-split 1670-node framing; those now-redundant portions are flagged for cleanup once the human enables tracker edit mode (agent cannot edit/delete messages — OS-enforced)."  # da27
+- op: update  # f646
+  at: '2026-06-06T06:16:54Z'  # f646
+  by: agent  # f646
+  actor: jgstern_agent  # f646
+  clock: 4  # f646
+  nonce: f646  # f646
+  set:  # f646
+    title: "node.id kind-slot disagrees with node.kind on ~1645 external_symbol nodes (reference-syntax normalization, arguably-expected; route/event role-disagreement split to WI-kugaj)"  # f646
+    description: "node.id's trailing colon segment is the documented kind, but on ~1645 nodes the id kind-slot disagrees with node.kind: unresolved->external_symbol 1312, attribute->external_symbol 214, doc_link->external_symbol 106, module->external_symbol 11, script->external_symbol 1, package->external_symbol 1, plus npm_package->package 2 and tsconfig->file 1 as a small non-external_symbol remainder. For the external_symbol rows this is arguably-EXPECTED: the id encodes the reference syntax at the use-site while node.kind normalizes to the resolved category 'external_symbol'. Consumer-facing question: document as expected, or normalize the id kind-slot. The route/event role-disagreement portion (id kind-slot encoding a ROLE the kind field does not carry: route->function 8, event_subscriber->function 11, event_publisher->function 3) was a distinct producer bug, split out to WI-kugaj (over-fold reconciliation). RELATED_BUT_DISTINCT from INV-dulah (id FORMAT escaping the 5-segment shape), parent META INV-kurup, and F100.A1/WI-vuzaf (id NAME-segment vs node.name). Blind severity 3/5 (pre-split); the external_symbol-only remainder may warrant demotion as arguably-expected."  # f646
+- op: edit-msg-text  # e494
+  at: '2026-06-06T06:16:54.689705Z'  # e494
+  by: agent  # e494
+  actor: jgstern_agent  # e494
+  clock: 5  # e494
+  nonce: e494  # e494
+  item: WI-pubiv-rasut-rijuk-gutof-mupoz-sugif-lovuh-razov  # e494
+  target_nonce: 031b  # e494
+  new_text: "Materialized from dogfood tranche 05 (F84.A1 / anon-card-003). Mechanism: node.id trailing kind-segment value disagrees with node.kind. Evidence: frozen substrate.json (probe_2_kindmismatch.log, probe_2_pyweird.log) — ~1645 external_symbol nodes (id kind-slot unresolved/attribute/doc_link/module/script/package; node.kind=external_symbol), arguably-expected reference-syntax normalization. The route/event role-disagreement portion originally bundled here (route/event_subscriber/event_publisher -> function, 22 nodes) was split out to WI-kugaj as a distinct producer bug. Blind severity 3/5 (pre-split), reproduced on frozen substrate + fresh run. RELATED_BUT_DISTINCT from INV-dulah (id FORMAT escaping the 5-segment shape), parent META INV-kurup, and F100.A1/WI-vuzaf (id NAME-segment vs node.name)."  # e494
+  reason: "over-fold split: route/event detail moved to WI-kugaj"  # e494
+- op: edit-msg-text  # 5c32
+  at: '2026-06-06T06:16:55.181332Z'  # 5c32
+  by: agent  # 5c32
+  actor: jgstern_agent  # 5c32
+  clock: 6  # 5c32
+  nonce: 5c32  # 5c32
+  item: WI-pubiv-rasut-rijuk-gutof-mupoz-sugif-lovuh-razov  # 5c32
+  target_nonce: da27  # 5c32
+  new_text: "OVER-FOLD SPLIT (Phase-7 reconciliation): the route/event role-disagreement portion (22 nodes: route->function 8 + event_subscriber->function 11 + event_publisher->function 3) is tracked separately as WI-kugaj (distinct producer fix). THIS item is scoped to the external_symbol id-kind normalization (~1645 nodes), arguably-EXPECTED behavior — candidate for demotion/document-as-expected. Edit-mode cleanup completed: title + description narrowed and the route/event detail trimmed from the materialization note above (now owned by WI-kugaj)."  # 5c32
+  reason: "edit-mode cleanup done; drop stale OS-enforced note"  # 5c32

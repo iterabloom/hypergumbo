@@ -1,0 +1,29 @@
+- op: create  # f7b8
+  at: '2026-06-06T04:48:42Z'  # f7b8
+  by: agent  # f7b8
+  actor: jgstern_agent  # f7b8
+  clock: 1  # f7b8
+  nonce: f7b8  # f7b8
+  data:  # f7b8
+    kind: work_item  # f7b8
+    title: "node.id kind-slot encodes a role (route/event_subscriber/event_publisher) the kind field normalizes away — 22 synthetic nodes"  # f7b8
+    status: todo_hard  # f7b8
+    priority: 2  # f7b8
+    parent:  # f7b8
+    tags:  # f7b8
+    - dogfood  # f7b8
+    - dogfood_tranche_05  # f7b8
+    - overfold_split  # f7b8
+    isbefore: []  # f7b8
+    duplicate_of: []  # f7b8
+    not_duplicate_of: []  # f7b8
+    pr_ref:  # f7b8
+    description: ""  # f7b8
+    fields: {}  # f7b8
+- op: discuss  # 8330
+  at: '2026-06-06T04:49:44Z'  # 8330
+  by: agent  # 8330
+  actor: jgstern_agent  # 8330
+  clock: 2  # 8330
+  nonce: '8330'  # 8330
+  message: "Split out of WI-pubiv in Phase-7 over-fold reconciliation (the audit flagged WI-pubiv's 1670-node finding as over-folding two distinct mechanisms). THIS item = the real producer bug: on 22 synthetic nodes the node.id kind-slot encodes a ROLE the kind field does not carry — route->function 8 (starlette route-registration nodes, e.g. id '...:route' / kind 'function' / name 'starlette:_health'), event_subscriber->function 11, event_publisher->function 3. Distinct fix: the producer should carry the role in a dedicated field or normalize the id kind-slot to match node.kind. Evidence: frozen substrate.json (tranche-05 F84.A1). Priority P2 by analogy to the parent finding (blind sev 3); not independently blind-judged. Sibling/remainder: WI-pubiv now retains the external_symbol id-kind normalization (~1645 nodes, arguably-expected)."  # 8330

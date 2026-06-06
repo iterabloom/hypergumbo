@@ -1,0 +1,28 @@
+- op: create  # 7fd2
+  at: '2026-06-06T04:12:45Z'  # 7fd2
+  by: agent  # 7fd2
+  actor: jgstern_agent  # 7fd2
+  clock: 1  # 7fd2
+  nonce: 7fd2  # 7fd2
+  data:  # 7fd2
+    kind: work_item  # 7fd2
+    title: "containment-linker confidence INVERTED vs reliability: 18388 naming_convention 'contains' at 1.0 (heuristic) outrank span_overlap at 0.9 (certain); 30 provably-false class->method contains at 1.0"  # 7fd2
+    status: todo_hard  # 7fd2
+    priority: 1  # 7fd2
+    parent:  # 7fd2
+    tags:  # 7fd2
+    - dogfood  # 7fd2
+    - dogfood_tranche_05  # 7fd2
+    isbefore: []  # 7fd2
+    duplicate_of: []  # 7fd2
+    not_duplicate_of: []  # 7fd2
+    pr_ref:  # 7fd2
+    description: "The 'contains' edge type is produced by containment-linker (linkers/containment.py) in three phases, each with a hardcoded confidence: Phase 1 (line 261-271) evidence_type='naming_convention' confidence=1.0 — matches parent by parsing the parent name out of sym.name/qualified_name and calling _find_parent by NAME within the file (a heuristic that can pick the wrong parent). Phase 1.5 (line 309-319) canonical_name confidence=0.95 (0 edges in this substrate). Phase 2 (line 367-377) span_overlap confidence=0.9 — finds the tightest enclosing container by ACTUAL span; structurally certain. The docstring (line 31) frames span_overlap as a fallback 'when naming convention doesn't match' — so the certain mechanism is the lower-priority, lower-confidence one. Substrate buckets: (1.0, naming_convention)=18388, (0.9, span_overlap)=4471. Reliability is the REVERSE of confidence ordering: span_overlap@0.9 is 100% correct (4401/4401 file→class same-path, all class→class correctly span-nested); naming_convention@1.0 contains 30 PROVABLY FALSE containments where the method span lies OUTSIDE the class span in the same file (e.g. class _FakeMetadata at test_analyzer_identity.py:205-207 'contains' _FakeMetadata.get at lines 234-235/270-271 — a method of a different same-named class defined later). The 30 false edges are indistinguishable-by-confidence from the 18358 correct ones and sit above every span_overlap edge — the only edges in the whole map at exactly 1.0. Consequence: a consumer ranking/trusting containment by confidence treats the error-prone heuristic as gold and demotes the structurally-certain mechanism."  # 7fd2
+    fields: {}  # 7fd2
+- op: discuss  # f1c3
+  at: '2026-06-06T04:12:57Z'  # f1c3
+  by: agent  # f1c3
+  actor: jgstern_agent  # f1c3
+  clock: 2  # f1c3
+  nonce: f1c3  # f1c3
+  message: "Materialized from dogfood tranche 05 (F93.A1 / anon-card-017). Mechanism: containment-linker confidence direction anti-correlated with mechanism reliability (naming_convention heuristic@1.0 outranks span_overlap certain@0.9). Evidence: frozen substrate.json (probe_1_contains_conf.log) buckets (1.0,naming_convention)=18388 / (0.9,span_overlap)=4471; producer linkers/containment.py phases 1/1.5/2 read in live repo. Magnitude: 30 provably-false class->method contains at confidence 1.0 (re-derived count 30, not 28) — method spans lying outside the class span in the same file; concrete _FakeMetadata @ test_analyzer_identity.py:205-207 'contains' methods at 234-235/270-271. Blind severity 4/5, reproduced on frozen substrate. RELATED_BUT_DISTINCT from WI-lutad (18388 linker edges exceed 0.95 ceiling — that's about linker edge confidence breaching the ceiling generally; this is the DIRECTION of the hardcoding being anti-correlated with truth, and the 1.0 bucket is exactly the contains/naming_convention phase), WI-suvil (confidence hardcoded not evidence-derived — META parent), and the ledger same-base-name misattribution row F81.A1/WI-jafat (same root naming mechanism, but here the wrong edge carries the MAXIMUM confidence 1.0)."  # f1c3

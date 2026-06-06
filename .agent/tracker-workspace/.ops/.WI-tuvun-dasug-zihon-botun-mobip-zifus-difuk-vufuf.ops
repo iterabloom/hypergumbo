@@ -1,0 +1,28 @@
+- op: create  # d6f8
+  at: '2026-06-06T04:14:46Z'  # d6f8
+  by: agent  # d6f8
+  actor: jgstern_agent  # d6f8
+  clock: 1  # d6f8
+  nonce: d6f8  # d6f8
+  data:  # d6f8
+    kind: work_item  # d6f8
+    title: "main_function entrypoint kind overloaded: 2/11 target a FILE node (Python if __name__=='__main__' with no main() func) vs 9/11 a function node, both conf 1.0, undocumented"  # d6f8
+    status: todo_hard  # d6f8
+    priority: 2  # d6f8
+    parent:  # d6f8
+    tags:  # d6f8
+    - dogfood  # d6f8
+    - dogfood_tranche_05  # d6f8
+    isbefore: []  # d6f8
+    duplicate_of: []  # d6f8
+    not_duplicate_of: []  # d6f8
+    pr_ref:  # d6f8
+    description: "All 11 kind=main_function entrypoints share one kind, but their target node.kind splits: 9 -> function (label 'Python main()'), 2 -> file (label 'Python script (if __name__ == 0x27__main__0x27)', id __main__.py:1-1:file:file, confidence 1.0). The spec example ('main_function','main') at line 351 implies a function target; the file-target case is undocumented. A consumer keying on kind=main_function to jump to a callable entrypoint must handle BOTH a function and a file target; confidence (1.0 on both) doesn't disambiguate, only the free-text label does. Fresh-run reproduced: a temp pkg/__main__.py containing if __name__=='__main__' and NO main() function yields main_function EP conf=0.96 label='Python script (if __name__...)' target_kind=file id=python:pkg/__main__.py:1-1:file:file; the converse (a file with def main()) points to the function node. So the file-target is a real, reproducible detector behavior, not an artifact. Secondary: spec §890/§643 says if __name__=='__main__' is 0.85 Structural confidence but substrate + fresh run show 1.0/0.96 (confidence drift, likely within WI-suvil hardcoded-confidence family; not separately filed)."  # d6f8
+    fields: {}  # d6f8
+- op: discuss  # 00da
+  at: '2026-06-06T04:14:57Z'  # 00da
+  by: agent  # 00da
+  actor: jgstern_agent  # 00da
+  clock: 2  # 00da
+  nonce: 00da  # 00da
+  message: "Materialized from dogfood tranche 05 (F96.A2 / anon-card-006). Mechanism: main_function entrypoint kind is overloaded — its target node.kind splits function (9/11) vs file (2/11) and only the free-text label disambiguates. Evidence: frozen substrate.json (probe_2_ep.log, probe_2_mainfunc.log, probe_2_mainfunc2.log) — (main_function,function)=9, (main_function,file)=2 both conf=1.0 targeting __main__.py:1-1:file:file; spec line 351 example implies a function target. Fresh run: temp pkg/__main__.py with no main() yields target_kind=file conf=0.96. Magnitude: 2/11 main_function entrypoints, undocumented file-target case. Blind severity 3/5, reproduced on frozen substrate + fresh run. NOT_A_DUPLICATE — no existing item covers the file-target overload. RELATED to INV-hosuh (satisfied — entrypoint detection double-counts scripts with BOTH if __name__ AND main(); that handles the double-count, not the single-target file-vs-function kind overload) and WI-suvil (the confidence-drift secondary note, hardcoded-confidence family)."  # 00da

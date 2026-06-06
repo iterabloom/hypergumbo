@@ -1,0 +1,28 @@
+- op: create  # c038
+  at: '2026-06-06T04:13:42Z'  # c038
+  by: agent  # c038
+  actor: jgstern_agent  # c038
+  clock: 1  # c038
+  nonce: c038  # c038
+  data:  # c038
+    kind: work_item  # c038
+    title: "usage_contexts metadata HTTP-method key is 'methods' (list) but spec §9.914/§9.928 documents 'http_method' (string); 0/8 carry the documented key -> consumer KeyError"  # c038
+    status: todo_hard  # c038
+    priority: 1  # c038
+    parent:  # c038
+    tags:  # c038
+    - dogfood  # c038
+    - dogfood_tranche_05  # c038
+    isbefore: []  # c038
+    duplicate_of: []  # c038
+    not_duplicate_of: []  # c038
+    pr_ref:  # c038
+    description: "Spec §9.914/§9.928 documents the route HTTP method under metadata.http_method as a single string ('http_method': 'GET'); the substrate emits metadata.methods as a list ('methods': ['GET']). 0/8 usage_contexts carry the documented http_method key. Substrate metadata (route): {'args': ['/health','_health'], 'methods': ['GET'], 'receiver': 'Route', 'route_path': '/health', 'view_name': '_health'} — key is methods, value is a list. Spec example §914: 'metadata': {'http_method': 'GET', 'route_path': '/users'}; route_path matches the spec (8/8), only the method key drifts. Probe: usage_contexts with metadata.http_method (spec key) = 0; with metadata.methods = 8. Fresh tracker run reproduces identically. Consequence: an LLM/dev consumer following the documented schema to read a route's HTTP verb does metadata['http_method'] and gets a KeyError/None on every route; the verb actually lives under a differently-named, differently-typed key (methods list). This is a 🟩-marked (done) surface in the spec."  # c038
+    fields: {}  # c038
+- op: discuss  # 20d5
+  at: '2026-06-06T04:13:53Z'  # 20d5
+  by: agent  # 20d5
+  actor: jgstern_agent  # 20d5
+  clock: 2  # 20d5
+  nonce: 20d5  # 20d5
+  message: "Materialized from dogfood tranche 05 (F98.A2 / anon-card-015). Mechanism: usage_contexts metadata emits 'methods' (list) where spec §9.914/§9.928 documents 'http_method' (string). Evidence: frozen substrate.json metadata key probe (0/8 http_method, 8/8 methods) + spec §914/§928; fresh tracker run reproduces. Magnitude: 8/8 usage_contexts (all route records in corpus); consumer following spec gets KeyError/None on every route. Blind severity 4/5, reproduced on frozen substrate + fresh run. NOT_A_DUPLICATE (no existing item covers the usage_contexts metadata method-key schema-vs-spec drift). RELATED to WI-sulaz (done — the Starlette UsageContext extractor that is the producer of this metadata), and adjacent to but distinct from WI-kuvig (WS filed under http_route kind). Carded separately from F98.A1 (the usage: vs uc: id-prefix drift) by the card-writer."  # 20d5

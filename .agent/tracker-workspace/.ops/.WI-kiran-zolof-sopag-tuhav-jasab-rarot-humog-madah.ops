@@ -1,0 +1,43 @@
+- op: create  # 3c62
+  at: '2026-06-06T05:35:02Z'  # 3c62
+  by: agent  # 3c62
+  actor: jgstern_agent  # 3c62
+  clock: 1  # 3c62
+  nonce: 3c62  # 3c62
+  data:  # 3c62
+    kind: work_item  # 3c62
+    title: "deleak-ledger clobbers a populated --map with an empty reconstruction (data loss: pass_row_map.json)"  # 3c62
+    status: todo_hard  # 3c62
+    priority: 1  # 3c62
+    parent:  # 3c62
+    tags:  # 3c62
+    - dogfood  # 3c62
+    - dogfood_tranche_05  # 3c62
+    isbefore: []  # 3c62
+    duplicate_of: []  # 3c62
+    not_duplicate_of: []  # 3c62
+    pr_ref:  # 3c62
+    description: ""  # 3c62
+    fields: {}  # 3c62
+- op: discuss  # d225
+  at: '2026-06-06T05:40:20Z'  # d225
+  by: agent  # d225
+  actor: jgstern_agent  # d225
+  clock: 2  # d225
+  nonce: d225  # d225
+  message: "Found during tranche-05 Phase 7. deleak-ledger main() unconditionally wrote extract_map(deleaked_notes) to the --map path (deleak-ledger:481). A modern campaign-position-free ledger has no embedded F-numbers, so extract_map returns {}, and the write destroyed the orchestrator-maintained pass_row_map.json — the human's sole summed-severity-over-time source. The Phase-7 playbook step compounded it by instructing --map point at the real pass_row_map.json. Recovered tranche-05's map from verdicts+mapping (verified reproduces the trend). FIX (this PR): (1) deleak-ledger guards — only writes when the reconstruction is non-empty or the target is absent, never an empty {} over a populated map (+3 regression tests in tests/test_deleak_ledger_map_guard.py); (2) playbook Phase 7 now passes a throwaway --map path; (3) playbook Phase 5 documents the late fold/split severity-recompute-by-inheritance rule. Mark done on merge."  # d225
+- op: update  # 6752
+  at: '2026-06-06T06:02:56Z'  # 6752
+  by: agent  # 6752
+  actor: jgstern_agent  # 6752
+  clock: 3  # 6752
+  nonce: '6752'  # 6752
+  set:  # 6752
+    status: done  # 6752
+- op: discuss  # e9d3
+  at: '2026-06-06T06:02:56Z'  # e9d3
+  by: agent  # e9d3
+  actor: jgstern_agent  # e9d3
+  clock: 4  # e9d3
+  nonce: e9d3  # e9d3
+  message: "Fixed and merged to dev (commit b09469a0e5, 'fix(deleak-ledger): guard --map against clobbering a populated map'). deleak-ledger now refuses to overwrite a populated --map with an empty reconstruction; +3 regression tests (tests/test_deleak_ledger.py, selected by the per-PR smart-test gate). Playbook Phase 7 switched to a throwaway --map path and Phase 5 documents the late fold/split severity-recompute-by-inheritance rule."  # e9d3

@@ -1,0 +1,28 @@
+- op: create  # 17c7
+  at: '2026-06-06T04:13:05Z'  # 17c7
+  by: agent  # 17c7
+  actor: jgstern_agent  # 17c7
+  clock: 1  # 17c7
+  nonce: 17c7  # 17c7
+  data:  # 17c7
+    kind: work_item  # 17c7
+    title: "13 source files carry symbol/dependency nodes but NO file-kind anchor node (java/solidity/csharp/sql/wgsl/toml/json); total_files 916 vs 902 file nodes; contains tree rootless for those files"  # 17c7
+    status: todo_hard  # 17c7
+    priority: 1  # 17c7
+    parent:  # 17c7
+    tags:  # 17c7
+    - dogfood  # 17c7
+    - dogfood_tranche_05  # 17c7
+    isbefore: []  # 17c7
+    duplicate_of: []  # 17c7
+    not_duplicate_of: []  # 17c7
+    pr_ref:  # 17c7
+    description: "metrics.total_files=916 (= debug.unique_paths_in_analysis) but only 902 file-kind anchor nodes exist. 13 real paths have content nodes (class/method/interface/dependency/project) yet zero file-kind node; the contains tree for those files is rootless at the file level. Anchorless paths (have nodes, no file anchor) = 13: 7x pyproject.toml (toml: project+dependency nodes), 1x package.json (json), csharp/Program.cs, java/Main.java, solidity/Contract.sol, sql/schema.sql, wgsl/shader.wgsl. Example: java/Main.java has 5 nodes {interface, method x2, enum, class} — contains edges INTO them originate from CLASS nodes (IService/MyService), src_is_file_node=False; no file->class root exists. The 916-902=14 gap = 13 anchorless-with-nodes + 1 analyzed-but-zero-node path. Consequence: a consumer walking the contains hierarchy from file roots cannot reach these 13 files' symbols; a consumer counting 'files' off file-kind nodes undercounts by 14 vs metrics.total_files."  # 17c7
+    fields: {}  # 17c7
+- op: discuss  # 2040
+  at: '2026-06-06T04:13:15Z'  # 2040
+  by: agent  # 2040
+  actor: jgstern_agent  # 2040
+  clock: 2  # 2040
+  nonce: '2040'  # 2040
+  message: "Materialized from dogfood tranche 05 (F96.A1 / anon-card-012). Mechanism: 13 source files (java/solidity/csharp/sql/wgsl + toml/json manifests) emit content nodes with NO file-kind anchor; contains tree rootless for them. Evidence: frozen substrate.json (probe_2_files.log, probe_2_noanchor.log, probe_2_anchorless.log) — metrics.total_files=916, file-kind nodes=902, 13 anchorless-with-nodes paths; java/Main.java 5 nodes with contains edges from class nodes not a file root. Magnitude: 13 anchorless + 1 zero-node path = 14-file accounting gap. Blind severity 4/5, reproduced on frozen substrate (deterministic read-only join). RELATED_BUT_DISTINCT from WI-vamih (markdown-specific no-file-anchor — this is a MULTI-analyzer gap across java/solidity/csharp/sql/wgsl/toml/json), INV-mozaf (file-accounting gap with different substrate numbers 1198/902; this one is 916/902 and isolates the per-path anchorless mechanism), and INV-tolaj (META: file-set membership must reconcile across passes)."  # 2040

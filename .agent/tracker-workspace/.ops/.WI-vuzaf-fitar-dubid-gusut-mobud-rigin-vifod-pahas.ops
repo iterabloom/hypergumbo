@@ -1,0 +1,53 @@
+- op: create  # 4576
+  at: '2026-06-06T04:14:03Z'  # 4576
+  by: agent  # 4576
+  actor: jgstern_agent  # 4576
+  clock: 1  # 4576
+  nonce: '4576'  # 4576
+  data:  # 4576
+    kind: work_item  # 4576
+    title: "node.id NAME slot disagrees with node.name on 255 synthetic nodes (linker category constant / route method+path stuffed into {name} slot per spec §317)"  # 4576
+    status: todo_hard  # 4576
+    priority: 2  # 4576
+    parent:  # 4576
+    tags:  # 4576
+    - dogfood  # 4576
+    - dogfood_tranche_05  # 4576
+    isbefore: []  # 4576
+    duplicate_of: []  # 4576
+    not_duplicate_of: []  # 4576
+    pr_ref:  # 4576
+    description: "Spec §317 defines node id as {lang}:{file}:{span}:{name}:{kind} — the second-from-last colon segment is {name}. On 255 synthetic nodes the id name slot carries a GENERIC linker-category constant (or a method+path route label) while node.name carries the SPECIFIC value, so a consumer reconstructing a node's name by parsing its documented stable id gets a different string than node.name. 255 non-file id-name mismatches: 130 call_site + 124 function + 1 method. Linker nodes use a category constant in the id name slot vs specific node.name: subprocess_call(78)->name 'git config'/'ls'; db_query(34)->name 'SELECT users'/'DELETE items'; mq_publisher(44)/mq_subscriber(31)->name 'kafka:publish:topic'; http_client(18)->name 'GET /api/users'; resolver(11)->name 'Query.users'/'Mutation.createUser'; WS endpoint functions id '/ws-endpoint'->name 'ws:/ws'. Starlette route-registration nodes: id name slot is METHOD+PATH ('GET /health','POST /api/items') while node.name is 'starlette:_health' (framework+handler form). Rust separator case: id 'MyStruct.method' vs node.name 'MyStruct::method'. Fresh repro: hypergumbo run on /tmp/hg_nameslot/runner.py (two subprocess.run calls) -> python:runner.py:4-4:subprocess_call:call_site name='git config' MISMATCH. Consequence: an agent indexing nodes by parsed-id-name collapses all 78 subprocess call_sites under 'subprocess_call', all 34 db queries under 'db_query', etc., even though node.name distinguishes them."  # 4576
+    fields: {}  # 4576
+- op: discuss  # 3cb1
+  at: '2026-06-06T04:14:17Z'  # 3cb1
+  by: agent  # 3cb1
+  actor: jgstern_agent  # 3cb1
+  clock: 2  # 3cb1
+  nonce: 3cb1  # 3cb1
+  message: "Materialized from dogfood tranche 05 (F100.A1 / anon-card-010). Mechanism: node.id NAME slot (spec §317 {name} segment) carries a linker-category constant or route method+path while node.name carries the specific value. Evidence: frozen substrate.json (probe_2_name2.log/probe_2_name3.log) — 255 non-file id-name mismatches (130 call_site + 124 function + 1 method); fresh run on /tmp/hg_nameslot/runner.py reproduces (subprocess_call id-slot vs node.name 'git config'/'ls'). Magnitude: 255 synthetic nodes; an indexer keyed on parsed-id-name collapses 78 subprocess call_sites under one label. Blind severity 3/5, reproduced on frozen substrate + fresh run (deterministic producer). RELATED_BUT_DISTINCT from F84.A1/its sibling (id KIND-segment vs node.kind), INV-dulah (id format escaping / file nodes — distinct slot and mechanism), parent META INV-kurup (identifier-bearing fields emit non-canonical formats), and WI-nagam (language=None). This is the id NAME-slot vs node.name disagreement specifically."  # 3cb1
+- op: discuss  # 6563
+  at: '2026-06-06T04:49:44Z'  # 6563
+  by: agent  # 6563
+  actor: jgstern_agent  # 6563
+  clock: 3  # 6563
+  nonce: '6563'  # 6563
+  message: "OVER-FOLD SPLIT (Phase-7 reconciliation): the Rust '.'-vs-'::' separator case is now tracked separately as WI-nagub-vodov-pimot-jovig-kudis-dijir-vusij-rojaf (distinct analyzer fix). THIS item is now scoped to the synthetic-node producer-label name-slots (linker category constants: subprocess_call 78 / db_query 34 / mq_publisher 44 / mq_subscriber 31 / http_client 18 / resolver 11; plus starlette route method+path 8) — all one shared fix (producer id-construction should write node.name into the id name-slot). NOTE: the title and earlier description/discussion still reflect the pre-split 255-node framing; those now-redundant portions are flagged for cleanup once the human enables tracker edit mode (agent cannot edit/delete messages — OS-enforced)."  # 6563
+- op: update  # f15e
+  at: '2026-06-06T06:17:14Z'  # f15e
+  by: agent  # f15e
+  actor: jgstern_agent  # f15e
+  clock: 4  # f15e
+  nonce: f15e  # f15e
+  set:  # f15e
+    description: "Spec §317 defines node id as {lang}:{file}:{span}:{name}:{kind} — the second-from-last colon segment is {name}. On these synthetic nodes the id name slot carries a GENERIC linker-category constant (or a method+path route label) while node.name carries the SPECIFIC value, so a consumer reconstructing a node's name by parsing its documented stable id gets a different string than node.name. id-name mismatches: 130 call_site + 124 function (+ 1 method = the Rust '.'-vs-'::' separator case, split out to WI-nagub). Linker nodes use a category constant in the id name slot vs specific node.name: subprocess_call(78)->name 'git config'/'ls'; db_query(34)->name 'SELECT users'/'DELETE items'; mq_publisher(44)/mq_subscriber(31)->name 'kafka:publish:topic'; http_client(18)->name 'GET /api/users'; resolver(11)->name 'Query.users'/'Mutation.createUser'; WS endpoint functions id '/ws-endpoint'->name 'ws:/ws'. Starlette route-registration nodes: id name slot is METHOD+PATH ('GET /health','POST /api/items') while node.name is 'starlette:_health'. Fresh repro: hypergumbo run on /tmp/hg_nameslot/runner.py (two subprocess.run calls) -> python:runner.py:4-4:subprocess_call:call_site name='git config' MISMATCH. Consequence: an agent indexing nodes by parsed-id-name collapses all 78 subprocess call_sites under 'subprocess_call', all 34 db queries under 'db_query', etc., even though node.name distinguishes them."  # f15e
+- op: edit-msg-text  # f1b0
+  at: '2026-06-06T06:17:15.155973Z'  # f1b0
+  by: agent  # f1b0
+  actor: jgstern_agent  # f1b0
+  clock: 5  # f1b0
+  nonce: f1b0  # f1b0
+  item: WI-vuzaf-fitar-dubid-gusut-mobud-rigin-vifod-pahas  # f1b0
+  target_nonce: '6563'  # f1b0
+  new_text: "OVER-FOLD SPLIT (Phase-7 reconciliation): the Rust '.'-vs-'::' separator case is tracked separately as WI-nagub (distinct analyzer fix). THIS item is scoped to the synthetic-node producer-label name-slots (linker category constants: subprocess_call 78 / db_query 34 / mq_publisher 44 / mq_subscriber 31 / http_client 18 / resolver 11; plus starlette route method+path 8) — all one shared fix (producer id-construction should write node.name into the id name-slot). Edit-mode cleanup completed: the Rust-separator detail trimmed from the description (now owned by WI-nagub)."  # f1b0
+  reason: "edit-mode cleanup done; drop stale OS-enforced note"  # f1b0

@@ -1,0 +1,28 @@
+- op: create  # b5c5
+  at: '2026-06-06T04:13:24Z'  # b5c5
+  by: agent  # b5c5
+  actor: jgstern_agent  # b5c5
+  clock: 1  # b5c5
+  nonce: b5c5  # b5c5
+  data:  # b5c5
+    kind: work_item  # b5c5
+    title: "depends_on_manifest collapses same-named deps across monorepo manifests via global flat lookup (no package scoping); 3 edges provably misattributed to wrong package's manifest"  # b5c5
+    status: todo_hard  # b5c5
+    priority: 1  # b5c5
+    parent:  # b5c5
+    tags:  # b5c5
+    - dogfood  # b5c5
+    - dogfood_tranche_05  # b5c5
+    isbefore: []  # b5c5
+    duplicate_of: []  # b5c5
+    not_duplicate_of: []  # b5c5
+    pr_ref:  # b5c5
+    description: "The dependency-linker builds a global flat dict[dep_name -> Symbol], so when a dependency name is declared in more than one package's manifest, only the last-written manifest symbol survives; depends_on_manifest edges from importing files in OTHER packages are linked to that wrong manifest, ignoring the importing file's own package. All 26 depends_on_manifest edges in the substrate point to hypergumbo-tracker/pyproject.toml. 3 of them originate in hypergumbo-core source files importing rich (cli.py, sketch.py, tests/test_sketch.py) but are linked to toml:packages/hypergumbo-tracker/pyproject.toml:24-24:rich:dependency even though hypergumbo-core's own rich dependency node exists. 6 dep names are declared in >1 package (rich, pygments, pyyaml, hypergumbo-core, hypergumbo-lang-mainstream, tree-sitter-language-pack). 3/26 edges provably misattributed; the other 23 are 'correct' only incidentally (tracker was last manifest written). Root cause (linkers/dependency.py): _build_dependency_lookup (83-104) maps lookup[sym.name]=sym with NO package scoping (later same-named dep overwrites earlier); link_dependencies (137-169) does dep_lookup.get(root_pkg) with no consideration of which package edge.src lives in (code_symbols passed but 'reserved for future use'). Fresh repro: /tmp/depmanifest_test pkgA+pkgB each declaring+importing rich → both depends_on_manifest edges point to pkgA's manifest; pkgB's import linked to pkgA. Reproduces cleanly."  # b5c5
+    fields: {}  # b5c5
+- op: discuss  # dca6
+  at: '2026-06-06T04:13:34Z'  # dca6
+  by: agent  # dca6
+  actor: jgstern_agent  # dca6
+  clock: 2  # dca6
+  nonce: dca6  # dca6
+  message: "Materialized from dogfood tranche 05 (F97.A1 / anon-card-018). Mechanism: dependency-linker global flat dep_name->Symbol lookup collapses same-named deps across monorepo manifests; importing files in other packages link to the wrong (last-written) manifest. Evidence: frozen substrate (all 26 depends_on_manifest -> hypergumbo-tracker/pyproject.toml; 3 from hypergumbo-core rich imports misattributed); producer linkers/dependency.py:83-104 (_build_dependency_lookup, no package scoping) + 137-169 (link_dependencies, ignores src package). Magnitude: 3/26 provably misattributed; 6 dep names declared in >1 package. Fresh repro: /tmp/depmanifest_test pkgA+pkgB reproduces wrong-manifest attribution. Blind severity 4/5, reproduced. RELATED_BUT_DISTINCT from WI-zujip (done — parse_python_dependencies should walk monorepo packages/*/pyproject.toml; that fixed dependency PARSING coverage, not the edge ATTRIBUTION lookup) and WI-davan (done — _detect_src_layout monorepo). No existing row captures wrong-manifest attribution for deps declared in multiple manifests (order-dependent global collapse)."  # dca6
