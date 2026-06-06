@@ -1,0 +1,442 @@
+#!/usr/bin/env python3
+"""Delete-only de-leaker for the dogfood issue ledger (agent_notes).
+
+WHY
+    The issue ledger (``agent_notes.json`` ``notes`` field) accretes campaign /
+    cadence framing: tranche names, pass numbers/ranges, F-numbers, dates,
+    trend rollups (mean / Sigma-sev / buckets), pass-label prefixes
+    (``UUUU:`` / ``AAAAA:``), "READ THIS FIRST" headers, cohort sections.
+    Discovery workers load the WHOLE ledger (``scripts/agent-notes --show``), so
+    any cadence in it lets a worker perceive campaign position and bias its
+    effort -- a low yield then becomes a self-fulfilling artifact. This tool
+    strips the cadence WITHOUT touching issue content.
+
+THE SAFETY INVARIANT (why this is not the LLM de-leak that failed)
+    The transform is DELETE-ONLY. It removes matched cadence substrings,
+    cadence-only lines, and cadence section headers, then collapses blank runs.
+    It NEVER paraphrases, summarizes, re-orders rows, or re-pairs a tracker ID
+    with different text. So an ID can never decouple from its own description
+    (exactly the failure mode of an LLM summary, which crossed wires between
+    neighbouring rows). Every surviving issue row == its original text minus
+    cadence tokens.
+
+THE MAP (so nothing is lost)
+    The provenance the human needs to plot summed-severity-over-time -- which
+    pass contributed which row -- is itself cadence, so it cannot live in the
+    ledger. As the stripper removes an F-number that co-occurs with a tracker ID
+    (the cohort-row shape ``- WI-xxxx ... | F63.A1 | ...``), it RECORDS that
+    association into a separate pass->row map. The cadence relocates from the
+    leaky place (ledger) to the safe place (map) instead of being deleted
+    outright. The map is best-effort: only rows whose F-number/pass provenance
+    is actually present in the ledger appear in it (older rows predate the
+    scheme).
+
+VERIFICATION (asserted every run; this is the trust mechanism)
+    * tracker-ID set is preserved EXACTLY (no row dropped or invented);
+    * every ID's descriptive words survive (no over-strip ate content);
+    * residual cadence is reported (target: zero, modulo the allowed header
+      pointer) to drive the subagent-inspection step.
+
+PROCEDURE (iterate to fully de-leaked)
+    1-3. Run this script: it extracts the map, strips cadence (delete-only),
+         verifies, and writes a residual-cadence report.
+    4.   A subagent reads --out + --report and FLAGS residual cadence the regex
+         patterns missed (flag-only; it never edits).
+    5.   Add a CADENCE_* pattern for each miss; re-run. Stop when residual is
+         zero and the asserts pass. Then a human eyeballs --out and swaps it in
+         deliberately (this script never overwrites its input).
+
+USAGE
+    scripts/deleak-ledger --in <agent_notes.json> --out <deleaked.json> \\
+        --map <pass_row_map.json> --report <residual.md>
+    (--in defaults to the canonical agent_notes; --out/--map/--report default
+    alongside it. The input is never modified.)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+# A tracker ID: INV-/WI-/META- followed by one or more 4-6 letter stems.
+TRACKER_ID = re.compile(r"\b(?:INV|WI|META)-[a-z]{4,6}(?:-[a-z]{4,6})*\b")
+
+# An F-number carries a pass: F63.A1 / F26.13 -> pass 63 / 26. Map + stripped.
+F_NUMBER = re.compile(r"\bF(\d+)\.([A-Za-z0-9]+)\b")
+
+# ---------------------------------------------------------------------------
+# Cadence token patterns. DELETE-ONLY: each match is removed from its line.
+# Editable: when the subagent flags a missed cadence shape, add a row here and
+# re-run. Order matters only for overlapping matches (more specific first).
+# ---------------------------------------------------------------------------
+CADENCE_TOKENS: list[tuple[str, re.Pattern]] = [
+    ("enrich_bracket", re.compile(r"\[\+[^\]]*\]")),  # [+ pass-04 card 030 ...]
+    ("f_number", F_NUMBER),
+    ("tranche_tag", re.compile(r"\bdogfood[_-]tranche?[_ -]?\d+\b", re.I)),
+    ("tranche", re.compile(r"\btranche?[_ -]?\d+\b", re.I)),
+    ("fold_audit", re.compile(r"\bfold[_-]audit(?:\s+materialization)?[_-]?\d*[\d_-]*\b", re.I)),
+    ("pass_range", re.compile(r"\bpass(?:es)?[-_ ]\d+(?:\s*[-\u2013]\s*\d+)?\b", re.I)),
+    ("pass_label_range", re.compile(r"\bs\d{1,3}\s*[-\u2013]\s*s\d{1,3}\b")),
+    ("phase_n", re.compile(r"\bPhase\s+\d[a-z]?\b")),
+    ("superseded", re.compile(r"(?:→\s*)?\bsupersed\w+\s+by\b", re.I)),
+    ("baseline_improve", re.compile(r"\b(?:massive |huge )?improvement from [\d.]+%?(?:\s+baseline)?", re.I)),
+    ("trend_label", re.compile(r"\b(?:integrated|singleton),\s*P\d\s*\w*\)?", re.I)),
+    ("intersects_themes", re.compile(r"\bintersects \d+ themes\b", re.I)),
+    ("date", re.compile(r"\b20\d\d-\d\d-\d\d\b")),
+    ("anon_card", re.compile(r"\banon-card-[\w-]+\b")),
+    ("card_label", re.compile(r"\bcard\s+\d+\b", re.I)),
+    ("letter_prefix", re.compile(r"\b([A-Z])\1{2,}:\s*")),  # UUUU:  AAAAA:
+    ("sigma_sev", re.compile(r"(?:bucket-?)?Σ-?sev(?:erity)?\b", re.I)),
+    ("sig_severe", re.compile(r"\bSig\+Severe\b", re.I)),
+    ("mean_sev", re.compile(r"\bmean\s+\d[\d.]*", re.I)),
+    ("trend_word", re.compile(r"\b(?:convergence|carbon-dat\w*)\b", re.I)),
+    # In THIS ledger every use of these is campaign-sense (confirmed by
+    # inspection); they are in CADENCE_VOCAB so stripping won't trip over-strip.
+    ("cohort_word", re.compile(r"\bcohorts?\b", re.I)),
+    ("materializ_word", re.compile(r"\bmaterializ\w*\b", re.I)),
+    ("campaign_word", re.compile(r"\bcampaign\b", re.I)),
+    ("cluster_label", re.compile(r"\bcluster[- ]?C?\d+\b", re.I)),
+    ("family_label", re.compile(r"\bFamil(?:y|ies)\s+[A-Z](?:\s*[/,]\s*[A-Z])*\b")),
+    ("fnum_word", re.compile(r"\bF-numbers?\b", re.I)),
+    ("probe_label", re.compile(r"\bprobe\s+\d+(?:\.[A-Z])?\b", re.I)),
+    # bare F-number only when clearly a finding ref (followed by ; or "correction")
+    ("bare_fnum", re.compile(r"\bF\d{1,3}\b(?=\s*(?:;|correction\b))")),
+    # repeated-letter pass/actor codes used mid-text (KKKKK, BBBBBBBB, YYY) —
+    # no English word repeats a letter 3x, so this is safe.
+    ("actor_code", re.compile(r"\b([A-Z])\1{2,}\w*")),
+    ("fold_trigger", re.compile(r"\bfold-trigger\b", re.I)),
+    ("consolidation_verdict", re.compile(r"\b(?:RETAINED|TRIMMED|GENUINE EXTENSIONS?)\b")),
+]
+
+# A line is treated as a CADENCE HEADER / FRAMING line (deleted whole) when it
+# is a markdown header OR has no tracker ID, AND it matches one of these. Issue
+# rows (lines containing a tracker ID) are NEVER deleted whole -- only their
+# cadence tokens are stripped.
+CADENCE_LINE = re.compile(
+    r"\b(?:tranche?|cohort|materializ\w*|READ THIS FIRST|baseline|pilot|panel|"
+    r"superseded as top|Σ-?sev|bucket-?Σ|Sig\+Severe|convergence|"
+    r"carbon-dat|headline numbers|methodology[- ]comparab)\w*\b",
+    re.I,
+)
+
+ALLOWED_HEADER = (
+    "# Hypergumbo issue ledger\n\n"
+    "_Per-issue ledger of distinct known issues. Campaign/trend/cadence data "
+    "lives in the index/trend files, not here._\n"
+)
+
+
+def strip_tokens(line: str) -> str:
+    """Delete every cadence token from a line. Delete-only; nothing rewritten."""
+    for _, pat in CADENCE_TOKENS:
+        line = pat.sub("", line)
+    return line
+
+
+def is_trivial(line: str) -> bool:
+    """True if a line is only markdown scaffolding / whitespace after stripping."""
+    return re.sub(r"[\s|>*_\-\u2014\u2013:.,()#]+", "", line) == ""
+
+
+def priority_to_severity(p: int | None) -> int | None:
+    """Priority P0..P4 -> blind-severity 5..1 (the inverse of 5->P0 mapping)."""
+    return {0: 5, 1: 4, 2: 3, 3: 2, 4: 1}.get(p) if p is not None else None
+
+
+def extract_map(notes: str, sev_by_id: dict[str, int | None] | None = None) -> dict[str, list[dict]]:
+    """Build {pass: [{row_id, f_number, severity}]} from ID<->F-number co-occurrence.
+
+    severity is the row's priority-derived severity (from the tracker), so the
+    human can plot summed-severity-over-time as a DIRECT read of this map. It is
+    a proxy for the original per-pass blind-judge score (priority is derived from
+    that score; the raw scores live in the per-tranche verdict files). In a fresh
+    tranche, Phase 4 fills the actual blind severity here.
+    """
+    sev_by_id = sev_by_id or {}
+    out: dict[int, list[dict]] = defaultdict(list)
+    for line in notes.splitlines():
+        ids = TRACKER_ID.findall(line)
+        fnums = F_NUMBER.findall(line)
+        if not ids or not fnums:
+            continue
+        row_id = ids[0]
+        for pass_num, label in fnums:
+            entry = {"row_id": row_id, "f_number": f"F{pass_num}.{label}",
+                     "severity": sev_by_id.get(norm_id(row_id))}
+            if entry not in out[int(pass_num)]:
+                out[int(pass_num)].append(entry)
+    return {str(k): out[k] for k in sorted(out)}
+
+
+def is_issue_row(line: str) -> bool:
+    """True iff a tracker ID is at the START of the line (after md markers).
+
+    This is what separates a genuine issue row -- ``- **WI-xxxx** ...`` or
+    ``| INV-xxxx | ...`` -- from narrative/framing that merely MENTIONS an ID
+    mid-sentence (``... trend cohort ... INV-rukor flipped ...``). Only ID-first
+    rows are kept; everything else (headers, trend blocks, session/methodology
+    prose) is dropped wholesale. Any ID that lived ONLY in dropped narrative is
+    caught by the ID-set check in verify() (rc=2), never silently lost.
+    """
+    core = re.sub(r"^[\s\-*|>]+", "", line)
+    core = re.sub(r"^\*\*", "", core)
+    return bool(re.match(r"(?:INV|WI|META)-[a-z]{4,6}", core))
+
+
+# ID-first lines that are CAMPAIGN RECORDS, not issue definitions: pass-
+# enrichment annotations ("- INV-x received F26.1 ..."), batch headers
+# ("**X batch (4 findings):**"), phase-edit bookkeeping ("... DELETED in Phase
+# 2a"). Dropped even though they start with an ID; any ID thereby orphaned is
+# recovered by backfill from the tracker.
+DROP_LINE = re.compile(
+    r"\breceived\s+(?:F\d|pass|INV-|WI-|META-)"
+    r"|\(\d+\s+findings?\b"  # "... batch (4 findings):" / "... face (1 finding —"
+    r"|\b(?:DELETED|TRIMMED|RETAINED)\s+in\s+Phase"
+    r"|\bcohort matches scope\b"
+    r"|\s←\s"  # "- INV-x ← (...)" extension annotations on existing rows
+    r"|advancing items|Densest single-anchor"  # theme/anchor-density rollup
+    r"|\broot signal\b|\bcompleteness multiplier\b",  # theme-density rollups
+    re.I,
+)
+
+
+def tidy(line: str) -> str:
+    """Cosmetic cleanup of strip residue: empty () [], doubled separators."""
+    line = re.sub(r"\(\s*\)", "", line)
+    line = re.sub(r"\[\s*\]", "", line)
+    line = re.sub(r"\(\s+", "(", line)   # "( word)" -> "(word)" (stripped lead token)
+    line = re.sub(r"\s+\)", ")", line)
+    line = re.sub(r"(?:\s*[\u2014/|]\s*){2,}", " \u2014 ", line)  # " / / " / " — — "
+    line = re.sub(r"\s+([,.;:)])", r"\1", line)
+    line = re.sub(r"\s{2,}", " ", line)
+    return line.strip()
+
+
+def deleak(notes: str) -> str:
+    """Delete-only: keep ID-first issue rows (cadence-stripped); drop the rest."""
+    kept = [
+        tidy(strip_tokens(line))
+        for line in notes.splitlines()
+        if is_issue_row(line) and not DROP_LINE.search(line)
+    ]
+    body = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+    return ALLOWED_HEADER + "\n" + body + "\n"
+
+
+def content_words(line: str) -> set[str]:
+    return set(re.findall(r"[a-zA-Z_]{3,}", line))
+
+
+def norm_id(s: str) -> str:
+    """Canonical short form (kind + first stem), e.g. INV-nubub.
+
+    The ledger references the same issue in three inconsistent forms -- full
+    (``INV-nubub-davag-...``), table-truncated (``INV-nubub-davag-...nu…``), and
+    short (``INV-nubub``). Normalising to the short stem lets the ID-set check
+    compare apples to apples instead of counting form-variants as drops.
+    """
+    m = re.match(r"((?:INV|WI|META)-[a-z]{4,6})", s)
+    return m.group(1) if m else s
+
+
+def ids_in(text: str, rowfirst_only: bool = False) -> set[str]:
+    out: set[str] = set()
+    for line in text.splitlines():
+        if rowfirst_only and not is_issue_row(line):
+            continue
+        for full in TRACKER_ID.findall(line):
+            out.add(norm_id(full))
+    return out
+
+
+CADENCE_VOCAB = {
+    "tranche", "cohort", "pass", "passes", "materialization", "baseline",
+    "pilot", "panel", "headline", "numbers", "bucket", "convergence", "sev",
+    "severity", "read", "this", "first", "filed", "superseded", "campaign",
+}
+
+
+def verify(original: str, deleaked: str, report_path: Path,
+           known_ids: frozenset[str] = frozenset()) -> int:
+    """Verify integrity; write report. rc: 0 clean / 1 residual / 2 integrity."""
+    all_orig = ids_in(original)
+    rowfirst_orig = ids_in(original, rowfirst_only=True)
+    deleaked_ids = ids_in(deleaked)
+
+    dropped_rowfirst = rowfirst_orig - deleaked_ids
+    # A dropped row-first ID is a real BUG only if it's a real tracker issue.
+    # Drops of IDs the tracker doesn't know (ledger typos like INV-janob for
+    # WI-janob, placeholders like INV-xxxx) are informational, not failures.
+    bug_drops = (dropped_rowfirst & known_ids) if known_ids else dropped_rowfirst
+    nonreal_drops = sorted(dropped_rowfirst - known_ids) if known_ids else []
+    # "invented" = an ID in the output that is in NEITHER the original ledger NOR
+    # the tracker. IDs pulled in via backfill titles (real tracker cross-refs)
+    # are fine, not fabrications.
+    invented = deleaked_ids - all_orig - known_ids
+    narrative_only = sorted(all_orig - rowfirst_orig - deleaked_ids)  # info only
+
+    problems: list[str] = []
+    if bug_drops:
+        problems.append(f"DROPPED {len(bug_drops)} ID-first rows: {sorted(bug_drops)[:20]}")
+    if invented:
+        problems.append(f"INVENTED {len(invented)} tracker IDs: {sorted(invented)[:20]}")
+
+    # Over-strip: only KEPT issue rows must keep their descriptive words.
+    deleaked_words = content_words(deleaked)
+    overstrip: list[str] = []
+    for line in original.splitlines():
+        if not is_issue_row(line) or DROP_LINE.search(line):
+            continue  # non-rows and intentionally-dropped campaign records
+        ids = TRACKER_ID.findall(line)
+        want = content_words(strip_tokens(line)) - CADENCE_VOCAB
+        lost = {w for w in want - deleaked_words if not re.fullmatch(r"[A-Z]\d*|s\d+", w)}
+        if lost:
+            overstrip.append(f"{norm_id(ids[0])}: lost {sorted(lost)[:8]}")
+    if overstrip:
+        problems.append(f"OVER-STRIP on {len(overstrip)} kept rows:")
+        problems.extend("    " + o for o in overstrip[:25])
+
+    # Residual cadence scan on the de-leaked output (target: 0).
+    residual: list[str] = []
+    for i, line in enumerate(deleaked.splitlines(), 1):
+        if "issue ledger" in line.lower() or "index/trend" in line.lower():
+            continue  # the allowed header pointer
+        hits = [name for name, pat in CADENCE_TOKENS if pat.search(line)]
+        if CADENCE_LINE.search(line):
+            hits.append("cadence_line")
+        if hits:
+            residual.append(f"  L{i} [{','.join(sorted(set(hits)))}]: {line[:110]}")
+
+    lines = [
+        "# deleak-ledger verification report",
+        "",
+        f"tracker IDs (normalised): original={len(all_orig)} "
+        f"row-first={len(rowfirst_orig)} deleaked={len(deleaked_ids)}",
+        f"row-first DROPS (bug): {len(bug_drops)} | invented: {len(invented)} "
+        f"| over-strip: {len(overstrip)} | residual-cadence: {len(residual)}",
+        f"narrative-only mentions not in ledger (informational): {len(narrative_only)}",
+        f"non-tracker IDs dropped (typos/placeholders, informational): "
+        f"{nonreal_drops if nonreal_drops else 0}",
+        "",
+        "## Hard problems (must be empty before swap)",
+        *(problems or ["  (none)"]),
+        "",
+        "## Narrative-only IDs (mentioned in prose, never an ID-first row; "
+        "decide per-item whether to backfill from the tracker)",
+        *(["  " + ", ".join(narrative_only)] if narrative_only else ["  (none)"]),
+        "",
+        "## Residual cadence the regexes did NOT catch "
+        "(subagent: flag any real cadence; add a CADENCE_* pattern)",
+        *(residual or ["  (none)"]),
+    ]
+    report_path.write_text("\n".join(lines) + "\n")
+
+    if bug_drops or invented or overstrip:
+        return 2
+    return 1 if residual else 0
+
+
+def fetch_tracker_rows(repo_root: Path) -> dict[str, tuple[str, str, int | None]]:
+    """{short_id: (full_id, title, severity)} from ``scripts/tracker list``.
+
+    severity is derived from the row's priority (P0->5 ... P4->1). {} on failure.
+    """
+    import subprocess
+
+    try:
+        res = subprocess.run(  # noqa: S603
+            [str(repo_root / "scripts" / "tracker"), "list"],
+            capture_output=True, text=True, cwd=str(repo_root), timeout=120,
+        )
+        text = res.stdout
+    except Exception:
+        return {}
+    row = re.compile(
+        r"\b((?:INV|WI|META)-[a-z]{4,6}(?:-[a-z]{4,6})*)\b\s+\w+\s+P(\d)\s+"
+        r"(?:\[\w+\]\s+)?(.*)"
+    )
+    rows: dict[str, tuple[str, str, int | None]] = {}
+    for line in text.splitlines():
+        m = row.search(line)
+        if m:
+            rows.setdefault(
+                norm_id(m.group(1)),
+                (m.group(1), m.group(3).strip(), priority_to_severity(int(m.group(2)))),
+            )
+    return rows
+
+
+def backfill(notes: str, deleaked: str, titles: dict[str, tuple]) -> tuple[str, int]:
+    """Append rows for IDs mentioned only in prose, sourced from tracker titles.
+
+    These IDs have no ID-first row in the ledger, so the delete-only pass drops
+    them. Rather than lose them, we re-add a minimal row whose text comes from
+    the TRACKER (the issue source of truth, so ID<->content is correct), with
+    cadence stripped. Skips IDs the tracker doesn't know (e.g. placeholders).
+    """
+    missing = sorted(ids_in(notes) - ids_in(deleaked))
+    rows = [f"- {titles[sid][0]} \u2014 {tidy(strip_tokens(titles[sid][1]))}".rstrip()
+            for sid in missing if sid in titles]
+    if not rows:
+        return deleaked, 0
+    block = ("\n## Cross-referenced issues (backfilled from the tracker)\n\n"
+             + "\n".join(rows) + "\n")
+    return deleaked.rstrip() + "\n" + block, len(rows)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Delete-only ledger de-leaker.")
+    default_in = Path.home() / "hypergumbo_lab_notebook/guidance_log/agent_notes.json"
+    ap.add_argument("--in", dest="inp", type=Path, default=default_in)
+    ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--map", dest="mapp", type=Path, default=None)
+    ap.add_argument("--report", type=Path, default=None)
+    ap.add_argument("--tracker-titles", dest="titles", type=Path, default=None,
+                    help="JSON {short_id:[full,title]} for backfill; "
+                         "if omitted, auto via scripts/tracker list")
+    args = ap.parse_args()
+
+    out = args.out or args.inp.with_suffix(".deleaked.json")
+    mapp = args.mapp or args.inp.with_name("pass_row_map.json")
+    report = args.report or args.inp.with_name("deleak_report.md")
+
+    if out.resolve() == args.inp.resolve():
+        print("refusing to overwrite the input ledger", file=sys.stderr)
+        return 3
+
+    data = json.loads(args.inp.read_text())
+    notes = data["notes"]
+
+    if args.titles and args.titles.exists():
+        raw = json.loads(args.titles.read_text())
+        rows = {norm_id(k): (v[0], v[1], v[2] if len(v) > 2 else None)
+                for k, v in raw.items()}
+    else:
+        rows = fetch_tracker_rows(Path(__file__).resolve().parent.parent)
+    sev_by_id = {k: v[2] for k, v in rows.items()}
+
+    pass_map = extract_map(notes, sev_by_id)
+    deleaked = deleak(notes)
+    deleaked, n_back = backfill(notes, deleaked, rows)
+
+    out.write_text(json.dumps({"notes": deleaked}, indent=2, ensure_ascii=False))
+    mapp.write_text(json.dumps(pass_map, indent=2, ensure_ascii=False))
+    rc = verify(notes, deleaked, report, known_ids=frozenset(rows))
+
+    mapped_rows = sum(len(v) for v in pass_map.values())
+    print(f"in:      {args.inp}")
+    print(f"out:     {out}  ({len(notes)} -> {len(deleaked)} chars)")
+    print(f"map:     {mapp}  ({len(pass_map)} passes, {mapped_rows} row-associations)")
+    print(f"backfill: {n_back} narrative-only IDs sourced from the tracker")
+    print(f"report:  {report}")
+    print(f"verify:  rc={rc} "
+          f"({'INTEGRITY FAIL' if rc == 2 else 'residual cadence' if rc == 1 else 'clean'})")
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())
