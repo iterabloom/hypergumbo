@@ -86,6 +86,16 @@ F_NUMBER = re.compile(r"\bF(\d+)\.([A-Za-z0-9]+)\b")
 CADENCE_TOKENS: list[tuple[str, re.Pattern]] = [
     ("enrich_bracket", re.compile(r"\[\+[^\]]*\]")),  # [+ pass-04 card 030 ...]
     ("f_number", F_NUMBER),
+    # Discovery-handle cadence (added per a Phase-7 inspect-loop miss): the
+    # per-pass workers integrate findings under short LOCAL handles that encode
+    # campaign position — ``p<pass>-A<k>`` and the chunk-qualified
+    # ``d<chunk>p<pass>-A<k>`` (one combined pattern), the bare chunk marker
+    # ``(d<chunk>)``, and the ``discovery_<chunk>`` staging label. The leading
+    # \b + required ``p\d+`` keeps word-internal look-alikes (``app2-A1``,
+    # ``type-A1``) safe — there is no word boundary before their ``p``.
+    ("discovery_handle", re.compile(r"\bd?\d*p\d+-A\d+\b")),
+    ("discovery_chunk_paren", re.compile(r"\(d\d+\)")),
+    ("discovery_chunk", re.compile(r"\bdiscovery_\d+\b")),
     ("tranche_tag", re.compile(r"\bdogfood[_-]tranche?[_ -]?\d+\b", re.I)),
     ("tranche", re.compile(r"\btranche?[_ -]?\d+\b", re.I)),
     ("fold_audit", re.compile(r"\bfold[_-]audit(?:\s+materialization)?[_-]?\d*[\d_-]*\b", re.I)),
@@ -218,6 +228,7 @@ def tidy(line: str) -> str:
     """Cosmetic cleanup of strip residue: empty () [], doubled separators."""
     line = re.sub(r"\(\s*\)", "", line)
     line = re.sub(r"\[\s*\]", "", line)
+    line = re.sub(r"([·•])\s*:\s*", r"\1 ", line)  # orphaned "· :" left by a stripped handle
     line = re.sub(r"\(\s+", "(", line)   # "( word)" -> "(word)" (stripped lead token)
     line = re.sub(r"\s+\)", ")", line)
     line = re.sub(r"(?:\s*[\u2014/|]\s*){2,}", " \u2014 ", line)  # " / / " / " — — "
