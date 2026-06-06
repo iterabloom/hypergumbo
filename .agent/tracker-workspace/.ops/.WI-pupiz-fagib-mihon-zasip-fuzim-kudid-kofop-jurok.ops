@@ -1,0 +1,21 @@
+- op: create  # 3a98
+  at: '2026-06-06T10:30:55Z'  # 3a98
+  by: agent  # 3a98
+  actor: jgstern_agent  # 3a98
+  clock: 1  # 3a98
+  nonce: 3a98  # 3a98
+  data:  # 3a98
+    kind: work_item  # 3a98
+    title: "cli_command entrypoint kind never emitted despite argparse CLIs (+ background_task/connectivity_based/websocket_handler absent)"  # 3a98
+    status: todo_hard  # 3a98
+    priority: 1  # 3a98
+    parent:  # 3a98
+    tags:  # 3a98
+    - dogfood  # 3a98
+    - dogfood_tranche_06  # 3a98
+    isbefore: []  # 3a98
+    duplicate_of: []  # 3a98
+    not_duplicate_of: []  # 3a98
+    pr_ref:  # 3a98
+    description: "**Defect.** The `cli_command` entrypoint kind is never emitted despite many argparse-based CLIs, and three other documented entrypoint kinds are also absent.\n\n**Evidence.** `cli_command` is a defined entrypoint-kind enum value (entrypoints.py:157), the lead example in spec §351, and listed in spec §883, but the entrypoint detector classifies 0 symbols with it (kinds present: main_function 11, http_route 8, shell_script 36, script_module 2, html_entry 1, library_export 46) despite dozens of argparse-based Python CLIs under scripts/ — those surface only as library_export/main_function/file entrypoints. The documented kinds cli_command, background_task, connectivity_based, and websocket_handler are all absent from the 104 entrypoints.\n\n**Contract.** The detector should emit the `cli_command` entrypoint kind for command-line tools, as documented.\n\n**Consequence.** CLI tools are invisible as such in the entrypoint inventory; a consumer keying on kind=cli_command to find command-line interfaces gets nothing.\n\n**Related (not duplicate).** Same root family as WI-lubap (subprocess linker misses argparse CLIs) but a different surface/producer: the entrypoint detector never classifies any symbol as cli_command."  # 3a98
+    fields: {}  # 3a98

@@ -1,0 +1,21 @@
+- op: create  # 6748
+  at: '2026-06-06T10:30:48Z'  # 6748
+  by: agent  # 6748
+  actor: jgstern_agent  # 6748
+  clock: 1  # 6748
+  nonce: '6748'  # 6748
+  data:  # 6748
+    kind: work_item  # 6748
+    title: "reproducibility implications text references pass_versions absent from captured block + null on dominant Python pass"  # 6748
+    status: todo_hard  # 6748
+    priority: 1  # 6748
+    parent:  # 6748
+    tags:  # 6748
+    - dogfood  # 6748
+    - dogfood_tranche_06  # 6748
+    isbefore: []  # 6748
+    duplicate_of: []  # 6748
+    not_duplicate_of: []  # 6748
+    pr_ref:  # 6748
+    description: "**Defect.** The reproducibility guarantee text references a field that is absent from the captured block and null on the dominant pass.\n\n**Evidence.** `reproducibility_context.implications` says maps with matching `pass_versions` (among other fields) should be functionally identical. But the captured keys are {grammars, hypergumbo_version, python_implementation, python_version, tree_sitter_version} — `pass_versions` is NOT among them, so a consumer cannot find it in the block the text describes; the per-pass version must be dug out of analysis_runs, where it is empty for 14 of 84 runs — including the dominant Python pass (~852 files).\n\n**Contract.** The reproducibility contract should reference fields that are actually captured in the reproducibility block and populated for the passes that matter.\n\n**Consequence.** The documented reproducibility guarantee rests on a field a consumer cannot use as written; reproducibility comparison is unreliable for the dominant pass.\n\n**Related (not duplicate).** WI-mifok (wont_do) covers pass_version being empty on 14/84 runs; INV-pitab the broader provenance-field-set defect. This is the distinct surface: the implications text references pass_versions absent from `reproducibility_context.captured`."  # 6748
+    fields: {}  # 6748

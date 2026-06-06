@@ -1,0 +1,21 @@
+- op: create  # a631
+  at: '2026-06-06T10:30:50Z'  # a631
+  by: agent  # a631
+  actor: jgstern_agent  # a631
+  clock: 1  # a631
+  nonce: a631  # a631
+  data:  # a631
+    kind: work_item  # a631
+    title: "limits.skipped_languages setter add_skipped_language has zero callers; field always [] even when grammar load fails"  # a631
+    status: todo_hard  # a631
+    priority: 1  # a631
+    parent:  # a631
+    tags:  # a631
+    - dogfood  # a631
+    - dogfood_tranche_06  # a631
+    isbefore: []  # a631
+    duplicate_of: []  # a631
+    not_duplicate_of: []  # a631
+    pr_ref:  # a631
+    description: "**Defect.** A documented `limits.skipped_languages` field has a setter with zero callers, so it is always empty even when its documented trigger condition occurs.\n\n**Evidence.** `limits.skipped_languages` is documented (spec §184: \"If a specific grammar fails to load, that language is skipped with explicit limits.skipped_languages[] logging\"; spec §957) to log languages skipped because their grammar failed to load. Its only writer is `add_skipped_language` (limits.py:114-117). A grep across all packages/*/src/ for callers of `add_skipped_language` (and any other write to skipped_languages) returns ZERO hits. The field is `[]` in the map. A sibling field for the different \"no files matched\" condition (limits.skipped_passes) does work (66 entries) — only the grammar-load-failure field is dead.\n\n**Contract.** The setter should be wired into the grammar-load-failure path, so a grammar that fails to load appears in `skipped_languages` as the spec describes.\n\n**Consequence.** The field always reports \"no languages skipped,\" even when grammar loading fails — a silent false assurance that every detected language was analyzed."  # a631
+    fields: {}  # a631

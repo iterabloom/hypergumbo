@@ -1,0 +1,21 @@
+- op: create  # 98d2
+  at: '2026-06-06T10:30:53Z'  # 98d2
+  by: agent  # 98d2
+  actor: jgstern_agent  # 98d2
+  clock: 1  # 98d2
+  nonce: 98d2  # 98d2
+  data:  # 98d2
+    kind: work_item  # 98d2
+    title: "TS/non-py-go analyzers emit zero variable/field symbols (1610 var nodes = 1609 py + 1 go); field decorators have no anchor"  # 98d2
+    status: todo_hard  # 98d2
+    priority: 1  # 98d2
+    parent:  # 98d2
+    tags:  # 98d2
+    - dogfood  # 98d2
+    - dogfood_tranche_06  # 98d2
+    isbefore: []  # 98d2
+    duplicate_of: []  # 98d2
+    not_duplicate_of: []  # 98d2
+    pr_ref:  # 98d2
+    description: "**Defect.** The TypeScript analyzer (and every non-Python/Go analyzer) emits zero variable/field symbols, so module constants, module state, class fields, and field decorators have no anchor.\n\n**Evidence.** Variable-kind nodes total 1610 = 1609 Python + 1 Go + 0 for every other language. ws-client.ts declares 5 module-level value decls (const handlers, let currentItems, let ws, let reconnectDelay, const MAX_RECONNECT_DELAY) — 0 become symbols. A fresh `hypergumbo run` on that file emits 17 nodes (function/interface/type/file) and 0 variable nodes — deterministic. Because no field symbols exist, the lit field-level reactive-property decorators (@property/@state) have nothing to attach a decorated_by edge to: each lit component carries 2–6 field decorators, none captured; only the 3 class-level @customElement decorators are.\n\n**Contract.** The analyzer should emit variable/field-kind symbols for typed/untyped languages alike (as it does for Python), so module constants, module state, and class fields are visible and field decorators gain an anchor.\n\n**Consequence.** A component's reactive contract (the field decorator set) is entirely absent; exported config constants and module state are missing from the symbol graph — TS structure has a large blind spot invisible to search, centrality, and io-boundaries.\n\n**Related (not duplicate).** Distinct from WI-zavad (JS emits zero edges entirely) — TS here does emit calls/imports/decorated_by/contains edges; the gap is specifically the variable/field symbol family."  # 98d2
+    fields: {}  # 98d2
