@@ -1,0 +1,21 @@
+- op: create  # 7450
+  at: '2026-06-06T10:34:38Z'  # 7450
+  by: agent  # 7450
+  actor: jgstern_agent  # 7450
+  clock: 1  # 7450
+  nonce: '7450'  # 7450
+  data:  # 7450
+    kind: work_item  # 7450
+    title: "auto-generated schema omits 3 always-present top-level keys (reproducibility_context, symbol_fingerprint_scheme, validation_report)"  # 7450
+    status: todo_hard  # 7450
+    priority: 2  # 7450
+    parent:  # 7450
+    tags:  # 7450
+    - dogfood  # 7450
+    - dogfood_tranche_06  # 7450
+    isbefore: []  # 7450
+    duplicate_of: []  # 7450
+    not_duplicate_of: []  # 7450
+    pr_ref:  # 7450
+    description: "**Defect.** The auto-generated schema omits three top-level keys the behavior map always emits.\n\n**Evidence.** docs/schema.json top-level `properties` lists 19 keys but the map emits 22. The three keys emitted but absent from the schema: `reproducibility_context`, `symbol_fingerprint_scheme`, `validation_report`. Zero keys are in the schema but absent from the map. The schema self-describes as auto-generated from the dataclasses and is stale.\n\n**Contract.** A schema auto-generated from the dataclasses should declare every always-present top-level key.\n\n**Consequence.** Schema-driven tooling cannot validate or even discover three top-level blocks (including the reproducibility and validation reports), and a consumer trusting the schema as complete underestimates the map's surface.\n\n**Related (not duplicate).** WI-ziguk (validation_report undocumented) and WI-romup (validation_report.schema_version) concern that block's content/versioning; this is the schema-generator omission of three whole top-level keys (reproducibility_context + symbol_fingerprint_scheme are in no ledger row)."  # 7450
+    fields: {}  # 7450

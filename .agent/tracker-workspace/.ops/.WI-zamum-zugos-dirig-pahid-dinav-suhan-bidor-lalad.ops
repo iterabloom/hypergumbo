@@ -1,0 +1,21 @@
+- op: create  # 0d61
+  at: '2026-06-06T10:35:05Z'  # 0d61
+  by: agent  # 0d61
+  actor: jgstern_agent  # 0d61
+  clock: 1  # 0d61
+  nonce: 0d61  # 0d61
+  data:  # 0d61
+    kind: work_item  # 0d61
+    title: "meta.channel emitted on 145 edges but documented in neither spec nor schema"  # 0d61
+    status: todo_hard  # 0d61
+    priority: 3  # 0d61
+    parent:  # 0d61
+    tags:  # 0d61
+    - dogfood  # 0d61
+    - dogfood_tranche_06  # 0d61
+    isbefore: []  # 0d61
+    duplicate_of: []  # 0d61
+    not_duplicate_of: []  # 0d61
+    pr_ref:  # 0d61
+    description: "**Defect.** The edge-meta `channel` field is emitted but appears in no documentation or schema.\n\n**Evidence.** The producer writes meta.channel onto 145/110533 edges (event_publishes 103, references 30, calls 12), but neither docs/hypergumbo-spec.md nor docs/schema.json declares it — grep for the field in docs returns 0 hits, and channel is absent from the schema's edge-meta properties. The spec documents only a sibling discriminator (channel_kind, §815); the raw channel value is described nowhere.\n\n**Contract.** Every field the behavior map emits should be declared in the schema and described in the spec, so a consumer can learn its meaning and rely on its presence/absence having a defined contract.\n\n**Consequence.** A consumer cannot validate the field against the schema and has no authority for interpreting its values; tooling that strictly validates the map would either reject it or silently ignore real routing data.\n\n**Related (not duplicate).** WI-mulub tracks the channel meta-key being unregistered in MetaKeySpec (a validator-registry fix); this is the spec/schema documentation gap (a docs fix)."  # 0d61
+    fields: {}  # 0d61

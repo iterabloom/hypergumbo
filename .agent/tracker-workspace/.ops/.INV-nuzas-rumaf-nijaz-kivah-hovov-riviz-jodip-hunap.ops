@@ -40,3 +40,10 @@
   clock: 3  # c355
   nonce: c355  # c355
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): INV-nohod-najud (76% test-classified) is the sibling tier-classifier symptom — both items expose that tier is overloaded as a relevance signal. INV-pohik-jumos (call graph misses dispatch primitives) is adjacent — the 366 imports edges mis-routed to phantom externals here degrade the same downstream consumers (slice, dead-code) that INV-pohik's missing dispatch edges do. Root cause is two-layered and not in supply_chain.py path-classifier: the Python import resolver doesn't traverse packages/*/pyproject.toml to find workspace siblings, so internal symbols escape to ir.create_boundary_nodes (ir.py:1120-1205); the manifest classifier then assigns \"direct dependency (pyproject.toml)\" because the root pyproject lists the workspace siblings. Fix at resolver layer, not classifier layer."  # c355
+- op: discuss  # f2db
+  at: '2026-06-06T10:36:11Z'  # f2db
+  by: agent  # f2db
+  actor: jgstern_agent  # f2db
+  clock: 4  # f2db
+  nonce: f2db  # f2db
+  message: "Two non-workspace symptoms of the boundary-node tier rule, beyond the workspace/first-party mis-tiering this item already covers (blind-severity-derived priority signal: P1). Of 1159 tier-3 external_symbol nodes, 457 are Python stdlib modules (os, re, ast, sys, typing, subprocess, ...) mislabeled tier-3 external_dep ('third-party') — reason='unresolved external reference'. Of 486 tier-2 nodes, 176 are genuine third-party PyPI packages (bcrypt, jsonschema, pytest, rich, starlette, uvicorn, yaml, ...) mislabeled tier-2 internal_dep ('internal libraries') — reason='direct dependency (pyproject.toml)'. So the §1426 'direct dep -> tier 2, indirect/unknown -> tier 3' rule maps the language runtime to 'third-party' and PyPI installs to 'internal'. Tier weights (2:1.5 vs 3:1.0) thereby up-weight real third-party deps above the stdlib."  # f2db

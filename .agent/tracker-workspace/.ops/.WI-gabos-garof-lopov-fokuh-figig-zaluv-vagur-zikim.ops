@@ -27,3 +27,10 @@
   clock: 2  # 6bfe
   nonce: 6bfe  # 6bfe
   message: "[+ tranch_03: WI-jafoz reports adjacent derived_skipped defect (paths=[] despite dist/node_modules/__pycache__ present)]"  # 6bfe
+- op: discuss  # afb8
+  at: '2026-06-06T10:37:03Z'  # afb8
+  by: agent  # afb8
+  actor: jgstern_agent  # afb8
+  clock: 3  # afb8
+  nonce: afb8  # afb8
+  message: "Metrics-block facet: metrics.by_supply_chain_tier omits the derived tier this item's summary block carries (blind-severity-derived priority signal: P3, minor/borderline). metrics.by_supply_chain_tier enumerates 3 tiers (external_dep/first_party/internal_dep) while supply_chain_summary carries a 4th (derived_skipped) and the tier model defines tier-4 derived. The two top-level supply-chain blocks disagree on the tier set, so a consumer iterating by_supply_chain_tier to enumerate all tiers never sees a derived bucket and builds an incomplete tier partition. Folded here per the pass author's recommendation (the derived-tier-shape cluster) rather than a standalone row."  # afb8

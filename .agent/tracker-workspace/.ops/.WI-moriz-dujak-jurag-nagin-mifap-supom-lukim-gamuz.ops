@@ -26,3 +26,10 @@
   clock: 2  # b183
   nonce: b183  # b183
   message: "[+ tranch_04: WI-mujor — related (card 029/F74.A1): the authoritative 110533-edge endpoint-integrity table shows 23 src-dangling edges (0.02%) pass the spec_validator clean because it has NO dangling-endpoint check — the same validator-all-zero gap this row tracks (cross_field/id_format counters report 0 despite enumerable defects).]"  # b183
+- op: discuss  # 5a6b
+  at: '2026-06-06T10:35:53Z'  # 5a6b
+  by: agent  # 5a6b
+  actor: jgstern_agent  # 5a6b
+  clock: 3  # 5a6b
+  nonce: 5a6b  # 5a6b
+  message: "New concrete facet on the id_format counter (blind-severity-derived priority signal: P0). The published validation_report.violations_by_class is all-zero, but 1670 nodes have an id kind-SEGMENT that disagrees with the kind FIELD while still passing the shape regex (e.g. a node with kind field 'function' whose id ends ':route') — every one is invisible to the id_format validator. Root cause: _check_id_format / _CANONICAL_ID_PATTERN checks only SHAPE (segment count, colon-free tail, valid lang prefix, span pattern, lowercase kind suffix); it never compares the id's kind-segment to node.kind. So the all-zero report gives false structural-consistency assurance: the violation-class names (id_format, cross_field) imply far broader coverage than the predicates deliver."  # 5a6b

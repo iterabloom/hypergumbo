@@ -1,0 +1,21 @@
+- op: create  # d157
+  at: '2026-06-06T10:34:49Z'  # d157
+  by: agent  # d157
+  actor: jgstern_agent  # d157
+  clock: 1  # d157
+  nonce: d157  # d157
+  data:  # d157
+    kind: work_item  # d157
+    title: "confidence not a function of evidence_type (ast_call 4 / ast_call_direct 5 distinct values); contradicts deterministic model"  # d157
+    status: todo_hard  # d157
+    priority: 2  # d157
+    parent:  # d157
+    tags:  # d157
+    - dogfood  # d157
+    - dogfood_tranche_06  # d157
+    isbefore: []  # d157
+    duplicate_of: []  # d157
+    not_duplicate_of: []  # d157
+    pr_ref:  # d157
+    description: "**Defect.** Edge confidence is not a function of `evidence_type`: the two largest evidence types each carry several distinct hardcoded confidence values, contradicting the deterministic evidence→confidence model.\n\n**Evidence.** Census of evidence_type → distinct confidence values: ast_call carries 4 (0.4/0.5/0.8/0.95, n=21474); ast_call_direct carries 5 (0.5/0.7/0.85/0.9/0.95, n=35749). The variance persists holding (evidence_type, edge.type, origin-language) FIXED: Python calls with ast_call split 0.4 (16301) / 0.5 (4850); with ast_call_direct split 0.85 (32444) / 0.5 (2942). The 0.4 ast_call bucket is the type-inference give-up branch (all is_resolved=False). Spec §1146 / confidence_model \"hypergumbo-evidence-v1\" frame confidence as a deterministic mapping from structured evidence to confidence — but the producer sub-branch driving the split is exposed in no readable axis.\n\n**Contract.** If confidence is a deterministic function of evidence, a consumer keying off evidence_type (or evidence_type + edge_type + language) should be able to reproduce the value; the producer sub-branch should be exposed in a readable axis, or the model contract corrected.\n\n**Consequence.** Confidence interpretation keyed on evidence type is unreliable on the bulk of call edges; a consumer cannot reconstruct or predict why a given edge has the confidence it does on the two largest call-edge evidence types."  # d157
+    fields: {}  # d157

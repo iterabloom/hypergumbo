@@ -1,0 +1,21 @@
+- op: create  # 7655
+  at: '2026-06-06T10:34:51Z'  # 7655
+  by: agent  # 7655
+  actor: jgstern_agent  # 7655
+  clock: 1  # 7655
+  nonce: '7655'  # 7655
+  data:  # 7655
+    kind: work_item  # 7655
+    title: "meta.channel referent overload across edge types (topic vs route/consumer) + arbitrary literal URLs, no discriminator"  # 7655
+    status: todo_hard  # 7655
+    priority: 2  # 7655
+    parent:  # 7655
+    tags:  # 7655
+    - dogfood  # 7655
+    - dogfood_tranche_06  # 7655
+    isbefore: []  # 7655
+    duplicate_of: []  # 7655
+    not_duplicate_of: []  # 7655
+    pr_ref:  # 7655
+    description: "**Defect.** The `meta.channel` field means different things on different edge types and can carry arbitrary literal URLs, with no discriminator.\n\n**Evidence.** On event_publishes (103 edges) `channel` is a kafka/queue message topic; on references/calls (42 edges) it is a WebSocket route path (/ws, /chat, /ws/{client_id}) or a consumer class name (ChatConsumer, AsyncChatConsumer). One field name, two unrelated referent semantics, no field to disambiguate them. One observed value is the full external URL https://sqs.us-east-1.amazonaws.com/123/my-queue drawn from a test string literal (test_message_queue_linker.py).\n\n**Contract.** A single field name should carry one referent type, or a discriminator should distinguish the referents; the field should not silently overload across edge types.\n\n**Consequence.** A consumer reading `channel` to understand routing/messaging must already know the edge type to know what the value means, and may ingest an arbitrary literal URL from a test fixture as a real channel — routing/messaging analysis conflates topics with routes.\n\n**Related (not duplicate).** WI-mulub tracks meta-key registration in MetaKeySpec; INV-numat the broader vocab-axis META concern. This is the concrete cross-type referent overload of `channel` (fix: split into distinct field names per referent, or add a discriminator)."  # 7655
+    fields: {}  # 7655

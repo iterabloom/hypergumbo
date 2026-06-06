@@ -26,3 +26,10 @@
   clock: 2  # 2040
   nonce: '2040'  # 2040
   message: "Materialized from dogfood tranche 05 (F96.A1 / anon-card-012). Mechanism: 13 source files (java/solidity/csharp/sql/wgsl + toml/json manifests) emit content nodes with NO file-kind anchor; contains tree rootless for them. Evidence: frozen substrate.json (probe_2_files.log, probe_2_noanchor.log, probe_2_anchorless.log) — metrics.total_files=916, file-kind nodes=902, 13 anchorless-with-nodes paths; java/Main.java 5 nodes with contains edges from class nodes not a file root. Magnitude: 13 anchorless + 1 zero-node path = 14-file accounting gap. Blind severity 4/5, reproduced on frozen substrate (deterministic read-only join). RELATED_BUT_DISTINCT from WI-vamih (markdown-specific no-file-anchor — this is a MULTI-analyzer gap across java/solidity/csharp/sql/wgsl/toml/json), INV-mozaf (file-accounting gap with different substrate numbers 1198/902; this one is 916/902 and isolates the per-path anchorless mechanism), and INV-tolaj (META: file-set membership must reconcile across passes)."  # 2040
+- op: discuss  # 18a4
+  at: '2026-06-06T10:36:11Z'  # 18a4
+  by: agent  # 18a4
+  actor: jgstern_agent  # 18a4
+  clock: 3  # 18a4
+  nonce: 18a4  # 18a4
+  message: "Adds the PARTIAL-anchor sub-case beyond the zero-anchor languages this item already names (blind-severity-derived priority signal: P1). File-kind anchor nodes per language vs distinct symbol-bearing paths: python 845 (complete), bash 42, html 1/1, but typescript only 8/21, rust 1/3, go 1/2, swift 1/2, javascript 1/2, and zero anchors for markdown 0/106, toml 0/7, java 0/2, solidity 0/2, csharp 0/1, wgsl 0/1, sql 0/1. So the gap is not only 'anchorless languages' but a pervasive file-anchor parity gap spanning EVERY non-python/bash/html language, including ones with >=1 anchor where some files of a language get an anchor and siblings do not. Containment tree has 4 non-file roots (orphaned csharp/java top-level types)."  # 18a4

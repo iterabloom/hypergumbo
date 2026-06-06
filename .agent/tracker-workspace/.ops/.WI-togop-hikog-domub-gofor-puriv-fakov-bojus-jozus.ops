@@ -1,0 +1,21 @@
+- op: create  # 7e81
+  at: '2026-06-06T10:35:12Z'  # 7e81
+  by: agent  # 7e81
+  actor: jgstern_agent  # 7e81
+  clock: 1  # 7e81
+  nonce: '7e81'  # 7e81
+  data:  # 7e81
+    kind: work_item  # 7e81
+    title: "limits.not_captured is a hardcoded universal 6-string constant, not a per-repo analysis result"  # 7e81
+    status: todo_hard  # 7e81
+    priority: 3  # 7e81
+    parent:  # 7e81
+    tags:  # 7e81
+    - dogfood  # 7e81
+    - dogfood_tranche_06  # 7e81
+    isbefore: []  # 7e81
+    duplicate_of: []  # 7e81
+    not_duplicate_of: []  # 7e81
+    pr_ref:  # 7e81
+    description: "**Defect.** `limits.not_captured` is a hardcoded universal constant, not a per-repo analysis result.\n\n**Evidence.** The not_captured list is sourced from a static module-level constant (limits.py:20 KNOWN_LIMITATIONS, comment \"apply universally\"), so every behavior map emits the identical six generic disclosure strings (dynamic imports, eval, runtime codegen, monkey-patching, complex decorators, metaprogramming) regardless of the repository analyzed. Spec §948 frames limits as documenting what the analysis did not capture, and §756 cache-correctness implies repo-specific observed content; §955 arguably permits a generic list (borderline/weak).\n\n**Contract.** A per-repo signal would be expected per the spec framing, or the field should be documented as a static constant.\n\n**Consequence.** The field carries no per-repo information; a consumer reading not_captured to learn what this specific analysis missed, or to explain diffs not covered by captured fields, draws repo-specific conclusions from a constant."  # 7e81
+    fields: {}  # 7e81

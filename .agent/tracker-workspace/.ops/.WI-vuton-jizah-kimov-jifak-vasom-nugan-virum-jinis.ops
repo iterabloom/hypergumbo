@@ -1,0 +1,21 @@
+- op: create  # da6d
+  at: '2026-06-06T10:34:45Z'  # da6d
+  by: agent  # da6d
+  actor: jgstern_agent  # da6d
+  clock: 1  # da6d
+  nonce: da6d  # da6d
+  data:  # da6d
+    kind: work_item  # da6d
+    title: "spec describes nodes[].origin as scalar string (§1775) vs list (§259/§795); self-contradiction"  # da6d
+    status: todo_hard  # da6d
+    priority: 2  # da6d
+    parent:  # da6d
+    tags:  # da6d
+    - dogfood  # da6d
+    - dogfood_tranche_06  # da6d
+    isbefore: []  # da6d
+    duplicate_of: []  # da6d
+    not_duplicate_of: []  # da6d
+    pr_ref:  # da6d
+    description: "**Defect.** The spec describes `nodes[].origin` as a scalar string in one place while framing it as a list elsewhere.\n\n**Evidence.** Spec §1775-1776 documents nodes[].origin as \"String, pass ID that created this node,\" while §259/§795 describe origin as a list supporting multi-pass attribution. The two descriptions of the same field contradict each other; the data model emits a list.\n\n**Contract.** The spec should describe `origin` with a single consistent type (list framing, matching the migrated data model).\n\n**Consequence.** A consumer reading the spec to learn the origin type encounters two incompatible descriptions; one following the scalar-string section writes parsing code that breaks on the list-typed field the map actually emits.\n\n**Related (not duplicate).** This is the docs-fix facet split out from the origin-list defect (INV-jidat tracks the data/producer side: list-typed but singleton). Editing the spec does not fix attribution; the producer fix does not fix the spec."  # da6d
+    fields: {}  # da6d

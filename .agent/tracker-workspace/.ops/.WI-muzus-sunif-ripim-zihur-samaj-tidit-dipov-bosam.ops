@@ -1,0 +1,21 @@
+- op: create  # 5bb0
+  at: '2026-06-06T10:34:54Z'  # 5bb0
+  by: agent  # 5bb0
+  actor: jgstern_agent  # 5bb0
+  clock: 1  # 5bb0
+  nonce: 5bb0  # 5bb0
+  data:  # 5bb0
+    kind: work_item  # 5bb0
+    title: "limits.analysis_depth hardcoded 'syntax_only' constant mislabels a semantic map; documented nowhere"  # 5bb0
+    status: todo_hard  # 5bb0
+    priority: 2  # 5bb0
+    parent:  # 5bb0
+    tags:  # 5bb0
+    - dogfood  # 5bb0
+    - dogfood_tranche_06  # 5bb0
+    isbefore: []  # 5bb0
+    duplicate_of: []  # 5bb0
+    not_duplicate_of: []  # 5bb0
+    pr_ref:  # 5bb0
+    description: "**Defect.** `limits.analysis_depth` is a hardcoded constant (\"syntax_only\") that falsely labels a map carrying full semantic analysis, and it is documented nowhere.\n\n**Evidence.** analysis_depth is declared with a hardcoded default (limits.py:99, `analysis_depth: str = \"syntax_only\"`) and never reassigned by any production path — the only references are merge() copying it, to_dict() emitting it, and a test. So every map reports syntax_only regardless of what ran, while the same map carries 61906 calls, 7939 instantiates, 619 dispatches_to, 403 decorated_by, type-hierarchy edges, and 103 event_publishes. A fresh run reproduces syntax_only next to a real calls edge. The field and value appear nowhere in docs/hypergumbo-spec.md (grep = 0 hits).\n\n**Contract.** analysis_depth should reflect the analysis that actually ran (the map carries call-graph, type-hierarchy, dispatch, and dataflow edges, which are not \"syntax only\"), or be documented as a static constant.\n\n**Consequence.** A consumer reading analysis_depth to decide whether the map carries call-graph/semantic edges may wrongly skip the call graph (61906 edges) or downgrade trust in dispatch/dataflow edges — a false claim about the map's analytical depth."  # 5bb0
+    fields: {}  # 5bb0

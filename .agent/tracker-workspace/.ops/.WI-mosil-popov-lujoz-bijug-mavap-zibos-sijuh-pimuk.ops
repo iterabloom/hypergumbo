@@ -26,3 +26,10 @@
   clock: 2  # 57ea
   nonce: 57ea  # 57ea
   message: "Materialized from dogfood tranche 05 (F89.A1 / anon-card-005). Mechanism: empty-string origin_run_id sentinel on 2236 nodes breaks node->AR referential integrity. Evidence: frozen substrate.json (probe_1_origin_run.log) — empty origin_run_id total 2236; non-empty resolved 32160/32160; AR identity field is execution_id. Magnitude: 2236/34396 nodes (6.5%), of which 1645 external_symbol placeholders also carry origin=[] (zero provenance). Blind severity 4/5, reproduced on frozen substrate. RELATED_BUT_DISTINCT from WI-sijut (1645 external_symbol nodes carry empty origin:[] — that's the origin FIELD on a 1645-node subset; here the mechanism is the empty-STRING origin_run_id FK on the broader 2236-node set breaking the AR JOIN), WI-higap (done — Edge.origin_run_id empty on 425 EDGES, the edge-side analogue), WI-dizir (492 file-kind nodes cite orchestrator_file_symbol_synthesis pass-id absent from analysis_runs), and WI-janob/WI-zasol (the execution_id↔origin_run_id field-NAME asymmetry). This row captures the empty-string sentinel breaking the node→AR join specifically."  # 57ea
+- op: discuss  # e3e9
+  at: '2026-06-06T10:36:29Z'  # e3e9
+  by: agent  # e3e9
+  actor: jgstern_agent  # e3e9
+  clock: 3  # e3e9
+  nonce: e3e9  # e3e9
+  message: "Re-confirmed on a full behavior map, exact count and affected-set match (blind-severity-derived priority signal: P1). 2236/34396 nodes carry origin_run_id='' (empty string, a third sentinel beyond null and a real UUID) resolving to no analysis-run execution_id; the other 32160 resolve, and all 110533 edges resolve (node-only break). Affected node kinds: external_symbol 1645, file 493, synthesis-pass nodes 492, dependency 82. So 6.5% of nodes silently fail the node->AnalysisRun join — provenance attribution and pass-based filtering drop thousands of nodes, and the documented two-state field (null/UUID) silently has a third empty-string state."  # e3e9

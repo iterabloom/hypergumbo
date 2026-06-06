@@ -1,0 +1,21 @@
+- op: create  # 4472
+  at: '2026-06-06T10:34:33Z'  # 4472
+  by: agent  # 4472
+  actor: jgstern_agent  # 4472
+  clock: 1  # 4472
+  nonce: '4472'  # 4472
+  data:  # 4472
+    kind: work_item  # 4472
+    title: "dest_access_mode populated on 113/110533 edges, all 'read'; dataflow direction field 99.9% absent"  # 4472
+    status: todo_hard  # 4472
+    priority: 2  # 4472
+    parent:  # 4472
+    tags:  # 4472
+    - dogfood  # 4472
+    - dogfood_tranche_06  # 4472
+    isbefore: []  # 4472
+    duplicate_of: []  # 4472
+    not_duplicate_of: []  # 4472
+    pr_ref:  # 4472
+    description: "**Defect.** A documented dataflow field, `dest_access_mode`, is populated on a tiny fraction of edges and is always the same value.\n\n**Evidence.** `dest_access_mode` is declared (ir.py:659) as an ADR-0015 dataflow attribute validated against VALID_ACCESS_MODES. It is populated on 113/110533 edges (0.10%) — calls 10 plus event_publishes 103 — all value 'read', never write/mutate/delete.\n\n**Contract.** A dataflow access-mode field should be populated across dataflow edges with the real direction (read/write/mutate/delete), so taint/dataflow direction can be read off it.\n\n**Consequence.** Dataflow/taint-direction reasoning that depends on this field is unsupported on 99.9% of edges and uninformative where present.\n\n**Related (not duplicate).** Sibling of INV-virik (reserved provenance fields never populated) and INV-lifik (constant-value fields), but dest_access_mode is a distinct dataflow field named in neither."  # 4472
+    fields: {}  # 4472

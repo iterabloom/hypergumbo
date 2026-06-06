@@ -1,0 +1,21 @@
+- op: create  # 4d46
+  at: '2026-06-06T10:35:10Z'  # 4d46
+  by: agent  # 4d46
+  actor: jgstern_agent  # 4d46
+  clock: 1  # 4d46
+  nonce: 4d46  # 4d46
+  data:  # 4d46
+    kind: work_item  # 4d46
+    title: "meta.channel duplicates meta.topic exactly on event_publishes edges (103/103)"  # 4d46
+    status: todo_hard  # 4d46
+    priority: 3  # 4d46
+    parent:  # 4d46
+    tags:  # 4d46
+    - dogfood  # 4d46
+    - dogfood_tranche_06  # 4d46
+    isbefore: []  # 4d46
+    duplicate_of: []  # 4d46
+    not_duplicate_of: []  # 4d46
+    pr_ref:  # 4d46
+    description: "**Defect.** On event-publish edges, `meta.channel` duplicates `meta.topic` exactly — two keys carrying the same string.\n\n**Evidence.** The producer writes both channel and topic onto event_publishes edges, and the two values are identical on every such edge: channel != topic on 0 of 103 (identical 103/103).\n\n**Contract.** Two distinct metadata keys should carry distinct information; one of the redundant keys should be dropped.\n\n**Consequence.** A consumer reading message-publish metadata sees two keys that always agree, with no documented reason for both; a consumer that branches on a perceived difference between them will never see one and may assume the redundancy is meaningful."  # 4d46
+    fields: {}  # 4d46

@@ -1,0 +1,21 @@
+- op: create  # 640f
+  at: '2026-06-06T10:33:56Z'  # 640f
+  by: agent  # 640f
+  actor: jgstern_agent  # 640f
+  clock: 1  # 640f
+  nonce: 640f  # 640f
+  data:  # 640f
+    kind: work_item  # 640f
+    title: "profile.languages presents an 18-language polyglot sourced entirely from test fixtures"  # 640f
+    status: todo_hard  # 640f
+    priority: 2  # 640f
+    parent:  # 640f
+    tags:  # 640f
+    - dogfood  # 640f
+    - dogfood_tranche_06  # 640f
+    isbefore: []  # 640f
+    duplicate_of: []  # 640f
+    not_duplicate_of: []  # 640f
+    pr_ref:  # 640f
+    description: "**Defect.** The language-composition summary presents the repository as an 18-language polyglot, where most of the extra languages come only from test fixtures.\n\n**Evidence.** `profile.languages` reports 18 languages including go/rust/java/csharp/solidity/wgsl/swift, each ~{files:1, loc:~20}, all sourced from tests/fixtures/schema-coverage-corpus/<lang>/. Most of those fixture nodes are flagged is_test_file=True (csharp 6/6, wgsl 5/5, go 7/9, rust 6/9, java 5/6, solidity 7/8, swift 6/7). The application is a Python+TypeScript project. The profile counts every file the analyzer enumerates with no exclusion of test-fixture files.\n\n**Contract.** A \"what is this written in?\" composition summary should reflect the real codebase composition, or document that fixture languages are included. (Note: spec §profile defines languages[L].files as \"count the analyzer would enumerate\" with no test exclusion, so this is per-contract — weak/borderline.)\n\n**Consequence.** A consumer asking what languages the project uses is told it is a 7-extra-language polyglot (incl. Solidity/WGSL/Swift) when those appear only as test fixtures — a misleading picture of the technology stack.\n\n**Related (not duplicate).** Adjacent to INV-nohod (test-dominated node count) but a distinct surface: the codebase-composition summary."  # 640f
+    fields: {}  # 640f

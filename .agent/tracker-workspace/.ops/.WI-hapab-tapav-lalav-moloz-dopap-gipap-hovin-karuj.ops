@@ -18,3 +18,10 @@
     pr_ref:  # 1492
     description: "tranche-05 chunk-1 (pass 82 / F82.A5; preserved per operator). Of 10294 write-tagged edges, top dst names are Symbol/LinkerContext (instantiates/ast_new constructor calls) and append/add/extend collection mutations — dataflow-write-position conflated with I/O-write semantics. Direct-I/O counter-positive verified. Reproduced fresh. RELATED to INV-kudug (read-ops-as-write) but a distinct facet: write-position vs I/O-write, not read-as-write. Evidence: agent_notes + dogfood_tranche_05/pass_82.md."  # 1492
     fields: {}  # 1492
+- op: discuss  # 59a7
+  at: '2026-06-06T10:36:11Z'  # 59a7
+  by: agent  # 59a7
+  actor: jgstern_agent  # 59a7
+  clock: 2  # 59a7
+  nonce: 59a7  # 59a7
+  message: "Adds two facets on the instantiates/constructor access_mode (blind-severity-derived priority signal: P1). (1) access_mode is assigned non-deterministically per call site for the same target+construct: one class (ArityFlags) is the dst of both a 'read' instantiate (from classify_parameter_flags) and a 'write' instantiate (from compute_stable_id), for the same ast_new construct — so assignment varies per call site, not per construct. (2) Framing: instantiation (a constructor call) is not an access of the target at all, so access_mode on instantiates is semantically meaningless. instantiates edges carry access_mode write 4988 / read 678 / None 2273. Fix should make assignment per-construct deterministic (or stop assigning access_mode to instantiates)."  # 59a7

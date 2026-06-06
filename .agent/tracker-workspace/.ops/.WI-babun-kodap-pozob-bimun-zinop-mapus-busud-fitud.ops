@@ -1,0 +1,21 @@
+- op: create  # 6b82
+  at: '2026-06-06T10:34:47Z'  # 6b82
+  by: agent  # 6b82
+  actor: jgstern_agent  # 6b82
+  clock: 1  # 6b82
+  nonce: 6b82  # 6b82
+  data:  # 6b82
+    kind: work_item  # 6b82
+    title: "meta.framework_dispatch names fastapi/django_channels absent from profile.frameworks; two surfaces contradict"  # 6b82
+    status: todo_hard  # 6b82
+    priority: 2  # 6b82
+    parent:  # 6b82
+    tags:  # 6b82
+    - dogfood  # 6b82
+    - dogfood_tranche_06  # 6b82
+    isbefore: []  # 6b82
+    duplicate_of: []  # 6b82
+    not_duplicate_of: []  # 6b82
+    pr_ref:  # 6b82
+    description: "**Defect.** Two framework-naming surfaces in the same map disagree: `meta.framework_dispatch` names frameworks that `profile.frameworks` says are not present.\n\n**Evidence.** 328 edges carry meta.framework_dispatch; the framework-named values include fastapi=18 and django_channels=4, both absent from profile.frameworks (which lists lit and starlette). Neither fastapi nor django is a declared dependency (grep over all pyproject.toml = 0 hits), and 17/18 fastapi and 4/4 django dispatch edges are test-fixture-sourced (test_websocket.py). Manifest-declared starlette is promoted to profile.frameworks while code-pattern-only fastapi/django are not — an opaque/inconsistent promotion criterion.\n\n**Contract.** The two framework surfaces should agree on which frameworks the repo uses, or the promotion criterion should be documented and consistent.\n\n**Consequence.** A consumer reading framework_dispatch=fastapi believes the repo uses FastAPI; profile.frameworks denies it. Two emitted surfaces give contradictory answers about the tech stack.\n\n**Related (not duplicate).** Distinct from INV-rojip (promotion-mechanism gap) and WI-napuj (profile.frameworks no node link) — this is the concrete two-emitted-surface contradiction plus the test-fixture-source dimension."  # 6b82
+    fields: {}  # 6b82

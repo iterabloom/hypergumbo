@@ -1,0 +1,21 @@
+- op: create  # 7226
+  at: '2026-06-06T10:34:42Z'  # 7226
+  by: agent  # 7226
+  actor: jgstern_agent  # 7226
+  clock: 1  # 7226
+  nonce: '7226'  # 7226
+  data:  # 7226
+    kind: work_item  # 7226
+    title: "schema declares profile.total_files/total_lines but producer emits neither at profile scope"  # 7226
+    status: todo_hard  # 7226
+    priority: 2  # 7226
+    parent:  # 7226
+    tags:  # 7226
+    - dogfood  # 7226
+    - dogfood_tranche_06  # 7226
+    isbefore: []  # 7226
+    duplicate_of: []  # 7226
+    not_duplicate_of: []  # 7226
+    pr_ref:  # 7226
+    description: "**Defect.** The schema declares `profile.total_files` and `profile.total_lines`, but the producer emits neither at profile scope.\n\n**Evidence.** The auto-generated docs/schema.json lists total_files and total_lines as profile sub-fields, but the producer never emits them inside the profile object (a total-files figure lives at metrics scope instead). Both are declared in the schema and absent from the emitted profile block.\n\n**Contract.** The producer and schema should agree on the profile field set — either the fields are emitted at profile scope or removed from the schema.\n\n**Consequence.** A consumer reading the schema and looking for total files/lines inside the profile object finds neither and must discover that one total lives in a different block while the other is unavailable."  # 7226
+    fields: {}  # 7226

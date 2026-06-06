@@ -55,3 +55,18 @@
   clock: 5  # eb43
   nonce: eb43  # eb43
   message: "Cross-ref backfill (2026-05-30, linked-pile L4 investigation): item LANDED. bm.json (/tmp/hg-dogfood-s11/bm.json) confirms 108649/108649 edges carry list-typed origin (Symbol.origin / Edge.origin migrated to list[str]). Moving to pending_validation. Awaits bakeoff confirmation that no consumer-side regression; once that lands, eligible for satisfied."  # eb43
+- op: update  # 852e
+  at: '2026-06-06T10:35:36Z'  # 852e
+  by: agent  # 852e
+  actor: jgstern_agent  # 852e
+  clock: 6  # 852e
+  nonce: 852e  # 852e
+  set:  # 852e
+    status: violated  # 852e
+- op: discuss  # f665
+  at: '2026-06-06T10:35:36Z'  # f665
+  by: agent  # f665
+  actor: jgstern_agent  # f665
+  clock: 7  # f665
+  nonce: f665  # f665
+  message: "validation failed: the list[str] migration shipped but multi-pass attribution is still vacuous — 0 of 34396 nodes and 0 of 110533 edges carry a multi-element origin list (100% singletons). Every origin is single-pass, so the list type buys nothing over a scalar; no producer ever appends a second pass id. (Blind-severity-derived priority signal: P3.)"  # f665

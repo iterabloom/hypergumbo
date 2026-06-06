@@ -1,0 +1,21 @@
+- op: create  # bbb1
+  at: '2026-06-06T10:33:58Z'  # bbb1
+  by: agent  # bbb1
+  actor: jgstern_agent  # bbb1
+  clock: 1  # bbb1
+  nonce: bbb1  # bbb1
+  data:  # bbb1
+    kind: work_item  # bbb1
+    title: "undocumented additive in-degree confidence boost (cap +0.35, library_export) at entrypoints.py:1504-1507; spec documents only out-degree"  # bbb1
+    status: todo_hard  # bbb1
+    priority: 2  # bbb1
+    parent:  # bbb1
+    tags:  # bbb1
+    - dogfood  # bbb1
+    - dogfood_tranche_06  # bbb1
+    isbefore: []  # bbb1
+    duplicate_of: []  # bbb1
+    not_duplicate_of: []  # bbb1
+    pr_ref:  # bbb1
+    description: "**Defect.** Entrypoint confidence carries an undocumented additive in-degree boost beyond the single boost the spec describes.\n\n**Evidence.** After base-tier detection, a post-detection pipeline applies an additive in-degree connectivity boost (cap +0.35, for library_export entrypoints) at entrypoints.py:1504-1507. The spec's adjustment section (§895) documents only an out-degree boost (\"+0.25 for entrypoints with many outgoing edges\"); the in-degree boost is in the producer but not in the spec (grep of §895 names only \"outgoing edges\").\n\n**Contract.** Every confidence adjustment the producer applies should be documented in the spec's confidence-adjustment section, or removed from the producer.\n\n**Consequence.** Library-export entrypoint confidence partly encodes in-degree (caller count) rather than detection reliability, and a consumer reverse-engineering how an entrypoint's confidence was computed cannot reconstruct the value from the documented adjustments."  # bbb1
+    fields: {}  # bbb1

@@ -1,0 +1,21 @@
+- op: create  # c910
+  at: '2026-06-06T10:35:14Z'  # c910
+  by: agent  # c910
+  actor: jgstern_agent  # c910
+  clock: 1  # c910
+  nonce: c910  # c910
+  data:  # c910
+    kind: work_item  # c910
+    title: "metrics.debug emits an undocumented third key (profile_files_sum) where spec documents two"  # c910
+    status: todo_hard  # c910
+    priority: 3  # c910
+    parent:  # c910
+    tags:  # c910
+    - dogfood  # c910
+    - dogfood_tranche_06  # c910
+    isbefore: []  # c910
+    duplicate_of: []  # c910
+    not_duplicate_of: []  # c910
+    pr_ref:  # c910
+    description: "**Defect.** The `metrics.debug` block emits an undocumented third key.\n\n**Evidence.** Spec §942 documents metrics.debug as carrying two non-canonical file counts; the producer emits three — analyzed_file_symbols, profile_files_sum, unique_paths_in_analysis — where profile_files_sum (=1218, the value total_files was supposed to be) is undocumented.\n\n**Contract.** The debug block should carry exactly the documented set of keys, or the extra key should be documented.\n\n**Consequence.** A consumer reading the documented debug block encounters an extra key with no contract and cannot tell whether it is a stable field or transient noise; schema/spec-driven validation of the debug block is incomplete."  # c910
+    fields: {}  # c910

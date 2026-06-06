@@ -58,3 +58,10 @@
   clock: 5  # b0ba
   nonce: b0ba  # b0ba
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): the May-30 backfill already names the sketch-perf cluster with WI-ribag and WI-zipoj. L8 review confirms a fourth member is INV-dadaf-zozih-janid-kupag-zukag-balun-tapab-jivog (routes --input writes 5 sketch artifacts as side effect) — same anti-pattern at the write face. Distinct from INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik (sketch budget META), which is budget coordination not read-path caching; INV-fanur's \"adjacent cluster\" note correctly declines to absorb these four. Candidate sub-META framing for the four: \"sketch read-path does redundant computation when authoritative data is already on bm.json or disk.\""  # b0ba
+- op: discuss  # df8b
+  at: '2026-06-06T10:35:53Z'  # df8b
+  by: agent  # df8b
+  actor: jgstern_agent  # df8b
+  clock: 6  # df8b
+  nonce: df8b  # df8b
+  message: "Strengthened with a fresh repro showing wholesale graph discard, not just lost test-file metadata (blind-severity-derived priority signal: P0). A frozen map scoped to a single package (902 file nodes, all under that package's path) fed via 'sketch --input substrate.json' produced a sketch of the ENTIRE surrounding repo (overview '1,218 files, ~542,987 LOC', structure tree rooted at CWD), not the 902-file universe in the map. So --input ignores the map's node universe entirely and re-walks the current working directory's filesystem. Cached maps cannot be re-summarized reproducibly; this is also why JSON budget sketches cannot be cleanly regenerated via --input."  # df8b

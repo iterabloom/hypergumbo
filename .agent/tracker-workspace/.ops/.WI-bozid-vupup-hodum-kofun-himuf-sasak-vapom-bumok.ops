@@ -1,0 +1,21 @@
+- op: create  # c8ab
+  at: '2026-06-06T10:34:40Z'  # c8ab
+  by: agent  # c8ab
+  actor: jgstern_agent  # c8ab
+  clock: 1  # c8ab
+  nonce: c8ab  # c8ab
+  data:  # c8ab
+    kind: work_item  # c8ab
+    title: "Symbol.lines_of_code counts physical span (end-start+1) while spec LOC=SLOC; one term two conventions"  # c8ab
+    status: todo_hard  # c8ab
+    priority: 2  # c8ab
+    parent:  # c8ab
+    tags:  # c8ab
+    - dogfood  # c8ab
+    - dogfood_tranche_06  # c8ab
+    isbefore: []  # c8ab
+    duplicate_of: []  # c8ab
+    not_duplicate_of: []  # c8ab
+    pr_ref:  # c8ab
+    description: "**Defect.** `Symbol.lines_of_code` counts physical span lines while the spec's \"lines of code\" definition is source-lines-of-code (SLOC), so one term denotes two different counts.\n\n**Evidence.** `Symbol.lines_of_code` (ir.py:358, schema.json:538) is computed as `end_line - start_line + 1` — physical span including blanks and comments. Verified: all 29853 nodes carrying both a span and lines_of_code satisfy loc == end_line - start_line + 1 exactly (0 mismatch), so it is pure span, never SLOC. The spec §775 LOC definition is SLOC (non-empty lines, ~10–20% lower than raw line count), which is the convention the file-level profile.languages[L].loc uses. The same term names two different counting conventions on two surfaces.\n\n**Contract.** A single documented term (\"lines of code\") should denote one counting convention; the per-symbol field should either be renamed or recomputed to match the SLOC definition.\n\n**Consequence.** A consumer reading Symbol.lines_of_code under the spec's SLOC contract over-counts every symbol with internal blank/comment lines; size/complexity metrics built on per-symbol LOC and compared against file-level SLOC mix incompatible counts."  # c8ab
+    fields: {}  # c8ab

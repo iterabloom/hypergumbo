@@ -47,3 +47,10 @@
   clock: 4  # 1cac
   nonce: 1cac  # 1cac
   message: "Partial close by Phase 6 PR2 (commit 98533c0fff). TreeSitterAnalyzer._analyze_body now appends grammar-unavailable skip messages to run.warnings. Inherited-analyze analyzers covered; override-analyze() analyzers still have empty warnings/failed_files because they bypass _analyze_body. Remaining work tracked in WI-mipul (per-analyzer override-analyze() wiring tail)."  # 1cac
+- op: discuss  # 34c0
+  at: '2026-06-06T10:36:29Z'  # 34c0
+  by: agent  # 34c0
+  actor: jgstern_agent  # 34c0
+  clock: 5  # 34c0
+  nonce: 34c0  # 34c0
+  message: "Symptom (6) root-caused + fresh repro (blind-severity-derived priority signal: P1). The play-routes AnalysisRun.version='1' is not merely a stale stamp: play_routes.py:44 defines a module-local PASS_VERSION = '1' literal that shadows the canonical PASS_VERSION = __version__ convention (ir.py:52); it is the ONLY analyzer in packages/*/src/ with a literal PASS_VERSION string. The package __init__ declares __version__='5.0.1', and line 188 calls AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION), so the literal flows straight into the run. run_signature hashes version, so play-routes' signature is decoupled from the package version — a 5.0.1->5.0.2 bump changes 83 run_signatures but not play-routes'. Fresh 'hypergumbo run' on a temp dir with a conf/routes file reproduces version='1' while every other pass reports '5.0.1'. (NB: INV-kimut-lomil, the deleted exact-content predecessor, was subsumed into this item.)"  # 34c0

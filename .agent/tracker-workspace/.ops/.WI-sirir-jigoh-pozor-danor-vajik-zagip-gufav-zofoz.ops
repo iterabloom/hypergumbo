@@ -1,0 +1,21 @@
+- op: create  # deba
+  at: '2026-06-06T10:35:07Z'  # deba
+  by: agent  # deba
+  actor: jgstern_agent  # deba
+  clock: 1  # deba
+  nonce: deba  # deba
+  data:  # deba
+    kind: work_item  # deba
+    title: "profile emits dev_frameworks/framework_mode, absent from both spec and schema"  # deba
+    status: todo_hard  # deba
+    priority: 3  # deba
+    parent:  # deba
+    tags:  # deba
+    - dogfood  # deba
+    - dogfood_tranche_06  # deba
+    isbefore: []  # deba
+    duplicate_of: []  # deba
+    not_duplicate_of: []  # deba
+    pr_ref:  # deba
+    description: "**Defect.** The profile block emits two framework fields (`dev_frameworks`, `framework_mode`) that exist in neither the spec nor the schema.\n\n**Evidence.** The profile producer writes dev_frameworks (e.g. ['pytest']) and framework_mode (e.g. 'auto') into every behavior map, produced by profile.py, but docs/hypergumbo-spec.md's profile example and the auto-generated docs/schema.json both omit them (0 doc grep hits). They are defined only in producer source.\n\n**Contract.** A schema that self-describes as auto-generated from the dataclasses should enumerate every field the producer actually emits, and the spec's profile description should match the emitted shape.\n\n**Consequence.** Schema-driven tooling treats real, always-present profile data as unexpected; a consumer building on the documented profile shape misses framework-mode and dev-framework signals entirely."  # deba
+    fields: {}  # deba

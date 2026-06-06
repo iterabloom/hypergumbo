@@ -104,3 +104,24 @@
   clock: 11  # 2ca7
   nonce: 2ca7  # 2ca7
   message: "[+ tranch_03: anon-card-tranch03-021 F48.A5 — first_party.files=915 vs 902 file-kind nodes (same file-accounting drift; folded as duplicate; blind severity 3; new row WI-susin wont_do)]"  # 2ca7
+- op: discuss  # a9c1
+  at: '2026-06-06T10:36:29Z'  # a9c1
+  by: agent  # a9c1
+  actor: jgstern_agent  # a9c1
+  clock: 12  # a9c1
+  nonce: a9c1  # a9c1
+  message: "Magnitude refresh on a current behavior map (TRUE_DUPLICATE; blind-severity-derived priority signal: P2). The three file counters now read profile_files_sum=1218, unique_paths_in_analysis=916 (==metrics.total_files), file-kind-node count=902 — a three-way spread of 1218/916/902 (this item's recorded numbers were 1198/902). The disagreement persists with updated magnitudes; same mechanism."  # a9c1
+- op: discuss  # e141
+  at: '2026-06-06T10:36:49Z'  # e141
+  by: agent  # e141
+  actor: jgstern_agent  # e141
+  clock: 13  # e141
+  nonce: e141  # e141
+  message: "Related distinct facet — the spec-identity violation behind the spread (blind-severity-derived priority signal: P1). metrics.total_files=916 equals the no-profile fallback (unique_paths_in_analysis), but spec §940 defines total_files = sum(profile.languages[L].files) = 1218. The map took the 'computed without a profile' fallback path (§946) DESPITE a populated profile being present — so total_files violates its own documented identity, understating the per-language sum by 302. Fix: correct the total_files computation path to use the profile sum when a profile is present. (Note: the undocumented 3rd metrics.debug key, profile_files_sum, was split out as its own work item — separate doc/remove fix.)"  # e141
+- op: discuss  # b08d
+  at: '2026-06-06T10:37:25Z'  # b08d
+  by: agent  # b08d
+  actor: jgstern_agent  # b08d
+  clock: 14  # b08d
+  nonce: b08d  # b08d
+  message: "Split note (ADD-only cross-ref): the undocumented 3rd metrics.debug key (profile_files_sum) referenced in the U09a facet above was materialized as its own work item WI-mikin-titit-magib-hijaf-vajun-ridog-maguk-dimik — a distinct doc/remove fix from the total_files file-accounting reconciliation this invariant tracks."  # b08d

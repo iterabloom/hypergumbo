@@ -58,3 +58,10 @@
   clock: 5  # f890
   nonce: f890  # f890
   message: "[+ tranch_03: WI-zotam reports adjacent compact schema defects (centrality null on 100%, included_edges_count missing in --no-connectivity mode)]"  # f890
+- op: discuss  # ebdb
+  at: '2026-06-06T10:36:11Z'  # ebdb
+  by: agent  # ebdb
+  actor: jgstern_agent  # ebdb
+  clock: 6  # ebdb
+  nonce: ebdb  # ebdb
+  message: "Precise 3-budget quantification (blind-severity-derived priority signal: P1). Across the three derived JSON budget sketches the nodes_summary overstates serialization: 4k claims included 19 nodes/27 edges but serializes 1 node/0 edges; 16k claims 43/115 but serializes 12/10; 64k claims 139/467 but serializes 75/191. The 4k case is ~19x off on nodes and loses all edges. included.count describes the inclusion computation; a later serialization step shrinks the arrays further without reconciling the summary."  # ebdb

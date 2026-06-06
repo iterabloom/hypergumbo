@@ -1,0 +1,21 @@
+- op: create  # bd24
+  at: '2026-06-06T10:33:54Z'  # bd24
+  by: agent  # bd24
+  actor: jgstern_agent  # bd24
+  clock: 1  # bd24
+  nonce: bd24  # bd24
+  data:  # bd24
+    kind: work_item  # bd24
+    title: "meta.evidence[] multi-pass accumulator documented (spec §799) but has no backing Edge field; structurally impossible"  # bd24
+    status: todo_hard  # bd24
+    priority: 2  # bd24
+    parent:  # bd24
+    tags:  # bd24
+    - dogfood  # bd24
+    - dogfood_tranche_06  # bd24
+    isbefore: []  # bd24
+    duplicate_of: []  # bd24
+    not_duplicate_of: []  # bd24
+    pr_ref:  # bd24
+    description: "**Defect.** A documented multi-pass evidence accumulator (`meta.evidence[]`) has no backing field on the Edge data model and can never appear.\n\n**Evidence.** Spec §799 documents that when multiple passes observe the same relationship, `meta.evidence[]` accumulates their individual observations, with the top-level evidence_type/evidence_lang/evidence_spans reflecting the primary (highest-confidence) record. But the Edge dataclass (ir.py:605-617) has no `evidence` list field at all — only the scalar evidence_type/evidence_lang/evidence_spans. So meta.evidence[] is structurally impossible: 0/110533 edges carry it and there is no code path that could emit it.\n\n**Contract.** A documented field should have a backing model field and a producer that populates it; the multi-pass-evidence contract should be deliverable as written.\n\n**Consequence.** The entire multi-pass-evidence-accumulation contract (the rationale for the \"primary record\" language in the same paragraph) is undeliverable; a consumer reasoning about how many passes corroborated a relationship has no data and no way to know the field can never exist.\n\n**Related (not duplicate).** Distinct from the evidence_spans defect (declared-but-unpopulated): meta.evidence[] is undeclared entirely. Fix differs (add the list field to Edge, then populate, vs populate an existing field)."  # bd24
+    fields: {}  # bd24

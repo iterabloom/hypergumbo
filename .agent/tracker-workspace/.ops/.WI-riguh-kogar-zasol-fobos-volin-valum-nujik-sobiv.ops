@@ -25,3 +25,10 @@
   clock: 2  # 99ae
   nonce: 99ae  # 99ae
   message: "Dogfood tranche 05 reproduction (F91.A2 / anon-card-002): TRUE-DUPLICATE confirmation on frozen substrate. For 110276/110533 edges quality.score == confidence exactly; the remaining 257 — ALL type=dispatches_to, evidence_type=type_hierarchy, quality.reason=low_confidence_fallback — have quality.score == round(confidence,3) != confidence (e.g. confidence=0.3470110468942836 vs quality.score=0.347). One producer (the type-hierarchy linker) rounds its score to 3 decimals while every other producer copies confidence verbatim. A consumer comparing edge.confidence to edge.quality.score for equality finds 257 false mismatches; a consumer trusting quality.score as authoritative confidence loses precision. (exact:110276 / rounded_match:257 / neither:0.) Blind severity 2/5, reproduced on frozen substrate."  # 99ae
+- op: discuss  # c7c2
+  at: '2026-06-06T10:36:50Z'  # c7c2
+  by: agent  # c7c2
+  actor: jgstern_agent  # c7c2
+  clock: 3  # c7c2
+  nonce: c7c2  # c7c2
+  message: "Re-confirmed quality.score==confidence on a full behavior map (TRUE_DUPLICATE; blind-severity-derived priority signal: P2). quality.score == confidence verbatim on 110276/110533 edges; the remaining 257 differ only by round(confidence,3) and are all the type-hierarchy / type_hierarchy / low_confidence_fallback bucket. So quality.score carries no signal distinct from confidence — a consumer reading it expecting an independent quality metric gets the same number back, and combining the two double-counts one value."  # c7c2

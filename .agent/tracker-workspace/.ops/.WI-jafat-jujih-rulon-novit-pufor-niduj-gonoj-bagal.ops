@@ -26,3 +26,10 @@
   clock: 2  # 2875
   nonce: '2875'  # 2875
   message: "Materialized from dogfood tranche 05 (F81.A1 / anon-card-014). Mechanism: calls-edge src endpoint resolves to wrong same-base-name sibling. Evidence: frozen substrate.json — 506/110510 calls edges out-of-span; concrete probe at io_boundary.py:939-954 (BoundaryMap.to_dict) vs true owner IoChain.to_dict at 855-870, call line 863. Magnitude: 506 edges, 201 src methods, 68 files; 504/506 (99.6%) attributed to same-base-name peer; 100% of src base names have multiplicity >1. Blind severity 5/5, reproduced on frozen substrate (read-only join, no injection). RELATED_BUT_DISTINCT from INV-majal (Go local-var-as-method-reference, holding), INV-mofav (Python nested-fn/bare-name-call drops, satisfied), and the various analyzer single-value-dict same-name resolution items (Go/Rust/verilog, done) — those are node-level/analyzer resolution defects; this is an edge-attribution defect where the calls EDGE src endpoint resolves to the wrong same-named peer in the same file."  # 2875
+- op: discuss  # 8fbf
+  at: '2026-06-06T10:35:52Z'  # 8fbf
+  by: agent  # 8fbf
+  actor: jgstern_agent  # 8fbf
+  clock: 3  # 8fbf
+  nonce: 8fbf  # 8fbf
+  message: "Re-confirmed on a full behavior map and root-caused with fresh repro (blind-severity-derived priority signal: P0). 1084/110510 edges (1.0%) have edge.line outside their src symbol's span; 804 land inside a DIFFERENT same-file symbol, and 647 of those (80%) are between symbols sharing the same last name segment (__post_init__/to_dict/from_dict). Root cause: Python call ownership resolved through a bare-name-keyed symbol_by_name dict at py.py:776 — two same-named symbols overwrite each other, the survivor owns ALL such calls, the overwritten sibling's calls VANISH. Fresh 'hypergumbo run' on a two-class fixture (each with __post_init__) emits exactly one calls edge: one class's call is misattributed to the other and the other's real call is entirely lost. Fix: key on (name, span)/scope-qualified identity."  # 8fbf
