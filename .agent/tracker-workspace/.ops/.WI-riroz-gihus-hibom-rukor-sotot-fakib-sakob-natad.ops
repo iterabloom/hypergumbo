@@ -1,0 +1,21 @@
+- op: create  # 5ff9
+  at: '2026-06-07T10:08:11Z'  # 5ff9
+  by: agent  # 5ff9
+  actor: jgstern_agent  # 5ff9
+  clock: 1  # 5ff9
+  nonce: 5ff9  # 5ff9
+  data:  # 5ff9
+    kind: work_item  # 5ff9
+    title: "play-routes uses stale local PASS_VERSION=\"1\" shadowing canonical ir.PASS_VERSION; AR.version=\"1\" corrupts run_signature"  # 5ff9
+    status: todo_hard  # 5ff9
+    priority: 1  # 5ff9
+    parent: INV-luhur-sital-lonar-tagiv-kuzab-mokol-jikot-fosug  # 5ff9
+    tags:  # 5ff9
+    - dogfood  # 5ff9
+    - analysis_runs  # 5ff9
+    isbefore: []  # 5ff9
+    duplicate_of: []  # 5ff9
+    not_duplicate_of: []  # 5ff9
+    pr_ref:  # 5ff9
+    description: "**Defect.** The play-routes pass reports `version=\"1\"` while all other passes report the real package version, corrupting its identity hash.\n\n**Mechanic.** play_routes.py:44 defines a local `PASS_VERSION = \"1\"` and play_routes.py:188 passes it to `AnalysisRun.create(...)`. Every other analyzer uses the canonical `ir.PASS_VERSION = __version__` (ir.py:52). Because `AnalysisRun.version` is an identity field feeding run_signature (ir.py:169, `data = f\"{pass_id}:{version}:{config_fingerprint}:...\"`), the stale \"1\" is hashed into the signature.\n\n**Scope.** The play-routes analysis-run record. On the substrate, analysis_runs[].version distribution is {'5.0.1': 83, '1': 1}, the lone '1' being play-routes (version=\"1\", pass_version=\"\", run_signature=\"sha256:05b10c7f9567c49f\"). Exhaustive `^PASS_VERSION` grep over packages/*/src/ returns exactly two hits: ir.py:52 (canonical \"5.0.1\") and play_routes.py:44 (\"1\") — play-routes is the sole outlier. Reproduced by running the analyzer directly on a /tmp fixture: byte-identical run_signature.\n\n**Expectation.** play-routes would report the same package version as every other pass and compute its run_signature from that version.\n\n**Fix.** Replace the local `PASS_VERSION` in play_routes.py:44 with the canonical `ir.PASS_VERSION`. This single producer change also resolves the downstream run_signature corruption (the version feeds the identity hash at ir.py:169), so the two are deliberately kept as one fix.\n\n**Consequence.** A consumer reading analysis_runs[].version sees \"1\" for play-routes — a value matching no release and contradicting the uniform \"5.0.1\" of the other 83 passes and reproducibility_context.captured.hypergumbo_version=5.0.1 — and a reproducibility check treats play-routes as frozen at version \"1\" forever, never detecting that the pass changed across releases. Triggered unconditionally whenever play-routes fires.\n\n**Cross-refs.** play-routes is also in WI-mipul's 14-pass override-analyze set whose pass_version serializes as \"\" — but that is a distinct field (pass_version vs version) and a distinct fix (auto-stamping). This row is specifically the stale local PASS_VERSION=\"1\" constant."  # 5ff9
+    fields: {}  # 5ff9

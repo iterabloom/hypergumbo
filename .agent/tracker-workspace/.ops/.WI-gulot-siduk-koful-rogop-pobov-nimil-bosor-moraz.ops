@@ -1,0 +1,20 @@
+- op: create  # 22d8
+  at: '2026-06-07T10:07:54Z'  # 22d8
+  by: agent  # 22d8
+  actor: jgstern_agent  # 22d8
+  clock: 1  # 22d8
+  nonce: 22d8  # 22d8
+  data:  # 22d8
+    kind: work_item  # 22d8
+    title: "Python module-level function alias (f = g) extracted as kind=variable; calls through the alias dead-end at a 0-out-degree node"  # 22d8
+    status: todo_hard  # 22d8
+    priority: 1  # 22d8
+    parent: INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad  # 22d8
+    tags:  # 22d8
+    - dogfood  # 22d8
+    isbefore: []  # 22d8
+    duplicate_of: []  # 22d8
+    not_duplicate_of: []  # 22d8
+    pr_ref:  # 22d8
+    description: "**Defect.** A Python module-level function alias (`f = g`) is extracted as a `variable` node, so calls through the alias hit a call-graph dead-end.\n\n**Mechanic.** The Python analyzer extracts `_is_test_path = is_test_path` (ranking.py:113) as a kind=variable node with zero outgoing edges. Callers' `calls` edges resolve to that variable as destination, but the variable has no edge to the real function body in selection/filters.py:179-246. The alias is never resolved to its target.\n\n**Scope.** Python call graph. On the substrate, the variable node `python:packages/hypergumbo-core/src/hypergumbo_core/ranking.py:113-113:_is_test_path:variable` has 0 outgoing edges yet is the destination of 24 `calls` edges (37 calls->variable edges total, all targeting _is_test_path, evidence_type ast_call_direct). Reproduced on a fresh /tmp run: a minimal caller of an alias produces exactly one `calls` edge to a kind=variable node (out-degree 0) and no `calls` edge to the real function.\n\n**Expectation.** Calls through the alias would traverse to the real function's body, so the call graph reaches the actual implementation.\n\n**Fix.** Resolve the alias target so calls traverse to the real function body (rebinding `name = other_name` at module scope should link the alias node to the target's definition).\n\n**Consequence.** Call-graph traversal terminates at a leaf variable node instead of reaching the implementation; reachability, impact analysis, and slice expansion through the alias all silently stop, so an agent concludes the function is uncalled or has no callees. This is a concrete dispatch-blindness instance under the INV-pohik umbrella (call graph does not traverse dispatch-primitive patterns), specific to the function-aliasing / name-rebinding construct.\n\n**Cross-refs.** INV-pohik (call graph blind to dispatch primitives). Note: this aliasing construct is also missing from limits.not_captured (WI-togop) — it is processed-but-mis-resolved rather than skipped."  # 22d8
+    fields: {}  # 22d8

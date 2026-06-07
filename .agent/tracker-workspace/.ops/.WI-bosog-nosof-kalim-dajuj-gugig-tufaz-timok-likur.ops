@@ -1,0 +1,21 @@
+- op: create  # 0dc0
+  at: '2026-06-07T10:08:40Z'  # 0dc0
+  by: agent  # 0dc0
+  actor: jgstern_agent  # 0dc0
+  clock: 1  # 0dc0
+  nonce: 0dc0  # 0dc0
+  data:  # 0dc0
+    kind: work_item  # 0dc0
+    title: "repo_fingerprint emits bare-64-hex while run_signature/config_fingerprint use sha256:+16 (AR-record identity-format non-uniformity)"  # 0dc0
+    status: todo_hard  # 0dc0
+    priority: 3  # 0dc0
+    parent: INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah  # 0dc0
+    tags:  # 0dc0
+    - dogfood  # 0dc0
+    - identity  # 0dc0
+    isbefore: []  # 0dc0
+    duplicate_of: []  # 0dc0
+    not_duplicate_of: []  # 0dc0
+    pr_ref:  # 0dc0
+    description: "**Defect.** Within one analysis-run record, `repo_fingerprint` uses bare-64-hex while `run_signature`/`config_fingerprint` use `sha256:`+16-hex — incompatible identity-field formats.\n\n**Mechanic.** Three sha256-derived identity fields use three different rendering conventions. ir.py:170 `_compute_run_signature` and ir.py:183 `_compute_config_fingerprint` both render `f\"sha256:{...hexdigest()[:16]}\"` (prefixed, 64-bit truncation). repo_fingerprint.py:232-241 `compute_repo_fingerprint` returns a 64-char hex digest with no prefix and no truncation.\n\n**Scope.** Every analysis_run record. Format census across 84/84 runs: run_signature = sha256:+16hex (e.g. sha256:24a2648f105e00e8), config_fingerprint = sha256:+16hex, repo_fingerprint = bare-64hex (e.g. 884fad19f196135dd7d3e059d636d3e2cd91962efd1f5cb93fcbe40e4ae52feb). The broader tree has at least 6 distinct sha256-rendering conventions (sha256:+16, bare-64, edgekey:sha256:+16, edge:sha256:, usage:sha256:+16, hgfp1:+16).\n\n**Expectation.** All three sha256-derived identity fields on a run record would share one convention (prefix + width), so a consumer can parse them uniformly.\n\n**Fix.** Bring the repo_fingerprint AR-record producer (repo_fingerprint.py:232-241) onto the canonical sha256:+ convention.\n\n**Consequence.** Uniform parsing of identity fields breaks on repo_fingerprint; a consumer comparing or normalizing run identity across fields silently mishandles one of the three.\n\n**Cross-refs.** This is a specific instance of the INV-kurup META (identifier-bearing fields emit non-canonical formats from several emission paths — the \"fingerprint scheme prefix\" face). Distinct producer / distinct fix from the sketch [:16] truncation of the same value (filed separately): fixing the AR convention does not touch the sketch rendering."  # 0dc0
+    fields: {}  # 0dc0

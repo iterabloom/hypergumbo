@@ -1,0 +1,21 @@
+- op: create  # 26f2
+  at: '2026-06-07T10:08:37Z'  # 26f2
+  by: agent  # 26f2
+  actor: jgstern_agent  # 26f2
+  clock: 1  # 26f2
+  nonce: 26f2  # 26f2
+  data:  # 26f2
+    kind: work_item  # 26f2
+    title: "sketch repo_fingerprint rendered truncated-16 (sketch_embeddings.py:1281-1296 [:16]) vs full-64 in AR records"  # 26f2
+    status: todo_hard  # 26f2
+    priority: 2  # 26f2
+    parent:  # 26f2
+    tags:  # 26f2
+    - dogfood  # 26f2
+    - identity  # 26f2
+    isbefore: []  # 26f2
+    duplicate_of: []  # 26f2
+    not_duplicate_of: []  # 26f2
+    pr_ref:  # 26f2
+    description: "**Defect.** `repo_fingerprint` is rendered at two different widths across two surfaces — full-64 in run records, truncated-16 in the sketch.\n\n**Mechanic.** The sketch path computes the same value but truncates it. sketch_embeddings.py:1281-1296 `_get_repo_fingerprint` docstring states \"Returns the first 16 hex chars of the spec-defined repo_fingerprint\" and returns `compute_repo_fingerprint(repo_root)[:16]`, while the analysis-run path emits the full 64-char digest.\n\n**Scope.** The repo_fingerprint field across two surfaces: the sketch (16 chars) and the behavior-map analysis-run records (64 chars). One field, two widths.\n\n**Expectation.** A single repo_fingerprint value would render identically across the sketch surface and the run-record surface.\n\n**Fix.** Align the sketch producer's [:16] truncation so its repo_fingerprint rendering matches the AR-record convention.\n\n**Verifiability note.** This is a source-confirmed claim. The substrate could not re-derive it from emitted data alone (sketch_precomputed.repo_fingerprint reads None on the frozen map; the [:16] truncation is a source-code claim at sketch_embeddings.py:1281-1296, not emitted-data derivable).\n\n**Consequence.** A naive string-equality join between the sketch repo_fingerprint and a behavior-map run record's repo_fingerprint fails on every pair; the consumer must know to truncate one side, otherwise concludes the same repo's two artifacts came from different repos.\n\n**Cross-refs.** Distinct producer / distinct fix from the AR-record repo_fingerprint format outlier (which renders bare-64-hex vs the sha256:+16 convention of run_signature/config_fingerprint, fix in repo_fingerprint.py:232-241). The two were deliberately split: fixing the AR convention does not touch the sketch truncation and vice versa."  # 26f2
+    fields: {}  # 26f2
