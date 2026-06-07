@@ -18,3 +18,10 @@
     pr_ref:  # 2c97
     description: ""  # 2c97
     fields: {}  # 2c97
+- op: discuss  # 4a38
+  at: '2026-06-07T06:38:18Z'  # 4a38
+  by: agent  # 4a38
+  actor: jgstern_agent  # 4a38
+  clock: 2  # 4a38
+  nonce: 4a38  # 4a38
+  message: "Dogfood finding (member F144.A1-b, split from F144.A1), reproduces on the frozen substrate. Mechanism: both identity fields are emitted as sha256: followed by a 16-hex truncation. stable_id_scheme=hypergumbo-stableid-v5 and shape_id_scheme=hypergumbo-shapeid-v2 both produce sha256:-prefixed 16-hex values, so a value seen out of context cannot be classed as a stable-id vs a shape-id by inspection. Scope: stable_id on 34260 nodes and shape_id on 29862 nodes both use sha256:+16 hex; affects every node. No uniqueness collapse — value-spaces are disjoint (0 shared values, 0 per-node stable_id==shape_id over 29846 nodes), so this is an identity-axis-legibility defect not a uniqueness collapse. Exposure/consequence: a consumer that stores or passes bare identity values without their field name, or builds a lookup keyed on the value, cannot recover which identity axis produced it; an agent joining cross-version identity data on bare hashes can mis-route a shape value into a stable-id join (or vice versa), confusing rename-tracking with structural-change tracking. Expectation: two semantically distinct identity axes carry distinguishable value formats (e.g. distinct prefixes). Sibling of WI-talos (the four scheme names absent from values); split because this is the specific stable_id/shape_id sha256: prefix collision. Distinct from WI-vibag (DOC drift) and INV-hunup (FORMAT variants). Cross-ref WI-talos, WI-vibag, INV-hunup. Substrate evidence: probe_2_idformats.log / probe_2_idcollision.log."  # 4a38

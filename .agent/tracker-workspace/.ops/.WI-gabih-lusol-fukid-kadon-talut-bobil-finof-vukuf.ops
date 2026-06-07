@@ -1,0 +1,27 @@
+- op: create  # da88
+  at: '2026-06-07T06:37:33Z'  # da88
+  by: agent  # da88
+  actor: jgstern_agent  # da88
+  clock: 1  # da88
+  nonce: da88  # da88
+  data:  # da88
+    kind: work_item  # da88
+    title: "FrameworkPatternDef is an orphan schema $def (0 $ref) — dead schema text"  # da88
+    status: todo_hard  # da88
+    priority: 4  # da88
+    parent:  # da88
+    tags:  # da88
+    - dogfood  # da88
+    isbefore: []  # da88
+    duplicate_of: []  # da88
+    not_duplicate_of: []  # da88
+    pr_ref:  # da88
+    description: ""  # da88
+    fields: {}  # da88
+- op: discuss  # 5f7e
+  at: '2026-06-07T06:38:19Z'  # 5f7e
+  by: agent  # 5f7e
+  actor: jgstern_agent  # 5f7e
+  clock: 2  # 5f7e
+  nonce: 5f7e  # 5f7e
+  message: "Dogfood finding (member F146.A3, independent), reproduces on the frozen substrate. Mechanism: the schema's $defs contains a FrameworkPatternDef definition, but the string FrameworkPatternDef appears exactly once in the whole schema (its own definition) with zero $ref pointing at it. Nothing in the document can resolve to it. Scope: 1 orphan definition in the published schema's $defs (1 occurrence, 0 $ref); affects consumers reading the schema. Exposure/consequence: a consumer or tooling author studying the schema to understand framework-pattern structure finds a definition that no part of the output actually uses, expecting a FrameworkPatternDef-shaped payload somewhere that never appears — wasted integration effort, no data corruption. Expectation: every $def is referenced by at least one $ref; orphan definitions are removed or wired in. Low severity (P4)."  # 5f7e

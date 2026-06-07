@@ -1,0 +1,27 @@
+- op: create  # 57ef
+  at: '2026-06-07T06:37:31Z'  # 57ef
+  by: agent  # 57ef
+  actor: jgstern_agent  # 57ef
+  clock: 1  # 57ef
+  nonce: 57ef  # 57ef
+  data:  # 57ef
+    kind: work_item  # 57ef
+    title: "dataclass->schema generator emits contentless {\"type\":\"object\"} for Dict[str,Any]/un-introspected fields (limits, Edge.quality, Symbol.quality, Symbol.meta, UsageContext.metadata)"  # 57ef
+    status: todo_hard  # 57ef
+    priority: 3  # 57ef
+    parent:  # 57ef
+    tags:  # 57ef
+    - dogfood  # 57ef
+    isbefore: []  # 57ef
+    duplicate_of: []  # 57ef
+    not_duplicate_of: []  # 57ef
+    pr_ref:  # 57ef
+    description: ""  # 57ef
+    fields: {}  # 57ef
+- op: discuss  # 5f5a
+  at: '2026-06-07T06:38:19Z'  # 5f5a
+  by: agent  # 5f5a
+  actor: jgstern_agent  # 5f5a
+  clock: 2  # 5f5a
+  nonce: 5f5a  # 5f5a
+  message: "Dogfood finding (members F145.A2-a, F152.A2, F153.A2 — cluster C1), reproduces on the frozen substrate. Mechanism: when a dataclass field is an open Dict[str,Any] or a type the dataclass->schema generator cannot introspect, it falls back to a bare {\"type\":\"object\"} with no properties (and no additionalProperties typing). Scope: at least 5 schema sites emit contentless objects — the top-level limits $def, plus Edge.quality, Symbol.quality, Symbol.meta, and UsageContext.metadata — each declared as an object whose internal structure the schema does not describe. Affects every behavior-map consumer that reads the published schema as the contract for these payloads. Exposure/consequence: consumers must reverse-engineer these payloads from sample output rather than from the contract; an agent generating code against the schema will not know meta can carry evidence/channel/protocol keys, that quality can carry score/reason, etc. Expectation: schema definitions describe the keys a consumer can rely on (properties, or at least additionalProperties typing), so the published schema documents the payload rather than asserting \"some object.\" This is the generator-level root cause; consumers downstream include U08 (limits sub-fields undocumented, WI-zugof) and the Node.meta/Edge.meta key-vocabulary rows. Cross-ref WI-zugof (limits sub-fields), WI-mirig (Node.meta undocumented sub-keys), WI-vusot (axis_meta_keys registry)."  # 5f5a

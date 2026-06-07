@@ -18,3 +18,10 @@
     pr_ref:  # 9535
     description: ""  # 9535
     fields: {}  # 9535
+- op: discuss  # 5286
+  at: '2026-06-07T06:38:19Z'  # 5286
+  by: agent  # 5286
+  actor: jgstern_agent  # 5286
+  clock: 2  # 5286
+  nonce: '5286'  # 5286
+  message: "Dogfood finding (member F145.A1-b, split from F145.A1), reproduces on the frozen substrate. Mechanism: the schema/serializer carries a failed_files array on the top-level limits block AND a failed_files key on every analysis_runs entry. The same parse-failure concept is split across two locations. Scope: failed_files present in limits (1 array) and in all 84 analysis_runs entries; affects every run output. Exposure/consequence: a consumer collecting \"which files failed to parse\" must know to read both locations, or risk double-counting if it reads both naively; reporting parse failures either misses per-pass detail (reading only limits), double-counts (reading both), or builds brittle dedup logic — an agent assessing analysis completeness gets an ambiguous count. Expectation: a given concept (files that failed to parse) has one canonical home, or the two are clearly differentiated (per-pass vs aggregate) in the contract. This is the duplication/placement concern, distinct from INV-buhur (limits.failed_files never POPULATED by Python analyzer) and the schema-staleness concern in the E01 enrichment on WI-sirir (AnalysisRun.failed_files absent from the schema $def). Cross-ref INV-buhur, WI-sirir."  # 5286

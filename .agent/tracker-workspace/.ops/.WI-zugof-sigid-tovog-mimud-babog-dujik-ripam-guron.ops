@@ -18,3 +18,10 @@
     pr_ref:  # 00a2
     description: ""  # 00a2
     fields: {}  # 00a2
+- op: discuss  # f589
+  at: '2026-06-07T06:38:19Z'  # f589
+  by: agent  # f589
+  actor: jgstern_agent  # f589
+  clock: 2  # f589
+  nonce: f589  # f589
+  message: "Dogfood finding (member F145.A2-b, split from F145.A2), reproduces on the frozen substrate. Mechanism: the run output's top-level limits object carries ten sub-fields, but the schema entry for limits is {\"type\":\"object\",\"description\":\"Known gaps and limitations\"} with no properties at all. Three sub-fields — analyzer_version, max_tier_applied, supply_chain — have zero spec mentions and no schema property. Scope: 3 undocumented sub-fields inside limits (the only top-level object whose schema entry carries zero property contract); affects run output for every repo. Observed values: analyzer_version=\"hypergumbo-5.0.1\", max_tier_applied=3, supply_chain={ambiguous_paths:[], classification_failures:[]}. Exposure/consequence: any consumer that validates the behavior map against the published schema, or enumerates limits programmatically expecting the documented field set, either rejects valid output or cannot discover/trust these fields; a consumer wanting \"which tier ceiling was applied\" or \"what tool version produced this\" cannot rely on a contract for them. Expectation: every emitted sub-field of a top-level object has a schema property and a documented meaning. Related to WI-galug (the schema generator emits contentless {\"type\":\"object\"} for limits) — that is the producer-side root for the missing properties; this row is the specific spec+schema documentation gap for these three sub-fields. Distinct from WI-muzus/WI-tamop/WI-togop (other limits sub-fields) and WI-lalip (node-level supply_chain sub-field drift). Cross-ref WI-galug."  # f589
