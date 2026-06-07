@@ -18,3 +18,10 @@
     pr_ref:  # 176c
     description: ""  # 176c
     fields: {}  # 176c
+- op: discuss  # 5d8e
+  at: '2026-06-07T06:36:22Z'  # 5d8e
+  by: agent  # 5d8e
+  actor: jgstern_agent  # 5d8e
+  clock: 2  # 5d8e
+  nonce: 5d8e  # 5d8e
+  message: "Dogfood finding (member F142.A1, independent), reproduces on the frozen substrate. Mechanism: sketch_precomputed.centrality_scores values are un-normalized — schema.json:164 labels the key \"File-path -> centrality score\" and producer docstrings assert 0-1 normalized (ranking.py:156/283 \"0-1 normalized\", cfg.py:1681 \"centrality score (0-1)\"), but emitted values come from compute_file_scores (ranking.py:929-955) = SUM of the top-3 per-symbol centralities per file, so a dense file reaches ~3x the per-symbol max. Scope: 280 entries, min 0.0 max 7.422727, 23/280 exceed 1.0 (top: user_cache_sinks.yaml 7.42, README.md 4.25). Exposure/consequence: a consumer interpreting the value as a 0-1 probability/fraction, thresholding (\"centrality > 0.8 = hub\"), or comparing across repos on a common normalized scale mis-scales/clips/rejects the 23 over-1.0 entries; a 1-symbol vs 3-symbol file are non-comparable (sum conflates per-symbol importance with symbol-count density). Source-confirmed + deterministic frozen read. Distinct from WI-rajod (wrong file UNIVERSE — cites 7.42 only as wrong-file evidence), WI-rikaz (semantics undocumented/self-scores 0.0), INV-napap (excludes Python source) — none names the value-range / un-normalized-sum-vs-0-1-label defect. Cross-ref WI-rajod, INV-napap. Substrate evidence: probe_2_centvals.log / probe_2_centnorm.log."  # 5d8e

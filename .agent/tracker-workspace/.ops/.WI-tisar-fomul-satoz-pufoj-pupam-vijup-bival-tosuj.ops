@@ -1,0 +1,20 @@
+- op: create  # 2c97
+  at: '2026-06-07T06:36:35Z'  # 2c97
+  by: agent  # 2c97
+  actor: jgstern_agent  # 2c97
+  clock: 1  # 2c97
+  nonce: 2c97  # 2c97
+  data:  # 2c97
+    kind: work_item  # 2c97
+    title: "stable_id and shape_id share the sha256: prefix + 16-hex truncation, making a bare value unclassifiable by axis"  # 2c97
+    status: todo_hard  # 2c97
+    priority: 3  # 2c97
+    parent:  # 2c97
+    tags:  # 2c97
+    - dogfood  # 2c97
+    isbefore: []  # 2c97
+    duplicate_of: []  # 2c97
+    not_duplicate_of: []  # 2c97
+    pr_ref:  # 2c97
+    description: ""  # 2c97
+    fields: {}  # 2c97

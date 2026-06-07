@@ -1,0 +1,20 @@
+- op: create  # 9535
+  at: '2026-06-07T06:36:38Z'  # 9535
+  by: agent  # 9535
+  actor: jgstern_agent  # 9535
+  clock: 1  # 9535
+  nonce: '9535'  # 9535
+  data:  # 9535
+    kind: work_item  # 9535
+    title: "failed_files double-emitted across limits and per-analysis_runs entry (concept duplication/placement)"  # 9535
+    status: todo_hard  # 9535
+    priority: 3  # 9535
+    parent:  # 9535
+    tags:  # 9535
+    - dogfood  # 9535
+    isbefore: []  # 9535
+    duplicate_of: []  # 9535
+    not_duplicate_of: []  # 9535
+    pr_ref:  # 9535
+    description: ""  # 9535
+    fields: {}  # 9535

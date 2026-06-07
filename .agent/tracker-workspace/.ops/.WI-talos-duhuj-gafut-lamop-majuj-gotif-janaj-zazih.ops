@@ -1,0 +1,20 @@
+- op: create  # 47dd
+  at: '2026-06-07T06:36:33Z'  # 47dd
+  by: agent  # 47dd
+  actor: jgstern_agent  # 47dd
+  clock: 1  # 47dd
+  nonce: 47dd  # 47dd
+  data:  # 47dd
+    kind: work_item  # 47dd
+    title: "None of the four *_scheme names/versions is encoded in any emitted identity/fingerprint value"  # 47dd
+    status: todo_hard  # 47dd
+    priority: 3  # 47dd
+    parent:  # 47dd
+    tags:  # 47dd
+    - dogfood  # 47dd
+    isbefore: []  # 47dd
+    duplicate_of: []  # 47dd
+    not_duplicate_of: []  # 47dd
+    pr_ref:  # 47dd
+    description: ""  # 47dd
+    fields: {}  # 47dd

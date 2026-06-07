@@ -1,0 +1,20 @@
+- op: create  # 00a2
+  at: '2026-06-07T06:36:40Z'  # 00a2
+  by: agent  # 00a2
+  actor: jgstern_agent  # 00a2
+  clock: 1  # 00a2
+  nonce: 00a2  # 00a2
+  data:  # 00a2
+    kind: work_item  # 00a2
+    title: "limits sub-fields analyzer_version/max_tier_applied/supply_chain emitted but undocumented in spec and schema"  # 00a2
+    status: todo_hard  # 00a2
+    priority: 3  # 00a2
+    parent:  # 00a2
+    tags:  # 00a2
+    - dogfood  # 00a2
+    isbefore: []  # 00a2
+    duplicate_of: []  # 00a2
+    not_duplicate_of: []  # 00a2
+    pr_ref:  # 00a2
+    description: ""  # 00a2
+    fields: {}  # 00a2
