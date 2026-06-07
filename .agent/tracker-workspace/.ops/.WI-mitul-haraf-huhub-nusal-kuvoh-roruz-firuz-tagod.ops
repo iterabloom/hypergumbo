@@ -1,0 +1,21 @@
+- op: create  # 77a6
+  at: '2026-06-07T03:14:17Z'  # 77a6
+  by: agent  # 77a6
+  actor: jgstern_agent  # 77a6
+  clock: 1  # 77a6
+  nonce: 77a6  # 77a6
+  data:  # 77a6
+    kind: work_item  # 77a6
+    title: "Python analyzer emits no 'calls' edge for the open() builtin in most syntactic forms"  # 77a6
+    status: todo_hard  # 77a6
+    priority: 1  # 77a6
+    parent:  # 77a6
+    tags:  # 77a6
+    - dogfood  # 77a6
+    - dogfood_tranche_07  # 77a6
+    isbefore: []  # 77a6
+    duplicate_of: []  # 77a6
+    not_duplicate_of: []  # 77a6
+    pr_ref:  # 77a6
+    description: "**Mechanism.** The Python analyzer does not emit a calls edge for the open() builtin in most syntactic forms, so a function whose only I/O is open() produces either no edge or only the downstream .read()/.close(). Fresh hypergumbo run on /tmp/opentest (deterministic): 'f = open(path)' -> 0 edges; 'with open(path) as f: f.read()' -> only calls->external:read (open not captured); 'open(path).read()' -> 0 edges; 'data = open(path)' -> 0 edges.\n\n**Substrate corroboration.** builtins.open produces only 2 edges total (python:external:0-0:open:unresolved); the other 21 open-targeting edges are module-qualified (gzip.open 15 / os.open 3 / tarfile.open 2), 22/23 is_resolved=False. On the full substrate io-boundaries yields fs_read=561 + fs_write=102 but 100% of fs_read primitives are pathlib.Path.* / os.* — ZERO from builtins.open. hypergumbo's own code uses pathlib/os so the gap is masked; a codebase using open() for file I/O gets zero fs boundaries.\n\n**Consequence (security/audit).** An auditor running io-boundaries on code that uses the open() idiom to read/write files is told there are no filesystem boundaries — a recall gap. This is the edge-emission half of F126.A1 (the suppression half is the sibling row on .read()/.write()/.close() into external_potential via ambiguous_names).\n\n**Related (distinct).** Distinct from WI-zavad (JS emits zero edges) and WI-foduh (text-vs-JSON count). Cross-links to the io-boundaries ambiguous_names suppression sibling. Source: dogfood_tranche_07 F126.A1a, fresh-run reproduced."  # 77a6
+    fields: {}  # 77a6

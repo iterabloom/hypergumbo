@@ -1,0 +1,21 @@
+- op: create  # e7ee
+  at: '2026-06-07T03:13:52Z'  # e7ee
+  by: agent  # e7ee
+  actor: jgstern_agent  # e7ee
+  clock: 1  # e7ee
+  nonce: e7ee  # e7ee
+  data:  # e7ee
+    kind: work_item  # e7ee
+    title: "Python Symbol.signature hard-capped at 60 chars (8.2% truncated mid-content) + every param default elided to a literal '...'"  # e7ee
+    status: todo_hard  # e7ee
+    priority: 1  # e7ee
+    parent:  # e7ee
+    tags:  # e7ee
+    - dogfood  # e7ee
+    - dogfood_tranche_07  # e7ee
+    isbefore: []  # e7ee
+    duplicate_of: []  # e7ee
+    not_duplicate_of: []  # e7ee
+    pr_ref:  # e7ee
+    description: "**Mechanism.** Python Symbol.signature is truncated at exactly 60 characters with a trailing '...'; 2071/25170 python function/method signatures (8.2%) hit the cap (every truncated one is exactly length 60; max length over all 25170 is 60). SEPARATELY, every parameter default VALUE is replaced by a literal '...' regardless of length — 2343/25170 (9.3%) python sigs contain '=...'.\n\n**Evidence.** register_analyzer (registry.py:140-217): real source sig has 13 params + '-> Callable[...]' return; emitted sig is '(name: str, priority: int=..., supports_max_files: bool=..., ca...' (60 chars, cut mid-word inside capture_symbols_as). Only 3 of 13 params survive; return type dropped; defaults 50/False/None all become '...'. Fresh hypergumbo run on /tmp: 'def f(a:int,b:str=\"hello\",c:int=50)' -> '(a: int, b: str=..., c: int=...)'; 7-param '-> None' -> 60-char cut dropping zeta/eta + return type. Live producer behavior, reproduces.\n\n**Consequence.** An LLM agent or human reading signature to understand call semantics is told (a) a param HAS a default but never WHAT it is, and (b) for any sig >60 chars sees a wrong/short param list with no return type, with no flag beyond the '...'. The 60-char cap and default-elision are undocumented in docs/hypergumbo-spec.md (no hits near §789/§817).\n\n**Related (distinct).** Parallel to WI-puzuk (docstring first-line-only / 80-char cap) but a DIFFERENT field (signature), DIFFERENT cap (60 not 80), plus a second mechanism (per-default '...' elision) WI-puzuk lacks. Source: dogfood_tranche_07 F122.A1, fresh-run reproduced."  # e7ee
+    fields: {}  # e7ee

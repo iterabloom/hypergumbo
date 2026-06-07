@@ -1,0 +1,21 @@
+- op: create  # bdd6
+  at: '2026-06-07T03:14:19Z'  # bdd6
+  by: agent  # bdd6
+  actor: jgstern_agent  # bdd6
+  clock: 1  # bdd6
+  nonce: bdd6  # bdd6
+  data:  # bdd6
+    kind: work_item  # bdd6
+    title: "io-boundaries suppresses surviving open/read/write/close calls into external_potential via python.yaml ambiguous_names"  # bdd6
+    status: todo_hard  # bdd6
+    priority: 1  # bdd6
+    parent:  # bdd6
+    tags:  # bdd6
+    - dogfood  # bdd6
+    - dogfood_tranche_07  # bdd6
+    isbefore: []  # bdd6
+    duplicate_of: []  # bdd6
+    not_duplicate_of: []  # bdd6
+    pr_ref:  # bdd6
+    description: "**Mechanism.** The .read()/.write()/.close() calls that DO survive open()-idiom file I/O resolve to bare unresolved placeholders (python:external:0-0:read:unresolved, io_boundary=None), and open/read/write are in python.yaml ambiguous_names (line 54: 'builtins.open vs any .open() method'), so they are suppressed into external_potential rather than classified as fs_read/fs_write.\n\n**Evidence (fixture).** /tmp/iofix/svc.py read_config does 'with open(...) as f: return f.read()', direct_read does 'f=open(path); f.read()', write_log does 'open(...,\"w\").write(msg)'. io-boundaries headline: 'I/O Boundary Map (2 boundary calls)' = net_send + subprocess ONLY; ALL file I/O landed in external_potential (4 chains suppressed). direct_read edges = only calls->read:unresolved + calls->close:unresolved; write_log edges = ZERO. On the full substrate external_potential is 7097/7949 (89%) of all io edges — the suppressed catch-all dominates.\n\n**Consequence.** Real filesystem reads/writes via the open() idiom are invisible to io-boundaries; the bucket that should surface them silently swallows them. This is the suppression half of F126.A1 (the no-edge-for-open() half is the sibling row).\n\n**Related (distinct).** Cross-links to WI-fuvuj (method/bare-receiver Python I/O loses module qualifier -> misclassified into external_potential) and WI-fabup (Python ambiguous_names not wired to receiver disambiguation) — those address resolution; this is the specific open()-idiom fs_read/fs_write suppression. Source: dogfood_tranche_07 F126.A1b, fresh-run reproduced."  # bdd6
+    fields: {}  # bdd6

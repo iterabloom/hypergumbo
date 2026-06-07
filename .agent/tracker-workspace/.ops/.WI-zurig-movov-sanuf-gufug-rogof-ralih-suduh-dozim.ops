@@ -1,0 +1,21 @@
+- op: create  # 34ff
+  at: '2026-06-07T03:13:54Z'  # 34ff
+  by: agent  # 34ff
+  actor: jgstern_agent  # 34ff
+  clock: 1  # 34ff
+  nonce: 34ff  # 34ff
+  data:  # 34ff
+    kind: work_item  # 34ff
+    title: "websocket-linker emits phantom cross-language 'calls' edges from a file node to test-fixture WS endpoints (11 test / 1 prod)"  # 34ff
+    status: todo_hard  # 34ff
+    priority: 1  # 34ff
+    parent:  # 34ff
+    tags:  # 34ff
+    - dogfood  # 34ff
+    - dogfood_tranche_07  # 34ff
+    isbefore: []  # 34ff
+    duplicate_of: []  # 34ff
+    not_duplicate_of: []  # 34ff
+    pr_ref:  # 34ff
+    description: "**Mechanism.** The websocket-linker pairs WS clients to WS servers purely by URL-path string match with NO same-file / same-package / is-test-file scoping (linkers/websocket.py:903-943 cross-products _CLIENT_PATTERN_TYPES x _SERVER_PATTERN_TYPES grouped only by_path[ep.event], no file/package/test branch). The single real frontend client ws-client.ts (-> /ws) is linked by 12 calls edges to 12 synthetic /ws-endpoint:function nodes (name ws:/ws, kind=function), 11 of which are test fixtures (test_websocket.py x9, test_starlette_routes.py x2), only 1 production (serve.py:433).\n\n**Evidence (frozen substrate).** 12 edges with meta.url_path, all type=calls, origin=['websocket-linker'], conf 0.85, evidence_type=ast_call_direct, cross_language=true. src on ALL 12 = typescript:packages/htrac-frontend/src/ws-client.ts:1-1:file:file (a FILE node, not a call site). dst is_test_file: 11 test / 1 prod. meta.server_framework split fastapi=6 / starlette=6 (fastapi is NOT a declared dep, ties WI-babun).\n\n**Consequence.** An agent seeding a call graph / reachability from ws-client.ts is handed 11 phantom edges into test fixtures; cross_language=true is also graph-unverifiable (dst language=None, ties INV-zigup).\n\n**Related (distinct).** Same phantom-cross-link-from-test-code ROOT class as WI-nitob (message-queue-linker/event_publishes), WI-rilin (database-query-linker/references), but a THIRD producer (websocket-linker), DIFFERENT edge-type (calls), DIFFERENT meta family (url_path/protocol/client_framework/server_framework). src is a file node + dst is synthetic (ties WI-vuzaf). Source: dogfood_tranche_07 F125.A1, substrate-direct + source-confirmed producer."  # 34ff
+    fields: {}  # 34ff
