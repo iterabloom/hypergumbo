@@ -1,0 +1,21 @@
+- op: create  # 5b56
+  at: '2026-06-07T03:19:47Z'  # 5b56
+  by: agent  # 5b56
+  actor: jgstern_agent  # 5b56
+  clock: 1  # 5b56
+  nonce: 5b56  # 5b56
+  data:  # 5b56
+    kind: work_item  # 5b56
+    title: "Entrypoint confidence-tier table (spec §887-893) omits library_export base (44% of EPs) and the script/SPA tiers"  # 5b56
+    status: todo_hard  # 5b56
+    priority: 2  # 5b56
+    parent:  # 5b56
+    tags:  # 5b56
+    - dogfood  # 5b56
+    - dogfood_tranche_07  # 5b56
+    isbefore: []  # 5b56
+    duplicate_of: []  # 5b56
+    not_duplicate_of: []  # 5b56
+    pr_ref:  # 5b56
+    description: "**Mechanism.** The spec §887-893 entrypoint 'Confidence tiers' table lists only 6 base tiers (0.99/0.95/0.85/0.80/0.70/0.50) and names none of library_export, shell_script, html_entry, script_module, serialization_callback. Producer bases (entrypoints.py): library_export confidence=0.75 (:792), serialization_callback 0.80 (:811), shell_script/html_entry/script_module structural tier 0.85 (:740/:756/:769) — NONE of 0.75, 0.80 appear in the table. Kind census: library_export 46 (the single most common, 44%), shell_script 36, main_function 11, http_route 8, script_module 2, html_entry 1.\n\n**Sharper sub-issue.** 27 of 46 library_export entries are penalized BELOW 0.50 — the documented connectivity-fallback floor (§893 presents 0.50 as the lowest 'no patterns match' tier). So a confidently-pattern-detected export (e.g. clear_summary_cache at 0.185) ranks BELOW a pure connectivity guess (0.50). A consumer using 0.50 as a 'just a connectivity heuristic' cutoff drops 27 genuinely-detected exports while keeping fallback guesses; the confidence axis conflates detection-strength with a penalty-adjusted ranking signal the table does not expose. 'base 0.75 in any? False' — every library_export is off-base due to penalties, so a consumer cannot even recover the base from the max.\n\n**Consequence.** A consumer reading the table to interpret an entrypoint confidence cannot map ~44% of the array; the export-API and script/SPA tiers added by later ADRs (ADR-0003 library_export, INV-tajap shell_script/html_entry/script_module) were never back-filled into the consumer-facing table.\n\n**Related (distinct).** No ledger row covers the entrypoint confidence-tier table or library_export base; WI-kuvig/WI-kanuj/WI-popok/WI-zijiz cover entrypoint KIND/label/id; INV-suvil/WI-gifat cover EDGE confidence. Source: dogfood_tranche_07 F134.A1, deterministic frozen read + producer source."  # 5b56
+    fields: {}  # 5b56

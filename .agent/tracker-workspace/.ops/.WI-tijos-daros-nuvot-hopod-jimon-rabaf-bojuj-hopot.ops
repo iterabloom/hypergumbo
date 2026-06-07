@@ -1,0 +1,21 @@
+- op: create  # 904f
+  at: '2026-06-07T03:17:43Z'  # 904f
+  by: agent  # 904f
+  actor: jgstern_agent  # 904f
+  clock: 1  # 904f
+  nonce: 904f  # 904f
+  data:  # 904f
+    kind: work_item  # 904f
+    title: "urlretrieve classified high_risk=False (vs urlopen/Request True); high_risk drift guard only ratchets subprocess, not net/fs"  # 904f
+    status: todo_hard  # 904f
+    priority: 1  # 904f
+    parent:  # 904f
+    tags:  # 904f
+    - dogfood  # 904f
+    - dogfood_tranche_07  # 904f
+    isbefore: []  # 904f
+    duplicate_of: []  # 904f
+    not_duplicate_of: []  # 904f
+    pr_ref:  # 904f
+    description: "**Mechanism (A1).** Of 10 net_send chains, the single high_risk=False one is urllib.request.urlretrieve; the other 9 (urlopen x6, Request x3) are high_risk=True. All 10 share dst_tier=3, dst_external_boundary=True, dst_classification_unreliable=False — the ONLY difference is the primitive name. io_boundary.py:168-231 HIGH_RISK_PRIMITIVES lists urllib.request.urlopen and urllib.request.Request (line 181) but OMITS urllib.request.urlretrieve, even though the io_primitives catalog (python.yaml:120) declares all three together: functions: [urlopen, Request, urlretrieve]. urlretrieve is strictly WORSE (network fetch AND writes the response to a local file = network + fs_write), so flagging it LOWER-risk is backwards.\n\n**Mechanism (A2, structural cause).** io_boundary.py:241 + test_io_boundary.py:2305 TestHighRiskPrimitivesDriftGuard has (1) phantom detection and (2) test_every_subprocess_boundary_primitive_is_classified which at line 2340 does 'if p.boundary != \"subprocess\": continue'. So the missing-entry guard fires ONLY for boundary=subprocess catalog entries — NO analogous guard for net_send/net_recv/fs_write/fs_read. A network or fs primitive can sit in the catalog and never land in HIGH_RISK_PRIMITIVES with no test catching it.\n\n**Consequence.** The real instance is the tracker's own embeddings.py:108 — urllib.request.urlretrieve(url, str(tmp)) downloading a model from huggingface.co — the EXACT outbound call the P0 INV-dasig flags as a runtime-cli-no-network boundary violation. io-boundaries classifies that call high_risk=False; an agent/auditor filtering for high_risk=True network egress MISSES the project's own P0 boundary violation.\n\n**Related (cross-link, distinct).** Cross-links P0 INV-dasig (urlretrieve -> huggingface.co network call) and the drift-guard items WI-gitad / WI-sugav (HIGH_RISK_PRIMITIVES drift guard) — those ratchet subprocess; this row's fix is (a) add urlretrieve to HIGH_RISK_PRIMITIVES and (b) extend the completeness ratchet to net/fs boundaries. Distinct from INV-dasig (which is the claim-violation, not the high_risk-misclassification). Source: dogfood_tranche_07 F138.A1+A2, deterministic."  # 904f
+    fields: {}  # 904f

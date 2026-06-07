@@ -1,0 +1,21 @@
+- op: create  # 442e
+  at: '2026-06-07T03:18:16Z'  # 442e
+  by: agent  # 442e
+  actor: jgstern_agent  # 442e
+  clock: 1  # 442e
+  nonce: 442e  # 442e
+  data:  # 442e
+    kind: work_item  # 442e
+    title: "limits.partial_results_reason always emitted (empty string) despite spec §960 'Present only when analysis_incomplete: true'"  # 442e
+    status: todo_hard  # 442e
+    priority: 2  # 442e
+    parent:  # 442e
+    tags:  # 442e
+    - dogfood  # 442e
+    - dogfood_tranche_07  # 442e
+    isbefore: []  # 442e
+    duplicate_of: []  # 442e
+    not_duplicate_of: []  # 442e
+    pr_ref:  # 442e
+    description: "**Mechanism.** limits.partial_results_reason == '' while analysis_incomplete == False. Spec §960 states 'Present only when analysis_incomplete: true', yet the key is emitted (empty string) on a complete analysis. A consumer using key-presence as the incompleteness signal (per §960) gets a false positive — the key is always there.\n\n**Consequence.** The documented CONDITIONAL-PRESENCE contract is violated by unconditional emission; consumers cannot use presence/absence of the field as a completeness signal.\n\n**Related (distinct).** Family of INV-virik / INV-lifik (constant/reserved-field sentinels) but partial_results_reason is a distinct limits-block field named in neither. Related to WI-zafid (completeness-signaling contract fires inconsistently; partial_results_reason set while flag false) — cross-link; that row is the broader completeness-signal channel, this is the specific §960 conditional-presence violation. Source: dogfood_tranche_07 F123.A3, deterministic frozen read."  # 442e
+    fields: {}  # 442e

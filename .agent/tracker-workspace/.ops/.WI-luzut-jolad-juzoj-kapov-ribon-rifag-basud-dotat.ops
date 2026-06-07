@@ -1,0 +1,20 @@
+- op: create  # cb58
+  at: '2026-06-07T06:34:04Z'  # cb58
+  by: agent  # cb58
+  actor: jgstern_agent  # cb58
+  clock: 1  # cb58
+  nonce: cb58  # cb58
+  data:  # cb58
+    kind: work_item  # cb58
+    title: "Python variable-kind nodes carry shape_id=null: _compute_shape_id signature is FunctionDef|ClassDef-only"  # cb58
+    status: todo_hard  # cb58
+    priority: 2  # cb58
+    parent:  # cb58
+    tags:  # cb58
+    - dogfood  # cb58
+    isbefore: []  # cb58
+    duplicate_of: []  # cb58
+    not_duplicate_of: []  # cb58
+    pr_ref:  # cb58
+    description: ""  # cb58
+    fields: {}  # cb58

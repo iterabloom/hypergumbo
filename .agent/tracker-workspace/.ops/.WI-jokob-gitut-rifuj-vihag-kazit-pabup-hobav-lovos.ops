@@ -1,0 +1,21 @@
+- op: create  # 724d
+  at: '2026-06-07T03:19:44Z'  # 724d
+  by: agent  # 724d
+  actor: jgstern_agent  # 724d
+  clock: 1  # 724d
+  nonce: 724d  # 724d
+  data:  # 724d
+    kind: work_item  # 724d
+    title: "edge.meta.receiver is None on 100% of edges despite the documented field disambiguating 21183 method-call edges"  # 724d
+    status: todo_hard  # 724d
+    priority: 2  # 724d
+    parent:  # 724d
+    tags:  # 724d
+    - dogfood  # 724d
+    - dogfood_tranche_07  # 724d
+    isbefore: []  # 724d
+    duplicate_of: []  # 724d
+    not_duplicate_of: []  # 724d
+    pr_ref:  # 724d
+    description: "**Mechanism.** edge.meta.receiver is None on 0/110533 edges (fully unpopulated). It IS a documented field: spec:817 ('receiver records the resolved or short-name receiver' on ast_call-family edges), line 823 lists meta['receiver'] as the canonical place to read call-site receiver facts; axis_meta_keys.py:131-135 MetaKeySpec('receiver', example values bare/external/typed, purpose 'Disambiguates ast_call + call_construct=method edges per audit-findings 0012'). The registry says receiver exists specifically to disambiguate the call_construct=method edges — of which the substrate has 21183 — yet 0 carry a receiver value. Sibling call_construct IS populated (method=21183, function=213, cross_file=78); resolution_quality is 15% populated. So this is a per-field producer gap, not a whole-cluster gap.\n\n**Consequence.** A consumer following spec §817/§823 to read the receiver of a method call gets None on every edge; the disambiguation the field promises is entirely absent in production. (Note: receiver data DOES exist at the usage_contexts layer — context_name 'Route'/'WebSocketRoute' — but never reaches edge.meta.)\n\n**Related (distinct).** Distinct from WI-javus (resolution_quality mis-stamped on the failed branch) — receiver is simply never written. NOT covered by INV-virik (node introspection fields). Source: dogfood_tranche_07 F131.A2, deterministic frozen read."  # 724d
+    fields: {}  # 724d

@@ -1,0 +1,21 @@
+- op: create  # a20f
+  at: '2026-06-07T03:18:13Z'  # a20f
+  by: agent  # a20f
+  actor: jgstern_agent  # a20f
+  clock: 1  # a20f
+  nonce: a20f  # a20f
+  data:  # a20f
+    kind: work_item  # a20f
+    title: "confidence_model 'hypergumbo-evidence-v1' lacks the spec §1706-mandated .MINOR version component"  # a20f
+    status: todo_hard  # a20f
+    priority: 2  # a20f
+    parent:  # a20f
+    tags:  # a20f
+    - dogfood  # a20f
+    - dogfood_tranche_07  # a20f
+    isbefore: []  # a20f
+    duplicate_of: []  # a20f
+    not_duplicate_of: []  # a20f
+    pr_ref:  # a20f
+    description: "**Mechanism.** substrate.confidence_model == 'hypergumbo-evidence-v1'. Spec §1706 documents the confidence-model version format as hypergumbo-evidence-vMAJOR.MINOR with distinct MAJOR ('incompatible, requires new schema') and MINOR ('refinements: new evidence types, score adjustments') semantics. The emitted value has only a MAJOR component (v1); regex ^hypergumbo-evidence-v(\\d+)(?:\\.(\\d+))?$ yields major=1, minor=None. Producer: schema.py:74 CONFIDENCE_MODEL = 'hypergumbo-evidence-v1'.\n\n**Consequence.** A consumer parsing the model version per the documented vMAJOR.MINOR contract (e.g. to detect a MINOR refinement bump that added evidence types) cannot recover a minor level — it is absent. §1702 schema versions DO use 3-part MAJOR.MINOR.PATCH (0.13.0), so only the confidence_model grammar (§1706) is contradicted by its own emitter.\n\n**Related (distinct).** Distinct from WI-vibag (stable_id_scheme value v5-vs-docs-v2 drift) — this is the confidence_model scheme failing to instantiate its own documented version grammar. Source: dogfood_tranche_07 F123.A1, deterministic frozen read."  # a20f
+    fields: {}  # a20f

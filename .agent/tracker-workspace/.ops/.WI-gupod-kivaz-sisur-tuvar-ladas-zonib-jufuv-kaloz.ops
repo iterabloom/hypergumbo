@@ -1,0 +1,21 @@
+- op: create  # 2ff9
+  at: '2026-06-07T03:19:42Z'  # 2ff9
+  by: agent  # 2ff9
+  actor: jgstern_agent  # 2ff9
+  clock: 1  # 2ff9
+  nonce: 2ff9  # 2ff9
+  data:  # 2ff9
+    kind: work_item  # 2ff9
+    title: "sketch_precomputed.config_info embedding-chunk selection drops package identity (name/version/license) for 3/11 manifests"  # 2ff9
+    status: todo_hard  # 2ff9
+    priority: 2  # 2ff9
+    parent:  # 2ff9
+    tags:  # 2ff9
+    - dogfood  # 2ff9
+    - dogfood_tranche_07  # 2ff9
+    isbefore: []  # 2ff9
+    duplicate_of: []  # 2ff9
+    not_duplicate_of: []  # 2ff9
+    pr_ref:  # 2ff9
+    description: "**Mechanism.** sketch_precomputed.config_info is a 1237-char block: a heuristic line ('LICENSE: AGPL') then 11 [file] '> <one-chunk>' snippet blocks (one embedding-selected chunk per config file). For 3 of 11 files the selected chunk drops the package identity: (1) packages/hypergumbo-tracker/pyproject.toml -> '] dependencies = [ \"ruamel.yaml>=0.18\",' (starts MID-FILE with a stray ']'; real identity name=hypergumbo-tracker version=0.5.1 license=MPL-2.0 ENTIRELY ABSENT); (2) packages/hypergumbo-lang-rust-analyzer/pyproject.toml -> '[build-system] requires = [\"hatchling>=1.24\"]' (no name/version); (3) setup.py -> an error-message string literal. sketch.py:_extract_config_hybrid (2018) merges heuristic + embedding chunks; the embedding chunk selector (UnixCoder + question centroid) is NOT constrained to include the manifest's identity fields.\n\n**Consequence.** A consumer (LLM/human) reading config_info to learn the repo's packages is told nothing about the tracker package's name/version/license and instead sees a stray ']' + one dependency. The heuristic part shows only 'LICENSE: AGPL' (repo-root), contradicting tracker's MPL-2.0 — a per-package consumer would mis-attribute the license.\n\n**Related (distinct).** Distinct from INV-modor (readme_description truncation), INV-padoz (vocabulary unstemmed), INV-subak (config --format json). config_info is a separate sketch_precomputed sub-field in no ledger row. Note INV-jifus flags sketch_precomputed has no schema (broader). Source: dogfood_tranche_07 F129.A1, deterministic frozen read."  # 2ff9
+    fields: {}  # 2ff9

@@ -1,0 +1,21 @@
+- op: create  # 5cca
+  at: '2026-06-07T03:17:41Z'  # 5cca
+  by: agent  # 5cca
+  actor: jgstern_agent  # 5cca
+  clock: 1  # 5cca
+  nonce: 5cca  # 5cca
+  data:  # 5cca
+    kind: work_item  # 5cca
+    title: "File node and its sole function collide on one fingerprint because the structural walk strips comments"  # 5cca
+    status: todo_hard  # 5cca
+    priority: 2  # 5cca
+    parent:  # 5cca
+    tags:  # 5cca
+    - dogfood  # 5cca
+    - dogfood_tranche_07  # 5cca
+    isbefore: []  # 5cca
+    duplicate_of: []  # 5cca
+    not_duplicate_of: []  # 5cca
+    pr_ref:  # 5cca
+    description: "**Mechanism.** fingerprint hgfp1:23068382e05ac146 is shared by TWO nodes with DIFFERENT spans: kind=function name=registerServiceWorker (lines 10-23, loc 14) and kind=file .../sw-register.ts (lines 1-24, loc 24). Same for hgfp1:ccc7f18322474119: bash function repair_agent_perms (lines 16-54) == file .githooks/repair-agent-perms.sh (lines 1-55). Mechanism: sw-register.ts is a 9-line JSDoc comment block + the single 'export function registerServiceWorker(){...}' (lines 10-23). Because the fingerprint walk STRIPS comments (fingerprint.py docstring lines 36-44), the file-node's post-comment AST is byte-for-byte the same walk as the function-node's AST — so a FILE and a FUNCTION it contains are asserted content-identical.\n\n**Consequence.** The field's stated purpose is 'symbol-level change detection, duplicate-code detection, per-symbol cache invalidation' (fingerprint.py:22). A dedup/change-detection consumer treating equal-fingerprint nodes as the same unit conflates a whole file with one of its functions, and would mark the file 'unchanged' if only the comment block changed. 2 file-vs-nonfile fp collision groups on this substrate — small but a correctness class (triggers whenever a file is one commented function), not a one-off. (200 fp collision groups / 723 nodes total; most are genuinely-duplicated helper bodies, which is correct for a structural fingerprint — the file/function cross-kind collision is the defect subset.)\n\n**Related (distinct).** Cross-links to card WI-falum-... family-fingerprint work and the spec-semantics row (F137.A1). Source: dogfood_tranche_07 F137.A2, deterministic frozen read + sw-register.ts confirmation."  # 5cca
+    fields: {}  # 5cca
