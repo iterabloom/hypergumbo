@@ -83,3 +83,18 @@
   clock: 8  # 91d7
   nonce: 91d7  # 91d7
   message: "Closed by Phase 4 PR1 (lines_of_code, commit c17f639177) and Phase 4 PR5 (cyclomatic_complexity, commit eab4e43aed). Both fields populated across 9 analyzer files / 10 languages. Phase 4 PR5 validation confirmed writer_contract violations = 0 for the matrix."  # 91d7
+- op: update  # aae4
+  at: '2026-06-07T03:11:00Z'  # aae4
+  by: agent  # aae4
+  actor: jgstern_agent  # aae4
+  clock: 9  # aae4
+  nonce: aae4  # aae4
+  set:  # aae4
+    status: violated  # aae4
+- op: discuss  # 5b29
+  at: '2026-06-07T03:11:00Z'  # 5b29
+  by: agent  # 5b29
+  actor: jgstern_agent  # 5b29
+  clock: 10  # 5b29
+  nonce: 5b29  # 5b29
+  message: "Reproduced on fresh substrate (dogfood_tranche_07 F127.A1): the 'satisfied via PR1+PR5 sweeps' claim does not hold for bash cyclomatic_complexity. cyclomatic_complexity coverage on function|method nodes: bash 0/155 (0%) — LOC 100% but CC entirely null; solidity 0/2 and wgsl 0/3 are 0% on BOTH CC and LOC. Source: grep cyclomatic hits js_ts/go/swift/java/csharp/rust but 0 hits in bash.py. Real magnitude: poll_ci (243 LOC) and do_merge (296 LOC) carry CC=None. Fresh hypergumbo run on a /tmp bash fn with if/elif/else+for+while (true CC ~5) -> cyclomatic_complexity=None. TS improved to 100% since the original table but bash/solidity/wgsl persist. Reopened satisfied -> violated (invariant kind cannot use todo_hard)."  # 5b29

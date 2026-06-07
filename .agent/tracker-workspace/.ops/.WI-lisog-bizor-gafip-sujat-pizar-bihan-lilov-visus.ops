@@ -26,3 +26,10 @@
   clock: 2  # 61e3
   nonce: '61e3'  # 61e3
   message: "[related to INV-fogum (TOML raw-hex) and WI-fanun (done; global null) — this row adds Python-test-methods-null (3911 nodes) and WGSL bare-hex (5 nodes) populations]"  # 61e3
+- op: discuss  # 0df3
+  at: '2026-06-07T03:11:53Z'  # 0df3
+  by: agent  # 0df3
+  actor: jgstern_agent  # 0df3
+  clock: 3  # 0df3
+  nonce: 0df3  # 0df3
+  message: "Re-confirmed on fresh substrate (dogfood_tranche_07 F137.A3): WGSL fingerprints are bare 16-hex (1b86eea11f129a27, 2a47dae30690128e, ...) with NO hgfp1: / wgsl-v1: prefix on 5 nodes (VertexInput, VertexOutput, cs_main, fs_main, vs_main). Source: wgsl.py:236/266/325 emit hashlib.sha256(source[start:end]).hexdigest()[:16] with no prefix — a SEPARATE producer from fingerprint.py's hgfp1: path. fingerprint.py:54 tells consumers to detect the version via the prefix; for these 5 nodes split-on-':' yields the whole hex as scheme, no version. Exactly this row's listed WGSL bare-hex population (item (c)); re-confirmed."  # 0df3

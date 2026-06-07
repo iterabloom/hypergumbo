@@ -21,3 +21,10 @@
     pr_ref:  # aea6
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family K). Stand-alone finding F30.6 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-30 discussion entry.\n\n## Symptom\n\n`edge.type` substrate vocabulary has 18 distinct values; spec.md documents 8. 13 substrate values are undocumented.\n\nDocumented vocabulary: `calls`, `contains`, `imports`, `extends`, `implements`, `decorated_by`, `derives_from`, `references`. Substrate also emits: `assigns_to`, `instantiates`, plus framework-specific edge types like `register_analyzer`, `dispatches_to`, etc.\n\n## Invariant\n\nSame as WI-edge-evidence-type-vocab-drift: spec amendment OR producer constraint to documented vocabulary.\n\n## Fix sketch\n\nEnumerate all substrate values, document or normalize, add membership check to validator.\n\n## Source provenance\n\n- **F30.6** — INV-luhur discussion entry 2026-06-02 (pass-30 batch).\n\nLab notebook: pass 30.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-edge-evidence-type-vocab-drift** (Family K — same pattern, sibling field).\n- Family K siblings."  # aea6
     fields: {}  # aea6
+- op: discuss  # 37af
+  at: '2026-06-07T03:11:30Z'  # 37af
+  by: agent  # 37af
+  actor: jgstern_agent  # 37af
+  clock: 2  # 37af
+  nonce: 37af  # 37af
+  message: "Re-confirmed + refined on fresh substrate (dogfood_tranche_07 F123.A2): isolates a specific instance of the 18-vs-8 edge-type vocab drift — depends_on (6 edges, json package.json -> npm :dependency nodes, conf 0.95) and depends_on_manifest (26, pyproject deps) bifurcate ONE dependency relation under two names, split by manifest FORMAT (json/xml/dockerfile/just/starlark/meson/hcl emit depends_on; pyproject-linker emits depends_on_manifest). depends_on has 0 grep hits in docs/hypergumbo-spec.md (undocumented), though it IS in edge_types.py:94 whose own comment (line 308) flags a sibling 'likely folds to depends_on'. Consumer asking 'what does X depend on' must union two differently-named types, one unspecified. Folds here as a concrete depends_on facet of the vocab-drift fix."  # 37af

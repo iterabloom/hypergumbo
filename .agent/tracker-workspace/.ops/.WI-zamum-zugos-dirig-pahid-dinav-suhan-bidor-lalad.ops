@@ -19,3 +19,10 @@
     pr_ref:  # 0d61
     description: "**Defect.** The edge-meta `channel` field is emitted but appears in no documentation or schema.\n\n**Evidence.** The producer writes meta.channel onto 145/110533 edges (event_publishes 103, references 30, calls 12), but neither docs/hypergumbo-spec.md nor docs/schema.json declares it — grep for the field in docs returns 0 hits, and channel is absent from the schema's edge-meta properties. The spec documents only a sibling discriminator (channel_kind, §815); the raw channel value is described nowhere.\n\n**Contract.** Every field the behavior map emits should be declared in the schema and described in the spec, so a consumer can learn its meaning and rely on its presence/absence having a defined contract.\n\n**Consequence.** A consumer cannot validate the field against the schema and has no authority for interpreting its values; tooling that strictly validates the map would either reject it or silently ignore real routing data.\n\n**Related (not duplicate).** WI-mulub tracks the channel meta-key being unregistered in MetaKeySpec (a validator-registry fix); this is the spec/schema documentation gap (a docs fix)."  # 0d61
     fields: {}  # 0d61
+- op: discuss  # ea18
+  at: '2026-06-07T03:11:30Z'  # ea18
+  by: agent  # ea18
+  actor: jgstern_agent  # ea18
+  clock: 2  # ea18
+  nonce: ea18  # ea18
+  message: "Re-confirmed + extended on fresh substrate (dogfood_tranche_07 F125.A4): on the 103 event_publishes edges, FOUR meta keys co-encode the same MQ info — queue_type (kafka 85/rabbitmq 12/sqs 4/redis 2), topic_type (literal 87/variable 16), topic, channel. This row documents channel==topic redundancy; this adds that queue_type and topic_type are TWO further co-emitted, undocumented (0 spec/schema hits) MQ meta keys on the same edges. Folds as a sibling-key facet."  # ea18

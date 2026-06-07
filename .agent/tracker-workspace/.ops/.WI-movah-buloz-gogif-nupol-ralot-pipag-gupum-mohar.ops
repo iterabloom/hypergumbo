@@ -27,3 +27,10 @@
   clock: 2  # 0786
   nonce: '0786'  # 0786
   message: "[+ tranch_03: anon-card-tranch03-035 F54.A3 — 262 nodes language=None; strict detector undercounts 57% (identical 248/11/3 per-language breakdown; folded as duplicate; blind severity 4; new row WI-nagam wont_do)]"  # 0786
+- op: discuss  # abb9
+  at: '2026-06-07T03:11:53Z'  # abb9
+  by: agent  # abb9
+  actor: jgstern_agent  # abb9
+  clock: 3  # abb9
+  nonce: abb9  # abb9
+  message: "Re-confirmed + node-side quantified on fresh substrate (dogfood_tranche_07 F140.A2): metrics.languages.<lang>.nodes over-counts python +248 (metrics 33846 vs actual 33598), javascript +11 (13 vs 2), typescript +3 (67 vs 64) = exactly 262 = the count of language=None synthetic-linker nodes, folded into specific language buckets by id-prefix; metrics.languages.unknown.nodes=0 (no None/unknown bucket). All other languages match exactly; Sigma metrics.nodes=34396=total. This is the node-side quantification this row's symptom names but never measured (the prior facet measured only the 120-edge side)."  # abb9

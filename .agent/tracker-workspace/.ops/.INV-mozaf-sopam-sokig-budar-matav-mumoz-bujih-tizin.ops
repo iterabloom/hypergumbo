@@ -125,3 +125,10 @@
   clock: 14  # b08d
   nonce: b08d  # b08d
   message: "Split note (ADD-only cross-ref): the undocumented 3rd metrics.debug key (profile_files_sum) referenced in the U09a facet above was materialized as its own work item WI-mikin-titit-magib-hijaf-vajun-ridog-maguk-dimik — a distinct doc/remove fix from the total_files file-accounting reconciliation this invariant tracks."  # b08d
+- op: discuss  # c43f
+  at: '2026-06-07T03:11:30Z'  # c43f
+  by: agent  # c43f
+  actor: jgstern_agent  # c43f
+  clock: 15  # c43f
+  nonce: c43f  # c43f
+  message: "Re-confirmed on fresh substrate (dogfood_tranche_07 F121.A4): three divergent file counts coexist — metrics.total_files=916 == metrics.debug.unique_paths_in_analysis=916 (these now MATCH, contra the original 1198-vs-902 wording), but metrics.debug.analyzed_file_symbols=902 (= file-kind node count) and metrics.debug.profile_files_sum=1218. So 902 / 916 / 1218 spread; the gap moved to total_files(916) vs file-kind nodes(902) [14 paths walked, no file node] and vs profile_files_sum(1218). Same mechanism, magnitudes refreshed (matches the prior 2026-06-06 magnitude-refresh discussion entries)."  # c43f
