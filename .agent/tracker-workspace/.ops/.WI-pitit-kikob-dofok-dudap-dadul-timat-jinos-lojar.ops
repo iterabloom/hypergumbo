@@ -1,0 +1,27 @@
+- op: create  # c41a
+  at: '2026-06-07T06:40:21Z'  # c41a
+  by: agent  # c41a
+  actor: jgstern_agent  # c41a
+  clock: 1  # c41a
+  nonce: c41a  # c41a
+  data:  # c41a
+    kind: work_item  # c41a
+    title: "event-sourcing-linker over-broad '.connect(' regex hardcodes framework=django (FPs on sqlite3/socket; 4 false Django nodes)"  # c41a
+    status: todo_hard  # c41a
+    priority: 1  # c41a
+    parent:  # c41a
+    tags:  # c41a
+    - dogfood  # c41a
+    isbefore: []  # c41a
+    duplicate_of: []  # c41a
+    not_duplicate_of: []  # c41a
+    pr_ref:  # c41a
+    description: ""  # c41a
+    fields: {}  # c41a
+- op: discuss  # 631b
+  at: '2026-06-07T06:41:21Z'  # 631b
+  by: agent  # 631b
+  actor: jgstern_agent  # 631b
+  clock: 2  # 631b
+  nonce: 631b  # 631b
+  message: "Dogfood finding (member F159.A1, independent — theme C2 linker FPs), reproduces on the frozen substrate. Mechanism: the event-sourcing linker's Django-signal regex matches any receiver.connect(arg) rather than only Django signal connections, and the scan unconditionally stamps framework=\"django\", role event_subscriber. The .connect( idiom is ubiquitous (db drivers, sockets, Qt, asyncio), so non-Django calls become synthetic Django event nodes. Scope: 4 false Django-framework synthetic nodes in the substrate (e.g. three sqlite3.connect(...) sites stamped sqlite3:event_subscriber framework=django, plus one .send() match), with Django not declared as a dependency anywhere. Fires on sockets too (reproduced). Affects any repo using .connect(. Exposure/consequence: any consumer reading event/framework metadata to learn whether a repo uses Django signals concludes the repo uses Django signals when it uses sqlite3/sockets, and may propose Django-signal-shaped refactors or audits that are entirely inapplicable. Expectation: a framework attribution fires only on that framework's actual API, or is gated on a dependency signal; Django nodes appear only when Django signals are actually used. Theme C2 (test/dep-blind linker false positives) sibling of U19/U20/U21. Related to WI-babun (meta.framework_dispatch names django absent from profile.frameworks) — that is the surface-contradiction symptom; this is the producer-side over-broad-regex + dep-blind root for the false django nodes. Cross-ref WI-babun, WI-napuj."  # 631b

@@ -1,0 +1,27 @@
+- op: create  # e575
+  at: '2026-06-07T06:39:40Z'  # e575
+  by: agent  # e575
+  actor: jgstern_agent  # e575
+  clock: 1  # e575
+  nonce: e575  # e575
+  data:  # e575
+    kind: work_item  # e575
+    title: "supply_chain TEST_FILE_PATTERNS lacks Python test_*.py/*_test.py + bash test_*.sh suffix rules; out-of-tree tests mislabeled production"  # e575
+    status: todo_hard  # e575
+    priority: 1  # e575
+    parent:  # e575
+    tags:  # e575
+    - dogfood  # e575
+    isbefore: []  # e575
+    duplicate_of: []  # e575
+    not_duplicate_of: []  # e575
+    pr_ref:  # e575
+    description: ""  # e575
+    fields: {}  # e575
+- op: discuss  # 5a54
+  at: '2026-06-07T06:41:21Z'  # 5a54
+  by: agent  # 5a54
+  actor: jgstern_agent  # 5a54
+  clock: 2  # 5a54
+  nonce: 5a54  # 5a54
+  message: "Dogfood finding (member F149.A1, independent), reproduces on the frozen substrate. Mechanism: the supply-chain test-file suffix pattern table (TEST_FILE_PATTERNS) covers Go/JS/TS/Ruby/C/C++/Rust conventions but has no Python (test_*.py, *_test.py) or bash (test_*.sh) suffix entry. Python/bash test files are caught only by directory patterns (tests/, __tests__/, spec/); a real test file living outside such a directory is classified is_test_file=False. Scope: asymmetric gap for Python and bash. Concrete victim in the substrate: .githooks/test_hooks.sh (a real bash test suite) has 7 nodes all is_test_file=False. Affects supply-chain tiering / test exclusion on any repo with out-of-directory Python/bash tests. Exposure/consequence: any consumer using the test/production split to exclude tests from analysis, ranking, or slices, on a repo with out-of-tree Python/bash tests, treats test code as production: it inflates first-party ranking, leaks into slices that requested test exclusion, and pollutes any production-only audit. Expectation: a test file is recognized by its language's conventional suffix regardless of directory, symmetric with the other languages already covered. Distinct from WI-popok (entrypoint detector uses its own test_*.py filename heuristic instead of Symbol.supply_chain.is_test_file) — this is the upstream supply_chain classifier's missing suffix rules. Cross-ref WI-popok."  # 5a54

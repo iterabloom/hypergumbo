@@ -1,0 +1,27 @@
+- op: create  # eafb
+  at: '2026-06-07T06:43:45Z'  # eafb
+  by: agent  # eafb
+  actor: jgstern_agent  # eafb
+  clock: 1  # eafb
+  nonce: eafb  # eafb
+  data:  # eafb
+    kind: work_item  # eafb
+    title: "Field name 'not_captured' collides across limits and reproducibility_context blocks with disjoint semantics"  # eafb
+    status: todo_hard  # eafb
+    priority: 3  # eafb
+    parent:  # eafb
+    tags:  # eafb
+    - dogfood  # eafb
+    isbefore: []  # eafb
+    duplicate_of: []  # eafb
+    not_duplicate_of: []  # eafb
+    pr_ref:  # eafb
+    description: ""  # eafb
+    fields: {}  # eafb
+- op: discuss  # b893
+  at: '2026-06-07T06:43:58Z'  # b893
+  by: agent  # b893
+  actor: jgstern_agent  # b893
+  clock: 2  # b893
+  nonce: b893  # b893
+  message: "Dogfood finding (member F154.A2, independent), reproduces on the frozen substrate. Mechanism: the field name not_captured is reused with disjoint semantics in two different top-level blocks. limits.not_captured lists source constructs the analysis did not parse (dynamic imports, eval, monkey-patching, complex decorators); reproducibility_context.not_captured lists reproducibility factors not pinned (transitive deps, OS/libc, hardware). Same key name, two unrelated meanings, in two blocks. Scope: 2 top-level blocks (limits, reproducibility_context) each carry a not_captured array with non-overlapping semantics; affects every run output. Exposure/consequence: a consumer that searches the behavior map for not_captured (or writes generic handling keyed on the field name) conflates \"constructs not analyzed\" with \"reproducibility factors not pinned,\" producing a confused completeness assessment. Expectation: a field name denotes one concept across the document; two distinct concepts get two distinct names. Distinct from WI-togop (limits.not_captured is a hardcoded universal constant) and from INV-lifik symptom (3) (which is the edge.meta-vs-node.meta field-name collision, not this top-level-block collision). Cross-ref WI-togop, INV-lifik."  # b893

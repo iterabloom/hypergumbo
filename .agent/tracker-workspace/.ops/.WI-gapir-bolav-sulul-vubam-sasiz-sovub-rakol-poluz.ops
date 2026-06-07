@@ -1,0 +1,27 @@
+- op: create  # dff0
+  at: '2026-06-07T06:39:45Z'  # dff0
+  by: agent  # dff0
+  actor: jgstern_agent  # dff0
+  clock: 1  # dff0
+  nonce: dff0  # dff0
+  data:  # dff0
+    kind: work_item  # dff0
+    title: "Python cyclomatic_complexity counts 'with'/'async with' as a decision point, inflating CC above the documented McCabe definition (7.9% of fns)"  # dff0
+    status: todo_hard  # dff0
+    priority: 2  # dff0
+    parent:  # dff0
+    tags:  # dff0
+    - dogfood  # dff0
+    isbefore: []  # dff0
+    duplicate_of: []  # dff0
+    not_duplicate_of: []  # dff0
+    pr_ref:  # dff0
+    description: ""  # dff0
+    fields: {}  # dff0
+- op: discuss  # ede7
+  at: '2026-06-07T06:41:21Z'  # ede7
+  by: agent  # ede7
+  actor: jgstern_agent  # ede7
+  clock: 2  # ede7
+  nonce: ede7  # ede7
+  message: "Dogfood finding (member F158.A1, independent), reproduces on the frozen substrate. Mechanism: the Python complexity computer adds +1 for each with / async with, but a with statement is unconditional control flow (no CFG branch) and is not a McCabe decision point. The field nonetheless self-describes as \"McCabe (decision points + 1)\". Scope: substrate CC values match the with-counting formula exactly. 1971 Python functions/methods (7.9% of the ~25k Python fn/method nodes carrying CC) report a strictly inflated value, for 2499 total inflation points; worst observed single-function inflation +5. Exposure/consequence: a consumer ranking refactoring targets by complexity, gating on a complexity threshold, or comparing against an external McCabe tool, on context-manager-heavy Python, over-flags with-heavy code and disagrees with standard tooling; every context-manager-using function reports a silently inflated, flagless complexity. Expectation: a field labeled McCabe counts only true decision points (if/for/while/except/boolean operators/ternary/comprehension-if/match-case), not context managers, so it matches external McCabe tools. Distinct from INV-loguk (non-Python analyzers don't POPULATE cyclomatic_complexity at all) — this is a Python OVER-count of a populated value. Cross-ref INV-loguk."  # ede7

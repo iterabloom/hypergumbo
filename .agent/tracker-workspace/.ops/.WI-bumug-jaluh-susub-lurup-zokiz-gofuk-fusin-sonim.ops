@@ -1,0 +1,27 @@
+- op: create  # ca77
+  at: '2026-06-07T06:39:38Z'  # ca77
+  by: agent  # ca77
+  actor: jgstern_agent  # ca77
+  clock: 1  # ca77
+  nonce: ca77  # ca77
+  data:  # ca77
+    kind: work_item  # ca77
+    title: "WebSocket detection bypasses the documented channel_kind discriminator; emits references/calls edges with raw meta.channel='/ws' instead of event_publishes"  # ca77
+    status: todo_hard  # ca77
+    priority: 1  # ca77
+    parent:  # ca77
+    tags:  # ca77
+    - dogfood  # ca77
+    isbefore: []  # ca77
+    duplicate_of: []  # ca77
+    not_duplicate_of: []  # ca77
+    pr_ref:  # ca77
+    description: ""  # ca77
+    fields: {}  # ca77
+- op: discuss  # cba4
+  at: '2026-06-07T06:41:21Z'  # cba4
+  by: agent  # cba4
+  actor: jgstern_agent  # cba4
+  clock: 2  # cba4
+  nonce: cba4  # cba4
+  message: "Dogfood finding (member F147.A1-b, split from F147.A1), reproduces on the frozen substrate. Mechanism: the documented contract routes WebSocket sends to an event_publishes edge carrying meta[\"channel_kind\"]=\"websocket\". Instead, WS detection emits references/calls edges (file-anchor -> synthetic endpoint node) carrying a raw meta.channel key, with no channel_kind, no protocol, and no framework. The evidence lives under a different edge type and a different, undocumented meta key. Scope: 42 WS-channel edges (30 references + 12 calls) carry raw meta.channel and zero carry channel_kind; affects WS detection on any repo. Exposure/consequence: a consumer following the documented contract to find WebSocket channels by filtering event_publishes where channel_kind==\"websocket\" gets zero results; an agent enumerating message channels by the contract entirely misses WebSocket communication, then reasons about a graph that omits it. Expectation (spec table): WS sends surface as event_publishes edges discriminated by meta.channel_kind=\"websocket\". Related but distinct from WI-zamum (meta.channel undocumented in spec/schema), WI-pozom (meta.channel referent overload across edge types), WI-vovob (meta.channel duplicates meta.topic) — those concern the meta.channel key itself; THIS row is the wrong-edge-type routing + missing channel_kind discriminator on WS sends, which has its own fix (route WS to event_publishes with channel_kind=websocket). Also distinct from WI-bumug's sibling WI-... channel_kind value-space collapse folded onto INV-lifik. Cross-ref WI-zamum, WI-pozom, WI-vovob, INV-lifik."  # cba4

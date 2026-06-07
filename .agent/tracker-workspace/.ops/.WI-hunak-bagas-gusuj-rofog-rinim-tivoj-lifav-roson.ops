@@ -1,0 +1,27 @@
+- op: create  # e5fe
+  at: '2026-06-07T06:40:26Z'  # e5fe
+  by: agent  # e5fe
+  actor: jgstern_agent  # e5fe
+  clock: 1  # e5fe
+  nonce: e5fe  # e5fe
+  data:  # e5fe
+    kind: work_item  # e5fe
+    title: "spec §1530 🟩-done presence test + §799 'always reflect' prose are false for evidence_lang/evidence_spans (0% populated)"  # e5fe
+    status: todo_hard  # e5fe
+    priority: 2  # e5fe
+    parent:  # e5fe
+    tags:  # e5fe
+    - dogfood  # e5fe
+    isbefore: []  # e5fe
+    duplicate_of: []  # e5fe
+    not_duplicate_of: []  # e5fe
+    pr_ref:  # e5fe
+    description: ""  # e5fe
+    fields: {}  # e5fe
+- op: discuss  # 6164
+  at: '2026-06-07T06:41:22Z'  # 6164
+  by: agent  # 6164
+  actor: jgstern_agent  # 6164
+  clock: 2  # 6164
+  nonce: '6164'  # 6164
+  message: "Dogfood finding (member F160.A2-b, split from F160.A2 — spec/done-marker side), reproduces on the frozen substrate. Mechanism: the serializer never sets evidence_lang or evidence_spans on edges (keys absent everywhere, 0/110533). Yet spec line 1530 lists \"Required field presence (execution_id, run_signature, evidence_lang, evidence_spans)\" as 🟩 done, and §799 prose states the top-level evidence fields \"always reflect the primary record.\" The schema itself lists these fields as optional — so prose-says-required contradicts schema-says-optional AND the actual 0% population. Scope: 2 of the 4 fields named in the done-marked presence test (evidence_lang, evidence_spans) are 0% populated on 110533 edges; affects every run output and the credibility of the done-marker. Exposure/consequence: a consumer who reads the 🟩-done marker or the \"always present\" prose and writes code assuming these edge fields exist dereferences absent fields; more broadly, a 🟩-done claim that is 0% true erodes trust in the spec's status markers when deciding what to depend on. Expectation: a 🟩-done required-presence claim holds — the named fields are present on the edges they describe, and the \"always reflect\" prose is true. This is the spec-credibility / documentation-fix side (correct the 🟩 marker + reconcile prose-vs-schema), distinct from the producer-population rows WI-vozar (evidence_spans never populated; notes the same line-1530 marker) and WI-gijus (meta.evidence[] structurally impossible; cites §799) and WI-kuluh (evidence_lang null). Cross-ref WI-vozar, WI-gijus, WI-kuluh."  # 6164

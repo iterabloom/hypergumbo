@@ -1,0 +1,27 @@
+- op: create  # 9951
+  at: '2026-06-07T06:40:23Z'  # 9951
+  by: agent  # 9951
+  actor: jgstern_agent  # 9951
+  clock: 1  # 9951
+  nonce: '9951'  # 9951
+  data:  # 9951
+    kind: work_item  # 9951
+    title: "websocket-linker stamps server_framework='fastapi' though FastAPI is not a dependency (_PATTERN_TYPE_TO_FRAMEWORK dep-blind)"  # 9951
+    status: todo_hard  # 9951
+    priority: 1  # 9951
+    parent:  # 9951
+    tags:  # 9951
+    - dogfood  # 9951
+    isbefore: []  # 9951
+    duplicate_of: []  # 9951
+    not_duplicate_of: []  # 9951
+    pr_ref:  # 9951
+    description: ""  # 9951
+    fields: {}  # 9951
+- op: discuss  # 43d4
+  at: '2026-06-07T06:41:22Z'  # 43d4
+  by: agent  # 43d4
+  actor: jgstern_agent  # 43d4
+  clock: 2  # 43d4
+  nonce: 43d4  # 43d4
+  message: "Dogfood finding (member F159.A2-b, split from F159.A2), reproduces on the frozen substrate. Mechanism: the websocket-linker's pattern-type->framework map (_PATTERN_TYPE_TO_FRAMEWORK) assigns a framework string from the matched pattern type alone, with no check against installed dependencies. The matched WS pattern resolves to fastapi regardless of what the repo actually depends on. Scope: 6 cross-language WS calls edges carry meta.server_framework=\"fastapi\" while FastAPI is not in any manifest; the repo's actual server framework is starlette (which also appears, 6 edges). Affects WS linker edges on any repo whose WS patterns resemble FastAPI's. Exposure/consequence: any consumer reading server_framework to learn which web framework serves a repo's WS endpoints concludes the repo runs FastAPI and may propose FastAPI-specific refactors/config/audits that do not apply, while overlooking the real framework. Expectation: a framework attribution reflects a framework the repo actually uses (or is gated on a dependency/manifest signal), not the pattern matcher's static guess. Related but distinct from WI-babun (the framework_dispatch vs profile.frameworks two-surface contradiction, fastapi=18 absent from profile) and WI-napuj (root: frameworks have no node-level provenance, the E03 enrichment target) — this row is the producer-level dep-blind _PATTERN_TYPE_TO_FRAMEWORK fix on the server_framework meta key, which can close independently. Also sibling of WI-zurig (U19: WS fixtures in test files) and WI-mulub (server_framework unregistered in MetaKeySpec). Cross-ref WI-babun, WI-napuj, WI-zurig, WI-mulub."  # 43d4

@@ -1,0 +1,27 @@
+- op: create  # a9d9
+  at: '2026-06-07T06:39:42Z'  # a9d9
+  by: agent  # a9d9
+  actor: jgstern_agent  # a9d9
+  clock: 1  # a9d9
+  nonce: a9d9  # a9d9
+  data:  # a9d9
+    kind: work_item  # a9d9
+    title: "io-boundaries high_risk output field undocumented in spec and schema (existence, membership rule, semantics)"  # a9d9
+    status: todo_hard  # a9d9
+    priority: 2  # a9d9
+    parent:  # a9d9
+    tags:  # a9d9
+    - dogfood  # a9d9
+    isbefore: []  # a9d9
+    duplicate_of: []  # a9d9
+    not_duplicate_of: []  # a9d9
+    pr_ref:  # a9d9
+    description: ""  # a9d9
+    fields: {}  # a9d9
+- op: discuss  # f420
+  at: '2026-06-07T06:41:21Z'  # f420
+  by: agent  # f420
+  actor: jgstern_agent  # f420
+  clock: 2  # f420
+  nonce: f420  # f420
+  message: "Dogfood finding (member F156.A2, independent), reproduces on the frozen substrate. Mechanism: io-boundaries JSON output stamps a per-chain high_risk boolean (text mode prints \"*** HIGH RISK ***\"), derived from a HIGH_RISK_PRIMITIVES membership rule (subprocess, destructive fs writes, network sends). The field, its membership rule, and its semantics have zero occurrences in the consumer-facing spec or schema (0 grep hits in spec.md and schema.json each). Scope: high_risk produced on the io-boundaries command; in this run, 64 high-risk chains (subprocess 37, fs_write 18, net_send 9). Exposure/consequence: any consumer keying a CI gate or a security review on io-boundaries output needs to know what high_risk means and which primitives trigger it; a consumer gating on high_risk cannot tell whether a high_risk=false chain is actually safe or merely outside the (undocumented) trigger set. Expectation: a field a consumer would gate CI on is documented — its existence, the set of primitives it covers, and what \"high risk\" asserts. Related but distinct from WI-tijos (the high_risk VALUE is wrong for urlretrieve; drift guard only ratchets subprocess) and WI-datoz (io-boundaries boundary-category vocabulary vs spec) — this is the documentation gap for the high_risk field itself, with its own fix (document existence + membership rule + semantics). Cross-ref WI-tijos, WI-datoz."  # f420

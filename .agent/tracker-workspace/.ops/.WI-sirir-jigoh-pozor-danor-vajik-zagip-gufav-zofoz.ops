@@ -19,3 +19,10 @@
     pr_ref:  # deba
     description: "**Defect.** The profile block emits two framework fields (`dev_frameworks`, `framework_mode`) that exist in neither the spec nor the schema.\n\n**Evidence.** The profile producer writes dev_frameworks (e.g. ['pytest']) and framework_mode (e.g. 'auto') into every behavior map, produced by profile.py, but docs/hypergumbo-spec.md's profile example and the auto-generated docs/schema.json both omit them (0 doc grep hits). They are defined only in producer source.\n\n**Contract.** A schema that self-describes as auto-generated from the dataclasses should enumerate every field the producer actually emits, and the spec's profile description should match the emitted shape.\n\n**Consequence.** Schema-driven tooling treats real, always-present profile data as unexpected; a consumer building on the documented profile shape misses framework-mode and dev-framework signals entirely."  # deba
     fields: {}  # deba
+- op: discuss  # 8e19
+  at: '2026-06-07T06:42:50Z'  # 8e19
+  by: agent  # 8e19
+  actor: jgstern_agent  # 8e19
+  clock: 2  # 8e19
+  nonce: '8e19'  # 8e19
+  message: "Dogfood enrichment (member F145.A1-a) — generator-staleness facet, reproduces on the frozen substrate. AnalysisRun.failed_files and pass_version are emitted on every analysis_runs entry but are absent from the AnalysisRun schema $def — the same auto-generated-schema-omits-emitted-fields mechanism this row already documents for profile (dev_frameworks/framework_mode). The schema self-describes as auto-generated from the dataclasses yet does not enumerate these AnalysisRun fields, so schema-driven tooling treats real, always-present per-run data as unexpected. Folded here as an additional instance of the same schema-generator staleness; the producer-level root (the dataclass->schema generator emitting contentless/incomplete defs) is filed separately as WI-galug, and the failed_files duplication/placement concern as WI-sizih. Cross-ref WI-galug, WI-sizih."  # 8e19

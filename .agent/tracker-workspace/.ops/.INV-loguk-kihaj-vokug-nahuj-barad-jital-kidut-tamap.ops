@@ -98,3 +98,10 @@
   clock: 10  # 5b29
   nonce: 5b29  # 5b29
   message: "Reproduced on fresh substrate (dogfood_tranche_07 F127.A1): the 'satisfied via PR1+PR5 sweeps' claim does not hold for bash cyclomatic_complexity. cyclomatic_complexity coverage on function|method nodes: bash 0/155 (0%) — LOC 100% but CC entirely null; solidity 0/2 and wgsl 0/3 are 0% on BOTH CC and LOC. Source: grep cyclomatic hits js_ts/go/swift/java/csharp/rust but 0 hits in bash.py. Real magnitude: poll_ci (243 LOC) and do_merge (296 LOC) carry CC=None. Fresh hypergumbo run on a /tmp bash fn with if/elif/else+for+while (true CC ~5) -> cyclomatic_complexity=None. TS improved to 100% since the original table but bash/solidity/wgsl persist. Reopened satisfied -> violated (invariant kind cannot use todo_hard)."  # 5b29
+- op: discuss  # a0d4
+  at: '2026-06-07T06:42:51Z'  # a0d4
+  by: agent  # a0d4
+  actor: jgstern_agent  # a0d4
+  clock: 11  # a0d4
+  nonce: a0d4  # a0d4
+  message: "Dogfood CORRECTION reopen (member F148.A1) — corrects this invariant's cc-closure, reproduces on the frozen substrate. The bash cyclomatic_complexity gap is still present: bash symbols carry lines_of_code (71%) but cyclomatic_complexity remains 0% populated, contradicting the closure note \"Satisfied via PR1 + PR5 sweeps across 10 mainstream analyzers.\" The dogfood pass found bash cc% = 0 on the substrate. This invariant is currently already in the violated state (it had been reopened previously), so no further status change is required — recording this finding to keep the bash cyclomatic_complexity gap explicit under the invariant per the status-adjustment rule. Note for contrast: the Python cyclomatic_complexity OVER-count of `with` statements (a distinct defect, populated-but-wrong rather than absent) is filed as a separate net-new row (WI-gapir, F158.A1). Cross-ref WI-gapir."  # a0d4
