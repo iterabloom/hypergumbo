@@ -1,0 +1,21 @@
+- op: create  # b486
+  at: '2026-06-07T03:16:41Z'  # b486
+  by: agent  # b486
+  actor: jgstern_agent  # b486
+  clock: 1  # b486
+  nonce: b486  # b486
+  data:  # b486
+    kind: work_item  # b486
+    title: "Symbol.fingerprint is a structural AST hash modulo whitespace/comments, not spec §344's sha256(source_bytes)"  # b486
+    status: todo_hard  # b486
+    priority: 1  # b486
+    parent:  # b486
+    tags:  # b486
+    - dogfood  # b486
+    - dogfood_tranche_07  # b486
+    isbefore: []  # b486
+    duplicate_of: []  # b486
+    not_duplicate_of: []  # b486
+    pr_ref:  # b486
+    description: "**Mechanism.** Spec docs/hypergumbo-spec.md:344 defines: 'fingerprint (content hash): sha256(source_bytes)'. But the dominant producer (fingerprint.py, 28569/28574 populated nodes, prefix hgfp1:) computes a STRUCTURAL AST fingerprint 'modulo whitespace and comments' (fingerprint.py docstring lines 8-13: 'two symbols whose code text is identical except for blank lines, indentation choices, and comments produce the same fingerprint'). It is explicitly NOT sha256(source_bytes).\n\n**Evidence.** probe_1_fpscheme.log: 28569 nodes carry hgfp1: prefix. Ironically the bare-hex WGSL form (WI-lisog) IS raw sha256(bytes)[:16], the actual spec definition the hgfp1: form violates — so two coexisting formats neither of which fully matches.\n\n**Consequence.** A consumer reading spec §344 and expecting byte-level content equivalence ('these two symbols have identical bytes') is wrong: whitespace/comment/blank-line differences are normalized away. The field is the symbol-fingerprint-scheme hypergumbo-symbol-fp-v1 (WI-fanun design); the spec is the stale side and should be corrected to describe the structural-AST semantics.\n\n**Related (distinct).** Distinct from WI-lisog/INV-fogum (prefix/null/format) and WI-fanun (global null) — this is the spec-vs-implementation SEMANTIC mismatch (structural-AST-hash vs byte-hash), uncovered by any ledger row. Source: dogfood_tranche_07 F137.A1, deterministic frozen read."  # b486
+    fields: {}  # b486

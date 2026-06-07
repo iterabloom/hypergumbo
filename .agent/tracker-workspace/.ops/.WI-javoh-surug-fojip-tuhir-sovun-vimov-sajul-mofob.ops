@@ -1,0 +1,21 @@
+- op: create  # e155
+  at: '2026-06-07T03:16:06Z'  # e155
+  by: agent  # e155
+  actor: jgstern_agent  # e155
+  clock: 1  # e155
+  nonce: e155  # e155
+  data:  # e155
+    kind: work_item  # e155
+    title: "bash I/O completely invisible to io-boundaries: no bash.yaml catalog + bash analyzer emits 0 external-command edges"  # e155
+    status: todo_hard  # e155
+    priority: 1  # e155
+    parent:  # e155
+    tags:  # e155
+    - dogfood  # e155
+    - dogfood_tranche_07  # e155
+    isbefore: []  # e155
+    duplicate_of: []  # e155
+    not_duplicate_of: []  # e155
+    pr_ref:  # e155
+    description: "**Mechanism (two compounding gaps).** (1) There is NO bash.yaml (or csharp.yaml) in io_primitives/; the 14 catalogs are c/cpp/elixir/erlang/go/haskell/java/javascript/kotlin/objc/python/rust/scala/swift. bash/csharp have NO catalog at all (so they are not even part of WI-najil's 11/14 in_progress framing — they are 0/0). (2) The bash analyzer emits 291 calls edges but ALL target internal bash functions (run_test/_log/assert_exit/...); 0/291 target external shell commands (rm/curl/git/mkdir/...). So even with a catalog there would be no edge to classify.\n\n**Evidence.** io-boundaries --input substrate.json --json --include-tests (exit 0) reports unsupported_languages = [ansible, bash, csharp, html, json, markdown, solidity, sql, toml, wgsl] — bash/csharp are FIRST-CLASS analyzers (bash: 42 file nodes + 291 calls edges; 218 bash symbols) yet listed unsupported. io-boundary chains with a bash src = 0/25448.\n\n**Consequence.** The 42 analyzed bash files include .githooks/pre-push, scripts/auto-pr, scripts/ci-debug, scripts/ci-failover, scripts/contribute — scripts that git push, curl the Forgejo API (network), rm, write files, run subprocesses. A consumer auditing 'what touches network/fs/subprocess' via io-boundaries concludes these 42 scripts do NO I/O — substantively wrong. unsupported_languages honestly lists bash, but verify-claims must_not_exist (WI-kajil) does not consult it, so a boundary claim against a bash script still silently confirms.\n\n**Related (distinct).** Same class as WI-zavad (JS I/O invisible) but for bash (the most I/O-saturated language in this repo); distinct from WI-najil (the 14 catalog files' in_progress status, which doesn't cover bash/csharp's NO-catalog state). Source: dogfood_tranche_07 F132.A1, io-boundaries run against frozen substrate."  # e155
+    fields: {}  # e155

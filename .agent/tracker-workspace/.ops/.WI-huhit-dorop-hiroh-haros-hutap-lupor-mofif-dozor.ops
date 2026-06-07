@@ -1,0 +1,21 @@
+- op: create  # aea6
+  at: '2026-06-07T03:16:08Z'  # aea6
+  by: agent  # aea6
+  actor: jgstern_agent  # aea6
+  clock: 1  # aea6
+  nonce: aea6  # aea6
+  data:  # aea6
+    kind: work_item  # aea6
+    title: "io-boundaries external_potential bucket is 89% non-I/O builtin method calls; JSON total_io_edges over-counts I/O surface ~9x"  # aea6
+    status: todo_hard  # aea6
+    priority: 1  # aea6
+    parent:  # aea6
+    tags:  # aea6
+    - dogfood  # aea6
+    - dogfood_tranche_07  # aea6
+    isbefore: []  # aea6
+    duplicate_of: []  # aea6
+    not_duplicate_of: []  # aea6
+    pr_ref:  # aea6
+    description: "**Mechanism.** The io-boundaries JSON total_io_edges=7949 is dominated (7097/7949 = 89%) by external_potential, whose chains are overwhelmingly unresolved BUILTIN in-memory method calls (append 973, get 570, add 253, split 213, startswith 212, items 187, lower 125, strip 116, group 146, analyze 105, pathlib.Path 170, time.time 104, ...) — not the 'third-party untrusted-territory reach' the bucket is designed to surface. These are method calls whose receiver type could not be resolved, so they land on a :unresolved external_symbol dst (span 0-0) and get bucketed as external I/O potential. MIGRATION-IO-BOUNDARIES.md:196 claims a filter drops 'first-party calls' but builtin str/list/dict methods (append/get/split/lower/strip/items) are NOT dropped.\n\n**Evidence.** boundary chain_counts: env_read 46, external_potential 7097, fs_read 561, fs_write 102, ipc_recv 4, logging 91, net_recv 1, net_send 10, subprocess 37. All 7097 external_potential high_risk=False, dst_tier 3 (6911)/2 (186). Fresh fixture /tmp/hg_iob_fix/app.py (process() using out.append, it.strip().lower(), d.get; read_env() using os.environ.get) -> total_io_edges=5: env_read 1, external_potential 4 {append:1, strip:1, get:1, os.environ.get:1}. Only 1 of 5 'I/O edges' is a real boundary.\n\n**Consequence.** A JSON consumer reading total_io_edges as 'I/O surface size' over-counts ~9x with method-resolution noise, and the security-relevant 'untrusted reach' signal is buried under append/get/split.\n\n**Related (distinct/enrich).** WI-foduh names the headline-count discrepancy (text '852 boundary calls' excludes external_potential; JSON total_io_edges=7949 includes it, ~9.3x); this is the deeper facet — the suppressed bucket's CONTENTS are mostly non-I/O builtins. WI-datoz names external_potential as a spec-extending category but not the builtin-noise composition. Cross-links WI-foduh / WI-datoz / WI-potuh / WI-mibag. Source: dogfood_tranche_07 F135.A1, fresh-run reproduced."  # aea6
+    fields: {}  # aea6
