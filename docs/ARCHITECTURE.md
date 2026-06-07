@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **283** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 32 tracker)
-- **30556** symbols (functions, classes, methods)
-- **103901** edges by type:
-  - calls: 57983
-  - contains: 21880
-  - imports: 10279
+- **30571** symbols (functions, classes, methods)
+- **103943** edges by type:
+  - calls: 58009
+  - contains: 21892
+  - imports: 10281
   - instantiates: 7898
-  - references: 3368
-  - module_attr_ref: 1129
+  - references: 3369
+  - module_attr_ref: 1130
   - other: 1364
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30556 Symbols + 103901 Edges + UsageContexts           │
+│  Output: 30571 Symbols + 103943 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -469,6 +469,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
 | `dead-code-prospector-run.py` | Lightweight one-shot dead-code-maybe prospecting run. |
+| `deleak-ledger` | Delete-only de-leaker for the dogfood issue ledger (agent_notes). |
 | `finetune-transcript-model` | G-Vendi-guided data selection and finetuning for the local transcript model. |
 | `generate-concept-axes` | Generate ``docs/concept-axes.md`` — a human-readable by-axis view |
 | `generate-concepts` | Generate docs/CONCEPTS.md — the concept-vocabulary registry. |
@@ -819,7 +820,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: e6dd6e07c645
+  commit: 4494725bae23
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
