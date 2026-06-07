@@ -1,0 +1,22 @@
+- op: create  # 23ad
+  at: '2026-06-07T10:05:53Z'  # 23ad
+  by: agent  # 23ad
+  actor: jgstern_agent  # 23ad
+  clock: 1  # 23ad
+  nonce: 23ad  # 23ad
+  data:  # 23ad
+    kind: work_item  # 23ad
+    title: "TOML dependency-node stable_id hashes only package name; same package across manifests collapses cross-file"  # 23ad
+    status: todo_hard  # 23ad
+    priority: 0  # 23ad
+    parent: INV-tazaj-bufod-dinuh-damoh-lubaf-zadod-jisav-duzuj  # 23ad
+    tags:  # 23ad
+    - dogfood  # 23ad
+    - identity  # 23ad
+    - stable_id  # 23ad
+    isbefore: []  # 23ad
+    duplicate_of: []  # 23ad
+    not_duplicate_of: []  # 23ad
+    pr_ref:  # 23ad
+    description: "**Defect.** TOML dependency nodes hash only the package name, so the same package declared in multiple manifests collapses to one `stable_id`.\n\n**Mechanic.** The dependency `stable_id` for a TOML dependency node is computed from the package name alone, not the declaring manifest path. Distinct dependency nodes (distinct id, distinct path) in different manifests therefore share one stable_id.\n\n**Scope.** TOML `dependency`-kind nodes. On the substrate 15 collide cross-file — e.g. `rich` (hypergumbo-tracker + hypergumbo-core pyproject.toml), `hypergumbo-core` (5 manifests), pyyaml / pygments / tree-sitter-language-pack (2 each).\n\n**Expectation.** The dependency stable_id would include the declaring manifest, so a package declared in two manifests gets two distinct ids — or the cross-file collapse would be a documented intentional merge.\n\n**Fix.** Include the declaring manifest in the dependency stable_id hash (manifest-linker producer). This is a distinct producer and a distinct hash-input assembly from the Python function-local stable_id fix (WI-gitun) — the two were deliberately split.\n\n**Consequence.** A consumer treating stable_id as node identity for dependency nodes across a multi-manifest (monorepo) repo sees a cross-file merge — multiple manifest declarations of the same package appear as one node — so per-manifest dependency tracking, version-conflict detection, and provenance of where a dependency is declared are lost.\n\n**Cross-refs.** Member of the stable_id uniqueness theme (INV-bazij / INV-tazaj). Sibling on the same TOML-dependency-node surface: WI-falum (the `fingerprint` of TOML dependency nodes collapses to one value) and INV-fogum (TOML dependency fingerprint without hgfp1: prefix) — those concern the `fingerprint` field; this row concerns `stable_id`. Also adjacent to WI-timon (depends_on_manifest collapses same-named deps across monorepo manifests at the EDGE level)."  # 23ad
+    fields: {}  # 23ad

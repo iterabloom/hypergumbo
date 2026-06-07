@@ -1,0 +1,22 @@
+- op: create  # 7977
+  at: '2026-06-07T10:05:19Z'  # 7977
+  by: agent  # 7977
+  actor: jgstern_agent  # 7977
+  clock: 1  # 7977
+  nonce: '7977'  # 7977
+  data:  # 7977
+    kind: work_item  # 7977
+    title: "Python function-local defs omit enclosing function from containing_stable_id; same-name locals collapse to one stable_id"  # 7977
+    status: todo_hard  # 7977
+    priority: 0  # 7977
+    parent: INV-tazaj-bufod-dinuh-damoh-lubaf-zadod-jisav-duzuj  # 7977
+    tags:  # 7977
+    - dogfood  # 7977
+    - identity  # 7977
+    - stable_id  # 7977
+    isbefore: []  # 7977
+    duplicate_of: []  # 7977
+    not_duplicate_of: []  # 7977
+    pr_ref:  # 7977
+    description: "**Defect.** Python function-local definitions omit the enclosing function from their `containing_stable_id`, so same-name locals in different functions collapse to one `stable_id`.\n\n**Mechanic.** The v5 `stable_id` hash (`analyze/base.py:2333-2338`) is `sha256(kind:param_count:arity_flags:decorators:containing_stable_id:name:qualified_name)`. For a function-local definition, `containing_stable_id` is not the enclosing function (it is empty / module-level), and Python `qualified_name` is None (see WI-fagab) — so two same-name same-arity locals in distinct functions have identical hash inputs and collapse to one id. This is a distinct mechanism from the WI-bupim residual categories (typed-tier `make_typed_stable_id` callers without name input, and linker-emitted call_site collisions): py.py already had name+qualified_name added in the INV-bazij structural fix, yet the enclosing-function omission still defeats uniqueness for Python locals.\n\n**Scope.** Python `stable_id`. On the substrate 96 stable_id values are shared by >1 node (195 extra nodes); the Python share is 42 collision groups / 113 nodes (kinds: class 57, method 40, function 14, variable 2), rate 71 collapsed / 33598 = 0.211%. Canonical case: stable_id `sha256:3cd0dfc7ff321942` is shared by 8 distinct `class Args` nodes in test_cli_commands.py (lines 3460/3515/3546/3560/3590/3623/3728/3787), each nested in a distinct enclosing function with a distinct stable_id; their shape_ids differ but stable_id does not. Reproduced on a fresh /tmp run.\n\n**Expectation.** `containing_stable_id` for a function-local definition would be the enclosing function's `stable_id`, so locals in distinct functions get distinct ids.\n\n**Fix.** Include the enclosing function in the `containing_stable_id` hash input (`analyze/base.py:2333-2338`, Python AST path).\n\n**Consequence.** A consumer keying a per-symbol store (cache, diff, annotation map) on stable_id silently merges distinct symbols into one record — e.g. 8 distinct test-local `Args` classes collapse — corrupting cross-version tracking, per-symbol annotations, and any store indexed by stable_id.\n\n**Cross-refs.** Parent of the stable_id uniqueness META INV-tazaj (and the P0 member INV-bazij); peer of WI-bupim (typed-tier + linker residuals); depends on WI-fagab (Python qualified_name=None removes the only other disambiguator)."  # 7977
+    fields: {}  # 7977

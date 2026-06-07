@@ -148,3 +148,18 @@
   target_nonce: dceb  # 65e8
   new_text: "Pass 38 (2026-06-02, dogfooding) — INV-bazij scope extension findings staying on this row (F38.B1 validator-denominator gap migrated to WI-niluv-holur per fold-audit Phase 2b).\n\nF38.B6: ALL 54 colliding stable_ids at --max-files=10 ALSO collide in ROOT default substrate (54 ⊂ 95 ROOT colliders). Truncation SURFACES collisions, does not introduce them. The pass-36 F36.B4+B5 collision-rate(N) curve and F37.A1-A3 cross-over observations describe REVEALING the underlying collision substrate; the colliding hash inputs are stable across substrate slicing. Truncation amplifies measurement but doesn't change the bug surface.\n\nF38.B7: 41 ROOT-default colliders NOT present in max10 (the source files weren't analyzed at --max-files=10). Tells us collision detection is path-stratifiable; mathematically the rate(N) curve is monotone-non-decreasing as N shrinks BECAUSE colliders persist and bearing-symbol count shrinks faster.\n\nF38.D3: scripts/ DEFAULT mode produces 1 INV-bazij collision-rate violation at 7.0% (29/416) — FIRST non-truncated DEFAULT substrate to breach 5% threshold. Top groups: FORGEJO_TOKEN 5×, CI_TIMEOUT_SECONDS 4×, usage 4× — all bash export-VAR cohort (see WI-nasil for the bash-specific row). INV-bazij threshold-calibration assumption (≥500 files / production scale; pass-37 F37.A1) doesn't hold for bash-heavy codebases of any size. Cross-substrate INV-bazij data points now: ROOT (34253) 0.84%, TRACKER (4959) 0.81%, SCRIPTS (416) 7.0% DEFAULT-BREACH, CLI_PKG (32) 0%, --max-files 100 5.9%, --max-file-bytes 1024 14%, --max-files 10 23.5%. Substrate-size NOT sole determinant — codebase composition (bash-heavy vs pure-Python) is the bigger driver."  # 65e8
   reason: "fold-audit Phase 2b: F38.B1 migrated to WI-niluv; B6+B7+D3 kept"  # 65e8
+- op: update  # 2add
+  at: '2026-06-07T10:05:32Z'  # 2add
+  by: agent  # 2add
+  actor: jgstern_agent  # 2add
+  clock: 17  # 2add
+  nonce: 2add  # 2add
+  set:  # 2add
+    status: violated  # 2add
+- op: discuss  # 2482
+  at: '2026-06-07T10:05:32Z'  # 2482
+  by: agent  # 2482
+  actor: jgstern_agent  # 2482
+  clock: 18  # 2482
+  nonce: '2482'  # 2482
+  message: "Validation failed: stable_id collisions reproduced on a fresh substrate. 96 stable_id values shared by >1 node (195 extra nodes); Python share 42 collision groups / 113 nodes. A distinct uncovered mechanism — Python function-local defs omitting the enclosing function from containing_stable_id — collapses 8 distinct 'class Args' in test_cli_commands.py to one stable_id (sha256:3cd0dfc7ff321942). Filed as WI-gitun (P0). The Phase-6-PR3 name+qualified_name fix does not cover function-local Python defs (qualified_name=None there). Moving pending_validation -> violated."  # 2482

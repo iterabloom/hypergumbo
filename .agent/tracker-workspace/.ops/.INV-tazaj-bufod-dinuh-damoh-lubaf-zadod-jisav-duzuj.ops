@@ -50,3 +50,18 @@
   clock: 4  # 377d
   nonce: 377d  # 377d
   message: "META closed by Phase 6 PR3 (commit ea0154e54f). Hash inputs to compute_stable_id and _compute_stable_id extended with name and qualified_name. STABLE_ID_SCHEME bumped v4 → v5. Trade-off documented: stable_id no longer survives renames but distinguishes distinct symbols (per the lab notebook's agreed direction). Self-analysis collision rate 60.2% → 0.8%. Two member items (Phase 6 PR3 residuals on typed-tier factory and linker call_site collisions) tracked in WI-bupim. Needs bakeoff validation."  # 377d
+- op: update  # 475f
+  at: '2026-06-07T10:05:38Z'  # 475f
+  by: agent  # 475f
+  actor: jgstern_agent  # 475f
+  clock: 5  # 475f
+  nonce: 475f  # 475f
+  set:  # 475f
+    status: violated  # 475f
+- op: discuss  # cb0b
+  at: '2026-06-07T10:05:39Z'  # cb0b
+  by: agent  # cb0b
+  actor: jgstern_agent  # cb0b
+  clock: 6  # cb0b
+  nonce: cb0b  # cb0b
+  message: "Validation failed: the stable_id uniqueness invariant does not hold on a fresh substrate. Member INV-bazij collisions reproduced. A distinct uncovered hash-input mechanism — Python function-local defs omitting the enclosing function from containing_stable_id (analyze/base.py:2333-2338) combined with Python qualified_name=None (WI-fagab) — defeats the name+qualified_name disambiguation that was supposed to close this META. Filed as WI-gitun (P0, parented here). Moving pending_validation -> violated."  # cb0b
