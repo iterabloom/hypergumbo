@@ -19,3 +19,10 @@
     pr_ref:  # 7e81
     description: "**Defect.** `limits.not_captured` is a hardcoded universal constant, not a per-repo analysis result.\n\n**Evidence.** The not_captured list is sourced from a static module-level constant (limits.py:20 KNOWN_LIMITATIONS, comment \"apply universally\"), so every behavior map emits the identical six generic disclosure strings (dynamic imports, eval, runtime codegen, monkey-patching, complex decorators, metaprogramming) regardless of the repository analyzed. Spec §948 frames limits as documenting what the analysis did not capture, and §756 cache-correctness implies repo-specific observed content; §955 arguably permits a generic list (borderline/weak).\n\n**Contract.** A per-repo signal would be expected per the spec framing, or the field should be documented as a static constant.\n\n**Consequence.** The field carries no per-repo information; a consumer reading not_captured to learn what this specific analysis missed, or to explain diffs not covered by captured fields, draws repo-specific conclusions from a constant."  # 7e81
     fields: {}  # 7e81
+- op: discuss  # e1f0
+  at: '2026-06-07T10:03:12Z'  # e1f0
+  by: agent  # e1f0
+  actor: jgstern_agent  # e1f0
+  clock: 2  # e1f0
+  nonce: e1f0  # e1f0
+  message: "Dogfood re-confirmation. limits.not_captured is a fixed 6-entry list hardcoded at limits.py:21-26 (dynamic imports, eval/exec, runtime code gen, monkey-patching, complex-runtime-logic decorators, metaprogramming), copied identically into every behavior map regardless of repo content. The list omits function aliasing / name rebinding (f = g), a static construct the tool does process and mis-resolves (alias call-graph dead-end). Spec §955 frames it as 'Categories of constructs not analyzed.' A consumer reading not_captured as the set of constructs present-but-skipped in this specific repo over- or under-estimates coverage."  # e1f0

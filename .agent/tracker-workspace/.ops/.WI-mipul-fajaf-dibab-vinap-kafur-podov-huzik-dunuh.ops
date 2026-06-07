@@ -50,3 +50,10 @@
   clock: 5  # 4179
   nonce: '4179'  # 4179
   message: "[+ tranch_03: anon-card-tranch03-001 F41.A1 — pass_version empty 14/84 incl python (folded as duplicate; blind severity 4; new row WI-mifok wont_do)]"  # 4179
+- op: discuss  # df9e
+  at: '2026-06-07T10:03:35Z'  # df9e
+  by: agent  # df9e
+  actor: jgstern_agent  # df9e
+  clock: 6  # df9e
+  nonce: df9e  # df9e
+  message: "Dogfood refinement on the sentinel value. The 14 override-analyze passes (html, go, csharp, javascript, play-routes, yaml_ansible, xml, json, java, toml, manifest_targets, make, python, enclosure-linker) serialize pass_version as the empty string '' rather than None — pass_version==None holds on 0 passes, pass_version=='' on exactly those 14 (a third sentinel class alongside None/{}). A consumer filtering 'pass_version is None' to enumerate un-versioned passes silently returns an empty set and misses all 14; a truthiness ('not pass_version') filter catches both. Recommend documenting the canonical sentinel so consumers know which predicate to use."  # df9e

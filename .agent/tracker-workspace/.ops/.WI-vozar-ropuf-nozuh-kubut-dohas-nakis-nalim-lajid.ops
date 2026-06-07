@@ -26,3 +26,10 @@
   clock: 2  # b7a8
   nonce: b7a8  # b7a8
   message: "Dogfood fold (member F160.A2-a, split from F160.A2) — the edge evidence TRIPLE (evidence_lang, evidence_spans[], meta.evidence[]) is 0% populated on all 110533 edges, reproduces on the frozen substrate. The serializer drops these keys when None, and no producer sets them, so the keys are absent on every edge; only evidence_type (singular) and a coarse top-level line integer survive. Per-field counts: evidence_lang 0/110533, evidence_spans 0/110533, meta.evidence[] 0/110533; evidence_type present 110533/110533. Consequence: any consumer wanting precise localization of edge evidence (file+line+column of the call/import site), or wanting to know which language's analyzer produced a cross-language edge, gets only a single coarse line and cannot determine evidence language — weakening any audit of how the edge was inferred. The carding unit covers all three sub-fields, which the tracker already tracks as three distinct rows; this finding is folded onto each (WI-kuluh evidence_lang, WI-vozar evidence_spans, WI-gijus meta.evidence[]). The spec/done-marker side (§1530 🟩-done + §799 \"always reflect\" false) is filed separately as a net-new row (F160.A2-b)."  # b7a8
+- op: discuss  # 1a29
+  at: '2026-06-07T10:02:59Z'  # 1a29
+  by: agent  # 1a29
+  actor: jgstern_agent  # 1a29
+  clock: 3  # 1a29
+  nonce: 1a29  # 1a29
+  message: "Dogfood re-confirmation. edge.meta.evidence_spans populated on 0/110533 edges. ir.py:731-734 to_dict serializes evidence_spans only when not None; no pass populates the in-memory field. Declared in schema.json:978-983 (array under Edge.meta) and described at spec line 812 ('Structured locations of evidence. Each span includes file path and line/column range'); marked done at spec line 1530. An agent following the documented contract to jump to an edge's evidence file:line/col gets nothing, and the done-status over-claims for a 0%-coverage field."  # 1a29

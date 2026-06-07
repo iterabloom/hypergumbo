@@ -26,3 +26,10 @@
   clock: 2  # 96cc
   nonce: 96cc  # 96cc
   message: "Dogfood fold (member F160.A2-a, split from F160.A2) — the edge evidence TRIPLE (evidence_lang, evidence_spans[], meta.evidence[]) is 0% populated on all 110533 edges, reproduces on the frozen substrate. The serializer drops these keys when None, and no producer sets them, so the keys are absent on every edge; only evidence_type (singular) and a coarse top-level line integer survive. Per-field counts: evidence_lang 0/110533, evidence_spans 0/110533, meta.evidence[] 0/110533; evidence_type present 110533/110533. Consequence: any consumer wanting precise localization of edge evidence (file+line+column of the call/import site), or wanting to know which language's analyzer produced a cross-language edge, gets only a single coarse line and cannot determine evidence language — weakening any audit of how the edge was inferred. The carding unit covers all three sub-fields, which the tracker already tracks as three distinct rows; this finding is folded onto each (WI-kuluh evidence_lang, WI-vozar evidence_spans, WI-gijus meta.evidence[]). The spec/done-marker side (§1530 🟩-done + §799 \"always reflect\" false) is filed separately as a net-new row (F160.A2-b)."  # 96cc
+- op: discuss  # 6daf
+  at: '2026-06-07T10:02:59Z'  # 6daf
+  by: agent  # 6daf
+  actor: jgstern_agent  # 6daf
+  clock: 3  # 6daf
+  nonce: 6daf  # 6daf
+  message: "Dogfood re-confirmation. The multi-pass meta.evidence[] accumulator (spec line 799) is carried on 0/110533 edges and has no backing field on the Edge dataclass at ir.py:605-617. Without a backing field there is nothing for to_dict to serialize, so the array is structurally undeliverable. This is a distinct fix CLASS from the empty-but-existing evidence_lang/evidence_spans fields (WI-kuluh / WI-vozar): those are populate-the-field fixes; this is an add-missing-field fix. A consumer reading meta.evidence[] never sees multi-pass corroboration for any edge."  # 6daf

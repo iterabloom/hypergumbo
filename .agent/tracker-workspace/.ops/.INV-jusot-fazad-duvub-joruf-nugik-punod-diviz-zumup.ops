@@ -40,3 +40,10 @@
   clock: 3  # dcc0
   nonce: dcc0  # dcc0
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Belongs as a member of INV-numat — the umbrella covers vocabulary fields whose values mix axes from distinct conceptual dimensions, and `modifiers` exhibits the same per-emitter-dialect pattern that umbrella catalogues for framework_dispatch and call_construct. Sibling to WI-moliz (extends/inherits/implements divergence on edge.type — same cross-language vocabulary asymmetry on a different field). Distinct from the umbrella's existing members in that `modifiers` is `List[str]` not scalar — current axis-declaration check at multi_value_field_axis.py only covers scalar `str` / `Optional[str]` / `Literal`. Fixing this also requires extending the axis-declaration policy in ADR-0024 to cover list-valued and dict-valued vocabulary fields. Related to INV-zigup (cross_language meta same writer-side root cause: per-linker code paths with no shared emission policy)."  # dcc0
+- op: discuss  # 92da
+  at: '2026-06-07T10:03:47Z'  # 92da
+  by: agent  # 92da
+  actor: jgstern_agent  # 92da
+  clock: 4  # 92da
+  nonce: 92da  # 92da
+  message: "Dogfood enrichment, Python visibility-absence facet. The Python analyzer stamps 'private' (underscore-prefix convention) but never stamps a positive 'public' marker, so an empty modifiers is ambiguous between public and unstamped. On the substrate 4106/34396 nodes carry non-empty modifiers; private dominates (4047, all Python). Of 22369 public-named Python function/method nodes, 0 carry a public modifier and 21834 have completely empty modifiers. (public/exported/pub/external appear only at single-digit counts from csharp/java/go/rust/solidity.) A consumer reading modifiers to determine a Python symbol's visibility can identify private symbols but cannot tell a public symbol from one the analyzer left unstamped, so a 'list the public API' filter is unreliable for Python. The unified-visibility-axis fix this META proposes covers stamping a positive public/unstamped distinction for Python."  # 92da

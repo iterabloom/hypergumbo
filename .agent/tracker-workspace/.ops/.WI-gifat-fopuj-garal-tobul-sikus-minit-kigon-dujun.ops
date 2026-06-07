@@ -19,3 +19,10 @@
     pr_ref:  # fb8f
     description: "F61.A3 (blind severity 4/Significant). The §12 confidence matrix covers only 3 of 33 observed evidence types = 40759/110533 edges (36.9%). The spec issues an explicit MUST: 'Consumers MUST default unknown evidence_type to 0.30.' But the remaining 63.1% (~69774 edges) carry evidence types with no matrix entry, and the implementation hardcodes their confidence WELL above 0.30 (ast_call modal 0.4, naming_convention 1.0, ast_import 0.95, ast_new 0.95, span_overlap 0.9). Only ~62 edges actually sit near 0.30. A consumer obeying the documented .get((lang,et),0.30) lookup under-scores 69000+ edges by 0.5-0.7, corrupting any confidence-thresholded pruning/filtering. Fix: make the documented consumer default match what the implementation assigns, OR expand the matrix to cover the emitted vocabulary so the default rarely applies. CORRECTED-kept by F77.A1 (the strong 'confidence is blind to resolution' reading was refined — coupling is the evidence_type prior and is non-monotone — but the 0.30-default mismatch count/mechanism stand). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # fb8f
     fields: {}  # fb8f
+- op: discuss  # fa58
+  at: '2026-06-07T10:03:12Z'  # fa58
+  by: agent  # fa58
+  actor: jgstern_agent  # fa58
+  clock: 2  # fa58
+  nonce: fa58  # fa58
+  message: "Dogfood re-confirmation, matrix-vs-emitted face. The spec §12 EVIDENCE_CONFIDENCE_MATRIX maps (python,ast_call_direct):0.95, but ast_call_direct (35749 edges) has modal confidence 0.85 (90.8%: {0.85:32444, 0.5:2941, 0.7:292, 0.9:29}) — a mismatch. ast_call_method matches (0.85 both, 4995/4995). The other 8 of 10 matrix keys (ast_getattr_call, python/js import_static, import_dynamic, require_*, html script_src/inline) have 0 emitted edges; the substrate uses ast_import (10679 @ 0.95) instead. Only 2 of 10 matrix rows are exercisable, that pair being 1 match / 1 mismatch. A consumer reading the published matrix to interpret an ast_call_direct edge as 0.95 reliability is wrong (it is 0.85), and the 80% dead-key rate means most documented interpretations correspond to no real output."  # fa58
