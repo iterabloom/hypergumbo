@@ -130,6 +130,18 @@ CADENCE_TOKENS: list[tuple[str, re.Pattern]] = [
     ("actor_code", re.compile(r"\b([A-Z])\1{2,}\w*")),
     ("fold_trigger", re.compile(r"\bfold-trigger\b", re.I)),
     ("consolidation_verdict", re.compile(r"\b(?:RETAINED|TRIMMED|GENUINE EXTENSIONS?)\b")),
+    # Ordinal cross-codebase campaign-progress markers ("5th-codebase",
+    # "7th-codebase reuse") -- the Nth codebase in the campaign sequence, i.e.
+    # campaign position. Deliberately ORDINAL-ONLY: "cross-codebase" and the
+    # cardinal "N-codebase invariant" express EVIDENCE-STRENGTH (an invariant's
+    # robustness across N codebases), which is defect content, not cadence, so
+    # they are left untouched. Bare "codebase" is content and is never matched.
+    ("codebase_ordinal", re.compile(r"\b\d+(?:st|nd|rd|th)-codebase\b", re.I)),
+    # Campaign state-change COUNT claim ("the canonical <position>'s single
+    # state-change") -- counts how many resolved-state flips a tranche produced,
+    # which is campaign position. Requires the "the canonical ... state-change"
+    # framing, so a bare "state change" in defect content is left untouched.
+    ("campaign_state_change", re.compile(r"\bthe canonical\b[^.\n]*?\bstate[-\s]changes?\b\.?", re.I)),
 ]
 
 # A line is treated as a CADENCE HEADER / FRAMING line (deleted whole) when it

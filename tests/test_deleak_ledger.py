@@ -145,3 +145,42 @@ def test_new_handle_patterns_preserve_defect_content() -> None:
     # word-internal look-alikes (no word boundary before ``p\d``) are NOT handles
     assert "app2-A1" in out
     assert "type-A1" in out
+
+
+# ---------------------------------------------------------------------------
+# Cross-codebase / campaign-state-change cadence. The Phase-7 flag-only
+# inspector caught two semantic cadence shapes the token-regexes missed: a
+# cross-codebase progress ordinal ("5th-codebase", "6-codebase invariant",
+# "cross-codebase substrate-verification") and a campaign state-change-count
+# claim ("the canonical <position>'s single state-change", often left as a
+# dangling-possessive artifact by a prior strip). Both encode campaign
+# position; these tests pin the delete-only strip without eating defect content.
+# ---------------------------------------------------------------------------
+
+
+def test_strips_codebase_ordinal_cadence() -> None:
+    """Ordinal ``Nth-codebase`` campaign-sequence markers strip (delete-only)."""
+    assert "5th-codebase" not in deleak.strip_tokens("DOCS 5th-codebase AR refinement")
+    assert "7th-codebase" not in deleak.strip_tokens("the 7th-codebase reuse run")
+
+
+def test_strips_campaign_state_change_claim() -> None:
+    """``the canonical ... state-change`` campaign-count framing strips whole."""
+    s = deleak.strip_tokens("This flip is the canonical 's single state-change.")
+    assert "state-change" not in s
+    assert "canonical" not in s
+
+
+def test_codebase_and_state_change_patterns_preserve_defect_content() -> None:
+    """The new patterns must not eat evidence-strength / defect content."""
+    # bare 'codebase' (no ordinal prefix) is content, not cadence
+    keep = deleak.strip_tokens("the analyzed codebase has 1670 nodes")
+    assert "codebase" in keep and "1670 nodes" in keep
+    # 'cross-codebase' and cardinal 'N-codebase invariant' are EVIDENCE-STRENGTH
+    # (robustness across codebases), NOT campaign cadence -- they are preserved.
+    assert "cross-codebase" in deleak.strip_tokens("holds cross-codebase, 6/6 codebases")
+    assert "6-codebase" in deleak.strip_tokens("a 6-codebase invariant holds")
+    # a 'state change' NOT framed as 'the canonical ... state-change' is content
+    assert "state change" in deleak.strip_tokens("a CFG state change at the loop header")
+    # 'the canonical ...' without a trailing state-change is content
+    assert "canonical" in deleak.strip_tokens("the canonical sha256: stable_id convention")
