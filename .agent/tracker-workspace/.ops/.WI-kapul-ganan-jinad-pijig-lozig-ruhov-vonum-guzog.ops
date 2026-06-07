@@ -1,0 +1,27 @@
+- op: create  # 5235
+  at: '2026-06-07T06:35:02Z'  # 5235
+  by: agent  # 5235
+  actor: jgstern_agent  # 5235
+  clock: 1  # 5235
+  nonce: '5235'  # 5235
+  data:  # 5235
+    kind: work_item  # 5235
+    title: "external_symbol node.path field is the literal '<external>', disagreeing with the module name in the id path-slot (1645 nodes)"  # 5235
+    status: todo_hard  # 5235
+    priority: 2  # 5235
+    parent:  # 5235
+    tags:  # 5235
+    - dogfood  # 5235
+    isbefore: []  # 5235
+    duplicate_of: []  # 5235
+    not_duplicate_of: []  # 5235
+    pr_ref:  # 5235
+    description: ""  # 5235
+    fields: {}  # 5235
+- op: discuss  # f611
+  at: '2026-06-07T06:35:44Z'  # f611
+  by: agent  # f611
+  actor: jgstern_agent  # f611
+  clock: 2  # f611
+  nonce: f611  # f611
+  message: "Dogfood finding (member F141.A2-a, split from F141.A2), reproduces on the frozen substrate. Mechanism: for unresolved external references the producer stamps a placeholder path=\"<external>\" on the top-level node.path field, but the id (e.g. python:pathlib:0-0:Path:unresolved) encodes the real module (pathlib) in slot 2. The two surfaces silently disagree. Scope: 1645 nodes (all external_symbol) have path=\"<external>\" disagreeing with their id path-slot; every node carries a top-level path field (34396/34396). Exposure: any consumer that builds a file/module map by reading node.path (rather than re-parsing ids) gets the placeholder, not the identity; path-keyed joins (import graphs, \"which deps does this module pull in\") silently drop external symbols and corrupt dependency-surface analyses. Expectation: either path carries the module identity (matching the id slot) or the contract documents <external> as a deliberate sentinel and directs consumers to the id slot. Distinct from WI-pubiv / INV-dulah (id-segment / name-slot vs node.kind / node.name) — this is the standalone path FIELD vs id path-slot disagreement, named in none of those. Cross-ref WI-pubiv, WI-sijut (external_symbol empty origin), sibling WI-hulup (npm_package empty path). Substrate evidence: probe_1_path.log / probe_1_emptypath.log."  # f611

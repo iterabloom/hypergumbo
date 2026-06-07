@@ -1,0 +1,20 @@
+- op: create  # 176c
+  at: '2026-06-07T06:35:06Z'  # 176c
+  by: agent  # 176c
+  actor: jgstern_agent  # 176c
+  clock: 1  # 176c
+  nonce: 176c  # 176c
+  data:  # 176c
+    kind: work_item  # 176c
+    title: "centrality_scores are un-normalized sum-of-top-3 (range 0-7.42, 23/280 >1.0) under a documented 0-1 label"  # 176c
+    status: todo_hard  # 176c
+    priority: 1  # 176c
+    parent:  # 176c
+    tags:  # 176c
+    - dogfood  # 176c
+    isbefore: []  # 176c
+    duplicate_of: []  # 176c
+    not_duplicate_of: []  # 176c
+    pr_ref:  # 176c
+    description: ""  # 176c
+    fields: {}  # 176c

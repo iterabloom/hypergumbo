@@ -1,0 +1,27 @@
+- op: create  # cf16
+  at: '2026-06-07T06:35:04Z'  # cf16
+  by: agent  # cf16
+  actor: jgstern_agent  # cf16
+  clock: 1  # cf16
+  nonce: cf16  # cf16
+  data:  # cf16
+    kind: work_item  # cf16
+    title: "js-module-linker npm_package nodes carry empty path='' (2 nodes, language=null, all-zero span)"  # cf16
+    status: todo_hard  # cf16
+    priority: 2  # cf16
+    parent:  # cf16
+    tags:  # cf16
+    - dogfood  # cf16
+    isbefore: []  # cf16
+    duplicate_of: []  # cf16
+    not_duplicate_of: []  # cf16
+    pr_ref:  # cf16
+    description: ""  # cf16
+    fields: {}  # cf16
+- op: discuss  # ecef
+  at: '2026-06-07T06:35:44Z'  # ecef
+  by: agent  # ecef
+  actor: jgstern_agent  # ecef
+  clock: 2  # ecef
+  nonce: ecef  # ecef
+  message: "Dogfood finding (member F141.A2-b, split from F141.A2), reproduces on the frozen substrate. Mechanism: the JS module linker synthesizes package nodes for npm dependencies but leaves the top-level path field empty (path=\"\"), encoding the package name only in the id (typescript:npm:0-0:<name>:npm_package) and leaving language=null with an all-zero span. Scope: exactly 2 nodes — typescript:npm:0-0:lit:npm_package and typescript:npm:0-0:vite:npm_package, kind=package, origin=js-module-linker, path=\"\". These are the only empty-path nodes in the substrate. Exposure: a consumer joining package nodes on node.path to a manifest or directory, or filtering nodes by path, drops or mis-buckets these dependency nodes; an agent building a dependency inventory keyed on path silently omits the affected npm packages. Expectation: either path carries a meaningful locator (the manifest or package directory) or the field is documented as intentionally empty for synthetic dependency nodes. Sibling of WI-kapul (external_symbol path=\"<external>\" vs id path-slot); split because the producer (js-module-linker) and the empty-string sentinel differ from the <external> placeholder case. Substrate evidence: probe_1_emptypath.log."  # ecef
