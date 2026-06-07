@@ -1,0 +1,20 @@
+- op: create  # cf92
+  at: '2026-06-07T10:10:04Z'  # cf92
+  by: agent  # cf92
+  actor: jgstern_agent  # cf92
+  clock: 1  # cf92
+  nonce: cf92  # cf92
+  data:  # cf92
+    kind: work_item  # cf92
+    title: "ranking.py:990 and slice.py:124 hardcode {extends,implements}, omitting the inherits edge type (should call edge_types_on_axis)"  # cf92
+    status: todo_hard  # cf92
+    priority: 2  # cf92
+    parent:  # cf92
+    tags:  # cf92
+    - dogfood  # cf92
+    isbefore: []  # cf92
+    duplicate_of: []  # cf92
+    not_duplicate_of: []  # cf92
+    pr_ref:  # cf92
+    description: "**Defect.** Two consumers hardcode a structural-edge set that omits the `inherits` edge type, so inheritance via `inherits` is invisible to slicing and ranking.\n\n**Mechanic.** Class inheritance is split across two edge-type names by language — `extends` (Python) and `inherits` (Solidity and any future language where that reads more naturally) — both carrying the same relationship axis. Two consumers hardcode `{\"extends\", \"implements\"}` (ranking.py:990) and `frozenset({\"extends\", \"implements\", \"contains\"})` (slice.py:124) instead of querying the registry's `edge_types_on_axis`, which the registry docstring (edge_types.py:13 and :365) explicitly warns against.\n\n**Scope.** ranking.py:990 structural centrality and slice.py:124 structural forward-BFS expansion. Substrate is-a edges: extends 160 (Python, evidence_type ast_extends), inherits 1 (Solidity). `inherits` is excluded by both consumers. The spec (§846) documents only extends, never inherits.\n\n**Expectation.** Both consumers would derive their structural-edge set from the registry axis (edge_types_on_axis), so every is-a edge type (including inherits) is included.\n\n**Fix.** Have ranking.py:990 and slice.py:124 call edge_types_on_axis instead of hardcoding {extends, implements}.\n\n**Consequence.** Inheritance edges from inherits-using languages are dropped from structural slices and centrality; an agent auditing the class hierarchy of such a repo misses real is-a relationships and wrongly reports a class as having no parent.\n\n**Cross-refs.** WI-dinih documents the edge.type vocabulary drift and the same extends/inherits bifurcation at the producer/registry level; this row is the distinct downstream consumer fix (the two hardcoded structural-edge sets). Fixing the vocabulary drift does not fix the hardcoded consumers and vice versa."  # cf92
+    fields: {}  # cf92

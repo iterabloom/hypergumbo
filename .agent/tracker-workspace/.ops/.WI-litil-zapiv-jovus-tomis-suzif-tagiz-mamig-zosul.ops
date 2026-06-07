@@ -1,0 +1,21 @@
+- op: create  # a156
+  at: '2026-06-07T10:10:20Z'  # a156
+  by: agent  # a156
+  actor: jgstern_agent  # a156
+  clock: 1  # a156
+  nonce: a156  # a156
+  data:  # a156
+    kind: work_item  # a156
+    title: "Verify cyclomatic_complexity for csharp/go/java/rust/swift (uniformly 1 on low-N substrate; real or hardcoded?)"  # a156
+    status: todo_hard  # a156
+    priority: 2  # a156
+    parent: INV-loguk-kihaj-vokug-nahuj-barad-jital-kidut-tamap  # a156
+    tags:  # a156
+    - dogfood  # a156
+    - analyzer_coverage  # a156
+    isbefore: []  # a156
+    duplicate_of: []  # a156
+    not_duplicate_of: []  # a156
+    pr_ref:  # a156
+    description: "**Subject (verification / watch item, low-N).** `cyclomatic_complexity` is uniformly 1 for csharp/go/java/rust/swift functions on this repo, where sample sizes are too small to separate trivial fixtures from a hardcoded value.\n\n**Mechanic.** For these five tree-sitter languages every function/method node reports cyclomatic_complexity == 1. The available node counts are too small (N=2-3 per language, trivial fixtures) to tell whether the metric is genuinely computed-but-trivial or hardcoded.\n\n**Scope.** Symbol cyclomatic_complexity field for csharp/go/java/rust/swift. On the substrate: csharp 2 nodes (1,1), go 3 (1,1), java 2 (1,1), rust 2 (1,1), swift 2 (1,1) — all exactly 1. Python 25170 nodes (1-201), TypeScript 25 nodes (1-6, proving non-Python tree-sitter analyzers can compute real values). bash/solidity/wgsl report None.\n\n**Expectation.** On functions with real branching, cyclomatic_complexity for these languages would exceed 1, as it does for Python (1-201) and TypeScript (1-6).\n\n**Action.** Verify on a higher-N repo whether the tree-sitter cyclomatic_complexity for csharp/go/java/rust/swift is genuinely computed or hardcoded to 1. The current repo's sample (N=2-3, trivial fixtures) cannot decide it.\n\n**Consequence.** If the value is in fact hardcoded, every complexity-based ranking, hotspot detection, or refactor-priority decision for these languages is wrong; the small sample here cannot rule that out, so the metric cannot yet be trusted for these languages.\n\n**Cross-refs.** INV-loguk's statement asserts non-Python analyzers have 0% cyclomatic_complexity populated; this finding observes a populated-but-uniform-1 value for these five languages instead, which is either a partial fix of INV-loguk or a separate hardcoded path — distinguishing the two requires the higher-N verification above."  # a156
+    fields: {}  # a156

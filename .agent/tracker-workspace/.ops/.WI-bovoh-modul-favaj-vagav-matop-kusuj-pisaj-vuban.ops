@@ -1,0 +1,20 @@
+- op: create  # 3454
+  at: '2026-06-07T10:10:45Z'  # 3454
+  by: agent  # 3454
+  actor: jgstern_agent  # 3454
+  clock: 1  # 3454
+  nonce: '3454'  # 3454
+  data:  # 3454
+    kind: work_item  # 3454
+    title: "validation_report id_format check has registry-scope gap: permissive regex passes 1444 nodes with unregistered kind-slots"  # 3454
+    status: todo_hard  # 3454
+    priority: 2  # 3454
+    parent:  # 3454
+    tags:  # 3454
+    - dogfood  # 3454
+    isbefore: []  # 3454
+    duplicate_of: []  # 3454
+    not_duplicate_of: []  # 3454
+    pr_ref:  # 3454
+    description: "**Defect.** The validation report's id-format check uses a permissive regex that accepts node ids whose kind-slot is not a registered symbol kind.\n\n**Mechanic.** The id-format validator (_check_id_format) matches ids against a permissive regex that does not assert the kind-slot component is a registered symbol kind, so ids carrying unregistered/mislabeled kind-slots pass validation.\n\n**Scope.** The validation report's id-format check over node ids. The permissive regex passes 1444 nodes whose kind-slots are not registered symbol kinds without raising a violation.\n\n**Expectation.** The id-format check would assert the kind-slot is a registered symbol kind, flagging ids whose kind component is not in the kind registry.\n\n**Fix.** Make _check_id_format assert the id's kind-slot is a registered symbol kind (cross-check the parsed kind component against the symbol-kind registry).\n\n**Consequence.** Nodes with unregistered or mislabeled kind-slots pass validation undetected, so a consumer keying behavior on the id kind-slot (e.g. routing or filtering by kind parsed from the id) silently misclassifies those 1444 nodes while the report asserts the ids are well-formed.\n\n**Cross-refs.** WI-pubiv / WI-kugaj document the underlying data (node.id kind-slot disagrees with node.kind on ~1645 external_symbol nodes; kind-slot encodes role/route/event_subscriber the kind field normalizes away). This row is the distinct validator-scope fix — the check that should have caught that data but does not."  # 3454
+    fields: {}  # 3454
