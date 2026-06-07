@@ -1,0 +1,20 @@
+- op: create  # ea72
+  at: '2026-06-07T10:13:00Z'  # ea72
+  by: agent  # ea72
+  actor: jgstern_agent  # ea72
+  clock: 1  # ea72
+  nonce: ea72  # ea72
+  data:  # ea72
+    kind: work_item  # ea72
+    title: "resolution_quality registered (axis_meta_keys.py:136) + emitted (16332 edges) + spec-documented yet absent from docs/schema.json"  # ea72
+    status: todo_hard  # ea72
+    priority: 2  # ea72
+    parent:  # ea72
+    tags:  # ea72
+    - dogfood  # ea72
+    isbefore: []  # ea72
+    duplicate_of: []  # ea72
+    not_duplicate_of: []  # ea72
+    pr_ref:  # ea72
+    description: "**Defect.** `resolution_quality` is a registered meta key emitted on edges but is absent from `docs/schema.json`.\n\n**Mechanic.** resolution_quality is registered in the meta-key registry (axis_meta_keys.py:136) and documented in the spec (lines 817/823), and the analyzers emit it (16332 edges), but the schema generator never adds it to docs/schema.json, so schema-driven tooling cannot see it.\n\n**Scope.** edge.meta.resolution_quality. 0 hits in docs/schema.json, despite being in the spec (lines 817/823), in the axis_meta_keys.py:136 registry, and emitted on 16332 edges. (The receiver and call_construct meta keys are likewise schema-absent.)\n\n**Expectation.** resolution_quality (and the other emitted call-shape meta keys) would be declared in docs/schema.json, matching the registry and the emitted output.\n\n**Fix.** Add resolution_quality (a registered, documented, emitted meta key) to the schema path so docs/schema.json declares it. This is the registered-meta-key -> schema direction.\n\n**Consequence.** Schema-driven validation rejects or ignores resolution_quality, and codegen produces no accessor for it, so a consumer relying on the schema never sees a registered, emitted, documented field — the schema and the registry disagree.\n\n**Cross-refs.** Distinct from WI-mulub (five linker-emitted meta keys that are NOT in the MetaKeySpec registry — the unregistered direction) and from WI-guvup (edge.meta.evidence_type vocabulary drift, registry vs substrate counts). This row is the inverse: a key that IS registered and emitted but is missing from docs/schema.json. It is also a concrete instance of the broader schema-generator drift (the schema is hand-maintained and omits emitted keys; see the generate-schema introspection row)."  # ea72
+    fields: {}  # ea72

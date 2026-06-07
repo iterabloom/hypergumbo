@@ -1,0 +1,20 @@
+- op: create  # 9dae
+  at: '2026-06-07T10:12:32Z'  # 9dae
+  by: agent  # 9dae
+  actor: jgstern_agent  # 9dae
+  clock: 1  # 9dae
+  nonce: 9dae  # 9dae
+  data:  # 9dae
+    kind: work_item  # 9dae
+    title: "tree-sitter-language-pack masks per-grammar versions: 24 bundled grammars (incl. used markdown+wgsl) hidden behind one entry"  # 9dae
+    status: todo_hard  # 9dae
+    priority: 2  # 9dae
+    parent:  # 9dae
+    tags:  # 9dae
+    - dogfood  # 9dae
+    isbefore: []  # 9dae
+    duplicate_of: []  # 9dae
+    not_duplicate_of: []  # 9dae
+    pr_ref:  # 9dae
+    description: "**Defect.** A language-pack entry masks per-grammar versions, hiding 24 bundled grammars (including used ones) behind a single version.\n\n**Mechanic.** The grammar-capture step records the bundled `tree-sitter-language-pack` distribution as one entry with one version, rather than resolving the individual versions of the grammars it bundles. The per-grammar versions are therefore not visible.\n\n**Scope.** The grammar-version capture in the reproducibility block. 24 bundled grammars are hidden behind one language-pack entry, including grammars actually used on this repo (markdown and wgsl).\n\n**Expectation.** The grammar capture would resolve and record per-bundled-grammar versions, so each bundled grammar (including ones actually exercised) appears with its own version.\n\n**Fix.** Resolve per-bundled-grammar versions in the grammar capture (introspect the language-pack's bundled grammar versions individually rather than recording one pack version).\n\n**Consequence.** Upgrading the bundled pack changes the versions of used grammars (markdown, wgsl) without the per-grammar version changing visibly, so a consumer diffing two maps cannot attribute an output change to the responsible bundled grammar — the reproducibility signature is blind to per-grammar drift inside the pack.\n\n**Cross-refs.** Same reproducibility-block surface as WI-fonod (captured.grammars over-captures versions for absent languages). WI-fonod is over-capture (records grammars never used); this row is under-resolution (a bundled pack hides the per-grammar versions of grammars that ARE used). Distinct fixes."  # 9dae
+    fields: {}  # 9dae

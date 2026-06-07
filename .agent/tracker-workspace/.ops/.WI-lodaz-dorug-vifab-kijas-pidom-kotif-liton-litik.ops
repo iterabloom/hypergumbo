@@ -1,0 +1,20 @@
+- op: create  # 77b2
+  at: '2026-06-07T10:12:57Z'  # 77b2
+  by: agent  # 77b2
+  actor: jgstern_agent  # 77b2
+  clock: 1  # 77b2
+  nonce: 77b2  # 77b2
+  data:  # 77b2
+    kind: work_item  # 77b2
+    title: "meta.receiver documented as a call-shape fact (spec 817/823) but emitted on 0/110533 edges"  # 77b2
+    status: todo_hard  # 77b2
+    priority: 2  # 77b2
+    parent:  # 77b2
+    tags:  # 77b2
+    - dogfood  # 77b2
+    isbefore: []  # 77b2
+    duplicate_of: []  # 77b2
+    not_duplicate_of: []  # 77b2
+    pr_ref:  # 77b2
+    description: "**Defect.** `meta.receiver` is documented as a call-shape fact on call edges but is emitted on zero edges.\n\n**Mechanic.** During call resolution the receiver is never written to edge.meta, even though the resolution path emits its sibling facts. The documented meta[\"receiver\"] key therefore never appears in output.\n\n**Scope.** edge.meta.receiver on call edges. 0/110533 edges carry it. Its documented siblings ARE emitted: meta.call_construct on 21474 edges (method 21183 / function 213 / cross_file 78) and meta.resolution_quality on 16332 edges (type_inferred 16301 / recovery 31). Spec lines 817/823 document all three as readable from edge.meta.\n\n**Expectation.** Call edges would carry meta.receiver (the resolved or short-name receiver object), like the sibling call-shape facts do.\n\n**Fix.** Populate edge.meta.receiver during call resolution (emit the receiver alongside the already-emitted call_construct and resolution_quality facts).\n\n**Consequence.** A consumer reading meta[\"receiver\"] always gets nothing for receiver disambiguation; it cannot distinguish calls on different receivers, so any analysis depending on the call target object (e.g. resolving polymorphic dispatch or aliased receivers) is blind.\n\n**Cross-refs.** WI-fabup concerns receiver disambiguation NOT being wired to the python.yaml ambiguous_names catalog (2102 calls edges target ambiguous names). This row is the distinct field-population gap: meta.receiver is documented but never written at all. Fixing the catalog wiring does not populate the field, and populating the field does not resolve the catalog wiring."  # 77b2
+    fields: {}  # 77b2
