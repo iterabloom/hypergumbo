@@ -144,9 +144,11 @@ Expected IO boundaries for hypergumbo itself:
 - **fs_write**: JSON output in `cli.py`, cache writes.
 - **env_read**: `os.environ` / `os.getenv` / `sys.argv` reads — concentrated in `sketch_embeddings.py` and `cli.py`. Chains include attribute-kind primitives reached via `module_attr_ref` edges.
 - **subprocess**: `build_grammars.py`, gitleaks integration, tracker sync helpers.
-- **net_send**: Tracker sync (HTTP to Forgejo API), HuggingFace Hub download when the `embeddings` extra is installed.
+- **net_send**: Tracker sync (HTTP to Forgejo API) from the tracker helpers; HuggingFace Hub download from the `install-embeddings` extras subcommand. Those are the *only* legitimate network paths — see the caveat below about network during `run`.
 
 If any of these categories are missing, the Python IO catalog or call-graph tracing has a gap.
+
+**Network during `hypergumbo run` is a known defect, not an expected boundary.** The `runtime-cli-no-network` claim in `docs/hypergumbo.claims.yaml` (and the `SECURITY.md` generated from it) promises that analysis subcommands never send over the network — only `install-embeddings` may. In practice `hypergumbo run` still makes HTTPS calls to `huggingface.co` for model metadata on every invocation, even with the model fully cached locally and even when `install-embeddings` was not run this session: `local_files_only=True` is bypassed by HF Hub metadata calls plus a background `safetensors_conversion` thread. This is tracked as **INV-dasig (P0, violated)**. So if you observe HuggingFace traffic during `run` / sketch / any non-`install-embeddings` subcommand, treat it as a *confirmation of INV-dasig*, not as a normal net_send boundary. Caveat to the caveat: `HF_HUB_OFFLINE=1` masks the traffic, so an environment with that env var set may show zero net_send even though the bug is live.
 
 The same chains feed `verify-claims`: every fs_write/net_send/subprocess primitive becomes a taint sink at `trust_level=untrusted` in zone `host_fs` / `network` / `host_fs` respectively, and every env_read primitive becomes a taint source at label `host_secret`. So a missing category here implies a missing taint-flow coverage too.
 
@@ -163,9 +165,10 @@ Pick a known entry point and verify the slice captures its actual dependencies. 
 There is **no `module:name` shorthand**. If the form is ambiguous (e.g. `main` matches multiple symbols in different files) the error lists each candidate's full node ID so you can copy one.
 
 ```bash
-# Slice the CLI via path-suffix match (tested 2026-04-17)
+# Slice the CLI via path-suffix match
 hypergumbo slice --entry hypergumbo_core/cli.py
-# → 531 nodes / 858 edges on hypergumbo dev @ 3c9bcc7c9
+# → a few hundred nodes/edges (exact counts drift with the codebase; the
+#   point is the slice is non-trivial and CLI-rooted, not a fixed number)
 
 # Slice from a single named symbol
 hypergumbo slice --entry link_middleware_chain
