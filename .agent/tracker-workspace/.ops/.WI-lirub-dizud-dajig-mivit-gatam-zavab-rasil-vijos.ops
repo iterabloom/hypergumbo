@@ -1,0 +1,20 @@
+- op: create  # 63f2
+  at: '2026-06-07T10:14:25Z'  # 63f2
+  by: agent  # 63f2
+  actor: jgstern_agent  # 63f2
+  clock: 1  # 63f2
+  nonce: 63f2  # 63f2
+  data:  # 63f2
+    kind: work_item  # 63f2
+    title: "config_info heuristic misses monorepo packages/ manifests (CONFIG_SUBDIRS lacks packages/, sketch.py:805)"  # 63f2
+    status: todo_hard  # 63f2
+    priority: 2  # 63f2
+    parent:  # 63f2
+    tags:  # 63f2
+    - dogfood  # 63f2
+    isbefore: []  # 63f2
+    duplicate_of: []  # 63f2
+    not_duplicate_of: []  # 63f2
+    pr_ref:  # 63f2
+    description: "**Defect.** The sketch's config heuristic does not scan monorepo `packages/` manifests, so structured manifest summaries are empty for monorepos.\n\n**Mechanic.** sketch_precomputed.config_info heuristic extraction (_extract_config_heuristic, sketch.py:887, scan loop at :1104-1106) iterates CONFIG_FILES x CONFIG_SUBDIRS, where CONFIG_SUBDIRS = [\"\", \"server\", \"client\", \"backend\", \"frontend\", \"src\", \"app\", \"api\"] (sketch.py:805). It does not include `packages/` or any nested-package directory, so manifests under packages/<pkg>/ are never parsed by the heuristic.\n\n**Scope.** sketch_precomputed.config_info for monorepo-structured repos. On the substrate (len 1237, hybrid mode per cli.py:8104) the heuristic emits exactly one line (\"LICENSE: AGPL\") from the root LICENSE; every packages/*/pyproject.toml falls back to raw truncated first-lines rather than parsed fields. Reproduced on /tmp fixtures: a packages/-based monorepo returns 0 heuristic lines; a flat repo and an src/-based repo each return parsed lines (isolating the gap to the missing packages/ subdir).\n\n**Expectation.** The heuristic would scan packages/ (and nested-package globbing), so monorepo package manifests yield the same parsed `name: X; version: Y; license; deps` lines as flat-repo manifests.\n\n**Fix.** Add packages/ (and nested-package globbing) to CONFIG_SUBDIRS (sketch.py:805).\n\n**Consequence.** On monorepos the structured manifest summary is empty; the agent gets unparsed raw config noise (or nothing if no embedding/README), so it cannot reliably learn the project's package names, versions, or dependencies.\n\n**Cross-refs.** Same config_info surface as WI-gupod, but a distinct code path: WI-gupod concerns the embedding-chunk selector not being constrained to include manifest identity fields (and the stray-] mid-TOML truncation); this row concerns the heuristic-extraction path (_extract_config_heuristic / CONFIG_SUBDIRS) never reaching packages/ manifests at all. Different producers, different fixes."  # 63f2
+    fields: {}  # 63f2

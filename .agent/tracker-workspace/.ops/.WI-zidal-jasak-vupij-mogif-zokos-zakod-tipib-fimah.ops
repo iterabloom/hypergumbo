@@ -1,0 +1,22 @@
+- op: create  # 8f80
+  at: '2026-06-07T10:14:23Z'  # 8f80
+  by: agent  # 8f80
+  actor: jgstern_agent  # 8f80
+  clock: 1  # 8f80
+  nonce: 8f80  # 8f80
+  data:  # 8f80
+    kind: work_item  # 8f80
+    title: "Python variable-kind nodes never get shape_id (_compute_shape_id typed FunctionDef|ClassDef); Go variable does — analyzer parity gap"  # 8f80
+    status: todo_hard  # 8f80
+    priority: 3  # 8f80
+    parent:  # 8f80
+    tags:  # 8f80
+    - dogfood  # 8f80
+    - identity  # 8f80
+    - analyzer_coverage  # 8f80
+    isbefore: []  # 8f80
+    duplicate_of: []  # 8f80
+    not_duplicate_of: []  # 8f80
+    pr_ref:  # 8f80
+    description: "**Defect.** Python `variable`-kind nodes never receive `shape_id` while the same kind gets one under the tree-sitter path — an analyzer-parity gap.\n\n**Mechanic.** py.py:_compute_shape_id(node) is typed `ast.FunctionDef | ast.ClassDef` and is only called at 3 callsites (py.py:2342/2431/2555), all function/class/method construction. Python variable symbols (module-level constants) are constructed without a shape_id and default to None. The tree-sitter generic CST shape-walker does compute shape_id for variables.\n\n**Scope.** Symbol shape_id field, variable kind. On the substrate: variable 1 present / 1609 None (99.9% None). The single populated variable shape_id is a Go fixture variable (go:tests/fixtures/.../go/main.go:23-23:MyVar:variable, sha256:c2db5319...); all 1609 Python variable nodes (real module constants like ir.py:52:PASS_VERSION, discovery.py:393-464:DEFAULT_EXCLUDES) are None. By contrast method 18385/2, class 4461/1, function 6974/143. Reproduced on a fresh /tmp run: Python consts get shape_id=None, Python function gets a populated shape_id.\n\n**Expectation.** Either Python variable symbols carry a shape_id like the tree-sitter path produces for the same kind, or the spec documents an explicit cross-analyzer carve-out.\n\n**Fix.** Extend the Python analyzer to compute shape_id for variable Symbols (or document a cross-analyzer carve-out).\n\n**Consequence.** Zero structural grouping for Python variables, and the two analyzers silently disagree on whether a variable has a structural fingerprint — cross-language clustering or change-tracking on variables is unreliable.\n\n**Cross-refs.** Distinct from WI-jusus (TS/non-py-go analyzers emit ZERO variable/field symbols — there the node does not exist at all; here the Python variable node exists but lacks shape_id) and from WI-lisog (fingerprint null/format drift, a different identity field). Adjacent to WI-rihob / the structural-kind-null shape_id theme."  # 8f80
+    fields: {}  # 8f80

@@ -1,0 +1,20 @@
+- op: create  # ae96
+  at: '2026-06-08T03:18:35Z'  # ae96
+  by: agent  # ae96
+  actor: jgstern_agent  # ae96
+  clock: 1  # ae96
+  nonce: ae96  # ae96
+  data:  # ae96
+    kind: work_item  # ae96
+    title: "contains tree omits file->function and file->variable edges (7117 fn + 1610 var orphaned); CONTAINABLE_KINDS lacks function/variable"  # ae96
+    status: todo_hard  # ae96
+    priority: 1  # ae96
+    parent:  # ae96
+    tags:  # ae96
+    - dogfood  # ae96
+    isbefore: []  # ae96
+    duplicate_of: []  # ae96
+    not_duplicate_of: []  # ae96
+    pr_ref:  # ae96
+    description: "**Defect.** The `contains` tree omits `file→function` and `file→variable` edges, orphaning 7117 module-level functions and 1610 variables from the containment hierarchy.\n\n**Mechanic.** `linkers/containment.py:83` defines `CONTAINABLE_KINDS = frozenset({\"method\", \"getter\", \"setter\", \"message\"})`. Module-level/top-level `function` and `variable` symbols are not in this set, so the three containment phases (the `sym.kind not in CONTAINABLE_KINDS and sym.kind not in CONTAINER_KINDS` guards at containment.py:237/280/333) skip them and never emit a `file→function` or `file→variable` `contains` edge — even though file-kind nodes ARE container kinds (`file` was added to `CONTAINER_KINDS` per INV-hojus).\n\n**Scope.** 7117 functions + 1610 variables orphaned from the contains tree on self-analysis.\n\n**Expectation.** Module-level functions and variables are reachable from their enclosing file via `contains`, like methods are reachable from their class.\n\n**Consequence.** A consumer walking the `contains` tree to enumerate a file's top-level API or to compute file-scoped reachability finds the file node childless of its own functions/variables; slice traversal and structural views under-report file contents.\n\n**Unifying fix.** Add `function` + `variable` to `CONTAINABLE_KINDS` (containment.py:83).\n\n**Cross-refs (related, not duplicate).** WI-karog (slice.py `_CONTAINER_KINDS` reverse-slice set — distinct set, distinct mechanism); WI-vakuh (containment-linker confidence inversion on existing edges); WI-dagif (missing file-anchor nodes — distinct: this defect is the missing edges even where the file anchor exists).\n\nMembers: F184.A3, F195.A1, F196.A1. Found via dogfooding tranche 10. Severity 4."  # ae96
+    fields: {}  # ae96
