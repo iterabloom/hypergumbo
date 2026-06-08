@@ -33,3 +33,10 @@
   clock: 3  # 1783
   nonce: '1783'  # 1783
   message: "Re-surfaced in dogfooding tranche 10 (U06, F189.A1, severity 3). The naming_convention class->method containment attaches methods to the wrong same-name SIBLING class — 30 false out-of-span contains edges at confidence 1.0 (the same 30 provably-false class->method containments this item records, e.g. _FakeMetadata). Fix: replace the name-prefix containment heuristic with span/AST nesting under name collision (containment.py)."  # 1783
+- op: discuss  # 3df6
+  at: '2026-06-08T10:26:34Z'  # 3df6
+  by: agent  # 3df6
+  actor: jgstern_agent  # 3df6
+  clock: 4  # 3df6
+  nonce: 3df6  # 3df6
+  message: "Re-confirms _find_parent Priority-1 name-match w/o span check over-wires methods to first same-named class: 28 out-of-span contains across 8 nodes (worst 16, 13 wrong). Same span-check fix. (dogfood; blinded sev 3)"  # 3df6

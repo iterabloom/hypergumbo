@@ -1,0 +1,20 @@
+- op: create  # ebe7
+  at: '2026-06-08T10:26:37Z'  # ebe7
+  by: agent  # ebe7
+  actor: jgstern_agent  # ebe7
+  clock: 1  # ebe7
+  nonce: ebe7  # ebe7
+  data:  # ebe7
+    kind: work_item  # ebe7
+    title: "not_captured carries two disjoint meanings under limits vs reproducibility_context"  # ebe7
+    status: todo_hard  # ebe7
+    priority: 3  # ebe7
+    parent:  # ebe7
+    tags:  # ebe7
+    - dogfood  # ebe7
+    isbefore: []  # ebe7
+    duplicate_of: []  # ebe7
+    not_duplicate_of: []  # ebe7
+    pr_ref:  # ebe7
+    description: "- **Subject:** A single field name `not_captured` carries two disjoint semantics under two different parents.\n- **Mechanic:** `not_captured` appears under two top-level parents with completely different meanings: under `limits` it lists analysis-coverage gaps (dynamic imports, eval/exec, metaprogramming, …); under `reproducibility_context` it lists reproducibility/determinism gaps (transitive package versions, OS/locale, hardware/floating-point). The two sets are disjoint. Neither is declared in the schema.\n- **Expectation:** One of the two fields should be renamed or otherwise disambiguated so a single name does not denote two unrelated concepts.\n- **Scope:** `limits.not_captured` (6 entries, analysis-coverage gaps) vs `reproducibility_context.not_captured` (3 entries, determinism gaps); the intersection is empty.\n- **Exposure:** A consumer dereferencing `behavior_map.<X>.not_captured` without tracking which parent it came from.\n- **Consequence:** The consumer gets analysis-coverage gaps or reproducibility gaps depending on which parent it dereferenced, with no key in common — silently conflating two unrelated kinds of \"not captured.\"\n\n---\n\n(Filed from dogfooding.)"  # ebe7
+    fields: {}  # ebe7

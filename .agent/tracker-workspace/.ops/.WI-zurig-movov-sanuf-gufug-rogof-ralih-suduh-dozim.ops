@@ -26,3 +26,10 @@
   clock: 2  # bcd4
   nonce: bcd4  # bcd4
   message: "Dogfood fold (member F159.A2-a, split from F159.A2) — TRUE DUPLICATE of this row's mechanism, reproduces on the frozen substrate. Independent dogfood pass re-confirmed: the websocket-linker scans content for WS endpoint patterns without test-file awareness, so FastAPI/WS patterns embedded as test code (test_websocket.py x9, test_starlette_routes.py x2) are matched and emitted as endpoint targets alongside genuine production references. 42 WS-channel references/calls edges carry meta.channel; 27 of them are sourced from test/fixture files; the matched endpoint targets point into a test suite rather than the real production WS handler. Consequence: an agent mapping the live WS attack/communication surface includes test fixtures as if they were production endpoints, and misses the actual handler — wrong audit, wrong refactor targets. Same mechanism + same fix (is-test-file scoping in linkers/websocket.py:903-943) as already captured here (12 calls edges, 11 test/1 prod). No new row filed. Theme C2 sibling of U18 (event-sourcing .connect django, WI-pitit), U20 (server_framework dep-blind, WI-fizir), U21 (message-queue test-sourced, WI-nitob)."  # bcd4
+- op: discuss  # 982c
+  at: '2026-06-08T10:26:37Z'  # 982c
+  by: agent  # 982c
+  actor: jgstern_agent  # 982c
+  clock: 3  # 982c
+  nonce: 982c  # 982c
+  message: "Re-confirms websocket-linker 12 ws calls edges from one frontend client, 11/12 target test endpoints; no is-test scoping (websocket.py:903-943). The fastapi/starlette split is the WI-fizir facet. (dogfood; blinded sev 4)"  # 982c

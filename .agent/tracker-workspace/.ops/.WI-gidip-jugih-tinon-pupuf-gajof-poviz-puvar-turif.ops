@@ -19,3 +19,10 @@
     pr_ref:  # 6c79
     description: "F65.A4 (blind severity 2/Minor). Two separate modules expose a parameter literally named hub_threshold with different semantics and different defaults: the centrality-ranking module uses it for in-degree log-saturation in scoring (default 100), while the slice module uses it for traversal hub-pruning (default 50). They share no definition; the two distinct defaults confirm they are independent machinery. A slice feature's query.hub_threshold echo (50) and a centrality config's hub_threshold (100) are the same key name for unrelated knobs. A consumer who carries a value or mental model from one mechanism to the other configures the wrong behavior (mis-tuning). No emitted value is corrupted; the hazard is conceptual and invites configuration errors. Fix: distinct self-descriptive names (or a documented disambiguation) so a consumer reading 'hub_threshold' knows which mechanism and which default applies. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 6c79
     fields: {}  # 6c79
+- op: discuss  # 012c
+  at: '2026-06-08T10:26:37Z'  # 012c
+  by: agent  # 012c
+  actor: jgstern_agent  # 012c
+  clock: 2  # 012c
+  nonce: 012c  # 012c
+  message: "Re-confirms hub_threshold dual-meaning: handler-slice producer emits 100 into feature.query.hub_threshold; spec documents 50. WI-gidip names slice-50 vs ranking-100; this is the spec-vs-emitted facet. (dogfood; blinded sev 2)"  # 012c

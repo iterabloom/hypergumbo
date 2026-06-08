@@ -26,3 +26,10 @@
   clock: 2  # 9ef9
   nonce: 9ef9  # 9ef9
   message: "Re-confirmed + mechanism-pinned on fresh substrate (dogfood_tranche_07 F140.A1): by_supply_chain_tier counts each edge under its SRC node's tier (metrics.py:123-130 buckets by node_id_to_tier[edge.src]). Dependency-tier nodes are structurally never edge sources — external_dep nodes as edge SRC = 0/1243, internal_dep = 0/486 (vs as DST: 27272 / 2881). So internal_dep.edges and external_dep.edges are 0 by construction every run. The informative quantity (edges reaching INTO a tier: 27272 external + 2881 internal) is computed only as DST tier and never surfaced. Adds the src-vs-dst attribution proof to this row's finding."  # 9ef9
+- op: discuss  # 81bd
+  at: '2026-06-08T10:26:34Z'  # 81bd
+  by: agent  # 81bd
+  actor: jgstern_agent  # 81bd
+  clock: 3  # 81bd
+  nonce: 81bd  # 81bd
+  message: "Re-confirms by_supply_chain_tier.edges source-tier-only: external_dep=0/internal_dep=0 despite 27272+2881=30153 incident edges. WI-modom is the exact match; same projection-direction fix. (dogfood; blinded sev 4)"  # 81bd

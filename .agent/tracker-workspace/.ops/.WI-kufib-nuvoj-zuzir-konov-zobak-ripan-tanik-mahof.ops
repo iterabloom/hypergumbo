@@ -18,3 +18,10 @@
     pr_ref:  # 6e1a
     description: "docs/schema.json declares Symbol.language as a required, non-nullable `string`, but ir.py types it `Optional[str]` and ~21 protocol linkers emit `language=None` on synthetic stand-in nodes (262 nodes in self-analysis). jsonschema validation of the emitted behavior map against its own shipped schema fails with exactly 262 `nodes[N].language: None is not of type 'string'` errors — the ONLY value-type violation document-wide (Edge/AnalysisRun/Entrypoint/UsageContext arrays validate clean). The generate-schema generator already emits `oneOf [string,null]` for 8 sibling Optional fields but botched `language` alone. Fix: emit `oneOf [string,null]` for the Optional `language` field. Related: WI-kutas (generic generate-schema drift root cause); WI-nagam (substrate-emits-null side, wont_do — this schema fix makes the schema TOLERATE the null rather than eliminate it). Surfaced via dogfooding; blinded severity 5/5."  # 6e1a
     fields: {}  # 6e1a
+- op: discuss  # ac7c
+  at: '2026-06-08T10:26:37Z'  # ac7c
+  by: agent  # ac7c
+  actor: jgstern_agent  # ac7c
+  clock: 2  # ac7c
+  nonce: ac7c  # ac7c
+  message: "Re-confirms 262 null-language synthetic-linker nodes fail required non-nullable schema language (fn 130 + call_site 130 + pkg 2); all carry discovery_language. WI-kufib names 262 + oneOf[string,null]. (dogfood; blinded sev 4)"  # ac7c

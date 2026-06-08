@@ -1,0 +1,20 @@
+- op: create  # 003b
+  at: '2026-06-08T10:26:34Z'  # 003b
+  by: agent  # 003b
+  actor: jgstern_agent  # 003b
+  clock: 1  # 003b
+  nonce: 003b  # 003b
+  data:  # 003b
+    kind: work_item  # 003b
+    title: "Schema view const behavior_map rejects compact/tiered/slice/test-coverage views"  # 003b
+    status: todo_hard  # 003b
+    priority: 1  # 003b
+    parent:  # 003b
+    tags:  # 003b
+    - dogfood  # 003b
+    isbefore: []  # 003b
+    duplicate_of: []  # 003b
+    not_duplicate_of: []  # 003b
+    pr_ref:  # 003b
+    description: "- **Subject:** The published schema pins the `view` field to a single constant, so every non-default view fails the project's own schema.\n- **Mechanic:** The schema is auto-generated from the behavior-map dataclass default `view=\"behavior_map\"`, and the codegen emitted a JSON-Schema `const:\"behavior_map\"`. But the producer sets `view` to compact / tiered / slice / test-coverage for those subcommands, all stamped with the same schema_version, with only one declared schema in the repo.\n- **Expectation:** The schema should accept the full set of `view` values the producer emits (an enum, not a single const), or provide a per-view schema.\n- **Scope:** A fresh compact output is otherwise fully schema-conformant but fails validation with exactly 1 error: `['view'] | 'behavior_map' was expected`. The same failure applies to tiered, slice, and test-coverage views.\n- **Exposure:** Any consumer that validates a non-default-view output (compact/tiered/slice/test-coverage) against the project's own published schema.\n- **Consequence:** Schema-driven consumers (codegen, contract tests, gateway validation) reject valid first-class outputs on the `view` field even though every other field conforms.\n\n---\n\n(Filed from dogfooding.)"  # 003b
+    fields: {}  # 003b
