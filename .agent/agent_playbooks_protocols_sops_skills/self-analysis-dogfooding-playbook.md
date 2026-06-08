@@ -98,15 +98,28 @@ for k, count in node_kinds.most_common(15):
 "
 ```
 
-**Node schema reference** (from `Symbol.to_dict()` in `packages/hypergumbo-core/src/hypergumbo_core/ir.py`):
-top-level fields are `id`, `name`, `kind`, `language`, `path`, `span`, `origin`,
-`origin_run_id`, `stable_id`, `shape_id`, `canonical_name`,
-`fingerprint`, `quality`, `meta`, `supply_chain` (nested: `tier`, `tier_name`,
-`reason`, `is_test_file`, `is_example_file`, `is_config_file`,
-`is_generated_file`, `is_exported`),
-`cyclomatic_complexity`, `lines_of_code`, `signature`, `docstring`, `modifiers`.
+**Node schema reference** — `Symbol.to_dict()` in
+`packages/hypergumbo-core/src/hypergumbo_core/ir.py` is authoritative. If this
+paragraph and the code disagree, the code wins: re-derive the field list from
+`to_dict` rather than trusting this text.
+Top-level fields are `id`, `name`, `kind`, `language`, `path`, `span`, `origin`,
+`origin_run_id`, `stable_id`, `shape_id`, `fingerprint`, `quality`, `meta`,
+`supply_chain` (nested: `tier`, `tier_name`, `reason`, `is_test_file`,
+`is_example_file`, `is_config_file`, `is_generated_file`, `is_exported`),
+`cyclomatic_complexity`, `lines_of_code`, `signature`, `docstring`, `modifiers`,
+`discovery_language`, `protocol_origin`, `display_label`, `qualified_name`.
+The last four are the ADR-0031 / ADR-0032 axis-split siblings: `language` was
+split into `discovery_language` (host source language) + `protocol_origin`
+(protocol family such as `websocket` / `grpc` for synthetic linker stand-ins,
+`null` for real-source symbols), and the former `canonical_name` field was split
+into `display_label` (UI string — consumers display it, never branch on it) +
+`qualified_name` (language-aware fully-qualified name). **`canonical_name` no
+longer exists in output** (removed in ADR-0032): a probe reading
+`n.get('canonical_name')` now always gets `None` — use `display_label` or
+`qualified_name` instead.
 Common mistakes: `lang` (use `language`), `type` on a node (use `kind`), `file`
-(use `path`), `source` / `target` on an edge (use `src` / `dst`).
+(use `path`), `source` / `target` on an edge (use `src` / `dst`),
+`canonical_name` (removed — use `display_label` / `qualified_name`).
 
 **Tier label trap.** On a workspace package, `supply_chain.tier_name=internal_dep` is the default for everything *outside* `src/`/`lib/`/`app/` — including tests. On a self-analysis where the codebase is mostly first-party, a "78 % internal_dep" summary stat is not anomalous; it is the documented classification algorithm (`supply_chain.py` step 4: src/lib/app → tier 1, otherwise tier 2). Use the role flags (`is_test_file`, `is_example_file`, `is_config_file`, `is_generated_file`) to recover what kind of code a tier-2 node holds — not the tier label alone.
 
