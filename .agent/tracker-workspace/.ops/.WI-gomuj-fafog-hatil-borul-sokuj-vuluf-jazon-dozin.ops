@@ -1,0 +1,20 @@
+- op: create  # 5519
+  at: '2026-06-08T03:21:02Z'  # 5519
+  by: agent  # 5519
+  actor: jgstern_agent  # 5519
+  clock: 1  # 5519
+  nonce: '5519'  # 5519
+  data:  # 5519
+    kind: work_item  # 5519
+    title: "enclosure-linker uses edges propagate phantom MQ/WS/event synthetic nodes into call graph (102/119 test-rooted)"  # 5519
+    status: todo_hard  # 5519
+    priority: 2  # 5519
+    parent:  # 5519
+    tags:  # 5519
+    - dogfood  # 5519
+    isbefore: []  # 5519
+    duplicate_of: []  # 5519
+    not_duplicate_of: []  # 5519
+    pr_ref:  # 5519
+    description: "**Defect.** The enclosure-linker's `uses` edges propagate phantom message-queue / websocket / event-sourcing synthetic linker nodes into the real call graph; 102/119 are rooted in test files.\n\n**Mechanic.** All 119 `uses` edges (origin=enclosure-linker, evidence_type=enclosing_scope, conf 0.9) connect a real enclosing function/method to a SYNTHETIC linker node. The enclosure-linker finds the function enclosing each synthetic's emit line (span-inside check passes 119/119) and emits a `uses` edge. dst framework_role split: mq_publisher 44 + mq_subscriber 31 + websocket_endpoint 30 + event_subscriber 11 + event_publisher 3 = 119. 102/119 (85.7%) have their src in a test file, so the phantom-from-test synthetics (WI-nitob / WI-zurig populations) get materialized as real call-graph edges.\n\n**Scope.** 119 `uses` edges, 102 test-rooted.\n\n**Expectation.** The enclosure-linker's `uses` emission does not pull phantom-from-test synthetic nodes into the reachable graph.\n\n**Consequence.** A consumer doing reachability/slice from a test method now reaches a phantom kafka/ws/event synthetic via `uses`. Mixed effect: enclosure-linker connecting these 119 otherwise-orphaned synthetics REDUCES the WI-mutug orphan count, but at the cost of injecting phantom-from-test linkage into the real graph.\n\n**Unifying fix.** Gate enclosure-linker `uses` emission to exclude phantom-from-test synthetic nodes (and/or respect Symbol.supply_chain.is_test_file).\n\n**Cross-refs (related, not duplicate).** WI-nitob (message-queue linker synthesizes the 103 phantom event_publishes from test-file MQ strings — the SOURCE of many synthetics; this item is the SEPARATE enclosure-linker propagation surface with its own fix); WI-zurig (websocket-linker phantom calls); WI-mutug (orphaned synthetic nodes); WI-zadot (synthetic nodes mislabeled kind=function).\n\nMember: F182.A2. Found via dogfooding tranche 10. Severity 3."  # 5519
+    fields: {}  # 5519

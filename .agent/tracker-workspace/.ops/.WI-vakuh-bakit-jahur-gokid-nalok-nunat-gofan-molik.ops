@@ -26,3 +26,10 @@
   clock: 2  # f1c3
   nonce: f1c3  # f1c3
   message: "Materialized from dogfood tranche 05 (F93.A1 / anon-card-017). Mechanism: containment-linker confidence direction anti-correlated with mechanism reliability (naming_convention heuristic@1.0 outranks span_overlap certain@0.9). Evidence: frozen substrate.json (probe_1_contains_conf.log) buckets (1.0,naming_convention)=18388 / (0.9,span_overlap)=4471; producer linkers/containment.py phases 1/1.5/2 read in live repo. Magnitude: 30 provably-false class->method contains at confidence 1.0 (re-derived count 30, not 28) — method spans lying outside the class span in the same file; concrete _FakeMetadata @ test_analyzer_identity.py:205-207 'contains' methods at 234-235/270-271. Blind severity 4/5, reproduced on frozen substrate. RELATED_BUT_DISTINCT from WI-lutad (18388 linker edges exceed 0.95 ceiling — that's about linker edge confidence breaching the ceiling generally; this is the DIRECTION of the hardcoding being anti-correlated with truth, and the 1.0 bucket is exactly the contains/naming_convention phase), WI-suvil (confidence hardcoded not evidence-derived — META parent), and the ledger same-base-name misattribution row F81.A1/WI-jafat (same root naming mechanism, but here the wrong edge carries the MAXIMUM confidence 1.0)."  # f1c3
+- op: discuss  # 1783
+  at: '2026-06-08T03:21:43Z'  # 1783
+  by: agent  # 1783
+  actor: jgstern_agent  # 1783
+  clock: 3  # 1783
+  nonce: '1783'  # 1783
+  message: "Re-surfaced in dogfooding tranche 10 (U06, F189.A1, severity 3). The naming_convention class->method containment attaches methods to the wrong same-name SIBLING class — 30 false out-of-span contains edges at confidence 1.0 (the same 30 provably-false class->method containments this item records, e.g. _FakeMetadata). Fix: replace the name-prefix containment heuristic with span/AST nesting under name collision (containment.py)."  # 1783

@@ -26,3 +26,10 @@
   clock: 2  # e1f0
   nonce: e1f0  # e1f0
   message: "Dogfood re-confirmation. limits.not_captured is a fixed 6-entry list hardcoded at limits.py:21-26 (dynamic imports, eval/exec, runtime code gen, monkey-patching, complex-runtime-logic decorators, metaprogramming), copied identically into every behavior map regardless of repo content. The list omits function aliasing / name rebinding (f = g), a static construct the tool does process and mis-resolves (alias call-graph dead-end). Spec §955 frames it as 'Categories of constructs not analyzed.' A consumer reading not_captured as the set of constructs present-but-skipped in this specific repo over- or under-estimates coverage."  # e1f0
+- op: discuss  # 344e
+  at: '2026-06-08T03:21:53Z'  # 344e
+  by: agent  # 344e
+  actor: jgstern_agent  # 344e
+  clock: 3  # 344e
+  nonce: 344e  # 344e
+  message: "Re-surfaced in dogfooding tranche 10 (U10, F191.A3 split, severity 2). limits.not_captured is a static 6-element KNOWN_LIMITATIONS.copy() disclaimer posing as per-run data — exactly this item's hardcoded universal 6-string constant. Fix: make not_captured measured per-run, or relabel as a static disclaimer."  # 344e

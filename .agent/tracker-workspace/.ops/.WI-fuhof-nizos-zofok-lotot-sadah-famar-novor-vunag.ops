@@ -19,3 +19,10 @@
     pr_ref:  # d157
     description: "**Defect.** Edge confidence is not a function of `evidence_type`: the two largest evidence types each carry several distinct hardcoded confidence values, contradicting the deterministic evidence→confidence model.\n\n**Evidence.** Census of evidence_type → distinct confidence values: ast_call carries 4 (0.4/0.5/0.8/0.95, n=21474); ast_call_direct carries 5 (0.5/0.7/0.85/0.9/0.95, n=35749). The variance persists holding (evidence_type, edge.type, origin-language) FIXED: Python calls with ast_call split 0.4 (16301) / 0.5 (4850); with ast_call_direct split 0.85 (32444) / 0.5 (2942). The 0.4 ast_call bucket is the type-inference give-up branch (all is_resolved=False). Spec §1146 / confidence_model \"hypergumbo-evidence-v1\" frame confidence as a deterministic mapping from structured evidence to confidence — but the producer sub-branch driving the split is exposed in no readable axis.\n\n**Contract.** If confidence is a deterministic function of evidence, a consumer keying off evidence_type (or evidence_type + edge_type + language) should be able to reproduce the value; the producer sub-branch should be exposed in a readable axis, or the model contract corrected.\n\n**Consequence.** Confidence interpretation keyed on evidence type is unreliable on the bulk of call edges; a consumer cannot reconstruct or predict why a given edge has the confidence it does on the two largest call-edge evidence types."  # d157
     fields: {}  # d157
+- op: discuss  # 507d
+  at: '2026-06-08T03:21:34Z'  # 507d
+  by: agent  # 507d
+  actor: jgstern_agent  # 507d
+  clock: 2  # 507d
+  nonce: 507d  # 507d
+  message: "Re-surfaced in dogfooding tranche 10 (U05b, F186.A1 split b, severity 3). Confidence is keyed by (is_resolved, edge.type), not the documented (language, evidence_type) axis — the producer sub-branch driving the split (resolution state) is exposed in no readable axis, matching this item exactly. Fix: reconcile the keying axis — key by the documented axis or re-document the real axis. (related INV-suvil hardcoded-per-emitter.)"  # 507d

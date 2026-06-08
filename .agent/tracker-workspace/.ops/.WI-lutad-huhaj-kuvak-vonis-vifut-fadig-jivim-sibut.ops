@@ -47,3 +47,10 @@
   clock: 5  # 4f77
   nonce: 4f77  # 4f77
   message: "Split note (ADD-only cross-ref): the undocumented additive in-degree confidence boost (cap +0.35, library_export, entrypoints.py:1504-1507) referenced above was materialized as its own work item WI-dojor-rajaf-bajos-hifan-lilos-sikuj-todaj-horod — it is a distinct fix (document the boost in §895 or remove it from the producer) from this item's tier-model/range reconciliation."  # 4f77
+- op: discuss  # ef77
+  at: '2026-06-08T03:22:14Z'  # ef77
+  by: agent  # ef77
+  actor: jgstern_agent  # ef77
+  clock: 6  # ef77
+  nonce: ef77  # ef77
+  message: "Re-surfaced in dogfooding tranche 10 (U20, F199.A1, severity 4). Entrypoint confidence violates the documented 0.70 floor: 81/104 entrypoints below floor (min 0.1849) — the exact 81/104 figure this item already records. The values are continuous centrality-modulated, not 4 fixed tiers. Fix: reconcile entrypoint confidence with the spec tier contract (clamp to floor, or update spec to the modulated range + missing kinds). (related WI-logad: entrypoint tier table omits library_export/script/SPA tiers.)"  # ef77

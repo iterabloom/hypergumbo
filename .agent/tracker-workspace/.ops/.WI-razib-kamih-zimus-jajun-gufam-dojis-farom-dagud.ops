@@ -1,0 +1,20 @@
+- op: create  # 3deb
+  at: '2026-06-08T07:04:25Z'  # 3deb
+  by: agent  # 3deb
+  actor: jgstern_agent  # 3deb
+  clock: 1  # 3deb
+  nonce: 3deb  # 3deb
+  data:  # 3deb
+    kind: work_item  # 3deb
+    title: "pyffi linker scans its own test file → 10 phantom C_stdlib FFI calls edges (no test-file awareness)"  # 3deb
+    status: todo_hard  # 3deb
+    priority: 2  # 3deb
+    parent:  # 3deb
+    tags:  # 3deb
+    - dogfood  # 3deb
+    isbefore: []  # 3deb
+    duplicate_of: []  # 3deb
+    not_duplicate_of: []  # 3deb
+    pr_ref:  # 3deb
+    description: "The pyffi linker (pyffi.py, 544 lines) has zero test-file awareness: all 10 C_stdlib FFI `calls` edges it emits in self-analysis (fopen/fwrite/popen/etc.) originate from the linker's OWN test file test_pyffi_linker.py, not from production code. Fix: add an is_test_file gate to pyffi.py so it skips test files. Same root FAMILY as the broader 'linkers/patterns scan test files' theme but a DISTINCT producer with its own fix site (pyffi.py); cross-linked, not folded. Surfaced via dogfooding; blinded severity 3/5."  # 3deb
+    fields: {}  # 3deb

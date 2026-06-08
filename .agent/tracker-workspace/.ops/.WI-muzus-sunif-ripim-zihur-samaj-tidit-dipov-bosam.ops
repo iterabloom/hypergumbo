@@ -26,3 +26,17 @@
   clock: 2  # f5a6
   nonce: f5a6  # f5a6
   message: "Dogfood re-confirmation. limits.analysis_depth='syntax_only' reproduced on a fresh /tmp fixture run: 31 semantic passes ran and the output carried extends + dispatches_to edges, yet analysis_depth still read 'syntax_only'. The field is declared at limits.py:99 and serialized at limits.py:180; grep for analysis_depth (excluding the dataclass and tests) returns no reassignment path. 0 doc hits in docs/schema.json and docs/hypergumbo-spec.md. A consumer gating on this field wrongly concludes only syntactic analysis occurred and discards valid semantic edges."  # f5a6
+- op: discuss  # 4ee7
+  at: '2026-06-08T03:21:53Z'  # 4ee7
+  by: agent  # 4ee7
+  actor: jgstern_agent  # 4ee7
+  clock: 3  # 4ee7
+  nonce: 4ee7  # 4ee7
+  message: "Re-surfaced in dogfooding tranche 10 (U09, F191.A2 split, severity 2). limits.analysis_depth is the hardcoded zero-entropy constant 'syntax_only' and is undocumented — exactly this item. Fix: compute analysis_depth per-run, or document/remove the constant."  # 4ee7
+- op: discuss  # c624
+  at: '2026-06-08T07:04:36Z'  # c624
+  by: agent  # c624
+  actor: jgstern_agent  # c624
+  clock: 4  # c624
+  nonce: c624  # c624
+  message: "Dogfooding re-confirmed (blinded severity 2/5): limits.analysis_depth='syntax_only' has zero mentions in docs/hypergumbo-spec.md and no documented value vocabulary. Same document-and-enumerate fix this item already tracks. [dogfood]"  # c624

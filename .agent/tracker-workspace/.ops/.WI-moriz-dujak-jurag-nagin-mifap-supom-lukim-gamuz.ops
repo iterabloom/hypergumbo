@@ -33,3 +33,10 @@
   clock: 3  # 5a6b
   nonce: 5a6b  # 5a6b
   message: "New concrete facet on the id_format counter (blind-severity-derived priority signal: P0). The published validation_report.violations_by_class is all-zero, but 1670 nodes have an id kind-SEGMENT that disagrees with the kind FIELD while still passing the shape regex (e.g. a node with kind field 'function' whose id ends ':route') — every one is invisible to the id_format validator. Root cause: _check_id_format / _CANONICAL_ID_PATTERN checks only SHAPE (segment count, colon-free tail, valid lang prefix, span pattern, lowercase kind suffix); it never compares the id's kind-segment to node.kind. So the all-zero report gives false structural-consistency assurance: the violation-class names (id_format, cross_field) imply far broader coverage than the predicates deliver."  # 5a6b
+- op: discuss  # 9196
+  at: '2026-06-08T03:21:25Z'  # 9196
+  by: agent  # 9196
+  actor: jgstern_agent  # 9196
+  clock: 4  # 9196
+  nonce: '9196'  # 9196
+  message: "Re-surfaced in dogfooding tranche 10 (U02, F181.A2, severity 4). validation_report all-zero is a false clean-bill: uncovered defect classes the validator never checks — dangling-src endpoints and kind-slot mismatch. Same defect+fix as this item (counters report 0 because rules aren't wired, not because the substrate is clean). Specific instances map to WI-mujor (dangling-endpoint check) and WI-bovoh (kind-slot/id_format registry-scope gap). Fix: add dangling-endpoint + kind-slot validation checks (or scope/relabel the report)."  # 9196

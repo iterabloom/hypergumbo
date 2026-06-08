@@ -1,0 +1,20 @@
+- op: create  # 89ad
+  at: '2026-06-08T07:04:23Z'  # 89ad
+  by: agent  # 89ad
+  actor: jgstern_agent  # 89ad
+  clock: 1  # 89ad
+  nonce: 89ad  # 89ad
+  data:  # 89ad
+    kind: work_item  # 89ad
+    title: "framework-pattern matcher engine has no is_test_file gate → naming-convention concepts mislabel test classes as services/controllers"  # 89ad
+    status: todo_hard  # 89ad
+    priority: 2  # 89ad
+    parent:  # 89ad
+    tags:  # 89ad
+    - dogfood  # 89ad
+    isbefore: []  # 89ad
+    duplicate_of: []  # 89ad
+    not_duplicate_of: []  # 89ad
+    pr_ref:  # 89ad
+    description: "framework_patterns.py PatternSpec supports symbol_name/symbol_kind/symbol_path/modifiers_exclude but has NO is_test_file field, so the matcher cannot honor Symbol.supply_chain.is_test_file (which IS correctly set). Consequently naming-conventions concepts fire on test code: `service_by_name` on 4 test-fixture `MyService` classes and `controller_by_name` on a pytest class `TestMultipleActionsSameController`, all is_test_file=true. The naming-conventions.yaml comment claims test exclusion the regex doesn't deliver. Fix: add an is_test_file field to PatternSpec/the matcher engine and gate naming-conventions concepts off test files. (Distinct from WI-mozum, which is the supply_chain TEST_FILE_PATTERNS layer.) Surfaced via dogfooding; blinded severity 3/5."  # 89ad
+    fields: {}  # 89ad

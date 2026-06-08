@@ -1,0 +1,20 @@
+- op: create  # 56f6
+  at: '2026-06-08T07:04:16Z'  # 56f6
+  by: agent  # 56f6
+  actor: jgstern_agent  # 56f6
+  clock: 1  # 56f6
+  nonce: 56f6  # 56f6
+  data:  # 56f6
+    kind: work_item  # 56f6
+    title: "html script_src linker mints a phantom external_dep JS placeholder instead of resolving to the existing first-party entry module"  # 56f6
+    status: todo_hard  # 56f6
+    priority: 2  # 56f6
+    parent:  # 56f6
+    tags:  # 56f6
+    - dogfood  # 56f6
+    isbefore: []  # 56f6
+    duplicate_of: []  # 56f6
+    not_duplicate_of: []  # 56f6
+    pr_ref:  # 56f6
+    description: "The html analyzer's `script_src` edge for `<script src=\"/src/main.ts\">` points at a synthetic placeholder node `javascript:/src/main.ts:0-0:ref:script` (kind=external_symbol, tier3/external_dep, language=javascript on a .ts source) instead of resolving the URL onto the EXISTING first-party node `typescript:.../src/main.ts`. The entrypoints surface resolves the same module correctly to the real node — two surfaces disagree. This is the entirety of html-analyzer cross-file linkage and it is a phantom. Fix: have the script_src resolver map the URL path (strip leading slash + package prefix) onto the existing repo file node. Related: INV-vavat (script_src flagged as vestigial once-appearing edge type — distinct producer-side fix). Surfaced via dogfooding; blinded severity 3/5."  # 56f6
+    fields: {}  # 56f6

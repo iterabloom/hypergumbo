@@ -1,0 +1,20 @@
+- op: create  # a7e2
+  at: '2026-06-08T07:04:30Z'  # a7e2
+  by: agent  # a7e2
+  actor: jgstern_agent  # a7e2
+  clock: 1  # a7e2
+  nonce: a7e2  # a7e2
+  data:  # a7e2
+    kind: work_item  # a7e2
+    title: "analysis_run field-type inconsistency: files_skipped is an int while failed_files/warnings are lists"  # a7e2
+    status: todo_hard  # a7e2
+    priority: 3  # a7e2
+    parent:  # a7e2
+    tags:  # a7e2
+    - dogfood  # a7e2
+    isbefore: []  # a7e2
+    duplicate_of: []  # a7e2
+    not_duplicate_of: []  # a7e2
+    pr_ref:  # a7e2
+    description: "On all 84 AnalysisRuns, the three parallel 'what didn't go right this pass' fields use two container types: files_skipped=0 (int) while failed_files=[] and warnings=[] (lists). A consumer iterating the per-pass problem channels must special-case files_skipped. Fix: harmonize the AR what-went-wrong field container types (e.g. make files_skipped a list, or document the intentional asymmetry). Distinct from INV-buhur (satisfied: failed_files never populated) — different mechanism. Surfaced via dogfooding; blinded severity 2/5."  # a7e2
+    fields: {}  # a7e2

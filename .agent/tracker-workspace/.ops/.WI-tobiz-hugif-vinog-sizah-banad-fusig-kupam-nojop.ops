@@ -1,0 +1,20 @@
+- op: create  # 9c5d
+  at: '2026-06-08T07:04:18Z'  # 9c5d
+  by: agent  # 9c5d
+  actor: jgstern_agent  # 9c5d
+  clock: 1  # 9c5d
+  nonce: 9c5d  # 9c5d
+  data:  # 9c5d
+    kind: work_item  # 9c5d
+    title: "JS/TS analyzer stamps origin=[javascript] on real TypeScript nodes/edges; no typescript pass-id exists"  # 9c5d
+    status: todo_hard  # 9c5d
+    priority: 2  # 9c5d
+    parent:  # 9c5d
+    tags:  # 9c5d
+    - dogfood  # 9c5d
+    isbefore: []  # 9c5d
+    duplicate_of: []  # 9c5d
+    not_duplicate_of: []  # 9c5d
+    pr_ref:  # 9c5d
+    description: "The mainstream JS/TS analyzer is a single pass (`js_ts.py:101 PASS_ID = make_pass_id(\"javascript\")`) that handles `.ts` files too, stamping `origin=[\"javascript\"]` on every TS symbol/edge. In self-analysis 45/64 real TypeScript-language nodes and 51 ts-on-ts edges carry `origin=[javascript]`; the `typescript` value appears as an origin on ZERO nodes/edges. A consumer grouping by origin to find 'what the TS analyzer produced' finds nothing under typescript. Distinct from INV-tofun (which fixes LINKER synthetics hardcoding language=javascript on the language axis; this is the ANALYZER's own origin/pass-id axis on REAL TS nodes, node.language correctly typescript). Fix: emit a `typescript` pass-id/origin (or per-file origin) in js_ts.py. Related: INV-tofun (pending_validation). Surfaced via dogfooding; blinded severity 3/5."  # 9c5d
+    fields: {}  # 9c5d

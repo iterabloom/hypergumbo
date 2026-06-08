@@ -33,3 +33,17 @@
   clock: 3  # 0df3
   nonce: 0df3  # 0df3
   message: "Re-confirmed on fresh substrate (dogfood_tranche_07 F137.A3): WGSL fingerprints are bare 16-hex (1b86eea11f129a27, 2a47dae30690128e, ...) with NO hgfp1: / wgsl-v1: prefix on 5 nodes (VertexInput, VertexOutput, cs_main, fs_main, vs_main). Source: wgsl.py:236/266/325 emit hashlib.sha256(source[start:end]).hexdigest()[:16] with no prefix — a SEPARATE producer from fingerprint.py's hgfp1: path. fingerprint.py:54 tells consumers to detect the version via the prefix; for these 5 nodes split-on-':' yields the whole hex as scheme, no version. Exactly this row's listed WGSL bare-hex population (item (c)); re-confirmed."  # 0df3
+- op: discuss  # 34ab
+  at: '2026-06-08T07:04:35Z'  # 34ab
+  by: agent  # 34ab
+  actor: jgstern_agent  # 34ab
+  clock: 4  # 34ab
+  nonce: 34ab  # 34ab
+  message: "Dogfooding re-confirmed (blinded severity 3/5): fingerprint=None on ~3911 Python methods (12.6% of py method+func nodes; zero non-test py methods). Root reproduced fresh on a NEW file (test_ruby.py): a triple-quoted fixture embedding `class Order < ApplicationRecord` at column 0 makes textwrap.dedent compute common-prefix=0, so the `def` stays indented → ast.parse raises IndentationError → returns None. Same _python_ast_fingerprint dedent/parse fix. [dogfood]"  # 34ab
+- op: discuss  # 078f
+  at: '2026-06-08T07:04:35Z'  # 078f
+  by: agent  # 078f
+  actor: jgstern_agent  # 078f
+  clock: 5  # 078f
+  nonce: 078f  # 078f
+  message: "Dogfooding (blinded severity 3/5) — SECOND distinct facet folded here: 5 wgsl nodes carry bare-16-hex fingerprints with NO `hgfp1:` prefix because wgsl.py stamps a literal `sha256(source_bytes)[:16]` while everything else uses the prefixed structural-CST-walk hash — two algorithms under one symbol_fingerprint_scheme=v1. Fix: make wgsl.py defer to the central compute_symbol_fingerprint (or have the stamper normalize non-None foreign-format fingerprints) — one stamp-site change fixes both prefix + algorithm. [dogfood]"  # 078f

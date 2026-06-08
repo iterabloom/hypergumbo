@@ -19,3 +19,10 @@
     pr_ref:  # 11e1
     description: "**Mechanism.** Across 84 ARs, version is '5.0.1' on 83 but '1' on exactly one — the play-routes pass. play_routes.py:44 hardcodes PASS_VERSION = '1' and passes it to AnalysisRun.create(version=PASS_VERSION) at :188. It is the ONLY producer that hardcodes PASS_VERSION away from the canonical PASS_VERSION: str = __version__ convention (grep confirms). Contract violations: ir.py:53-55 ('All analyzers and linkers use this' canonical pass version); spec line 234/278 (version e.g. 'hypergumbo-0.1.0', package-shaped); ir.py:110-114 (the legacy -v1 suffix is 'a fake-versioning artifact' — play-routes' literal version='1' IS that artifact); spec line 270 (run_signature hashes version) so the wrong version feeds play-routes' run_signature (sha256:05b10c7f9567c49f), computed against a different basis than all 83 others.\n\n**Consequence.** A consumer keying L2 reproducibility on run_signature gets a play-routes signature that will NOT change when the package version bumps (since '1' is frozen), unlike every other pass.\n\n**Evidence.** Fresh hypergumbo run on /tmp Play routes.conf emits 60 ARs at 5.0.1 and exactly 1 (play-routes) at version='1'. (Note: a prior item INV-kimut covering this is DELETED — operator should be aware; this re-files the still-live mechanism.)\n\n**Related (distinct).** Distinct from WI-mipul (pass_version=None/empty on 14 override-analyze ARs incl play-routes — a SEPARATE field) and WI-mifok (pass_version absence). play-routes is a singleton outlier on the version field VALUE. Source: dogfood_tranche_07 F124.A1, fresh-run reproduced."  # 11e1
     fields: {}  # 11e1
+- op: discuss  # 814e
+  at: '2026-06-08T03:22:05Z'  # 814e
+  by: agent  # 814e
+  actor: jgstern_agent  # 814e
+  clock: 2  # 814e
+  nonce: 814e  # 814e
+  message: "Re-surfaced in dogfooding tranche 10 (U17, F185.A1, severity 3). AnalysisRun.version='1' on play-routes vs '5.0.1' on 83 others, from hardcoded PASS_VERSION='1' at play_routes.py:44 — exactly this item. Fix: use canonical PASS_VERSION = __version__ in play_routes.py:44. (related WI-riroz: AR.version='1' corrupts run_signature.)"  # 814e

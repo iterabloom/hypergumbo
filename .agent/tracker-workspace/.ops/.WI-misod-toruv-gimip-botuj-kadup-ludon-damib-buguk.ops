@@ -1,0 +1,20 @@
+- op: create  # 3a07
+  at: '2026-06-08T07:04:21Z'  # 3a07
+  by: agent  # 3a07
+  actor: jgstern_agent  # 3a07
+  clock: 1  # 3a07
+  nonce: 3a07  # 3a07
+  data:  # 3a07
+    kind: work_item  # 3a07
+    title: "message-queue linker topic_type=variable stores the variable identifier, not its resolved value"  # 3a07
+    status: todo_hard  # 3a07
+    priority: 2  # 3a07
+    parent:  # 3a07
+    tags:  # 3a07
+    - dogfood  # 3a07
+    isbefore: []  # 3a07
+    duplicate_of: []  # 3a07
+    not_duplicate_of: []  # 3a07
+    pr_ref:  # 3a07
+    description: "In the message-queue linker, when a publish topic is a variable, `topic_type=variable` is emitted and the stored topic value is the variable IDENTIFIER (`topic`/`TOPIC`/`EVENTS_TOPIC`) rather than its resolved string value; the same publisher emits both `literal` and `variable` for one logical topic depending on subscriber fan-out. A consumer joining publishers↔subscribers by topic value cannot match a variable-topic publish to its literal-topic subscriber. Fix: resolve the topic variable to its assigned value in message_queue.py topic extraction (or label it unresolved rather than storing the identifier as if it were the value). Surfaced via dogfooding; blinded severity 3/5."  # 3a07
+    fields: {}  # 3a07

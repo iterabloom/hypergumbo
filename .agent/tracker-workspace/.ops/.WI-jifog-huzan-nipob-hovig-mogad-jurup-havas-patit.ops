@@ -1,0 +1,20 @@
+- op: create  # 0b66
+  at: '2026-06-08T07:04:14Z'  # 0b66
+  by: agent  # 0b66
+  actor: jgstern_agent  # 0b66
+  clock: 1  # 0b66
+  nonce: 0b66  # 0b66
+  data:  # 0b66
+    kind: work_item  # 0b66
+    title: "yaml_ansible classifies any root-level/ansible-dir YAML as language=ansible with no content check (misclassifies .yamllint.yaml)"  # 0b66
+    status: todo_hard  # 0b66
+    priority: 2  # 0b66
+    parent:  # 0b66
+    tags:  # 0b66
+    - dogfood  # 0b66
+    isbefore: []  # 0b66
+    duplicate_of: []  # 0b66
+    not_duplicate_of: []  # 0b66
+    pr_ref:  # 0b66
+    description: "yaml_ansible's find_ansible_files tags any root-level `.yml`/`.yaml` (or any file under roles/tasks/handlers/-named dirs) as `language=ansible` with NO content discrimination. In self-analysis the sole `ansible` node is `.yamllint.yaml` — a yamllint config, not a playbook — so metrics.languages.ansible={nodes:1} falsely reports Ansible content in a repo that has none. Fix: add a content discriminator (hosts:/tasks:/playbook structure) to find_ansible_files before tagging ansible. Surfaced via dogfooding; blinded severity 3/5."  # 0b66
+    fields: {}  # 0b66

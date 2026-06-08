@@ -1,0 +1,27 @@
+- op: create  # 9ec5
+  at: '2026-06-08T03:20:49Z'  # 9ec5
+  by: agent  # 9ec5
+  actor: jgstern_agent  # 9ec5
+  clock: 1  # 9ec5
+  nonce: 9ec5  # 9ec5
+  data:  # 9ec5
+    kind: work_item  # 9ec5
+    title: "method-call-recovery edges carry is_resolved=True while resolution_quality=recovery (rq<->is_resolved pairing inverted, 31 edges)"  # 9ec5
+    status: todo_hard  # 9ec5
+    priority: 2  # 9ec5
+    parent:  # 9ec5
+    tags:  # 9ec5
+    - dogfood  # 9ec5
+    isbefore: []  # 9ec5
+    duplicate_of: []  # 9ec5
+    not_duplicate_of: []  # 9ec5
+    pr_ref:  # 9ec5
+    description: "**Defect.** `calls` edges emitted by the method-call-recovery linker carry `is_resolved=True` while also carrying `resolution_quality=\"recovery\"` — the `resolution_quality`↔`is_resolved` pairing is inverted: a heuristic, possibly-wrong fallback resolution is flagged as resolved.\n\n**Mechanic.** `linkers/method_call_recovery.py:202` calls `Edge.create(...)` with `meta={\"resolution_quality\": \"recovery\", ...}` but does NOT pass `is_resolved=False`. `Edge.create` defaults `is_resolved=True` (ir.py:613/654). So all recovery edges (a line-proximity heuristic that picks among multiple same-name candidates and may pick the wrong dispatch target — the linker even sets `disambiguation_fallback=True` and caps confidence at 0.5 when ambiguous) are stamped `is_resolved=True`. A recovery resolution is precisely the case where resolution is uncertain.\n\n**Scope.** 31 recovery-linker `calls` edges (origin=method-call-recovery, resolution_quality=recovery).\n\n**Expectation.** `is_resolved` reflects resolution certainty; a `resolution_quality=\"recovery\"` (heuristic-fallback) edge should not be `is_resolved=True` (or the two fields' contract should be explicitly reconciled).\n\n**Consequence.** A consumer filtering `is_resolved=True` to get high-confidence resolved call edges silently includes the heuristic-recovery population; the two sibling fields disagree on the same edge.\n\n**Unifying fix.** Correct the method_call_recovery.py `is_resolved` pairing (set `is_resolved=False`, or reconcile the rq↔is_resolved contract).\n\n**Cross-refs (related, not duplicate).** WI-kukuk (4507 import edges with dst `:unresolved` + is_resolved=True — distinct population/mechanism: imports to external placeholders, not recovery edges); WI-ninuv (is_resolved overloaded meaning); WI-javus (resolution_quality=\"type_inferred\" mislabel — sibling resolution_quality value defect).\n\nMember: F192.A1 (split). Found via dogfooding tranche 10. Severity 3."  # 9ec5
+    fields: {}  # 9ec5
+- op: discuss  # 6b1e
+  at: '2026-06-08T07:04:36Z'  # 6b1e
+  by: agent  # 6b1e
+  actor: jgstern_agent  # 6b1e
+  clock: 2  # 6b1e
+  nonce: 6b1e  # 6b1e
+  message: "Dogfooding re-confirmed (blinded severity 3/5): resolution_quality meta-key contradicts its MetaKeySpec doc (axis_meta_keys.py:136-139) two ways — the documented example value 'ambiguous' is never emitted (only type_inferred=16301 + recovery=31), and the doc says 'Set alongside is_resolved=False' but all 31 `recovery` edges are is_resolved=True resolving to real method nodes. Same recovery+is_resolved decoupling fix. Sibling face (type_inferred mislabel) tracked at WI-javus. [dogfood]"  # 6b1e

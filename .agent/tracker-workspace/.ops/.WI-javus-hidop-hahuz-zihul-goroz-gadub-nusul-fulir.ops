@@ -25,3 +25,10 @@
   clock: 2  # f532
   nonce: f532  # f532
   message: "Dogfood tranche 05 reproduction (F86.A1 / anon-card-016): TRUE-DUPLICATE confirmation on frozen substrate. All 16301 edges (all type=calls) with meta.resolution_quality='type_inferred' are is_resolved=False, point to python:external:0-0:<barename>:unresolved placeholders (kind=external_symbol), carry confidence exactly 0.40, and have no dst_ref. Producer py.py:3648-3665; the comment at 3648-3651 literally reads 'where type cannot be inferred … Lower confidence since we don't know the receiver type' — the field value contradicts the branch semantics. Contrast sibling value 'recovery' (31 edges from linkers/method_call_recovery.py:198): those DO resolve to a real local node, is_resolved=True. So the two values are inverted relative to their names. MetaKeySpec (axis_meta_keys.py:136-139) documents resolution_quality as an open value set with no enum validation; vocabulary is inconsistent across analyzers (type_inferred py/dart/csharp, typed lua, typed_receiver ruby, ambiguous go). A consumer branching on the string reads type_inferred as success but it marks the give-up case. Blind severity 4/5, reproduced on frozen substrate."  # f532
+- op: discuss  # b6aa
+  at: '2026-06-08T03:22:05Z'  # b6aa
+  by: agent  # b6aa
+  actor: jgstern_agent  # b6aa
+  clock: 3  # b6aa
+  nonce: b6aa  # b6aa
+  message: "Re-surfaced in dogfooding tranche 10 (U11, F192.A1 split, severity 4). resolution_quality='type_inferred' is stamped on the type-CANNOT-be-inferred else-branch (the value is the opposite of its meaning) across 16301 edges — the exact 16301 mislabel this item records. Fix: relabel/repair the py.py:3662 type_inferred else-branch value."  # b6aa

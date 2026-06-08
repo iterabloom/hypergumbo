@@ -1,0 +1,20 @@
+- op: create  # 6e1a
+  at: '2026-06-08T07:04:09Z'  # 6e1a
+  by: agent  # 6e1a
+  actor: jgstern_agent  # 6e1a
+  clock: 1  # 6e1a
+  nonce: 6e1a  # 6e1a
+  data:  # 6e1a
+    kind: work_item  # 6e1a
+    title: "schema.json types Symbol.language as required non-nullable string; 262 substrate nodes emit null → whole-doc validation fails"  # 6e1a
+    status: todo_hard  # 6e1a
+    priority: 0  # 6e1a
+    parent:  # 6e1a
+    tags:  # 6e1a
+    - dogfood  # 6e1a
+    isbefore: []  # 6e1a
+    duplicate_of: []  # 6e1a
+    not_duplicate_of: []  # 6e1a
+    pr_ref:  # 6e1a
+    description: "docs/schema.json declares Symbol.language as a required, non-nullable `string`, but ir.py types it `Optional[str]` and ~21 protocol linkers emit `language=None` on synthetic stand-in nodes (262 nodes in self-analysis). jsonschema validation of the emitted behavior map against its own shipped schema fails with exactly 262 `nodes[N].language: None is not of type 'string'` errors — the ONLY value-type violation document-wide (Edge/AnalysisRun/Entrypoint/UsageContext arrays validate clean). The generate-schema generator already emits `oneOf [string,null]` for 8 sibling Optional fields but botched `language` alone. Fix: emit `oneOf [string,null]` for the Optional `language` field. Related: WI-kutas (generic generate-schema drift root cause); WI-nagam (substrate-emits-null side, wont_do — this schema fix makes the schema TOLERATE the null rather than eliminate it). Surfaced via dogfooding; blinded severity 5/5."  # 6e1a
+    fields: {}  # 6e1a

@@ -1,0 +1,20 @@
+- op: create  # 20f3
+  at: '2026-06-08T07:04:28Z'  # 20f3
+  by: agent  # 20f3
+  actor: jgstern_agent  # 20f3
+  clock: 1  # 20f3
+  nonce: 20f3  # 20f3
+  data:  # 20f3
+    kind: work_item  # 20f3
+    title: "version-field naming inconsistent across surfaces (schema_version / analyzer_version / hypergumbo_version / validation_report.schema_version)"  # 20f3
+    status: todo_hard  # 20f3
+    priority: 2  # 20f3
+    parent:  # 20f3
+    tags:  # 20f3
+    - dogfood  # 20f3
+    isbefore: []  # 20f3
+    duplicate_of: []  # 20f3
+    not_duplicate_of: []  # 20f3
+    pr_ref:  # 20f3
+    description: "The behavior map carries several version fields under inconsistent names across surfaces: limits.analyzer_version, top-level schema_version, a hypergumbo_version, and validation_report.schema_version (which is '0.1' vs the bm 0.13.0). No documented relationship/vocabulary ties them. Fix: harmonize and document the version-field naming across surfaces. Overlaps WI-kutas (schema-generator drift) and WI-vibag (stable_id_scheme version drift) but is its own cross-surface naming-harmonization fix. Surfaced via dogfooding; blinded severity 3/5."  # 20f3
+    fields: {}  # 20f3

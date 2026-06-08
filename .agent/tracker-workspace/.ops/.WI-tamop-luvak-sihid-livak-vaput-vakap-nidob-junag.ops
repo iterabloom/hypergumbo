@@ -19,3 +19,10 @@
     pr_ref:  # 442e
     description: "**Mechanism.** limits.partial_results_reason == '' while analysis_incomplete == False. Spec §960 states 'Present only when analysis_incomplete: true', yet the key is emitted (empty string) on a complete analysis. A consumer using key-presence as the incompleteness signal (per §960) gets a false positive — the key is always there.\n\n**Consequence.** The documented CONDITIONAL-PRESENCE contract is violated by unconditional emission; consumers cannot use presence/absence of the field as a completeness signal.\n\n**Related (distinct).** Family of INV-virik / INV-lifik (constant/reserved-field sentinels) but partial_results_reason is a distinct limits-block field named in neither. Related to WI-zafid (completeness-signaling contract fires inconsistently; partial_results_reason set while flag false) — cross-link; that row is the broader completeness-signal channel, this is the specific §960 conditional-presence violation. Source: dogfood_tranche_07 F123.A3, deterministic frozen read."  # 442e
     fields: {}  # 442e
+- op: discuss  # 8bea
+  at: '2026-06-08T07:04:36Z'  # 8bea
+  by: agent  # 8bea
+  actor: jgstern_agent  # 8bea
+  clock: 2  # 8bea
+  nonce: 8bea  # 8bea
+  message: "Dogfooding re-confirmed (blinded severity 3/5): limits.partial_results_reason is emitted as an empty string while analysis_incomplete:false, contradicting spec §960 ('present only when analysis_incomplete: true'). A consumer testing `'partial_results_reason' in limits` to detect incompleteness gets a false positive. Same conditional-emit fix. Cross-ref WI-zafid (broader completeness-signal channel). [dogfood]"  # 8bea

@@ -40,3 +40,10 @@
   clock: 4  # 8c7c
   nonce: 8c7c  # 8c7c
   message: "[+ tranch_04: F61.A1/F61.A2 (EXTENSION of the §12 MATRIX line) — re-confirmed on substrate HEAD eb5355917e: matrix is spec-only (no code symbol); 8/10 rows saturated-unused; (python,ast_call_direct) spec=0.95 but only 2/35749 edges carry it (modal 0.85); 5-way split on that cell; import_static emitted only on TS.]"  # 8c7c
+- op: discuss  # 294d
+  at: '2026-06-08T03:21:34Z'  # 294d
+  by: agent  # 294d
+  actor: jgstern_agent  # 294d
+  clock: 5  # 294d
+  nonce: 294d  # 294d
+  message: "Re-surfaced in dogfooding tranche 10 (U05a, F186.A1 split a, severity 3). §12 EVIDENCE_CONFIDENCE_MATRIX documented value python/ast_call_direct=0.95 contradicts the dominant observed substrate value 0.85 (32444 edges) — exactly the value gap this item already records. Fix: correct documented matrix value 0.95 -> 0.85."  # 294d

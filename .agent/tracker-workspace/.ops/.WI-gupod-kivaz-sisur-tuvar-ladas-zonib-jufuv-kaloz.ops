@@ -26,3 +26,17 @@
   clock: 2  # e9f4
   nonce: e9f4  # e9f4
   message: "Dogfood re-confirmation of the stray-] truncation face. The hypergumbo-tracker pyproject.toml entry in sketch_precomputed.config_info reads '[packages/hypergumbo-tracker/pyproject.toml]\\n  > ] dependencies = [ \"ruamel.yaml>=0.18\",' — the selected one-line chunk cuts inside a TOML array, dropping the [project] header and starting the snippet with a stray ']'. Spec §684 calls sketch_precomputed an internal cache artifact consumers should not depend on, yet docs/schema.json:166 declares config_info as a property (minor spec-vs-schema inconsistency). A consumer reading the snippet gets a fragment that misrepresents the manifest's structure."  # e9f4
+- op: discuss  # 09df
+  at: '2026-06-08T03:22:05Z'  # 09df
+  by: agent  # 09df
+  actor: jgstern_agent  # 09df
+  clock: 3  # 09df
+  nonce: 09df  # 09df
+  message: "Re-surfaced in dogfooding tranche 10 (U13, F200.A1, severity 2). The config_info hybrid chunk-window selector centers on a 'dependencies' line straddling an array boundary, producing a fragment with a stray ']' and no name/version — the same mid-file chunk-selection defect this item records (selected chunk drops package identity). Fix: fix _extract_config_embedding chunk selection/window (sketch.py:2020/643) to capture a representative name/version."  # 09df
+- op: discuss  # 954c
+  at: '2026-06-08T07:04:36Z'  # 954c
+  by: agent  # 954c
+  actor: jgstern_agent  # 954c
+  clock: 4  # 954c
+  nonce: 954c  # 954c
+  message: "Dogfooding re-confirmed (blinded severity 3/5): sketch_precomputed.config_info embedding chunk-selector (_extract_config_info, sketch.py:2167) picks dangling syntactic fragments — tracker pyproject shows `] dependencies = [` (meaningless mid-array, name/version hidden); rust-analyzer pyproject shows build-system boilerplate not [project] — and every entry retains the raw `> ` markdown blockquote prefix. Same chunk-selection + markdown-strip fix. [dogfood]"  # 954c

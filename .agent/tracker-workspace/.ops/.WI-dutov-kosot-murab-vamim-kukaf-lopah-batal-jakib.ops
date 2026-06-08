@@ -1,0 +1,20 @@
+- op: create  # 96e9
+  at: '2026-06-08T03:20:42Z'  # 96e9
+  by: agent  # 96e9
+  actor: jgstern_agent  # 96e9
+  clock: 1  # 96e9
+  nonce: '96e9'  # 96e9
+  data:  # 96e9
+    kind: work_item  # 96e9
+    title: "TypeScript analyzer emits ZERO extends edges; production class inheritance (extends LitElement) dropped"  # 96e9
+    status: todo_hard  # 96e9
+    priority: 1  # 96e9
+    parent:  # 96e9
+    tags:  # 96e9
+    - dogfood  # 96e9
+    isbefore: []  # 96e9
+    duplicate_of: []  # 96e9
+    not_duplicate_of: []  # 96e9
+    pr_ref:  # 96e9
+    description: "**Defect.** The TypeScript analyzer emits ZERO `extends` edges; production class inheritance (e.g. `class X extends LitElement`) is dropped.\n\n**Mechanic.** js_ts.py HAS an `_extract_inheritance_edges` path (js_ts.py:2307) that emits `extends`/`implements` edges from `sym.meta[\"base_classes\"]` (js_ts.py:2346-2387). But on the substrate, all 160 `extends` edges are Python-origin and ZERO are TypeScript — so for real TS classes the `extends` clause never produces an edge (either `base_classes` is not populated for TS, or the edges do not survive to output). The concrete miss: a production `extends LitElement` inheritance is absent from the graph.\n\n**Scope.** TypeScript class-inheritance edges: 0 emitted (vs the analyzer documenting extends/implements at js_ts.py:11,28-29).\n\n**Expectation.** TS classes with an `extends`/`implements` clause produce `extends`/`implements` edges, like Python classes do.\n\n**Consequence.** Any consumer using `extends` to compute class hierarchy / type-aware dispatch / impact on TS code sees TS classes as inheritance-rootless; LitElement-derived components are disconnected from their base.\n\n**Unifying fix.** Emit TS class-inheritance (`extends`) edges in the TS analyzer (populate `base_classes` for TS classes and/or repair the inheritance-edge path so TS reaches it).\n\n**Cross-refs.** Distinct from WI-rugum (Scala/Groovy extends), WI-vogim (Ruby base_classes), WI-moliz (extends-vs-inherits vocabulary), and the deleted INV-jodak-galos (extends name-collision resolution).\n\nMember: F183.A2. Found via dogfooding tranche 10. Severity 4."  # 96e9
+    fields: {}  # 96e9

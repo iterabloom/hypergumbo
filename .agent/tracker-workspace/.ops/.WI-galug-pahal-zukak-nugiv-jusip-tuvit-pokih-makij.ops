@@ -25,3 +25,10 @@
   clock: 2  # 5f5a
   nonce: 5f5a  # 5f5a
   message: "Dogfood finding (members F145.A2-a, F152.A2, F153.A2 — cluster C1), reproduces on the frozen substrate. Mechanism: when a dataclass field is an open Dict[str,Any] or a type the dataclass->schema generator cannot introspect, it falls back to a bare {\"type\":\"object\"} with no properties (and no additionalProperties typing). Scope: at least 5 schema sites emit contentless objects — the top-level limits $def, plus Edge.quality, Symbol.quality, Symbol.meta, and UsageContext.metadata — each declared as an object whose internal structure the schema does not describe. Affects every behavior-map consumer that reads the published schema as the contract for these payloads. Exposure/consequence: consumers must reverse-engineer these payloads from sample output rather than from the contract; an agent generating code against the schema will not know meta can carry evidence/channel/protocol keys, that quality can carry score/reason, etc. Expectation: schema definitions describe the keys a consumer can rely on (properties, or at least additionalProperties typing), so the published schema documents the payload rather than asserting \"some object.\" This is the generator-level root cause; consumers downstream include U08 (limits sub-fields undocumented, WI-zugof) and the Node.meta/Edge.meta key-vocabulary rows. Cross-ref WI-zugof (limits sub-fields), WI-mirig (Node.meta undocumented sub-keys), WI-vusot (axis_meta_keys registry)."  # 5f5a
+- op: discuss  # abc7
+  at: '2026-06-08T03:21:53Z'  # abc7
+  by: agent  # abc7
+  actor: jgstern_agent  # abc7
+  clock: 3  # abc7
+  nonce: abc7  # abc7
+  message: "Re-surfaced in dogfooding tranche 10 (U08, F191.A1 split, severity 3). 'limits' is {type:object} with zero sub-properties in schema.json — the entire block is schema-opaque, the case this item names as the dataclass->schema generator emitting contentless {type:object} for un-introspected fields. Fix: add a Limits $defs/sub-property schema."  # abc7

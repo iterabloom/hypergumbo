@@ -1,0 +1,20 @@
+- op: create  # 428c
+  at: '2026-06-08T03:20:56Z'  # 428c
+  by: agent  # 428c
+  actor: jgstern_agent  # 428c
+  clock: 1  # 428c
+  nonce: 428c  # 428c
+  data:  # 428c
+    kind: work_item  # 428c
+    title: "js-module-linker emits module_exports to class MEMBERS (14/26 false: 12 method + 2 getter); no module-scope check"  # 428c
+    status: todo_hard  # 428c
+    priority: 2  # 428c
+    parent:  # 428c
+    tags:  # 428c
+    - dogfood  # 428c
+    isbefore: []  # 428c
+    duplicate_of: []  # 428c
+    not_duplicate_of: []  # 428c
+    pr_ref:  # 428c
+    description: "**Defect.** The js-module-linker emits `module_exports` edges to class MEMBERS (methods/getters), not just module-level exports — 14/26 module_exports edges are false (12 methods + 2 getters).\n\n**Mechanic.** `linkers/js_module.py:83` defines `_EXPORTABLE_KINDS = {function, method, class, getter, setter, constructor, ...}`; the loop at js_module.py:681 (`if sym.kind in _EXPORTABLE_KINDS and sym.language in _JS_LANGUAGES`) iterates ALL file symbols of those kinds and emits a `module_exports` edge (js_module.py:847, evidence_type=module_export_heuristic, conf 0.75) with NO module-scope / top-level check. A class method is never a module-level export; only the enclosing class is.\n\n**Scope.** 14/26 module_exports edges point to a class member (12 methods + 2 getters across TypeScript htrac-frontend classes ItemList / ItemDetail / TrackerApp). (Ledger note: count rises to 18/26 if 4 non-exported nested functions are included.)\n\n**Expectation.** module_exports is emitted only for module-level/top-level exported symbols.\n\n**Consequence.** A consumer enumerating a TS module's public API via module_exports gets class-internal methods/getters as importable module-level symbols (believes e.g. `ItemList.render` is importable). FP volume scales with class-member count on real JS/TS codebases. Notably the correct answer already lives on the node: `supply_chain.is_exported` is False on exactly the FP dsts — the linker EDGE is the wrong signal.\n\n**Unifying fix.** Add a module-scope/top-level check before emitting `module_exports` (js_module.py:681).\n\n**Cross-refs.** Distinct from WI-kapul (js-module-linker npm-package node path=''); WI-rilor (done) was a module_exports family conformance audit, not this over-emission.\n\nMember: F182.A1 (+ F183.A1 extension fold). Found via dogfooding tranche 10. Severity 3."  # 428c
+    fields: {}  # 428c

@@ -1,0 +1,20 @@
+- op: create  # 4ac1
+  at: '2026-06-08T07:04:33Z'  # 4ac1
+  by: agent  # 4ac1
+  actor: jgstern_agent  # 4ac1
+  clock: 1  # 4ac1
+  nonce: 4ac1  # 4ac1
+  data:  # 4ac1
+    kind: work_item  # 4ac1
+    title: "limits.max_tier_applied is undocumented in the spec (present in schema only)"  # 4ac1
+    status: todo_hard  # 4ac1
+    priority: 3  # 4ac1
+    parent:  # 4ac1
+    tags:  # 4ac1
+    - dogfood  # 4ac1
+    isbefore: []  # 4ac1
+    duplicate_of: []  # 4ac1
+    not_duplicate_of: []  # 4ac1
+    pr_ref:  # 4ac1
+    description: "`limits.max_tier_applied=3` is emitted and present in docs/schema.json but has zero mentions in docs/hypergumbo-spec.md and no documented value vocabulary. A consumer reading the spec to understand the limits block has no contract for this field. Fix: document max_tier_applied (and its value range) in the spec. Surfaced via dogfooding; blinded severity 2/5."  # 4ac1
+    fields: {}  # 4ac1

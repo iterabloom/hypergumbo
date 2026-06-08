@@ -26,3 +26,10 @@
   clock: 2  # 88b6
   nonce: 88b6  # 88b6
   message: "Dogfood fold (member F151.A2, independent) — TRUE DUPLICATE of this row's mechanism, reproduces on the frozen substrate. Independent dogfood pass re-confirmed: confidence_model is emitted as hypergumbo-evidence-v1 (producer schema.py:74 CONFIDENCE_MODEL='hypergumbo-evidence-v1') while spec §1706 documents the format as hypergumbo-evidence-vMAJOR.MINOR. A consumer parsing the documented vMAJOR.MINOR grammar to compare two behavior maps' scoring-algorithm versions finds no minor component (regex yields major=1, minor=None). Minor severity (easily worked around once the consumer knows the real format). No new row filed — same mechanism + same fix as already captured here."  # 88b6
+- op: discuss  # 9d9e
+  at: '2026-06-08T03:22:14Z'  # 9d9e
+  by: agent  # 9d9e
+  actor: jgstern_agent  # 9d9e
+  clock: 3  # 9d9e
+  nonce: 9d9e  # 9d9e
+  message: "Re-surfaced in dogfooding tranche 10 (U19, F193.A2, severity 2). confidence_model='hypergumbo-evidence-v1' omits the spec-§1706-mandated .MINOR component — exactly this item. Fix: emit ...-vMAJOR.MINOR per §1706 (schema.py:74)."  # 9d9e

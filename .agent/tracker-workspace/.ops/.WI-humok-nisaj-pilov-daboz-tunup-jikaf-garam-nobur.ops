@@ -1,0 +1,20 @@
+- op: create  # ae66
+  at: '2026-06-08T03:21:11Z'  # ae66
+  by: agent  # ae66
+  actor: jgstern_agent  # ae66
+  clock: 1  # ae66
+  nonce: ae66  # ae66
+  data:  # ae66
+    kind: work_item  # ae66
+    title: "edge quality.reason taxonomy undocumented AND tier-named values dont partition confidence (encodes emitter, not tier)"  # ae66
+    status: todo_hard  # ae66
+    priority: 3  # ae66
+    parent:  # ae66
+    tags:  # ae66
+    - dogfood  # ae66
+    isbefore: []  # ae66
+    duplicate_of: []  # ae66
+    not_duplicate_of: []  # ae66
+    pr_ref:  # ae66
+    description: "**Defect.** The edge `quality.reason` taxonomy is undocumented AND its tier-named values do not partition the confidence axis — the field encodes the emitter/mechanism, not a confidence tier.\n\n**Mechanic.** `quality.reason` carries a 5-value vocabulary on 100% of 110533 edges: {resolved_call_site 43133, high_confidence_direct 37683, low_confidence_fallback 16656, medium_confidence 7944, derived_from_linker_evidence 5117}. It has 0 grep hits in docs/hypergumbo-spec.md AND docs/schema.json. Three of the names ASSERT a confidence tier (high_confidence_direct / medium_confidence / low_confidence_fallback) but `reason` does NOT partition confidence: conf=0.5 splits medium_confidence(7927)+derived_from_linker_evidence(1); conf=0.7 splits medium(14)+linker(292); conf=0.85 splits resolved_call_site(41699)+linker(31). The same evidence_type also spans multiple reason buckets. So `reason` encodes the EMITTER/mechanism, not a confidence band.\n\n**Expectation.** The `quality.reason` vocabulary is documented; tier-suggesting names that don't correspond to a confidence band are renamed to non-tier (emitter) names so a consumer doesn't misread \"medium_confidence\" as a mid band.\n\n**Consequence.** A consumer reading \"medium_confidence\" cannot infer a mid confidence band; a consumer reading the confidence cannot map back to a single reason. The vocabulary is undiscoverable from spec/schema.\n\n**Unifying fix.** Document the `quality.reason` vocabulary; rename the tier-suggesting values to non-tier (emitter) names.\n\n**Cross-refs (related, not duplicate).** WI-galug (schema generator emits contentless {type:object} for Edge.quality — the SCHEMA-generation surface; this item is the vocabulary-documentation + tier-naming surface); WI-riguh (quality.score≠confidence on 257 edges); WI-suvil (confidence hardcoded per emitter). Mitigant per spec §837: quality.reason is framed debug-only.\n\nMember: F193.A1. Found via dogfooding tranche 10. Severity 2."  # ae66
+    fields: {}  # ae66

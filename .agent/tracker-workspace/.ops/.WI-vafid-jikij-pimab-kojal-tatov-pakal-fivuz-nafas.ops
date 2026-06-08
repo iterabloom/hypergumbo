@@ -1,0 +1,20 @@
+- op: create  # 2cf9
+  at: '2026-06-08T07:04:11Z'  # 2cf9
+  by: agent  # 2cf9
+  actor: jgstern_agent  # 2cf9
+  clock: 1  # 2cf9
+  nonce: 2cf9  # 2cf9
+  data:  # 2cf9
+    kind: work_item  # 2cf9
+    title: "schema.json declares a supply_chain_summary.by_tier wrapper the analyzer never emits (tiers sit one level up)"  # 2cf9
+    status: todo_hard  # 2cf9
+    priority: 1  # 2cf9
+    parent:  # 2cf9
+    tags:  # 2cf9
+    - dogfood  # 2cf9
+    isbefore: []  # 2cf9
+    duplicate_of: []  # 2cf9
+    not_duplicate_of: []  # 2cf9
+    pr_ref:  # 2cf9
+    description: "docs/schema.json's supply_chain_summary block declares a single property `by_tier` wrapping the per-tier counts, but the emitted behavior map places the tier keys one level higher (supply_chain_summary.<tier>) and never emits `by_tier`. `by_tier` has zero occurrences in the substrate. A schema-driven consumer reading supply_chain_summary.by_tier.* gets nothing. Fix: regenerate the supply_chain_summary schema shape to match the emitted top-level tier keys (drop the phantom by_tier wrapper). Related: WI-kutas (generic generate-schema drift). Surfaced via dogfooding; blinded severity 4/5."  # 2cf9
+    fields: {}  # 2cf9
