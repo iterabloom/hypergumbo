@@ -26,3 +26,10 @@
   clock: 2  # 8e19
   nonce: '8e19'  # 8e19
   message: "Dogfood enrichment (member F145.A1-a) — generator-staleness facet, reproduces on the frozen substrate. AnalysisRun.failed_files and pass_version are emitted on every analysis_runs entry but are absent from the AnalysisRun schema $def — the same auto-generated-schema-omits-emitted-fields mechanism this row already documents for profile (dev_frameworks/framework_mode). The schema self-describes as auto-generated from the dataclasses yet does not enumerate these AnalysisRun fields, so schema-driven tooling treats real, always-present per-run data as unexpected. Folded here as an additional instance of the same schema-generator staleness; the producer-level root (the dataclass->schema generator emitting contentless/incomplete defs) is filed separately as WI-galug, and the failed_files duplication/placement concern as WI-sizih. Cross-ref WI-galug, WI-sizih."  # 8e19
+- op: discuss  # af40
+  at: '2026-06-08T10:25:27Z'  # af40
+  by: agent  # af40
+  actor: jgstern_agent  # af40
+  clock: 3  # af40
+  nonce: af40  # af40
+  message: "Re-confirms profile top-level disagreement: emitted-not-declared dev_frameworks/framework_mode (WI-sirir) + declared-not-emitted total_files/total_lines (WI-sizis). WI-sirir is the emitted-key face. (dogfood; blinded sev 3)"  # af40

@@ -40,3 +40,10 @@
   clock: 4  # 954c
   nonce: 954c  # 954c
   message: "Dogfooding re-confirmed (blinded severity 3/5): sketch_precomputed.config_info embedding chunk-selector (_extract_config_info, sketch.py:2167) picks dangling syntactic fragments — tracker pyproject shows `] dependencies = [` (meaningless mid-array, name/version hidden); rust-analyzer pyproject shows build-system boilerplate not [project] — and every entry retains the raw `> ` markdown blockquote prefix. Same chunk-selection + markdown-strip fix. [dogfood]"  # 954c
+- op: discuss  # 317d
+  at: '2026-06-08T10:25:24Z'  # 317d
+  by: agent  # 317d
+  actor: jgstern_agent  # 317d
+  clock: 5  # 317d
+  nonce: 317d  # 317d
+  message: "Re-confirms config_info chunk-selector mid-token cuts (stray ']' mid-TOML/JSON) plus raw '> ' markdown leak on all 11 lines + bracket-header false positives. Same chunk-select+strip fix. (dogfood; blinded sev 3)"  # 317d

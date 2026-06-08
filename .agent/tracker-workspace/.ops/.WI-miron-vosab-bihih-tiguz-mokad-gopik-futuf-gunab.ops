@@ -1,0 +1,20 @@
+- op: create  # 4c59
+  at: '2026-06-08T10:25:30Z'  # 4c59
+  by: agent  # 4c59
+  actor: jgstern_agent  # 4c59
+  clock: 1  # 4c59
+  nonce: 4c59  # 4c59
+  data:  # 4c59
+    kind: work_item  # 4c59
+    title: "limits.test_files_excluded never set True; key always absent, test-exclusion unobservable"  # 4c59
+    status: todo_hard  # 4c59
+    priority: 3  # 4c59
+    parent:  # 4c59
+    tags:  # 4c59
+    - dogfood  # 4c59
+    isbefore: []  # 4c59
+    duplicate_of: []  # 4c59
+    not_duplicate_of: []  # 4c59
+    pr_ref:  # 4c59
+    description: "- **Subject:** The test-files-excluded limit flag is structurally unreachable, making test-exclusion state unobservable.\n- **Mechanic:** `limits.test_files_excluded` (default False) is written into the output only when True, but is never set True anywhere in production code (only in tests), so the key is always absent from real output.\n- **Expectation:** The exclusion state should be observable from the output — present and True when tests are excluded, present and False (or a distinguishable value) otherwise.\n- **Scope:** The key is always absent even on a map that is 79.7% test-classified; absence is indistinguishable from \"tests included,\" which is the only state production produces.\n- **Exposure:** A consumer that needs to know whether test files were excluded from a given analysis.\n- **Consequence:** That consumer can never observe test-exclusion state via this field, so any decision conditioned on it (e.g. interpreting coverage or dead-code over a test-laden map) is made blind.\n\n---\n\n(Filed from dogfooding.)"  # 4c59
+    fields: {}  # 4c59

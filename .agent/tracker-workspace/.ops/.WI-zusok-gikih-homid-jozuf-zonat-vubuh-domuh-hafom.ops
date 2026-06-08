@@ -1,0 +1,20 @@
+- op: create  # e1b1
+  at: '2026-06-08T10:25:27Z'  # e1b1
+  by: agent  # e1b1
+  actor: jgstern_agent  # e1b1
+  clock: 1  # e1b1
+  nonce: e1b1  # e1b1
+  data:  # e1b1
+    kind: work_item  # e1b1
+    title: "limits.analysis_depth dead constant 'syntax_only' misdescribes semantic analysis performed"  # e1b1
+    status: todo_hard  # e1b1
+    priority: 2  # e1b1
+    parent:  # e1b1
+    tags:  # e1b1
+    - dogfood  # e1b1
+    isbefore: []  # e1b1
+    duplicate_of: []  # e1b1
+    not_duplicate_of: []  # e1b1
+    pr_ref:  # e1b1
+    description: "- **Subject:** The analysis-depth limit field is an always-constant dead value that misdescribes the analysis actually performed.\n- **Mechanic:** `limits.analysis_depth` defaults to the literal `\"syntax_only\"` and is never assigned anywhere in production code (only constructed with that literal in a test), so it is always emitted as `\"syntax_only\"` regardless of which passes ran. It is undocumented in both schema and spec.\n- **Expectation:** The field should either carry a real, computed analysis depth or be removed; a single edit (populate-or-remove) resolves both the dead-field and the factually-wrong-value aspects.\n- **Scope:** `analysis_depth == \"syntax_only\"` on the map even though that map contains a resolved call graph (61906 calls, 10704 imports, 619 dispatches_to, 4307 references, 7939 instantiates, 1347 module_attr_ref edges) — i.e. semantic-level analysis, not syntax-only. It also disagrees with the sibling depth descriptor `reproducibility_context.level == \"L2\"`, which is not cross-referenced.\n- **Exposure:** A consumer reading `analysis_depth` to decide whether call-graph / semantic analysis was performed.\n- **Consequence:** The consumer wrongly concludes no call-graph or semantic analysis ran and may discard or re-derive analysis that is in fact present; two depth/level vocabularies on the same map disagree, one of them wrong.\n\n---\n\n(Filed from dogfooding.)"  # e1b1
+    fields: {}  # e1b1
