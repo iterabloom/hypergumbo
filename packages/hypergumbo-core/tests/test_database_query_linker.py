@@ -312,6 +312,28 @@ class TestJavaScriptQueryPatterns:
         assert len(patterns) == 1
         assert patterns[0].tables == ["events"]
 
+    def test_typescript_query_tagged_typescript(self, tmp_path: Path):
+        """INV-tofun: .ts query patterns carry language=typescript, not javascript."""
+        code = dedent('''
+            const result: QueryResult = await pool.query("SELECT * FROM events WHERE type = $1", [eventType]);
+        ''')
+        file = tmp_path / "db.ts"
+        file.write_text(code)
+        patterns = _scan_javascript_queries(file, code)
+        assert patterns
+        assert all(p.language == "typescript" for p in patterns)
+
+    def test_javascript_query_still_javascript(self, tmp_path: Path):
+        """Regression guard: .js query patterns stay javascript."""
+        code = dedent('''
+            const result = await pool.query("SELECT * FROM events WHERE type = $1", [eventType]);
+        ''')
+        file = tmp_path / "db.js"
+        file.write_text(code)
+        patterns = _scan_javascript_queries(file, code)
+        assert patterns
+        assert all(p.language == "javascript" for p in patterns)
+
 
 class TestJavaQueryPatterns:
     """Tests for Java database query detection."""

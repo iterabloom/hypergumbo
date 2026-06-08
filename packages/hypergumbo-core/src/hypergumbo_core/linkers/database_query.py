@@ -58,6 +58,7 @@ from typing import Iterator
 from ..analyze.base import make_protocol_stable_id, make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ._text_filters import js_ts_language_from_path
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 from ._text_filters import read_masked_source
 
@@ -268,7 +269,7 @@ def _scan_javascript_queries(file_path: Path, content: str) -> list[DatabaseQuer
                 tables=tables,
                 line=line,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 query_type=_detect_query_type(query),
             ))
 
@@ -282,7 +283,7 @@ def _scan_javascript_queries(file_path: Path, content: str) -> list[DatabaseQuer
             tables=[table_name.lower()],
             line=line,
             file_path=str(file_path),
-            language="javascript",
+            language=js_ts_language_from_path(file_path),
             query_type="SELECT",  # Knex defaults to select
         ))
 

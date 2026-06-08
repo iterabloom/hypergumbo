@@ -42,6 +42,40 @@ class TestJavaScriptResolverPatterns:
         assert patterns[1].type_name == "Query"
         assert patterns[1].field_name == "user"
 
+    def test_typescript_resolver_tagged_typescript(self, tmp_path: Path):
+        """INV-tofun: .ts resolver patterns carry language=typescript, not javascript."""
+        code = dedent('''
+            const resolvers = {
+                Query: {
+                    users: (_, args, context) => {
+                        return db.users.findAll();
+                    },
+                },
+            };
+        ''')
+        file = tmp_path / "resolvers.ts"
+        file.write_text(code)
+        patterns = _scan_javascript_resolvers(file, code)
+        assert patterns
+        assert all(p.language == "typescript" for p in patterns)
+
+    def test_javascript_resolver_still_javascript(self, tmp_path: Path):
+        """Regression guard: .js resolver patterns stay javascript."""
+        code = dedent('''
+            const resolvers = {
+                Query: {
+                    users: (_, args, context) => {
+                        return db.users.findAll();
+                    },
+                },
+            };
+        ''')
+        file = tmp_path / "resolvers.js"
+        file.write_text(code)
+        patterns = _scan_javascript_resolvers(file, code)
+        assert patterns
+        assert all(p.language == "javascript" for p in patterns)
+
     def test_apollo_mutation_resolver(self, tmp_path: Path):
         """Detect Apollo Server Mutation resolvers."""
         code = dedent('''

@@ -48,6 +48,7 @@ from typing import Iterator
 from ..analyze.base import make_protocol_stable_id, make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ._text_filters import js_ts_language_from_path
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 from ._text_filters import read_masked_source
 
@@ -233,7 +234,7 @@ def _scan_javascript_resolvers(file_path: Path, content: str) -> list[ResolverPa
                         field_name=field_name,
                         line=line_num,
                         file_path=str(file_path),
-                        language="javascript",
+                        language=js_ts_language_from_path(file_path),
                     ))
                 continue
 
@@ -246,7 +247,7 @@ def _scan_javascript_resolvers(file_path: Path, content: str) -> list[ResolverPa
                     field_name=field_name,
                     line=line_num,
                     file_path=str(file_path),
-                    language="javascript",
+                    language=js_ts_language_from_path(file_path),
                 ))
                 continue
 
@@ -261,7 +262,7 @@ def _scan_javascript_resolvers(file_path: Path, content: str) -> list[ResolverPa
                         field_name=field_name,
                         line=line_num,
                         file_path=str(file_path),
-                        language="javascript",
+                        language=js_ts_language_from_path(file_path),
                     ))
 
         # Reset type when we exit the object
@@ -335,7 +336,7 @@ def _scan_typegraphql_resolvers(
             field_name=field_name,
             line=line_num,
             file_path=str(file_path),
-            language="javascript",
+            language=js_ts_language_from_path(file_path),
         ))
 
 

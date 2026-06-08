@@ -2,12 +2,16 @@
 """Tests for the linker docstring/comment masker."""
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from hypergumbo_core.linkers import _text_filters
-from hypergumbo_core.linkers._text_filters import mask_doc_regions
+from hypergumbo_core.linkers._text_filters import (
+    js_ts_language_from_path,
+    mask_doc_regions,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -270,3 +274,22 @@ def test_read_masked_source_explicit_language_overrides(tmp_path):
     f.write_text("// producer.send('x')\nconst y = 1;\n")
     out = read_masked_source(f, language="javascript")
     assert "producer.send" not in out
+
+
+def test_js_ts_language_from_path_analyzer_parity():
+    """INV-tofun: synthetic stand-ins must carry the same language the JS/TS
+    analyzer assigns to non-linker symbols in the same file.
+
+    The analyzer (``hypergumbo_lang_mainstream.js_ts._get_language_for_file``)
+    maps ``.ts``/``.tsx`` to ``typescript`` and everything else to
+    ``javascript``. This helper mirrors that mapping exactly; the values are
+    asserted directly rather than via a cross-package import so the test still
+    passes when hypergumbo-core is exercised in isolation by CI.
+    """
+    assert js_ts_language_from_path(Path("events.ts")) == "typescript"
+    assert js_ts_language_from_path(Path("events.tsx")) == "typescript"
+    assert js_ts_language_from_path(Path("events.js")) == "javascript"
+    assert js_ts_language_from_path(Path("events.jsx")) == "javascript"
+    # Extensions outside the .ts/.tsx set fall to javascript, matching the
+    # analyzer's else-branch (parity over independent "correctness").
+    assert js_ts_language_from_path(Path("events.mjs")) == "javascript"

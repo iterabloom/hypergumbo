@@ -81,6 +81,7 @@ from typing import Iterator
 
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ._text_filters import js_ts_language_from_path
 from .registry import (
     LinkerContext,
     LinkerRequirement,
@@ -419,11 +420,12 @@ def _find_js_files(repo_root: Path) -> Iterator[Path]:
 
 
 def _get_language(file_path: Path) -> str:
-    """Get language from file extension."""
-    suffix = file_path.suffix.lower()
-    if suffix in (".ts", ".tsx"):
-        return "typescript"
-    return "javascript"
+    """Get language from file extension (INV-tofun: analyzer-parity JS/TS tag).
+
+    Thin wrapper over the shared :func:`js_ts_language_from_path` helper, kept
+    for call-site readability within this module.
+    """
+    return js_ts_language_from_path(file_path)
 
 
 def link_ipc(repo_root: Path) -> IpcLinkResult:

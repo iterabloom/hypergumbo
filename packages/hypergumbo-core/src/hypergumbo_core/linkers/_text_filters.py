@@ -96,6 +96,27 @@ def language_from_path(file_path: Path) -> Optional[str]:
     """Return tree-sitter language name for the file extension, or None."""
     return _EXTENSION_TO_LANGUAGE.get(file_path.suffix.lower())
 
+
+def js_ts_language_from_path(file_path: Path) -> str:
+    """Return the JS/TS analyzer's language tag for ``file_path`` (INV-tofun).
+
+    Mirrors ``hypergumbo_lang_mainstream.js_ts._get_language_for_file``:
+    ``.ts``/``.tsx`` are ``typescript``; every other extension is
+    ``javascript``. Linkers that fabricate synthetic stand-ins from JS/TS
+    source use this so a stand-in discovered in a ``.ts`` file carries the same
+    language the analyzer assigns to real declarations in that file — the value
+    feeds ``Symbol.discovery_language`` and the canonical id's first segment.
+
+    Distinct from :func:`language_from_path`, which returns tree-sitter grammar
+    names (``tsx`` for ``.tsx``) and ``None`` for unknown extensions. This
+    helper instead reproduces the analyzer's coarser typescript/javascript
+    split, because the governing invariant is *consistency with the analyzer's
+    tag*, not independent extension correctness.
+    """
+    if file_path.suffix.lower() in (".ts", ".tsx"):
+        return "typescript"
+    return "javascript"
+
 _DOC_COMMENT_TYPES = frozenset({
     "comment",
     "block_comment",

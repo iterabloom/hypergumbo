@@ -63,6 +63,7 @@ from ..analyze.base import make_protocol_stable_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..paths import is_test_file
+from ._text_filters import js_ts_language_from_path
 from .registry import LinkerContext, LinkerResult, register_linker
 from ._text_filters import read_masked_source
 
@@ -317,7 +318,7 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
             pattern_type="publish",
             line=line,
             file_path=str(file_path),
-            language="javascript",
+            language=js_ts_language_from_path(file_path),
             framework="emitter",
             event_type=event_type,
         ))
@@ -331,7 +332,7 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
             pattern_type="publish",
             line=line,
             file_path=str(file_path),
-            language="javascript",
+            language=js_ts_language_from_path(file_path),
             framework="emitter",
             event_type="literal",
         ))
@@ -345,7 +346,7 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
             pattern_type="subscribe",
             line=line,
             file_path=str(file_path),
-            language="javascript",
+            language=js_ts_language_from_path(file_path),
             framework="emitter",
             event_type=event_type,
         ))
@@ -359,7 +360,7 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
             pattern_type="subscribe",
             line=line,
             file_path=str(file_path),
-            language="javascript",
+            language=js_ts_language_from_path(file_path),
             framework="emitter",
             event_type=event_type,
         ))

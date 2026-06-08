@@ -129,6 +129,24 @@ class TestJavaScriptEventPatterns:
         assert len(publishers) == 1
         assert len(subscribers) == 1
 
+    def test_typescript_events_tagged_typescript(self, tmp_path: Path):
+        """INV-tofun: .ts event patterns carry language=typescript, not javascript."""
+        code = "emitter.emit('user:created', user);\n"
+        file = tmp_path / "events.ts"
+        file.write_text(code)
+        patterns = _scan_javascript_events(file, code)
+        assert patterns
+        assert all(p.language == "typescript" for p in patterns)
+
+    def test_javascript_events_still_javascript(self, tmp_path: Path):
+        """Regression guard: .js event patterns stay javascript."""
+        code = "emitter.emit('user:created', user);\n"
+        file = tmp_path / "events.js"
+        file.write_text(code)
+        patterns = _scan_javascript_events(file, code)
+        assert patterns
+        assert all(p.language == "javascript" for p in patterns)
+
 
 class TestPythonEventPatterns:
     """Tests for Python event detection."""
@@ -347,6 +365,24 @@ class TestEventSourcingLinker:
         assert result.edges[0].meta["access_mode"] == "write"
         assert result.edges[0].meta["dest_access_mode"] == "read"
         assert result.edges[0].meta["channel"] == "user:created"
+
+    def test_typescript_symbol_discovery_language_and_id(self, tmp_path: Path):
+        """INV-tofun: a synthetic stand-in discovered in a .ts file carries
+        discovery_language=typescript and a typescript-prefixed id (was javascript).
+
+        Symbol.language stays None (ADR-0031 Class B); the host-language signal
+        lives in discovery_language, which feeds the id's first segment.
+        """
+        (tmp_path / "publisher.ts").write_text("emitter.emit('user:created', user);\n")
+        (tmp_path / "subscriber.ts").write_text("emitter.on('user:created', handleUser);\n")
+
+        result = link_events(tmp_path)
+
+        assert result.symbols
+        for sym in result.symbols:
+            assert sym.language is None
+            assert sym.discovery_language == "typescript"
+            assert sym.id.split(":")[0] == "typescript"
 
     def test_cross_language_event_linking(self, tmp_path: Path):
         """Links Python publishers to JavaScript subscribers."""
