@@ -586,6 +586,37 @@ PLAYBOOKS = [
      "delta. Invoke after a major ADR closure, schema-version bump, pass-count change, or "
      "subcommand consolidation. Anti-pattern: auditing a dirty tree. Always regenerate "
      "docs/ARCHITECTURE.md before pushing to stay within the verify-generated 15-commit window."),
+
+    ("tracker-hygiene-dedup-meta-analysis-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/tracker-hygiene-dedup-meta-analysis-playbook.md",
+     "On-demand (human-triggered, never cadence-driven) sweep over the COMMITTED tracker "
+     "corpus — the corpus-wide counterpart to trackerize's create-time dup check and the "
+     "twenty-pass procedure's campaign-scoped Phase-3/6 consolidation, reusing that "
+     "procedure's dedup vocabulary verbatim. Four deliverables: (1) cluster open items into "
+     "root-cause families, (2) classify cross-corpus pairs TRUE_DUPLICATE / "
+     "RELATED_BUT_DISTINCT / NOT_A_DUPLICATE via the 'would fixing one fix the other?' "
+     "meta-criterion (LOW-confidence -> RELATED_BUT_DISTINCT; when in doubt cross-link not "
+     "fold — folds lose info when the host closes), (3) re-verify violated/pending_validation "
+     "statuses reproduce at the pinned repo HEAD (positive evidence REQUIRED to downgrade "
+     "toward resolved — absence of reproduction is NOT proof of a fix; confirmed-failure "
+     "upgrades like pending_validation->violated apply directly), (4) emit a dominant-"
+     "invariant-family meta-analysis table (DATA + proposals, human prioritizes). Phase 0 "
+     "stamps the precise start timestamp into a lab notebook entry BEFORE any work, pins repo "
+     "HEAD, and FREEZES a `tracker list --json` snapshot every worker reads (never the live "
+     "tracker). Subagents deepen per-item investigations (read via `tracker show`, NEVER .ops; "
+     "read source at the pinned HEAD). Orchestrator<->worker communication is a blackboard: "
+     "an APPEND-ONLY corrections.md (workers re-read before each item — the live-steering "
+     "channel for reassign/stop-item/merge-cluster/new-hypothesis), streamed per-item "
+     "findings/*.jsonl (orchestrator sees progress before workers return + confirms correction "
+     "propagation via each line's applied_correction id), and a claims.tsv lease table. Short "
+     "work-lists (default --items-per-worker 4) keep steering boundaries frequent; honest "
+     "limit: communication lands at item/chunk boundaries, not mid-token (vendors with "
+     "live-agent messaging can nudge as an accelerator on top of the file channel). "
+     "Guardrails: no .ops reads, no manual .ops commit/push (auto-sync), no tracker mutation "
+     "while auto-pr is in flight, title/description edits need the human edit-mode window "
+     "(defer to a manifest + final step), batch write-back via `tracker batch`, every status "
+     "change carries a discuss-note rationale. The agent produces data; the human authorizes "
+     "folds/downgrades/edit-mode cleanups."),
 ]
 
 
