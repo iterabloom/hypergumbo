@@ -42,3 +42,14 @@
   clock: 4  # 130b
   nonce: 130b  # 130b
   message: "Fixed in PR #3875 (15393d76da). AUTO_SINK_ZONE_MAP[subprocess] now routes to its own subprocess zone (was host_fs). Built-in zone vocabulary 5 -> 6. Empirical: verify-claims --claims docs/hypergumbo.claims.yaml goes 7/18 -> 4/18 violations; all *-no-host-fs install/build-grammars claims now confirmed. Remaining 4 violations are short-name-collision FPs (replace/write/run) which are WI-dozon's territory. ADR-0017 + spec + self-catalog README updated."  # 130b
+- op: update  # 3409
+  at: '2026-06-08T18:30:23Z'  # 3409
+  by: agent  # 3409
+  actor: jgstern_agent  # 3409
+  clock: 5  # 3409
+  nonce: '3409'  # 3409
+  set: {}  # 3409
+  add:  # 3409
+    tags: [dogfood]  # 3409
+  remove:  # 3409
+    tags: [dogfooding]  # 3409

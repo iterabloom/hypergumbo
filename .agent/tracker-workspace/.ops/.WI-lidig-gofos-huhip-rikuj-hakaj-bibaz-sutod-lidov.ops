@@ -20,3 +20,14 @@
     pr_ref:  # 71e9
     description: "F78.A2 (blind severity 1/Cosmetic; positive control reversing the mid-tranch-#8 hypothesis; F78.A3 latent-sentinel-collision watch-item EXTENSION folded here). The hypothesis was that synthetic file nodes (no real analyzer source) might get a default/None/wrong supply-chain tier. On the substrate this is FALSE: all 492 orchestrator-synthesized file nodes carry tier-1 first-party with a path-derived reason (464 via a tests-path pattern, 28 via a src-path pattern), correctly-set flags. No node substrate-wide has a missing supply-chain dict (0/34396). Mechanism: the synthesizer builds each file symbol with the constructor default tier-1/empty-reason, and the annotator treats 'tier==1 AND reason==empty' as unclassified and re-classifies via the file classifier on its real repo-relative path; direct re-classification of all 492 paths matches the emitted tier 492/492. Synthetic-node tiering is trustworthy. The only latent concern is the sentinel ambiguity in the annotator guard (tier==1 AND reason=='') which is unexercised on this corpus (F78.A3). No negative consequence. Filed for trend-cohort completeness (clearing measurement). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 71e9
     fields: {}  # 71e9
+- op: update  # 3eac
+  at: '2026-06-08T18:30:33Z'  # 3eac
+  by: agent  # 3eac
+  actor: jgstern_agent  # 3eac
+  clock: 2  # 3eac
+  nonce: 3eac  # 3eac
+  set: {}  # 3eac
+  add:  # 3eac
+    tags: [dogfood_tranche_04]  # 3eac
+  remove:  # 3eac
+    tags: [dogfood_tranch_04]  # 3eac

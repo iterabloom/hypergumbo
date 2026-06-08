@@ -59,3 +59,14 @@
   clock: 6  # ae10
   nonce: ae10  # ae10
   message: "Fixed in PR #3790 (merge b7c1aeeaa9). Two-part fix: (a) linkers/js_module.py:811 module_exports edges now use file_sym.span.start_line instead of hardcoded line=0 — also resolved a side-effect deduplication bug where distinct exports were collapsing into one edge at line=0 (self-analysis edge count +12). (b) Added Entrypoint + UsageContext type definitions to docs/schema.json and declared entrypoints, usage_contexts, sketch_precomputed at BehaviorMap.properties. Schema 0.8.0 → 0.9.0 additive. New scripts/check-schema-conformance CI gate runs in warning-only mode with per-PR delta counter — baseline tracked in .ci/schema-conformance-baseline.json (currently 0), loud-fails on any positive delta. Promotes to --mode=fail in Wave 3 once remaining INV-rugok members close. Self-analysis dogfood: 0 schema validation errors (was: 26 line=0 violations + 3 undeclared keys). 14393 tests passing."  # ae10
+- op: update  # 05e8
+  at: '2026-06-08T18:30:23Z'  # 05e8
+  by: agent  # 05e8
+  actor: jgstern_agent  # 05e8
+  clock: 7  # 05e8
+  nonce: '05e8'  # 05e8
+  set: {}  # 05e8
+  add:  # 05e8
+    tags: [dogfood]  # 05e8
+  remove:  # 05e8
+    tags: [dogfooding]  # 05e8

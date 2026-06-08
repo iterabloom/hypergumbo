@@ -27,3 +27,30 @@
   clock: 2  # 9b04
   nonce: 9b04  # 9b04
   message: "Related dogfood finding filed as WI-jufih-liroh-kadul-puzid-jifoz-zopag-dufod-busuh (distinct fix)."  # 9b04
+- op: update  # 493b
+  at: '2026-06-08T18:30:28Z'  # 493b
+  by: agent  # 493b
+  actor: jgstern_agent  # 493b
+  clock: 3  # 493b
+  nonce: 493b  # 493b
+  set: {}  # 493b
+  add:  # 493b
+    tags: [dogfood]  # 493b
+  remove:  # 493b
+    tags: [dogfooding]  # 493b
+- op: update  # d7f0
+  at: '2026-06-08T19:12:54Z'  # d7f0
+  by: agent  # d7f0
+  actor: jgstern_agent  # d7f0
+  clock: 4  # d7f0
+  nonce: d7f0  # d7f0
+  set: {}  # d7f0
+  add:  # d7f0
+    not_duplicate_of: [META-jotob-mumav-vavat-bohab-vigof-tutit-mizaz-zukip]  # d7f0
+- op: discuss  # bcde
+  at: '2026-06-08T19:12:54Z'  # bcde
+  by: agent  # bcde
+  actor: jgstern_agent  # bcde
+  clock: 5  # bcde
+  nonce: bcde  # bcde
+  message: "root-cause family cross-link (t1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # bcde

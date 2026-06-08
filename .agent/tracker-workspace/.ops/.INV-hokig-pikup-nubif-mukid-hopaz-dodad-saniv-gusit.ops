@@ -70,3 +70,14 @@
   clock: 7  # 44ce
   nonce: 44ce  # 44ce
   message: "Fixed in PR merged 2026-05-20 (commit 6f4652e223). Originally-filed root cause (different exclude policies) was wrong — both profile.py and find_bash_files apply DEFAULT_EXCLUDES correctly via discovery.find_files. The actual root cause is enumeration-strategy divergence: profile used extension-only glob while the bash analyzer uses extension + shebang detection on extensionless executables. Verified end-to-end on hypergumbo self-analysis: profile.languages.bash.files goes from 11 to 42, matching analysis_runs[bash].files_analyzed=42 (31 extensionless shebang scripts in .githooks/ and scripts/ now correctly counted). Implementation: optional find_files callable on RegisteredAnalyzer + register_analyzer decorator. profile._detect_languages delegates to the analyzer's finder when registered; falls back to extension-glob otherwise. Bash analyzer registers find_bash_files. Generalizes to any future analyzer needing custom enumeration (Python via python3 shebang, Ruby via ruby shebang, etc.). Docs updated: hypergumbo-spec.md profile section + LanguageStats docstring. Smart-test 13824 passed, 100% coverage. Closes the second child of META INV-tolaj (Wave 4)."  # 44ce
+- op: update  # e2ff
+  at: '2026-06-08T18:30:23Z'  # e2ff
+  by: agent  # e2ff
+  actor: jgstern_agent  # e2ff
+  clock: 8  # e2ff
+  nonce: e2ff  # e2ff
+  set: {}  # e2ff
+  add:  # e2ff
+    tags: [dogfood]  # e2ff
+  remove:  # e2ff
+    tags: [dogfooding]  # e2ff

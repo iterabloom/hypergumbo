@@ -49,3 +49,14 @@
   nonce: 95fb  # 95fb
   set:  # 95fb
     status: deleted  # 95fb
+- op: update  # 2055
+  at: '2026-06-08T18:30:25Z'  # 2055
+  by: agent  # 2055
+  actor: jgstern_agent  # 2055
+  clock: 5  # 2055
+  nonce: '2055'  # 2055
+  set: {}  # 2055
+  add:  # 2055
+    tags: [dogfood]  # 2055
+  remove:  # 2055
+    tags: [dogfooding]  # 2055

@@ -132,3 +132,14 @@
   target_nonce: 8a78  # d9d5
   new_text: "Pass-26 producer-consumer trace probes — sketch_precomputed derivation rules undocumented at the schema layer (F26.2 + F26.3 scs.files first_party + internal_dep phantom migrated to WI-mutuv-jipos per fold-audit Phase 2b; F26.4 external_dep + F26.8 retained as INV-napap extensions).\n\nF26.8 (centrality_scores producer attribution opaque): centrality_scores has 280 entries (111 .md + 167 .yaml + 1 .toml + 1 .json). No record-level provenance fields exist on CS entries. Producer attribution must be inferred via paths-vs-AR-claims and the inference doesn't reconcile:\n\n- markdown AR: files_analyzed=113; CS .md count = 111. Plausible producer (delta 2 unaccounted).\n- yaml_ansible AR: files_analyzed=0; CS .yaml count = 167. Producer mismatch — yaml_ansible analyzed 0 files but CS has 167 yaml entries. Some OTHER pass (probably the tree-sitter `yaml` pass, or `properties` AR, or a sketch-side yaml walker) contributes those entries.\n- toml AR: files_analyzed=9; CS .toml = 1. Producer attribution unclear — toml AR sees 9 files but only 1 reaches CS.\n- json AR: files_analyzed=9; CS .json = 1. Same pattern.\n\nCentrality_scores has its own analyzer pipeline disjoint from the node graph. Pass-26 sharpens: no analyzer's files_analyzed cleanly maps to CS contribution count except markdown (113→111). The schema-level fix would be to either (a) carry a per-entry `source_pass_id` field on CS records, or (b) document the pipeline (sketch.py reads which files? via what walker? feeds CS via which transform?) in spec.\n\nF26.4 (supply_chain_summary external_dep phantom count): scs.external_dep.files=10 vs 8 derived paths — 2 phantom files. The 1236 external_dep symbols mostly have path='<external>' (sentinel) and the 8 derived paths are the workspace npm packages. Producer rule undocumented; the +2 discrepancy is a derivation-rule gap (the spec doesn't say how scs.<tier>.files counts external paths, so consumers can't predict the delta). Sibling face to F26.2/F26.3 first_party/internal_dep gaps (now under WI-mutuv).\n\nINV-napap's existing scope is centrality_scores specifically; INV-jifus is the broader \"sketch_precomputed has no schema\" parent. Both umbrella the F26.8 finding. The cumulative pattern across pass-24/pass-25/pass-26 (now consolidated into discrete rows per fold-audit) is that sketch_precomputed is a high-information surface with weak schema discipline — derivation rules are tribal knowledge in sketch.py rather than wire-format contract."  # d9d5
   reason: "fold-audit Phase 2b: F26.2+F26.3 migrated to WI-mutuv; F26.4+F26.8 kept"  # d9d5
+- op: update  # ef60
+  at: '2026-06-08T18:30:22Z'  # ef60
+  by: agent  # ef60
+  actor: jgstern_agent  # ef60
+  clock: 15  # ef60
+  nonce: ef60  # ef60
+  set: {}  # ef60
+  add:  # ef60
+    tags: [dogfood]  # ef60
+  remove:  # ef60
+    tags: [dogfooding]  # ef60

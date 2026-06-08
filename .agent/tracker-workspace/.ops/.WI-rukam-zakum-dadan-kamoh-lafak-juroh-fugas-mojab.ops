@@ -27,3 +27,46 @@
   clock: 2  # 7cf8
   nonce: 7cf8  # 7cf8
   message: "[+ tranch_03: WI-lutad reports adjacent entrypoint defect (81/104 below 0.70 floor; 13 above 0.99 ceiling)]"  # 7cf8
+- op: update  # 4821
+  at: '2026-06-08T18:30:28Z'  # 4821
+  by: agent  # 4821
+  actor: jgstern_agent  # 4821
+  clock: 3  # 4821
+  nonce: '4821'  # 4821
+  set: {}  # 4821
+  add:  # 4821
+    tags: [dogfood]  # 4821
+  remove:  # 4821
+    tags: [dogfooding]  # 4821
+- op: update  # 1b62
+  at: '2026-06-08T19:12:55Z'  # 1b62
+  by: agent  # 1b62
+  actor: jgstern_agent  # 1b62
+  clock: 4  # 1b62
+  nonce: 1b62  # 1b62
+  set: {}  # 1b62
+  add:  # 1b62
+    not_duplicate_of: [WI-sohov-jukil-juluv-dojir-tafid-fadot-birik-zibin]  # 1b62
+- op: discuss  # 40b2
+  at: '2026-06-08T19:12:55Z'  # 40b2
+  by: agent  # 40b2
+  actor: jgstern_agent  # 40b2
+  clock: 5  # 40b2
+  nonce: 40b2  # 40b2
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 40b2
+- op: update  # b388
+  at: '2026-06-08T19:12:55Z'  # b388
+  by: agent  # b388
+  actor: jgstern_agent  # b388
+  clock: 6  # b388
+  nonce: b388  # b388
+  set: {}  # b388
+  add:  # b388
+    not_duplicate_of: [INV-suvil-jojoh-gifib-zirig-famom-sorim-tarar-hojok]  # b388
+- op: discuss  # 430e
+  at: '2026-06-08T19:12:55Z'  # 430e
+  by: agent  # 430e
+  actor: jgstern_agent  # 430e
+  clock: 7  # 430e
+  nonce: 430e  # 430e
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 430e

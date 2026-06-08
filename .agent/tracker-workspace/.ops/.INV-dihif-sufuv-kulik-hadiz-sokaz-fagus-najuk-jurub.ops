@@ -46,3 +46,14 @@
   clock: 4  # bf7a
   nonce: bf7a  # bf7a
   message: "Closed as downstream consequence of INV-vaguj (PR #3794, merge 7a28107df8). My round-10 hypothesis was that explain uses Symbol.id; INV-vaguj's round-14 verification found explain renders Symbol.name, which had been receiving an absolute-path stamp from analyze/base.py:375-385 (the WI-ramuv synthesiser). Fixing the name field at the producer site eliminates the symptom. New property test in test_run_behavior_map.py asserts no Symbol has an absolute-path name end-to-end; self-analysis dogfood confirms 0/812 file-kind Symbols carry absolute names."  # bf7a
+- op: update  # 9287
+  at: '2026-06-08T18:30:26Z'  # 9287
+  by: agent  # 9287
+  actor: jgstern_agent  # 9287
+  clock: 5  # 9287
+  nonce: '9287'  # 9287
+  set: {}  # 9287
+  add:  # 9287
+    tags: [dogfood]  # 9287
+  remove:  # 9287
+    tags: [dogfooding]  # 9287

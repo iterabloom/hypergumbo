@@ -20,3 +20,30 @@
     pr_ref:  # ec10
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family M). Stand-alone finding F25.12 previously folded onto INV-numat. Full evidence on INV-numat's pass-25 discussion entry.\n\n## Symptom\n\nADR-0031's `discovery_language` field migration is incomplete. Substrate populates `<1%` of nodes; native kinds 0%:\n\n| kind | discovery_language populated |\n|---|---|\n| method | 0% (0/18290) |\n| class | 0% |\n| function | 0% |\n| file | 0% |\n| variable | 0% |\n| external_symbol | 0% |\n| call_site | 100% (synthetic kind) |\n| enum | 100% (synthetic kind) |\n| interface | 85.7% (synthetic kind) |\n| package | 66.7% (synthetic kind) |\n\nFor all 11 language analyzers, 0 of their emitted nodes have `discovery_language` set. Only synthetic kinds (call_site, enum, interface, package) populate the new axis. Pass-25 Q30 cross-check: 0 nodes have BOTH `language` and `discovery_language` set — they're mutually exclusive per node.\n\nADR-0031's schema split (separate `language` from `discovery_language`) shipped, but the producer-side migration is mostly absent on native kinds.\n\n## Open design question\n\nIs `discovery_language` meant to **replace** `language` for native kinds (then this row is the producer-migration unfinished) or **supplement** for synthetic kinds only (then 0% on native kinds is by design)?\n\nADR-0031 text is the authority. Recorded as pass-25 open design question #1.\n\n## Invariant\n\nPer ADR-0031, every node has `discovery_language` populated with the language that produced it. For native kinds, this is the analyzer's primary language. For synthetic kinds, it's the source-cohort language (which may be None or distinct from `node.language`).\n\n## Fix sketch\n\nPer-analyzer migration: each of the 11 language analyzers populates `discovery_language=<self>` at node-emission time. Validator check: ADR-0031 compliance class assertion (`discovery_language is not None` on every node).\n\n## Source provenance\n\n- **F25.12** — INV-numat discussion entry 2026-06-02 (pass-25 batch).\n- F25.17 — sibling finding (this row's Family M sibling) — same producer-side migration scope.\n\nLab notebook: pass 25.\n\n## Related rows\n\n- Parent: **INV-numat**.\n- Sibling: **WI-profile-frameworks-node-link** (Family M — sibling producer-migration gap).\n- Family M siblings."  # ec10
     fields: {}  # ec10
+- op: update  # e552
+  at: '2026-06-08T18:30:26Z'  # e552
+  by: agent  # e552
+  actor: jgstern_agent  # e552
+  clock: 2  # e552
+  nonce: e552  # e552
+  set: {}  # e552
+  add:  # e552
+    tags: [dogfood]  # e552
+  remove:  # e552
+    tags: [dogfooding]  # e552
+- op: update  # c650
+  at: '2026-06-08T18:32:25Z'  # c650
+  by: agent  # c650
+  actor: jgstern_agent  # c650
+  clock: 3  # c650
+  nonce: c650  # c650
+  set: {}  # c650
+  add:  # c650
+    not_duplicate_of: [WI-napuj-bojad-dajon-danap-tinog-jorij-sasun-linan]  # c650
+- op: discuss  # be72
+  at: '2026-06-08T18:32:25Z'  # be72
+  by: agent  # be72
+  actor: jgstern_agent  # be72
+  clock: 4  # be72
+  nonce: be72  # be72
+  message: "RELATED_BUT_DISTINCT to WI-napuj: Family M producer-migration gap: kizil=discovery_language unset on native kinds; napuj=profile.frameworks no node-level provenance; distinct fields. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # be72

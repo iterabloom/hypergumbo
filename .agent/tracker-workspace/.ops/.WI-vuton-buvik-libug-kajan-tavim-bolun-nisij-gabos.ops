@@ -99,3 +99,14 @@
   clock: 11  # 1e89
   nonce: '1e89'  # 1e89
   message: "Post-constructor-walk re-validation 2026-05-21 on chatwoot (commit 1ab55051fe). The MessageBuilder diagnostic concluded: the gap was constructor-inheritance, NOT mixin resolution. Fix shipped — 16 new constructor_inherited edges, 38 FP edges removed (151->113 to DeviseOverrides::SessionsController#new). BFS-reachable: 1183->1198. dead_percent: 91.2%->91.1%.\n\ndemoted_dispatch_inherited STILL 0 on chatwoot. New diagnosis: the corrected chains terminate at Rails background jobs (Webhooks::InstagramEventsJob etc.) that aren't themselves in the entrypoints[] (75 background_task entrypoints exist but at the CLASS level, missing several job classes). This is a Rails-job entrypoint-detection coverage gap, separate from the constructor walk and separate from the mixin gap.\n\nMixin linker filed as WI-puluf (needs_human_review): includes scope/design choices (linker placement, edge type, FP risk mitigation) requiring human judgment before agent implementation.\n\nKeeping awaits_bakeoff_validation: WI-vuton's empirical claim is still gated on Rails-job entrypoint detection coverage. Will need a third investigation pass once that gap is addressed."  # 1e89
+- op: update  # 6d5e
+  at: '2026-06-08T18:30:23Z'  # 6d5e
+  by: agent  # 6d5e
+  actor: jgstern_agent  # 6d5e
+  clock: 12  # 6d5e
+  nonce: 6d5e  # 6d5e
+  set: {}  # 6d5e
+  add:  # 6d5e
+    tags: [dogfood]  # 6d5e
+  remove:  # 6d5e
+    tags: [dogfooding]  # 6d5e

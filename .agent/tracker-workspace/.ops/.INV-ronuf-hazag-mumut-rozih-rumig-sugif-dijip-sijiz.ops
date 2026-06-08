@@ -77,3 +77,14 @@
     status: satisfied  # 58af
   remove:  # 58af
     tags: [awaits_bakeoff_validation]  # 58af
+- op: update  # 8bfa
+  at: '2026-06-08T18:30:26Z'  # 8bfa
+  by: agent  # 8bfa
+  actor: jgstern_agent  # 8bfa
+  clock: 9  # 8bfa
+  nonce: 8bfa  # 8bfa
+  set: {}  # 8bfa
+  add:  # 8bfa
+    tags: [dogfood]  # 8bfa
+  remove:  # 8bfa
+    tags: [dogfooding]  # 8bfa

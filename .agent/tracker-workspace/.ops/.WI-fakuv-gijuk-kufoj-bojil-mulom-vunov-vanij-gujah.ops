@@ -26,3 +26,14 @@
   clock: 2  # 917f
   nonce: 917f  # 917f
   message: "[+ tranch_04: WI-zavad — related: card 021/F69.A1 — even where edges existed, io_boundary is computed at consumer-time; but JS body-call edges are never produced, so the boundary classifier has no input on .js files at all.]"  # 917f
+- op: update  # 3a72
+  at: '2026-06-08T18:30:30Z'  # 3a72
+  by: agent  # 3a72
+  actor: jgstern_agent  # 3a72
+  clock: 3  # 3a72
+  nonce: 3a72  # 3a72
+  set: {}  # 3a72
+  add:  # 3a72
+    tags: [dogfood_tranche_03]  # 3a72
+  remove:  # 3a72
+    tags: [dogfood_tranch_03]  # 3a72

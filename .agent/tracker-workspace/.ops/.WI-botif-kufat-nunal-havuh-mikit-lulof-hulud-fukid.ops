@@ -19,3 +19,18 @@
     pr_ref:  # c241
     description: "**Defect.** The type-hierarchy linker emits `dispatches_to` edges whose computed confidence falls far below the documented linker-edge confidence floor.\n\n**Evidence.** Spec §12 documents linker edge confidence range as 0.40–0.95 (analyzer edges 0.30–0.95). On a full behavior map, 313 edges have confidence < 0.40 — all from the type-hierarchy linker (origin=type-hierarchy, evidence_type=type_hierarchy, type=dispatches_to). 236 are below even the 0.30 analyzer floor; the minimum is ~0.0939. Of 326 type_hierarchy edges, 96% are below 0.40. quality.reason on these is low_confidence_fallback (325/326). Values are genuinely computed (e.g. 0.09386679716361955, 0.13610893073432406), not rounded — a real scoring path undershooting the documented floor by ~4×.\n\n**Contract.** Edges from a linker should carry confidence within the documented linker range (≥0.40), or the documented per-category range should be corrected to match the producer.\n\n**Consequence.** A consumer filtering linker edges at the documented 0.40 minimum, believing that retains every edge a linker can emit, silently drops all 313 dispatch edges, corrupting dispatch-coverage reasoning and under-counting dynamic-dispatch resolution."  # c241
     fields: {}  # c241
+- op: update  # b3c7
+  at: '2026-06-08T19:12:52Z'  # b3c7
+  by: agent  # b3c7
+  actor: jgstern_agent  # b3c7
+  clock: 2  # b3c7
+  nonce: b3c7  # b3c7
+  set:  # b3c7
+    parent: META-ruhob-lubob-matip-vinol-duzab-nafom-tikas-vajur  # b3c7
+- op: discuss  # ae54
+  at: '2026-06-08T19:12:52Z'  # ae54
+  by: agent  # ae54
+  actor: jgstern_agent  # ae54
+  clock: 3  # ae54
+  nonce: ae54  # ae54
+  message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # ae54

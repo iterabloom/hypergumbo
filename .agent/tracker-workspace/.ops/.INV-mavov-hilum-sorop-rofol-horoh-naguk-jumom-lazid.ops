@@ -34,3 +34,18 @@
   clock: 3  # 1aa4
   nonce: 1aa4  # 1aa4
   message: "Fixed in PR #2057. Binary .ts files (null bytes in first 8KB) are now skipped by the JS/TS analyzer. Uses the same heuristic as git for binary detection."  # 1aa4
+- op: update  # eea7
+  at: '2026-06-08T18:32:10Z'  # eea7
+  by: agent  # eea7
+  actor: jgstern_agent  # eea7
+  clock: 4  # eea7
+  nonce: eea7  # eea7
+  set:  # eea7
+    status: satisfied  # eea7
+- op: discuss  # 9b3a
+  at: '2026-06-08T18:32:10Z'  # 9b3a
+  by: agent  # 9b3a
+  actor: jgstern_agent  # 9b3a
+  clock: 5  # 9b3a
+  nonce: 9b3a  # 9b3a
+  message: "holding(deprecated)->satisfied: js_ts.py:4785 skips .ts files with null byte in first 8KB (PR #2057). Regression test TestMpegTsBinarySkip::test_binary_ts_file_skipped asserts MPEG-TS produces no symbols. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 9b3a

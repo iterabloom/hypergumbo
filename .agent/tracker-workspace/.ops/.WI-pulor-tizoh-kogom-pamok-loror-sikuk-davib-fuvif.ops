@@ -54,3 +54,14 @@
   clock: 5  # 1b58
   nonce: 1b58  # 1b58
   message: "Fixed in PR #3858 (commit 2fab0ca59d). Scope reduced per 2026-05-17 verification to the LOC=None claim only (intra-script call edges already work — 211 edges on dev). Single-kwarg fix on the function Symbol constructor (lines_of_code=end_line - start_line + 1) matches the ir.py:349 convention. 3 new tests in test_bash.py::TestWiPulorFunctionLinesOfCode. Dead-code FP visibility for bash helpers is downstream of WI-vuton, not this item."  # 1b58
+- op: update  # 8892
+  at: '2026-06-08T18:30:26Z'  # 8892
+  by: agent  # 8892
+  actor: jgstern_agent  # 8892
+  clock: 6  # 8892
+  nonce: '8892'  # 8892
+  set: {}  # 8892
+  add:  # 8892
+    tags: [dogfood]  # 8892
+  remove:  # 8892
+    tags: [dogfooding]  # 8892

@@ -31,3 +31,18 @@
   nonce: 386c  # 386c
   set:  # 386c
     status: holding  # 386c
+- op: update  # 726f
+  at: '2026-06-08T18:32:12Z'  # 726f
+  by: agent  # 726f
+  actor: jgstern_agent  # 726f
+  clock: 3  # 726f
+  nonce: 726f  # 726f
+  set:  # 726f
+    status: satisfied  # 726f
+- op: discuss  # 8009
+  at: '2026-06-08T18:32:13Z'  # 8009
+  by: agent  # 8009
+  actor: jgstern_agent  # 8009
+  clock: 4  # 8009
+  nonce: '8009'  # 8009
+  message: "holding(deprecated)->satisfied: Cited test_ir.py::test_edge_id_unique_per_line exists and passes; edge ID now includes line per fix. No contradicting signal. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 8009

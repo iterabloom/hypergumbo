@@ -59,3 +59,14 @@
   clock: 6  # f7e5
   nonce: f7e5  # f7e5
   message: "Fixed in PR merged 2026-05-20 (commit 32b3b7cefe). Picked Option A (canonical total_files) + minimal Option B (debug block) per the tracker fix proposal. compute_metrics now accepts the profile dict; total_files = sum(profile.languages[L].files); metrics.debug = {unique_paths_in_analysis, analyzed_file_symbols}. End-to-end on hypergumbo self-analysis: 1179 == profile-language sum (was 890 under the legacy unique-paths semantics). Spec section updated. Closes the final child of META INV-tolaj."  # f7e5
+- op: update  # 0293
+  at: '2026-06-08T18:30:23Z'  # 0293
+  by: agent  # 0293
+  actor: jgstern_agent  # 0293
+  clock: 7  # 0293
+  nonce: '0293'  # 0293
+  set: {}  # 0293
+  add:  # 0293
+    tags: [dogfood]  # 0293
+  remove:  # 0293
+    tags: [dogfooding]  # 0293

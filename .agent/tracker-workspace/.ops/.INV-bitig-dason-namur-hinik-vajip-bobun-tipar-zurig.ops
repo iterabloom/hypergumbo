@@ -110,3 +110,14 @@
   clock: 11  # 09de
   nonce: 09de  # 09de
   message: "reopened (satisfied->violated): tranch_04 card 027 (F71.A1) reproduces the invariant breach on substrate at HEAD eb5355917e (reused tranch-03 substrate sha256 a32c4a31). The PR4 inconclusive fix guards the EMPTY-SOURCE-DIR case but NOT the empty-boundary-map-via-uncovered-language case: a provably-I/O Node+Python service still gets verdict=confirmed on all 4 must_not_exist boundary claims because chain_count==0 (the JS body-call I/O is never produced — F69.A1/WI-zavad). Same 'no chains found -> confirmed' security false-positive, new empty-map cause. blind severity 5 — regression evidence. New distinct row WI-kajil filed for the new root (missing-edge-production)."  # 09de
+- op: update  # cf3e
+  at: '2026-06-08T18:30:21Z'  # cf3e
+  by: agent  # cf3e
+  actor: jgstern_agent  # cf3e
+  clock: 12  # cf3e
+  nonce: cf3e  # cf3e
+  set: {}  # cf3e
+  add:  # cf3e
+    tags: [dogfood]  # cf3e
+  remove:  # cf3e
+    tags: [dogfooding]  # cf3e

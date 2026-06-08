@@ -49,3 +49,14 @@
   clock: 4  # db2d
   nonce: db2d  # db2d
   message: "Cross-ref backfill (2026-05-30, linked-pile L8 investigation): re-parent to INV-rotup. Undocumented HYPERGUMBO_* env vars and HF_HUB_OFFLINE are a clean extension of the CLI-text-drift mechanic INV-rotup covers (CLI surface promises vs reality, no enforcement gate). Also relevant to INV-dasig (P0 huggingface.co touch) because HF_HUB_OFFLINE=1 is currently the only documented workaround."  # db2d
+- op: update  # cd34
+  at: '2026-06-08T18:30:27Z'  # cd34
+  by: agent  # cd34
+  actor: jgstern_agent  # cd34
+  clock: 5  # cd34
+  nonce: cd34  # cd34
+  set: {}  # cd34
+  add:  # cd34
+    tags: [dogfood]  # cd34
+  remove:  # cd34
+    tags: [dogfooding]  # cd34

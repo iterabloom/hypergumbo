@@ -19,3 +19,14 @@
     pr_ref:  # b886
     description: "F64.A2 (blind severity 4/Significant; F64.A3 origin-churn + F75.A3 static array-order EXTENSIONs folded here). §10 claims 'same input -> same output' and 'reproducible diffs at the key level' (both marked done). sort_keys=True IS implemented, but two larger sources of nondeterminism defeat a whole-file diff: (1) every run gets a fresh random execution_id (uuid4) + wall-clock started_at/duration_ms/generated_at, and origin_run_id copies the random id — 342 of 568 differing sorted-key lines; (2) analysis_runs[] is serialized in thread as_completed() completion order, which races. No two runs byte-identical (cmp differs at byte 169). The project's own L2 reproducibility block promises only FUNCTIONAL identity, contradicting §10's stronger 'same input -> same output'. A consumer building a CI gate on 'diff old.json new.json == empty' gets a non-empty diff every run even when nothing changed (false 'map changed' signals). Fix: either §10 stops promising byte-equality, or output is byte-stable (non-semantic fields normalized/omitted + run array sorted by stable key). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # b886
     fields: {}  # b886
+- op: update  # ca98
+  at: '2026-06-08T18:30:32Z'  # ca98
+  by: agent  # ca98
+  actor: jgstern_agent  # ca98
+  clock: 2  # ca98
+  nonce: ca98  # ca98
+  set: {}  # ca98
+  add:  # ca98
+    tags: [dogfood_tranche_04]  # ca98
+  remove:  # ca98
+    tags: [dogfood_tranch_04]  # ca98

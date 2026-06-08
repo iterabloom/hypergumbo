@@ -52,3 +52,14 @@
     parent: INV-dunof-zahof-zizon-huhor-vipot-tadul-kunib-sonah  # 9c45
   add:  # 9c45
     tags: [dogfood_umbrella_member, fabov_face_argparse_type_range]  # 9c45
+- op: update  # cd85
+  at: '2026-06-08T18:30:27Z'  # cd85
+  by: agent  # cd85
+  actor: jgstern_agent  # cd85
+  clock: 5  # cd85
+  nonce: cd85  # cd85
+  set: {}  # cd85
+  add:  # cd85
+    tags: [dogfood]  # cd85
+  remove:  # cd85
+    tags: [dogfooding]  # cd85

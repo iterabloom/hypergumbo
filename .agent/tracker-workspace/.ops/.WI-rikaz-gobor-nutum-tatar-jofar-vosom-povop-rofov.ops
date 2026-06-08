@@ -20,3 +20,14 @@
     pr_ref:  # e02f
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family L). Stand-alone finding F24.3 previously folded onto INV-napap. Full evidence on INV-napap's pass-24 discussion entry.\n\n## Symptom\n\n`centrality_scores` semantics are undocumented. CHANGELOG.md, spec.md, and 5 ADRs all score 0.0 — yet they're documents that consumers reasonably expect to score nonzero for \"most important files.\" A consumer asking \"what's most central?\" gets misleading results without understanding why.\n\nThe 0.0 score for documentation files is a downstream consequence of CS being derived from import-edges. Documents are not import-edge targets, so they score 0.0. The score is technically correct under the import-edge-derived definition but misleading without context.\n\n## Invariant\n\n`centrality_scores` semantics are documented in spec.md AT MINIMUM. The documentation explains:\n1. The derivation (import-edge-based; doc nodes inherently score 0.0)\n2. The interpretation (\"imported-by frequency\" not \"importance to humans\")\n3. Any normalization applied\n\nConsumers reading the score know what it means and what it excludes.\n\n## Fix sketch\n\nSpec.md §9.centrality_scores documentation pass. Cross-reference to ADR-0031 (path-deriving language axis) and the import-edge producer. Optionally rename `centrality_scores` to `import_centrality_scores` for clarity.\n\n## Source provenance\n\n- **F24.3** — INV-napap discussion entry 2026-06-02 (pass-24 batch).\n\nLab notebook: pass 24.\n\n## Related rows\n\n- Parent: **INV-napap**.\n- Sibling: **WI-centrality-file-surface-disjoint** (Family L — adjacent CS gap).\n- Sibling: **INV-rotup** (CLI help text drift; cousin documentation gap).\n- Family L siblings."  # e02f
     fields: {}  # e02f
+- op: update  # 6ea0
+  at: '2026-06-08T18:30:28Z'  # 6ea0
+  by: agent  # 6ea0
+  actor: jgstern_agent  # 6ea0
+  clock: 2  # 6ea0
+  nonce: 6ea0  # 6ea0
+  set: {}  # 6ea0
+  add:  # 6ea0
+    tags: [dogfood]  # 6ea0
+  remove:  # 6ea0
+    tags: [dogfooding]  # 6ea0

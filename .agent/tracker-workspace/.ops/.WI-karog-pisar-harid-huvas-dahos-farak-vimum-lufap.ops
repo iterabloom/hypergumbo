@@ -19,3 +19,14 @@
     pr_ref:  # dc0a
     description: "**Mechanic**: The slicer's container-kind set literal is `{\"class\", \"interface\", \"module\", \"struct\", \"trait\", \"enum\", \"file\"}` — 7 elements. The spec's reverse-slice class-expansion description enumerates 6 verbatim with no mention of `file`. End-to-end, reverse-slicing from a file-kind node expands to all top-level `contains` children at depth 0, exactly like a class. On the self-corpus, 668 of 902 file nodes (74%) have outgoing `contains` edges and would silently expand.\n\n**Expectation**: The set literal matches the spec enumeration (impl ≡ docs); silent extensions are either documented or removed.\n\n**Scope**: 668 file nodes with outgoing `contains` edges on the self-corpus; every reverse-slice invocation against a file-kind entry produces a substantively different result than the docs predict.\n\n**Exposure**: Any consumer reading the spec's enumeration and reasoning that `slice --reverse --entry someFile.py` does NOT auto-expand; any LLM agent computing workspace-level reverse-impact from a file entry.\n\n**Consequence**: The result is substantively larger (108 nodes at depth 0 for a typical test file) and differently shaped (member fanout instead of file-as-singleton) than the docs predict; consumers building reverse-impact slices from file entries are surprised.\n\n**Source**: F57.A1 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # dc0a
     fields: {}  # dc0a
+- op: update  # fff1
+  at: '2026-06-08T18:30:30Z'  # fff1
+  by: agent  # fff1
+  actor: jgstern_agent  # fff1
+  clock: 2  # fff1
+  nonce: fff1  # fff1
+  set: {}  # fff1
+  add:  # fff1
+    tags: [dogfood_tranche_03]  # fff1
+  remove:  # fff1
+    tags: [dogfood_tranch_03]  # fff1

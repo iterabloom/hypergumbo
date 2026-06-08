@@ -40,3 +40,18 @@
   clock: 3  # c6d1
   nonce: c6d1  # c6d1
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): this item is a concrete language-axis instance of INV-kurup's \"identifier-bearing fields emit non-canonical formats\" META — the language field receives the raw Solidity require() error-message string instead of a known-language catalog value, contaminating four downstream surfaces from one ingestion at solidity.py:355-369. Candidate for re-parenting under INV-kurup as a member, alongside the existing INV-hunup / INV-bazij / INV-zudob / INV-lidul cluster. Sub-pile A peer (mechanism: wrong-value emission, not field unpopulated): differs from INV-golap and INV-loguk which are unpopulated-field cases."  # c6d1
+- op: update  # 7a4c
+  at: '2026-06-08T18:32:21Z'  # 7a4c
+  by: agent  # 7a4c
+  actor: jgstern_agent  # 7a4c
+  clock: 4  # 7a4c
+  nonce: 7a4c  # 7a4c
+  set:  # 7a4c
+    status: satisfied  # 7a4c
+- op: discuss  # 7522
+  at: '2026-06-08T18:32:21Z'  # 7522
+  by: agent  # 7522
+  actor: jgstern_agent  # 7522
+  clock: 5  # 7522
+  nonce: '7522'  # 7522
+  message: "Fixed at HEAD: solidity import_directive guard restored (solidity.py:362-363); require() string literals no longer synthesize bogus imports. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 7522

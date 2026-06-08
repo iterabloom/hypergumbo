@@ -72,3 +72,18 @@
   target_nonce: c369  # 36df
   new_text: "Pass 38 — INV-fanur scope findings staying on this row (F38.C1 → WI-fumut; F38.C2 + F38.C3 → WI-kolal per fold-audit 2026-06-03).\n\nF38.C4: features=16 PRESERVED across ALL 10 compact variants (5 cov + 4 ms + 1 noconn) including ms_50 with only 50 nodes. Compact does NOT apply pass-37 F37.B1 EP-truncation logic to features array. Separate code path. The compact substrate has 100 nodes + 16 features + 33 EPs at default; features references can include node_ids OUTSIDE the 100-node window. Consumer expectation: feature.entry_nodes resolve to substrate nodes. With compact dropping 99.7% of root nodes but preserving 100% of features, feature.entry_nodes resolution rate could be substantially below 100% on compact substrates — to verify next pass. (Verified pass-39 F39.D1, see INV-titid.)\n\nF38.C5: Edge density super-linear in --max-symbols. ms_100 = 3.7 edges/node, ms_200 = 4.0 e/n, ms_500 = 8.86 e/n. 2.5× node growth from ms_200 to ms_500 produces 5.5× edge growth. Selection prefers densely-connected nodes as budget expands; small budgets get a sparser graph than the per-symbol average would predict."  # 36df
   reason: "fold-audit Phase 2b: F38.C1/C2/C3 migrated; F38.C4/C5 retained"  # 36df
+- op: update  # 01bd
+  at: '2026-06-08T19:12:54Z'  # 01bd
+  by: agent  # 01bd
+  actor: jgstern_agent  # 01bd
+  clock: 8  # 01bd
+  nonce: 01bd  # 01bd
+  set:  # 01bd
+    parent: META-jalur-mikob-vatub-gagam-lomib-rojud-madip-rafil  # 01bd
+- op: discuss  # a8bb
+  at: '2026-06-08T19:12:54Z'  # a8bb
+  by: agent  # a8bb
+  actor: jgstern_agent  # a8bb
+  clock: 9  # a8bb
+  nonce: a8bb  # a8bb
+  message: "compact-finalization family anchor; nested under super-cluster beta (connections-sweep 2026-06-08T1900Z)"  # a8bb

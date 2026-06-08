@@ -55,3 +55,14 @@
   clock: 5  # 6532
   nonce: '6532'  # 6532
   message: "Fixed in PR #3788 (merge d155abd7ce). Centralized _TAG_NAME_RE validation inside trackerset.add() and trackerset.update() so every non-CLI caller (TUI tag-edit modal, serve.py, future APIs) gets uniform enforcement matching the CLI add/update paths. TUI _on_edit_item now catches the resulting ValueError. remove_fields[\"tags\"] is intentionally exempt so WI-fanus cleanup can drain historically-bad tags. +11 tests covering hyphenated, uppercase, leading-digit, non-string, passthrough, and TUI error-surfacing cases. Unblocks WI-fanus."  # 6532
+- op: update  # c188
+  at: '2026-06-08T18:30:24Z'  # c188
+  by: agent  # c188
+  actor: jgstern_agent  # c188
+  clock: 6  # c188
+  nonce: c188  # c188
+  set: {}  # c188
+  add:  # c188
+    tags: [dogfood]  # c188
+  remove:  # c188
+    tags: [dogfooding]  # c188

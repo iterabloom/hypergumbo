@@ -57,3 +57,30 @@
   clock: 5  # c9ec
   nonce: c9ec  # c9ec
   message: "Cross-ref backfill (2026-05-30, linked-pile L2 investigation): claim partially stale. WEBSOCKET_HANDLER now exists at entrypoints.py:192 — half of the original split (entrypoints side) is closed. The remaining gap is the usage_contexts side still using 'WebSocketRoute' vs 'Route' for similar concepts. Re-scope: track only the usage_contexts vocabulary alignment."  # c9ec
+- op: update  # 2bf1
+  at: '2026-06-08T18:30:22Z'  # 2bf1
+  by: agent  # 2bf1
+  actor: jgstern_agent  # 2bf1
+  clock: 6  # 2bf1
+  nonce: 2bf1  # 2bf1
+  set: {}  # 2bf1
+  add:  # 2bf1
+    tags: [dogfood]  # 2bf1
+  remove:  # 2bf1
+    tags: [dogfooding]  # 2bf1
+- op: update  # 3522
+  at: '2026-06-08T18:32:25Z'  # 3522
+  by: agent  # 3522
+  actor: jgstern_agent  # 3522
+  clock: 7  # 3522
+  nonce: '3522'  # 3522
+  set: {}  # 3522
+  add:  # 3522
+    not_duplicate_of: [WI-kuvig-rufaf-tabok-zadib-nijok-vajit-nuliv-koluz]  # 3522
+- op: discuss  # 0949
+  at: '2026-06-08T18:32:25Z'  # 0949
+  by: agent  # 0949
+  actor: jgstern_agent  # 0949
+  clock: 8  # 0949
+  nonce: '0949'  # 0949
+  message: "RELATED_BUT_DISTINCT to WI-kuvig: WS-route taxonomy split: lomoz=usage_contexts 'WebSocketRoute' vs 'Route' (entrypoints half closed); kuvig=entrypoints kind http_route vs websocket_handler; distinct surfaces. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 0949

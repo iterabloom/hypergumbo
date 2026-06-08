@@ -41,3 +41,14 @@
   clock: 4  # fd71
   nonce: fd71  # fd71
   message: "[+ tranch_04: card 030 F75.A1 reproduces this EXACT mechanism on substrate HEAD eb5355917e (Edge.derived_from == {src,dst} for 100% of 23867 populated edges, chain-len 2, zero edge-ID refs, no 3rd consumed input). This row is wont_do; PER PROTOCOL NOT auto-reopened. FLAGGING FOR OPERATOR: the mechanism is live and now also tracked via INV-rukor (flipped pending_validation->violated) + active fix WI-latup. If the wont_do verdict was a dedup-against-INV-rukor decision it is consistent; if it was a genuine won't-fix, the tranch_04 reproduction is fresh evidence to reconsider.]"  # fd71
+- op: update  # 95af
+  at: '2026-06-08T18:30:30Z'  # 95af
+  by: agent  # 95af
+  actor: jgstern_agent  # 95af
+  clock: 5  # 95af
+  nonce: 95af  # 95af
+  set: {}  # 95af
+  add:  # 95af
+    tags: [dogfood_tranche_03]  # 95af
+  remove:  # 95af
+    tags: [dogfood_tranch_03]  # 95af

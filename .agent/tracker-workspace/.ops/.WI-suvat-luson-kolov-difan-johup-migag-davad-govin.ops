@@ -47,3 +47,30 @@
   clock: 5  # 294d
   nonce: 294d  # 294d
   message: "Re-surfaced in dogfooding tranche 10 (U05a, F186.A1 split a, severity 3). §12 EVIDENCE_CONFIDENCE_MATRIX documented value python/ast_call_direct=0.95 contradicts the dominant observed substrate value 0.85 (32444 edges) — exactly the value gap this item already records. Fix: correct documented matrix value 0.95 -> 0.85."  # 294d
+- op: update  # 664a
+  at: '2026-06-08T18:30:30Z'  # 664a
+  by: agent  # 664a
+  actor: jgstern_agent  # 664a
+  clock: 6  # 664a
+  nonce: 664a  # 664a
+  set: {}  # 664a
+  add:  # 664a
+    tags: [dogfood_tranche_03]  # 664a
+  remove:  # 664a
+    tags: [dogfood_tranch_03]  # 664a
+- op: update  # 626f
+  at: '2026-06-08T19:12:52Z'  # 626f
+  by: agent  # 626f
+  actor: jgstern_agent  # 626f
+  clock: 7  # 626f
+  nonce: 626f  # 626f
+  set: {}  # 626f
+  add:  # 626f
+    not_duplicate_of: [META-ruhob-lubob-matip-vinol-duzab-nafom-tikas-vajur]  # 626f
+- op: discuss  # 2dfd
+  at: '2026-06-08T19:12:52Z'  # 2dfd
+  by: agent  # 2dfd
+  actor: jgstern_agent  # 2dfd
+  clock: 8  # 2dfd
+  nonce: 2dfd  # 2dfd
+  message: "root-cause family cross-link (b2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 2dfd

@@ -1,0 +1,22 @@
+- op: create  # 395e
+  at: '2026-06-08T19:12:12Z'  # 395e
+  by: agent  # 395e
+  actor: jgstern_agent  # 395e
+  clock: 1  # 395e
+  nonce: 395e  # 395e
+  data:  # 395e
+    kind: meta_invariant  # 395e
+    title: "Family: consumers ignore the canonical supply_chain.is_test_file verdict"  # 395e
+    status: violated  # 395e
+    priority: 2  # 395e
+    parent: META-bifif-luzin-nuzul-fogom-famig-hupoh-zanav-pohud  # 395e
+    tags:  # 395e
+    - connections_sweep_20260608  # 395e
+    - root_cause_family  # 395e
+    isbefore: []  # 395e
+    duplicate_of: []  # 395e
+    not_duplicate_of: []  # 395e
+    pr_ref:  # 395e
+    description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: WI-bosab, WI-popok, WI-nitob. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # 395e
+    fields:  # 395e
+      statement: "Framework-pattern matcher, entrypoint detector, and message-queue linker must gate on Symbol.supply_chain.is_test_file rather than re-deriving test status from filename heuristics or ignoring it."  # 395e

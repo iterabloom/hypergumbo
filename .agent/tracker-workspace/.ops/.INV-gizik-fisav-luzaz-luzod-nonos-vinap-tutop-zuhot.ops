@@ -47,3 +47,19 @@
   clock: 4  # 529d
   nonce: 529d  # 529d
   message: "Partial close by Phase 6 PR2 (commit 98533c0fff). TreeSitterAnalyzer._analyze_body auto-stamps pass_version = compute_pass_version(type(self)) when subclass empty. 70 of 84 runs now stamped (was 40). The remaining 14 are analyzers that override analyze() entirely and bypass _analyze_body. Remaining work tracked in WI-mipul."  # 529d
+- op: update  # b6da
+  at: '2026-06-08T18:32:22Z'  # b6da
+  by: agent  # b6da
+  actor: jgstern_agent  # b6da
+  clock: 5  # b6da
+  nonce: b6da  # b6da
+  set: {}  # b6da
+  add:  # b6da
+    not_duplicate_of: [WI-mipul-fajaf-dibab-vinap-kafur-podov-huzik-dunuh]  # b6da
+- op: discuss  # c52b
+  at: '2026-06-08T18:32:22Z'  # c52b
+  by: agent  # c52b
+  actor: jgstern_agent  # c52b
+  clock: 6  # c52b
+  nonce: c52b  # c52b
+  message: "RELATED_BUT_DISTINCT to WI-mipul: per-pass stamping; mipul wires pass_version/config_fingerprint/toolchain on 14 override-analyze analyzers, the gizik/lidul/nihug tail. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # c52b

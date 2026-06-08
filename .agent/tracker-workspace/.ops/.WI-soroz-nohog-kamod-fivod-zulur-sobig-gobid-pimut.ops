@@ -59,3 +59,14 @@
   clock: 5  # 597a
   nonce: 597a  # 597a
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Axis-A (missing-flag) sibling of WI-dulul (cache-status) and INV-jutuj (routes) within WI-gogif. The standardization target is a consistent --format text|json on every read subcommand; catalog's fix is mechanically identical to the other two in this axis. Proposed shape: per-pass entries with id/availability/description; per-framework-pattern entries with id/path; wrapped in the shared schema_version/view envelope."  # 597a
+- op: update  # 5e1e
+  at: '2026-06-08T18:30:24Z'  # 5e1e
+  by: agent  # 5e1e
+  actor: jgstern_agent  # 5e1e
+  clock: 6  # 5e1e
+  nonce: 5e1e  # 5e1e
+  set: {}  # 5e1e
+  add:  # 5e1e
+    tags: [dogfood]  # 5e1e
+  remove:  # 5e1e
+    tags: [dogfooding]  # 5e1e

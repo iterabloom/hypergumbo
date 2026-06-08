@@ -26,3 +26,29 @@
   clock: 2  # fa58
   nonce: fa58  # fa58
   message: "Dogfood re-confirmation, matrix-vs-emitted face. The spec §12 EVIDENCE_CONFIDENCE_MATRIX maps (python,ast_call_direct):0.95, but ast_call_direct (35749 edges) has modal confidence 0.85 (90.8%: {0.85:32444, 0.5:2941, 0.7:292, 0.9:29}) — a mismatch. ast_call_method matches (0.85 both, 4995/4995). The other 8 of 10 matrix keys (ast_getattr_call, python/js import_static, import_dynamic, require_*, html script_src/inline) have 0 emitted edges; the substrate uses ast_import (10679 @ 0.95) instead. Only 2 of 10 matrix rows are exercisable, that pair being 1 match / 1 mismatch. A consumer reading the published matrix to interpret an ast_call_direct edge as 0.95 reliability is wrong (it is 0.85), and the 80% dead-key rate means most documented interpretations correspond to no real output."  # fa58
+- op: update  # 1bb8
+  at: '2026-06-08T18:30:32Z'  # 1bb8
+  by: agent  # 1bb8
+  actor: jgstern_agent  # 1bb8
+  clock: 3  # 1bb8
+  nonce: 1bb8  # 1bb8
+  set: {}  # 1bb8
+  add:  # 1bb8
+    tags: [dogfood_tranche_04]  # 1bb8
+  remove:  # 1bb8
+    tags: [dogfood_tranch_04]  # 1bb8
+- op: update  # 1c4d
+  at: '2026-06-08T19:12:52Z'  # 1c4d
+  by: agent  # 1c4d
+  actor: jgstern_agent  # 1c4d
+  clock: 4  # 1c4d
+  nonce: 1c4d  # 1c4d
+  set:  # 1c4d
+    parent: META-ruhob-lubob-matip-vinol-duzab-nafom-tikas-vajur  # 1c4d
+- op: discuss  # 851a
+  at: '2026-06-08T19:12:52Z'  # 851a
+  by: agent  # 851a
+  actor: jgstern_agent  # 851a
+  clock: 5  # 851a
+  nonce: 851a  # 851a
+  message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # 851a

@@ -34,3 +34,18 @@
   clock: 3  # dadd
   nonce: dadd  # dadd
   message: "Fixed in PR #1992. Root cause: _get_enclosing_function() returns None for top-level code, gating all call edge creation. Fix: create <module:filename> symbol and use as fallback at all 6 call sites in _extract_edges()."  # dadd
+- op: update  # e631
+  at: '2026-06-08T18:32:11Z'  # e631
+  by: agent  # e631
+  actor: jgstern_agent  # e631
+  clock: 4  # e631
+  nonce: e631  # e631
+  set:  # e631
+    status: satisfied  # e631
+- op: discuss  # e27a
+  at: '2026-06-08T18:32:11Z'  # e27a
+  by: agent  # e27a
+  actor: jgstern_agent  # e27a
+  clock: 5  # e27a
+  nonce: e27a  # e27a
+  message: "holding(deprecated)->satisfied: js_ts.py uses `_get_enclosing_function(...) or module_symbol` fallback at all call sites (PR#1992); test_toplevel_direct_call_produces_edge passes. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # e27a

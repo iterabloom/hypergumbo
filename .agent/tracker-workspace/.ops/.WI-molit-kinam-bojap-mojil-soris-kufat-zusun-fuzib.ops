@@ -19,3 +19,29 @@
     pr_ref:  # 9a92
     description: "F62.A4 (blind severity 2/Minor; parent of the F76 family — F76.A1 5-value resolution-smuggling, F76.A3 14/33 leak bound — folded here). Per-evidence-type resolution rates are sharply bimodal: ast_call edges are 98.5% unresolved (21152/21474), ast_call_direct 8.3% (2957/35749); every other evidence type (28/33) is 100% resolved. So is_resolved=False is concentrated in exactly the 'couldnt pin the callee' pathways, and the ast_call vs ast_call_direct distinction essentially IS the resolution status encoded as two evidence-type labels — a redundancy violating the design axiom (per ADR-0028) that the evidence_type axis names the inference PATHWAY, not the resolution STATE (which should be queried from is_resolved). A consumer can filter is_resolved==True OR evidence_type=='ast_call_direct' and get nearly the same set. No edge gets a wrong value, but the vocabulary silently carries two dimensions in one name, so a future refactor assuming single-axis purity builds on a confused foundation. Related to WI-hubit (ast_call_method AXIS_PENDING) + INV-dovus (import-family vocab fragmentation). Fix: evidence_type names only the inference pathway; resolution state carried solely by is_resolved. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 9a92
     fields: {}  # 9a92
+- op: update  # ad75
+  at: '2026-06-08T18:30:32Z'  # ad75
+  by: agent  # ad75
+  actor: jgstern_agent  # ad75
+  clock: 2  # ad75
+  nonce: ad75  # ad75
+  set: {}  # ad75
+  add:  # ad75
+    tags: [dogfood_tranche_04]  # ad75
+  remove:  # ad75
+    tags: [dogfood_tranch_04]  # ad75
+- op: update  # a246
+  at: '2026-06-08T19:12:53Z'  # a246
+  by: agent  # a246
+  actor: jgstern_agent  # a246
+  clock: 3  # a246
+  nonce: a246  # a246
+  set:  # a246
+    parent: META-luvir-dapil-mumil-mimuf-tipil-jaboh-kolip-pahim  # a246
+- op: discuss  # 27f2
+  at: '2026-06-08T19:12:53Z'  # 27f2
+  by: agent  # 27f2
+  actor: jgstern_agent  # 27f2
+  clock: 4  # 27f2
+  nonce: 27f2  # 27f2
+  message: "root-cause family member (g2) (connections-sweep 2026-06-08T1900Z)"  # 27f2

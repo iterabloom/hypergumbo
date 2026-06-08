@@ -19,3 +19,19 @@
     pr_ref:  # 7450
     description: "**Defect.** The auto-generated schema omits three top-level keys the behavior map always emits.\n\n**Evidence.** docs/schema.json top-level `properties` lists 19 keys but the map emits 22. The three keys emitted but absent from the schema: `reproducibility_context`, `symbol_fingerprint_scheme`, `validation_report`. Zero keys are in the schema but absent from the map. The schema self-describes as auto-generated from the dataclasses and is stale.\n\n**Contract.** A schema auto-generated from the dataclasses should declare every always-present top-level key.\n\n**Consequence.** Schema-driven tooling cannot validate or even discover three top-level blocks (including the reproducibility and validation reports), and a consumer trusting the schema as complete underestimates the map's surface.\n\n**Related (not duplicate).** WI-ziguk (validation_report undocumented) and WI-romup (validation_report.schema_version) concern that block's content/versioning; this is the schema-generator omission of three whole top-level keys (reproducibility_context + symbol_fingerprint_scheme are in no ledger row)."  # 7450
     fields: {}  # 7450
+- op: update  # 249e
+  at: '2026-06-08T19:12:56Z'  # 249e
+  by: agent  # 249e
+  actor: jgstern_agent  # 249e
+  clock: 2  # 249e
+  nonce: 249e  # 249e
+  set: {}  # 249e
+  add:  # 249e
+    not_duplicate_of: [WI-tagaj-sisim-jamiz-zagom-holad-fagab-fupad-kipov]  # 249e
+- op: discuss  # 4f82
+  at: '2026-06-08T19:12:56Z'  # 4f82
+  by: agent  # 4f82
+  actor: jgstern_agent  # 4f82
+  clock: 3  # 4f82
+  nonce: 4f82  # 4f82
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 4f82

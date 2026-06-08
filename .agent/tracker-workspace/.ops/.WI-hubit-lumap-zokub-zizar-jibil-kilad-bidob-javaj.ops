@@ -33,3 +33,14 @@
   clock: 3  # 62b9
   nonce: 62b9  # 62b9
   message: "[+ tranch_04: WI-molit — related (card 006/F62.A4): ast_call_method (this row, AXIS_PENDING fold candidate) is part of the same call-family resolution-state smuggling — ast_call 98.5% unresolved vs ast_call_direct 8.3% vs ast_call_method 0% — the evidence_type axis redundantly encoding is_resolved.]"  # 62b9
+- op: update  # b7b8
+  at: '2026-06-08T18:30:31Z'  # b7b8
+  by: agent  # b7b8
+  actor: jgstern_agent  # b7b8
+  clock: 4  # b7b8
+  nonce: b7b8  # b7b8
+  set: {}  # b7b8
+  add:  # b7b8
+    tags: [dogfood_tranche_03]  # b7b8
+  remove:  # b7b8
+    tags: [dogfood_tranch_03]  # b7b8

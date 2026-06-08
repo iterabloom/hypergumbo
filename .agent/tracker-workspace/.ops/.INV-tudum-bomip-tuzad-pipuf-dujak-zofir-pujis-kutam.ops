@@ -48,3 +48,14 @@
   nonce: f9f5  # f9f5
   set:  # f9f5
     status: deleted  # f9f5
+- op: update  # 4bf4
+  at: '2026-06-08T18:30:22Z'  # 4bf4
+  by: agent  # 4bf4
+  actor: jgstern_agent  # 4bf4
+  clock: 5  # 4bf4
+  nonce: 4bf4  # 4bf4
+  set: {}  # 4bf4
+  add:  # 4bf4
+    tags: [dogfood]  # 4bf4
+  remove:  # 4bf4
+    tags: [dogfooding]  # 4bf4

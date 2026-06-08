@@ -69,3 +69,14 @@
   clock: 6  # 60e7
   nonce: '60e7'  # 60e7
   message: "Fix deployed by Phase 1 PR2 (commit 54cbaa0821). ADR-0031 linker producer migration across all classes: Class B synthetic stand-ins now emit language=None + discovery_language=<host>. The 4 named linkers no longer hardcode language='javascript' on .ts files. Needs bakeoff validation."  # 60e7
+- op: update  # 1ce5
+  at: '2026-06-08T18:30:21Z'  # 1ce5
+  by: agent  # 1ce5
+  actor: jgstern_agent  # 1ce5
+  clock: 7  # 1ce5
+  nonce: 1ce5  # 1ce5
+  set: {}  # 1ce5
+  add:  # 1ce5
+    tags: [dogfood]  # 1ce5
+  remove:  # 1ce5
+    tags: [dogfooding]  # 1ce5

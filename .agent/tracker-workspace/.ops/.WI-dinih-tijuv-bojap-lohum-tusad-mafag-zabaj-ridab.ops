@@ -28,3 +28,30 @@
   clock: 2  # 37af
   nonce: 37af  # 37af
   message: "Re-confirmed + refined on fresh substrate (dogfood_tranche_07 F123.A2): isolates a specific instance of the 18-vs-8 edge-type vocab drift — depends_on (6 edges, json package.json -> npm :dependency nodes, conf 0.95) and depends_on_manifest (26, pyproject deps) bifurcate ONE dependency relation under two names, split by manifest FORMAT (json/xml/dockerfile/just/starlark/meson/hcl emit depends_on; pyproject-linker emits depends_on_manifest). depends_on has 0 grep hits in docs/hypergumbo-spec.md (undocumented), though it IS in edge_types.py:94 whose own comment (line 308) flags a sibling 'likely folds to depends_on'. Consumer asking 'what does X depend on' must union two differently-named types, one unspecified. Folds here as a concrete depends_on facet of the vocab-drift fix."  # 37af
+- op: update  # 6e7d
+  at: '2026-06-08T18:30:28Z'  # 6e7d
+  by: agent  # 6e7d
+  actor: jgstern_agent  # 6e7d
+  clock: 3  # 6e7d
+  nonce: 6e7d  # 6e7d
+  set: {}  # 6e7d
+  add:  # 6e7d
+    tags: [dogfood]  # 6e7d
+  remove:  # 6e7d
+    tags: [dogfooding]  # 6e7d
+- op: update  # bd86
+  at: '2026-06-08T18:32:24Z'  # bd86
+  by: agent  # bd86
+  actor: jgstern_agent  # bd86
+  clock: 4  # bd86
+  nonce: bd86  # bd86
+  set: {}  # bd86
+  add:  # bd86
+    not_duplicate_of: [WI-guvup-jusid-ridog-fokus-gujul-foruk-vutog-midil]  # bd86
+- op: discuss  # bb11
+  at: '2026-06-08T18:32:24Z'  # bb11
+  by: agent  # bb11
+  actor: jgstern_agent  # bb11
+  clock: 5  # bb11
+  nonce: bb11  # bb11
+  message: "RELATED_BUT_DISTINCT to WI-guvup: Family-K vocabulary drift: dinih=edge.type (18 vs 8), guvup=edge.meta.evidence_type (33 vs 9); same pattern, sibling fields, parallel doc/normalize fixes. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # bb11

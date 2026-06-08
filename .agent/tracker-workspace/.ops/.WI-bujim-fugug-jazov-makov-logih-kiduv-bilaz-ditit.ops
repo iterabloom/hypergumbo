@@ -102,3 +102,14 @@
   clock: 11  # 9d2a
   nonce: 9d2a  # 9d2a
   message: "Validated via self-analysis 2026-05-21 (B-shape claim). Re-ran hypergumbo on this repo (dev tip 74794a2e89) with handler slices enabled (default) and confirmed bm['features'] now contains 16 entries, each carrying the spec-required keys {id, name, entry_nodes, node_ids, edge_ids, query, limits_hit, node_depths, node_tiers}. Option-(c) index-only embedding from PR #3831 is operational: per-handler features[] entries hold graph-ID pointers into top-level nodes[]/edges[], with full denormalized payloads in <out-stem>.slices/slice.handler.<...>.json. Artifacts: ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md and verify_validation_drain_05212026{.py,_verdict.txt,.log}. Verdict: moved."  # 9d2a
+- op: update  # 1929
+  at: '2026-06-08T18:30:26Z'  # 1929
+  by: agent  # 1929
+  actor: jgstern_agent  # 1929
+  clock: 12  # 1929
+  nonce: '1929'  # 1929
+  set: {}  # 1929
+  add:  # 1929
+    tags: [dogfood]  # 1929
+  remove:  # 1929
+    tags: [dogfooding]  # 1929

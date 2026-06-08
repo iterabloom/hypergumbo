@@ -113,3 +113,18 @@
   clock: 14  # 418f
   nonce: 418f  # 418f
   message: "4/5 codegen patterns validated (specta, contextBridge, gqlgen, gRPC codegen). Remaining: wasm_bindgen facades (deferred with WI-pitam, no test repos). Moving to holding — invariant is satisfied for available patterns."  # 418f
+- op: update  # b385
+  at: '2026-06-08T18:32:16Z'  # b385
+  by: agent  # b385
+  actor: jgstern_agent  # b385
+  clock: 15  # b385
+  nonce: b385  # b385
+  set:  # b385
+    status: satisfied  # b385
+- op: discuss  # a0cd
+  at: '2026-06-08T18:32:17Z'  # a0cd
+  by: agent  # a0cd
+  actor: jgstern_agent  # a0cd
+  clock: 16  # a0cd
+  nonce: a0cd  # a0cd
+  message: "holding(deprecated)->satisfied: 4/5 codegen patterns (specta/contextBridge/gqlgen/gRPC) validated; 269 in-repo linker tests pass (ipc/tauri/grpc/graphql). wasm_bindgen residual deferred to WI-pitam(done). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # a0cd

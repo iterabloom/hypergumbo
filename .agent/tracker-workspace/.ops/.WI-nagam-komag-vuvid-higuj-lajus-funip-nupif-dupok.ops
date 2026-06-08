@@ -34,3 +34,14 @@
   clock: 3  # 2045
   nonce: '2045'  # 2045
   message: "superseded by WI-movah — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # 2045
+- op: update  # 01d1
+  at: '2026-06-08T18:30:30Z'  # 01d1
+  by: agent  # 01d1
+  actor: jgstern_agent  # 01d1
+  clock: 4  # 01d1
+  nonce: 01d1  # 01d1
+  set: {}  # 01d1
+  add:  # 01d1
+    tags: [dogfood_tranche_03]  # 01d1
+  remove:  # 01d1
+    tags: [dogfood_tranch_03]  # 01d1

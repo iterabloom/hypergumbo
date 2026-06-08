@@ -48,3 +48,14 @@
   nonce: 695e  # 695e
   set:  # 695e
     status: deleted  # 695e
+- op: update  # 77c9
+  at: '2026-06-08T18:30:27Z'  # 77c9
+  by: agent  # 77c9
+  actor: jgstern_agent  # 77c9
+  clock: 5  # 77c9
+  nonce: 77c9  # 77c9
+  set: {}  # 77c9
+  add:  # 77c9
+    tags: [dogfood]  # 77c9
+  remove:  # 77c9
+    tags: [dogfooding]  # 77c9

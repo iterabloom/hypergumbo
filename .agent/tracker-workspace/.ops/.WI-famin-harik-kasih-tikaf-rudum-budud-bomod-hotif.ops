@@ -26,3 +26,20 @@
   clock: 2  # 814e
   nonce: 814e  # 814e
   message: "Re-surfaced in dogfooding tranche 10 (U17, F185.A1, severity 3). AnalysisRun.version='1' on play-routes vs '5.0.1' on 83 others, from hardcoded PASS_VERSION='1' at play_routes.py:44 — exactly this item. Fix: use canonical PASS_VERSION = __version__ in play_routes.py:44. (related WI-riroz: AR.version='1' corrupts run_signature.)"  # 814e
+- op: update  # 7dc7
+  at: '2026-06-08T19:12:57Z'  # 7dc7
+  by: agent  # 7dc7
+  actor: jgstern_agent  # 7dc7
+  clock: 3  # 7dc7
+  nonce: 7dc7  # 7dc7
+  set:  # 7dc7
+    status: wont_do  # 7dc7
+  add:  # 7dc7
+    duplicate_of: [WI-riroz-gihus-hibom-rukor-sotot-fakib-sakob-natad]  # 7dc7
+- op: discuss  # 009c
+  at: '2026-06-08T19:12:57Z'  # 009c
+  by: agent  # 009c
+  actor: jgstern_agent  # 009c
+  clock: 4  # 009c
+  nonce: 009c  # 009c
+  message: "TRUE_DUPLICATE: identical play_routes.py:44 PASS_VERSION=1 defect; folded into WI-riroz (connections-sweep 2026-06-08T1900Z)"  # 009c

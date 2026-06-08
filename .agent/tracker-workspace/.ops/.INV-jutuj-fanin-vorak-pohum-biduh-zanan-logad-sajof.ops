@@ -66,3 +66,14 @@
   clock: 6  # e9d7
   nonce: e9d7  # e9d7
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Axis-A (missing-flag) sibling of WI-dulul (cache-status) and WI-soroz (catalog) within WI-gogif. The standardization target is a consistent --format text|json across all read subcommands; routes' fix shares its mechanic with these two but is distinct from the sibling INV-pomol (bm.json schema-organization observation, not a CLI surface gap). Pass-16 self-correction noted that symbols and search are also text-only and should be enrolled."  # e9d7
+- op: update  # 1843
+  at: '2026-06-08T18:30:22Z'  # 1843
+  by: agent  # 1843
+  actor: jgstern_agent  # 1843
+  clock: 7  # 1843
+  nonce: '1843'  # 1843
+  set: {}  # 1843
+  add:  # 1843
+    tags: [dogfood]  # 1843
+  remove:  # 1843
+    tags: [dogfooding]  # 1843

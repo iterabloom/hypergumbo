@@ -76,3 +76,14 @@
   clock: 7  # 67c7
   nonce: 67c7  # 67c7
   message: "CORRECTION: this omission list is partly stale, plus a new divergent-key facet (blind-severity-derived priority signal: P2). On a current slice, feature.query already includes hub_threshold (=100) and exclude_imports/exclude_tests/exclude_utility — so 'omits hub_threshold, exclude*' is outdated; only min_confidence and max_tier remain omitted. SEPARATE facet: the same slice carries two parameter echoes with divergent key names for the hop limit — feature.query uses 'hops' (and includes entrypoint/method/pass_through_kinds/reverse) while feature.meta.slice_params uses 'max_hops' (and drops entrypoint/method). One concept, two key names, two blocks; a consumer reading the hop count must know which block to trust."  # 67c7
+- op: update  # 90c0
+  at: '2026-06-08T18:30:22Z'  # 90c0
+  by: agent  # 90c0
+  actor: jgstern_agent  # 90c0
+  clock: 8  # 90c0
+  nonce: 90c0  # 90c0
+  set: {}  # 90c0
+  add:  # 90c0
+    tags: [dogfood]  # 90c0
+  remove:  # 90c0
+    tags: [dogfooding]  # 90c0

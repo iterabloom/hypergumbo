@@ -27,3 +27,14 @@
   clock: 2  # d5af
   nonce: d5af  # d5af
   message: "[+ tranch_04: WI-marul — related (card 019/F68.A1): the loader's zero schema_version gating is the broader version-compatibility face of this 'silent rc=0 on wrong-shape input' gap — future/downgraded/absent schema_version all read RC=0 no warning across symbols/slice/explain/io-boundaries.]"  # d5af
+- op: update  # 95c8
+  at: '2026-06-08T18:30:26Z'  # 95c8
+  by: agent  # 95c8
+  actor: jgstern_agent  # 95c8
+  clock: 3  # 95c8
+  nonce: 95c8  # 95c8
+  set: {}  # 95c8
+  add:  # 95c8
+    tags: [dogfood]  # 95c8
+  remove:  # 95c8
+    tags: [dogfooding]  # 95c8

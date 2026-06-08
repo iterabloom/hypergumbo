@@ -26,3 +26,21 @@
   clock: 2  # 536c
   nonce: 536c  # 536c
   message: "Re-confirms dead-code BFS seeds only 104 entrypoints, so test-only-reachable functions flagged dead, inflating 89.6% (3917/4371). WI-lirob exact (--seeds all -> 35%). INV-pohik is broader META. (dogfood; blinded sev 4)"  # 536c
+- op: discuss  # 7853
+  at: '2026-06-08T14:20:48Z'  # 7853
+  by: agent  # 7853
+  actor: jgstern_agent  # 7853
+  clock: 3  # 7853
+  nonce: '7853'  # 7853
+  message: "Instance face (human-adjudicated root-novelty): WI-jufih — dead-code-maybe vs test-coverage give contradictory verdicts on test-only-reachable functions; same entrypoint-only-default-seed root as this 89.6%-dead FP."  # 7853
+- op: update  # 75ad
+  at: '2026-06-08T18:30:30Z'  # 75ad
+  by: agent  # 75ad
+  actor: jgstern_agent  # 75ad
+  clock: 4  # 75ad
+  nonce: 75ad  # 75ad
+  set: {}  # 75ad
+  add:  # 75ad
+    tags: [dogfood_tranche_03]  # 75ad
+  remove:  # 75ad
+    tags: [dogfood_tranch_03]  # 75ad

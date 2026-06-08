@@ -127,3 +127,14 @@
   clock: 15  # b97f
   nonce: b97f  # b97f
   message: "[+ tranch_03: anon-card-tranch03-004 F42.A1 — 26/36 linkers silent, no observability (linker subset of broader 61/84 zero-edge pass finding; folded as duplicate; blind severity 4; new row WI-mutug wont_do)]"  # b97f
+- op: update  # a4ce
+  at: '2026-06-08T18:30:25Z'  # a4ce
+  by: agent  # a4ce
+  actor: jgstern_agent  # a4ce
+  clock: 16  # a4ce
+  nonce: a4ce  # a4ce
+  set: {}  # a4ce
+  add:  # a4ce
+    tags: [dogfood]  # a4ce
+  remove:  # a4ce
+    tags: [dogfooding]  # a4ce

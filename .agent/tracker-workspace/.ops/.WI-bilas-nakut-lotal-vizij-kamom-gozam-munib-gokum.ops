@@ -52,3 +52,14 @@
   clock: 4  # 0bc9
   nonce: 0bc9  # 0bc9
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): shares the \"no top-level CLI exception handler\" mechanic with INV-sozop (all --input consumers raw-traceback on malformed JSON) and INV-zurih (verify-claims raw-traceback on malformed YAML). cli.main() at cli.py:8283-8422 wraps args.func(args) with no try/except for KeyboardInterrupt, json.JSONDecodeError, or yaml.YAMLError; only signal.SIGPIPE → SIG_DFL is installed (cli.py:8292-8293). Suggest promoting to a META \"no top-level CLI exception handler\" — three confirmed members across three user-controllable failure modes (signal, JSON-parse, YAML-parse)."  # 0bc9
+- op: update  # c308
+  at: '2026-06-08T18:30:28Z'  # c308
+  by: agent  # c308
+  actor: jgstern_agent  # c308
+  clock: 5  # c308
+  nonce: c308  # c308
+  set: {}  # c308
+  add:  # c308
+    tags: [dogfood]  # c308
+  remove:  # c308
+    tags: [dogfooding]  # c308

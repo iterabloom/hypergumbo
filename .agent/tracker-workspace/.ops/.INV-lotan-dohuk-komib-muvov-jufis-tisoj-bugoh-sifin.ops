@@ -44,3 +44,14 @@
   clock: 4  # cd52
   nonce: cd52  # cd52
   message: "Closed as satisfied via pass-15 correction (EEEEE) — the invariant 'WS route appears in entrypoints but missing from usage_contexts' was FALSE. Re-probe shows WS /ws IS in usage_contexts under context_name='WebSocketRoute' (1 entry), separate from context_name='Route' (7 HTTP entries). Total usage_contexts = 8 matches entrypoints[http_route]=8. My pass-14 query filtered by context_name=='Route' only, missing the WebSocketRoute entry. The data is consistent — no registry drift. The vocabulary split (entrypoints uses single 'http_route' kind for both HTTP and WS; usage_contexts uses two context_names) is extracted as BBBBB (WI-lomoz)."  # cd52
+- op: update  # ec84
+  at: '2026-06-08T18:30:25Z'  # ec84
+  by: agent  # ec84
+  actor: jgstern_agent  # ec84
+  clock: 5  # ec84
+  nonce: ec84  # ec84
+  set: {}  # ec84
+  add:  # ec84
+    tags: [dogfood]  # ec84
+  remove:  # ec84
+    tags: [dogfooding]  # ec84

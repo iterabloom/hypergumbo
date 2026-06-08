@@ -19,3 +19,14 @@
     pr_ref:  # 1adf
     description: "F70.A3 (blind severity 2/Minor; ratchet-reversed from EXT-of-F70.A1 — distinct representation-ceiling mechanism). Symbol.docstring (ir.py:361) is defined as a first-line summary truncated to 80 chars. The substrate confirms the max docstring length is exactly 80 (168 docstrings clipped at exactly 80, frequently mid-word/mid-clause) and ZERO docstrings contain a newline. So even the CAPTURED function/class docstrings lose everything after the first line or 80th character. Module docstrings — inherently multi-paragraph ('how it works'/'why' sections per the project's own standard) — could not be represented faithfully by this field even if the file-node population gap (F70.A1) were fixed. A consumer relying on the captured docstring for more than a terse first-line hint, or expecting faithful module-summary content, is short-changed. 80 chars is a deliberate budget but it caps the field's usefulness for purpose conveyance. Fix: widen the field or add a dedicated module-summary field carrying enough of the docstring for the 'how it works/why' content the standard requires. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 1adf
     fields: {}  # 1adf
+- op: update  # 9c12
+  at: '2026-06-08T18:30:32Z'  # 9c12
+  by: agent  # 9c12
+  actor: jgstern_agent  # 9c12
+  clock: 2  # 9c12
+  nonce: 9c12  # 9c12
+  set: {}  # 9c12
+  add:  # 9c12
+    tags: [dogfood_tranche_04]  # 9c12
+  remove:  # 9c12
+    tags: [dogfood_tranch_04]  # 9c12

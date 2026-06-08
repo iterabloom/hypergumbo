@@ -19,3 +19,29 @@
     pr_ref:  # 54d6
     description: "F67.A1 (blind severity 3/Moderate). The 3 producer/fallback/runtime coherence linters all walk the package SOURCE tree with ast and check producer call-sites (Edge.create(evidence_type='...')) against the canonical registries. None ever inspects an emitted behavior map, and the run orchestrator never imports them — they are invoked only by a CI wrapper, a property-test helper, and humans. So a long-tail analyzer that emits an incoherent SUBSTRATE (a dangling edge, a bad origin) passes all 3 'coherence' gates as long as its source call-sites use registry-valid literals. The only emit-time gate is the spec_validator, whose validation_report reports zero violations on the substrate and has no dangling-endpoint check. A maintainer trusting that 'coherence' enforcement covers the runtime-emitted graph is wrong: the name oversells a source-call-site gate. Fix: wire emit-time coherence enforcement on the produced graph, or rename to reflect source-only scope. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 54d6
     fields: {}  # 54d6
+- op: update  # c1e0
+  at: '2026-06-08T18:30:32Z'  # c1e0
+  by: agent  # c1e0
+  actor: jgstern_agent  # c1e0
+  clock: 2  # c1e0
+  nonce: c1e0  # c1e0
+  set: {}  # c1e0
+  add:  # c1e0
+    tags: [dogfood_tranche_04]  # c1e0
+  remove:  # c1e0
+    tags: [dogfood_tranch_04]  # c1e0
+- op: update  # 3279
+  at: '2026-06-08T19:12:53Z'  # 3279
+  by: agent  # 3279
+  actor: jgstern_agent  # 3279
+  clock: 3  # 3279
+  nonce: '3279'  # 3279
+  set:  # 3279
+    parent: META-fimas-gotaf-dapoj-zarad-volud-doliz-fodok-gapuv  # 3279
+- op: discuss  # 7190
+  at: '2026-06-08T19:12:53Z'  # 7190
+  by: agent  # 7190
+  actor: jgstern_agent  # 7190
+  clock: 4  # 7190
+  nonce: '7190'  # 7190
+  message: "root-cause family member (b3) (connections-sweep 2026-06-08T1900Z)"  # 7190

@@ -35,3 +35,14 @@
   clock: 3  # 4cff
   nonce: 4cff  # 4cff
   message: "[+ tranch_03: WI-zulij reports adjacent default-compact defect (sketch and compact disagree on top symbols; per-node centrality 12x avg in excluded population)]"  # 4cff
+- op: update  # 0e32
+  at: '2026-06-08T18:30:26Z'  # 0e32
+  by: agent  # 0e32
+  actor: jgstern_agent  # 0e32
+  clock: 4  # 0e32
+  nonce: '0e32'  # 0e32
+  set: {}  # 0e32
+  add:  # 0e32
+    tags: [dogfood]  # 0e32
+  remove:  # 0e32
+    tags: [dogfooding]  # 0e32

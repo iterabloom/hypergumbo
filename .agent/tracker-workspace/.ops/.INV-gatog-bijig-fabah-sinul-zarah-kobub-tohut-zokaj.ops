@@ -60,3 +60,14 @@
   clock: 5  # c45a
   nonce: c45a  # c45a
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Worst-offender of the Axis-B (envelope-incomplete) sub-cluster within WI-gogif; sibling of INV-fipol and INV-pazum. Source code at the emission site has an explicit comment (\"Preserve the legacy flat-list schema for programmatic consumers\") flagging this as intentional backward-compat. Cluster-wide fix needs to address the migration path: either an opt-in --envelope flag, a deprecation cycle, or coordination with a schema_version major bump so the wrapped envelope arrives as a breaking change tied to a version transition."  # c45a
+- op: update  # 0ab7
+  at: '2026-06-08T18:30:24Z'  # 0ab7
+  by: agent  # 0ab7
+  actor: jgstern_agent  # 0ab7
+  clock: 6  # 0ab7
+  nonce: 0ab7  # 0ab7
+  set: {}  # 0ab7
+  add:  # 0ab7
+    tags: [dogfood]  # 0ab7
+  remove:  # 0ab7
+    tags: [dogfooding]  # 0ab7

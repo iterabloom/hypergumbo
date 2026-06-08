@@ -1,0 +1,22 @@
+- op: create  # 104e
+  at: '2026-06-08T19:12:04Z'  # 104e
+  by: agent  # 104e
+  actor: jgstern_agent  # 104e
+  clock: 1  # 104e
+  nonce: 104e  # 104e
+  data:  # 104e
+    kind: meta_invariant  # 104e
+    title: "Family: run_signature computed once from placeholder inputs, never re-derived from final AR fields"  # 104e
+    status: violated  # 104e
+    priority: 2  # 104e
+    parent: META-jalur-mikob-vatub-gagam-lomib-rojud-madip-rafil  # 104e
+    tags:  # 104e
+    - connections_sweep_20260608  # 104e
+    - root_cause_family  # 104e
+    isbefore: []  # 104e
+    duplicate_of: []  # 104e
+    not_duplicate_of: []  # 104e
+    pr_ref:  # 104e
+    description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-lidul, WI-mipul, WI-luzud, WI-riroz. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # 104e
+    fields:  # 104e
+      statement: "run_signature = hash(pass_id:version:config_fingerprint:toolchain) must be re-derived from the (version, config_fingerprint, toolchain) actually stamped on the final AnalysisRun, not from create-time placeholders."  # 104e

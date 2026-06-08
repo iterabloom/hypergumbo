@@ -66,3 +66,14 @@
   clock: 6  # e8f7
   nonce: e8f7  # e8f7
   message: "Pass-22 correction note (F12) — the title's \"edge.quality also\" clause is wrong as of pass-22 substrate (post-INV-sugat-closure).\n\nRe-measured on /tmp/hg-dogfood-s21/bm.json:\n- node.quality: 0 / 34,253 (0%) populated — matches title's claim\n- edge.quality: **109,915 / 109,915 (100%) populated** with shape `{'score': 0.95, 'reason': 'high_confidence_direct'}` — CONTRADICTS title\n- edge.provenance: absent from the edge sample entirely (field omitted) — matches title's claim (\"edge.provenance dict empty on 100% of edges\")\n\nEither INV-nuzal was inaccurate when filed, or Phase 4/6 sweep populated edge.quality without flipping this row. Pass-22 evidence suggests amending the title to drop the \"edge.quality\" clause (or move it to a satisfied-tail subnote like \"edge.quality 100% populated, addressed by Phase 4 sweep\").\n\nThe remaining real concerns from this invariant: node.quality (0%) and edge.provenance (absent/empty). Those are the live items.\n\nLab notebook entry: `~/hypergumbo_lab_notebook/notebookjournal_06012026_2340_pass22.md`."  # e8f7
+- op: update  # e42e
+  at: '2026-06-08T18:30:24Z'  # e42e
+  by: agent  # e42e
+  actor: jgstern_agent  # e42e
+  clock: 7  # e42e
+  nonce: e42e  # e42e
+  set: {}  # e42e
+  add:  # e42e
+    tags: [dogfood]  # e42e
+  remove:  # e42e
+    tags: [dogfooding]  # e42e

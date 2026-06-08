@@ -52,3 +52,14 @@
   clock: 4  # 1ce2
   nonce: 1ce2  # 1ce2
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): Direct twin of INV-kudug — same field (access_mode), this item is the under-coverage face (0% on 12 of 17 edge.types), INV-kudug is the mislabel face (2082/4250 references edges have same-edge contradiction). Should consolidate: a single field-axis conformance audit for access_mode per ADR-0024 §\"Family-audit verdict methodology\" partitioning the 17 edge types into CANONICAL (event_publishes 100% — keep), FOLD (calls/instantiates/references/module_attr_ref — keep with mislabel cleanup from INV-kudug), DEPRECATE-NO-FOLD (the 12 structural types contains/decorated_by/depends_on/extends/imports/inherits/etc — declare not-applicable in axis_meta_keys.py MetaKeySpec). Sibling evidence: INV-lifik §1 dest_access_mode='read' is zero-entropy in the same subsystem. Lower priority (P3) than INV-kudug (P1) reflects the under-coverage face being half-correct behavior with an undocumented contract, not active mislabel."  # 1ce2
+- op: update  # 053b
+  at: '2026-06-08T18:30:27Z'  # 053b
+  by: agent  # 053b
+  actor: jgstern_agent  # 053b
+  clock: 5  # 053b
+  nonce: 053b  # 053b
+  set: {}  # 053b
+  add:  # 053b
+    tags: [dogfood]  # 053b
+  remove:  # 053b
+    tags: [dogfooding]  # 053b

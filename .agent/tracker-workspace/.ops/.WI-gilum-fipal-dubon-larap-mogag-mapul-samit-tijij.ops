@@ -20,3 +20,14 @@
     pr_ref:  # 0aa8
     description: "F69.A3 (blind severity 1/Cosmetic; positive control). Every injected site where the analyzer preserved a real module qualifier on the dst (os.remove, os.system, subprocess.run, os.getenv, os.environ, urllib.request.urlopen, process.env) classified into the correct boundary — 7 of 7 module-qualified sites. All true-positive rows are module-qualified; all misclassified rows have module 'external' (F69.A2); all missing rows are JS (no edge produced, F69.A1). The classifier and catalog are accurate given good input; the failures are 100% upstream — a missing edge or a missing module hint, never a wrong-but-confident boundary (no false-positive classification observed). This bounds the blame surface for the io-boundary defects (cards 021/WI-zavad, 022/WI-fuvuj) to edge PRODUCTION, not the catalog/matcher. No negative consequence. Filed for trend-cohort completeness (clearing measurement). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 0aa8
     fields: {}  # 0aa8
+- op: update  # c556
+  at: '2026-06-08T18:30:33Z'  # c556
+  by: agent  # c556
+  actor: jgstern_agent  # c556
+  clock: 2  # c556
+  nonce: c556  # c556
+  set: {}  # c556
+  add:  # c556
+    tags: [dogfood_tranche_04]  # c556
+  remove:  # c556
+    tags: [dogfood_tranch_04]  # c556

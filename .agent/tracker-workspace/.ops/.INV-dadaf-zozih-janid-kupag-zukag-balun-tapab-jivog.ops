@@ -40,3 +40,14 @@
     parent: INV-papuj-gatin-gojid-jodal-fasov-mofom-ziruh-vovuh  # f201
   add:  # f201
     tags: [dogfood_umbrella_member]  # f201
+- op: update  # 2252
+  at: '2026-06-08T18:30:27Z'  # 2252
+  by: agent  # 2252
+  actor: jgstern_agent  # 2252
+  clock: 4  # 2252
+  nonce: '2252'  # 2252
+  set: {}  # 2252
+  add:  # 2252
+    tags: [dogfood]  # 2252
+  remove:  # 2252
+    tags: [dogfooding]  # 2252

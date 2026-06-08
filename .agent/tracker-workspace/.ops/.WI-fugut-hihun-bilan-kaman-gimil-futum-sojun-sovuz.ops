@@ -37,3 +37,14 @@
   clock: 3  # d2b0
   nonce: d2b0  # d2b0
   message: "Fixed in PR #3885. Renamed 'Test-Dense' header to 'Most-Called from Tests', relabeled t/LOC→edges/LOC and N tests→N test-call edges, dropped 'redundant tests' phrasing, added clarifying footnote. Regression test asserts header does NOT contain 'redundant tests' and DOES contain 'Most-Called from Tests'."  # d2b0
+- op: update  # dcfa
+  at: '2026-06-08T18:30:26Z'  # dcfa
+  by: agent  # dcfa
+  actor: jgstern_agent  # dcfa
+  clock: 4  # dcfa
+  nonce: dcfa  # dcfa
+  set: {}  # dcfa
+  add:  # dcfa
+    tags: [dogfood]  # dcfa
+  remove:  # dcfa
+    tags: [dogfooding]  # dcfa

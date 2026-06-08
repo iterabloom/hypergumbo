@@ -48,3 +48,14 @@
   clock: 4  # 97c4
   nonce: 97c4  # 97c4
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): adjacent to WI-jilik-kibij-mubip-valug-soluj-hunus-zanas-napon — that item observes that HF_HUB_OFFLINE=1 (the named workaround for this P0) is not documented anywhere in hypergumbo's own docs. The pair forms a complete user-visible gap: the runtime calls the network when it shouldn't (this item), AND the operator-side workaround is undiscoverable (WI-jilik). A real fix lands the env var set in _load_st_model_offline_first per option-2 of fields.fix, which closes both faces; a docs-only fix to WI-jilik does not close this item."  # 97c4
+- op: update  # 907c
+  at: '2026-06-08T18:30:21Z'  # 907c
+  by: agent  # 907c
+  actor: jgstern_agent  # 907c
+  clock: 5  # 907c
+  nonce: 907c  # 907c
+  set: {}  # 907c
+  add:  # 907c
+    tags: [dogfood]  # 907c
+  remove:  # 907c
+    tags: [dogfooding]  # 907c

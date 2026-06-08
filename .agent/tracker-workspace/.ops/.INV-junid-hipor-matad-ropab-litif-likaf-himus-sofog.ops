@@ -42,3 +42,14 @@
   clock: 3  # d7eb
   nonce: d7eb  # d7eb
   message: "Cluster member of INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # d7eb
+- op: update  # 77b6
+  at: '2026-06-08T18:30:25Z'  # 77b6
+  by: agent  # 77b6
+  actor: jgstern_agent  # 77b6
+  clock: 4  # 77b6
+  nonce: 77b6  # 77b6
+  set: {}  # 77b6
+  add:  # 77b6
+    tags: [dogfood]  # 77b6
+  remove:  # 77b6
+    tags: [dogfooding]  # 77b6

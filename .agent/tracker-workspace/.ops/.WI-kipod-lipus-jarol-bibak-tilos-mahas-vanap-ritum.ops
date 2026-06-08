@@ -19,3 +19,14 @@
     pr_ref:  # e0c3
     description: "F70.A2 (blind severity 3/Moderate). explain never reads Symbol.docstring (it prints location/metrics/callers/callees but not the captured docstring). sketch wires a docstring slot, but in produced output every Library-API/Other/Source-Files entry renders the PATH after the dash, not the docstring, and the Source-Files section is a bare path list with zero summaries. So the function/class docstrings that ARE captured (74-90% coverage) never reach the two commands an agent would actually run to orient itself. A grep of sketch output for any docstring text returns no hits; explain references the docstring field zero times. A consumer trusting explain/sketch to summarize a symbol's purpose gets metrics + topology but not the human-written intent that already exists in the substrate. Related to INV-papuj (sketch read-path does redundant computation when authoritative data is on disk). Fix: explain reads+displays Symbol.docstring; sketch renders the captured docstring summary (not the path) in Library-API/Other/Source-Files sections. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # e0c3
     fields: {}  # e0c3
+- op: update  # 835b
+  at: '2026-06-08T18:30:32Z'  # 835b
+  by: agent  # 835b
+  actor: jgstern_agent  # 835b
+  clock: 2  # 835b
+  nonce: 835b  # 835b
+  set: {}  # 835b
+  add:  # 835b
+    tags: [dogfood_tranche_04]  # 835b
+  remove:  # 835b
+    tags: [dogfood_tranch_04]  # 835b

@@ -38,3 +38,18 @@
   clock: 3  # c27b
   nonce: c27b  # c27b
   message: "All 4 children closed: INV-fusus (Python stable_id collision fix, satisfied), INV-sotiv (stable_id population for all kinds, satisfied), WI-fanun (fingerprint scope docstring, done), WI-luvig (canonical_name docstring, done). Symbol-write identity contract — stable_id / fingerprint / canonical_name — now claims what it documents across the audited write-side surface. Empirical evidence: 91% Python stable_id collision dropped to 0% on self-analysis (INV-fusus); missing-stable_id rate dropped from 6.1% (1981/32253 nodes) to within instrumented kinds (INV-sotiv); fingerprint and canonical_name docstrings rewritten to match actual producer behavior (WI-fanun/WI-luvig)."  # c27b
+- op: update  # 657b
+  at: '2026-06-08T18:32:20Z'  # 657b
+  by: agent  # 657b
+  actor: jgstern_agent  # 657b
+  clock: 4  # 657b
+  nonce: 657b  # 657b
+  set:  # 657b
+    status: violated  # 657b
+- op: discuss  # bdfc
+  at: '2026-06-08T18:32:21Z'  # bdfc
+  by: agent  # bdfc
+  actor: jgstern_agent  # bdfc
+  clock: 5  # bdfc
+  nonce: bdfc  # bdfc
+  message: "Reopen: child WI-fanun reproduces (fingerprint null on 3911 test-methods + 1645 external_symbol nodes). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # bdfc

@@ -34,3 +34,14 @@
   clock: 3  # 099d
   nonce: 099d  # 099d
   message: "superseded by WI-fumut — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # 099d
+- op: update  # 34f7
+  at: '2026-06-08T18:30:30Z'  # 34f7
+  by: agent  # 34f7
+  actor: jgstern_agent  # 34f7
+  clock: 4  # 34f7
+  nonce: 34f7  # 34f7
+  set: {}  # 34f7
+  add:  # 34f7
+    tags: [dogfood_tranche_03]  # 34f7
+  remove:  # 34f7
+    tags: [dogfood_tranch_03]  # 34f7

@@ -120,3 +120,14 @@
   clock: 13  # 5bb0
   nonce: 5bb0  # 5bb0
   message: "Stripping tag under Phase 2 anomaly cleanup. Verdict: D-stale on primary claim. The primary quantitative claim ('AnalysisRun.repo_fingerprint null on 100% of 133 runs') is self-validated by the closing entry: '133/133 runs now carry a non-null 64-char hex repo_fingerprint matching the declared hypergumbo-repofp-v1 scheme.' That delta is the bakeoff signal for the field-population claim. The tag was originally applied 'for the optional cache-migration verification' (closing entry's own words) — i.e. for an OPTIONAL secondary claim, not the primary one. The optional cache-migration verification (would INV-magul's cache-shard pollution clear when the cache layer migrates to repo_fingerprint?) is a SEPARATE decision that can be re-tagged on a dedicated tracker item if/when the cache migration is pursued. Stripping now to clear the primary claim from the queue."  # 5bb0
+- op: update  # 4e86
+  at: '2026-06-08T18:30:27Z'  # 4e86
+  by: agent  # 4e86
+  actor: jgstern_agent  # 4e86
+  clock: 14  # 4e86
+  nonce: '4e86'  # 4e86
+  set: {}  # 4e86
+  add:  # 4e86
+    tags: [dogfood]  # 4e86
+  remove:  # 4e86
+    tags: [dogfooding]  # 4e86

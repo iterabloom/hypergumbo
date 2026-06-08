@@ -21,3 +21,30 @@
     pr_ref:  # 4ce4
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family K). Stand-alone finding F30.5 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-30 discussion entry.\n\n## Symptom\n\n`edge.meta.evidence_type` substrate vocabulary has 33 distinct values; spec.md documents only 9. 27.1% of edges use undocumented values.\n\nThe documented vocabulary covers `ast_call_direct`, `import_*`, `inheritance`, etc. The substrate emits values like `decorator_dispatch`, `manifest_target`, framework-route-emitter prefixes, and synthetic-kind-specific evidence types that have no spec entry.\n\n## Invariant\n\nEither:\n1. **Spec amendment.** Document all 33 substrate values in spec.md §edge.meta.evidence_type.\n2. **Producer constraint.** Producers emit only from the documented 9-value vocabulary; the 24 undocumented values are normalized to one of the canonical 9 at emission.\n\nPath (1) preserves the existing producer behavior. Path (2) reduces the consumer-side vocabulary burden but loses producer-specific signal.\n\n## Fix sketch\n\nPath (1) is the audit's recommendation. Enumerate all substrate values, classify each into the documented category (or add new categories), update spec.md, add a vocabulary-membership check to WI-kafar's validator class.\n\n## Source provenance\n\n- **F30.5** — INV-luhur discussion entry 2026-06-02 (pass-30 batch).\n\nLab notebook: pass 30.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-edge-type-vocab-drift** (Family K — sibling vocabulary drift).\n- Sibling: **WI-feature-record-shape-drift**, **WI-node-meta-undocumented** (Family K)."  # 4ce4
     fields: {}  # 4ce4
+- op: update  # 3a59
+  at: '2026-06-08T18:30:28Z'  # 3a59
+  by: agent  # 3a59
+  actor: jgstern_agent  # 3a59
+  clock: 2  # 3a59
+  nonce: 3a59  # 3a59
+  set: {}  # 3a59
+  add:  # 3a59
+    tags: [dogfood]  # 3a59
+  remove:  # 3a59
+    tags: [dogfooding]  # 3a59
+- op: update  # 11f1
+  at: '2026-06-08T19:12:53Z'  # 11f1
+  by: agent  # 11f1
+  actor: jgstern_agent  # 11f1
+  clock: 3  # 11f1
+  nonce: 11f1  # 11f1
+  set: {}  # 11f1
+  add:  # 11f1
+    not_duplicate_of: [META-luvir-dapil-mumil-mimuf-tipil-jaboh-kolip-pahim]  # 11f1
+- op: discuss  # 608a
+  at: '2026-06-08T19:12:53Z'  # 608a
+  by: agent  # 608a
+  actor: jgstern_agent  # 608a
+  clock: 4  # 608a
+  nonce: 608a  # 608a
+  message: "root-cause family cross-link (g2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 608a

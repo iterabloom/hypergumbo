@@ -70,3 +70,18 @@
   clock: 8  # 926d
   nonce: 926d  # 926d
   message: "Cross-ref: PlazaFlow readiness. PlazaFlow is Tauri v2. Tauri IPC linker needs v2 verification. See META-migil umbrella and WI-kipad (Tauri v2 verification)."  # 926d
+- op: update  # 28da
+  at: '2026-06-08T18:32:11Z'  # 28da
+  by: agent  # 28da
+  actor: jgstern_agent  # 28da
+  clock: 9  # 28da
+  nonce: 28da  # 28da
+  set:  # 28da
+    status: satisfied  # 28da
+- op: discuss  # bd5c
+  at: '2026-06-08T18:32:11Z'  # bd5c
+  by: agent  # bd5c
+  actor: jgstern_agent  # bd5c
+  clock: 10  # bd5c
+  nonce: bd5c  # bd5c
+  message: "holding(deprecated)->satisfied: tauri_ipc linker + tauri.yaml ipc_handler->EVENT_HANDLER entrypoint present (PR#2128/2139/2152/2156); 79 tauri_ipc linker tests pass. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # bd5c

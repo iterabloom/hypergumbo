@@ -45,3 +45,14 @@
   clock: 4  # 9570
   nonce: '9570'  # 9570
   message: "Fixed in PR #3873 (cf60dea8b9). Three new mkdir wrappers (cache_mkdir, tmp_artifact_mkdir, install_artifact_mkdir) in safety_zones.py; build_grammars.py and gitleaks.py callsites migrated; three sink catalogs updated. Verify-claims: build-grammars-no-host-fs flow count 6 -> 3 (the residual 3 are subprocess.run, which is WI-bibuk's territory)."  # 9570
+- op: update  # a799
+  at: '2026-06-08T18:30:23Z'  # a799
+  by: agent  # a799
+  actor: jgstern_agent  # a799
+  clock: 5  # a799
+  nonce: a799  # a799
+  set: {}  # a799
+  add:  # a799
+    tags: [dogfood]  # a799
+  remove:  # a799
+    tags: [dogfooding]  # a799

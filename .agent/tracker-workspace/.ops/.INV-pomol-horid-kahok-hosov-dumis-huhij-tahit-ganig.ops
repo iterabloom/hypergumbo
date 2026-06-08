@@ -63,3 +63,14 @@
   clock: 6  # 1ade
   nonce: 1ade  # 1ade
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Post-pass-14-correction, this item reduces to two sub-findings: (a) bm.json schema-organization observation that route data lives in entrypoints + usage_contexts with no top-level routes promotion (an Axis-C wire-format-vs-schema gap within WI-gogif, sibling of WI-nohoh's pass/pass_id rename); (b) the side observation that the routes subcommand generates 5 sketch artifacts on a read-only operation (a sketch-on-read mechanic that does not belong under WI-gogif). Recommend either splitting (b) into a separate item or moving the parent of (b) out of WI-gogif. Priority P1 reflects pass-13's original severity claim, which was largely retracted; consider P2/P3."  # 1ade
+- op: update  # 3f94
+  at: '2026-06-08T18:30:22Z'  # 3f94
+  by: agent  # 3f94
+  actor: jgstern_agent  # 3f94
+  clock: 7  # 3f94
+  nonce: 3f94  # 3f94
+  set: {}  # 3f94
+  add:  # 3f94
+    tags: [dogfood]  # 3f94
+  remove:  # 3f94
+    tags: [dogfooding]  # 3f94

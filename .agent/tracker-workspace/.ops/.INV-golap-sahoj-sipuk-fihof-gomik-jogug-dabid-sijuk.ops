@@ -59,3 +59,37 @@
     parent: INV-jahiv-lugis-topum-totot-morin-somuv-pujoz-vijir  # 4739
   add:  # 4739
     tags: [dogfood_umbrella_member]  # 4739
+- op: update  # bbe0
+  at: '2026-06-08T18:30:22Z'  # bbe0
+  by: agent  # bbe0
+  actor: jgstern_agent  # bbe0
+  clock: 6  # bbe0
+  nonce: bbe0  # bbe0
+  set: {}  # bbe0
+  add:  # bbe0
+    tags: [dogfood]  # bbe0
+  remove:  # bbe0
+    tags: [dogfooding]  # bbe0
+- op: discuss  # 674d
+  at: '2026-06-08T18:32:25Z'  # 674d
+  by: agent  # 674d
+  actor: jgstern_agent  # 674d
+  clock: 7  # 674d
+  nonce: 674d  # 674d
+  message: "Re-confirmed VIOLATED at HEAD (live hypergumbo run): JavaScript signature 2/5 vs TypeScript parity. Kept violated; earlier source-wiring fixed-claim was MED and contradicted by the live run. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 674d
+- op: update  # c21e
+  at: '2026-06-08T19:12:54Z'  # c21e
+  by: agent  # c21e
+  actor: jgstern_agent  # c21e
+  clock: 8  # c21e
+  nonce: c21e  # c21e
+  set: {}  # c21e
+  add:  # c21e
+    not_duplicate_of: [META-rozur-mugag-davit-rotav-tituk-gupoz-jajog-zopol]  # c21e
+- op: discuss  # 9400
+  at: '2026-06-08T19:12:54Z'  # 9400
+  by: agent  # 9400
+  actor: jgstern_agent  # 9400
+  clock: 9  # 9400
+  nonce: '9400'  # 9400
+  message: "root-cause family cross-link (t3); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 9400

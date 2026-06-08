@@ -73,3 +73,14 @@
   clock: 7  # 1a7f
   nonce: 1a7f  # 1a7f
   message: "Dogfood validation, 2026-05-19 self-analysis. Verdict: moved (clean reclassification, exact count match). Pre-fix claim: 18 misclassified kind=function http_client Symbols with verb-prefixed URL names. Post-fix self-analysis measurement: 0 function-kind Symbols with verb-prefixed names (GET_/POST_/PUT_/DELETE_/PATCH_/HEAD_/OPTIONS_); 0 function-kind Symbols with 'http' in origin; 130 new call_site nodes, exactly 18 with 'http' in meta. The 18 nodes were reclassified from kind=function → kind=call_site with meta['call_kind']='http' — and the count is identical, demonstrating no nodes were lost or duplicated in transit. Verification script: /tmp/inv-validation/verify_dogfood.py."  # 1a7f
+- op: update  # 122e
+  at: '2026-06-08T18:30:23Z'  # 122e
+  by: agent  # 122e
+  actor: jgstern_agent  # 122e
+  clock: 8  # 122e
+  nonce: 122e  # 122e
+  set: {}  # 122e
+  add:  # 122e
+    tags: [dogfood]  # 122e
+  remove:  # 122e
+    tags: [dogfooding]  # 122e

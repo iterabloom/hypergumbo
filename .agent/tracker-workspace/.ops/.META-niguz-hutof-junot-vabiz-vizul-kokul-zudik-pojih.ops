@@ -1,0 +1,22 @@
+- op: create  # a21d
+  at: '2026-06-08T19:11:52Z'  # a21d
+  by: agent  # a21d
+  actor: jgstern_agent  # a21d
+  clock: 1  # a21d
+  nonce: a21d  # a21d
+  data:  # a21d
+    kind: meta_invariant  # a21d
+    title: "META: stand-in / synthesized nodes bypass the shared identity+provenance stamping step"  # a21d
+    status: violated  # a21d
+    priority: 2  # a21d
+    parent:  # a21d
+    tags:  # a21d
+    - connections_sweep_20260608  # a21d
+    - root_cause_family  # a21d
+    isbefore: []  # a21d
+    duplicate_of: []  # a21d
+    not_duplicate_of: []  # a21d
+    pr_ref:  # a21d
+    description: "Layer-2 super-cluster from the connection sweep (connections-sweep 2026-06-08T1900Z). Cross-packet evidence: WI-fozoh and WI-mosil surfaced independently in the external_symbol (C1) and identity (C3) investigations. ~11 items filed as separate 'field X is null' bugs are one missing stamping step on the same ~1645 synthesized-node population. Children: the identity-defaulting family and the asymmetric-synthesis family."  # a21d
+    fields:  # a21d
+      statement: "Every node-minting path (boundary external_symbol synthesis, orchestrator file-symbol synthesis, ~21 protocol linkers) MUST route through the same identity + provenance stamping the real-analyzer Symbol path uses; stand-in nodes must not be left with empty/sentinel identity, provenance, or relationship fields."  # a21d

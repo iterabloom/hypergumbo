@@ -26,3 +26,30 @@
   clock: 2  # 371b
   nonce: 371b  # 371b
   message: "[related to INV-tisid (satisfied; test-routing code fix from the refactor that caused this doc drift) — this row reports the un-updated spec §14 text from that same refactor event. Different surface (code vs spec doc).]"  # 371b
+- op: update  # cffa
+  at: '2026-06-08T18:30:30Z'  # cffa
+  by: agent  # cffa
+  actor: jgstern_agent  # cffa
+  clock: 3  # cffa
+  nonce: cffa  # cffa
+  set: {}  # cffa
+  add:  # cffa
+    tags: [dogfood_tranche_03]  # cffa
+  remove:  # cffa
+    tags: [dogfood_tranch_03]  # cffa
+- op: update  # 69e2
+  at: '2026-06-08T19:12:54Z'  # 69e2
+  by: agent  # 69e2
+  actor: jgstern_agent  # 69e2
+  clock: 4  # 69e2
+  nonce: '69e2'  # 69e2
+  set: {}  # 69e2
+  add:  # 69e2
+    not_duplicate_of: [META-jotob-mumav-vavat-bohab-vigof-tutit-mizaz-zukip]  # 69e2
+- op: discuss  # 0590
+  at: '2026-06-08T19:12:54Z'  # 0590
+  by: agent  # 0590
+  actor: jgstern_agent  # 0590
+  clock: 5  # 0590
+  nonce: '0590'  # 0590
+  message: "root-cause family cross-link (t1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 0590

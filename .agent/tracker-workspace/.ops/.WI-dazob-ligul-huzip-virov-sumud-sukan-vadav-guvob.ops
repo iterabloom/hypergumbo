@@ -19,3 +19,14 @@
     pr_ref:  # a350
     description: "F68.A3 (blind severity 3/Moderate; F80.A1 'no edge-type label table — 0/18 friendly though registry EdgeTypeSpec.description exists at cli.py:2228/2240' EXTENSION folded here). Feeding explain a substrate with current consumer fields removed (supply-chain, provenance, quality, shape-id, resolution flag stripped, schema downgraded) silently drops the 'Supply chain:' line with no warning. Injecting an unknown edge type (simulating a pre-rename old substrate) makes explain print the relationship verbatim as [OLD_RENAMED_TYPE] — the consumer-facing label silently carries an unrecognized edge type. Both runs exit 0. The renderer (cmd_explain) has no field-presence guard and no unknown-edge-type guard. A consumer diffing explain output across a schema upgrade, or rendering an explain label into a downstream artifact, sees lines silently appear/disappear and labels silently change with no signal distinguishing 'code changed' from 'substrate schema changed'. Distinct from F80.A2's heading-partition defect (INV-rarol). Fix: explain detects+signals absent expected fields and unrecognized edge types; add the registry-backed friendly-label table. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # a350
     fields: {}  # a350
+- op: update  # b300
+  at: '2026-06-08T18:30:32Z'  # b300
+  by: agent  # b300
+  actor: jgstern_agent  # b300
+  clock: 2  # b300
+  nonce: b300  # b300
+  set: {}  # b300
+  add:  # b300
+    tags: [dogfood_tranche_04]  # b300
+  remove:  # b300
+    tags: [dogfood_tranch_04]  # b300

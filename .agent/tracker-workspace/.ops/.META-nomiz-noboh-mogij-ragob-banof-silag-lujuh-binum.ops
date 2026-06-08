@@ -1,0 +1,22 @@
+- op: create  # 88a2
+  at: '2026-06-08T19:11:59Z'  # 88a2
+  by: agent  # 88a2
+  actor: jgstern_agent  # 88a2
+  clock: 1  # 88a2
+  nonce: 88a2  # 88a2
+  data:  # 88a2
+    kind: meta_invariant  # 88a2
+    title: "Family: synthesized stand-in nodes leave identity/provenance fields at empty defaults"  # 88a2
+    status: violated  # 88a2
+    priority: 2  # 88a2
+    parent: META-niguz-hutof-junot-vabiz-vizul-kokul-zudik-pojih  # 88a2
+    tags:  # 88a2
+    - connections_sweep_20260608  # 88a2
+    - root_cause_family  # 88a2
+    isbefore: []  # 88a2
+    duplicate_of: []  # 88a2
+    not_duplicate_of: []  # 88a2
+    pr_ref:  # 88a2
+    description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: WI-fozoh, WI-kapul, WI-sijut, WI-lisog, WI-mosil, WI-pubiv, WI-kufib. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # 88a2
+    fields:  # 88a2
+      statement: "Synthesized external_symbol / stand-in nodes must carry stable_id, canonical_name, path, language, origin, origin_run_id, fingerprint, and a correct id kind-slot — not None/''/'<external>' defaults."  # 88a2

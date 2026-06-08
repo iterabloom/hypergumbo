@@ -51,3 +51,14 @@
   clock: 5  # a51a
   nonce: a51a  # a51a
   message: "Merged in b3e39227c9. Adds file-presence pre-filter to analyze.all_analyzers.run_all_analyzers — analyzer dispatched only when at least one declared language has files>0 in profile.languages AND all declared languages are in LANGUAGE_EXTENSIONS (defensive dispatch for taxonomy-absent languages like gitignore/requirements). Empirical: hypergumbo self-analysis 133 → 56 dispatched runs, 101 in skipped_passes with reason 'no files matched'. Also fixed a long-standing conftest mis-configuration (XDG_CACHE_HOME without HF_HOME pin causing 1.5GB per-test HF re-downloads) that this PR's broader test surface surfaced. Full smart-test green (13843 pass, 0 fail, 10m24s)."  # a51a
+- op: update  # 665f
+  at: '2026-06-08T18:30:23Z'  # 665f
+  by: agent  # 665f
+  actor: jgstern_agent  # 665f
+  clock: 6  # 665f
+  nonce: 665f  # 665f
+  set: {}  # 665f
+  add:  # 665f
+    tags: [dogfood]  # 665f
+  remove:  # 665f
+    tags: [dogfooding]  # 665f

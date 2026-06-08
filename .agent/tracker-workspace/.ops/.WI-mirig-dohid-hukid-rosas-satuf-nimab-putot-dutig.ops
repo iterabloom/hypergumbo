@@ -20,3 +20,14 @@
     pr_ref:  # 1759
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family K). Stand-alone finding F30.14 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-30 discussion entry.\n\n## Symptom\n\n`Node.meta` is 42 sub-keys in the substrate; spec.md documents only 1 (a top-level reference to \"meta carrying analyzer-specific data\"). `Edge.meta` by contrast is documented at spec §9.811-822 with a full sub-key catalog.\n\nThe 42 Node.meta sub-keys carry analyzer-emitted attributes (framework_role, concepts, dataflow tags, etc.) that consumers must reverse-engineer from substrate to discover.\n\n## Invariant\n\n`Node.meta` is documented in spec.md at the same level of detail as `Edge.meta`. Each sub-key has documented vocabulary and semantics.\n\n## Fix sketch\n\nEnumerate the 42 sub-keys from substrate (provides a working catalog). Group them by producer (which analyzer/linker emits each). Document in spec.md. Add validator membership check on Node.meta keys.\n\n## Source provenance\n\n- **F30.14** — INV-luhur discussion entry 2026-06-02 (pass-30 batch).\n\nLab notebook: pass 30.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Family K siblings."  # 1759
     fields: {}  # 1759
+- op: update  # 3f34
+  at: '2026-06-08T18:30:28Z'  # 3f34
+  by: agent  # 3f34
+  actor: jgstern_agent  # 3f34
+  clock: 2  # 3f34
+  nonce: 3f34  # 3f34
+  set: {}  # 3f34
+  add:  # 3f34
+    tags: [dogfood]  # 3f34
+  remove:  # 3f34
+    tags: [dogfooding]  # 3f34

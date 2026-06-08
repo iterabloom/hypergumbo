@@ -26,3 +26,14 @@
   clock: 2  # 46d1
   nonce: 46d1  # 46d1
   message: "Dogfood tranche 05 facet (F90.A2 / anon-card-013): distinct from the multimodality concern — the SCOPE of avg_confidence is undisclosed. metrics.avg_confidence=0.8 equals mean(edge confidence)=0.79987 computed over EDGES ONLY; nodes carry no confidence key at all (0/34396; Symbol dataclass has quality, not confidence). Yet spec §938 (🟩 done) lists avg_confidence among aggregate stats with no edges-only qualifier. A consumer reading 0.8 as overall behavior-map confidence is wrong about what it averages. Evidence: frozen substrate.json metrics + spec §938 (probe_2_centrality_conf.log). Blind severity 2/5, reproduced on frozen substrate."  # 46d1
+- op: update  # c2fc
+  at: '2026-06-08T18:30:31Z'  # c2fc
+  by: agent  # c2fc
+  actor: jgstern_agent  # c2fc
+  clock: 3  # c2fc
+  nonce: c2fc  # c2fc
+  set: {}  # c2fc
+  add:  # c2fc
+    tags: [dogfood_tranche_03]  # c2fc
+  remove:  # c2fc
+    tags: [dogfood_tranch_03]  # c2fc

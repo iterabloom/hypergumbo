@@ -71,3 +71,18 @@
     tags: [process_health]  # 338b
   remove:  # 338b
     tags: [process-health]  # 338b
+- op: update  # 892c
+  at: '2026-06-08T18:32:20Z'  # 892c
+  by: agent  # 892c
+  actor: jgstern_agent  # 892c
+  clock: 8  # 892c
+  nonce: 892c  # 892c
+  set:  # 892c
+    status: satisfied  # 892c
+- op: discuss  # 4d0b
+  at: '2026-06-08T18:32:20Z'  # 4d0b
+  by: agent  # 4d0b
+  actor: jgstern_agent  # 4d0b
+  clock: 9  # 4d0b
+  nonce: 4d0b  # 4d0b
+  message: "holding(deprecated)->satisfied: Both gaps closed: prior-context injection (PR#1450, deep-reflect prompts inject prior assessment) + aggregation resilience via cmd_check --auto-aggregate (deep-reflect L1567,1592,1933). Both PRs merged. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 4d0b

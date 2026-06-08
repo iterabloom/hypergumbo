@@ -37,3 +37,14 @@
   clock: 3  # 94e2
   nonce: '94e2'  # 94e2
   message: "Fixed in PR #3933. Kind column now computes min_width dynamically from the data (max kind string length) with no_wrap=True, so 'function' and longer kinds display without truncation."  # 94e2
+- op: update  # 5b14
+  at: '2026-06-08T18:30:28Z'  # 5b14
+  by: agent  # 5b14
+  actor: jgstern_agent  # 5b14
+  clock: 4  # 5b14
+  nonce: 5b14  # 5b14
+  set: {}  # 5b14
+  add:  # 5b14
+    tags: [dogfood]  # 5b14
+  remove:  # 5b14
+    tags: [dogfooding]  # 5b14

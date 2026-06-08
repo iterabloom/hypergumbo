@@ -25,3 +25,18 @@
   clock: 2  # ae80
   nonce: ae80  # ae80
   message: "Re-confirms run_signature signs default fingerprint, never recomputed after config mutation: default matches 84/84, stored 54/84, mismatch = 30 grammar passes; grammar version absent. WI-luzud exact. (dogfood; blinded sev 4)"  # ae80
+- op: update  # 3534
+  at: '2026-06-08T19:12:52Z'  # 3534
+  by: agent  # 3534
+  actor: jgstern_agent  # 3534
+  clock: 3  # 3534
+  nonce: '3534'  # 3534
+  set:  # 3534
+    parent: META-hufaz-dazip-hijop-nijam-lasut-jigup-dahak-jirup  # 3534
+- op: discuss  # 4afc
+  at: '2026-06-08T19:12:52Z'  # 4afc
+  by: agent  # 4afc
+  actor: jgstern_agent  # 4afc
+  clock: 4  # 4afc
+  nonce: 4afc  # 4afc
+  message: "root-cause family member (b1) (connections-sweep 2026-06-08T1900Z)"  # 4afc

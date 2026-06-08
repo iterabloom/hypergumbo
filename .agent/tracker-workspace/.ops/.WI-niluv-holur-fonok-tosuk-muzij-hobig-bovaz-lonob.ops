@@ -20,3 +20,14 @@
     pr_ref:  # 899b
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family J). Stand-alone finding F38.B1 previously folded onto INV-bazij. Full evidence remains on INV-bazij's pass-38 discussion entry; this row provides discrete representation.\n\n## Symptom\n\nINV-bazij's validator denominator silently excludes Symbols with `stable_id=None`. Reported breach rate is 178/757 (23.5%) on max10 substrate; raw count is 178/893 (19.9%). The 136 excluded Symbols are the synthetic-kind None-stable_id cohort (per pass-26 F26.10).\n\nConsumer impact: a security analyst reading the validator report sees `INV-bazij at 23.5%` and assumes 23.5% of ALL Symbols have collisions. Actually 19.9% have collisions and 15.2% have no stable_id at all — distinct failure modes conflated by the denominator choice.\n\n## Invariant\n\nThe validator report documents its denominator scope explicitly. Either:\n\n1. **Two denominators.** Report `denominator_with_stable_id` AND `denominator_total`; consumer can pick.\n2. **Documented exclusion.** Spec.md notes that INV-bazij's denominator excludes None-stable_id Symbols (and references INV-virik / WI-kind-conditioned-writer as the gap).\n\nCurrently neither is true — denominator is implicit.\n\n## Fix sketch\n\nAdd a `denominator_scope` field to the validation_report violation record:\n\n```json\n{\n  \"class\": \"stable_id_uniqueness\",\n  \"rate\": 0.235,\n  \"numerator\": 178,\n  \"denominator\": 757,\n  \"denominator_scope\": \"symbols_with_stable_id\",\n  \"total_symbols\": 893\n}\n```\n\nConsumer can compute both rates from the report. Cousin pattern to WI-jsonout-flag-uniformity (Family F — sibling JSON envelope standardization).\n\n## Source provenance\n\n- **F38.B1** — INV-bazij discussion entry 2026-06-02 (pass-38 batch).\n\nLab notebook: pass 38 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-bazij**.\n- Sibling: **WI-validator-fixture-coverage** (Family J — adjacent validator-scope gap).\n- Sibling: **WI-kind-conditioned-writer** (Family H — none-stable_id cohort enumeration).\n- Family J siblings."  # 899b
     fields: {}  # 899b
+- op: update  # 8637
+  at: '2026-06-08T18:30:28Z'  # 8637
+  by: agent  # 8637
+  actor: jgstern_agent  # 8637
+  clock: 2  # 8637
+  nonce: '8637'  # 8637
+  set: {}  # 8637
+  add:  # 8637
+    tags: [dogfood]  # 8637
+  remove:  # 8637
+    tags: [dogfooding]  # 8637

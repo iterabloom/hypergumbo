@@ -47,3 +47,30 @@
   clock: 5  # 078f
   nonce: 078f  # 078f
   message: "Dogfooding (blinded severity 3/5) — SECOND distinct facet folded here: 5 wgsl nodes carry bare-16-hex fingerprints with NO `hgfp1:` prefix because wgsl.py stamps a literal `sha256(source_bytes)[:16]` while everything else uses the prefixed structural-CST-walk hash — two algorithms under one symbol_fingerprint_scheme=v1. Fix: make wgsl.py defer to the central compute_symbol_fingerprint (or have the stamper normalize non-None foreign-format fingerprints) — one stamp-site change fixes both prefix + algorithm. [dogfood]"  # 078f
+- op: update  # 2bab
+  at: '2026-06-08T18:30:30Z'  # 2bab
+  by: agent  # 2bab
+  actor: jgstern_agent  # 2bab
+  clock: 6  # 2bab
+  nonce: 2bab  # 2bab
+  set: {}  # 2bab
+  add:  # 2bab
+    tags: [dogfood_tranche_03]  # 2bab
+  remove:  # 2bab
+    tags: [dogfood_tranch_03]  # 2bab
+- op: update  # d85d
+  at: '2026-06-08T19:12:51Z'  # d85d
+  by: agent  # d85d
+  actor: jgstern_agent  # d85d
+  clock: 7  # d85d
+  nonce: d85d  # d85d
+  set: {}  # d85d
+  add:  # d85d
+    not_duplicate_of: [META-nomiz-noboh-mogij-ragob-banof-silag-lujuh-binum]  # d85d
+- op: discuss  # 0dd4
+  at: '2026-06-08T19:12:51Z'  # 0dd4
+  by: agent  # 0dd4
+  actor: jgstern_agent  # 0dd4
+  clock: 8  # 0dd4
+  nonce: 0dd4  # 0dd4
+  message: "root-cause family cross-link (a1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 0dd4

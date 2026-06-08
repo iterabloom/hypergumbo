@@ -107,3 +107,14 @@
   clock: 11  # 8b3d
   nonce: 8b3d  # 8b3d
   message: "Reopened: tranch_03 card 012 (anon-card-tranch03-012, sourced from F45.A2, filed as WI-lisog) reports 3911 Python test methods + 1645 external_symbol nodes still null after the WI-fanun 'global null' fix landed. The fix did not extend to Python test methods or external_symbol synthesis path. Substrate HEAD 9a18959071. Blind severity 4 (Significant). Reopened per playbook Phase 6.1 Step 4a status-adjustment rule (default-to-reopen branch)."  # 8b3d
+- op: update  # b2dc
+  at: '2026-06-08T18:30:26Z'  # b2dc
+  by: agent  # b2dc
+  actor: jgstern_agent  # b2dc
+  clock: 12  # b2dc
+  nonce: b2dc  # b2dc
+  set: {}  # b2dc
+  add:  # b2dc
+    tags: [dogfood]  # b2dc
+  remove:  # b2dc
+    tags: [dogfooding]  # b2dc

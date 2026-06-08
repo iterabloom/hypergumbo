@@ -49,3 +49,14 @@
   nonce: c5cb  # c5cb
   set:  # c5cb
     status: deleted  # c5cb
+- op: update  # 341b
+  at: '2026-06-08T18:30:25Z'  # 341b
+  by: agent  # 341b
+  actor: jgstern_agent  # 341b
+  clock: 5  # 341b
+  nonce: 341b  # 341b
+  set: {}  # 341b
+  add:  # 341b
+    tags: [dogfood]  # 341b
+  remove:  # 341b
+    tags: [dogfooding]  # 341b

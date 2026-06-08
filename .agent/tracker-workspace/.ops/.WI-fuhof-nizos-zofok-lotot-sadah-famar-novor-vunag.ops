@@ -26,3 +26,18 @@
   clock: 2  # 507d
   nonce: 507d  # 507d
   message: "Re-surfaced in dogfooding tranche 10 (U05b, F186.A1 split b, severity 3). Confidence is keyed by (is_resolved, edge.type), not the documented (language, evidence_type) axis — the producer sub-branch driving the split (resolution state) is exposed in no readable axis, matching this item exactly. Fix: reconcile the keying axis — key by the documented axis or re-document the real axis. (related INV-suvil hardcoded-per-emitter.)"  # 507d
+- op: update  # 2fc2
+  at: '2026-06-08T19:12:52Z'  # 2fc2
+  by: agent  # 2fc2
+  actor: jgstern_agent  # 2fc2
+  clock: 3  # 2fc2
+  nonce: 2fc2  # 2fc2
+  set:  # 2fc2
+    parent: META-ruhob-lubob-matip-vinol-duzab-nafom-tikas-vajur  # 2fc2
+- op: discuss  # b007
+  at: '2026-06-08T19:12:52Z'  # b007
+  by: agent  # b007
+  actor: jgstern_agent  # b007
+  clock: 4  # b007
+  nonce: b007  # b007
+  message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # b007

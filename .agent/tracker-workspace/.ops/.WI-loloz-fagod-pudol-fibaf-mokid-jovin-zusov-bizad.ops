@@ -51,3 +51,14 @@
   clock: 4  # 994a
   nonce: 994a  # 994a
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): shares the \"CLI help text describes behavior that no longer matches code\" mechanic with INV-bugiz (--debug help references removed ripgrep path) and WI-figor (README:139 implies --no-progress is general; only sketch/run accept it). Code reference confirmed at cli.py:6368-6374: the inline comment at cli.py:6358-6361 documents this as an intentional no-op backcompat alias, but the `help=` string still says \"Exclude routes from test files\" rather than \"deprecated no-op alias\". Suggest the structural fix is either honest help= text or `help=argparse.SUPPRESS` to hide the deprecated flag from --help. Worth promoting the three-item cluster to a META \"CLI help/README drift from argparse reality, no enforcement gate\"."  # 994a
+- op: update  # 2991
+  at: '2026-06-08T18:30:28Z'  # 2991
+  by: agent  # 2991
+  actor: jgstern_agent  # 2991
+  clock: 5  # 2991
+  nonce: '2991'  # 2991
+  set: {}  # 2991
+  add:  # 2991
+    tags: [dogfood]  # 2991
+  remove:  # 2991
+    tags: [dogfooding]  # 2991

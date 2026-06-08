@@ -54,3 +54,51 @@
   clock: 5  # 34c0
   nonce: 34c0  # 34c0
   message: "Symptom (6) root-caused + fresh repro (blind-severity-derived priority signal: P1). The play-routes AnalysisRun.version='1' is not merely a stale stamp: play_routes.py:44 defines a module-local PASS_VERSION = '1' literal that shadows the canonical PASS_VERSION = __version__ convention (ir.py:52); it is the ONLY analyzer in packages/*/src/ with a literal PASS_VERSION string. The package __init__ declares __version__='5.0.1', and line 188 calls AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION), so the literal flows straight into the run. run_signature hashes version, so play-routes' signature is decoupled from the package version — a 5.0.1->5.0.2 bump changes 83 run_signatures but not play-routes'. Fresh 'hypergumbo run' on a temp dir with a conf/routes file reproduces version='1' while every other pass reports '5.0.1'. (NB: INV-kimut-lomil, the deleted exact-content predecessor, was subsumed into this item.)"  # 34c0
+- op: update  # ea74
+  at: '2026-06-08T18:32:22Z'  # ea74
+  by: agent  # ea74
+  actor: jgstern_agent  # ea74
+  clock: 6  # ea74
+  nonce: ea74  # ea74
+  set: {}  # ea74
+  add:  # ea74
+    not_duplicate_of: [WI-riroz-gihus-hibom-rukor-sotot-fakib-sakob-natad]  # ea74
+- op: discuss  # 2d31
+  at: '2026-06-08T18:32:23Z'  # 2d31
+  by: agent  # 2d31
+  actor: jgstern_agent  # 2d31
+  clock: 7  # 2d31
+  nonce: 2d31  # 2d31
+  message: "RELATED_BUT_DISTINCT to WI-riroz: pitab symptom-6 (version-scale drift, 83x5.0.1 vs 1x play-routes='1') is the omnibus face of riroz's dedicated play-routes PASS_VERSION fix. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 2d31
+- op: update  # e9cd
+  at: '2026-06-08T18:32:23Z'  # e9cd
+  by: agent  # e9cd
+  actor: jgstern_agent  # e9cd
+  clock: 8  # e9cd
+  nonce: e9cd  # e9cd
+  set: {}  # e9cd
+  add:  # e9cd
+    not_duplicate_of: [WI-zasol-rumoz-hofip-libif-mizit-guzam-tomad-fidir]  # e9cd
+- op: discuss  # a4ba
+  at: '2026-06-08T18:32:23Z'  # a4ba
+  by: agent  # a4ba
+  actor: jgstern_agent  # a4ba
+  clock: 9  # a4ba
+  nonce: a4ba  # a4ba
+  message: "RELATED_BUT_DISTINCT to WI-zasol: pitab symptom-3 (execution_id misnamed as per-invocation key) overlaps zasol's execution_id/origin_run_id naming-asymmetry; distinct fix scope. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # a4ba
+- op: update  # a3c3
+  at: '2026-06-08T18:32:23Z'  # a3c3
+  by: agent  # a3c3
+  actor: jgstern_agent  # a3c3
+  clock: 10  # a3c3
+  nonce: a3c3  # a3c3
+  set: {}  # a3c3
+  add:  # a3c3
+    not_duplicate_of: [INV-gizik-fisav-luzaz-luzod-nonos-vinap-tutop-zuhot]  # a3c3
+- op: discuss  # 6f7d
+  at: '2026-06-08T18:32:23Z'  # 6f7d
+  by: agent  # 6f7d
+  actor: jgstern_agent  # 6f7d
+  clock: 11  # 6f7d
+  nonce: 6f7d  # 6f7d
+  message: "RELATED_BUT_DISTINCT to INV-gizik: AR field-set inadequacy: gizik=timer/files_analyzed=0 on IR-consuming passes; pitab symptom-4/5 = overhead unaccounted + nodes_emitted/edges_emitted missing. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 6f7d

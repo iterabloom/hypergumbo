@@ -49,3 +49,14 @@
   nonce: e105  # e105
   set:  # e105
     status: deleted  # e105
+- op: update  # 152e
+  at: '2026-06-08T18:30:25Z'  # 152e
+  by: agent  # 152e
+  actor: jgstern_agent  # 152e
+  clock: 5  # 152e
+  nonce: 152e  # 152e
+  set: {}  # 152e
+  add:  # 152e
+    tags: [dogfood]  # 152e
+  remove:  # 152e
+    tags: [dogfooding]  # 152e

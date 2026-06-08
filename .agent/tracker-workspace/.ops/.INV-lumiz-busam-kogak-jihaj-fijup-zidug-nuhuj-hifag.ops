@@ -43,3 +43,18 @@
   clock: 4  # 04f3
   nonce: 04f3  # 04f3
   message: "Already fixed. main-functions.yaml uses qualified-name regex patterns. Tests in TestJavaQualifiedMainDetection verify."  # 04f3
+- op: update  # 9b8a
+  at: '2026-06-08T18:32:15Z'  # 9b8a
+  by: agent  # 9b8a
+  actor: jgstern_agent  # 9b8a
+  clock: 5  # 9b8a
+  nonce: 9b8a  # 9b8a
+  set:  # 9b8a
+    status: satisfied  # 9b8a
+- op: discuss  # 3992
+  at: '2026-06-08T18:32:15Z'  # 3992
+  by: agent  # 3992
+  actor: jgstern_agent  # 3992
+  clock: 6  # 3992
+  nonce: '3992'  # 3992
+  message: "holding(deprecated)->satisfied: main-functions.yaml:37-87 uses (^|\\.)main$ / (^|\\.)Main$ for java/kotlin/scala/csharp with explicit 'INV-lumiz' ref; TestJavaQualifiedMainDetection covers qualified+bare. Discussion 2026-03-09 confirms fixed (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 3992

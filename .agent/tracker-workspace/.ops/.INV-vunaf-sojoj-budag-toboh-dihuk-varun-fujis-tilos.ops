@@ -48,3 +48,14 @@
   clock: 4  # 152e
   nonce: 152e  # 152e
   message: "Fixed in PR #3877. Replaced raw-text substring matching (`_manifest_has_package`) with format-aware structured parsers across all 16 substring-match detectors. Per-format parsers cover TOML (pyproject/Cargo/Pipfile/Project.toml), XML (pom.xml/csproj/fsproj), Gradle/Kotlin/Groovy, line-based (go.mod/Gemfile/mix.exs/Package.swift/build.sbt/DESCRIPTION/pubspec.yaml/cabal/stack.yaml/package.yaml/deps.edn/project.clj/rockspec/rebar.config/erlang.mk/nimble/build.zig.zon/dub.json/dub.sdl/dune-project/opam) and DSL-marker fallback for build-script syntax (`android {`, `qt +=`). New `_pattern_matches_deps` supports five match modes including strict hyphen-prefix (so `transformers` no longer matches `sentence-transformers`). Empirical impact on hypergumbo self-analysis: `profile.frameworks` went from `['starlette','pytest','pytorch','transformers','lit']` to `['lit','starlette']` (+ dev_frameworks=['pytest']) — pytorch FP and transformers FP eliminated. 60 new tests pin the invariants. Tagged awaits_bakeoff_validation for empirical confirmation across the BROAD cohort."  # 152e
+- op: update  # 3f4c
+  at: '2026-06-08T18:30:23Z'  # 3f4c
+  by: agent  # 3f4c
+  actor: jgstern_agent  # 3f4c
+  clock: 5  # 3f4c
+  nonce: 3f4c  # 3f4c
+  set: {}  # 3f4c
+  add:  # 3f4c
+    tags: [dogfood]  # 3f4c
+  remove:  # 3f4c
+    tags: [dogfooding]  # 3f4c

@@ -41,3 +41,37 @@
   clock: 3  # 0342
   nonce: '0342'  # 0342
   message: "Cluster member of INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 0342
+- op: update  # 93f1
+  at: '2026-06-08T18:30:22Z'  # 93f1
+  by: agent  # 93f1
+  actor: jgstern_agent  # 93f1
+  clock: 4  # 93f1
+  nonce: 93f1  # 93f1
+  set: {}  # 93f1
+  add:  # 93f1
+    tags: [dogfood]  # 93f1
+  remove:  # 93f1
+    tags: [dogfooding]  # 93f1
+- op: discuss  # 3945
+  at: '2026-06-08T18:32:22Z'  # 3945
+  by: agent  # 3945
+  actor: jgstern_agent  # 3945
+  clock: 5  # 3945
+  nonce: '3945'  # 3945
+  message: "Folds in WI-didar (TRUE_DUPLICATE): identical edge.meta.call_construct mixes construct(method/function)+cross_file; same fix. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 3945
+- op: update  # 4d8f
+  at: '2026-06-08T18:32:24Z'  # 4d8f
+  by: agent  # 4d8f
+  actor: jgstern_agent  # 4d8f
+  clock: 6  # 4d8f
+  nonce: 4d8f  # 4d8f
+  set: {}  # 4d8f
+  add:  # 4d8f
+    not_duplicate_of: [INV-lajov-dabid-gufov-dorog-mofij-gavik-tabom-sutak]  # 4d8f
+- op: discuss  # 75e6
+  at: '2026-06-08T18:32:24Z'  # 75e6
+  by: agent  # 75e6
+  actor: jgstern_agent  # 75e6
+  clock: 7  # 75e6
+  nonce: '75e6'  # 75e6
+  message: "RELATED_BUT_DISTINCT to INV-lajov: call_construct axis-mixing (vakaf) vs construct/call_construct name-collision between two disjoint fields (lajov); distinct fixes. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 75e6

@@ -26,3 +26,19 @@
   clock: 2  # 48ad
   nonce: 48ad  # 48ad
   message: "Dogfood re-confirmation, broader scope. Container/type-declaration kinds lack stable_id across tree-sitter analyzers: 26 real-language structural-kind nodes carry NULL stable_id across csharp/go/java/rust/solidity/swift/typescript/wgsl (csharp class/enum/struct, go method/struct, java class/enum, rust enum/struct/trait, solidity constructor/contract/event/function x2/modifier, swift class/enum/protocol, typescript class x4/enum, wgsl struct x2). ALL 4 TypeScript class nodes have NULL stable_id (0/4), 3 of them real production components at packages/htrac-frontend/src/components/*.ts. For csharp class/struct/enum, BOTH stable_id and shape_id are NULL. The §6 cross-version interface-identity handle is never produced for these declarations. Reproduced on fresh /tmp runs."  # 48ad
+- op: update  # b597
+  at: '2026-06-08T19:12:56Z'  # b597
+  by: agent  # b597
+  actor: jgstern_agent  # b597
+  clock: 3  # b597
+  nonce: b597  # b597
+  set: {}  # b597
+  add:  # b597
+    not_duplicate_of: [WI-zitod-jizal-bodaj-gufap-taroz-mupap-nudah-kamim]  # b597
+- op: discuss  # ad67
+  at: '2026-06-08T19:12:56Z'  # ad67
+  by: agent  # ad67
+  actor: jgstern_agent  # ad67
+  clock: 4  # ad67
+  nonce: ad67  # ad67
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # ad67

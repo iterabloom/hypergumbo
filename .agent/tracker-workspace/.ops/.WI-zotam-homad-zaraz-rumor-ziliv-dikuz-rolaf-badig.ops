@@ -26,3 +26,29 @@
   clock: 2  # 0e68
   nonce: '0e68'  # 0e68
   message: "[related to INV-pazur — same compact-output schema surface; INV-pazur tracks nodes_summary count consistency, this tracks per-node centrality null + mode-asymmetric included_edges_count]"  # 0e68
+- op: update  # ddb8
+  at: '2026-06-08T18:30:30Z'  # ddb8
+  by: agent  # ddb8
+  actor: jgstern_agent  # ddb8
+  clock: 3  # ddb8
+  nonce: ddb8  # ddb8
+  set: {}  # ddb8
+  add:  # ddb8
+    tags: [dogfood_tranche_03]  # ddb8
+  remove:  # ddb8
+    tags: [dogfood_tranch_03]  # ddb8
+- op: update  # 3f5c
+  at: '2026-06-08T19:12:54Z'  # 3f5c
+  by: agent  # 3f5c
+  actor: jgstern_agent  # 3f5c
+  clock: 4  # 3f5c
+  nonce: 3f5c  # 3f5c
+  set:  # 3f5c
+    parent: INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik  # 3f5c
+- op: discuss  # 984d
+  at: '2026-06-08T19:12:54Z'  # 984d
+  by: agent  # 984d
+  actor: jgstern_agent  # 984d
+  clock: 5  # 984d
+  nonce: 984d  # 984d
+  message: "compact finalize-after-shrink family (connections-sweep 2026-06-08T1900Z)"  # 984d

@@ -33,3 +33,18 @@
   clock: 3  # a694
   nonce: a694  # a694
   message: "Dogfood fold (member F160.A1, independent — theme C2) — TRUE DUPLICATE of this row's mechanism, reproduces on the frozen substrate. Independent dogfood pass re-confirmed: the message-queue linker matches Kafka/RabbitMQ/SQS/Redis publish patterns in source content without checking whether the source file is a test, so 100% of its output is test-sourced. 103 event_publishes edges (channel_kind=queue), all from the message-queue linker, all sourced from test files (queue types: kafka 85, rabbitmq 12, sqs 4, redis 2). Consequence: an agent mapping the messaging/event-publish surface treats test fixtures as production publish sites, over-reporting external messaging couplings and misdirecting any data-flow or blast-radius audit. Same mechanism + same fix (is_test_file awareness in the message-queue linker) as already captured here. No new row filed. Theme C2 sibling of WI-zurig (U19 WS fixtures), WI-pitit (U18 django .connect), WI-fizir (U20 server_framework dep-blind)."  # a694
+- op: update  # b43d
+  at: '2026-06-08T19:12:53Z'  # b43d
+  by: agent  # b43d
+  actor: jgstern_agent  # b43d
+  clock: 4  # b43d
+  nonce: b43d  # b43d
+  set:  # b43d
+    parent: META-jotih-taput-mulod-luhov-fapuv-hozaz-dutol-gosim  # b43d
+- op: discuss  # 5d3e
+  at: '2026-06-08T19:12:53Z'  # 5d3e
+  by: agent  # 5d3e
+  actor: jgstern_agent  # 5d3e
+  clock: 5  # 5d3e
+  nonce: 5d3e  # 5d3e
+  message: "root-cause family member (g1) (connections-sweep 2026-06-08T1900Z)"  # 5d3e

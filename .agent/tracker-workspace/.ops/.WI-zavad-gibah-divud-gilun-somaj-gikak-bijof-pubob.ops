@@ -33,3 +33,29 @@
   clock: 3  # 19c5
   nonce: 19c5  # 19c5
   message: "Dogfood enrichment (member F159.A3-b) — the converse direction, reproduces on the frozen substrate. \"lit\" appears in profile.frameworks with ZERO node/edge framework evidence (0 nodes with meta.framework=lit, 0 edges) — lit is a TS/JS lib and JS/TS symbol extraction is broken (the WI-zavad gap), so the manifest-derived framework has no graph support. So profile.frameworks and the per-node/edge framework meta disagree in BOTH directions: django/fastapi carry evidence but are absent from profile (E03/F159.A3-a), while lit is in profile with no evidence (this facet). Folds onto WI-napuj (no node-level link/provenance for declared frameworks) and onto WI-zavad (the broken JS/TS extraction that leaves lit's frameworks unsupported in the graph). Cross-ref WI-napuj, WI-zavad."  # 19c5
+- op: update  # 8228
+  at: '2026-06-08T18:30:32Z'  # 8228
+  by: agent  # 8228
+  actor: jgstern_agent  # 8228
+  clock: 4  # 8228
+  nonce: '8228'  # 8228
+  set: {}  # 8228
+  add:  # 8228
+    tags: [dogfood_tranche_04]  # 8228
+  remove:  # 8228
+    tags: [dogfood_tranch_04]  # 8228
+- op: update  # 33c4
+  at: '2026-06-08T19:12:54Z'  # 33c4
+  by: agent  # 33c4
+  actor: jgstern_agent  # 33c4
+  clock: 5  # 33c4
+  nonce: 33c4  # 33c4
+  set:  # 33c4
+    parent: META-rozur-mugag-davit-rotav-tituk-gupoz-jajog-zopol  # 33c4
+- op: discuss  # 4a76
+  at: '2026-06-08T19:12:54Z'  # 4a76
+  by: agent  # 4a76
+  actor: jgstern_agent  # 4a76
+  clock: 6  # 4a76
+  nonce: 4a76  # 4a76
+  message: "root-cause family member (t3) (connections-sweep 2026-06-08T1900Z)"  # 4a76

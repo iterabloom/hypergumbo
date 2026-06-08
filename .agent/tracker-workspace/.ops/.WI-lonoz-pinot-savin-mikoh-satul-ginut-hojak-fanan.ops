@@ -92,3 +92,14 @@
   clock: 10  # a4bc
   nonce: a4bc  # a4bc
   message: "Closed by Phase 6 PR2 (commit 98533c0fff). ir._derive_edge_quality auto-derives {score, reason} from confidence/is_resolved/derived_from; Edge.__post_init__ populates quality when producer omits it. 5 distinct reason tags now surface on self-analysis (was None universally across 109K edges). Tests: 6 new in test_ir.py."  # a4bc
+- op: update  # 39ee
+  at: '2026-06-08T18:30:28Z'  # 39ee
+  by: agent  # 39ee
+  actor: jgstern_agent  # 39ee
+  clock: 11  # 39ee
+  nonce: 39ee  # 39ee
+  set: {}  # 39ee
+  add:  # 39ee
+    tags: [dogfood]  # 39ee
+  remove:  # 39ee
+    tags: [dogfooding]  # 39ee

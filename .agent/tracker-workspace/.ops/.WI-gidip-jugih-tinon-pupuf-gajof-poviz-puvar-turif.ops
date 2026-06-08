@@ -26,3 +26,14 @@
   clock: 2  # 012c
   nonce: 012c  # 012c
   message: "Re-confirms hub_threshold dual-meaning: handler-slice producer emits 100 into feature.query.hub_threshold; spec documents 50. WI-gidip names slice-50 vs ranking-100; this is the spec-vs-emitted facet. (dogfood; blinded sev 2)"  # 012c
+- op: update  # b4e6
+  at: '2026-06-08T18:30:32Z'  # b4e6
+  by: agent  # b4e6
+  actor: jgstern_agent  # b4e6
+  clock: 3  # b4e6
+  nonce: b4e6  # b4e6
+  set: {}  # b4e6
+  add:  # b4e6
+    tags: [dogfood_tranche_04]  # b4e6
+  remove:  # b4e6
+    tags: [dogfood_tranch_04]  # b4e6

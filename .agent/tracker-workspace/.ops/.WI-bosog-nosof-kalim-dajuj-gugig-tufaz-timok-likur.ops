@@ -26,3 +26,19 @@
   clock: 2  # a57a
   nonce: a57a  # a57a
   message: "Split sibling: WI-gunaj (sketch path renders the same repo_fingerprint truncated-16 via [:16]). Same field, distinct producers, distinct fixes."  # a57a
+- op: update  # be26
+  at: '2026-06-08T19:12:55Z'  # be26
+  by: agent  # be26
+  actor: jgstern_agent  # be26
+  clock: 3  # be26
+  nonce: be26  # be26
+  set: {}  # be26
+  add:  # be26
+    not_duplicate_of: [WI-mipul-fajaf-dibab-vinap-kafur-podov-huzik-dunuh]  # be26
+- op: discuss  # 252a
+  at: '2026-06-08T19:12:55Z'  # 252a
+  by: agent  # 252a
+  actor: jgstern_agent  # 252a
+  clock: 4  # 252a
+  nonce: 252a  # 252a
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 252a

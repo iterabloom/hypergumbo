@@ -54,3 +54,35 @@
   clock: 5  # 9c07
   nonce: 9c07  # 9c07
   message: "Re-confirms 31 registry-dispatched <Lang>Analyzer/Extractor.analyze methods flagged dead because @register_analyzer dispatch edge never recovered, inflating 89.6%. INV-pohik symptom (1) names this. (dogfood; blinded sev 4)"  # 9c07
+- op: update  # 8fe3
+  at: '2026-06-08T19:12:57Z'  # 8fe3
+  by: agent  # 8fe3
+  actor: jgstern_agent  # 8fe3
+  clock: 6  # 8fe3
+  nonce: 8fe3  # 8fe3
+  set: {}  # 8fe3
+  add:  # 8fe3
+    not_duplicate_of: [INV-titid-favuv-kubam-kapib-vapon-kamub-talos-madoj]  # 8fe3
+- op: discuss  # c64e
+  at: '2026-06-08T19:12:57Z'  # c64e
+  by: agent  # c64e
+  actor: jgstern_agent  # c64e
+  clock: 7  # c64e
+  nonce: c64e  # c64e
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # c64e
+- op: update  # 0b9f
+  at: '2026-06-08T19:12:57Z'  # 0b9f
+  by: agent  # 0b9f
+  actor: jgstern_agent  # 0b9f
+  clock: 8  # 0b9f
+  nonce: 0b9f  # 0b9f
+  set: {}  # 0b9f
+  add:  # 0b9f
+    not_duplicate_of: [WI-tovap-kalad-hazoh-zobus-bohit-kilav-subit-varob]  # 0b9f
+- op: discuss  # ae12
+  at: '2026-06-08T19:12:57Z'  # ae12
+  by: agent  # ae12
+  actor: jgstern_agent  # ae12
+  clock: 9  # ae12
+  nonce: ae12  # ae12
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # ae12

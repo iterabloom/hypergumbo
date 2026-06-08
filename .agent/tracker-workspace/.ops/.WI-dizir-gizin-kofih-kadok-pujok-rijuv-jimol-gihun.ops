@@ -33,3 +33,30 @@
   clock: 3  # 3036
   nonce: '3036'  # 3036
   message: "[+ tranch_04: card 018 F67.A3 — the empty-origin_run_id cohort (2236 nodes) includes ~493 file-kind nodes overlapping this row's 492 orchestrator-synthesized file nodes; folded canonically into WI-sijut (external_symbol dominant). Cross-ref for the file-node sub-population.]"  # 3036
+- op: update  # bf5d
+  at: '2026-06-08T18:30:30Z'  # bf5d
+  by: agent  # bf5d
+  actor: jgstern_agent  # bf5d
+  clock: 4  # bf5d
+  nonce: bf5d  # bf5d
+  set: {}  # bf5d
+  add:  # bf5d
+    tags: [dogfood_tranche_03]  # bf5d
+  remove:  # bf5d
+    tags: [dogfood_tranch_03]  # bf5d
+- op: update  # 710c
+  at: '2026-06-08T19:12:53Z'  # 710c
+  by: agent  # 710c
+  actor: jgstern_agent  # 710c
+  clock: 5  # 710c
+  nonce: 710c  # 710c
+  set: {}  # 710c
+  add:  # 710c
+    not_duplicate_of: [META-fimas-gotaf-dapoj-zarad-volud-doliz-fodok-gapuv]  # 710c
+- op: discuss  # 532a
+  at: '2026-06-08T19:12:53Z'  # 532a
+  by: agent  # 532a
+  actor: jgstern_agent  # 532a
+  clock: 6  # 532a
+  nonce: 532a  # 532a
+  message: "root-cause family cross-link (b3); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 532a

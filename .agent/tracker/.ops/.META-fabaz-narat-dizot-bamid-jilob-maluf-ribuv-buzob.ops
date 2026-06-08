@@ -35,3 +35,18 @@
   nonce: '2899'  # 2899
   set:  # 2899
     status: holding  # 2899
+- op: update  # f454
+  at: '2026-06-08T18:32:09Z'  # f454
+  by: agent  # f454
+  actor: jgstern_agent  # f454
+  clock: 4  # f454
+  nonce: f454  # f454
+  set:  # f454
+    status: violated  # f454
+- op: discuss  # 14b8
+  at: '2026-06-08T18:32:09Z'  # 14b8
+  by: agent  # 14b8
+  actor: jgstern_agent  # 14b8
+  clock: 5  # 14b8
+  nonce: 14b8  # 14b8
+  message: "holding(deprecated)->violated: META-fabaz asserts unique IDs for reliable lookup; its own 'Not checked' sub-claim is stable_id collision rate on >10K-symbol monorepos. That exact sub-claim is violated P0: INV-tazaj (META, violated) + child INV-bazij (violated) + WI-gitun (P0, fresh repro 2026-06-07). Live `hypergumbo run` on this repo: 96 collision groups / 291 nodes share stab (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 14b8

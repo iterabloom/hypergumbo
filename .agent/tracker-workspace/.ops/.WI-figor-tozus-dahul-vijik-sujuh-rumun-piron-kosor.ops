@@ -48,3 +48,14 @@
   clock: 4  # 0a88
   nonce: 0a88  # 0a88
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): shares the \"documentation describes a CLI capability that does not exist in code\" mechanic with INV-bugiz (--debug help references removed ripgrep) and WI-loloz (routes --help still documents deprecated -x flag). All three reveal the absence of a CI/pre-commit gate that diffs README CLI examples and argparse help strings against actual subparser registrations. Code reference confirmed: `BooleanOptionalAction` for --progress appears only at cli.py:5835 (p_sketch) and cli.py:6060 (p_run). Suggest promoting these three items as members of a new META \"CLI help/README drift from argparse reality, no enforcement gate\"."  # 0a88
+- op: update  # e269
+  at: '2026-06-08T18:30:24Z'  # e269
+  by: agent  # e269
+  actor: jgstern_agent  # e269
+  clock: 5  # e269
+  nonce: e269  # e269
+  set: {}  # e269
+  add:  # e269
+    tags: [dogfood]  # e269
+  remove:  # e269
+    tags: [dogfooding]  # e269

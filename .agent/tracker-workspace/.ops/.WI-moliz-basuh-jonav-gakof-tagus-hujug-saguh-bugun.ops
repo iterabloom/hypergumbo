@@ -40,3 +40,30 @@
   clock: 3  # 7efe
   nonce: 7efe  # 7efe
   message: "Cluster member of INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 7efe
+- op: update  # 93a5
+  at: '2026-06-08T18:30:22Z'  # 93a5
+  by: agent  # 93a5
+  actor: jgstern_agent  # 93a5
+  clock: 4  # 93a5
+  nonce: 93a5  # 93a5
+  set: {}  # 93a5
+  add:  # 93a5
+    tags: [dogfood]  # 93a5
+  remove:  # 93a5
+    tags: [dogfooding]  # 93a5
+- op: update  # 5c4b
+  at: '2026-06-08T18:32:25Z'  # 5c4b
+  by: agent  # 5c4b
+  actor: jgstern_agent  # 5c4b
+  clock: 5  # 5c4b
+  nonce: 5c4b  # 5c4b
+  set: {}  # 5c4b
+  add:  # 5c4b
+    not_duplicate_of: [INV-vavat-gamij-batuv-rojij-gutaz-suvuj-zojub-dimiv]  # 5c4b
+- op: discuss  # af4e
+  at: '2026-06-08T18:32:25Z'  # af4e
+  by: agent  # af4e
+  actor: jgstern_agent  # af4e
+  clock: 6  # af4e
+  nonce: af4e  # af4e
+  message: "RELATED_BUT_DISTINCT to INV-vavat: inheritance-family edge.type vocab: moliz=extends/inherits/implements/overrides consolidation (discovery); vavat=3 vestigial singletons incl inherits/overrides + script_src; moliz doesn't cover script_src. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # af4e

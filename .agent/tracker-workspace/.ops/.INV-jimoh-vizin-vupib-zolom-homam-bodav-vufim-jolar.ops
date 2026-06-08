@@ -81,3 +81,18 @@
     tags: [stable_id]  # cb2d
   remove:  # cb2d
     tags: [stable-id]  # cb2d
+- op: update  # 95be
+  at: '2026-06-08T18:32:11Z'  # 95be
+  by: agent  # 95be
+  actor: jgstern_agent  # 95be
+  clock: 8  # 95be
+  nonce: 95be  # 95be
+  set:  # 95be
+    status: satisfied  # 95be
+- op: discuss  # 1344
+  at: '2026-06-08T18:32:11Z'  # 1344
+  by: agent  # 1344
+  actor: jgstern_agent  # 1344
+  clock: 9  # 1344
+  nonce: '1344'  # 1344
+  message: "holding(deprecated)->satisfied: Grammars now vendored offline-deterministic; commits pinned in vendor/tree-sitter-{lean,wolfram,circom}/UPSTREAM. Original HEAD-clone root cause eliminated (WI-fipab-kivoj). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 1344

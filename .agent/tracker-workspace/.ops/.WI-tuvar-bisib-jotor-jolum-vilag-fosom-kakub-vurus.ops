@@ -34,3 +34,14 @@
   clock: 3  # cf94
   nonce: cf94  # cf94
   message: "superseded by WI-rikob — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # cf94
+- op: update  # 9ede
+  at: '2026-06-08T18:30:31Z'  # 9ede
+  by: agent  # 9ede
+  actor: jgstern_agent  # 9ede
+  clock: 4  # 9ede
+  nonce: 9ede  # 9ede
+  set: {}  # 9ede
+  add:  # 9ede
+    tags: [dogfood_tranche_03]  # 9ede
+  remove:  # 9ede
+    tags: [dogfood_tranch_03]  # 9ede

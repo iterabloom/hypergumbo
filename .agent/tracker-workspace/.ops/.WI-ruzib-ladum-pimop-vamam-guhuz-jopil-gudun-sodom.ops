@@ -28,3 +28,30 @@
   clock: 2  # 3d8b
   nonce: 3d8b  # 3d8b
   message: "[+ tranch_04: WI-kajil — related: card 027/F71.A1 is the SAME verify-claims silent-confirm family but a DIFFERENT trigger — not an unknown/unvalidated boundary axis value, but a KNOWN axis whose boundary_map is empty because the JS analyzer never produced the I/O edges (F69.A1). Both end in a false 'confirmed' on a must_not_exist boundary claim; the fix-surface for WI-kajil is the empty-map-via-uncovered-language guard, distinct from this axis-value validation.]"  # 3d8b
+- op: update  # a2ad
+  at: '2026-06-08T18:30:22Z'  # a2ad
+  by: agent  # a2ad
+  actor: jgstern_agent  # a2ad
+  clock: 3  # a2ad
+  nonce: a2ad  # a2ad
+  set: {}  # a2ad
+  add:  # a2ad
+    tags: [dogfood]  # a2ad
+  remove:  # a2ad
+    tags: [dogfooding]  # a2ad
+- op: update  # df8d
+  at: '2026-06-08T19:12:54Z'  # df8d
+  by: agent  # df8d
+  actor: jgstern_agent  # df8d
+  clock: 4  # df8d
+  nonce: df8d  # df8d
+  set: {}  # df8d
+  add:  # df8d
+    not_duplicate_of: [META-jurig-bofiz-sisaj-gihop-horoj-rutis-lopah-modij]  # df8d
+- op: discuss  # d263
+  at: '2026-06-08T19:12:54Z'  # d263
+  by: agent  # d263
+  actor: jgstern_agent  # d263
+  clock: 5  # d263
+  nonce: d263  # d263
+  message: "root-cause family cross-link (t2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # d263

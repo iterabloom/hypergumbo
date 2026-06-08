@@ -49,3 +49,14 @@
   nonce: f994  # f994
   set:  # f994
     status: deleted  # f994
+- op: update  # ea81
+  at: '2026-06-08T18:30:25Z'  # ea81
+  by: agent  # ea81
+  actor: jgstern_agent  # ea81
+  clock: 5  # ea81
+  nonce: ea81  # ea81
+  set: {}  # ea81
+  add:  # ea81
+    tags: [dogfood]  # ea81
+  remove:  # ea81
+    tags: [dogfooding]  # ea81

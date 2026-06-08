@@ -30,3 +30,35 @@
   clock: 2  # c660
   nonce: c660  # c660
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): INV-mozaf-sopam (file-accounting gap, 296 files contribute no path-bearing IR, of which 107 are markdown) is the umbrella metric for this finding; INV-gosub is the markdown-specific instance and one of the two languages INV-mozaf names directly. Closing INV-gosub by emitting file/section nodes per markdown file will close the markdown half of INV-mozaf's 296-file gap; the yaml half (174 files) is a separate unbuilt-analyzer instance. Code site: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/markdown.py; the analyzer never emits a file Symbol (compare bash.py module_symbol pattern) and _make_link_dst_id has no path-canonicalization."  # c660
+- op: update  # 9120
+  at: '2026-06-08T19:12:57Z'  # 9120
+  by: agent  # 9120
+  actor: jgstern_agent  # 9120
+  clock: 3  # 9120
+  nonce: '9120'  # 9120
+  set: {}  # 9120
+  add:  # 9120
+    not_duplicate_of: [WI-vamih-salid-vahip-gokas-tohon-zajal-fotoz-tuzir]  # 9120
+- op: discuss  # 2404
+  at: '2026-06-08T19:12:57Z'  # 2404
+  by: agent  # 2404
+  actor: jgstern_agent  # 2404
+  clock: 4  # 2404
+  nonce: '2404'  # 2404
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 2404
+- op: update  # dc27
+  at: '2026-06-08T19:12:57Z'  # dc27
+  by: agent  # dc27
+  actor: jgstern_agent  # dc27
+  clock: 5  # dc27
+  nonce: dc27  # dc27
+  set: {}  # dc27
+  add:  # dc27
+    not_duplicate_of: [WI-sibil-bituz-kalam-hapat-domip-gujus-haruh-kufif]  # dc27
+- op: discuss  # eb1e
+  at: '2026-06-08T19:12:57Z'  # eb1e
+  by: agent  # eb1e
+  actor: jgstern_agent  # eb1e
+  clock: 6  # eb1e
+  nonce: eb1e  # eb1e
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # eb1e

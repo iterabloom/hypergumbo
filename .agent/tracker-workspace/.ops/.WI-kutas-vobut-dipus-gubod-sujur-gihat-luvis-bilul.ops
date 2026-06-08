@@ -33,3 +33,26 @@
   clock: 3  # f002
   nonce: f002  # f002
   message: "Re-confirms Symbol $def drift: present-not-declared discovery_language/display_label/protocol_origin/qualified_name (34396 nodes) + dead canonical_name (0). Edge $def clean. WI-kutas names these 4+1. (dogfood; blinded sev 3)"  # f002
+- op: discuss  # cbc2
+  at: '2026-06-08T14:12:50Z'  # cbc2
+  by: agent  # cbc2
+  actor: jgstern_agent  # cbc2
+  clock: 4  # cbc2
+  nonce: cbc2  # cbc2
+  message: "Another instance face (human-adjudicated root-novelty): WI-tagaj — generate-schema emitted view as const:'behavior_map' from the dataclass default rather than an enum, so non-default views fail the schema. Same generator root as the WI-kufib language-null face."  # cbc2
+- op: update  # ef55
+  at: '2026-06-08T19:12:56Z'  # ef55
+  by: agent  # ef55
+  actor: jgstern_agent  # ef55
+  clock: 5  # ef55
+  nonce: ef55  # ef55
+  set: {}  # ef55
+  add:  # ef55
+    not_duplicate_of: [INV-jifus-parug-midub-nofip-mupil-zobak-vuzah-fokov]  # ef55
+- op: discuss  # b14a
+  at: '2026-06-08T19:12:56Z'  # b14a
+  by: agent  # b14a
+  actor: jgstern_agent  # b14a
+  clock: 6  # b14a
+  nonce: b14a  # b14a
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # b14a

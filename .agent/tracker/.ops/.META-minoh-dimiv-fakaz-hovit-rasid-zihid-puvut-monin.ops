@@ -45,3 +45,18 @@
   set:  # 30d5
     status: holding  # 30d5
     pr_ref: '1383'  # 30d5
+- op: update  # 18c8
+  at: '2026-06-08T18:32:10Z'  # 18c8
+  by: agent  # 18c8
+  actor: jgstern_agent  # 18c8
+  clock: 5  # 18c8
+  nonce: 18c8  # 18c8
+  set:  # 18c8
+    status: violated  # 18c8
+- op: discuss  # 2f28
+  at: '2026-06-08T18:32:10Z'  # 2f28
+  by: agent  # 2f28
+  actor: jgstern_agent  # 2f28
+  clock: 6  # 2f28
+  nonce: 2f28  # 2f28
+  message: "holding(deprecated)->violated: Lead violations fixed (Go cobra RunE keyed_element, C++ dispatch tables, Ruby/JS struct fields), but Java/Python/Rust struct-field func refs and var-assignment (var f=myFunc) refs still absent => invariant still broken. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 2f28

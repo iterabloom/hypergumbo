@@ -27,3 +27,30 @@
   clock: 2  # d7c3
   nonce: d7c3  # d7c3
   message: "Re-confirmed on fresh substrate (dogfood_tranche_07 F121.A1): the displayed entrypoint LABEL itself reads the self-contradictory 'HTTP WS /ws' (kind=http_route, conf 1.0, symbol_id python:.../serve.py:215-250:_ws_handler:function). Mechanism is the hardcoded HTTP-prefix template at entrypoints.py:375 and :1022: label = f'HTTP {method.upper()} {path}'; for a WS route method='WS' so the template emits 'HTTP WS /ws'. This is the label-surface facet of this row's kind-field fix: emitting kind=websocket_handler should also fix the label template so a WS endpoint is not labelled HTTP. Same work resolves both."  # d7c3
+- op: update  # 197f
+  at: '2026-06-08T18:30:28Z'  # 197f
+  by: agent  # 197f
+  actor: jgstern_agent  # 197f
+  clock: 3  # 197f
+  nonce: 197f  # 197f
+  set: {}  # 197f
+  add:  # 197f
+    tags: [dogfood]  # 197f
+  remove:  # 197f
+    tags: [dogfooding]  # 197f
+- op: update  # a0da
+  at: '2026-06-08T18:32:25Z'  # a0da
+  by: agent  # a0da
+  actor: jgstern_agent  # a0da
+  clock: 4  # a0da
+  nonce: a0da  # a0da
+  set: {}  # a0da
+  add:  # a0da
+    not_duplicate_of: [WI-zadot-hasuh-mazos-tuhib-konor-zosog-gosuv-javup]  # a0da
+- op: discuss  # dd4b
+  at: '2026-06-08T18:32:25Z'  # dd4b
+  by: agent  # dd4b
+  actor: jgstern_agent  # dd4b
+  clock: 5  # dd4b
+  nonce: dd4b  # dd4b
+  message: "RELATED_BUT_DISTINCT to WI-zadot: WS/framework-endpoint kind mislabeling: kuvig=entrypoint.kind=http_route for WS; zadot=synthetic linker nodes kind=function language=python; distinct surfaces. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # dd4b

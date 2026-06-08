@@ -37,3 +37,14 @@
   clock: 3  # a799
   nonce: a799  # a799
   message: "Fixed in PR #3841 (merged 2026-05-20). Sink-side bug: both progress producers (cli.py:7090-7110 show_progress and sketch.py:317+ SketchProgress) used \\\\r-based redraw correctly but never checked sys.stderr.isatty(). When stderr is captured (2>&1, pipe, file), the bytes are preserved literally and downstream renderers (markdown viewers, git diff, text editors) display 165+ accumulated progress lines preceding actual sketch content. Fix: both producers early-return when sys.stderr.isatty() is False. Verified: `hypergumbo sketch . > /tmp/s.md 2>&1` on a fresh fixture goes from 165+ progress lines to 0. PR also corrected pre-existing test-fixture bug at test_cli_io_boundaries.py:1109 and test_cli_verify_claims.py:160 (fixtures used language='objc' instead of 'objective-c', so the dual-key catalog branch at cli.py:3445-3446 / 4045-4046 was never exercised) — cli.py coverage now 100% (was 99% with lines 3446, 4046 latent). Same PR added pip-audit --ignore-vuln for 20 transitive ML-stack PYSECs (transformers 8 / torch 11 / joblib 1) to unblock the audit gate; all 20 fit hypergumbo's threat-model carve-out (no user-supplied checkpoint surface, pinned MiniLM model only, no convert_* scripts). This closes the LAST open Foundation item in the burn-down plan."  # a799
+- op: update  # a2b0
+  at: '2026-06-08T18:30:26Z'  # a2b0
+  by: agent  # a2b0
+  actor: jgstern_agent  # a2b0
+  clock: 4  # a2b0
+  nonce: a2b0  # a2b0
+  set: {}  # a2b0
+  add:  # a2b0
+    tags: [dogfood]  # a2b0
+  remove:  # a2b0
+    tags: [dogfooding]  # a2b0

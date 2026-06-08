@@ -35,3 +35,14 @@
   clock: 3  # 44b2
   nonce: 44b2  # 44b2
   message: "Fixed in PR #3933. Two bugs: (1) 'Generated N' missing noun → 'Generated N artifact(s)', (2) operator precedence bug in 8 subcommand artifact-list constructions causing duplicate listings. Also added dedup in _print_output_summary."  # 44b2
+- op: update  # ce5b
+  at: '2026-06-08T18:30:28Z'  # ce5b
+  by: agent  # ce5b
+  actor: jgstern_agent  # ce5b
+  clock: 4  # ce5b
+  nonce: ce5b  # ce5b
+  set: {}  # ce5b
+  add:  # ce5b
+    tags: [dogfood]  # ce5b
+  remove:  # ce5b
+    tags: [dogfooding]  # ce5b

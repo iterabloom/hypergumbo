@@ -25,3 +25,10 @@
   clock: 2  # d894
   nonce: d894  # d894
   message: "Related to WI-rakol (distinct fix; dogfood)."  # d894
+- op: discuss  # f8df
+  at: '2026-06-08T14:20:48Z'  # f8df
+  by: agent  # f8df
+  actor: jgstern_agent  # f8df
+  clock: 3  # f8df
+  nonce: f8df  # f8df
+  message: "Root-novelty (human-adjudicated, code-grounded analyst): INSTANCE of WI-lirob — shared fix-site is the entrypoint-only default seed set in cmd_dead_code_maybe (cli.py:5299-5316 + --seeds default @6799); fixing it resolves both this contradiction and WI-lirob's 89.6%-dead FP. Distinct fix (cross-command disclosure) keeps this its own row; not a new root."  # f8df

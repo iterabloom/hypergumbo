@@ -47,3 +47,35 @@
   clock: 4  # f2db
   nonce: f2db  # f2db
   message: "Two non-workspace symptoms of the boundary-node tier rule, beyond the workspace/first-party mis-tiering this item already covers (blind-severity-derived priority signal: P1). Of 1159 tier-3 external_symbol nodes, 457 are Python stdlib modules (os, re, ast, sys, typing, subprocess, ...) mislabeled tier-3 external_dep ('third-party') — reason='unresolved external reference'. Of 486 tier-2 nodes, 176 are genuine third-party PyPI packages (bcrypt, jsonschema, pytest, rich, starlette, uvicorn, yaml, ...) mislabeled tier-2 internal_dep ('internal libraries') — reason='direct dependency (pyproject.toml)'. So the §1426 'direct dep -> tier 2, indirect/unknown -> tier 3' rule maps the language runtime to 'third-party' and PyPI installs to 'internal'. Tier weights (2:1.5 vs 3:1.0) thereby up-weight real third-party deps above the stdlib."  # f2db
+- op: update  # bd54
+  at: '2026-06-08T19:12:55Z'  # bd54
+  by: agent  # bd54
+  actor: jgstern_agent  # bd54
+  clock: 5  # bd54
+  nonce: bd54  # bd54
+  set: {}  # bd54
+  add:  # bd54
+    not_duplicate_of: [WI-kapul-ganan-jinad-pijig-lozig-ruhov-vonum-guzog]  # bd54
+- op: discuss  # 2a95
+  at: '2026-06-08T19:12:55Z'  # 2a95
+  by: agent  # 2a95
+  actor: jgstern_agent  # 2a95
+  clock: 6  # 2a95
+  nonce: 2a95  # 2a95
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 2a95
+- op: update  # 5f20
+  at: '2026-06-08T19:12:55Z'  # 5f20
+  by: agent  # 5f20
+  actor: jgstern_agent  # 5f20
+  clock: 7  # 5f20
+  nonce: 5f20  # 5f20
+  set: {}  # 5f20
+  add:  # 5f20
+    not_duplicate_of: [WI-fozoh-bahos-monol-tolim-marod-ramig-hapoh-pofuv]  # 5f20
+- op: discuss  # f03f
+  at: '2026-06-08T19:12:55Z'  # f03f
+  by: agent  # f03f
+  actor: jgstern_agent  # f03f
+  clock: 8  # f03f
+  nonce: f03f  # f03f
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # f03f

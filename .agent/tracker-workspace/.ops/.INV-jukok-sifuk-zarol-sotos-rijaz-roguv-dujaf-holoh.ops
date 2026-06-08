@@ -119,3 +119,30 @@
   clock: 13  # d085
   nonce: d085  # d085
   message: "[+ tranch_04: WI-mujor — related (card 029/F74.A1): the global endpoint-integrity table SUBSUMES this 23-edge src-dangling finding (0.02% truly-dangling, all src-side) but is a distinct fix-surface — the validator dangling-endpoint check + symmetric src-side placeholder synthesis vs this row's tier-4 supply-chain filter fix.]"  # d085
+- op: update  # d950
+  at: '2026-06-08T18:30:24Z'  # d950
+  by: agent  # d950
+  actor: jgstern_agent  # d950
+  clock: 14  # d950
+  nonce: d950  # d950
+  set: {}  # d950
+  add:  # d950
+    tags: [dogfood]  # d950
+  remove:  # d950
+    tags: [dogfooding]  # d950
+- op: update  # e225
+  at: '2026-06-08T19:12:51Z'  # e225
+  by: agent  # e225
+  actor: jgstern_agent  # e225
+  clock: 15  # e225
+  nonce: e225  # e225
+  set: {}  # e225
+  add:  # e225
+    not_duplicate_of: [META-sigap-hafis-ruhur-ramog-bogap-jinol-vuzoj-pajoh]  # e225
+- op: discuss  # d580
+  at: '2026-06-08T19:12:51Z'  # d580
+  by: agent  # d580
+  actor: jgstern_agent  # d580
+  clock: 16  # d580
+  nonce: d580  # d580
+  message: "root-cause family cross-link (a2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # d580

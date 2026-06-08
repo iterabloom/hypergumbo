@@ -93,3 +93,14 @@
   clock: 10  # 9a8c
   nonce: 9a8c  # 9a8c
   message: "Validated via self-analysis 2026-05-21 (B-shape claim, modality = grep cohort artifact). Re-ran hypergumbo on this repo (dev tip 74794a2e89) and confirmed: bm['reproducibility_context'] is present, all 83 AnalysisRun entries carry a pass_version field, and 0 of the 83 runtime pass IDs carry a legacy -v1 or -ts-v1 suffix. The PR 1 + PR 2 contracts hold structurally. Artifacts: ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md and verify_validation_drain_05212026{.py,_verdict.txt,.log}. Verdict: moved."  # 9a8c
+- op: update  # ded6
+  at: '2026-06-08T18:30:23Z'  # ded6
+  by: agent  # ded6
+  actor: jgstern_agent  # ded6
+  clock: 11  # ded6
+  nonce: ded6  # ded6
+  set: {}  # ded6
+  add:  # ded6
+    tags: [dogfood]  # ded6
+  remove:  # ded6
+    tags: [dogfooding]  # ded6

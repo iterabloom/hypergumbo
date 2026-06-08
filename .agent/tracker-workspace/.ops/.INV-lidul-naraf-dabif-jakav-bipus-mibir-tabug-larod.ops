@@ -65,3 +65,46 @@
   clock: 6  # dacd
   nonce: dacd  # dacd
   message: "Pass-26 provenance-chain probe — INV-lidul status update (partial mitigation observed):\n\nF26.12: `AR.config_fingerprint` is no longer constant across all 84 ARs as INV-lidul's original statement asserts. Pass-26 substrate:\n\n- 30/84 ARs have a unique non-default config_fingerprint\n- 54/84 ARs still have `sha256:44136fa355b3678a` (sha256 of literal `{}` per `_default_config_fingerprint`)\n\nThe 30 populated ARs are: rust, swift, sql, properties, gitignore, requirements, pascal, v, apex, pony, odin, gleam, solidity, janet, fennel, haxe, hack, luau, kdl, smithy, prisma, twig, tcl, sparql, bibtex, bitbake, astro, wgsl, markdown, bash.\n\nThe 54 still-default ARs include exactly WI-mipul's 14-target set (csharp, enclosure-linker, go, html, java, javascript, json, make, manifest_targets, play-routes, python, toml, xml, yaml_ansible) plus 40 linker passes (containment, di-resolution, http-linker, ipc-linker, jackson-dispatch-linker, etc.).\n\nStatus candidate update: INV-lidul is now PARTIALLY MITIGATED. The original \"constant across all 84\" assertion no longer holds at 100%; it holds for 64.3% (54/84). The mitigation appears to be the tree-sitter base-class auto-stamping (which the 30 populated tree-sitter-based analyzers use correctly) plus probably an INV-morag-adjacent producer wiring (since the populated set includes many tree-sitter language-pack passes). WI-mipul's remaining work is the override-analyze() set (14 ARs) and the linker passes that bypass the base class.\n\nPass_version='' on the same 14 ARs (F26.13 elsewhere) confirms WI-mipul's scope. INV-lidul could either:\n1. Move to `pending_validation` with updated statement: \"config_fingerprint is constant for WI-mipul's 14 override-analyze() targets and all linker passes (~54 ARs)\" — would close partly when WI-mipul ships.\n2. Stay `violated` with the original claim acknowledged as quantitatively off; defer the rewrite until WI-mipul ships.\n\nNo new tracker action required at this level; status update is human-decision territory."  # dacd
+- op: update  # f3ff
+  at: '2026-06-08T18:30:22Z'  # f3ff
+  by: agent  # f3ff
+  actor: jgstern_agent  # f3ff
+  clock: 7  # f3ff
+  nonce: f3ff  # f3ff
+  set: {}  # f3ff
+  add:  # f3ff
+    tags: [dogfood]  # f3ff
+  remove:  # f3ff
+    tags: [dogfooding]  # f3ff
+- op: update  # e4d8
+  at: '2026-06-08T18:32:22Z'  # e4d8
+  by: agent  # e4d8
+  actor: jgstern_agent  # e4d8
+  clock: 8  # e4d8
+  nonce: e4d8  # e4d8
+  set: {}  # e4d8
+  add:  # e4d8
+    not_duplicate_of: [WI-mipul-fajaf-dibab-vinap-kafur-podov-huzik-dunuh]  # e4d8
+- op: discuss  # 73a2
+  at: '2026-06-08T18:32:22Z'  # 73a2
+  by: agent  # 73a2
+  actor: jgstern_agent  # 73a2
+  clock: 9  # 73a2
+  nonce: 73a2  # 73a2
+  message: "RELATED_BUT_DISTINCT to WI-mipul: config_fingerprint/pass_version/toolchain stamping; mipul is the override-analyze() tail closing residual of lidul after Phase 6 PR2. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 73a2
+- op: update  # 8286
+  at: '2026-06-08T19:12:52Z'  # 8286
+  by: agent  # 8286
+  actor: jgstern_agent  # 8286
+  clock: 10  # 8286
+  nonce: '8286'  # 8286
+  set: {}  # 8286
+  add:  # 8286
+    not_duplicate_of: [META-hufaz-dazip-hijop-nijam-lasut-jigup-dahak-jirup]  # 8286
+- op: discuss  # 8f17
+  at: '2026-06-08T19:12:52Z'  # 8f17
+  by: agent  # 8f17
+  actor: jgstern_agent  # 8f17
+  clock: 11  # 8f17
+  nonce: 8f17  # 8f17
+  message: "root-cause family cross-link (b1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 8f17

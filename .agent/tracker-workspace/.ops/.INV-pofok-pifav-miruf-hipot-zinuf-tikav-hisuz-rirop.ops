@@ -68,3 +68,18 @@
   nonce: e3d0  # e3d0
   set:  # e3d0
     status: holding  # e3d0
+- op: update  # ffde
+  at: '2026-06-08T18:32:15Z'  # ffde
+  by: agent  # ffde
+  actor: jgstern_agent  # ffde
+  clock: 8  # ffde
+  nonce: ffde  # ffde
+  set:  # ffde
+    status: satisfied  # ffde
+- op: discuss  # 7d1c
+  at: '2026-06-08T18:32:15Z'  # 7d1c
+  by: agent  # 7d1c
+  actor: jgstern_agent  # 7d1c
+  clock: 9  # 7d1c
+  nonce: 7d1c  # 7d1c
+  message: "holding(deprecated)->satisfied: Governance ask shipped: config.yaml:4 invariant allowed_statuses=[satisfied,pending_validation,violated,...]; holding deprecated; models.py:435 KindConfig restricts INV to perpetual-truth statuses (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 7d1c

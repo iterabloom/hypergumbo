@@ -19,3 +19,14 @@
     pr_ref:  # a00b
     description: "F62.A2 (blind severity 4/Significant). Of 24244 edges flagged is_resolved=False, 16438 (67.8%) have NO dst_ref. dst_ref's docstring calls it 'the canonical source of truth for external dsts' and the design contract says it should co-occur with is_resolved=False on every external dst. But the call/decorator analyzers (Go, TypeScript, etc.) correctly set is_resolved=False while never populating dst_ref, leaving only the legacy dst string suffix. The two structured external-identity surfaces are populated by disjoint producers: the import producer fills dst_ref but not the flag; the call producers fill the flag but not dst_ref. Only 7806/24244 (32.2%) carry both consistently. A consumer doing external_targets=[e.dst_ref for e if e.dst_ref] recovers only 32% of external call/decorator targets and must fall back to string-parsing dst — the exact brittleness dst_ref was introduced to eliminate. Fix: every external/unresolved edge carries a populated dst_ref ExternalRef. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # a00b
     fields: {}  # a00b
+- op: update  # 06f7
+  at: '2026-06-08T18:30:32Z'  # 06f7
+  by: agent  # 06f7
+  actor: jgstern_agent  # 06f7
+  clock: 2  # 06f7
+  nonce: 06f7  # 06f7
+  set: {}  # 06f7
+  add:  # 06f7
+    tags: [dogfood_tranche_04]  # 06f7
+  remove:  # 06f7
+    tags: [dogfood_tranch_04]  # 06f7

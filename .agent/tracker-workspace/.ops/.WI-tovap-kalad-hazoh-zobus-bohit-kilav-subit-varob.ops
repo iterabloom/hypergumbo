@@ -28,3 +28,30 @@
   clock: 2  # 11de
   nonce: 11de  # 11de
   message: "Top-level features ARRAY double-population facet (blind-severity-derived priority signal: P2). The top-level features array holds 16 entries against 8 http_route entrypoints: 8 RICH handler-keyed features (handler functions, node_count 5-17, edge_count 4-19) PLUS 8 DEGENERATE route-synthetic features (the :route registration nodes, ALL node_count=1, edge_count=0, zero behavioral info), all first-class entries with distinct ids (no filename collision). A consumer iterating features double-counts each route and must filter out the empty twins — half the inventory is content-free."  # 11de
+- op: update  # 0f9e
+  at: '2026-06-08T18:30:26Z'  # 0f9e
+  by: agent  # 0f9e
+  actor: jgstern_agent  # 0f9e
+  clock: 3  # 0f9e
+  nonce: 0f9e  # 0f9e
+  set: {}  # 0f9e
+  add:  # 0f9e
+    tags: [dogfood]  # 0f9e
+  remove:  # 0f9e
+    tags: [dogfooding]  # 0f9e
+- op: update  # 06bf
+  at: '2026-06-08T18:32:25Z'  # 06bf
+  by: agent  # 06bf
+  actor: jgstern_agent  # 06bf
+  clock: 4  # 06bf
+  nonce: 06bf  # 06bf
+  set: {}  # 06bf
+  add:  # 06bf
+    not_duplicate_of: [WI-kanuj-zukik-majil-gohib-gokom-kusaz-rufib-kukig]  # 06bf
+- op: discuss  # 57cb
+  at: '2026-06-08T18:32:25Z'  # 57cb
+  by: agent  # 57cb
+  actor: jgstern_agent  # 57cb
+  clock: 5  # 57cb
+  nonce: 57cb  # 57cb
+  message: "RELATED_BUT_DISTINCT to WI-kanuj: general-named surface populated only from narrow HTTP producer: tovap=features=http_route projection; kanuj=usage_contexts monocultural HTTP/WS; same fix family, distinct surfaces. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 57cb

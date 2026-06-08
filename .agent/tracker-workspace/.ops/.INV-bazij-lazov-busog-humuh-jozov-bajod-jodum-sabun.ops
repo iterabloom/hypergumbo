@@ -163,3 +163,14 @@
   clock: 18  # 2482
   nonce: '2482'  # 2482
   message: "Validation failed: stable_id collisions reproduced on a fresh substrate. 96 stable_id values shared by >1 node (195 extra nodes); Python share 42 collision groups / 113 nodes. A distinct uncovered mechanism — Python function-local defs omitting the enclosing function from containing_stable_id — collapses 8 distinct 'class Args' in test_cli_commands.py to one stable_id (sha256:3cd0dfc7ff321942). Filed as WI-gitun (P0). The Phase-6-PR3 name+qualified_name fix does not cover function-local Python defs (qualified_name=None there). Moving pending_validation -> violated."  # 2482
+- op: update  # 4a25
+  at: '2026-06-08T18:30:21Z'  # 4a25
+  by: agent  # 4a25
+  actor: jgstern_agent  # 4a25
+  clock: 19  # 4a25
+  nonce: 4a25  # 4a25
+  set: {}  # 4a25
+  add:  # 4a25
+    tags: [dogfood]  # 4a25
+  remove:  # 4a25
+    tags: [dogfooding]  # 4a25

@@ -19,3 +19,14 @@
     pr_ref:  # c013
     description: "**Mechanic**: Framework-pattern matching happens during symbol enrichment but is not surfaced as a tracked pass in `analysis_runs`. The 84 recorded runs contain no entry whose pass name includes `framework`, `pattern`, or `enrich`. Empirically, only 10 of 107 YAML files produce any `meta.concepts` emission on a Python-dominated repo with HTML/CSS/JS sidecars — and two of those 10 names are language analyzers, not framework YAMLs, so the true framework-YAML emission rate is roughly 7/107 (6.5%). A consumer asking \"did the Django patterns apply?\" cannot answer it from the substrate.\n\n**Expectation**: The framework-detection stage appears in `analysis_runs` with per-YAML counters (matches considered, concepts emitted), so consumers can verify pipeline completeness and YAML-level coverage.\n\n**Scope**: All 107 framework-pattern YAML files; the entire framework-detection pipeline stage. Affects coverage/quality dashboards and bakeoff diagnostics for any framework.\n\n**Exposure**: Any consumer dashboarding pipeline completeness; any agent investigating \"why doesn't framework X show up?\"; the project's own validation_report does not cover framework matching either.\n\n**Consequence**: 97 of 107 YAMLs could be loaded-tried-found-nothing or silently skipped — the consumer cannot tell which. Bakeoff diagnostics cannot triage framework gaps because the per-YAML telemetry is absent.\n\n**Source**: F47.A1 (INDEPENDENT, MED — Phase 2 checkpoint ratchet promotion from EXTENSION).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # c013
     fields: {}  # c013
+- op: update  # 4e40
+  at: '2026-06-08T18:30:31Z'  # 4e40
+  by: agent  # 4e40
+  actor: jgstern_agent  # 4e40
+  clock: 2  # 4e40
+  nonce: '4e40'  # 4e40
+  set: {}  # 4e40
+  add:  # 4e40
+    tags: [dogfood_tranche_03]  # 4e40
+  remove:  # 4e40
+    tags: [dogfood_tranch_03]  # 4e40

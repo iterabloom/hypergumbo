@@ -48,3 +48,14 @@
   nonce: f670  # f670
   set:  # f670
     status: deleted  # f670
+- op: update  # 2432
+  at: '2026-06-08T18:30:25Z'  # 2432
+  by: agent  # 2432
+  actor: jgstern_agent  # 2432
+  clock: 5  # 2432
+  nonce: '2432'  # 2432
+  set: {}  # 2432
+  add:  # 2432
+    tags: [dogfood]  # 2432
+  remove:  # 2432
+    tags: [dogfooding]  # 2432

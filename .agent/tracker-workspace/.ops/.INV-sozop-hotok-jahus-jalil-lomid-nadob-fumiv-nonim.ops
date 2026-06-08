@@ -69,3 +69,14 @@
   target_nonce: bc85  # 08b3
   new_text: "Pass-40 input-shape probes staying on INV-sozop scope (F40.B1 silent-rc=0 schema-validation + F40.B4 cache-resolver shares the gap migrated to WI-jukah-zafom per fold-audit 2026-06-03).\n\nMatrix: 6 read-subcommands × 5 input shapes (search, slice, explain, dead-code-maybe, symbols, routes × {missing-file, empty-file (1 byte newline), wrong-schema ({foo:bar}), array-root ([1,2,3]), null-nodes ({schema_version:..., nodes:null})}).\n\nF40.B3: empty file (1 byte newline) tracebacks 6/6 at json.decoder. For a file containing only '\\n', json.load raises JSONDecodeError: 'Expecting value: line 2 column 1' and all 6 subcommands propagate. INV-sozop's \"All --input consumers produce unhandled Python traceback on malformed/wrong-type\" scope extended to empty-file shape.\n\nCell-by-cell:\n|   | missing | empty | wrong_schema | array | null_nodes |\n| search | clean | tb | rc=0 'No symbols' | tb | tb |\n| slice | clean | tb | rc=1 'No symbol main' | tb | tb |\n| explain | clean | tb | rc=1 'No symbol main' | tb | tb |\n| dead-code-maybe | clean | tb | rc=0 'No prod fns' | tb | tb |\n| symbols | clean | tb | rc=0 cached/empty | tb | tb |\n| routes | clean | tb | rc=0 cached/empty | tb | tb |\n18/30 (60%) unhandled traceback cells. 6/6 traceback on empty, array, null_nodes (INV-sozop scope); 0/6 on missing-file (the only consistent shape-handler); 0/6 on wrong_schema (false-clean rc=0 — WI-jukah scope).\n\nF40.B2 contrast: missing-file is the ONLY uniformly-handled shape — 6/6 produce identical 'Error: Input file not found: /path' with rc=1 and zero tracebacks. A clean handler exists but is path-only; doesn't extend to content-validation. Suggests the input-shape validation should be hoisted into the same _open_or_die helper."  # 08b3
   reason: "fold-audit Phase 2b: F40.B1+B4 migrated to WI-jukah; F40.B2+B3 retained"  # 08b3
+- op: update  # cd52
+  at: '2026-06-08T18:30:24Z'  # cd52
+  by: agent  # cd52
+  actor: jgstern_agent  # cd52
+  clock: 7  # cd52
+  nonce: cd52  # cd52
+  set: {}  # cd52
+  add:  # cd52
+    tags: [dogfood]  # cd52
+  remove:  # cd52
+    tags: [dogfooding]  # cd52

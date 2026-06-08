@@ -34,3 +34,14 @@
   clock: 3  # 6f5d
   nonce: 6f5d  # 6f5d
   message: "Dogfood enrichment (member F159.A3-b) — the converse direction, reproduces on the frozen substrate. \"lit\" appears in profile.frameworks with ZERO node/edge framework evidence (0 nodes with meta.framework=lit, 0 edges) — lit is a TS/JS lib and JS/TS symbol extraction is broken (the WI-zavad gap), so the manifest-derived framework has no graph support. So profile.frameworks and the per-node/edge framework meta disagree in BOTH directions: django/fastapi carry evidence but are absent from profile (E03/F159.A3-a), while lit is in profile with no evidence (this facet). Folds onto WI-napuj (no node-level link/provenance for declared frameworks) and onto WI-zavad (the broken JS/TS extraction that leaves lit's frameworks unsupported in the graph). Cross-ref WI-napuj, WI-zavad."  # 6f5d
+- op: update  # cf7d
+  at: '2026-06-08T18:30:28Z'  # cf7d
+  by: agent  # cf7d
+  actor: jgstern_agent  # cf7d
+  clock: 4  # cf7d
+  nonce: cf7d  # cf7d
+  set: {}  # cf7d
+  add:  # cf7d
+    tags: [dogfood]  # cf7d
+  remove:  # cf7d
+    tags: [dogfooding]  # cf7d

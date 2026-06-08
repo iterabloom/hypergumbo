@@ -38,3 +38,18 @@
   nonce: b388  # b388
   set:  # b388
     status: holding  # b388
+- op: update  # efff
+  at: '2026-06-08T18:32:19Z'  # efff
+  by: agent  # efff
+  actor: jgstern_agent  # efff
+  clock: 3  # efff
+  nonce: efff  # efff
+  set:  # efff
+    status: satisfied  # efff
+- op: discuss  # 3e49
+  at: '2026-06-08T18:32:19Z'  # 3e49
+  by: agent  # 3e49
+  actor: jgstern_agent  # 3e49
+  clock: 4  # 3e49
+  nonce: '3e49'  # 3e49
+  message: "holding(deprecated)->satisfied: Chained member-access fix landed across Java/Kotlin/C#/Scala/Python (PR#972/973). 5 cited multi-lang regression tests PASS now (Java class renamed to TestJavaCallEdges). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 3e49

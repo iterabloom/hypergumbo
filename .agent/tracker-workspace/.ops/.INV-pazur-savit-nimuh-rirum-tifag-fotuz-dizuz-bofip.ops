@@ -65,3 +65,14 @@
   clock: 6  # ebdb
   nonce: ebdb  # ebdb
   message: "Precise 3-budget quantification (blind-severity-derived priority signal: P1). Across the three derived JSON budget sketches the nodes_summary overstates serialization: 4k claims included 19 nodes/27 edges but serializes 1 node/0 edges; 16k claims 43/115 but serializes 12/10; 64k claims 139/467 but serializes 75/191. The 4k case is ~19x off on nodes and loses all edges. included.count describes the inclusion computation; a later serialization step shrinks the arrays further without reconciling the summary."  # ebdb
+- op: update  # 7d36
+  at: '2026-06-08T18:30:21Z'  # 7d36
+  by: agent  # 7d36
+  actor: jgstern_agent  # 7d36
+  clock: 7  # 7d36
+  nonce: 7d36  # 7d36
+  set: {}  # 7d36
+  add:  # 7d36
+    tags: [dogfood]  # 7d36
+  remove:  # 7d36
+    tags: [dogfooding]  # 7d36

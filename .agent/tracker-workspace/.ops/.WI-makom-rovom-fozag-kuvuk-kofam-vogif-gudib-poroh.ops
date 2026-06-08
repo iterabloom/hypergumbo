@@ -42,3 +42,14 @@
   clock: 4  # a00f
   nonce: a00f  # a00f
   message: "Fixed in PR #3933. cmd_run now auto-appends .gz to --out path when --gzip is active and path doesn't already end in .gz. Prints a note to stderr. Already-correct .json.gz paths are unchanged."  # a00f
+- op: update  # c33e
+  at: '2026-06-08T18:30:28Z'  # c33e
+  by: agent  # c33e
+  actor: jgstern_agent  # c33e
+  clock: 5  # c33e
+  nonce: c33e  # c33e
+  set: {}  # c33e
+  add:  # c33e
+    tags: [dogfood]  # c33e
+  remove:  # c33e
+    tags: [dogfooding]  # c33e

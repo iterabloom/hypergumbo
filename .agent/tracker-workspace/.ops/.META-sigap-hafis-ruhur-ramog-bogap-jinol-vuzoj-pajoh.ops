@@ -1,0 +1,22 @@
+- op: create  # f680
+  at: '2026-06-08T19:12:02Z'  # f680
+  by: agent  # f680
+  actor: jgstern_agent  # f680
+  clock: 1  # f680
+  nonce: f680  # f680
+  data:  # f680
+    kind: meta_invariant  # f680
+    title: "Family: boundary-synthesis is asymmetric — dst placeholder always minted, src/relationship targets not"  # f680
+    status: violated  # f680
+    priority: 2  # f680
+    parent: META-niguz-hutof-junot-vabiz-vizul-kokul-zudik-pojih  # f680
+    tags:  # f680
+    - connections_sweep_20260608  # f680
+    - root_cause_family  # f680
+    isbefore: []  # f680
+    duplicate_of: []  # f680
+    not_duplicate_of: []  # f680
+    pr_ref:  # f680
+    description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-jukok, WI-mujor, WI-ninuv, WI-jubag. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # f680
+    fields:  # f680
+      statement: "Placeholder synthesis must be symmetric: unresolved edge sources and skipped edge families (extends/instantiates) need the same placeholder fallback that unresolved destinations already receive."  # f680

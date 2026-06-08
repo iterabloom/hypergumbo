@@ -21,3 +21,14 @@
     pr_ref:  # af0b
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family O). Stand-alone finding F30.13 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-30 discussion entry.\n\n## Symptom\n\n`io-boundaries` CLI computes io-boundaries from the YAML registry at consumer-time, despite spec §9.818 saying the producer should stamp boundary info onto edges. The substrate has 0 producer-stamped boundary records; the CLI emits 7891 boundaries by re-deriving at consumer-time.\n\nThis is the \"consumer-compensation masks producer gap\" pattern (pass-30 sub-pattern #11). The behavior is correct on the consumer side but the producer-side gap is invisible — adding new io-boundary categories to the catalog requires the CLI to be updated rather than producers automatically stamping.\n\n## Invariant\n\nSpec §9.818 says producer-stamps. Either:\n1. **Realize the invariant**: each language analyzer that produces edges checks the io-primitives catalog and stamps `edge.meta.boundary=<category>` when the edge target matches. CLI consumes stamped values.\n2. **Reframe the invariant**: spec §9.818 amends to acknowledge consumer-side derivation; document the catalog/CLI relationship explicitly.\n\nPath (1) is the structural fix; path (2) is documentation-only.\n\n## Fix sketch\n\nPath (1): each producer-side edge writer (calls, contains, imports — the candidates per io-primitives) checks the language's io_primitives catalog and stamps `edge.meta.boundary` when the edge target matches a documented IO primitive. CLI removes the recompute path.\n\nPass-33 F33.7 supports: io-boundaries CLI reported 7891 substrate-stamped boundaries when probed; sibling check confirmed 0 actual `edge.meta.boundary` populations in substrate. The 7891 number is exclusively from consumer-time derivation.\n\n## Source provenance\n\n- **F30.13** — INV-luhur discussion entry 2026-06-02 (pass-30 batch).\n- F33.7 supporting (cross-substrate confirmation).\n\nLab notebooks: passes 30, 33.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-io-primitives-catalog-completeness-warn** (Family O — adjacent io_primitives catalog gap).\n- Family O siblings."  # af0b
     fields: {}  # af0b
+- op: update  # 35d4
+  at: '2026-06-08T18:30:28Z'  # 35d4
+  by: agent  # 35d4
+  actor: jgstern_agent  # 35d4
+  clock: 2  # 35d4
+  nonce: 35d4  # 35d4
+  set: {}  # 35d4
+  add:  # 35d4
+    tags: [dogfood]  # 35d4
+  remove:  # 35d4
+    tags: [dogfooding]  # 35d4

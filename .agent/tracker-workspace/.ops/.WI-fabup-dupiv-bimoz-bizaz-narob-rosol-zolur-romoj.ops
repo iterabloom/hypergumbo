@@ -35,3 +35,14 @@
   clock: 3  # 9f7a
   nonce: 9f7a  # 9f7a
   message: "[+ tranch_04: WI-fuvuj — related (card 022/F69.A2): method/bare-receiver Python I/O (f.read(), s.send()) loses the module qualifier (dst=external:read) and misclassifies into external_potential — the same receiver-type-inference gap this ambiguous_names-wiring row addresses, here surfacing on the io-boundary classification.]"  # 9f7a
+- op: update  # 710c
+  at: '2026-06-08T18:30:26Z'  # 710c
+  by: agent  # 710c
+  actor: jgstern_agent  # 710c
+  clock: 4  # 710c
+  nonce: 710c  # 710c
+  set: {}  # 710c
+  add:  # 710c
+    tags: [dogfood]  # 710c
+  remove:  # 710c
+    tags: [dogfooding]  # 710c

@@ -1,0 +1,22 @@
+- op: create  # 80e7
+  at: '2026-06-08T19:12:21Z'  # 80e7
+  by: agent  # 80e7
+  actor: jgstern_agent  # 80e7
+  clock: 1  # 80e7
+  nonce: '80e7'  # 80e7
+  data:  # 80e7
+    kind: meta_invariant  # 80e7
+    title: "Family: js_ts.py .js code path degraded relative to .ts"  # 80e7
+    status: violated  # 80e7
+    priority: 2  # 80e7
+    parent:  # 80e7
+    tags:  # 80e7
+    - connections_sweep_20260608  # 80e7
+    - root_cause_family  # 80e7
+    isbefore: []  # 80e7
+    duplicate_of: []  # 80e7
+    not_duplicate_of: []  # 80e7
+    pr_ref:  # 80e7
+    description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-golap, WI-zavad. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # 80e7
+    fields:  # 80e7
+      statement: "The .js dispatch leg of js_ts.py must emit signatures, calls, imports, and function nodes at parity with the .ts leg for equivalent constructs."  # 80e7

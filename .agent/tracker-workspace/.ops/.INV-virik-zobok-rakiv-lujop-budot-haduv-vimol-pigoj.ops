@@ -191,3 +191,19 @@
   clock: 22  # 2c4f
   nonce: 2c4f  # 2c4f
   message: "[+ tranche-05 chunk-1 F81.A2] validation failed: edge.meta.evidence_spans and sibling meta.evidence[] are populated on 0/110533 edges on fresh substrate, despite spec §13 listing evidence_spans under a 🟩 'Required field presence' claim. evidence_lang + evidence_spans are dataclass-declared Optional[T]=None with a conditional ir.py writer that never fires. Reproduced fresh; flipped pending_validation→violated. Evidence: dogfood_tranche_05/pass_81.md."  # 2c4f
+- op: update  # 0e43
+  at: '2026-06-08T18:32:23Z'  # 0e43
+  by: agent  # 0e43
+  actor: jgstern_agent  # 0e43
+  clock: 23  # 0e43
+  nonce: '0e43'  # 0e43
+  set: {}  # 0e43
+  add:  # 0e43
+    not_duplicate_of: [INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap]  # 0e43
+- op: discuss  # 2699
+  at: '2026-06-08T18:32:24Z'  # 2699
+  by: agent  # 2699
+  actor: jgstern_agent  # 2699
+  clock: 24  # 2699
+  nonce: '2699'  # 2699
+  message: "RELATED_BUT_DISTINCT to INV-nuzas: virik symptom-1 (classification_failures/ambiguous_paths empty) is the unwritten provenance channel for nuzas's tier mis-classification; distinct fixes. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 2699

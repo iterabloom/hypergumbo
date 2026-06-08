@@ -1,0 +1,22 @@
+- op: create  # e194
+  at: '2026-06-08T19:12:14Z'  # e194
+  by: agent  # e194
+  actor: jgstern_agent  # e194
+  clock: 1  # e194
+  nonce: e194  # e194
+  data:  # e194
+    kind: meta_invariant  # e194
+    title: "Family: edge evidence_type field is not single-valued / pathway-pure (ADR-0028)"  # e194
+    status: violated  # e194
+    priority: 2  # e194
+    parent: META-bifif-luzin-nuzul-fogom-famig-hupoh-zanav-pohud  # e194
+    tags:  # e194
+    - connections_sweep_20260608  # e194
+    - root_cause_family  # e194
+    isbefore: []  # e194
+    duplicate_of: []  # e194
+    not_duplicate_of: []  # e194
+    pr_ref:  # e194
+    description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-dovus, WI-guvup, WI-molit, WI-lojug. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # e194
+    fields:  # e194
+      statement: "edge.meta.evidence_type must hold exactly one axis: no fragmented aliases for one pathway, no undocumented values, no resolution-state smuggled into the label, no call-specific default leaking onto non-call edges."  # e194

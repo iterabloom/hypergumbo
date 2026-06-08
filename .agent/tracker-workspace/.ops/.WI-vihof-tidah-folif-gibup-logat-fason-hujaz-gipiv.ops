@@ -34,3 +34,14 @@
   clock: 3  # 66de
   nonce: 66de  # 66de
   message: "superseded by INV-jukok — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # 66de
+- op: update  # 1ef2
+  at: '2026-06-08T18:30:31Z'  # 1ef2
+  by: agent  # 1ef2
+  actor: jgstern_agent  # 1ef2
+  clock: 4  # 1ef2
+  nonce: 1ef2  # 1ef2
+  set: {}  # 1ef2
+  add:  # 1ef2
+    tags: [dogfood_tranche_03]  # 1ef2
+  remove:  # 1ef2
+    tags: [dogfood_tranch_03]  # 1ef2

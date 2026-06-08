@@ -19,3 +19,14 @@
     pr_ref:  # 71bd
     description: "**Mechanic**: The JSON output enumerates 9 boundary keys: `env_read, external_potential, fs_read, fs_write, ipc_recv, logging, net_recv, net_send, subprocess`. The spec defines 12 boundary categories: `fs_read, fs_write, net_send, net_recv, ipc_send, ipc_recv, env_read, env_write, subprocess, browser_storage_read, browser_storage_write, unknown_dynamic`. The CLI presents 7 of 12 spec values plus two extensions; misses 5 spec values; and its `external_potential` bucket is essentially \"unresolved call to a method whose name happens to also appear somewhere\", with primitive samples like `append`, `get`, `add`, `split`, `startswith`, `items` — inflating apparent IO surface ~8x.\n\n**Expectation**: The CLI emits the spec's 12 categories and nothing else; or the spec is updated to enumerate the actually-emitted vocabulary.\n\n**Scope**: The `io-boundaries` JSON contract on every invocation; 2 of 9 emitted categories are non-spec; 5 of 12 spec categories are absent.\n\n**Exposure**: Any consumer writing a parser against the spec's documented controlled vocabulary; any consumer expecting the spec list to enumerate possible outputs.\n\n**Consequence**: Parsers reject unknown values or silently drop them; consumers cannot rely on the documented vocabulary as a contract; the `external_potential` bucket inflates IO-surface estimates by ~8x via method-name collisions.\n\n**Source**: F52.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 71bd
     fields: {}  # 71bd
+- op: update  # 2628
+  at: '2026-06-08T18:30:30Z'  # 2628
+  by: agent  # 2628
+  actor: jgstern_agent  # 2628
+  clock: 2  # 2628
+  nonce: '2628'  # 2628
+  set: {}  # 2628
+  add:  # 2628
+    tags: [dogfood_tranche_03]  # 2628
+  remove:  # 2628
+    tags: [dogfood_tranch_03]  # 2628

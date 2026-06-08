@@ -73,3 +73,14 @@
   clock: 8  # 29c2
   nonce: 29c2  # 29c2
   message: "Cross-ref backfill (2026-05-30, linked-pile L6 investigation): item shipped. PR #3803 (schema-rule fixture foundation) + PR #3807 (CI integration) reduced schema-conformance gate runtime from 3.5min → 5s. Closing as done. Methodologically adjacent to WI-rolol (the structural-fix trial filed during the unlinked campaign)."  # 29c2
+- op: update  # baea
+  at: '2026-06-08T18:30:27Z'  # baea
+  by: agent  # baea
+  actor: jgstern_agent  # baea
+  clock: 9  # baea
+  nonce: baea  # baea
+  set: {}  # baea
+  add:  # baea
+    tags: [dogfood]  # baea
+  remove:  # baea
+    tags: [dogfooding]  # baea

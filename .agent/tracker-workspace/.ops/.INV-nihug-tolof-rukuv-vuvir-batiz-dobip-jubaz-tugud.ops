@@ -75,3 +75,30 @@
   clock: 7  # 1fd2
   nonce: 1fd2  # 1fd2
   message: "Pass-21 confirmation observation. Re-measured on fresh post-INV-sugat-closure substrate. `limits.skipped_passes` at the top level was not re-checked, but `AR.skipped_passes` is 0/84 (0%) across all AnalysisRuns — same as pre-fix state. Either the fix that flipped this to pending_validation was not actually deployed, or it was deployed but only the producer side (top-level limits) got it and the consumer side (per-AR skipped_passes copy) was left untouched. Suggesting flip pending_validation → violated unless someone can identify the deployed fix that should have addressed this. Pass-21 notebook entry: `~/hypergumbo_lab_notebook/notebookjournal_06012026_2310_pass21.md`."  # 1fd2
+- op: update  # 1b60
+  at: '2026-06-08T18:30:24Z'  # 1b60
+  by: agent  # 1b60
+  actor: jgstern_agent  # 1b60
+  clock: 8  # 1b60
+  nonce: 1b60  # 1b60
+  set: {}  # 1b60
+  add:  # 1b60
+    tags: [dogfood]  # 1b60
+  remove:  # 1b60
+    tags: [dogfooding]  # 1b60
+- op: update  # 176b
+  at: '2026-06-08T18:32:22Z'  # 176b
+  by: agent  # 176b
+  actor: jgstern_agent  # 176b
+  clock: 9  # 176b
+  nonce: 176b  # 176b
+  set: {}  # 176b
+  add:  # 176b
+    not_duplicate_of: [WI-mipul-fajaf-dibab-vinap-kafur-podov-huzik-dunuh]  # 176b
+- op: discuss  # e10f
+  at: '2026-06-08T18:32:22Z'  # e10f
+  by: agent  # e10f
+  actor: jgstern_agent  # e10f
+  clock: 10  # e10f
+  nonce: e10f  # e10f
+  message: "RELATED_BUT_DISTINCT to WI-mipul: per-pass meta stamping tail; mipul closes nihug/lidul/gizik residual on override-analyze() analyzer cohort. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # e10f

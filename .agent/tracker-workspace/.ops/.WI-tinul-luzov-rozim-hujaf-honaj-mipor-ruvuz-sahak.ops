@@ -19,3 +19,35 @@
     pr_ref:  # e9bc
     description: "**Mechanism.** Spec lines 234 & 278 document AnalysisRun.version as e.g. 'hypergumbo-0.1.0' (WITH the hypergumbo- prefix), but the 83 conforming ARs emit bare '5.0.1' (NO prefix). Meanwhile limits.analyzer_version = 'hypergumbo-5.0.1' (prefixed) and reproducibility_context.captured.hypergumbo_version = '5.0.1' (bare). So three in-map surfaces carrying the tool version disagree on whether it is prefixed: AR.version bare / limits.analyzer_version prefixed / captured.hypergumbo_version bare, and none matches the spec's prefixed example.\n\n**Consequence.** A consumer joining AR.version against limits.analyzer_version for an equality check ('did this AR run under the declared analyzer version') fails on the hypergumbo- prefix mismatch.\n\n**Related (distinct).** Family of the WI-luhur version-field drifts but the AR.version prefix-vs-spec / cross-surface prefix disagreement is named in no ledger row (WI-mipul=pass_version, WI-mifok=pass_version absence, the play-routes-version='1' row=the singleton outlier value). Cross-link to the card-007 play-routes row. Source: dogfood_tranche_07 F124.A2, deterministic frozen read."  # e9bc
     fields: {}  # e9bc
+- op: update  # 46aa
+  at: '2026-06-08T19:12:55Z'  # 46aa
+  by: agent  # 46aa
+  actor: jgstern_agent  # 46aa
+  clock: 2  # 46aa
+  nonce: 46aa  # 46aa
+  set: {}  # 46aa
+  add:  # 46aa
+    not_duplicate_of: [WI-vibag-bavos-bibok-humoz-fudaf-tamul-gahuj-bofot]  # 46aa
+- op: discuss  # a702
+  at: '2026-06-08T19:12:55Z'  # a702
+  by: agent  # a702
+  actor: jgstern_agent  # a702
+  clock: 3  # a702
+  nonce: a702  # a702
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # a702
+- op: update  # fc6c
+  at: '2026-06-08T19:12:55Z'  # fc6c
+  by: agent  # fc6c
+  actor: jgstern_agent  # fc6c
+  clock: 4  # fc6c
+  nonce: fc6c  # fc6c
+  set: {}  # fc6c
+  add:  # fc6c
+    not_duplicate_of: [WI-romup-hibik-suhuk-zogak-pulip-sipib-sofof-dogus]  # fc6c
+- op: discuss  # c5a9
+  at: '2026-06-08T19:12:55Z'  # c5a9
+  by: agent  # c5a9
+  actor: jgstern_agent  # c5a9
+  clock: 5  # c5a9
+  nonce: c5a9  # c5a9
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # c5a9

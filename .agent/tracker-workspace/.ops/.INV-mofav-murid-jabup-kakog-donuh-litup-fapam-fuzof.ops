@@ -49,3 +49,14 @@
   clock: 4  # 1b52
   nonce: 1b52  # 1b52
   message: "Fixed in PR #3871 (367693c99b). Python analyzer now emits every FunctionDef/AsyncFunctionDef at any nesting depth as a Symbol with a qualified name (outer.inner / outermost.middle.inner), and bare-name calls inside the outer body resolve through a per-parent inner_scope map before falling through to module scope (Python LEGB). End-to-end on sketch.py's _collect_important_files validation case: 0 → 4 inner Symbols, 0 → 4 outer-to-inner calls edges. Five new tests + four updated tests pin the invariant. WI-hahor (the isbefore-blocker) covered as a downstream consumer surface."  # 1b52
+- op: update  # f1ca
+  at: '2026-06-08T18:30:23Z'  # f1ca
+  by: agent  # f1ca
+  actor: jgstern_agent  # f1ca
+  clock: 5  # f1ca
+  nonce: f1ca  # f1ca
+  set: {}  # f1ca
+  add:  # f1ca
+    tags: [dogfood]  # f1ca
+  remove:  # f1ca
+    tags: [dogfooding]  # f1ca

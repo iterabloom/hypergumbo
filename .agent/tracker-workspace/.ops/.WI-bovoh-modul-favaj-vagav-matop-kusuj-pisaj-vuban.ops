@@ -18,3 +18,18 @@
     pr_ref:  # 3454
     description: "**Defect.** The validation report's id-format check uses a permissive regex that accepts node ids whose kind-slot is not a registered symbol kind.\n\n**Mechanic.** The id-format validator (_check_id_format) matches ids against a permissive regex that does not assert the kind-slot component is a registered symbol kind, so ids carrying unregistered/mislabeled kind-slots pass validation.\n\n**Scope.** The validation report's id-format check over node ids. The permissive regex passes 1444 nodes whose kind-slots are not registered symbol kinds without raising a violation.\n\n**Expectation.** The id-format check would assert the kind-slot is a registered symbol kind, flagging ids whose kind component is not in the kind registry.\n\n**Fix.** Make _check_id_format assert the id's kind-slot is a registered symbol kind (cross-check the parsed kind component against the symbol-kind registry).\n\n**Consequence.** Nodes with unregistered or mislabeled kind-slots pass validation undetected, so a consumer keying behavior on the id kind-slot (e.g. routing or filtering by kind parsed from the id) silently misclassifies those 1444 nodes while the report asserts the ids are well-formed.\n\n**Cross-refs.** WI-pubiv / WI-kugaj document the underlying data (node.id kind-slot disagrees with node.kind on ~1645 external_symbol nodes; kind-slot encodes role/route/event_subscriber the kind field normalizes away). This row is the distinct validator-scope fix — the check that should have caught that data but does not."  # 3454
     fields: {}  # 3454
+- op: update  # fb48
+  at: '2026-06-08T19:12:53Z'  # fb48
+  by: agent  # fb48
+  actor: jgstern_agent  # fb48
+  clock: 2  # fb48
+  nonce: fb48  # fb48
+  set:  # fb48
+    parent: META-fimas-gotaf-dapoj-zarad-volud-doliz-fodok-gapuv  # fb48
+- op: discuss  # 1396
+  at: '2026-06-08T19:12:53Z'  # 1396
+  by: agent  # 1396
+  actor: jgstern_agent  # 1396
+  clock: 3  # 1396
+  nonce: '1396'  # 1396
+  message: "root-cause family member (b3) (connections-sweep 2026-06-08T1900Z)"  # 1396

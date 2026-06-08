@@ -42,3 +42,14 @@
   clock: 4  # 5772
   nonce: '5772'  # 5772
   message: "Fixed in PR #3876 (dce0a8170e). New extract_python_param_annotations resolves type annotations (builtins, from-import, dotted, generic-with-resolvable-outer) to module hints; extract_python_receiver_hints uses them as fallback when DDG has no def-use binding. Refinement pass now runs whenever param annotations OR DDG edges exist (previously DDG-only, which missed short helpers). Empirical: unresolved-external 'replace' edges 48 -> 29 (40% reduction); 778 edges rewritten across hypergumbo self-analysis. verify-claims claim count steady at 4/18 — residuals are unannotated-receiver FPs, which fall under spec option (2) 'Module-name conflict map in _sink_module_compatible', a separate fix path. WI-dozon spec option (1) 'Parameter-receiver type pinning' fully implemented."  # 5772
+- op: update  # 884d
+  at: '2026-06-08T18:30:23Z'  # 884d
+  by: agent  # 884d
+  actor: jgstern_agent  # 884d
+  clock: 5  # 884d
+  nonce: 884d  # 884d
+  set: {}  # 884d
+  add:  # 884d
+    tags: [dogfood]  # 884d
+  remove:  # 884d
+    tags: [dogfooding]  # 884d

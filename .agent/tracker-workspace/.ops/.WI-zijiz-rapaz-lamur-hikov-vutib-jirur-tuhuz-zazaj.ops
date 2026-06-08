@@ -20,3 +20,14 @@
     pr_ref:  # da30
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family I). Stand-alone finding F27.4 previously folded onto INV-numat. Full evidence remains on INV-numat's pass-27 discussion entry; this row provides discrete representation.\n\n## Symptom\n\nEntrypoint records lack an `id` field while sibling top-level surfaces (features, usage_contexts) have sha256-hashed ids:\n\n| Surface | id field | Format |\n|---|---|---|\n| nodes | id | `<lang>:<path>:<span>:<name>:<kind>` |\n| edges | id, edge_key | `edge:sha256:<hex>` / `edgekey:sha256:<hex>` |\n| features | id | `sha256:<hex>` |\n| usage_contexts | id | `usage:sha256:<hex>` |\n| **entrypoints** | **(absent)** | — |\n\nConsumers can't reference an Entrypoint by stable identity, only by the node it points to (`symbol_id`). When entrypoints are renumbered or re-derived (e.g., compact subcommand reorders), there's no cross-substrate ID to track.\n\n## Invariant\n\nEntrypoint records have an `id` field with stable construction. The construction should encode `(kind, symbol_id, label)` so the id is reproducible across runs.\n\n## Fix sketch\n\nAdd `Entrypoint.id` populated at emission time as `entrypoint:sha256:<hex of canonical-key>`. Cousin pattern to feature.id / usage_context.id. Spec.md adds a §9 sub-section per the catalog at pass-27 F27.2 (6 sibling hashed-id fields). The audit places this row alongside WI-entrypoint-record-provenance (Family H) — both are EP-record gaps and could share a single fix-PR.\n\n## Source provenance\n\n- **F27.4** — INV-numat discussion entry 2026-06-02 (pass-27 batch).\n\nLab notebook: pass 27 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-numat**.\n- Sibling: **WI-entrypoint-record-provenance** (Family H — EP records lack evidence_type/source; both are EP-record schema gaps).\n- Sibling: **INV-kurup** (identifier-format META; 6 sibling hashed-id fields with EP id absent per pass-27 F27.2).\n- Family I siblings."  # da30
     fields: {}  # da30
+- op: update  # c32c
+  at: '2026-06-08T18:30:28Z'  # c32c
+  by: agent  # c32c
+  actor: jgstern_agent  # c32c
+  clock: 2  # c32c
+  nonce: c32c  # c32c
+  set: {}  # c32c
+  add:  # c32c
+    tags: [dogfood]  # c32c
+  remove:  # c32c
+    tags: [dogfooding]  # c32c

@@ -82,3 +82,14 @@
   clock: 8  # c0f0
   nonce: c0f0  # c0f0
   message: "Merged in 66413c9393 (PR #3850). Implements honk-threshold-with-retention lifecycle policy: HYPERGUMBO_CACHE_HONK_GB env var (default 1.0 GiB; 0/off silences), loud stderr honk at end of cache-status AND end of hypergumbo run, cache-status --per-repo for bloat identification, cache-clear --repo / --keep-latest N for targeted prune. No auto-eviction at any threshold. 24 new tests; cli.py at 100% coverage; 2524 tests green."  # c0f0
+- op: update  # 5eba
+  at: '2026-06-08T18:30:23Z'  # 5eba
+  by: agent  # 5eba
+  actor: jgstern_agent  # 5eba
+  clock: 9  # 5eba
+  nonce: 5eba  # 5eba
+  set: {}  # 5eba
+  add:  # 5eba
+    tags: [dogfood]  # 5eba
+  remove:  # 5eba
+    tags: [dogfooding]  # 5eba

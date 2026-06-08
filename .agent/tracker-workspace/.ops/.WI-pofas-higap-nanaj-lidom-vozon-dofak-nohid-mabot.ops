@@ -56,3 +56,14 @@
   clock: 5  # 6fd6
   nonce: 6fd6  # 6fd6
   message: "Severity reconsider (2026-05-30, linked-pile L3 investigation): P1 → P2. WI-pofas duplicates the WI-gogif umbrella's claim at different granularity (a count of 5 conventions × 15 subcommands). Better-classified as audit-evidence carrier than as load-bearing fix-claim. WI-gogif is the actual P2 fix-anchor; WI-pofas tracks the count for re-verification. Demoting priority avoids competing P1s for the same architectural fix."  # 6fd6
+- op: update  # 4f16
+  at: '2026-06-08T18:30:25Z'  # 4f16
+  by: agent  # 4f16
+  actor: jgstern_agent  # 4f16
+  clock: 6  # 4f16
+  nonce: 4f16  # 4f16
+  set: {}  # 4f16
+  add:  # 4f16
+    tags: [dogfood]  # 4f16
+  remove:  # 4f16
+    tags: [dogfooding]  # 4f16

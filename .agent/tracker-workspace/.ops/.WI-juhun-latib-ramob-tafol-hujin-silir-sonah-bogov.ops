@@ -20,3 +20,14 @@
     pr_ref:  # 193e
     description: "F64.A1 (blind severity 1/Cosmetic; positive control). Three independent runs of an identical fixture produce byte-identical output once five non-semantic field-classes (execution_id, origin_run_id, started_at, duration_ms, generated_at) are neutralized and the analysis_runs[]/nodes[]/edges[] arrays are sorted. Every content-derived identity field — nodes[].id, nodes[].stable_id, edges[].id, and the per-pass run_signature content hash — is bit-for-bit stable across runs. The documented L2 'functionally identical up to OS/hardware variation' reproducibility contract HOLDS; the only churn is in a handful of provenance/timing fields. This SCOPES the separate byte-reproducibility gap (card 010/WI-pifaj F64.A2) to provenance/timing fields only — the analysis itself is deterministic. No negative consequence. Filed for trend-cohort completeness (clearing measurement). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 193e
     fields: {}  # 193e
+- op: update  # 77c5
+  at: '2026-06-08T18:30:33Z'  # 77c5
+  by: agent  # 77c5
+  actor: jgstern_agent  # 77c5
+  clock: 2  # 77c5
+  nonce: 77c5  # 77c5
+  set: {}  # 77c5
+  add:  # 77c5
+    tags: [dogfood_tranche_04]  # 77c5
+  remove:  # 77c5
+    tags: [dogfood_tranch_04]  # 77c5

@@ -48,3 +48,14 @@
   nonce: '6367'  # 6367
   set:  # 6367
     status: deleted  # 6367
+- op: update  # 1ecf
+  at: '2026-06-08T18:30:25Z'  # 1ecf
+  by: agent  # 1ecf
+  actor: jgstern_agent  # 1ecf
+  clock: 5  # 1ecf
+  nonce: 1ecf  # 1ecf
+  set: {}  # 1ecf
+  add:  # 1ecf
+    tags: [dogfood]  # 1ecf
+  remove:  # 1ecf
+    tags: [dogfooding]  # 1ecf

@@ -47,3 +47,19 @@
   clock: 4  # a0cb
   nonce: a0cb  # a0cb
   message: "[+ tranche-05 chunk-1 F82.A5 — related] access_mode='write' also stamped on constructors (instantiates/ast_new) and collection mutations (append/add/extend) — a write-position-vs-I/O-write conflation distinct from the read-as-write mislabeling this invariant tracks. Filed as WI-hapab-tapav-lalav-moloz-dopap-gipap-hovin-karuj."  # a0cb
+- op: update  # 07c2
+  at: '2026-06-08T18:32:24Z'  # 07c2
+  by: agent  # 07c2
+  actor: jgstern_agent  # 07c2
+  clock: 5  # 07c2
+  nonce: 07c2  # 07c2
+  set: {}  # 07c2
+  add:  # 07c2
+    not_duplicate_of: [INV-tibob-liluf-pisiv-lavag-hikin-pilil-tasik-tilus]  # 07c2
+- op: discuss  # 3913
+  at: '2026-06-08T18:32:24Z'  # 3913
+  by: agent  # 3913
+  actor: jgstern_agent  # 3913
+  clock: 6  # 3913
+  nonce: '3913'  # 3913
+  message: "RELATED_BUT_DISTINCT to INV-tibob: access_mode field: kudug = wrong values (read mislabeled write); tibob = absent values (0% coverage on 12/17 edge types) + undocumented coverage policy. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 3913

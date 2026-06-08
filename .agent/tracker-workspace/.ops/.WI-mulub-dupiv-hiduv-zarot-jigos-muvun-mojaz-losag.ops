@@ -33,3 +33,14 @@
   clock: 3  # 9bd1
   nonce: 9bd1  # 9bd1
   message: "Re-confirmed + quantified on fresh substrate (dogfood_tranche_07 F125.A2): a full census of the 22 distinct substrate edge.meta keys against the 56-entry MetaKeySpec (axis_meta_keys.py) finds 12 unregistered: channel, client_framework, construct, cross_language, evidence_type, query_type, queue_type, server_framework, table_name, topic, topic_type, url_path. evidence_type is governed by the dedicated evidence_types.py registry (its MetaKeySpec absence is expected), so 11 linker-emitted WS/MQ/DB keys are genuinely unregistered (vs this row's original 5). All 11 are also undocumented in docs/schema.json (0 hits) and mostly in docs/hypergumbo-spec.md. Quantification refinement of this row's registry-drift finding."  # 9bd1
+- op: update  # 12fa
+  at: '2026-06-08T18:30:31Z'  # 12fa
+  by: agent  # 12fa
+  actor: jgstern_agent  # 12fa
+  clock: 4  # 12fa
+  nonce: 12fa  # 12fa
+  set: {}  # 12fa
+  add:  # 12fa
+    tags: [dogfood_tranche_03]  # 12fa
+  remove:  # 12fa
+    tags: [dogfood_tranch_03]  # 12fa

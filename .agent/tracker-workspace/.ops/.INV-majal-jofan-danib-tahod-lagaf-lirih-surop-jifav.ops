@@ -34,3 +34,18 @@
   clock: 3  # 7427
   nonce: '7427'  # 7427
   message: "Fixed in PR #2049. scoped_var_types now tracks all short-var-declaration variables (even without inferred type) and _extract_function_reference_edges skips identifiers found in scoped_vars."  # 7427
+- op: update  # ec7d
+  at: '2026-06-08T18:32:18Z'  # ec7d
+  by: agent  # ec7d
+  actor: jgstern_agent  # ec7d
+  clock: 4  # ec7d
+  nonce: ec7d  # ec7d
+  set:  # ec7d
+    status: satisfied  # ec7d
+- op: discuss  # 9af6
+  at: '2026-06-08T18:32:18Z'  # 9af6
+  by: agent  # 9af6
+  actor: jgstern_agent  # 9af6
+  clock: 5  # 9af6
+  nonce: 9af6  # 9af6
+  message: "holding(deprecated)->satisfied: go.py builds scoped_var_types (1525-1709), passes scoped_vars into _extract_function_reference_edges (2687) which skips identifiers in scoped_vars (1905-1911). PR #2049 fix present. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 9af6

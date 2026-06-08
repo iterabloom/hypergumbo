@@ -41,3 +41,14 @@
   clock: 4  # 7f2e
   nonce: 7f2e  # 7f2e
   message: "OPERATOR-SURFACED — fresh reproduction on a wont_do item; may warrant operator review. Dogfood tranche 05 facet (F83.A3 / anon-card-019): refines the linker zero-emit observation with the node-vs-edge asymmetry. 671/34396 nodes (1.95%) participate in ZERO edges. subprocess-linker emits 78 synthetic nodes / 78 orphans (100%); graphql-resolver-linker 11/11 orphaned; ALL 113 synthetic call_site nodes are orphans. dispatches_to edges come only from decorator-dispatch/type-hierarchy/rust-trait, never subprocess-linker. Of the 113 orphaned call_site nodes: subprocess-linker 78 + http-linker 18 + database-query-linker 17. http-linker is a THIRD call_site orphan-producer (emits client-HTTP-call nodes like 'GET /api/users' but never connects them to a route/handler), not previously named alongside subprocess/graphql; database-query-linker is the only call_site producer that connects any nodes (17/34, via references edges). websocket-linker (30 nodes) by contrast DOES wire edges (0 orphans). These synthetic symbols inflate node/symbol/search counts and supply-chain tier tallies while contributing nothing to the call graph. Evidence: frozen substrate.json (probe_1_orphans.log, probe_1_subproc.log). Blind severity 3/5, reproduced on frozen substrate. NOT auto-reopened (item is wont_do) — surfacing to operator for review only."  # 7f2e
+- op: update  # dbd7
+  at: '2026-06-08T18:30:31Z'  # dbd7
+  by: agent  # dbd7
+  actor: jgstern_agent  # dbd7
+  clock: 5  # dbd7
+  nonce: dbd7  # dbd7
+  set: {}  # dbd7
+  add:  # dbd7
+    tags: [dogfood_tranche_03]  # dbd7
+  remove:  # dbd7
+    tags: [dogfood_tranch_03]  # dbd7

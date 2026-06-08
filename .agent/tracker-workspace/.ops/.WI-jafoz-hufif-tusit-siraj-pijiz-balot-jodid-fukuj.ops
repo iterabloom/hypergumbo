@@ -26,3 +26,14 @@
   clock: 2  # 469e
   nonce: 469e  # 469e
   message: "[related to WI-gabos — same derived_skipped field; WI-gabos tracks {files,paths} shape divergence, this tracks gitignore short-circuit suppressing accounting]"  # 469e
+- op: update  # 4b20
+  at: '2026-06-08T18:30:30Z'  # 4b20
+  by: agent  # 4b20
+  actor: jgstern_agent  # 4b20
+  clock: 3  # 4b20
+  nonce: 4b20  # 4b20
+  set: {}  # 4b20
+  add:  # 4b20
+    tags: [dogfood_tranche_03]  # 4b20
+  remove:  # 4b20
+    tags: [dogfood_tranch_03]  # 4b20

@@ -45,3 +45,18 @@
   set:  # 8cce
     status: holding  # 8cce
     description: "Function references in non-call contexts. Fixed: Java method_reference (PR #1372), Kotlin callable_reference (PR #1372), Go struct_field_reference (PR #1365), Python dict/variable/argument/list references (PR #1373), Ruby method(:name) (PR #1374), Scala eta-expansion (PR #1374), C &function pointer (PR #1375), C++ &function/&Class::method pointer (PR #1375), C# method groups (PR #1378), Swift function references (PR #1380). Remaining: Groovy .& (grammar gap in tree-sitter-groovy, produces ERROR nodes — cannot fix without grammar change)."  # 8cce
+- op: update  # d4ce
+  at: '2026-06-08T18:32:14Z'  # d4ce
+  by: agent  # d4ce
+  actor: jgstern_agent  # d4ce
+  clock: 5  # d4ce
+  nonce: d4ce  # d4ce
+  set:  # d4ce
+    status: satisfied  # d4ce
+- op: discuss  # e060
+  at: '2026-06-08T18:32:14Z'  # e060
+  by: agent  # e060
+  actor: jgstern_agent  # e060
+  clock: 6  # e060
+  nonce: e060  # e060
+  message: "holding(deprecated)->satisfied: non-call function refs handled in 10 analyzers per desc (PR#1365-1380); confirmed swift.py:936 'non-call contexts (INV-dinur)' + csharp.py:1465 method_group. Only Groovy .& blocked by upstream grammar (tracker-hygiene-sweep 2026-06-08T174504Z)"  # e060

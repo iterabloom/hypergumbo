@@ -1,0 +1,22 @@
+- op: create  # cbbe
+  at: '2026-06-08T19:12:07Z'  # cbbe
+  by: agent  # cbbe
+  actor: jgstern_agent  # cbbe
+  clock: 1  # cbbe
+  nonce: cbbe  # cbbe
+  data:  # cbbe
+    kind: meta_invariant  # cbbe
+    title: "Family: edge confidence is a hardcoded per-emitter constant, not evidence-derived"  # cbbe
+    status: violated  # cbbe
+    priority: 2  # cbbe
+    parent: META-jalur-mikob-vatub-gagam-lomib-rojud-madip-rafil  # cbbe
+    tags:  # cbbe
+    - connections_sweep_20260608  # cbbe
+    - root_cause_family  # cbbe
+    isbefore: []  # cbbe
+    duplicate_of: []  # cbbe
+    not_duplicate_of: []  # cbbe
+    pr_ref:  # cbbe
+    description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-suvil, WI-fuhof, WI-gifat, WI-suvat, WI-botif, WI-vakuh, WI-motug, WI-humok. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # cbbe
+    fields:  # cbbe
+      statement: "Edge confidence must be a deterministic function of evidence per the documented EVIDENCE_CONFIDENCE_MATRIX / 0.30 default / linker floor — not a hardcoded constant that diverges per emitter."  # cbbe

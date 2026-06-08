@@ -37,3 +37,14 @@
   clock: 3  # e578
   nonce: e578  # e578
   message: "Fixed in PR #3878 (merged at 82b911518e). _collect_important_files now filters external-boundary symbols via is_external_boundary at the top of the function, before centrality aggregation. Empirical: hypergumbo self-analysis sketch '<external>' occurrences 1→0. Quantitative claim is the boolean elimination of the placeholder, not a percentage — no awaits_bakeoff_validation tag warranted since the assertion is provable from any single self-analysis run (test_excludes_external_boundary_symbols pins the unit invariant) and there are no cross-repo regressions to validate. Tagged sketch/self_analysis/dogfooding."  # e578
+- op: update  # 2611
+  at: '2026-06-08T18:30:23Z'  # 2611
+  by: agent  # 2611
+  actor: jgstern_agent  # 2611
+  clock: 4  # 2611
+  nonce: '2611'  # 2611
+  set: {}  # 2611
+  add:  # 2611
+    tags: [dogfood]  # 2611
+  remove:  # 2611
+    tags: [dogfooding]  # 2611

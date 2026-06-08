@@ -1,0 +1,22 @@
+- op: create  # 7d75
+  at: '2026-06-08T19:12:09Z'  # 7d75
+  by: agent  # 7d75
+  actor: jgstern_agent  # 7d75
+  clock: 1  # 7d75
+  nonce: 7d75  # 7d75
+  data:  # 7d75
+    kind: meta_invariant  # 7d75
+    title: "Family: validation_report is a false all-clear (checks unwired / permissive / source-only)"  # 7d75
+    status: violated  # 7d75
+    priority: 2  # 7d75
+    parent: META-jalur-mikob-vatub-gagam-lomib-rojud-madip-rafil  # 7d75
+    tags:  # 7d75
+    - connections_sweep_20260608  # 7d75
+    - root_cause_family  # 7d75
+    isbefore: []  # 7d75
+    duplicate_of: []  # 7d75
+    not_duplicate_of: []  # 7d75
+    pr_ref:  # 7d75
+    description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: WI-moriz, WI-bovoh, WI-davij, WI-dizir. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # 7d75
+    fields:  # 7d75
+      statement: "The spec_validator's validation_report must actually enumerate the cross-field/dangling/id-format defects present in the substrate it emits, not report zero violations while thousands are scannable."  # 7d75

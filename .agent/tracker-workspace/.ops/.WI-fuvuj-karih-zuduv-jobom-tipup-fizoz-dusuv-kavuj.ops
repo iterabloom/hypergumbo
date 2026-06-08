@@ -19,3 +19,14 @@
     pr_ref:  # f107
     description: "F69.A2 (blind severity 4/Significant). Python call sites whose target is a method on a local variable (f.read(), f.write(), s.send(), s.connect(), s.recv()) emit a dst of python:external:0-0:<name>:unresolved with module hint 'external' — the analyzer cannot type the receiver (open(...) returns a file object, socket.socket() returns a socket) so it cannot qualify the callee. The composed primitive is the bare name, which does not match the boundary catalog's module-qualified entries (socket.socket.send, builtins.open->read), so these sites fall into the undifferentiated external_potential bucket rather than the true boundary type (fs_read/fs_write/net_send/net_recv). By contrast function-style qualified calls (os.remove, subprocess.run) classify correctly because the module is preserved on the dst. 5 of 11 injected Python I/O sites (method/bare-receiver style) misclassify. A consumer filtering --boundary net_send or asking 'does this code write files?' gets the wrong answer — a net_send socket write and an fs_write file write both land in the same bucket. Distinct producer mechanism from F69.A1's total-edge-absence. Related to WI-fabup (Python ambiguous_names not wired to receiver disambiguation). Fix: receiver-type inference preserves/recovers the module qualifier on method-style I/O calls. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # f107
     fields: {}  # f107
+- op: update  # 5f67
+  at: '2026-06-08T18:30:32Z'  # 5f67
+  by: agent  # 5f67
+  actor: jgstern_agent  # 5f67
+  clock: 2  # 5f67
+  nonce: 5f67  # 5f67
+  set: {}  # 5f67
+  add:  # 5f67
+    tags: [dogfood_tranche_04]  # 5f67
+  remove:  # 5f67
+    tags: [dogfood_tranch_04]  # 5f67

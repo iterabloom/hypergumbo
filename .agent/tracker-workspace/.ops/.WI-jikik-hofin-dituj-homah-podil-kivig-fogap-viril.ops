@@ -36,3 +36,20 @@
   clock: 3  # 7dce
   nonce: 7dce  # 7dce
   message: "Pass-22 investigation correction.\n\nThe original framing claimed metrics.languages.<lang>.files=0 for all entries. After re-checking the probe script: my Python code used `entry.get('files', 0)` which returns the default 0 when the key is absent. metrics.py:60-103 only initializes `languages[lang] = {'nodes': 0, 'edges': 0}` — NO 'files' key is ever written.\n\nPer-language file counts DO exist in the bm.json, just in a DIFFERENT top-level section: `profile.languages.<lang>.files` (e.g., bash=42 files / 11662 LOC; python=N files / N loc; ...).\n\nCorrected scope:\n- This is a schema-consolidation gap rather than a writer-contract gap. metrics.languages exists as the 'aggregate per-language metrics' rollup but only carries node/edge counts. profile.languages exists as the 'file discovery profile' and carries files+loc but no node/edge.\n- Consumers wanting all per-language stats (nodes, edges, files, loc) must read both sections and join.\n- Priority downgrade P2 -> P3, status todo_hard -> todo_soft. Decision: should metrics.languages.<lang> add files+loc (consolidate via copying from profile.languages), or should this just be documented (the two sections cover different dimensions and that's intentional)?"  # 7dce
+- op: update  # 2482
+  at: '2026-06-08T18:32:21Z'  # 2482
+  by: agent  # 2482
+  actor: jgstern_agent  # 2482
+  clock: 4  # 2482
+  nonce: '2482'  # 2482
+  set:  # 2482
+    status: wont_do  # 2482
+  add:  # 2482
+    duplicate_of: [WI-ninaj-giloj-molab-fagaz-hinuh-jofaf-topif-monim]  # 2482
+- op: discuss  # 4de2
+  at: '2026-06-08T18:32:21Z'  # 4de2
+  by: agent  # 4de2
+  actor: jgstern_agent  # 4de2
+  clock: 5  # 4de2
+  nonce: 4de2  # 4de2
+  message: "TRUE_DUPLICATE fold into WI-ninaj: identical metrics.languages.<lang>.files-unpopulated; same root+fix. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 4de2

@@ -1,0 +1,22 @@
+- op: create  # fc01
+  at: '2026-06-08T19:11:57Z'  # fc01
+  by: agent  # fc01
+  actor: jgstern_agent  # fc01
+  clock: 1  # fc01
+  nonce: fc01  # fc01
+  data:  # fc01
+    kind: meta_invariant  # fc01
+    title: "META: producers emit a finer/correct verdict that consumers ignore or re-derive coarser"  # fc01
+    status: violated  # fc01
+    priority: 2  # fc01
+    parent:  # fc01
+    tags:  # fc01
+    - connections_sweep_20260608  # fc01
+    - root_cause_family  # fc01
+    isbefore: []  # fc01
+    duplicate_of: []  # fc01
+    not_duplicate_of: []  # fc01
+    pr_ref:  # fc01
+    description: "Layer-2 super-cluster from the connection sweep (connections-sweep 2026-06-08T1900Z). Cross-packet evidence: WI-motug surfaced in both the evidence_type (C2) and typescript/js (C7) investigations. Children: is_test_file ignored by consumers, evidence_type axis impurity."  # fc01
+    fields:  # fc01
+      statement: "When an upstream pass computes a correct, granular verdict (supply_chain.is_test_file, node.language='typescript', resolution state), downstream consumers MUST honor it rather than re-deriving via heuristic or keying tables/labels on a coarser value."  # fc01

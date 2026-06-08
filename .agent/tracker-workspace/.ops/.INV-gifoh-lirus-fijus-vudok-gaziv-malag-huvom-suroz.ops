@@ -45,3 +45,14 @@
   clock: 4  # 8a3b
   nonce: 8a3b  # 8a3b
   message: "Fixed in PR #3872 (5308131742). sketch._estimate_test_coverage now filters BFS to edge_type=='calls' (was passing all edges) and recognizes WI-dulav concept-tagged tests (was path-heuristic only). End-to-end on hypergumbo self-analysis: sketch 92%→59% (2461/4205), test-coverage 58.2%→58.5% (2461/4205) — same numerator/denominator/methodology, only residual gap is :.0f vs :.1f display formatting. Three new tests pin the invariant."  # 8a3b
+- op: update  # b6b6
+  at: '2026-06-08T18:30:23Z'  # b6b6
+  by: agent  # b6b6
+  actor: jgstern_agent  # b6b6
+  clock: 5  # b6b6
+  nonce: b6b6  # b6b6
+  set: {}  # b6b6
+  add:  # b6b6
+    tags: [dogfood]  # b6b6
+  remove:  # b6b6
+    tags: [dogfooding]  # b6b6

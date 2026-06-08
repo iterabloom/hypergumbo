@@ -63,3 +63,14 @@
   nonce: 3abd  # 3abd
   set:  # 3abd
     status: deleted  # 3abd
+- op: update  # 6ab4
+  at: '2026-06-08T18:30:27Z'  # 6ab4
+  by: agent  # 6ab4
+  actor: jgstern_agent  # 6ab4
+  clock: 7  # 6ab4
+  nonce: 6ab4  # 6ab4
+  set: {}  # 6ab4
+  add:  # 6ab4
+    tags: [dogfood]  # 6ab4
+  remove:  # 6ab4
+    tags: [dogfooding]  # 6ab4

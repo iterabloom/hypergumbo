@@ -18,3 +18,18 @@
     pr_ref:  # 89ad
     description: "framework_patterns.py PatternSpec supports symbol_name/symbol_kind/symbol_path/modifiers_exclude but has NO is_test_file field, so the matcher cannot honor Symbol.supply_chain.is_test_file (which IS correctly set). Consequently naming-conventions concepts fire on test code: `service_by_name` on 4 test-fixture `MyService` classes and `controller_by_name` on a pytest class `TestMultipleActionsSameController`, all is_test_file=true. The naming-conventions.yaml comment claims test exclusion the regex doesn't deliver. Fix: add an is_test_file field to PatternSpec/the matcher engine and gate naming-conventions concepts off test files. (Distinct from WI-mozum, which is the supply_chain TEST_FILE_PATTERNS layer.) Surfaced via dogfooding; blinded severity 3/5."  # 89ad
     fields: {}  # 89ad
+- op: update  # 1f38
+  at: '2026-06-08T19:12:53Z'  # 1f38
+  by: agent  # 1f38
+  actor: jgstern_agent  # 1f38
+  clock: 2  # 1f38
+  nonce: 1f38  # 1f38
+  set:  # 1f38
+    parent: META-jotih-taput-mulod-luhov-fapuv-hozaz-dutol-gosim  # 1f38
+- op: discuss  # d8d0
+  at: '2026-06-08T19:12:53Z'  # d8d0
+  by: agent  # d8d0
+  actor: jgstern_agent  # d8d0
+  clock: 3  # d8d0
+  nonce: d8d0  # d8d0
+  message: "root-cause family member (g1) (connections-sweep 2026-06-08T1900Z)"  # d8d0

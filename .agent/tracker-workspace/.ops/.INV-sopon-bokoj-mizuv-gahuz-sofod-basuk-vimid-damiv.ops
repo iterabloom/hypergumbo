@@ -52,3 +52,14 @@
   clock: 5  # 7f56
   nonce: 7f56  # 7f56
   message: "Closed by PR #3791 (merge f9f20be3d8). 12 of 19 originally-listed linkers needed fixing — AST inspection found 6 already correct (ipc, phoenix_ipc, vue_component, swift_objc, websocket, js_module, grpc). 5 needed both origin + origin_run_id stamps (graphql, http, openapi, solidity_abi, subprocess_cli); 7 needed only origin_run_id (annotation_convention, crypto_flow, message_dispatch, tauri_ipc, _view_template_core, wasm_bindgen, yjs_crdt). New tests/test_linker_origin_invariant.py enforces the invariant structurally (AST scan, catches future 22nd linker) + runtime (3 representatives). Self-analysis dogfood: 95 previously-empty-origin Symbols (18 http + 77 subprocess) now stamped with correct PASS_ID. Only the documented external_symbol exception remains empty-origin. Last Foundations item — Wave 2 (Identity META INV-dajaf) is now unblocked."  # 7f56
+- op: update  # 01ce
+  at: '2026-06-08T18:30:23Z'  # 01ce
+  by: agent  # 01ce
+  actor: jgstern_agent  # 01ce
+  clock: 6  # 01ce
+  nonce: 01ce  # 01ce
+  set: {}  # 01ce
+  add:  # 01ce
+    tags: [dogfood]  # 01ce
+  remove:  # 01ce
+    tags: [dogfooding]  # 01ce

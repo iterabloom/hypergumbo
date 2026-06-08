@@ -20,3 +20,20 @@
     pr_ref:  # 198e
     description: "**Pass-21 finding (F6).** AnalysisRun records have `analysis_runs[].execution_id` (UUID format `uuid:...`). Edge and Node references to that same AR are `edge.origin_run_id` and `node.origin_run_id`. The values are the same UUIDs, but the producer-side and consumer-side fields have different names — an implicit join.\n\n**Observation.**\n\n```\nanalysis_runs[].execution_id       = 'uuid:f57a2005-3209-4f9d-96f0-e496df0365e5'  (one per AR)\nedge.origin_run_id                 = 'uuid:f57a2005-3209-4f9d-96f0-e496df0365e5'  (FK to AR.execution_id)\nnode.origin_run_id                 = 'uuid:f57a2005-3209-4f9d-96f0-e496df0365e5'  (FK to AR.execution_id)\n```\n\n**Impact.** Mostly cosmetic. But makes auditing more error-prone:\n- A first-time auditor (e.g., a dogfooding agent) expects the join column to be named consistently — e.g., `AnalysisRun.run_id` for the identity side, matching `origin_run_id` on the FK side. Using `execution_id` on AR breaks the convention.\n- In this very pass, the pass-21 audit script initially used `AnalysisRun.run_id` as the join column, got 0/84 matches, and had to inspect AR field keys via `for r in ar: print(r.keys())` to find the real name was `execution_id`. A 5-minute detour that a consistent naming convention would prevent.\n\n**Suggested fix.** Either rename `analysis_runs[].execution_id → analysis_runs[].run_id` (matching the FK pattern), OR keep `execution_id` and rename the FK side to `origin_execution_id`. The first is less invasive (only the producer changes; consumers already use `origin_run_id`).\n\n**Cluster.** Minor; could fit under INV-luhur (AnalysisRun + behavior-map meta-layer writer-contract umbrella) as a tail face. Or standalone.\n\n**Lab notebook entry:** `~/hypergumbo_lab_notebook/notebookjournal_06012026_2310_pass21.md`."  # 198e
     fields: {}  # 198e
+- op: update  # 1885
+  at: '2026-06-08T18:32:21Z'  # 1885
+  by: agent  # 1885
+  actor: jgstern_agent  # 1885
+  clock: 2  # 1885
+  nonce: '1885'  # 1885
+  set:  # 1885
+    status: wont_do  # 1885
+  add:  # 1885
+    duplicate_of: [WI-zasol-rumoz-hofip-libif-mizit-guzam-tomad-fidir]  # 1885
+- op: discuss  # 20ac
+  at: '2026-06-08T18:32:21Z'  # 20ac
+  by: agent  # 20ac
+  actor: jgstern_agent  # 20ac
+  clock: 3  # 20ac
+  nonce: 20ac  # 20ac
+  message: "TRUE_DUPLICATE fold into WI-zasol: same AnalysisRun execution_id<->origin_run_id naming asymmetry; zasol subsumes. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 20ac

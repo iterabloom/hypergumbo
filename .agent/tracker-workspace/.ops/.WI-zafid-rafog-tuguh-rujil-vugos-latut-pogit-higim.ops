@@ -19,3 +19,14 @@
     pr_ref:  # d731
     description: "Cluster C1 (F63.A3 + F63.A4; blind severity 4/Significant). §9 says analysis_incomplete is 'set to true if analysis terminated early due to errors/timeouts/resource limits' and partial_results_reason is 'present only when analysis_incomplete: true'. In practice neither a parse-error file drop nor an oversize (truncated) file drop ever trips analysis_incomplete (stays false). Yet the parse-error/failed path DOES populate partial_results_reason='some files skipped during analysis' while analysis_incomplete is still false (direct §9 violation), and the truncated-file path leaves partial_results_reason EMPTY. Two equivalent soft file drops are treated asymmetrically. Exercised via injected failures on a 4-file scratch repo (syntax-error file + 4.5MB oversize over --max-file-bytes); both leave analysis_incomplete=false, the two channels disagree on partial_results_reason. Consumer gating on 'if not analysis_incomplete: trust_completeness()' wrongly concludes COMPLETE. Fix: one coherent rule — decide whether a soft file-level drop marks analysis incomplete, then make failed-file and truncated-file channels set both fields the same way, and make 'reason present only when incomplete=true' actually hold. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # d731
     fields: {}  # d731
+- op: update  # c238
+  at: '2026-06-08T18:30:32Z'  # c238
+  by: agent  # c238
+  actor: jgstern_agent  # c238
+  clock: 2  # c238
+  nonce: c238  # c238
+  set: {}  # c238
+  add:  # c238
+    tags: [dogfood_tranche_04]  # c238
+  remove:  # c238
+    tags: [dogfood_tranch_04]  # c238

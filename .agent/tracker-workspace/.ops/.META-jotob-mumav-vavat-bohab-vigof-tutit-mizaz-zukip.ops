@@ -1,0 +1,22 @@
+- op: create  # 12bf
+  at: '2026-06-08T19:12:17Z'  # 12bf
+  by: agent  # 12bf
+  actor: jgstern_agent  # 12bf
+  clock: 1  # 12bf
+  nonce: 12bf  # 12bf
+  data:  # 12bf
+    kind: meta_invariant  # 12bf
+    title: "Family: supply_chain shape evolved without doc/schema sync"  # 12bf
+    status: violated  # 12bf
+    priority: 2  # 12bf
+    parent:  # 12bf
+    tags:  # 12bf
+    - connections_sweep_20260608  # 12bf
+    - root_cause_family  # 12bf
+    isbefore: []  # 12bf
+    duplicate_of: []  # 12bf
+    not_duplicate_of: []  # 12bf
+    pr_ref:  # 12bf
+    description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: WI-lalip, WI-zugof, WI-rakol, WI-golov. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # 12bf
+    fields:  # 12bf
+      statement: "spec.md and --help must describe the actual emitted supply_chain shape (sub-fields, tier semantics, derived 'production functions' filter, limits.*.supply_chain)."  # 12bf

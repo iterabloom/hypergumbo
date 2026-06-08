@@ -40,3 +40,18 @@
   clock: 3  # 1f61
   nonce: 1f61  # 1f61
   message: "Closed by Phase 4 PR1-PR5 (commits c17f639177, f4957fb175, c2cd3b9fb5, 9c4541c8c5, eab4e43aed). Populated 7 fields (lines_of_code, is_exported, signature, docstring, qualified_name, cyclomatic_complexity, plus shared symbol_introspection dispatcher) at every Symbol() emit site across the 10 mainstream-language analyzers. Writer-contract validator class self-analysis: 0 violations on the 10×7 grid. Positive evidence: writer_contract at 0."  # 1f61
+- op: update  # f9bf
+  at: '2026-06-08T18:32:21Z'  # f9bf
+  by: agent  # f9bf
+  actor: jgstern_agent  # f9bf
+  clock: 4  # f9bf
+  nonce: f9bf  # f9bf
+  set:  # f9bf
+    status: violated  # f9bf
+- op: discuss  # 6403
+  at: '2026-06-08T18:32:21Z'  # 6403
+  by: agent  # 6403
+  actor: jgstern_agent  # 6403
+  clock: 5  # 6403
+  nonce: '6403'  # 6403
+  message: "Reopen: analyzer-parity is an ongoing invariant; current violations remain (WI-bujot is_exported None 100%; WI-fagab qualified_name misassigned; live run: bash cc 0/2, JS signature 2/5). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 6403

@@ -33,3 +33,30 @@
   clock: 3  # 7cdf
   nonce: 7cdf  # 7cdf
   message: "[+ tranch_04: card 018 F67.A3 — canonical empty-origin-back-reference row: 2236/34396 (6.5%) nodes carry origin_run_id=='' — breakdown 1645 external_symbol (this row's exact population) + 493 file + 82 dependency + 16 stragglers (492 tagged orchestrator file-symbol synthesis — see WI-dizir for the file-node sub-population). All non-empty node/edge origin_run_id resolve cleanly; failure is binary present-and-valid-or-empty. Folded as duplicate; blind severity 3. Already todo_hard — no state change.]"  # 7cdf
+- op: update  # 72b3
+  at: '2026-06-08T18:30:31Z'  # 72b3
+  by: agent  # 72b3
+  actor: jgstern_agent  # 72b3
+  clock: 4  # 72b3
+  nonce: 72b3  # 72b3
+  set: {}  # 72b3
+  add:  # 72b3
+    tags: [dogfood_tranche_03]  # 72b3
+  remove:  # 72b3
+    tags: [dogfood_tranch_03]  # 72b3
+- op: update  # c90e
+  at: '2026-06-08T19:12:51Z'  # c90e
+  by: agent  # c90e
+  actor: jgstern_agent  # c90e
+  clock: 5  # c90e
+  nonce: c90e  # c90e
+  set: {}  # c90e
+  add:  # c90e
+    not_duplicate_of: [META-nomiz-noboh-mogij-ragob-banof-silag-lujuh-binum]  # c90e
+- op: discuss  # 01ab
+  at: '2026-06-08T19:12:51Z'  # 01ab
+  by: agent  # 01ab
+  actor: jgstern_agent  # 01ab
+  clock: 6  # 01ab
+  nonce: 01ab  # 01ab
+  message: "root-cause family cross-link (a1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 01ab

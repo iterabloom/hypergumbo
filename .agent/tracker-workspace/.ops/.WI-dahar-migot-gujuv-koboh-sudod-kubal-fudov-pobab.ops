@@ -34,3 +34,14 @@
   clock: 3  # c260
   nonce: c260  # c260
   message: "Fixed in PR #3888 (8439efe4d0). README.md:149 corrected from positional `verify-claims claims.yaml` to `verify-claims --claims claims.yaml`. Meta-package README synced."  # c260
+- op: update  # 2e6a
+  at: '2026-06-08T18:30:26Z'  # 2e6a
+  by: agent  # 2e6a
+  actor: jgstern_agent  # 2e6a
+  clock: 4  # 2e6a
+  nonce: 2e6a  # 2e6a
+  set: {}  # 2e6a
+  add:  # 2e6a
+    tags: [dogfood]  # 2e6a
+  remove:  # 2e6a
+    tags: [dogfooding]  # 2e6a

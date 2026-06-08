@@ -48,3 +48,14 @@
   nonce: 4bed  # 4bed
   set:  # 4bed
     status: deleted  # 4bed
+- op: update  # dc16
+  at: '2026-06-08T18:30:25Z'  # dc16
+  by: agent  # dc16
+  actor: jgstern_agent  # dc16
+  clock: 5  # dc16
+  nonce: dc16  # dc16
+  set: {}  # dc16
+  add:  # dc16
+    tags: [dogfood]  # dc16
+  remove:  # dc16
+    tags: [dogfooding]  # dc16

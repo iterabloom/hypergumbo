@@ -19,3 +19,14 @@
     pr_ref:  # 46c5
     description: "F68.A1 (blind severity 4/Significant; F68.A2 'no executable migrator/validate subcommand ships' EXTENSION folded here). The single consumer loader does a plain json.load (gzip-routed on .gz) with NO schema_version inspection. A substrate stamped schema_version='99.0.0' (future), one downgraded to '0.1', and one with the key entirely absent ALL read cleanly across symbols/slice/explain/io-boundaries: exit 0, identical output, no warning. The schema module's own docstring asserts 'Consumers can use this to check compatibility' and 'explicit versioning enables consumers to detect format changes' — but the tool's own consumer code never branches on the version; the only reads are pass-through copies into derived output (defaulting to '0.1.0' when absent). A consumer who archives a substrate and later reads it with a moved-schema tool gets silent success on whatever parses + silent absence on moved fields — cross-version corruption invisible at exactly the boundary the contract names. Fix: loader inspects schema_version and warns/fails-fast on incompatible (future/downgraded/absent) versions. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 46c5
     fields: {}  # 46c5
+- op: update  # 8602
+  at: '2026-06-08T18:30:32Z'  # 8602
+  by: agent  # 8602
+  actor: jgstern_agent  # 8602
+  clock: 2  # 8602
+  nonce: '8602'  # 8602
+  set: {}  # 8602
+  add:  # 8602
+    tags: [dogfood_tranche_04]  # 8602
+  remove:  # 8602
+    tags: [dogfood_tranch_04]  # 8602

@@ -56,3 +56,14 @@
   clock: 5  # 5f56
   nonce: 5f56  # 5f56
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Axis-A (missing-flag) sibling of WI-soroz (catalog) and INV-jutuj (routes) within WI-gogif. All three target the same standardization: add --format text|json to read subcommands that currently emit text-only. Proposed payload for cache-status (per the item's own description): {cache_dir, entries: [{repo_id, size_bytes, age_days, entry_count}], total_size_bytes, total_entries, honk_threshold_gb}, wrapped with the shared schema_version/view envelope."  # 5f56
+- op: update  # 7cf9
+  at: '2026-06-08T18:30:24Z'  # 7cf9
+  by: agent  # 7cf9
+  actor: jgstern_agent  # 7cf9
+  clock: 6  # 7cf9
+  nonce: 7cf9  # 7cf9
+  set: {}  # 7cf9
+  add:  # 7cf9
+    tags: [dogfood]  # 7cf9
+  remove:  # 7cf9
+    tags: [dogfooding]  # 7cf9

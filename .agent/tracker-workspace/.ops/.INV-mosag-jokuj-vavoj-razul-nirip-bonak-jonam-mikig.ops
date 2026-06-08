@@ -73,3 +73,18 @@
     tags: [analysis_quality]  # c818
   remove:  # c818
     tags: [analysis-quality]  # c818
+- op: update  # 552a
+  at: '2026-06-08T18:32:10Z'  # 552a
+  by: agent  # 552a
+  actor: jgstern_agent  # 552a
+  clock: 8  # 552a
+  nonce: 552a  # 552a
+  set:  # 552a
+    status: satisfied  # 552a
+- op: discuss  # 4f3d
+  at: '2026-06-08T18:32:10Z'  # 4f3d
+  by: agent  # 4f3d
+  actor: jgstern_agent  # 4f3d
+  clock: 9  # 4f3d
+  nonce: 4f3d  # 4f3d
+  message: "holding(deprecated)->satisfied: (a)+(c) implemented: name-based regex (log/warn/error/.../fatal) in ranking.py + logging-conventions.yaml (refs INV-mosag). test_ranking test_logging_method_names covers forgejo/kong/postal cases. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 4f3d

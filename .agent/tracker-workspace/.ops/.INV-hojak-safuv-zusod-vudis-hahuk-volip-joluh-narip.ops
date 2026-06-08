@@ -75,3 +75,14 @@
   nonce: 15a8  # 15a8
   set:  # 15a8
     status: deleted  # 15a8
+- op: update  # e177
+  at: '2026-06-08T18:30:24Z'  # e177
+  by: agent  # e177
+  actor: jgstern_agent  # e177
+  clock: 9  # e177
+  nonce: e177  # e177
+  set: {}  # e177
+  add:  # e177
+    tags: [dogfood]  # e177
+  remove:  # e177
+    tags: [dogfooding]  # e177

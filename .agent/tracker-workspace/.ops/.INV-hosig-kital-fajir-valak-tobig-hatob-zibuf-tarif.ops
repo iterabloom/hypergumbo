@@ -57,3 +57,14 @@
   clock: 5  # 745c
   nonce: 745c  # 745c
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Closure of this item depends on Phase 2 of INV-hujog (wire validate_pass_dependencies into the orchestrator at config time). The function exists in catalog.py:188 but has no callers in the run pipeline as of 2026-05-30 verification — confirmed by grep across packages/hypergumbo-core/src/. di-resolution will continue to emit 0 edges on every run until activation-gate enforcement lands. Suggests INV-hujog needs a Phase 2 sub-item filed to track the orchestrator wire-up specifically."  # 745c
+- op: update  # 3ce5
+  at: '2026-06-08T18:30:27Z'  # 3ce5
+  by: agent  # 3ce5
+  actor: jgstern_agent  # 3ce5
+  clock: 6  # 3ce5
+  nonce: 3ce5  # 3ce5
+  set: {}  # 3ce5
+  add:  # 3ce5
+    tags: [dogfood]  # 3ce5
+  remove:  # 3ce5
+    tags: [dogfooding]  # 3ce5

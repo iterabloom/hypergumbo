@@ -48,3 +48,14 @@
   nonce: 491a  # 491a
   set:  # 491a
     status: deleted  # 491a
+- op: update  # 3bc8
+  at: '2026-06-08T18:30:25Z'  # 3bc8
+  by: agent  # 3bc8
+  actor: jgstern_agent  # 3bc8
+  clock: 5  # 3bc8
+  nonce: 3bc8  # 3bc8
+  set: {}  # 3bc8
+  add:  # 3bc8
+    tags: [dogfood]  # 3bc8
+  remove:  # 3bc8
+    tags: [dogfooding]  # 3bc8

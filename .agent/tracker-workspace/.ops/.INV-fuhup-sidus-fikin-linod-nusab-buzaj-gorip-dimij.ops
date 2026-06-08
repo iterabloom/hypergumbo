@@ -49,3 +49,14 @@
   nonce: fc08  # fc08
   set:  # fc08
     status: deleted  # fc08
+- op: update  # 6af9
+  at: '2026-06-08T18:30:25Z'  # 6af9
+  by: agent  # 6af9
+  actor: jgstern_agent  # 6af9
+  clock: 5  # 6af9
+  nonce: 6af9  # 6af9
+  set: {}  # 6af9
+  add:  # 6af9
+    tags: [dogfood]  # 6af9
+  remove:  # 6af9
+    tags: [dogfooding]  # 6af9

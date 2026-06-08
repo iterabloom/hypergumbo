@@ -49,3 +49,14 @@
   nonce: e085  # e085
   set:  # e085
     status: deleted  # e085
+- op: update  # b690
+  at: '2026-06-08T18:30:25Z'  # b690
+  by: agent  # b690
+  actor: jgstern_agent  # b690
+  clock: 5  # b690
+  nonce: b690  # b690
+  set: {}  # b690
+  add:  # b690
+    tags: [dogfood]  # b690
+  remove:  # b690
+    tags: [dogfooding]  # b690

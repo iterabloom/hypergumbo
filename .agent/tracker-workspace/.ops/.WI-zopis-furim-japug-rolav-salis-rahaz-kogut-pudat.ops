@@ -27,3 +27,35 @@
   set: {}  # ee40
   remove:  # ee40
     tags: [someday]  # ee40
+- op: update  # 4922
+  at: '2026-06-08T19:12:56Z'  # 4922
+  by: agent  # 4922
+  actor: jgstern_agent  # 4922
+  clock: 3  # 4922
+  nonce: '4922'  # 4922
+  set: {}  # 4922
+  add:  # 4922
+    not_duplicate_of: [WI-bopoz-kadah-sudar-fuvup-balom-zoraz-baluv-johan]  # 4922
+- op: discuss  # e113
+  at: '2026-06-08T19:12:56Z'  # e113
+  by: agent  # e113
+  actor: jgstern_agent  # e113
+  clock: 4  # e113
+  nonce: e113  # e113
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # e113
+- op: update  # 15f4
+  at: '2026-06-08T19:12:56Z'  # 15f4
+  by: agent  # 15f4
+  actor: jgstern_agent  # 15f4
+  clock: 5  # 15f4
+  nonce: 15f4  # 15f4
+  set: {}  # 15f4
+  add:  # 15f4
+    not_duplicate_of: [WI-ruzib-ladum-pimop-vamam-guhuz-jopil-gudun-sodom]  # 15f4
+- op: discuss  # 67fc
+  at: '2026-06-08T19:12:56Z'  # 67fc
+  by: agent  # 67fc
+  actor: jgstern_agent  # 67fc
+  clock: 6  # 67fc
+  nonce: 67fc  # 67fc
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 67fc

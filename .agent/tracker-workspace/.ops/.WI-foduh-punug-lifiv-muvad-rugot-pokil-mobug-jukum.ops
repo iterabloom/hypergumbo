@@ -19,3 +19,14 @@
     pr_ref:  # ff7f
     description: "**Mechanic**: Text mode suppresses `external_potential` and `logging` by default (the help text for `--show-external-potential` notes \"hidden by default since it tends to dominate the per-primitive view\"), but the headline count is computed after suppression. JSON mode reports pre-suppression. There is no text-mode disclosure of \"(X hidden as external_potential, use --show-external-potential to see them)\". Adding `--show-external-potential` makes text-mode match JSON at 7,949; adding `--include-tests` gives 6,479 vs 25,448 — same gap shape, scaled.\n\n**Expectation**: Either the two modes agree on the headline count, or each mode discloses its filter state in the output so a consumer reading the headline can reconcile.\n\n**Scope**: Every invocation that varies in `--json`, `--show-external-potential`, or `--include-tests`; default text vs default JSON disagree 9.3x.\n\n**Exposure**: Any human reader of the text output and any programmatic reader of the JSON output forming beliefs about IO surface magnitude.\n\n**Consequence**: Two consumers of the same command on the same input form contradictory beliefs; the 9.3x ratio is invisible without reading help text.\n\n**Source**: F52.A3 (INDEPENDENT, MED — author flagged \"could be argued as intentional UX\").\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # ff7f
     fields: {}  # ff7f
+- op: update  # f32a
+  at: '2026-06-08T18:30:30Z'  # f32a
+  by: agent  # f32a
+  actor: jgstern_agent  # f32a
+  clock: 2  # f32a
+  nonce: f32a  # f32a
+  set: {}  # f32a
+  add:  # f32a
+    tags: [dogfood_tranche_03]  # f32a
+  remove:  # f32a
+    tags: [dogfood_tranch_03]  # f32a

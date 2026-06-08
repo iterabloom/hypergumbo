@@ -38,3 +38,14 @@
   clock: 3  # daa1
   nonce: daa1  # daa1
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): the module:name shorthand was added by WI-hogun (cited at slice.py:349-356). Fix is mechanical: update self-analysis-dogfooding-playbook.md:150 to remove the \"no shorthand\" claim and document the precedence (per slice.py docstring lines 79-88, module:name resolves <filename>:<symbol-name> with disambiguation on ambiguous matches)."  # daa1
+- op: update  # fa07
+  at: '2026-06-08T18:30:28Z'  # fa07
+  by: agent  # fa07
+  actor: jgstern_agent  # fa07
+  clock: 4  # fa07
+  nonce: fa07  # fa07
+  set: {}  # fa07
+  add:  # fa07
+    tags: [dogfood]  # fa07
+  remove:  # fa07
+    tags: [dogfooding]  # fa07

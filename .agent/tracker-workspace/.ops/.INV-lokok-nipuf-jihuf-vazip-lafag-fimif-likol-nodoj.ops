@@ -49,3 +49,14 @@
   nonce: 2ced  # 2ced
   set:  # 2ced
     status: deleted  # 2ced
+- op: update  # 8583
+  at: '2026-06-08T18:30:25Z'  # 8583
+  by: agent  # 8583
+  actor: jgstern_agent  # 8583
+  clock: 5  # 8583
+  nonce: '8583'  # 8583
+  set: {}  # 8583
+  add:  # 8583
+    tags: [dogfood]  # 8583
+  remove:  # 8583
+    tags: [dogfooding]  # 8583

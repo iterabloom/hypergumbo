@@ -20,3 +20,14 @@
     pr_ref:  # 9b2d
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family F). Stand-alone finding F23.4 previously folded onto INV-luhur. Full evidence remains on INV-luhur's pass-23 discussion entry; this row provides discrete representation.\n\n## Symptom\n\n`analysis_runs` list is OUT-OF-ORDER vs `started_at` on 21/83 (25%) transitions. Iterating in document order does NOT yield chronological order. First 10 ARs show pattern:\n```\nhtml → go → csharp (earlier start) → rust → swift → javascript (earlier start) → \nplay-routes → sql (earlier start) → yaml_ansible → xml\n```\n\nLikely completion-order serialization from parallel execution; no documented contract either way. Cosmetic but audit-impactful — first-time consumers expect alphabetical, topological, or chronological order.\n\n## Invariant\n\nThe `analysis_runs` list has a documented ordering contract. Options:\n\n1. **Sorted by `started_at`** (chronological) — natural for time-series-style analyses.\n2. **Topologically sorted by dependencies** — natural for replay / re-execution.\n3. **Insertion order documented as \"completion order from parallel pool\"** — preserves current behavior with explicit contract.\n\nPath (1) is most consumer-friendly and only requires a sort at serialization time.\n\n## Fix sketch\n\nSort `analysis_runs` by `started_at` at serialization time (`to_dict` on the run-list field). One-line addition. Document the contract in spec.md.\n\n## Source provenance\n\n- **F23.4** — INV-luhur discussion entry 2026-06-02T04:37:45 (pass-23 batch; paragraph beginning \"(F23.4) AR list out of started_at order on 21/83\").\n\nLab notebook: pass 23 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Family F siblings."  # 9b2d
     fields: {}  # 9b2d
+- op: update  # ae2c
+  at: '2026-06-08T18:30:29Z'  # ae2c
+  by: agent  # ae2c
+  actor: jgstern_agent  # ae2c
+  clock: 2  # ae2c
+  nonce: ae2c  # ae2c
+  set: {}  # ae2c
+  add:  # ae2c
+    tags: [dogfood]  # ae2c
+  remove:  # ae2c
+    tags: [dogfooding]  # ae2c

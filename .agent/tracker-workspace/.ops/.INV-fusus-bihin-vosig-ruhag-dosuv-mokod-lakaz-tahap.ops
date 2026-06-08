@@ -92,3 +92,14 @@
   clock: 10  # 62db
   nonce: 62db  # 62db
   message: "Follow-up filed as INV-zudob-rohaj-nodaf-pifir-bunih-rimus-rikup-lasah (P3, violated, tags: stable_id / identity / analysis_quality / dogfood_round4_followup). Item captures the residue: 811/4282 Python class nodes (18.94%) still collide across modules after PR #3797, with concrete examples (49x TestAda/Asm/Capnp-AnalysisUnavailable, 36x TestAnalysisRun in distinct test modules). Three candidate root causes filed in the new item's root_cause field for the diagnosis spike to disambiguate before code change. Original INV-fusus remains satisfied — the same-module @dataclass case it actually owned is closed; this is a distinct cross-module shape."  # 62db
+- op: update  # 8a7b
+  at: '2026-06-08T18:30:23Z'  # 8a7b
+  by: agent  # 8a7b
+  actor: jgstern_agent  # 8a7b
+  clock: 11  # 8a7b
+  nonce: 8a7b  # 8a7b
+  set: {}  # 8a7b
+  add:  # 8a7b
+    tags: [dogfood]  # 8a7b
+  remove:  # 8a7b
+    tags: [dogfooding]  # 8a7b

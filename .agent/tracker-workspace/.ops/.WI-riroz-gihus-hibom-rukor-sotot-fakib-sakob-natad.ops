@@ -26,3 +26,19 @@
   clock: 2  # 3f99
   nonce: 3f99  # 3f99
   message: "Re-confirmed: play_routes.py:44 local PASS_VERSION='1' shadows ir.PASS_VERSION; AR.version='1' (1/84) poisons run_signature. Distribution {5.0.1:83,'1':1}. Same fix. (dogfood; blinded sev 3)"  # 3f99
+- op: update  # dc88
+  at: '2026-06-08T19:12:52Z'  # dc88
+  by: agent  # dc88
+  actor: jgstern_agent  # dc88
+  clock: 3  # dc88
+  nonce: dc88  # dc88
+  set: {}  # dc88
+  add:  # dc88
+    not_duplicate_of: [META-hufaz-dazip-hijop-nijam-lasut-jigup-dahak-jirup]  # dc88
+- op: discuss  # 313f
+  at: '2026-06-08T19:12:52Z'  # 313f
+  by: agent  # 313f
+  actor: jgstern_agent  # 313f
+  clock: 4  # 313f
+  nonce: 313f  # 313f
+  message: "root-cause family cross-link (b1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 313f

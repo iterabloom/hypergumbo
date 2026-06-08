@@ -19,3 +19,46 @@
     pr_ref:  # 4988
     description: "F74.A1 (blind severity 3/Moderate; primarily a positive global-bounding measurement; F74.A2 src/dst placeholder-asymmetry EXTENSION folded here). A substrate-wide partition of all 110533 edges by endpoint resolution: 72.75% (80416) close to two real non-placeholder nodes; 27.23% (30094) have a dst that resolves only to an external_symbol placeholder (src real); exactly 0.02% (23) truly dangling — ALL on the src side; 0% truly-dangling dst. Mechanism behind the asymmetry: boundary-synthesis materializes every unresolved DST as a placeholder node (dst side fully closed by construction) but there is NO symmetric SRC-side synthesis, so the 23 tier-4-filtered source ids have no placeholder fallback and remain literally absent. Placeholders cushion dst but serve as src in 0 edges. The spec_validator reports zero violations and has no dangling-endpoint check, so the 23 pass clean. This SUBSUMES (but is distinct-fix from) the 23-edge tier-4 src-drop (INV-jukok) and the validator-all-zero (WI-moriz). Fix: validator gains a dangling-endpoint check so the 23 src-dangling edges surface; src side handled symmetrically with dst (placeholder synthesis or edge suppression). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 4988
     fields: {}  # 4988
+- op: update  # 9bb3
+  at: '2026-06-08T18:30:32Z'  # 9bb3
+  by: agent  # 9bb3
+  actor: jgstern_agent  # 9bb3
+  clock: 2  # 9bb3
+  nonce: 9bb3  # 9bb3
+  set: {}  # 9bb3
+  add:  # 9bb3
+    tags: [dogfood_tranche_04]  # 9bb3
+  remove:  # 9bb3
+    tags: [dogfood_tranch_04]  # 9bb3
+- op: update  # 9f5e
+  at: '2026-06-08T18:32:23Z'  # 9f5e
+  by: agent  # 9f5e
+  actor: jgstern_agent  # 9f5e
+  clock: 3  # 9f5e
+  nonce: 9f5e  # 9f5e
+  set: {}  # 9f5e
+  add:  # 9f5e
+    not_duplicate_of: [INV-jukok-sifuk-zarol-sotos-rijaz-roguv-dujaf-holoh]  # 9f5e
+- op: discuss  # eb93
+  at: '2026-06-08T18:32:23Z'  # eb93
+  by: agent  # eb93
+  actor: jgstern_agent  # eb93
+  clock: 4  # eb93
+  nonce: eb93  # eb93
+  message: "RELATED_BUT_DISTINCT to INV-jukok: 23 src-dangling edges; mujor explicitly SUBSUMES-but-distinct-fix from jukok (mujor=validator+symmetric src synthesis; jukok=the raw dangling-src defect). Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # eb93
+- op: update  # 37ed
+  at: '2026-06-08T19:12:52Z'  # 37ed
+  by: agent  # 37ed
+  actor: jgstern_agent  # 37ed
+  clock: 5  # 37ed
+  nonce: 37ed  # 37ed
+  set: {}  # 37ed
+  add:  # 37ed
+    not_duplicate_of: [META-sigap-hafis-ruhur-ramog-bogap-jinol-vuzoj-pajoh]  # 37ed
+- op: discuss  # abd1
+  at: '2026-06-08T19:12:52Z'  # abd1
+  by: agent  # abd1
+  actor: jgstern_agent  # abd1
+  clock: 6  # abd1
+  nonce: abd1  # abd1
+  message: "root-cause family cross-link (a2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # abd1

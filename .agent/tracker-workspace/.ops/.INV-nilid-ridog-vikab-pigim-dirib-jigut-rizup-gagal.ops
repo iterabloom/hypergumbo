@@ -49,3 +49,14 @@
   nonce: 8b70  # 8b70
   set:  # 8b70
     status: deleted  # 8b70
+- op: update  # 1b73
+  at: '2026-06-08T18:30:27Z'  # 1b73
+  by: agent  # 1b73
+  actor: jgstern_agent  # 1b73
+  clock: 5  # 1b73
+  nonce: 1b73  # 1b73
+  set: {}  # 1b73
+  add:  # 1b73
+    tags: [dogfood]  # 1b73
+  remove:  # 1b73
+    tags: [dogfooding]  # 1b73

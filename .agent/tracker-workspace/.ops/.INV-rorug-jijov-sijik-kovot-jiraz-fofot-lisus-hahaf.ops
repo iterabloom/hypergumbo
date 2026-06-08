@@ -48,3 +48,14 @@
   nonce: a384  # a384
   set:  # a384
     status: deleted  # a384
+- op: update  # fa37
+  at: '2026-06-08T18:30:24Z'  # fa37
+  by: agent  # fa37
+  actor: jgstern_agent  # fa37
+  clock: 5  # fa37
+  nonce: fa37  # fa37
+  set: {}  # fa37
+  add:  # fa37
+    tags: [dogfood]  # fa37
+  remove:  # fa37
+    tags: [dogfooding]  # fa37

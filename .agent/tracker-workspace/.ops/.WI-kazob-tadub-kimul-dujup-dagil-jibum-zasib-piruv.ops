@@ -19,3 +19,14 @@
     pr_ref:  # b143
     description: "F70.A1 (blind severity 3/Moderate). Every source file carries a substantive module docstring (a project requirement), but that string appears nowhere in the substrate. The docstring field is heavily populated for function/class/method symbols (74-90%), but the FILE/MODULE node never receives it — the file node's docstring is None and meta is None. Analyzers attach docstrings to callable/class symbols at the Symbol-construction site, but the file-summary slot is never populated, and there is no module-kind node (0 in substrate) that could hold it. 0 of 902 file-kind nodes carry a docstring (0 of 845 Python file nodes). An agent consuming the map to answer 'what is this module responsible for?' gets the path + a symbol list but not the module's one-line statement of purpose — the single most concise module-orientation artifact the project mandates is silently absent. Fix: the file-kind (or a dedicated module) node carries the module's own docstring summary at Symbol construction. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # b143
     fields: {}  # b143
+- op: update  # dc49
+  at: '2026-06-08T18:30:32Z'  # dc49
+  by: agent  # dc49
+  actor: jgstern_agent  # dc49
+  clock: 2  # dc49
+  nonce: dc49  # dc49
+  set: {}  # dc49
+  add:  # dc49
+    tags: [dogfood_tranche_04]  # dc49
+  remove:  # dc49
+    tags: [dogfood_tranch_04]  # dc49

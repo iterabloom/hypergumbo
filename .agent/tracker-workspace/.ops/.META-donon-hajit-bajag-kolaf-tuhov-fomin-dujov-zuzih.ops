@@ -79,3 +79,18 @@
     tags: [process_health]  # bf16
   remove:  # bf16
     tags: [process-health]  # bf16
+- op: update  # c446
+  at: '2026-06-08T18:32:20Z'  # c446
+  by: agent  # c446
+  actor: jgstern_agent  # c446
+  clock: 9  # c446
+  nonce: c446  # c446
+  set:  # c446
+    status: satisfied  # c446
+- op: discuss  # f3c4
+  at: '2026-06-08T18:32:20Z'  # f3c4
+  by: agent  # f3c4
+  actor: jgstern_agent  # f3c4
+  clock: 10  # f3c4
+  nonce: f3c4  # f3c4
+  message: "holding(deprecated)->satisfied: Verified scripts/bakeoff-deep-reflect: 0-100 per-task scores (L146,210-216), compute_trajectory (L619) emits IMPROVING/STABLE/REGRESSING (L635-637,1070). Human-chosen option(a)+(d) implemented+tested per PR#1450. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # f3c4

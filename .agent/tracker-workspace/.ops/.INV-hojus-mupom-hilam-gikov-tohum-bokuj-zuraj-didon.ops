@@ -86,3 +86,14 @@
   clock: 9  # cb11
   nonce: cb11  # cb11
   message: "Stripping tag under Phase 2 anomaly cleanup. Verdict: D-stale via property test. The claim 'no Python path carries both kind=file and kind=module Symbols' is a B-shape property, not an aggregate-metric claim. The property test TestInvHojusFileCanonicalKind in test_python_ast_analysis.py pins the invariant structurally on every analyzer run (CI green) — strictly stronger than a one-shot cohort measurement. The closing entry's hoped-for 'cohort signal' is a side hope, not the primary claim; future bakeoffs will surface that signal naturally without queue tracking. Per playbook: B-shape with a load-time invariant + property test is the preferred resolution."  # cb11
+- op: update  # 11ab
+  at: '2026-06-08T18:30:23Z'  # 11ab
+  by: agent  # 11ab
+  actor: jgstern_agent  # 11ab
+  clock: 10  # 11ab
+  nonce: 11ab  # 11ab
+  set: {}  # 11ab
+  add:  # 11ab
+    tags: [dogfood]  # 11ab
+  remove:  # 11ab
+    tags: [dogfooding]  # 11ab

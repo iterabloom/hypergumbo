@@ -29,3 +29,18 @@
   clock: 2  # 4b72
   nonce: 4b72  # 4b72
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): parent META-sulor closed satisfied; this item's PlazaFlow-specific data shape has no validation substrate in the hypergumbo dogfood corpus. WI-mamuh and WI-zusig (broader Yjs API surface) both done. Recommended disposition: either (a) close as wont_do with note \"PlazaFlow-corpus-only; transitively likely addressed by WI-mamuh sub-document accessor work; no validation substrate available in hypergumbo dogfood corpus\", or (b) re-parent to WI-zusig and let it stay open as a future-empirical-validation item. Current state (parent points at a satisfied META) is structurally confused."  # 4b72
+- op: update  # 0d5d
+  at: '2026-06-08T18:32:21Z'  # 0d5d
+  by: agent  # 0d5d
+  actor: jgstern_agent  # 0d5d
+  clock: 3  # 0d5d
+  nonce: 0d5d  # 0d5d
+  set:  # 0d5d
+    parent: WI-zusig-fojoz-vuhik-hadiz-nusug-visuv-bubiz-puvak  # 0d5d
+- op: discuss  # 046b
+  at: '2026-06-08T18:32:21Z'  # 046b
+  by: agent  # 046b
+  actor: jgstern_agent  # 046b
+  clock: 4  # 046b
+  nonce: 046b  # 046b
+  message: "Reparent off satisfied META-sulor: fresh PlazaFlow yjsDocId shape outside the original five; tracked under WI-zusig. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 046b

@@ -87,3 +87,18 @@
   clock: 10  # ae77
   nonce: ae77  # ae77
   message: "Reopened: tranch_03 card 003 (anon-card-tranch03-003, sourced from F41.A3, filed as WI-sijut) reports origin=[] null on the same external_symbol synthesis path WI-fozoh covered for stable_id/canonical_name. Same producer, same incomplete-emission pattern, additional field still un-stamped. Substrate HEAD 9a18959071. Blind severity 3 (Moderate). Reopened per playbook Phase 6.1 Step 4a status-adjustment rule (default-to-reopen branch)."  # ae77
+- op: update  # cf95
+  at: '2026-06-08T19:12:51Z'  # cf95
+  by: agent  # cf95
+  actor: jgstern_agent  # cf95
+  clock: 11  # cf95
+  nonce: cf95  # cf95
+  set:  # cf95
+    parent: META-nomiz-noboh-mogij-ragob-banof-silag-lujuh-binum  # cf95
+- op: discuss  # 8da8
+  at: '2026-06-08T19:12:51Z'  # 8da8
+  by: agent  # 8da8
+  actor: jgstern_agent  # 8da8
+  clock: 12  # 8da8
+  nonce: 8da8  # 8da8
+  message: "root-cause family member (a1) (connections-sweep 2026-06-08T1900Z)"  # 8da8

@@ -66,3 +66,14 @@
   clock: 6  # dffc
   nonce: dffc  # dffc
   message: "Re-confirmed + converse-facet on fresh substrate (dogfood_tranche_07 F126.A2, cluster C2; F122.A3, F127.A2 facets): all 29 cross_language=True edges are incident to a language=None synthetic node — ('typescript','None','calls') x12 (websocket-linker WS edges, dst /ws-endpoint:function has node.language=None even though the path came from a Python file) and ('None','sql','references') x17 (database-query-linker; src synthetic call_site language=None). So a consumer CANNOT graph-verify cross-language-ness: one of src.lang/dst.lang is always None. This row names the under-mark (55% miss); this is the converse — the flagged-true set is graph-unverifiable because the source language never survives into the synthetic node. Also: F122.A3 (130 function/method nodes language=None all have signature=None) + F127.A2 (synthetic event_subscriber nodes language=None) propagate the same root."  # dffc
+- op: update  # 7a86
+  at: '2026-06-08T18:30:22Z'  # 7a86
+  by: agent  # 7a86
+  actor: jgstern_agent  # 7a86
+  clock: 7  # 7a86
+  nonce: 7a86  # 7a86
+  set: {}  # 7a86
+  add:  # 7a86
+    tags: [dogfood]  # 7a86
+  remove:  # 7a86
+    tags: [dogfooding]  # 7a86

@@ -53,3 +53,18 @@
   nonce: d326  # d326
   set:  # d326
     status: holding  # d326
+- op: update  # 96be
+  at: '2026-06-08T18:32:14Z'  # 96be
+  by: agent  # 96be
+  actor: jgstern_agent  # 96be
+  clock: 6  # 96be
+  nonce: 96be  # 96be
+  set:  # 96be
+    status: satisfied  # 96be
+- op: discuss  # e818
+  at: '2026-06-08T18:32:15Z'  # e818
+  by: agent  # e818
+  actor: jgstern_agent  # e818
+  clock: 7  # e818
+  nonce: e818  # e818
+  message: "holding(deprecated)->satisfied: hypergumbo run on /tmp Django fixture: all 3 ref forms resolved via dispatches_to (views.list_users->list_users, imported detail_user, views.UserListView.as_view()->UserListView). Aliased 'views as v; v.list_accounts' resolves (analyzer de-aliases to bare attr). Dotted string 'accounts.views.list_accounts' not extracted (no ast.Constant branch) s (tracker-hygiene-sweep 2026-06-08T174504Z)"  # e818

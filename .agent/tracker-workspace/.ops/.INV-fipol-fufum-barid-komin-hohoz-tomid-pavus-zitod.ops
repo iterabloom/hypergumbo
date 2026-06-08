@@ -60,3 +60,14 @@
   clock: 5  # 792c
   nonce: 792c  # 792c
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Axis-B (envelope-incomplete) sibling of INV-gatog and INV-pazum within WI-gogif. The shared fix is a single helper that wraps the per-command payload as {schema_version, view: <view_name>, ...payload}; the envelope pattern is already implemented for test-coverage (cli.py:4878-4880) and slice (cli.py:1532) and just needs to be applied here, in cmd_verify_claims, and in cmd_config. A property test asserting \"for every --format json output, top-level keys include schema_version and view\" would gate regressions."  # 792c
+- op: update  # a0db
+  at: '2026-06-08T18:30:24Z'  # a0db
+  by: agent  # a0db
+  actor: jgstern_agent  # a0db
+  clock: 6  # a0db
+  nonce: a0db  # a0db
+  set: {}  # a0db
+  add:  # a0db
+    tags: [dogfood]  # a0db
+  remove:  # a0db
+    tags: [dogfooding]  # a0db

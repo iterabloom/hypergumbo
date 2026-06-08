@@ -36,3 +36,14 @@
   clock: 3  # 898b
   nonce: 898b  # 898b
   message: "Fixed in PR #3888 (8439efe4d0). `_count_loc` docstring + docs/hypergumbo-spec.md LOC definition expanded to name the SLOC convention and document the ~10-20% gap vs raw `wc -l`."  # 898b
+- op: update  # dac5
+  at: '2026-06-08T18:30:26Z'  # dac5
+  by: agent  # dac5
+  actor: jgstern_agent  # dac5
+  clock: 4  # dac5
+  nonce: dac5  # dac5
+  set: {}  # dac5
+  add:  # dac5
+    tags: [dogfood]  # dac5
+  remove:  # dac5
+    tags: [dogfooding]  # dac5

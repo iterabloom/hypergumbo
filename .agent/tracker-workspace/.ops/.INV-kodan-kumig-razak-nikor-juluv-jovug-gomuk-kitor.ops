@@ -57,3 +57,14 @@
   clock: 5  # 8569
   nonce: '8569'  # 8569
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Within INV-nanon, this is the canonical \"self-test-edges-only\" sub-pattern — the linker produces edges but every one of them originates from its own in-tree test fixture, not production code. Fix shape differs from di-resolution (INV-hosig) where 0 edges and no activation gate is the issue; here, the activation predicate would correctly fire (the fixture file uses ctypes), so an activation-gate-only fix would not close this. Needs either a self-test-exclusion rule or a test-fixture quarantine convention."  # 8569
+- op: update  # 100d
+  at: '2026-06-08T18:30:27Z'  # 100d
+  by: agent  # 100d
+  actor: jgstern_agent  # 100d
+  clock: 6  # 100d
+  nonce: 100d  # 100d
+  set: {}  # 100d
+  add:  # 100d
+    tags: [dogfood]  # 100d
+  remove:  # 100d
+    tags: [dogfooding]  # 100d

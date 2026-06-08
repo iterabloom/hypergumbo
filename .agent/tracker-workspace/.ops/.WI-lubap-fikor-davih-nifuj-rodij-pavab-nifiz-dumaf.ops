@@ -19,3 +19,14 @@
     pr_ref:  # 9a36
     description: "**Mechanic**: The subprocess linker matches only symbols with `concept=\"command\"`. The framework patterns file keys `concept: command` exclusively to decorator-based libraries (Click, Typer, app.command). The single argparse entry emits `concept: entrypoint`, not `concept: command`. Additionally, argparse and similar CLI libraries expose their command surface as constructor calls (`argparse.ArgumentParser(...)`), not as decorators — but the YAML keys them under `decorator:`, a key the matcher only consumes against the symbol's `decorators` attribute. There is no machine-checkable contract that the linker's prerequisite producer exists. The failure mode is silent: zero edges emitted, no error.\n\n**Expectation**: Argparse and fire CLI entrypoints emit a `concept: command` (or equivalent) symbol that the subprocess linker can join to its subprocess-call sites; the linker-prerequisite chain has a declared contract that is statically checkable.\n\n**Scope**: All argparse-based Python projects (including the tool's own self-corpus) plus fire-based projects; both libraries have the same mis-keying. Zero nodes carry `concept=command` or `concept=entrypoint` on the self-corpus.\n\n**Exposure**: Any consumer or agent asking \"show me which subprocess calls land in CLI handlers\" or running test-coverage estimation through the subprocess→CLI linker on a non-decorator-based CLI library.\n\n**Consequence**: An entire commonplace class of Python CLIs is dark to the subprocess→CLI linker. The linker pays its wall-clock cost (multiple seconds across hundreds of files) and produces zero output; the user has no signal that adding the missing pattern would enable the feature.\n\n**Source**: F42.A2 (INDEPENDENT, MED; F47.A2 absorbed as EXTENSION naming cli.yaml mis-keying root cause).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 9a36
     fields: {}  # 9a36
+- op: update  # 05c4
+  at: '2026-06-08T18:30:29Z'  # 05c4
+  by: agent  # 05c4
+  actor: jgstern_agent  # 05c4
+  clock: 2  # 05c4
+  nonce: 05c4  # 05c4
+  set: {}  # 05c4
+  add:  # 05c4
+    tags: [dogfood_tranche_03]  # 05c4
+  remove:  # 05c4
+    tags: [dogfood_tranch_03]  # 05c4

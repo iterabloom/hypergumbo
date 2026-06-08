@@ -27,3 +27,14 @@
   clock: 2  # be3d
   nonce: be3d  # be3d
   message: "Dogfood extension beyond disjoint language SETS. The two same-named languages maps carry DISJOINT VALUE SCHEMAS with zero overlapping value keys: profile.languages.python={files:852, loc:483677} vs metrics.languages.python={nodes:33846, edges:110040}. A consumer dereferencing behavior_map.<X>.languages.python gets files/loc OR nodes/edges depending on which top-level parent X is (profile vs metrics), with no key in common to disambiguate which block it is in. A generic per-language-stats reader silently mixes the two schemas and cannot reconcile or join them. The harmonize-or-cross-key fix this row proposes also resolves this value-schema divergence."  # be3d
+- op: update  # d33d
+  at: '2026-06-08T18:30:27Z'  # d33d
+  by: agent  # d33d
+  actor: jgstern_agent  # d33d
+  clock: 3  # d33d
+  nonce: d33d  # d33d
+  set: {}  # d33d
+  add:  # d33d
+    tags: [dogfood]  # d33d
+  remove:  # d33d
+    tags: [dogfooding]  # d33d

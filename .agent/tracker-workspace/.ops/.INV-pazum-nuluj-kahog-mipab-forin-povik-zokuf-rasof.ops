@@ -59,3 +59,14 @@
   clock: 5  # 2844
   nonce: '2844'  # 2844
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Axis-B (envelope-incomplete) sibling of INV-fipol and INV-gatog within WI-gogif. INV-pazum and INV-subak both target cmd_config (cli.py:4568-4630) — this item is the envelope/shape gap, INV-subak (parent INV-fabov, secondary face WI-gogif) is the payload/content gap (function_summaries empty for all 281 languages). The two should be fixed in a coordinated patch since they touch the same function and would otherwise produce two churn-only PRs against the same site."  # 2844
+- op: update  # b078
+  at: '2026-06-08T18:30:24Z'  # b078
+  by: agent  # b078
+  actor: jgstern_agent  # b078
+  clock: 6  # b078
+  nonce: b078  # b078
+  set: {}  # b078
+  add:  # b078
+    tags: [dogfood]  # b078
+  remove:  # b078
+    tags: [dogfooding]  # b078

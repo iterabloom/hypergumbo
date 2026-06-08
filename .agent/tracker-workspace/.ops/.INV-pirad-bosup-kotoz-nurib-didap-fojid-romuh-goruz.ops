@@ -84,3 +84,14 @@
   clock: 8  # ee9e
   nonce: ee9e  # ee9e
   message: "Mis-parent corrected (2026-05-30): re-parented forward from INV-fabov to INV-somut (sub-META A: verify-claims silent-confirm verdict fall-through). The earlier deferral was a self-contradiction — sub-META A`s own description names gitleaks v8.30+ --pipe no-op as one of the 6 verdict-fall-through check sites. ClaimVerdict.inconclusive (WI-rolol trial-A) is the structural fix; the verdict-fall-through lens is the correct primary framing. If a second vendored-CLI contract-break case surfaces, file a separate META for that distinct mechanic at that time."  # ee9e
+- op: update  # f335
+  at: '2026-06-08T18:30:21Z'  # f335
+  by: agent  # f335
+  actor: jgstern_agent  # f335
+  clock: 9  # f335
+  nonce: f335  # f335
+  set: {}  # f335
+  add:  # f335
+    tags: [dogfood]  # f335
+  remove:  # f335
+    tags: [dogfooding]  # f335

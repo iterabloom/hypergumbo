@@ -42,3 +42,14 @@
   clock: 3  # fa68
   nonce: fa68  # fa68
   message: "Cluster member of INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # fa68
+- op: update  # 433c
+  at: '2026-06-08T18:30:25Z'  # 433c
+  by: agent  # 433c
+  actor: jgstern_agent  # 433c
+  clock: 4  # 433c
+  nonce: 433c  # 433c
+  set: {}  # 433c
+  add:  # 433c
+    tags: [dogfood]  # 433c
+  remove:  # 433c
+    tags: [dogfooding]  # 433c

@@ -50,3 +50,14 @@
   clock: 5  # 9795
   nonce: '9795'  # 9795
   message: "Clarification: deferred as in 'runtime ordering' — the source dump blocks now print further down in the cmd_explain output, AFTER both summary headers ('Called by (N):' and 'Calls (N):'). No new tracker item was created; the fix landed in PR #3885 as a reorder of the existing print calls in cmd_explain. Concretely: precomputed queried_symbol_source upfront, then reordered the print sequence so both summaries appear back-to-back at the top of the output, with all source dumps (queried symbol, caller, callee) moved to the bottom. The regression test test_cmd_explain_summary_appears_before_source_dumps in test_cli_explain.py pins the new order by asserting the byte offset of 'Called by (' is less than that of 'Calls (', which is less than that of 'Source for ' / 'Source ('."  # 9795
+- op: update  # e9ec
+  at: '2026-06-08T18:30:26Z'  # e9ec
+  by: agent  # e9ec
+  actor: jgstern_agent  # e9ec
+  clock: 6  # e9ec
+  nonce: e9ec  # e9ec
+  set: {}  # e9ec
+  add:  # e9ec
+    tags: [dogfood]  # e9ec
+  remove:  # e9ec
+    tags: [dogfooding]  # e9ec

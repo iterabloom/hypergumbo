@@ -34,3 +34,18 @@
   clock: 3  # 21ef
   nonce: 21ef  # 21ef
   message: "Fixed in PR #2053. Added _CPP_STL_METHODS frozenset blocklist (35 methods) that suppresses fallback to local/global symbol resolution when the call is a member call (field_expression present). Excludes 'get' since it's too commonly user-defined."  # 21ef
+- op: update  # 7c96
+  at: '2026-06-08T18:32:20Z'  # 7c96
+  by: agent  # 7c96
+  actor: jgstern_agent  # 7c96
+  clock: 4  # 7c96
+  nonce: 7c96  # 7c96
+  set:  # 7c96
+    status: pending_validation  # 7c96
+- op: discuss  # b725
+  at: '2026-06-08T18:32:20Z'  # b725
+  by: agent  # b725
+  actor: jgstern_agent  # b725
+  clock: 5  # b725
+  nonce: b725  # b725
+  message: "holding(deprecated)->pending_validation: _CPP_STL_METHODS frozenset (cpp.py:75) suppresses member-call fallback (cpp.py:863); 5 STL test refs in test_cpp.py. Fix landed+unit-tested (PR#2053) but no bakeoff re-validation cited. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # b725

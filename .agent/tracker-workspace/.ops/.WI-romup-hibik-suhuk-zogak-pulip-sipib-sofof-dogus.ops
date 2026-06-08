@@ -34,3 +34,30 @@
   clock: 3  # 5155
   nonce: '5155'  # 5155
   message: "Re-confirms 3 independently-versioned sub-schemas: bm 0.13.0, validation_report 0.1, io-boundaries 1.0; relationship undocumented. WI-romup covers bm vs validation_report; this adds io-boundaries 1.0. (dogfood; blinded sev 2)"  # 5155
+- op: update  # 07e7
+  at: '2026-06-08T18:30:29Z'  # 07e7
+  by: agent  # 07e7
+  actor: jgstern_agent  # 07e7
+  clock: 4  # 07e7
+  nonce: '07e7'  # 07e7
+  set: {}  # 07e7
+  add:  # 07e7
+    tags: [dogfood]  # 07e7
+  remove:  # 07e7
+    tags: [dogfooding]  # 07e7
+- op: update  # 2067
+  at: '2026-06-08T19:12:56Z'  # 2067
+  by: agent  # 2067
+  actor: jgstern_agent  # 2067
+  clock: 5  # 2067
+  nonce: '2067'  # 2067
+  set: {}  # 2067
+  add:  # 2067
+    not_duplicate_of: [WI-bobog-dagob-lamof-putap-sonod-vuvab-muraj-rigat]  # 2067
+- op: discuss  # dc09
+  at: '2026-06-08T19:12:56Z'  # dc09
+  by: agent  # dc09
+  actor: jgstern_agent  # dc09
+  clock: 6  # dc09
+  nonce: dc09  # dc09
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # dc09

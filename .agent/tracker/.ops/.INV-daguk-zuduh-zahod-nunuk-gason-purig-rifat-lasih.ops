@@ -46,3 +46,18 @@
   nonce: a360  # a360
   set:  # a360
     parent: INV-dinod-dafut-dobid-mudip-rasik-favus-vosun-subag  # a360
+- op: update  # 55c9
+  at: '2026-06-08T18:32:19Z'  # 55c9
+  by: agent  # 55c9
+  actor: jgstern_agent  # 55c9
+  clock: 4  # 55c9
+  nonce: 55c9  # 55c9
+  set:  # 55c9
+    status: satisfied  # 55c9
+- op: discuss  # f542
+  at: '2026-06-08T18:32:19Z'  # f542
+  by: agent  # f542
+  actor: jgstern_agent  # f542
+  clock: 5  # f542
+  nonce: f542  # f542
+  message: "holding(deprecated)->satisfied: Fix PR#977 (symbol_by_position). 2 cited regression tests PASS now (test_this_property_method_call_nestjs_pattern, test_enclosing_function_found_for_all_duplicate_named_methods). NestJS 9/9 controllers. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # f542

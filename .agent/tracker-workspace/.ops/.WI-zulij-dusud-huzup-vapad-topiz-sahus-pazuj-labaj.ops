@@ -26,3 +26,46 @@
   clock: 2  # 83f6
   nonce: 83f6  # 83f6
   message: "[related to WI-fumut — same compact default surface (select_by_connectivity); WI-fumut tracks --coverage dead-code, this tracks centrality-ranked vs connectivity-aware spec drift; fix may converge if default switches to centrality-ranked]"  # 83f6
+- op: update  # 4b7f
+  at: '2026-06-08T18:30:30Z'  # 4b7f
+  by: agent  # 4b7f
+  actor: jgstern_agent  # 4b7f
+  clock: 3  # 4b7f
+  nonce: 4b7f  # 4b7f
+  set: {}  # 4b7f
+  add:  # 4b7f
+    tags: [dogfood_tranche_03]  # 4b7f
+  remove:  # 4b7f
+    tags: [dogfood_tranch_03]  # 4b7f
+- op: update  # 0e93
+  at: '2026-06-08T19:12:56Z'  # 0e93
+  by: agent  # 0e93
+  actor: jgstern_agent  # 0e93
+  clock: 4  # 0e93
+  nonce: '0e93'  # 0e93
+  set: {}  # 0e93
+  add:  # 0e93
+    not_duplicate_of: [WI-zotam-homad-zaraz-rumor-ziliv-dikuz-rolaf-badig]  # 0e93
+- op: discuss  # 0326
+  at: '2026-06-08T19:12:56Z'  # 0326
+  by: agent  # 0326
+  actor: jgstern_agent  # 0326
+  clock: 5  # 0326
+  nonce: '0326'  # 0326
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 0326
+- op: update  # 350a
+  at: '2026-06-08T19:12:56Z'  # 350a
+  by: agent  # 350a
+  actor: jgstern_agent  # 350a
+  clock: 6  # 350a
+  nonce: 350a  # 350a
+  set: {}  # 350a
+  add:  # 350a
+    not_duplicate_of: [WI-kolal-bador-gubif-sajob-zonuk-rijaz-rigom-hohon]  # 350a
+- op: discuss  # da32
+  at: '2026-06-08T19:12:56Z'  # da32
+  by: agent  # da32
+  actor: jgstern_agent  # da32
+  clock: 7  # da32
+  nonce: da32  # da32
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # da32

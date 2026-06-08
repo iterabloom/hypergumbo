@@ -20,3 +20,30 @@
     pr_ref:  # 9993
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (`~/hypergumbo_lab_notebook/notebookjournal_06022026_2100_fold_audit_passes_21-40.md`, Family A). Consolidates F32.9 + F38.C2 + F38.C3 previously folded onto INV-fanur. Full evidence remains on INV-fanur's pass-32 and pass-38 discussion entries; this row provides discrete representation.\n\n## Symptom\n\nFor budgets B1 < B2, the `compact --max-symbols B1` output is NOT a subset of `compact --max-symbols B2`. The connectivity-aware selector re-derives its ranking per-budget instead of slicing a single stable canonical ranking.\n\n**F32.9 (single transition).** `--max-symbols 50` vs `--max-symbols 200` on /tmp/hg-dogfood-s21/bm.json:\n- 15 of 50 nodes (30%) present in compact-50 are ABSENT from compact-200\n- 61 of 158 edges (39%) present in compact-50 are ABSENT from compact-200\n\n**F38.C2 (full sweep).** Loss rate roughly constant ~25-30% per doubling across all transitions:\n\n| Transition | Lost from smaller | Added in larger |\n|---|---|---|\n| 50 → 100 | 12 (24%) | 62 |\n| 100 → 200 | 30 (30%) | 130 |\n| 200 → 500 | 52 (26%) | 352 |\n\n**F38.C3 (algorithm-choice variation).** `--no-connectivity` vs default at identical params (cov=0.8, ms=100) produces 61/100 shared nodes (39% divergence). Algorithm choice changes WHICH 100 nodes, not how many.\n\n## Invariant\n\nFor monotonic budgets B1 ≤ B2 under the same algorithm and seed set:\n- `compact_nodes(B1) ⊆ compact_nodes(B2)`\n- `compact_edges(B1) ⊆ compact_edges(B2)`\n\nEquivalently, the selection algorithm must materialize a stable canonical ranking and slice the prefix at the requested budget, not re-derive the ranking per-budget.\n\n## Consumer impact\n\n- Tiered emissions (4k / 16k / 64k auto-tier path) never form containment chains. Agentic consumers comparing tiers across budget boundaries see central symbols appear, disappear, and reappear without explanation.\n- A user testing with `--max-symbols 50` and later `--max-symbols 200` to get richer context may find previously-included central symbols dropped from the larger view.\n- The \"compact form\" is not stable under budget change, contradicting the natural reading of \"larger budget → strictly more information.\"\n\n## Fix sketch\n\n(a) **Materialize once, slice the prefix.** Compute the full ranking (centrality + connectivity-driven greedy order) once at writer start, then output the first B entries. Monotonicity becomes a structural invariant.\n(b) **Lexicographic tie-break + monotonic seed in the existing greedy selector.** Smaller patch but doesn't guarantee invariance under future algorithm-internal state changes.\n\nOption (a) is the structural fix. INV-fanur's `SketchBudget` coordinator concept naturally absorbs this: \"given budget B, produce a selection that is a prefix of the canonical ranking\" rather than independently re-running a budget-dependent greedy.\n\n## Source provenance\n\n- **F32.9** — INV-fanur discussion entry 2026-06-02T08:02:26 (pass-32 batch; see lead paragraphs on monotonicity).\n- **F38.C2 + F38.C3** — INV-fanur discussion entry 2026-06-02T22:16:17 (pass-38 batch; see paragraphs labeled F38.C2 and F38.C3).\n\nLab notebooks: passes 32 and 38 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-fanur** (META: Sketch budget enforcement layered without coordinator) — this is the 4th and 5th budget-coordination face joining INV-pazur / WI-fufop / INV-vopuh / F38.C1 (`--coverage` flag inert; tracked separately under Family E as WI-coverage-flag-inert).\n- Sibling: **INV-pazur** (nodes_summary pre-shrink — same compact-self-disagreement family but different mechanism)\n- Sibling: **WI-compact-induced-subgraph-incomplete** (Family A, edge-side converse leak — small but distinct from this row's node-selection ranking instability)\n- Sibling: **WI-compact-truncation-marker** (Family A, missing per-array projection markers)\n- Sibling: **WI-compact-summary-fields-disagree** (Family A, metrics-block self-disagreement)"  # 9993
     fields: {}  # 9993
+- op: update  # 4f3e
+  at: '2026-06-08T18:30:22Z'  # 4f3e
+  by: agent  # 4f3e
+  actor: jgstern_agent  # 4f3e
+  clock: 2  # 4f3e
+  nonce: 4f3e  # 4f3e
+  set: {}  # 4f3e
+  add:  # 4f3e
+    tags: [dogfood]  # 4f3e
+  remove:  # 4f3e
+    tags: [dogfooding]  # 4f3e
+- op: update  # e964
+  at: '2026-06-08T19:12:55Z'  # e964
+  by: agent  # e964
+  actor: jgstern_agent  # e964
+  clock: 3  # e964
+  nonce: e964  # e964
+  set: {}  # e964
+  add:  # e964
+    not_duplicate_of: [INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik]  # e964
+- op: discuss  # c2d9
+  at: '2026-06-08T19:12:55Z'  # c2d9
+  by: agent  # c2d9
+  actor: jgstern_agent  # c2d9
+  clock: 4  # c2d9
+  nonce: c2d9  # c2d9
+  message: "compact finalize-after-shrink family cross-link (connections-sweep 2026-06-08T1900Z)"  # c2d9

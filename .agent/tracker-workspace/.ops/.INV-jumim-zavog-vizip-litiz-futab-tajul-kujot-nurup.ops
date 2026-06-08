@@ -65,3 +65,14 @@
   clock: 6  # df8b
   nonce: df8b  # df8b
   message: "Strengthened with a fresh repro showing wholesale graph discard, not just lost test-file metadata (blind-severity-derived priority signal: P0). A frozen map scoped to a single package (902 file nodes, all under that package's path) fed via 'sketch --input substrate.json' produced a sketch of the ENTIRE surrounding repo (overview '1,218 files, ~542,987 LOC', structure tree rooted at CWD), not the 902-file universe in the map. So --input ignores the map's node universe entirely and re-walks the current working directory's filesystem. Cached maps cannot be re-summarized reproducibly; this is also why JSON budget sketches cannot be cleanly regenerated via --input."  # df8b
+- op: update  # 30f6
+  at: '2026-06-08T18:30:22Z'  # 30f6
+  by: agent  # 30f6
+  actor: jgstern_agent  # 30f6
+  clock: 7  # 30f6
+  nonce: 30f6  # 30f6
+  set: {}  # 30f6
+  add:  # 30f6
+    tags: [dogfood]  # 30f6
+  remove:  # 30f6
+    tags: [dogfooding]  # 30f6

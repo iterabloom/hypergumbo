@@ -105,3 +105,21 @@
   clock: 11  # a0d4
   nonce: a0d4  # a0d4
   message: "Dogfood CORRECTION reopen (member F148.A1) — corrects this invariant's cc-closure, reproduces on the frozen substrate. The bash cyclomatic_complexity gap is still present: bash symbols carry lines_of_code (71%) but cyclomatic_complexity remains 0% populated, contradicting the closure note \"Satisfied via PR1 + PR5 sweeps across 10 mainstream analyzers.\" The dogfood pass found bash cc% = 0 on the substrate. This invariant is currently already in the violated state (it had been reopened previously), so no further status change is required — recording this finding to keep the bash cyclomatic_complexity gap explicit under the invariant per the status-adjustment rule. Note for contrast: the Python cyclomatic_complexity OVER-count of `with` statements (a distinct defect, populated-but-wrong rather than absent) is filed as a separate net-new row (WI-gapir, F158.A1). Cross-ref WI-gapir."  # a0d4
+- op: update  # 235f
+  at: '2026-06-08T18:30:21Z'  # 235f
+  by: agent  # 235f
+  actor: jgstern_agent  # 235f
+  clock: 12  # 235f
+  nonce: 235f  # 235f
+  set: {}  # 235f
+  add:  # 235f
+    tags: [dogfood]  # 235f
+  remove:  # 235f
+    tags: [dogfooding]  # 235f
+- op: discuss  # 07c9
+  at: '2026-06-08T18:32:25Z'  # 07c9
+  by: agent  # 07c9
+  actor: jgstern_agent  # 07c9
+  clock: 13  # 07c9
+  nonce: 07c9  # 07c9
+  message: "Re-confirmed VIOLATED at HEAD (live hypergumbo run): bash cyclomatic_complexity 0/2 while java/go/rust/swift/csharp/ts 100%. Kept violated; earlier source-wiring fixed-claim was MED and contradicted by the live run. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 07c9

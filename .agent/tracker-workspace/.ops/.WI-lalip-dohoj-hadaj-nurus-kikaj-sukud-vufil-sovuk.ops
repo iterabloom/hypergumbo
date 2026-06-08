@@ -20,3 +20,30 @@
     pr_ref:  # f0c8
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family H). Stand-alone finding F28.2 previously folded onto INV-luhur. Full evidence remains on INV-luhur's pass-28 discussion entry; this row provides discrete representation.\n\n## Symptom\n\nspec.md §783 documents Symbol's `supply_chain` sub-field as `{tier, tier_name, reason}` (3 sub-fields). The actual substrate has 8 sub-fields under `supply_chain`:\n\n| Sub-field | Origin |\n|---|---|\n| tier | Documented |\n| tier_name | Documented |\n| reason | Documented |\n| is_test_file | **Relocated from top-level Symbol.is_test_file** |\n| is_example_file | **Relocated from top-level Symbol.is_example_file** |\n| is_config_file | **Relocated from top-level Symbol.is_config_file** |\n| is_generated_file | **Relocated from top-level Symbol.is_generated_file** |\n| is_exported | **Relocated from top-level Symbol.is_exported** |\n\nThe 5 booleans were relocated by `Symbol.to_dict()` at `ir.py:457-465` but the spec narrative still shows the pre-relocation form. The relocation is the structural fix that closed WI-bujot's \"100% None\" framing (per pass-27 F27.5 / pass-28 F28.1) — but the documentation never followed.\n\nAlso: spec lines 254-264 abbreviated Symbol dataclass display shows 11 fields where ir.py declares ~28. Readers can't infer substrate shape from spec alone.\n\n## Invariant\n\nFor every dataclass field that the serializer relocates, the spec documents the relocation. For `supply_chain`, the 5 relocated booleans appear in spec §783 alongside `tier`/`tier_name`/`reason`, with cross-references to the dataclass declaration.\n\n## Fix sketch\n\nUpdate spec.md §783 to document the 8-sub-field shape. Add a cross-reference table mapping dataclass fields → serialized paths for the `Symbol.to_dict()` relocation rules. Same fix pattern needed for any other `to_dict()` field-relocation (audit cross-reference: WI-edge-id-vs-edge-key-semantics is the Edge analog).\n\n## Source provenance\n\n- **F28.2** — INV-luhur discussion entry 2026-06-02 (pass-28 batch; paragraph beginning \"F28.2 spec.md drift on supply_chain documented field set\").\n\nLab notebook: pass 28 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-bujot** (Symbol.is_exported 100% None — RESOLVED via pass-27/28 reframing; this row is the documentation followup).\n- Sibling: **WI-kind-conditioned-writer** (Family H — adjacent schema documentation gap).\n- Family H siblings."  # f0c8
     fields: {}  # f0c8
+- op: update  # d163
+  at: '2026-06-08T18:30:28Z'  # d163
+  by: agent  # d163
+  actor: jgstern_agent  # d163
+  clock: 2  # d163
+  nonce: d163  # d163
+  set: {}  # d163
+  add:  # d163
+    tags: [dogfood]  # d163
+  remove:  # d163
+    tags: [dogfooding]  # d163
+- op: update  # b63c
+  at: '2026-06-08T19:12:53Z'  # b63c
+  by: agent  # b63c
+  actor: jgstern_agent  # b63c
+  clock: 3  # b63c
+  nonce: b63c  # b63c
+  set: {}  # b63c
+  add:  # b63c
+    not_duplicate_of: [META-jotob-mumav-vavat-bohab-vigof-tutit-mizaz-zukip]  # b63c
+- op: discuss  # 3d46
+  at: '2026-06-08T19:12:54Z'  # 3d46
+  by: agent  # 3d46
+  actor: jgstern_agent  # 3d46
+  clock: 4  # 3d46
+  nonce: 3d46  # 3d46
+  message: "root-cause family cross-link (t1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 3d46

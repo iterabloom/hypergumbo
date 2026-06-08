@@ -49,3 +49,18 @@
     tags: [adr_0017]  # f953
   remove:  # f953
     tags: [adr-0017]  # f953
+- op: update  # 069d
+  at: '2026-06-08T18:32:09Z'  # 069d
+  by: agent  # 069d
+  actor: jgstern_agent  # 069d
+  clock: 5  # 069d
+  nonce: 069d  # 069d
+  set:  # 069d
+    status: satisfied  # 069d
+- op: discuss  # f8a3
+  at: '2026-06-08T18:32:09Z'  # f8a3
+  by: agent  # f8a3
+  actor: jgstern_agent  # f8a3
+  clock: 6  # f8a3
+  nonce: f8a3  # f8a3
+  message: "holding(deprecated)->satisfied: Tests TestVariableMethodCalls::test_unresolved_variable_method_call + _constructor pass: analyzer emits calls edge with 'unresolved' dst at confidence 0.40 for method calls on local vars (PR #2550). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # f8a3

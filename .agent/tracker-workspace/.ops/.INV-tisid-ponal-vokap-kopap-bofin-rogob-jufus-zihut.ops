@@ -60,3 +60,46 @@
   clock: 6  # 9e3b
   nonce: 9e3b  # 9e3b
   message: "Reopened: tranch_03 card 046 (anon-card-tranch03-046, sourced from F48.A1+F48.A3 cluster-002, filed as WI-golov) reports spec §14 docs still describe tier 2 as 'Internal libraries, monorepo packages' and list test paths under tier 2, while INV-tisid's code refactor routed tests to tier 1. Code+docs out of sync; INV-tisid satisfied is misleading because consumer-facing contract (the spec doc) still asserts the pre-fix behavior. Substrate HEAD 9a18959071. Blind severity 4 (Significant). Reopened per playbook Phase 6.1 Step 4a status-adjustment rule (default-to-reopen branch)."  # 9e3b
+- op: update  # c86a
+  at: '2026-06-08T18:30:23Z'  # c86a
+  by: agent  # c86a
+  actor: jgstern_agent  # c86a
+  clock: 7  # c86a
+  nonce: c86a  # c86a
+  set: {}  # c86a
+  add:  # c86a
+    tags: [dogfood]  # c86a
+  remove:  # c86a
+    tags: [dogfooding]  # c86a
+- op: update  # 3606
+  at: '2026-06-08T19:12:56Z'  # 3606
+  by: agent  # 3606
+  actor: jgstern_agent  # 3606
+  clock: 8  # 3606
+  nonce: '3606'  # 3606
+  set: {}  # 3606
+  add:  # 3606
+    not_duplicate_of: [INV-nohod-najud-muzik-kamip-jozis-takun-pivik-jihaf]  # 3606
+- op: discuss  # 3555
+  at: '2026-06-08T19:12:56Z'  # 3555
+  by: agent  # 3555
+  actor: jgstern_agent  # 3555
+  clock: 9  # 3555
+  nonce: '3555'  # 3555
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 3555
+- op: update  # 772e
+  at: '2026-06-08T19:12:56Z'  # 772e
+  by: agent  # 772e
+  actor: jgstern_agent  # 772e
+  clock: 10  # 772e
+  nonce: 772e  # 772e
+  set: {}  # 772e
+  add:  # 772e
+    not_duplicate_of: [WI-mozum-lojil-nilum-bibib-nahom-kolik-kofan-mamuv]  # 772e
+- op: discuss  # f4c8
+  at: '2026-06-08T19:12:56Z'  # f4c8
+  by: agent  # f4c8
+  actor: jgstern_agent  # f4c8
+  clock: 11  # f4c8
+  nonce: f4c8  # f4c8
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # f4c8

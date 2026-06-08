@@ -55,3 +55,18 @@
     tags: [external_bakeoff]  # 7e54
   remove:  # 7e54
     tags: [external-bakeoff]  # 7e54
+- op: update  # 9663
+  at: '2026-06-08T18:32:12Z'  # 9663
+  by: agent  # 9663
+  actor: jgstern_agent  # 9663
+  clock: 6  # 9663
+  nonce: '9663'  # 9663
+  set:  # 9663
+    status: satisfied  # 9663
+- op: discuss  # 6dd7
+  at: '2026-06-08T18:32:12Z'  # 6dd7
+  by: agent  # 6dd7
+  actor: jgstern_agent  # 6dd7
+  clock: 7  # 6dd7
+  nonce: 6dd7  # 6dd7
+  message: "holding(deprecated)->satisfied: compact.py adds CROSS_CUTTING_EDGE_TYPES seeding (budget-capped) into node selection; test_compact.py:3294 TestCrossCutting asserts routes_to/dispatches_to/http-call edges survive; 6 tests pass. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 6dd7

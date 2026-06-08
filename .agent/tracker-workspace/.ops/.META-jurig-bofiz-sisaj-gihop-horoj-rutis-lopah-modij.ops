@@ -1,0 +1,22 @@
+- op: create  # b99b
+  at: '2026-06-08T19:12:19Z'  # b99b
+  by: agent  # b99b
+  actor: jgstern_agent  # b99b
+  clock: 1  # b99b
+  nonce: b99b  # b99b
+  data:  # b99b
+    kind: meta_invariant  # b99b
+    title: "Family: verify_claims.load_claims has no input-validation gate"  # b99b
+    status: violated  # b99b
+    priority: 2  # b99b
+    parent:  # b99b
+    tags:  # b99b
+    - connections_sweep_20260608  # b99b
+    - root_cause_family  # b99b
+    isbefore: []  # b99b
+    duplicate_of: []  # b99b
+    not_duplicate_of: []  # b99b
+    pr_ref:  # b99b
+    description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-zurih, WI-fuhaf, WI-bopoz, WI-ruzib. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # b99b
+    fields:  # b99b
+      statement: "verify_claims.load_claims must validate claim YAML up front (shape check, field-name allowlist, boundary-vocabulary check, YAML-error catch) so malformed/typo'd/unknown input cannot traceback, silently drop, or silently confirm."  # b99b

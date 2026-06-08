@@ -123,3 +123,18 @@
   clock: 14  # bfd6
   nonce: bfd6  # bfd6
   message: "All known violations resolved. Revalidation bakeoff (40 repos, 15 GOOD/25 WARN/0 FAIL) confirms no remaining feature parity gaps. Standing invariant — will re-violate if future bakeoffs find new gaps."  # bfd6
+- op: update  # bfe0
+  at: '2026-06-08T18:32:09Z'  # bfe0
+  by: agent  # bfe0
+  actor: jgstern_agent  # bfe0
+  clock: 15  # bfe0
+  nonce: bfe0  # bfe0
+  set:  # bfe0
+    status: violated  # bfe0
+- op: discuss  # 67ab
+  at: '2026-06-08T18:32:09Z'  # 67ab
+  by: agent  # 67ab
+  actor: jgstern_agent  # 67ab
+  clock: 16  # 67ab
+  nonce: 67ab  # 67ab
+  message: "holding(deprecated)->violated: Standing parity invariant ('features for one analyzer must propagate to siblings'). At HEAD 5.0.1, bash callables get cyclomatic_complexity 0/2 vs java/go/rust/swift/csharp/ts 100%; JS sig 2/5. These are the SAME parity class, tracked as INV-loguk (violated,P1) & INV-golap (violated,P1). Reproduced live. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 67ab

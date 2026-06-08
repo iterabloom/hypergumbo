@@ -20,3 +20,14 @@
     pr_ref:  # 1146
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family I). Stand-alone finding F27.8 previously filed inline (no specific parent in audit). The pass-27 lab notebook classified this as \"Limited-axis-variation observation.\"\n\n## Symptom\n\n`usage_contexts` surface is monocultural. 8 records on root substrate; all 8 collapse to 1-2 values on every declared axis:\n\n| Axis | Distinct values |\n|---|---|\n| kind | 1 (`call`) |\n| position | 1 (`view_func`) |\n| context_name | 2 (`Route`, `WebSocketRoute`) |\n\nEffectively the surface is \"HTTP/WS handler-invocation specialization\" rather than the general \"usage contexts\" naming suggests. Same shape as WI-feature-is-http-route-projection: a surface named generally but populated only from a narrow producer subset.\n\n## Invariant\n\nEither:\n1. **Spec amendment.** Rename `usage_contexts` to reflect its actual scope (`http_route_invocations` or similar); document that the surface is HTTP/WS specialization.\n2. **Producer broadening.** Multiple producers contribute to `usage_contexts` — calls to library functions, calls to internal helpers, dataflow contexts, etc. Surface becomes truly general.\n\n## Fix sketch\n\nPath (1) is documentation-only and matches the F33.18 / WI-feature-is-http-route-projection family pattern. Path (2) is structural and expensive; downstream consumers would need to handle a much larger UC set.\n\nRecommend path (1) for consistency with the parallel features=http_route framing.\n\n## Source provenance\n\n- **F27.8** — pass-27 lab notebook (recorded inline; this row is its first tracker representation).\n\nLab notebook: pass 27 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-numat** (closest existing umbrella for vocabulary-axis-mixing).\n- Sibling: **WI-feature-is-http-route-projection** (Family I — same shape; surface name vs producer scope mismatch).\n- Family I siblings."  # 1146
     fields: {}  # 1146
+- op: update  # 3adc
+  at: '2026-06-08T18:30:29Z'  # 3adc
+  by: agent  # 3adc
+  actor: jgstern_agent  # 3adc
+  clock: 2  # 3adc
+  nonce: 3adc  # 3adc
+  set: {}  # 3adc
+  add:  # 3adc
+    tags: [dogfood]  # 3adc
+  remove:  # 3adc
+    tags: [dogfooding]  # 3adc

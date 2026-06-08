@@ -48,3 +48,14 @@
   clock: 4  # cb58
   nonce: cb58  # cb58
   message: "[+ tranch_04: F66.A1 (EXTENSION) — re-confirmed on substrate HEAD eb5355917e: every FORWARD slice's edge_ids include file-import edges with BOTH endpoints absent from node_ids (subgraph not closed; 33 dangling dsts exist as in-repo nodes); F66.A2 adds 1526/25504=6.0% of functions are zero-out-degree where file imports are substituted for callees, and --exclude-imports exposes the honest empty slice. F74.A1 proved this is ORTHOGONAL to the src-dangling/tier-4 hole (slice projection, globally closed).]"  # cb58
+- op: update  # b0e5
+  at: '2026-06-08T18:30:22Z'  # b0e5
+  by: agent  # b0e5
+  actor: jgstern_agent  # b0e5
+  clock: 5  # b0e5
+  nonce: b0e5  # b0e5
+  set: {}  # b0e5
+  add:  # b0e5
+    tags: [dogfood]  # b0e5
+  remove:  # b0e5
+    tags: [dogfooding]  # b0e5

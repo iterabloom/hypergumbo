@@ -81,3 +81,14 @@
   clock: 8  # 99d6
   nonce: 99d6  # 99d6
   message: "Confirmed: WI-vusaf's description (verified 2026-05-31) covers all four INV-nonag repro cases (--max-symbols 0, --max-symbols -5, --coverage 2.0, --coverage -1) plus two additional cases this item did not document (--max-symbols < --min-symbols, --min-symbols < 0). The fold-back was complete before the delete; no information lost. Closing-out the reply thread."  # 99d6
+- op: update  # 9f12
+  at: '2026-06-08T18:30:24Z'  # 9f12
+  by: agent  # 9f12
+  actor: jgstern_agent  # 9f12
+  clock: 9  # 9f12
+  nonce: 9f12  # 9f12
+  set: {}  # 9f12
+  add:  # 9f12
+    tags: [dogfood]  # 9f12
+  remove:  # 9f12
+    tags: [dogfooding]  # 9f12

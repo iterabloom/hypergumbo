@@ -56,3 +56,14 @@
   nonce: e8a2  # e8a2
   set:  # e8a2
     status: deleted  # e8a2
+- op: update  # a87c
+  at: '2026-06-08T18:30:24Z'  # a87c
+  by: agent  # a87c
+  actor: jgstern_agent  # a87c
+  clock: 6  # a87c
+  nonce: a87c  # a87c
+  set: {}  # a87c
+  add:  # a87c
+    tags: [dogfood]  # a87c
+  remove:  # a87c
+    tags: [dogfooding]  # a87c

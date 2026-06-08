@@ -50,3 +50,14 @@
   clock: 5  # 641c
   nonce: 641c  # 641c
   message: "Fixed in PR #3809. Docstring rewritten to honestly enumerate the field's actual producers (10 niche-language analyzers + 2 linkers + external-boundary synthesis) and clarify that mainstream-analyzer languages leave canonical_name=None by design because name already encodes the parent. Added paragraph to containment-linker module docstring noting Phase 1.5 is reachable only for niche analyzers. Audit-then-rewrite per the playbook."  # 641c
+- op: update  # 8d83
+  at: '2026-06-08T18:30:28Z'  # 8d83
+  by: agent  # 8d83
+  actor: jgstern_agent  # 8d83
+  clock: 6  # 8d83
+  nonce: 8d83  # 8d83
+  set: {}  # 8d83
+  add:  # 8d83
+    tags: [dogfood]  # 8d83
+  remove:  # 8d83
+    tags: [dogfooding]  # 8d83

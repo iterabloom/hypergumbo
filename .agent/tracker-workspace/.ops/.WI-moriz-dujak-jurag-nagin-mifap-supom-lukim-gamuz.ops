@@ -40,3 +40,62 @@
   clock: 4  # 9196
   nonce: '9196'  # 9196
   message: "Re-surfaced in dogfooding tranche 10 (U02, F181.A2, severity 4). validation_report all-zero is a false clean-bill: uncovered defect classes the validator never checks — dangling-src endpoints and kind-slot mismatch. Same defect+fix as this item (counters report 0 because rules aren't wired, not because the substrate is clean). Specific instances map to WI-mujor (dangling-endpoint check) and WI-bovoh (kind-slot/id_format registry-scope gap). Fix: add dangling-endpoint + kind-slot validation checks (or scope/relabel the report)."  # 9196
+- op: update  # eb43
+  at: '2026-06-08T18:30:30Z'  # eb43
+  by: agent  # eb43
+  actor: jgstern_agent  # eb43
+  clock: 5  # eb43
+  nonce: eb43  # eb43
+  set: {}  # eb43
+  add:  # eb43
+    tags: [dogfood_tranche_03]  # eb43
+  remove:  # eb43
+    tags: [dogfood_tranch_03]  # eb43
+- op: update  # 7a2f
+  at: '2026-06-08T18:32:23Z'  # 7a2f
+  by: agent  # 7a2f
+  actor: jgstern_agent  # 7a2f
+  clock: 6  # 7a2f
+  nonce: 7a2f  # 7a2f
+  set: {}  # 7a2f
+  add:  # 7a2f
+    not_duplicate_of: [WI-mujor-hasil-zojol-lizos-kajun-vijog-tifur-zifuf]  # 7a2f
+- op: discuss  # ed7d
+  at: '2026-06-08T18:32:23Z'  # ed7d
+  by: agent  # ed7d
+  actor: jgstern_agent  # ed7d
+  clock: 7  # ed7d
+  nonce: ed7d  # ed7d
+  message: "RELATED_BUT_DISTINCT to WI-mujor: validation_report all-zero gap; mujor is the dangling-endpoint-check facet but adds a producer-side src-placeholder-synthesis fix moriz lacks. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # ed7d
+- op: update  # 0373
+  at: '2026-06-08T18:32:23Z'  # 0373
+  by: agent  # 0373
+  actor: jgstern_agent  # 0373
+  clock: 8  # 0373
+  nonce: '0373'  # 0373
+  set: {}  # 0373
+  add:  # 0373
+    not_duplicate_of: [INV-jukok-sifuk-zarol-sotos-rijaz-roguv-dujaf-holoh]  # 0373
+- op: discuss  # 4121
+  at: '2026-06-08T18:32:23Z'  # 4121
+  by: agent  # 4121
+  actor: jgstern_agent  # 4121
+  clock: 9  # 4121
+  nonce: '4121'  # 4121
+  message: "RELATED_BUT_DISTINCT to INV-jukok: jukok's 23 dangling-src edges are an instance the all-zero validator (moriz) fails to surface; distinct fixes (validator wiring vs edge repair). Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 4121
+- op: update  # c398
+  at: '2026-06-08T19:12:53Z'  # c398
+  by: agent  # c398
+  actor: jgstern_agent  # c398
+  clock: 10  # c398
+  nonce: c398  # c398
+  set: {}  # c398
+  add:  # c398
+    not_duplicate_of: [META-fimas-gotaf-dapoj-zarad-volud-doliz-fodok-gapuv]  # c398
+- op: discuss  # 7c20
+  at: '2026-06-08T19:12:53Z'  # 7c20
+  by: agent  # 7c20
+  actor: jgstern_agent  # 7c20
+  clock: 11  # 7c20
+  nonce: 7c20  # 7c20
+  message: "root-cause family cross-link (b3); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 7c20

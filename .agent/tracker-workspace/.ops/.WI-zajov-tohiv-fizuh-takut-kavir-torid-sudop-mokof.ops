@@ -19,3 +19,14 @@
     pr_ref:  # 6f23
     description: "F65.A1 (blind severity 2/Minor; ratchet-promoted from EXT-of-F57). The slice hub-prune predicate is len(non_dispatch_edges) > hub_threshold (strict >), where the comparand is a per-node degree (out-degree for forward, in-degree for reverse, excluding dispatches_to edges) — NOT centrality and NOT a raw all-edges count. So a node whose hub-count exactly equals the threshold is KEPT and traversed; pruning begins at threshold+1. The help text ('nodes with more edges than this threshold are included but not traversed') is technically correct on a careful reading of 'more than'=strictly greater, so the CONTRACT holds; this pins the exact cutoff semantics that were previously unspecified. Verified on a micro-graph (degree-10 node kept at threshold 10, pruned at 9) + monotone node-count widening on the real substrate. A consumer setting --hub-threshold N expecting 'prune N-or-more' is surprised that nodes with exactly N edges survive (recoverable by setting N-1). Fix: document the off-by-one relative to a naive >= reading explicitly. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 6f23
     fields: {}  # 6f23
+- op: update  # 6d7e
+  at: '2026-06-08T18:30:32Z'  # 6d7e
+  by: agent  # 6d7e
+  actor: jgstern_agent  # 6d7e
+  clock: 2  # 6d7e
+  nonce: 6d7e  # 6d7e
+  set: {}  # 6d7e
+  add:  # 6d7e
+    tags: [dogfood_tranche_04]  # 6d7e
+  remove:  # 6d7e
+    tags: [dogfood_tranch_04]  # 6d7e

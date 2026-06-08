@@ -28,3 +28,14 @@
   clock: 2  # 448a
   nonce: 448a  # 448a
   message: "Re-confirms --json fragmentation: only io-boundaries+verify-claims accept it; 8 of 10 reject (routes/search/explain/symbols/catalog/config/test-coverage/dead-code-maybe). Sibling of WI-gogif. (dogfood; blinded sev 2)"  # 448a
+- op: update  # 0356
+  at: '2026-06-08T18:30:26Z'  # 0356
+  by: agent  # 0356
+  actor: jgstern_agent  # 0356
+  clock: 3  # 0356
+  nonce: '0356'  # 0356
+  set: {}  # 0356
+  add:  # 0356
+    tags: [dogfood]  # 0356
+  remove:  # 0356
+    tags: [dogfooding]  # 0356

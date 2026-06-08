@@ -68,3 +68,31 @@
   clock: 6  # 0eb6
   nonce: 0eb6  # 0eb6
   message: "Closed by Phase 3 PR4 (commit 020615f524) alongside INV-bitig. Verdict-enum validator class enforces inconclusive branch; self-analysis at 0 verdict_enum violations."  # 0eb6
+- op: update  # b27b
+  at: '2026-06-08T18:30:24Z'  # b27b
+  by: agent  # b27b
+  actor: jgstern_agent  # b27b
+  clock: 7  # b27b
+  nonce: b27b  # b27b
+  set: {}  # b27b
+  add:  # b27b
+    tags: [dogfood]  # b27b
+  remove:  # b27b
+    tags: [dogfooding]  # b27b
+- op: update  # a03a
+  at: '2026-06-08T19:12:57Z'  # a03a
+  by: agent  # a03a
+  actor: jgstern_agent  # a03a
+  clock: 8  # a03a
+  nonce: a03a  # a03a
+  set:  # a03a
+    status: violated  # a03a
+  add:  # a03a
+    not_duplicate_of: [WI-ruzib-ladum-pimop-vamam-guhuz-jopil-gudun-sodom]  # a03a
+- op: discuss  # 4e5c
+  at: '2026-06-08T19:12:57Z'  # 4e5c
+  by: agent  # 4e5c
+  actor: jgstern_agent  # 4e5c
+  clock: 9  # 4e5c
+  nonce: 4e5c  # 4e5c
+  message: "PREMATURE CLOSURE: WI-ruzib is live reproduction (fold-audit F34.C1/C2) of the same silent-confirm-on-unknown-boundary defect; reopened satisfied->violated (connections-sweep 2026-06-08T1900Z)"  # 4e5c

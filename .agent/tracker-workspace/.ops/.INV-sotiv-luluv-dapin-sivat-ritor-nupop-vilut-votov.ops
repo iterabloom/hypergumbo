@@ -72,3 +72,14 @@
   clock: 7  # a10c
   nonce: a10c  # a10c
   message: "Dogfood validation, 2026-05-19 self-analysis. Verdict: moved. Pre-fix claim: 1981/32253 (6.1%) Symbol nodes missing stable_id, concentrated in {variable, module, export, dependency, project, interface, type} kinds + 99.4% of kind=file. Post-fix self-analysis measurement: 126/32300 (0.39%) missing. The original kind-by-kind gaps are fully closed — kind=file shows 0/X missing now (was 99.4%). The residual 126 missing are concentrated in tiny populations (enum: 5/5, struct: 5/5, trait: 1/1, protocol: 1/1) plus the new call_site kind (78/130 — call_site is a new kind introduced by the INV-mopif fix and post-dates the original claim). The 6.1% → 0.39% drop (~94% reduction) substantively closes the original gap. Verification script: /tmp/inv-validation/verify_dogfood.py."  # a10c
+- op: update  # 008f
+  at: '2026-06-08T18:30:23Z'  # 008f
+  by: agent  # 008f
+  actor: jgstern_agent  # 008f
+  clock: 8  # 008f
+  nonce: 008f  # 008f
+  set: {}  # 008f
+  add:  # 008f
+    tags: [dogfood]  # 008f
+  remove:  # 008f
+    tags: [dogfooding]  # 008f

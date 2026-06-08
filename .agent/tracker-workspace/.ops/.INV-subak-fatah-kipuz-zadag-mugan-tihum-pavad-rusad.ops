@@ -61,3 +61,14 @@
     parent: INV-murig-kanin-junur-tazot-gifin-hijad-momuf-bukoj  # a817
   add:  # a817
     tags: [dogfood_umbrella_member, fabov_face_registry_membership]  # a817
+- op: update  # 9e71
+  at: '2026-06-08T18:30:27Z'  # 9e71
+  by: agent  # 9e71
+  actor: jgstern_agent  # 9e71
+  clock: 6  # 9e71
+  nonce: '9e71'  # 9e71
+  set: {}  # 9e71
+  add:  # 9e71
+    tags: [dogfood]  # 9e71
+  remove:  # 9e71
+    tags: [dogfooding]  # 9e71

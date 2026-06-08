@@ -19,3 +19,14 @@
     pr_ref:  # 96b4
     description: "F63.A1 (blind severity 5/Severe). The Python file-extraction site (py.py:2169) wraps read_text()+ast.parse() in try/except (SyntaxError, UnicodeDecodeError). A chmod-000 file raises PermissionError (an OSError subclass) NOT in that tuple, so it propagates through the ThreadPoolExecutor future at all_analyzers.py:230 (no surrounding try/except) and out of the CLI: traceback, exit code 1, NO output JSON. §17 'skip file, continue analysis' + 'all output is valid JSON even if analysis is incomplete' (both marked done) fail closed (total loss). The same module catches (PermissionError, OSError) at two OTHER read sites, so the project knows permission errors occur on the file-read path; the main analysis path omits them. Repro: one chmod-000 .py file in an otherwise-fine 4-file repo -> exit 1, zero output; removing it -> clean exit-0 full map. Distinct mechanism from INV-buhur (caught-but-not-recorded soft drop into failed_files): THIS is an UNCAUGHT exception type causing a hard crash. Fix: add PermissionError/OSError to the caught tuple at the extraction site and route into failed_files (the record_failed_file plumbing from PR #3785 already exists). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 96b4
     fields: {}  # 96b4
+- op: update  # 58af
+  at: '2026-06-08T18:30:32Z'  # 58af
+  by: agent  # 58af
+  actor: jgstern_agent  # 58af
+  clock: 2  # 58af
+  nonce: 58af  # 58af
+  set: {}  # 58af
+  add:  # 58af
+    tags: [dogfood_tranche_04]  # 58af
+  remove:  # 58af
+    tags: [dogfood_tranch_04]  # 58af

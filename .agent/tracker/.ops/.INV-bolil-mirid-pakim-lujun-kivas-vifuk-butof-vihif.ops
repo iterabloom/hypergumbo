@@ -33,3 +33,18 @@
   nonce: 0d0d  # 0d0d
   set:  # 0d0d
     status: holding  # 0d0d
+- op: update  # bf4d
+  at: '2026-06-08T18:32:11Z'  # bf4d
+  by: agent  # bf4d
+  actor: jgstern_agent  # bf4d
+  clock: 3  # bf4d
+  nonce: bf4d  # bf4d
+  set:  # bf4d
+    status: satisfied  # bf4d
+- op: discuss  # c7a8
+  at: '2026-06-08T18:32:11Z'  # c7a8
+  by: agent  # c7a8
+  actor: jgstern_agent  # c7a8
+  clock: 4  # c7a8
+  nonce: c7a8  # c7a8
+  message: "holding(deprecated)->satisfied: Position-based _get_enclosing_function fix for arrow fns; regression tests TestCallbackCallAttribution (test_js_ts.py:3138) + TestKotlinLambdaCallAttribution (test_kotlin.py:1557) both present. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # c7a8

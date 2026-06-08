@@ -51,3 +51,14 @@
   clock: 4  # 9a4b
   nonce: 9a4b  # 9a4b
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): one of three text-pipeline helpers populating the untyped sketch_precomputed dict in cli.py:8047-8140 with no per-field schema or validator. Sibling field-level issues: INV-padoz-juvum (vocabulary, 12-entry no-lemma), INV-napap-tatup (centrality_scores, excludes source files by design despite the name). Code path: _extract_readme_description_heuristic walks past the first blank line and concatenates continuation tokens; the skip-prefix list at sketch.py:3414 omits '>' so markdown blockquote lines are appended raw. Umbrella candidate: introduce a typed SketchPrecomputed dataclass with field invariants — would catch the missing-period concatenation, the lemmatization gap, and the field-name/contents mismatch in one place."  # 9a4b
+- op: update  # e99d
+  at: '2026-06-08T18:30:27Z'  # e99d
+  by: agent  # e99d
+  actor: jgstern_agent  # e99d
+  clock: 5  # e99d
+  nonce: e99d  # e99d
+  set: {}  # e99d
+  add:  # e99d
+    tags: [dogfood]  # e99d
+  remove:  # e99d
+    tags: [dogfooding]  # e99d

@@ -90,3 +90,18 @@
     tags: [adr_0017]  # d8f7
   remove:  # d8f7
     tags: [adr-0017]  # d8f7
+- op: update  # 1800
+  at: '2026-06-08T18:32:09Z'  # 1800
+  by: agent  # 1800
+  actor: jgstern_agent  # 1800
+  clock: 11  # 1800
+  nonce: '1800'  # 1800
+  set:  # 1800
+    status: violated  # 1800
+- op: discuss  # b1fb
+  at: '2026-06-08T18:32:09Z'  # b1fb
+  by: agent  # b1fb
+  actor: jgstern_agent  # b1fb
+  clock: 12  # b1fb
+  nonce: b1fb  # b1fb
+  message: "holding(deprecated)->violated: taint.py:287 match_sink ignores ambiguous_names + falls through to hits[0] on module mismatch -> non-realizable paths (str.replace as fs-sink, stdout.write as net_send). Fresh-reproduced 5541 FP flows; INV-maluk violated, same root. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # b1fb

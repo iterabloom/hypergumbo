@@ -69,3 +69,18 @@
   set: {}  # 539f
   add:  # 539f
     tags: [super_meta_no_validator_stage]  # 539f
+- op: update  # 8f51
+  at: '2026-06-08T18:32:20Z'  # 8f51
+  by: agent  # 8f51
+  actor: jgstern_agent  # 8f51
+  clock: 8  # 8f51
+  nonce: 8f51  # 8f51
+  set:  # 8f51
+    status: violated  # 8f51
+- op: discuss  # 8270
+  at: '2026-06-08T18:32:20Z'  # 8270
+  by: agent  # 8270
+  actor: jgstern_agent  # 8270
+  clock: 9  # 8270
+  nonce: '8270'  # 8270
+  message: "Reopen: PROV children reproduce at HEAD (derived_from degenerate; origin 100% singleton; validate_pass_dependencies has 0 callers). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 8270

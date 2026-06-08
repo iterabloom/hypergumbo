@@ -54,3 +54,14 @@
   clock: 6  # ef77
   nonce: ef77  # ef77
   message: "Re-surfaced in dogfooding tranche 10 (U20, F199.A1, severity 4). Entrypoint confidence violates the documented 0.70 floor: 81/104 entrypoints below floor (min 0.1849) — the exact 81/104 figure this item already records. The values are continuous centrality-modulated, not 4 fixed tiers. Fix: reconcile entrypoint confidence with the spec tier contract (clamp to floor, or update spec to the modulated range + missing kinds). (related WI-logad: entrypoint tier table omits library_export/script/SPA tiers.)"  # ef77
+- op: update  # 515b
+  at: '2026-06-08T18:30:30Z'  # 515b
+  by: agent  # 515b
+  actor: jgstern_agent  # 515b
+  clock: 7  # 515b
+  nonce: 515b  # 515b
+  set: {}  # 515b
+  add:  # 515b
+    tags: [dogfood_tranche_03]  # 515b
+  remove:  # 515b
+    tags: [dogfood_tranch_03]  # 515b

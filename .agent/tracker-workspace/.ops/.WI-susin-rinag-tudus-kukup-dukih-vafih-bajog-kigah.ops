@@ -34,3 +34,14 @@
   clock: 3  # e1bd
   nonce: e1bd  # e1bd
   message: "superseded by INV-mozaf — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # e1bd
+- op: update  # 6035
+  at: '2026-06-08T18:30:31Z'  # 6035
+  by: agent  # 6035
+  actor: jgstern_agent  # 6035
+  clock: 4  # 6035
+  nonce: '6035'  # 6035
+  set: {}  # 6035
+  add:  # 6035
+    tags: [dogfood_tranche_03]  # 6035
+  remove:  # 6035
+    tags: [dogfood_tranch_03]  # 6035

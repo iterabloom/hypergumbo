@@ -21,3 +21,14 @@
     pr_ref:  # a7fe
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family O). Consolidates F33.6 + F33.10 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-33 discussion entries.\n\n## Symptom\n\n`io_primitives` catalog ships 11/14 languages as `status: in_progress` — including TypeScript despite the TypeScript substrate having actual nodes.\n\nLanguages enumerated:\n- 3 languages at `status: complete` (python, bash, ...)\n- 11 languages at `status: in_progress` (TypeScript, JavaScript, Java, Rust, Go, ...)\n\nThe catalog is consumed by `io-boundaries` CLI and downstream verify-claims at runtime. No consumer-side warning fires when a query targets a language that's `in_progress`. The 0-result outcome for an `in_progress` language is indistinguishable from \"no IO primitives in this code.\"\n\n## Invariant\n\nEach consumer of `io_primitives` catalog (CLI subcommand or downstream API) warns when a query targets a language marked `in_progress`. Warning explicitly states \"language X catalog is in_progress — results may be incomplete.\"\n\n## Fix sketch\n\n(a) Promote languages to `complete` where the catalog actually IS complete (verify each in_progress entry).\n(b) Add runtime warning in `io-boundaries` CLI when query targets in_progress language.\n(c) Document the status field in spec.md `io_primitives` section.\n\n## Source provenance\n\n- **F33.6 + F33.10** — INV-luhur discussion entry 2026-06-02T16:12:13 (pass-33 batch; io_primitives catalog status drift).\n\nLab notebook: pass 33.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-io-boundaries-cli-recomputes** (Family O — adjacent io_primitives consumer gap).\n- Sibling: **WI-verify-claims-silent-confirm-on-unknown-boundary** (Family E — silent-confirm at the verify-claims layer; could mask the in_progress signal).\n- Family O siblings."  # a7fe
     fields: {}  # a7fe
+- op: update  # 90f7
+  at: '2026-06-08T18:30:28Z'  # 90f7
+  by: agent  # 90f7
+  actor: jgstern_agent  # 90f7
+  clock: 2  # 90f7
+  nonce: 90f7  # 90f7
+  set: {}  # 90f7
+  add:  # 90f7
+    tags: [dogfood]  # 90f7
+  remove:  # 90f7
+    tags: [dogfooding]  # 90f7

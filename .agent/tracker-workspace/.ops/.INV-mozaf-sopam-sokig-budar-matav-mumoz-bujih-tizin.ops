@@ -132,3 +132,30 @@
   clock: 15  # c43f
   nonce: c43f  # c43f
   message: "Re-confirmed on fresh substrate (dogfood_tranche_07 F121.A4): three divergent file counts coexist — metrics.total_files=916 == metrics.debug.unique_paths_in_analysis=916 (these now MATCH, contra the original 1198-vs-902 wording), but metrics.debug.analyzed_file_symbols=902 (= file-kind node count) and metrics.debug.profile_files_sum=1218. So 902 / 916 / 1218 spread; the gap moved to total_files(916) vs file-kind nodes(902) [14 paths walked, no file node] and vs profile_files_sum(1218). Same mechanism, magnitudes refreshed (matches the prior 2026-06-06 magnitude-refresh discussion entries)."  # c43f
+- op: update  # 7069
+  at: '2026-06-08T18:30:27Z'  # 7069
+  by: agent  # 7069
+  actor: jgstern_agent  # 7069
+  clock: 16  # 7069
+  nonce: '7069'  # 7069
+  set: {}  # 7069
+  add:  # 7069
+    tags: [dogfood]  # 7069
+  remove:  # 7069
+    tags: [dogfooding]  # 7069
+- op: update  # 974b
+  at: '2026-06-08T18:32:24Z'  # 974b
+  by: agent  # 974b
+  actor: jgstern_agent  # 974b
+  clock: 17  # 974b
+  nonce: 974b  # 974b
+  set: {}  # 974b
+  add:  # 974b
+    not_duplicate_of: [WI-garam-kugul-lifal-zasuv-tivot-bakis-jazuj-folof]  # 974b
+- op: discuss  # 0b45
+  at: '2026-06-08T18:32:24Z'  # 0b45
+  by: agent  # 0b45
+  actor: jgstern_agent  # 0b45
+  clock: 18  # 0b45
+  nonce: 0b45  # 0b45
+  message: "RELATED_BUT_DISTINCT to WI-garam: files-counted-but-no-path-bearing-nodes; mozaf=global 296-file gap, garam=per-AR 11 zero-node-yield passes; overlapping symptom, distinct granularity. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 0b45

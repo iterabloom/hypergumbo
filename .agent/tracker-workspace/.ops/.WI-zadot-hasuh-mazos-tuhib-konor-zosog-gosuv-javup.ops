@@ -65,3 +65,14 @@
     parent: INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj  # 2bfa
   add:  # 2bfa
     tags: [dogfood_umbrella_member]  # 2bfa
+- op: update  # ffc6
+  at: '2026-06-08T18:30:22Z'  # ffc6
+  by: agent  # ffc6
+  actor: jgstern_agent  # ffc6
+  clock: 7  # ffc6
+  nonce: ffc6  # ffc6
+  set: {}  # ffc6
+  add:  # ffc6
+    tags: [dogfood]  # ffc6
+  remove:  # ffc6
+    tags: [dogfooding]  # ffc6

@@ -19,3 +19,29 @@
     pr_ref:  # eb88
     description: "F62.A3 (blind severity 3/Moderate; F74.A2 placeholder-counting-convention EXTENSION folded here). A reasonable consumer reads is_resolved=False as 'the dst symbol does not exist in the graph.' Empirically 100% of the 24244 is_resolved=False edges point at a dst that DOES exist — every one an external_symbol-kind placeholder node — and 0 edges have is_resolved=True with a missing dst. So is_resolved is orthogonal to dst-node existence; its true meaning is 'the dst is a synthetic external placeholder, not a real in-repo symbol' — a meaning the docstring ('dst symbol was resolved at analysis time') leaves ambiguous. The graph is referentially complete (no dangling dst) but the flag is overloaded. A graph-traversal consumer that special-cases 'if not edge.is_resolved: skip # dst wont be in graph' wrongly skips edges whose dst IS a (placeholder) node. Fix: document that an unresolved edge still has a materialized placeholder node (present-but-synthetic, not absent). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # eb88
     fields: {}  # eb88
+- op: update  # 6d40
+  at: '2026-06-08T18:30:32Z'  # 6d40
+  by: agent  # 6d40
+  actor: jgstern_agent  # 6d40
+  clock: 2  # 6d40
+  nonce: 6d40  # 6d40
+  set: {}  # 6d40
+  add:  # 6d40
+    tags: [dogfood_tranche_04]  # 6d40
+  remove:  # 6d40
+    tags: [dogfood_tranch_04]  # 6d40
+- op: update  # d517
+  at: '2026-06-08T19:12:52Z'  # d517
+  by: agent  # d517
+  actor: jgstern_agent  # d517
+  clock: 3  # d517
+  nonce: d517  # d517
+  set:  # d517
+    parent: META-sigap-hafis-ruhur-ramog-bogap-jinol-vuzoj-pajoh  # d517
+- op: discuss  # 944c
+  at: '2026-06-08T19:12:52Z'  # 944c
+  by: agent  # 944c
+  actor: jgstern_agent  # 944c
+  clock: 4  # 944c
+  nonce: 944c  # 944c
+  message: "root-cause family member (a2) (connections-sweep 2026-06-08T1900Z)"  # 944c

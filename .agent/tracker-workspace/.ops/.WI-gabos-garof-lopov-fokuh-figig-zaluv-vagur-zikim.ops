@@ -34,3 +34,14 @@
   clock: 3  # afb8
   nonce: afb8  # afb8
   message: "Metrics-block facet: metrics.by_supply_chain_tier omits the derived tier this item's summary block carries (blind-severity-derived priority signal: P3, minor/borderline). metrics.by_supply_chain_tier enumerates 3 tiers (external_dep/first_party/internal_dep) while supply_chain_summary carries a 4th (derived_skipped) and the tier model defines tier-4 derived. The two top-level supply-chain blocks disagree on the tier set, so a consumer iterating by_supply_chain_tier to enumerate all tiers never sees a derived bucket and builds an incomplete tier partition. Folded here per the pass author's recommendation (the derived-tier-shape cluster) rather than a standalone row."  # afb8
+- op: update  # cd94
+  at: '2026-06-08T18:30:29Z'  # cd94
+  by: agent  # cd94
+  actor: jgstern_agent  # cd94
+  clock: 4  # cd94
+  nonce: cd94  # cd94
+  set: {}  # cd94
+  add:  # cd94
+    tags: [dogfood]  # cd94
+  remove:  # cd94
+    tags: [dogfooding]  # cd94

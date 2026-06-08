@@ -33,3 +33,14 @@
   clock: 3  # af4a
   nonce: af4a  # af4a
   message: "Dogfood re-confirmation. edge.meta.evidence_lang populated on 0/110533 edges. The spec-required cross-language sub-case is also 0: cross_language=True edges 29 (0 with evidence_lang), url_path(HTTP) edges 12 (0), channel(IPC) edges 145 (0). ir.py:731-734 to_dict serializes evidence_lang only when not None; no pass populates the in-memory field. The field is declared in schema.json:978-983 and marked done at spec line 1530 ('Required field presence (execution_id, run_signature, evidence_lang, evidence_spans)'), so the done-status over-claims a 0%-coverage field. A confidence-scoring consumer reading 'evidence_lang or src.language' (spec line 1176) always falls through to the src.language fallback."  # af4a
+- op: update  # 9d83
+  at: '2026-06-08T18:30:30Z'  # 9d83
+  by: agent  # 9d83
+  actor: jgstern_agent  # 9d83
+  clock: 4  # 9d83
+  nonce: 9d83  # 9d83
+  set: {}  # 9d83
+  add:  # 9d83
+    tags: [dogfood_tranche_03]  # 9d83
+  remove:  # 9d83
+    tags: [dogfood_tranch_03]  # 9d83

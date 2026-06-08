@@ -54,3 +54,19 @@
   clock: 5  # ca4a
   nonce: ca4a  # ca4a
   message: "Pass-22 sub-finding (F8) — confidence calibration disparity at the ENTRYPOINTS layer (not just edges).\n\nRe-measured on pass-21/22 substrate, 104 entrypoints across 6 kinds:\n\n| Entrypoint kind | Count | Distinct conf | Sample values |\n|---|---|---|---|\n| library_export | 46 | **34** | 0.184861, 0.212327, 0.230958, ..., 0.6692 (non-round, computed) |\n| shell_script | 36 | 12 | mix: 0.425(x9), 0.4598(x7), 0.85(x2), 0.96(x1), ... (computed + hardcoded) |\n| http_route | 8 | **1** | 1.0 (all 8) |\n| main_function | 11 | 3 | 0.65(x5), 1.0(x5), 0.6351(x1) (mostly hardcoded) |\n| script_module | 2 | 2 | 0.8898, 0.9252 |\n| html_entry | 1 | 1 | 0.8847 |\n\nTwo of six entrypoint kinds (library_export, shell_script) emit evidence-derived continuous values. Four (http_route, main_function, script_module, html_entry) emit mostly hardcoded constants. Same disease as the edge-layer pattern this invariant tracks, surfaced here on a different writer.\n\nAlso worth noting: bm.json carries a top-level scalar `confidence_model: 'hypergumbo-evidence-v1'` field. This is a scheme name with no document. A real fix would extend that to a top-level dict mapping each evidence_type / entrypoint_kind to its documented confidence range and derivation method (e.g., `confidence_model_schedule`).\n\nLab notebook entry: `~/hypergumbo_lab_notebook/notebookjournal_06012026_2340_pass22.md`."  # ca4a
+- op: update  # 8a9b
+  at: '2026-06-08T19:12:52Z'  # 8a9b
+  by: agent  # 8a9b
+  actor: jgstern_agent  # 8a9b
+  clock: 6  # 8a9b
+  nonce: 8a9b  # 8a9b
+  set: {}  # 8a9b
+  add:  # 8a9b
+    not_duplicate_of: [META-ruhob-lubob-matip-vinol-duzab-nafom-tikas-vajur]  # 8a9b
+- op: discuss  # 10df
+  at: '2026-06-08T19:12:52Z'  # 10df
+  by: agent  # 10df
+  actor: jgstern_agent  # 10df
+  clock: 7  # 10df
+  nonce: 10df  # 10df
+  message: "root-cause family cross-link (b2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 10df

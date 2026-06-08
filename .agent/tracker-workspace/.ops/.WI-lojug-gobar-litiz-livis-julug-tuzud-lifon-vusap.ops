@@ -26,3 +26,18 @@
   clock: 2  # c7e6
   nonce: c7e6  # c7e6
   message: "Materialized from dogfood tranche 05 (F88.A1 / anon-card-009). Mechanism: call-specific Edge.create DEFAULT evidence_type='ast_call_direct' leaks onto non-call edges. Evidence: frozen substrate + source — ir.py:650 / ir.py:610 default; solidity.py:395-404 emits inherits via Edge.create() with no evidence_type kwarg. Magnitude: 326 non-call edges stamped ast_call_direct (dispatches_to 293, references 31, inherits 1, overrides 1) + intra-edge-type axis inconsistency on dispatches_to (293 ast_call_direct vs 326 type_hierarchy). Fresh repro: hypergumbo run on the tracker package reproduces websocket-linker references edges carrying call-evidence. Blind severity 4/5, reproduced (grounded at source, not injection). RELATED_BUT_DISTINCT from WI-molit (resolution-state smuggling ast_call vs ast_call_direct), WI-guvup (evidence_type vocabulary-drift count 33 vs 9), INV-dovus (evidence_type fragmentation for imports), and parent META INV-numat (edge vocab fields mix axes). New mechanism = the call-specific Edge.create DEFAULT bleeding onto non-call edges + intra-edge-type inconsistency."  # c7e6
+- op: update  # 446c
+  at: '2026-06-08T19:12:53Z'  # 446c
+  by: agent  # 446c
+  actor: jgstern_agent  # 446c
+  clock: 3  # 446c
+  nonce: 446c  # 446c
+  set:  # 446c
+    parent: META-luvir-dapil-mumil-mimuf-tipil-jaboh-kolip-pahim  # 446c
+- op: discuss  # ae57
+  at: '2026-06-08T19:12:53Z'  # ae57
+  by: agent  # ae57
+  actor: jgstern_agent  # ae57
+  clock: 4  # ae57
+  nonce: ae57  # ae57
+  message: "root-cause family member (g2) (connections-sweep 2026-06-08T1900Z)"  # ae57

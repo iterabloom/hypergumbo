@@ -49,3 +49,14 @@
   nonce: 302d  # 302d
   set:  # 302d
     status: deleted  # 302d
+- op: update  # 5c31
+  at: '2026-06-08T18:30:24Z'  # 5c31
+  by: agent  # 5c31
+  actor: jgstern_agent  # 5c31
+  clock: 5  # 5c31
+  nonce: 5c31  # 5c31
+  set: {}  # 5c31
+  add:  # 5c31
+    tags: [dogfood]  # 5c31
+  remove:  # 5c31
+    tags: [dogfooding]  # 5c31

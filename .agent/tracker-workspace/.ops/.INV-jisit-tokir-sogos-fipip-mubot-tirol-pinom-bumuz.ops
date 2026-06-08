@@ -153,3 +153,18 @@
   clock: 16  # f243
   nonce: f243  # f243
   message: "Integration test validates invariant in PR #2315. TestCrossLinkerIntegration proves slice BFS traverses edges from 4 linker types (Tauri IPC, Yjs CRDT, WebSocket, event sourcing) in a single trace. Pass-through filtering correctly removes synthetic nodes while preserving reachability. No edge type conflicts found."  # f243
+- op: update  # 56bc
+  at: '2026-06-08T18:32:11Z'  # 56bc
+  by: agent  # 56bc
+  actor: jgstern_agent  # 56bc
+  clock: 17  # 56bc
+  nonce: 56bc  # 56bc
+  set:  # 56bc
+    status: satisfied  # 56bc
+- op: discuss  # 91b8
+  at: '2026-06-08T18:32:11Z'  # 91b8
+  by: agent  # 91b8
+  actor: jgstern_agent  # 91b8
+  clock: 18  # 91b8
+  nonce: 91b8  # 91b8
+  message: "holding(deprecated)->satisfied: TestCrossLinkerIntegration (test_slice.py:3468, cites INV-jisit, PR#2315) proves slice BFS traverses Tauri/Yjs/WebSocket/event-sourcing edges in one trace; 5 tests pass. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 91b8

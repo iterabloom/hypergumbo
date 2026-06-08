@@ -110,3 +110,14 @@
   clock: 12  # 8a0c
   nonce: 8a0c  # 8a0c
   message: "Reopened: tranch_03 card 028 (anon-card-tranch03-028, sourced from F51.A1, filed as WI-dizir) reports 492 file-kind nodes citing origin pass-id 'orchestrator_file_symbol_synthesis' with no matching analysis_runs entry. Same producer pipeline INV-vaguj's name/span fix addressed, adjacent provenance-stamping gap on a different field. Substrate HEAD 9a18959071. Blind severity 4 (Significant). Reopened per playbook Phase 6.1 Step 4a status-adjustment rule (default-to-reopen branch)."  # 8a0c
+- op: update  # b477
+  at: '2026-06-08T18:30:23Z'  # b477
+  by: agent  # b477
+  actor: jgstern_agent  # b477
+  clock: 13  # b477
+  nonce: b477  # b477
+  set: {}  # b477
+  add:  # b477
+    tags: [dogfood]  # b477
+  remove:  # b477
+    tags: [dogfooding]  # b477

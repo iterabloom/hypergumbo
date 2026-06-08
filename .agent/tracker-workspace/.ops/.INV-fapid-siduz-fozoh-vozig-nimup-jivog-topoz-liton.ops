@@ -61,3 +61,14 @@
     parent: INV-dunof-zahof-zizon-huhor-vipot-tadul-kunib-sonah  # a369
   add:  # a369
     tags: [dogfood_umbrella_member, fabov_face_argparse_type_range]  # a369
+- op: update  # 106d
+  at: '2026-06-08T18:30:24Z'  # 106d
+  by: agent  # 106d
+  actor: jgstern_agent  # 106d
+  clock: 6  # 106d
+  nonce: 106d  # 106d
+  set: {}  # 106d
+  add:  # 106d
+    tags: [dogfood]  # 106d
+  remove:  # 106d
+    tags: [dogfooding]  # 106d

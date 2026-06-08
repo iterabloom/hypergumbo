@@ -37,3 +37,18 @@
   clock: 3  # 96b0
   nonce: 96b0  # 96b0
   message: "Fixed in jgstern-agent/fix/tracker-prefix-resolve-refs. Root cause: --remove-before, --remove-duplicate-of, --remove-not-duplicate-of bypassed _resolve_ref(). Now all 6 ID-reference flags (3 add + 3 remove) go through prefix resolution."  # 96b0
+- op: update  # fd14
+  at: '2026-06-08T18:32:12Z'  # fd14
+  by: agent  # fd14
+  actor: jgstern_agent  # fd14
+  clock: 4  # fd14
+  nonce: fd14  # fd14
+  set:  # fd14
+    status: satisfied  # fd14
+- op: discuss  # 529a
+  at: '2026-06-08T18:32:12Z'  # 529a
+  by: agent  # 529a
+  actor: jgstern_agent  # 529a
+  clock: 5  # 529a
+  nonce: 529a  # 529a
+  message: "holding(deprecated)->satisfied: cli.py routes all 6 ID-ref flags + --parent through _resolve_ref (lines 534-774); test_cli.py:3657/3690/785 assert remove-duplicate/not-duplicate/parent short prefixes resolve; 79 tests pass. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 529a

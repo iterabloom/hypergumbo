@@ -56,3 +56,14 @@
   clock: 5  # ecfa
   nonce: ecfa  # ecfa
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): this item functions as the empirical anchor for the L7 analyzer/framework/DCM/routes cluster. Six active items in the pile cross-reference KKKKK as either motivation (INV-rojip prod-non-test filter, INV-fomod file-structure complement) or downstream consequence (WI-hagip OOM scaling, WI-botol corpus prospecting). The 76% test-domination remains the load-bearing structural observation. No new sub-pattern uncovered; existing Phase-1 cross-refs are substantive."  # ecfa
+- op: update  # 0d0e
+  at: '2026-06-08T18:30:22Z'  # 0d0e
+  by: agent  # 0d0e
+  actor: jgstern_agent  # 0d0e
+  clock: 6  # 0d0e
+  nonce: 0d0e  # 0d0e
+  set: {}  # 0d0e
+  add:  # 0d0e
+    tags: [dogfood]  # 0d0e
+  remove:  # 0d0e
+    tags: [dogfooding]  # 0d0e

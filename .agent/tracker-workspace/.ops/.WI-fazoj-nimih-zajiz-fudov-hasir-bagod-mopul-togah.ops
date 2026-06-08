@@ -34,3 +34,14 @@
   clock: 3  # a9b7
   nonce: a9b7  # a9b7
   message: "superseded by INV-nubub — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # a9b7
+- op: update  # df62
+  at: '2026-06-08T18:30:30Z'  # df62
+  by: agent  # df62
+  actor: jgstern_agent  # df62
+  clock: 4  # df62
+  nonce: df62  # df62
+  set: {}  # df62
+  add:  # df62
+    tags: [dogfood_tranche_03]  # df62
+  remove:  # df62
+    tags: [dogfood_tranch_03]  # df62

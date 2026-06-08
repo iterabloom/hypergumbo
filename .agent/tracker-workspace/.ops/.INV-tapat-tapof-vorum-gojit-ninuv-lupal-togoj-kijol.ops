@@ -108,3 +108,18 @@
   clock: 13  # 7581
   nonce: '7581'  # 7581
   message: "Continuing violations in deep-20260510-054430 (2026-05-11) — ambiguous_names fix (PR #2628) does not yet cover these:\n\nalertmanager: tlsConn.Close() matches net/smtp.Client.Close (no receiver scoping); cobra.Command{...} matches os/exec.Command (no import-path scoping).\nkafka: ResultSet.getString/getInt/getLong primitive matches firing on unrelated getString calls; .remove() matching EntityManager.remove without context.\n\nPattern: even with ambiguous_names lists in the catalogs, primitive matches still fire on bare method names whose receiver type doesn't match. The fix needed is structural — match by (receiver_import_path, method_name) tuple rather than method_name alone — not additive (more ambiguous_names entries). Current 'holding' status is appropriate; raising visibility for the next round of work.\n\nEvidence files: ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-20260510-054430/reflect/cohort-002/iter-001/{alertmanager,kafka}.assessment.yaml."  # 7581
+- op: update  # 60a1
+  at: '2026-06-08T18:32:19Z'  # 60a1
+  by: agent  # 60a1
+  actor: jgstern_agent  # 60a1
+  clock: 14  # 60a1
+  nonce: 60a1  # 60a1
+  set:  # 60a1
+    status: violated  # 60a1
+- op: discuss  # fb10
+  at: '2026-06-08T18:32:19Z'  # fb10
+  by: agent  # fb10
+  actor: jgstern_agent  # fb10
+  clock: 15  # fb10
+  nonce: fb10  # fb10
+  message: "holding(deprecated)->violated: Latest discuss 2026-05-11 (deep-20260510-054430): ambiguous_names fix (PR#2628) does NOT scope receiver; tlsConn.Close/cobra.Command still FP. Agent: fix must be structural (receiver_import_path tuple). Reproduces. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # fb10

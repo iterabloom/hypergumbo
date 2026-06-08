@@ -34,3 +34,30 @@
   clock: 3  # abb9
   nonce: abb9  # abb9
   message: "Re-confirmed + node-side quantified on fresh substrate (dogfood_tranche_07 F140.A2): metrics.languages.<lang>.nodes over-counts python +248 (metrics 33846 vs actual 33598), javascript +11 (13 vs 2), typescript +3 (67 vs 64) = exactly 262 = the count of language=None synthetic-linker nodes, folded into specific language buckets by id-prefix; metrics.languages.unknown.nodes=0 (no None/unknown bucket). All other languages match exactly; Sigma metrics.nodes=34396=total. This is the node-side quantification this row's symptom names but never measured (the prior facet measured only the 120-edge side)."  # abb9
+- op: update  # cf88
+  at: '2026-06-08T18:30:28Z'  # cf88
+  by: agent  # cf88
+  actor: jgstern_agent  # cf88
+  clock: 4  # cf88
+  nonce: cf88  # cf88
+  set: {}  # cf88
+  add:  # cf88
+    tags: [dogfood]  # cf88
+  remove:  # cf88
+    tags: [dogfooding]  # cf88
+- op: update  # 6753
+  at: '2026-06-08T18:32:24Z'  # 6753
+  by: agent  # 6753
+  actor: jgstern_agent  # 6753
+  clock: 5  # 6753
+  nonce: '6753'  # 6753
+  set: {}  # 6753
+  add:  # 6753
+    not_duplicate_of: [WI-ninaj-giloj-molab-fagaz-hinuh-jofaf-topif-monim]  # 6753
+- op: discuss  # 43cd
+  at: '2026-06-08T18:32:24Z'  # 43cd
+  by: agent  # 43cd
+  actor: jgstern_agent  # 43cd
+  clock: 6  # 43cd
+  nonce: 43cd  # 43cd
+  message: "RELATED_BUT_DISTINCT to WI-ninaj: metrics.languages aggregation gaps: ninaj=files unpopulated, movah=nodes double-count synthetic linker nodes; distinct sub-fields/fixes. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 43cd

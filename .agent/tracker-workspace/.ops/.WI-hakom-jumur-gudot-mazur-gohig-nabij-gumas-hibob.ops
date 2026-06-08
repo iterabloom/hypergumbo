@@ -20,3 +20,14 @@
     pr_ref:  # 66e9
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (`~/hypergumbo_lab_notebook/notebookjournal_06022026_2100_fold_audit_passes_21-40.md`, Family A). Stand-alone finding F32.13 previously folded onto INV-fanur. Full evidence remains on INV-fanur's pass-32 discussion entry; this row provides discrete representation.\n\n## Symptom\n\nIn the default compact substrate (`--max-symbols 100` on /tmp/hg-dogfood-s21/bm.json), the source bm.json contains 2 edges whose BOTH endpoints are in the compact's 100-node set but those edges are NOT in the compact's 370-edge list.\n\nThe forward direction (induced-subgraph invariant) HOLDS: 370/370 emitted edges have both endpoints in the included node set, 0 dangling. But the converse direction has a 2-edge gap — compact edge selection is a STRICT SUBSET of the induced subgraph, not equal to it.\n\nSmall magnitude (2 edges out of ~158 possible) but structurally distinct from WI-compact-selection-non-monotonic — this is a converse-direction leak in compact edge selection itself, not a ranking-stability issue across budgets.\n\n## Invariant\n\nFor each compact projection:\n```\ncompact_edges == {e ∈ source.edges | e.src ∈ compact_nodes AND e.dst ∈ compact_nodes}\n```\n\nThe current implementation produces a strict subset of this set.\n\n## Hypothesized cause\n\nPlausibly edge dedup at the (src, dst, type) triplet level — but pass-24 NULL finding A.6 verified the substrate itself has edge-triplet uniqueness (109,915 unique triplets = 109,915 edges; no near-duplicates). So dedup-during-projection cannot be explained by substrate near-duplicates.\n\nNeeds a targeted probe at the compact edge-selection step in `compact.py` (specifically the post-node-selection edge filter): which edges with both endpoints in the included set are being dropped, and what's the discriminator?\n\n## Source provenance\n\n- **F32.13** — INV-fanur discussion entry 2026-06-02T08:02:26 (pass-32 batch; see paragraph beginning \"Smaller secondary face — F32.13\").\n\nLab notebook: pass 32 under `~/hypergumbo_lab_notebook/`.\n\n## Related rows\n\n- Parent: **INV-fanur** (META: Sketch budget enforcement layered without coordinator)\n- Sibling: **WI-compact-selection-non-monotonic** (Family A — node-side ranking instability across budgets; this row is the edge-side converse leak. Same subsystem, different mechanism.)\n- Sibling: **INV-titid** (compact features array leaves dangling references — another compact-side projection leak, but on a different array.)\n- Sibling: **WI-compact-truncation-marker**, **WI-compact-summary-fields-disagree** (Family A self-description gaps)."  # 66e9
     fields: {}  # 66e9
+- op: update  # 155b
+  at: '2026-06-08T18:30:27Z'  # 155b
+  by: agent  # 155b
+  actor: jgstern_agent  # 155b
+  clock: 2  # 155b
+  nonce: 155b  # 155b
+  set: {}  # 155b
+  add:  # 155b
+    tags: [dogfood]  # 155b
+  remove:  # 155b
+    tags: [dogfooding]  # 155b

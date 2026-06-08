@@ -19,3 +19,14 @@
     pr_ref:  # c46a
     description: "**Mechanic**: The substrate emits `stable_id_scheme: \"hypergumbo-stableid-v5\"`. The spec asserts \"Current value: `stable_id_scheme = \"hypergumbo-stableid-v2\"`\" and documents only the v1→v2 transition (added `containing_module_stable_id`). The intervening scheme bumps (v2→v3, v3→v4, v4→v5) are undocumented — what changed in the hash basis, when, or which consumer behaviors should differ.\n\n**Expectation**: Either the spec documents each scheme bump (what changed, why, consumer migration impact) or `stable_id_scheme` matches the documented \"Current value\".\n\n**Scope**: Every consumer that hardcodes the expected scheme identifier per the spec's explicit instruction to \"check the scheme identifier and bail or re-analyze when it differs from the cached one.\"\n\n**Exposure**: Any consumer storing `stable_id` values across analyses for diff/cache purposes; any consumer following the spec's \"bail or re-analyze\" guidance literally.\n\n**Consequence**: Consumers either treat every analysis as a cache miss (and lose the benefit of the scheme) or silently break their diff logic against newer substrates. Three undocumented scheme bumps means three undocumented changes to the stable_id value space with no way for consumers to reason about migration cost.\n\n**Source**: F45.A1 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # c46a
     fields: {}  # c46a
+- op: update  # 2eb6
+  at: '2026-06-08T18:30:31Z'  # 2eb6
+  by: agent  # 2eb6
+  actor: jgstern_agent  # 2eb6
+  clock: 2  # 2eb6
+  nonce: 2eb6  # 2eb6
+  set: {}  # 2eb6
+  add:  # 2eb6
+    tags: [dogfood_tranche_03]  # 2eb6
+  remove:  # 2eb6
+    tags: [dogfood_tranch_03]  # 2eb6

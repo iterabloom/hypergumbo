@@ -50,3 +50,14 @@
   clock: 4  # b679
   nonce: b679  # b679
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): part of the sketch performance / write-amplification cluster already containing WI-zipoj-ludaj (>1M LOC warm sketch 14-22 min — discussion explicitly cites \"comparison-sketch passes optional\" as the suggested fix), WI-ribag-bilav (warm-cache sketch slow; centrality not cached at analysis level), INV-jumim-zavog (sketch --input re-walks filesystem). The 4x/16x re-run is cli.py:798-841, unconditionally re-entering generate_sketch with no caller opt-out. A shared \"comparison-sketch is opt-in, default off for non-TTY / --input\" rule would resolve this and reduce wall-clock for the perf siblings."  # b679
+- op: update  # ec67
+  at: '2026-06-08T18:30:21Z'  # ec67
+  by: agent  # ec67
+  actor: jgstern_agent  # ec67
+  clock: 5  # ec67
+  nonce: ec67  # ec67
+  set: {}  # ec67
+  add:  # ec67
+    tags: [dogfood]  # ec67
+  remove:  # ec67
+    tags: [dogfooding]  # ec67

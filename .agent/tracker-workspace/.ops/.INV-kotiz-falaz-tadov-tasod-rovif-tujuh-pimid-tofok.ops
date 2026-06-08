@@ -37,3 +37,14 @@
   clock: 3  # dbbb
   nonce: dbbb  # dbbb
   message: "Fixed in PR #3934. Root cause: 11 analyzers constructed AnalysisRun(...) directly bypassing the create() factory, leaving config_fingerprint as empty string. Fix: __post_init__ auto-defaults empty config_fingerprint to _default_config_fingerprint() (sha256 hash of empty config). Structural — covers all current and future direct constructions."  # dbbb
+- op: update  # 8a48
+  at: '2026-06-08T18:30:28Z'  # 8a48
+  by: agent  # 8a48
+  actor: jgstern_agent  # 8a48
+  clock: 4  # 8a48
+  nonce: 8a48  # 8a48
+  set: {}  # 8a48
+  add:  # 8a48
+    tags: [dogfood]  # 8a48
+  remove:  # 8a48
+    tags: [dogfooding]  # 8a48

@@ -1,0 +1,22 @@
+- op: create  # 396b
+  at: '2026-06-08T19:11:54Z'  # 396b
+  by: agent  # 396b
+  actor: jgstern_agent  # 396b
+  clock: 1  # 396b
+  nonce: 396b  # 396b
+  data:  # 396b
+    kind: meta_invariant  # 396b
+    title: "META: values computed once from placeholders, never reconciled by a finalize pass"  # 396b
+    status: violated  # 396b
+    priority: 2  # 396b
+    parent:  # 396b
+    tags:  # 396b
+    - connections_sweep_20260608  # 396b
+    - root_cause_family  # 396b
+    isbefore: []  # 396b
+    duplicate_of: []  # 396b
+    not_duplicate_of: []  # 396b
+    pr_ref:  # 396b
+    description: "Layer-2 super-cluster from the connection sweep (connections-sweep 2026-06-08T1900Z). Cross-packet evidence: WI-mipul surfaced in both the confidence (C2) and run_signature (C3) investigations because override-analyze() skips the stamping path — one mechanism, two corrupted outputs. Children: run_signature staleness, hardcoded confidence, validation_report false-all-clear, and the compact finalize-after-shrink family (INV-fanur)."  # 396b
+    fields:  # 396b
+      statement: "Any field derived at construction time from default/placeholder inputs MUST be re-derived (or validated) against final/global state before serialization; the pipeline needs a finalize/reconcile step so run_signature, compact-shrunk dependent fields, edge confidence, and the validation_report agree with the substrate actually emitted."  # 396b

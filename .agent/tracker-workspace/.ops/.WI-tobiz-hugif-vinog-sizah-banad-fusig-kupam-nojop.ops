@@ -18,3 +18,19 @@
     pr_ref:  # 9c5d
     description: "The mainstream JS/TS analyzer is a single pass (`js_ts.py:101 PASS_ID = make_pass_id(\"javascript\")`) that handles `.ts` files too, stamping `origin=[\"javascript\"]` on every TS symbol/edge. In self-analysis 45/64 real TypeScript-language nodes and 51 ts-on-ts edges carry `origin=[javascript]`; the `typescript` value appears as an origin on ZERO nodes/edges. A consumer grouping by origin to find 'what the TS analyzer produced' finds nothing under typescript. Distinct from INV-tofun (which fixes LINKER synthetics hardcoding language=javascript on the language axis; this is the ANALYZER's own origin/pass-id axis on REAL TS nodes, node.language correctly typescript). Fix: emit a `typescript` pass-id/origin (or per-file origin) in js_ts.py. Related: INV-tofun (pending_validation). Surfaced via dogfooding; blinded severity 3/5."  # 9c5d
     fields: {}  # 9c5d
+- op: update  # 466d
+  at: '2026-06-08T19:12:56Z'  # 466d
+  by: agent  # 466d
+  actor: jgstern_agent  # 466d
+  clock: 2  # 466d
+  nonce: 466d  # 466d
+  set: {}  # 466d
+  add:  # 466d
+    not_duplicate_of: [WI-motug-hinuh-hazam-mokip-hozit-mokim-girad-tadim]  # 466d
+- op: discuss  # 3ae7
+  at: '2026-06-08T19:12:56Z'  # 3ae7
+  by: agent  # 3ae7
+  actor: jgstern_agent  # 3ae7
+  clock: 3  # 3ae7
+  nonce: 3ae7  # 3ae7
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 3ae7

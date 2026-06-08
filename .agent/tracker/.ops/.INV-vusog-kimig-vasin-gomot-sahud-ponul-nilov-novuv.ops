@@ -41,3 +41,18 @@
   set: {}  # 5b1e
   add:  # 5b1e
     before: [INV-jodak-galos-jiras-tapob-libag-bugot-puloh-mukis]  # 5b1e
+- op: update  # 354f
+  at: '2026-06-08T18:32:13Z'  # 354f
+  by: agent  # 354f
+  actor: jgstern_agent  # 354f
+  clock: 4  # 354f
+  nonce: 354f  # 354f
+  set:  # 354f
+    status: violated  # 354f
+- op: discuss  # ccbe
+  at: '2026-06-08T18:32:14Z'  # ccbe
+  by: agent  # ccbe
+  actor: jgstern_agent  # ccbe
+  clock: 5  # ccbe
+  nonce: ccbe  # ccbe
+  message: "holding(deprecated)->violated: Multi-lang invariant (Python+JS/TS). Python arm holds (tests pass, 160 extends edges in dogfood). JS/TS arm VIOLATED: WI-dutov (P1 todo_hard dogfood) shows TS emits ZERO extends edges despite passing unit tests. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # ccbe

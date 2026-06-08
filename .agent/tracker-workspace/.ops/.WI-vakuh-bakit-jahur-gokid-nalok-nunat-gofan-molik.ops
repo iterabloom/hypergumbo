@@ -40,3 +40,18 @@
   clock: 4  # 3df6
   nonce: 3df6  # 3df6
   message: "Re-confirms _find_parent Priority-1 name-match w/o span check over-wires methods to first same-named class: 28 out-of-span contains across 8 nodes (worst 16, 13 wrong). Same span-check fix. (dogfood; blinded sev 3)"  # 3df6
+- op: update  # 369a
+  at: '2026-06-08T19:12:52Z'  # 369a
+  by: agent  # 369a
+  actor: jgstern_agent  # 369a
+  clock: 5  # 369a
+  nonce: 369a  # 369a
+  set:  # 369a
+    parent: META-ruhob-lubob-matip-vinol-duzab-nafom-tikas-vajur  # 369a
+- op: discuss  # 29ca
+  at: '2026-06-08T19:12:52Z'  # 29ca
+  by: agent  # 29ca
+  actor: jgstern_agent  # 29ca
+  clock: 6  # 29ca
+  nonce: 29ca  # 29ca
+  message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # 29ca

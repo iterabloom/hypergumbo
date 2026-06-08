@@ -58,3 +58,14 @@
   clock: 5  # 1cd6
   nonce: 1cd6  # 1cd6
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Within INV-nanon (umbrella), this item instantiates a distinct sub-pattern from di-resolution (INV-hosig) and pyffi-linker (INV-kodan): \"no-analyzer-registered-at-all\" — the language is counted in profile.languages but no pass extracts symbols. Distinct from \"pass-runs-but-no-target-patterns\" where the pass exists and runs but finds nothing. The two sub-patterns need different fixes — a registration gap vs. an activation-predicate gap. Markdown (INV-bikaj's high-load list) may belong to the same sub-pattern as yaml here."  # 1cd6
+- op: update  # e331
+  at: '2026-06-08T18:30:27Z'  # e331
+  by: agent  # e331
+  actor: jgstern_agent  # e331
+  clock: 6  # e331
+  nonce: e331  # e331
+  set: {}  # e331
+  add:  # e331
+    tags: [dogfood]  # e331
+  remove:  # e331
+    tags: [dogfooding]  # e331

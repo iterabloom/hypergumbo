@@ -170,3 +170,18 @@
   clock: 21  # 496c
   nonce: 496c  # 496c
   message: "Core issue fixed in PR #1734. Plugin shim mains and codegen gen.go files now correctly demoted. Remaining edge cases tracked but low impact."  # 496c
+- op: update  # 8d45
+  at: '2026-06-08T18:32:17Z'  # 8d45
+  by: agent  # 8d45
+  actor: jgstern_agent  # 8d45
+  clock: 22  # 8d45
+  nonce: 8d45  # 8d45
+  set:  # 8d45
+    status: pending_validation  # 8d45
+- op: discuss  # 662f
+  at: '2026-06-08T18:32:18Z'  # 662f
+  by: agent  # 662f
+  actor: jgstern_agent  # 662f
+  clock: 23  # 662f
+  nonce: 662f  # 662f
+  message: "holding(deprecated)->pending_validation: Human set 'violated' pending account. PRs #1721/1734 landed partial Go fixes; agent revalidation found residual gaps (no symbol-utility detection, no reachability/diversity cap, vault test-app main #1). Not fully holding. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 662f

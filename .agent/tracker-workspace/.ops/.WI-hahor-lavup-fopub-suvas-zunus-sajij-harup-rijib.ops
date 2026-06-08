@@ -66,3 +66,14 @@
   clock: 7  # aff6
   nonce: aff6  # aff6
   message: "Triage complete + sentinel test committed. PR in flight via auto-pr. Orphan rate: 1783 (5.5%) → 664 (2.0%). Root causes documented in tracker discussion. No follow-up items warranted — remaining orphans are legitimate or low-priority."  # aff6
+- op: update  # db32
+  at: '2026-06-08T18:30:26Z'  # db32
+  by: agent  # db32
+  actor: jgstern_agent  # db32
+  clock: 8  # db32
+  nonce: db32  # db32
+  set: {}  # db32
+  add:  # db32
+    tags: [dogfood]  # db32
+  remove:  # db32
+    tags: [dogfooding]  # db32

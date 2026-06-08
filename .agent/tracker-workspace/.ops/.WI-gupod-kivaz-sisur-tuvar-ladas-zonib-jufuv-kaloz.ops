@@ -61,3 +61,35 @@
   clock: 7  # 3530
   nonce: '3530'  # 3530
   message: "Re-confirms tracker pyproject chunk-selector grabbed dependency-array fragment not [project], dropping name/version 0.5.1/MPL. WI-gupod names exactly this (3/11 manifests; bias chunk to [project]). (dogfood; blinded sev 3)"  # 3530
+- op: update  # 9b78
+  at: '2026-06-08T19:12:56Z'  # 9b78
+  by: agent  # 9b78
+  actor: jgstern_agent  # 9b78
+  clock: 8  # 9b78
+  nonce: 9b78  # 9b78
+  set: {}  # 9b78
+  add:  # 9b78
+    not_duplicate_of: [WI-lirub-dizud-dajig-mivit-gatam-zavab-rasil-vijos]  # 9b78
+- op: discuss  # c966
+  at: '2026-06-08T19:12:56Z'  # c966
+  by: agent  # c966
+  actor: jgstern_agent  # c966
+  clock: 9  # c966
+  nonce: c966  # c966
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # c966
+- op: update  # 642e
+  at: '2026-06-08T19:12:56Z'  # 642e
+  by: agent  # 642e
+  actor: jgstern_agent  # 642e
+  clock: 10  # 642e
+  nonce: 642e  # 642e
+  set: {}  # 642e
+  add:  # 642e
+    not_duplicate_of: [INV-jifus-parug-midub-nofip-mupil-zobak-vuzah-fokov]  # 642e
+- op: discuss  # b010
+  at: '2026-06-08T19:12:56Z'  # b010
+  by: agent  # b010
+  actor: jgstern_agent  # b010
+  clock: 11  # b010
+  nonce: b010  # b010
+  message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # b010

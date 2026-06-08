@@ -48,3 +48,18 @@
     tags: [ci_infrastructure]  # b00e
   remove:  # b00e
     tags: [ci-infrastructure]  # b00e
+- op: update  # 792f
+  at: '2026-06-08T18:32:09Z'  # 792f
+  by: agent  # 792f
+  actor: jgstern_agent  # 792f
+  clock: 5  # 792f
+  nonce: 792f  # 792f
+  set:  # 792f
+    status: satisfied  # 792f
+- op: discuss  # fc39
+  at: '2026-06-08T18:32:09Z'  # fc39
+  by: agent  # fc39
+  actor: jgstern_agent  # fc39
+  clock: 6  # fc39
+  nonce: fc39  # fc39
+  message: "holding(deprecated)->satisfied: store.py:1256-1268 validates required fields_schema fields at add-time, raises ValueError before writing op. Tests test_cli.py add_invariant_missing/partial/all_required (3) pass. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # fc39

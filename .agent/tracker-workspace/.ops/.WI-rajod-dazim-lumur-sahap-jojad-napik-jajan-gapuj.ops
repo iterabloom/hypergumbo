@@ -27,3 +27,14 @@
   clock: 2  # ee75
   nonce: ee75  # ee75
   message: "Dogfood tranche 05 facet (F90.A1 / anon-card-020): sharper mechanism for the centrality disjointness — the 280 centrality_scores keys are EXCLUSIVELY docs+config (167 .yaml + 111 .md + 1 .json + 1 .toml; md+yaml = 278/280), with 0 code-language files (py/ts/js/go/…). file-kind nodes are 845 .py + 11 .sh + 8 .ts (902 total), so only 1 yaml file is in BOTH sets. Centrality is computed over the wrong file universe entirely: top-3 are docs/hypergumbo-self-catalog/user_cache_sinks.yaml (7.42), packages/hypergumbo-core/README.md (4.25), and a yaml (2.42). A sketch consumer asking 'what are the most important modules?' is handed catalog/README files and never a source module. Also: keys are bare paths not node ids (0/280 are exact node ids). Evidence: frozen substrate.json sketch_precomputed.centrality_scores (probe_2_centrality_conf.log). Blind severity 4/5, reproduced on frozen substrate."  # ee75
+- op: update  # 4ed5
+  at: '2026-06-08T18:30:26Z'  # 4ed5
+  by: agent  # 4ed5
+  actor: jgstern_agent  # 4ed5
+  clock: 3  # 4ed5
+  nonce: 4ed5  # 4ed5
+  set: {}  # 4ed5
+  add:  # 4ed5
+    tags: [dogfood]  # 4ed5
+  remove:  # 4ed5
+    tags: [dogfooding]  # 4ed5

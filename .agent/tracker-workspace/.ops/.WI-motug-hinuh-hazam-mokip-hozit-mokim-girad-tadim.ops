@@ -19,3 +19,29 @@
     pr_ref:  # dcd1
     description: "F61.A4 (blind severity 3/Moderate; F76.A2 EXTENSION — import family are per-language aliases of ast_import — folded here). The substrate emits import_static (15 edges, all confidence 0.95) EXCLUSIVELY on edges whose source is typescript-prefixed. The §12 matrix has (python,import_static)=0.95 and (javascript,import_static)=0.95 rows but NO (typescript,import_static) row. The TS analyzer tags its language 'typescript', a finer granularity than the matrix's 'javascript' key anticipates. So the one shared evidence-type label the analyzers DO emit lands on a language the matrix cannot key — under the documented lookup it falls to the default despite being a clean static import. Narrow in volume but a clean demonstration that the matrix's language enum is brittle against the analyzers' actual labels. Fix: matrix language keys match the granularity analyzers populate (a typescript row, or TS edges normalized to javascript). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # dcd1
     fields: {}  # dcd1
+- op: update  # e47c
+  at: '2026-06-08T18:30:32Z'  # e47c
+  by: agent  # e47c
+  actor: jgstern_agent  # e47c
+  clock: 2  # e47c
+  nonce: e47c  # e47c
+  set: {}  # e47c
+  add:  # e47c
+    tags: [dogfood_tranche_04]  # e47c
+  remove:  # e47c
+    tags: [dogfood_tranch_04]  # e47c
+- op: update  # 1675
+  at: '2026-06-08T19:12:53Z'  # 1675
+  by: agent  # 1675
+  actor: jgstern_agent  # 1675
+  clock: 3  # 1675
+  nonce: '1675'  # 1675
+  set:  # 1675
+    parent: META-ruhob-lubob-matip-vinol-duzab-nafom-tikas-vajur  # 1675
+- op: discuss  # e45e
+  at: '2026-06-08T19:12:53Z'  # e45e
+  by: agent  # e45e
+  actor: jgstern_agent  # e45e
+  clock: 4  # e45e
+  nonce: e45e  # e45e
+  message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # e45e

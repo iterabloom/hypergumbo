@@ -119,3 +119,18 @@
     tags: [stable_id]  # 46bd
   remove:  # 46bd
     tags: [stable-id]  # 46bd
+- op: update  # b8b5
+  at: '2026-06-08T18:32:11Z'  # b8b5
+  by: agent  # b8b5
+  actor: jgstern_agent  # b8b5
+  clock: 13  # b8b5
+  nonce: b8b5  # b8b5
+  set:  # b8b5
+    status: satisfied  # b8b5
+- op: discuss  # 1a02
+  at: '2026-06-08T18:32:12Z'  # 1a02
+  by: agent  # 1a02
+  actor: jgstern_agent  # 1a02
+  clock: 14  # 1a02
+  nonce: 1a02  # 1a02
+  message: "holding(deprecated)->satisfied: make_route_stable_id(method,path) used across 6 analyzers+http/grpc linkers; test_http_linker.py:1932 asserts GET /users vs GET /posts no longer collide; 4 collision tests pass. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 1a02

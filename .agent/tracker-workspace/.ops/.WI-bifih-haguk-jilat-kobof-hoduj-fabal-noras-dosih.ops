@@ -71,3 +71,14 @@
   item: WI-bifih-haguk-jilat-kobof-hoduj-fabal-noras-dosih  # 0d3f
   target_nonce: 57cd  # 0d3f
   reason: "F33.8 fully migrated to WI-fabup per fold-audit Phase 2b"  # 0d3f
+- op: update  # 0c11
+  at: '2026-06-08T18:30:22Z'  # 0c11
+  by: agent  # 0c11
+  actor: jgstern_agent  # 0c11
+  clock: 8  # 0c11
+  nonce: 0c11  # 0c11
+  set: {}  # 0c11
+  add:  # 0c11
+    tags: [dogfood]  # 0c11
+  remove:  # 0c11
+    tags: [dogfooding]  # 0c11

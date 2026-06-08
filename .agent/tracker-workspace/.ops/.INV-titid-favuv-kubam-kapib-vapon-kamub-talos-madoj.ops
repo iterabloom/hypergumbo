@@ -53,3 +53,18 @@
   item: INV-titid-favuv-kubam-kapib-vapon-kamub-talos-madoj  # 40ae
   target_nonce: 1af4  # 40ae
   reason: "F40.A1+A2+A3 migrated to WI-pizat (A1+A2) and WI-kulan (A3) per fold-audit 2026-06-03"  # 40ae
+- op: update  # 7e2c
+  at: '2026-06-08T19:12:54Z'  # 7e2c
+  by: agent  # 7e2c
+  actor: jgstern_agent  # 7e2c
+  clock: 6  # 7e2c
+  nonce: 7e2c  # 7e2c
+  set:  # 7e2c
+    parent: INV-fanur-bumod-kopoj-gafar-nirat-bifig-mubov-fadik  # 7e2c
+- op: discuss  # 3ed6
+  at: '2026-06-08T19:12:54Z'  # 3ed6
+  by: agent  # 3ed6
+  actor: jgstern_agent  # 3ed6
+  clock: 7  # 3ed6
+  nonce: 3ed6  # 3ed6
+  message: "compact finalize-after-shrink family (connections-sweep 2026-06-08T1900Z)"  # 3ed6

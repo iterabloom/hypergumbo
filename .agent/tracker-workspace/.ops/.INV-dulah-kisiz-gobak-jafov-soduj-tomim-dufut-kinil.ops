@@ -88,3 +88,14 @@
   clock: 9  # b8d7
   nonce: b8d7  # b8d7
   message: "Dogfood tranche 05 facet (F95.A2 / anon-card-008): validation FAILED — a finding reproduced the id-format-escape mechanism on the frozen substrate, so this flips pending_validation -> violated. New facet: the JSON analyzer's lone file node (tsconfig.json) breaks the documented 1-1 whole-file sentinel span (spec §318) AND the :file:file slot convention that all 901 other file-kind nodes obey. Its id is 'json:packages/htrac-frontend/tsconfig.json:1-18:packages/htrac-frontend/tsconfig.json:tsconfig' — it encodes the REAL span 1-18 (not the 1-1 sentinel), repeats the full path in the name slot, and uses 'tsconfig' (not 'file') in the kind slot. A consumer relying on the 1-1 sentinel to detect file nodes by id misclassifies this one as a ranged symbol. Distinct from the bash file-node sub-pattern (those carry 1-1:file:file and ARE sentinel-correct). Defect is specific to the json analyzer file-node emit path. Evidence: frozen substrate.json (probe_1_json_nodes.log, probe_1_tsconfig.log). Blind severity 2/5, reproduced on frozen substrate."  # b8d7
+- op: update  # b613
+  at: '2026-06-08T18:30:25Z'  # b613
+  by: agent  # b613
+  actor: jgstern_agent  # b613
+  clock: 10  # b613
+  nonce: b613  # b613
+  set: {}  # b613
+  add:  # b613
+    tags: [dogfood]  # b613
+  remove:  # b613
+    tags: [dogfooding]  # b613

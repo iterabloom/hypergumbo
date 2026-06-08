@@ -19,3 +19,14 @@
     pr_ref:  # 4335
     description: "F72.A2 (blind severity 2/Minor; AUDIT-AXIS representative, sweep lang-edgetype-emission-matrix-pass-72; LOW self-confidence by construction; NON-fold default honored). A full enumeration of edge production by source language flags several languages (Rust, Swift, Java, C#) with function/class nodes but zero calls or instantiates edges, plus TypeScript with class nodes but zero instantiates. On their face these look like producer gaps mirroring the JS hole (F69.A1/F72.A1). But each of these languages has only n=2-9 nodes — schema-coverage fixture stubs, not real code. A 2-function fixture may genuinely contain no internal calls, so '0 calls' is not distinguishable from 'analyzer cant emit calls' at this population, and the TS zero-instantiates is plausibly real (web components are created via decorator+DOM not new X()). Filed as a matrix OBSERVATION not a confirmed per-language gap. A consumer treating an empty matrix cell as 'this analyzer does not emit this edge type' could be wrong. Resolution: a dedicated injected-fixture pass per language (with known constructs) would be needed to confirm whether these empty cells are real producer gaps or fixture-absent constructs. filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 4335
     fields: {}  # 4335
+- op: update  # 6605
+  at: '2026-06-08T18:30:32Z'  # 6605
+  by: agent  # 6605
+  actor: jgstern_agent  # 6605
+  clock: 2  # 6605
+  nonce: '6605'  # 6605
+  set: {}  # 6605
+  add:  # 6605
+    tags: [dogfood_tranche_04]  # 6605
+  remove:  # 6605
+    tags: [dogfood_tranch_04]  # 6605

@@ -57,3 +57,35 @@
   clock: 6  # df9e
   nonce: df9e  # df9e
   message: "Dogfood refinement on the sentinel value. The 14 override-analyze passes (html, go, csharp, javascript, play-routes, yaml_ansible, xml, json, java, toml, manifest_targets, make, python, enclosure-linker) serialize pass_version as the empty string '' rather than None — pass_version==None holds on 0 passes, pass_version=='' on exactly those 14 (a third sentinel class alongside None/{}). A consumer filtering 'pass_version is None' to enumerate un-versioned passes silently returns an empty set and misses all 14; a truthiness ('not pass_version') filter catches both. Recommend documenting the canonical sentinel so consumers know which predicate to use."  # df9e
+- op: update  # 7d95
+  at: '2026-06-08T18:32:22Z'  # 7d95
+  by: agent  # 7d95
+  actor: jgstern_agent  # 7d95
+  clock: 7  # 7d95
+  nonce: 7d95  # 7d95
+  set: {}  # 7d95
+  add:  # 7d95
+    not_duplicate_of: [WI-riroz-gihus-hibom-rukor-sotot-fakib-sakob-natad]  # 7d95
+- op: discuss  # 8cbc
+  at: '2026-06-08T18:32:22Z'  # 8cbc
+  by: agent  # 8cbc
+  actor: jgstern_agent  # 8cbc
+  clock: 8  # 8cbc
+  nonce: 8cbc  # 8cbc
+  message: "RELATED_BUT_DISTINCT to WI-riroz: play-routes is in mipul's override set (pass_version=\"\") but riroz is the distinct AR.version=\"1\" stale-constant fix; different field+fix. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 8cbc
+- op: update  # a1c4
+  at: '2026-06-08T19:12:52Z'  # a1c4
+  by: agent  # a1c4
+  actor: jgstern_agent  # a1c4
+  clock: 9  # a1c4
+  nonce: a1c4  # a1c4
+  set: {}  # a1c4
+  add:  # a1c4
+    not_duplicate_of: [META-hufaz-dazip-hijop-nijam-lasut-jigup-dahak-jirup]  # a1c4
+- op: discuss  # 69ea
+  at: '2026-06-08T19:12:52Z'  # 69ea
+  by: agent  # 69ea
+  actor: jgstern_agent  # 69ea
+  clock: 10  # 69ea
+  nonce: 69ea  # 69ea
+  message: "root-cause family cross-link (b1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 69ea

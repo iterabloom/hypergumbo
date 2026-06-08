@@ -49,3 +49,46 @@
   clock: 4  # a1fb
   nonce: a1fb  # a1fb
   message: "[+ tranch_04: WI-motug — related (card 003/F61.A4): import_static (15 edges) is the import-family alias emitted only on TS; the §12 matrix keys it under python/javascript with no typescript row, so the lookup misses. WI-molit — related (card 006/F62.A4): the call-family analogue — ast_call vs ast_call_direct redundantly encodes is_resolved (resolution-state smuggling), a sibling of this import-family vocabulary fragmentation under the same evidence_type single-axis concern.]"  # a1fb
+- op: update  # 9545
+  at: '2026-06-08T18:30:22Z'  # 9545
+  by: agent  # 9545
+  actor: jgstern_agent  # 9545
+  clock: 5  # 9545
+  nonce: '9545'  # 9545
+  set: {}  # 9545
+  add:  # 9545
+    tags: [dogfood]  # 9545
+  remove:  # 9545
+    tags: [dogfooding]  # 9545
+- op: update  # 612e
+  at: '2026-06-08T18:32:25Z'  # 612e
+  by: agent  # 612e
+  actor: jgstern_agent  # 612e
+  clock: 6  # 612e
+  nonce: 612e  # 612e
+  set: {}  # 612e
+  add:  # 612e
+    not_duplicate_of: [INV-vavat-gamij-batuv-rojij-gutaz-suvuj-zojub-dimiv]  # 612e
+- op: discuss  # 3b38
+  at: '2026-06-08T18:32:25Z'  # 3b38
+  by: agent  # 3b38
+  actor: jgstern_agent  # 3b38
+  clock: 7  # 3b38
+  nonce: 3b38  # 3b38
+  message: "RELATED_BUT_DISTINCT to INV-vavat: vestigial/fragmented vocabulary: dovus=evidence_type (4 import aliases + 5 singletons); vavat=edge.type 3 singletons; same pattern, different fields/axes. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 3b38
+- op: update  # ae1e
+  at: '2026-06-08T19:12:53Z'  # ae1e
+  by: agent  # ae1e
+  actor: jgstern_agent  # ae1e
+  clock: 8  # ae1e
+  nonce: ae1e  # ae1e
+  set: {}  # ae1e
+  add:  # ae1e
+    not_duplicate_of: [META-luvir-dapil-mumil-mimuf-tipil-jaboh-kolip-pahim]  # ae1e
+- op: discuss  # 3a8c
+  at: '2026-06-08T19:12:53Z'  # 3a8c
+  by: agent  # 3a8c
+  actor: jgstern_agent  # 3a8c
+  clock: 9  # 3a8c
+  nonce: 3a8c  # 3a8c
+  message: "root-cause family cross-link (g2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 3a8c

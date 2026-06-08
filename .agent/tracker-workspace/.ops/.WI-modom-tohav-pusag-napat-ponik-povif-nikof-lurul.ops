@@ -33,3 +33,14 @@
   clock: 3  # 81bd
   nonce: 81bd  # 81bd
   message: "Re-confirms by_supply_chain_tier.edges source-tier-only: external_dep=0/internal_dep=0 despite 27272+2881=30153 incident edges. WI-modom is the exact match; same projection-direction fix. (dogfood; blinded sev 4)"  # 81bd
+- op: update  # e0ad
+  at: '2026-06-08T18:30:30Z'  # e0ad
+  by: agent  # e0ad
+  actor: jgstern_agent  # e0ad
+  clock: 4  # e0ad
+  nonce: e0ad  # e0ad
+  set: {}  # e0ad
+  add:  # e0ad
+    tags: [dogfood_tranche_03]  # e0ad
+  remove:  # e0ad
+    tags: [dogfood_tranch_03]  # e0ad

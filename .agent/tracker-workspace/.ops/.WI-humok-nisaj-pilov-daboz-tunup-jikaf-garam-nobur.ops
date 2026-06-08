@@ -18,3 +18,18 @@
     pr_ref:  # ae66
     description: "**Defect.** The edge `quality.reason` taxonomy is undocumented AND its tier-named values do not partition the confidence axis — the field encodes the emitter/mechanism, not a confidence tier.\n\n**Mechanic.** `quality.reason` carries a 5-value vocabulary on 100% of 110533 edges: {resolved_call_site 43133, high_confidence_direct 37683, low_confidence_fallback 16656, medium_confidence 7944, derived_from_linker_evidence 5117}. It has 0 grep hits in docs/hypergumbo-spec.md AND docs/schema.json. Three of the names ASSERT a confidence tier (high_confidence_direct / medium_confidence / low_confidence_fallback) but `reason` does NOT partition confidence: conf=0.5 splits medium_confidence(7927)+derived_from_linker_evidence(1); conf=0.7 splits medium(14)+linker(292); conf=0.85 splits resolved_call_site(41699)+linker(31). The same evidence_type also spans multiple reason buckets. So `reason` encodes the EMITTER/mechanism, not a confidence band.\n\n**Expectation.** The `quality.reason` vocabulary is documented; tier-suggesting names that don't correspond to a confidence band are renamed to non-tier (emitter) names so a consumer doesn't misread \"medium_confidence\" as a mid band.\n\n**Consequence.** A consumer reading \"medium_confidence\" cannot infer a mid confidence band; a consumer reading the confidence cannot map back to a single reason. The vocabulary is undiscoverable from spec/schema.\n\n**Unifying fix.** Document the `quality.reason` vocabulary; rename the tier-suggesting values to non-tier (emitter) names.\n\n**Cross-refs (related, not duplicate).** WI-galug (schema generator emits contentless {type:object} for Edge.quality — the SCHEMA-generation surface; this item is the vocabulary-documentation + tier-naming surface); WI-riguh (quality.score≠confidence on 257 edges); WI-suvil (confidence hardcoded per emitter). Mitigant per spec §837: quality.reason is framed debug-only.\n\nMember: F193.A1. Found via dogfooding tranche 10. Severity 2."  # ae66
     fields: {}  # ae66
+- op: update  # ce34
+  at: '2026-06-08T19:12:53Z'  # ce34
+  by: agent  # ce34
+  actor: jgstern_agent  # ce34
+  clock: 2  # ce34
+  nonce: ce34  # ce34
+  set:  # ce34
+    parent: META-ruhob-lubob-matip-vinol-duzab-nafom-tikas-vajur  # ce34
+- op: discuss  # 0510
+  at: '2026-06-08T19:12:53Z'  # 0510
+  by: agent  # 0510
+  actor: jgstern_agent  # 0510
+  clock: 3  # 0510
+  nonce: '0510'  # 0510
+  message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # 0510

@@ -72,3 +72,14 @@
   item: INV-ripoh-hirom-lazan-konam-lolop-furot-tozuf-ditot  # b81a
   target_nonce: '0545'  # b81a
   reason: "F30.11 fully migrated to WI-sufuh per fold-audit Phase 2b"  # b81a
+- op: update  # 7372
+  at: '2026-06-08T18:30:21Z'  # 7372
+  by: agent  # 7372
+  actor: jgstern_agent  # 7372
+  clock: 8  # 7372
+  nonce: '7372'  # 7372
+  set: {}  # 7372
+  add:  # 7372
+    tags: [dogfood]  # 7372
+  remove:  # 7372
+    tags: [dogfooding]  # 7372

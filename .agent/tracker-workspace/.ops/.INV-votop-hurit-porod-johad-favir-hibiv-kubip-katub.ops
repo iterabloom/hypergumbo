@@ -52,3 +52,14 @@
     parent: INV-murig-kanin-junur-tazot-gifin-hijad-momuf-bukoj  # efdb
   add:  # efdb
     tags: [dogfood_umbrella_member, fabov_face_registry_membership]  # efdb
+- op: update  # fedb
+  at: '2026-06-08T18:30:24Z'  # fedb
+  by: agent  # fedb
+  actor: jgstern_agent  # fedb
+  clock: 5  # fedb
+  nonce: fedb  # fedb
+  set: {}  # fedb
+  add:  # fedb
+    tags: [dogfood]  # fedb
+  remove:  # fedb
+    tags: [dogfooding]  # fedb

@@ -34,3 +34,14 @@
   clock: 3  # 3f0a
   nonce: 3f0a  # 3f0a
   message: "superseded by WI-romup — found duplicate in tranch_03 retroactive dup audit 2026-06-05 (audit: dogfood_tranch_03/duplicate_audit.md). Substrate HEAD 9a18959071 sha256 a32c4a31..."  # 3f0a
+- op: update  # e994
+  at: '2026-06-08T18:30:30Z'  # e994
+  by: agent  # e994
+  actor: jgstern_agent  # e994
+  clock: 4  # e994
+  nonce: e994  # e994
+  set: {}  # e994
+  add:  # e994
+    tags: [dogfood_tranche_03]  # e994
+  remove:  # e994
+    tags: [dogfood_tranch_03]  # e994

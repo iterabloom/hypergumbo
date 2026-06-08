@@ -18,3 +18,19 @@
     pr_ref:  # f1b9
     description: "**Defect.** Two `limits` subfields are undocumented, `analyzer_version` carries a prefix that disagrees with the run-record version, and `partial_results_reason` is present (empty) on a complete map.\n\n**Mechanic.** (1) limits.max_tier_applied and limits.analyzer_version are emitted but have 0 doc hits. (2) limits.analyzer_version='hypergumbo-5.0.1' is the same tool version as analysis_runs[*].version='5.0.1' but rendered with a `hypergumbo-` prefix. (3) limits.partial_results_reason is emitted as an empty string while spec §960 says it is \"Present only when analysis_incomplete: true,\" and here analysis_incomplete=false.\n\n**Scope.** Top-level limits block. max_tier_applied=3 and analyzer_version='hypergumbo-5.0.1' have 0 grep hits in docs/hypergumbo-spec.md and 0 in docs/schema.json. analyzer_version='hypergumbo-5.0.1' vs analysis_runs[*].version='5.0.1'. partial_results_reason='' while analysis_incomplete=false.\n\n**Expectation.** The two subfields would be documented; analyzer_version would use one version-string format matching the run records; partial_results_reason would be absent (not empty-string) on a complete map.\n\n**Fix.** Normalize the analyzer_version string format (drop the hypergumbo- prefix or apply it uniformly), fix the partial_results_reason presence contract (omit when analysis_incomplete=false, do not emit empty string), and document max_tier_applied / analyzer_version.\n\n**Consequence.** The version join requires the consumer to normalize the hypergumbo- prefix or it fails; treating an empty-string partial_results_reason as a real reason (rather than \"no truncation\") misreports a complete analysis as partial.\n\n**Cross-refs.** WI-romup covers the validation_report.schema_version='0.1' vs bm.schema_version='0.13.0' sub-schema-versioning face of limits/schema drift; this row is the distinct analyzer_version-prefix + partial_results_reason-contract + undocumented-subfields face."  # f1b9
     fields: {}  # f1b9
+- op: update  # c38c
+  at: '2026-06-08T18:32:24Z'  # c38c
+  by: agent  # c38c
+  actor: jgstern_agent  # c38c
+  clock: 2  # c38c
+  nonce: c38c  # c38c
+  set: {}  # c38c
+  add:  # c38c
+    not_duplicate_of: [WI-romup-hibik-suhuk-zogak-pulip-sipib-sofof-dogus]  # c38c
+- op: discuss  # dd1b
+  at: '2026-06-08T18:32:24Z'  # dd1b
+  by: agent  # dd1b
+  actor: jgstern_agent  # dd1b
+  clock: 3  # dd1b
+  nonce: dd1b  # dd1b
+  message: "RELATED_BUT_DISTINCT to WI-romup: limits-block schema/version drift; kozuz explicitly cross-refs romup as the distinct sub-schema-versioning face vs its analyzer_version-prefix face. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # dd1b

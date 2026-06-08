@@ -27,3 +27,37 @@
   clock: 2  # 273e
   nonce: 273e  # 273e
   message: "Dogfood correction of the symptom framing. metrics.languages.<lang> carries ONLY {nodes, edges} — there is NO files key on any of the 18 entries (producer metrics.py:92/100 writes only {nodes, edges}). So the files key is ABSENT, not 0: a consumer reading metrics.languages.<lang>.files gets nothing (key missing), and any documentation asserting files=0 there is false because the field does not exist. Separately, profile.languages.<lang> (the only languages block with a files key, ={files, loc}) has files NON-ZERO for ALL 18 entries (python 852, yaml 174, markdown 113, bash 42, json/toml 9, typescript 8, others 1; producer profile.py:792). The fix (wire metrics.languages files, or harmonize the two blocks) is unchanged; the symptom statement should read 'files key absent from metrics.languages' rather than 'files=0'."  # 273e
+- op: update  # a913
+  at: '2026-06-08T18:30:27Z'  # a913
+  by: agent  # a913
+  actor: jgstern_agent  # a913
+  clock: 3  # a913
+  nonce: a913  # a913
+  set: {}  # a913
+  add:  # a913
+    tags: [dogfood]  # a913
+  remove:  # a913
+    tags: [dogfooding]  # a913
+- op: discuss  # b7e7
+  at: '2026-06-08T18:32:21Z'  # b7e7
+  by: agent  # b7e7
+  actor: jgstern_agent  # b7e7
+  clock: 4  # b7e7
+  nonce: b7e7  # b7e7
+  message: "Folds in WI-jikik (TRUE_DUPLICATE): identical metrics.languages.<lang>.files-unpopulated; same root+fix. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # b7e7
+- op: update  # bde2
+  at: '2026-06-08T18:32:24Z'  # bde2
+  by: agent  # bde2
+  actor: jgstern_agent  # bde2
+  clock: 5  # bde2
+  nonce: bde2  # bde2
+  set: {}  # bde2
+  add:  # bde2
+    not_duplicate_of: [WI-ziror-lufag-rivif-zamol-vamaj-zakan-bikid-takun]  # bde2
+- op: discuss  # 5b04
+  at: '2026-06-08T18:32:24Z'  # 5b04
+  by: agent  # 5b04
+  actor: jgstern_agent  # 5b04
+  clock: 6  # 5b04
+  nonce: 5b04  # 5b04
+  message: "RELATED_BUT_DISTINCT to WI-ziror: profile.languages vs metrics.languages mismatch family; ninaj=files key absent on metrics side, ziror=disjoint language SETS; complementary shared fix-site. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 5b04

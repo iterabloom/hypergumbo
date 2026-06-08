@@ -62,3 +62,18 @@
   target_nonce: da27  # 5c32
   new_text: "OVER-FOLD SPLIT (Phase-7 reconciliation): the route/event role-disagreement portion (22 nodes: route->function 8 + event_subscriber->function 11 + event_publisher->function 3) is tracked separately as WI-kugaj (distinct producer fix). THIS item is scoped to the external_symbol id-kind normalization (~1645 nodes), arguably-EXPECTED behavior — candidate for demotion/document-as-expected. Edit-mode cleanup completed: title + description narrowed and the route/event detail trimmed from the materialization note above (now owned by WI-kugaj)."  # 5c32
   reason: "edit-mode cleanup done; drop stale OS-enforced note"  # 5c32
+- op: update  # 17be
+  at: '2026-06-08T19:12:51Z'  # 17be
+  by: agent  # 17be
+  actor: jgstern_agent  # 17be
+  clock: 7  # 17be
+  nonce: 17be  # 17be
+  set:  # 17be
+    parent: META-nomiz-noboh-mogij-ragob-banof-silag-lujuh-binum  # 17be
+- op: discuss  # bd21
+  at: '2026-06-08T19:12:51Z'  # bd21
+  by: agent  # bd21
+  actor: jgstern_agent  # bd21
+  clock: 8  # bd21
+  nonce: bd21  # bd21
+  message: "root-cause family member (a1) (connections-sweep 2026-06-08T1900Z)"  # bd21

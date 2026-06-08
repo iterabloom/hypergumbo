@@ -19,3 +19,14 @@
     pr_ref:  # 74f6
     description: "**Mechanic**: When run without `--json`, stderr emits a notice: \"Note: no taint-flow catalog for language(s): ansible, bash, csharp, html, json, markdown, solidity, sql, toml, wgsl. Claims touching these languages are NOT actually verified ... Treat 'confirmed' verdicts on these languages as inconclusive.\" When `--json` is requested, the output is a flat array of verdict objects with no top-level `warnings`, no `uncovered_languages`, no per-verdict `inconclusive_because:` qualifier. The human-facing message exists; the machine-facing contract does not.\n\n**Expectation**: The JSON output carries the same inconclusiveness signal as stderr — either a top-level `warnings`/`uncovered_languages` array or per-verdict `inconclusive_because:` qualifiers — so a CI pipeline gating on `verify-claims --json` can distinguish \"confirmed because no flow exists\" from \"confirmed because the catalog has no source/sink for this language\".\n\n**Scope**: Every `--json` invocation. On the self-corpus, 10 of the 14 language scopes touched by the project's claims have no catalog at all.\n\n**Exposure**: Any CI system or LLM agent piping `verify-claims --json` to a gate; security-critical claims authored for languages without taint catalogs.\n\n**Consequence**: A security-critical bash-only project gets \"confirmed\" verdicts that simply mean \"no bash taint catalog exists\" — a false-confidence Tier 3 gap that compounds the false-positive cascade in the violated direction.\n\n**Source**: F46.A2 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 74f6
     fields: {}  # 74f6
+- op: update  # 1130
+  at: '2026-06-08T18:30:30Z'  # 1130
+  by: agent  # 1130
+  actor: jgstern_agent  # 1130
+  clock: 2  # 1130
+  nonce: '1130'  # 1130
+  set: {}  # 1130
+  add:  # 1130
+    tags: [dogfood_tranche_03]  # 1130
+  remove:  # 1130
+    tags: [dogfood_tranch_03]  # 1130

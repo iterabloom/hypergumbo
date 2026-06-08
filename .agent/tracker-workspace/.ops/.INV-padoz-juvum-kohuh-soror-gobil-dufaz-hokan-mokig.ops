@@ -52,3 +52,14 @@
   clock: 4  # 5673
   nonce: '5673'  # 5673
   message: "Cross-ref backfill (2026-05-30, deeper-issue investigation): third text-pipeline helper feeding the untyped sketch_precomputed dict (cli.py:8060); sketch.py:_extract_domain_vocabulary uses raw Counter.most_common(12) with no plural collapse and no analysis-domain stop-list (_COMMON_TERMS only filters generic CS terms). Same theme as INV-modor-vokot (readme heuristic concat) and INV-napap-tatup (centrality field-name mismatch). A shared normalizer + a typed SketchPrecomputed dataclass would address all three together. No matching IDF / TF-IDF item exists in the active set."  # 5673
+- op: update  # 94bb
+  at: '2026-06-08T18:30:27Z'  # 94bb
+  by: agent  # 94bb
+  actor: jgstern_agent  # 94bb
+  clock: 5  # 94bb
+  nonce: 94bb  # 94bb
+  set: {}  # 94bb
+  add:  # 94bb
+    tags: [dogfood]  # 94bb
+  remove:  # 94bb
+    tags: [dogfooding]  # 94bb

@@ -91,3 +91,30 @@
   item: INV-zurih-mozol-lolak-mimug-lukik-hipan-kasod-nonuk  # f697
   target_nonce: ee4c  # f697
   reason: "F40.B5 migrated to WI-fuhaf per fold-audit 2026-06-03"  # f697
+- op: update  # 8587
+  at: '2026-06-08T18:30:24Z'  # 8587
+  by: agent  # 8587
+  actor: jgstern_agent  # 8587
+  clock: 10  # 8587
+  nonce: '8587'  # 8587
+  set: {}  # 8587
+  add:  # 8587
+    tags: [dogfood]  # 8587
+  remove:  # 8587
+    tags: [dogfooding]  # 8587
+- op: update  # 1a8f
+  at: '2026-06-08T19:12:54Z'  # 1a8f
+  by: agent  # 1a8f
+  actor: jgstern_agent  # 1a8f
+  clock: 11  # 1a8f
+  nonce: 1a8f  # 1a8f
+  set: {}  # 1a8f
+  add:  # 1a8f
+    not_duplicate_of: [META-jurig-bofiz-sisaj-gihop-horoj-rutis-lopah-modij]  # 1a8f
+- op: discuss  # 523a
+  at: '2026-06-08T19:12:54Z'  # 523a
+  by: agent  # 523a
+  actor: jgstern_agent  # 523a
+  clock: 12  # 523a
+  nonce: 523a  # 523a
+  message: "root-cause family cross-link (t2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 523a

@@ -70,3 +70,14 @@
     tags: [taint_flow]  # 0b76
   remove:  # 0b76
     tags: [taint-flow]  # 0b76
+- op: update  # 99b6
+  at: '2026-06-08T18:30:23Z'  # 99b6
+  by: agent  # 99b6
+  actor: jgstern_agent  # 99b6
+  clock: 7  # 99b6
+  nonce: 99b6  # 99b6
+  set: {}  # 99b6
+  add:  # 99b6
+    tags: [dogfood]  # 99b6
+  remove:  # 99b6
+    tags: [dogfooding]  # 99b6

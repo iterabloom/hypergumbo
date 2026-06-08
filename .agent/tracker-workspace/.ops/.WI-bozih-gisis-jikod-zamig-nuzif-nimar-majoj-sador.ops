@@ -20,3 +20,14 @@
     pr_ref:  # 7de3
     description: "F63.A2 (blind severity 1/Cosmetic; positive control). A deliberately broken source file is caught at the extraction site (its exception type IS one of the two the handler catches: SyntaxError/UnicodeDecodeError), the run continues (exit 0), the rest of the repo is analyzed (16 nodes/14 edges), and the file lands in failed_files[] with the three documented keys {path,reason,analyzer} where reason is '<ExceptionType>: <msg>'. This confirms the failed-file plumbing works WHEN the exception type is caught — and isolates the crash defect (card 007/WI-madal, uncaught PermissionError) specifically to the uncaught-exception-type gap, not a broken pipeline. No negative consequence — clearing result establishing the failed-file machinery is sound. Filed for trend-cohort completeness (clearing measurement). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 7de3
     fields: {}  # 7de3
+- op: update  # 6003
+  at: '2026-06-08T18:30:33Z'  # 6003
+  by: agent  # 6003
+  actor: jgstern_agent  # 6003
+  clock: 2  # 6003
+  nonce: '6003'  # 6003
+  set: {}  # 6003
+  add:  # 6003
+    tags: [dogfood_tranche_04]  # 6003
+  remove:  # 6003
+    tags: [dogfood_tranch_04]  # 6003

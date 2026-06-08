@@ -19,3 +19,14 @@
     pr_ref:  # 5c30
     description: "**Mechanic**: The matcher implementation enumerates 8 supported match surfaces, all of which key off declared decorators, inheritance, parameter types, or name patterns. The substrate already contains 7,939 `instantiates` edges and 619 `dispatches_to` edges, so the underlying graph data is present; the matcher simply does not consume it. Libraries that expose their framework surface as constructor calls (`app = FastAPI()`, `app = Flask(__name__)`, `Base = declarative_base()`, `runner = CliRunner()`) or as factory calls have no key a YAML author can use. A new framework integration for such a library is structurally unwritable.\n\n**Expectation**: Match surfaces include call/instantiates/constructor_call so framework authors can key patterns to construction sites; OR the docs explicitly mark the call-based framework family as out of scope and consumers know they must hand-stitch downstream linkers.\n\n**Scope**: All frameworks whose primary surface is call/instantiation: argparse, fire, Flask/FastAPI app construction, SQLAlchemy declarative_base, gRPC service stubs, anything Pydantic, anything metaclass-driven. Affects the long tail of inert YAMLs and any future call-based framework.\n\n**Exposure**: Any YAML author writing a new framework integration for a call-based library; any consumer of a substrate produced from a codebase that uses such a library.\n\n**Consequence**: A whole class of frameworks is structurally invisible to YAML-driven pattern matching, with no error or warning; the only path is hand-stitched downstream linkers, reproducing the exact silent-failure mode the YAML system was supposed to abstract.\n\n**Source**: F47.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 5c30
     fields: {}  # 5c30
+- op: update  # 5d15
+  at: '2026-06-08T18:30:30Z'  # 5d15
+  by: agent  # 5d15
+  actor: jgstern_agent  # 5d15
+  clock: 2  # 5d15
+  nonce: 5d15  # 5d15
+  set: {}  # 5d15
+  add:  # 5d15
+    tags: [dogfood_tranche_03]  # 5d15
+  remove:  # 5d15
+    tags: [dogfood_tranch_03]  # 5d15

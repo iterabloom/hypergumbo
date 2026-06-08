@@ -18,3 +18,25 @@
     pr_ref:  # 5f70
     description: "- **Subject:** Relationship edges (extends / instantiates) resolve only to first-party targets; external bases and external constructors are dropped or demoted.\n- **Mechanic:** The relationship-edge producer emits a typed edge only when the target resolves to a first-party class symbol. For `extends`, an external/stdlib base yields `base_sym is None` and the loop `continue`s — no edge at all. For `instantiates`, an external constructor falls through to the generic call path and becomes a plain `calls` edge to an external_symbol placeholder. The whole relationship family lacks the external_symbol placeholder fallback that calls/imports/decorated_by already have.\n- **Expectation:** Every base-class and constructor relationship should be represented, with external targets routed to an external_symbol placeholder; the spec defines `extends` as \"class extends base class\" and `instantiates` as \"class instantiation (constructor call)\" with no first-party qualifier.\n- **Scope:** 49 of 209 Python classes with declared bases (23.4%) emit zero `extends` edges because all their bases are external (Exception×15, ModalScreen×12, Enum×6, App×3, Protocol×3, ABC, str, NamedTuple, …). `instantiates` records 0 external constructions out of 7939 edges; at least 2084 external constructor calls (Path×838, MagicMock×420, Console, etc.) are misfiled as plain `calls`.\n- **Exposure:** Any consumer doing type-hierarchy, reverse-slice, \"what is this a subclass of,\" or external-type-usage analysis; an LLM agent asked to find all Exception subclasses, all Enum classes, or all external types constructed gets the wrong answer.\n- **Consequence:** The map asserts by omission that error classes, enums, ABCs, and widgets have no base, and that external types are never constructed — substantively wrong structural facts that corrupt coupling and inheritance analysis.\n\n---\n\n(Filed from dogfooding.)"  # 5f70
     fields: {}  # 5f70
+- op: discuss  # 434e
+  at: '2026-06-08T14:20:48Z'  # 434e
+  by: agent  # 434e
+  actor: jgstern_agent  # 434e
+  clock: 2  # 434e
+  nonce: 434e  # 434e
+  message: "Root-novelty (human-adjudicated, code-grounded analyst): NEW_ROOT (HIGH) — fix lands in py.py relationship-edge producer; no existing item's fix touches that site (the ir.py boundary-node placeholder already works, extends/instantiates just never feed it). Sibling WI-242 (TS zero-extends): cross-ref, do not merge."  # 434e
+- op: update  # 5a04
+  at: '2026-06-08T19:12:52Z'  # 5a04
+  by: agent  # 5a04
+  actor: jgstern_agent  # 5a04
+  clock: 3  # 5a04
+  nonce: 5a04  # 5a04
+  set:  # 5a04
+    parent: META-sigap-hafis-ruhur-ramog-bogap-jinol-vuzoj-pajoh  # 5a04
+- op: discuss  # 27e1
+  at: '2026-06-08T19:12:52Z'  # 27e1
+  by: agent  # 27e1
+  actor: jgstern_agent  # 27e1
+  clock: 4  # 27e1
+  nonce: '27e1'  # 27e1
+  message: "root-cause family member (a2) (connections-sweep 2026-06-08T1900Z)"  # 27e1

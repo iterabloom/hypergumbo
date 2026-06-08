@@ -19,3 +19,14 @@
     pr_ref:  # 0020
     description: "**Mechanic**: The cold-cache rendering of `sketch -t 4000` writes a 12,840-byte section containing 12,792 NUL bytes (0x00), 24 whitespace bytes, and 47 printable bytes. A second invocation with cache hits produces an empty section (no NUL bytes); `-t 8000` produces a well-formed section throughout. The defect is reproducible on cold cache, which is the common consumer case.\n\n**Expectation**: The section is either well-formed (real source content) or omitted with an explanatory note; no literal NUL bytes appear in markdown output at any token budget.\n\n**Scope**: `sketch -t 4000` cold-cache invocation. Higher budgets and warm-cache invocations are clean.\n\n**Exposure**: Any consumer running sketch on a fresh install or cleared cache at the 4000-token budget — particularly LLM tokenizers, grep pipelines, and JSON-wrapped sketch loaders.\n\n**Consequence**: Most markdown viewers silently strip the NULs (section appears empty); some downstream consumers (tokenizers, JSON wrappers) choke or waste tokens on 12KB of null bytes; the section advertised as carrying full source for additional files renders nothing usable on a fresh consumer.\n\n**Source**: F44.A3 (INDEPENDENT, HIGH).\n\nFiled via tranch 03 dogfood (passes 41-60, substrate sha256 a32c4a31..., HEAD 9a18959071). Tranch state: `~/hypergumbo_lab_notebook/dogfood_tranch_03/tranch_state.json`."  # 0020
     fields: {}  # 0020
+- op: update  # 758b
+  at: '2026-06-08T18:30:30Z'  # 758b
+  by: agent  # 758b
+  actor: jgstern_agent  # 758b
+  clock: 2  # 758b
+  nonce: 758b  # 758b
+  set: {}  # 758b
+  add:  # 758b
+    tags: [dogfood_tranche_03]  # 758b
+  remove:  # 758b
+    tags: [dogfood_tranch_03]  # 758b

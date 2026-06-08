@@ -51,3 +51,14 @@
   clock: 5  # 49b0
   nonce: 49b0  # 49b0
   message: "Closed as side effect of INV-tofur (PR #3789). The root cause was sketch_embeddings._get_repo_state_hash using path:size:mtime for its non-git cache shard key, which picked up tracker .ops mtime jitter. The function now delegates to compute_repo_fingerprint, which uses content hashing — mtime changes no longer affect the cache key. Existing cache entries become unreachable on the algorithm switch (one-time miss, absorbed naturally as the cache repopulates under the new key). Verified by the existing test_state_hash_changes_with_file_modifications + new test_mtime_only_change_does_not_change_fingerprint property tests."  # 49b0
+- op: update  # 0b88
+  at: '2026-06-08T18:30:23Z'  # 0b88
+  by: agent  # 0b88
+  actor: jgstern_agent  # 0b88
+  clock: 6  # 0b88
+  nonce: 0b88  # 0b88
+  set: {}  # 0b88
+  add:  # 0b88
+    tags: [dogfood]  # 0b88
+  remove:  # 0b88
+    tags: [dogfooding]  # 0b88

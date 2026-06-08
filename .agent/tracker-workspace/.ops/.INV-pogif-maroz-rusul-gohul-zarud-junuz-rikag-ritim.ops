@@ -49,3 +49,14 @@
   nonce: b93c  # b93c
   set:  # b93c
     status: deleted  # b93c
+- op: update  # bb1c
+  at: '2026-06-08T18:30:25Z'  # bb1c
+  by: agent  # bb1c
+  actor: jgstern_agent  # bb1c
+  clock: 5  # bb1c
+  nonce: bb1c  # bb1c
+  set: {}  # bb1c
+  add:  # bb1c
+    tags: [dogfood]  # bb1c
+  remove:  # bb1c
+    tags: [dogfooding]  # bb1c

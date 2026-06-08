@@ -77,3 +77,14 @@
   clock: 8  # a6f0
   nonce: a6f0  # a6f0
   message: "Validated via self-analysis 2026-05-21. Re-ran hypergumbo on this repo (dev tip 74794a2e89) and confirmed the WS bridge fix holds: 12 edges with meta.protocol='ws' AND meta.cross_language=True (was 0 pre-fix). Total websocket-linker-origin edges = 42. The TS-client-at-/ws → Python-handler-at-/ws bridge pair is now present in the behavior map. Self-anchored claim from the original PR (0 → 12 on this exact repo). Artifacts: ~/hypergumbo_lab_notebook/notebookjournal_05212026_1522.md and verify_validation_drain_05212026{.py,_verdict.txt,.log}. Verdict: moved."  # a6f0
+- op: update  # b204
+  at: '2026-06-08T18:30:26Z'  # b204
+  by: agent  # b204
+  actor: jgstern_agent  # b204
+  clock: 9  # b204
+  nonce: b204  # b204
+  set: {}  # b204
+  add:  # b204
+    tags: [dogfood]  # b204
+  remove:  # b204
+    tags: [dogfooding]  # b204

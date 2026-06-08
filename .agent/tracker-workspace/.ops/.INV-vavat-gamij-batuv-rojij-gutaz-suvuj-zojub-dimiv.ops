@@ -41,3 +41,14 @@
   clock: 3  # 0397
   nonce: '0397'  # 0397
   message: "Cluster member of INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj (the umbrella META item) 2026-05-29 per the May-28 dogfooding cluster reorganization."  # 0397
+- op: update  # 4ba6
+  at: '2026-06-08T18:30:22Z'  # 4ba6
+  by: agent  # 4ba6
+  actor: jgstern_agent  # 4ba6
+  clock: 4  # 4ba6
+  nonce: 4ba6  # 4ba6
+  set: {}  # 4ba6
+  add:  # 4ba6
+    tags: [dogfood]  # 4ba6
+  remove:  # 4ba6
+    tags: [dogfooding]  # 4ba6

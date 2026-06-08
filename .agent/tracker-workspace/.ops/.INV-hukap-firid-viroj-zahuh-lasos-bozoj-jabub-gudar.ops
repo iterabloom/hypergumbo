@@ -49,3 +49,14 @@
   nonce: e818  # e818
   set:  # e818
     status: deleted  # e818
+- op: update  # dfb4
+  at: '2026-06-08T18:30:25Z'  # dfb4
+  by: agent  # dfb4
+  actor: jgstern_agent  # dfb4
+  clock: 5  # dfb4
+  nonce: dfb4  # dfb4
+  set: {}  # dfb4
+  add:  # dfb4
+    tags: [dogfood]  # dfb4
+  remove:  # dfb4
+    tags: [dogfooding]  # dfb4

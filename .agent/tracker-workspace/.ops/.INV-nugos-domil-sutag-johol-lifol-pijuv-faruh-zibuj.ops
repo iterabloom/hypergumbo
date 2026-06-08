@@ -80,3 +80,14 @@
   clock: 8  # 48eb
   nonce: 48eb  # 48eb
   message: "Confirmed: WI-kutam (verified 2026-05-31) carries the 2026-05-30T21:08:14Z fold-in covering (1) the cli:main same-language same-name cross-package repro, (2) the --file/--path alternative fix angle, (3) the invariant phrasing for the eventual property test, (4) the INV-nogof co-fix scope. ITEM-911ce4 dogfood pointer preserved alongside WI-kutam's original ITEM-c4e371. No information lost on delete. Closing-out the reply thread."  # 48eb
+- op: update  # f847
+  at: '2026-06-08T18:30:25Z'  # f847
+  by: agent  # f847
+  actor: jgstern_agent  # f847
+  clock: 9  # f847
+  nonce: f847  # f847
+  set: {}  # f847
+  add:  # f847
+    tags: [dogfood]  # f847
+  remove:  # f847
+    tags: [dogfooding]  # f847

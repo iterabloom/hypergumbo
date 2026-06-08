@@ -33,3 +33,14 @@
   clock: 3  # ebf3
   nonce: ebf3  # ebf3
   message: "Dogfood enrichment (member F156.A1) — JUSTIFIED-BUNDLE, one fix; reproduces on the frozen substrate. taint.py match_sink DROPS the module qualifier the io_primitives catalog provides, so console writes (sys.stdout/sys.stderr.write) are mis-routed into net_send. The catalog already encodes the correct answer via the MODULE qualifier — python.yaml:180-188 puts sys.stdout/stderr under logging (separate from the net_send asyncio.StreamWriter.write entry). A SIBLING consumer of the same catalog, io-boundaries, HONORS the module qualifier: io-boundaries puts all stderr/stdout chains in the logging bucket and its net_send bucket is exactly genuine urllib.request.urlopen/urlretrieve/Request chains with zero stderr writes. So the defect is not merely that match_sink ignores ambiguous_names (this row's framing) — it is that match_sink discards the module qualifier the catalog provides (logging != net_send by module) while io-boundaries keeps it. One catalog, two consumers, only taint mis-routes console writes. Same fix as this row (wire the module qualifier into match_sink), hence bundled here rather than filed new. Substrate evidence: probe_2_logging.log / probe_2_vc_sinknames.log."  # ebf3
+- op: update  # 5e48
+  at: '2026-06-08T18:30:29Z'  # 5e48
+  by: agent  # 5e48
+  actor: jgstern_agent  # 5e48
+  clock: 4  # 5e48
+  nonce: '5e48'  # 5e48
+  set: {}  # 5e48
+  add:  # 5e48
+    tags: [dogfood_tranche_03]  # 5e48
+  remove:  # 5e48
+    tags: [dogfood_tranch_03]  # 5e48

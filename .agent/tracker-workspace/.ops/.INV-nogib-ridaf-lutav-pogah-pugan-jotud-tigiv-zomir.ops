@@ -49,3 +49,14 @@
   nonce: c472  # c472
   set:  # c472
     status: deleted  # c472
+- op: update  # 7d2b
+  at: '2026-06-08T18:30:27Z'  # 7d2b
+  by: agent  # 7d2b
+  actor: jgstern_agent  # 7d2b
+  clock: 5  # 7d2b
+  nonce: 7d2b  # 7d2b
+  set: {}  # 7d2b
+  add:  # 7d2b
+    tags: [dogfood]  # 7d2b
+  remove:  # 7d2b
+    tags: [dogfooding]  # 7d2b

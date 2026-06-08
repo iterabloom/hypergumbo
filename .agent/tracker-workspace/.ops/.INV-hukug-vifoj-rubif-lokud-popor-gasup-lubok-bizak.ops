@@ -62,3 +62,14 @@
     parent: INV-somut-lapar-furob-tovul-juhor-puhat-zujim-lobir  # 9ed0
   add:  # 9ed0
     tags: [dogfood_umbrella_member, fabov_face_verify_claims]  # 9ed0
+- op: update  # b249
+  at: '2026-06-08T18:30:21Z'  # b249
+  by: agent  # b249
+  actor: jgstern_agent  # b249
+  clock: 6  # b249
+  nonce: b249  # b249
+  set: {}  # b249
+  add:  # b249
+    tags: [dogfood]  # b249
+  remove:  # b249
+    tags: [dogfooding]  # b249

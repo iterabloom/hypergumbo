@@ -25,3 +25,18 @@
   clock: 2  # ac7c
   nonce: ac7c  # ac7c
   message: "Re-confirms 262 null-language synthetic-linker nodes fail required non-nullable schema language (fn 130 + call_site 130 + pkg 2); all carry discovery_language. WI-kufib names 262 + oneOf[string,null]. (dogfood; blinded sev 4)"  # ac7c
+- op: update  # ced4
+  at: '2026-06-08T19:12:51Z'  # ced4
+  by: agent  # ced4
+  actor: jgstern_agent  # ced4
+  clock: 3  # ced4
+  nonce: ced4  # ced4
+  set:  # ced4
+    parent: META-nomiz-noboh-mogij-ragob-banof-silag-lujuh-binum  # ced4
+- op: discuss  # f4c2
+  at: '2026-06-08T19:12:51Z'  # f4c2
+  by: agent  # f4c2
+  actor: jgstern_agent  # f4c2
+  clock: 4  # f4c2
+  nonce: f4c2  # f4c2
+  message: "root-cause family member (a1) (connections-sweep 2026-06-08T1900Z)"  # f4c2

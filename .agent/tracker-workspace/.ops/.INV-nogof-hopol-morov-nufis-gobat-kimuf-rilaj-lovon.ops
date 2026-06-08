@@ -49,3 +49,14 @@
   clock: 4  # 9b83
   nonce: 9b83  # 9b83
   message: "[+ tranch_03: WI-nanut reports adjacent explain flag-set gap (no disambiguation flags); 15713-line stdout on 'explain main']"  # 9b83
+- op: update  # 493f
+  at: '2026-06-08T18:30:25Z'  # 493f
+  by: agent  # 493f
+  actor: jgstern_agent  # 493f
+  clock: 5  # 493f
+  nonce: 493f  # 493f
+  set: {}  # 493f
+  add:  # 493f
+    tags: [dogfood]  # 493f
+  remove:  # 493f
+    tags: [dogfooding]  # 493f

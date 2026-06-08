@@ -34,3 +34,18 @@
   nonce: '3463'  # 3463
   set:  # 3463
     status: holding  # 3463
+- op: update  # ea0e
+  at: '2026-06-08T18:32:17Z'  # ea0e
+  by: agent  # ea0e
+  actor: jgstern_agent  # ea0e
+  clock: 3  # ea0e
+  nonce: ea0e  # ea0e
+  set:  # ea0e
+    status: satisfied  # ea0e
+- op: discuss  # c06d
+  at: '2026-06-08T18:32:17Z'  # c06d
+  by: agent  # c06d
+  actor: jgstern_agent  # c06d
+  clock: 4  # c06d
+  nonce: c06d  # c06d
+  message: "holding(deprecated)->satisfied: All 5 cited decorator/annotation edge test classes pass across py/ts/java/csharp/rust (26 passed). decorated_by edges created for decorator metadata. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # c06d

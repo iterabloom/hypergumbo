@@ -32,3 +32,18 @@
   nonce: '8293'  # 8293
   set:  # 8293
     status: holding  # 8293
+- op: update  # 7f95
+  at: '2026-06-08T18:32:16Z'  # 7f95
+  by: agent  # 7f95
+  actor: jgstern_agent  # 7f95
+  clock: 3  # 7f95
+  nonce: 7f95  # 7f95
+  set:  # 7f95
+    status: satisfied  # 7f95
+- op: discuss  # ad19
+  at: '2026-06-08T18:32:16Z'  # ad19
+  by: agent  # ad19
+  actor: jgstern_agent  # ad19
+  clock: 4  # ad19
+  nonce: ad19  # ad19
+  message: "holding(deprecated)->satisfied: Cited regression tests pass: TestResolveDeferredSymbolRefs + test_inv002_fallback_resolution_by_view_name (18+1 passed). Deferred symbol_ref resolution enriches concepts. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # ad19

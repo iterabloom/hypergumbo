@@ -42,3 +42,18 @@
   nonce: 5dae  # 5dae
   set:  # 5dae
     title: "SPA/Electron entrypoint must be detected"  # 5dae
+- op: update  # b9bc
+  at: '2026-06-08T18:32:12Z'  # b9bc
+  by: agent  # b9bc
+  actor: jgstern_agent  # b9bc
+  clock: 5  # b9bc
+  nonce: b9bc  # b9bc
+  set:  # b9bc
+    status: satisfied  # b9bc
+- op: discuss  # 8477
+  at: '2026-06-08T18:32:12Z'  # 8477
+  by: agent  # 8477
+  actor: jgstern_agent  # 8477
+  clock: 6  # 8477
+  nonce: '8477'  # 8477
+  message: "holding(deprecated)->satisfied: PR #2125: ELECTRON_MAIN/MAIN_FUNCTION/SPA_BOOTSTRAP concepts in entrypoints.py + react.yaml createRoot/ReactDOM.render patterns; 18 SPA/electron/react entrypoint tests pass. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 8477
