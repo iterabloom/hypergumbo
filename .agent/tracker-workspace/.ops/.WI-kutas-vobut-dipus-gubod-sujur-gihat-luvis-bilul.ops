@@ -26,3 +26,10 @@
   clock: 2  # c0ea
   nonce: c0ea  # c0ea
   message: "Re-confirms generate-schema emits metrics/limits/features as opaque blocks (no properties, no Feature $def): 7+10+16 records unvalidatable. WI-kutas names this; WI-galug is the generator root. (dogfood; blinded sev 3)"  # c0ea
+- op: discuss  # f002
+  at: '2026-06-08T10:28:26Z'  # f002
+  by: agent  # f002
+  actor: jgstern_agent  # f002
+  clock: 3  # f002
+  nonce: f002  # f002
+  message: "Re-confirms Symbol $def drift: present-not-declared discovery_language/display_label/protocol_origin/qualified_name (34396 nodes) + dead canonical_name (0). Edge $def clean. WI-kutas names these 4+1. (dogfood; blinded sev 3)"  # f002

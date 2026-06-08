@@ -18,3 +18,10 @@
     pr_ref:  # 003b
     description: "- **Subject:** The published schema pins the `view` field to a single constant, so every non-default view fails the project's own schema.\n- **Mechanic:** The schema is auto-generated from the behavior-map dataclass default `view=\"behavior_map\"`, and the codegen emitted a JSON-Schema `const:\"behavior_map\"`. But the producer sets `view` to compact / tiered / slice / test-coverage for those subcommands, all stamped with the same schema_version, with only one declared schema in the repo.\n- **Expectation:** The schema should accept the full set of `view` values the producer emits (an enum, not a single const), or provide a per-view schema.\n- **Scope:** A fresh compact output is otherwise fully schema-conformant but fails validation with exactly 1 error: `['view'] | 'behavior_map' was expected`. The same failure applies to tiered, slice, and test-coverage views.\n- **Exposure:** Any consumer that validates a non-default-view output (compact/tiered/slice/test-coverage) against the project's own published schema.\n- **Consequence:** Schema-driven consumers (codegen, contract tests, gateway validation) reject valid first-class outputs on the `view` field even though every other field conforms.\n\n---\n\n(Filed from dogfooding.)"  # 003b
     fields: {}  # 003b
+- op: discuss  # 1112
+  at: '2026-06-08T14:11:31Z'  # 1112
+  by: agent  # 1112
+  actor: jgstern_agent  # 1112
+  clock: 2  # 1112
+  nonce: '1112'  # 1112
+  message: "Root-novelty (human-adjudicated): INSTANCE of WI-kutas generate-schema-drift root — codegen emitted const:'behavior_map' from the dataclass default instead of an enum. Distinct fix (emit enum) keeps it a separate row, but it is the same generator root, not a new root."  # 1112

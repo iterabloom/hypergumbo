@@ -19,3 +19,17 @@
     pr_ref:  # 5b56
     description: "**Mechanism.** The spec §887-893 entrypoint 'Confidence tiers' table lists only 6 base tiers (0.99/0.95/0.85/0.80/0.70/0.50) and names none of library_export, shell_script, html_entry, script_module, serialization_callback. Producer bases (entrypoints.py): library_export confidence=0.75 (:792), serialization_callback 0.80 (:811), shell_script/html_entry/script_module structural tier 0.85 (:740/:756/:769) — NONE of 0.75, 0.80 appear in the table. Kind census: library_export 46 (the single most common, 44%), shell_script 36, main_function 11, http_route 8, script_module 2, html_entry 1.\n\n**Sharper sub-issue.** 27 of 46 library_export entries are penalized BELOW 0.50 — the documented connectivity-fallback floor (§893 presents 0.50 as the lowest 'no patterns match' tier). So a confidently-pattern-detected export (e.g. clear_summary_cache at 0.185) ranks BELOW a pure connectivity guess (0.50). A consumer using 0.50 as a 'just a connectivity heuristic' cutoff drops 27 genuinely-detected exports while keeping fallback guesses; the confidence axis conflates detection-strength with a penalty-adjusted ranking signal the table does not expose. 'base 0.75 in any? False' — every library_export is off-base due to penalties, so a consumer cannot even recover the base from the max.\n\n**Consequence.** A consumer reading the table to interpret an entrypoint confidence cannot map ~44% of the array; the export-API and script/SPA tiers added by later ADRs (ADR-0003 library_export, INV-tajap shell_script/html_entry/script_module) were never back-filled into the consumer-facing table.\n\n**Related (distinct).** No ledger row covers the entrypoint confidence-tier table or library_export base; WI-kuvig/WI-kanuj/WI-popok/WI-zijiz cover entrypoint KIND/label/id; INV-suvil/WI-gifat cover EDGE confidence. Source: dogfood_tranche_07 F134.A1, deterministic frozen read + producer source."  # 5b56
     fields: {}  # 5b56
+- op: discuss  # 490c
+  at: '2026-06-08T10:28:27Z'  # 490c
+  by: agent  # 490c
+  actor: jgstern_agent  # 490c
+  clock: 2  # 490c
+  nonce: 490c  # 490c
+  message: "Spec §8 marks 4-tier model done but producer emits continuous: 104 EPs, 51 values 0.185-1.0, only 0.85 appears (0/0/2/0). Same entrypoint-conf-tier surface as WI-logad; adds false done-claim. (dogfood; blinded sev 3)"  # 490c
+- op: discuss  # 0da0
+  at: '2026-06-08T10:29:03Z'  # 0da0
+  by: agent  # 0da0
+  actor: jgstern_agent  # 0da0
+  clock: 3  # 0da0
+  nonce: 0da0  # 0da0
+  message: "Related dogfood finding filed as WI-hofav-rovum-tokok-nipal-movap-potad-vunap-jolup (distinct fix)."  # 0da0

@@ -1,0 +1,27 @@
+- op: create  # 5923
+  at: '2026-06-08T10:29:03Z'  # 5923
+  by: agent  # 5923
+  actor: jgstern_agent  # 5923
+  clock: 1  # 5923
+  nonce: '5923'  # 5923
+  data:  # 5923
+    kind: work_item  # 5923
+    title: "dead-code and test-coverage contradict on test-only-reachable functions, undisclosed"  # 5923
+    status: todo_hard  # 5923
+    priority: 1  # 5923
+    parent:  # 5923
+    tags:  # 5923
+    - dogfood  # 5923
+    isbefore: []  # 5923
+    duplicate_of: []  # 5923
+    not_duplicate_of: []  # 5923
+    pr_ref:  # 5923
+    description: "- **Subject:** Two sibling commands render contradictory verdicts on the same node without disclosing the overlap.\n- **Mechanic:** The dead-code command seeds its reachability BFS from entrypoints only, while the test-coverage command counts incoming test-call edges as coverage. A function whose only callers are tests is therefore unreachable from entrypoints (flagged potentially dead) yet has test-call coverage (flagged tested). Neither command discloses the overlap or warns that the function is test-only-reachable.\n- **Expectation:** The two commands' divergent reachability models should be reconciled or disclosed — e.g. dead-code should warn when a \"dead\" function is test-only-reachable, so the two verdicts do not silently contradict each other.\n- **Scope:** A concrete tracker-store method (112 LOC) is simultaneously in the test-coverage \"Tested\" bucket (35 incoming test-call edges) and the dead-code \"potentially dead\" list; a sibling method (94 LOC) is likewise tested-yet-flagged-dead.\n- **Exposure:** A consumer (especially an LLM agent) reading the dead-code output to find deletion candidates.\n- **Consequence:** The agent would propose deleting a function that is real, fully tested, and invoked in production via CLI dispatch — and the tool's own sibling command would contradict that deletion, which the agent has no signal to consult.\n\n---\n\nRelated to WI-rakol (distinct fix; cross-linked).\n\n(Filed from dogfooding; blinded severity P1.)"  # 5923
+    fields: {}  # 5923
+- op: discuss  # d894
+  at: '2026-06-08T10:29:06Z'  # d894
+  by: agent  # d894
+  actor: jgstern_agent  # d894
+  clock: 2  # d894
+  nonce: d894  # d894
+  message: "Related to WI-rakol (distinct fix; dogfood)."  # d894

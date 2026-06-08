@@ -18,3 +18,10 @@
     pr_ref:  # 3137
     description: "- **Subject:** The aggregated config string asserts a single license for a dual-licensed repository.\n- **Mechanic:** The config-info license aggregation reports one license (AGPL) for the whole repo, even though one package declares a different license (MPL-2.0) and the repo's own license file states it uses dual licensing. The aggregator collapses to a single license.\n- **Expectation:** License aggregation should represent every distinct license present in the repo, not collapse to one.\n- **Scope:** `config_info` opens with `LICENSE: AGPL`; the tracker package's MPL-2.0 license is dropped entirely.\n- **Exposure:** Any consumer (human or LLM agent) reading `config_info` to determine the repo's licensing for compliance or redistribution decisions.\n- **Consequence:** The consumer concludes the repo is single-AGPL-licensed and may make a wrong compliance, attribution, or redistribution decision for the MPL-licensed package whose license is invisible.\n\n---\n\nRelated to WI-gupod (distinct fix; cross-linked).\n\n(Filed from dogfooding; blinded severity P2.)"  # 3137
     fields: {}  # 3137
+- op: discuss  # 334b
+  at: '2026-06-08T10:28:25Z'  # 334b
+  by: agent  # 334b
+  actor: jgstern_agent  # 334b
+  clock: 2  # 334b
+  nonce: 334b  # 334b
+  message: "Related to WI-gupod (distinct fix; dogfood)."  # 334b

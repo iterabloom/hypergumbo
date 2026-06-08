@@ -1,0 +1,27 @@
+- op: create  # 2b9d
+  at: '2026-06-08T10:28:29Z'  # 2b9d
+  by: agent  # 2b9d
+  actor: jgstern_agent  # 2b9d
+  clock: 1  # 2b9d
+  nonce: 2b9d  # 2b9d
+  data:  # 2b9d
+    kind: work_item  # 2b9d
+    title: "Entrypoint base constants {0.95,0.90,0.80,0.50} match neither spec tiers nor each other"  # 2b9d
+    status: todo_hard  # 2b9d
+    priority: 3  # 2b9d
+    parent:  # 2b9d
+    tags:  # 2b9d
+    - dogfood  # 2b9d
+    isbefore: []  # 2b9d
+    duplicate_of: []  # 2b9d
+    not_duplicate_of: []  # 2b9d
+    pr_ref:  # 2b9d
+    description: "- **Subject:** The entrypoint producer's base confidence constants match neither the spec's tier values nor each other across documents.\n- **Mechanic:** The producer's base confidence constants (0.95 / 0.90 / 0.80 / 0.50) differ from the spec's documented discrete-tier values (0.99 / 0.95 / 0.85 / 0.70). So even before penalties and connectivity boost are applied, the producer's starting values do not correspond to the documented tiers.\n- **Expectation:** The producer's base constants should match the documented tier values (or the documentation should state the real base values).\n- **Scope:** Producer base values {0.95, 0.90, 0.80, 0.50} vs documented tier values {0.99, 0.95, 0.85, 0.70} — no element of one set equals the corresponding element of the other.\n- **Exposure:** A consumer reading the spec's tier values and expecting them to be the producer's confidence basis.\n- **Consequence:** The consumer's mental model of how each entrypoint detection method maps to a confidence value is wrong at the base level, before any documented penalty or boost is even considered.\n\n---\n\nRelated to WI-logad (distinct fix; cross-linked).\n\n(Filed from dogfooding; blinded severity P3.)"  # 2b9d
+    fields: {}  # 2b9d
+- op: discuss  # 14b0
+  at: '2026-06-08T10:29:03Z'  # 14b0
+  by: agent  # 14b0
+  actor: jgstern_agent  # 14b0
+  clock: 2  # 14b0
+  nonce: 14b0  # 14b0
+  message: "Related to WI-logad (distinct fix; dogfood)."  # 14b0

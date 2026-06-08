@@ -20,3 +20,10 @@
     pr_ref:  # cab9
     description: "## Origin\n\nMaterialized 2026-06-04 from the 2026-06-03 fold-audit (Family N). Stand-alone finding F31.2 previously folded onto INV-luhur. Full evidence on INV-luhur's pass-31 discussion entry.\n\n## Symptom\n\n`test-coverage` and `dead-code-maybe` subcommands share an opaque \"production functions\" derivation (count 4342 on root). The derivation is undocumented in `--help` or spec.md.\n\nA consumer running `hypergumbo test-coverage` sees `4342 production functions analyzed; X covered, Y uncovered` and cannot tell what defines \"production.\" Is it:\n- non-test files?\n- non-example files?\n- functions with `supply_chain.is_test_file=False`?\n- functions whose path doesn't match `test_*.py`?\n- something else?\n\nThe same number appears in `dead-code-maybe` output, suggesting a shared filter — but the filter logic is implicit.\n\n## Invariant\n\n`test-coverage --help` and `dead-code-maybe --help` document what counts as \"production functions\" using cross-references to `supply_chain.is_test_file` and any other filters applied. Consumers reading the output understand the denominator.\n\n## Fix sketch\n\nUpdate `--help` for both subcommands. Document the derivation in spec.md (likely as a sub-section under `usage_contexts` or `dead_code` if those have dedicated spec sections). Optionally surface the filter inputs at runtime: `production functions: 4342 (excludes 25584 test, ...)`.\n\n## Source provenance\n\n- **F31.2** — INV-luhur discussion entry 2026-06-02 (pass-31 batch).\n\nLab notebook: pass 31.\n\n## Related rows\n\n- Parent: **INV-luhur**.\n- Sibling: **WI-dead-code-multilanguage-coverage** (Family N — adjacent dead-code-maybe scope).\n- Sibling: **WI-symbols-silently-filters-kinds** (Family N — adjacent subcommand-UX gap).\n- Family N siblings."  # cab9
     fields: {}  # cab9
+- op: discuss  # 9b04
+  at: '2026-06-08T10:29:06Z'  # 9b04
+  by: agent  # 9b04
+  actor: jgstern_agent  # 9b04
+  clock: 2  # 9b04
+  nonce: 9b04  # 9b04
+  message: "Related dogfood finding filed as WI-jufih-liroh-kadul-puzid-jifoz-zopag-dufod-busuh (distinct fix)."  # 9b04

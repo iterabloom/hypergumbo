@@ -47,3 +47,17 @@
   clock: 5  # 317d
   nonce: 317d  # 317d
   message: "Re-confirms config_info chunk-selector mid-token cuts (stray ']' mid-TOML/JSON) plus raw '> ' markdown leak on all 11 lines + bracket-header false positives. Same chunk-select+strip fix. (dogfood; blinded sev 3)"  # 317d
+- op: discuss  # 0b06
+  at: '2026-06-08T10:28:26Z'  # 0b06
+  by: agent  # 0b06
+  actor: jgstern_agent  # 0b06
+  clock: 6  # 0b06
+  nonce: 0b06  # 0b06
+  message: "Related dogfood finding filed as WI-gojuz-hakuz-zobiz-sovaj-sofaf-pavaj-bitim-gupat (distinct fix)."  # 0b06
+- op: discuss  # 3530
+  at: '2026-06-08T10:28:26Z'  # 3530
+  by: agent  # 3530
+  actor: jgstern_agent  # 3530
+  clock: 7  # 3530
+  nonce: '3530'  # 3530
+  message: "Re-confirms tracker pyproject chunk-selector grabbed dependency-array fragment not [project], dropping name/version 0.5.1/MPL. WI-gupod names exactly this (3/11 manifests; bias chunk to [project]). (dogfood; blinded sev 3)"  # 3530

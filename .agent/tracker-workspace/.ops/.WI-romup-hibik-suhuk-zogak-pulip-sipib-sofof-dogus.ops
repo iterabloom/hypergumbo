@@ -27,3 +27,10 @@
   clock: 2  # 54f6
   nonce: 54f6  # 54f6
   message: "[+ tranch_03: anon-card-tranch03-002 F41.A2 — validation_report top-level undocumented + dual schema_version (folded as duplicate; blind severity 2; new row WI-ziguk wont_do)]"  # 54f6
+- op: discuss  # 5155
+  at: '2026-06-08T10:28:26Z'  # 5155
+  by: agent  # 5155
+  actor: jgstern_agent  # 5155
+  clock: 3  # 5155
+  nonce: '5155'  # 5155
+  message: "Re-confirms 3 independently-versioned sub-schemas: bm 0.13.0, validation_report 0.1, io-boundaries 1.0; relationship undocumented. WI-romup covers bm vs validation_report; this adds io-boundaries 1.0. (dogfood; blinded sev 2)"  # 5155

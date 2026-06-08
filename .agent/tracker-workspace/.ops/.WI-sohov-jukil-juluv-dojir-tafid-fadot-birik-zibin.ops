@@ -1,0 +1,20 @@
+- op: create  # 0f78
+  at: '2026-06-08T10:28:27Z'  # 0f78
+  by: agent  # 0f78
+  actor: jgstern_agent  # 0f78
+  clock: 1  # 0f78
+  nonce: 0f78  # 0f78
+  data:  # 0f78
+    kind: work_item  # 0f78
+    title: "Spec sections contradict on entrypoint confidence: discrete tiers vs continuous"  # 0f78
+    status: todo_hard  # 0f78
+    priority: 3  # 0f78
+    parent:  # 0f78
+    tags:  # 0f78
+    - dogfood  # 0f78
+    isbefore: []  # 0f78
+    duplicate_of: []  # 0f78
+    not_duplicate_of: []  # 0f78
+    pr_ref:  # 0f78
+    description: "- **Subject:** Two spec sections give mutually inconsistent contracts for the same entrypoint-confidence field.\n- **Mechanic:** One spec section models entrypoint `confidence` as a discrete four-tier value; another spec section models the same field as continuous (penalties of −50%/−70%/−50% plus a connectivity boost up to +0.25). The two sections describe the same field under contradictory contracts.\n- **Expectation:** The two spec sections should be reconciled into one coherent contract for the field.\n- **Scope:** The same `confidence` field is documented as discrete tiers in one section and as a continuous penalty+boost computation in another.\n- **Exposure:** Any reader of the spec trying to determine what the entrypoint confidence value means or how to interpret it.\n- **Consequence:** The reader cannot determine the field's contract — whichever section they trust, the other contradicts it — so any interpretation or reproduction of entrypoint confidence is built on an internally inconsistent spec.\n\n---\n\n(Filed from dogfooding.)"  # 0f78
+    fields: {}  # 0f78

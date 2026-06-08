@@ -19,3 +19,10 @@
     pr_ref:  # 617c
     description: "**Defect.** The per-language profile entry renames the schema's `lines` field to `loc` and drops the documented `percentage`.\n\n**Evidence.** `docs/schema.json` declares `profile.languages[L]` as `{files, lines, percentage}`, but the producer emits `{files, loc}` — the line-count field is named `lines` in the schema and `loc` in the output, and `percentage` is never emitted. Every per-language profile entry exhibits this on all languages in the profile.\n\n**Contract.** The emitted per-language object should match the schema field names and field set, since the schema self-describes as auto-generated from the producer's dataclasses.\n\n**Consequence.** A consumer validating against the schema or reading the documented field names gets a KeyError/None on `lines` and on `percentage` for every language; schema-driven parsing of language composition breaks and a consumer computing proportions has no `percentage` and must guess that `loc` is the renamed `lines`."  # 617c
     fields: {}  # 617c
+- op: discuss  # 0ce4
+  at: '2026-06-08T10:29:03Z'  # 0ce4
+  by: agent  # 0ce4
+  actor: jgstern_agent  # 0ce4
+  clock: 2  # 0ce4
+  nonce: 0ce4  # 0ce4
+  message: "Re-confirms per-language profile sub-object: emitter {files,loc} vs schema {files,lines,percentage} - loc rename + percentage never emitted (0/18). WI-nukuz exact. WI-sizis profile totals (distinct). (dogfood; blinded sev 3)"  # 0ce4

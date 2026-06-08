@@ -1,0 +1,20 @@
+- op: create  # 4f61
+  at: '2026-06-08T10:29:06Z'  # 4f61
+  by: agent  # 4f61
+  actor: jgstern_agent  # 4f61
+  clock: 1  # 4f61
+  nonce: 4f61  # 4f61
+  data:  # 4f61
+    kind: work_item  # 4f61
+    title: "194 I/O-boundary chains anchor io_edge_src to a FILE node, not the enclosing callable"  # 4f61
+    status: todo_hard  # 4f61
+    priority: 2  # 4f61
+    parent:  # 4f61
+    tags:  # 4f61
+    - dogfood  # 4f61
+    isbefore: []  # 4f61
+    duplicate_of: []  # 4f61
+    not_duplicate_of: []  # 4f61
+    pr_ref:  # 4f61
+    description: "- **Subject:** A subset of I/O-boundary chains are anchored to a file node rather than to the callable performing the I/O.\n- **Mechanic:** For these chains the `io_edge_src` resolves to a FILE node (not a callable), so the chain records which file the I/O occurs in but not which function performs it. The producer does not resolve `io_edge_src` to the enclosing callable for these cases.\n- **Expectation:** `io_edge_src` should resolve to the enclosing callable so a consumer can identify the function performing the I/O.\n- **Scope:** 194 of 7949 I/O-boundary chains are anchored to a FILE node as `io_edge_src` (185 of them in the external-potential bucket).\n- **Exposure:** A consumer reading I/O-boundary chains to attribute I/O to specific functions (e.g. for an impact or security review).\n- **Consequence:** For those 194 chains the consumer cannot tell which function performs the I/O — only the containing file — so function-level I/O attribution is impossible for them.\n\n(Filed from dogfooding.)"  # 4f61
+    fields: {}  # 4f61
