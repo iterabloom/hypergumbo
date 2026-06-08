@@ -15,11 +15,11 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **283** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 32 tracker)
-- **30571** symbols (functions, classes, methods)
-- **103943** edges by type:
-  - calls: 58009
-  - contains: 21892
-  - imports: 10281
+- **30580** symbols (functions, classes, methods)
+- **103979** edges by type:
+  - calls: 58033
+  - contains: 21899
+  - imports: 10286
   - instantiates: 7898
   - references: 3369
   - module_attr_ref: 1130
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30571 Symbols + 103943 Edges + UsageContexts           │
+│  Output: 30580 Symbols + 103979 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -456,6 +456,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `backfill-training-data-cohort-tags.py` | Backfill cohort metadata for v0 training corpus entries. |
 | `bakeoff-map` | bakeoff-map - Chronicle and map hypergumbo bakeoff artifacts. |
 | `build-scip-proto` | Regenerate packages/hypergumbo-core/src/hypergumbo_core/scip/_generated/scip_pb2.py |
+| `build_combined_trend.py` | Build the cross-tranche combined trend report covering ALL completed dogfooding tranches. |
 | `check-audit-findings` | Pre-commit lint: every audit-findings doc under ``docs/audits/`` parses |
 | `check-docstring-drift` | Module-docstring drift checker — co-change scan over .py source trees. |
 | `check-edge-type-drift` | Pre-commit lint: ``*EDGE_TYPE*`` sets in packages/ must be subsets |
@@ -474,6 +475,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `generate-concept-axes` | Generate ``docs/concept-axes.md`` — a human-readable by-axis view |
 | `generate-concepts` | Generate docs/CONCEPTS.md — the concept-vocabulary registry. |
 | `generate-security-md` | Regenerate the audited-IO-surface section of SECURITY.md. |
+| `highsev_root_review.py` | High-severity net-new root-review collator (Layer 1 of the root-review helper). |
 | `measure-playbook-overlap.py` | Measure read-then-injected playbook overlap (waste signal). |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
@@ -820,7 +822,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 4494725bae23
+  commit: a638bfefe302
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
