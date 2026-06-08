@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0031: Symbol.language Reshape — discovery_language and protocol_origin Typed Fields
 
-- Status: **DRAFT** (2026-05-30) — pending review
+- Status: **Accepted**
 - Date: 2026-05-30
 - Supersedes: —
 - Superseded by: —
@@ -306,12 +306,3 @@ The `language="protobuf"` outlier in `grpc.py:230,944` deprecates and collapses 
 - Audit supplement: `~/hypergumbo_lab_notebook/audit-supplement-linker-language-provenance-05302026.md`
 - Three-policies analysis: `~/hypergumbo_lab_notebook/three-policies-pros-cons-05302026.md`
 - Symbol field population plan (parallel concern): `~/hypergumbo_lab_notebook/symbol-field-population-plan-05302026.md`
-
----
-
-**Drafting notes (to be removed before merge):**
-
-- Draft lives at `~/hypergumbo_lab_notebook/adr_0031_symbol_language_reshape_DRAFT.md`. Promote to `docs/adr/0031-symbol-language-reshape.md` after review and rename to drop `_DRAFT`.
-- Numbering as 0031: ADR-0030 is the latest in `docs/adr/README.md`'s index. 0031 is next.
-- Estimated total work: 4-6 PRs over 4-6 weeks. Per-PR scope is bounded; coordination concern is the Phase 1/Phase 2 sequencing.
-- The protobuf collapse and the audit's other 3 catalog findings are folded into this ADR's scope rather than addressed as standalone fixes. This is intentional: the reshape removes them from the language-axis question entirely by moving the sentinels to `protocol_origin`.

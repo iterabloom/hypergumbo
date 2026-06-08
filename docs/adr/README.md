@@ -37,7 +37,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0028](0028-evidence-type-inference-pathway-only.md) | Edge.evidence_type Names the Inference Pathway | Draft | 2026-05-02 |
 | [0029](0029-cross-language-inherited-call-linker.md) | Cross-Language Inherited-Call Linker | Accepted | 2026-05-25 |
 | [0030](0030-prov-vocabulary-mapping.md) | PROV Vocabulary Mapping for Behavior Map Provenance | Accepted | 2026-05-27 |
-| [0031](0031-symbol-language-reshape.md) | Symbol.language Reshape — discovery_language and protocol_origin Typed Fields | Draft | 2026-05-30 |
+| [0031](0031-symbol-language-reshape.md) | Symbol.language Reshape — discovery_language and protocol_origin Typed Fields | Accepted | 2026-05-30 |
 | [0032](0032-canonical-name-fingerprint-reshape.md) | canonical_name and fingerprint Reshape — display_label and qualified_name Typed Fields; Format 1 Fingerprint Demolition | Accepted | 2026-05-31 |
 | [0033](0033-spec-vs-data-validator-stage.md) | Spec-vs-Data Validator Stage | Accepted | 2026-05-31 |
 | [0034](0034-id-construction-discipline.md) | ID-Construction Discipline | Accepted | 2026-06-01 |
@@ -50,7 +50,7 @@ Three buckets, each with its own home:
 
 - **Bucket 1 — ADR (`docs/adr/<NN>-<topic>.md`).** A load-bearing decision document. May have a substantial Context section that includes analysis, surveys, or comparisons of alternatives — those serve the decision. Use even when Context is long, as long as the deliverable is fundamentally a decision. The decision is the deliverable; the analysis is in service of it. Examples in this directory: ADR-0023 (axis principle), ADR-0024 (axis-declaration template), ADR-0003 lineage (decisions with substantial Context).
 - **Bucket 2 — Audit-findings (`docs/audits/<NN>-<topic>.md`).** A record of per-value verdicts produced by applying an existing methodology (typically the [Fundamental Concept Audit](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md)) to a specific scope. Records case rulings under existing law, NOT new principles. Carries lifecycle states + structured YAML format per [`docs/audits/README.md`](../audits/README.md). Worked examples: [audit-findings 0001](../audits/0001-dispatch-publish-family.md), [audit-findings 0002](../audits/0002-ipc-family.md).
-- **Bucket 3 — Survey/snapshot (`docs/surveys/<topic>.md` or `docs/architecture-snapshots/<date>.md`).** A catalog or point-in-time inventory with no associated decision. Pure descriptive — may *inform* a future ADR or per-value audit but isn't itself a decision or ruling. Worked example: [Symbol Emit-Site Coherence survey](../surveys/symbol-emit-coherence.md) (the audit that informed PR #3984, PR #3986, and ADR-0031 Draft). See [`docs/surveys/README.md`](../surveys/README.md) for the format.
+- **Bucket 3 — Survey/snapshot (`docs/surveys/<topic>.md` or `docs/architecture-snapshots/<date>.md`).** A catalog or point-in-time inventory with no associated decision. Pure descriptive — may *inform* a future ADR or per-value audit but isn't itself a decision or ruling. Worked example: [Symbol Emit-Site Coherence survey](../surveys/symbol-emit-coherence.md) (the audit that informed PR #3984, PR #3986, and ADR-0031). See [`docs/surveys/README.md`](../surveys/README.md) for the format.
 
 **Bucket boundary**: *decision present?* → bucket 1, regardless of Context length. *No decision; per-value verdicts?* → bucket 2. *No decision; inventory/catalog?* → bucket 3.
 
