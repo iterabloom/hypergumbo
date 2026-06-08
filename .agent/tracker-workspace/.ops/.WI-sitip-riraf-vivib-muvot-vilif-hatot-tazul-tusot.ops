@@ -1,0 +1,20 @@
+- op: create  # 8e1d
+  at: '2026-06-08T10:27:28Z'  # 8e1d
+  by: agent  # 8e1d
+  actor: jgstern_agent  # 8e1d
+  clock: 1  # 8e1d
+  nonce: 8e1d  # 8e1d
+  data:  # 8e1d
+    kind: work_item  # 8e1d
+    title: "routes provenance footer reports content-hash-cached sibling path, not the requested input"  # 8e1d
+    status: todo_hard  # 8e1d
+    priority: 2  # 8e1d
+    parent:  # 8e1d
+    tags:  # 8e1d
+    - dogfood  # 8e1d
+    isbefore: []  # 8e1d
+    duplicate_of: []  # 8e1d
+    not_duplicate_of: []  # 8e1d
+    pr_ref:  # 8e1d
+    description: "- **Subject:** The routes command's provenance footer reports a content-hash-cached sibling path rather than the requested input.\n- **Mechanic:** The routes command content-hash-keys its cache. When a byte-identical file is already cached at another path, the provenance footer reports that first-cached path instead of the path actually passed via the input argument. (INVALIDATION-RISK: this depends on a content-identical sibling being cached elsewhere; the route content itself is correct.)\n- **Expectation:** The provenance footer should report the path the user actually requested.\n- **Scope:** The command found the 8 routes correctly (including the WS route) but its footer named a different (byte-identical) sibling file than the one passed as input; stable across re-runs.\n- **Exposure:** A consumer reading the provenance footer to learn which file produced the output, when a content-identical copy is cached at another path.\n- **Consequence:** The consumer is told a path that does not correspond to its own argument, so provenance-tracking or source-trail logic records the wrong source file.\n\n---\n\n(Filed from dogfooding.)"  # 8e1d
+    fields: {}  # 8e1d

@@ -1,0 +1,27 @@
+- op: create  # db7e
+  at: '2026-06-08T10:27:31Z'  # db7e
+  by: agent  # db7e
+  actor: jgstern_agent  # db7e
+  clock: 1  # db7e
+  nonce: db7e  # db7e
+  data:  # db7e
+    kind: work_item  # db7e
+    title: "origin vs origin_run_id disagree for sql/toml/wgsl: productive by origin, run id no FK"  # db7e
+    status: todo_hard  # db7e
+    priority: 2  # db7e
+    parent:  # db7e
+    tags:  # db7e
+    - dogfood  # db7e
+    isbefore: []  # db7e
+    duplicate_of: []  # db7e
+    not_duplicate_of: []  # db7e
+    pr_ref:  # db7e
+    description: "- **Subject:** Two provenance axes on the same node contradict each other for three productive passes.\n- **Mechanic:** For the sql, toml, and wgsl passes, nodes carry an `origin` pass-id list pointing at a real, productive pass that has a valid analysis-run, yet their `origin_run_id` foreign key is empty. The `origin` axis says the pass produced these nodes; the `origin_run_id` axis says nothing recoverable was produced.\n- **Expectation:** A node attributed to a productive pass via `origin` should carry a resolvable `origin_run_id` pointing at that pass's run, so the two provenance axes agree.\n- **Scope:** By the `origin` axis, 32 of 84 passes are productive; by the `origin_run_id` axis only 29 are. The 3-pass gap is exactly {sql, toml, wgsl} — passes attributed by `origin` whose run id never appears as any node/edge `origin_run_id`.\n- **Exposure:** A consumer that reads `origin` to decide a pass is productive vs. one that joins on `origin_run_id` to recover provenance.\n- **Consequence:** The two consumers reach contradictory conclusions about the same node — one says the pass is productive, the other says it produced nothing joinable — so any provenance join is silently incomplete for these passes.\n\n---\n\nRelated to WI-mosil (distinct fix; cross-linked).\n\n(Filed from dogfooding; blinded severity P2.)"  # db7e
+    fields: {}  # db7e
+- op: discuss  # 6f31
+  at: '2026-06-08T10:27:33Z'  # 6f31
+  by: agent  # 6f31
+  actor: jgstern_agent  # 6f31
+  clock: 2  # 6f31
+  nonce: 6f31  # 6f31
+  message: "Related to WI-mosil (distinct fix; dogfood)."  # 6f31

@@ -33,3 +33,10 @@
   clock: 3  # e3e9
   nonce: e3e9  # e3e9
   message: "Re-confirmed on a full behavior map, exact count and affected-set match (blind-severity-derived priority signal: P1). 2236/34396 nodes carry origin_run_id='' (empty string, a third sentinel beyond null and a real UUID) resolving to no analysis-run execution_id; the other 32160 resolve, and all 110533 edges resolve (node-only break). Affected node kinds: external_symbol 1645, file 493, synthesis-pass nodes 492, dependency 82. So 6.5% of nodes silently fail the node->AnalysisRun join — provenance attribution and pass-based filtering drop thousands of nodes, and the documented two-state field (null/UUID) silently has a third empty-string state."  # e3e9
+- op: discuss  # b348
+  at: '2026-06-08T10:27:33Z'  # b348
+  by: agent  # b348
+  actor: jgstern_agent  # b348
+  clock: 4  # b348
+  nonce: b348  # b348
+  message: "Related dogfood finding filed as WI-kojig-lifoj-zirum-zomol-tahud-pipoj-dakut-dupun (distinct fix)."  # b348
