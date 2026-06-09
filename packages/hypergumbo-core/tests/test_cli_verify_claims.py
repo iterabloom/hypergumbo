@@ -946,3 +946,63 @@ def test_verify_claims_skips_language_with_only_sinks(
     # per-language loop hits the `continue` branch (cli.py:4055) →
     # no propagation runs for shellscript → claim confirmed vacuously.
     assert rc == 0
+
+
+def _load_error_args(tmp_path: Path, claims_text: str) -> "FakeArgs":
+    """Build args for a claims file that should fail load_claims validation.
+
+    The malformed claims short-circuit before analysis, so no behavior_map
+    input is required — but every attribute cmd_verify_claims reads before
+    load_claims (path, claims) must be present.
+    """
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(claims_text)
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(tmp_path / "hg.json")
+    args.claims = str(claims_file)
+    args.json_output = False
+    return args
+
+
+def test_verify_claims_malformed_yaml_exits_2(tmp_path: Path, capsys) -> None:
+    """INV-zurih: malformed YAML claims → rc=2 + clean stderr, no traceback."""
+    args = _load_error_args(tmp_path, "not: valid: yaml: [\n")
+    rc = cmd_verify_claims(args)
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "Error" in err
+    assert "Traceback" not in err
+
+
+def test_verify_claims_list_root_exits_2(tmp_path: Path, capsys) -> None:
+    """WI-fuhaf: a top-level list (no 'claims:' key) → rc=2, not AttributeError."""
+    args = _load_error_args(tmp_path, "- id: SC-1\n  text: x\n")
+    rc = cmd_verify_claims(args)
+    assert rc == 2
+    assert "Error" in capsys.readouterr().err
+
+
+def test_verify_claims_unknown_boundary_exits_2(tmp_path: Path, capsys) -> None:
+    """WI-ruzib / INV-gobob: unknown boundary value → rc=2 instead of a
+    silent 'confirmed' verdict at rc=0."""
+    args = _load_error_args(
+        tmp_path,
+        "claims:\n  - id: BANANA\n    text: x\n"
+        "    constraint:\n      boundary: banana\n      must_not_exist: true\n",
+    )
+    rc = cmd_verify_claims(args)
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "banana" in err
+
+
+def test_verify_claims_unknown_field_exits_2(tmp_path: Path, capsys) -> None:
+    """WI-bopoz: typo'd field name → rc=2 instead of a silently-dropped field."""
+    args = _load_error_args(
+        tmp_path,
+        "claims:\n  - id: SC-1\n    text: x\n    constrant: {}\n",
+    )
+    rc = cmd_verify_claims(args)
+    assert rc == 2
+    assert "Error" in capsys.readouterr().err

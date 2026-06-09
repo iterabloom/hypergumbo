@@ -62,6 +62,47 @@ IO_BOUNDARIES_SCHEMA_VERSION: str = "1.0"
 
 
 # ---------------------------------------------------------------------------
+# Canonical I/O boundary vocabulary
+# ---------------------------------------------------------------------------
+# ``CATALOG_BOUNDARY_TYPES`` is the closed set of boundary tags that an
+# io-primitives catalog YAML may declare: ``_parse_catalog`` iterates
+# exactly these keys, so any other key in a catalog is silently ignored.
+# ``compute_boundary_map`` additionally synthesizes one boundary that no
+# catalog declares — ``external_potential`` — for unmatched first-party
+# call edges (see ``_compute_external_potential``).
+#
+# ``KNOWN_IO_BOUNDARIES`` is therefore the complete universe of names that
+# can ever appear as a ``BoundaryMap.entries`` key. ``verify_claims`` uses
+# it to validate a claim's ``constraint.boundary`` at load time so an
+# unknown/typo'd boundary errors instead of silently confirming a
+# ``must_not_exist`` claim against a boundary the analyzer never produces
+# (INV-gobob / WI-ruzib). Validating against this canonical set — not
+# against the keys present in a *given* map — is deliberate: a repo that
+# legitimately has zero ``net_send`` chains must still accept a
+# ``must_not_exist: net_send`` claim and confirm it.
+#
+# WI-lokuv / WI-kanir-huzuj: browser-local storage (``browser_storage_*``)
+# is structurally distinct from host filesystem — reachable via XSS, not
+# via local-user FS access. Paired with the ``browser_storage`` trust zone
+# in taint.py. The read side (browser_storage_read) is intentionally NOT in
+# AUTO_SOURCE_LABEL_MAP — matching how fs_read is treated — because the
+# sensitivity of a browser storage read depends on what's stored
+# (project-local catalogs can add taint_sources entries for their threat
+# model).
+CATALOG_BOUNDARY_TYPES: tuple[str, ...] = (
+    "fs_read", "fs_write", "net_send", "net_recv",
+    "ipc_recv", "ipc_send", "env_read", "env_write",
+    "subprocess", "db_read", "db_write",
+    "process_send", "logging",
+    "browser_storage_write",
+    "browser_storage_read",
+)
+KNOWN_IO_BOUNDARIES: frozenset[str] = frozenset(
+    CATALOG_BOUNDARY_TYPES + ("external_potential",),
+)
+
+
+# ---------------------------------------------------------------------------
 # Provenance allowlist (Plan C, PR B)
 # ---------------------------------------------------------------------------
 # Hostnames that are permitted as the host of a catalog's
@@ -569,24 +610,10 @@ class IoBoundaryCatalog:
         _validate_catalog_dict(language, status, provenance)
         primitives: list[IoPrimitive] = []
 
-        boundary_types = [
-            "fs_read", "fs_write", "net_send", "net_recv",
-            "ipc_recv", "ipc_send", "env_read", "env_write",
-            "subprocess", "db_read", "db_write",
-            "process_send", "logging",
-            # WI-lokuv / WI-kanir-huzuj: browser-local storage is structurally
-            # distinct from host filesystem — reachable via XSS, not via
-            # local-user FS access. Paired with the ``browser_storage`` trust
-            # zone in taint.py. The read side (browser_storage_read) is
-            # intentionally NOT in AUTO_SOURCE_LABEL_MAP — matching how
-            # fs_read is treated — because the sensitivity of a browser
-            # storage read depends on what's stored (project-local catalogs
-            # can add taint_sources entries for their specific threat model).
-            "browser_storage_write",
-            "browser_storage_read",
-        ]
-
-        for boundary in boundary_types:
+        # Closed set of catalog-declarable boundary tags (single-sourced at
+        # module level so verify_claims can validate against the same
+        # vocabulary; see CATALOG_BOUNDARY_TYPES / KNOWN_IO_BOUNDARIES).
+        for boundary in CATALOG_BOUNDARY_TYPES:
             entries = data.get(boundary, [])
             if not isinstance(entries, list):
                 continue

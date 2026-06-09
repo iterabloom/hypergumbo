@@ -12,6 +12,7 @@ import yaml
 
 from hypergumbo_core.verify_claims import (
     Claim,
+    ClaimsFileError,
     ClaimVerdict,
     TaintFlowConstraint,
     load_claims,
@@ -530,3 +531,238 @@ class TestVerifyClaimsMixed:
         ]
         verdicts = verify_claims(claims, bmap)
         assert verdicts[0].verdict == "confirmed"  # no findings → confirmed
+
+
+class TestLoadClaimsYamlError:
+    """INV-zurih: malformed YAML must surface as ClaimsFileError, not a
+    raw yaml.YAMLError traceback."""
+
+    def test_malformed_yaml_raises_claims_file_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.yaml"
+        path.write_text("not: valid: yaml: [\n")
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        # Names the file and carries the underlying parser reason.
+        assert str(path) in str(exc.value)
+
+    def test_yaml_error_is_not_a_bare_yaml_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.yaml"
+        path.write_text("a: b: c\n")
+        with pytest.raises(ClaimsFileError):
+            load_claims(path)
+
+
+class TestLoadClaimsShape:
+    """WI-fuhaf: load_claims validates the parsed YAML's shape up front and
+    raises a clear ClaimsFileError instead of an AttributeError/TypeError
+    traceback. Empty/null/[] representations of 'no claims' load cleanly."""
+
+    def test_scalar_root_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text("hello\n")
+        with pytest.raises(ClaimsFileError):
+            load_claims(path)
+
+    def test_list_root_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text("- id: SC-1\n  text: x\n")
+        with pytest.raises(ClaimsFileError):
+            load_claims(path)
+
+    def test_claims_null_loads_empty(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text("claims: null\n")
+        assert load_claims(path) == []
+
+    def test_claims_tilde_loads_empty(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text("claims: ~\n")
+        assert load_claims(path) == []
+
+    def test_empty_file_loads_empty(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text("")
+        assert load_claims(path) == []
+
+    def test_empty_dict_loads_empty(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text("{}\n")
+        assert load_claims(path) == []
+
+    def test_claims_scalar_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text("claims: hello\n")
+        with pytest.raises(ClaimsFileError):
+            load_claims(path)
+
+    def test_claims_dict_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text("claims:\n  a: b\n")
+        with pytest.raises(ClaimsFileError):
+            load_claims(path)
+
+    def test_claim_entry_not_mapping_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text("claims:\n  - just-a-string\n")
+        with pytest.raises(ClaimsFileError):
+            load_claims(path)
+
+    def test_constraint_not_mapping_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text("claims:\n  - id: SC-1\n    text: x\n    constraint: oops\n")
+        with pytest.raises(ClaimsFileError):
+            load_claims(path)
+
+    def test_constraint_null_loads(self, tmp_path: Path) -> None:
+        # An explicit-null constraint is a claim with no machine constraint;
+        # it loads (verify_claim later returns inconclusive), not an error.
+        path = tmp_path / "c.yaml"
+        path.write_text("claims:\n  - id: SC-1\n    text: x\n    constraint: ~\n")
+        claims = load_claims(path)
+        assert len(claims) == 1
+        assert claims[0].constraint_boundary == ""
+
+    def test_binary_file_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_bytes(b"\xff\xfe\x00\x01\x02\x80\x81binary\x00")
+        with pytest.raises(ClaimsFileError):
+            load_claims(path)
+
+    def test_directory_path_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(ClaimsFileError):
+            load_claims(tmp_path)
+
+
+class TestLoadClaimsBoundaryVocab:
+    """WI-ruzib / INV-gobob: constraint.boundary is validated against the
+    canonical io-boundaries vocabulary at load time. Unknown values error
+    (with a did-you-mean hint) instead of silently confirming must_not_exist."""
+
+    def test_unknown_boundary_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text(
+            "claims:\n  - id: BANANA\n    text: x\n"
+            "    constraint:\n      boundary: banana\n      must_not_exist: true\n"
+        )
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        msg = str(exc.value)
+        assert "banana" in msg
+        # Lists the valid vocabulary so the user can self-correct.
+        assert "net_send" in msg
+
+    def test_unknown_boundary_offers_did_you_mean(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text(
+            "claims:\n  - id: TYPO\n    text: x\n"
+            "    constraint:\n      boundary: net_sned\n      must_not_exist: true\n"
+        )
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        assert "net_send" in str(exc.value)
+        assert "Did you mean" in str(exc.value)
+
+    def test_external_potential_is_valid(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text(
+            "claims:\n  - id: EP\n    text: x\n"
+            "    constraint:\n      boundary: external_potential\n"
+            "      must_not_exist: true\n"
+        )
+        claims = load_claims(path)
+        assert claims[0].constraint_boundary == "external_potential"
+
+    def test_all_catalog_boundaries_are_valid(self, tmp_path: Path) -> None:
+        # Every boundary the io-boundary catalog can emit must be accepted.
+        from hypergumbo_core.io_boundary import KNOWN_IO_BOUNDARIES
+        for boundary in sorted(KNOWN_IO_BOUNDARIES):
+            path = tmp_path / "c.yaml"
+            path.write_text(
+                f"claims:\n  - id: B\n    text: x\n"
+                f"    constraint:\n      boundary: {boundary}\n"
+                f"      must_not_exist: true\n"
+            )
+            claims = load_claims(path)
+            assert claims[0].constraint_boundary == boundary
+
+
+class TestLoadClaimsFieldAllowlist:
+    """WI-bopoz: unknown YAML field names (typos like 'constrant',
+    'must-not-exist') are rejected at load time rather than silently dropped
+    into a defaults-populated claim that yields an indistinguishable verdict."""
+
+    def test_unknown_top_level_key_raises(self, tmp_path: Path) -> None:
+        # 'claim:' (missing 's') would otherwise silently load zero claims.
+        path = tmp_path / "c.yaml"
+        path.write_text("claim:\n  - id: SC-1\n    text: x\n")
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        assert "claims" in str(exc.value)
+
+    def test_extra_catalogs_top_level_key_allowed(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text(
+            "extra_catalogs:\n  sources: []\n"
+            "claims:\n  - id: SC-1\n    text: x\n"
+        )
+        claims = load_claims(path)
+        assert claims[0].id == "SC-1"
+
+    def test_unknown_entry_key_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text(
+            "claims:\n  - id: SC-1\n    text: x\n    constrant: {}\n"
+        )
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        assert "constraint" in str(exc.value)  # did-you-mean
+
+    def test_unknown_constraint_key_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text(
+            "claims:\n  - id: SC-1\n    text: x\n"
+            "    constraint:\n      boundary: net_send\n"
+            "      must-not-exist: true\n"
+        )
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        assert "must_not_exist" in str(exc.value)  # did-you-mean
+
+    def test_unknown_taint_flow_key_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text(
+            "claims:\n  - id: SC-1\n    text: x\n"
+            "    constraint:\n      taint_flow:\n"
+            "        source-taint: foo\n"
+            "        prohibited_sink_zone: host_fs\n"
+        )
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        assert "source_taint" in str(exc.value)  # did-you-mean
+
+    def test_taint_flow_not_mapping_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.yaml"
+        path.write_text(
+            "claims:\n  - id: SC-1\n    text: x\n"
+            "    constraint:\n      taint_flow: oops\n"
+        )
+        with pytest.raises(ClaimsFileError):
+            load_claims(path)
+
+    def test_unknown_key_without_id_uses_index_label(self, tmp_path: Path) -> None:
+        # When a claim has no id, the error message falls back to a #N label
+        # (and 'bogus' has no close match, so no did-you-mean is appended).
+        path = tmp_path / "c.yaml"
+        path.write_text("claims:\n  - text: x\n    bogus: 1\n")
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        assert "#1" in str(exc.value)
+        assert "Did you mean" not in str(exc.value)
+
+    def test_shipped_self_claims_file_loads_clean(self) -> None:
+        # Regression guard: the project's own claims file must pass the gate.
+        repo_root = Path(__file__).resolve().parents[3]
+        shipped = repo_root / "docs" / "hypergumbo.claims.yaml"
+        claims = load_claims(shipped)
+        assert len(claims) > 0
+        assert all(c.id for c in claims)

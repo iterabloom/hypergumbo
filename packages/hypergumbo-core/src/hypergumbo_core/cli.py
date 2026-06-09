@@ -4340,9 +4340,21 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         return 1
 
     # Load claims
-    from .verify_claims import load_claims, verify_claims as _verify
+    from .verify_claims import (
+        ClaimsFileError,
+        load_claims,
+        verify_claims as _verify,
+    )
 
-    claims = load_claims(claims_path)
+    # META-jurig load gate: malformed / typo'd / unknown-vocabulary claims
+    # surface as a clean rc=2 error rather than a raw traceback (INV-zurih /
+    # WI-fuhaf) or a silent false "confirmed" (INV-gobob / WI-ruzib / WI-bopoz).
+    # rc=2 (not 1) keeps a bad-input error distinct from a real violation.
+    try:
+        claims = load_claims(claims_path)
+    except ClaimsFileError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
     if not claims:
         print("No claims found in file.")
         return 0
@@ -7080,10 +7092,40 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
     )
     p_config.set_defaults(func=cmd_config)
 
+    verify_claims_epilog = """\
+Claims file format (YAML):
+
+  claims:
+    - id: SC-001                  # required: unique identifier
+      text: No network sends      # required: human-readable description
+      constraint:                 # one of two constraint shapes:
+        # (a) boundary constraint (ADR-0016):
+        boundary: net_send        #   one of: env_read, external_potential,
+        must_not_exist: true      #   fs_read, fs_write, ipc_recv, ipc_send,
+        # max_chains: 5           #   logging, net_recv, net_send, subprocess,
+                                  #   db_read, db_write, env_write,
+                                  #   process_send, browser_storage_read/write
+        # (b) taint-flow constraint (ADR-0017):
+        # taint_flow:
+        #   source_taint: untrusted_input
+        #   prohibited_sink_zone: host_fs
+        #   allowed_sanitizers: []
+
+A top-level `extra_catalogs:` key may declare project-local taint catalogs
+(see --taint-sources/--taint-sinks/--taint-sanitizers; WI-votan).
+
+The claims file is validated up front: a malformed YAML, an unexpected
+shape, an unknown field name, or a boundary value outside the vocabulary
+above produces a clear error and exit code 2 (not a silent pass).
+
+Exit codes: 0 = all confirmed; 1 = at least one violated; 2 = at least one
+inconclusive, or the claims file failed validation.
+"""
     p_vc = sub.add_parser(
         "verify-claims",
         help="Verify security claims against I/O boundary map and taint flow",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=verify_claims_epilog,
     )
     p_vc.add_argument(
         "--claims",

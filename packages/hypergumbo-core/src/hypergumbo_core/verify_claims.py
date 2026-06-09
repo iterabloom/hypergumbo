@@ -25,14 +25,25 @@ Claims are YAML files with a ``claims`` list. Each claim specifies:
 
 Verdict Types
 -------------
-- ``confirmed``: Claim holds (no violations found)
+- ``confirmed``: Claim was actively checked and held (no violations found)
 - ``violated``: Specific evidence contradicts the claim
+- ``inconclusive``: Verification couldn't proceed (no machine-checkable
+  constraint, broken input, missing catalog) — kept distinct from
+  ``confirmed`` to close the silent-confirm fall-through (ADR-0033 Phase 3).
 
 For taint-flow claims, structural analysis produces ``approximate`` confidence.
 
+Load-time validation
+---------------------
+``load_claims`` validates the claims file before constructing any ``Claim``
+(the META-jurig gate): malformed YAML, an unexpected root/claim/constraint
+shape, an unknown field name, or a ``constraint.boundary`` outside the
+io-boundaries vocabulary each raise :class:`ClaimsFileError` (→ CLI exit 2)
+rather than tracebacking or silently producing a degraded verdict stream.
+
 How It Works
 ------------
-1. ``load_claims(path)`` reads the YAML and returns ``Claim`` objects
+1. ``load_claims(path)`` validates and parses the YAML into ``Claim`` objects
 2. ``verify_claim(claim, boundary_map)`` checks one claim → ``ClaimVerdict``
 3. ``verify_taint_claim(claim, findings)`` checks taint-flow → ``ClaimVerdict``
 4. ``verify_claims(claims, boundary_map, findings)`` checks all
@@ -45,7 +56,7 @@ from typing import Optional
 
 import yaml
 
-from .io_boundary import BoundaryMap
+from .io_boundary import KNOWN_IO_BOUNDARIES, BoundaryMap
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +145,75 @@ class ClaimVerdict:
 # ---------------------------------------------------------------------------
 
 
+class ClaimsFileError(Exception):
+    """Raised by :func:`load_claims` when the claims YAML cannot be loaded
+    as a well-formed set of claims.
+
+    Covers the four failure classes that previously either tracebacked or
+    silently degraded the verdict stream — the META-jurig ``load_claims``
+    validation gate:
+
+    * malformed YAML (``yaml.YAMLError``) — INV-zurih;
+    * an unexpected root / claim / constraint shape — WI-fuhaf;
+    * a ``constraint.boundary`` outside the io-boundaries vocabulary —
+      INV-gobob / WI-ruzib;
+    * an unrecognized field name, e.g. the typo ``constrant`` — WI-bopoz.
+
+    :func:`hypergumbo_core.cli.cmd_verify_claims` catches it, prints
+    ``Error: <message>`` to stderr, and exits ``2`` — distinct from ``1``
+    (a genuine ``violated`` verdict) so a CI gate keyed on ``rc == 0`` still
+    fails closed on a typo'd claim without misreporting a security
+    regression, and distinct from ``0`` so malformed input can never read
+    as "all confirmed".
+    """
+
+
+# Field-name allowlists for the claims YAML (WI-bopoz). An unrecognized key
+# is a typo or a misremembered field; both previously loaded a
+# defaults-populated Claim whose ``inconclusive`` verdict was
+# indistinguishable from a claim that legitimately lacks a checker.
+# Rejecting unknown keys at load time makes the typo loud.
+_ALLOWED_TOP_LEVEL_KEYS: frozenset[str] = frozenset({"claims", "extra_catalogs"})
+_ALLOWED_CLAIM_KEYS: frozenset[str] = frozenset({"id", "text", "constraint"})
+_ALLOWED_CONSTRAINT_KEYS: frozenset[str] = frozenset(
+    {"boundary", "must_not_exist", "max_chains", "taint_flow"},
+)
+_ALLOWED_TAINT_FLOW_KEYS: frozenset[str] = frozenset(
+    {"source_taint", "prohibited_sink_zone", "allowed_sanitizers"},
+)
+
+
+def _did_you_mean(value: str, vocabulary) -> str:
+    """Return a ``' Did you mean: ...?'`` suffix for close matches, else ''.
+
+    Mirrors the subcommand did-you-mean hint in ``cli.py`` (difflib,
+    cutoff 0.5) so a near-miss boundary or field name gets a correction.
+    """
+    import difflib
+
+    close = difflib.get_close_matches(value, sorted(vocabulary), n=3, cutoff=0.5)
+    if close:
+        return f" Did you mean: {', '.join(close)}?"
+    return ""
+
+
+def _reject_unknown_keys(observed, allowed: frozenset[str], *, where: str) -> None:
+    """Raise :class:`ClaimsFileError` if ``observed`` has a key outside ``allowed``.
+
+    The message lists the offending key(s), the allowed set, and a
+    did-you-mean hint for the first unknown key (WI-bopoz).
+    """
+    unknown = sorted(str(key) for key in observed if key not in allowed)
+    if not unknown:
+        return
+    listed = ", ".join(repr(key) for key in unknown)
+    allowed_list = ", ".join(sorted(allowed))
+    hint = _did_you_mean(unknown[0], allowed)
+    raise ClaimsFileError(
+        f"unknown {where} field(s): {listed} (allowed: {allowed_list}).{hint}",
+    )
+
+
 def load_extra_catalog_paths(
     path: Path,
 ) -> tuple[list[Path], list[Path], list[Path]]:
@@ -185,47 +265,162 @@ def load_extra_catalog_paths(
     )
 
 
+def _parse_taint_flow(
+    taint_flow_data: object,
+    claim_id: str,
+) -> Optional[TaintFlowConstraint]:
+    """Validate and build the optional ``taint_flow`` sub-constraint (ADR-0017).
+
+    ``None`` (key absent or explicit null) yields ``None``; a non-mapping or
+    an unrecognized key raises :class:`ClaimsFileError` rather than being
+    silently ignored.
+    """
+    if taint_flow_data is None:
+        return None
+    if not isinstance(taint_flow_data, dict):
+        raise ClaimsFileError(
+            f"taint_flow in claim '{claim_id}' must be a mapping, "
+            f"got {type(taint_flow_data).__name__}.",
+        )
+    _reject_unknown_keys(
+        taint_flow_data.keys(),
+        _ALLOWED_TAINT_FLOW_KEYS,
+        where=f"taint_flow in claim '{claim_id}'",
+    )
+    return TaintFlowConstraint(
+        source_taint=taint_flow_data.get("source_taint", ""),
+        prohibited_sink_zone=taint_flow_data.get("prohibited_sink_zone", ""),
+        allowed_sanitizers=taint_flow_data.get("allowed_sanitizers", []),
+    )
+
+
+def _parse_claim(entry: object, index: int) -> Claim:
+    """Validate and build one :class:`Claim` from a raw YAML entry.
+
+    Enforces the per-entry half of the load gate: the entry must be a
+    mapping with only allowed keys; ``constraint`` (if present) must be a
+    mapping with only allowed keys; a present ``constraint.boundary`` must
+    be in :data:`~hypergumbo_core.io_boundary.KNOWN_IO_BOUNDARIES`.
+    """
+    if not isinstance(entry, dict):
+        raise ClaimsFileError(
+            f"claim #{index + 1} must be a mapping, "
+            f"got {type(entry).__name__}.",
+        )
+    claim_id = entry.get("id") or f"#{index + 1}"
+    _reject_unknown_keys(
+        entry.keys(), _ALLOWED_CLAIM_KEYS, where=f"claim '{claim_id}'",
+    )
+
+    constraint = entry.get("constraint")
+    if constraint is None:
+        constraint = {}
+    if not isinstance(constraint, dict):
+        raise ClaimsFileError(
+            f"constraint in claim '{claim_id}' must be a mapping, "
+            f"got {type(constraint).__name__}.",
+        )
+    _reject_unknown_keys(
+        constraint.keys(),
+        _ALLOWED_CONSTRAINT_KEYS,
+        where=f"constraint in claim '{claim_id}'",
+    )
+
+    # Boundary-vocabulary check (INV-gobob / WI-ruzib). Validate against the
+    # canonical universe, NOT the keys present in a given boundary map: a
+    # repo with zero net_send chains must still accept a
+    # ``must_not_exist: net_send`` claim and confirm it. An unknown value
+    # here would otherwise make verify_claim's ``boundary_map.entries.get``
+    # return None → chain_count 0 → silent "confirmed".
+    boundary = constraint.get("boundary", "") or ""
+    if boundary and boundary not in KNOWN_IO_BOUNDARIES:
+        raise ClaimsFileError(
+            f"unknown boundary '{boundary}' in claim '{claim_id}'; valid "
+            f"boundaries: {', '.join(sorted(KNOWN_IO_BOUNDARIES))}."
+            + _did_you_mean(boundary, KNOWN_IO_BOUNDARIES),
+        )
+
+    taint_flow = _parse_taint_flow(constraint.get("taint_flow"), claim_id)
+
+    return Claim(
+        id=entry.get("id", ""),
+        text=entry.get("text", ""),
+        constraint_boundary=boundary,
+        constraint_must_not_exist=constraint.get("must_not_exist", False),
+        constraint_max_chains=constraint.get("max_chains"),
+        constraint_taint_flow=taint_flow,
+    )
+
+
 def load_claims(path: Path) -> list[Claim]:
-    """Load security claims from a YAML file.
+    """Load and validate security claims from a YAML file.
+
+    Validates the file before constructing any :class:`Claim` (the
+    META-jurig ``load_claims`` gate), raising :class:`ClaimsFileError` on
+    the first failure so a malformed or typo'd claims file errors loudly
+    instead of tracebacking or silently producing a degraded verdict
+    stream:
+
+    1. **Readability / shape** (WI-fuhaf): ``path`` must be a file (not a
+       directory), decode as UTF-8 text, and parse to a top-level mapping
+       with a list-valued ``claims:`` key. An empty file, ``{}``,
+       ``claims: []``, ``claims: null`` / ``~``, and an absent ``claims:``
+       key all mean "no claims" and load to ``[]``.
+    2. **YAML well-formedness** (INV-zurih): ``yaml.YAMLError`` is caught
+       and re-raised naming the file and reason.
+    3. **Field names** (WI-bopoz): every top-level, claim, constraint, and
+       taint-flow key is checked against an allowlist with a did-you-mean
+       hint.
+    4. **Boundary vocabulary** (INV-gobob / WI-ruzib): a present
+       ``constraint.boundary`` must be one of
+       :data:`~hypergumbo_core.io_boundary.KNOWN_IO_BOUNDARIES`.
 
     Args:
         path: Path to the claims YAML file.
 
     Returns:
-        List of Claim objects.
+        List of Claim objects (possibly empty).
+
+    Raises:
+        ClaimsFileError: on any of the validation failures above.
     """
-    content = path.read_text(encoding="utf-8")
-    data = yaml.safe_load(content) or {}
-
-    claims: list[Claim] = []
-    for entry in data.get("claims", []):
-        constraint = entry.get("constraint", {})
-
-        # Parse optional taint_flow sub-constraint (ADR-0017)
-        taint_flow_data = constraint.get("taint_flow")
-        taint_flow = None
-        if isinstance(taint_flow_data, dict):
-            taint_flow = TaintFlowConstraint(
-                source_taint=taint_flow_data.get("source_taint", ""),
-                prohibited_sink_zone=taint_flow_data.get(
-                    "prohibited_sink_zone", "",
-                ),
-                allowed_sanitizers=taint_flow_data.get(
-                    "allowed_sanitizers", [],
-                ),
-            )
-
-        claim = Claim(
-            id=entry.get("id", ""),
-            text=entry.get("text", ""),
-            constraint_boundary=constraint.get("boundary", ""),
-            constraint_must_not_exist=constraint.get("must_not_exist", False),
-            constraint_max_chains=constraint.get("max_chains"),
-            constraint_taint_flow=taint_flow,
+    if path.is_dir():
+        raise ClaimsFileError(
+            f"claims path is a directory, not a file: {path}",
         )
-        claims.append(claim)
+    try:
+        content = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ClaimsFileError(
+            f"claims file is not valid UTF-8 text: {path}",
+        ) from exc
+    try:
+        data = yaml.safe_load(content)
+    except yaml.YAMLError as exc:
+        raise ClaimsFileError(
+            f"could not parse claims file {path}: {exc}",
+        ) from exc
 
-    return claims
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        raise ClaimsFileError(
+            f"claims file must have a top-level mapping with a 'claims:' key, "
+            f"got {type(data).__name__}: {path}",
+        )
+    _reject_unknown_keys(
+        data.keys(), _ALLOWED_TOP_LEVEL_KEYS, where="top-level",
+    )
+
+    raw_claims = data.get("claims")
+    if raw_claims is None:
+        raw_claims = []
+    if not isinstance(raw_claims, list):
+        raise ClaimsFileError(
+            f"'claims:' must be a list, got {type(raw_claims).__name__}: {path}",
+        )
+
+    return [_parse_claim(entry, index) for index, entry in enumerate(raw_claims)]
 
 
 # ---------------------------------------------------------------------------
