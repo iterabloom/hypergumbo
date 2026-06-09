@@ -284,6 +284,7 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 
 #### Other fixes
 
+- **Secret scan was a silent no-op under gitleaks 8.30+.** `gitleaks.scan_content` invoked `gitleaks detect --no-git --pipe`, but gitleaks 8.30 removed the `detect` subcommand (now `git`/`dir`/`stdin`) and `--pipe` no longer reads stdin — it scans the current working directory instead. The result: `scan_content` always returned `[]`, so `hypergumbo sketch` printed "Secret scan complete" while output containing live secrets (AWS keys, tokens, private keys) passed through unfiltered. Switched to the `gitleaks stdin` subcommand. A real-binary regression guard (`TestScanContentRealBinary`) now feeds a known secret through the actual binary and asserts detection — the contract break was invisible to the mocked-`subprocess.run` suite that carried line coverage, which is exactly why it shipped.
 - **`SymbolByName` helper** replaces silent single-value dict overwrite in Verilog (and applicable to Rust, VHDL). Same-named symbols of different kinds no longer collapse to whichever was inserted last.
 - **`--backend rust-analyzer` crash diagnostics.** No longer silently falls through to tree-sitter on crash; OOM-kill named explicitly; exit code and stderr tail surfaced; zero-engagement warning added.
 - **`scripts/auto-pr` accepts `--title` and `--description` flags** (previously fell through as positional args, mangling 9+ PR titles).

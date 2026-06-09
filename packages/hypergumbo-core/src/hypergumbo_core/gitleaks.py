@@ -273,16 +273,23 @@ def scan_content(content: str) -> list[SecretFinding]:
         return []
 
     try:
-        # Run gitleaks with stdin, JSON output (nosec B603 - known binary)
+        # Run gitleaks against stdin, JSON output (nosec B603 - known binary).
+        #
+        # Use the `stdin` subcommand, NOT `detect --pipe`: gitleaks 8.30+
+        # removed the `detect` subcommand (replaced by `git`/`dir`/`stdin`)
+        # and `--pipe` no longer reads stdin — it silently scans the current
+        # working directory instead, turning this scan into a no-op that
+        # always returns ``[]`` regardless of the piped content (INV-pirad).
+        # Do NOT revert to `detect --pipe`; the real-binary guard in
+        # test_gitleaks.py (TestScanContentRealBinary) exists to catch that.
         result = subprocess.run(  # noqa: S603  # nosec B603
             [
                 str(gitleaks),
-                "detect",
-                "--no-git",  # Don't treat as git repo
-                "--pipe",  # Read from stdin
+                "stdin",  # Read the content to scan from stdin
                 "--report-format", "json",
-                "--report-path", "/dev/stdout",  # Output to stdout
-                "--exit-code", "0",  # Don't fail on findings
+                "--report-path", "/dev/stdout",  # Output findings to stdout
+                "--exit-code", "0",  # Don't exit non-zero on findings
+                "--no-banner",  # Keep the ASCII logo out of stderr
             ],
             input=content.encode("utf-8"),
             capture_output=True,

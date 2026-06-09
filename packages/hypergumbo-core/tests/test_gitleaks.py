@@ -377,6 +377,61 @@ class TestScanContentEdgeCases:
         assert findings == []
 
 
+class TestScanContentRealBinary:
+    """Real-binary integration guard for the gitleaks invocation (INV-pirad).
+
+    Line coverage of ``scan_content`` is carried by the mocked
+    ``TestScanContent`` suite. This class additionally runs the ACTUAL
+    gitleaks binary to catch external-CLI *contract* drift that mocked
+    ``subprocess.run`` tests structurally cannot — specifically the
+    gitleaks 8.30+ regression where ``detect --pipe`` silently ignores
+    stdin and scans the current working directory instead, turning
+    ``scan_content`` into a no-op that always returns ``[]`` (INV-pirad).
+
+    A mocked-args assertion would pass even against the broken invocation;
+    only feeding a known secret through the real binary proves the scan
+    actually reads stdin and discriminates. Gated on availability because
+    gitleaks is an opt-in extra (``add-extras``) that base CI does not
+    provision — mirrors the optional-dependency gating in
+    ``hypergumbo-tracker``'s ``test_embeddings.py``.
+    """
+
+    # AWS access-token test vector (gitleaks' own ``aws-access-token``
+    # rule), assembled at runtime so this source file never contains a
+    # contiguous detectable secret — keeps the repo's own secret-scanners
+    # quiet without touching ``.gitleaksignore``.
+    _AWS_VECTOR = "AKIA" + "LALEMEL33243OLIA"
+
+    @pytest.mark.skipif(
+        not is_gitleaks_available(),
+        reason="gitleaks binary not installed (opt-in extra)",
+    )
+    def test_real_gitleaks_detects_known_secret(self) -> None:
+        """The real binary must detect a known secret fed via scan_content.
+
+        An empty result here means the stdin contract broke again
+        (the INV-pirad regression).
+        """
+        findings = scan_content(f"aws_access_key_id = {self._AWS_VECTOR}\n")
+        assert findings, (
+            "real gitleaks returned no findings for a known AWS test "
+            "vector — the secret scan is a no-op (INV-pirad regression: "
+            "gitleaks is not reading stdin)"
+        )
+        assert findings[0].rule_id
+
+    @pytest.mark.skipif(
+        not is_gitleaks_available(),
+        reason="gitleaks binary not installed (opt-in extra)",
+    )
+    def test_real_gitleaks_clean_input_returns_empty(self) -> None:
+        """Secret-free content yields no findings — proves the scan ran and
+        discriminated, rather than returning ``[]`` because it never read
+        stdin."""
+        findings = scan_content("def hello():\n    return 'world'\n")
+        assert findings == []
+
+
 class TestScanContentCached:
     """Tests for content-hash-keyed scan caching (WI-julir)."""
 
