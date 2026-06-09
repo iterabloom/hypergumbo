@@ -21,3 +21,19 @@
     pr_ref:  # 349a
     description: "**Origin.** Filed 2026-05-30 from the unlinked-investigation G7 sub-agent (notebookjournal_05302026_0411_unlinked_G7_ux.md latent-META-2). Three items document the same single missing piece of infrastructure.\n\n**The shape.** Hypergumbo's CLI entry point at `cli.py:8283-8422` dispatches via `args.func(args)` inside a control flow that installs `SIGPIPE → SIG_DFL` but has no top-level try/except wrapping the subcommand dispatch. Every uncaught exception bubbles to Python's default handler, dumping a raw traceback. Symptoms:\n\n1. **SIGINT during `hypergumbo run` dumps a `KeyboardInterrupt` traceback.** No handler catches it; user sees the Python internals. (WI-bilas)\n\n2. **`verify-claims` raises an unhandled traceback on malformed YAML claims file.** `yaml.safe_load` fails inside `verify_claims.py:_load_claims`, propagates up. (INV-zurih)\n\n3. **All `--input` consumers produce unhandled tracebacks on malformed or wrong-type JSON input.** Same shape on the JSON face. (INV-sozop, currently in the linked-bucket but mechanically a member)\n\n**Shared root: no top-level exception handler.** Code-confirmed at `cli.py:8283-8422`. A single wrapper around `args.func(args)` that catches `KeyboardInterrupt → exit 130 with brief message`, `yaml.YAMLError` / `json.JSONDecodeError` → exit 2 with the file path and the parser's location info, and `OSError` → exit 1 with file path would handle all three.\n\n**Why a WI rather than an INV.** Single concrete remediation site (one wrapper function); not an invariant statement so much as a fix-to-do. Kind = work_item.\n\n**Members at filing time.** WI-bilas (P4), INV-zurih (P2), INV-sozop (P2; from linked-bucket).\n\n**Fix shape.** Single function `_run_subcommand_safely(args)` wrapping `args.func(args)` with a small mapping of exception → exit code. ~30 lines including tests for each branch.\n\n**Trial relevance.** This META overlaps in surface with INV-fabov (silent input acceptance) but the architectural fix is independent — the input-validation gate would prevent malformed claims files from being passed; this exception handler would catch them gracefully when the gate fails."  # 349a
     fields: {}  # 349a
+- op: update  # 3e30
+  at: '2026-06-09T19:39:33Z'  # 3e30
+  by: agent  # 3e30
+  actor: jgstern_agent  # 3e30
+  clock: 2  # 3e30
+  nonce: '3e30'  # 3e30
+  set: {}  # 3e30
+  add:  # 3e30
+    not_duplicate_of: [WI-madal-gutaz-finob-higup-lohil-novaj-hasil-latil]  # 3e30
+- op: discuss  # 97e2
+  at: '2026-06-09T19:39:33Z'  # 97e2
+  by: agent  # 97e2
+  actor: jgstern_agent  # 97e2
+  clock: 3  # 97e2
+  nonce: '97e2'  # 97e2
+  message: "Cross-link (mirror): WI-madal (run crashes on unreadable file, uncaught PermissionError) is RELATED_BUT_DISTINCT, not a member. The top-level OSError handler proposed here makes that crash GRACEFUL (clean exit), but WI-madal additionally requires fail-OPEN (skip the file, emit partial JSON per section 17). HAZARD: landing this handler will erase WI-madal traceback symptom without satisfying section 17 — do NOT close WI-madal on the strength of this item. See WI-madal discussion for the full three-level (leaf-read / fingerprint-prepass / orchestrator) analysis."  # 97e2

@@ -79,3 +79,18 @@
     tags: [dogfood]  # 8cf6
   remove:  # 8cf6
     tags: [dogfooding]  # 8cf6
+- op: update  # a58c
+  at: '2026-06-09T20:27:35Z'  # a58c
+  by: agent  # a58c
+  actor: jgstern_agent  # a58c
+  clock: 8  # a58c
+  nonce: a58c  # a58c
+  set:  # a58c
+    status: violated  # a58c
+- op: discuss  # 5e96
+  at: '2026-06-09T20:27:36Z'  # 5e96
+  by: agent  # 5e96
+  actor: jgstern_agent  # 5e96
+  clock: 9  # 5e96
+  nonce: '5e96'  # 5e96
+  message: "REOPENED by step-1 re-verification on dev @ df6dccac20. The 2026-06-01 closure credited Phase-3 PR4 (verdict-enum/inconclusive), which closes INV-mofih (unrecognized claim type) but does NOT validate the taint-flag file loaders — INV-nufob's actual invariant. Live CLI evidence: (a) '--taint-sources <ANY-bad-path>' with boundary-only claims -> 'all 1 CONFIRMED' exit 0 (verbatim the prohibited silent-confirm; cli.py:4438 only loads the taint catalog if has_taint_claims); (b) '--taint-sources <broken-YAML>' + taint claim -> uncaught yaml.parser.ParserError traceback; (c) '--taint-sources <wrong-shape>' + taint claim -> uncaught AttributeError at taint.py:441. Only the nonexistent-path-with-taint-claim sub-case is clean (FileNotFoundError -> exit 1). Fix shape (PR7, mirrors PR3 load_claims gate): load+validate --taint-* whenever flags present (not gated on has_taint_claims); wrap loaders to catch yaml.YAMLError + validate shape -> clean error not traceback. Full evidence: hypergumbo_lab_notebook/verify_claims_step1_reverify_06092026_1627.md"  # 5e96

@@ -31,3 +31,10 @@
     tags: [dogfood_tranche_04]  # 6003
   remove:  # 6003
     tags: [dogfood_tranch_04]  # 6003
+- op: discuss  # 47ac
+  at: '2026-06-09T19:38:53Z'  # 47ac
+  by: agent  # 47ac
+  actor: jgstern_agent  # 47ac
+  clock: 3  # 47ac
+  nonce: 47ac  # 47ac
+  message: "Should grow a PermissionError case. Today WI-bozih positive-controls only the SyntaxError face (caught at the py.py extraction site -> exit 0, lands in failed_files). Per the WI-madal investigation 2026-06-09, a chmod-000 .py file raises PermissionError, which is NOT in the extraction except tuple (py.py:2175 catches only SyntaxError/UnicodeDecodeError) and crashes the run (exit 1, no JSON). Once the leaf fix lands (OSError/PermissionError -> failed_files), this positive control should also assert that an UNREADABLE file lands in failed_files with a clean exit and valid partial JSON — extending the contract test from unparseable to unreadable. See WI-madal for the full three-level analysis."  # 47ac

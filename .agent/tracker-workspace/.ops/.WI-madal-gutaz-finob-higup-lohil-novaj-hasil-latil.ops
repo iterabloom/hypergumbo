@@ -30,3 +30,19 @@
     tags: [dogfood_tranche_04]  # 58af
   remove:  # 58af
     tags: [dogfood_tranch_04]  # 58af
+- op: update  # 7e92
+  at: '2026-06-09T19:38:53Z'  # 7e92
+  by: agent  # 7e92
+  actor: jgstern_agent  # 7e92
+  clock: 3  # 7e92
+  nonce: '7e92'  # 7e92
+  set: {}  # 7e92
+  add:  # 7e92
+    not_duplicate_of: [WI-himas-gohif-luroj-gilip-sudad-zalis-ravur-pidal]  # 7e92
+- op: discuss  # 5896
+  at: '2026-06-09T19:38:53Z'  # 5896
+  by: agent  # 5896
+  actor: jgstern_agent  # 5896
+  clock: 4  # 5896
+  nonce: '5896'  # 5896
+  message: "Investigation 2026-06-09 (live repro, non-root, chmod-000 .py in a 2-file repo): crash confirmed, but the documented mechanism is now SHADOWED. Default `hypergumbo run <repo>` crashes EARLIER than py.py:2169 — at repo_fingerprint.py:117 (_hash_file_content -> read_bytes), reached via run_behavior_map -> _get_results_cache_dir (cli.py:7748, runs only when out_path is None) BEFORE any analyzer runs. Only `--out X` (bypassing the results-cache path) exposes the documented py.py:2169 -> all_analyzers.py:230 site. So there are TWO independent live uncaught-PermissionError sites, and the one this item documents is not the one that fires by default. The crashing site drifted since filing (tranche-04 substrate a32c4a31): the embeddings results-cache feature added the earlier fingerprint crash.\n\nThree structural levels, not one site: (L1) leaf reads do not catch OSError/PermissionError (py.py:2169, repo_fingerprint.py:117, plus a wide surface); (L2) the whole-repo fingerprint pre-pass reads every file uncaught before analysis; (L3) the orchestrator at all_analyzers.py:230 wraps future.result() with NO try/except, so ANY analyzer that lets ANY exception escape is fatal to the whole run and voids the section-17 partial-results guarantee. The fix this item proposes (add OSError to the py.py:2175 except tuple and route into failed_files; plumbing confirmed at py.py:3792 / INV-buhur) is necessary but INSUFFICIENT: it leaves L2 (default crash) and L3 (any other analyzer) intact. Structurally-correct fix is L2 + L3.\n\nLinks: not_duplicate_of WI-himas-gohif (META: top-level CLI exception handler). RELATED_BUT_DISTINCT — WI-himas makes the crash GRACEFUL (clean exit plus message); this item demands fail-OPEN (skip the file, still emit partial JSON per section 17). HAZARD: a top-level OSError->exit-1 handler from WI-himas would erase the traceback symptom WITHOUT satisfying section 17, so do NOT close this item merely because WI-himas landed. Builds on the INV-buhur record_failed_file precedent (the INV-buhur discussion already cross-references this item as the complementary hard-crash mechanism). WI-bozih is the section-17 positive-control test and should grow a PermissionError case (today it covers only SyntaxError, which IS caught)."  # 5896
