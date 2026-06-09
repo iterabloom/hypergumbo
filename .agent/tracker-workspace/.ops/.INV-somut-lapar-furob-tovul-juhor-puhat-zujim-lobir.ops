@@ -45,3 +45,24 @@
   clock: 4  # 56a1
   nonce: 56a1  # 56a1
   message: "v6.0.0 security arc progress: PR3 of 6 MERGED (#4140). The verify_claims.load_claims validation gate closes the entire META-jurig family with positive evidence (live CLI repro on merged dev + full smart-test 3668 passed, 100% changed-source coverage): INV-zurih (satisfied), WI-fuhaf (done), INV-gobob/WI-ruzib (satisfied/done), WI-bopoz (done), META-jurig (satisfied). Remaining: PR4 WI-kajil (empty-boundary-map-via-uncovered-language -> inconclusive; then re-verify INV-bitig), PR5 WI-razol (taint.match_sink module qualifier + ambiguous_names), PR6 INV-hukug (claims-file vs CLI taint-layer reification)."  # 56a1
+- op: discuss  # 5dc5
+  at: '2026-06-09T04:32:08Z'  # 5dc5
+  by: agent  # 5dc5
+  actor: jgstern_agent  # 5dc5
+  clock: 5  # 5dc5
+  nonce: 5dc5  # 5dc5
+  message: "v6.0.0 security arc progress: PR4 of 6 MERGED (#4143). verify_claim BoundaryCoverage gate closes WI-kajil (done) and re-verifies INV-bitig (satisfied) with positive direct evidence (live repro on merged dev: empty-dir + blind-JS map both now inconclusive/exit-2, were confirmed/exit-0; full smart-test 3683 passed, 100% changed-source coverage). Remaining: PR5 WI-razol (taint.match_sink module qualifier + ambiguous_names — 5541-FP cascade), PR6 INV-hukug (claims-file vs CLI taint-layer reification)."  # 5dc5
+- op: discuss  # a4db
+  at: '2026-06-09T06:06:38Z'  # a4db
+  by: agent  # a4db
+  actor: jgstern_agent  # a4db
+  clock: 6  # a4db
+  nonce: a4db  # a4db
+  message: "v6.0.0 security arc progress: PR5 COMPLETE (WI-razol done) via #4145 + #4147. The taint sink/source matcher (match_sink) and — the real cascade codepath — propagation (propagate_taint_structural/_ddg) now honor the module qualifier + ambiguous_names, mirroring io-boundaries. End-to-end self-claims violated evidence dropped 5975->1266 (replace/write cascades eliminated; 2 claims flipped to confirmed); residual is dominated by genuine subprocess.run/shutil.copy true positives plus a small 'copy'-not-ambiguous catalog gap (filed INV-mivud P3, non-blocking). Lesson re-confirmed: the unit fix (#4145) was inert until an end-to-end repro proved it; #4147 fixed the actual path. 5 of 6 arc PRs done. Remaining: PR6 INV-hukug (claims-file-extras vs CLI-extras taint-layer reification; cli.py ~4431 + taint.py _merge_with_user_override). Then re-verify METAs and cut v6.0.0."  # a4db
+- op: discuss  # 0efd
+  at: '2026-06-09T06:37:07Z'  # 0efd
+  by: agent  # 0efd
+  actor: jgstern_agent  # 0efd
+  clock: 7  # 0efd
+  nonce: 0efd  # 0efd
+  message: "v6.0.0 security arc COMPLETE — all 6 PRs merged. PR1 INV-pirad (gitleaks stdin, #4135); PR2/2b WI-jilik+INV-dasig (HF offline before import, #4136/#4139); PR3 META-jurig (load_claims validation gate: INV-zurih/WI-fuhaf/INV-gobob/WI-ruzib/WI-bopoz, #4140); PR4 WI-kajil+INV-bitig (boundary-coverage inconclusive gate, #4143); PR5 WI-razol (taint match_sink + propagation honor module qualifier + ambiguous_names, #4145/#4147); PR6 INV-hukug (CLI taint extras override claims-file extras, #4148). Every fix carries positive end-to-end behavioral evidence (live CLI repro or production-path test), per the PR2-lesson discipline (validate behavior, not just config/unit). Follow-up filed: INV-mivud P3 (catalog 'copy' not in ambiguous_names; small residual, non-blocking). NEXT: re-verify the release-gating METAs with positive evidence (this item INV-somut; INV-murig boundary face; META-jurig already satisfied) — INV-fabov stays violated (spans config/search faces beyond verify-claims). Then cut v6.0.0 (prepare-release VERSION; human merges dev->main + tag-release). Also scrub the changelog's permissive-validator 'zero violations' artifact line per META-fimas before release."  # 0efd

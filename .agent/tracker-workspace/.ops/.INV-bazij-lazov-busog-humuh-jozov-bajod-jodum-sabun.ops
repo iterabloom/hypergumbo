@@ -174,3 +174,20 @@
     tags: [dogfood]  # 4a25
   remove:  # 4a25
     tags: [dogfooding]  # 4a25
+- op: update  # 8918
+  at: '2026-06-09T17:57:12Z'  # 8918
+  by: agent  # 8918
+  actor: jgstern_agent  # 8918
+  clock: 20  # 8918
+  nonce: '8918'  # 8918
+  set:  # 8918
+    status: satisfied  # 8918
+  remove:  # 8918
+    tags: [awaits_bakeoff_validation]  # 8918
+- op: discuss  # c00a
+  at: '2026-06-09T17:57:12Z'  # c00a
+  by: agent  # c00a
+  actor: jgstern_agent  # c00a
+  clock: 21  # c00a
+  nonce: c00a  # c00a
+  message: "Fresh full self-analysis (34,604 nodes, 2026-06-09): stable_id share-rate 0.8% (291/34,468 share with >=1 other), down from the 60% Pass-17 finding. The named manifestation — 155-node forgejo-api.sh group, 152-node test_profile.py group — no longer reproduces; largest group is now 13. Resolved by the structural fix that added name+qualified_name to the hash inputs. Residual 0.8% is concentrated in tracked children WI-gitun (python nested same-name locals: 71 groups / 219 nodes; canonical 'class Args'x8 in test_cli_commands.py -> 1 stable_id) + WI-titiz (TOML dep cross-file: 6 ids spanning multiple manifests). NOTE ON SCOPE: this satisfies the Python-dominated self-corpus only. Cross-substrate uniqueness is NOT universally satisfied — TS collapse (WI-zitod, 16.88% on HTRAC) and bash export dup (WI-nasil, 7.0%) remain live breaches, rolled up under META INV-tazaj which stays open."  # c00a

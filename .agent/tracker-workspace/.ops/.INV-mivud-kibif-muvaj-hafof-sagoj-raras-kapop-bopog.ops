@@ -1,0 +1,24 @@
+- op: create  # e58a
+  at: '2026-06-09T06:06:14Z'  # e58a
+  by: agent  # e58a
+  actor: jgstern_agent  # e58a
+  clock: 1  # e58a
+  nonce: e58a  # e58a
+  data:  # e58a
+    kind: invariant  # e58a
+    title: "io_primitives ambiguous_names incomplete: 'copy' (and peers) missing -> residual taint FPs"  # e58a
+    status: violated  # e58a
+    priority: 3  # e58a
+    parent:  # e58a
+    tags:  # e58a
+    - dogfood  # e58a
+    - verify_claims  # e58a
+    - security  # e58a
+    isbefore: []  # e58a
+    duplicate_of: []  # e58a
+    not_duplicate_of: []  # e58a
+    pr_ref:  # e58a
+    description: "Discovered validating WI-razol (PR #4147). The WI-razol fix makes taint propagation honor ambiguous_names; it works, but the LIST is incomplete: 'copy' is not in python ambiguous_names, so 3 'python:external:0-0:copy:unresolved' edges still falsely match shutil.copy (host_fs) in the self-claims run. (os.environ.copy / ws_clients.copy / stdlib copy module are correctly suppressed by module mismatch; only truly-unresolved external 'copy' leaks.) Fix: add 'copy' to python ambiguous_names; better, audit per-language ambiguous_names for completeness against common-builtin collisions (copy, update, format, join, split, items, keys, values, ...) guided by which short names appear as external:unresolved in dogfood runs. Small residual (3 edges) -> P3, not a v6.0.0 blocker. Provenance: WI-razol end-to-end self-claims validation + behavior-map edge classification."  # e58a
+    fields:  # e58a
+      statement: "io_primitives/<lang>.yaml ambiguous_names must list every short name that is a catalog primitive method AND collides with a common non-IO builtin/method, so an unresolved bare call to that name is not falsely classified by either consumer (io-boundaries chain matcher or taint propagation)."  # e58a
+      root_cause: "python ambiguous_names omits 'copy' (and likely peers), so 'python:external:0-0:copy:unresolved' edges falsely match the shutil.copy host_fs sink. The WI-razol matcher fix only suppresses names that ARE flagged ambiguous; completeness of the list is a separate catalog-data gap shared by both consumers."  # e58a

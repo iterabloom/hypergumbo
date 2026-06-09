@@ -44,3 +44,18 @@
     tags: [dogfood_tranche_03]  # 5e48
   remove:  # 5e48
     tags: [dogfood_tranch_03]  # 5e48
+- op: update  # cb4a
+  at: '2026-06-09T06:06:38Z'  # cb4a
+  by: agent  # cb4a
+  actor: jgstern_agent  # cb4a
+  clock: 5  # cb4a
+  nonce: cb4a  # cb4a
+  set:  # cb4a
+    status: done  # cb4a
+- op: discuss  # 78ad
+  at: '2026-06-09T06:06:38Z'  # 78ad
+  by: agent  # 78ad
+  actor: jgstern_agent  # 78ad
+  clock: 6  # 78ad
+  nonce: 78ad  # 78ad
+  message: "Closed by PR #4145 (TaintCatalog.match_sink/match_source hardening) + PR #4147 (the actual fix). PR2-lesson dividend: an end-to-end self-claims repro after #4145 showed the verdict count UNCHANGED — match_sink/match_source have zero call sites; the 5541 cascade lives in propagate_taint_structural / propagate_taint_ddg, which built their own inline name-keyed index and matched with no module/ambiguity gate. #4147 routes both passes through a shared _match_propagation_entry + _lookup_named_entry mirroring io_boundary.lookup_with_module (INV-maluk sibling): resolved first-party callee -> exact name; unresolved + module hint -> _module_matches (None on mismatch); unresolved ambiguous short name + no hint -> None. Per-language ambiguous_names threaded onto TaintCatalog and passed in by cmd_verify_claims. Positive end-to-end evidence (docs/hypergumbo.claims.yaml): violated evidence 5975 -> 1266; runtime-cli-no-network and add-extras-no-host-fs flipped to confirmed. Behavior-map edge classification of the residual: replace->host_fs (4368) and write->network (960) cascades ELIMINATED; module-mismatched matches (os.environ.copy, uvicorn.run, stdlib copy) suppressed; genuine module-matched flows retained (subprocess.run 133 sites, shutil.copy 13 sites) -> those are true positives (cmd_run genuinely reaches subprocess.run/shutil.copy; a claims-scoping question, not a matcher FP). Small residual FP: 3 'external:copy' edges leak because 'copy' is not in python ambiguous_names -> tracked as INV-mivud (P3, catalog-completeness, not a release blocker). The WI-razol invariant (matcher honors module qualifier + ambiguous_names) is satisfied and verified."  # 78ad

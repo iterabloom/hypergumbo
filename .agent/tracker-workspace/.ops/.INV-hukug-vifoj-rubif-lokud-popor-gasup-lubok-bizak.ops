@@ -73,3 +73,18 @@
     tags: [dogfood]  # b249
   remove:  # b249
     tags: [dogfooding]  # b249
+- op: update  # b9c5
+  at: '2026-06-09T06:36:54Z'  # b9c5
+  by: agent  # b9c5
+  actor: jgstern_agent  # b9c5
+  clock: 7  # b9c5
+  nonce: b9c5  # b9c5
+  set:  # b9c5
+    status: satisfied  # b9c5
+- op: discuss  # a370
+  at: '2026-06-09T06:36:54Z'  # a370
+  by: agent  # a370
+  actor: jgstern_agent  # a370
+  clock: 8  # a370
+  nonce: a370  # a370
+  message: "Closed by PR #4148 (v6.0.0 security arc PR6, final). cmd_verify_claims no longer concatenates CLI --taint-* paths with claims-file extra_catalogs paths into one dedup-less user layer. load_full_taint_catalog now takes claims-file extras (extra_*_paths) and CLI extras (cli_*_paths) as DISTINCT layers and applies _merge_with_user_override between them (CLI wins over claims-file on (module,name,kind) for sources/sinks; sanitizers concatenate) before the unified user layer overrides built-in. Positive behavioral evidence: end-to-end test test_verify_claims_cli_source_overrides_claims_file_source drives the real cmd_verify_claims path — a claims-file extra_catalogs.sources entry labels 'entry' as a source (claims_label); a --taint-sources file relabels the same (module,name,kind) to cli_label; the claims-label taint_flow claim flips violated -> confirmed because the CLI override DISPLACED the claims-file source (pre-fix both coexisted and it stayed violated). Plus unit tests on the layered merge (cli source/sink override, claims-only still applies, sanitizers concatenate). Passing only extra_*_paths preserves prior single-layer behavior, so existing callers/tests unchanged. (No dead-code gap: unlike the WI-razol match_sink first attempt, the test exercises the production cmd_verify_claims path directly.)"  # a370
