@@ -708,8 +708,10 @@ def test_verify_claims_bad_taint_source_path_errors(
     tmp_path: Path, capsys,
 ) -> None:
     """A typo in ``--taint-sources`` is caught at load time and returns
-    exit 1 with a clear error — a silent fallthrough to built-in
-    defaults would be worse than failing loudly.
+    exit 2 (inconclusive) with a clear error — a silent fallthrough to
+    built-in defaults would be worse than failing loudly. INV-nufob: a
+    broken taint config means verification could not proceed, which is
+    inconclusive (exit 2), never a confirmed (0) or violated (1) verdict.
     """
     bmap = _make_behavior_map(
         nodes=[
@@ -751,9 +753,153 @@ def test_verify_claims_bad_taint_source_path_errors(
     args.taint_sources = [str(tmp_path / "nonexistent_sources.yaml")]
 
     rc = cmd_verify_claims(args)
-    assert rc == 1
+    assert rc == 2
     _, err = capsys.readouterr()
     assert "Taint catalog path not found" in err
+
+
+def _boundary_only_claims_file(tmp_path: Path) -> Path:
+    """A claims file with a single boundary (non-taint_flow) constraint."""
+    claims = {
+        "claims": [
+            {"id": "SC-NET", "text": "No network sends",
+             "constraint": {"boundary": "net_send", "must_not_exist": True}},
+        ]
+    }
+    p = tmp_path / "claims.yaml"
+    p.write_text(yaml.dump(claims))
+    return p
+
+
+def _covered_python_map(tmp_path: Path) -> Path:
+    """A behavior map with a python call edge (coverage complete) and no
+    net_send boundary."""
+    bmap = _make_behavior_map(
+        nodes=[{"id": "python:a.py:1:f:function", "name": "f",
+                "kind": "function", "language": "python", "path": "a.py",
+                "span": {"start_line": 1, "end_line": 5}}],
+        edges=[{"src": "python:a.py:1:f:function",
+                "dst": "python:os.py:1:os.listdir:function",
+                "type": "calls", "confidence": 0.9}],
+    )
+    p = tmp_path / "hg.json"
+    p.write_text(json.dumps(bmap))
+    return p
+
+
+def test_verify_claims_bad_taint_path_with_boundary_only_claims_not_silent(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-nufob silent-confirm closure: ``--taint-sources <bad-path>`` with
+    only boundary (non-taint_flow) claims must NOT silently report
+    'all CONFIRMED' exit 0. The flags are validated regardless of whether any
+    claim has a taint_flow constraint, so a typo errors out (exit 2).
+    """
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(_covered_python_map(tmp_path))
+    args.claims = str(_boundary_only_claims_file(tmp_path))
+    args.json_output = False
+    args.taint_sources = [str(tmp_path / "nonexistent.yaml")]
+
+    rc = cmd_verify_claims(args)
+    assert rc == 2
+    out, err = capsys.readouterr()
+    assert "Taint catalog path not found" in err
+    assert "CONFIRMED" not in out
+
+
+def test_verify_claims_taint_flags_without_taint_claims_warns(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-nufob: when valid ``--taint-*`` flags are passed but no claim has a
+    taint_flow constraint, the catalog is validated but unused — the command
+    warns rather than silently ignoring the flags.
+    """
+    src = tmp_path / "src.yaml"
+    src.write_text(
+        "taint_label: ut\nsources:\n  python:\n    - module: m\n"
+        "      functions: [f]\n"
+    )
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(_covered_python_map(tmp_path))
+    args.claims = str(_boundary_only_claims_file(tmp_path))
+    args.json_output = False
+    args.taint_sources = [str(src)]
+
+    rc = cmd_verify_claims(args)
+    # Boundary claim confirmed (exit 0) but with an explicit warning.
+    assert rc == 0
+    _, err = capsys.readouterr()
+    assert "no claim has a taint_flow constraint" in err
+    assert "validated but" in err
+
+
+def test_verify_claims_malformed_taint_yaml_clean_error(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-nufob: a malformed-YAML ``--taint-sources`` file (with a taint
+    claim, so the loader runs) yields a clean exit-2 error, not an uncaught
+    yaml.YAMLError traceback.
+    """
+    bad = tmp_path / "broken.yaml"
+    bad.write_text("sources: [unclosed\n")
+    claims = {
+        "claims": [
+            {"id": "TF", "text": "no plaintext to host_fs",
+             "constraint": {"taint_flow": {"source_taint": "plaintext",
+                                           "prohibited_sink_zone": "host_fs"}}},
+        ]
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(_covered_python_map(tmp_path))
+    args.claims = str(claims_file)
+    args.json_output = False
+    args.taint_sources = [str(bad)]
+
+    rc = cmd_verify_claims(args)
+    assert rc == 2
+    out, err = capsys.readouterr()
+    assert "could not parse" in err
+    assert "Traceback" not in err and "Traceback" not in out
+
+
+def test_verify_claims_wrongshape_taint_yaml_clean_error(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-nufob: a wrong-shape ``--taint-sources`` file (sources is a scalar,
+    with a taint claim) yields a clean exit-2 error, not an uncaught
+    AttributeError traceback.
+    """
+    bad = tmp_path / "wrong.yaml"
+    bad.write_text("sources: not_a_mapping\n")
+    claims = {
+        "claims": [
+            {"id": "TF", "text": "no plaintext to host_fs",
+             "constraint": {"taint_flow": {"source_taint": "plaintext",
+                                           "prohibited_sink_zone": "host_fs"}}},
+        ]
+    }
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(_covered_python_map(tmp_path))
+    args.claims = str(claims_file)
+    args.json_output = False
+    args.taint_sources = [str(bad)]
+
+    rc = cmd_verify_claims(args)
+    assert rc == 2
+    out, err = capsys.readouterr()
+    assert "must be a" in err
+    assert "Traceback" not in err and "Traceback" not in out
 
 
 # ============================================================================

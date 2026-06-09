@@ -20,6 +20,7 @@ from hypergumbo_core.cfg import DdgEdge
 from hypergumbo_core.taint import (
     TAINT_CALL_EDGE_TYPES,
     TaintCatalog,
+    TaintCatalogError,
     TaintFlowFinding,
     TaintSanitizer,
     TaintSink,
@@ -663,6 +664,79 @@ class TestEdgeCases:
         )
         sinks = catalog.sinks_for_language("python")
         assert len(sinks) == 1
+
+    def test_load_source_yaml_malformed_raises_taint_catalog_error(
+        self, tmp_path: Path,
+    ) -> None:
+        """A malformed-YAML source file raises TaintCatalogError (a clean
+        error), not an uncaught yaml.YAMLError traceback (INV-nufob)."""
+        p = tmp_path / "broken.yaml"
+        p.write_text("sources: [unclosed\n")
+        with pytest.raises(TaintCatalogError, match="could not parse"):
+            load_taint_catalog(
+                source_paths=[p], sink_paths=[], sanitizer_paths=[],
+            )
+
+    def test_load_source_yaml_top_level_not_mapping_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        """A source file that is a bare scalar at top level raises
+        TaintCatalogError, not an uncaught AttributeError (INV-nufob)."""
+        p = tmp_path / "scalar.yaml"
+        p.write_text("just a bare string\n")
+        with pytest.raises(TaintCatalogError, match="mapping at top level"):
+            load_taint_catalog(
+                source_paths=[p], sink_paths=[], sanitizer_paths=[],
+            )
+
+    def test_load_source_yaml_wrong_shape_sources_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        """A source file whose 'sources:' is not a mapping raises
+        TaintCatalogError, not an uncaught AttributeError (INV-nufob)."""
+        p = tmp_path / "wrong.yaml"
+        p.write_text("sources: not_a_mapping\n")
+        with pytest.raises(TaintCatalogError, match="'sources:' must be a"):
+            load_taint_catalog(
+                source_paths=[p], sink_paths=[], sanitizer_paths=[],
+            )
+
+    def test_load_sink_yaml_wrong_shape_sinks_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        """A sink file whose 'sinks:' is not a mapping raises
+        TaintCatalogError (INV-nufob)."""
+        p = tmp_path / "wrong_sink.yaml"
+        p.write_text("sinks: not_a_mapping\n")
+        with pytest.raises(TaintCatalogError, match="'sinks:' must be a"):
+            load_taint_catalog(
+                source_paths=[], sink_paths=[p], sanitizer_paths=[],
+            )
+
+    def test_load_sanitizer_yaml_wrong_shape_transforms_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        """A sanitizer file whose 'transforms:' is not a list raises
+        TaintCatalogError (INV-nufob)."""
+        p = tmp_path / "wrong_san.yaml"
+        p.write_text("transforms: not_a_list\n")
+        with pytest.raises(TaintCatalogError, match="'transforms:' must be a"):
+            load_taint_catalog(
+                source_paths=[], sink_paths=[], sanitizer_paths=[p],
+            )
+
+    def test_load_empty_taint_yaml_is_empty_catalog(
+        self, tmp_path: Path,
+    ) -> None:
+        """An empty taint file (``yaml.safe_load`` -> None) loads as an empty
+        catalog rather than erroring (INV-nufob: empty is valid, malformed is
+        not)."""
+        p = tmp_path / "empty.yaml"
+        p.write_text("")
+        catalog = load_taint_catalog(
+            source_paths=[p], sink_paths=[], sanitizer_paths=[],
+        )
+        assert catalog.sources_for_language("python") == []
 
     def test_load_builtin_taint_catalog(self) -> None:
         """load_builtin_taint_catalog loads built-in YAML catalogs."""
@@ -1777,7 +1851,12 @@ class TestTaintSourceStartAt:
             assert s.start_at == "callee"
 
     def test_yaml_loader_rejects_invalid_start_at(self, tmp_path: Path) -> None:
-        """Typo-protection: 'callees' / 'caller_id' etc. fail at load time."""
+        """Typo-protection: 'callees' / 'caller_id' etc. fail at load time.
+
+        Raises TaintCatalogError (INV-nufob: the single umbrella for taint
+        catalog load failures, mapped to CLI exit 2) rather than a bare
+        ValueError that the CLI would let propagate as a traceback.
+        """
         from hypergumbo_core.taint import _load_source_yaml
         yaml_path = tmp_path / "bad.yaml"
         yaml_path.write_text(
@@ -1789,7 +1868,7 @@ class TestTaintSourceStartAt:
             "      functions: [f]\n",
             encoding="utf-8",
         )
-        with pytest.raises(ValueError, match="Invalid start_at"):
+        with pytest.raises(TaintCatalogError, match="Invalid start_at"):
             _load_source_yaml(yaml_path)
 
     def test_callee_seed_includes_downstream_only(self) -> None:

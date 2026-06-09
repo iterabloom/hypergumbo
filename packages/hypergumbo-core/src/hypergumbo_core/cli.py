@@ -4436,26 +4436,41 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # languages and the verify-claims output lies by omission.
     unsupported_taint_languages: list[str] = []
     has_taint_claims = any(c.constraint_taint_flow is not None for c in claims)
-    if has_taint_claims:
-        from .taint import load_full_taint_catalog, propagate_taint_structural
-        from .verify_claims import load_extra_catalog_paths
+    taint_catalog = None
 
-        # Assemble project-local taint catalog paths from CLI flags and the
-        # ``extra_catalogs:`` key in the claims YAML (WI-votan).  INV-hukug:
-        # the two are kept as DISTINCT layers — CLI flags (higher) override
-        # claims-file extras (lower) on (module, name, kind), which override
-        # the built-in catalog. Previously these were concatenated into one
-        # user layer, so a CLI override of a claims-declared entry silently
-        # became a coexisting duplicate instead of a replacement.
-        cli_sources = [Path(p) for p in (getattr(args, "taint_sources", None) or [])]
-        cli_sinks = [Path(p) for p in (getattr(args, "taint_sinks", None) or [])]
-        cli_sanitizers = [
-            Path(p) for p in (getattr(args, "taint_sanitizers", None) or [])
-        ]
-        claims_sources, claims_sinks, claims_sanitizers = (
-            load_extra_catalog_paths(claims_path)
-        )
+    from .taint import (
+        TaintCatalogError,
+        load_full_taint_catalog,
+        propagate_taint_structural,
+    )
+    from .verify_claims import load_extra_catalog_paths
 
+    # Assemble project-local taint catalog paths from CLI flags and the
+    # ``extra_catalogs:`` key in the claims YAML (WI-votan).  INV-hukug: the
+    # two are kept as DISTINCT layers — CLI flags (higher) override claims-file
+    # extras (lower) on (module, name, kind), which override the built-in
+    # catalog.
+    cli_sources = [Path(p) for p in (getattr(args, "taint_sources", None) or [])]
+    cli_sinks = [Path(p) for p in (getattr(args, "taint_sinks", None) or [])]
+    cli_sanitizers = [
+        Path(p) for p in (getattr(args, "taint_sanitizers", None) or [])
+    ]
+    claims_sources, claims_sinks, claims_sanitizers = (
+        load_extra_catalog_paths(claims_path)
+    )
+    any_taint_flags = bool(
+        cli_sources or cli_sinks or cli_sanitizers
+        or claims_sources or claims_sinks or claims_sanitizers
+    )
+
+    # INV-nufob: resolve+validate the taint catalog whenever taint flags are
+    # present, even with no taint_flow claim to consume them. Previously this
+    # block was gated on ``has_taint_claims``, so ``--taint-sources <bad-path>``
+    # with boundary-only claims silently fell through to "all CONFIRMED"
+    # (exit 0), and a malformed / wrong-shape taint file crashed with an
+    # uncaught traceback. A broken taint config is inconclusive (exit 2),
+    # never confirmed (0) or violated (1).
+    if has_taint_claims or any_taint_flags:
         try:
             taint_catalog = load_full_taint_catalog(
                 extra_source_paths=claims_sources,
@@ -4465,14 +4480,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 cli_sink_paths=cli_sinks,
                 cli_sanitizer_paths=cli_sanitizers,
             )
-        except FileNotFoundError as exc:
+        except (FileNotFoundError, TaintCatalogError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
-            return 1
+            return 2
 
-        if (
-            cli_sources or cli_sinks or cli_sanitizers
-            or claims_sources or claims_sinks or claims_sanitizers
-        ):
+        if any_taint_flags:
             print(
                 "Loaded project-local taint catalog: "
                 f"{len(cli_sources) + len(claims_sources)} source path(s), "
@@ -4484,6 +4496,20 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
 
+        if any_taint_flags and not has_taint_claims:
+            # INV-nufob: flags present but no taint_flow claim to consume them.
+            # The catalog was validated above (a bad path already errored with
+            # exit 2); warn that it is otherwise unused rather than silently
+            # ignoring the flags.
+            print(
+                "Warning: --taint-sources/--taint-sinks/--taint-sanitizers "
+                "(or claims-file extra_catalogs) were provided, but no claim "
+                "has a taint_flow constraint, so the taint catalog was "
+                "validated but not used.",
+                file=sys.stderr,
+            )
+
+    if has_taint_claims:
         # Build per-language source/sink/sanitizer tables. Running
         # propagation per-language avoids cross-language short-name
         # collisions (e.g., elixir HTTPoison.get matching every Python

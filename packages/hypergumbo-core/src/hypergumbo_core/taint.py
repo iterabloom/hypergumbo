@@ -429,12 +429,62 @@ class TaintCatalog:
 # ---------------------------------------------------------------------------
 
 
+class TaintCatalogError(Exception):
+    """A project-local taint catalog file could not be parsed or has an
+    invalid shape.
+
+    This is the single umbrella for taint-catalog load failures —
+    malformed YAML, a non-mapping document, a wrong-typed top-level section
+    (``sources``/``sinks``/``transforms``), or an invalid ``start_at`` value.
+    The CLI maps it to exit code 2 (inconclusive): a broken taint
+    configuration means verification could not proceed, which must never be
+    reported as a confirmed (exit 0) or violated (exit 1) verdict
+    (INV-nufob / ADR-0033 Phase 3 silent-confirm closure). Before this, the
+    loaders raised raw ``yaml.YAMLError`` / ``AttributeError`` / ``ValueError``
+    that escaped the CLI as an uncaught traceback, or — worse, when no
+    ``taint_flow`` claim was present — were never reached, so a bad
+    ``--taint-*`` path silently fell through to "all CONFIRMED".
+    """
+
+
+def _safe_load_catalog_yaml(
+    path: Path, section: str, section_type: type,
+) -> dict:
+    """Parse a taint-catalog YAML file with shape validation.
+
+    Raises :class:`TaintCatalogError` (never a raw ``yaml.YAMLError`` or
+    ``AttributeError``) on malformed YAML, a non-mapping document, or a
+    top-level ``section`` whose value is not an instance of ``section_type``.
+    Returns the parsed mapping (``{}`` for an empty file).
+    """
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise TaintCatalogError(
+            f"could not parse taint catalog {path}: {exc}"
+        ) from exc
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise TaintCatalogError(
+            f"taint catalog {path} must be a mapping at top level, got "
+            f"{type(data).__name__}."
+        )
+    section_val = data.get(section)
+    if section_val is not None and not isinstance(section_val, section_type):
+        raise TaintCatalogError(
+            f"taint catalog {path}: '{section}:' must be a "
+            f"{section_type.__name__}, got {type(section_val).__name__}."
+        )
+    return data
+
+
 def _load_source_yaml(path: Path) -> tuple[str, list[TaintSource]]:
     """Load a single taint source YAML file.
 
     Returns (taint_label, flat list of TaintSource entries across all languages).
     """
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = _safe_load_catalog_yaml(path, "sources", dict)
     label = data.get("taint_label", "unknown")
     sources_by_lang: dict[str, list[TaintSource]] = {}
 
@@ -448,7 +498,7 @@ def _load_source_yaml(path: Path) -> tuple[str, list[TaintSource]]:
             arg_tainted = tuple(entry.get("argument_tainted", []))
             start_at = entry.get("start_at", "caller")
             if start_at not in {"caller", "callee"}:
-                raise ValueError(
+                raise TaintCatalogError(
                     f"Invalid start_at={start_at!r} in {path}; "
                     f"must be 'caller' or 'callee'."
                 )
@@ -483,7 +533,7 @@ def _load_sink_yaml(path: Path) -> dict[str, list[TaintSink]]:
 
     Returns dict mapping language → list of TaintSink entries.
     """
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = _safe_load_catalog_yaml(path, "sinks", dict)
     zone = data.get("zone", "unknown")
     trust_level = data.get("trust_level", "unknown")
     sinks_by_lang: dict[str, list[TaintSink]] = {}
@@ -521,7 +571,7 @@ def _load_sanitizer_yaml(path: Path) -> dict[str, list[TaintSanitizer]]:
 
     Returns dict mapping language → list of TaintSanitizer entries.
     """
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = _safe_load_catalog_yaml(path, "transforms", list)
     sanitizers_by_lang: dict[str, list[TaintSanitizer]] = {}
 
     for transform in data.get("transforms", []):
