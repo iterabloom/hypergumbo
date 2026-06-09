@@ -2213,3 +2213,100 @@ class TestPropagationAmbiguousAndModule:
         assert propagate_taint_structural(
             edges, [amb_source], [sink], [],
             ambiguous_names=frozenset({"get"})) == []
+
+
+class TestClaimsVsCliExtraLayers:
+    """INV-hukug: a CLI ``--taint-sources`` override must REPLACE a
+    claims-file ``extra_catalogs.sources`` entry on the same
+    (module, name, kind) — the two were previously collapsed into one user
+    layer with no intra-layer dedup, so the CLI flag only ADDED a duplicate
+    and the documented override never took effect."""
+
+    def _src_yaml(self, label: str) -> str:
+        return dedent(f"""\
+            taint_label: {label}
+            sources:
+              python:
+                - module: myproj.api
+                  functions: [handler]
+        """)
+
+    def _sink_yaml(self, zone: str) -> str:
+        return dedent(f"""\
+            zone: {zone}
+            trust_level: untrusted
+            sinks:
+              python:
+                - module: myproj.io
+                  functions: [writeit]
+        """)
+
+    def test_cli_source_overrides_claims_source(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taint import load_full_taint_catalog
+        claims = tmp_path / "claims_src.yaml"
+        claims.write_text(self._src_yaml("claims_label"))
+        cli = tmp_path / "cli_src.yaml"
+        cli.write_text(self._src_yaml("cli_label"))
+        catalog = load_full_taint_catalog(
+            extra_source_paths=[claims], cli_source_paths=[cli],
+        )
+        matches = [
+            s for s in catalog.sources_for_language("python")
+            if (s.module, s.name, s.kind) == ("myproj.api", "handler", "function")
+        ]
+        assert len(matches) == 1, f"CLI must replace, not add: got {len(matches)}"
+        assert matches[0].taint_label == "cli_label"
+
+    def test_cli_sink_overrides_claims_sink(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taint import load_full_taint_catalog
+        claims = tmp_path / "claims_sink.yaml"
+        claims.write_text(self._sink_yaml("claims_zone"))
+        cli = tmp_path / "cli_sink.yaml"
+        cli.write_text(self._sink_yaml("cli_zone"))
+        catalog = load_full_taint_catalog(
+            extra_sink_paths=[claims], cli_sink_paths=[cli],
+        )
+        matches = [
+            s for s in catalog.sinks_for_language("python")
+            if (s.module, s.name, s.kind) == ("myproj.io", "writeit", "function")
+        ]
+        assert len(matches) == 1
+        assert matches[0].zone == "cli_zone"
+
+    def test_claims_source_without_cli_still_applies(self, tmp_path: Path) -> None:
+        # Regression: a claims-only override (no CLI layer) behaves as before.
+        from hypergumbo_core.taint import load_full_taint_catalog
+        claims = tmp_path / "claims_src.yaml"
+        claims.write_text(self._src_yaml("claims_label"))
+        catalog = load_full_taint_catalog(extra_source_paths=[claims])
+        matches = [
+            s for s in catalog.sources_for_language("python")
+            if (s.module, s.name, s.kind) == ("myproj.api", "handler", "function")
+        ]
+        assert len(matches) == 1
+        assert matches[0].taint_label == "claims_label"
+
+    def test_claims_and_cli_sanitizers_concatenate(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taint import load_full_taint_catalog
+        claims = tmp_path / "claims_san.yaml"
+        claims.write_text(dedent("""\
+            transforms:
+              - input_taint: a
+                output_taint: b
+                functions:
+                  python: [claims_sanitize]
+        """))
+        cli = tmp_path / "cli_san.yaml"
+        cli.write_text(dedent("""\
+            transforms:
+              - input_taint: c
+                output_taint: d
+                functions:
+                  python: [cli_sanitize]
+        """))
+        catalog = load_full_taint_catalog(
+            extra_sanitizer_paths=[claims], cli_sanitizer_paths=[cli],
+        )
+        names = {s.qualified_name for s in catalog.sanitizers_for_language("python")}
+        assert "claims_sanitize" in names
+        assert "cli_sanitize" in names

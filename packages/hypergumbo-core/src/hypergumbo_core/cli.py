@@ -4441,11 +4441,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         from .verify_claims import load_extra_catalog_paths
 
         # Assemble project-local taint catalog paths from CLI flags and the
-        # ``extra_catalogs:`` key in the claims YAML (WI-votan).  CLI paths
-        # come first so users invoking on the command line keep control
-        # even when a claims file declares its own defaults; merge
-        # semantics are order-independent because (module, name, kind)
-        # conflicts between two user entries would be a bug regardless.
+        # ``extra_catalogs:`` key in the claims YAML (WI-votan).  INV-hukug:
+        # the two are kept as DISTINCT layers — CLI flags (higher) override
+        # claims-file extras (lower) on (module, name, kind), which override
+        # the built-in catalog. Previously these were concatenated into one
+        # user layer, so a CLI override of a claims-declared entry silently
+        # became a coexisting duplicate instead of a replacement.
         cli_sources = [Path(p) for p in (getattr(args, "taint_sources", None) or [])]
         cli_sinks = [Path(p) for p in (getattr(args, "taint_sinks", None) or [])]
         cli_sanitizers = [
@@ -4454,32 +4455,32 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         claims_sources, claims_sinks, claims_sanitizers = (
             load_extra_catalog_paths(claims_path)
         )
-        extra_source_paths = cli_sources + claims_sources
-        extra_sink_paths = cli_sinks + claims_sinks
-        extra_sanitizer_paths = cli_sanitizers + claims_sanitizers
 
         try:
             taint_catalog = load_full_taint_catalog(
-                extra_source_paths=extra_source_paths,
-                extra_sink_paths=extra_sink_paths,
-                extra_sanitizer_paths=extra_sanitizer_paths,
+                extra_source_paths=claims_sources,
+                extra_sink_paths=claims_sinks,
+                extra_sanitizer_paths=claims_sanitizers,
+                cli_source_paths=cli_sources,
+                cli_sink_paths=cli_sinks,
+                cli_sanitizer_paths=cli_sanitizers,
             )
         except FileNotFoundError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
 
         if (
-            extra_source_paths
-            or extra_sink_paths
-            or extra_sanitizer_paths
+            cli_sources or cli_sinks or cli_sanitizers
+            or claims_sources or claims_sinks or claims_sanitizers
         ):
             print(
                 "Loaded project-local taint catalog: "
-                f"{len(extra_source_paths)} source path(s), "
-                f"{len(extra_sink_paths)} sink path(s), "
-                f"{len(extra_sanitizer_paths)} sanitizer path(s). "
-                "User entries override auto-derived defaults on "
-                "(module, name, kind) match.",
+                f"{len(cli_sources) + len(claims_sources)} source path(s), "
+                f"{len(cli_sinks) + len(claims_sinks)} sink path(s), "
+                f"{len(cli_sanitizers) + len(claims_sanitizers)} sanitizer "
+                "path(s). CLI --taint-* entries override claims-file "
+                "extra_catalogs entries, which override built-in defaults, "
+                "on (module, name, kind) match.",
                 file=sys.stderr,
             )
 

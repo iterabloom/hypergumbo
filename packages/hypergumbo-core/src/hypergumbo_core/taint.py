@@ -762,13 +762,17 @@ def load_full_taint_catalog(
     extra_source_paths: list[Path] | None = None,
     extra_sink_paths: list[Path] | None = None,
     extra_sanitizer_paths: list[Path] | None = None,
+    *,
+    cli_source_paths: list[Path] | None = None,
+    cli_sink_paths: list[Path] | None = None,
+    cli_sanitizer_paths: list[Path] | None = None,
 ) -> TaintCatalog:
     """Load built-in taint catalogs and merge in user-supplied YAML files.
 
-    The three argument lists (``extra_source_paths``, ``extra_sink_paths``,
-    ``extra_sanitizer_paths``) accept YAML files or directories of YAMLs —
-    resolved via :func:`_resolve_catalog_paths`.  Each layer stacks on top
-    of the one below it:
+    Path arguments accept YAML files or directories of YAMLs — resolved via
+    :func:`_resolve_catalog_paths`.  Four layers stack, each overriding the
+    ones below it on ``(module, name, kind)`` for sources/sinks (sanitizers
+    key on ``qualified_name`` and so concatenate, never replace):
 
     1. Auto-derived taint entries from ``io_primitives/*.yaml`` (paranoid
        default: every write-side primitive is a sink, every read-side
@@ -776,46 +780,60 @@ def load_full_taint_catalog(
     2. Built-in YAML under ``taint_sources/`` and ``taint_sanitizers/``
        alongside this module.  (Built-in sinks come from layer 1 only;
        the ``taint_sinks/`` directory was retired in 51e1d232f3.)
-    3. User ``extra_*_paths`` passed by this call.
+    3. Claims-file extras — ``extra_*_paths`` (the ``extra_catalogs:`` key in
+       the claims YAML, WI-votan).
+    4. CLI extras — ``cli_*_paths`` (the ``--taint-sources`` /
+       ``--taint-sinks`` / ``--taint-sanitizers`` flags).
 
-    Override semantics for sources and sinks: an entry in a higher layer
-    whose ``(module, name, kind)`` triple matches an entry in a lower
-    layer replaces it.  This is the same rule :func:`_merge_with_user_override`
-    already applies between layers 1 and 2 — it now also applies between
-    layer 2 and layer 3.  Sanitizers do not have a ``(module, name, kind)``
-    key (they key on ``qualified_name``) so user sanitizers concatenate
-    onto the built-in list.
+    INV-hukug: layers 3 and 4 are kept distinct so a CLI flag (layer 4)
+    *replaces* a claims-file entry (layer 3) on a matching
+    ``(module, name, kind)`` instead of coexisting with it as a duplicate.
+    Previously both were concatenated into one user layer with no intra-layer
+    dedup, so a CLI ``--taint-sources`` override silently failed to displace a
+    claims-file ``extra_catalogs.sources`` entry. Passing only ``extra_*_paths``
+    (no ``cli_*``) preserves the prior single-user-layer behavior.
 
     The helper is the single entry point for end-users running
-    ``verify-claims`` on a repo other than hypergumbo's own: the CLI
-    flags ``--taint-sources`` / ``--taint-sinks`` / ``--taint-sanitizers``
-    and the ``extra_catalogs:`` key in the claims-file YAML both flow
-    through here (WI-votan).
+    ``verify-claims`` on a repo other than hypergumbo's own.
     """
     extra_source_paths = _resolve_catalog_paths(extra_source_paths or [])
     extra_sink_paths = _resolve_catalog_paths(extra_sink_paths or [])
-    extra_sanitizer_paths = _resolve_catalog_paths(
-        extra_sanitizer_paths or [],
-    )
+    extra_sanitizer_paths = _resolve_catalog_paths(extra_sanitizer_paths or [])
+    cli_source_paths = _resolve_catalog_paths(cli_source_paths or [])
+    cli_sink_paths = _resolve_catalog_paths(cli_sink_paths or [])
+    cli_sanitizer_paths = _resolve_catalog_paths(cli_sanitizer_paths or [])
 
     catalog = load_builtin_taint_catalog()
 
-    if not (
-        extra_source_paths or extra_sink_paths or extra_sanitizer_paths
-    ):
+    any_extra = extra_source_paths or extra_sink_paths or extra_sanitizer_paths
+    any_cli = cli_source_paths or cli_sink_paths or cli_sanitizer_paths
+    if not (any_extra or any_cli):
         return catalog
 
-    extra_catalog = load_taint_catalog(
+    # Two user layers: claims-file extras (lower) and CLI extras (higher).
+    # CLI overrides claims on (module, name, kind) for sources/sinks
+    # (INV-hukug); sanitizers concatenate (claims then CLI). The unified user
+    # layer then overrides the built-in catalog (layers 1+2).
+    claims_layer = load_taint_catalog(
         extra_source_paths, extra_sink_paths, extra_sanitizer_paths,
     )
+    cli_layer = load_taint_catalog(
+        cli_source_paths, cli_sink_paths, cli_sanitizer_paths,
+    )
+    user_sources = _merge_with_user_override(
+        claims_layer._sources, cli_layer._sources,
+    )
+    user_sinks = _merge_with_user_override(
+        claims_layer._sinks, cli_layer._sinks,
+    )
+    user_sanitizers: dict[str, list[TaintSanitizer]] = {}
+    for layer in (claims_layer._sanitizers, cli_layer._sanitizers):
+        for lang, sans in layer.items():
+            user_sanitizers.setdefault(lang, []).extend(sans)
 
-    catalog._sources = _merge_with_user_override(
-        catalog._sources, extra_catalog._sources,
-    )
-    catalog._sinks = _merge_with_user_override(
-        catalog._sinks, extra_catalog._sinks,
-    )
-    for lang, sans in extra_catalog._sanitizers.items():
+    catalog._sources = _merge_with_user_override(catalog._sources, user_sources)
+    catalog._sinks = _merge_with_user_override(catalog._sinks, user_sinks)
+    for lang, sans in user_sanitizers.items():
         catalog._sanitizers.setdefault(lang, []).extend(sans)
     catalog._rebuild_indices()
     return catalog

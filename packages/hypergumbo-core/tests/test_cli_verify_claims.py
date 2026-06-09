@@ -1092,3 +1092,86 @@ def test_verify_claims_vacuous_analysis_inconclusive(tmp_path: Path, capsys) -> 
     rc = cmd_verify_claims(_boundary_claim_args(tmp_path, bmap))
     assert rc == 2
     assert "INCONCLUSIVE" in capsys.readouterr().out
+
+
+def test_verify_claims_cli_source_overrides_claims_file_source(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-hukug end-to-end: a --taint-sources flag overriding a source the
+    claims file declares via extra_catalogs.sources must REPLACE it. The claim
+    checks for the claims-file label; once the CLI relabels that source, the
+    label no longer seeds taint and the claim flips violated -> confirmed.
+    Pre-fix, both labels coexisted and the claim stayed violated.
+    """
+    # entry (source) calls writeit (sink). dispatcher calls entry so entry is
+    # the source-callee (start_at: callee seeds BFS at entry).
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:cli.py:1:dispatcher:function", "name": "dispatcher",
+             "kind": "function", "language": "python", "path": "cli.py",
+             "span": {"start_line": 1, "end_line": 2}},
+            {"id": "python:api.py:1:entry:function", "name": "entry",
+             "kind": "function", "language": "python", "path": "api.py",
+             "span": {"start_line": 1, "end_line": 9}},
+        ],
+        edges=[
+            {"src": "python:cli.py:1:dispatcher:function",
+             "dst": "python:api.py:1:entry:function", "type": "calls",
+             "confidence": 0.9},
+            {"src": "python:api.py:1:entry:function",
+             "dst": "python:external:0-0:writeit:unresolved", "type": "calls",
+             "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    (tmp_path / "claims_src.yaml").write_text(yaml.dump({
+        "taint_label": "claims_label",
+        "sources": {"python": [
+            {"module": "myproj.api", "start_at": "callee", "functions": ["entry"]},
+        ]},
+    }))
+    (tmp_path / "sink.yaml").write_text(yaml.dump({
+        "zone": "Z", "trust_level": "untrusted",
+        "sinks": {"python": [{"module": "myproj.io", "functions": ["writeit"]}]},
+    }))
+    (tmp_path / "cli_src.yaml").write_text(yaml.dump({
+        "taint_label": "cli_label",
+        "sources": {"python": [
+            {"module": "myproj.api", "start_at": "callee", "functions": ["entry"]},
+        ]},
+    }))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({
+        "extra_catalogs": {"sources": ["claims_src.yaml"], "sinks": ["sink.yaml"]},
+        "claims": [{
+            "id": "TF", "text": "no claims_label to Z",
+            "constraint": {"taint_flow": {
+                "source_taint": "claims_label", "prohibited_sink_zone": "Z",
+            }},
+        }],
+    }))
+
+    base = FakeArgs()
+    base.path = str(tmp_path)
+    base.input = str(input_file)
+    base.claims = str(claims_file)
+    base.json_output = True
+
+    # Baseline (no CLI override): claims_label seeds entry -> flow to Z -> violated.
+    rc = cmd_verify_claims(base)
+    assert rc == 1
+    assert json.loads(capsys.readouterr().out)[0]["verdict"] == "violated"
+
+    # With CLI override: entry is relabeled cli_label, so claims_label no longer
+    # seeds -> the claims_label claim is confirmed (the override displaced it).
+    over = FakeArgs()
+    over.path = str(tmp_path)
+    over.input = str(input_file)
+    over.claims = str(claims_file)
+    over.json_output = True
+    over.taint_sources = [str(tmp_path / "cli_src.yaml")]
+    rc = cmd_verify_claims(over)
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)[0]["verdict"] == "confirmed"
