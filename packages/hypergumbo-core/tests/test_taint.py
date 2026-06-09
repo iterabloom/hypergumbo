@@ -2117,3 +2117,99 @@ class TestMatchSinkRealCatalog:
         )
         assert sink is not None
         assert sink.zone == "network"
+
+
+# A non-empty DDG list just to clear propagate_taint_ddg's empty-ddg guard;
+# its contents are irrelevant to the sink/source indexing under test.
+_DUMMY_DDG = [DdgEdge(variable="x", def_block="a", def_line=1,
+                      use_block="b", use_line=2)]
+
+
+class TestPropagationAmbiguousAndModule:
+    """WI-razol (PR5b): the propagation source/sink indexes — the codepath that
+    actually produced the 5541-FP cascade (match_sink is never called during
+    propagation) — must honor the module qualifier and ambiguous_names, so
+    str.replace stops matching Path.replace and sys.stdout.write stops matching
+    the asyncio net_send sink (F156.A1)."""
+
+    _SOURCE = TaintSource(taint_label="plaintext", module="cryptography.fernet",
+                          name="Fernet.decrypt", kind="function")
+    _PATH_REPLACE = TaintSink(zone="host_fs", trust_level="untrusted",
+                              module="pathlib.Path", name="replace",
+                              kind="method")
+    _ASYNCIO_WRITE = TaintSink(zone="network", trust_level="untrusted",
+                               module="asyncio.StreamWriter", name="write",
+                               kind="method")
+
+    def _edges_to_sink(self, sink_dst: str) -> list:
+        # source_func calls Fernet.decrypt (source) and sink_func; sink_func
+        # calls the sink. Tainted path: source_func -> sink_func -> sink.
+        return [
+            _make_edge("py:a.py:1-5:source_func:function",
+                       "py:external:0-0:Fernet.decrypt:unresolved"),
+            _make_edge("py:a.py:1-5:source_func:function",
+                       "py:a.py:10-15:sink_func:function"),
+            _make_edge("py:a.py:10-15:sink_func:function", sink_dst),
+        ]
+
+    def test_structural_ambiguous_external_suppressed(self) -> None:
+        edges = self._edges_to_sink("py:external:0-0:replace:unresolved")
+        # default (no ambiguous set) preserves the legacy name-only match...
+        assert len(propagate_taint_structural(
+            edges, [self._SOURCE], [self._PATH_REPLACE], [])) == 1
+        # ...ambiguous_names suppresses the false host_fs flow.
+        assert propagate_taint_structural(
+            edges, [self._SOURCE], [self._PATH_REPLACE], [],
+            ambiguous_names=frozenset({"replace"})) == []
+
+    def test_structural_ambiguous_with_module_still_found(self) -> None:
+        edges = self._edges_to_sink("py:pathlib.Path:0-0:replace:unresolved")
+        findings = propagate_taint_structural(
+            edges, [self._SOURCE], [self._PATH_REPLACE], [],
+            ambiguous_names=frozenset({"replace"}))
+        assert len(findings) == 1
+        assert findings[0].sink_zone == "host_fs"
+
+    def test_structural_module_mismatch_suppressed(self) -> None:
+        # F156.A1: sys.stdout.write must not match the asyncio net_send sink.
+        edges = self._edges_to_sink("py:sys:0-0:write:unresolved")
+        assert propagate_taint_structural(
+            edges, [self._SOURCE], [self._ASYNCIO_WRITE], [],
+            ambiguous_names=frozenset({"write"})) == []
+
+    def test_structural_module_match_found(self) -> None:
+        edges = self._edges_to_sink("py:asyncio.StreamWriter:0-0:write:unresolved")
+        findings = propagate_taint_structural(
+            edges, [self._SOURCE], [self._ASYNCIO_WRITE], [],
+            ambiguous_names=frozenset({"write"}))
+        assert len(findings) == 1
+        assert findings[0].sink_zone == "network"
+
+    def test_ddg_ambiguous_external_suppressed(self) -> None:
+        edges = self._edges_to_sink("py:external:0-0:replace:unresolved")
+        assert len(propagate_taint_ddg(
+            _DUMMY_DDG, edges, [self._SOURCE], [self._PATH_REPLACE],
+            [])) == 1
+        assert propagate_taint_ddg(
+            _DUMMY_DDG, edges, [self._SOURCE], [self._PATH_REPLACE], [],
+            ambiguous_names=frozenset({"replace"})) == []
+
+    def test_source_ambiguous_external_suppressed(self) -> None:
+        # Symmetric source-side fix: an ambiguous source short name with no
+        # module must not seed taint.
+        edges = [
+            _make_edge("py:a.py:1-5:caller:function",
+                       "py:external:0-0:get:unresolved"),
+            _make_edge("py:a.py:1-5:caller:function",
+                       "py:external:0-0:write_text:unresolved"),
+        ]
+        amb_source = TaintSource(taint_label="untrusted_input",
+                                 module="multiprocessing.Queue", name="get",
+                                 kind="method")
+        sink = TaintSink(zone="host_fs", trust_level="untrusted",
+                         module="pathlib.Path", name="write_text",
+                         kind="method")
+        assert len(propagate_taint_structural(edges, [amb_source], [sink], [])) == 1
+        assert propagate_taint_structural(
+            edges, [amb_source], [sink], [],
+            ambiguous_names=frozenset({"get"})) == []

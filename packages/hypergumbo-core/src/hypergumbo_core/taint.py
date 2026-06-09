@@ -241,6 +241,53 @@ def _lookup_named_entry(
     return hits[0]
 
 
+def _build_callee_index(entries: list) -> dict[str, list]:
+    """Index source/sink entries by short name, qualified name, and bare
+    method name (last dotted component), each mapping to the LIST of entries
+    registered under that key.
+
+    A list (not a single overwrite-on-collision value) is required so
+    :func:`_lookup_named_entry` can disambiguate by module / ambiguity when
+    several catalog entries share a short name (WI-razol).
+    """
+    idx: dict[str, list] = defaultdict(list)
+    for entry in entries:
+        idx[entry.name].append(entry)
+        idx[entry.qualified_name].append(entry)
+        if "." in entry.name:
+            idx[entry.name.rsplit(".", 1)[-1]].append(entry)
+    return idx
+
+
+def _match_propagation_entry(
+    index: dict[str, list],
+    edge_dst: str,
+    ambiguous_names: frozenset[str],
+):
+    """Match an edge's callee against a propagation source/sink ``index``.
+
+    A *resolved* (first-party) edge matches by exact callee name — the symbol
+    is already disambiguated by resolution, and its symbol-ID "module" segment
+    is a file path, not a dotted module to filter on (so module filtering would
+    spuriously reject e.g. a ``cmd_sketch`` source whose declared module is
+    ``hypergumbo_core.cli`` against the edge's ``cli.py`` path). An *unresolved*
+    (``:unresolved``) edge is the short-name-collision risk surface, so it goes
+    through :func:`_lookup_named_entry`: a bare ambiguous callee with no module
+    hint, or a module-mismatched hint, is not falsely matched (WI-razol).
+    """
+    callee_name = _extract_callee_name(edge_dst)
+    hits = index.get(callee_name)
+    if not hits:
+        return None
+    if edge_dst.rsplit(":", 1)[-1] != "unresolved":
+        # Resolved first-party symbol — exact-name match; the qualified name
+        # also keys into the index, so this honors precise resolution.
+        return hits[0]
+    return _lookup_named_entry(
+        hits, callee_name, _extract_callee_module(edge_dst), ambiguous_names,
+    )
+
+
 @dataclass
 class TaintCatalog:
     """Container for all taint sources, sinks, and sanitizers.
@@ -311,6 +358,16 @@ class TaintCatalog:
     def sanitizers_for_language(self, language: str) -> list[TaintSanitizer]:
         """Return all taint sanitizers for a language."""
         return list(self._sanitizers.get(language, []))
+
+    def ambiguous_names_for_language(self, language: str) -> frozenset[str]:
+        """Return the ambiguous short names for a language (WI-razol).
+
+        These collide with common non-IO methods (``str.replace``,
+        ``dict.get``); propagation passes them to
+        :func:`propagate_taint_structural` / :func:`propagate_taint_ddg` so a
+        bare ambiguous callee with no module hint is not matched to a sink.
+        """
+        return self._ambiguous_names.get(language, frozenset())
 
     def match_source(
         self,
@@ -1029,6 +1086,7 @@ def propagate_taint_structural(
     sources: list[TaintSource],
     sinks: list[TaintSink],
     sanitizers: list[TaintSanitizer],
+    ambiguous_names: frozenset[str] = frozenset(),
 ) -> list[TaintFlowFinding]:
     """Structural taint-flow propagation via call-graph BFS.
 
@@ -1046,6 +1104,9 @@ def propagate_taint_structural(
         sources: Taint source definitions.
         sinks: Taint sink definitions.
         sanitizers: Taint sanitizer definitions.
+        ambiguous_names: Short names the catalog flags as ambiguous (e.g.
+            ``replace`` / ``write`` / ``get``); a bare ambiguous callee with
+            no usable module hint is not matched to a source/sink (WI-razol).
 
     Returns:
         List of TaintFlowFinding for each source→sink violation.
@@ -1055,37 +1116,28 @@ def propagate_taint_structural(
 
     forward_adj, reverse_adj = _build_adjacency(edges)
 
-    # Index: callee name → source/sink/sanitizer
+    # Index: callee name → source/sink/sanitizer (list per name).
     # Index by qualified name, catalog name, AND short method name (last
     # component after dots) to match unresolved edges that only have the
     # bare method name (e.g., "decrypt" instead of "Fernet.decrypt").
-    source_by_callee: dict[str, TaintSource] = {}
-    for src in sources:
-        source_by_callee[src.name] = src
-        source_by_callee[src.qualified_name] = src
-        # Also index by bare method name for unresolved edge matching
-        if "." in src.name:
-            source_by_callee[src.name.rsplit(".", 1)[-1]] = src
-
-    sink_by_callee: dict[str, TaintSink] = {}
-    for sink in sinks:
-        sink_by_callee[sink.name] = sink
-        sink_by_callee[sink.qualified_name] = sink
-        if "." in sink.name:
-            sink_by_callee[sink.name.rsplit(".", 1)[-1]] = sink
-
+    source_by_callee = _build_callee_index(sources)
+    sink_by_callee = _build_callee_index(sinks)
     sanitizer_by_callee = _build_sanitizer_index_multi(sanitizers)
 
     # Step 1: Find source call sites — which symbol IDs call taint sources?
     # A "source caller" is a node that has an outgoing call edge to a source.
+    # _lookup_named_entry honors the edge's module hint and ambiguous_names so
+    # a bare ambiguous callee (str.replace, dict.get) is not falsely matched
+    # (WI-razol).
     source_callers: list[tuple[str, str, TaintSource]] = []
     # (caller_symbol_id, source_callee_symbol_id, TaintSource)
     for edge in edges:
         etype = edge.get("type", "")
         if etype not in TAINT_CALL_EDGE_TYPES:
             continue
-        callee_name = _extract_callee_name(edge["dst"])
-        matched = source_by_callee.get(callee_name)
+        matched = _match_propagation_entry(
+            source_by_callee, edge["dst"], ambiguous_names,
+        )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
 
@@ -1096,8 +1148,9 @@ def propagate_taint_structural(
         etype = edge.get("type", "")
         if etype not in TAINT_CALL_EDGE_TYPES:
             continue
-        callee_name = _extract_callee_name(edge["dst"])
-        matched = sink_by_callee.get(callee_name)
+        matched = _match_propagation_entry(
+            sink_by_callee, edge["dst"], ambiguous_names,
+        )
         if matched:
             sink_callers[edge["src"]] = (edge["dst"], matched)
 
@@ -1238,6 +1291,7 @@ def propagate_taint_ddg(
     sinks: list[TaintSink],
     sanitizers: list[TaintSanitizer],
     ddg_symbols: set[str] | None = None,
+    ambiguous_names: frozenset[str] = frozenset(),
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -1269,6 +1323,9 @@ def propagate_taint_ddg(
         sanitizers: Taint sanitizer definitions.
         ddg_symbols: Set of symbol IDs that have DDG analysis data.
             Functions in this set use DDG-precision; others use structural.
+        ambiguous_names: Short names the catalog flags as ambiguous; a bare
+            ambiguous callee with no usable module hint is not matched to a
+            source/sink (WI-razol).
 
     Returns:
         List of TaintFlowFinding objects.
@@ -1285,45 +1342,36 @@ def propagate_taint_ddg(
         key = (edge.def_block, edge.variable)
         ddg_forward[key].append(edge)
 
-    # Index sources, sinks, sanitizers by name (same as structural)
-    source_by_callee: dict[str, TaintSource] = {}
-    for src in sources:
-        source_by_callee[src.name] = src
-        source_by_callee[src.qualified_name] = src
-        if "." in src.name:
-            source_by_callee[src.name.rsplit(".", 1)[-1]] = src
-
-    sink_by_callee: dict[str, TaintSink] = {}
-    for sink in sinks:
-        sink_by_callee[sink.name] = sink
-        sink_by_callee[sink.qualified_name] = sink
-        if "." in sink.name:
-            sink_by_callee[sink.name.rsplit(".", 1)[-1]] = sink
-
+    # Index sources, sinks, sanitizers by name (same as structural) — a list
+    # per name so _lookup_named_entry can disambiguate by module/ambiguity.
+    source_by_callee = _build_callee_index(sources)
+    sink_by_callee = _build_callee_index(sinks)
     sanitizer_by_callee = _build_sanitizer_index_multi(sanitizers)
 
     # Build call-graph adjacency for structural fallback
     forward_adj, _reverse_adj = _build_adjacency(call_edges)
 
-    # Step 1: Find source call sites
+    # Step 1: Find source call sites (module + ambiguous_names aware — WI-razol)
     source_callers: list[tuple[str, str, TaintSource]] = []
     for edge in call_edges:
         etype = edge.get("type", "")
         if etype not in TAINT_CALL_EDGE_TYPES:
             continue
-        callee_name = _extract_callee_name(edge["dst"])
-        matched = source_by_callee.get(callee_name)
+        matched = _match_propagation_entry(
+            source_by_callee, edge["dst"], ambiguous_names,
+        )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
 
-    # Step 2: Find sink call sites
+    # Step 2: Find sink call sites (module + ambiguous_names aware — WI-razol)
     sink_callers: dict[str, tuple[str, TaintSink]] = {}
     for edge in call_edges:
         etype = edge.get("type", "")
         if etype not in TAINT_CALL_EDGE_TYPES:
             continue
-        callee_name = _extract_callee_name(edge["dst"])
-        matched = sink_by_callee.get(callee_name)
+        matched = _match_propagation_entry(
+            sink_by_callee, edge["dst"], ambiguous_names,
+        )
         if matched:
             sink_callers[edge["src"]] = (edge["dst"], matched)
 

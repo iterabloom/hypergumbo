@@ -4539,14 +4539,20 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                     lang_edges = refine_external_edges(
                         lang_edges, hints_by_caller,
                     )
+                # WI-razol: pass the language's ambiguous short names so a
+                # bare ambiguous callee (str.replace, dict.get) with no module
+                # hint is not falsely matched to a sink/source.
+                lang_ambiguous = taint_catalog.ambiguous_names_for_language(lang)
                 if lang == "python" and ddg_edges:
                     taint_findings.extend(propagate_taint_ddg(
                         ddg_edges, lang_edges, lang_sources, lang_sinks,
                         lang_sans, ddg_symbols=ddg_symbols,
+                        ambiguous_names=lang_ambiguous,
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
                         lang_edges, lang_sources, lang_sinks, lang_sans,
+                        ambiguous_names=lang_ambiguous,
                     ))
 
     # Verify claims
