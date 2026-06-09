@@ -96,3 +96,18 @@
   clock: 9  # 4e5c
   nonce: 4e5c  # 4e5c
   message: "PREMATURE CLOSURE: WI-ruzib is live reproduction (fold-audit F34.C1/C2) of the same silent-confirm-on-unknown-boundary defect; reopened satisfied->violated (connections-sweep 2026-06-08T1900Z)"  # 4e5c
+- op: update  # d68d
+  at: '2026-06-09T03:38:41Z'  # d68d
+  by: agent  # d68d
+  actor: jgstern_agent  # d68d
+  clock: 10  # d68d
+  nonce: d68d  # d68d
+  set:  # d68d
+    status: satisfied  # d68d
+- op: discuss  # 0948
+  at: '2026-06-09T03:38:41Z'  # 0948
+  by: agent  # 0948
+  actor: jgstern_agent  # 0948
+  clock: 11  # 0948
+  nonce: '0948'  # 0948
+  message: "Closed by PR #4140 (META-jurig load_claims gate). load_claims now validates constraint.boundary against the canonical io-boundaries vocabulary (io_boundary.KNOWN_IO_BOUNDARIES) at load time and raises ClaimsFileError -> cmd_verify_claims exit 2. Positive behavioral evidence: live repro on merged dev — a claim with 'boundary: banana, must_not_exist: true' now prints \"Error: unknown boundary 'banana' ...; valid boundaries: [...]\" and exits 2, instead of the prior silent 'confirmed / No banana chains found.' at rc=0. Tests: TestLoadClaimsBoundaryVocab + test_verify_claims_unknown_boundary_exits_2. Validated against the full vocabulary, not the keys in a given map, so must_not_exist: net_send still confirms on a repo with zero net-send chains."  # 0948

@@ -66,3 +66,50 @@
   clock: 6  # a366
   nonce: a366  # a366
   message: "v6.0.0 release-blocking security arc, PR2 of 6 (master note on INV-somut). Standalone (not under INV-somut). Fix: set HF_HUB_OFFLINE=1 in sketch_embeddings.py::_load_st_model_offline_first before first load attempt (option 2 of fields.fix); bundles WI-jilik env-var docs."  # a366
+- op: update  # 3f3c
+  at: '2026-06-09T01:36:42Z'  # 3f3c
+  by: agent  # 3f3c
+  actor: jgstern_agent  # 3f3c
+  clock: 7  # 3f3c
+  nonce: 3f3c  # 3f3c
+  set:  # 3f3c
+    status: pending_validation  # 3f3c
+    pr_ref: '4136'  # 3f3c
+- op: discuss  # df4c
+  at: '2026-06-09T01:36:42Z'  # df4c
+  by: agent  # df4c
+  actor: jgstern_agent  # df4c
+  clock: 8  # df4c
+  nonce: df4c  # df4c
+  message: "PR #4136 (merged 136900da4c; v6.0.0 security arc PR 2/6). Fix: _load_st_model_offline_first now sets HF_HUB_OFFLINE=1 around the cached embedding-model load — the switch the project's own conftest documents as stopping ALL HF network (metadata API, the xet cache-freshness ping that ignores local_files_only, and the transformers safetensors auto-conversion BACKGROUND THREAD) — leaves it set after a successful cached load so encode()-time threads stay offline, and restores the caller's prior value for the one-time first-install download. Unit tests (test_sketch.py::TestStModelOfflineFirst, RED->GREEN) confirm the switch is set during the cached load and restored on the network fallback. STATUS pending_validation, NOT satisfied: the fix sets the documented no-network switch and is unit-tested, but the original live network-capture repro (HYPERGUMBO_NO_HONK=1 hypergumbo --debug run . on a repo with cached embeddings, grepping stderr for huggingface.co GETs) has NOT been re-run — that live re-capture is the confirming step before satisfied. NB: sketch_embeddings.py is coverage-omitted (pyproject [tool.coverage.run]), so the unit tests, not the 100% gate, are the guard."  # df4c
+- op: update  # 9727
+  at: '2026-06-09T01:54:49Z'  # 9727
+  by: agent  # 9727
+  actor: jgstern_agent  # 9727
+  clock: 9  # 9727
+  nonce: '9727'  # 9727
+  set:  # 9727
+    status: violated  # 9727
+- op: discuss  # 018c
+  at: '2026-06-09T01:54:49Z'  # 018c
+  by: agent  # 018c
+  actor: jgstern_agent  # 018c
+  clock: 10  # 018c
+  nonce: 018c  # 018c
+  message: "LIVE VALIDATION FAILED — reopening violated (was pending_validation after PR #4136). Method: process-global socket guard recording every non-loopback connect() across all threads; a control (connect to TEST-NET 192.0.2.1) confirmed the guard fires (the earlier closed-port-proxy attempt was an INVALID detector — proxy env not honored — and its control caught that). RESULT: with PR #4136's fix applied and HF_HUB_OFFLINE UNSET in env (mirroring runtime), _load_embedding_model()+encode() STILL made an external connect (sandbox HF proxy 10.200.16.1) and emitted the exact original-repro warning 'You are sending unauthenticated requests to the HF Hub'. ROOT CAUSE: huggingface_hub reads offline state from the IMPORT-TIME module constant huggingface_hub.constants.HF_HUB_OFFLINE (cached False when env is unset at import), NOT live os.environ — so setting HF_HUB_OFFLINE=1 inside _load_st_model_offline_first (which runs AFTER 'from sentence_transformers import' already imported huggingface_hub) is too late. CONFIRMED FIX: setting HF_HUB_OFFLINE=1 BEFORE the first HF import yields EXTERNAL_CONNECTS=[] and no warning. PR 2b plan: set HF_HUB_OFFLINE=1 before the 'from sentence_transformers import' in BOTH call sites (_load_embedding_model + the ModernBERT loader), gated on the model already being cached (filesystem probe of $HF_HOME/hub/models--<name>/snapshots) so the one-time first-install download still works. PR #4136 (offline-first attempt + restore-on-fallback + unit tests + env-var docs) remains a correct PARTIAL step; PR 2b completes it."  # 018c
+- op: update  # 9df7
+  at: '2026-06-09T02:47:51Z'  # 9df7
+  by: agent  # 9df7
+  actor: jgstern_agent  # 9df7
+  clock: 11  # 9df7
+  nonce: 9df7  # 9df7
+  set:  # 9df7
+    status: satisfied  # 9df7
+    pr_ref: '4139'  # 9df7
+- op: discuss  # b984
+  at: '2026-06-09T02:47:51Z'  # b984
+  by: agent  # b984
+  actor: jgstern_agent  # b984
+  clock: 12  # b984
+  nonce: b984  # b984
+  message: "SATISFIED with positive live evidence. Completing fix merged in PR #4139 (5d6e46b955; v6.0.0 security arc PR 2b), after PR #4136 (partial). Fix: HF_HUB_OFFLINE=1 is now set BEFORE the first huggingface_hub import at all three import sites (_has_sentence_transformers / _load_embedding_model / _load_modernbert_model) via _ensure_hf_offline_for_cached_models(), gated on every embedding model already being cached (_hf_model_is_cached fs probe) so the one-time first-install download is preserved. POSITIVE EVIDENCE (live network capture, process-global socket guard recording non-loopback connect()s across all threads; control verified the guard fires on TEST-NET 192.0.2.1): on the PATCHED code with HF_HUB_OFFLINE UNSET in env and both models cached, _load_embedding_model()+encode() produced EXTERNAL_CONNECTS=[] and ZERO 'unauthenticated requests to the HF Hub' warnings — vs the pre-2b capture which connected to the HF proxy (10.200.16.1) and emitted the warning. Root cause was import-timing: huggingface_hub freezes constants.HF_HUB_OFFLINE at import, ignoring later os.environ. Regression guards: subprocess import-timing tests (test_sketch.py::TestHfOfflineBeforeImport) assert the constant flips True/False by cache state; gated on huggingface_hub availability (absent in base CI). Residual (documented in spec): the transient partial-cache window still permits HF metadata traffic, since the offline constant is process-global and forcing it would deadlock a missing model's download."  # b984

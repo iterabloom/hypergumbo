@@ -55,3 +55,18 @@
   clock: 5  # d263
   nonce: d263  # d263
   message: "root-cause family cross-link (t2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # d263
+- op: update  # cf0c
+  at: '2026-06-09T03:38:41Z'  # cf0c
+  by: agent  # cf0c
+  actor: jgstern_agent  # cf0c
+  clock: 6  # cf0c
+  nonce: cf0c  # cf0c
+  set:  # cf0c
+    status: done  # cf0c
+- op: discuss  # e0bc
+  at: '2026-06-09T03:38:41Z'  # e0bc
+  by: agent  # e0bc
+  actor: jgstern_agent  # e0bc
+  clock: 7  # e0bc
+  nonce: e0bc  # e0bc
+  message: "Closed by PR #4140. Live-repro sibling of INV-gobob: unknown/typo'd boundary axis values (banana, net_sned) now error at load with a did-you-mean hint and exit 2, no longer silently confirming must_not_exist. The F34.C1/C2 repro ('NO_NETWORK_CALLS' boundary=network, BOUNDARY_BANANA) now rejects at load_claims (network/process are not in the io-boundaries vocabulary). Validated by live CLI repro + TestLoadClaimsBoundaryVocab."  # e0bc

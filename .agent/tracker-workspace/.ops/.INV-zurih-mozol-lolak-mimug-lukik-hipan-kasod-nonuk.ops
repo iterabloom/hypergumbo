@@ -118,3 +118,18 @@
   clock: 12  # 523a
   nonce: 523a  # 523a
   message: "root-cause family cross-link (t2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 523a
+- op: update  # 6627
+  at: '2026-06-09T03:38:41Z'  # 6627
+  by: agent  # 6627
+  actor: jgstern_agent  # 6627
+  clock: 13  # 6627
+  nonce: '6627'  # 6627
+  set:  # 6627
+    status: satisfied  # 6627
+- op: discuss  # ae76
+  at: '2026-06-09T03:38:41Z'  # ae76
+  by: agent  # ae76
+  actor: jgstern_agent  # ae76
+  clock: 14  # ae76
+  nonce: ae76  # ae76
+  message: "Closed by PR #4140. load_claims wraps yaml.safe_load in try/except yaml.YAMLError and re-raises ClaimsFileError naming the file+reason; cmd_verify_claims catches it -> exit 2. Positive behavioral evidence: live repro of a malformed YAML claims file now prints 'Error: could not parse claims file bad.yaml: mapping values are not allowed here ...' and exits 2 with NO Python traceback (grep -q Traceback fails). Tests: TestLoadClaimsYamlError + test_verify_claims_malformed_yaml_exits_2 (asserts 'Traceback' not in stderr)."  # ae76
