@@ -27,3 +27,18 @@
   clock: 2  # a643
   nonce: a643  # a643
   message: "v6.0.0 release-blocking security arc, PR3 of 6 (master note on INV-somut). ONE load_claims validation gate closes this whole family: WI-ruzib/INV-gobob (boundary-vocab check) + WI-fuhaf (root-shape) + INV-zurih (YAMLError catch) + WI-bopoz (field-name allowlist), all at verify_claims.py:188-228."  # a643
+- op: update  # bb5a
+  at: '2026-06-09T03:42:12Z'  # bb5a
+  by: agent  # bb5a
+  actor: jgstern_agent  # bb5a
+  clock: 3  # bb5a
+  nonce: bb5a  # bb5a
+  set:  # bb5a
+    status: satisfied  # bb5a
+- op: discuss  # 8181
+  at: '2026-06-09T03:42:12Z'  # 8181
+  by: agent  # 8181
+  actor: jgstern_agent  # 8181
+  clock: 4  # 8181
+  nonce: '8181'  # 8181
+  message: "Family closed by PR #4140: a single load_claims validation gate (ClaimsFileError -> CLI exit 2) covers all four members — INV-zurih (YAMLError catch), WI-fuhaf (root/claim/constraint shape), INV-gobob/WI-ruzib (boundary-vocabulary membership), WI-bopoz (field-name allowlist). Boundary vocabulary single-sourced from io_boundary.CATALOG_BOUNDARY_TYPES/KNOWN_IO_BOUNDARIES. Verified by full smart-test (3668 passed, 100% coverage on changed sources) + live CLI repro of all three failure classes on merged dev. v6.0.0 release-arc PR3 of 6."  # 8181

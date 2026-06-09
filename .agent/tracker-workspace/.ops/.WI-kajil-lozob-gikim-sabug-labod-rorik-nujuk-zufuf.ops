@@ -48,3 +48,18 @@
   clock: 4  # f667
   nonce: f667  # f667
   message: "isbefore INV-bitig wired: INV-bitig's reopen reason is the empty-map-via-uncovered-language case this item fixes; INV-bitig cannot return to satisfied until this lands (v6.0.0 security arc PR4)."  # f667
+- op: update  # 6432
+  at: '2026-06-09T04:30:25Z'  # 6432
+  by: agent  # 6432
+  actor: jgstern_agent  # 6432
+  clock: 5  # 6432
+  nonce: '6432'  # 6432
+  set:  # 6432
+    status: done  # 6432
+- op: discuss  # 71b0
+  at: '2026-06-09T04:30:25Z'  # 71b0
+  by: agent  # 71b0
+  actor: jgstern_agent  # 71b0
+  clock: 6  # 71b0
+  nonce: 71b0  # 71b0
+  message: "Closed by PR #4143 (v6.0.0 security arc PR4). verify_claim now derives a BoundaryCoverage signal from per-language call-edge production and downgrades a would-be 'confirmed' zero-chain must_not_exist / within-limit max_chains verdict to 'inconclusive' when a supported language present in the repo produced zero call edges (io-blind, the F69.A1 missing-edge-production case). Positive behavioral evidence: live repro on merged dev — a behavior map with a python call edge plus javascript nodes but ZERO javascript call edges, claimed must_not_exist:net_send, now yields verdict=inconclusive, exit 2, details 'supported language(s) javascript were analyzed but produced no call edges, so their I/O is invisible to the boundary analysis'. Was verdict=confirmed exit 0. Coverage derived from call-edge production (verify_claims._COVERAGE_CALL_EDGE_TYPES, a registry-clean subset of io_boundary's tag call_types), NOT from the dead limits.skipped_languages (WI-nihir). Tests: TestComputeBoundaryCoverage + TestVerifyClaimCoverage + test_verify_claims_blind_supported_language_inconclusive. Coverage never masks a real violated verdict."  # 71b0

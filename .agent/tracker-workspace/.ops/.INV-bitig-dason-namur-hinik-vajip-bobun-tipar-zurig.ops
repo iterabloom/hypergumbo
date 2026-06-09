@@ -121,3 +121,20 @@
     tags: [dogfood]  # cf3e
   remove:  # cf3e
     tags: [dogfooding]  # cf3e
+- op: update  # cf0a
+  at: '2026-06-09T04:30:25Z'  # cf0a
+  by: agent  # cf0a
+  actor: jgstern_agent  # cf0a
+  clock: 13  # cf0a
+  nonce: cf0a  # cf0a
+  set:  # cf0a
+    status: satisfied  # cf0a
+  remove:  # cf0a
+    tags: [awaits_bakeoff_validation]  # cf0a
+- op: discuss  # 74c6
+  at: '2026-06-09T04:30:26Z'  # 74c6
+  by: agent  # 74c6
+  actor: jgstern_agent  # 74c6
+  clock: 14  # 74c6
+  nonce: 74c6  # 74c6
+  message: "Re-verified satisfied by PR #4143 (WI-kajil landed; isbefore dependency met). The empty-source-dir silent-confirm now resolves: verify_claim's coverage gate treats a zero-call-edge analysis as incomplete (the map-derived default when total_io_edges==0, and the CLI's total_call_edges==0 path). Positive behavioral evidence: live repro of the original INV-bitig repro on merged dev — 'mkdir empty; verify-claims --claims (fs_write must_not_exist)' now yields verdict=inconclusive, exit 2, details 'the analysis produced no call edges at all (empty, wrong directory, or unanalyzable input), so no I/O could be detected'. Was verdict=confirmed exit 0 (the prior PR4 020615f5 inconclusive enum did NOT cover this empty-map case — confirmed still reproduced until now). Stripped awaits_bakeoff_validation: this is a binary FP elimination verified by direct repro + unit tests (test_must_not_exist_empty_map_is_inconclusive + test_verify_claims_vacuous_analysis_inconclusive), not a quantitative bakeoff-improvement claim awaiting bakeoff confirmation."  # 74c6

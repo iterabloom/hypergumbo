@@ -47,3 +47,18 @@
   clock: 4  # 45f4
   nonce: 45f4  # 45f4
   message: "root-cause family cross-link (t2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 45f4
+- op: update  # f44c
+  at: '2026-06-09T03:42:12Z'  # f44c
+  by: agent  # f44c
+  actor: jgstern_agent  # f44c
+  clock: 5  # f44c
+  nonce: f44c  # f44c
+  set:  # f44c
+    status: done  # f44c
+- op: discuss  # 0fc6
+  at: '2026-06-09T03:42:12Z'  # 0fc6
+  by: agent  # 0fc6
+  actor: jgstern_agent  # 0fc6
+  clock: 6  # 0fc6
+  nonce: 0fc6  # 0fc6
+  message: "Closed by PR #4140. load_claims checks every top-level / claim / constraint / taint_flow key against an allowlist and raises ClaimsFileError with a did-you-mean hint on an unknown key, instead of silently dropping it into a defaults-populated claim. Positive behavioral evidence: live repro of a 'constrant:' typo now prints \"Error: unknown claim 'TYPO' field(s): 'constrant' (allowed: constraint, id, text). Did you mean: constraint?\" and exits 2. Tests: TestLoadClaimsFieldAllowlist (top-level/entry/constraint/taint_flow typos + #N id fallback)."  # 0fc6

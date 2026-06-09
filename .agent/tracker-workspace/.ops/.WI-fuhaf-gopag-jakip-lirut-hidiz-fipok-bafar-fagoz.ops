@@ -48,3 +48,18 @@
   clock: 4  # 9f02
   nonce: 9f02  # 9f02
   message: "root-cause family cross-link (t2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 9f02
+- op: update  # 0735
+  at: '2026-06-09T03:42:12Z'  # 0735
+  by: agent  # 0735
+  actor: jgstern_agent  # 0735
+  clock: 5  # 0735
+  nonce: '0735'  # 0735
+  set:  # 0735
+    status: done  # 0735
+- op: discuss  # 7a88
+  at: '2026-06-09T03:42:12Z'  # 7a88
+  by: agent  # 7a88
+  actor: jgstern_agent  # 7a88
+  clock: 6  # 7a88
+  nonce: 7a88  # 7a88
+  message: "Closed by PR #4140. load_claims validates input shape before fan-out: directory path, non-UTF-8 binary, scalar/list YAML root, claims:<scalar>, claims:<dict>, and non-mapping claim entries each raise ClaimsFileError -> exit 2. claims: null/~/[]/{} and empty file load as zero claims (the prior asymmetry where []/{} were clean but null/~ tracebacked is resolved). Tests: TestLoadClaimsShape (12 shapes) + test_verify_claims_list_root_exits_2. Cousin invariant also addressed: verify-claims --help now documents the claims YAML shape via a new epilog."  # 7a88
