@@ -8652,6 +8652,77 @@ class TestStModelOfflineFirst:
         assert result is sentinel
         assert st_cls.call_count == 2
 
+    def test_cached_load_forces_hf_hub_offline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The cached (offline-first) load runs with HF_HUB_OFFLINE=1 set.
+
+        ``local_files_only=True`` only suppresses the constructor's
+        freshness HEAD; the HF Hub metadata API, the xet daemon's
+        cache-freshness ping, and the transformers safetensors
+        auto-conversion BACKGROUND THREAD fired during encode() all still
+        reach huggingface.co otherwise — violating the
+        runtime-cli-no-network claim (INV-dasig). HF_HUB_OFFLINE=1 is the
+        only switch that hard-disables every HF Hub sub-API, so the
+        wrapper must set it before constructing the model and (on a
+        successful cached load) leave it set for the rest of the process.
+        """
+        import os
+        from hypergumbo_core.sketch_embeddings import (
+            _load_st_model_offline_first,
+        )
+
+        # The autouse cache-isolation fixture pins HF_HUB_OFFLINE=1; clear
+        # it so this test observes the wrapper setting it, not the ambient.
+        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+
+        seen = {}
+
+        def fake_st(name, **kwargs):
+            seen["offline_at_call"] = os.environ.get("HF_HUB_OFFLINE")
+            return object()
+
+        _load_st_model_offline_first(fake_st, "m")
+
+        assert seen["offline_at_call"] == "1", (
+            "cached model load must run under HF_HUB_OFFLINE=1 (INV-dasig)"
+        )
+        # Stays set after a successful cached load so encode()-time HF
+        # background threads cannot reach the network either.
+        assert os.environ.get("HF_HUB_OFFLINE") == "1"
+
+    def test_network_fallback_restores_prior_offline_state(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """On cache miss the wrapper restores the prior HF_HUB_OFFLINE
+        value before the network-allowing fallback, so the one-time
+        first-install download (the only sanctioned runtime download) can
+        still reach HF Hub. Only the offline-first attempt forces offline
+        mode."""
+        import os
+        from hypergumbo_core.sketch_embeddings import (
+            _load_st_model_offline_first,
+        )
+
+        # Prior state = unset (HF_HUB_OFFLINE absent).
+        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+
+        seen = []
+
+        def fake_st(name, **kwargs):
+            seen.append(os.environ.get("HF_HUB_OFFLINE"))
+            if kwargs.get("local_files_only"):
+                raise OSError("not cached")
+            return object()
+
+        _load_st_model_offline_first(fake_st, "m")
+
+        # Offline attempt saw "1"; the download fallback saw the restored
+        # (absent) prior value so the network is reachable.
+        assert seen == ["1", None]
+        # Prior absent state is restored after the call.
+        assert os.environ.get("HF_HUB_OFFLINE") is None
+
 
 class TestConfigFilesNoLockFiles:
     """Lock files should not be in CONFIG_FILES_BY_LANG.

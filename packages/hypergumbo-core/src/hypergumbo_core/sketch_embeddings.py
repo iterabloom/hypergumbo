@@ -152,11 +152,36 @@ def _load_st_model_offline_first(st_cls, model_name, **kwargs):
     documented "no local entry" exception variants without forcing a
     hard import of ``huggingface_hub.errors`` (which would create an
     implicit dep on a specific HF Hub version).
+
+    ``local_files_only=True`` is necessary but NOT sufficient. It only
+    suppresses the constructor's freshness HEAD; the HF Hub metadata API
+    (model card / commits / discussions), the xet daemon's cache-freshness
+    ping, and the ``transformers`` safetensors auto-conversion *background
+    thread* fired during ``encode()`` all still reach ``huggingface.co``
+    otherwise — so a plain ``hypergumbo run`` / sketch leaks outbound
+    network on every invocation, violating the ``runtime-cli-no-network``
+    claim (INV-dasig). ``HF_HUB_OFFLINE=1`` is the only switch that
+    hard-disables every HF Hub sub-API, so we set it before the cached
+    load and (on success) leave it set for the rest of the process. The
+    network-allowing fallback restores the caller's prior setting so the
+    one-time first-install download — the only sanctioned runtime fetch —
+    still works.
     """
+    prior_offline = os.environ.get("HF_HUB_OFFLINE")
+    os.environ["HF_HUB_OFFLINE"] = "1"
     try:
-        return st_cls(model_name, local_files_only=True, **kwargs)
+        model = st_cls(model_name, local_files_only=True, **kwargs)
     except (OSError, ValueError):
+        # Model not cached (first use after install-embeddings): restore the
+        # caller's prior offline state so the download can reach the network.
+        if prior_offline is None:
+            os.environ.pop("HF_HUB_OFFLINE", None)
+        else:
+            os.environ["HF_HUB_OFFLINE"] = prior_offline
         return st_cls(model_name, **kwargs)
+    # Cached-load success: keep HF_HUB_OFFLINE=1 set so encode()-time HF
+    # background threads stay offline too.
+    return model
 
 # Probe patterns for embedding-based config extraction
 # These are embedded and compared against config file content

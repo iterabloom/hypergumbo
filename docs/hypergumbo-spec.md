@@ -142,6 +142,18 @@ Control which supply chain tiers are included in analysis. See [§14](#14-supply
 🟩 **`--no-first-party-priority`**
 Disable tier-based weighting in Key Symbols ranking (use raw centrality instead).
 
+### Environment variables
+
+🟩 hypergumbo reads a small set of optional environment variables (defaults listed):
+
+| Variable | Default | Effect |
+|---|---|---|
+| `HYPERGUMBO_CACHE_HONK_GB` | `1.0` | Results-cache size warning threshold (GiB). When the cache exceeds it, `cache-status` and `run` emit a loud stderr warning naming the top consumer and the prune commands. Set to `0` / `off` / `none` / `false` to silence. There is no automatic eviction at any size — the user owns the prune decision (INV-padum). |
+| `HYPERGUMBO_RUST_ANALYZER` | unset | Set to `1` to opt into the SCIP-backed rust-analyzer backend (equivalent to `--backend rust-analyzer`); falls through to the tree-sitter `rust.py` analyzer when unavailable. |
+| `HYPERGUMBO_MIN_MEMORY_MB` | `512` | Minimum available system memory (MB) below which an in-progress analysis aborts *between files* with `MemoryPressureError` rather than risking the OOM killer or swap thrash (Linux `/proc/meminfo`; no-op on other platforms). Set to `0` to disable the check entirely. |
+| `HYPERGUMBO_VERBOSE` | unset | Set (to any value) to emit `[embed] …` progress logging to stderr during embedding-based config extraction. |
+| `HF_HUB_OFFLINE` | managed | hypergumbo sets this to `1` automatically while loading a *cached* embedding model, so runtime CLI subcommands make no outbound HuggingFace Hub requests (the `runtime-cli-no-network` claim). `local_files_only=True` alone does not stop HF Hub's metadata API, the xet cache-freshness ping, or the `transformers` safetensors background thread — only `HF_HUB_OFFLINE=1` does. The one-time first-install model download restores your prior setting so it can fetch. You may also export `HF_HUB_OFFLINE=1` yourself to force offline mode globally. |
+
 ## 4) Supported stacks
 
 Hypergumbo supports 100+ languages via tree-sitter grammars (see [LANGUAGES.md](LANGUAGES.md) for the full list). All are included in the base package.
