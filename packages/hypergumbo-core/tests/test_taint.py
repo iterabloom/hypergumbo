@@ -25,6 +25,7 @@ from hypergumbo_core.taint import (
     TaintSink,
     TaintSource,
     is_field_tainted,
+    load_builtin_taint_catalog,
     load_taint_catalog,
     propagate_taint_ddg,
     propagate_taint_structural,
@@ -1342,7 +1343,7 @@ class TestAutoImportFromIoPrimitives:
             Path(__file__).resolve().parent.parent
             / "src" / "hypergumbo_core" / "io_primitives"
         )
-        _auto_sources, auto_sinks_by_lang = (
+        _auto_sources, auto_sinks_by_lang, _ambiguous = (
             _derive_auto_imports_from_io_primitives(io_dir)
         )
         user_sinks_by_lang = {
@@ -1471,9 +1472,10 @@ class TestAutoImportFromIoPrimitives:
         """
         from hypergumbo_core.taint import _derive_auto_imports_from_io_primitives
         missing = tmp_path / "nowhere"
-        sources, sinks = _derive_auto_imports_from_io_primitives(missing)
+        sources, sinks, ambiguous = _derive_auto_imports_from_io_primitives(missing)
         assert sources == {}
         assert sinks == {}
+        assert ambiguous == {}
 
     def test_module_attr_ref_in_taint_call_edge_types(self) -> None:
         """module_attr_ref must be a traceable edge type — otherwise
@@ -2010,3 +2012,108 @@ class TestSinkModuleCompatibility:
         assert _extract_callee_language("python:a.py:1-5:foo:function") == "python"
         assert _extract_callee_language("elixir:lib.ex:1-5:bar:function") == "elixir"
         assert _extract_callee_language("") == ""
+
+
+class TestMatchSinkModuleAndAmbiguous:
+    """WI-razol: match_sink / match_source must honor the module qualifier and
+    the catalog's ambiguous_names (mirroring io_boundary.lookup_with_module) so
+    taint analysis agrees with io-boundaries — instead of (a) returning the
+    first sink for an ambiguous short name with no module hint (str.replace ->
+    Path.replace fs_write, the 5541-FP cascade) or (b) falling back to the
+    first sink when a module hint is present but matches nothing
+    (sys.stdout.write -> asyncio net_send, F156.A1)."""
+
+    def _sink(self, zone: str, module: str, name: str) -> TaintSink:
+        return TaintSink(zone=zone, trust_level="untrusted",
+                         module=module, name=name, kind="method")
+
+    def _catalog(self, sinks, ambiguous) -> TaintCatalog:
+        cat = TaintCatalog(
+            _sinks={"python": sinks},
+            _ambiguous_names={"python": frozenset(ambiguous)},
+        )
+        cat._rebuild_indices()
+        return cat
+
+    def test_ambiguous_name_no_module_hint_returns_none(self) -> None:
+        cat = self._catalog(
+            [self._sink("host_fs", "pathlib.Path", "replace")],
+            ambiguous={"replace"},
+        )
+        assert cat.match_sink("python", "replace") is None
+
+    def test_ambiguous_name_with_matching_module_hint_returns_sink(self) -> None:
+        sink = self._sink("host_fs", "pathlib.Path", "replace")
+        cat = self._catalog([sink], ambiguous={"replace"})
+        assert cat.match_sink(
+            "python", "replace", module_hint="pathlib.Path",
+        ) == sink
+
+    def test_non_ambiguous_name_no_hint_returns_first(self) -> None:
+        sink = self._sink("network", "urllib.request", "urlopen")
+        cat = self._catalog([sink], ambiguous={"replace"})
+        assert cat.match_sink("python", "urlopen") == sink
+
+    def test_module_hint_present_but_no_match_returns_none(self) -> None:
+        # F156.A1: a module hint that matches nothing must NOT fall back to the
+        # first sink (sys.stdout.write -> asyncio net_send misroute).
+        sink = self._sink("network", "asyncio.StreamWriter", "write")
+        cat = self._catalog([sink], ambiguous={"write"})
+        assert cat.match_sink("python", "write", module_hint="sys") is None
+
+    def test_module_hint_matching_returns_sink(self) -> None:
+        sink = self._sink("network", "asyncio.StreamWriter", "write")
+        cat = self._catalog([sink], ambiguous={"write"})
+        assert cat.match_sink(
+            "python", "write", module_hint="asyncio.StreamWriter",
+        ) == sink
+
+    def test_qualified_callee_name_matches_despite_ambiguous_short(self) -> None:
+        sink = self._sink("host_fs", "os", "replace")
+        cat = self._catalog([sink], ambiguous={"replace"})
+        # The caller resolved the qualified name -> exact match wins.
+        assert cat.match_sink("python", "os.replace") == sink
+
+    def test_match_source_honors_ambiguous_and_module(self) -> None:
+        src = TaintSource(taint_label="untrusted_input", module="socket.socket",
+                          name="recv", kind="method")
+        cat = TaintCatalog(
+            _sources={"python": [src]},
+            _ambiguous_names={"python": frozenset({"recv"})},
+        )
+        cat._rebuild_indices()
+        assert cat.match_source("python", "recv") is None
+        assert cat.match_source(
+            "python", "recv", module_hint="socket.socket",
+        ) == src
+
+
+class TestMatchSinkRealCatalog:
+    """WI-razol integration: the shipped io_primitives catalog drives the same
+    correct disambiguation end-to-end (taint matches io-boundaries)."""
+
+    def test_replace_is_ambiguous_no_false_fs_write(self) -> None:
+        # str.replace / dict.replace -> no module hint -> None, NOT the
+        # Path.replace host-fs sink (the 5541-FP cascade root).
+        cat = load_builtin_taint_catalog()
+        assert cat.match_sink("python", "replace") is None
+
+    def test_genuine_path_replace_still_matches(self) -> None:
+        cat = load_builtin_taint_catalog()
+        sink = cat.match_sink("python", "replace", module_hint="pathlib.Path")
+        assert sink is not None
+        assert sink.zone == "host_fs"
+
+    def test_console_write_not_misrouted_to_net_send(self) -> None:
+        # F156.A1: sys.stdout.write must not become a net_send sink.
+        cat = load_builtin_taint_catalog()
+        assert cat.match_sink("python", "write") is None
+        assert cat.match_sink("python", "write", module_hint="sys") is None
+
+    def test_genuine_asyncio_write_still_net_send(self) -> None:
+        cat = load_builtin_taint_catalog()
+        sink = cat.match_sink(
+            "python", "write", module_hint="asyncio.StreamWriter",
+        )
+        assert sink is not None
+        assert sink.zone == "network"

@@ -202,6 +202,45 @@ class TaintFlowFinding:
 # ---------------------------------------------------------------------------
 
 
+def _lookup_named_entry(
+    hits: list | None,
+    callee_name: str,
+    module_hint: str | None,
+    ambiguous_names: frozenset[str],
+):
+    """Pick the matching catalog entry from ``hits``, mirroring
+    :meth:`io_boundary.IoBoundaryCatalog.lookup_with_module` (WI-razol).
+
+    ``hits`` is the index bucket for ``callee_name`` (entries registered under
+    that short OR qualified name); each entry exposes a ``module`` attribute.
+
+    * No hits → ``None``.
+    * With a usable module hint, filter to entries whose ``module`` matches
+      (via :func:`io_boundary._module_matches`) and return the first match;
+      if none match, return ``None`` — a present-but-mismatched module means
+      this is not the catalogued primitive (e.g. ``sys.stdout.write`` is not
+      ``asyncio.StreamWriter.write``; F156.A1).
+    * With no usable module hint, an ``ambiguous_names`` short name returns
+      ``None`` (e.g. ``str.replace`` must not match ``Path.replace``; the
+      5541-FP cascade); otherwise the first hit.
+
+    A qualified ``callee_name`` (e.g. ``"os.replace"``) is not in
+    ``ambiguous_names`` (those list short names only), so an exact qualified
+    match wins regardless of ambiguity.
+    """
+    if not hits:
+        return None
+    if module_hint and module_hint != "external":
+        from .io_boundary import _module_matches
+        for h in hits:
+            if _module_matches(h.module, module_hint):
+                return h
+        return None
+    if callee_name in ambiguous_names:
+        return None
+    return hits[0]
+
+
 @dataclass
 class TaintCatalog:
     """Container for all taint sources, sinks, and sanitizers.
@@ -213,6 +252,15 @@ class TaintCatalog:
     _sources: dict[str, list[TaintSource]] = field(default_factory=dict)
     _sinks: dict[str, list[TaintSink]] = field(default_factory=dict)
     _sanitizers: dict[str, list[TaintSanitizer]] = field(default_factory=dict)
+
+    # Per-language ambiguous short names, sourced from the io_primitives
+    # ``ambiguous_names`` lists (WI-razol). These are short names that collide
+    # with common non-IO methods (``str.replace``, ``dict.get``, ``sys.stdout``
+    # vs ``socket`` ``write``...). match_source / match_sink return None for
+    # them when no module hint disambiguates, mirroring
+    # ``io_boundary.IoBoundaryCatalog.lookup_with_module`` so taint analysis
+    # agrees with io-boundaries instead of blindly matching the first entry.
+    _ambiguous_names: dict[str, frozenset[str]] = field(default_factory=dict)
 
     # Lookup indices built from entries
     _source_by_name: dict[str, dict[str, list[TaintSource]]] = field(
@@ -272,17 +320,16 @@ class TaintCatalog:
     ) -> Optional[TaintSource]:
         """Match a callee name against taint sources for a language.
 
-        Tries qualified name first, then short name. Returns first match.
+        Honors the module qualifier and ``ambiguous_names`` via
+        :func:`_lookup_named_entry` (WI-razol): a module hint that matches
+        nothing yields ``None`` rather than the first source, and an ambiguous
+        short name with no hint yields ``None`` rather than a false match.
         """
         idx = self._source_by_name.get(language, {})
-        hits = idx.get(callee_name)
-        if hits:
-            if module_hint:
-                for h in hits:
-                    if module_hint in h.module or h.module in module_hint:
-                        return h
-            return hits[0]
-        return None
+        return _lookup_named_entry(
+            idx.get(callee_name), callee_name, module_hint,
+            self._ambiguous_names.get(language, frozenset()),
+        )
 
     def match_sink(
         self,
@@ -290,16 +337,18 @@ class TaintCatalog:
         callee_name: str,
         module_hint: str | None = None,
     ) -> Optional[TaintSink]:
-        """Match a callee name against taint sinks for a language."""
+        """Match a callee name against taint sinks for a language.
+
+        Honors the module qualifier and ``ambiguous_names`` via
+        :func:`_lookup_named_entry` (WI-razol): ``str.replace`` no longer
+        matches ``Path.replace`` (the 5541-FP cascade) and ``sys.stdout.write``
+        no longer matches ``asyncio.StreamWriter.write`` net_send (F156.A1).
+        """
         idx = self._sink_by_name.get(language, {})
-        hits = idx.get(callee_name)
-        if hits:
-            if module_hint:
-                for h in hits:
-                    if module_hint in h.module or h.module in module_hint:
-                        return h
-            return hits[0]
-        return None
+        return _lookup_named_entry(
+            idx.get(callee_name), callee_name, module_hint,
+            self._ambiguous_names.get(language, frozenset()),
+        )
 
     def match_sanitizer(
         self,
@@ -540,28 +589,39 @@ AUTO_SOURCE_LABEL_MAP: dict[str, str] = {
 
 def _derive_auto_imports_from_io_primitives(
     io_catalog_dir: Path,
-) -> tuple[dict[str, list[TaintSource]], dict[str, list[TaintSink]]]:
+) -> tuple[
+    dict[str, list[TaintSource]],
+    dict[str, list[TaintSink]],
+    dict[str, frozenset[str]],
+]:
     """Scan io_primitives/*.yaml and derive default taint sources + sinks.
 
-    Returns ``(sources_by_lang, sinks_by_lang)``.  Each IoPrimitive whose
-    ``boundary`` matches :data:`AUTO_SOURCE_LABEL_MAP` yields a TaintSource;
-    each IoPrimitive whose ``boundary`` matches :data:`AUTO_SINK_ZONE_MAP`
+    Returns ``(sources_by_lang, sinks_by_lang, ambiguous_by_lang)``.  Each
+    IoPrimitive whose ``boundary`` matches :data:`AUTO_SOURCE_LABEL_MAP` yields
+    a TaintSource; each whose ``boundary`` matches :data:`AUTO_SINK_ZONE_MAP`
     yields a TaintSink.  Language is taken from each YAML's ``language:``
     field.  Primitives declared under YAML ``attributes:`` produce
     ``kind="attribute"`` records — these pair with ``module_attr_ref``
     edges emitted by language analyzers (see WI-guhok, WI-gapam).
+
+    ``ambiguous_by_lang`` carries each catalog's ``ambiguous_names`` so the
+    taint matchers can disambiguate exactly as io-boundaries does (WI-razol).
     """
     from hypergumbo_core.io_boundary import IoBoundaryCatalog
 
     sources_by_lang: dict[str, list[TaintSource]] = defaultdict(list)
     sinks_by_lang: dict[str, list[TaintSink]] = defaultdict(list)
+    ambiguous_by_lang: dict[str, frozenset[str]] = {}
 
     if not io_catalog_dir.is_dir():
-        return dict(sources_by_lang), dict(sinks_by_lang)
+        return dict(sources_by_lang), dict(sinks_by_lang), ambiguous_by_lang
 
     for yaml_path in sorted(io_catalog_dir.glob("*.yaml")):
         catalog = IoBoundaryCatalog.from_yaml(yaml_path)
         lang = catalog.language
+        ambiguous_by_lang[lang] = (
+            ambiguous_by_lang.get(lang, frozenset()) | catalog.ambiguous_names
+        )
         for prim in catalog.primitives:
             if prim.boundary in AUTO_SOURCE_LABEL_MAP:
                 sources_by_lang[lang].append(TaintSource(
@@ -580,7 +640,7 @@ def _derive_auto_imports_from_io_primitives(
                     kind=prim.kind,
                 ))
 
-    return dict(sources_by_lang), dict(sinks_by_lang)
+    return dict(sources_by_lang), dict(sinks_by_lang), ambiguous_by_lang
 
 
 def _merge_with_user_override(
@@ -733,8 +793,8 @@ def load_builtin_taint_catalog() -> TaintCatalog:
     # directory and derives them from ``io_primitives/`` instead.
     user_catalog = load_taint_catalog(source_paths, [], sanitizer_paths)
 
-    auto_sources, auto_sinks = _derive_auto_imports_from_io_primitives(
-        _IO_PRIMITIVES_DIR,
+    auto_sources, auto_sinks, ambiguous_by_lang = (
+        _derive_auto_imports_from_io_primitives(_IO_PRIMITIVES_DIR)
     )
     user_catalog._sources = _merge_with_user_override(
         auto_sources, user_catalog._sources,
@@ -742,6 +802,9 @@ def load_builtin_taint_catalog() -> TaintCatalog:
     user_catalog._sinks = _merge_with_user_override(
         auto_sinks, user_catalog._sinks,
     )
+    # WI-razol: carry the io_primitives ambiguous_names onto the catalog so
+    # match_source / match_sink disambiguate exactly as io-boundaries does.
+    user_catalog._ambiguous_names = ambiguous_by_lang
     user_catalog._rebuild_indices()
     return user_catalog
 
