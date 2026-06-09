@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the sketch module (token-budgeted Markdown output)."""
+import importlib.util
+import os
 from typing import ClassVar
 from pathlib import Path
 
@@ -8722,6 +8724,172 @@ class TestStModelOfflineFirst:
         assert seen == ["1", None]
         # Prior absent state is restored after the call.
         assert os.environ.get("HF_HUB_OFFLINE") is None
+
+
+class TestHfOfflineBeforeImport:
+    """Force HF_HUB_OFFLINE BEFORE the first huggingface_hub import (INV-dasig).
+
+    huggingface_hub reads its offline switch into a module constant
+    (``huggingface_hub.constants.HF_HUB_OFFLINE``) at IMPORT time, NOT live
+    from ``os.environ`` — so setting the env var after ``from
+    sentence_transformers import ...`` (as the earlier fix did) was too late
+    and the cached-model load still hit the network. The guard here sets the
+    env var before any HF import, gated on every embedding model already being
+    cached so the one-time first-install download is unaffected.
+    """
+
+    @staticmethod
+    def _make_fake_hf_cache(hf_home, model_names) -> None:
+        """Create a minimal HF Hub snapshot layout for each model name."""
+        from pathlib import Path
+        for name in model_names:
+            snap = (
+                Path(hf_home) / "hub"
+                / ("models--" + name.replace("/", "--"))
+                / "snapshots" / "rev0"
+            )
+            snap.mkdir(parents=True, exist_ok=True)
+            (snap / "config.json").write_text("{}")
+
+    def test_model_cached_probe_true_false(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_hf_model_is_cached is a filesystem-only probe of the hub layout."""
+        from hypergumbo_core.sketch_embeddings import _hf_model_is_cached
+
+        monkeypatch.setenv("HF_HOME", str(tmp_path))
+        assert _hf_model_is_cached("microsoft/unixcoder-base") is False
+        self._make_fake_hf_cache(tmp_path, ["microsoft/unixcoder-base"])
+        assert _hf_model_is_cached("microsoft/unixcoder-base") is True
+
+    def test_empty_snapshot_dir_is_not_cached(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An empty snapshots/ revision dir does not count as cached."""
+        from pathlib import Path
+        from hypergumbo_core.sketch_embeddings import _hf_model_is_cached
+
+        monkeypatch.setenv("HF_HOME", str(tmp_path))
+        (Path(tmp_path) / "hub" / "models--microsoft--unixcoder-base"
+         / "snapshots" / "rev0").mkdir(parents=True)
+        assert _hf_model_is_cached("microsoft/unixcoder-base") is False
+
+    def test_ensure_offline_sets_env_when_all_cached(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from hypergumbo_core.sketch_embeddings import (
+            _ensure_hf_offline_for_cached_models,
+            _EMBEDDING_MODEL,
+            _MODERNBERT_MODEL_NAME,
+        )
+
+        monkeypatch.setenv("HF_HOME", str(tmp_path))
+        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+        self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL, _MODERNBERT_MODEL_NAME])
+
+        assert _ensure_hf_offline_for_cached_models() is True
+        assert os.environ.get("HF_HUB_OFFLINE") == "1"
+
+    def test_ensure_offline_leaves_env_unset_when_any_missing(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """First-install / partial cache: do not force offline, so the
+        missing model can still download."""
+        from hypergumbo_core.sketch_embeddings import (
+            _ensure_hf_offline_for_cached_models,
+            _EMBEDDING_MODEL,
+        )
+
+        monkeypatch.setenv("HF_HOME", str(tmp_path))
+        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+        self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL])  # only one of two
+
+        assert _ensure_hf_offline_for_cached_models() is False
+        assert os.environ.get("HF_HUB_OFFLINE") is None
+
+    def test_ensure_offline_respects_existing_env(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An already-set HF_HUB_OFFLINE (user/CI) is honored without probing."""
+        from hypergumbo_core.sketch_embeddings import (
+            _ensure_hf_offline_for_cached_models,
+        )
+
+        monkeypatch.setenv("HF_HOME", str(tmp_path))  # empty: nothing cached
+        monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+        assert _ensure_hf_offline_for_cached_models() is True
+        assert os.environ.get("HF_HUB_OFFLINE") == "1"
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("huggingface_hub") is None,
+        reason="huggingface_hub not installed (embeddings extra absent)",
+    )
+    def test_subprocess_import_time_constant_true_when_cached(
+        self, tmp_path
+    ) -> None:
+        """END-TO-END import-timing guard: in a FRESH interpreter with
+        HF_HUB_OFFLINE unset and all models cached, calling the guard before
+        importing huggingface_hub yields constants.HF_HUB_OFFLINE == True.
+
+        This must run in a subprocess: the pytest process already imported
+        huggingface_hub (under the conftest's HF_HUB_OFFLINE=1), so its module
+        constant is frozen and the in-process value cannot exercise the fix.
+        """
+        import subprocess
+        import sys
+        from hypergumbo_core.sketch_embeddings import (
+            _EMBEDDING_MODEL,
+            _MODERNBERT_MODEL_NAME,
+        )
+
+        self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL, _MODERNBERT_MODEL_NAME])
+        code = (
+            "import os\n"
+            "os.environ.pop('HF_HUB_OFFLINE', None)\n"
+            "from hypergumbo_core.sketch_embeddings import "
+            "_ensure_hf_offline_for_cached_models as f\n"
+            "forced = f()\n"
+            "import huggingface_hub.constants as hc\n"
+            "print(f'{forced}|{hc.HF_HUB_OFFLINE}')\n"
+        )
+        env = {k: v for k, v in os.environ.items() if k != "HF_HUB_OFFLINE"}
+        env["HF_HOME"] = str(tmp_path)
+        out = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip().endswith("True|True"), out.stdout
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("huggingface_hub") is None,
+        reason="huggingface_hub not installed (embeddings extra absent)",
+    )
+    def test_subprocess_import_time_constant_false_when_uncached(
+        self, tmp_path
+    ) -> None:
+        """First-install path: nothing cached → guard does not force offline →
+        constants.HF_HUB_OFFLINE stays False so the download can proceed."""
+        import subprocess
+        import sys
+
+        code = (
+            "import os\n"
+            "os.environ.pop('HF_HUB_OFFLINE', None)\n"
+            "from hypergumbo_core.sketch_embeddings import "
+            "_ensure_hf_offline_for_cached_models as f\n"
+            "forced = f()\n"
+            "import huggingface_hub.constants as hc\n"
+            "print(f'{forced}|{hc.HF_HUB_OFFLINE}')\n"
+        )
+        env = {k: v for k, v in os.environ.items() if k != "HF_HUB_OFFLINE"}
+        env["HF_HOME"] = str(tmp_path)  # empty → nothing cached
+        out = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True, text=True, env=env, timeout=120,
+        )
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip().endswith("False|False"), out.stdout
 
 
 class TestConfigFilesNoLockFiles:

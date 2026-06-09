@@ -106,6 +106,11 @@ def _load_embedding_model():
     if _cached_embedding_model is not None:
         return _cached_embedding_model
 
+    # INV-dasig: force HF offline (when models are cached) BEFORE importing
+    # sentence_transformers, which imports huggingface_hub and freezes its
+    # offline constant at import time.
+    _ensure_hf_offline_for_cached_models()
+
     # Suppress warnings BEFORE importing to catch all submodule loggers
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
     logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.ERROR)
@@ -182,6 +187,67 @@ def _load_st_model_offline_first(st_cls, model_name, **kwargs):
     # Cached-load success: keep HF_HUB_OFFLINE=1 set so encode()-time HF
     # background threads stay offline too.
     return model
+
+
+def _hf_model_is_cached(model_name: str) -> bool:
+    """Filesystem-only probe: is ``model_name`` already in the HF Hub cache?
+
+    Checks the standard hub layout
+    ``$HF_HOME/hub/models--<org>--<name>/snapshots/<rev>/`` for a non-empty
+    revision directory, WITHOUT importing huggingface_hub or touching the
+    network. Used to decide whether it is safe to force offline mode before
+    the (offline-constant-freezing) huggingface_hub import — see
+    ``_ensure_hf_offline_for_cached_models``.
+    """
+    hf_home = os.environ.get("HF_HOME") or os.path.join(
+        os.path.expanduser("~"), ".cache", "huggingface",
+    )
+    snapshots = os.path.join(
+        hf_home, "hub", "models--" + model_name.replace("/", "--"), "snapshots",
+    )
+    if not os.path.isdir(snapshots):
+        return False
+    for rev in os.listdir(snapshots):
+        rev_dir = os.path.join(snapshots, rev)
+        if os.path.isdir(rev_dir) and os.listdir(rev_dir):
+            return True
+    return False
+
+
+def _ensure_hf_offline_for_cached_models() -> bool:
+    """Set ``HF_HUB_OFFLINE=1`` BEFORE the first huggingface_hub import when
+    every embedding model is already cached (INV-dasig).
+
+    huggingface_hub freezes its offline switch into the module constant
+    ``huggingface_hub.constants.HF_HUB_OFFLINE`` at IMPORT time and does not
+    re-read ``os.environ`` afterward — so setting the env var inside the model
+    loader (after ``from sentence_transformers import ...``) is too late and
+    the cached load still reaches the network (the original INV-dasig leak,
+    plus the encode()-time safetensors auto-conversion background thread). This
+    helper therefore runs at the top of every function that imports
+    sentence_transformers, BEFORE the import.
+
+    Gating is all-or-nothing across the embedding models: the offline constant
+    is process-global once frozen, so forcing offline while a model is still
+    missing would deadlock that model's one-time download. When any model is
+    absent we leave offline off so first-install downloads proceed; once all
+    models are cached every subsequent load is fully offline. (The narrow,
+    transient partial-cache window therefore still permits HF metadata
+    traffic — documented in docs/hypergumbo-spec.md.) An already-set
+    ``HF_HUB_OFFLINE`` (user / CI / test) is honored as-is.
+
+    Returns True if offline mode is in effect (set here or already set).
+    """
+    if os.environ.get("HF_HUB_OFFLINE"):
+        return True
+    if all(
+        _hf_model_is_cached(name)
+        for name in (_EMBEDDING_MODEL, _MODERNBERT_MODEL_NAME)
+    ):
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        return True
+    return False
+
 
 # Probe patterns for embedding-based config extraction
 # These are embedded and compared against config file content
@@ -447,6 +513,9 @@ NEGATIVE_PATTERNS = [
 
 def _has_sentence_transformers() -> bool:
     """Check if sentence-transformers is available."""
+    # INV-dasig: force HF offline (when cached) before this import freezes the
+    # huggingface_hub offline constant — this is often the process's first one.
+    _ensure_hf_offline_for_cached_models()
     try:
         from sentence_transformers import SentenceTransformer  # noqa: F401
         import numpy  # noqa: F401
@@ -1543,6 +1612,10 @@ def _load_modernbert_model():
         Temporarily sanitizes NO_PROXY to work around httpx bug with IPv6 CIDR
         notation (e.g., fd00:200::/40) which causes InvalidURL parsing errors.
     """
+    # INV-dasig: force HF offline (when models are cached) BEFORE importing
+    # sentence_transformers, which freezes huggingface_hub's offline constant.
+    _ensure_hf_offline_for_cached_models()
+
     # Suppress warnings BEFORE importing to catch all submodule loggers
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
     logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.ERROR)
