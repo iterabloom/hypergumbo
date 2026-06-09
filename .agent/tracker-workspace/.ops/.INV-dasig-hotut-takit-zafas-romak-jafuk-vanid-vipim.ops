@@ -59,3 +59,10 @@
     tags: [dogfood]  # 907c
   remove:  # 907c
     tags: [dogfooding]  # 907c
+- op: discuss  # a366
+  at: '2026-06-09T00:08:22Z'  # a366
+  by: agent  # a366
+  actor: jgstern_agent  # a366
+  clock: 6  # a366
+  nonce: a366  # a366
+  message: "v6.0.0 release-blocking security arc, PR2 of 6 (master note on INV-somut). Standalone (not under INV-somut). Fix: set HF_HUB_OFFLINE=1 in sketch_embeddings.py::_load_st_model_offline_first before first load attempt (option 2 of fields.fix); bundles WI-jilik env-var docs."  # a366

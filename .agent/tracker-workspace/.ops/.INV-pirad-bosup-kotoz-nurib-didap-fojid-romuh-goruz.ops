@@ -95,3 +95,19 @@
     tags: [dogfood]  # f335
   remove:  # f335
     tags: [dogfooding]  # f335
+- op: update  # 0002
+  at: '2026-06-09T00:38:23Z'  # 0002
+  by: agent  # 0002
+  actor: jgstern_agent  # 0002
+  clock: 10  # 0002
+  nonce: '0002'  # 0002
+  set:  # 0002
+    status: satisfied  # 0002
+    pr_ref: '4135'  # 0002
+- op: discuss  # 7761
+  at: '2026-06-09T00:38:23Z'  # 7761
+  by: agent  # 7761
+  actor: jgstern_agent  # 7761
+  clock: 11  # 7761
+  nonce: '7761'  # 7761
+  message: "Fixed in PR #4135 (merged f428475b38; v6.0.0 security arc PR 1/6). Root cause: gitleaks 8.30 removed the `detect` subcommand and `--pipe` scans cwd instead of stdin, so scan_content always returned [] — a silent no-op while 'Secret scan complete' printed. Fix: scan_content now uses the `gitleaks stdin` subcommand. POSITIVE EVIDENCE: new real-binary guard TestScanContentRealBinary::test_real_gitleaks_detects_known_secret feeds a known AWS test vector through the actual gitleaks 8.30.0 binary and asserts detection — RED against old `detect --pipe`, GREEN after fix; gitleaks.py 100% cov. Guard is real-binary (gated on is_gitleaks_available, mocked suite carries coverage) precisely because the mocked-subprocess suite structurally could not catch the external-CLI contract break."  # 7761

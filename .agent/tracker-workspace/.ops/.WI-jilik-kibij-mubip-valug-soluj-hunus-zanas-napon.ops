@@ -60,3 +60,19 @@
     tags: [dogfood]  # cd34
   remove:  # cd34
     tags: [dogfooding]  # cd34
+- op: update  # aef8
+  at: '2026-06-09T01:33:35Z'  # aef8
+  by: agent  # aef8
+  actor: jgstern_agent  # aef8
+  clock: 6  # aef8
+  nonce: aef8  # aef8
+  set:  # aef8
+    status: done  # aef8
+    pr_ref: '4136'  # aef8
+- op: discuss  # e9fa
+  at: '2026-06-09T01:33:35Z'  # e9fa
+  by: agent  # e9fa
+  actor: jgstern_agent  # e9fa
+  clock: 7  # e9fa
+  nonce: e9fa  # e9fa
+  message: "PR #4136 (merged 136900da4c; v6.0.0 security arc PR 2/6). Added an 'Environment variables' section to docs/hypergumbo-spec.md documenting HF_HUB_OFFLINE (now managed automatically by the INV-dasig fix), HYPERGUMBO_VERBOSE, and HYPERGUMBO_MIN_MEMORY_MB, alongside the already-documented HYPERGUMBO_CACHE_HONK_GB and HYPERGUMBO_RUST_ANALYZER. Closes the undocumented-env-var gap."  # e9fa

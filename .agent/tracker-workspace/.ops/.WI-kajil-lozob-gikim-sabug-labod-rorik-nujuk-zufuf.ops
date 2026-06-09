@@ -32,3 +32,19 @@
     tags: [dogfood_tranche_04]  # 451c
   remove:  # 451c
     tags: [dogfood_tranch_04]  # 451c
+- op: update  # bc49
+  at: '2026-06-09T00:08:22Z'  # bc49
+  by: agent  # bc49
+  actor: jgstern_agent  # bc49
+  clock: 3  # bc49
+  nonce: bc49  # bc49
+  set: {}  # bc49
+  add:  # bc49
+    isbefore: [INV-bitig-dason-namur-hinik-vajip-bobun-tipar-zurig]  # bc49
+- op: discuss  # f667
+  at: '2026-06-09T00:08:22Z'  # f667
+  by: agent  # f667
+  actor: jgstern_agent  # f667
+  clock: 4  # f667
+  nonce: f667  # f667
+  message: "isbefore INV-bitig wired: INV-bitig's reopen reason is the empty-map-via-uncovered-language case this item fixes; INV-bitig cannot return to satisfied until this lands (v6.0.0 security arc PR4)."  # f667

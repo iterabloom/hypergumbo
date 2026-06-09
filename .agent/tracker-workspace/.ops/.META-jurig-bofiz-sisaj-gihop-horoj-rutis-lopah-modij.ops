@@ -20,3 +20,10 @@
     description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-zurih, WI-fuhaf, WI-bopoz, WI-ruzib. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # b99b
     fields:  # b99b
       statement: "verify_claims.load_claims must validate claim YAML up front (shape check, field-name allowlist, boundary-vocabulary check, YAML-error catch) so malformed/typo'd/unknown input cannot traceback, silently drop, or silently confirm."  # b99b
+- op: discuss  # a643
+  at: '2026-06-09T00:08:22Z'  # a643
+  by: agent  # a643
+  actor: jgstern_agent  # a643
+  clock: 2  # a643
+  nonce: a643  # a643
+  message: "v6.0.0 release-blocking security arc, PR3 of 6 (master note on INV-somut). ONE load_claims validation gate closes this whole family: WI-ruzib/INV-gobob (boundary-vocab check) + WI-fuhaf (root-shape) + INV-zurih (YAMLError catch) + WI-bopoz (field-name allowlist), all at verify_claims.py:188-228."  # a643

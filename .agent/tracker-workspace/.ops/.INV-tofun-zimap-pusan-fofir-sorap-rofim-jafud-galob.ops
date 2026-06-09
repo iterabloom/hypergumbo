@@ -80,3 +80,18 @@
     tags: [dogfood]  # 1ce5
   remove:  # 1ce5
     tags: [dogfooding]  # 1ce5
+- op: update  # 12dc
+  at: '2026-06-08T22:05:05Z'  # 12dc
+  by: agent  # 12dc
+  actor: jgstern_agent  # 12dc
+  clock: 8  # 12dc
+  nonce: 12dc  # 12dc
+  set:  # 12dc
+    status: pending_validation  # 12dc
+- op: discuss  # c9b2
+  at: '2026-06-08T22:05:05Z'  # c9b2
+  by: agent  # c9b2
+  actor: jgstern_agent  # c9b2
+  clock: 9  # c9b2
+  nonce: c9b2  # c9b2
+  message: "Fix merged to dev (PR #4133, commit a638bfe). Root cause closed structurally: the three linkers (event_sourcing, database_query, graphql_resolver) no longer hardcode language=javascript on the intermediate pattern records — they infer the tag from the file extension via a new shared js_ts_language_from_path helper in linkers/_text_filters.py (analyzer parity: .ts/.tsx -> typescript, else javascript). Both the discovery_language mislabel and the Symbol.id first-segment mislabel resolve, since both derive from pattern.language. The pre-existing correct ipc.py _get_language copy is folded into the shared helper.\n\nPositive evidence at unit level: new tests assert .ts event/query/resolver patterns carry language=typescript and that a .ts synthetic stand-in emits discovery_language=typescript with a typescript-prefixed id; 0 language=javascript hardcodes remain across the three linkers on dev; 100% coverage on all changed source.\n\nStatus pending_validation (not satisfied) because the original finding was a corpus observation (7 mis-tagged .ts records in dogfood corpus 20260528) and the gold-standard confirmation is a dogfood/bakeoff re-run showing 0 mis-tagged .ts records. Keeping awaits_bakeoff_validation tag for that corpus-level confirmation.\n\nOut of scope / deferred: event_sourcing.py:666 still builds Symbol.id via f-string rather than make_symbol_id (its trailing segment is framework_role, not Symbol.kind) — separate ADR-0034 follow-up, does not affect the language tag this item tracks."  # c9b2
