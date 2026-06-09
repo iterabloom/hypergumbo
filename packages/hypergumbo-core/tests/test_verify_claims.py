@@ -11,10 +11,12 @@ import pytest
 import yaml
 
 from hypergumbo_core.verify_claims import (
+    BoundaryCoverage,
     Claim,
     ClaimsFileError,
     ClaimVerdict,
     TaintFlowConstraint,
+    compute_boundary_coverage,
     load_claims,
     load_extra_catalog_paths,
     verify_claim,
@@ -242,9 +244,13 @@ class TestVerifyClaim:
         assert verdict.verdict == "inconclusive"
         assert "No machine-checkable" in verdict.details
 
-    def test_must_not_exist_no_boundary_data(self) -> None:
-        """Claim passes when boundary type has no data at all."""
-        bmap = BoundaryMap()  # empty
+    def test_must_not_exist_empty_map_is_inconclusive(self) -> None:
+        """INV-bitig P0: an empty boundary map (no I/O edges at all) means the
+        analysis saw nothing — a must_not_exist claim is INCONCLUSIVE, not a
+        silent ``confirmed``. (Was test_must_not_exist_no_boundary_data, which
+        codified the bug as expected behavior; flipped when WI-kajil landed.)
+        """
+        bmap = BoundaryMap()  # empty: total_io_edges == 0
         claim = Claim(
             id="SC-001",
             text="No subprocess",
@@ -252,7 +258,7 @@ class TestVerifyClaim:
             constraint_must_not_exist=True,
         )
         verdict = verify_claim(claim, bmap)
-        assert verdict.verdict == "confirmed"
+        assert verdict.verdict == "inconclusive"
 
 
 class TestVerifyClaims:
@@ -766,3 +772,119 @@ class TestLoadClaimsFieldAllowlist:
         claims = load_claims(shipped)
         assert len(claims) > 0
         assert all(c.id for c in claims)
+
+
+_PY_CALL = {
+    "src": "python:a.py:1:f:function",
+    "dst": "python:os:0-0:os.getcwd:function",
+    "type": "calls",
+}
+_JS_CALL = {
+    "src": "javascript:b.js:1:g:function",
+    "dst": "javascript:fs:0-0:fs.readFile:function",
+    "type": "calls",
+}
+
+
+class TestComputeBoundaryCoverage:
+    """WI-kajil: compute_boundary_coverage decides whether the I/O analysis is
+    trustworthy enough to CONFIRM a zero-chain boundary claim. A clean verdict
+    is only meaningful if the analysis could actually have seen the I/O."""
+
+    def test_no_call_edges_is_incomplete(self) -> None:
+        cov = compute_boundary_coverage([], {"python"})
+        assert cov.complete is False
+        assert cov.reason  # non-empty human-readable reason
+
+    def test_blind_supported_language_is_incomplete(self) -> None:
+        # python produced a call edge; javascript (supported, present) did not.
+        cov = compute_boundary_coverage([_PY_CALL], {"python", "javascript"})
+        assert cov.complete is False
+        assert "javascript" in cov.reason
+
+    def test_all_supported_languages_covered_is_complete(self) -> None:
+        cov = compute_boundary_coverage(
+            [_PY_CALL, _JS_CALL], {"python", "javascript"},
+        )
+        assert cov.complete is True
+
+    def test_unsupported_language_without_calls_does_not_block(self) -> None:
+        # A language with no I/O catalog is absent from supported_languages, so
+        # its lack of call edges must not make coverage incomplete.
+        non_call = {
+            "src": "json:c.json:1:x:key", "dst": "json:c.json:2:y:key",
+            "type": "contains",
+        }
+        cov = compute_boundary_coverage([_PY_CALL, non_call], {"python"})
+        assert cov.complete is True
+
+    def test_non_call_edge_types_do_not_count(self) -> None:
+        non_call = {
+            "src": "python:a.py:1:f:function",
+            "dst": "python:b.py:1:g:function", "type": "contains",
+        }
+        cov = compute_boundary_coverage([non_call], {"python"})
+        assert cov.complete is False  # no call edges at all
+
+    def test_src_without_language_prefix_is_skipped(self) -> None:
+        # A malformed src (no colon) must not crash or fabricate a language.
+        cov = compute_boundary_coverage(
+            [{"src": "weird-no-colon", "dst": "x", "type": "calls"}], set(),
+        )
+        assert cov.complete is True  # one call edge, no supported lang to be blind
+
+
+class TestVerifyClaimCoverage:
+    """WI-kajil: an incomplete-coverage boundary analysis downgrades a
+    would-be ``confirmed`` zero-chain verdict to ``inconclusive`` rather than
+    asserting the boundary is unused on an analysis that couldn't see it."""
+
+    def _net_send_must_not_exist(self) -> Claim:
+        return Claim(id="SC", text="no net", constraint_boundary="net_send",
+                     constraint_must_not_exist=True)
+
+    def test_incomplete_downgrades_confirmed_to_inconclusive(self) -> None:
+        bmap = _make_boundary_map(fs_read=5)  # net_send absent -> 0 chains
+        cov = BoundaryCoverage(complete=False, reason="javascript was not covered")
+        verdict = verify_claim(self._net_send_must_not_exist(), bmap, coverage=cov)
+        assert verdict.verdict == "inconclusive"
+        assert "javascript" in verdict.details
+
+    def test_complete_coverage_confirms(self) -> None:
+        bmap = _make_boundary_map(fs_read=5)
+        cov = BoundaryCoverage(complete=True)
+        verdict = verify_claim(self._net_send_must_not_exist(), bmap, coverage=cov)
+        assert verdict.verdict == "confirmed"
+
+    def test_incomplete_does_not_mask_real_violation(self) -> None:
+        # Coverage gaps never turn found evidence into inconclusive.
+        bmap = _make_boundary_map(net_send=3)
+        cov = BoundaryCoverage(complete=False, reason="x")
+        verdict = verify_claim(self._net_send_must_not_exist(), bmap, coverage=cov)
+        assert verdict.verdict == "violated"
+
+    def test_incomplete_downgrades_max_chains_within_limit(self) -> None:
+        bmap = _make_boundary_map(fs_write=2)
+        claim = Claim(id="SC", text="few writes",
+                      constraint_boundary="fs_write", constraint_max_chains=5)
+        verdict = verify_claim(
+            claim, bmap, coverage=BoundaryCoverage(complete=False, reason="y"),
+        )
+        assert verdict.verdict == "inconclusive"
+
+    def test_incomplete_does_not_mask_max_chains_violation(self) -> None:
+        bmap = _make_boundary_map(fs_write=10)
+        claim = Claim(id="SC", text="few writes",
+                      constraint_boundary="fs_write", constraint_max_chains=5)
+        verdict = verify_claim(
+            claim, bmap, coverage=BoundaryCoverage(complete=False, reason="z"),
+        )
+        assert verdict.verdict == "violated"
+
+    def test_verify_claims_threads_coverage(self) -> None:
+        bmap = _make_boundary_map(fs_read=5)
+        cov = BoundaryCoverage(complete=False, reason="js blind")
+        verdicts = verify_claims(
+            [self._net_send_must_not_exist()], bmap, coverage=cov,
+        )
+        assert verdicts[0].verdict == "inconclusive"

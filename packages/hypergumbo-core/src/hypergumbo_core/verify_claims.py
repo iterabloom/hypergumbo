@@ -27,9 +27,12 @@ Verdict Types
 -------------
 - ``confirmed``: Claim was actively checked and held (no violations found)
 - ``violated``: Specific evidence contradicts the claim
-- ``inconclusive``: Verification couldn't proceed (no machine-checkable
-  constraint, broken input, missing catalog) — kept distinct from
-  ``confirmed`` to close the silent-confirm fall-through (ADR-0033 Phase 3).
+- ``inconclusive``: Verification couldn't proceed or couldn't be trusted —
+  no machine-checkable constraint, broken input, missing catalog, or the
+  I/O analysis was blind to the relevant code (empty analysis, or a
+  supported language that produced no call edges). Kept distinct from
+  ``confirmed`` to close the silent-confirm fall-through (ADR-0033 Phase 3;
+  WI-kajil / INV-bitig).
 
 For taint-flow claims, structural analysis produces ``approximate`` confidence.
 
@@ -138,6 +141,31 @@ class ClaimVerdict:
             "evidence_count": self.evidence_count,
             "details": self.details,
         }
+
+
+@dataclass
+class BoundaryCoverage:
+    """Whether the I/O boundary analysis is trustworthy enough to *confirm* a
+    zero-chain ``must_not_exist`` / within-limit ``max_chains`` claim.
+
+    A clean (zero-chain) boundary verdict only means "this boundary is unused"
+    if the analysis could actually have detected the I/O. Two blind spots make
+    a clean verdict untrustworthy (WI-kajil / INV-bitig P0):
+
+    * the analysis produced no call edges at all (empty repo, wrong cwd, or an
+      unanalyzable input) — nothing could be traced to an I/O primitive; or
+    * a *supported* language (one with an I/O catalog) was analyzed but
+      produced zero call edges, so ``io_boundary`` saw none of its I/O — the
+      F69.A1 missing-edge-production case (e.g. the JS body-call gap).
+
+    When ``complete`` is ``False``, :func:`verify_claim` returns
+    ``inconclusive`` instead of ``confirmed`` so verify-claims never asserts a
+    boundary is unused on an analysis that couldn't see it. ``reason`` is a
+    human-readable explanation surfaced in the verdict details.
+    """
+
+    complete: bool
+    reason: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -428,22 +456,147 @@ def load_claims(path: Path) -> list[Claim]:
 # ---------------------------------------------------------------------------
 
 
-def verify_claim(claim: Claim, boundary_map: BoundaryMap) -> ClaimVerdict:
+# Analyzer-produced call edge types used to decide per-language I/O coverage.
+# A deliberately registry-clean subset of the edge types ``io_boundary``'s
+# ``tag_io_boundaries`` scans (relationship axis, plus ``implements_rpc`` which
+# is pending_classification). It omits the bridge-family endpoint_shape values
+# (``cgo_bridge``/``wasm_bridge``/...) that the tagger lists defensively: those
+# fold into the canonical ``calls`` relationship (edge_types.py), so a folded
+# FFI edge is already counted via ``calls`` — and they are not relationship-axis
+# edge types, so listing them here would (correctly) fail the ADR-0023 drift
+# linter. This set answers "did the analyzer extract call structure for this
+# language", which is what the WI-kajil blindness signal needs.
+_COVERAGE_CALL_EDGE_TYPES: frozenset[str] = frozenset({
+    "calls",
+    "imports",
+    "module_attr_ref",
+    "event_publishes",
+    "implements_rpc",
+})
+
+
+def compute_boundary_coverage(
+    raw_edges: list,
+    supported_languages: set,
+) -> BoundaryCoverage:
+    """Decide whether the I/O boundary analysis can support a clean verdict.
+
+    Coverage is derived from *call-edge production*, not from
+    ``limits.skipped_languages`` (a dead field — WI-nihir) or from the bare
+    fact that an analyzer pass ran (``analysis_runs`` records that a pass
+    executed, not that it produced the call structure ``io_boundary`` needs).
+    A supported language that was analyzed but emitted zero call edges (of
+    :data:`_COVERAGE_CALL_EDGE_TYPES`) is *io-blind*: ``io_boundary`` tags I/O
+    on call edges, so it saw none of that language's I/O (F69.A1).
+
+    Args:
+        raw_edges: Behavior-map edge dicts (``src`` / ``type`` keys read).
+        supported_languages: Languages present in the repo that have an I/O
+            catalog (and could therefore have produced boundary chains).
+
+    Returns:
+        ``BoundaryCoverage(complete=False, reason=...)`` when no call edges
+        were produced at all, or when a supported language produced none;
+        otherwise ``BoundaryCoverage(complete=True)``.
+    """
+    languages_with_calls: set[str] = set()
+    total_call_edges = 0
+    for edge in raw_edges:
+        if edge.get("type") not in _COVERAGE_CALL_EDGE_TYPES:
+            continue
+        total_call_edges += 1
+        src = edge.get("src", "")
+        if ":" in src:
+            languages_with_calls.add(src.split(":", 1)[0])
+
+    if total_call_edges == 0:
+        return BoundaryCoverage(
+            complete=False,
+            reason=(
+                "the analysis produced no call edges at all (empty, "
+                "wrong directory, or unanalyzable input), so no I/O could "
+                "be detected"
+            ),
+        )
+
+    blind = sorted(supported_languages - languages_with_calls)
+    if blind:
+        return BoundaryCoverage(
+            complete=False,
+            reason=(
+                f"supported language(s) {', '.join(blind)} were analyzed but "
+                f"produced no call edges, so their I/O is invisible to the "
+                f"boundary analysis"
+            ),
+        )
+
+    return BoundaryCoverage(complete=True)
+
+
+def _default_coverage(boundary_map: BoundaryMap) -> BoundaryCoverage:
+    """Coverage inferred from the boundary map alone, for direct callers that
+    do not supply richer per-language coverage.
+
+    An empty boundary map (no I/O edges at all) is treated as incomplete — a
+    must_not_exist claim cannot be confirmed against an analysis that found no
+    I/O whatsoever (INV-bitig). A non-empty map is treated as complete; the CLI
+    supplies the stricter per-language signal that also catches a partially
+    blind analysis (WI-kajil).
+    """
+    if boundary_map.total_io_edges == 0:
+        return BoundaryCoverage(
+            complete=False,
+            reason=(
+                "the boundary analysis found no I/O edges at all, so a clean "
+                "verdict cannot be distinguished from an unanalyzed input"
+            ),
+        )
+    return BoundaryCoverage(complete=True)
+
+
+def verify_claim(
+    claim: Claim,
+    boundary_map: BoundaryMap,
+    coverage: Optional[BoundaryCoverage] = None,
+) -> ClaimVerdict:
     """Verify a single boundary-constraint claim against a boundary map.
 
     Args:
         claim: The claim to verify.
         boundary_map: The I/O boundary map to check against.
+        coverage: Whether the boundary analysis is trustworthy enough to
+            *confirm* a clean (zero-chain / within-limit) verdict. When
+            ``None``, coverage is inferred from the map alone
+            (:func:`_default_coverage`); the CLI always supplies the stricter
+            per-language signal. When coverage is incomplete, a would-be
+            ``confirmed`` verdict is downgraded to ``inconclusive`` so the tool
+            never asserts a boundary is unused on an analysis that couldn't see
+            it (WI-kajil / INV-bitig P0). Coverage never affects ``violated``
+            verdicts: found evidence is positive regardless of blind spots.
 
     Returns:
         ClaimVerdict with the result.
     """
+    if coverage is None:
+        coverage = _default_coverage(boundary_map)
+
     entry = boundary_map.entries.get(claim.constraint_boundary)
     chain_count = len(entry.chains) if entry else 0
 
     # Check must_not_exist constraint
     if claim.constraint_must_not_exist:
         if chain_count == 0:
+            if not coverage.complete:
+                return ClaimVerdict(
+                    claim_id=claim.id,
+                    claim_text=claim.text,
+                    verdict="inconclusive",
+                    details=(
+                        f"No {claim.constraint_boundary} chains found, but "
+                        f"{coverage.reason}; cannot confirm the boundary is "
+                        f"unused."
+                    ),
+                )
             return ClaimVerdict(
                 claim_id=claim.id,
                 claim_text=claim.text,
@@ -464,6 +617,17 @@ def verify_claim(claim: Claim, boundary_map: BoundaryMap) -> ClaimVerdict:
     # Check max_chains constraint
     if claim.constraint_max_chains is not None:
         if chain_count <= claim.constraint_max_chains:
+            if not coverage.complete:
+                return ClaimVerdict(
+                    claim_id=claim.id,
+                    claim_text=claim.text,
+                    verdict="inconclusive",
+                    details=(
+                        f"{chain_count} {claim.constraint_boundary} chain(s) "
+                        f"found, within limit of {claim.constraint_max_chains}, "
+                        f"but {coverage.reason}; cannot confirm the limit holds."
+                    ),
+                )
             return ClaimVerdict(
                 claim_id=claim.id,
                 claim_text=claim.text,
@@ -578,6 +742,7 @@ def verify_claims(
     claims: list[Claim],
     boundary_map: BoundaryMap,
     taint_findings: list | None = None,
+    coverage: Optional[BoundaryCoverage] = None,
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -588,6 +753,10 @@ def verify_claims(
         claims: List of claims to verify.
         boundary_map: The I/O boundary map to check against.
         taint_findings: Optional list of TaintFlowFinding objects.
+        coverage: Boundary-analysis coverage signal, passed through to
+            :func:`verify_claim` for boundary claims (WI-kajil). Taint claims
+            have their own unsupported-language signal (INV-javam) and are
+            unaffected.
 
     Returns:
         List of ClaimVerdict objects, one per claim.
@@ -599,5 +768,5 @@ def verify_claims(
                 claim, taint_findings or [],
             ))
         else:
-            verdicts.append(verify_claim(claim, boundary_map))
+            verdicts.append(verify_claim(claim, boundary_map, coverage=coverage))
     return verdicts

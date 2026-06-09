@@ -4342,6 +4342,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # Load claims
     from .verify_claims import (
         ClaimsFileError,
+        compute_boundary_coverage,
         load_claims,
         verify_claims as _verify,
     )
@@ -4416,6 +4417,16 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         for ep in behavior_map.get("entrypoints", [])
     }
     bmap = compute_boundary_map(edges, catalogs, entrypoint_ids=vc_entrypoint_ids or None)
+
+    # WI-kajil / INV-bitig: a zero-chain "confirmed" boundary verdict is only
+    # trustworthy if the I/O analysis could actually see the I/O. Derive a
+    # coverage signal from call-edge production across the supported languages
+    # actually present in the repo (languages with an I/O catalog). An empty
+    # analysis (no call edges) or a supported language that produced zero call
+    # edges (analyzer blind — F69.A1) downgrades a would-be "confirmed"
+    # must_not_exist / max_chains verdict to "inconclusive".
+    supported_present = languages & set(catalogs)
+    coverage = compute_boundary_coverage(raw_edges, supported_present)
 
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
@@ -4539,7 +4550,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                     ))
 
     # Verify claims
-    verdicts = _verify(claims, bmap, taint_findings=taint_findings)
+    verdicts = _verify(
+        claims, bmap, taint_findings=taint_findings, coverage=coverage,
+    )
 
     # Output
     if getattr(args, "json_output", False):

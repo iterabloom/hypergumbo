@@ -88,7 +88,11 @@ def test_verify_claims_json_output(tmp_path: Path, capsys) -> None:
     bmap = _make_behavior_map(
         nodes=[{"id": "python:a.py:1:f:function", "name": "f", "kind": "function",
                 "language": "python", "path": "a.py", "span": {"start_line": 1, "end_line": 5}}],
-        edges=[],
+        # A realistic analyzed repo produces call edges; without any, the
+        # WI-kajil coverage gate would (correctly) report inconclusive.
+        edges=[{"src": "python:a.py:1:f:function",
+                "dst": "python:b.py:1:g:function", "type": "calls",
+                "confidence": 0.9}],
     )
     input_file = tmp_path / "hg.json"
     input_file.write_text(json.dumps(bmap))
@@ -498,7 +502,11 @@ def test_verify_claims_no_notice_when_no_taint_claims(
     args.json_output = False
 
     rc = cmd_verify_claims(args)
-    assert rc == 0
+    # WI-kajil: brainfuck has no I/O catalog and produced no call edges, so the
+    # boundary claim is INCONCLUSIVE (rc=2) — the analysis cannot see its I/O.
+    # This test's point is the absence of the *taint-flow* notice (there are no
+    # taint claims), which holds regardless of the boundary verdict.
+    assert rc == 2
     _, err = capsys.readouterr()
     assert "no taint-flow catalog" not in err
 
@@ -1006,3 +1014,81 @@ def test_verify_claims_unknown_field_exits_2(tmp_path: Path, capsys) -> None:
     rc = cmd_verify_claims(args)
     assert rc == 2
     assert "Error" in capsys.readouterr().err
+
+
+def _boundary_claim_args(tmp_path: Path, bmap: dict) -> "FakeArgs":
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({"claims": [
+        {"id": "NO_NET", "text": "no network",
+         "constraint": {"boundary": "net_send", "must_not_exist": True}},
+    ]}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+    return args
+
+
+def _node(symbol_id: str, lang: str, path: str):
+    return {"id": symbol_id, "name": symbol_id.split(":")[-2], "kind": "function",
+            "language": lang, "path": path,
+            "span": {"start_line": 1, "end_line": 5}}
+
+
+def test_verify_claims_blind_supported_language_inconclusive(
+    tmp_path: Path, capsys,
+) -> None:
+    """WI-kajil P0: a supported language analyzed but producing zero call edges
+    makes a must_not_exist boundary claim INCONCLUSIVE (rc=2), not a silent
+    'confirmed' at rc=0 against an analysis blind to that language's I/O."""
+    bmap = _make_behavior_map(
+        nodes=[
+            _node("python:a.py:1:f:function", "python", "a.py"),
+            _node("javascript:b.js:1:g:function", "javascript", "b.js"),
+        ],
+        # python produced a (non-IO) call edge; javascript produced none.
+        edges=[{"src": "python:a.py:1:f:function",
+                "dst": "python:helpers.py:1:helper:function",
+                "type": "calls", "confidence": 0.9}],
+    )
+    rc = cmd_verify_claims(_boundary_claim_args(tmp_path, bmap))
+    assert rc == 2
+    out = capsys.readouterr().out
+    assert "INCONCLUSIVE" in out
+
+
+def test_verify_claims_covered_languages_confirm(tmp_path: Path, capsys) -> None:
+    """Control: when every supported language produced call edges, a clean
+    net_send claim still CONFIRMS (rc=0) — the coverage gate is not blanket."""
+    bmap = _make_behavior_map(
+        nodes=[
+            _node("python:a.py:1:f:function", "python", "a.py"),
+            _node("javascript:b.js:1:g:function", "javascript", "b.js"),
+        ],
+        edges=[
+            {"src": "python:a.py:1:f:function",
+             "dst": "python:helpers.py:1:helper:function",
+             "type": "calls", "confidence": 0.9},
+            {"src": "javascript:b.js:1:g:function",
+             "dst": "javascript:util.js:1:util:function",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    rc = cmd_verify_claims(_boundary_claim_args(tmp_path, bmap))
+    assert rc == 0
+    assert "CONFIRMED" in capsys.readouterr().out
+
+
+def test_verify_claims_vacuous_analysis_inconclusive(tmp_path: Path, capsys) -> None:
+    """INV-bitig P0: an analysis that produced no call edges at all (empty /
+    wrong-cwd) cannot confirm must_not_exist — INCONCLUSIVE (rc=2)."""
+    bmap = _make_behavior_map(
+        nodes=[_node("python:a.py:1:f:function", "python", "a.py")],
+        edges=[],
+    )
+    rc = cmd_verify_claims(_boundary_claim_args(tmp_path, bmap))
+    assert rc == 2
+    assert "INCONCLUSIVE" in capsys.readouterr().out
