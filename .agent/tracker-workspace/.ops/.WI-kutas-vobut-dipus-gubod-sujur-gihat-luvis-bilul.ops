@@ -56,3 +56,10 @@
   clock: 6  # b14a
   nonce: b14a  # b14a
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # b14a
+- op: discuss  # ccea
+  at: '2026-06-09T18:34:01Z'  # ccea
+  by: agent  # ccea
+  actor: jgstern_agent  # ccea
+  clock: 7  # ccea
+  nonce: ccea  # ccea
+  message: "Structural triage (2026-06-09): two concrete, currently-open instances of this hand-coded-schema-drift root. (1) WI-kufib — Symbol.language typed required-non-nullable in docs/schema.json but Optional[str] in ir.py (cross-linked not_duplicate_of). (2) Symbol.canonical_name STILL present at docs/schema.json:448 (Symbol def, description 'Fully qualified name', oneOf[string,null]) although ADR-0032 removed the field from ir.py — only a docstring reference remains at ir.py:1159. Both are symptoms of generate-schema hand-coding the defs blocks instead of introspecting the Symbol dataclass: a dataclass field add/remove/retype cannot propagate. RELEASE-RELEVANT: the 6.0.0 changelog at CHANGELOG.md:188 asserts canonical_name was dropped from the JSON Schema's Symbol properties entry — that claim is FALSE until the property is actually deleted. Fixing WI-kutas (introspect dataclasses) subsumes BOTH instances and makes the changelog honest; hand-patching the two properties is an acceptable pre-release stopgap but reduces the felt urgency to fix the generator."  # ccea

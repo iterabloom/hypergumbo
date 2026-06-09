@@ -20,3 +20,17 @@
     description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: WI-fozoh, WI-kapul, WI-sijut, WI-lisog, WI-mosil, WI-pubiv, WI-kufib. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # 88a2
     fields:  # 88a2
       statement: "Synthesized external_symbol / stand-in nodes must carry stable_id, canonical_name, path, language, origin, origin_run_id, fingerprint, and a correct id kind-slot — not None/''/'<external>' defaults."  # 88a2
+- op: discuss  # d550
+  at: '2026-06-09T18:34:01Z'  # d550
+  by: agent  # d550
+  actor: jgstern_agent  # d550
+  clock: 2  # d550
+  nonce: d550  # d550
+  message: "Vocabulary-staleness flag (2026-06-09): this family's must-carry field list (stable_id, canonical_name, path, language, origin, origin_run_id, fingerprint) was written 2026-06-08 against a pre-ADR-0031/0032 Symbol model and is now partly stale. (1) canonical_name was REMOVED by ADR-0032 (split into display_label + qualified_name); member WI-fozoh's title also references it. (2) language was relaxed to Optional[str] by ADR-0031 and is legitimately None on synthetic stand-ins (they carry discovery_language); member WI-kufib's language-null is BY DESIGN, not a stamping defect — see the WI-kufib triage note. The genuinely-must-be-non-null fields the stamping step should guarantee are: stable_id, discovery_language, qualified_name/display_label, path, origin, origin_run_id, fingerprint, and a correct id kind-slot. Recommend re-syncing this statement to that vocabulary before implementing the stamping fix, so the family does not chase dead or by-design-null fields."  # d550
+- op: discuss  # c2dd
+  at: '2026-06-09T19:00:03Z'  # c2dd
+  by: agent  # c2dd
+  actor: jgstern_agent  # c2dd
+  clock: 3  # c2dd
+  nonce: c2dd  # c2dd
+  message: "Priority-inversion flag: this root_cause_family META is P2, but it holds the P0 member WI-kufib (262 synthesized stand-in nodes emit null Symbol.language, failing whole-doc schema validation). A 'tracker ready' reader sees the member's P0 urgency, not the family's P2. Documenting only; no priority change made. Consider bumping the family to P0 to match its highest-severity member if/when this cluster is actioned."  # c2dd

@@ -40,3 +40,19 @@
   clock: 4  # f4c2
   nonce: f4c2  # f4c2
   message: "root-cause family member (a1) (connections-sweep 2026-06-08T1900Z)"  # f4c2
+- op: update  # 8adb
+  at: '2026-06-09T18:34:01Z'  # 8adb
+  by: agent  # 8adb
+  actor: jgstern_agent  # 8adb
+  clock: 5  # 8adb
+  nonce: 8adb  # 8adb
+  set: {}  # 8adb
+  add:  # 8adb
+    not_duplicate_of: [WI-kutas-vobut-dipus-gubod-sujur-gihat-luvis-bilul]  # 8adb
+- op: discuss  # 040a
+  at: '2026-06-09T18:34:01Z'  # 040a
+  by: agent  # 040a
+  actor: jgstern_agent  # 040a
+  clock: 6  # 040a
+  nonce: 040a  # 040a
+  message: "Structural triage (2026-06-09): WI-kufib's FIX-root is schema-drift (WI-kutas: generate-schema hand-codes docs/schema.json instead of introspecting the Symbol dataclass), NOT the META-niguz/nomiz stamping defect it is parented under. Rationale: ADR-0031 split Symbol.language into discovery_language + protocol_origin and relaxed language to Optional[str]; language=None on synthetic stand-ins is BY DESIGN (they carry discovery_language — confirmed: all 262 null-language nodes carry it), and the eliminate-the-null alternative WI-nagam is correctly wont_do. So the schema-tolerate fix (oneOf[string,null]) is terminal and correct, and is the same hand-coded-schema drift as WI-kutas. Cross-linked not_duplicate_of WI-kutas; kept parented under META-nomiz to preserve the stand-in-population umbrella per the family's stated convention. IMPLEMENTER CAVEAT: the 262-node language:None error is currently the ONLY document-level schema-validation failure — the de-facto canary for the under-stamped synthetic population. Relaxing the schema silences it; do NOT read schema-validates-clean as stamping-fixed (stable_id/fingerprint/origin/origin_run_id may still be sentinel — that is META-niguz, still open). When relaxing language, ADD a validator assertion that synthetic stand-ins carry non-null stable_id + fingerprint + discovery_language + origin, i.e. move the canary onto the fields that SHOULD be non-null. RIDE-ALONG: the same docs/schema.json edit should drop the stale Symbol.canonical_name property at docs/schema.json:448 (removed from the dataclass by ADR-0032, never deleted from the hand-coded schema)."  # 040a

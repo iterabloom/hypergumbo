@@ -20,3 +20,10 @@
     description: "Layer-2 super-cluster from the connection sweep (connections-sweep 2026-06-08T1900Z). Cross-packet evidence: WI-fozoh and WI-mosil surfaced independently in the external_symbol (C1) and identity (C3) investigations. ~11 items filed as separate 'field X is null' bugs are one missing stamping step on the same ~1645 synthesized-node population. Children: the identity-defaulting family and the asymmetric-synthesis family."  # a21d
     fields:  # a21d
       statement: "Every node-minting path (boundary external_symbol synthesis, orchestrator file-symbol synthesis, ~21 protocol linkers) MUST route through the same identity + provenance stamping the real-analyzer Symbol path uses; stand-in nodes must not be left with empty/sentinel identity, provenance, or relationship fields."  # a21d
+- op: discuss  # 7653
+  at: '2026-06-09T18:34:02Z'  # 7653
+  by: agent  # 7653
+  actor: jgstern_agent  # 7653
+  clock: 2  # 7653
+  nonce: '7653'  # 7653
+  message: "Vocabulary-staleness flag (2026-06-09): see the parallel note on child META-nomiz. The shared identity+provenance stamping step this META mandates must stamp the POST-ADR-0031/0032 field set — stable_id, discovery_language, qualified_name/display_label, path, origin, origin_run_id, fingerprint, kind-slot — NOT the ADR-obsoleted canonical_name and language. language=None on synthetic stand-ins is by-design (ADR-0031; WI-nagam wont_do) and must NOT be treated as a stamping gap; the real gaps are null stable_id/fingerprint/origin/origin_run_id (e.g. WI-fozoh)."  # 7653

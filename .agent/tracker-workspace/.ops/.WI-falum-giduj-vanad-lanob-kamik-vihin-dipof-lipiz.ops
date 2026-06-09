@@ -26,3 +26,26 @@
   clock: 2  # ed6e
   nonce: ed6e  # ed6e
   message: "Dogfooding re-confirmed (blinded severity 4/5): 76 distinct TOML dependencies (67 distinct names: rich/bcrypt/pro...) collapse to ONE Symbol.fingerprint (hgfp1:87e35a5c). Root reproduced: a single dependency line parsed as standalone TOML yields a tree-sitter ERROR tree whose leaf walk drops the name/version text. file (901/902 distinct) + package fingerprints are clean — the collapse is toml-dependency-specific. Same stamp_symbol_fingerprints fix. [dogfood]"  # ed6e
+- op: update  # 7f22
+  at: '2026-06-09T19:00:02Z'  # 7f22
+  by: agent  # 7f22
+  actor: jgstern_agent  # 7f22
+  clock: 3  # 7f22
+  nonce: 7f22  # 7f22
+  set: {}  # 7f22
+  add:  # 7f22
+    not_duplicate_of: [WI-titiz-jubar-pipav-vufig-dafap-rasak-doril-bopok]  # 7f22
+- op: discuss  # 574d
+  at: '2026-06-09T19:00:02Z'  # 574d
+  by: agent  # 574d
+  actor: jgstern_agent  # 574d
+  clock: 4  # 574d
+  nonce: 574d  # 574d
+  message: "Linked not_duplicate_of WI-titiz (RELATED_BUT_DISTINCT). Shared substrate: both stem from TOML dependency entries captured as a single-line span that is not parseable as standalone TOML. Distinct faces: this item is the dependency-KIND fingerprint collapse (all 76 kinds collapse to one value); WI-titiz is the dependency-NODE stable_id collapse (hashes only package name, so the same package collapses across manifests). WI-titiz is parented under the stable_id root-cause META (INV-tazaj); this item was unparented. Probable shared upstream root cause: TOML manifest span extraction. Flagged during P0 cluster review 2026-06-09; no status change."  # 574d
+- op: discuss  # 3e7c
+  at: '2026-06-09T19:03:52Z'  # 3e7c
+  by: agent  # 3e7c
+  actor: jgstern_agent  # 3e7c
+  clock: 5  # 3e7c
+  nonce: 3e7c  # 3e7c
+  message: "CORRECTION to my 2026-06-09 cluster-review note: the 'probable shared upstream root cause: TOML manifest span extraction' claim is REFUTED by the code. The two values come from entirely separate producers. WI-titiz's stable_id is make_dependency_stable_id(language, name) = sha256('dependency:{language}:{name}')[:16] (analyze/base.py:591-598) — it NEVER reads the span; it collapses cross-manifest only because the hash input omits the declaring manifest path (hash-input-too-coarse, the INV-tazaj family WI-titiz is parented under). THIS item's fingerprint collapse is a different producer: stamp_symbol_fingerprints (fingerprint.py:246) -> compute_symbol_fingerprint -> _tree_sitter_fingerprint, which slices and tree-sitter-parses the symbol's single-line span (the out-of-context TOML array element parses to an ERROR tree). So: same SURFACE (toml dependency-kind nodes), different FIELD (fingerprint vs stable_id), different PRODUCER, different root-cause FAMILY. The not_duplicate_of link to WI-titiz is correct (RELATED_BUT_DISTINCT, same surface) and stays — but the two will NOT resolve together. WI-falum's own evidence already implied this: 'stable_id (67) individuate the deps correctly; only fingerprint collapses.'"  # 3e7c

@@ -20,3 +20,10 @@
     description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-golap, WI-zavad. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # 80e7
     fields:  # 80e7
       statement: "The .js dispatch leg of js_ts.py must emit signatures, calls, imports, and function nodes at parity with the .ts leg for equivalent constructs."  # 80e7
+- op: discuss  # 6995
+  at: '2026-06-09T19:00:03Z'  # 6995
+  by: agent  # 6995
+  actor: jgstern_agent  # 6995
+  clock: 2  # 6995
+  nonce: '6995'  # 6995
+  message: "Priority-inversion flag: this root_cause_family META is P2, but it holds the P0 member WI-zavad (.js analyzer emits zero body-call/import/function-node edges). A 'tracker ready' reader sees the member's P0 urgency, not the family's P2, so the family priority understates the severity of the work it clusters. Documenting only; no priority change made. Consider bumping the family to P0 to match its highest-severity member if/when this cluster is actioned."  # 6995
