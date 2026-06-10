@@ -84,3 +84,10 @@
     tags: [dogfood]  # eada
   remove:  # eada
     tags: [dogfooding]  # eada
+- op: discuss  # 6016
+  at: '2026-06-10T16:36:12Z'  # 6016
+  by: agent  # 6016
+  actor: jgstern_agent  # 6016
+  clock: 9  # 6016
+  nonce: '6016'  # 6016
+  message: "Positive validation evidence from PR #4167 (merged b6403f6669): the format invariant now holds without the content-discrimination trade-off. The WI-falum regression that the Phase 2 PR2 demolition introduced (TOML deps all collapsing to one hgfp value) is fixed at root via context-aware subtree hashing, AND the last producer-side bypass (wgsl.py's 4 bare-hex stampings, flagged in this thread 2026-06-05) is demolished. Tracker-package self-analysis: 0 fingerprints without the scheme prefix; scheme is now hgfp2:/symbol-fp-v2 (all values changed — consumers detect via prefix). Status stays pending_validation per the awaits_bakeoff_validation tag."  # 6016

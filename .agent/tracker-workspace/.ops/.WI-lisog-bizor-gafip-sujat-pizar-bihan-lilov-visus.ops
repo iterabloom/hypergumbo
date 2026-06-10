@@ -74,3 +74,10 @@
   clock: 8  # 0dd4
   nonce: 0dd4  # 0dd4
   message: "root-cause family cross-link (a1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 0dd4
+- op: discuss  # ab4b
+  at: '2026-06-10T16:36:00Z'  # ab4b
+  by: agent  # ab4b
+  actor: jgstern_agent  # ab4b
+  clock: 9  # ab4b
+  nonce: ab4b  # ab4b
+  message: "PR #4167 (merged b6403f6669) fixed two of this item's facets at root. Facet (a) Python-test-methods-null: the context-aware fingerprint rewrite parses the whole file and hashes the def's subtree, so the column-0-heredoc dedent failure is gone (tracker-package self-analysis: 0 null python method/function fingerprints; full self-analysis re-measurement pending). Facet (c) WGSL bare-hex: the 4 producer-side sha256(bytes)[:16] stampings in wgsl.py are demolished; the central post-pass solely owns the field (verified: 0 non-hgfp2 prefixes on self-analysis). NOT fixed: facet (b) external_symbol nulls (span 0-0, no source — now explicitly documented as a legitimate null condition in the spec fingerprint definition) and the scattered-other null population. The spec now documents null conditions, addressing this item's 'or the spec documents the conditions' branch. Scheme bumped to hgfp2:/symbol-fp-v2. Leaving status todo_hard pending a full-corpus null-population re-measurement."  # ab4b
