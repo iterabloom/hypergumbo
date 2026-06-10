@@ -584,7 +584,7 @@
               "type": "null"
             }
           ],
-          "description": "Content hash of source"
+          "description": "Structural content hash of the symbol's parse subtree (shape + identifiers + literals; whitespace/comment-invariant), prefixed with the scheme tag declared in symbol_fingerprint_scheme. Null when the span has no parseable content or no grammar is available."
         },
         "quality": {
           "oneOf": [

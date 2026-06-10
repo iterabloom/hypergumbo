@@ -424,7 +424,13 @@ def _symbol_spec() -> ClassSpec:
                 ),
             },
             "shape_id": {"description": "Structural implementation fingerprint"},
-            "fingerprint": {"description": "Content hash of source"},
+            "fingerprint": {"description": (
+                "Structural content hash of the symbol's parse subtree "
+                "(shape + identifiers + literals; whitespace/comment-"
+                "invariant), prefixed with the scheme tag declared in "
+                "symbol_fingerprint_scheme. Null when the span has no "
+                "parseable content or no grammar is available."
+            )},
             "quality": {"description": "Quality assessment"},
             "meta": {"description": "Language-specific metadata"},
             "signature": {

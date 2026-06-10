@@ -949,6 +949,81 @@ def _check_cross_field_coherence(
                 ),
             ))
 
+    # ---- WI-falum umbrella: fingerprint degeneracy ----------------------
+    # The structural fingerprint hashes shape + identifiers + literals,
+    # so symbols with DISTINCT names should virtually never share one
+    # value en masse — sharing under the SAME name is legitimate
+    # duplicate code (the design intent), but a single value spread
+    # across many names means the producer lost content discrimination.
+    # The motivating regression: all 76 TOML dependency nodes (67
+    # distinct package names) collapsed to ONE fingerprint because the
+    # v1 snippet parse saw only an ERROR tree (WI-falum, 6.0.0). One
+    # umbrella violation per run names the top-3 degenerate values.
+    #
+    # Threshold: 10 distinct names under one value. Same-shape code
+    # bodies carry their identifiers in the hash, so even pathological
+    # duplicate-heavy repos stay far below this without a producer bug.
+    # Names are compared by their SIMPLE form (qualifier segments
+    # stripped): 20 test classes each containing an identical
+    # ``tracker_set`` fixture method produce 20 qualified names
+    # (``TestX.tracker_set``) over one legitimately-shared hash — the
+    # subtree starts at the ``def``, so the enclosing class is rightly
+    # not part of the content. Distinct SIMPLE names sharing one value
+    # is the real degeneracy signal.
+    _FINGERPRINT_DEGENERACY_MIN_NAMES = 10
+    fp_names: dict[str, set[str]] = {}
+    fp_counts: dict[str, int] = {}
+    for sym in symbols:
+        fp = getattr(sym, "fingerprint", None)
+        if fp is None:
+            continue
+        name = getattr(sym, "name", None) or "?"
+        simple = name.rsplit(".", 1)[-1].rsplit("::", 1)[-1].rsplit("\\", 1)[-1]
+        fp_names.setdefault(fp, set()).add(simple)
+        fp_counts[fp] = fp_counts.get(fp, 0) + 1
+    degenerate = sorted(
+        (
+            (fp, names) for fp, names in fp_names.items()
+            if len(names) >= _FINGERPRINT_DEGENERACY_MIN_NAMES
+        ),
+        key=lambda item: len(item[1]),
+        reverse=True,
+    )
+    if degenerate:
+        top_descriptions = []
+        for fp, names in degenerate[:3]:
+            sample = ", ".join(sorted(names)[:5])
+            top_descriptions.append(
+                f"{fp} ({fp_counts[fp]} symbols, {len(names)} distinct "
+                f"names, e.g. {sample})"
+            )
+        worst_fp, worst_names = degenerate[0]
+        violations.append(ValidationViolation(
+            severity="warning",
+            validator_class="cross_field",
+            field_name="Symbol.fingerprint",
+            record_id=None,
+            observed=(
+                f"{len(degenerate)} fingerprint value(s) shared by >= "
+                f"{_FINGERPRINT_DEGENERACY_MIN_NAMES} distinctly-named "
+                f"symbols; worst: {fp_counts[worst_fp]} symbols / "
+                f"{len(worst_names)} names on one value"
+            ),
+            expected=(
+                "A structural fingerprint (shape + identifiers + "
+                "literals) must discriminate distinctly-named content; "
+                "mass sharing across names means the producer emitted a "
+                "degenerate constant (WI-falum)."
+            ),
+            message=(
+                "Degenerate Symbol.fingerprint value(s) detected: "
+                f"{'; '.join(top_descriptions)}. Check the fingerprint "
+                "post-pass for spans whose parse drops content "
+                "(hypergumbo_core/fingerprint.py); unparseable spans "
+                "must yield None, never a shared constant."
+            ),
+        ))
+
     return violations
 
 

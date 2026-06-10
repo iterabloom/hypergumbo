@@ -75,11 +75,13 @@ CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v5"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v2"
 REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v1"
-# WI-fanun: scheme tag for Symbol.fingerprint on source-code Symbols.
-# Populated by the orchestrator post-pass in ``hypergumbo_core.fingerprint``
-# (manifest producers like toml-v1 / json-v1 / wgsl-v1 keep their own
-# scheme — this tag only describes the structural-AST fingerprints).
-SYMBOL_FINGERPRINT_SCHEME = "hypergumbo-symbol-fp-v1"
+# WI-fanun: scheme tag for Symbol.fingerprint, populated by the
+# orchestrator post-pass in ``hypergumbo_core.fingerprint`` (the sole
+# producer — the former producer-side manifest hashes were demolished
+# by ADR-0032 Phase 2 PR2 and the WI-falum revision). v2 = the
+# context-aware rewrite (whole-file parse + subtree hash, WI-falum);
+# every emitted value changed relative to v1's snippet-rooted walks.
+SYMBOL_FINGERPRINT_SCHEME = "hypergumbo-symbol-fp-v2"
 
 
 def _now_iso_utc() -> str:

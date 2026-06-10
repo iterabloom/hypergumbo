@@ -353,9 +353,12 @@ Future axis declarations (possible `supply_chain.tier`, `Edge.meta` key vocabula
   - 🟩 Python: implemented via `_compute_shape_id()` using Python's `ast` module
   - 🟩 Tree-sitter languages: implemented via generic CST walker in `TreeSitterAnalyzer.compute_shape_id()`. Two wiring paths: (1) analyzers that populate `node_for_symbol` get automatic shape_id computation in the base class `analyze()` method, (2) analyzers that call `compute_shape_id(node)` directly at symbol construction time.
   - Coverage: ~41 of ~70 code-language analyzers — 20 mainstream (via `node_for_symbol`, direct `compute_shape_id()`, or Python's `ast` override) + 19 extended1 + 1 common (HLSL). Remaining gaps are niche languages (13 extended1 without, 10 common without, Dart not yet wired). See ADR-0014 status line for the live coverage table.
-* `fingerprint` (content hash): `sha256(source_bytes)`
-  - Changes when implementation changes
-  - Purpose: Detect modifications
+* `fingerprint` (structural content hash): `hgfp2:` + `sha256(subtree_walk)[:16]`
+  - Hash of the symbol's parse subtree — shape + identifiers + literals — computed by the central post-pass in `hypergumbo_core/fingerprint.py`, which parses each file once and hashes the subtree covering the symbol's span (scheme tag declared top-level as `symbol_fingerprint_scheme`)
+  - **Does NOT change** when: blank lines, indentation choices, or comments change (whitespace/comment-invariant — deliberately NOT a raw `sha256(source_bytes)`)
+  - **DOES change** when: an identifier is renamed, a literal's value changes, or structure changes
+  - Purpose: Detect meaningful modifications; duplicate-code detection; per-symbol cache invalidation
+  - `None` when: the language has no grammar in the language pack (bash, regex-only analyzers), the span has no parseable content, or the located subtree contains parse errors — an honest null, never a degenerate constant (enforced by the spec validator's fingerprint-degeneracy umbrella check)
 
 **Route and entry-point stable_id variants** (ADR-0014 §4). Symbols that name framework endpoints rather than language constructs use distinct, smaller-input hash bases so the same route or entry hashes identically across analyzers and frameworks:
 

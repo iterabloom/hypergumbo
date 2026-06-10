@@ -346,3 +346,27 @@ fn computeNormal(p1: vec3<f32>, p2: vec3<f32>) -> vec3<f32> {
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "computeNormal"]
         assert len(funcs) == 1
         assert "vec3<f32>" in funcs[0].signature
+
+
+def test_no_producer_side_fingerprint(tmp_path):
+    """WI-lisog facet (c): wgsl.py must not stamp its own bare-hex
+    fingerprint (a different algorithm and format from the central
+    ``hgfp:``-prefixed structural scheme). Producer-side fingerprints
+    stay None; the orchestrator post-pass owns the field."""
+    wgsl_file = tmp_path / "shader.wgsl"
+    wgsl_file.write_text("""
+struct VertexInput {
+    @location(0) position: vec3<f32>,
+};
+
+@vertex
+fn vs_main(in: VertexInput) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(in.position, 1.0);
+}
+""")
+    result = analyze_wgsl_files(tmp_path)
+    assert result.symbols, "fixture should produce symbols"
+    for sym in result.symbols:
+        assert sym.fingerprint is None, (
+            f"{sym.id} carries producer-side fingerprint {sym.fingerprint!r}"
+        )

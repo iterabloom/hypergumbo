@@ -233,7 +233,7 @@ def _extract_wgsl_symbols(
                     id=symbol_id,
                     stable_id=make_entry_stable_id(entry_type, func_name) if entry_type else None,
                     shape_id=None,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # stamped by the central post-pass (WI-lisog facet c)
                     kind="function",
                     name=func_name,
                     path=rel_path,
@@ -263,7 +263,7 @@ def _extract_wgsl_symbols(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # stamped by the central post-pass (WI-lisog facet c)
                     kind="struct",
                     name=struct_name,
                     path=rel_path,
@@ -322,7 +322,7 @@ def _extract_wgsl_symbols(
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        fingerprint=None,  # stamped by the central post-pass (WI-lisog facet c)
                         kind=kind,
                         name=var_name,
                         path=rel_path,

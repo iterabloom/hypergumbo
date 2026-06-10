@@ -622,7 +622,7 @@ def test_cross_field_class_b_coherent_passes() -> None:
         display_label=None,
         origin=["websocket-linker"],
         stable_id="sha256:" + "0" * 16,
-        fingerprint="hgfp1:" + "0" * 64,
+        fingerprint="hgfp2:" + "0" * 16,
         qualified_name=None,
         dst_ref=None,
         dst=None,
@@ -860,6 +860,121 @@ def test_cross_field_stable_id_collisions_above_threshold_flags() -> None:
     assert "33.3%" in (v.observed or "")
     assert "sha256:cccccccccccccccc" in (v.message or "")
     assert "colliding_0" in (v.message or "")
+
+
+# ----------------------------------------------------------------------
+# WI-falum — fingerprint degeneracy umbrella check
+# ----------------------------------------------------------------------
+#
+# The structural fingerprint hashes shape + identifiers + literals, so
+# symbols with DISTINCT names should virtually never share one value en
+# masse. When they do (76 TOML dependency nodes / 67 distinct package
+# names / ONE fingerprint — the WI-falum 6.0.0 regression), the producer
+# has lost content discrimination and the value is degenerate. Sibling
+# of the INV-bazij stable_id collision-rate umbrella above.
+
+
+def _make_sym_with_fingerprint(idx: int, fp: str | None, name: str) -> _FakeSym:
+    """Build a minimal Symbol stand-in with the given fingerprint."""
+    return _FakeSym(
+        id=f"toml:test/pyproject.toml:{idx}-{idx}:{name}:dependency",
+        kind="dependency",
+        language="toml",
+        discovery_language=None,
+        protocol_origin=None,
+        display_label=None,
+        origin=[],
+        qualified_name=None,
+        stable_id=f"sha256:{idx:016x}",
+        fingerprint=fp,
+        name=name,
+        dst_ref=None,
+        dst=None,
+    )
+
+
+def test_cross_field_fingerprint_degeneracy_flags() -> None:
+    """One fingerprint value shared by >= 10 distinctly-named symbols
+    fires exactly ONE umbrella violation naming the degenerate value."""
+    syms = [
+        _make_sym_with_fingerprint(i, "hgfp2:deaddeaddeaddead", f"pkg_{i}")
+        for i in range(12)
+    ]
+    violations = validate_ir(syms, [], [])
+    matched = [
+        v for v in violations
+        if v.validator_class == "cross_field"
+        and v.field_name == "Symbol.fingerprint"
+    ]
+    assert len(matched) == 1
+    v = matched[0]
+    assert v.severity == "warning"
+    assert v.record_id is None
+    assert "hgfp2:deaddeaddeaddead" in (v.message or "")
+    assert "12" in (v.observed or "")
+    assert "pkg_0" in (v.message or "")
+
+
+def test_cross_field_fingerprint_shared_by_same_name_passes() -> None:
+    """Many symbols sharing a fingerprint under FEW distinct names is
+    legitimate duplicate code (the design intent), not degeneracy."""
+    syms = [
+        _make_sym_with_fingerprint(i, "hgfp2:feedfeedfeedfeed", "__init__")
+        for i in range(12)
+    ]
+    violations = validate_ir(syms, [], [])
+    assert not any(
+        v.validator_class == "cross_field"
+        and v.field_name == "Symbol.fingerprint"
+        for v in violations
+    )
+
+
+def test_cross_field_fingerprint_qualified_same_simple_name_passes() -> None:
+    """Identical methods across many classes share a hash under many
+    QUALIFIED names but one simple name — legitimate duplicate code
+    (e.g. a pytest fixture method repeated per test class), not
+    degeneracy. Names compare by simple form."""
+    syms = [
+        _make_sym_with_fingerprint(
+            i, "hgfp2:beefbeefbeefbeef", f"TestClass{i}.tracker_set",
+        )
+        for i in range(12)
+    ]
+    violations = validate_ir(syms, [], [])
+    assert not any(
+        v.validator_class == "cross_field"
+        and v.field_name == "Symbol.fingerprint"
+        for v in violations
+    )
+
+
+def test_cross_field_fingerprint_distinct_values_pass() -> None:
+    """Distinct fingerprints (the healthy state) emit no umbrella."""
+    syms = [
+        _make_sym_with_fingerprint(i, f"hgfp2:{i:016x}", f"pkg_{i}")
+        for i in range(12)
+    ]
+    violations = validate_ir(syms, [], [])
+    assert not any(
+        v.validator_class == "cross_field"
+        and v.field_name == "Symbol.fingerprint"
+        for v in violations
+    )
+
+
+def test_cross_field_fingerprint_none_ignored() -> None:
+    """Null fingerprints never count toward degeneracy groups."""
+    syms = [
+        _make_sym_with_fingerprint(i, None, f"pkg_{i}")
+        for i in range(12)
+    ]
+    violations = validate_ir(syms, [], [])
+    assert not any(
+        v.validator_class == "cross_field"
+        and v.field_name == "Symbol.fingerprint"
+        for v in violations
+    )
 
 
 def test_cross_field_stable_id_empty_inputs_pass() -> None:
@@ -1290,7 +1405,7 @@ def test_cross_field_class_b_canary_is_umbrella_not_per_record() -> None:
         _class_b_sym(
             id=f"python:test/fake.py:{i}-{i}:class-b-{i}:function",
             stable_id=None,
-            fingerprint="hgfp1:" + "0" * 64,
+            fingerprint="hgfp2:" + "0" * 16,
             discovery_language="python",
             origin=["websocket-linker"],
         )
@@ -1309,7 +1424,7 @@ def test_cross_field_class_b_fully_stamped_passes_canary() -> None:
     """A fully-stamped Class B stand-in emits no canary violations."""
     sym = _class_b_sym(
         stable_id="sha256:" + "0" * 16,
-        fingerprint="hgfp1:" + "0" * 64,
+        fingerprint="hgfp2:" + "0" * 16,
         discovery_language="python",
         origin=["websocket-linker"],
     )

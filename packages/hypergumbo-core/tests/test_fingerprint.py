@@ -53,8 +53,8 @@ class TestPythonFingerprint:
         source = b"def f(x):\n    return x + 1\n"
         fp = compute_symbol_fingerprint("python", _span(1, 2), source)
         assert fp is not None
-        assert fp.startswith("hgfp1:")
-        assert len(fp) == len("hgfp1:") + 16
+        assert fp.startswith("hgfp2:")
+        assert len(fp) == len("hgfp2:") + 16
 
     def test_whitespace_changes_dont_change_fingerprint(self) -> None:
         a = b"def f(x):\n    return x + 1\n"
@@ -101,7 +101,7 @@ class TestPythonFingerprint:
         # Method span: lines 2-3 (the ``def bar`` body, indented).
         fp = compute_symbol_fingerprint("python", _span(2, 3), source)
         assert fp is not None
-        assert fp.startswith("hgfp1:")
+        assert fp.startswith("hgfp2:")
 
     def test_attribute_access_is_part_of_fingerprint(self) -> None:
         """ast.Attribute leaf — renaming the attribute changes the fingerprint."""
@@ -131,7 +131,7 @@ class TestTreeSitterFingerprint:
         source = b"function f(x) { return x + 1; }\n"
         fp = compute_symbol_fingerprint("javascript", _span(1, 1), source)
         assert fp is not None
-        assert fp.startswith("hgfp1:")
+        assert fp.startswith("hgfp2:")
 
     def test_javascript_comment_filtered(self) -> None:
         a = b"function f(x) { return x + 1; }\n"
@@ -173,7 +173,7 @@ class TestStampOrchestrator:
         assert sym.fingerprint is None
         stamp_symbol_fingerprints([sym], tmp_path)
         assert sym.fingerprint is not None
-        assert sym.fingerprint.startswith("hgfp1:")
+        assert sym.fingerprint.startswith("hgfp2:")
 
     def test_missing_file_leaves_null(self, tmp_path: Path) -> None:
         sym = _sym("python", "nonexistent.py", 1, 1)
@@ -256,6 +256,198 @@ class TestStampOrchestrator:
         assert read_count == 1
 
 
+class TestContextAwareFingerprint:
+    """WI-falum / WI-lisog: spans are fingerprinted in their file's parse
+    context, not as out-of-context snippets.
+
+    The v1 implementation sliced the span out of the file and parsed the
+    slice standalone. Two failure modes followed: a single-line TOML
+    array element parses to an ERROR tree whose leaf walk drops the
+    content (all 76 TOML dependency nodes collapsed to ONE fingerprint —
+    WI-falum, a 6.0.0 regression), and a Python method containing a
+    column-0 triple-quoted fixture defeats the dedent fallback
+    (3,911 test methods fingerprint=None — WI-lisog facet a).
+    """
+
+    def test_toml_single_line_dep_spans_get_distinct_fingerprints(self) -> None:
+        """The WI-falum regression case: distinct dependency lines must
+        hash distinctly."""
+        source = (
+            b'[project]\n'
+            b'name = "fixture"\n'
+            b'dependencies = [\n'
+            b'    "rich~=14.3.2",\n'
+            b'    "bcrypt>=4.0",\n'
+            b'    "ruamel.yaml>=0.18",\n'
+            b']\n'
+        )
+        fps = [
+            compute_symbol_fingerprint("toml", _span(line, line), source)
+            for line in (4, 5, 6)
+        ]
+        assert all(fp is not None for fp in fps), fps
+        assert len(set(fps)) == 3, fps
+
+    def test_toml_identical_dep_lines_share_fingerprint(self) -> None:
+        """Content-identical declarations hash identically (the structural
+        contract): the same dep line in two manifests is the same content."""
+        source_a = (
+            b'[project]\nname = "a"\ndependencies = [\n'
+            b'    "rich~=14.3.2",\n]\n'
+        )
+        source_b = (
+            b'[project]\nname = "b"\ndependencies = [\n'
+            b'    "click>=8.0",\n    "rich~=14.3.2",\n]\n'
+        )
+        fp_a = compute_symbol_fingerprint("toml", _span(4, 4), source_a)
+        fp_b = compute_symbol_fingerprint("toml", _span(5, 5), source_b)
+        assert fp_a is not None
+        assert fp_a == fp_b
+
+    def test_python_method_with_column0_heredoc_gets_fingerprint(self) -> None:
+        """WI-lisog facet (a): a method whose body embeds a column-0
+        triple-quoted fixture defeats textwrap.dedent (common prefix
+        becomes 0, the ``def`` stays indented, ast.parse raises). In
+        file context the method parses fine."""
+        source = (
+            b'class T:\n'
+            b'    def m(self):\n'
+            b'        s = """\n'
+            b'class Order < ApplicationRecord\n'
+            b'"""\n'
+            b'        return s\n'
+        )
+        fp = compute_symbol_fingerprint("python", _span(2, 6), source)
+        assert fp is not None
+
+    def test_same_code_in_different_file_contexts_hashes_identically(self) -> None:
+        """Parsing in context must not leak the surrounding file into the
+        hash — structural identity of identical defs is preserved."""
+        src1 = b"import os\n\ndef f(x):\n    return x + 1\n"
+        src2 = b"import sys\nimport json\n\n\ndef f(x):\n    return x + 1\n"
+        fp1 = compute_symbol_fingerprint("python", _span(3, 4), src1)
+        fp2 = compute_symbol_fingerprint("python", _span(5, 6), src2)
+        assert fp1 is not None
+        assert fp1 == fp2
+
+    def test_python_decorated_function_span_resolves(self) -> None:
+        """Producer spans often start at the decorator line; the locator
+        must still find the decorated def, not fall back to whole-module."""
+        source = (
+            b"import functools\n"
+            b"@functools.cache\n"
+            b"def f(x):\n"
+            b"    return x + 1\n"
+            b"def g(y):\n"
+            b"    return y - 1\n"
+        )
+        fp_f = compute_symbol_fingerprint("python", _span(2, 4), source)
+        fp_g = compute_symbol_fingerprint("python", _span(5, 6), source)
+        assert fp_f is not None
+        assert fp_g is not None
+        assert fp_f != fp_g
+
+    def test_python_span_straddling_siblings_hashes_contents(self) -> None:
+        """A span covering two sibling defs (e.g. a region symbol) hashes
+        the covered statements, never the whole module."""
+        source = (
+            b"import os\n"
+            b"def f():\n    return 1\n"
+            b"def g():\n    return 2\n"
+        )
+        fp_pair = compute_symbol_fingerprint("python", _span(2, 5), source)
+        fp_whole = compute_symbol_fingerprint("python", _span(1, 5), source)
+        assert fp_pair is not None
+        assert fp_whole is not None
+        assert fp_pair != fp_whole
+
+    def test_unparseable_content_returns_none_never_constant(self) -> None:
+        """The degenerate-hash failure mode: content the parser cannot
+        see must yield None, not a constant value shared by everything."""
+        fp = compute_symbol_fingerprint(
+            "python", _span(1, 1), b"def f(:\n  invalid\n",
+        )
+        assert fp is None
+
+    def test_toml_error_region_returns_none(self) -> None:
+        """A span whose located subtree is an ERROR node yields None."""
+        source = b'= = = garbage that is not toml = = =\n'
+        fp = compute_symbol_fingerprint("toml", _span(1, 1), source)
+        assert fp is None
+
+
+class TestFallbackAndEdgePaths:
+    """Cover the broken-file fallback and the degenerate-span guards."""
+
+    BROKEN_TAIL = (
+        b"def good(x):\n"
+        b"    return x + 1\n"
+        b"def broken(:\n"
+        b"    nonsense\n"
+    )
+
+    def test_broken_file_falls_back_to_snippet_parse(self) -> None:
+        """When the whole file fails ast.parse, a span over a valid
+        region still fingerprints via the legacy snippet path."""
+        fp = compute_symbol_fingerprint("python", _span(1, 2), self.BROKEN_TAIL)
+        assert fp is not None
+        assert fp.startswith("hgfp2:")
+
+    def test_broken_file_span_past_eof_returns_none(self) -> None:
+        fp = compute_symbol_fingerprint("python", _span(99, 99), self.BROKEN_TAIL)
+        assert fp is None
+
+    def test_parsed_file_span_over_comment_only_returns_none(self) -> None:
+        """A span covering no AST-visible content (comment-only lines in
+        a file that parses fine) yields an honest None."""
+        source = b"# just a comment\n# another\ndef f():\n    return 1\n"
+        fp = compute_symbol_fingerprint("python", _span(1, 2), source)
+        assert fp is None
+
+    def test_tree_sitter_span_past_eof_returns_none(self) -> None:
+        source = b'[project]\nname = "x"\n'
+        fp = compute_symbol_fingerprint("toml", _span(99, 99), source)
+        assert fp is None
+
+    def test_tree_sitter_whole_file_with_error_returns_none(self) -> None:
+        """A whole-file span over a file whose root contains parse
+        errors yields None via the fits-branch error guard. (No trailing
+        newline: the document node must fit the trimmed range exactly to
+        exercise the fits branch rather than the container branch.)"""
+        source = b"a = 1\n= garbage here"
+        fp = compute_symbol_fingerprint("toml", _span(1, 2), source)
+        assert fp is None
+
+    def test_tree_sitter_error_sibling_does_not_block_clean_span(self) -> None:
+        """An error elsewhere in the file must not null a span whose own
+        content parses cleanly (per-span honesty cuts both ways)."""
+        source = b"a = 1\n= garbage here\n"
+        fp = compute_symbol_fingerprint("toml", _span(1, 1), source)
+        assert fp is not None
+
+    def test_slice_source_defensive_empty_span(self) -> None:
+        """Direct guard check: _slice_source returns b'' on inverted /
+        zero spans (callers pre-filter, but the helper stays safe)."""
+        from hypergumbo_core.fingerprint import _slice_source
+
+        assert _slice_source(b"x = 1\n", _span(0, 0)) == b""
+
+
 def test_scheme_constant_is_stable() -> None:
-    """The scheme tag string is part of the on-disk contract; pin it."""
-    assert SYMBOL_FINGERPRINT_SCHEME == "hypergumbo-symbol-fp-v1"
+    """The scheme tag string is part of the on-disk contract; pin it.
+
+    v2 (WI-falum): the context-aware rewrite changes every emitted value
+    (subtree-rooted walks replace snippet-rooted walks), so the scheme
+    tag and prefix bump per the module's own versioning convention.
+    """
+    assert SYMBOL_FINGERPRINT_SCHEME == "hypergumbo-symbol-fp-v2"
+
+
+def test_prefix_is_hgfp2() -> None:
+    """Every emitted fingerprint carries the v2 prefix."""
+    fp = compute_symbol_fingerprint(
+        "python", _span(1, 2), b"def f(x):\n    return x + 1\n",
+    )
+    assert fp is not None
+    assert fp.startswith("hgfp2:")
+    assert len(fp) == len("hgfp2:") + 16

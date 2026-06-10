@@ -290,6 +290,16 @@ The schema generator claimed "auto-generated from Python dataclasses" but hand-c
 - **Opaque top-level blocks typed; missing keys declared** (0.14.0 → 0.14.1, additive). `limits`, `features[]`, and `metrics` get real definitions (introspected `Limits` / `Feature` / `SliceQuery` $defs plus declared metrics keys), and three always-emitted top-level keys the schema never mentioned — `reproducibility_context`, `symbol_fingerprint_scheme`, `validation_report` — are now present. Each non-dataclass block's property set is pinned to its actual producer by contract tests.
 - **`reproducibility_context.implications` fixed** to reference `analysis_runs[].pass_version` (where the per-pass code hashes actually live) instead of `pass_versions`, a key `captured` never carries.
 
+#### Symbol fingerprints — context-aware rewrite (`symbol_fingerprint_scheme` v1 → v2)
+
+The v1 fingerprinter sliced each Symbol's span out of its file and parsed the slice as a standalone document; spans that don't parse out of context degraded silently. v2 parses each file once and hashes the parse subtree covering the span, so span content is always seen in its real syntactic context. Subtree-rooted walks change every emitted value, hence `hgfp1:` → `hgfp2:`.
+
+- **TOML dependency fingerprint collapse fixed (WI-falum, regression vs 5.0.1).** All 76 TOML dependency nodes shared ONE fingerprint: a single-line array element (`"rich~=14.3.2",`) parses standalone to an ERROR tree whose leaf walk drops the content. In file context each dependency hashes its own content; spans pointing at part of a container hash the fully-contained children, and unparseable spans yield `None` — never a shared constant. Also fixed en route: grammars that don't materialize content as leaf nodes (tree-sitter-toml's `string` has only its two quote tokens as children) now contribute the uncovered gap text, whitespace-stripped.
+- **Python test-method fingerprints no longer null (WI-lisog facet a).** ~3,911 test methods had `fingerprint=None` because a method embedding a column-0 triple-quoted fixture defeats the `textwrap.dedent` retry. Parsed in file context the method fingerprints fine; the dedent path survives only as the fallback for files that genuinely don't parse.
+- **WGSL producer-side bare-hex fingerprints demolished (WI-lisog facet c, 4 emit sites).** `wgsl.py` stamped raw `sha256(bytes)[:16]` with no scheme prefix — a second algorithm and format under the one declared scheme. The central post-pass now solely owns `Symbol.fingerprint`.
+- **Fingerprint degeneracy umbrella check** added to the spec validator (`cross_field`): one warning names fingerprint values shared by ≥ 10 distinctly-named symbols, so the WI-falum signature (76 symbols / 67 names / 1 value) can no longer ship invisibly.
+- **Spec fingerprint definition corrected (WI-pupij).** The spec claimed `fingerprint` = `sha256(source_bytes)`; the field is and always was a structural hash modulo whitespace/comments. Spec and schema descriptions now state the structural semantics, the scheme prefix, and the null conditions.
+
 #### verify-claims hardening
 
 A campaign closing the silent-false-confirmation class of bug: every path that previously returned `confirmed` (or a raw traceback) without actually checking anything now resolves to a distinct verdict or a clean error.
