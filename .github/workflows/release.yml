@@ -98,6 +98,15 @@ jobs:
             pip install -e .[dev]
           fi
           pip install pip-audit bandit pip-licenses
+          # Mirror ci.yml's baseline-env pins: the self-hosted runner's
+          # baseline Python can ship older versions of these transitive
+          # deps than our packages install at runtime, and pip-audit scans
+          # the environment as-is. The 6.0.0 release run failed on the
+          # runner's baseline urllib3 2.6.3 exactly this way.
+          pip install "requests~=2.33.0"   # CVE-2026-25645
+          pip install "pygments~=2.20.0"   # CVE-2026-4539
+          pip install "urllib3>=2.7.0"     # CVE-2026-44431 / CVE-2026-44432
+          pip install "idna>=3.15"         # CVE-2026-45409
 
       - name: Vulnerability scan (pip-audit)
         run: |
@@ -118,7 +127,18 @@ jobs:
           # AV:L + UI:A, zero attack surface on our pinned-dep self-hosted
           # runner). Fix is pip 26.1 (PR pypa/pip#13870), not yet on PyPI
           # when this was added. Drop once pip-audit stops flagging pip.
-          pip-audit --skip-editable --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219
+          #
+          # PYSEC-2026-139 / CVE-2025-3000: torch, transitive via the dev
+          # extra's sentence-transformers. No fixed release exists; the
+          # full threat analysis (attacker-controlled tensors / crafted
+          # JIT / malicious .pt2 — none reachable from the pinned
+          # SentenceTransformer encode() path) lives in ci.yml's ML-stack
+          # carve-out comment, which names this CVE. The two IDs are the
+          # same advisory under different database keys (the CVE key began
+          # surfacing independently on 2026-06-10). Re-check cadence is
+          # tracker item WI-totak; drop both when a fixed torch ships.
+          pip-audit --skip-editable --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219 \
+            --ignore-vuln PYSEC-2026-139 --ignore-vuln CVE-2025-3000
 
       - name: Security linting (Bandit)
         run: |
