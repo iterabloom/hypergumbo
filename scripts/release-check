@@ -201,13 +201,25 @@ section "3. Dependencies & Security"
 #   --skip-editable        skip our own editable installs (audited at build)
 #   --ignore-vuln CVE-2025-71176  pytest TOCTOU (dev-only, single-tenant runner)
 #   --ignore-vuln CVE-2026-3219   pip ZIP confusion (AV:L+UI:A, ~0 exposure)
+# Two additional local-only ignores for advisories with NO released fix
+# (fix_versions: [] as of 2026-06-10) in packages absent from the CI
+# audit env (so the mirror claim holds — CI never sees them):
+#   --ignore-vuln CVE-2025-69872  diskcache, pulled in only by
+#                                 llama_cpp_python (local LM experiments,
+#                                 not a hypergumbo dependency)
+#   --ignore-vuln PYSEC-2026-139  torch, transitive of the optional
+#                                 sentence-transformers embeddings extra;
+#                                 re-check for a fixed release at next
+#                                 release-prep and drop the ignore then
 # pip-audit's exit code is the gate: 0 = no vulnerabilities, 1 = found.
 # Anything else (network, parse, unsupported package) is a real failure
 # we want to surface, not paper over.
 echo "  Running pip-audit..."
 AUDIT_OUTPUT=$(pip-audit --skip-editable \
     --ignore-vuln CVE-2025-71176 \
-    --ignore-vuln CVE-2026-3219 2>&1)
+    --ignore-vuln CVE-2026-3219 \
+    --ignore-vuln CVE-2025-69872 \
+    --ignore-vuln PYSEC-2026-139 2>&1)
 AUDIT_EXIT=$?
 if [ $AUDIT_EXIT -eq 0 ]; then
     pass "No known vulnerabilities in dependencies"
