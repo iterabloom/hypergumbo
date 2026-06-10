@@ -73,7 +73,8 @@ def python_type_to_json_schema(py_type: Any) -> Dict[str, Any]:
                 inner_schema = python_type_to_json_schema(non_none_args[0])
                 return {"oneOf": [inner_schema, {"type": "null"}]}
 
-        if origin is list:
+        if origin in (list, set, frozenset):
+            # set / frozenset fields serialize as sorted JSON arrays.
             if args:
                 return {"type": "array", "items": python_type_to_json_schema(args[0])}
             return {"type": "array"}  # pragma: no cover — all IR lists are parameterized
@@ -119,8 +120,15 @@ class ClassSpec:
     conditional: Set[str] = dataclasses.field(default_factory=set)
     # JSON keys required beyond the no-default-and-not-Optional rule
     extra_required: List[str] = dataclasses.field(default_factory=list)
+    # JSON keys to_dict() adds that have no backing dataclass field
+    # (e.g. Limits' not_captured / analyzer_version, Feature's id / name)
+    extras: Dict[str, Dict[str, Any]] = dataclasses.field(default_factory=dict)
+    # dataclass fields deliberately NOT serialized by to_dict()
+    omitted: Set[str] = dataclasses.field(default_factory=set)
     # builds a fully-populated instance for verify_round_trip
     sample_factory: Optional[Callable[[], Any]] = None
+    # serializes an instance to its JSON dict (default: to_dict())
+    serializer: Callable[[Any], Dict[str, Any]] = lambda instance: instance.to_dict()
 
 
 def build_def(spec: ClassSpec) -> Dict[str, Any]:
@@ -132,6 +140,8 @@ def build_def(spec: ClassSpec) -> Dict[str, Any]:
 
     field_names = {fld.name for fld in dataclasses.fields(spec.cls)}
     for f in dataclasses.fields(spec.cls):
+        if f.name in spec.omitted:
+            continue
         if f.name in spec.folded:
             target = spec.folded[f.name]
             if target not in spec.composites:
@@ -177,6 +187,10 @@ def build_def(spec: ClassSpec) -> Dict[str, Any]:
         if not has_default and not is_optional and json_key not in spec.conditional:
             required.append(json_key)
 
+    # to_dict()-only keys with no backing dataclass field.
+    for extra_key, extra_schema in spec.extras.items():
+        properties[extra_key] = copy.deepcopy(extra_schema)
+
     # Guard: every decorated / overridden / composite key must exist.
     produced = set(properties)
     for table_name, table in (
@@ -206,10 +220,10 @@ def build_def(spec: ClassSpec) -> Dict[str, Any]:
 
 def verify_round_trip(spec: ClassSpec, def_schema: Dict[str, Any]) -> None:
     """Assert a fully-populated instance's to_dict() keys == schema properties."""
-    if spec.sample_factory is None:  # pragma: no cover — all four specs declare one
+    if spec.sample_factory is None:  # pragma: no cover — every spec declares one
         return
     instance = spec.sample_factory()
-    dict_keys = set(instance.to_dict())
+    dict_keys = set(spec.serializer(instance))
     schema_keys = set(def_schema["properties"])
     if dict_keys != schema_keys:
         raise SchemaDriftError(
@@ -688,11 +702,316 @@ def _analysis_run_spec() -> ClassSpec:
     )
 
 
+# ---------------------------------------------------------------------------
+# Limits family (WI-kutas PR2 — the previously-opaque "limits" block)
+# ---------------------------------------------------------------------------
+
+def _failed_file_spec() -> ClassSpec:
+    from hypergumbo_core.limits import FailedFile
+
+    return ClassSpec(
+        cls=FailedFile,
+        description="A file that failed during analysis",
+        decorations={
+            "path": {"description": "Repo-relative path of the failed file"},
+            "reason": {"description": "Why analysis failed (exception summary)"},
+            "analyzer": {"description": "Pass ID of the analyzer that failed"},
+        },
+        sample_factory=lambda: __import__(
+            "hypergumbo_core.limits", fromlist=["FailedFile"]
+        ).FailedFile(path="a.py", reason="boom", analyzer="python"),
+    )
+
+
+def _classification_failure_spec() -> ClassSpec:
+    from hypergumbo_core.limits import ClassificationFailure
+
+    return ClassSpec(
+        cls=ClassificationFailure,
+        description="A file that failed supply chain classification",
+        decorations={
+            "path": {"description": "Path that could not be classified"},
+            "reason": {"description": "Why classification fell through"},
+        },
+        sample_factory=lambda: __import__(
+            "hypergumbo_core.limits", fromlist=["ClassificationFailure"]
+        ).ClassificationFailure(path="a.py", reason="outside repo"),
+    )
+
+
+def _ambiguous_path_spec() -> ClassSpec:
+    from hypergumbo_core.limits import AmbiguousPath
+
+    return ClassSpec(
+        cls=AmbiguousPath,
+        description="A file with ambiguous supply chain classification",
+        decorations={
+            "path": {"description": "Path with ambiguous classification"},
+            "assigned": {"description": "Tier that was assigned despite ambiguity"},
+            "note": {"description": "Why the classification is ambiguous"},
+        },
+        sample_factory=lambda: __import__(
+            "hypergumbo_core.limits", fromlist=["AmbiguousPath"]
+        ).AmbiguousPath(path="vendor/x.py", assigned=3, note="vendored?"),
+    )
+
+
+def _supply_chain_limits_spec() -> ClassSpec:
+    from hypergumbo_core.limits import SupplyChainLimits
+
+    return ClassSpec(
+        cls=SupplyChainLimits,
+        description="Supply chain classification issues",
+        decorations={
+            "classification_failures": {
+                "description": "Files that failed supply chain classification",
+            },
+            "ambiguous_paths": {
+                "description": "Files whose classification was ambiguous",
+            },
+        },
+        sample_factory=lambda: __import__(
+            "hypergumbo_core.limits", fromlist=["SupplyChainLimits"]
+        ).SupplyChainLimits(),
+    )
+
+
+def _limits_sample():
+    from hypergumbo_core.limits import Limits
+
+    return Limits(
+        max_tier_applied=2,
+        max_files_per_analyzer=10,
+        test_files_excluded=True,
+    )
+
+
+def _limits_spec() -> ClassSpec:
+    from hypergumbo_core.limits import Limits
+
+    return ClassSpec(
+        cls=Limits,
+        description=(
+            "Known gaps and limitations of this analysis — what was NOT "
+            "captured, enabling honest downstream reporting"
+        ),
+        decorations={
+            "failed_files": {
+                "description": "Files that failed analysis ({path, reason, analyzer})",
+            },
+            "skipped_languages": {
+                "description": "Languages detected but not analyzed",
+            },
+            "skipped_passes": {
+                "description": "Passes skipped at dispatch time, with reasons",
+            },
+            "truncated_files": {
+                "description": "Files truncated or skipped due to size",
+            },
+            "analysis_depth": {
+                "description": "Depth of analysis performed (e.g. syntax_only)",
+            },
+            "partial_results_reason": {
+                "description": "Why results are partial, when they are",
+            },
+            "supply_chain": {
+                "description": "Supply chain classification issues",
+            },
+            "test_files_excluded": {
+                "description": "Present (true) when test files were excluded",
+            },
+        },
+        overrides={
+            # Emitted only when set; constraints live inside oneOf branches.
+            "max_tier_applied": {
+                "oneOf": [{"type": "integer"}, {"type": "null"}],
+                "description": "Max supply-chain tier filter applied, when any",
+            },
+            "max_files_per_analyzer": {
+                "oneOf": [{"type": "integer"}, {"type": "null"}],
+                "description": "Per-analyzer file cap applied, when any",
+            },
+        },
+        extras={
+            "not_captured": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Known analysis limitations (static list)",
+            },
+            "analyzer_version": {
+                "type": "string",
+                "description": "hypergumbo version string that produced this analysis",
+            },
+        },
+        conditional={"max_tier_applied", "max_files_per_analyzer", "test_files_excluded"},
+        sample_factory=_limits_sample,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Feature / SliceQuery (WI-kutas PR2 — the previously-untyped features[])
+# ---------------------------------------------------------------------------
+
+def _slice_query_sample():
+    from hypergumbo_core.slice import SliceQuery
+
+    return SliceQuery(
+        entrypoint="main",
+        max_tier=2,
+        language="python",
+        hub_threshold=50,
+        exclude_imports=True,
+        dataflow=True,
+    )
+
+
+def _slice_query_spec() -> ClassSpec:
+    from hypergumbo_core.slice import SliceQuery
+
+    return ClassSpec(
+        cls=SliceQuery,
+        description=(
+            "The query that produced a feature slice (subset of SliceQuery "
+            "fields that affect the stable feature id)"
+        ),
+        renames={"max_hops": "hops"},
+        omitted={"min_confidence"},
+        decorations={
+            "entrypoint": {"description": "Symbol name, file path, or node ID the slice starts from"},
+            "hops": {"description": "Max traversal depth (null = unlimited)"},
+            "max_files": {"description": "Max files included in the slice"},
+            "exclude_tests": {"description": "Whether test files were excluded"},
+            "exclude_utility": {"description": "Whether utility files were excluded"},
+            "method": {"description": "Traversal method (bfs)"},
+            "reverse": {"description": "True = callers (backward traversal)"},
+            "max_tier": {"description": "Max supply chain tier included, when set"},
+            "language": {"description": "Entry-point language filter, when set"},
+            "hub_threshold": {"description": "Hub-degree pruning threshold, when set"},
+            "exclude_imports": {"description": "Present (true) when import edges were excluded"},
+            "pass_through_kinds": {"description": "Node kinds traversed but excluded from output"},
+            "dataflow": {"description": "Present (true) for dataflow-constrained slices"},
+        },
+        conditional={
+            "max_tier", "language", "hub_threshold",
+            "exclude_imports", "pass_through_kinds", "dataflow",
+        },
+        sample_factory=_slice_query_sample,
+    )
+
+
+def _feature_sample():
+    from hypergumbo_core.slice import SliceResult
+
+    return SliceResult(
+        entry_nodes=["n1"],
+        node_ids={"n1", "n2"},
+        edge_ids={"e1"},
+        query=_slice_query_sample(),
+        limits_hit=["hop_limit"],
+        node_depths={"n1": 0},
+        node_tiers={"n1": 1},
+        admission_stats={"admitted_writer_src": 1},
+    )
+
+
+def _feature_spec() -> ClassSpec:
+    from hypergumbo_core.slice import SliceResult
+
+    return ClassSpec(
+        cls=SliceResult,
+        description=(
+            "A feature slice index entry (spec §9 features[]): IDs + query "
+            "+ summary so consumers can discover slices via the behavior "
+            "map alone and diff across commits via the stable id"
+        ),
+        decorations={
+            "entry_nodes": {"description": "IDs of the entry point nodes"},
+            "node_ids": {"description": "Sorted IDs of all nodes in the slice"},
+            "edge_ids": {"description": "Sorted IDs of all edges in the slice"},
+            "query": {"description": "Query that produced this slice"},
+            "limits_hit": {"description": "Limits reached during traversal (e.g. hop_limit)"},
+            "node_depths": {"description": "Node ID → BFS depth, when recorded"},
+            "node_tiers": {"description": "Node ID → supply chain tier, when recorded"},
+            "admission_stats": {
+                "description": "Per-rule dataflow edge-admission counters, when dataflow=True",
+            },
+        },
+        extras={
+            "id": {
+                "type": "string",
+                "description": "Stable feature ID (sha256 of the canonical query JSON)",
+            },
+            "name": {
+                "type": "string",
+                "description": "Human-readable feature name (the query entrypoint)",
+            },
+        },
+        conditional={"node_depths", "node_tiers", "admission_stats"},
+        sample_factory=_feature_sample,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ValidationViolation (WI-kutas PR2 — validation_report items)
+# ---------------------------------------------------------------------------
+
+def _validation_violation_sample():
+    from hypergumbo_core.spec_validator import ValidationViolation
+
+    return ValidationViolation(
+        severity="warning",
+        validator_class="cross_field",
+        message="sample",
+    )
+
+
+def _validation_violation_spec() -> ClassSpec:
+    from hypergumbo_core.spec_validator import ValidationViolation
+
+    return ClassSpec(
+        cls=ValidationViolation,
+        description=(
+            "One structured spec-vs-data mismatch from the end-of-pipeline "
+            "validator stage (ADR-0033)"
+        ),
+        decorations={
+            "severity": {
+                "enum": ["error", "warning", "info"],
+                "description": "Violation severity",
+            },
+            "validator_class": {
+                "description": (
+                    "Which validator class emitted this (axis_conformance, "
+                    "writer_contract, cross_field, verdict_enum, id_format)"
+                ),
+            },
+            "message": {"description": "Human-readable description for review"},
+            "axis": {"description": "Axis name (axis_conformance only)"},
+            "field_name": {"description": "Dataclass field name when applicable"},
+            "record_id": {
+                "description": "Symbol.id / Edge.id / AnalysisRun.execution_id",
+            },
+            "observed": {"description": "Offending value (stringified)"},
+            "expected": {"description": "Short description of what was expected"},
+        },
+        sample_factory=_validation_violation_sample,
+        serializer=lambda instance: dataclasses.asdict(instance),
+    )
+
+
 _SPECS: Dict[str, Callable[[], ClassSpec]] = {
     "Span": _span_spec,
     "Symbol": _symbol_spec,
     "Edge": _edge_spec,
     "AnalysisRun": _analysis_run_spec,
+    "FailedFile": _failed_file_spec,
+    "ClassificationFailure": _classification_failure_spec,
+    "AmbiguousPath": _ambiguous_path_spec,
+    "SupplyChainLimits": _supply_chain_limits_spec,
+    "Limits": _limits_spec,
+    "SliceQuery": _slice_query_spec,
+    "Feature": _feature_spec,
+    "ValidationViolation": _validation_violation_spec,
 }
 
 
@@ -702,9 +1021,9 @@ def spec_for(def_name: str) -> ClassSpec:
 
 
 def build_all_defs() -> Dict[str, Dict[str, Any]]:
-    """Build the four introspected $defs, drift-guarded and round-trip-verified."""
+    """Build the introspected $defs, drift-guarded and round-trip-verified."""
     defs: Dict[str, Dict[str, Any]] = {}
-    for def_name in ("Span", "Symbol", "Edge", "AnalysisRun"):
+    for def_name in _SPECS:
         spec = spec_for(def_name)
         def_schema = build_def(spec)
         verify_round_trip(spec, def_schema)

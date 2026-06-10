@@ -591,3 +591,183 @@ class TestSchemaDataclassSync:
             "stand-in; the conformance gate is blind to linker output again"
         )
         jsonschema.validate(behavior_map, load_schema())
+
+
+class TestTopLevelBlockTyping:
+    """WI-kutas PR2: top-level blocks typed, missing keys declared.
+
+    Each previously-opaque block (metrics / limits / features) gets a
+    real schema, and each test pins the schema's key set to the actual
+    producer's output so the block cannot silently drift again.
+    """
+
+    def test_missing_top_level_keys_declared(self):
+        """reproducibility_context / symbol_fingerprint_scheme /
+        validation_report are emitted on every run but were absent from
+        the schema's top-level properties."""
+        schema = load_schema()
+        for key in (
+            "reproducibility_context",
+            "symbol_fingerprint_scheme",
+            "validation_report",
+        ):
+            assert key in schema["properties"], f"missing top-level {key}"
+
+    def test_new_behavior_map_keys_all_declared(self):
+        """Every key new_behavior_map() emits is declared in the schema."""
+        from hypergumbo_core.schema import new_behavior_map
+
+        schema = load_schema()
+        missing = set(new_behavior_map()) - set(schema["properties"])
+        assert not missing, f"emitted but undeclared: {sorted(missing)}"
+
+    def test_limits_def_matches_to_dict(self):
+        """The limits block references a Limits $def whose property set
+        equals Limits.to_dict() output (conditionals populated)."""
+        from hypergumbo_core.limits import Limits
+
+        schema = load_schema()
+        assert schema["properties"]["limits"].get("$ref") == "#/$defs/Limits"
+        limits_def = schema["$defs"]["Limits"]
+        lim = Limits(
+            max_tier_applied=2,
+            max_files_per_analyzer=10,
+            test_files_excluded=True,
+        )
+        assert set(lim.to_dict()) == set(limits_def["properties"])
+
+    def test_limits_block_validates_real_output(self):
+        """A fully-populated Limits.to_dict() validates against the $def."""
+        from hypergumbo_core.limits import Limits
+
+        schema = load_schema()
+        lim = Limits(
+            max_tier_applied=2,
+            max_files_per_analyzer=10,
+            test_files_excluded=True,
+        )
+        lim.add_failed_file("a.py", "boom", "python")
+        lim.add_skipped_language("cobol")
+        lim.add_truncated_file("big.py", 10_000_000, "too large")
+        lim.add_classification_failure("weird.py", "outside repo")
+        lim.add_ambiguous_path("vendor/x.py", 3, "vendored?")
+        validator = make_validator(schema, "Limits")
+        validator.validate(lim.to_dict())
+
+    def test_metrics_properties_match_compute_metrics(self):
+        """The metrics block's property set equals compute_metrics() output."""
+        from hypergumbo_core.metrics import compute_metrics
+
+        schema = load_schema()
+        metrics_props = schema["properties"]["metrics"]["properties"]
+        metrics = compute_metrics(
+            [{"id": "n1", "language": "python", "path": "a.py", "kind": "function",
+              "supply_chain": {"tier_name": "first_party"}}],
+            [{"src": "n1", "dst": "n2", "confidence": 0.9}],
+            profile={"languages": {"python": {"files": 1}}},
+        )
+        assert set(metrics) == set(metrics_props)
+        # debug sub-block keys declared too
+        debug_props = metrics_props["debug"]["properties"]
+        assert set(metrics["debug"]) <= set(debug_props)
+
+    def test_feature_def_matches_slice_result(self):
+        """features[] items reference a Feature $def whose property set
+        equals SliceResult.to_dict() output (conditionals populated)."""
+        from hypergumbo_core.slice import SliceQuery, SliceResult
+
+        schema = load_schema()
+        assert (
+            schema["properties"]["features"]["items"].get("$ref")
+            == "#/$defs/Feature"
+        )
+        feature_def = schema["$defs"]["Feature"]
+        result = SliceResult(
+            entry_nodes=["n1"],
+            node_ids={"n1", "n2"},
+            edge_ids={"e1"},
+            query=SliceQuery(
+                entrypoint="main",
+                max_tier=2,
+                language="python",
+                hub_threshold=50,
+                exclude_imports=True,
+                dataflow=True,
+            ),
+            limits_hit=["hop_limit"],
+            node_depths={"n1": 0},
+            node_tiers={"n1": 1},
+            admission_stats={"admitted_writer_src": 1},
+        )
+        feature = result.to_dict()
+        assert set(feature) == set(feature_def["properties"])
+        # the nested query shape is pinned via the SliceQuery $def
+        assert set(feature["query"]) <= set(
+            schema["$defs"]["SliceQuery"]["properties"]
+        )
+        validator = make_validator(schema, "Feature")
+        validator.validate(feature)
+
+    def test_validation_report_block(self):
+        """validation_report carries schema_version, violations
+        ($ref ValidationViolation matching asdict output), and
+        violations_by_class."""
+        from dataclasses import asdict
+
+        from hypergumbo_core.spec_validator import (
+            ValidationViolation,
+            build_validation_report,
+        )
+
+        schema = load_schema()
+        vr_props = schema["properties"]["validation_report"]["properties"]
+        assert set(vr_props) == {
+            "schema_version", "violations", "violations_by_class",
+        }
+        assert (
+            vr_props["violations"]["items"].get("$ref")
+            == "#/$defs/ValidationViolation"
+        )
+        violation = ValidationViolation(
+            severity="warning",
+            validator_class="cross_field",
+            message="m",
+        )
+        vv_def = schema["$defs"]["ValidationViolation"]
+        assert set(asdict(violation)) == set(vv_def["properties"])
+        report = build_validation_report([violation])
+        # full report validates against the top-level property schema
+        sub = {"$ref": f"{schema['$id']}#/properties/validation_report"}
+        resource = Resource.from_contents(
+            schema, default_specification=DRAFT202012,
+        )
+        registry = Registry().with_resource(schema["$id"], resource)
+        jsonschema.Draft202012Validator(sub, registry=registry).validate(report)
+
+    def test_reproducibility_context_block(self):
+        """reproducibility_context's schema matches the builder output."""
+        from hypergumbo_core.schema import build_reproducibility_context
+
+        schema = load_schema()
+        rc_props = schema["properties"]["reproducibility_context"]["properties"]
+        rc = build_reproducibility_context()
+        assert set(rc) == set(rc_props)
+        captured_props = rc_props["captured"]["properties"]
+        assert set(rc["captured"]) <= set(captured_props)
+
+    def test_repro_implications_reference_capturable_fields(self):
+        """The implications text must only direct consumers at fields the
+        behavior map actually carries: captured.* keys or the explicit
+        analysis_runs[].pass_version pointer. Previously it named a
+        captured.pass_versions key that was never captured."""
+        from hypergumbo_core.schema import build_reproducibility_context
+
+        rc = build_reproducibility_context()
+        implications = rc["implications"]
+        assert "pass_versions" not in implications, (
+            "implications references 'pass_versions' which captured never "
+            "carries; point at analysis_runs[].pass_version instead"
+        )
+        assert "analysis_runs[].pass_version" in implications
+        for named in ("hypergumbo_version", "python_version"):
+            assert named in rc["captured"]

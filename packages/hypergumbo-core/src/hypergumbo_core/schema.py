@@ -70,7 +70,7 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.14.0"
+SCHEMA_VERSION = "0.14.1"
 CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v5"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v2"
@@ -134,7 +134,8 @@ _REPRO_NOT_CAPTURED: tuple[str, ...] = (
 )
 
 _REPRO_IMPLICATIONS: str = (
-    "Behavior maps with matching pass_versions, hypergumbo_version, "
+    "Behavior maps with matching per-pass code hashes "
+    "(analysis_runs[].pass_version), hypergumbo_version, "
     "python_version, tree_sitter_version, and per-grammar versions should "
     "be functionally identical up to OS-level and hardware variation. "
     "Diffs that are not explained by these fields suggest a not_captured "

@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.14.0"
+      "const": "0.14.1"
     },
     "confidence_model": {
       "type": "string",
@@ -25,6 +25,10 @@
     "repo_fingerprint_scheme": {
       "type": "string",
       "description": "Identifier for repo fingerprinting algorithm"
+    },
+    "symbol_fingerprint_scheme": {
+      "type": "string",
+      "description": "Identifier for the Symbol.fingerprint structural hashing scheme"
     },
     "view": {
       "type": "string",
@@ -99,16 +103,64 @@
     "features": {
       "type": "array",
       "items": {
-        "type": "object"
+        "$ref": "#/$defs/Feature"
       },
-      "description": "Extracted feature slices"
+      "description": "Feature slice index entries (handler slices etc.); full slice content lives in per-slice side files"
     },
     "metrics": {
       "type": "object",
-      "description": "Aggregate analysis metrics"
+      "description": "Aggregate analysis metrics",
+      "properties": {
+        "total_nodes": {
+          "type": "integer",
+          "description": "Number of emitted Symbols"
+        },
+        "total_edges": {
+          "type": "integer",
+          "description": "Number of emitted Edges"
+        },
+        "total_files": {
+          "type": "integer",
+          "description": "Node-distinct path count \u2014 number of distinct node.path values that survive analysis (INV-mozaf)"
+        },
+        "avg_confidence": {
+          "type": "number",
+          "description": "Mean edge confidence (3 decimal places)"
+        },
+        "languages": {
+          "type": "object",
+          "description": "Per-language node/edge/file counts",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "by_supply_chain_tier": {
+          "type": "object",
+          "description": "Per-tier node/edge counts",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "debug": {
+          "type": "object",
+          "description": "Introspection counters (not a stable API)",
+          "properties": {
+            "unique_paths_in_analysis": {
+              "type": "integer"
+            },
+            "analyzed_file_symbols": {
+              "type": "integer"
+            },
+            "profile_files_sum": {
+              "type": "integer",
+              "description": "Legacy profile-language file-count sum, kept for introspection (over-counts vs node-distinct total_files)"
+            }
+          }
+        }
+      }
     },
     "limits": {
-      "type": "object",
+      "$ref": "#/$defs/Limits",
       "description": "Known gaps and limitations"
     },
     "supply_chain_summary": {
@@ -144,6 +196,76 @@
         "$ref": "#/$defs/UsageContext"
       },
       "description": "Concept-tagged call/usage sites (per ADR-0003-ext usage_context_patterns)"
+    },
+    "reproducibility_context": {
+      "type": "object",
+      "description": "L2 reproducibility metadata (INV-morag option B): direct dependencies + runtime identity, with an explicit not_captured disclosure of L3-L5 factors",
+      "properties": {
+        "level": {
+          "type": "string",
+          "const": "L2",
+          "description": "Reproducibility capture level"
+        },
+        "captured": {
+          "type": "object",
+          "description": "Recorded reproducibility inputs. Sub-keys tree_sitter_version / grammars appear only when tree-sitter is importable",
+          "properties": {
+            "hypergumbo_version": {
+              "type": "string"
+            },
+            "python_version": {
+              "type": "string"
+            },
+            "python_implementation": {
+              "type": "string"
+            },
+            "tree_sitter_version": {
+              "type": "string"
+            },
+            "grammars": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "not_captured": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Factors that may affect reproducibility but are not recorded (transitive deps, OS, hardware)"
+        },
+        "implications": {
+          "type": "string",
+          "description": "What diff-attribution level a consumer can expect from the captured fields alone"
+        }
+      }
+    },
+    "validation_report": {
+      "type": "object",
+      "description": "Spec-vs-data validator output (ADR-0033): the triage surface for contract violations; never a build break",
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "description": "validation_report schema version"
+        },
+        "violations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ValidationViolation"
+          },
+          "description": "Structured violations, all classes"
+        },
+        "violations_by_class": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Per-validator-class counts"
+        }
+      }
     },
     "sketch_precomputed": {
       "type": "object",
@@ -1147,6 +1269,412 @@
         "execution_id",
         "pass",
         "version"
+      ]
+    },
+    "FailedFile": {
+      "type": "object",
+      "description": "A file that failed during analysis",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Repo-relative path of the failed file"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why analysis failed (exception summary)"
+        },
+        "analyzer": {
+          "type": "string",
+          "description": "Pass ID of the analyzer that failed"
+        }
+      },
+      "required": [
+        "path",
+        "reason",
+        "analyzer"
+      ]
+    },
+    "ClassificationFailure": {
+      "type": "object",
+      "description": "A file that failed supply chain classification",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path that could not be classified"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why classification fell through"
+        }
+      },
+      "required": [
+        "path",
+        "reason"
+      ]
+    },
+    "AmbiguousPath": {
+      "type": "object",
+      "description": "A file with ambiguous supply chain classification",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path with ambiguous classification"
+        },
+        "assigned": {
+          "type": "integer",
+          "description": "Tier that was assigned despite ambiguity"
+        },
+        "note": {
+          "type": "string",
+          "description": "Why the classification is ambiguous"
+        }
+      },
+      "required": [
+        "path",
+        "assigned",
+        "note"
+      ]
+    },
+    "SupplyChainLimits": {
+      "type": "object",
+      "description": "Supply chain classification issues",
+      "properties": {
+        "classification_failures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClassificationFailure"
+          },
+          "description": "Files that failed supply chain classification"
+        },
+        "ambiguous_paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AmbiguousPath"
+          },
+          "description": "Files whose classification was ambiguous"
+        }
+      }
+    },
+    "Limits": {
+      "type": "object",
+      "description": "Known gaps and limitations of this analysis \u2014 what was NOT captured, enabling honest downstream reporting",
+      "properties": {
+        "failed_files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FailedFile"
+          },
+          "description": "Files that failed analysis ({path, reason, analyzer})"
+        },
+        "skipped_languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Languages detected but not analyzed"
+        },
+        "skipped_passes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Passes skipped at dispatch time, with reasons"
+        },
+        "truncated_files": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Files truncated or skipped due to size"
+        },
+        "analysis_depth": {
+          "type": "string",
+          "description": "Depth of analysis performed (e.g. syntax_only)"
+        },
+        "partial_results_reason": {
+          "type": "string",
+          "description": "Why results are partial, when they are"
+        },
+        "max_tier_applied": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Max supply-chain tier filter applied, when any"
+        },
+        "max_files_per_analyzer": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Per-analyzer file cap applied, when any"
+        },
+        "test_files_excluded": {
+          "type": "boolean",
+          "description": "Present (true) when test files were excluded"
+        },
+        "supply_chain": {
+          "$ref": "#/$defs/SupplyChainLimits",
+          "description": "Supply chain classification issues"
+        },
+        "not_captured": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Known analysis limitations (static list)"
+        },
+        "analyzer_version": {
+          "type": "string",
+          "description": "hypergumbo version string that produced this analysis"
+        }
+      }
+    },
+    "SliceQuery": {
+      "type": "object",
+      "description": "The query that produced a feature slice (subset of SliceQuery fields that affect the stable feature id)",
+      "properties": {
+        "entrypoint": {
+          "type": "string",
+          "description": "Symbol name, file path, or node ID the slice starts from"
+        },
+        "hops": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Max traversal depth (null = unlimited)"
+        },
+        "max_files": {
+          "type": "integer",
+          "description": "Max files included in the slice"
+        },
+        "exclude_tests": {
+          "type": "boolean",
+          "description": "Whether test files were excluded"
+        },
+        "exclude_utility": {
+          "type": "boolean",
+          "description": "Whether utility files were excluded"
+        },
+        "method": {
+          "type": "string",
+          "description": "Traversal method (bfs)"
+        },
+        "reverse": {
+          "type": "boolean",
+          "description": "True = callers (backward traversal)"
+        },
+        "max_tier": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Max supply chain tier included, when set"
+        },
+        "language": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Entry-point language filter, when set"
+        },
+        "hub_threshold": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Hub-degree pruning threshold, when set"
+        },
+        "exclude_imports": {
+          "type": "boolean",
+          "description": "Present (true) when import edges were excluded"
+        },
+        "pass_through_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Node kinds traversed but excluded from output"
+        },
+        "dataflow": {
+          "type": "boolean",
+          "description": "Present (true) for dataflow-constrained slices"
+        }
+      },
+      "required": [
+        "entrypoint"
+      ]
+    },
+    "Feature": {
+      "type": "object",
+      "description": "A feature slice index entry (spec \u00a79 features[]): IDs + query + summary so consumers can discover slices via the behavior map alone and diff across commits via the stable id",
+      "properties": {
+        "entry_nodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of the entry point nodes"
+        },
+        "node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Sorted IDs of all nodes in the slice"
+        },
+        "edge_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Sorted IDs of all edges in the slice"
+        },
+        "query": {
+          "$ref": "#/$defs/SliceQuery",
+          "description": "Query that produced this slice"
+        },
+        "limits_hit": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Limits reached during traversal (e.g. hop_limit)"
+        },
+        "node_depths": {
+          "type": "object",
+          "description": "Node ID \u2192 BFS depth, when recorded"
+        },
+        "node_tiers": {
+          "type": "object",
+          "description": "Node ID \u2192 supply chain tier, when recorded"
+        },
+        "admission_stats": {
+          "type": "object",
+          "description": "Per-rule dataflow edge-admission counters, when dataflow=True"
+        },
+        "id": {
+          "type": "string",
+          "description": "Stable feature ID (sha256 of the canonical query JSON)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable feature name (the query entrypoint)"
+        }
+      },
+      "required": [
+        "entry_nodes",
+        "node_ids",
+        "edge_ids",
+        "query"
+      ]
+    },
+    "ValidationViolation": {
+      "type": "object",
+      "description": "One structured spec-vs-data mismatch from the end-of-pipeline validator stage (ADR-0033)",
+      "properties": {
+        "severity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ],
+          "description": "Violation severity"
+        },
+        "validator_class": {
+          "type": "string",
+          "description": "Which validator class emitted this (axis_conformance, writer_contract, cross_field, verdict_enum, id_format)"
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable description for review"
+        },
+        "axis": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Axis name (axis_conformance only)"
+        },
+        "field_name": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dataclass field name when applicable"
+        },
+        "record_id": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Symbol.id / Edge.id / AnalysisRun.execution_id"
+        },
+        "observed": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Offending value (stringified)"
+        },
+        "expected": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Short description of what was expected"
+        }
+      },
+      "required": [
+        "severity",
+        "validator_class",
+        "message"
       ]
     },
     "Entrypoint": {

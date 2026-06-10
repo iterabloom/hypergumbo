@@ -151,6 +151,13 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "type": "string",
                 "description": "Identifier for repo fingerprinting algorithm"
             },
+            "symbol_fingerprint_scheme": {
+                "type": "string",
+                "description": (
+                    "Identifier for the Symbol.fingerprint structural "
+                    "hashing scheme"
+                )
+            },
             "view": {
                 "type": "string",
                 "const": "behavior_map",
@@ -205,15 +212,69 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             },
             "features": {
                 "type": "array",
-                "items": {"type": "object"},
-                "description": "Extracted feature slices"
+                "items": {"$ref": "#/$defs/Feature"},
+                "description": (
+                    "Feature slice index entries (handler slices etc.); "
+                    "full slice content lives in per-slice side files"
+                )
             },
+            # WI-kutas PR2: metrics is built by metrics.compute_metrics()
+            # (an ad-hoc dict, not a dataclass), so its properties are
+            # declared here and pinned to the producer's key set by
+            # test_metrics_properties_match_compute_metrics.
             "metrics": {
                 "type": "object",
-                "description": "Aggregate analysis metrics"
+                "description": "Aggregate analysis metrics",
+                "properties": {
+                    "total_nodes": {
+                        "type": "integer",
+                        "description": "Number of emitted Symbols"
+                    },
+                    "total_edges": {
+                        "type": "integer",
+                        "description": "Number of emitted Edges"
+                    },
+                    "total_files": {
+                        "type": "integer",
+                        "description": (
+                            "Node-distinct path count — number of distinct "
+                            "node.path values that survive analysis (INV-mozaf)"
+                        )
+                    },
+                    "avg_confidence": {
+                        "type": "number",
+                        "description": "Mean edge confidence (3 decimal places)"
+                    },
+                    "languages": {
+                        "type": "object",
+                        "description": "Per-language node/edge/file counts",
+                        "additionalProperties": {"type": "object"}
+                    },
+                    "by_supply_chain_tier": {
+                        "type": "object",
+                        "description": "Per-tier node/edge counts",
+                        "additionalProperties": {"type": "object"}
+                    },
+                    "debug": {
+                        "type": "object",
+                        "description": "Introspection counters (not a stable API)",
+                        "properties": {
+                            "unique_paths_in_analysis": {"type": "integer"},
+                            "analyzed_file_symbols": {"type": "integer"},
+                            "profile_files_sum": {
+                                "type": "integer",
+                                "description": (
+                                    "Legacy profile-language file-count sum, "
+                                    "kept for introspection (over-counts vs "
+                                    "node-distinct total_files)"
+                                )
+                            }
+                        }
+                    }
+                }
             },
             "limits": {
-                "type": "object",
+                "$ref": "#/$defs/Limits",
                 "description": "Known gaps and limitations"
             },
             "supply_chain_summary": {
@@ -252,6 +313,81 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "Concept-tagged call/usage sites (per "
                     "ADR-0003-ext usage_context_patterns)"
                 )
+            },
+            # WI-kutas PR2: reproducibility_context is built by
+            # schema.build_reproducibility_context() (ad-hoc dict); its
+            # properties are pinned to the builder's key set by
+            # test_reproducibility_context_block.
+            "reproducibility_context": {
+                "type": "object",
+                "description": (
+                    "L2 reproducibility metadata (INV-morag option B): "
+                    "direct dependencies + runtime identity, with an "
+                    "explicit not_captured disclosure of L3-L5 factors"
+                ),
+                "properties": {
+                    "level": {
+                        "type": "string",
+                        "const": "L2",
+                        "description": "Reproducibility capture level"
+                    },
+                    "captured": {
+                        "type": "object",
+                        "description": (
+                            "Recorded reproducibility inputs. Sub-keys "
+                            "tree_sitter_version / grammars appear only "
+                            "when tree-sitter is importable"
+                        ),
+                        "properties": {
+                            "hypergumbo_version": {"type": "string"},
+                            "python_version": {"type": "string"},
+                            "python_implementation": {"type": "string"},
+                            "tree_sitter_version": {"type": "string"},
+                            "grammars": {
+                                "type": "object",
+                                "additionalProperties": {"type": "string"}
+                            }
+                        }
+                    },
+                    "not_captured": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Factors that may affect reproducibility but "
+                            "are not recorded (transitive deps, OS, hardware)"
+                        )
+                    },
+                    "implications": {
+                        "type": "string",
+                        "description": (
+                            "What diff-attribution level a consumer can "
+                            "expect from the captured fields alone"
+                        )
+                    }
+                }
+            },
+            "validation_report": {
+                "type": "object",
+                "description": (
+                    "Spec-vs-data validator output (ADR-0033): the triage "
+                    "surface for contract violations; never a build break"
+                ),
+                "properties": {
+                    "schema_version": {
+                        "type": "string",
+                        "description": "validation_report schema version"
+                    },
+                    "violations": {
+                        "type": "array",
+                        "items": {"$ref": "#/$defs/ValidationViolation"},
+                        "description": "Structured violations, all classes"
+                    },
+                    "violations_by_class": {
+                        "type": "object",
+                        "additionalProperties": {"type": "integer"},
+                        "description": "Per-validator-class counts"
+                    }
+                }
             },
             "sketch_precomputed": {
                 "type": "object",
