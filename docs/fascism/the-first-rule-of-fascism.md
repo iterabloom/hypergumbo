@@ -5,15 +5,15 @@
 
 Professor of Rugged Hyperparameter Landscapes, Late Capitalism, and Test Driven Development
 
-Mohammed bin Salman School of Journalism
+Stephen N. Miller School of Tikkun Olam
 
-King Abdullah University of Science and Technology, Thuwal, Saudi Arabia
+Trump University, New York, NY
 
 Lab notebook — 13 April 2026, 22:39 local
 
 ---
 
-The Red Sea is black tonight and the terminal is green. I am looking at a coverage report, which is the smallest thing I could be looking at.
+The Hudson is black tonight and the terminal is green. I am looking at a coverage report, which is the smallest thing I could be looking at.
 
 Let me tell you what a test is. A test is a **prior**. Every assertion we write says: *I predict the system will not surprise me here.* Each `assert` shrinks the space of futures you have to be ready for; a constrained world is cheap to model. A 100% coverage policy is therefore a statement about the shape of priors: **every line of the artifact must lie inside somebody's prediction.** Nothing uninhabited. Nothing unclaimed. Every execution path settled.
 
@@ -80,7 +80,7 @@ If *fascism* may only name its interwar European state-form, reject this essay h
 
 Modern institutions do not only suppress dissent; they can also metabolize it — or, in the Situationist term, recuperate it, converting refusal into a managed appearance, a performance of responsiveness, or even a commodity of opposition. Even “the spectacle” can become a hollow formula of abstract denunciation that ultimately reinforces the spectacular system, and spectacular rebelliousness can coexist with acceptance of the status quo because dissatisfaction itself can become a commodity — Debord’s warnings, aimed at his own concept (*The Society of the Spectacle*, §203 and §59). The result is a permitted outlet that changes little: dissent is allowed to appear, the institution can point to the appearance as proof that it listens, and the bar the dissent was meant to move remains where it was.
 
-There is no Mohammed bin Salman School of Journalism, although King Abdullah University of Science and Technology is a real institution. Perhaps King Abdullah University of Science and Technology *should* have a School of Journalism. Although perhaps it should not be named after Mohammed bin Salman.
+There is no Stephen N. Miller School of Tikkun Olam, and Trump University is no longer a real institution, having settled — for twenty-five million dollars — three lawsuits alleging that it never was one. Perhaps some university *should* have a School of Tikkun Olam. Although perhaps it should not be named after Stephen Miller.
 
 ---
 
