@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **283** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 32 tracker)
-- **30721** symbols (functions, classes, methods)
-- **104481** edges by type:
-  - calls: 58355
-  - contains: 21999
-  - imports: 10304
-  - instantiates: 7929
-  - references: 3383
-  - module_attr_ref: 1147
+- **30780** symbols (functions, classes, methods)
+- **104683** edges by type:
+  - calls: 58489
+  - contains: 22035
+  - imports: 10315
+  - instantiates: 7940
+  - references: 3388
+  - module_attr_ref: 1152
   - other: 1364
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30721 Symbols + 104481 Edges + UsageContexts           │
+│  Output: 30780 Symbols + 104683 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -268,8 +268,8 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 5410.4 | ir.py |
-| `Span` | class | 4264.4 | ir.py |
+| `Symbol` | class | 5413.2 | ir.py |
+| `Span` | class | 4266.5 | ir.py |
 | `run_behavior_map` | function | 3028.8 | cli.py |
 | `LinkerContext` | class | 2158.7 | registry.py |
 | `TrackerApp` | class | 1902.1 | tui.py |
@@ -475,6 +475,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `generate-concept-axes` | Generate ``docs/concept-axes.md`` — a human-readable by-axis view |
 | `generate-concepts` | Generate docs/CONCEPTS.md — the concept-vocabulary registry. |
 | `generate-security-md` | Regenerate the audited-IO-surface section of SECURITY.md. |
+| `generate_schema_lib.py` | (no description) |
 | `highsev_root_review.py` | High-severity net-new root-review collator (Layer 1 of the root-review helper). |
 | `measure-playbook-overlap.py` | Measure read-then-injected playbook overlap (waste signal). |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
@@ -538,7 +539,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.entrypoints`**: Entrypoint detection for code analysis using YAML-driven pattern ma...
 - **`hypergumbo_core.evidence_types`**: Canonical registry of Edge.evidence_type values in hypergumbo's beh...
 - **`hypergumbo_core.fallback_coherence`**: INV-zuhub fallback-coherence linter.
-- **`hypergumbo_core.fingerprint`**: Symbol-level content fingerprinting (WI-fanun).
+- **`hypergumbo_core.fingerprint`**: Symbol-level content fingerprinting (WI-fanun; context-aware since ...
 - **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-0003).
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
@@ -822,7 +823,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 295cf2410ed1
+  commit: 6e78cacdcf71
   hypergumbo: 5.0.1
   python: 3.12.3
 -->
