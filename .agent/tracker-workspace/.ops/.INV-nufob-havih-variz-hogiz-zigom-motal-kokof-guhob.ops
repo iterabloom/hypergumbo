@@ -94,3 +94,18 @@
   clock: 9  # 5e96
   nonce: '5e96'  # 5e96
   message: "REOPENED by step-1 re-verification on dev @ df6dccac20. The 2026-06-01 closure credited Phase-3 PR4 (verdict-enum/inconclusive), which closes INV-mofih (unrecognized claim type) but does NOT validate the taint-flag file loaders — INV-nufob's actual invariant. Live CLI evidence: (a) '--taint-sources <ANY-bad-path>' with boundary-only claims -> 'all 1 CONFIRMED' exit 0 (verbatim the prohibited silent-confirm; cli.py:4438 only loads the taint catalog if has_taint_claims); (b) '--taint-sources <broken-YAML>' + taint claim -> uncaught yaml.parser.ParserError traceback; (c) '--taint-sources <wrong-shape>' + taint claim -> uncaught AttributeError at taint.py:441. Only the nonexistent-path-with-taint-claim sub-case is clean (FileNotFoundError -> exit 1). Fix shape (PR7, mirrors PR3 load_claims gate): load+validate --taint-* whenever flags present (not gated on has_taint_claims); wrap loaders to catch yaml.YAMLError + validate shape -> clean error not traceback. Full evidence: hypergumbo_lab_notebook/verify_claims_step1_reverify_06092026_1627.md"  # 5e96
+- op: update  # 7077
+  at: '2026-06-09T21:51:41Z'  # 7077
+  by: agent  # 7077
+  actor: jgstern_agent  # 7077
+  clock: 10  # 7077
+  nonce: '7077'  # 7077
+  set:  # 7077
+    status: satisfied  # 7077
+- op: discuss  # d493
+  at: '2026-06-09T21:51:41Z'  # d493
+  by: agent  # d493
+  actor: jgstern_agent  # d493
+  clock: 11  # d493
+  nonce: d493  # d493
+  message: "Fixed in PR #4152 (merged to dev @ 796d007c8f), re-verified with positive end-to-end evidence on merged dev. All four bad-input cases the statement enumerates now behave: (A) --taint-sources <nonexistent> + boundary-only claims -> exit 2 'Taint catalog path not found' (was silent 'all CONFIRMED' exit 0); (B) malformed YAML + taint claim -> exit 2 'could not parse taint catalog' (was uncaught yaml.ParserError traceback); (C) wrong-shape + taint claim -> exit 2 ''sources:' must be a dict, got str' (was uncaught AttributeError); (D) valid --taint-sources + boundary-only claims -> exit 0 with explicit Warning 'validated but not used' (was silently ignored). Fix: cli.py resolves+validates --taint-* whenever present (not gated on has_taint_claims); taint.py loaders raise TaintCatalogError via _safe_load_catalog_yaml. A broken taint config maps to exit 2 (inconclusive), never confirmed/violated. TDD, 100% coverage, 2950 tests pass."  # d493

@@ -73,3 +73,18 @@
   clock: 8  # 21d5
   nonce: 21d5  # 21d5
   message: "STEP-1 RE-VERIFICATION (dev @ df6dccac20, live CLI repros). 5 of 6 check sites HOLD with positive behavioral evidence: unknown boundary (INV-gobob/WI-ruzib) -> rc2 with 16-value valid list; malformed YAML (INV-zurih) -> rc2; unknown constraint field (WI-bopoz) -> rc2; bad root shape (WI-fuhaf) -> rc2; must_not_exist on blind/empty coverage (INV-bitig) -> inconclusive rc2; no-machine-checkable-constraint (INV-mofih) -> inconclusive rc2. Positive controls prove the gate is DISCRIMINATING not blanket-inconclusive: covered-clean -> confirmed rc0; covered-net (socket.sendall) -> violated rc1; coverage never masks violated. HOWEVER the 6th site, INV-nufob (--taint-* loader), is a FALSE-SATISFIED and has been REOPENED: a bad --taint-sources path with boundary-only claims still returns 'all CONFIRMED' exit 0 (silent-confirm), and malformed/wrong-shape taint files crash with uncaught tracebacks. Therefore INV-somut STAYS VIOLATED pending an INV-nufob fix (PR7: taint-loader hardening, the A.2 scope that was assumed closed but never implemented for the bad-FILE case). Evidence: hypergumbo_lab_notebook/verify_claims_step1_reverify_06092026_1627.md"  # 21d5
+- op: update  # dbe9
+  at: '2026-06-09T21:51:42Z'  # dbe9
+  by: agent  # dbe9
+  actor: jgstern_agent  # dbe9
+  clock: 9  # dbe9
+  nonce: dbe9  # dbe9
+  set:  # dbe9
+    status: satisfied  # dbe9
+- op: discuss  # 989a
+  at: '2026-06-09T21:51:42Z'  # 989a
+  by: agent  # 989a
+  actor: jgstern_agent  # 989a
+  clock: 10  # 989a
+  nonce: 989a  # 989a
+  message: "RE-VERIFICATION COMPLETE (v6.0.0 step-1). All 6 verify-claims silent-confirm check sites now hold with positive end-to-end behavioral evidence on merged dev: unknown boundary (INV-gobob/WI-ruzib) rc2; malformed YAML (INV-zurih) rc2; unknown constraint field (WI-bopoz) rc2; bad root shape (WI-fuhaf) rc2; must_not_exist on blind coverage (INV-bitig) inconclusive rc2; no-machine-checkable constraint (INV-mofih) inconclusive rc2; AND the --taint-* loader (INV-nufob) — the 6th site, found false-satisfied during this re-verification and fixed in PR #4152 — now errors (exit 2) or warns instead of silently confirming. Positive controls confirm the gate is discriminating (covered-clean->confirmed rc0; covered-net->violated rc1; coverage never masks violated). The verdict fall-through is closed at every site -> INV-somut satisfied. Parent INV-fabov stays violated (config/search registry faces beyond verify-claims remain open)."  # 989a

@@ -70,3 +70,10 @@
     tags: [dogfood]  # 05e8
   remove:  # 05e8
     tags: [dogfooding]  # 05e8
+- op: discuss  # f258
+  at: '2026-06-09T20:51:26Z'  # f258
+  by: agent  # f258
+  actor: jgstern_agent  # f258
+  clock: 8  # f258
+  nonce: f258  # f258
+  message: "CLOSURE-DISCIPLINE CROSS-REF (step-1 sibling-audit, dev @ df6dccac20). Re-verified live: this item's two NAMED sub-causes are genuinely fixed — (a) module_exports edges now emit start_line=1 (js_module.py), and (b) schema.json now declares the 3 formerly-undeclared top-level keys (entrypoints, sketch_precomputed, usage_contexts); a fresh self-map validates against docs/schema.json with 0 jsonschema errors. HOWEVER this item's STATEMENT is the broad 'hypergumbo's own behavior map must validate against docs/schema.json', and that broad invariant is STILL violated on substrate-heavy repos by a THIRD, distinct cause tracked openly as the OPEN P0 WI-kufib (schema.json types Symbol.language non-nullable; substrate nodes emit null -> whole-doc validation fails). So 'satisfied' here means 'named sub-causes (a)+(b) fixed', NOT 'broad invariant universally holds'. Recorded to prevent re-conflation; no status change (the residual is legitimately decomposed to WI-kufib)."  # f258
