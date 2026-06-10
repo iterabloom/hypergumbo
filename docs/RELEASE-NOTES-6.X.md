@@ -12,7 +12,7 @@ One file exists per major version line; for the previous line see
 
 ---
 
-## Upcoming 6.0.0 (Unreleased on `dev`)
+## 6.0.0 — 2026-06-10
 
 ### At a glance
 
@@ -115,8 +115,9 @@ One file exists per major version line; for the previous line see
 
 ### For JSON consumers
 
-**Schema version chain: 0.5.8 → 0.11.0.** Ten bumps in flight,
-two carrying breaking enum changes and one carrying a type change:
+**Schema version chain: 0.5.8 → 0.14.1.** Thirteen bumps in this
+release — two carrying breaking enum closures, one a type change,
+and one a field removal:
 
 | Version | What it brings |
 |---|---|
@@ -129,11 +130,27 @@ two carrying breaking enum changes and one carrying a type change:
 | 0.9.1 | `Edge.derived_from: list[str]` lands. `pass_id` suffix removal. `behavior_map["features"]` and `behavior_map["reproducibility_context"]` added. Additive. |
 | 0.10.0 | **Breaking:** `Symbol.origin` and `Edge.origin` change from `str` to `list[str]`. Multi-source attribution: when multiple passes contribute, all are credited. |
 | 0.11.0 | `origin_run_signature` removed from `Symbol` and `Edge` output. The field was never stamped by any producer, so emitted JSON is unchanged in practice; consumers that read it should drop the key. `from_dict()` silently ignores it for backward compatibility with pre-removal JSON. |
+| 0.12.0 | Symbol-field axis decomposition: four new fields (`discovery_language`, `protocol_origin`, `display_label`, `qualified_name`); `Symbol.language` relaxes to nullable (synthetic protocol stand-ins carry `null` + the new sibling fields); `canonical_name` deprecated. |
+| 0.13.0 | **Breaking:** `Symbol.canonical_name` removed. Read `qualified_name` (or `display_label` for synthetic stand-ins' UI strings). `from_dict()` ignores the legacy key. |
+| 0.14.0 | Published schema $defs now introspected from the dataclasses (the hand-coded schema had drifted: it rejected every real linker-bearing document). `language` nullable in the schema; stale `canonical_name` property gone; whole-document validation passes on real output. |
+| 0.14.1 | `limits`, `features[]`, and `metrics` get real type definitions; `reproducibility_context`, `symbol_fingerprint_scheme`, and `validation_report` declared. Additive. |
 
 If you consume the JSON output, **read
 [MIGRATION-6.0-CONCEPT-AXES.md](MIGRATION-6.0-CONCEPT-AXES.md)
 before upgrading.** It has the full rename tables for both
 registries and adoption guidance for `Edge.dst_ref`.
+
+**Every `Symbol.fingerprint` value changed** (`hgfp1:` → `hgfp2:`;
+`symbol_fingerprint_scheme` moves v1 → v2). The fingerprinter now
+parses each file once and hashes the parse subtree covering the
+symbol's span; v1 parsed span slices out of context and silently
+degraded on content that doesn't parse standalone — in 5.x all TOML
+dependency nodes shared one fingerprint and ~thousands of Python
+test methods had `null`. Don't diff fingerprints across the
+5.x / 6.0 boundary (detect the boundary via the scheme tag or the
+value prefix); within 6.0 they discriminate correctly, and spans
+whose content can't be parsed yield an honest `null` rather than a
+degenerate shared constant.
 
 **New: `Edge.dst_ref`.** A structured external-target sibling of
 `Edge.dst`, carrying `(lang, module_path, name)` as an
