@@ -235,7 +235,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for PR workflow (including fork-based wor
 ## Links
 
 - [docs/USE-CASES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/USE-CASES.md) — Practical workflows and examples
-- [docs/RELEASE-NOTES-5.X.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/RELEASE-NOTES-5.X.md) — User-facing release notes for the 5.x line
+- [docs/RELEASE-NOTES-6.X.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/RELEASE-NOTES-6.X.md) — User-facing release notes for the 6.x line
 - [CHANGELOG.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/CHANGELOG.md) — Implementation history
 - [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md) — Supported languages
 - [docs/LINKERS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md) — Linkers catalogue (Protocol / Bridge / Framework / Infrastructure)

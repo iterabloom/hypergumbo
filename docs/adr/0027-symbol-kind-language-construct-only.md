@@ -5,7 +5,7 @@
 - Date: 2026-05-02
 - Supersedes: —
 - Superseded by: —
-- Related: ADR-0024 (the axis-declaration template instantiated here), ADR-0023 (the worked example whose four-phase migration shape this ADR mirrors), ADR-0014 (Generalized Symbol Identity — the dataclass this axis types one field of), ADR-0028 (the sibling-axis ADR for `Edge.evidence_type`; ADR-0028 Phase 1 retroactively re-opened this ADR's `Symbol.kind` JSON Schema enum — see the schema-impact note appended to Phase 1 step #5 below), tracker item `WI-dumiz-bikul-pitaf-gutiv-nudig-vovam-sinad-vogaj` (the deep audit whose verdict produced this ADR; the cluster taxonomy in §3 below is that audit's output), [`docs/MIGRATION-5.X-CONCEPT-AXES.md`](../MIGRATION-5.X-CONCEPT-AXES.md) (per-value rename tables for JSON consumers post-closure)
+- Related: ADR-0024 (the axis-declaration template instantiated here), ADR-0023 (the worked example whose four-phase migration shape this ADR mirrors), ADR-0014 (Generalized Symbol Identity — the dataclass this axis types one field of), ADR-0028 (the sibling-axis ADR for `Edge.evidence_type`; ADR-0028 Phase 1 retroactively re-opened this ADR's `Symbol.kind` JSON Schema enum — see the schema-impact note appended to Phase 1 step #5 below), tracker item `WI-dumiz-bikul-pitaf-gutiv-nudig-vovam-sinad-vogaj` (the deep audit whose verdict produced this ADR; the cluster taxonomy in §3 below is that audit's output), [`docs/MIGRATION-6.0-CONCEPT-AXES.md`](../MIGRATION-6.0-CONCEPT-AXES.md) (per-value rename tables for JSON consumers post-closure)
 
 ## Context
 

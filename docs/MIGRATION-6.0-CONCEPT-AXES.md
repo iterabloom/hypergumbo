@@ -1,5 +1,9 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Migrating downstream consumers — Symbol.kind + Edge.evidence_type concept-axes closure (5.x)
+# Migrating downstream consumers — Symbol.kind + Edge.evidence_type concept-axes closure (5.x → 6.0)
+
+Everything in this guide ships in the hypergumbo **6.0.0** tool
+release; the released 5.x line emits schema 0.5.8, the baseline the
+timeline below starts from.
 
 This guide is for code that consumes hypergumbo's behavior-map JSON
 and filters or weights symbols by `Symbol.kind` or edges by
@@ -545,4 +549,4 @@ do not collide because Format 2 carries the explicit scheme tag.
 - [migrating-edge-types.md](migrating-edge-types.md) — Sibling migration guide for the earlier ADR-0023 `Edge.edge_type` program (independent of this one)
 - [docs/audits/](audits/) — Per-cluster audit findings; each row of the tables above traces back to a verdict in one of audits 0005–0014
 - [hypergumbo-spec.md](hypergumbo-spec.md) — Current `Symbol.kind` and `Edge.evidence_type` axiom statements
-- [RELEASE-NOTES-5.X.md](RELEASE-NOTES-5.X.md) — User-facing summary of all 5.x changes including this migration
+- [RELEASE-NOTES-6.X.md](RELEASE-NOTES-6.X.md) — User-facing summary of the 6.0.0 release including this migration

@@ -3,7 +3,7 @@
 
 *Sketch captured from `dev` branch on 2026-05-16 (post-5.0.1 / pre-next-5.x). The install / `add-extras` flow below is illustrative — the exact version numbers and dependency list will differ on your machine. To regenerate this example, run `hypergumbo .` from the repo root.*
 
-> **For JSON-level details** (new IR fields like `Edge.dst_ref`, `meta["framework_dispatch"]`, `meta["call_construct"]`, `meta["disambiguation_fallback"]`, `Pattern.meta_match`), the markdown sketch below does NOT surface them — they appear in `hypergumbo run` JSON output. See [RELEASE-NOTES-5.X.md](RELEASE-NOTES-5.X.md) and [MIGRATION-5.X-CONCEPT-AXES.md](MIGRATION-5.X-CONCEPT-AXES.md) for those.
+> **For JSON-level details** (new IR fields like `Edge.dst_ref`, `meta["framework_dispatch"]`, `meta["call_construct"]`, `meta["disambiguation_fallback"]`, `Pattern.meta_match`), the markdown sketch below does NOT surface them — they appear in `hypergumbo run` JSON output. See [RELEASE-NOTES-6.X.md](RELEASE-NOTES-6.X.md) and [MIGRATION-6.0-CONCEPT-AXES.md](MIGRATION-6.0-CONCEPT-AXES.md) for those.
 
 ## Install flow (illustrative)
 

@@ -40,7 +40,7 @@ These improvements live within already-supported languages — no new languages 
 - **Python** — `verify-claims` resolves more method-call receivers through a post-DDG IR refinement pass. Eight zone-tagged fs-write wrappers in `hypergumbo_core.safety_zones` provide a discipline pattern downstream Python projects can adopt.
 - **Elixir** — Phoenix test files at `test/<context>/<thing>_test.exs` classify as `supply_chain.tier=1` with `is_test=True` (previously conflated with vendored code at tier=2).
 - **Solidity** — `contract` is now a canonical `Symbol.kind` (previously emitted but unregistered).
-- **CUDA / Android XML** — Producer-side folds onto canonical kind + `meta` discriminator: CUDA emits `kind="function"` + `meta["cuda_execution_space"]`; Android XML emits `kind="component"` + `meta["component_type"]`. See [MIGRATION-5.X-CONCEPT-AXES.md](MIGRATION-5.X-CONCEPT-AXES.md) for the mapping detail.
+- **CUDA / Android XML** — Producer-side folds onto canonical kind + `meta` discriminator: CUDA emits `kind="function"` + `meta["cuda_execution_space"]`; Android XML emits `kind="component"` + `meta["component_type"]`. See [MIGRATION-6.0-CONCEPT-AXES.md](MIGRATION-6.0-CONCEPT-AXES.md) for the mapping detail.
 - **Ansible** — `include_tasks` / `import_tasks` with Jinja-templated paths fan out to real target files instead of leaving a single unresolved edge.
 
 ## How Analyzers Work

@@ -135,7 +135,7 @@ Combined release PR for both ADR-0031 and ADR-0032 reshapes:
 
 - Update `cmd_explain` and any other readers of `canonical_name` to read `display_label` / `qualified_name` per intent.
 - Bump `SCHEMA_VERSION` 0.11.0 → 0.12.0 covering both reshapes.
-- Single `docs/MIGRATION-5.X-CONCEPT-AXES.md` entry covering both ADR-0031's language reshape AND ADR-0032's canonical_name / fingerprint reshape.
+- Single `docs/MIGRATION-6.0-CONCEPT-AXES.md` entry covering both ADR-0031's language reshape AND ADR-0032's canonical_name / fingerprint reshape.
 - Mark `Symbol.canonical_name` deprecated (removal one major version later per Phase 6 PR4).
 
 ### Phase 4 PR4 — qualified_name population
@@ -150,7 +150,7 @@ One major version after Phase 2 PR3's deprecation. The field has no remaining us
 
 `canonical_name` and `fingerprint` are NOT inputs to the 10 `stable_id` factories at `analyze/base.py:513-640` (those use `language`, `path`, `name`, `kind`). **Stable_ids do not change across this ADR's migration.** This is in deliberate contrast to ADR-0031's combined 0.12.0 release, where `Symbol.language=None` for ~20-30 Class B synthetic stand-ins does change those Symbols' stable_ids (per ADR-0031 Phase 3).
 
-Fingerprint *values* change for Format-1-producing Symbols when Phase 2 PR2 lands, because Format 1 (raw-bytes hash) and Format 2 (`hgfp1:` structural hash) produce different strings. But `Symbol.fingerprint` itself isn't a stable_id input, so cross-version stable_id pinning isn't affected — only consumers reading `Symbol.fingerprint` directly see the value change. Documented in the combined `MIGRATION-5.X-CONCEPT-AXES.md` entry.
+Fingerprint *values* change for Format-1-producing Symbols when Phase 2 PR2 lands, because Format 1 (raw-bytes hash) and Format 2 (`hgfp1:` structural hash) produce different strings. But `Symbol.fingerprint` itself isn't a stable_id input, so cross-version stable_id pinning isn't affected — only consumers reading `Symbol.fingerprint` directly see the value change. Documented in the combined `MIGRATION-6.0-CONCEPT-AXES.md` entry.
 
 ## Consequences
 

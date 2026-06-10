@@ -229,7 +229,7 @@ This is the same shape of breakage as ADR-0023 §6 and ADR-0027 Phase 1 step 5; 
 
 ### Phase 4 — Documentation and drift-monitoring follow-ups
 
-- Update `docs/MIGRATION-5.X-CONCEPT-AXES.md` with the per-value rename table for JSON consumers.
+- Update `docs/MIGRATION-6.0-CONCEPT-AXES.md` with the per-value rename table for JSON consumers.
 - Update `docs/concept-axes.md` via `scripts/generate-concept-axes` (existing infrastructure).
 - Update `docs/hypergumbo-spec.md` §6 to mention the new fields.
 - File a follow-up tracker item for the runtime drift gate on the language and protocol-origin axes (relating to INV-sugat super-META).

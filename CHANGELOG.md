@@ -10,7 +10,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
-> **User-facing view:** see [docs/RELEASE-NOTES-5.X.md](docs/RELEASE-NOTES-5.X.md)
+> **User-facing view:** see [docs/RELEASE-NOTES-6.X.md](docs/RELEASE-NOTES-6.X.md)
 > for the reader-friendly summary of what's changed. This file (CHANGELOG.md)
 > remains the implementer log.
 
@@ -47,7 +47,7 @@ Two overloaded `Symbol` string fields each split into a pair of typed siblings, 
 
 - **`protocol-origin` and `qualified-name` axes wired** into the static-AST `multi_value_field_axis` linter's known-axis-names dict, so `# axis: protocol-origin` and `# axis: qualified-name` annotations on dataclass fields pass lint without ad-hoc allowlisting.
 
-- **Migration guide.** `docs/MIGRATION-5.X-CONCEPT-AXES.md` Part 7 documents both reshapes — consumer-migration patterns (`sym.discovery_language or sym.language`; `sym.qualified_name or sym.canonical_name`; read `sym.display_label` for synthetic-stand-in display strings), the four new fields per node (typically null for real-source declarations), and `stable_id` impact (~20–30 Class B Symbols' `stable_id`s change because `language=None` hashes differently from a string value).
+- **Migration guide.** `docs/MIGRATION-6.0-CONCEPT-AXES.md` Part 7 documents both reshapes — consumer-migration patterns (`sym.discovery_language or sym.language`; `sym.qualified_name or sym.canonical_name`; read `sym.display_label` for synthetic-stand-in display strings), the four new fields per node (typically null for real-source declarations), and `stable_id` impact (~20–30 Class B Symbols' `stable_id`s change because `language=None` hashes differently from a string value).
 
 #### Spec-vs-data validator stage (ADR-0033)
 
@@ -187,7 +187,7 @@ A per-entry-point taint-flow model distinguishes what each CLI subcommand is all
 - **`apply_sibling_impl_weights` removed from dampener stack** (8 → 7 stages). A 6-repo audit found zero top-100 movement; the upstream `apply_common_method_name_weights` already handled the same groups.
 - **`origin_run_signature` removed from Symbol and Edge** — never stamped by any producer (zero writes across all analyzers and linkers). `from_dict()` silently ignores the key for backward compatibility with pre-removal JSON.
 - **`requires_symbols` removed from `RegisteredAnalyzer` and `@register_analyzer`** — a never-passed, never-consumed multi-pass-symbol-consumption stub superseded by `depends_on`, which carries CNF pass-id dependencies that are actually validated.
-- **`Symbol.canonical_name` field removed** (breaking). One schema version after the 0.12.0 deprecation window; the field is dropped from the `Symbol` dataclass declaration, the `to_dict` / `from_dict` round-trip, and the JSON Schema's `#/$defs/Symbol/properties/canonical_name` entry. Consumers should read `symbol.qualified_name` / `dict["qualified_name"]` instead. `from_dict()` silently ignores legacy `canonical_name` keys in pre-removal cached JSON for backward compatibility. SCHEMA_VERSION 0.12.0 → 0.13.0; migration row added to `docs/MIGRATION-5.X-CONCEPT-AXES.md`.
+- **`Symbol.canonical_name` field removed** (breaking). One schema version after the 0.12.0 deprecation window; the field is dropped from the `Symbol` dataclass declaration, the `to_dict` / `from_dict` round-trip, and the JSON Schema's `#/$defs/Symbol/properties/canonical_name` entry. Consumers should read `symbol.qualified_name` / `dict["qualified_name"]` instead. `from_dict()` silently ignores legacy `canonical_name` keys in pre-removal cached JSON for backward compatibility. SCHEMA_VERSION 0.12.0 → 0.13.0; migration row added to `docs/MIGRATION-6.0-CONCEPT-AXES.md`.
 
 
 ### Fixed

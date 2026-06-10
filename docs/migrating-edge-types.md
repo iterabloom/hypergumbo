@@ -320,7 +320,7 @@ bump after that group's bakeoff validation clears.
   `docs/audits/`) — the design decision behind the typing principle and
   the per-family classifications. Read these only if you want the rationale; the
   rename tables above are sufficient for migration.
-- [`MIGRATION-5.X-CONCEPT-AXES.md`](MIGRATION-5.X-CONCEPT-AXES.md) — sibling
+- [`MIGRATION-6.0-CONCEPT-AXES.md`](MIGRATION-6.0-CONCEPT-AXES.md) — sibling
   migration guide covering the ADR-0027 / ADR-0028 closure for `Symbol.kind`
   (71 retired values) and `Edge.evidence_type` (111 retired values) at
   schema 0.6.0 / 0.7.0. Independent program from this doc.
