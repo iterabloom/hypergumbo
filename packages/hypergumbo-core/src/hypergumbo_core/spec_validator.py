@@ -721,6 +721,21 @@ def _check_cross_field_coherence(
     """
     violations: list[ValidationViolation] = []
 
+    # Class B stamping canary (WI-kufib / META-niguz): before schema
+    # 0.14.0 relaxed Symbol.language to nullable, the 262 whole-document
+    # `language: None is not of type 'string'` validation errors were
+    # the de-facto signal that the synthetic stand-in population is
+    # under-stamped. The schema fix silences that signal, so the canary
+    # moves onto the fields that SHOULD be non-null on a Class B
+    # stand-in. Collected per-field; emitted as one umbrella violation
+    # per field (writer-contract style) after the loop.
+    class_b_missing: dict[str, list[str]] = {
+        "Symbol.stable_id": [],
+        "Symbol.fingerprint": [],
+        "Symbol.discovery_language": [],
+        "Symbol.origin": [],
+    }
+
     # ---- Symbol invariants ----
     for sym in symbols:
         sym_id = getattr(sym, "id", None)
@@ -728,6 +743,17 @@ def _check_cross_field_coherence(
         protocol_origin = getattr(sym, "protocol_origin", None)
         kind = getattr(sym, "kind", None)
         display_label = getattr(sym, "display_label", None)
+
+        if language is None and protocol_origin is not None:
+            # Class B synthetic stand-in: collect missing identity stamps.
+            if getattr(sym, "stable_id", None) is None:
+                class_b_missing["Symbol.stable_id"].append(str(sym_id))
+            if getattr(sym, "fingerprint", None) is None:
+                class_b_missing["Symbol.fingerprint"].append(str(sym_id))
+            if getattr(sym, "discovery_language", None) is None:
+                class_b_missing["Symbol.discovery_language"].append(str(sym_id))
+            if not getattr(sym, "origin", None):
+                class_b_missing["Symbol.origin"].append(str(sym_id))
 
         # ADR-0031 Class B coherence. File Symbols are an explicit
         # Class A exception per the ADR's per-linker producer policy.
@@ -796,6 +822,35 @@ def _check_cross_field_coherence(
                     "for Class B synthetic stand-ins."
                 ),
             ))
+
+    # Emit the Class B stamping canary umbrellas (one per field).
+    for field_name, missing_ids in class_b_missing.items():
+        if not missing_ids:
+            continue
+        samples = ", ".join(missing_ids[:3])
+        violations.append(ValidationViolation(
+            severity="warning",
+            validator_class="cross_field",
+            field_name=field_name,
+            record_id=None,
+            observed=(
+                f"{len(missing_ids)} Class B stand-in(s) with "
+                f"{field_name.split('.', 1)[1]} unset"
+            ),
+            expected=(
+                "Every Class B synthetic stand-in (language=None, "
+                "protocol_origin populated) carries non-null stable_id, "
+                "fingerprint, discovery_language, and a non-empty origin."
+            ),
+            message=(
+                f"{len(missing_ids)} Class B synthetic stand-in(s) are "
+                f"missing {field_name} (e.g. {samples}). This is the "
+                "relocated WI-kufib canary: schema 0.14.0 tolerates "
+                "language=None, so under-stamping no longer fails "
+                "whole-document validation — it must surface here "
+                "instead (META-niguz)."
+            ),
+        ))
 
     # ---- Edge invariants ----
     for edge in edges:

@@ -441,3 +441,153 @@ class TestSchemaUpToDate:
         is_resolved = schema["$defs"]["Edge"]["properties"]["is_resolved"]
         assert is_resolved["type"] == "boolean"
         assert is_resolved["default"] is True
+
+
+class TestSchemaDataclassSync:
+    """WI-kufib / WI-kutas: the $defs must track the dataclasses.
+
+    These tests pin the introspection-driven generator contract: every
+    $def's property set, nullability, and required-ness derive from the
+    dataclass (via the generator's serialization specs), so a field
+    add / remove / retype cannot silently drift docs/schema.json.
+    """
+
+    def test_symbol_language_nullable(self):
+        """ADR-0031 Class B stand-ins emit language=None; the schema
+        must tolerate null (WI-kufib: 262 self-analysis nodes)."""
+        schema = load_schema()
+        symbol_def = schema["$defs"]["Symbol"]
+        validator = make_validator(schema, "Symbol")
+
+        class_b_node = {
+            "id": "python:app.py:3-3:db_query:call_site",
+            "name": "SELECT users",
+            "kind": "call_site",
+            "language": None,
+            "path": "app.py",
+            "span": {"start_line": 3, "end_line": 3, "start_col": 0, "end_col": 0},
+            "discovery_language": "python",
+            "protocol_origin": "database_query",
+        }
+        validator.validate(class_b_node)  # should not raise
+        assert "language" not in symbol_def.get("required", [])
+
+    def test_symbol_canonical_name_absent(self):
+        """ADR-0032 removed Symbol.canonical_name from the dataclass at
+        SCHEMA_VERSION 0.13.0; the hand-coded schema kept it (stale)."""
+        schema = load_schema()
+        assert "canonical_name" not in schema["$defs"]["Symbol"]["properties"]
+
+    def test_symbol_axis_sibling_fields_present(self):
+        """The four ADR-0031/0032 typed sibling fields are emitted on
+        every node (34396/34396 in self-analysis) and must be declared."""
+        schema = load_schema()
+        props = schema["$defs"]["Symbol"]["properties"]
+        for field_name in (
+            "discovery_language", "protocol_origin",
+            "display_label", "qualified_name",
+        ):
+            assert field_name in props, f"missing {field_name}"
+
+    def test_analysis_run_failed_files_and_pass_version_present(self):
+        """AnalysisRun emits failed_files and pass_version on every run
+        (84/84 in self-analysis); the schema must declare them."""
+        schema = load_schema()
+        props = schema["$defs"]["AnalysisRun"]["properties"]
+        assert "failed_files" in props
+        assert "pass_version" in props
+
+    def test_to_dict_keys_match_schema_properties(self):
+        """Round-trip writer contract: for each $def, a fully-populated
+        instance's to_dict() key set equals the schema property set."""
+        from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol
+
+        schema = load_schema()
+        span = Span(start_line=1, end_line=2, start_col=0, end_col=1)
+        samples = {
+            "Span": span,
+            "Symbol": Symbol(
+                id="python:a.py:1-2:f:function", name="f", kind="function",
+                language="python", path="a.py", span=span,
+                origin=["python"], origin_run_id="uuid:1",
+            ),
+            "Edge": Edge.create(
+                src="a", dst="b", edge_type="calls", line=1,
+                origin="python", origin_run_id="uuid:1",
+                evidence_lang="python", evidence_spans=[{"line": 1}],
+                dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
+                derived_from=["sym:1"],
+            ),
+            "AnalysisRun": AnalysisRun.create(pass_id="python", version="1.0"),
+        }
+        for def_name, instance in samples.items():
+            schema_keys = set(schema["$defs"][def_name]["properties"])
+            dict_keys = set(instance.to_dict())
+            assert dict_keys == schema_keys, (
+                f"{def_name}: to_dict() and schema disagree. "
+                f"only-in-to_dict={sorted(dict_keys - schema_keys)}, "
+                f"only-in-schema={sorted(schema_keys - dict_keys)}"
+            )
+
+    def test_generator_rejects_stale_decoration(self):
+        """A decoration for a field the dataclass no longer has must
+        fail generation (the canonical_name failure mode)."""
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        gen = __import__("generate_schema_lib")
+        spec = gen.spec_for("Symbol")
+        spec.decorations["definitely_not_a_field"] = {"description": "stale"}
+        with pytest.raises(gen.SchemaDriftError, match="definitely_not_a_field"):
+            gen.build_def(spec)
+
+    def test_generator_rejects_undecorated_field(self):
+        """A dataclass field with no decoration / override / composite
+        must fail generation (the discovery_language failure mode)."""
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        gen = __import__("generate_schema_lib")
+        spec = gen.spec_for("Symbol")
+        del spec.decorations["docstring"]
+        with pytest.raises(gen.SchemaDriftError, match="docstring"):
+            gen.build_def(spec)
+
+    @pytest.mark.skipif(
+        not _has_hypergumbo_meta(),
+        reason="requires hypergumbo meta-package"
+    )
+    def test_linker_synthetic_output_validates(self, tmp_path: Path):
+        """End-to-end fixture-blindness closure: an analysis whose input
+        triggers a protocol linker (Class B language=None stand-ins)
+        validates whole-document. The prior conformance fixture was
+        single-file pure Python, so no linker ever fired and the
+        WI-kufib drift was invisible to CI.
+        """
+        (tmp_path / "schema.sql").write_text(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);\n"
+        )
+        (tmp_path / "app.py").write_text(dedent('''
+            import sqlite3
+
+            def fetch_users():
+                conn = sqlite3.connect("app.db")
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM users")
+                return cursor.fetchall()
+        '''))
+
+        output_file = tmp_path / "results.json"
+        result = subprocess.run(
+            [sys.executable, "-m", "hypergumbo", "run", str(tmp_path),
+             "--out", str(output_file)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"hypergumbo run failed: {result.stderr}"
+
+        behavior_map = json.loads(output_file.read_text(encoding="utf-8"))
+        class_b_nodes = [
+            n for n in behavior_map["nodes"] if n.get("language") is None
+        ]
+        assert class_b_nodes, (
+            "fixture failed to produce a Class B (language=None) synthetic "
+            "stand-in; the conformance gate is blind to linker output again"
+        )
+        jsonschema.validate(behavior_map, load_schema())

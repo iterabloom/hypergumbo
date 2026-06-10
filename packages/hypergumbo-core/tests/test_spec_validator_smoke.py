@@ -603,7 +603,13 @@ def test_check_sub_pattern_1_never_populated_empty_table_is_no_op() -> None:
 
 def test_cross_field_class_b_coherent_passes() -> None:
     """Class B synthetic stand-in (language=None, protocol_origin
-    populated) passes the cross-field check."""
+    populated) passes the cross-field check.
+
+    The fixture is fully stamped (stable_id / fingerprint /
+    discovery_language / non-empty origin): since the WI-kufib canary
+    relocation, an UNSTAMPED Class B stand-in is no longer "coherent" —
+    see the Class B stamping canary tests below.
+    """
     from hypergumbo_core.symbol_kinds import all_symbol_kind_names
 
     a_kind = next(k for k in all_symbol_kind_names() if k != "file")
@@ -614,7 +620,9 @@ def test_cross_field_class_b_coherent_passes() -> None:
         discovery_language="python",
         protocol_origin="websocket",
         display_label=None,
-        origin=[],
+        origin=["websocket-linker"],
+        stable_id="sha256:" + "0" * 16,
+        fingerprint="hgfp1:" + "0" * 64,
         qualified_name=None,
         dst_ref=None,
         dst=None,
@@ -1216,3 +1224,128 @@ def test_make_protocol_stable_id_emits_canonical_shape() -> None:
 
     out = make_protocol_stable_id("db_query", "SELECT", "users,orders")
     assert _CANONICAL_STABLE_ID_PATTERN.match(out)
+
+
+# ---------------------------------------------------------------------------
+# Class B stamping canary (WI-kufib implementer caveat / META-niguz)
+# ---------------------------------------------------------------------------
+#
+# Before schema 0.14.0, the 262 `language: None is not of type 'string'`
+# whole-document validation errors were the de-facto canary for the
+# under-stamped synthetic stand-in population. Relaxing the schema's
+# nullability (the WI-kufib fix) silences that signal, so the canary
+# moves here: a Class B stand-in (language=None, protocol_origin
+# populated) must carry the identity fields that SHOULD be non-null.
+
+
+def _class_b_sym(**overrides):
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(k for k in all_symbol_kind_names() if k != "file")
+    fields = {
+        "id": "python:test/fake.py:1-1:class-b:function",
+        "kind": a_kind,
+        "language": None,
+        "discovery_language": "python",
+        "protocol_origin": "websocket",
+        "display_label": None,
+        "origin": [],
+        "qualified_name": None,
+        "stable_id": None,
+        "fingerprint": None,
+        "dst_ref": None,
+        "dst": None,
+    }
+    fields.update(overrides)
+    return _FakeSym(**fields)
+
+
+def test_cross_field_class_b_unstamped_emits_canary() -> None:
+    """An unstamped Class B stand-in emits one umbrella violation per
+    missing identity field (stable_id, fingerprint, discovery_language,
+    origin)."""
+    sym = _class_b_sym(
+        stable_id=None, fingerprint=None, discovery_language=None, origin=[],
+    )
+    violations = validate_ir([sym], [], [])
+    canary = [
+        v for v in violations
+        if v.validator_class == "cross_field" and "Class B" in (v.message or "")
+        and "stand-in" in (v.message or "")
+    ]
+    flagged_fields = {v.field_name for v in canary}
+    assert flagged_fields == {
+        "Symbol.stable_id",
+        "Symbol.fingerprint",
+        "Symbol.discovery_language",
+        "Symbol.origin",
+    }
+
+
+def test_cross_field_class_b_canary_is_umbrella_not_per_record() -> None:
+    """Three unstamped Class B stand-ins missing the same field produce
+    ONE umbrella violation for that field (writer-contract style), not
+    three copies."""
+    syms = [
+        _class_b_sym(
+            id=f"python:test/fake.py:{i}-{i}:class-b-{i}:function",
+            stable_id=None,
+            fingerprint="hgfp1:" + "0" * 64,
+            discovery_language="python",
+            origin=["websocket-linker"],
+        )
+        for i in range(3)
+    ]
+    violations = validate_ir(syms, [], [])
+    stable_id_canary = [
+        v for v in violations
+        if v.field_name == "Symbol.stable_id" and "Class B" in (v.message or "")
+    ]
+    assert len(stable_id_canary) == 1
+    assert "3" in stable_id_canary[0].observed
+
+
+def test_cross_field_class_b_fully_stamped_passes_canary() -> None:
+    """A fully-stamped Class B stand-in emits no canary violations."""
+    sym = _class_b_sym(
+        stable_id="sha256:" + "0" * 16,
+        fingerprint="hgfp1:" + "0" * 64,
+        discovery_language="python",
+        origin=["websocket-linker"],
+    )
+    violations = validate_ir([sym], [], [])
+    assert not any(
+        "Class B" in (v.message or "") and "stand-in" in (v.message or "")
+        for v in violations
+        if v.validator_class == "cross_field"
+    )
+
+
+def test_cross_field_class_a_symbols_ignored_by_canary() -> None:
+    """Class A real-source declarations are not subject to the Class B
+    stamping canary even when their identity fields are None."""
+    from hypergumbo_core.catalog import all_known_languages
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(k for k in all_symbol_kind_names() if k != "file")
+    a_lang = next(iter(all_known_languages()))
+    sym = _FakeSym(
+        id="python:test/fake.py:1-1:class-a:function",
+        kind=a_kind,
+        language=a_lang,
+        discovery_language=None,
+        protocol_origin=None,
+        display_label=None,
+        origin=[],
+        qualified_name=None,
+        stable_id=None,
+        fingerprint=None,
+        dst_ref=None,
+        dst=None,
+    )
+    violations = validate_ir([sym], [], [])
+    assert not any(
+        "Class B" in (v.message or "") and "stand-in" in (v.message or "")
+        for v in violations
+        if v.validator_class == "cross_field"
+    )
