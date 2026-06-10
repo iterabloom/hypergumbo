@@ -208,9 +208,13 @@ section "3. Dependencies & Security"
 #                                 llama_cpp_python (local LM experiments,
 #                                 not a hypergumbo dependency)
 #   --ignore-vuln PYSEC-2026-139  torch, transitive of the optional
-#                                 sentence-transformers embeddings extra;
-#                                 re-check for a fixed release at next
-#                                 release-prep and drop the ignore then
+#                                 sentence-transformers embeddings extra
+#   --ignore-vuln CVE-2025-3000   same torch advisory family; the DB began
+#                                 surfacing this CVE under its own ID on
+#                                 2026-06-10 (ci.yml carve-out comment
+#                                 already analyzes it)
+# Re-check cadence for the torch/diskcache ignores is tracked as
+# tracker item WI-totak (drop each ignore when a fixed release ships).
 # pip-audit's exit code is the gate: 0 = no vulnerabilities, 1 = found.
 # Anything else (network, parse, unsupported package) is a real failure
 # we want to surface, not paper over.
@@ -219,7 +223,8 @@ AUDIT_OUTPUT=$(pip-audit --skip-editable \
     --ignore-vuln CVE-2025-71176 \
     --ignore-vuln CVE-2026-3219 \
     --ignore-vuln CVE-2025-69872 \
-    --ignore-vuln PYSEC-2026-139 2>&1)
+    --ignore-vuln PYSEC-2026-139 \
+    --ignore-vuln CVE-2025-3000 2>&1)
 AUDIT_EXIT=$?
 if [ $AUDIT_EXIT -eq 0 ]; then
     pass "No known vulnerabilities in dependencies"

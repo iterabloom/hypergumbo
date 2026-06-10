@@ -349,6 +349,12 @@ jobs:
           #   (3) the project starts running convert_*.py conversion scripts or sets trust_remote_code=True;
           #   (4) CI moves off the single-tenant self-hosted runner to a shared / multi-tenant executor.
           # Re-audit on every sentence-transformers / torch / transformers bump, and at minimum every 90 days.
+          # CVE-2025-3000 appears twice below by design: it is one of the
+          # torch CVEs already analyzed in the carve-out above (the PYSEC
+          # range names it), but on 2026-06-10 the advisory DB began
+          # surfacing it under its own CVE ID rather than aliased to an
+          # ignored PYSEC ID, slipping past the list. Same analysis, same
+          # exit plan, one more key.
           pip-audit --skip-editable \
             --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219 \
             --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212 \
@@ -360,7 +366,8 @@ jobs:
             --ignore-vuln PYSEC-2025-193 --ignore-vuln PYSEC-2025-194 \
             --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-196 \
             --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-210 \
-            --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277
+            --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277 \
+            --ignore-vuln CVE-2025-3000
 
   verify-generated:
     needs: [changes, stop-the-line]
