@@ -19,3 +19,18 @@
     pr_ref:  # b486
     description: "**Mechanism.** Spec docs/hypergumbo-spec.md:344 defines: 'fingerprint (content hash): sha256(source_bytes)'. But the dominant producer (fingerprint.py, 28569/28574 populated nodes, prefix hgfp1:) computes a STRUCTURAL AST fingerprint 'modulo whitespace and comments' (fingerprint.py docstring lines 8-13: 'two symbols whose code text is identical except for blank lines, indentation choices, and comments produce the same fingerprint'). It is explicitly NOT sha256(source_bytes).\n\n**Evidence.** probe_1_fpscheme.log: 28569 nodes carry hgfp1: prefix. Ironically the bare-hex WGSL form (WI-lisog) IS raw sha256(bytes)[:16], the actual spec definition the hgfp1: form violates — so two coexisting formats neither of which fully matches.\n\n**Consequence.** A consumer reading spec §344 and expecting byte-level content equivalence ('these two symbols have identical bytes') is wrong: whitespace/comment/blank-line differences are normalized away. The field is the symbol-fingerprint-scheme hypergumbo-symbol-fp-v1 (WI-fanun design); the spec is the stale side and should be corrected to describe the structural-AST semantics.\n\n**Related (distinct).** Distinct from WI-lisog/INV-fogum (prefix/null/format) and WI-fanun (global null) — this is the spec-vs-implementation SEMANTIC mismatch (structural-AST-hash vs byte-hash), uncovered by any ledger row. Source: dogfood_tranche_07 F137.A1, deterministic frozen read."  # b486
     fields: {}  # b486
+- op: update  # b23e
+  at: '2026-06-10T16:32:14Z'  # b23e
+  by: agent  # b23e
+  actor: jgstern_agent  # b23e
+  clock: 2  # b23e
+  nonce: b23e  # b23e
+  set:  # b23e
+    status: done  # b23e
+- op: discuss  # 1c54
+  at: '2026-06-10T16:32:14Z'  # 1c54
+  by: agent  # 1c54
+  actor: jgstern_agent  # 1c54
+  clock: 3  # 1c54
+  nonce: 1c54  # 1c54
+  message: "Fixed in PR #4167 (merged b6403f6669). Spec fingerprint definition corrected: was 'sha256(source_bytes)'; now documents the structural semantics (parse-subtree hash, shape+identifiers+literals, whitespace/comment-invariant), the hgfp2: scheme prefix + symbol_fingerprint_scheme tag, and the null conditions (no grammar, no parseable content, error subtree). Schema  description updated to match. The WGSL bare-hex second-algorithm population this item noted as ironic is also gone (producer-side stampings demolished in the same PR)."  # 1c54

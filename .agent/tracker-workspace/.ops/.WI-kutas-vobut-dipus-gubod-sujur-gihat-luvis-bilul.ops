@@ -63,3 +63,25 @@
   clock: 7  # ccea
   nonce: ccea  # ccea
   message: "Structural triage (2026-06-09): two concrete, currently-open instances of this hand-coded-schema-drift root. (1) WI-kufib — Symbol.language typed required-non-nullable in docs/schema.json but Optional[str] in ir.py (cross-linked not_duplicate_of). (2) Symbol.canonical_name STILL present at docs/schema.json:448 (Symbol def, description 'Fully qualified name', oneOf[string,null]) although ADR-0032 removed the field from ir.py — only a docstring reference remains at ir.py:1159. Both are symptoms of generate-schema hand-coding the defs blocks instead of introspecting the Symbol dataclass: a dataclass field add/remove/retype cannot propagate. RELEASE-RELEVANT: the 6.0.0 changelog at CHANGELOG.md:188 asserts canonical_name was dropped from the JSON Schema's Symbol properties entry — that claim is FALSE until the property is actually deleted. Fixing WI-kutas (introspect dataclasses) subsumes BOTH instances and makes the changelog honest; hand-patching the two properties is an acceptable pre-release stopgap but reduces the felt urgency to fix the generator."  # ccea
+- op: discuss  # b494
+  at: '2026-06-10T07:16:18Z'  # b494
+  by: agent  # b494
+  actor: jgstern_agent  # b494
+  clock: 8  # b494
+  nonce: b494  # b494
+  message: "PR1 of the structural fix landed: $defs (Symbol/Edge/Span/AnalysisRun) now introspected from dataclasses via scripts/generate_schema_lib.py — structure from dataclasses.fields()+get_type_hints, curated decoration overlay for descriptions/x-annotations, declared renames (pass_id->pass, edge_type->type) and composite folds (supply_chain, Edge.meta), hard-fail drift guards in both directions, to_dict round-trip key check. Fixes the WI-kufib face, deletes stale canonical_name, declares the 4 axis fields + AnalysisRun.failed_files/pass_version. REMAINING (PR2, this item stays open): opaque metrics/limits/features blocks, 3 missing top-level keys (reproducibility_context, symbol_fingerprint_scheme, validation_report), Feature $def, reproducibility_context.implications-vs-captured pass_versions mismatch."  # b494
+- op: update  # 878d
+  at: '2026-06-10T07:44:53Z'  # 878d
+  by: agent  # 878d
+  actor: jgstern_agent  # 878d
+  clock: 9  # 878d
+  nonce: 878d  # 878d
+  set:  # 878d
+    status: done  # 878d
+- op: discuss  # 4e5e
+  at: '2026-06-10T07:44:53Z'  # 4e5e
+  by: agent  # 4e5e
+  actor: jgstern_agent  # 4e5e
+  clock: 10  # 4e5e
+  nonce: 4e5e  # 4e5e
+  message: "PR2 complete — full WI-kutas scope closed. Top-level blocks typed: limits -> introspected Limits $def (+FailedFile/SupplyChainLimits/ClassificationFailure/AmbiguousPath sub-defs), features[] -> Feature/SliceQuery $defs introspected from SliceResult/SliceQuery (extras/omitted/set-type support added to generate_schema_lib), metrics properties declared and pinned to compute_metrics() by contract test. Three missing top-level keys declared: reproducibility_context, symbol_fingerprint_scheme, validation_report (-> introspected ValidationViolation $def). reproducibility_context.implications fixed to reference analysis_runs[].pass_version instead of the never-captured pass_versions key. SCHEMA_VERSION 0.14.0 -> 0.14.1 (additive). Non-dataclass blocks (metrics/reproducibility/validation_report) cannot be introspected, so their property sets are pinned to the actual producers by tests — the equivalent drift guard. Remaining hand-coded blocks (profile, supply_chain_summary, sketch_precomputed, Entrypoint, UsageContext) were audited clean in this item's Scope and are out of scope."  # 4e5e

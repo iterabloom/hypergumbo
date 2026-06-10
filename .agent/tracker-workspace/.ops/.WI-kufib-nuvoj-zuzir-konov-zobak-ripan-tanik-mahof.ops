@@ -56,3 +56,18 @@
   clock: 6  # 040a
   nonce: 040a  # 040a
   message: "Structural triage (2026-06-09): WI-kufib's FIX-root is schema-drift (WI-kutas: generate-schema hand-codes docs/schema.json instead of introspecting the Symbol dataclass), NOT the META-niguz/nomiz stamping defect it is parented under. Rationale: ADR-0031 split Symbol.language into discovery_language + protocol_origin and relaxed language to Optional[str]; language=None on synthetic stand-ins is BY DESIGN (they carry discovery_language — confirmed: all 262 null-language nodes carry it), and the eliminate-the-null alternative WI-nagam is correctly wont_do. So the schema-tolerate fix (oneOf[string,null]) is terminal and correct, and is the same hand-coded-schema drift as WI-kutas. Cross-linked not_duplicate_of WI-kutas; kept parented under META-nomiz to preserve the stand-in-population umbrella per the family's stated convention. IMPLEMENTER CAVEAT: the 262-node language:None error is currently the ONLY document-level schema-validation failure — the de-facto canary for the under-stamped synthetic population. Relaxing the schema silences it; do NOT read schema-validates-clean as stamping-fixed (stable_id/fingerprint/origin/origin_run_id may still be sentinel — that is META-niguz, still open). When relaxing language, ADD a validator assertion that synthetic stand-ins carry non-null stable_id + fingerprint + discovery_language + origin, i.e. move the canary onto the fields that SHOULD be non-null. RIDE-ALONG: the same docs/schema.json edit should drop the stale Symbol.canonical_name property at docs/schema.json:448 (removed from the dataclass by ADR-0032, never deleted from the hand-coded schema)."  # 040a
+- op: update  # 73db
+  at: '2026-06-10T07:16:18Z'  # 73db
+  by: agent  # 73db
+  actor: jgstern_agent  # 73db
+  clock: 7  # 73db
+  nonce: 73db  # 73db
+  set:  # 73db
+    status: done  # 73db
+- op: discuss  # e716
+  at: '2026-06-10T07:16:18Z'  # e716
+  by: agent  # e716
+  actor: jgstern_agent  # e716
+  clock: 8  # e716
+  nonce: e716  # e716
+  message: "Fixed at the WI-kutas root: generate-schema's Symbol/Edge/Span/AnalysisRun $defs are now introspected from the dataclasses (new scripts/generate_schema_lib.py) instead of hand-coded, so Symbol.language Optional[str] propagates as oneOf[string,null] (dropped from required) — the 262 Class B nodes now validate whole-document (new e2e SQL+Python linker-active conformance test proves it). SCHEMA_VERSION 0.13.0 -> 0.14.0. Both implementer caveats honored: (1) canary moved — new cross_field spec-validator check emits umbrella violations when Class B stand-ins miss stable_id/fingerprint/discovery_language/origin (META-niguz stays visible); (2) ride-along — stale canonical_name property actually deleted from schema.json, making the CHANGELOG §Removed claim true."  # e716

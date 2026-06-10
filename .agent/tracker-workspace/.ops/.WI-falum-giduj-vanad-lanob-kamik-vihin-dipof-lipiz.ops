@@ -49,3 +49,34 @@
   clock: 5  # 3e7c
   nonce: 3e7c  # 3e7c
   message: "CORRECTION to my 2026-06-09 cluster-review note: the 'probable shared upstream root cause: TOML manifest span extraction' claim is REFUTED by the code. The two values come from entirely separate producers. WI-titiz's stable_id is make_dependency_stable_id(language, name) = sha256('dependency:{language}:{name}')[:16] (analyze/base.py:591-598) — it NEVER reads the span; it collapses cross-manifest only because the hash input omits the declaring manifest path (hash-input-too-coarse, the INV-tazaj family WI-titiz is parented under). THIS item's fingerprint collapse is a different producer: stamp_symbol_fingerprints (fingerprint.py:246) -> compute_symbol_fingerprint -> _tree_sitter_fingerprint, which slices and tree-sitter-parses the symbol's single-line span (the out-of-context TOML array element parses to an ERROR tree). So: same SURFACE (toml dependency-kind nodes), different FIELD (fingerprint vs stable_id), different PRODUCER, different root-cause FAMILY. The not_duplicate_of link to WI-titiz is correct (RELATED_BUT_DISTINCT, same surface) and stays — but the two will NOT resolve together. WI-falum's own evidence already implied this: 'stable_id (67) individuate the deps correctly; only fingerprint collapses.'"  # 3e7c
+- op: discuss  # f070
+  at: '2026-06-10T14:55:45Z'  # f070
+  by: agent  # f070
+  actor: jgstern_agent  # f070
+  clock: 6  # f070
+  nonce: f070  # f070
+  message: "Release-gate check 2026-06-10: confirmed REGRESSION vs v5.0.1, the only one among the 7 open P0s. Empirical A/B (pip-installed hypergumbo==5.0.1 vs dev @ 66b1e521ac, two-manifest TOML fixture, 5 dependency nodes): 5.0.1 emits 4 distinct content-derived fingerprints (identical 'rich~=14.3.2' lines in two manifests legitimately share); dev emits ONE (hgfp1:87e35a5c97890e5c) for all 5. Introduced in this release window by the fingerprint centralization post-pass (stamp_symbol_fingerprints routing single-line TOML spans through _tree_sitter_fingerprint, ERROR-tree leaf walk drops content). 5.0.1's producer-side Format-1 hashes were prefix-non-canonical but content-distinct — 6.0.0 trades content-discrimination for format-canonicality on this surface. Flagged as ship-blocker-conversation input for the 6.0.0 release decision."  # f070
+- op: update  # 40e8
+  at: '2026-06-10T16:32:01Z'  # 40e8
+  by: agent  # 40e8
+  actor: jgstern_agent  # 40e8
+  clock: 7  # 40e8
+  nonce: '40e8'  # 40e8
+  set:  # 40e8
+    status: done  # 40e8
+- op: discuss  # 0332
+  at: '2026-06-10T16:32:01Z'  # 0332
+  by: agent  # 0332
+  actor: jgstern_agent  # 0332
+  clock: 8  # 0332
+  nonce: '0332'  # 0332
+  message: "Fixed at root in PR #4167 (merged b6403f6669). The v1 fingerprinter parsed span slices out of file context; single-line TOML array elements parsed to ERROR trees whose leaf walk dropped content, collapsing all 76 deps to one value. v2 (fingerprint.py rewrite) parses each file once and hashes the subtree covering the span; container spans hash fully-contained children; error subtrees yield None, never a constant. Bonus root-cause fix: tree-sitter-toml's string node hides content between quote tokens (not a leaf) — gap text now contributes. Scheme bumped hgfp1:->hgfp2: / symbol-fp-v1->v2 since all values change. Verified: two-manifest fixture restores 5.0.1-baseline discrimination (4 distinct/5 nodes, identical lines share); tracker-package self-analysis clean. New spec-validator cross_field umbrella (>=10 distinct simple names on one value) makes this regression class visible in validation_report. 6.0.0 release unblocked on regression grounds."  # 0332
+- op: update  # 3cf1
+  at: '2026-06-10T16:32:14Z'  # 3cf1
+  by: agent  # 3cf1
+  actor: jgstern_agent  # 3cf1
+  clock: 9  # 3cf1
+  nonce: 3cf1  # 3cf1
+  set: {}  # 3cf1
+  add:  # 3cf1
+    tags: [awaits_bakeoff_validation]  # 3cf1
