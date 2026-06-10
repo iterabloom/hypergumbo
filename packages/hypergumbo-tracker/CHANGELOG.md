@@ -7,6 +7,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-10
+
 ### Added
 
 - **Per-message edit-mode for tracker discussions.** Three new ops (`delete-msg`, `undelete-msg`, `edit-msg-text`) tombstone, restore, or rewrite individual discussion entries by their 4-char nonce. Authorization is window-based: a human-only `edit-mode-on` op opens a window (default 30m, max 60m, capped at 500 mutation ops); ops outside any valid window are filtered at compile time, not removed from disk. A defense-in-depth OS-permission gate backs the window: the edit-mode log lives in a dedicated human-owned subdirectory, and agent-owned log files have every op filtered (preserved on disk for forensics). CLI: `tracker edit-mode {on|off|status}` (human only for on/off), `delete-msg`, `undelete-msg`, `edit-msg-text`. `tracker show` suppresses tombstones by default with a `(not shown: N deleted messages)` footer; `--include-deleted` and `--include-history` reveal deleted entries and prior text revisions. The TUI gains a `Ctrl-E` toggle and a live countdown banner.

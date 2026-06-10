@@ -16,7 +16,7 @@ extraction, Jupyter notebooks, and the Play framework's routes DSL.
 See `docs/LANGUAGES.md` for the authoritative inventory.
 """
 
-__version__ = "5.0.1"
+__version__ = "6.0.0"
 
 # Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 # Importing each module triggers the @register_analyzer decorator within it.

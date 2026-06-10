@@ -3,12 +3,14 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v5.0.1
-- Released **schema** is at: v0.5.8
+- Released **tool** is at: v6.0.0
+- Released **schema** is at: v0.14.1
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 ## [Unreleased]
+
+## [6.0.0] - 2026-06-10
 
 > **User-facing view:** see [docs/RELEASE-NOTES-6.X.md](docs/RELEASE-NOTES-6.X.md)
 > for the reader-friendly summary of what's changed. This file (CHANGELOG.md)
