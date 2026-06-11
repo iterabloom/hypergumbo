@@ -209,6 +209,36 @@ class TestCompile:
         assert item.fields["statement"] == "orig"  # Unchanged
         assert item.fields["root_cause"] == "updated rc"  # Updated
 
+    def test_update_with_null_set_add_remove_compiles(self) -> None:
+        """An update op with explicit null set/add/remove must compile as
+        no-ops, not crash.
+
+        Regression: ``op_dict.get("remove", {})`` returns the default only
+        when the key is *absent*; an op carrying an explicit ``"remove":
+        null`` yields ``None``, so ``None.items()`` crashed whole-corpus
+        compilation — breaking ``list``/``tags``/``add`` and the TUI. (The
+        SQLite read-cache had masked one such pre-existing op until a sync
+        invalidated it.) A null set/add/remove dict means "no changes".
+        """
+        ops = [
+            {
+                "op": "create", "at": "T1", "by": "agent", "actor": "a",
+                "clock": 1, "nonce": "n1",
+                "data": {"kind": "invariant", "title": "t",
+                         "status": "todo_hard", "priority": 2,
+                         "description": "", "fields": {}, "tags": ["keep"]},
+            },
+            {
+                "op": "update", "at": "T2", "by": "agent", "actor": "a",
+                "clock": 2, "nonce": "n2",
+                "set": None, "add": None, "remove": None,
+            },
+        ]
+        item = compile_ops(ops, "INV-test")
+        # Null dicts are no-ops: original state preserved, no crash.
+        assert item.status == "todo_hard"
+        assert item.tags == ["keep"]
+
     def test_duplicate_creates_lowest_clock_wins(self) -> None:
         ops = [
             {

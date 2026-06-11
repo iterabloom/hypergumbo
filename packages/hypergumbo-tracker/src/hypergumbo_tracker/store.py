@@ -622,7 +622,10 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
 
         elif op_type == "update":
             # LWW for scalar fields in `set`
-            set_dict = op_dict.get("set", {})
+            # ``get(k, {})`` returns the default only when the key is absent;
+            # an op with explicit ``"set": null`` yields None, so ``or {}``
+            # also covers null (a null set/add/remove means "no changes").
+            set_dict = op_dict.get("set") or {}
             for key, value in set_dict.items():
                 # Backward compat: old ops used "before", new field is "isbefore"
                 if key == "before":
@@ -642,7 +645,7 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
                     setattr(item, key, value)
 
             # Accumulate add ops (set-valued fields)
-            add_dict = op_dict.get("add", {})
+            add_dict = op_dict.get("add") or {}
             for key, values in add_dict.items():
                 # Backward compat: old ops used "before", new field is "isbefore"
                 if key == "before":
@@ -654,7 +657,7 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
                             current.append(v)
 
             # Accumulate remove ops (set-valued fields)
-            remove_dict = op_dict.get("remove", {})
+            remove_dict = op_dict.get("remove") or {}
             for key, values in remove_dict.items():
                 # Backward compat: old ops used "before", new field is "isbefore"
                 if key == "before":

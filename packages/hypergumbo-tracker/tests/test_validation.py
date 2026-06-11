@@ -828,6 +828,24 @@ class TestFieldSchemaValidation:
         _validate_field_value(".test.ops", 0, "flag", None, fs, result)
         assert result.ok
 
+    def test_lock_check_tolerates_null_set_add_remove(self) -> None:
+        """_check_lock_violations must not crash on an agent update op whose
+        set/add/remove are explicitly null.
+
+        Companion to the store.py compile guard: ``op_dict.get("remove", {})``
+        returns None on an explicit ``"remove": null`` op, so ``None.keys()``
+        crashed lock-violation scanning. A null set/add/remove touches no
+        fields, so it cannot violate a lock.
+        """
+        result = ValidationResult()
+        ops = [
+            {"op": "lock", "lock": ["status"]},
+            {"op": "update", "by": "agent",
+             "set": None, "add": None, "remove": None},
+        ]
+        _check_lock_violations(".test.ops", ops, result)
+        assert not any("locked field" in w for w in result.warnings)
+
 
 # ---------------------------------------------------------------------------
 # Suggest field

@@ -527,9 +527,13 @@ def _check_lock_violations(
             for f in op_dict.get("unlock", []):
                 locked.discard(f)
         elif op_type == "update" and op_dict.get("by") == "agent":
-            set_dict = op_dict.get("set", {})
-            add_dict = op_dict.get("add", {})
-            remove_dict = op_dict.get("remove", {})
+            # ``or {}`` (not the get-default) so an explicit ``"set": null`` /
+            # ``"add": null`` / ``"remove": null`` op is treated as "no
+            # fields touched" rather than crashing on ``None.keys()`` — mirrors
+            # the compile-time guard in store.py:compile_ops.
+            set_dict = op_dict.get("set") or {}
+            add_dict = op_dict.get("add") or {}
+            remove_dict = op_dict.get("remove") or {}
             touched = set(set_dict.keys()) | set(add_dict.keys()) | set(remove_dict.keys())
             violations = touched & locked
             if violations:
