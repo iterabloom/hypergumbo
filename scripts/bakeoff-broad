@@ -408,14 +408,21 @@ def run_cmd(cmd: list, cwd: str = None, timeout: int = 600) -> tuple:
 # =============================================================================
 
 def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_WORKDIR",
-                    auto_discover: bool = True) -> str:
+                    auto_discover: bool = True,
+                    session_prefix: str = "broad-") -> str:
     """Resolve workdir from CLI arg, env var, or canonical default.
 
     Resolution order: CLI --workdir > env var > canonical default.
 
     When *auto_discover* is True (default), if the resolved directory has
-    no state.json but contains session subdirectories (broad-*/deep-*),
-    returns the most recent one.  Set *auto_discover* to False in
+    no state.json but contains session subdirectories, returns the most
+    recent one whose name starts with *session_prefix* (``broad-`` for this
+    command).  Sessions of the *other* mode are ignored on purpose:
+    ``broad-*`` and ``deep-*`` share one artifacts directory, and a
+    full-string lexicographic sort would let any ``deep-*`` dir out-sort any
+    ``broad-*`` dir (``d`` > ``b`` in ASCII) regardless of the timestamp
+    suffix — so a fresh ``broad-`` session would be silently superseded by a
+    stale ``deep-`` one (INV-fogat).  Set *auto_discover* to False in
     ``cmd_init`` to avoid nesting new sessions inside existing ones.
     """
     workdir = args_workdir or os.environ.get(env_var) or DEFAULT_BAKEOFF_DIR
@@ -428,17 +435,13 @@ def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_WORKDIR",
     if os.path.exists(os.path.join(workdir, "state.json")):
         return workdir
 
-    # Otherwise, look for the most recent session subdirectory
-    if os.path.isdir(workdir):
-        sessions = []
-        for entry in os.scandir(workdir):
-            if entry.is_dir() and (entry.name.startswith("broad-") or entry.name.startswith("deep-")):
-                state_path = os.path.join(entry.path, "state.json")
-                if os.path.exists(state_path):
-                    sessions.append(entry.path)
-        if sessions:
-            sessions.sort()  # Lexicographic sort on timestamps works correctly
-            return sessions[-1]
+    # Otherwise, take the most recent session of *this* command's mode.
+    # _find_latest_session already prefix-filters; the old inline scan mixed
+    # broad-/deep- and trusted a full-string sort that does not hold across
+    # prefixes.
+    latest = _find_latest_session(workdir, prefix=session_prefix)
+    if latest is not None:
+        return latest
 
     return workdir
 

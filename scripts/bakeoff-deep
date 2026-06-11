@@ -1359,15 +1359,22 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
 # =============================================================================
 
 def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_FEATURES_WORKDIR",
-                    auto_discover: bool = True) -> str:
+                    auto_discover: bool = True,
+                    session_prefix: str = "deep-") -> str:
     """Resolve workdir from CLI arg, env var, or canonical default.
 
     Resolution order: CLI --workdir > env var > canonical default.
 
     When *auto_discover* is True (default), if the resolved directory has
-    no state.json but contains session subdirectories (broad-*/deep-*),
-    returns the most recent one.  Set *auto_discover* to False in
-    ``cmd_init`` to avoid nesting new sessions inside existing ones.
+    no state.json but contains session subdirectories, returns the most
+    recent one whose name starts with *session_prefix* (``deep-`` for this
+    command).  Sessions of the *other* mode are ignored on purpose:
+    ``broad-*`` and ``deep-*`` share one artifacts directory, and a
+    full-string lexicographic sort over mixed prefixes is not
+    timestamp-ordered — so this command must never auto-discover a
+    ``broad-*`` session that does not belong to it (INV-fogat).  Set
+    *auto_discover* to False in ``cmd_init`` to avoid nesting new sessions
+    inside existing ones.
     """
     workdir = args_workdir or os.environ.get(env_var) or DEFAULT_BAKEOFF_DIR
     workdir = os.path.abspath(os.path.expanduser(workdir))
@@ -1379,17 +1386,13 @@ def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_FEATURES_W
     if os.path.exists(os.path.join(workdir, "state.json")):
         return workdir
 
-    # Otherwise, look for the most recent session subdirectory
-    if os.path.isdir(workdir):
-        sessions = []
-        for entry in os.scandir(workdir):
-            if entry.is_dir() and (entry.name.startswith("broad-") or entry.name.startswith("deep-")):
-                state_path = os.path.join(entry.path, "state.json")
-                if os.path.exists(state_path):
-                    sessions.append(entry.path)
-        if sessions:
-            sessions.sort()
-            return sessions[-1]
+    # Otherwise, take the most recent session of *this* command's mode.
+    # _find_latest_session already prefix-filters; the old inline scan mixed
+    # broad-/deep- and trusted a full-string sort that does not hold across
+    # prefixes.
+    latest = _find_latest_session(workdir, prefix=session_prefix)
+    if latest is not None:
+        return latest
 
     return workdir
 

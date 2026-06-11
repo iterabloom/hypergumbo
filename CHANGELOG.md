@@ -34,6 +34,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   the survey rename (0042). Decisions only — implementing fixes follow in
   their own PRs.
 
+### Fixed
+
+#### Bakeoff infrastructure
+
+- **`resolve_workdir` prefix-isolates its session auto-discovery** (INV-fogat):
+  `bakeoff-broad` and `bakeoff-deep` share one artifacts directory, so
+  `broad-*` and `deep-*` session dirs intermingle. The auto-discover branch
+  scanned for *both* prefixes and took the lexicographically-last name —
+  but `d` > `b` in ASCII, so any `deep-*` dir out-sorted any `broad-*` dir
+  regardless of timestamp, silently superseding a fresh broad session with a
+  stale deep one (and vice-versa, letting `bakeoff-deep` adopt a foreign
+  `broad-*` session). Each command now filters auto-discovered sessions to its
+  own mode prefix via the already-correct `_find_latest_session` helper,
+  removing the duplicated scan loop and the false "lexicographic sort works"
+  comment. Gates all bakeoff evidence for the correctness campaign.
+
 ## [6.0.0] - 2026-06-10
 
 > **User-facing view:** see [docs/RELEASE-NOTES-6.X.md](docs/RELEASE-NOTES-6.X.md)
