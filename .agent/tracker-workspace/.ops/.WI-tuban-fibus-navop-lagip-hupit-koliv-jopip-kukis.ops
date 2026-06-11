@@ -1,0 +1,21 @@
+- op: create  # 1e70
+  at: '2026-06-11T05:28:04Z'  # 1e70
+  by: agent  # 1e70
+  actor: jgstern_agent  # 1e70
+  clock: 1  # 1e70
+  nonce: '1e70'  # 1e70
+  data:  # 1e70
+    kind: work_item  # 1e70
+    title: "retire ADR-0015 after the ADR-0038 rebuild ships: relocate channel model + slice-admission law, then stub"  # 1e70
+    status: todo_soft  # 1e70
+    priority: 3  # 1e70
+    parent:  # 1e70
+    tags:  # 1e70
+    - documentation  # 1e70
+    - adr  # 1e70
+    isbefore: []  # 1e70
+    duplicate_of: []  # 1e70
+    not_duplicate_of: []  # 1e70
+    pr_ref:  # 1e70
+    description: "**Trigger:** BOTH conditions: (1) the ADR-0038 access_mode rebuild has shipped (per-edge AST-role derivation replacing dataflow.py's line-granular classifier; bridge constants evicted to data_direction; applicability matrix in MetaKeySpec), and (2) the two unique-law relocations below have landed. Until (1), ADR-0015 §4/§5 are the only accurate description of SHIPPING behavior — stubbing earlier points ~40 live code/test/YAML citations at a tombstone.\n\n**Scope:** relocate the two surviving unique-law sections, then reduce ADR-0015 to a 0025/0026-style stub:\n\n1. §2 channel model → register MetaKeySpec('channel', ...) in axis_meta_keys.py carrying the join-key + literal-vs-inferred-confidence semantics, and add a 'channel' entry to the spec's Meta-fields list (~spec:824-838). Today axis_meta_keys registers only channel_kind and the spec omits channel entirely; ADR-0038 references the model by pointer only.\n2. §6/§6.1 forward-slice admission law (option-1 rule, option-2/3 deferral evidence tables, would_admit_dst_reader re-evaluation trigger) → a dedicated slicing-admission ADR or an explicit ADR-0038 appendix; retarget the section-number citations at spec:1069/1075, CHANGELOG:816, and slice.py. Note: ADR-0038 ruling 3 empties the population the would_admit_dst_reader trigger monitors — re-evaluate the trigger's terms when relocating.\n3. §1 vocabulary and §3 representation need no move (already carried by ir.py/edge_types.py/concept-axes.md).\n4. Stub ADR-0015; update the README index row.\n\n**Source:** 2026-06-11 supersession audit; per-section verdicts in ADR-0015's amendment table (PR #4184)."  # 1e70
+    fields: {}  # 1e70

@@ -18,3 +18,20 @@
     pr_ref:  # 77b2
     description: "**Defect.** `meta.receiver` is documented as a call-shape fact on call edges but is emitted on zero edges.\n\n**Mechanic.** During call resolution the receiver is never written to edge.meta, even though the resolution path emits its sibling facts. The documented meta[\"receiver\"] key therefore never appears in output.\n\n**Scope.** edge.meta.receiver on call edges. 0/110533 edges carry it. Its documented siblings ARE emitted: meta.call_construct on 21474 edges (method 21183 / function 213 / cross_file 78) and meta.resolution_quality on 16332 edges (type_inferred 16301 / recovery 31). Spec lines 817/823 document all three as readable from edge.meta.\n\n**Expectation.** Call edges would carry meta.receiver (the resolved or short-name receiver object), like the sibling call-shape facts do.\n\n**Fix.** Populate edge.meta.receiver during call resolution (emit the receiver alongside the already-emitted call_construct and resolution_quality facts).\n\n**Consequence.** A consumer reading meta[\"receiver\"] always gets nothing for receiver disambiguation; it cannot distinguish calls on different receivers, so any analysis depending on the call target object (e.g. resolving polymorphic dispatch or aliased receivers) is blind.\n\n**Cross-refs.** WI-fabup concerns receiver disambiguation NOT being wired to the python.yaml ambiguous_names catalog (2102 calls edges target ambiguous names). This row is the distinct field-population gap: meta.receiver is documented but never written at all. Fixing the catalog wiring does not populate the field, and populating the field does not resolve the catalog wiring."  # 77b2
     fields: {}  # 77b2
+- op: update  # 0266
+  at: '2026-06-11T17:21:40Z'  # 0266
+  by: agent  # 0266
+  actor: jgstern_agent  # 0266
+  clock: 2  # 0266
+  nonce: '0266'  # 0266
+  set:  # 0266
+    status: wont_do  # 0266
+  add:  # 0266
+    duplicate_of: [WI-jokob-gitut-rifuj-vihag-kazit-pabup-hobav-lovos]  # 0266
+- op: discuss  # b500
+  at: '2026-06-11T17:21:40Z'  # b500
+  by: agent  # b500
+  actor: jgstern_agent  # b500
+  clock: 3  # b500
+  nonce: b500  # b500
+  message: "[Wave-0 hygiene re-verify] WI-lodaz is a TRUE_DUPLICATE of WI-jokob-gitut-rifuj-vihag-kazit-pabup-hobav-lovos. Both describe the identical empirical gap: edge.meta.receiver is unpopulated on all edges (0/110533) despite being documented in spec:817/823 and registered in axis_meta_keys.py:131-135. WI-lodaz frames it as a producer gap during call resolution (sibling call_construct and resolution_quality ARE emitted at method_call_recovery.py:196-211 but receiver is not); WI-jokob frames it as a usage-context promotion gap. The fix is singular: populate meta.receiver during call resolution in the call-emit paths (linkers and analyzers). Fixing one automatically fixes the other. Recommend folding WI-lodaz into WI-jokob and closing this item as duplicate."  # b500

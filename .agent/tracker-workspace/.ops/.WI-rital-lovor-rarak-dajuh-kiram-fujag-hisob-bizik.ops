@@ -28,3 +28,18 @@
   clock: 2  # c334
   nonce: c334  # c334
   message: "2026-06-10 design-interview ruling (ADR-0042, merged in PR #4181): the verb decision is YES — hypergumbo survey becomes the primary verb, with hypergumbo run kept as a deprecated alias for one minor version. The decision is recorded in the ADR, which was this item's entire scope; the verb implementation itself tracks under the rename implementation work. Suggest closing as done once the ADR PR merges."  # c334
+- op: update  # e61c
+  at: '2026-06-11T04:29:16Z'  # e61c
+  by: agent  # e61c
+  actor: jgstern_agent  # e61c
+  clock: 3  # e61c
+  nonce: e61c  # e61c
+  set:  # e61c
+    status: done  # e61c
+- op: discuss  # 5617
+  at: '2026-06-11T04:29:17Z'  # 5617
+  by: agent  # 5617
+  actor: jgstern_agent  # 5617
+  clock: 4  # 5617
+  nonce: '5617'  # 5617
+  message: "Decision made 2026-06-10 and recorded in ADR-0042 §verb (PR #4181): hypergumbo survey becomes the primary verb; run stays as a deprecated alias for one minor version, then removed. Implementation rides the survey-rename campaign (S-chain), not this item."  # 5617

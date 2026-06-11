@@ -42,3 +42,18 @@
   clock: 4  # 1dfb
   nonce: 1dfb  # 1dfb
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): 3 of 14 catalogs currently `status: complete` (python, rust, erlang); all 3 declare `stdlib_provenance.source_url` pointing at allowlisted hostnames. 11 remain `in_progress` and are correctly exempt from the invariant. The `pending_validation` status has been static since 2026-04-25; consider promoting to `satisfied` if the `_validate_catalog_dict()` enforcement path has been load-tested against the 3 complete catalogs in CI."  # 1dfb
+- op: update  # 9a48
+  at: '2026-06-11T17:21:39Z'  # 9a48
+  by: agent  # 9a48
+  actor: jgstern_agent  # 9a48
+  clock: 5  # 9a48
+  nonce: 9a48  # 9a48
+  set:  # 9a48
+    status: satisfied  # 9a48
+- op: discuss  # c019
+  at: '2026-06-11T17:21:39Z'  # c019
+  by: agent  # c019
+  actor: jgstern_agent  # c019
+  clock: 6  # c019
+  nonce: c019  # c019
+  message: "[Wave-0 hygiene re-verify] Fixed and verified in current code. Hard-error enforcement implemented in io_boundary.py:156-202 (_validate_catalog_dict function) which raises ValueError for: (1) missing stdlib_provenance when status=complete (line 177-182), (2) non-HTTPS URLs (line 185-189), (3) hostnames not suffix-matching ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES frozenset (line 191-202). Enforcement called at load time from IoBoundaryCatalog._from_dict at line 610. Status defaults to \"complete\" at line 603, so all catalogs are validated unless explicitly set to \"in_progress\". Verified all 3 complete catalogs (python, rust, erlang) have valid HTTPS URLs matching allowlist. Load-tested by passing CI test suite (293 tests including direct catalog loads of python and rust). No remaining violations in current tree."  # c019

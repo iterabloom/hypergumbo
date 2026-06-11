@@ -51,3 +51,18 @@
     tags: [dogfood]  # 2252
   remove:  # 2252
     tags: [dogfooding]  # 2252
+- op: update  # 8597
+  at: '2026-06-11T17:21:38Z'  # 8597
+  by: agent  # 8597
+  actor: jgstern_agent  # 8597
+  clock: 5  # 8597
+  nonce: '8597'  # 8597
+  set:  # 8597
+    status: satisfied  # 8597
+- op: discuss  # fa61
+  at: '2026-06-11T17:21:38Z'  # fa61
+  by: agent  # fa61
+  actor: jgstern_agent  # fa61
+  clock: 6  # fa61
+  nonce: fa61  # fa61
+  message: "[Wave-0 hygiene re-verify] Verified: routes --input no longer writes sketch artifacts as a side effect.\n\nRoot cause was fixed via _get_or_run_analysis() early-return path (cli.py:473-477). When explicit_input is provided, the function returns immediately with an empty generated_files list, bypassing the run_behavior_map() call (line 490-494) that generates artifacts.\n\nVerified code path:\n- cmd_routes() line 1691: calls _get_or_run_analysis(..., explicit_input=args.input, ...)\n- _get_or_run_analysis() line 473-477: if explicit_input is set, returns (input_path, True, []) immediately\n- run_behavior_map() is never called when --input is provided\n- All other read-only subcommands (search, slice, explain, symbols, io-boundaries, verify-claims, test-coverage, dead-code-maybe) follow identical pattern\n\nInvariant now satisfied: read-only --input invocations generate no artifacts."  # fa61

@@ -19,3 +19,10 @@
     pr_ref:  # 724d
     description: "**Mechanism.** edge.meta.receiver is None on 0/110533 edges (fully unpopulated). It IS a documented field: spec:817 ('receiver records the resolved or short-name receiver' on ast_call-family edges), line 823 lists meta['receiver'] as the canonical place to read call-site receiver facts; axis_meta_keys.py:131-135 MetaKeySpec('receiver', example values bare/external/typed, purpose 'Disambiguates ast_call + call_construct=method edges per audit-findings 0012'). The registry says receiver exists specifically to disambiguate the call_construct=method edges — of which the substrate has 21183 — yet 0 carry a receiver value. Sibling call_construct IS populated (method=21183, function=213, cross_file=78); resolution_quality is 15% populated. So this is a per-field producer gap, not a whole-cluster gap.\n\n**Consequence.** A consumer following spec §817/§823 to read the receiver of a method call gets None on every edge; the disambiguation the field promises is entirely absent in production. (Note: receiver data DOES exist at the usage_contexts layer — context_name 'Route'/'WebSocketRoute' — but never reaches edge.meta.)\n\n**Related (distinct).** Distinct from WI-javus (resolution_quality mis-stamped on the failed branch) — receiver is simply never written. NOT covered by INV-virik (node introspection fields). Source: dogfood_tranche_07 F131.A2, deterministic frozen read."  # 724d
     fields: {}  # 724d
+- op: discuss  # a6df
+  at: '2026-06-11T17:25:00Z'  # a6df
+  by: agent  # a6df
+  actor: jgstern_agent  # a6df
+  clock: 2  # a6df
+  nonce: a6df  # a6df
+  message: "[Wave-0 hygiene] WI-lodaz-dorug-vifab-kijas-pidom-kotif-liton-litik folded in as a TRUE_DUPLICATE (marked wont_do, duplicate_of this item). Both describe the same defect: meta.receiver is documented as a call-shape fact (spec ~817/823) but emitted on 0/110533 edges — method_call_recovery.py creates edges with call_construct + resolution_quality meta but omits receiver. This item remains the canonical tracker for that unpopulated-field work."  # a6df

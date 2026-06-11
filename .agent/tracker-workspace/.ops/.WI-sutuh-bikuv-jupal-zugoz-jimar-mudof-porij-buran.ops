@@ -27,3 +27,18 @@
   clock: 2  # c219
   nonce: c219  # c219
   message: "Conversational approval flow: human gave explicit 'I approve all of this and approve using auto-pr WITHOUT --gov' directive in conversation, so this PR proceeds via auto-pr instead of the standard governance approval workflow. Three artifacts in this PR: (1) the playbook file at .agent/agent_playbooks_protocols_sops_skills/twenty-pass-dogfood-procedure.md (~430 lines, six phases with sub-agent prompt templates, tranch-state schema, sentinel convention, recovery table, cost table, tmux fallback appendix), (2) AGENTS.md essentialization (2-sentence summary referencing the playbook), (3) hook tuple registered in .agent/hooks/_shared/on_transcript_change.py PLAYBOOKS list. No supervisor extension included — sub-agent architecture obsoletes the tmux-driver layer for this playbook, supervisor stays orthogonal for autonomous-mode respawn use."  # c219
+- op: update  # b80e
+  at: '2026-06-11T17:21:38Z'  # b80e
+  by: agent  # b80e
+  actor: jgstern_agent  # b80e
+  clock: 3  # b80e
+  nonce: b80e  # b80e
+  set:  # b80e
+    status: done  # b80e
+- op: discuss  # d06b
+  at: '2026-06-11T17:21:38Z'  # d06b
+  by: agent  # d06b
+  actor: jgstern_agent  # d06b
+  clock: 4  # d06b
+  nonce: d06b  # d06b
+  message: "[Wave-0 hygiene re-verify] Verified all three artifacts per \"Creating a New Playbook\" convention (AGENTS.md §Creating a New Playbook): (1) playbook file at .agent/agent_playbooks_protocols_sops_skills/twenty-pass-dogfood-procedure.md (236 lines, complete 7-phase procedure with tuning, recovery, vendor neutrality); (2) AGENTS.md essentialization at AGENTS.md:53 (2-sentence summary + playbook reference); (3) hook tuple registered at .agent/hooks/_shared/on_transcript_change.py:516-552 (kebab-case ID, file path, multi-line expanded summary per tuple format). Initial commit dab3a6e303 (\"docs(playbook): twenty-pass dogfood procedure (WI-sutuh)\") is in current branch history. Playbook has been enhanced in later commits (c40a932cd0, 8bf3524b8f, e9ba566696 etc.). Deliverable is complete and integrated."  # d06b

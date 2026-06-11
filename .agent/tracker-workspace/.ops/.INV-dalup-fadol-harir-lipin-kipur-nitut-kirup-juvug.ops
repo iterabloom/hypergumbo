@@ -35,3 +35,18 @@
   clock: 3  # 8690
   nonce: '8690'  # 8690
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): cross-link to INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup. Both are git-sync-adjacent convergence/data-integrity invariants on tracker-related infra: INV-rahib covers auto-pr's post-rebase poll loop (since-shipped in PR #3419), this item covers tracker auto-sync's post-snapshot cleanup race (sync.py:1486-1532, unshipped). Same operator-experience surface (silent destruction of work in flight); changes to either codepath should consult the other."  # 8690
+- op: update  # 6b11
+  at: '2026-06-11T17:05:20Z'  # 6b11
+  by: agent  # 6b11
+  actor: jgstern_agent  # 6b11
+  clock: 4  # 6b11
+  nonce: 6b11  # 6b11
+  set:  # 6b11
+    status: satisfied  # 6b11
+- op: discuss  # 4813
+  at: '2026-06-11T17:05:20Z'  # 4813
+  by: agent  # 4813
+  actor: jgstern_agent  # 4813
+  clock: 5  # 4813
+  nonce: '4813'  # 4813
+  message: "Fixed in PR #4186 (merged to dev as 31bb769a42). do_sync()'s post-merge cleanup now snapshots every ops file's on-disk content BEFORE the destructive checkout/unlink, and after the ff-only merge union-restores each (order-preserving line union mirroring _ops_union_restore_file in forgejo-api.sh, exploiting the append-only merge=union CRDT nature of .ops logs): modified files get post-snapshot lines re-appended, unlinked new-item files are recreated, and it is idempotent for un-mutated files (union == current, no rewrite). This closes the snapshot->cleanup race on SUCCESSFUL syncs and complements the 0.5.1 merge_succeeded guard (which only protected FAILED syncs). POSITIVE EVIDENCE: TestOpsUnionRestore unit-tests the union/snapshot/restore branches incl. the tracked-modified-reset path; TestDoSync gains an integration test where a post-snapshot untracked ops file (a new item absent from the sync commit) survives the cleanup unlink; the previously-misleading test_ff_merge_removes_untracked_ops_files (which only passed because the mocked ff-merge does not restore) was repurposed to assert unlink-then-union-restore. sync.py 100% coverage; 1810 package tests pass. Strategy Wave-0 gate 'sync-race regression test in test_sync.py' satisfied."  # 4813

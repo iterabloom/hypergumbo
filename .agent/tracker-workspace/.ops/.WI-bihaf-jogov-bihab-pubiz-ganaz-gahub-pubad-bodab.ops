@@ -22,3 +22,10 @@
     pr_ref:  # 018c
     description: "Add stub files (.pyi) for external dependencies that lack types in typeshed: tree-sitter, tree-sitter-languages, any framework adapters hypergumbo touches that publish untyped APIs. Place under stubs/ at repo root with mypy_path = \"stubs\" in [tool.mypy]. Reduces noise from ignore_missing_imports usage; lets strict mode see real types instead of Any."  # 018c
     fields: {}  # 018c
+- op: discuss  # 40a0
+  at: '2026-06-11T17:21:40Z'  # 40a0
+  by: agent  # 40a0
+  actor: jgstern_agent  # 40a0
+  clock: 2  # 40a0
+  nonce: 40a0  # 40a0
+  message: "[Wave-0 hygiene re-verify] Verify and narrow WI-bihaf-jogov-bihab (mypy stubs item): tree-sitter 0.25.x ships py.typed, so remove it from scope. Focus instead on genuine types-* stub needs: types-PyYAML. Reference: tree-sitter:0.25.2 pinned in packages/hypergumbo-core/pyproject.toml:22; py.typed confirmed present in .venv/lib/python3.12/site-packages/tree_sitter/py.typed. All tree-sitter language packages (verified tree-sitter-javascript, tree-sitter-java, tree-sitter-language-pack) have py.typed. pyyaml 6.0.3 (line 28) lacks py.typed, but types-PyYAML~=6.0.12 is available on PyPI."  # 40a0

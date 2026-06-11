@@ -105,3 +105,18 @@
   clock: 12  # b1fb
   nonce: b1fb  # b1fb
   message: "holding(deprecated)->violated: taint.py:287 match_sink ignores ambiguous_names + falls through to hits[0] on module mismatch -> non-realizable paths (str.replace as fs-sink, stdout.write as net_send). Fresh-reproduced 5541 FP flows; INV-maluk violated, same root. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # b1fb
+- op: update  # 6815
+  at: '2026-06-11T17:21:39Z'  # 6815
+  by: agent  # 6815
+  actor: jgstern_agent  # 6815
+  clock: 13  # 6815
+  nonce: '6815'  # 6815
+  set:  # 6815
+    status: pending_validation  # 6815
+- op: discuss  # d510
+  at: '2026-06-11T17:21:39Z'  # d510
+  by: agent  # d510
+  actor: jgstern_agent  # d510
+  clock: 14  # d510
+  nonce: d510  # d510
+  message: "[Wave-0 hygiene re-verify] INV-karud: downgrade to pending_validation. Invariant-violation fix present in taint.py (commit 997c19d646, merged 2026-06-09): both propagation passes now call _match_propagation_entry (line 262-288) which gates ambiguous names and modules via _lookup_named_entry (line 205-241). Verified by 14 unit tests passing and WI-razol end-to-end evidence (5975→1266 violations on self-claims). Full closure pending BROAD-mode bakeoff validation per bakeoff-validation-tagging-discipline."  # d510

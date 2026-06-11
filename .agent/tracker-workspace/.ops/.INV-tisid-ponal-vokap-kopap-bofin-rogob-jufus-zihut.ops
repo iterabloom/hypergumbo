@@ -110,3 +110,10 @@
   clock: 12  # 9364
   nonce: '9364'  # 9364
   message: "2026-06-10 design-interview ruling (ADR-0041, merged in PR #4181): tier 2 is narrowed to workspace-internal only, directness splits out into a registered meta key (direct|transitive|undeclared), and spec section 14 is rewritten. The workspace-package test-dir routing gets re-derived under that narrowed tier-2 definition. Stays violated until the classifier fix lands; re-validate then."  # 9364
+- op: discuss  # 7fd7
+  at: '2026-06-11T17:21:39Z'  # 7fd7
+  by: agent  # 7fd7
+  actor: jgstern_agent  # 7fd7
+  clock: 13  # 7fd7
+  nonce: 7fd7  # 7fd7
+  message: "[Wave-0 hygiene re-verify] INV-tisid code fix is complete and verified. Both workspace and non-workspace test-directory branches now correctly return Tier.FIRST_PARTY with is_test=True. Regression tests (Cargo workspace + drown-out comparator) pass.\n\nHowever, spec documentation residue remains (held by WI-golov): hypergumbo-spec.md:1293 still names tier 2 as \"Internal libraries, monorepo packages\" without clarifying that tests are tier 1; spec:1401 lists test directory patterns but doesn't note they route to tier 1 post-fix. Per tracker discussion 2026-06-11T04:25:53Z, spec §14 rewrite is ordered as part of ADR-0041 (merged PR #4181) which narrowed tier 2 to \"workspace-internal only\" with new directness meta-axis. Recommend downgrading to WI-golov (doc-only tracker item, status todo_hard) — the invariant-violation in code is resolved; documentation drift is a separate concern tracked separately."  # 7fd7

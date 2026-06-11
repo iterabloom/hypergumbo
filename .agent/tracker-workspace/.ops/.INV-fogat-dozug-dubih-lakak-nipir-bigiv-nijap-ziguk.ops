@@ -21,3 +21,18 @@
     fields:  # 997a
       statement: "scripts/bakeoff-broad resolve_workdir() (line ~432-441) scans the artifacts directory for sub-dirs starting with broad- OR deep-, sorts them lexicographically as full strings, and takes the last. Because d > b in ASCII, any deep-* directory always wins over any broad-* directory regardless of the timestamp suffix. A freshly-initialized broad-20260531-022124 session is silently superseded by a 3-week-old deep-20260510-054430 session."  # 997a
       root_cause: "Lexicographic sort over full directory names mixes the (prefix, timestamp) lexical order. Should sort by timestamp suffix only, or filter by prefix matching the current command expected mode."  # 997a
+- op: update  # 0e19
+  at: '2026-06-11T15:57:08Z'  # 0e19
+  by: agent  # 0e19
+  actor: jgstern_agent  # 0e19
+  clock: 2  # 0e19
+  nonce: '0e19'  # 0e19
+  set:  # 0e19
+    status: satisfied  # 0e19
+- op: discuss  # ccf2
+  at: '2026-06-11T15:57:08Z'  # ccf2
+  by: agent  # ccf2
+  actor: jgstern_agent  # ccf2
+  clock: 3  # ccf2
+  nonce: ccf2  # ccf2
+  message: "Fixed in PR #4185 (merged to dev as 3218484b76). resolve_workdir in BOTH scripts/bakeoff-broad and scripts/bakeoff-deep now prefix-isolates its session auto-discovery: each delegates to the already-correct _find_latest_session(prefix=<own-mode>) instead of scanning broad-/deep- together and trusting a full-string lexicographic sort (which let a stale deep-* out-sort a fresh broad-* since 'd'>'b', and let bakeoff-deep adopt a foreign broad-*). The duplicated scan loop and the false 'lexicographic sort works' comment are gone. POSITIVE EVIDENCE the invariant holds: tests/test_bakeoff_resolve_workdir_prefix.py asserts resolve_workdir never returns a foreign-mode session — broad ignores a newer deep-*, deep ignores a newer broad-*, each falls through to base when only the foreign prefix is present, and the latest own-prefix session wins (5 cases green; 347 bakeoff tests pass, no regression). This is the strategy's Wave-0 gate 'workdir-resolution unit test (broad/deep prefix filtering)'."  # ccf2

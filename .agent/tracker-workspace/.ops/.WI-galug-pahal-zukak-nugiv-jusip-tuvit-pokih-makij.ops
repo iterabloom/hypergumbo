@@ -32,3 +32,10 @@
   clock: 3  # abc7
   nonce: abc7  # abc7
   message: "Re-surfaced in dogfooding tranche 10 (U08, F191.A1 split, severity 3). 'limits' is {type:object} with zero sub-properties in schema.json — the entire block is schema-opaque, the case this item names as the dataclass->schema generator emitting contentless {type:object} for un-introspected fields. Fix: add a Limits $defs/sub-property schema."  # abc7
+- op: discuss  # dcb3
+  at: '2026-06-11T17:21:40Z'  # dcb3
+  by: agent  # dcb3
+  actor: jgstern_agent  # dcb3
+  clock: 4  # dcb3
+  nonce: dcb3  # dcb3
+  message: "[Wave-0 hygiene re-verify] **PARTIALLY FIXED:**\n\nSchema half: Limits (the $def) is **RESOLVED**. The Limits class now has proper typed nested structures via FailedFile, ClassificationFailure, AmbiguousPath, SupplyChainLimits specs (scripts/generate_schema_lib.py:715-854). Edge.meta composite is properly documented (lines 501-549).\n\n**REMAINS:**\n- Symbol.quality: `Optional[Dict[str,Any]]` → contentless in schema (scripts/generate_schema_lib.py:434)\n- Symbol.meta: `Optional[Dict[str,Any]]` → contentless in schema (line 435)\n- Edge.quality: `Optional[Dict[str,Any]]` → contentless in schema (line 645)\n- Feature.node_depths/node_tiers/admission_stats: `Dict[str,int]` → contentless objects without additionalProperties (scripts/generate_schema_lib.py:939-943)\n\nPer spec.md §8, Edge.meta carries evidence_type/evidence_lang/evidence_spans (already handled as composite). Symbol.quality and Edge.quality are described in spec as {score, reason}. Feature dictionary fields need typed additionalProperties declarations.\n\nNOTE: Tracker item mentions UsageContext.metadata and Pattern fields — these classes are not in generate_schema_lib specs; they don't serialize to behavior map schema. This scope may be stale."  # dcb3

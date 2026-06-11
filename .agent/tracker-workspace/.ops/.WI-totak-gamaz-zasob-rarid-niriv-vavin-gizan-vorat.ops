@@ -19,3 +19,10 @@
     pr_ref:  # c4b8
     description: "scripts/release-check carries two --ignore-vuln flags added 2026-06-10 to unblock prepare-release 6.0.0, both for advisories with NO released fix at the time (verified fix_versions: [] via pip-audit -f json): (1) PYSEC-2026-139 — torch 2.10.0, transitive dep of the optional sentence-transformers embeddings extra; this one matters most because end users who install the embeddings extra get torch too. (2) CVE-2025-69872 — diskcache 5.6.3, pulled in only by llama_cpp_python (local LM experimentation, not a hypergumbo dependency in any extra). ACTION at each release prep (or when this surfaces in tracker ready): run pip-audit -f json (or check the advisories directly), and for each of the two: if a fixed version now exists, upgrade the local package, remove the corresponding --ignore-vuln flag + its comment block from scripts/release-check, and verify release-check passes. Close this item only when BOTH ignores are removed. Context thread: the 6.0.0 release-prep session 2026-06-10; the gate edit merged as 0b24486ac9."  # c4b8
     fields: {}  # c4b8
+- op: discuss  # 8c43
+  at: '2026-06-11T17:21:40Z'  # 8c43
+  by: agent  # 8c43
+  actor: jgstern_agent  # 8c43
+  clock: 2  # 8c43
+  nonce: 8c43  # 8c43
+  message: "[Wave-0 hygiene re-verify] Rescope WI-totak to track THREE no-fix ignores (not two): CVE-2025-69872 (diskcache via llama_cpp_python), PYSEC-2026-139 (torch), and CVE-2025-3000 (torch advisory family variant, added 2026-06-10). Distinguish from two permanent CI ignores: CVE-2025-71176 (pytest dev-only) and CVE-2026-3219 (pip AV:L). Action: at each release or when this item surfaces in `tracker ready`, run pip-audit -f json and for each of the three, if a fixed version exists, upgrade the package and remove the corresponding --ignore-vuln flag + comment block from scripts/release-check:212-227. Close only when all three no-fix ignores are removed. Reference: scripts/release-check:202-227."  # 8c43

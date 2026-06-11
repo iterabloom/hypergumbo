@@ -1,0 +1,22 @@
+- op: create  # 7107
+  at: '2026-06-11T05:27:47Z'  # 7107
+  by: agent  # 7107
+  actor: jgstern_agent  # 7107
+  clock: 1  # 7107
+  nonce: '7107'  # 7107
+  data:  # 7107
+    kind: work_item  # 7107
+    title: "retire ADR-0014 after the stable_id v6 train: execute the fold-forward plan, then stub"  # 7107
+    status: todo_soft  # 7107
+    priority: 3  # 7107
+    parent:  # 7107
+    tags:  # 7107
+    - documentation  # 7107
+    - adr  # 7107
+    - survey_rename_adjacent  # 7107
+    isbefore: []  # 7107
+    duplicate_of: []  # 7107
+    not_duplicate_of: []  # 7107
+    pr_ref:  # 7107
+    description: "**Trigger:** the stable_id v6 train (ADR-0035 T1/T2 events) has landed and the WI-foful spec scheme-chain backfill is merged. Do NOT start before then — §5b's module/interface/type factory rows are pending the v6-train path-anchoring audit, so the fold target is not decidable earlier.\n\n**Scope:** execute the fold-forward plan recorded in ADR-0014's amendment banner (PR #4184) and the 2026-06-11 supersession audit, then reduce ADR-0014 to a 0025/0026-style stub:\n\n1. Status-line coverage census → inline into docs/hypergumbo-spec.md at the two delegation sites (spec:341 typed-tier roadmap, spec:355 shape_id coverage table) — these currently delegate BY NAME to \"the ADR-0014 status line\".\n2. §1 Python-ast intentional-divergence rationale → spec shape_id block (~349-355) + compute_shape_id docstring (mostly present; add the within-language-comparison rationale).\n3. §3 Option-A language-scoped-normalization rationale → spec:335-336 (currently points back at 0014 §3).\n4. §4 route/entry formulas → already duplicated in ADR-0035 §3 (normative forward home); repoint the ~25 \"ADR-0014 §4\" code/test citations to ADR-0035 §3.\n5. §5b surviving factory rows (file/variable/export/project + post-audit module/interface/type) + populate_kind_stable_ids backstop precedence rule → the spec identity-fields section or an ADR-0035 amendment. This is the only decision-document home for these rules today.\n6. §6 grammar-stability contract (algorithm-version vs grammar-version division; no-cross-version-tests ruling) → vendor-sync.md (which cites §6 as authority at :61) + spec:~1838-1845.\n7. Repoint the seven \"Phase-6 ghost amendment\" citers (schema.json:565, ir.py:331, ARCHITECTURE.md:198, etc.) to ADR-0035.\n8. Stub ADR-0014; update the README index row.\n\n**Source:** 2026-06-11 supersession audit (3-agent workflow over the 0035-0042 batch); per-section verdicts in ADR-0014's amendment table."  # 7107
+    fields: {}  # 7107

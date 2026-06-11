@@ -31,3 +31,10 @@
     tags: [dogfood]  # 8073
   remove:  # 8073
     tags: [dogfooding]  # 8073
+- op: discuss  # 20d2
+  at: '2026-06-11T17:21:40Z'  # 20d2
+  by: agent  # 20d2
+  actor: jgstern_agent  # 20d2
+  clock: 3  # 20d2
+  nonce: 20d2  # 20d2
+  message: "[Wave-0 hygiene re-verify] The specified [:3] slicing bug does NOT exist in current code (confirmed by grep and code inspection). However, the core issue—undocumented empty-pattern behavior—remains valid and reproducible. Current behavior: empty pattern \"\" matches all symbols, respects --limit (default 20), no error raised, behavior completely undocumented in help or README. Fix requires either: (a) add validation to reject empty/whitespace-only patterns with rc=2 + error message, OR (b) update help text at cli.py:6389-6391 to document that empty pattern matches all symbols. This is P4 (documentation/UX issue, not behavioral bug per se)."  # 20d2

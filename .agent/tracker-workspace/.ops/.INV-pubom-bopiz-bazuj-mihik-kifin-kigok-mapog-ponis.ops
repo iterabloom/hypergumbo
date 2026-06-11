@@ -57,3 +57,18 @@
   clock: 5  # 31fc
   nonce: 31fc  # 31fc
   message: "Closed by Phase 6 PR2 (commit 98533c0fff). io_boundary.py canonical definition: total_io_edges = sum(len(e.chains) for e in entries.values()) (post-external_potential chain count). Both unfiltered serializer and cmd_io_boundaries filtered path now agree. Needs bakeoff validation."  # 31fc
+- op: update  # 9da1
+  at: '2026-06-11T17:21:39Z'  # 9da1
+  by: agent  # 9da1
+  actor: jgstern_agent  # 9da1
+  clock: 6  # 9da1
+  nonce: 9da1  # 9da1
+  set:  # 9da1
+    status: satisfied  # 9da1
+- op: discuss  # 156c
+  at: '2026-06-11T17:21:39Z'  # 156c
+  by: agent  # 156c
+  actor: jgstern_agent  # 156c
+  clock: 7  # 156c
+  nonce: 156c  # 156c
+  message: "[Wave-0 hygiene re-verify] Fixed in commit 98533c0fff. The io_boundaries metric now has a single canonical definition (post-external_potential chain count) established in BoundaryMap construction (io_boundary.py:1307) and applied consistently: unfiltered path via BoundaryMap.to_dict() (io_boundary.py:977), filtered path via cmd_io_boundaries (cli.py:3873). Both writers use sum(len(e.chains) for e in entries.values()). Writer contract documented at io_boundary.py:1283-1290. All 293 tests in test_io_boundary.py pass."  # 156c

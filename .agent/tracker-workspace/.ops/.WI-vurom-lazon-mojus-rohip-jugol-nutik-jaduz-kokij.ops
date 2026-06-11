@@ -35,3 +35,18 @@
   clock: 3  # 4f82
   nonce: 4f82  # 4f82
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 4f82
+- op: update  # f9a3
+  at: '2026-06-11T17:21:39Z'  # f9a3
+  by: agent  # f9a3
+  actor: jgstern_agent  # f9a3
+  clock: 4  # f9a3
+  nonce: f9a3  # f9a3
+  set:  # f9a3
+    status: done  # f9a3
+- op: discuss  # e191
+  at: '2026-06-11T17:21:39Z'  # e191
+  by: agent  # e191
+  actor: jgstern_agent  # e191
+  clock: 5  # e191
+  nonce: e191  # e191
+  message: "[Wave-0 hygiene re-verify] Fixed in commit 0317355823 \"fix(schema): type opaque top-level blocks, declare missing keys (WI-kutas PR2)\". Verified in current code:\n- scripts/generate-schema:154-160 (symbol_fingerprint_scheme)\n- scripts/generate-schema:321-368 (reproducibility_context)\n- scripts/generate-schema:369-391 (validation_report)\n- docs/schema.json: all three keys present (22 total top-level properties, up from 19)"  # e191

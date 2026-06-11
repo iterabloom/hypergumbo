@@ -40,3 +40,10 @@
   clock: 4  # cca6
   nonce: cca6  # cca6
   message: "root-cause family member (t1) (connections-sweep 2026-06-08T1900Z)"  # cca6
+- op: discuss  # b95c
+  at: '2026-06-11T17:21:40Z'  # b95c
+  by: agent  # b95c
+  actor: jgstern_agent  # b95c
+  clock: 5  # b95c
+  nonce: b95c  # b95c
+  message: "[Wave-0 hygiene re-verify] Schema and population halves are fixed. Remaining work is spec documentation only. The three sub-fields (analyzer_version, max_tier_applied, supply_chain) now have proper schema properties with descriptions (schema.json lines 1398-1438) and are correctly emitted by limits.to_dict() (limits.py lines 179, 181, 183-184). The spec section §9 limits (docs/hypergumbo-spec.md lines 967-975) needs to be expanded to document these three fields alongside the four that are already mentioned (not_captured, truncated_files, skipped_languages, failed_files)."  # b95c
