@@ -73,3 +73,10 @@
   clock: 8  # 0114
   nonce: '0114'  # 0114
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): cluster-coherence check: WI-palol (#3915, cohorts 1+4) and WI-pusad (#3917, cohorts 2+3 partial) both confirmed merged via all_items_status.tsv. INV-fomod is the orthogonal file-structure complement for the cohort-3-residue case (chatwoot Rails-without-Gemfile). Sub-pile B is internally coherent; no new sub-cluster needed. Awaiting awaits_bakeoff_validation strip via bakeoff-deep-reflect aggregate."  # 0114
+- op: discuss  # 4a0e
+  at: '2026-06-11T18:18:14Z'  # 4a0e
+  by: agent  # 4a0e
+  actor: jgstern_agent  # 4a0e
+  clock: 9  # 4a0e
+  nonce: 4a0e  # 4a0e
+  message: "[Wave-0 pending-validation sweep] tracker update INV-rojip-bosup-lonut-gamiv-famuz-hulij-gamoj-posij --status pending_validation --note \"Fix confirmed in code with 100% unit test coverage (16 tests passing). WI-palol (commit 659c575645) implements scoped/compound-pattern promotion. WI-pusad (commit 4449696014) implements bare-name promotion gated on prefix-arm matches. Cross-ecosystem guard (module_languages) prevents Julia http / Python http.client FP. Static invariant holds: promote phase correctly adds frameworks from imports before demote phase removes test-only ones. Pending BROAD bakeoff validation across prospector corpus to confirm no regressions on real repos (cohorts: apollo-server/workspace, bakerydemo/django, chatwoot/rails, node-monorepo). See profile.py:3213-3299 for implementation; test_profile.py::test_refine_frameworks_promote* for test suite.\""  # 4a0e

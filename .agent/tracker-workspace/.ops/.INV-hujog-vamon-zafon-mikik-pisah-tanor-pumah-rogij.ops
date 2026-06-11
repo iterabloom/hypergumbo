@@ -51,3 +51,18 @@
   clock: 5  # 6e0a
   nonce: 6e0a  # 6e0a
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): Phase 2 wire-up of validate_pass_dependencies into run_behavior_map config-time filtering is still missing as of bm.json pass 11 verification — catalog.py:188 defines the function but a grep across packages/hypergumbo-core/src/ finds no callers. Closure of INV-nanon's \"pass-runs-but-no-target-patterns\" sub-pattern (di-resolution at INV-hosig) depends on this Phase 2 wire-up. Suggests filing an explicit sibling item for Phase 2 rather than tracking it implicitly under this pending_validation item."  # 6e0a
+- op: update  # 731d
+  at: '2026-06-11T18:18:13Z'  # 731d
+  by: agent  # 731d
+  actor: jgstern_agent  # 731d
+  clock: 6  # 731d
+  nonce: 731d  # 731d
+  set:  # 731d
+    status: violated  # 731d
+- op: discuss  # 1bd7
+  at: '2026-06-11T18:18:13Z'  # 1bd7
+  by: agent  # 1bd7
+  actor: jgstern_agent  # 1bd7
+  clock: 7  # 1bd7
+  nonce: 1bd7  # 1bd7
+  message: "[Wave-0 pending-validation sweep] INV-hujog: Pass.depends_on schema + validator present but not integrated into runtime\n\n**Status:** violated — Phase 1 (schema + validator function) is complete, but Phase 2 (runtime wire-up into run_behavior_map) is missing.\n\n**Evidence:**\n- Schema: packages/hypergumbo-core/src/hypergumbo_core/catalog.py:89 — Pass.depends_on: List[List[str]] field present\n- Validator: packages/hypergumbo-core/src/hypergumbo_core/catalog.py:188 — validate_pass_dependencies() function fully implemented\n- Population: All 59 linkers have depends_on= declarations in @register_linker decorator (58 populated, 1 empty for containment Infrastructure pass)\n- Tests: packages/hypergumbo-core/tests/test_catalog.py:399-509 — 11 test cases in TestValidatePassDependencies, all passing\n- **Integration: MISSING** — grep across packages/hypergumbo-core/src/ finds zero callers of validate_pass_dependencies outside tests\n- run_behavior_map() in cli.py:7679 — no import of validate_pass_dependencies, no config-time pass filtering based on depends_on\n\n**Root cause:** Phase 2 wire-up deferred. The tracker discussion (2026-05-30T09:51:52Z) explicitly notes: \"Phase 2 wire-up of validate_pass_dependencies into run_behavior_map config-time filtering is still missing.\"\n\n**Consequence:** Users can disable prerequisite analyzers (e.g., --no-python) without config-time error; linkers run but produce silently-degraded output. The invariant requires activation gating at config time."  # 1bd7

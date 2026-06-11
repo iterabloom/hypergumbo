@@ -70,3 +70,10 @@
     tags: [dogfood]  # 9391
   remove:  # 9391
     tags: [dogfooding]  # 9391
+- op: discuss  # 6652
+  at: '2026-06-11T18:18:13Z'  # 6652
+  by: agent  # 6652
+  actor: jgstern_agent  # 6652
+  clock: 7  # 6652
+  nonce: '6652'  # 6652
+  message: "[Wave-0 pending-validation sweep] tracker: keep-pending INV-hunup\n\nFix is complete and present in code:\n- spec_validator.py:1262 defines _CANONICAL_STABLE_ID_PATTERN regex enforcing sha256:[0-9a-f]{16}\n- spec_validator.py:1287-1323 implements _check_stable_id_format validator with 5-category classification\n- spec_validator.py:148 calls validator in validate_ir pipeline\n- cli.py:8364 integrates validator into behavior_map artifact\n- analyze/base.py:564-658 all factories (make_file/module/dependency/variable/export/project/interface/type/protocol_stable_id) use _short_sha256 helper\n- All 4 linkers (database_query, message_queue, event_sourcing, graphql_resolver) migrated to make_protocol_stable_id\n- All 72 spec_validator tests pass (including 8 stable_id format tests)\n\nReady for bakeoff validation on diverse repos to confirm no regressions.\nRoot cause fully addressed per Phase 6 PR1 (commit dbaacdbb84).\n"  # 6652

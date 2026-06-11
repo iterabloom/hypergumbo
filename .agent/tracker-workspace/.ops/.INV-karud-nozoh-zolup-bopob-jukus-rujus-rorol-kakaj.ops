@@ -120,3 +120,10 @@
   clock: 14  # d510
   nonce: d510  # d510
   message: "[Wave-0 hygiene re-verify] INV-karud: downgrade to pending_validation. Invariant-violation fix present in taint.py (commit 997c19d646, merged 2026-06-09): both propagation passes now call _match_propagation_entry (line 262-288) which gates ambiguous names and modules via _lookup_named_entry (line 205-241). Verified by 14 unit tests passing and WI-razol end-to-end evidence (5975→1266 violations on self-claims). Full closure pending BROAD-mode bakeoff validation per bakeoff-validation-tagging-discipline."  # d510
+- op: discuss  # 5cc7
+  at: '2026-06-11T18:18:12Z'  # 5cc7
+  by: agent  # 5cc7
+  actor: jgstern_agent  # 5cc7
+  clock: 15  # 5cc7
+  nonce: 5cc7  # 5cc7
+  message: "[Wave-0 pending-validation sweep — HYGIENE OVERRIDE] Static verification confirms the taint hits[0]/realizability fix is PRESENT and correct (taint.py _match_propagation_entry/_lookup_named_entry; WI-razol PR #4147 / 997c19d646). HOWEVER, kept at pending_validation (NOT satisfied): this item was downgraded violated->pending_validation in the same-session hygiene batch precisely because closure requires FRESH-SUBSTRATE BAKEOFF evidence that the live taint-chain noise is actually reduced (a behavioral/quantitative claim, not code presence). That bakeoff (Wave-0 R0 / a directed taint cohort) has not been run. Upgrade to satisfied only on that evidence."  # 5cc7

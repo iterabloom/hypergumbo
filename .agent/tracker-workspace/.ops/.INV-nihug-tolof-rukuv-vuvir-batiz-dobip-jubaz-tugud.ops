@@ -102,3 +102,25 @@
   clock: 10  # e10f
   nonce: e10f  # e10f
   message: "RELATED_BUT_DISTINCT to WI-mipul: per-pass meta stamping tail; mipul closes nihug/lidul/gizik residual on override-analyze() analyzer cohort. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # e10f
+- op: update  # 9d41
+  at: '2026-06-11T18:18:12Z'  # 9d41
+  by: agent  # 9d41
+  actor: jgstern_agent  # 9d41
+  clock: 11  # 9d41
+  nonce: 9d41  # 9d41
+  set:  # 9d41
+    status: violated  # 9d41
+- op: discuss  # 13db
+  at: '2026-06-11T18:18:13Z'  # 13db
+  by: agent  # 13db
+  actor: jgstern_agent  # 13db
+  clock: 12  # 13db
+  nonce: 13db  # 13db
+  message: "[Wave-0 pending-validation sweep] AnalysisRun.skipped_passes (ir.py:204) is declared but never populated. Static grep across packages/hypergumbo-core/src/ finds zero producer writes to run.skipped_passes or AnalysisRun.skipped_passes (aside from initialization). limits.skipped_passes IS populated (all_analyzers.py:81,151) with file-presence skip-reasons, creating a single-source-of-truth violation. Pass 21 bakeoff (2026-06-01) confirmed AR.skipped_passes still 0/84 (0%) post-Phase-6. Violates declared invariant: \"Skipped-pass information is reachable from both top-level limits and per-run analysis_runs entries.\""  # 13db
+- op: discuss  # c2d6
+  at: '2026-06-11T18:18:36Z'  # c2d6
+  by: agent  # c2d6
+  actor: jgstern_agent  # c2d6
+  clock: 13  # c2d6
+  nonce: c2d6  # c2d6
+  message: "[Wave-0 pending-validation sweep] Re-verified and downgraded pending_validation -> violated: AnalysisRun.skipped_passes has no producer code path (architecturally orphaned, declared-fields-never-populated family). Now correctly tracked as an open defect for the Wave-2 run-lifecycle / declared-fields-population work rather than masquerading as awaiting-validation."  # c2d6

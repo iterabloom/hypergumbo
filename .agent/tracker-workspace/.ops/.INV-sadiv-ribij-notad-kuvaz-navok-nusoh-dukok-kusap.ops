@@ -70,3 +70,18 @@
     tags: [dogfood]  # 0b4a
   remove:  # 0b4a
     tags: [dogfooding]  # 0b4a
+- op: update  # 1d2d
+  at: '2026-06-11T18:18:12Z'  # 1d2d
+  by: agent  # 1d2d
+  actor: jgstern_agent  # 1d2d
+  clock: 7  # 1d2d
+  nonce: 1d2d  # 1d2d
+  set:  # 1d2d
+    status: satisfied  # 1d2d
+- op: discuss  # 5122
+  at: '2026-06-11T18:18:12Z'  # 5122
+  by: agent  # 5122
+  actor: jgstern_agent  # 5122
+  clock: 8  # 5122
+  nonce: '5122'  # 5122
+  message: "[Wave-0 pending-validation sweep] tracker: satisfied INV-sadiv -- All six linker passes migrated to make_symbol_id factory with canonical <language>:<path>:<start>-<end>:<name>:<kind> schema. ID-format validator class enforces schema at spec_validator.py:1157-1239 with explicit INV-sadiv detection at lines 1183-1189. Positive evidence: grep results show NO remaining double-colon ID construction sites in any linker code; all six sites verified using make_symbol_id; unit tests passing on canonical shapes."  # 5122

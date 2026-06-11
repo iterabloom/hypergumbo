@@ -185,3 +185,18 @@
   clock: 23  # 662f
   nonce: 662f  # 662f
   message: "holding(deprecated)->pending_validation: Human set 'violated' pending account. PRs #1721/1734 landed partial Go fixes; agent revalidation found residual gaps (no symbol-utility detection, no reachability/diversity cap, vault test-app main #1). Not fully holding. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 662f
+- op: update  # c8bd
+  at: '2026-06-11T18:18:12Z'  # c8bd
+  by: agent  # c8bd
+  actor: jgstern_agent  # c8bd
+  clock: 24  # c8bd
+  nonce: c8bd  # c8bd
+  set:  # c8bd
+    status: satisfied  # c8bd
+- op: discuss  # 4634
+  at: '2026-06-11T18:18:12Z'  # 4634
+  by: agent  # 4634
+  actor: jgstern_agent  # 4634
+  clock: 25  # 4634
+  nonce: '4634'  # 4634
+  message: "[Wave-0 pending-validation sweep] tracker: satisfy INV-mahap-jazam-tojon-hakij-pipun-vurug-mokan-bubol\n\nInvariant: Entrypoint ranking must not be biased toward utility symbols.\n\nEvidence:\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py:114 MIN_ENTRYPOINT_CONFIDENCE = 0.10\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py:128-149 compute_entrypoint_cap() scales to repo size\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py:1328-1343 Go nested cmd/ demotion\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py:1541-1544 confidence filtering\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py:1563-1602 _diversity_cap()\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py:1399-1411 per-language export demotion\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/src/hypergumbo_core/entrypoints.py:1478-1494 connectivity boost skip\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/src/hypergumbo_core/paths.py:178 devenv/ utility dir\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/src/hypergumbo_core/paths.py:221-228 Go codegen detection\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/src/hypergumbo_core/ranking.py:509-587 is_utility_symbol() with 20+ patterns\n- /home/jgstern_agent/hypergumbo/packages/hypergumbo-core/src/hypergumbo_core/ranking.py:632-673 apply_utility_symbol_weights() at 0.1x\n\nCommit references: d4e70561be (utility symbols + confidence), c4b28f8ef0 (cap scaling), f5ffd95fac (diversity capping), 16bb8b49bd (Go utility main demotion), 5f3fdcde1e (per-language demotion), 34707b2fef (boost skip).\n\nAll tests passing (50+ tests across utility, capping, and filtering)."  # 4634

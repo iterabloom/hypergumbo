@@ -86,3 +86,18 @@
   clock: 9  # ad03
   nonce: ad03  # ad03
   message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): the full scope chain joins the stable_id hash, which directly targets this residue — structurally-identical classes in different modules get distinct scope chains and therefore distinct IDs. Waits on the hash-input implementation; re-validate with the new corpus-collision validator (None-cohort counted)."  # ad03
+- op: update  # afa7
+  at: '2026-06-11T18:18:13Z'  # afa7
+  by: agent  # afa7
+  actor: jgstern_agent  # afa7
+  clock: 10  # afa7
+  nonce: afa7  # afa7
+  set:  # afa7
+    status: satisfied  # afa7
+- op: discuss  # 0914
+  at: '2026-06-11T18:18:13Z'  # 0914
+  by: agent  # 0914
+  actor: jgstern_agent  # 0914
+  clock: 11  # 0914
+  nonce: '0914'  # 0914
+  message: "[Wave-0 pending-validation sweep] INV-zudob satisfied — cross-module class collision fix shipped in PR #3891 (commit 2d62c818bf). File identity now properly threaded through hash. Post-fix empirical residue 1.76% (down from 18.94%) is same-file identical-body groups, preserved by design per docstring contract. ADR-0035 (merged 2026-06-11, design ruling 2026-06-10) specifies v6 further enhancement using full scope chain, but this is future implementation (\"Waits on hash-input implementation\"), not a regression of current v5 behavior. [HYGIENE OVERRIDE NOTE] Satisfied for the cross-module-distinction invariant (PR #3891, file-path in hash). The SAME-FILE-residue policy (INV-zudob's load-bearing teaching: the (stable_id, canonical_name) join field was removed by ADR-0032) is a DISTINCT facet that the stable_id v6 property test must re-decide — carried forward to the Wave-2 identity train, not closed here."  # 0914

@@ -91,3 +91,18 @@
   clock: 9  # 6016
   nonce: '6016'  # 6016
   message: "Positive validation evidence from PR #4167 (merged b6403f6669): the format invariant now holds without the content-discrimination trade-off. The WI-falum regression that the Phase 2 PR2 demolition introduced (TOML deps all collapsing to one hgfp value) is fixed at root via context-aware subtree hashing, AND the last producer-side bypass (wgsl.py's 4 bare-hex stampings, flagged in this thread 2026-06-05) is demolished. Tracker-package self-analysis: 0 fingerprints without the scheme prefix; scheme is now hgfp2:/symbol-fp-v2 (all values changed — consumers detect via prefix). Status stays pending_validation per the awaits_bakeoff_validation tag."  # 6016
+- op: update  # 0c31
+  at: '2026-06-11T18:18:14Z'  # 0c31
+  by: agent  # 0c31
+  actor: jgstern_agent  # 0c31
+  clock: 10  # 0c31
+  nonce: 0c31  # 0c31
+  set:  # 0c31
+    status: satisfied  # 0c31
+- op: discuss  # a094
+  at: '2026-06-11T18:18:14Z'  # a094
+  by: agent  # a094
+  actor: jgstern_agent  # a094
+  clock: 11  # a094
+  nonce: a094  # a094
+  message: "[Wave-0 pending-validation sweep] tracker: upgrade INV-fogum-movut-monak-fogop-hivop-volup-sumaf-gokok satisfied — TOML dependency fingerprints now use canonical hgfp2: prefix. Root cause (producer-side bare-hex emission) fixed by central post-pass at packages/hypergumbo-core/src/hypergumbo_core/fingerprint.py:106-445 (scheme v2) with toml_config.py:198-613 deferring to post-pass. Positive evidence: direct compute test + orchestrator stamp test both verify hgfp2: prefix; all 40 unit tests pass (test_fingerprint.py)."  # a094

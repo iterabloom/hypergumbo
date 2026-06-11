@@ -49,3 +49,18 @@
   clock: 5  # b725
   nonce: b725  # b725
   message: "holding(deprecated)->pending_validation: _CPP_STL_METHODS frozenset (cpp.py:75) suppresses member-call fallback (cpp.py:863); 5 STL test refs in test_cpp.py. Fix landed+unit-tested (PR#2053) but no bakeoff re-validation cited. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # b725
+- op: update  # 8e42
+  at: '2026-06-11T18:18:13Z'  # 8e42
+  by: agent  # 8e42
+  actor: jgstern_agent  # 8e42
+  clock: 6  # 8e42
+  nonce: '8e42'  # 8e42
+  set:  # 8e42
+    status: satisfied  # 8e42
+- op: discuss  # adb7
+  at: '2026-06-11T18:18:13Z'  # adb7
+  by: agent  # adb7
+  actor: jgstern_agent  # adb7
+  clock: 7  # adb7
+  nonce: adb7  # adb7
+  message: "[Wave-0 pending-validation sweep] tracker: close INV-fotug-zalos-zitod-riban-zojih-tulom-pozib-sugob\n\nFix verified complete. _CPP_STL_METHODS frozenset (cpp.py:75-96) contains 35 STL method names blocking false resolution when (1) call syntax is member-style (field_expression present, cpp.py:827 is_member_call detection) AND (2) method name in blocklist. Guard at cpp.py:863 suppresses fallback to local/global resolution. Unit test TestCppStdlibMethodGuard::test_stdlib_method_not_resolved_to_project_function (test_cpp.py:2138-2165) passes, confirming v.clear()/v.push_back()/v.resize() do NOT resolve to project functions. Manual validation with std::vector<int> + project-level clear() confirms correct behavior. Landed in PR#2053, commit 92b19f66ba (in dev). Invariant satisfied with positive code + test evidence."  # adb7

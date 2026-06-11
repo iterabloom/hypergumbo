@@ -35,3 +35,18 @@
   clock: 3  # 28a6
   nonce: 28a6  # 28a6
   message: "(no cross-ref proposed — item is correctly standalone and awaits empirical post-fix sample, not graph-linkage backfill)"  # 28a6
+- op: update  # f8ad
+  at: '2026-06-11T18:18:12Z'  # f8ad
+  by: agent  # f8ad
+  actor: jgstern_agent  # f8ad
+  clock: 4  # f8ad
+  nonce: f8ad  # f8ad
+  set:  # f8ad
+    status: satisfied  # f8ad
+- op: discuss  # ccd6
+  at: '2026-06-11T18:18:12Z'  # ccd6
+  by: agent  # ccd6
+  actor: jgstern_agent  # ccd6
+  clock: 5  # ccd6
+  nonce: ccd6  # ccd6
+  message: "[Wave-0 pending-validation sweep] Invariant satisfied. Two-layer structural fix deployed in commit afcaca625:\n- Layer 1 (launch-side): same-SID idempotence guard kills prior watcher before launching new one (.agent/hooks/_shared/launch-transcript-sync.sh:49-86, mirrors kill-transcript-sync.sh two-phase pattern)\n- Layer 2 (filter-side): fcntl.flock(LOCK_EX) serializes concurrent filter-transcript.py invocations on state file (.agent/hooks/_shared/filter-transcript.py:259-274)\n\nAll 34 tests pass (test_watcher_lifecycle.py + test_filter_transcript.py). Concurrent invocation safety verified: 50-row source produces exactly 50 rows in dest (no 2x doubling). Lock mechanism confirmed to block concurrent writers. Guard mechanism verified to kill prior watchers and register new PID."  # ccd6
