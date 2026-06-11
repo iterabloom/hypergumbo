@@ -56,11 +56,3 @@
   target_nonce: '0625'  # 34ab
   new_text: "Test message 2 — second entry. Adding some structure: this entry is longer, spans multiple lines, and includes a list:\n- item alpha\n- item yeet\n- item gamma\nto verify multi-line rendering in the TUI."  # 34ab
   reason: "user-requested test edit: beta -> yeet"  # 34ab
-- op: update  # 7575
-  at: '2026-06-11T18:22:22Z'  # 7575
-  by: human  # 7575
-  actor: jgstern  # 7575
-  clock: 7  # 7575
-  nonce: '7575'  # 7575
-  set:  # 7575
-    status: deleted  # 7575

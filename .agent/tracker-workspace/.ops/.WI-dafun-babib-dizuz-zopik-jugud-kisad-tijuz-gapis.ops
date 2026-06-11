@@ -42,18 +42,3 @@
   clock: 4  # 2dce
   nonce: 2dce  # 2dce
   message: "I approve. I approve auto-pr WITHOUT --gov"  # 2dce
-- op: update  # 4a1d
-  at: '2026-06-11T18:50:11Z'  # 4a1d
-  by: agent  # 4a1d
-  actor: jgstern_agent  # 4a1d
-  clock: 5  # 4a1d
-  nonce: 4a1d  # 4a1d
-  set:  # 4a1d
-    status: done  # 4a1d
-- op: discuss  # e101
-  at: '2026-06-11T18:50:11Z'  # e101
-  by: agent  # e101
-  actor: jgstern_agent  # e101
-  clock: 6  # e101
-  nonce: e101  # e101
-  message: "Implemented + merged (PR auto-merged, human pre-approved auto-pr WITHOUT --gov, 2026-06-09). Deliverable evidence (all three approved parts present): (1) playbook .agent/agent_playbooks_protocols_sops_skills/closure-evidence-discipline-playbook.md; (2) AGENTS.md essentialization adjacent to Resolution Rationale + PLAYBOOKS hook registration in .agent/hooks/_shared/on_transcript_change.py (30 entries, closure-evidence registered, all files present); (3) advisory scripts/audit-closure-evidence (heuristic, forward-only, never mutates; reads via tracker --json list not .ops). Design honored: ADVISORY (no hard gate) + FORWARD-ONLY. tests/test_audit_closure_evidence.py 9/9 pass (pins detector logic incl. the INV-nufob proxy pattern); live audit surfaces 5 candidates (the verify-claims cluster + 1 benign META false positive — over-flag history 11->8->5 after restricting the behavioral-statement check to statement+title). hook-tests + on_transcript_change validation tests green (84 pass)."  # e101

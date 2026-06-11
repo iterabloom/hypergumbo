@@ -1,0 +1,37 @@
+- op: create  # 8b31
+  at: '2026-06-11T20:42:13Z'  # 8b31
+  by: agent  # 8b31
+  actor: jgstern_agent  # 8b31
+  clock: 1  # 8b31
+  nonce: 8b31  # 8b31
+  data:  # 8b31
+    kind: invariant  # 8b31
+    title: "Writer-contract validator must read dict-shaped AnalysisRuns (declared-fields:F1(a))"  # 8b31
+    status: violated  # 8b31
+    priority: 2  # 8b31
+    parent:  # 8b31
+    tags:  # 8b31
+    - wave1  # 8b31
+    isbefore: []  # 8b31
+    duplicate_of: []  # 8b31
+    not_duplicate_of: []  # 8b31
+    pr_ref:  # 8b31
+    description: ""  # 8b31
+    fields:  # 8b31
+      statement: "The ADR-0033 writer-contract validator must read AnalysisRun records via dict-or-attribute access. Production feeds them as serialized run.to_dict() dicts (cli.py: analysis_runs.append(linker_result.run.to_dict())), so bare getattr returns the default and every writer-contract check silently no-ops on the production substrate."  # 8b31
+      root_cause: "Shape mismatch between producer and validator: the writer-contract checks assumed dataclass attribute access (getattr) while the orchestrator serializes AnalysisRuns to dicts before validate_ir. The dict-or-attribute _read helper already existed and was used by the axis-conformance branch, but the writer-contract branch (sub-pattern-2 sentinel match + example_id, plus _is_truthy / sub-pattern-1) still used bare getattr. Object-shaped unit tests masked the production no-op."  # 8b31
+- op: update  # 94dc
+  at: '2026-06-11T20:42:25Z'  # 94dc
+  by: agent  # 94dc
+  actor: jgstern_agent  # 94dc
+  clock: 2  # 94dc
+  nonce: 94dc  # 94dc
+  set:  # 94dc
+    status: satisfied  # 94dc
+- op: discuss  # 663f
+  at: '2026-06-11T20:42:26Z'  # 663f
+  by: agent  # 663f
+  actor: jgstern_agent  # 663f
+  clock: 3  # 663f
+  nonce: 663f  # 663f
+  message: "Satisfied in PR #4194 (merged; origin/dev 6c183e72f7). Fix: routed all four writer-contract record reads through the existing dict-or-attribute _read helper. BEHAVIORAL EVIDENCE (production-path test): test_writer_contract_flags_default_config_fingerprint_on_dict_shaped_runs feeds dict runs exactly as cli.py:7905 accumulates them (run.to_dict()); the sub-pattern-2 violation now FIRES (matched=[] under getattr -> 1 violation under _read) and its record_id surfaces the offending run execution_id. Red on getattr, green on _read; test_is_truthy_reads_dict_shaped_record covers the analogue. spec_validator.py at 100% coverage (286 stmts, 0 miss), 2550 passed."  # 663f
