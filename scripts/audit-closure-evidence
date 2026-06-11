@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""audit-closure-evidence — advisory detector for proxy-only closures (WI-dafun).
+
+Flags RESOLVED (`satisfied`/`done`) tracker items whose *statement* describes
+runtime/user-facing BEHAVIOR (CLI exit codes, stdout/stderr,
+silently-accept/reject, error/traceback) but whose closure rationale cites only
+PROXY metrics — an internal validator count ("N violations", "validator
+clean", "self-analysis at 0") — WITHOUT any in-entry BEHAVIORAL evidence (a
+live repro: command + exit code / stderr, or a production-path test).
+
+Why advisory, not a gate: the detector is heuristic and over-flags. The first
+pass over-flagged 11 candidates because it required a ``hypergumbo`` prefix
+before subcommand names; the corrected pass (bare subcommand names, kept here)
+found 3 true cases. A hard pre-commit/CI gate on ``--status satisfied`` would
+block legitimate closures on false positives, so this runs ON DEMAND and folds
+into the tracker-hygiene/dedup sweep, reporting candidates for human-reviewed
+re-probe. Forward-only in spirit — it surfaces candidates; it does not mutate.
+
+Origin: INV-nufob was false-satisfied (closed 2026-06-01 on a "self-analysis at
+0 verdict_enum violations" proxy plus an adjacency claim crediting a sibling's
+fix), while its actual behavioral invariant — the ``verify-claims --taint-*``
+loader must ERROR, not silently confirm, on bad input — stayed violated until
+the v6.0.0 step-1 re-verification (fixed in PR #4152). A green internal
+validator count was accepted as proof the user-facing behavior was fixed; this
+guard exists so that never substitutes for behavioral evidence again.
+
+The corpus is read via ``scripts/tracker --json list`` (the compiled current
+state), never the raw ``.ops`` logs.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# A closure that cites only these is leaning on a proxy metric.
+PROXY_SIGNALS = [
+    r"self-analysis at \d",
+    r"verdict_enum",
+    r"spec_validator",
+    r"validator class",
+    r"validation_report",
+    r"zero violations",
+    r"\b0 (verdict|enum|schema)",
+    r"\d+ \w* violations",
+]
+
+# A closure that contains any of these has cited behavioral evidence.
+# NOTE: subcommand names are matched WITHOUT a ``hypergumbo`` prefix — that
+# prefix requirement was the bug in the first detector pass (over-flagged 11).
+BEHAVIORAL_SIGNALS = [
+    r"rc[=: ]\d",
+    r"exit[ -]?\d",
+    r"\blive\b",
+    r"\brepro",
+    r"stderr|stdout",
+    r"\b(verify-claims|sketch|slice|explain|symbols|routes|"
+    r"io-boundaries|dead-code-maybe|test-coverage)\b",
+    r"\d+\s*/\s*\d+\s*->\s*\d+\s*/\s*\d+",  # N/M -> N/M ratio transition
+    r"```",
+    r"static code audit",
+]
+
+# An item worth auditing: its statement is about runtime/user-facing behavior.
+BEHAVIORAL_STATEMENT_SIGNALS = [
+    r"exit[ -]?code",
+    r"\bstdout\b",
+    r"\bstderr\b",
+    r"silently",
+    r"traceback",
+    r"\berror\b",
+    r"\braise\b",
+    r"\breject",
+    r"\baccept",
+    r"\bCLI\b",
+    r"rc[=: ]\d",
+    r"exit[ -]?\d",
+    r"must (error|fail|reject|not|exit|confirm)",
+    r"\b(verify-claims|sketch|slice|explain|symbols|routes|"
+    r"io-boundaries|dead-code-maybe|test-coverage)\b",
+]
+
+
+def _any(patterns: list[str], text: str) -> bool:
+    return any(re.search(p, text, re.IGNORECASE) for p in patterns)
+
+
+def has_proxy(text: str) -> bool:
+    """True if *text* cites a proxy/internal-validator metric."""
+    return _any(PROXY_SIGNALS, text)
+
+
+def has_behavioral(text: str) -> bool:
+    """True if *text* cites behavioral evidence (repro, exit code, subcommand…)."""
+    return _any(BEHAVIORAL_SIGNALS, text)
+
+
+def is_behavioral_statement(text: str) -> bool:
+    """True if *text* (an item's statement) describes runtime/user-facing behavior."""
+    return _any(BEHAVIORAL_STATEMENT_SIGNALS, text)
+
+
+def flagged_entries(item: dict) -> list[dict]:
+    """Return the proxy-only closure entries that flag *item* as a candidate.
+
+    A candidate is a RESOLVED item with a behavioral statement that has at least
+    one agent discussion entry citing a PROXY signal but NO behavioral evidence
+    in that same entry. Returns the offending entries (empty ⇒ not a candidate).
+    """
+    if item.get("status") not in ("satisfied", "done"):
+        return []
+    fields = item.get("fields") or {}
+    # Audit on the item's STATEMENT (+ the concise title), NOT the free-text
+    # description: descriptions routinely mention CLI/error/subcommand keywords
+    # incidentally, which over-flags work items whose statement field is empty.
+    statement = f"{fields.get('statement') or ''} {item.get('title') or ''}"
+    if not is_behavioral_statement(statement):
+        return []
+    out = []
+    for entry in item.get("discussion") or []:
+        if entry.get("by") != "agent":
+            continue
+        msg = entry.get("message") or ""
+        if has_proxy(msg) and not has_behavioral(msg):
+            out.append(entry)
+    return out
+
+
+def audit(items: list[dict]) -> list[tuple[dict, list[dict]]]:
+    """Return (item, flagged_entries) pairs for every candidate in *items*."""
+    flags = []
+    for item in items:
+        entries = flagged_entries(item)
+        if entries:
+            flags.append((item, entries))
+    return flags
+
+
+def _load_corpus() -> list[dict]:  # pragma: no cover — subprocess I/O
+    """Load the compiled tracker corpus via the CLI (never raw .ops)."""
+    result = subprocess.run(
+        [str(REPO_ROOT / "scripts" / "tracker"), "--no-auto-sync", "--json", "list"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(
+            f"error: could not load tracker corpus: {result.stderr.strip()}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    data = json.loads(result.stdout)
+    return data if isinstance(data, list) else data.get("items", [])
+
+
+def main(argv: list[str] | None = None) -> int:  # pragma: no cover — I/O + format
+    items = _load_corpus()
+    flags = audit(items)
+    print("closure-evidence audit (WI-dafun) — ADVISORY · heuristic · forward-only")
+    print(
+        f"scanned {len(items)} items; "
+        f"{len(flags)} candidate(s) for human-reviewed re-probe\n"
+    )
+    for item, entries in flags:
+        print(f"• {item['id']}  [{item.get('status')}]  {item.get('title', '')[:70]}")
+        for entry in entries:
+            snippet = " ".join((entry.get("message") or "").split())[:160]
+            print(f"    proxy-only closure ({entry.get('at', '')}): {snippet}")
+    if flags:
+        print(
+            "\nEach cites a proxy metric without in-entry behavioral evidence on a "
+            "behavioral-\nstatement item. Re-run the item's filed repro; if the "
+            "behavior is still broken,\nreopen. Heuristic — false positives "
+            "expected; human review required before any\nstatus change."
+        )
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

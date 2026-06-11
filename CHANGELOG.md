@@ -25,6 +25,17 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **Closure-evidence discipline (WI-dafun)** — a governance guard so that
+  resolving a behavioral-invariant tracker item requires *behavioral* evidence
+  (a live repro: command + observed exit code/stderr, or a production-path
+  test), never a proxy metric ("validator clean", "0 violations") or adjacency
+  claim alone. Origin: `INV-nufob` was false-satisfied on exactly that proxy
+  while `verify-claims --taint-*` stayed broken (fixed PR #4152). Ships the
+  `closure-evidence-discipline-playbook.md`, an AGENTS.md essentialization +
+  transcript-hook registration, and an on-demand `scripts/audit-closure-evidence`
+  that surfaces proxy-only closures during the tracker-hygiene sweep (advisory,
+  heuristic, forward-only — never a hard gate, never mutates).
+
 - **Decision ADRs 0035–0042** — eight accepted ADRs recording the 2026-06-10
   design-interview rulings that unblock the correctness campaign's Wave-2/3
   chains: stable_id v6 identity contract (0035), node.id grammar v2 (0036),

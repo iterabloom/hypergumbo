@@ -617,6 +617,20 @@ PLAYBOOKS = [
      "(defer to a manifest + final step), batch write-back via `tracker batch`, every status "
      "change carries a discuss-note rationale. The agent produces data; the human authorizes "
      "folds/downgrades/edit-mode cleanups."),
+    ("closure-evidence-discipline-playbook",
+     ".agent/agent_playbooks_protocols_sops_skills/closure-evidence-discipline-playbook.md",
+     "When resolving (satisfied/done) a tracker item whose STATEMENT describes runtime/"
+     "user-facing behavior (CLI exit codes, stdout/stderr, silently-accept/reject, "
+     "error/traceback), the closure rationale MUST cite BEHAVIORAL evidence — a live repro "
+     "(command + observed exit code/stderr), a production-path test, or a before->after ratio "
+     "on the real artifact — and you must re-run the item's own filed repro. A PROXY metric "
+     "('validator clean', 'N violations', 'self-analysis at 0', 'spec_validator at 0') or an "
+     "adjacency claim ('closed by <sibling>'s fix') may SUPPLEMENT but never SUBSTITUTE for "
+     "behavioral evidence. Origin: INV-nufob was false-satisfied on a proxy + adjacency claim "
+     "while verify-claims --taint-* stayed broken (fixed PR #4152). Advisory + forward-only "
+     "(human decision 2026-06-09): no hard gate; the on-demand scripts/audit-closure-evidence "
+     "surfaces proxy-only closures during the tracker-hygiene sweep (heuristic, false positives "
+     "expected, never mutates)."),
 ]
 
 
