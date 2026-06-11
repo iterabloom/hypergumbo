@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Fixed
+
+- **Auto-sync cleanup no longer destroys ops mutations written during the sync window (INV-dalup).** The post-merge cleanup in `do_sync()` resets tracked ops to HEAD and `unlink`s untracked ops, then ff-merges — which silently dropped any mutation written between the `git add` snapshot and the cleanup (a 1–5 min push+CI+merge window): new items vanished entirely, status transitions reverted. This is the complement of the [0.5.1] `merge_succeeded` guard, which only covers *failed* syncs; INV-dalup is the race on *successful* ones. The fix snapshots every ops file's on-disk content before the destructive steps and, after the ff-only merge, union-restores each — an order-preserving line-level union (mirroring `_ops_union_restore_file` in `scripts/lib/forgejo-api.sh`, exploiting the append-only `merge=union` CRDT nature of `.ops` logs). Modified files get any post-snapshot lines re-appended; unlinked new-item files are recreated. Idempotent for un-mutated files (the union returns the current content unchanged), so no spurious rewrites.
+
 ## [0.6.0] - 2026-06-10
 
 ### Added

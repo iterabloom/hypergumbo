@@ -48,7 +48,10 @@ from hypergumbo_tracker.sync import (
     _poll_ci,
     _short_item_ids,
     _format_sync_title,
+    _snapshot_ops_files,
     _sum_added_lines,
+    _union_lines,
+    _union_restore_ops,
     check_sync_gate_held,
     do_sync,
     pending_sync_lines,
@@ -1835,6 +1838,70 @@ class TestPreflightCheck:
 # ---------------------------------------------------------------------------
 
 
+class TestOpsUnionRestore:
+    """Unit tests for the INV-dalup union-restore helpers.
+
+    These lock the lossless line-union logic for the tracked-modified-reset
+    case (which TestDoSync cannot exercise end-to-end because ``checkout HEAD``
+    is mocked and does not touch the filesystem) and cover the snapshot/restore
+    branches.
+    """
+
+    def test_union_lines_fresh_target(self) -> None:
+        assert _union_lines("", "op: a\nop: b\n") == "op: a\nop: b\n"
+
+    def test_union_lines_idempotent_when_backup_subset(self) -> None:
+        target = "op: a\nop: b\n"
+        # backup ⊆ target → target returned verbatim (the 'already seen' path)
+        assert _union_lines(target, "op: a\n") == target
+
+    def test_union_lines_appends_post_snapshot_line(self) -> None:
+        # target = reset/HEAD content; backup = HEAD + a post-snapshot op
+        assert (
+            _union_lines("op: a\nop: b\n", "op: a\nop: b\nop: c\n")
+            == "op: a\nop: b\nop: c\n"
+        )
+
+    def test_union_lines_preserves_order_target_first(self) -> None:
+        assert (
+            _union_lines("op: b\n", "op: a\nop: b\nop: c\n")
+            == "op: b\nop: a\nop: c\n"
+        )
+
+    def test_snapshot_captures_files_skips_missing_dir_and_subdir(
+        self, tmp_path: Path
+    ) -> None:
+        ops = tmp_path / ".agent" / "tracker-workspace" / ".ops"
+        ops.mkdir(parents=True)
+        f = ops / ".WI-x.ops"
+        f.write_text("op: a\n")
+        (ops / "subdir").mkdir()  # non-file entry must be skipped
+        # .agent/tracker/.ops/ deliberately absent → missing-dir branch
+        assert _snapshot_ops_files(tmp_path) == {f: "op: a\n"}
+
+    def test_restore_appends_to_reset_file(self, tmp_path: Path) -> None:
+        # A tracked file reset to HEAD by checkout, missing a post-snapshot op.
+        p = tmp_path / ".WI-y.ops"
+        p.write_text("op: a\n")
+        _union_restore_ops({p: "op: a\nop: b\n"})
+        assert p.read_text() == "op: a\nop: b\n"
+
+    def test_restore_does_not_rewrite_unchanged_file(
+        self, tmp_path: Path
+    ) -> None:
+        p = tmp_path / ".WI-z.ops"
+        p.write_text("op: a\nop: b\n")
+        before = p.stat().st_mtime_ns
+        _union_restore_ops({p: "op: a\n"})  # backup ⊆ current → no write
+        assert p.read_text() == "op: a\nop: b\n"
+        assert p.stat().st_mtime_ns == before
+
+    def test_restore_recreates_unlinked_file(self, tmp_path: Path) -> None:
+        p = tmp_path / "nested" / ".WI-new.ops"  # parent created on demand
+        _union_restore_ops({p: "op: add WI-new\n"})
+        assert p.read_text() == "op: add WI-new\n"
+
+
 class TestDoSync:
     """Tests for do_sync — full workflow with all externals mocked.
 
@@ -1973,6 +2040,66 @@ class TestDoSync:
     @patch("hypergumbo_tracker.sync._poll_ci")
     @patch("hypergumbo_tracker.sync._find_open_pr")
     @patch("hypergumbo_tracker.sync._git")
+    def test_post_snapshot_untracked_ops_survives_cleanup(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """INV-dalup: a new ops file created in the git-add -> cleanup race
+        window must NOT be destroyed by the untracked-ops unlink.
+
+        The cleanup deletes every file ``ls-files --others`` reports, then
+        ff-merges. A new item created after the snapshot is untracked and is
+        absent from the sync commit, so the ff-merge cannot restore it — the
+        old behavior lost it silently (INV-dalup incident #1, WI-dilab). The
+        union-restore must snapshot the file before the unlink and recreate
+        it afterward.
+        """
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        ops_dir = tmp_path / ".agent" / "tracker-workspace" / ".ops"
+        ops_dir.mkdir(parents=True, exist_ok=True)
+        race_ops = ops_dir / ".WI-raceitem.ops"
+        race_content = "op: add WI-raceitem\nop: set status todo\n"
+        race_ops.write_text(race_content)
+        rel = ".agent/tracker-workspace/.ops/.WI-raceitem.ops"
+
+        cleanup = [
+            _make_completed_process(),                  # fetch
+            _make_completed_process(),                  # checkout HEAD --
+            _make_completed_process(stdout=rel + "\n"),  # ls-files --others
+            _make_completed_process(),                  # merge --ff-only
+            _make_completed_process(),                  # branch -D
+        ]
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
+            *cleanup,
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+
+        assert result.success
+        assert race_ops.exists(), (
+            "post-snapshot untracked ops file was destroyed by cleanup"
+        )
+        assert race_ops.read_text() == race_content
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
     def test_pushes_rich_varied_title(
         self,
         mock_git: MagicMock,
@@ -2072,7 +2199,7 @@ class TestDoSync:
     @patch("hypergumbo_tracker.sync._poll_ci")
     @patch("hypergumbo_tracker.sync._find_open_pr")
     @patch("hypergumbo_tracker.sync._git")
-    def test_ff_merge_removes_untracked_ops_files(
+    def test_untracked_ops_unlinked_then_union_restored(
         self,
         mock_git: MagicMock,
         mock_find_pr: MagicMock,
@@ -2081,8 +2208,16 @@ class TestDoSync:
         mock_time: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Untracked ops files are removed before ff-only merge to prevent
-        git from refusing to overwrite them."""
+        """Untracked ops files are unlinked before the ff-only merge (so git
+        won't refuse to overwrite them), then union-restored by the INV-dalup
+        cleanup guard so no ops content is lost.
+
+        In production the ff-only merge re-materializes a *synced* ops file as
+        tracked, and the union-restore is a no-op for it (current == snapshot).
+        Here the merge is mocked (a no-op), so the union-restore is what
+        re-creates the file — which is precisely the protection a post-snapshot
+        new item relies on.
+        """
         mock_time.strftime.return_value = "20260218-120000"
         mock_time.sleep = MagicMock()
         ops_file = ".agent/tracker/.ops/.WI-test.ops"
@@ -2115,10 +2250,15 @@ class TestDoSync:
         result = do_sync(repo_root=tmp_path, preflight=pre)
         assert result.success
 
-        # Ops file should have been removed before ff-only merge
-        assert not ops_path.exists(), (
-            "Ops file should be removed before ff-only merge"
+        # The cleanup still issued the untracked-ops removal step…
+        cleanup_calls = mock_git.call_args_list[-5:]
+        assert "ls-files" in cleanup_calls[2][0]
+        # …but INV-dalup's union-restore re-applies the snapshot afterward, so
+        # the ops content survives rather than being silently destroyed.
+        assert ops_path.exists(), (
+            "Ops file must be union-restored after the cleanup unlink"
         )
+        assert ops_path.read_text() == "some ops data\n"
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._merge_pr")

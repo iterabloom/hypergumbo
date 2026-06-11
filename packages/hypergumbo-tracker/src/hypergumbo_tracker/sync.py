@@ -791,6 +791,67 @@ _OPS_PATHS = (
 AUTO_SYNC_DEFAULT_THRESHOLD = 80
 
 
+def _union_lines(target_content: str, backup_content: str) -> str:
+    """Order-preserving line-level union of two ``.ops`` file contents.
+
+    Mirrors ``cat target backup | awk '!seen[$0]++'`` from
+    ``scripts/lib/forgejo-api.sh`` (``_ops_union_restore_file``, WI-buhov).
+    Tracker ``.ops`` files are append-only union-merge CRDT logs
+    (``.gitattributes: merge=union``), so the lossless restore is to keep every
+    line from the current target, then append any backup line not already
+    present.  Idempotent when ``backup`` ⊆ ``target`` (returns the target
+    verbatim), so restoring an un-mutated file never rewrites it.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for content in (target_content, backup_content):
+        for line in content.splitlines():
+            if line not in seen:
+                seen.add(line)
+                out.append(line)
+    return "".join(f"{line}\n" for line in out)
+
+
+def _snapshot_ops_files(repo_root: Path) -> dict[Path, str]:
+    """Capture the on-disk content of every tracker ops file under *repo_root*.
+
+    Taken immediately before the destructive post-sync cleanup so any mutation
+    written in the ``git add`` → cleanup race window can be union-restored
+    afterward (INV-dalup).  Only existing files are captured; missing ops
+    directories are skipped.
+    """
+    snapshot: dict[Path, str] = {}
+    for ops_rel in _OPS_PATHS:
+        ops_dir = repo_root / ops_rel
+        if not ops_dir.is_dir():
+            continue
+        for entry in ops_dir.iterdir():
+            if entry.is_file():
+                snapshot[entry] = entry.read_text()
+    return snapshot
+
+
+def _union_restore_ops(snapshot: dict[Path, str]) -> None:
+    """Re-apply snapshotted ops content the post-sync cleanup discarded.
+
+    For each captured file: if it still exists (reset to the sync-commit state
+    by ``checkout HEAD`` and the ff-only merge), union-append any snapshot lines
+    the merge lacks; if it was unlinked (a new item absent from the sync
+    commit), recreate it from the snapshot.  Idempotent for files not mutated
+    post-snapshot — the union returns the current content unchanged, so no
+    spurious rewrite occurs (INV-dalup).
+    """
+    for path, backup_content in snapshot.items():
+        if path.exists():
+            current = path.read_text()
+            merged = _union_lines(current, backup_content)
+            if merged != current:
+                path.write_text(merged)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(backup_content)
+
+
 def _sum_added_lines(numstat_output: str) -> int:
     """Parse ``git diff --numstat`` output and sum the 'added' column.
 
@@ -1577,6 +1638,11 @@ def do_sync(
         # and the untracked ``unlink`` would silently wipe local-only
         # mutations that never made it to remote (WI-lufal).
         if preflight.original_branch == base_branch and merge_succeeded:
+            # INV-dalup: snapshot every ops file on disk BEFORE the destructive
+            # reset/unlink so mutations written in the ``git add`` → cleanup
+            # race window survive the merge (see _union_restore_ops below).
+            ops_snapshot = _snapshot_ops_files(repo_root)
+
             # Reset tracked ops files to HEAD (handles modified files).
             # ``git checkout HEAD -- <paths>`` silently ignores
             # untracked files, so this is safe.
@@ -1620,6 +1686,10 @@ def do_sync(
                     f"ff-only merge failed during cleanup: "
                     f"{ff_result.stderr.strip()}"
                 )
+            # INV-dalup: re-apply any post-snapshot ops the reset/unlink/merge
+            # discarded — lossless line-union for modified files, recreate for
+            # new items that never reached the sync commit.
+            _union_restore_ops(ops_snapshot)
 
         # Delete sync branch ref (non-fatal)
         _git(repo_root, "branch", "-D", sync_branch, check=False)
