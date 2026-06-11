@@ -1235,6 +1235,15 @@ do_merge() {
 						rm -f "$tmp_file"
 						return 0
 					fi
+					# Transient-405 fallback (INV-lovih trigger): a merge can land
+					# server-side while the API never cleanly confirms it. Fall back
+					# to git ground truth so do_merge still returns success and the
+					# caller advances local dev via cleanup_local.
+					if _pr_landed_in_base "$(git rev-parse HEAD)" "$base_branch"; then
+						echo "✅ Verified via git: rebased tip is in origin/$base_branch — PR merged despite API non-accept."
+						rm -f "$tmp_file"
+						return 0
+					fi
 					echo "⚠️  Merge not accepted after $rebase_attempts post-rebase iterations"
 					echo ""
 					echo "Recovery: ./scripts/merge-pr $pr_num --wait-for-ci"
@@ -1310,6 +1319,26 @@ _check_pr_merged() {
 	else
 		return 1
 	fi
+}
+
+# ------------------------------------------------------------------
+# _pr_landed_in_base SHA BASE_BRANCH  (INV-lovih transient-405 fallback)
+#
+#   Git ground-truth merge check: returns 0 iff SHA is an ancestor of
+#   origin/BASE_BRANCH -- i.e. the PR's commit is in the base branch,
+#   regardless of what the (sometimes-flaky) merge API reported. The
+#   merge API has been observed to return a transient failure (HTTP
+#   000->405) for a merge that actually landed server-side; the
+#   API-based _check_pr_merged can miss it too. Falling back to git here
+#   lets do_merge return success on a real merge, so auto-pr runs
+#   cleanup_local and advances local dev -- a stale local dev is what let
+#   a later `git checkout dev` drop op-logs that a sync then committed as
+#   a deletion (the WI-vojik/WI-durub loss).
+# ------------------------------------------------------------------
+_pr_landed_in_base() {
+	local sha="$1" base_branch="$2"
+	git fetch origin "$base_branch" --quiet 2>/dev/null || true
+	git merge-base --is-ancestor "$sha" "origin/$base_branch" 2>/dev/null
 }
 
 # ------------------------------------------------------------------

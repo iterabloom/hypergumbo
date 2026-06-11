@@ -80,6 +80,21 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   production writer-contract check — a Wave-1 enforcement-scaffolding
   prerequisite for the validation-report ratchet (G1).
 
+#### Release & PR tooling
+
+- **`auto-pr` advances local dev after a transient-405 merge (INV-lovih trigger).**
+  Codeberg's merge API intermittently reports a merge as not-accepted (HTTP
+  000→405) when it actually landed server-side; `do_merge`'s post-rebase poll
+  loop, relying on the API-based `_check_pr_merged`, then returned failure, so
+  `do_pr` skipped `cleanup_local` and never fast-forwarded local dev. A stale
+  local dev is the *trigger* for the INV-lovih data-loss chain — a later
+  `git checkout dev` drops op-logs tracked on origin but absent locally, and the
+  next sync commits their deletion. A new `_pr_landed_in_base` git-ground-truth
+  fallback runs when the API loop gives up: if the rebased tip is an ancestor of
+  `origin/<base>`, the merge landed, so `do_merge` returns success and
+  `cleanup_local` advances local dev. Real-git tests cover the merged and the
+  genuinely-unmerged cases.
+
 ## [6.0.0] - 2026-06-10
 
 > **User-facing view:** see [docs/RELEASE-NOTES-6.X.md](docs/RELEASE-NOTES-6.X.md)
