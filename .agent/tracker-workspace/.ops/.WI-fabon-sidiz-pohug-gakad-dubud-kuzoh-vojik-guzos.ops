@@ -1,0 +1,35 @@
+- op: create  # c899
+  at: '2026-06-11T20:54:45Z'  # c899
+  by: agent  # c899
+  actor: jgstern_agent  # c899
+  clock: 1  # c899
+  nonce: c899  # c899
+  data:  # c899
+    kind: work_item  # c899
+    title: "R0 baseline bakeoff archived (correctness campaign Wave 0 item 7)"  # c899
+    status: done  # c899
+    priority: 4  # c899
+    parent:  # c899
+    tags:  # c899
+    - wave0  # c899
+    isbefore: []  # c899
+    duplicate_of: []  # c899
+    not_duplicate_of: []  # c899
+    pr_ref:  # c899
+    description: "Frozen-substrate R0 baseline for the correctness campaign. BROAD session broad-20260611-145341 (5 repos: haskellers js, nitter py/js, dub c, ghostfolio ts/js, VernissageServer swift) surfaced 2 issues: [MEDIUM] IO_OVER_TAGGING in ghostfolio and [HIGH] EXPECTED_ROUTES_BUT_FOUND_0 in VernissageServer. DEEP session deep-20260611-150007 (4 repos: docspell, pretix, ghostfolio, VernissageServer) showed supply-chain tier1 69-88%. Pinned at dev SHA 578464ad62 (local tag campaign-r0-baseline). Full details + artifacts in ~/hypergumbo_lab_notebook/notebookjournal_06112026_1454.md and bakeoff_artifacts/. RE-FILED from the notebook after the original (WI-vojik-zulig-rumol-lufaj-fobok-durun-mirop-suraf) was lost to the auto-pr untracked-ops data-loss bug."  # c899
+    fields: {}  # c899
+- op: update  # 12f4
+  at: '2026-06-11T21:12:49Z'  # 12f4
+  by: agent  # 12f4
+  actor: jgstern_agent  # 12f4
+  clock: 2  # 12f4
+  nonce: 12f4  # 12f4
+  set:  # 12f4
+    status: wont_do  # 12f4
+- op: discuss  # 5020
+  at: '2026-06-11T21:12:50Z'  # 5020
+  by: agent  # 5020
+  actor: jgstern_agent  # 5020
+  clock: 3  # 5020
+  nonce: '5020'  # 5020
+  message: "Duplicate. The original WI-vojik-zulig-rumol-lufaj-fobok-durun-mirop-suraf (R0 baseline record) was recovered intact from git d77dd0a368. Keep the original; this re-file is superseded."  # 5020

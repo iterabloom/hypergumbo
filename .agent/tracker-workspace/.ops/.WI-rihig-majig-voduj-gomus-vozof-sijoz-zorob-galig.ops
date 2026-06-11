@@ -1,0 +1,35 @@
+- op: create  # 10bc
+  at: '2026-06-11T20:53:08Z'  # 10bc
+  by: agent  # 10bc
+  actor: jgstern_agent  # 10bc
+  clock: 1  # 10bc
+  nonce: 10bc  # 10bc
+  data:  # 10bc
+    kind: work_item  # 10bc
+    title: "Bakeoff cohort/run path-resolution drops collection prefix for nested --pool"  # 10bc
+    status: todo_soft  # 10bc
+    priority: 3  # 10bc
+    parent:  # 10bc
+    tags:  # 10bc
+    - bakeoff  # 10bc
+    isbefore: []  # 10bc
+    duplicate_of: []  # 10bc
+    not_duplicate_of: []  # 10bc
+    pr_ref:  # 10bc
+    description: "cohort recurses into sub-collections but stores bare repo names; run then resolves <pool>/<name> at the top level, so a repo living in a sub-collection (e.g. webtunnel under ~/ALL_REPOS) yields FileNotFoundError. Worked around in R0 by using a flat pool (~/ALL_REPOS/repos_Apr12_2026). RE-FILED from the R0 lab notebook after the original (WI-durub-zuvib-zunuz-tiraj-mufag-norim-hadif-jufuh) was lost to the auto-pr untracked-ops data-loss bug. Detected during correctness-campaign R0."  # 10bc
+    fields: {}  # 10bc
+- op: update  # 96c2
+  at: '2026-06-11T21:12:49Z'  # 96c2
+  by: agent  # 96c2
+  actor: jgstern_agent  # 96c2
+  clock: 2  # 96c2
+  nonce: 96c2  # 96c2
+  set:  # 96c2
+    status: wont_do  # 96c2
+- op: discuss  # cf30
+  at: '2026-06-11T21:12:49Z'  # cf30
+  by: agent  # cf30
+  actor: jgstern_agent  # cf30
+  clock: 3  # cf30
+  nonce: cf30  # cf30
+  message: "Duplicate. The original WI-durub-zuvib-zunuz-tiraj-mufag-norim-hadif-jufuh was recovered intact from git (committed in d77dd0a368, deleted by the desync-driven sync ef26ed9824, restored via git show). Keep the original; this re-file is superseded."  # cf30
