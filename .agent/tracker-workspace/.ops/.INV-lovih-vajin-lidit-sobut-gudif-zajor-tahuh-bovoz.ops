@@ -1,0 +1,37 @@
+- op: create  # 32fb
+  at: '2026-06-11T21:16:07Z'  # 32fb
+  by: agent  # 32fb
+  actor: jgstern_agent  # 32fb
+  clock: 1  # 32fb
+  nonce: 32fb  # 32fb
+  data:  # 32fb
+    kind: invariant  # 32fb
+    title: "A tracker sync must never commit a net deletion of an existing .ops file"  # 32fb
+    status: violated  # 32fb
+    priority: 1  # 32fb
+    parent:  # 32fb
+    tags:  # 32fb
+    - wave0  # 32fb
+    isbefore: []  # 32fb
+    duplicate_of: []  # 32fb
+    not_duplicate_of: []  # 32fb
+    pr_ref:  # 32fb
+    description: ""  # 32fb
+    fields:  # 32fb
+      statement: "Tracker .ops files are append-only op-logs. A `tracker sync` must never produce a commit that DELETES an .ops file present on origin/dev. When the sync builds its commit from a stale/incomplete working tree (e.g. local dev behind origin, files dropped by an intervening branch checkout), the absent files are silently recorded as deletions and the items vanish from the corpus."  # 32fb
+      root_cause: "Five-step chain: (1) a tracker-sync commit (d77dd0a368) lands WI-vojik/WI-durub .ops on origin/dev; (2) local dev stays behind (forge flakiness blocked the early sync; the transient-405 stopped auto-pr cleanup_local from advancing local dev); (3) PR #1 auto-pr rebases the feature branch onto origin/dev, making those .ops tracked-in-feature; (4) a manual `git checkout dev` to the stale local dev DELETES them (tracked-in-source, absent-in-target); (5) the next sync builds its commit from the now-incomplete tree on top of up-to-date origin/dev and records a deletion (ef26ed9824). sync.py has no guard that a sync is additive w.r.t. .ops FILES. Data was fully recoverable from d77dd0a368."  # 32fb
+- op: update  # c000
+  at: '2026-06-11T21:49:18Z'  # c000
+  by: agent  # c000
+  actor: jgstern_agent  # c000
+  clock: 2  # c000
+  nonce: c000  # c000
+  set:  # c000
+    status: satisfied  # c000
+- op: discuss  # b524
+  at: '2026-06-11T21:49:18Z'  # b524
+  by: agent  # b524
+  actor: jgstern_agent  # b524
+  clock: 3  # b524
+  nonce: b524  # b524
+  message: "Fixed in PR #4197 (merged; origin/dev c541b72356). Both staging sites in do_sync now route through _stage_tracker_ops_additive, which passes `git add --ignore-removal` (stage additions/modifications only, never removals). BEHAVIORAL EVIDENCE: test_stage_tracker_ops_additive_keeps_oplog_missing_from_worktree drives the real read-tree -> additive-add -> write-tree sequence in a temp git repo: an op-log committed in the base but DELETED from the working tree SURVIVES in the written tree (`.WI-keep.ops` present), while a new op-log is still added (`.WI-new.ops` present) — i.e. the sync can no longer commit the deletion that lost WI-vojik/WI-durub. A mock test pins do_sync passes --ignore-removal (red on plain add). sync.py at 100% coverage; 1813 passed. The lost items themselves were recovered intact from git d77dd0a368."  # b524
