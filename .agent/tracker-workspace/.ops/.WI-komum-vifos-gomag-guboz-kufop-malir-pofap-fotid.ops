@@ -1,0 +1,22 @@
+- op: create  # df03
+  at: '2026-06-11T18:00:31Z'  # df03
+  by: agent  # df03
+  actor: jgstern_agent  # df03
+  clock: 1  # df03
+  nonce: df03  # df03
+  data:  # df03
+    kind: work_item  # df03
+    title: "http/graphql JS linkers hardcode language='javascript' on minted call records"  # df03
+    status: todo_hard  # df03
+    priority: 2  # df03
+    parent:  # df03
+    tags:  # df03
+    - linker  # df03
+    - http_linker  # df03
+    - graphql  # df03
+    isbefore: []  # df03
+    duplicate_of: []  # df03
+    not_duplicate_of: []  # df03
+    pr_ref:  # df03
+    description: "The HTTP and GraphQL client linkers mint HttpClientCall/GraphQLClientCall records with a literal language='javascript' rather than deriving it from the analyzed file/symbol: http.py:689/705/723/745 (_scan_javascript_file) and graphql.py:164 (_scan_javascript_graphql), under packages/hypergumbo-core/src/hypergumbo_core/linkers/. Surfaced in the synthetic-node-stamping family of the 2026-06-10 correctness analysis as a surviving 'language=javascript hardcode class' (strategy Wave-0 B1). Risk: a content-pattern match on non-JS content, or downstream cross-language edges, can carry a mislabeled language. Fix angle: derive language from the symbol/file, or strictly gate the scanners to JS-language files and document the invariant; verify whether the scanners can run on non-JS content before deciding severity."  # df03
+    fields: {}  # df03

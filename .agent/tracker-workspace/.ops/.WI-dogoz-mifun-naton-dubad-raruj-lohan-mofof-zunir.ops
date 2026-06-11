@@ -1,0 +1,34 @@
+- op: create  # 5185
+  at: '2026-06-11T17:59:21Z'  # 5185
+  by: agent  # 5185
+  actor: jgstern_agent  # 5185
+  clock: 1  # 5185
+  nonce: '5185'  # 5185
+  data:  # 5185
+    kind: work_item  # 5185
+    title: "ZZZ-addworks-probe"  # 5185
+    status: todo_soft  # 5185
+    priority: 4  # 5185
+    parent:  # 5185
+    tags: []  # 5185
+    isbefore: []  # 5185
+    duplicate_of: []  # 5185
+    not_duplicate_of: []  # 5185
+    pr_ref:  # 5185
+    description: "probe — verifying CLI add works post-fix"  # 5185
+    fields: {}  # 5185
+- op: update  # 0047
+  at: '2026-06-11T18:00:31Z'  # 0047
+  by: agent  # 0047
+  actor: jgstern_agent  # 0047
+  clock: 2  # 0047
+  nonce: '0047'  # 0047
+  set:  # 0047
+    status: wont_do  # 0047
+- op: discuss  # 7948
+  at: '2026-06-11T18:00:31Z'  # 7948
+  by: agent  # 7948
+  actor: jgstern_agent  # 7948
+  clock: 3  # 7948
+  nonce: '7948'  # 7948
+  message: "Throwaway probe created to verify CLI `add` works after the op-compilation null-tolerance fix (PR #4188). Not a real work item; safe to delete (delete is human-only)."  # 7948

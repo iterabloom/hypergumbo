@@ -1,0 +1,21 @@
+- op: create  # f4d8
+  at: '2026-06-11T18:00:34Z'  # f4d8
+  by: agent  # f4d8
+  actor: jgstern_agent  # f4d8
+  clock: 1  # f4d8
+  nonce: f4d8  # f4d8
+  data:  # f4d8
+    kind: work_item  # f4d8
+    title: "py.py carries a divergent local _compute_stable_id separate from base.py factories"  # f4d8
+    status: todo_hard  # f4d8
+    priority: 2  # f4d8
+    parent:  # f4d8
+    tags:  # f4d8
+    - stable_id  # f4d8
+    - identity  # f4d8
+    isbefore: []  # f4d8
+    duplicate_of: []  # f4d8
+    not_duplicate_of: []  # f4d8
+    pr_ref:  # f4d8
+    description: "py.py defines its own _compute_stable_id (py.py:1574-1625), used at py.py:2338/2392/2526, diverging from the canonical stable_id factories in analyze/base.py (make_typed_stable_id etc.). A producer of the identity-hash-coarseness family the original investigation did not list. Must be unified with the canonical formula as part of the STABLE_ID_SCHEME v5->v6 train (ADR-0035/0036); the v6 train plan names this 'B2 producer'. Strategy Wave-0 B2."  # f4d8
+    fields: {}  # f4d8

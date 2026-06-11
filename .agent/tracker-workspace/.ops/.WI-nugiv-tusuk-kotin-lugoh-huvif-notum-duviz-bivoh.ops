@@ -70,7 +70,6 @@
   add:  # 2ef6
     duplicate_of: [WI-hugir-balik-tajub-kanin-rorin-hojaf-migom-gujit]  # 2ef6
   remove:  # 2ef6
-    duplicate_of: [WI-hugir-balik-tajub-kanin-rorin-hojaf-migom-gujit]  # 2ef6
 - op: update  # 485d
   at: '2026-04-25T21:08:30Z'  # 485d
   by: agent  # 485d

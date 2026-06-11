@@ -1,0 +1,21 @@
+- op: create  # b3d9
+  at: '2026-06-11T18:00:39Z'  # b3d9
+  by: agent  # b3d9
+  actor: jgstern_agent  # b3d9
+  clock: 1  # b3d9
+  nonce: b3d9  # b3d9
+  data:  # b3d9
+    kind: work_item  # b3d9
+    title: "verify+remove cached_centrality plumbing in sketch.py if confirmed dead"  # b3d9
+    status: todo_soft  # b3d9
+    priority: 4  # b3d9
+    parent:  # b3d9
+    tags:  # b3d9
+    - sketch  # b3d9
+    - perf  # b3d9
+    isbefore: []  # b3d9
+    duplicate_of: []  # b3d9
+    not_duplicate_of: []  # b3d9
+    pr_ref:  # b3d9
+    description: "The sketch-cache family of the 2026-06-10 analysis claimed warm centrality is recomputed unconditionally (sketch.py:~4313-4320), making the cached_centrality plumbing at sketch.py:~6606-6629 dead. A current quick read shows cached_centrality IS fetched and passed (sketch.py:4202/4325-4329/6456-6473/6606+), so deadness is NOT confirmed on inspection. Action: determine whether the cached value influences output; if the warm recompute overrides it, remove the dead plumbing; else reclassify. Strategy Wave-0 B5 (filed WITH a deadness caveat - the 'dead' claim did not reproduce on quick inspection)."  # b3d9
+    fields: {}  # b3d9

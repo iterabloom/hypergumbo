@@ -1,0 +1,21 @@
+- op: create  # 145c
+  at: '2026-06-11T18:00:36Z'  # 145c
+  by: agent  # 145c
+  actor: jgstern_agent  # 145c
+  clock: 1  # 145c
+  nonce: 145c  # 145c
+  data:  # 145c
+    kind: work_item  # 145c
+    title: "f=g function-aliasing / name-rebinding mis-resolved as a call-graph dead-end"  # 145c
+    status: todo_hard  # 145c
+    priority: 3  # 145c
+    parent:  # 145c
+    tags:  # 145c
+    - call_graph  # 145c
+    - resolution  # 145c
+    isbefore: []  # 145c
+    duplicate_of: []  # 145c
+    not_duplicate_of: []  # 145c
+    pr_ref:  # 145c
+    description: "Split out of WI-togop-hikog-domub-gofor-puriv-fakov-bojus-jozus's discussion (it blocks WI-togop's closure). The tool processes function aliasing / name rebinding (f = g) statically but mis-resolves the alias, dead-ending the call graph: a call through the alias is not connected to the real target. A genuine call-graph correctness defect, distinct from WI-togop's limits.not_captured disclosure concern. Strategy Wave-0 B4."  # 145c
+    fields: {}  # 145c

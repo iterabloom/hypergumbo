@@ -1,0 +1,21 @@
+- op: create  # 80d3
+  at: '2026-06-11T18:00:41Z'  # 80d3
+  by: agent  # 80d3
+  actor: jgstern_agent  # 80d3
+  clock: 1  # 80d3
+  nonce: 80d3  # 80d3
+  data:  # 80d3
+    kind: work_item  # 80d3
+    title: "WI-fukut prefix collides (two items); automation must key on full 8-segment IDs"  # 80d3
+    status: todo_soft  # 80d3
+    priority: 4  # 80d3
+    parent:  # 80d3
+    tags:  # 80d3
+    - tracker  # 80d3
+    - tracker_hygiene  # 80d3
+    isbefore: []  # 80d3
+    duplicate_of: []  # 80d3
+    not_duplicate_of: []  # 80d3
+    pr_ref:  # 80d3
+    description: "Two open items share the WI-fukut prefix: WI-fukut-godin-gidil-filif-dajob-kulik-luvud-total (INV-dihos Phase 5) and WI-fukut-tisot-visuz-mugaf-jibak-timin-monit-mukus (dogfooding playbook staleness). Any reference resolving items by first-two-segment short form collides on WI-fukut. Convention: always use the full eight-segment ID for WI-fukut references, and prefer full IDs in tooling. Strategy Wave-0 B6."  # 80d3
+    fields: {}  # 80d3

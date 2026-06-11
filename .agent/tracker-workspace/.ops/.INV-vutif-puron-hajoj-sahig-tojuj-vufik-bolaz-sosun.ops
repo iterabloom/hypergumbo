@@ -1,0 +1,30 @@
+- op: create  # 7f19
+  at: '2026-06-11T18:01:05Z'  # 7f19
+  by: agent  # 7f19
+  actor: jgstern_agent  # 7f19
+  clock: 1  # 7f19
+  nonce: 7f19  # 7f19
+  data:  # 7f19
+    kind: invariant  # 7f19
+    title: "op-compilation must tolerate explicit-null set/add/remove dicts in any op"  # 7f19
+    status: satisfied  # 7f19
+    priority: 2  # 7f19
+    parent:  # 7f19
+    tags:  # 7f19
+    - tracker_infrastructure  # 7f19
+    - regression  # 7f19
+    isbefore: []  # 7f19
+    duplicate_of: []  # 7f19
+    not_duplicate_of: []  # 7f19
+    pr_ref:  # 7f19
+    description: "Discovered 2026-06-11 as a live TUI crash + broad CLI breakage (list/tags/add all failed; show survived because it compiles one item). The SQLite read-cache had masked one pre-existing null-remove op until a sync invalidated it. FIXED in PR #4188 (dev 693bb82c56): all six sites use .get(k) or {}. POSITIVE EVIDENCE: test_store.py::test_update_with_null_set_add_remove_compiles (red->green crash path) + test_validation.py companion; both modules 100% coverage. Producer note: the writer that emitted the null-remove op was not identified (reading .ops disallowed); the consumer guard tolerates any serialization, so the producer is moot for correctness."  # 7f19
+    fields:  # 7f19
+      statement: "Op-compilation (store.compile_ops) and the op-validation lock scan must tolerate any valid op serialization, including an explicit-null set/add/remove dict (semantically 'no changes'), without crashing whole-corpus reads."  # 7f19
+      root_cause: "store.py:625/645/657 and validation.py:530-532 used op_dict.get(key, {}); dict.get returns the default only when the key is ABSENT, so an explicit \"remove\": null yields None and None.items()/None.keys() crashed compilation of the entire corpus."  # 7f19
+- op: discuss  # a47f
+  at: '2026-06-11T18:01:40Z'  # a47f
+  by: agent  # a47f
+  actor: jgstern_agent  # a47f
+  clock: 2  # a47f
+  nonce: a47f  # a47f
+  message: "Follow-up (not blocking): a producer-side op-writer audit could confirm no code path emits an explicit-null set/add/remove dict (the consumer guard in PR #4188 tolerates any serialization, so this is defense-in-depth, not a correctness gap). Filed under Wave-0 item 4 alongside B1-B6 defect intake."  # a47f
