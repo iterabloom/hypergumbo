@@ -914,6 +914,48 @@ def test_cross_field_stable_id_collisions_above_threshold_flags() -> None:
     assert "colliding_0" in (v.message or "")
 
 
+def test_cross_field_stable_id_collision_discloses_none_cohort() -> None:
+    """WI-niluv: when the collision umbrella fires, the violation must
+    DISCLOSE its denominator scope — how many Symbols carry stable_id=None
+    and are EXCLUDED from the (collided/total) rate — so the encoding is
+    biconditional. A low reported non-null rate must not silently hide an
+    even more ambiguous no-stable_id-at-all cohort (the original bug:
+    178/757 reported vs 178/893 population, 136 None-cohort Symbols
+    vanished from the denominator with no disclosure).
+    """
+    syms: list[_FakeSym] = []
+    # 10 distinct stable_ids + 5 colliding == 5/15 = 33.3% > 5% threshold.
+    for i in range(10):
+        syms.append(_make_sym_with_stable_id(i, f"sha256:{i:016x}"))
+    for i in range(5):
+        syms.append(_make_sym_with_stable_id(
+            100 + i, "sha256:cccccccccccccccc", name=f"colliding_{i}",
+        ))
+    # 3 Symbols with stable_id=None — the silently-dropped cohort.
+    for i in range(3):
+        syms.append(_FakeSym(
+            id=f"python:test/fake.py:{200 + i}-{200 + i}:nosid{i}:function",
+            kind="function", language="python", discovery_language=None,
+            protocol_origin=None, display_label=None, origin=[],
+            qualified_name=None, stable_id=None, name=f"nosid{i}",
+            dst_ref=None, dst=None,
+        ))
+    violations = validate_ir(syms, [], [])
+    matched = [
+        v for v in violations
+        if v.validator_class == "cross_field"
+        and v.field_name == "Symbol.stable_id"
+    ]
+    assert len(matched) == 1
+    observed = matched[0].observed or ""
+    # Back-compat: the non-null collision rate is still surfaced.
+    assert "33.3%" in observed
+    # WI-niluv disclosure: explicit scope + None cohort over full population.
+    assert "denominator_scope=non_null" in observed
+    assert "3/18" in observed  # 3 None of (15 non-null + 3 None) = 18 population
+    assert "stable_id=None" in observed
+
+
 # ----------------------------------------------------------------------
 # WI-falum — fingerprint degeneracy umbrella check
 # ----------------------------------------------------------------------
@@ -965,6 +1007,32 @@ def test_cross_field_fingerprint_degeneracy_flags() -> None:
     assert "hgfp2:deaddeaddeaddead" in (v.message or "")
     assert "12" in (v.observed or "")
     assert "pkg_0" in (v.message or "")
+
+
+def test_cross_field_fingerprint_degeneracy_discloses_none_cohort() -> None:
+    """WI-niluv (structural twin): the fingerprint-degeneracy umbrella must
+    likewise disclose how many Symbols carry fingerprint=None and are
+    excluded from the degeneracy scan, so the report's denominator is
+    explicit rather than silent (same disease as the stable_id collision
+    check: ``if fp is None: continue`` dropped the cohort with no tally)."""
+    syms = [
+        _make_sym_with_fingerprint(i, "hgfp2:deaddeaddeaddead", f"pkg_{i}")
+        for i in range(12)
+    ]
+    # 4 Symbols with fingerprint=None — silently excluded from the scan today.
+    for i in range(4):
+        syms.append(_make_sym_with_fingerprint(100 + i, None, f"nofp_{i}"))
+    violations = validate_ir(syms, [], [])
+    matched = [
+        v for v in violations
+        if v.validator_class == "cross_field"
+        and v.field_name == "Symbol.fingerprint"
+    ]
+    assert len(matched) == 1
+    observed = matched[0].observed or ""
+    assert "denominator_scope=non_null" in observed
+    assert "4/16" in observed  # 4 None of (12 non-null + 4 None) = 16 population
+    assert "fingerprint=None" in observed
 
 
 def test_cross_field_fingerprint_shared_by_same_name_passes() -> None:

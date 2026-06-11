@@ -9,6 +9,8 @@
 
 > **Amendment (2026-06-11):** Cross-field coherence invariant (a) — `Edge.dst_ref ↔ Edge.dst` per the `make_unresolved_edge` docstring — is re-anchored by ADR-0037 ruling 2 (2026-06-10 design interview, ADRs 0035–0042, PR #4181): `dst_ref` becomes unconditionally derived at edge finalization, so the invariant's enforcement point moves from producer stamping to the single finalization verdict, joined by ADR-0037's new FK predicate (`is_resolved=True ⇒ dst ∈ nodes`). The invariant survives; only its producer-side anchor is retired.
 
+> **Amendment (2026-06-11) — CI gate realization (validator:F1 / G1, WI-kafar + WI-himoj):** the "Default failure behavior" §3 and "Phase 3" descriptions below specify the gate `tests/test_validation_report_empty.py` as one that "runs the self-analysis corpus and fails when `validation_report.violations` is non-empty." As realized, the gate differs on two points, both forced by ground truth. (1) The corpus is not at zero violations — the validator surfaces real, currently-open defects — so an assert-empty gate is permanently red; the gate is therefore a **shrink-only per-substrate ratchet** against committed baselines (a count may shrink, never grow). (2) A default-substrate-only gate lets flag-gated writer paths escape (WI-himoj), so the gate runs a **four-substrate matrix** (default / `--frameworks all` / `--include-docs` / `--max-tier 4`) against the multi-language `schema-coverage-corpus` fixture tree (chosen over self-analysis for per-PR speed and broader writer-path coverage; the heavy self-analysis variant is future work for full-suite). The gate additionally co-ratchets the ADR-0023 §3 `runtime_coherence` offender count per substrate. The land-then-fix posture and "CI gate is the only failure surface" decision are unchanged.
+
 ## Context
 
 ### The architectural absence
@@ -108,7 +110,7 @@ The validator does **not** fail the `hypergumbo run` command by default. Violati
 
 1. Written into the artifact's `validation_report` section.
 2. Summarized to stderr (`"[warn] N axis-conformance violations; see validation_report in <artifact>"`).
-3. CI-gated by a separate test (`tests/test_validation_report_empty.py`) that runs the self-analysis corpus and fails when `validation_report.violations` is non-empty.
+3. CI-gated by a separate test (`tests/test_validation_report_empty.py`) that runs the self-analysis corpus and fails when `validation_report.violations` is non-empty. *(As realized this is a shrink-only multi-substrate fixture-corpus ratchet, not an assert-empty self-analysis gate — see the 2026-06-11 CI-gate-realization amendment above.)*
 
 The split between "always emit; never fail run" and "CI gate fails when non-empty" gives the validator a soft introduction: users see violations as informational warnings, the CI catches new violations as regressions, and the self-analysis dogfooding workflow becomes the engine that drives the violation count to zero.
 
@@ -131,7 +133,7 @@ For `bounded-enum` and `identity` categories, `None` legality follows the field'
 Implementation is staged across the phases of the campaign captured in the lab-notebook plan file:
 
 - **Phase 0 (this ADR + scaffolding)** — Land this ADR + the stub `spec_validator.py` module (returns `[]`) + the pipeline wire-up + the smoke test. No validator class is turned on; the artifact gains an empty `validation_report` section.
-- **Phase 3 (validator classes turn on, one per PR)** — Land the four validator classes in dedicated PRs. After each, the self-analysis run's `validation_report` shows real violation counts; the CI gate `test_validation_report_empty.py` fails until each class's violations are reduced to zero through downstream cleanup.
+- **Phase 3 (validator classes turn on, one per PR)** — Land the four validator classes in dedicated PRs. After each, the self-analysis run's `validation_report` shows real violation counts; the CI gate `test_validation_report_empty.py` fails until each class's violations are reduced to zero through downstream cleanup. *(Realized as a shrink-only per-substrate ratchet — counts shrink toward zero, they do not gate at exactly zero; see the 2026-06-11 CI-gate-realization amendment above.)*
 - **Phase 5 (ID-format validator class)** — A fifth validator class for ID-format conformance, codifying the lab-notebook ID-construction discipline as mechanical enforcement (per ADR-0034).
 - **Phase 6 (cleanup tail)** — Per-emitter fixes driven by the validator's report until the self-analysis corpus is clean.
 

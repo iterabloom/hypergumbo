@@ -25,11 +25,15 @@ any leak the four-field captures the six-field would also capture; the
 six-field would only catch additional finer-grained leaks. If a future
 ``Symbol.framework`` registry lands, expand the partition key here.
 
-Phase-1 deployment is WARN-only: this checker is invoked by humans (or
-by sibling Phase 2/3 migration items) rather than wired into pre-commit
-/ CI. As Phase 2/3 reduce the offender set, the deployment posture can
-tighten — Phase 4's expectation is that the offender set goes empty
-modulo the allow-list.
+Deployment posture is WARN-only at the producer level (it does not fail
+``hypergumbo run``), but ``find_offenders`` is no longer human-invocation
+only: the spec-validator ratchet gate
+(``tests/test_validation_report_empty.py``, validator:F1/G1) consumes it
+at gate time, co-ratcheting the un-allow-listed offender count per
+substrate as a shrink-only dimension alongside the ``validation_report``
+violation totals. As Phase 2/3 reduce the offender set the per-substrate
+baselines ratchet down — Phase 4's expectation is that the offender set
+goes empty modulo the allow-list.
 
 Allow-list: ``docs/edge-type-runtime-allowlist.yaml``. Each entry
 permits multiple ``edge_type`` values within a single partition.

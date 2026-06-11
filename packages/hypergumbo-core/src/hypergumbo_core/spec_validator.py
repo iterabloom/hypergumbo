@@ -16,12 +16,14 @@ and checked them against the schema axioms, axis catalogs, or producer
 contracts. That gap is INV-sugat — "no spec-vs-data validator stage exists
 in the pipeline" — the super-META this ADR closes.
 
-Four validator classes are planned (ADR-0033 §"Validator classes"); this
-Phase-0 module ships the scaffolding (the ``ValidationViolation`` dataclass,
-the public ``validate_ir`` entry point, the pipeline wire-up at
-``cli.py``'s end-of-pipeline post-pass slot) with all classes off. Each
-class lands in a dedicated PR in Phase 3 of the campaign and progressively
-populates the violations list:
+The validator classes (ADR-0033 §"Validator classes") shipped incrementally:
+the Phase-0 module landed the scaffolding (the ``ValidationViolation``
+dataclass, the public ``validate_ir`` entry point, the pipeline wire-up at
+``cli.py``'s end-of-pipeline post-pass slot) with every class off, and the
+campaign's Phase-3/5/6 PRs then turned each on. All of the classes below are
+now ACTIVE — ``validate_ir`` runs each, and the corpus surfaces real
+violations (see "The gate's realized form" below for how the CI ratchet
+holds those counts shrink-only):
 
 1. **Axis-conformance** — every axis-tagged ``str`` field's values must be
    in the catalog (union ``{None}`` for ``Optional`` fields). The four
@@ -52,14 +54,13 @@ populates the violations list:
 
 Why scaffold first
 ------------------
-Landing the validator stage with no checks enabled is intentional. The
-module's presence and the pipeline wire-up establish (a) the artifact's
+The stage was landed with no checks enabled first (Phase 0), by design. The
+module's presence and the pipeline wire-up established (a) the artifact's
 ``validation_report`` section as a stable surface that consumers and CI
 can rely on, (b) the ``ValidationViolation`` dataclass as the structured
-shape that all future check classes emit, and (c) the warn-not-fail
-default behavior the campaign committed to. Subsequent PRs add one check
-class each, with confidence that the wire-up is already validated by the
-Phase-0 smoke test.
+shape that every check class emits, and (c) the warn-not-fail default
+behavior the campaign committed to. Subsequent PRs then turned on one check
+class each on that already-smoke-tested wire-up; all five are now live.
 
 Default failure behavior
 ------------------------
@@ -68,13 +69,32 @@ The validator does NOT fail ``hypergumbo run`` by default. Violations are:
 * Written into the artifact's ``validation_report`` section.
 * Summarized to stderr (``"[warn] N axis-conformance violations; see
   validation_report in <artifact>"``).
-* CI-gated by a separate test (``tests/test_validation_report_empty.py``)
-  that runs the self-analysis corpus and fails when
-  ``validation_report.violations`` is non-empty.
+* CI-gated by a separate test (``tests/test_validation_report_empty.py``).
+
+The gate's realized form (validator:F1 / G1, WI-kafar + WI-himoj). The
+file is named "…_empty" for its aspiration, but the corpus is not at zero
+violations and an "assert empty" gate would be permanently red, so the
+gate is a SHRINK-ONLY per-substrate RATCHET over a four-substrate matrix
+(default / ``--frameworks all`` / ``--include-docs`` / ``--max-tier 4``)
+run against the multi-language ``schema-coverage-corpus`` fixture tree.
+Each substrate's violation count may shrink below its committed baseline
+(ratchet it down when it does) but never grow — a regression that adds a
+violation trips CI. ``--include-docs`` exercises the flag-gated writer
+paths a default-only gate would let escape (WI-himoj). The gate also
+co-ratchets the ADR-0023 §3 ``runtime_coherence`` offender count per
+substrate as a separate dimension. The heavy self-analysis variant of the
+same matrix is future work for full-suite (the strategy's "fixture corpus
+per-PR; self-tree in full-suite").
 
 This soft-introduction posture lets the validator land cleanly: users see
-violations as informational warnings; CI catches regressions; the
-self-analysis dogfooding workflow drives the violation count to zero.
+violations as informational warnings; CI catches regressions; downstream
+producer fixes ratchet each substrate's baseline toward zero.
+
+WI-niluv denominator disclosure: the cross-field collision/degeneracy
+umbrellas exclude records with no stable_id / fingerprint from their
+non-null denominators (a rate is undefined without a key), but the firing
+violation discloses ``denominator_scope=non_null`` plus the excluded
+cohort over the full population, so the encoding is biconditional.
 
 See ADR-0033 for the full architectural decision.
 """
@@ -897,9 +917,16 @@ def _check_cross_field_coherence(
     _STABLE_ID_COLLISION_THRESHOLD = 0.05
     counter: dict[str, list[Any]] = {}
     total = 0
+    none_cohort = 0
     for sym in symbols:
         sid = getattr(sym, "stable_id", None)
         if sid is None:
+            # WI-niluv: count the None cohort instead of silently dropping it.
+            # The denominator below is non-null-only by design (a collision
+            # rate is undefined for records with no key), but a low non-null
+            # rate must not hide a large no-stable_id-at-all cohort — so the
+            # firing violation discloses this count and the full population.
+            none_cohort += 1
             continue
         total += 1
         counter.setdefault(sid, []).append(sym)
@@ -923,14 +950,26 @@ def _check_cross_field_coherence(
                     f"{', '.join(sample_names)})"
                 )
             top_str = "; ".join(top_descriptions) if top_descriptions else "(none)"
+            # WI-niluv denominator disclosure: make the scope explicit so the
+            # encoding is biconditional (a reader can reconstruct both the
+            # non-null rate collided/total and the full population).
+            # population >= 1 here (total >= 1 inside this block), so no
+            # division guard is needed (mirrors the fingerprint twin below).
+            population = total + none_cohort
+            none_frac = none_cohort / population
+            denom_disclosure = (
+                f"; denominator_scope=non_null ({none_cohort}/{population} = "
+                f"{none_frac*100:.1f}% had stable_id=None, EXCLUDED from the "
+                "rate)"
+            )
             violations.append(ValidationViolation(
                 severity="warning",
                 validator_class="cross_field",
                 field_name="Symbol.stable_id",
                 record_id=None,
                 observed=(
-                    f"{collided}/{total} Symbols share stable_id "
-                    f"({rate*100:.1f}%)"
+                    f"{collided}/{total} non-null Symbols share stable_id "
+                    f"({rate*100:.1f}%)" + denom_disclosure
                 ),
                 expected=(
                     f"Collision rate must stay below "
@@ -973,9 +1012,14 @@ def _check_cross_field_coherence(
     _FINGERPRINT_DEGENERACY_MIN_NAMES = 10
     fp_names: dict[str, set[str]] = {}
     fp_counts: dict[str, int] = {}
+    fp_none = 0
     for sym in symbols:
         fp = getattr(sym, "fingerprint", None)
         if fp is None:
+            # WI-niluv (twin): count the None-fingerprint cohort instead of
+            # silently dropping it, so the firing violation can disclose how
+            # large a population the degeneracy scan excluded.
+            fp_none += 1
             continue
         name = getattr(sym, "name", None) or "?"
         simple = name.rsplit(".", 1)[-1].rsplit("::", 1)[-1].rsplit("\\", 1)[-1]
@@ -998,6 +1042,13 @@ def _check_cross_field_coherence(
                 f"names, e.g. {sample})"
             )
         worst_fp, worst_names = degenerate[0]
+        # WI-niluv denominator disclosure (twin of the stable_id umbrella).
+        fp_total = sum(fp_counts.values())
+        fp_population = fp_total + fp_none
+        fp_none_disclosure = (
+            f"; denominator_scope=non_null ({fp_none}/{fp_population} had "
+            "fingerprint=None, EXCLUDED from the scan)"
+        )
         violations.append(ValidationViolation(
             severity="warning",
             validator_class="cross_field",
@@ -1007,7 +1058,7 @@ def _check_cross_field_coherence(
                 f"{len(degenerate)} fingerprint value(s) shared by >= "
                 f"{_FINGERPRINT_DEGENERACY_MIN_NAMES} distinctly-named "
                 f"symbols; worst: {fp_counts[worst_fp]} symbols / "
-                f"{len(worst_names)} names on one value"
+                f"{len(worst_names)} names on one value" + fp_none_disclosure
             ),
             expected=(
                 "A structural fingerprint (shape + identifiers + "

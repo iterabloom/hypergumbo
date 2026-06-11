@@ -25,6 +25,31 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **Spec-validator ratchet gate (validator:F1 / G1, WI-kafar + WI-himoj)** —
+  `tests/test_validation_report_empty.py`: a shrink-only, per-substrate CI
+  ratchet that runs the spec-validator over a four-substrate matrix (default /
+  `--frameworks all` / `--include-docs` / `--max-tier 4`) against the
+  multi-language `schema-coverage-corpus`. Each substrate's `validation_report`
+  violation total — and, as a co-ratcheted dimension, its ADR-0023 §3
+  `runtime_coherence` offender count — may shrink below its committed baseline
+  but never grow, so an escaped writer-path defect trips CI instead of
+  accumulating silently. `--include-docs` exercises the flag-gated producer
+  paths a default-substrate-only gate would miss (WI-himoj). The gate replaces
+  the ADR-0033 "assert empty" aspiration (impossible — the corpus carries real
+  open defects) with the honest shrink-only form; ADR-0033 gains a matching
+  amendment, and `spec_validator.py` / `runtime_coherence.py` / the `cli.py`
+  validator-stage comment get scope-honesty docstrings (validator:F5 /
+  WI-davij — the gate is now an emit-time consumer of `runtime_coherence`).
+
+- **WI-niluv denominator disclosure** — the cross-field stable_id-collision and
+  fingerprint-degeneracy umbrellas now count and disclose the records they
+  exclude from their non-null denominators
+  (`denominator_scope=non_null (N/population had stable_id=None, EXCLUDED)`), so
+  the reported rate is a biconditional encoding rather than a silently-deflated
+  one. (On the schema-coverage-corpus the default-substrate report now surfaces
+  a 24/66 = 36.4% None-stable_id cohort that the 4/42 non-null rate previously
+  hid.)
+
 - **Closure-evidence discipline (WI-dafun)** — a governance guard so that
   resolving a behavioral-invariant tracker item requires *behavioral* evidence
   (a live repro: command + observed exit code/stderr, or a production-path

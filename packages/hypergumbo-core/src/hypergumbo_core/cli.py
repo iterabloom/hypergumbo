@@ -8354,8 +8354,9 @@ def run_behavior_map(
     # ADR-0033 (INV-sugat): spec-vs-data validator stage. Runs at the end
     # of the pipeline against the final form of Symbols/Edges/AnalysisRuns,
     # emits a structured validation_report into the behavior_map artifact,
-    # warns to stderr on non-empty. Does not fail the run; CI gate covers
-    # regressions. Phase 0 stub returns [].
+    # warns to stderr on non-empty. Does not fail the run; the shrink-only
+    # multi-substrate ratchet gate (tests/test_validation_report_empty.py,
+    # validator:F1/G1) catches regressions.
     from .spec_validator import (
         build_validation_report,
         emit_stderr_summary,
