@@ -852,6 +852,33 @@ def _union_restore_ops(snapshot: dict[Path, str]) -> None:
             path.write_text(backup_content)
 
 
+def _stage_tracker_ops_additive(
+    repo_root: Path, idx_env: dict[str, str]
+) -> None:
+    """Stage tracker ops into the sync's temp index ADDITIVELY — never a removal.
+
+    The sync seeds its index from ``origin/dev``'s tree (which holds every
+    item's append-only op-log), then stages the working-tree ops on top.  A
+    plain ``git add -- <ops dirs>`` reconciles the index to the working tree,
+    which means it stages a *deletion* for any op-log file present in the
+    seeded base tree but absent from the working tree.  That is exactly how a
+    stale/incomplete working tree (local dev behind origin, or files dropped by
+    an intervening ``git checkout``) silently turns into a sync commit that
+    DELETES items from the corpus (INV-lovih).
+
+    ``--ignore-removal`` (a.k.a. ``--no-all``) stages additions and
+    modifications only, never removals — so the sync can never delete an op-log
+    it merely failed to see.  Op-logs are append-only union-merge CRDT logs and
+    a sync is always additive toward them (even a tombstoned item keeps its
+    file, with a delete *op* appended), so suppressing removals is purely
+    loss-preventing and never drops legitimate content.
+    """
+    _git(
+        repo_root, "add", "--ignore-removal", "--", *_TRACKER_PATHS,
+        check=False, env=idx_env,
+    )
+
+
 def _sum_added_lines(numstat_output: str) -> int:
     """Parse ``git diff --numstat`` output and sum the 'added' column.
 
@@ -1279,10 +1306,10 @@ def do_sync(
                 exit_code=1,
             )
 
-        # 3. Stage tracker ops into the temporary index
-        stage_args = ["add", "--"]
-        stage_args.extend(_TRACKER_PATHS)
-        _git(repo_root, *stage_args, check=False, env=idx_env)
+        # 3. Stage tracker ops into the temporary index (additive-only —
+        #    never stage a removal of an op-log absent from a stale working
+        #    tree; INV-lovih)
+        _stage_tracker_ops_additive(repo_root, idx_env)
 
         # 4. Write tree from the temporary index
         write_result = _git(
@@ -1519,10 +1546,9 @@ def do_sync(
                     f"proceeding with original commit"
                 )
             if rb_read.returncode == 0:
-                _git(
-                    repo_root, "add", "--", *_TRACKER_PATHS,
-                    check=False, env=idx_env,
-                )
+                # Additive-only staging here too (INV-lovih): the rebase
+                # re-reads a *newer* base that may hold even more op-logs.
+                _stage_tracker_ops_additive(repo_root, idx_env)
                 rb_tree = _git(
                     repo_root, "write-tree",
                     check=False, env=idx_env,

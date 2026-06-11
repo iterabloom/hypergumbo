@@ -1902,6 +1902,51 @@ class TestOpsUnionRestore:
         assert p.read_text() == "op: add WI-new\n"
 
 
+def test_stage_tracker_ops_additive_keeps_oplog_missing_from_worktree(
+    tmp_path: Path,
+) -> None:
+    """INV-lovih behavioral guard (real git): seed the temp index from a base
+    tree that holds an op-log, then stage a working tree that is MISSING it.
+    The op-log must survive in the written tree (never staged for deletion)
+    while a newly-added op-log is still included. A plain ``git add`` would
+    drop the missing file; ``_stage_tracker_ops_additive`` (``--ignore-removal``)
+    preserves it. This is the data-loss scenario that lost WI-vojik/WI-durub:
+    origin/dev held the op-logs, a stale working tree did not, and the sync
+    recorded their absence as a deletion."""
+    from hypergumbo_tracker.sync import _git, _stage_tracker_ops_additive
+
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "a@b.c")
+    _git(tmp_path, "config", "user.name", "Test")
+    # Both _TRACKER_PATHS dirs exist in a real repo; populate both so the add
+    # pathspec matches cleanly.
+    for rel in (".agent/tracker/.ops", ".agent/tracker-workspace/.ops"):
+        d = tmp_path / rel
+        d.mkdir(parents=True)
+        (d / ".keep.ops").write_text("op: seed\nnonce: seed\n")
+    ops = tmp_path / ".agent" / "tracker-workspace" / ".ops"
+    (ops / ".WI-keep.ops").write_text("op: create\nnonce: keep\n")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-qm", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+
+    # Stale/incomplete working tree: the committed op-log is GONE; a new one
+    # appears (the WI-vojik / WI-durub loss scenario).
+    (ops / ".WI-keep.ops").unlink()
+    (ops / ".WI-new.ops").write_text("op: create\nnonce: new\n")
+
+    idx_env = {"GIT_INDEX_FILE": str(tmp_path / ".git" / "tmp-sync-index")}
+    _git(tmp_path, "read-tree", base, env=idx_env)
+    _stage_tracker_ops_additive(tmp_path, idx_env)
+    tree = _git(tmp_path, "write-tree", env=idx_env).stdout.strip()
+    listing = _git(tmp_path, "ls-tree", "-r", "--name-only", tree).stdout
+
+    assert ".WI-keep.ops" in listing, (
+        "op-log absent from the working tree must survive the sync (INV-lovih)"
+    )
+    assert ".WI-new.ops" in listing, "newly-added op-log must still be staged"
+
+
 class TestDoSync:
     """Tests for do_sync — full workflow with all externals mocked.
 
@@ -1984,6 +2029,57 @@ class TestDoSync:
             _make_completed_process(),  # branch -D
         )
         return entries
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_staging_uses_ignore_removal_so_sync_never_deletes_oplogs(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """INV-lovih: the sync seeds its temp index from origin/dev's tree
+        (which holds every item's append-only op-log) then stages the
+        working-tree ops. A plain ``git add -- <ops dirs>`` reconciles the
+        index to the working tree and therefore stages a DELETION for any
+        op-log absent from a stale/incomplete working tree (local dev behind
+        origin, files dropped by an intervening checkout) — silently dropping
+        those items from the synced corpus. Every staging ``add`` must carry
+        ``--ignore-removal`` so the sync is additive-only with respect to
+        op-log files."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
+            *self._cleanup(),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        do_sync(repo_root=tmp_path, preflight=pre)
+
+        # Every staging `add` (positional `add` with a `--` pathspec
+        # separator) must be additive-only.
+        add_calls = [
+            c for c in mock_git.call_args_list
+            if "add" in c[0] and "--" in c[0]
+        ]
+        assert add_calls, "expected at least one staging `git add` call"
+        for c in add_calls:
+            assert "--ignore-removal" in c[0], (
+                f"staging add must use --ignore-removal (INV-lovih); got {c[0]}"
+            )
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._merge_pr")
