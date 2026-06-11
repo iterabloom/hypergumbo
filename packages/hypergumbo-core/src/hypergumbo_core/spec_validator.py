@@ -493,7 +493,7 @@ _WRITER_CONTRACT_DEFAULT_SENTINELS: dict[
 # Distinct from sub-pattern-2: this is about a field NEVER being
 # populated, not about being populated to a literal default value.
 def _is_truthy(record: Any, field_name: str) -> bool:
-    val = getattr(record, field_name, None)
+    val = _read(record, field_name, None)
     if val is None:
         return False
     if isinstance(val, (list, dict, str)):
@@ -579,17 +579,17 @@ def _check_writer_contract(
         sentinel = sentinel_fn()
         violating_records = [
             r for r in records
-            if getattr(r, field_name, None) == sentinel
+            if _read(r, field_name, None) == sentinel
         ]
         if len(violating_records) == len(records) and len(records) >= 2:
             # Every record has the literal default; the writer side
             # never overrode it. Emit ONE umbrella violation rather
             # than N per-record violations — the issue is structural,
             # not per-record.
-            example_id = getattr(
+            example_id = _read(
                 violating_records[0],
                 "execution_id",
-                getattr(violating_records[0], "id", None),
+                _read(violating_records[0], "id", None),
             )
             violations.append(ValidationViolation(
                 severity="warning",
@@ -651,10 +651,10 @@ def _check_sub_pattern_1_never_populated(
             continue
         populated_count = sum(1 for r in records if _is_truthy(r, field_name))
         if populated_count == 0:
-            example_id = getattr(
+            example_id = _read(
                 records[0],
                 "execution_id",
-                getattr(records[0], "id", None),
+                _read(records[0], "id", None),
             )
             violations.append(ValidationViolation(
                 severity="warning",

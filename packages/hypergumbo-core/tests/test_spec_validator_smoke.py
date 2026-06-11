@@ -497,6 +497,44 @@ def test_writer_contract_flags_all_default_config_fingerprint() -> None:
     assert "Default-only" in matched[0].message
 
 
+def test_writer_contract_flags_default_config_fingerprint_on_dict_shaped_runs() -> None:
+    """Production feeds AnalysisRuns to the validator as serialized dicts,
+    not dataclass instances: the orchestrator accumulates
+    ``analysis_runs.append(linker_result.run.to_dict())`` (cli.py). The
+    writer-contract sub-pattern-2 check must therefore read through the
+    dict-or-attribute ``_read`` helper — bare ``getattr`` on a dict
+    silently returns the default, never matches the sentinel, and the
+    check no-ops in production while passing the object-shaped tests
+    above. This is the regression guard for the declared-fields:F1(a)
+    resurrection (INV-luhur). The dict-shaped run also exercises the
+    ``record_id`` (``example_id``) extraction, which must surface the
+    offending run's ``execution_id`` rather than ``None``.
+    """
+    from hypergumbo_core.ir import _default_config_fingerprint
+
+    default_fp = _default_config_fingerprint()
+    # dict-shaped, exactly as cli.py:7905 accumulates them.
+    runs = [
+        {
+            "execution_id": f"run:{i}",
+            "pass_id": "py_v1",
+            "config_fingerprint": default_fp,
+        }
+        for i in range(3)
+    ]
+    violations = validate_ir([], [], runs)
+    matched = [
+        v for v in violations
+        if v.validator_class == "writer_contract"
+        and v.field_name == "AnalysisRun.config_fingerprint"
+    ]
+    assert len(matched) == 1
+    assert matched[0].severity == "warning"
+    assert "Default-only" in matched[0].message
+    # The violation must point at the offending run, read dict-aware.
+    assert matched[0].record_id == "run:0"
+
+
 def test_writer_contract_silent_when_at_least_one_run_overrides() -> None:
     """If any AnalysisRun overrides the default, the writer-contract
     check passes (the writer IS populating the field; the gap is
@@ -583,6 +621,20 @@ def test_is_truthy_scalar_non_none_is_true() -> None:
     assert _is_truthy(obj, "field_int") is True
     assert _is_truthy(obj, "field_bool") is True
     assert _is_truthy(obj, "field_float") is True
+
+
+def test_is_truthy_reads_dict_shaped_record() -> None:
+    """``_is_truthy`` must honour the dict shape too: sub-pattern-1 may be
+    registered for AnalysisRun fields, which reach the validator as
+    serialized dicts. Bare ``getattr`` on a dict returns None (→ False)
+    regardless of the dict's contents; the dict-aware ``_read`` path makes
+    a populated dict field read as truthy. (declared-fields:F1(a) class.)"""
+    from hypergumbo_core.spec_validator import _is_truthy
+
+    assert _is_truthy({"field_a": "value"}, "field_a") is True
+    assert _is_truthy({"field_list": [1]}, "field_list") is True
+    assert _is_truthy({"field_a": ""}, "field_a") is False
+    assert _is_truthy({}, "field_missing") is False
 
 
 def test_check_sub_pattern_1_never_populated_empty_table_is_no_op() -> None:

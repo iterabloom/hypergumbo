@@ -61,6 +61,25 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   removing the duplicated scan loop and the false "lexicographic sort works"
   comment. Gates all bakeoff evidence for the correctness campaign.
 
+#### Validators
+
+- **Writer-contract validator now reads dict-shaped `AnalysisRun`s**
+  (declared-fields:F1(a), INV-luhur): the ADR-0033 writer-contract class read
+  records with bare `getattr`, but the orchestrator feeds `AnalysisRun`s to the
+  validator as *serialized dicts* (`analysis_runs.append(linker_result.run.to_dict())`,
+  cli.py). `getattr(<dict>, field, None)` returns the default, so the
+  sub-pattern-2 check ("all runs carry the literal default `config_fingerprint`")
+  never matched its sentinel and **silently no-op'd in production** — while
+  passing the object-shaped unit tests that masked it. All four record reads in
+  the writer-contract checks (the sub-pattern-2 sentinel match and its
+  `example_id` extraction, plus the `_is_truthy` / sub-pattern-1 analogues) now
+  route through the validator's existing dict-or-attribute `_read` helper,
+  making the writer-contract class uniformly dict-safe. Regression guard: a
+  dict-shaped-run test asserting the violation fires and its `record_id`
+  surfaces the offending run's `execution_id`. Resurrects the only live
+  production writer-contract check — a Wave-1 enforcement-scaffolding
+  prerequisite for the validation-report ratchet (G1).
+
 ## [6.0.0] - 2026-06-10
 
 > **User-facing view:** see [docs/RELEASE-NOTES-6.X.md](docs/RELEASE-NOTES-6.X.md)
