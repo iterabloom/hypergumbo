@@ -10,6 +10,17 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **Decision ADRs 0035–0042** — eight accepted ADRs recording the 2026-06-10
+  design-interview rulings that unblock the correctness campaign's Wave-2/3
+  chains: stable_id v6 identity contract (0035), node.id grammar v2 (0036),
+  edge resolution semantics / `is_resolved` (0037), access_mode contract
+  (0038), confidence separation into detection reliability + `rank_score`
+  (0039), evidence-field descope (0040), supply-chain tier purity (0041), and
+  the survey rename (0042). Decisions only — implementing fixes follow in
+  their own PRs.
+
 ## [6.0.0] - 2026-06-10
 
 > **User-facing view:** see [docs/RELEASE-NOTES-6.X.md](docs/RELEASE-NOTES-6.X.md)
