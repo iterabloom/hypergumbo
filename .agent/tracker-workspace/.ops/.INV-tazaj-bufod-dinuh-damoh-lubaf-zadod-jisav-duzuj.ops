@@ -65,3 +65,10 @@
   clock: 6  # cb0b
   nonce: cb0b  # cb0b
   message: "Validation failed: the stable_id uniqueness invariant does not hold on a fresh substrate. Member INV-bazij collisions reproduced. A distinct uncovered hash-input mechanism — Python function-local defs omitting the enclosing function from containing_stable_id (analyze/base.py:2333-2338) combined with Python qualified_name=None (WI-fagab) — defeats the name+qualified_name disambiguation that was supposed to close this META. Filed as WI-gitun (P0, parented here). Moving pending_validation -> violated."  # cb0b
+- op: discuss  # 4cc7
+  at: '2026-06-11T04:25:50Z'  # 4cc7
+  by: agent  # 4cc7
+  actor: jgstern_agent  # 4cc7
+  clock: 7  # 4cc7
+  nonce: 4cc7  # 4cc7
+  message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): stable_id is a unique-within-run key with the full scope chain and name in the hash; it survives line drift/body edits and churns on file move/rename (move tracking belongs to fingerprint/shape_id). Validator = per-file emit-time uniqueness plus ~0 corpus collisions with the None-cohort counted. Stays violated until the hash-input fixes land; re-validate against the new validator."  # 4cc7

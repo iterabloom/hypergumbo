@@ -45,3 +45,10 @@
   clock: 4  # 944c
   nonce: 944c  # 944c
   message: "root-cause family member (a2) (connections-sweep 2026-06-08T1900Z)"  # 944c
+- op: discuss  # 20da
+  at: '2026-06-11T04:25:52Z'  # 20da
+  by: agent  # 20da
+  actor: jgstern_agent  # 20da
+  clock: 5  # 20da
+  nonce: 20da  # 20da
+  message: "2026-06-10 design-interview ruling (ADR-0037, merged in PR #4181): is_resolved is redefined as 'dst is a real in-repo node' — external_symbol placeholders are by definition not in-repo, so the overloaded meaning this item documents is replaced by an explicit contract enforced by an FK validator check. The 'unresolved' node kind folds into 'external_symbol'. Waits on the implementation and doc update."  # 20da

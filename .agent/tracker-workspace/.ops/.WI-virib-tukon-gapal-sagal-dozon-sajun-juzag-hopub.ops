@@ -30,3 +30,25 @@
   set: {}  # b00e
   add:  # b00e
     isbefore: [WI-vatuf-sukur-nikih-sazog-dazok-kasos-ninut-rijor]  # b00e
+- op: discuss  # 7c39
+  at: '2026-06-11T04:25:55Z'  # 7c39
+  by: agent  # 7c39
+  actor: jgstern_agent  # 7c39
+  clock: 3  # 7c39
+  nonce: 7c39  # 7c39
+  message: "2026-06-10 design-interview ruling: the rename decision is captured in ADR-0042 (merged in PR #4181) — canonical artifact name survey.json, concept rename behavior map -> survey, verb hypergumbo survey with run as a deprecated alias for one minor version, and a loader alias list for legacy filenames. This item's entire scope (authoring the ADR) is discharged by that PR; implementation tracks separately under INV-firuh and the rename work items. Suggest closing as done once the ADR PR merges."  # 7c39
+- op: update  # 4b78
+  at: '2026-06-11T04:26:06Z'  # 4b78
+  by: agent  # 4b78
+  actor: jgstern_agent  # 4b78
+  clock: 4  # 4b78
+  nonce: 4b78  # 4b78
+  set:  # 4b78
+    status: done  # 4b78
+- op: discuss  # 2adf
+  at: '2026-06-11T04:26:06Z'  # 2adf
+  by: agent  # 2adf
+  actor: jgstern_agent  # 2adf
+  clock: 5  # 2adf
+  nonce: 2adf  # 2adf
+  message: "ADR-0042 (docs/adr/0042-survey-rename.md) authored and merged in PR #4181 — the item's full scope. Records survey.json canonical, concept rename, alias/deprecation mechanics, and folds the WI-rital verb decision in per the item's own instruction."  # 2adf

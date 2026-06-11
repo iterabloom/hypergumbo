@@ -79,3 +79,10 @@
   clock: 8  # f03f
   nonce: f03f  # f03f
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # f03f
+- op: discuss  # 071a
+  at: '2026-06-11T04:25:54Z'  # 071a
+  by: agent  # 071a
+  actor: jgstern_agent  # 071a
+  clock: 9  # 071a
+  nonce: 071a  # 071a
+  message: "2026-06-10 design-interview ruling (ADR-0041, merged in PR #4181): tier 2 = workspace-internal only, and the stdlib/third_party distinction moves to a separate ecosystem axis — giving the classifier an unambiguous boundary for workspace and first-party source. Stays violated until the classifier conforms; re-validate after the implementation lands."  # 071a

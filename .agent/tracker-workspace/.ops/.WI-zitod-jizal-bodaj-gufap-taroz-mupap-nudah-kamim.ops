@@ -32,3 +32,10 @@
     tags: [dogfood]  # 60ff
   remove:  # 60ff
     tags: [dogfooding]  # 60ff
+- op: discuss  # 57b2
+  at: '2026-06-11T04:25:51Z'  # 57b2
+  by: agent  # 57b2
+  actor: jgstern_agent  # 57b2
+  clock: 3  # 57b2
+  nonce: 57b2  # 57b2
+  message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): the stable_id contract requires name and the full scope chain in the hash, so the js_ts analyzer's insufficient hash inputs are a conformance bug against it. The new validator (per-file emit-time uniqueness + ~0 corpus collision) will catch regressions. Waits on the analyzer fix."  # 57b2

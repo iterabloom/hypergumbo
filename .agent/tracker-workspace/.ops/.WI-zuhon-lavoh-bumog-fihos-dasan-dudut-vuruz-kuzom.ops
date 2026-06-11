@@ -30,3 +30,10 @@
     tags: [dogfood_tranche_04]  # 06f7
   remove:  # 06f7
     tags: [dogfood_tranch_04]  # 06f7
+- op: discuss  # fa41
+  at: '2026-06-11T04:25:52Z'  # fa41
+  by: agent  # fa41
+  actor: jgstern_agent  # fa41
+  clock: 3  # fa41
+  nonce: fa41  # fa41
+  message: "2026-06-10 design-interview ruling (ADR-0037, merged in PR #4181): all resolution surfaces are derived in a single finalization pass from one verdict, eliminating the disjoint-producer-sets root cause behind the 67.8% null dst_ref on unresolved edges. Waits on the finalization implementation."  # fa41

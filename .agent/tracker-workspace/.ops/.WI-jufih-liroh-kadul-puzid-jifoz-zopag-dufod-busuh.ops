@@ -32,3 +32,10 @@
   clock: 3  # f8df
   nonce: f8df  # f8df
   message: "Root-novelty (human-adjudicated, code-grounded analyst): INSTANCE of WI-lirob — shared fix-site is the entrypoint-only default seed set in cmd_dead_code_maybe (cli.py:5299-5316 + --seeds default @6799); fixing it resolves both this contradiction and WI-lirob's 89.6%-dead FP. Distinct fix (cross-command disclosure) keeps this its own row; not a new root."  # f8df
+- op: discuss  # 9c1b
+  at: '2026-06-11T04:25:53Z'  # 9c1b
+  by: agent  # 9c1b
+  actor: jgstern_agent  # 9c1b
+  clock: 4  # 9c1b
+  nonce: 9c1b  # 9c1b
+  message: "2026-06-10 design-interview ruling (decision recorded, no ADR): dead-code-maybe output gains labeled disclosure buckets, including an explicit test-only-reachable bucket, so the dead-code vs test-coverage contradiction becomes disclosed rather than silent. Waits on the bucket implementation alongside the --seeds all default switch."  # 9c1b

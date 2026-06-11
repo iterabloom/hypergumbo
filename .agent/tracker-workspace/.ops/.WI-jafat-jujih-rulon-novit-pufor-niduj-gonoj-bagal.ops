@@ -40,3 +40,10 @@
   clock: 4  # e13b
   nonce: e13b  # e13b
   message: "Re-surfaced in dogfooding tranche 10 (U07, F190.A1, severity 4). Same mechanism, broader scope: 653 calls/instantiates/references edges credited to the wrong caller via same-simple-name collapse (edge.line outside src.span). This item records 506 'calls' edges; the tranche-10 count of 653 includes instantiates + references too. Fix: fix the call-site->enclosing-symbol resolver to disambiguate same-simple-name methods by span (py.py)."  # e13b
+- op: discuss  # 8825
+  at: '2026-06-11T04:25:51Z'  # 8825
+  by: agent  # 8825
+  actor: jgstern_agent  # 8825
+  clock: 5  # 8825
+  nonce: '8825'  # 8825
+  message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): stable_id carries the full scope chain plus name, which disambiguates same-base-name sibling methods — the root cause of the 506 out-of-span src attributions. Waits on the hash-input/endpoint-resolution fix implementing the new contract."  # 8825

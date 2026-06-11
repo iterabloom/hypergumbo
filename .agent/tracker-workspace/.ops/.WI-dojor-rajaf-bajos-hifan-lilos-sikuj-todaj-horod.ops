@@ -19,3 +19,10 @@
     pr_ref:  # bbb1
     description: "**Defect.** Entrypoint confidence carries an undocumented additive in-degree boost beyond the single boost the spec describes.\n\n**Evidence.** After base-tier detection, a post-detection pipeline applies an additive in-degree connectivity boost (cap +0.35, for library_export entrypoints) at entrypoints.py:1504-1507. The spec's adjustment section (§895) documents only an out-degree boost (\"+0.25 for entrypoints with many outgoing edges\"); the in-degree boost is in the producer but not in the spec (grep of §895 names only \"outgoing edges\").\n\n**Contract.** Every confidence adjustment the producer applies should be documented in the spec's confidence-adjustment section, or removed from the producer.\n\n**Consequence.** Library-export entrypoint confidence partly encodes in-degree (caller count) rather than detection reliability, and a consumer reverse-engineering how an entrypoint's confidence was computed cannot reconstruct the value from the documented adjustments."  # bbb1
     fields: {}  # bbb1
+- op: discuss  # c295
+  at: '2026-06-11T04:25:54Z'  # c295
+  by: agent  # c295
+  actor: jgstern_agent  # c295
+  clock: 2  # c295
+  nonce: c295  # c295
+  message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): the undocumented additive in-degree boost at entrypoints.py:1504-1507 is exactly the class of ranking adjustment the ruling relocates out of confidence into the new rank_score field. The fix is to move the boost to rank_score and document it, leaving confidence as pure detection reliability. Waits on the implementation."  # c295

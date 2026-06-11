@@ -44,3 +44,10 @@
     tags: [dogfood_tranche_03]  # 75ad
   remove:  # 75ad
     tags: [dogfood_tranch_03]  # 75ad
+- op: discuss  # c609
+  at: '2026-06-11T04:25:53Z'  # c609
+  by: agent  # c609
+  actor: jgstern_agent  # c609
+  clock: 5  # c609
+  nonce: c609  # c609
+  message: "2026-06-10 design-interview ruling (decision recorded, no ADR): the dead-code-maybe default becomes --seeds all (entrypoints+exports) for the headline claim, with labeled disclosure buckets; the entrypoint-only view survives as a labeled cohort, not the default. That directly retires the 89.6%-of-production-functions headline exposure. Waits on the default-switch implementation."  # c609

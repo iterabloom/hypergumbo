@@ -25,3 +25,10 @@
   clock: 2  # 6b1e
   nonce: 6b1e  # 6b1e
   message: "Dogfooding re-confirmed (blinded severity 3/5): resolution_quality meta-key contradicts its MetaKeySpec doc (axis_meta_keys.py:136-139) two ways — the documented example value 'ambiguous' is never emitted (only type_inferred=16301 + recovery=31), and the doc says 'Set alongside is_resolved=False' but all 31 `recovery` edges are is_resolved=True resolving to real method nodes. Same recovery+is_resolved decoupling fix. Sibling face (type_inferred mislabel) tracked at WI-javus. [dogfood]"  # 6b1e
+- op: discuss  # 27be
+  at: '2026-06-11T04:25:52Z'  # 27be
+  by: agent  # 27be
+  actor: jgstern_agent  # 27be
+  clock: 3  # 27be
+  nonce: 27be  # 27be
+  message: "2026-06-10 design-interview ruling (ADR-0037, merged in PR #4181): is_resolved becomes purely 'dst is a real in-repo node', computed once at finalization and decoupled from resolution_quality provenance — so a recovery edge whose dst is a real in-repo node is legitimately is_resolved=True under the new contract. Waits on the finalization implementation to make that pairing principled rather than accidental."  # 27be

@@ -38,3 +38,10 @@
     tags: [dogfood]  # 4ed5
   remove:  # 4ed5
     tags: [dogfooding]  # 4ed5
+- op: discuss  # e815
+  at: '2026-06-11T04:25:57Z'  # e815
+  by: agent  # e815
+  actor: jgstern_agent  # e815
+  clock: 4  # e815
+  nonce: e815  # e815
+  message: "2026-06-10 design-interview ruling (decision recorded, no ADR): unify the file universe — every discovered file gets a file-kind anchor node, and 'centrality_scores keys are a subset of node paths' becomes the validator invariant, replacing the current zero-intersection state. Sketch's Additional-Files section re-keys to the labeled non-source cohort, and the file-anchor F1+F4 work co-releases. Waits on the unification implementation."  # e815

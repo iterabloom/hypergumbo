@@ -26,3 +26,10 @@
   clock: 2  # d096
   nonce: d096  # d096
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): sibling to the recently-closed WI-sosig tracker-tag-hygiene work — both items concern .agent/tracker/tag_catalog.yaml shape and lifecycle. WI-sosig closed; this item remains deferred per its own filing (\"defer until the first time someone actually invokes `tags describe` or `tags deprecate`\"). Recording the sibling relationship here for the next pass that touches the catalog."  # d096
+- op: discuss  # 8533
+  at: '2026-06-11T04:25:57Z'  # 8533
+  by: agent  # 8533
+  actor: jgstern_agent  # 8533
+  clock: 3  # 8533
+  nonce: '8533'  # 8533
+  message: "2026-06-10 design-interview ruling (decision recorded, no ADR): stays deferred as-is — the trigger remains the first real use of tags describe/deprecate. The design is now pre-registered as option 1: a two-file split (committed tag_descriptions.yaml for editorial fields + gitignored tag_catalog.yaml cache). No further design work needed when the trigger fires; implement the registered split then."  # 8533

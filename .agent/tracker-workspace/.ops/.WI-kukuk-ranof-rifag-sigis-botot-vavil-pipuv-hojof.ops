@@ -44,3 +44,10 @@
     tags: [dogfood_tranche_03]  # 72b8
   remove:  # 72b8
     tags: [dogfood_tranch_03]  # 72b8
+- op: discuss  # 64cf
+  at: '2026-06-11T04:25:52Z'  # 64cf
+  by: agent  # 64cf
+  actor: jgstern_agent  # 64cf
+  clock: 5  # 64cf
+  nonce: 64cf  # 64cf
+  message: "2026-06-10 design-interview ruling (ADR-0037, merged in PR #4181): is_resolved := dst is a real in-repo node, and a single finalization step derives every surface (flag, id suffix, dst_ref) from that one verdict — making the 4507 suffix/flag disagreements structurally impossible. Node kind 'unresolved' also folds into 'external_symbol'. Waits on the finalization implementation plus the FK validator check."  # 64cf

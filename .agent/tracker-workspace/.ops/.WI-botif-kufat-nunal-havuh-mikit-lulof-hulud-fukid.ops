@@ -34,3 +34,10 @@
   clock: 3  # ae54
   nonce: ae54  # ae54
   message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # ae54
+- op: discuss  # dd7e
+  at: '2026-06-11T04:25:54Z'  # dd7e
+  by: agent  # dd7e
+  actor: jgstern_agent  # dd7e
+  clock: 4  # dd7e
+  nonce: dd7e  # dd7e
+  message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): confidence becomes pure detection reliability with a confidence_source enum, so the 0.40-floor breach on dispatches_to is fixed by re-deriving the values under the new model rather than patching the old hardcoded ones; ranking adjustments move to rank_score. Waits on the ADR-0039 implementation."  # dd7e

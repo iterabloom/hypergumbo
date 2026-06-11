@@ -99,3 +99,10 @@
     tags: [dogfood]  # b613
   remove:  # b613
     tags: [dogfooding]  # b613
+- op: discuss  # 6d47
+  at: '2026-06-11T04:25:49Z'  # 6d47
+  by: agent  # 6d47
+  actor: jgstern_agent  # 6d47
+  clock: 11  # 6d47
+  nonce: 6d47  # 6d47
+  message: "2026-06-10 design-interview ruling (ADR-0036, merged in PR #4181): node.id grammar is fixed as anchored 5-slot with colon-free lang/span/name/kind and a colon-tolerant path, parseable from both ends; names are sanitized ':' -> '.' (lossy — fidelity lives in Symbol.name) and sentinels are enumerated. The 12 escaping nodes (rust :: namespacing, npm packages, route IDs) become conformance bugs against this grammar. Stays violated until the emitter fixes land; re-validate then."  # 6d47

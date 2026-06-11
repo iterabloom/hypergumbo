@@ -47,3 +47,10 @@
   clock: 4  # fae8
   nonce: fae8  # fae8
   message: "root-cause family cross-link (g1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # fae8
+- op: discuss  # 73b4
+  at: '2026-06-11T04:25:54Z'  # 73b4
+  by: agent  # 73b4
+  actor: jgstern_agent  # 73b4
+  clock: 5  # 73b4
+  nonce: 73b4  # 73b4
+  message: "2026-06-10 design-interview ruling (ADR-0041, merged in PR #4181): the supply-chain redesign reaffirms supply_chain as the single-source verdict surface (tier, directness meta key, and ecosystem axis all derive from one classification), so the conformant fix here is for the entrypoint detector to consume Symbol.supply_chain.is_test_file rather than re-deriving a test_*.py filename heuristic. Waits on the implementing fix after the ADR merges."  # 73b4

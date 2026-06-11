@@ -27,3 +27,10 @@
   clock: 2  # 8330
   nonce: '8330'  # 8330
   message: "Split out of WI-pubiv in Phase-7 over-fold reconciliation (the audit flagged WI-pubiv's 1670-node finding as over-folding two distinct mechanisms). THIS item = the real producer bug: on 22 synthetic nodes the node.id kind-slot encodes a ROLE the kind field does not carry — route->function 8 (starlette route-registration nodes, e.g. id '...:route' / kind 'function' / name 'starlette:_health'), event_subscriber->function 11, event_publisher->function 3. Distinct fix: the producer should carry the role in a dedicated field or normalize the id kind-slot to match node.kind. Evidence: frozen substrate.json (tranche-05 F84.A1). Priority P2 by analogy to the parent finding (blind sev 3); not independently blind-judged. Sibling/remainder: WI-pubiv now retains the external_symbol id-kind normalization (~1645 nodes, arguably-expected)."  # 8330
+- op: discuss  # 2c86
+  at: '2026-06-11T04:25:50Z'  # 2c86
+  by: agent  # 2c86
+  actor: jgstern_agent  # 2c86
+  clock: 3  # 2c86
+  nonce: 2c86  # 2c86
+  message: "2026-06-10 design-interview ruling (ADR-0036, merged in PR #4181): kind slot == node.kind always; the role these 22 synthetic nodes encode (route/event_subscriber/event_publisher) moves to a registered meta key rather than living in the id's kind slot. Item waits on the implementing fix, not further design."  # 2c86

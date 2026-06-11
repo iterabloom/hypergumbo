@@ -82,3 +82,10 @@
     tags: [dogfood]  # 0c11
   remove:  # 0c11
     tags: [dogfooding]  # 0c11
+- op: discuss  # bea0
+  at: '2026-06-11T04:25:53Z'  # bea0
+  by: agent  # bea0
+  actor: jgstern_agent  # bea0
+  clock: 9  # bea0
+  nonce: bea0  # bea0
+  message: "2026-06-10 design-interview ruling (ADR-0041, merged in PR #4181): stdlib moves to tier 3 with a new ecosystem axis (stdlib|third_party) under a single-source catalog constraint — python.yaml stdlib_modules is that single source, so this wiring item is now mandated by the design rather than optional. Implement the analyzer import-resolution wiring against the catalog once the ADR merges."  # bea0

@@ -63,3 +63,10 @@
   clock: 6  # 3913
   nonce: '3913'  # 3913
   message: "RELATED_BUT_DISTINCT to INV-tibob: access_mode field: kudug = wrong values (read mislabeled write); tibob = absent values (0% coverage on 12/17 edge types) + undocumented coverage policy. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 3913
+- op: discuss  # d546
+  at: '2026-06-11T04:25:52Z'  # d546
+  by: agent  # d546
+  actor: jgstern_agent  # d546
+  clock: 7  # d546
+  nonce: d546  # d546
+  message: "2026-06-10 design-interview ruling (ADR-0038, merged in PR #4181): access_mode is rebuilt per-edge from the AST role rather than inherited from emitter defaults, with a validator rule that ast_name_read implies access_mode != write; the 'mutate' cell is kept. Stays violated until the per-edge rebuild lands; re-validate against the new validator rule."  # d546

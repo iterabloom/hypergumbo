@@ -60,3 +60,10 @@
   clock: 6  # e9d8
   nonce: e9d8  # e9d8
   message: "Pass 36 (continuing 06022026_1622) cross-codebase reach + decomposition of pass-35 F35.A1.\n\nF36.C2 (gitignore writer activation is grammar-files-present-conditional): pass-35 F35.A1's 4321 violations (markdown 4243 + gitignore 78) decompose differently across codebases. On tracker-pkg with --include-docs, 102/102 violations are markdown id_format only. The 78 gitignore violations from root are ABSENT — tracker-pkg has no .gitignore files in its scope, so gitignore writer doesn't fire. Markdown-violation ratio 102/4243 = 2.4% vs substrate-size ratio 5055/37816 = 13.4% suggests markdown writer fires more file-count-proportionally than gitignore writer. F35.A1's pass-35 fix-path ('mirror INV-sugat Phase 6 mainstream-analyzer sweep on doc/config analyzer set') is reaffirmed cross-codebase: same 3 sub-mechanisms (gitignore id-as-stable-id reuse, markdown section unsanitized colons, markdown code_block literal 'code' span segment) — markdown sweep is universal coverage, gitignore sweep affects smaller subset of codebases."  # e9d8
+- op: discuss  # fac8
+  at: '2026-06-11T04:25:50Z'  # fac8
+  by: agent  # fac8
+  actor: jgstern_agent  # fac8
+  clock: 7  # fac8
+  nonce: fac8  # fac8
+  message: "2026-06-10 design-interview ruling (ADR-0036, merged in PR #4181): a single canonical node.id grammar now exists — anchored 5-slot, colon-free lang/span/name/kind, colon-tolerant path, parse from both ends, enumerated sentinels, kind slot == node.kind always. The non-canonical emission paths this META tracks are now measurable against one contract. Stays violated until the per-emitter conformance fixes land; re-validate then."  # fac8

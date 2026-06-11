@@ -44,3 +44,10 @@
     tags: [dogfood_tranche_03]  # 9d83
   remove:  # 9d83
     tags: [dogfood_tranch_03]  # 9d83
+- op: discuss  # 7ccd
+  at: '2026-06-11T04:25:55Z'  # 7ccd
+  by: agent  # 7ccd
+  actor: jgstern_agent  # 7ccd
+  clock: 5  # 7ccd
+  nonce: 7ccd  # 7ccd
+  message: "2026-06-10 design-interview ruling (ADR-0040, merged in PR #4181): evidence_lang is kept and centrally stamped at Edge.create, defaulting to the src language — replacing the per-emitter population that left it 100% null. Waits on the central-stamping implementation; this work is sequenced before the schema-generation content pass."  # 7ccd

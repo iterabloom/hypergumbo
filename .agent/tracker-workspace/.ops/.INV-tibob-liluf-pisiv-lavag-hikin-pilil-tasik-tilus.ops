@@ -63,3 +63,10 @@
     tags: [dogfood]  # 053b
   remove:  # 053b
     tags: [dogfooding]  # 053b
+- op: discuss  # 79ac
+  at: '2026-06-11T04:25:53Z'  # 79ac
+  by: agent  # 79ac
+  actor: jgstern_agent  # 79ac
+  clock: 6  # 79ac
+  nonce: 79ac  # 79ac
+  message: "2026-06-10 design-interview ruling (ADR-0038, merged in PR #4181): the coverage policy this item flagged as undocumented becomes a MetaKeySpec applicability matrix built from this very census — N/A cells are instantiated explicitly, and bridge constants move to a data_direction key instead of riding on access_mode. Stays violated until the matrix and per-edge rebuild land; re-validate then."  # 79ac

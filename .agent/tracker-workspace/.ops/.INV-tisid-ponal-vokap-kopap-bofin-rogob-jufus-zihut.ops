@@ -103,3 +103,10 @@
   clock: 11  # f4c8
   nonce: f4c8  # f4c8
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # f4c8
+- op: discuss  # 9364
+  at: '2026-06-11T04:25:53Z'  # 9364
+  by: agent  # 9364
+  actor: jgstern_agent  # 9364
+  clock: 12  # 9364
+  nonce: '9364'  # 9364
+  message: "2026-06-10 design-interview ruling (ADR-0041, merged in PR #4181): tier 2 is narrowed to workspace-internal only, directness splits out into a registered meta key (direct|transitive|undeclared), and spec section 14 is rewritten. The workspace-package test-dir routing gets re-derived under that narrowed tier-2 definition. Stays violated until the classifier fix lands; re-validate then."  # 9364

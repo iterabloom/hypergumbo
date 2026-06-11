@@ -70,3 +70,10 @@
   clock: 7  # 10df
   nonce: 10df  # 10df
   message: "root-cause family cross-link (b2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 10df
+- op: discuss  # a9a5
+  at: '2026-06-11T04:25:54Z'  # a9a5
+  by: agent  # a9a5
+  actor: jgstern_agent  # a9a5
+  clock: 8  # a9a5
+  nonce: a9a5  # a9a5
+  message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): confidence is redefined as pure detection reliability with a confidence_source enum, ranking adjustments relocate to a new rank_score, and quality.score/reason are deleted via a one-version deprecation. Hardcoded per-emitter values must be re-derived under that contract. Stays violated until the rework lands; re-validate then."  # a9a5

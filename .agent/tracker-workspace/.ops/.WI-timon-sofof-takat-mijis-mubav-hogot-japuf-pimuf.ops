@@ -26,3 +26,10 @@
   clock: 2  # dca6
   nonce: dca6  # dca6
   message: "Materialized from dogfood tranche 05 (F97.A1 / anon-card-018). Mechanism: dependency-linker global flat dep_name->Symbol lookup collapses same-named deps across monorepo manifests; importing files in other packages link to the wrong (last-written) manifest. Evidence: frozen substrate (all 26 depends_on_manifest -> hypergumbo-tracker/pyproject.toml; 3 from hypergumbo-core rich imports misattributed); producer linkers/dependency.py:83-104 (_build_dependency_lookup, no package scoping) + 137-169 (link_dependencies, ignores src package). Magnitude: 3/26 provably misattributed; 6 dep names declared in >1 package. Fresh repro: /tmp/depmanifest_test pkgA+pkgB reproduces wrong-manifest attribution. Blind severity 4/5, reproduced. RELATED_BUT_DISTINCT from WI-zujip (done — parse_python_dependencies should walk monorepo packages/*/pyproject.toml; that fixed dependency PARSING coverage, not the edge ATTRIBUTION lookup) and WI-davan (done — _detect_src_layout monorepo). No existing row captures wrong-manifest attribution for deps declared in multiple manifests (order-dependent global collapse)."  # dca6
+- op: discuss  # c5f5
+  at: '2026-06-11T04:25:52Z'  # c5f5
+  by: agent  # c5f5
+  actor: jgstern_agent  # c5f5
+  clock: 3  # c5f5
+  nonce: c5f5  # c5f5
+  message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): dependencies become N per-manifest nodes with the manifest path in the hash, so depends_on_manifest lookups become manifest-scoped instead of a global flat map; (ecosystem, name) aggregation happens in views, not in node identity. Waits on the per-manifest node implementation."  # c5f5

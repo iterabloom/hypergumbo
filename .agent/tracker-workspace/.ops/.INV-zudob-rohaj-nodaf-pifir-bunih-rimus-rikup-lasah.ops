@@ -79,3 +79,10 @@
   clock: 8  # a61e
   nonce: a61e  # a61e
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): candidate for re-parenting under INV-kurup (META: identifier-bearing fields emit non-canonical formats from several emission paths) — INV-kurup's 2026-05-30 enrollment-deferral note already lists this item as one of three further active items addressing the same emission-format mechanic. The stable_id formula's interaction with module-stable_id collision is structurally the same kind of \"emitter bypasses canonical-format gate\" issue INV-kurup tracks. Recommended action: fold under INV-kurup once BROAD-cohort validates the 91% reduction holds at corpus scale."  # a61e
+- op: discuss  # ad03
+  at: '2026-06-11T04:25:50Z'  # ad03
+  by: agent  # ad03
+  actor: jgstern_agent  # ad03
+  clock: 9  # ad03
+  nonce: ad03  # ad03
+  message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): the full scope chain joins the stable_id hash, which directly targets this residue — structurally-identical classes in different modules get distinct scope chains and therefore distinct IDs. Waits on the hash-input implementation; re-validate with the new corpus-collision validator (None-cohort counted)."  # ad03

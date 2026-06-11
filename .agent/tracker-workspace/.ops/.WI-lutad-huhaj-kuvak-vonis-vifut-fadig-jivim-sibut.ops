@@ -65,3 +65,10 @@
     tags: [dogfood_tranche_03]  # 515b
   remove:  # 515b
     tags: [dogfood_tranch_03]  # 515b
+- op: discuss  # 5528
+  at: '2026-06-11T04:25:54Z'  # 5528
+  by: agent  # 5528
+  actor: jgstern_agent  # 5528
+  clock: 8  # 5528
+  nonce: '5528'  # 5528
+  message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): floors and ceilings get re-grounded by the confidence rework — confidence = pure detection reliability, with ranking adjustments relocated to rank_score — so the 0.95-ceiling and 0.70-floor breaches are resolved by the re-derivation, not by clamping. Waits on the implementation."  # 5528

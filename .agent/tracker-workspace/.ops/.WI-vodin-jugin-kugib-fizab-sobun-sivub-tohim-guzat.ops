@@ -35,3 +35,10 @@
   clock: 3  # e21b
   nonce: e21b  # e21b
   message: "Investigated 2026-06-01 for cluster context. Parent set to INV-kurup (P2 violated, META: identifier-bearing fields emit non-canonical formats). WI-vodin closes the static-enforcement gap named in ADR-0034 §'Enforcement' — the runtime spec-validator catches malformed IDs after the pipeline runs, but no source-level check flags Symbol(id=f'...') patterns at PR-review or commit time. Also extends the runtime spec-validator to scan Edge.id (Phase 6 PR1 deferred item). Parallel-in-shape to multi_value_field_axis.py for the id-construction discipline. Sibling of WI-bupim (stable_id uniqueness residuals) under the larger identity-axes cluster. Doesn't duplicate any preexisting row — it's the static-enforcement face of INV-kurup."  # e21b
+- op: discuss  # 1bf9
+  at: '2026-06-11T04:25:50Z'  # 1bf9
+  by: agent  # 1bf9
+  actor: jgstern_agent  # 1bf9
+  clock: 4  # 1bf9
+  nonce: 1bf9  # 1bf9
+  message: "2026-06-10 design-interview ruling (ADR-0036, merged in PR #4181): the linter/validator now has a concrete target grammar — anchored 5-slot node.id, colon-free lang/span/name/kind, colon-tolerant path, parse from both ends, kind slot == node.kind, enumerated sentinels. Implement the static-AST linter and Edge.id schema-validator extension against that grammar once the ADR PR merges."  # 1bf9

@@ -34,3 +34,10 @@
   clock: 3  # 624e
   nonce: 624e  # 624e
   message: "CORRECTION to the cross-link note from WI-falum (2026-06-09): the suggested shared 'single-line TOML span unparseable' substrate does NOT apply to this item. Verified in code: this stable_id is produced by make_dependency_stable_id(language, name) = sha256('dependency:{language}:{name}')[:16] (analyze/base.py:591-598), which never touches the span — the cross-manifest collapse is purely hash-input-too-coarse (omits the declaring manifest path), squarely in the INV-tazaj family this item is parented under. WI-falum's collapse is a separate fingerprint-producer / tree-sitter span-parse defect on the same surface. The not_duplicate_of link is valid as RELATED_BUT_DISTINCT (same toml dependency-node surface) but the two have distinct root causes and will not resolve together."  # 624e
+- op: discuss  # 677c
+  at: '2026-06-11T04:25:51Z'  # 677c
+  by: agent  # 677c
+  actor: jgstern_agent  # 677c
+  clock: 4  # 677c
+  nonce: 677c  # 677c
+  message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): dependency identity is N per-manifest nodes — the manifest path joins the stable_id hash — with aggregate views keyed by (ecosystem, name). The cross-manifest collapse here is exactly what the ruling forbids. Waits on the implementing fix."  # 677c

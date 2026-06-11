@@ -53,3 +53,10 @@
   clock: 5  # 0590
   nonce: '0590'  # 0590
   message: "root-cause family cross-link (t1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 0590
+- op: discuss  # 3973
+  at: '2026-06-11T04:25:53Z'  # 3973
+  by: agent  # 3973
+  actor: jgstern_agent  # 3973
+  clock: 6  # 3973
+  nonce: '3973'  # 3973
+  message: "2026-06-10 design-interview ruling (ADR-0041, merged in PR #4181): a full spec section 14 rewrite is ordered as part of the supply-tier redesign (tier 2 = workspace-internal only, directness as a registered meta key, stdlib = tier 3 with an ecosystem axis). This item folds into that rewrite rather than patching the stale tier-2 text in place. Waits on the ADR PR and the section 14 rewrite."  # 3973

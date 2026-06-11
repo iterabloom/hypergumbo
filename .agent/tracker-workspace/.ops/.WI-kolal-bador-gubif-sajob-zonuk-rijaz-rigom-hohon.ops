@@ -47,3 +47,10 @@
   clock: 4  # c2d9
   nonce: c2d9  # c2d9
   message: "compact finalize-after-shrink family cross-link (connections-sweep 2026-06-08T1900Z)"  # c2d9
+- op: discuss  # 6902
+  at: '2026-06-11T04:25:56Z'  # 6902
+  by: agent  # 6902
+  actor: jgstern_agent  # 6902
+  clock: 5  # 6902
+  nonce: '6902'  # 6902
+  message: "2026-06-10 design-interview ruling (decision recorded, no ADR): compact's default becomes centrality-ranked, under which --max-symbols selection is a ranked prefix and containment monotonicity across budgets holds by construction; the connectivity-growth path keeps its own semantics behind explicit --connectivity. Waits on the default switch; re-check monotonicity afterwards."  # 6902

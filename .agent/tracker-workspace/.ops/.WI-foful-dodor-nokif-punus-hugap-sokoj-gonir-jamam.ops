@@ -26,3 +26,10 @@
   clock: 2  # 9798
   nonce: '9798'  # 9798
   message: "Investigated 2026-06-01 for cluster context. No parent set — pure docstring-staleness cleanup with no structural cluster. Could fold into the next scheduled docstring-staleness audit per .agent/agent_playbooks_protocols_sops_skills/docstring-staleness-audit-playbook.md rather than its own one-off PR. Doesn't duplicate any preexisting row. Lowest priority of the seven Phase 6 deferred-item buckets."  # 9798
+- op: discuss  # 153b
+  at: '2026-06-11T04:25:50Z'  # 153b
+  by: agent  # 153b
+  actor: jgstern_agent  # 153b
+  clock: 3  # 153b
+  nonce: 153b  # 153b
+  message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): the spec's stable_id worked example gets rewritten wholesale under the new contract (full scope chain in hash, name retained, move-churn semantics), so don't patch the v2 -> v5 references piecemeal. Fold this cleanup into the ADR-0035 spec rewrite; waits on that rewrite landing."  # 153b

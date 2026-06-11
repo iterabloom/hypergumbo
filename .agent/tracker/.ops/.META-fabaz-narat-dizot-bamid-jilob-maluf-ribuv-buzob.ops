@@ -50,3 +50,10 @@
   clock: 5  # 14b8
   nonce: 14b8  # 14b8
   message: "holding(deprecated)->violated: META-fabaz asserts unique IDs for reliable lookup; its own 'Not checked' sub-claim is stable_id collision rate on >10K-symbol monorepos. That exact sub-claim is violated P0: INV-tazaj (META, violated) + child INV-bazij (violated) + WI-gitun (P0, fresh repro 2026-06-07). Live `hypergumbo run` on this repo: 96 collision groups / 291 nodes share stab (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 14b8
+- op: discuss  # 769e
+  at: '2026-06-11T04:25:51Z'  # 769e
+  by: agent  # 769e
+  actor: jgstern_agent  # 769e
+  clock: 6  # 769e
+  nonce: 769e  # 769e
+  message: "2026-06-10 design-interview rulings (ADR-0035, merged in PR #4181) settle the identity contracts this META tracks: synthetic occurrences follow a per-kind two-axis rule (target kinds = logical identity/dedup; location kinds = site identity keyed by path, target, and within-file occurrence index — line numbers leave identity hashes), and stable_id becomes a unique-within-run key with the full scope chain in the hash plus an explicit emit-time/corpus validator. Re-validate the family after the implementing fixes land."  # 769e

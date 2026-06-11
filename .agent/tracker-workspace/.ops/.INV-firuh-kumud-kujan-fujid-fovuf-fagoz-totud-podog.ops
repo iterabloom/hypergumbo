@@ -22,3 +22,10 @@
     fields:  # aa90
       statement: "Every reference to hypergumbo's primary output artifact in CLI defaults, internal code, test fixtures, documentation, and active tracker item descriptions uses `survey.json` as the canonical filename; the concept name in functions/docstrings is `survey` (not `behavior_map`); the v0.x stability commitment references the new canonical name."  # aa90
       root_cause: "Names accumulated organically: `behavior_map.json` in the original Dec-2025 MVP spec, `hg.json` as docs shorthand drift, `bm.json` as test/dogfood substrate convention, `hypergumbo.results.json` as the pre-release CLI polish default. No single naming decision was authored; the rename is the consolidation. Closure requires S1 (ADR), S2 (CLI bootstrap), and the various sweep + cleanup items to land."  # aa90
+- op: discuss  # cbf6
+  at: '2026-06-11T04:25:56Z'  # cbf6
+  by: agent  # cbf6
+  actor: jgstern_agent  # cbf6
+  clock: 2  # cbf6
+  nonce: cbf6  # cbf6
+  message: "2026-06-10 design-interview ruling (ADR-0042, merged in PR #4181): survey.json is confirmed as the canonical artifact name, with the concept renamed behavior map -> survey, the verb migrating to hypergumbo survey (run as deprecated alias for one minor version), and a loader alias list for legacy filenames. Stays violated until the implementing rename PRs land across CLI, code, tests, docs, and tracker; re-validate then."  # cbf6

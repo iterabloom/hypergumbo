@@ -33,3 +33,10 @@
   clock: 3  # 0510
   nonce: '0510'  # 0510
   message: "root-cause family member (b2) (connections-sweep 2026-06-08T1900Z)"  # 0510
+- op: discuss  # c69c
+  at: '2026-06-11T04:25:55Z'  # c69c
+  by: agent  # c69c
+  actor: jgstern_agent  # c69c
+  clock: 4  # c69c
+  nonce: c69c  # c69c
+  message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): quality.reason (and quality.score) are deleted via a one-version deprecation; the emitter-provenance role reason was smuggling moves to the new confidence_source enum. This item resolves through the deletion/migration, not by documenting the old taxonomy. Waits on the deprecation implementation."  # c69c
