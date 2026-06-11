@@ -7,6 +7,8 @@
 - Superseded by: —
 - Related: ADR-0014 (Typed stable_id factories — the family of `make_*_stable_id` factories whose discipline this ADR generalizes to `Symbol.id` construction), ADR-0033 (Spec-vs-Data Validator Stage — the runtime enforcement substrate; this ADR's policy is enforced by ADR-0033's `id_format` validator class), ADR-0031 (Symbol.language reshape — its Class B "synthetic stand-in" classification clarifies which language string belongs in the canonical ID's first segment for linker-emitted Symbols); tracker items INV-sadiv (218 call_site nodes emitted with ad-hoc `<path>::<role>::<line>` IDs — closed by this ADR's six-site migration), INV-dulah (META: ID-format escapes), INV-hunup (META: stable_id multiplicity — out of scope here, addressed by Phase 6 PR1).
 
+> **Amendment (2026-06-11, per the 2026-06-10 design interview — ADRs 0035–0042, PR #4181):** Two corrections. (a) §"Out of scope" blesses `make_unresolved_edge` and the `:unresolved` dst shape it stamps; ADR-0037 ruling 4 retires that shape (the `unresolved` kind-slot token folds into `external_symbol`), and the Edge-ID validation question this ADR deferred to "a future ADR" is taken up by ADR-0036/ADR-0037. (b) Reviewer-checklist item 5's claim that the `id_format` validator "pairs `Symbol.id`'s trailing segment with `Symbol.kind`" was inaccurate — ADR-0036 Evidence #2 establishes the shipped gate was shape-only and never round-tripped slot values against `Symbol.name`/`Symbol.kind`; ADR-0036's round-trip checks (Ruling 2, enforcement layer 2) are the fix.
+
 ## Context
 
 ### The architectural absence

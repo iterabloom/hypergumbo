@@ -4,6 +4,57 @@
 Date: 2026-02-20
 Updated: 2026-03-27
 Status: Accepted. Phase 0: 11/11 complete (Go mount point fixed). Phase 1 shape_id: all 20 mainstream analyzers wired (12 via node_for_symbol, 7 via direct compute_shape_id call, Python via ast override) + 19 extended1 + 1 common (HLSL) = ~41 of ~70 code-language analyzers; remaining gaps are niche languages (13 extended1 without, 10 common without, Dart not yet wired). Phase 2 untyped stable_id: 9 mainstream + 19 extended1 + 7 common = 35 using untyped tier; 11 mainstream + 1 common (Dart) upgraded to Phase 3 typed tier; combined ~47 of ~70. Phase 3 typed stable_id: 12 analyzers (methods/constructors only).
+Superseded by: ADR-0035 (partial — see amendment table)
+
+> **Amendment (2026-06-11):** This document is **partially superseded** by
+> [ADR-0035](0035-stable-id-v6-identity-contract.md) (stable_id v6 identity
+> contract), one of the rulings from the 2026-06-10 design interview
+> (ADRs 0035–0042, PR #4181). The headline change: the "survives renames and
+> file moves" primary contract for `stable_id` is dead. The shipped v5 scheme
+> (Phase 6 PR3) already added `name` + `qualified_name` to the hash basis — an
+> amendment several citers reference as "ADR-0014's Phase-6 amendment" but
+> which was never written into this file until now (scheme history:
+> v1 → v2 [§5] → v3 [§5a] → v5 [Phase 6 PR3, name/qualified_name] → v6
+> [ADR-0035]; WI-foful's spec backfill owns the full chain record) — and
+> ADR-0035 §1 supersedes the formula again with full scope-chain folding at
+> v6. Rename-tracking is now the job of the content hashes
+> (`fingerprint`/`shape_id`), per ADR-0035 §2. Not all of this document dies:
+> the table below gives the per-section standing, and this document remains
+> the authority for its in-force sections.
+
+### Per-section standing under ADR-0035 (amendment table, 2026-06-11)
+
+| Section | Standing under ADR-0035 |
+|---|---|
+| Status line (per-package shape_id/stable_id coverage census) | **Fully in force — unique home.** `docs/hypergumbo-spec.md:341` (typed-tier coverage roadmap) and `spec:355` (shape_id live coverage table) actively delegate to "the ADR-0014 status line"; no other document carries the census. |
+| §1 shape_id (generic CST walker + Python `ast` override) | **In force as amended by ADR-0035.** ADR-0035 §1 delegates refactor-tracking *to* `shape_id`/fingerprint ("the content hashes are the refactor-tracking instruments"); shape_id changes are a trailing event (WI-vufah, shapeid v2→v3). The Python `ast` intentional-divergence rationale stands. |
+| §2 untyped-tier formula (`sha256(kind:param_count:arity_flags:decorators:containing_stable_id)`) | **SUPERSEDED by ADR-0035.** The printed formula is doubly stale: shipped v5 already added `name`+`qualified_name` (the ghost amendment recorded above), and ADR-0035 §1 supersedes it again with full scope-chain folding at v6. The `ArityFlags`/`classify_parameter_flags` *mechanism* survives as a structural input. |
+| §3 typed tier (`make_typed_stable_id`, Option-A language-scoped normalization) | **In force as amended by ADR-0035 §1:** `make_typed_stable_id` gains mandatory `name`/`qualified_name` parameters (closes WI-zitod). The tier, per-language `normalize_signature()` rules, and the Option-A-vs-Option-B rationale stand. |
+| §4 route/entry stable_id formulas | **Carried forward verbatim into ADR-0035 §3's kind→axis table** ("route … unchanged, ADR-0014 §4"; "entry … unchanged") as LOGICAL-axis exemplars. ADR-0035 §3 is the normative forward home. |
+| §5 containing_module recursion + v1→v2 scheme bump | **SUPERSEDED by ADR-0035 §1.** The full scope chain (module/path → classes → enclosing functions → name → kind → occurrence index) subsumes and extends recursive containment, fixing the gap §5 left (WI-gitun: function-locals omit the enclosing function) and unifying py.py's divergent local `_compute_stable_id`. The v1→v2 bump is history (WI-foful backfill). |
+| §5a class_body_sig + `(stable_id, canonical_name)` escape hatch | **SUPERSEDED by ADR-0035.** The load-bearing rationale (class's own name excluded "by design — survives renames") was falsified by shipped v5 and is formally reversed by ADR-0035 §2 (name STAYS in the hash; rename-tracking is fingerprint's job). The escape hatch is dead since ADR-0032 removed `canonical_name`; ADR-0035 Alternative 1 rejects rebuilding it. |
+| §5b eight kind-factories + `populate_kind_stable_ids` backstop precedence | **In force, EXCEPT** the `dependency` row, superseded by ADR-0035 §4 (manifest path joins the hash; a package declared in N manifests becomes N nodes). The `module`/`interface`/`type` rows are pending ADR-0035 §4's same-train path-anchoring audit. The `file`/`variable`/`export`/`project` rows and the never-override-non-`None` precedence rule remain fully in force — this is their only decision-document home. |
+| §6 grammar version stability contract | **Fully in force — unique home.** Untouched by ADRs 0035–0042 (shape_id mechanics ride a trailing event). `docs/grammars/vendor-sync.md:61` cites §6 as the authority for the SHAPE_ID_SCHEME-bump-on-grammar-change step; the algorithm-version-vs-grammar-version division of labor and the no-cross-version-tests ruling exist nowhere else. |
+| Context, Implementation Order, Consequences, Relationship to Other ADRs, References | **Historical narrative.** No live law; ADR-0035's Context now carries the authoritative falsification narrative. |
+
+### Planned retirement (post-v6-train)
+
+After the stable_id v6 train lands (ADR-0035 §6 preconditions, including
+WI-foful's spec scheme-history backfill and ADR-0035 §4's path-anchoring
+audit for the `module`/`interface`/`type` factory rows), the fold-forward
+plan relocates the surviving law and this file takes a permanent
+0025/0026-style stub: the status-line coverage tables fold into the spec's
+identity-fields blocks at the two delegation sites (spec:341, spec:355);
+§1's within-language-comparison rationale folds into the spec shape_id block
+and the `compute_shape_id` docstring; §3's Option-A rationale folds into
+spec:335-336; §4's ~25 code/test citations repoint to ADR-0035 §3 (already
+the normative home); §5b's surviving factory rows plus the backstop
+precedence rule fold into the spec identity-fields section or an ADR-0035
+§3/§4 amendment after the path-anchoring audit decides their final formulas;
+§6 folds into `docs/grammars/vendor-sync.md` plus the spec's scheme-versioning
+section (spec:1838-1845); dead-section history (§2 formula, §5, §5a, the
+v1→v2→v3 bumps) is owned by WI-foful's backfill. **Until then, this document
+remains the authority for its in-force sections.**
 
 ## Context
 

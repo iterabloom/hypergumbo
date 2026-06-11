@@ -9,6 +9,8 @@
 
 > **2026-05-02 update.** This ADR gained two sub-sections (§"Family-audit verdict methodology" and §"Fold-residue discipline"), the seven-step workflow's Phase 3 / Phase 5 outputs were redirected from "follow-on ADR" to "audit-findings document at `docs/audits/<NN>-<topic>.md`," and the enforcement and worked-example pointers were extended. The audit-findings filing path itself is documented in [`docs/audits/README.md`](../audits/README.md); the bucket-rubric (ADR vs audit-findings vs survey) lives in [`docs/adr/README.md`](README.md). Per WI-rodub-bupun-sukol-pobud-zojip-gajug-ruzop-mikol.
 
+> **Amendment (2026-06-11):** Open question 1 is SETTLED by ADR-0038 (2026-06-10 design interview, ADRs 0035–0042, PR #4181) — the "separate audit" OQ1 anticipated. ADR-0038 rebuilds `access_mode` under this template with a MetaKeySpec applicability matrix and registry-gated values, retiring OQ1's leave-as-is posture. Vocabulary correction: the four access-mode cells are `read`/`write`/`mutate`/`delete` — `read_write`, quoted in OQ1, was never a cell.
+
 ## Context
 
 ADR-0023 introduced an *axis* — a typing dimension along which every value of a multi-value field must be classified — for `Edge.edge_type`, naming three sections (`relationship`, `endpoint_shape`, `pending_classification`) and codifying the axiom that every value should name the relationship between src and dst. The implementation produced four artifacts in close succession:

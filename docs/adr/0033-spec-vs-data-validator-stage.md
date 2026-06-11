@@ -7,6 +7,8 @@
 - Superseded by: —
 - Related: ADR-0024 (Axis Declaration Template — the static-AST validator whose runtime counterpart this ADR introduces), ADR-0027 (Symbol.kind axis), ADR-0028 (Edge.evidence_type axis), ADR-0031 (Symbol.language reshape — its "Enforcement" §explicitly defers the runtime drift gate to this ADR), ADR-0032 (canonical_name / fingerprint reshape — same deferral); tracker items INV-sugat (super-META "no spec-vs-data validator stage exists in the pipeline" — closed by this ADR), INV-luhur (META: AnalysisRun + behavior-map meta-layer writers have no validator), INV-fabov (META: command-line and configuration values silently accepted without validation), INV-numat (META: vocabulary fields mix axes); WI-rolol (structural-fix trial whose sub-tasks A and B fold into this ADR's Phase 3 implementation per the campaign plan).
 
+> **Amendment (2026-06-11):** Cross-field coherence invariant (a) — `Edge.dst_ref ↔ Edge.dst` per the `make_unresolved_edge` docstring — is re-anchored by ADR-0037 ruling 2 (2026-06-10 design interview, ADRs 0035–0042, PR #4181): `dst_ref` becomes unconditionally derived at edge finalization, so the invariant's enforcement point moves from producer stamping to the single finalization verdict, joined by ADR-0037's new FK predicate (`is_resolved=True ⇒ dst ∈ nodes`). The invariant survives; only its producer-side anchor is retired.
+
 ## Context
 
 ### The architectural absence

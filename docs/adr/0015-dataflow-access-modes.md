@@ -4,6 +4,64 @@
 Date: 2026-03-15
 Updated: 2026-04-11
 Status: Accepted
+Superseded by: ADR-0038 (partial — emission guidance only; see amendment table)
+
+> **Amendment (2026-06-11):** [ADR-0038](0038-access-mode-contract.md)
+> (accepted 2026-06-10; one of the ADR-0035–0042 rulings from the
+> 2026-06-10 design interview, PR #4181) partially supersedes this ADR —
+> **emission guidance only**. The per-section table below records what
+> ADR-0038 retires, what remains in force, and where each piece lives.
+> Migration-window note: the ADR-0038 rebuild is **not yet implemented**,
+> so the retired sections (§4, §5) remain the accurate description of
+> *shipping* behavior until it lands. No body text below this amendment
+> has been rewritten; read it through the table.
+
+## Amendment (2026-06-11): partial supersession by ADR-0038
+
+### Per-section supersession table
+
+| Section | Status as of 2026-06-11 | Detail |
+|---------|------------------------|--------|
+| §1 Access mode vocabulary (`read`/`write`/`mutate`/`delete`) | **In force** | ADR-0038 keeps the four-cell vocabulary (its Context restates it; its ruling 4 re-affirms `mutate`). Duplicated in code: `ir.py` (`VALID_ACCESS_MODES` docstring carries all four per-cell definitions including the mutate-ordering and delete-failing-reads rationales) and cited as design precedent by `edge_types.py`. One sub-point IS superseded: "edges where access mode is not applicable carry `None`" is replaced by ADR-0038 ruling 2's per-edge-type declared applicability matrix, which makes `None` interpretable per edge type. |
+| §2 Channel field | **In force — unique home** | Untouched by ADR-0038, which keeps the channel model **by pointer only** (its header and References lines) and never defines it. This section is the only normative definition of channel-as-join-key, the per-domain contents (CRDT key / pub-sub topic / qualified global name / queue name), and the literal-vs-inferred confidence rule. `axis_meta_keys.py` registers only `channel_kind`, not `channel`; the spec's Meta-fields registry omits `channel`. |
+| §3 Representation (`meta` carriage, `Edge.create` kwargs, `data_flows_to`) | **In force** | Duplicated in code: `ir.py` (`Edge.create` `access_mode`/`dest_access_mode`/`channel` kwargs with `VALID_ACCESS_MODES` validation) and `edge_types.py` (`data_flows_to` registered "per ADR-0015"). Caveat: the inline example stamping `access_mode="write"`/`dest_access_mode="read"` shows the pattern ADR-0038 ruling 3 retires for bridge/protocol linkers generally; the specific `event_publishes` `access_mode="write"` survives per ADR-0038's Neutral consequences, but `dest_access_mode` is condemned as zero-entropy by ruling 3. |
+| §4 YAML-driven pattern classification | **RETIRED by ADR-0038** (ruling 1; ruling 4 for library-pattern polarity) — *but still shipping; see migration window below* | The line-granular classifier mechanism (`annotate_dataflow` locating the AST node at the edge's line and stamping by line match) is replaced by per-edge AST-role derivation at emission (ADR-0038 ruling 1); the library-pattern mutator polarity is corrected by ruling 4. The YAML file format itself (assignments/calls/deletions/borrows/library_patterns sections) survives and remains documented in `dataflow.py` and the `dataflow_patterns/*.yaml` headers. |
+| §5 Two-tier integration model | **RETIRED by ADR-0038** (rulings 1 and 3) — *but still shipping; see migration window below* | Tier-1 line-granular automatic stamping → per-edge AST-role derivation at emission (ADR-0038 ruling 1). Tier-2 bridge/protocol `access_mode="write"`/`dest_access_mode="read"` stamping → evicted to the new `data_direction` meta key (ADR-0038 ruling 3; ~25 sites named there) — bridge direction moves to `data_direction`. The skip-if-present precedence rule is specifically called out by ADR-0038 as having shadowed corrections. The 104/118 analyzer coverage table is historical narrative. |
+| §6 + §6.1 Slice integration, forward-slice admission rule (option 1), option-2/3 deferral | **In force — untouched** | ADR-0038 governs emission, not slicing. These sections remain the normative home of the option-1 admission law, the option-2/3 deferral decision with its 4-repo/~188k-edge evidence table, and the `would_admit_dst_reader` re-evaluation trigger. The spec (`docs/hypergumbo-spec.md:1069,1075`) and `CHANGELOG.md` cite into §6/§6.1 by section number. Post-rebuild caveat: ADR-0038 ruling 3 will empty the `dest_access_mode` population the §6.1 trigger monitors, so §6.1 deserves a re-read after the rebuild lands — a future amendment, not current supersession. |
+| §7 Unification of existing linkers | Historical narrative | Aspirational, never bindingly implemented. Its edge-type table is stale post-ADR-0023/audit-findings-0002 folds, and the protocol-linker write/read framing it celebrates is what ADR-0038 ruling 3 retires. |
+| Context / Consequences / Relationship sections | Historical narrative | Decision-time rationale, falsified-claims record (ADR-0038's measured-damage analysis), and cross-reference log; no live law beyond what §6.1 already carries. |
+
+### Migration window (ADR-0038 rebuild not yet implemented)
+
+The ADR-0038 rebuild has **not** shipped as of this amendment: the
+line-granular classifier still runs in `dataflow.py`, the bridge linkers
+still stamp `access_mode="write"`/`dest_access_mode="read"`, and the
+`data_direction` key exists nowhere in code. During this window, §4 and
+§5 — though retired as *guidance* by ADR-0038 — remain the accurate
+description of SHIPPING behavior. Do not read their retirement as a
+description of current code.
+
+### Planned retirement
+
+This file takes a permanent stub (in the style of the ADR-0025/0026
+stubs) only after **both** conditions hold:
+
+1. The ADR-0038 rebuild has shipped (per-edge AST-role derivation at
+   emission; bridge/protocol stamping migrated to `data_direction`).
+2. The two live-unique-law sections are relocated: §2's channel model to
+   a `MetaKeySpec("channel", ...)` registration in `axis_meta_keys.py`
+   (carrying the join-key and literal-vs-inferred-confidence semantics)
+   plus a `channel` entry in the spec's Meta-fields registry; and
+   §6/§6.1's slicing-admission law (option-1 rule, option-2/3 deferral
+   evidence, `would_admit_dst_reader` re-evaluation trigger) to a
+   dedicated slicing-admission ADR or an explicit ADR-0038 appendix,
+   with the spec, CHANGELOG, and `slice.py` section citations
+   retargeted.
+
+Until then, this ADR remains authoritative for its in-force sections
+(§1, §2, §3, §6/§6.1) and for the shipping behavior described by §4/§5.
+
+---
 
 ## Context
 

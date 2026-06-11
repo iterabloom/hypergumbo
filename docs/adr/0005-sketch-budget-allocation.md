@@ -5,6 +5,8 @@ Date: 2025-01-15
 Updated: 2026-03-19
 Status: Accepted
 
+> **Amendment (2026-06-11):** The decision tables below key file sampling ("Highest-confidence entrypoint") and the detector-tier prose (0.95 / 0.99 / 0.70–0.85) on entrypoint `confidence` as a composite ranking signal. Under ADR-0039 (2026-06-10 design interview, ADRs 0035–0042, PR #4181), ranking adjustments relocate to the new `rank_score` field and published `confidence` becomes pure detection reliability; once ADR-0039's implementation lands, this ADR's entrypoint-selection rules should be read as `rank_score`-keyed. The cited tier constants also become registry-generated under ADR-0039 ruling 5 Stage B rather than the prose values quoted here.
+
 ## Context
 
 The `sketch` command generates a token-budgeted overview of a repository. Given a fixed token budget (default 4000), hypergumbo must decide:

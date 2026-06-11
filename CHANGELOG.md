@@ -10,6 +10,19 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Changed
+
+- **ADR supersession hygiene** — amendment banners with per-section
+  supersession tables on the two partially-superseded ADRs (0014 Generalized
+  Symbol Identity, 0015 Dataflow Access Modes), recording which sections
+  ADR-0035/0038 killed, which remain in force (0014 §6 grammar-stability
+  contract, status-line coverage census, §5b kind factories; 0015 §2 channel
+  model, §6 slice-admission law), and the retirement triggers (post-v6-train
+  for 0014; post-0038-rebuild for 0015). Six further old ADRs (0005, 0017,
+  0024, 0028, 0033, 0034) gain amendment notes for supersessions the
+  0035–0042 batch had not declared, and the corresponding new-ADR headers
+  (0036–0039) now declare them bidirectionally.
+
 ### Added
 
 - **Decision ADRs 0035–0042** — eight accepted ADRs recording the 2026-06-10

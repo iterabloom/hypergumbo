@@ -4,6 +4,8 @@
 Date: 2026-03-22
 Status: Accepted
 
+> **Amendment (2026-06-11, per the 2026-06-10 design interview — ADRs 0035–0042, PR #4181):** Two notes. (a) The machinery below keyed to the dst-id string shape `{lang}:external:0-0:{name}:unresolved` — the `_sink_module_compatible` external exemption and the post-DDG refinement pass's module-segment string rewrites of `edge.dst` — is invalidated by ADR-0037: the `unresolved` kind-slot token folds into `external_symbol`, and `dst_ref` becomes unconditionally derived precisely so consumers stop string-parsing `dst`; implementing fixes will re-key sink matching and refinement on `dst_ref`. (b) The §"Interaction with ADR-0015 `access_mode` metadata" subsection's reliance on `dest_access_mode` is superseded by ADR-0038: bridge direction moves to the new `data_direction` meta key, `dest_access_mode` is removed, and taint's trust of `access_mode` is gated on the ADR-0038 rebuild — until taint re-keys to `data_direction`, bridge edges degrade to this ADR's conservative bidirectional fallback.
+
 ## Context
 
 ### Spec non-goal evolution

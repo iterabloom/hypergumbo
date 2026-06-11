@@ -3,9 +3,9 @@
 
 - Status: **Accepted**
 - Date: 2026-06-10
-- Supersedes: —
+- Supersedes: ADR-0028's "Sibling-field design call-out" (the producer-stamped `is_resolved` contract — ruling 2's central derivation replaces it); ADR-0034's out-of-scope blessing of `make_unresolved_edge`'s `:unresolved` dst shape (retired by ruling 4's kind fold); ADR-0017's dst-id string-shape coupling (the `{lang}:external:0-0:{name}:unresolved` matching and refinement-pass rewrites — re-keyed on `dst_ref` by the implementing fixes)
 - Superseded by: —
-- Related: ADR-0027 (Symbol.kind names the source-language construct — the construct-vs-relationship principle the node-kind fold here applies), ADR-0028 (evidence_type names the inference pathway — `resolution_quality` is its fold residue, whose MetaKeySpec doc this ADR corrects), ADR-0033 (Spec-vs-Data Validator Stage — the enforcement substrate gaining the FK predicate), ADR-0035 (stable-id v6 identity contract — placeholder-node identity changes coordinate there), ADR-0036 (node.id grammar v2 — owns the kind-slot vocabulary the fold removes `unresolved` from). Tracker items: see the dedicated "Tracker items" section at the end.
+- Related: ADR-0027 (Symbol.kind names the source-language construct — the construct-vs-relationship principle the node-kind fold here applies), ADR-0028 (evidence_type names the inference pathway — `resolution_quality` is its fold residue, whose MetaKeySpec doc this ADR corrects), ADR-0033 (Spec-vs-Data Validator Stage — the enforcement substrate gaining the FK predicate; its cross-field coherence invariant (a) re-anchors to the finalization verdict here), ADR-0035 (stable-id v6 identity contract — placeholder-node identity changes coordinate there), ADR-0036 (node.id grammar v2 — owns the kind-slot vocabulary the fold removes `unresolved` from). Tracker items: see the dedicated "Tracker items" section at the end.
 
 **Decision provenance.** This ADR records a decided ruling, not a proposal. The decision was made by the project owner via design interview on 2026-06-10, after reviewing the verified evidence from the 446-item tracker root-cause analysis (`~/hypergumbo_lab_notebook/correctness_strategy_06102026.md`, "synthetic-node-stamping" family, fix F3).
 
