@@ -1,0 +1,25 @@
+- op: create  # dfd1
+  at: '2026-06-12T21:00:17Z'  # dfd1
+  by: agent  # dfd1
+  actor: jgstern_agent  # dfd1
+  clock: 1  # dfd1
+  nonce: dfd1  # dfd1
+  data:  # dfd1
+    kind: invariant  # dfd1
+    title: "tracker recover's read-modify-write of a .ops is not flock-coordinated with concurrent Store appends (narrow, self-healing)"  # dfd1
+    status: violated  # dfd1
+    priority: 4  # dfd1
+    parent:  # dfd1
+    tags:  # dfd1
+    - durability  # dfd1
+    - tracker  # dfd1
+    - ops_journal  # dfd1
+    - concurrency  # dfd1
+    isbefore: []  # dfd1
+    duplicate_of: []  # dfd1
+    not_duplicate_of: []  # dfd1
+    pr_ref:  # dfd1
+    description: "INVARIANT (currently VIOLATED, narrow). `journal.recover()` reads a worktree `.ops` file, unions it with the journal, and rewrites it WITHOUT taking the per-file flock that `Store` uses for its appends. A concurrent `Store` append (e.g. a TUI or another agent mutating the tracker) during a `recover` can therefore race and transiently drop the concurrently-appended op from the worktree:\n\n  recover reads worktree (state S0) + journal (no op X yet)\n   -> Store appends op X to worktree AND journal (under its flock)\n   -> recover rewrites worktree to (S0 ∪ journal-without-X) -> worktree loses X.\n\nMITIGATING (why P4, not urgent):\n- Self-healing: X is retained in the journal (Store mirrored it there under the same flock), so the NEXT `recover` restores X. The loss is TRANSIENT, not permanent — the top-level op-durability invariant still holds (X is never permanently lost).\n- Narrow window: requires a `Store` append concurrent with a `recover` on the SAME `.ops` within a ~millisecond window. `recover` fires on git ref updates (reset/checkout/commit); the PR4 reference-transaction hook makes it fire more often, raising exposure from near-zero to low.\n- Pre-existing: present since PR1's `recover` — the PR4 hook did not introduce it, only increased its firing frequency.\n\nCORRECT FIX direction: have `recover` take the same per-file flock as `Store` around its read-union-write. CAVEAT: `recover` currently rewrites via `write_text` (and a future atomic `os.replace` would swap the inode out from under a held flock), so a naive flock + atomic-rename interact badly. A correct fix needs an in-place locked rewrite or a separate `.lock` file — non-trivial, hence deferred and filed rather than bundled into the hook PR.\n\nDiscovery: the durability-validation session that also found and fixed the `-m` fallback silent no-op (PR5, e5f55c34be)."  # dfd1
+    fields:  # dfd1
+      statement: "journal.recover() reads, unions, and rewrites a worktree .ops WITHOUT taking the per-file flock Store uses for appends; a concurrent Store append on the same .ops can be transiently dropped from the worktree (but is retained in the journal, so the next recover restores it)."  # dfd1
+      root_cause: "recover performs a non-locked read-modify-write of the whole .ops file, which is not serialized against Store's flocked O_APPEND on the same file."  # dfd1
