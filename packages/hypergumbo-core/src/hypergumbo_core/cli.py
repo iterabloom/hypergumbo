@@ -5824,7 +5824,7 @@ For help on ALL commands:   hypergumbo --help --all"""
     p.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug logging (shows ripgrep vs Python fallback decisions, etc.)",
+        help="Enable debug logging (verbose internal diagnostics)",
     )
     p.add_argument(
         "--backend",

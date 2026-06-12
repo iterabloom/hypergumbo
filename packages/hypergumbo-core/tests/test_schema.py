@@ -394,10 +394,10 @@ class TestSchemaUpToDate:
     def test_schema_evidence_type_is_open_string_until_phase_4b(self):
         """Per ADR-0028 §"Path B", the Edge.evidence_type schema is
         OPEN (`type: "string"` without enum) until per-cluster Phase
-        4b producer migrations land. Current production includes
-        dynamic f-string emits at ``websocket.py``, ``inheritance.py``,
-        and ``di_resolution.py`` that produce values outside the
-        static registry."""
+        4b producer migrations land. Current production includes a
+        dynamic f-string emit at ``inheritance.py`` (``evidence_type=
+        f"ast_{edge_type}"``) that produces values outside the static
+        registry."""
         schema = load_schema()
         evidence_node = (
             schema["$defs"]["Edge"]["properties"]["meta"]

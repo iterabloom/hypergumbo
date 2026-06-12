@@ -136,7 +136,7 @@ Useful flags:
 ```bash
 hypergumbo . -x                                # exclude test files (cleaner output)
 hypergumbo . --no-source                       # omit source code (included by default)
-hypergumbo . --no-progress                     # hide progress indicator (on by default)
+hypergumbo . --no-progress                     # hide progress indicator (sketch/run only; on by default)
 hypergumbo io-boundaries --show-external-potential   # opt into the (large) external-potential bucket (text output)
 hypergumbo --help --all                        # comprehensive help for all commands
 ```

@@ -41,6 +41,29 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   the matching `detect_entrypoints` docstring. Per D9a / ADR-0039; immediate
   consumer-hazard removal (no behavioural change — documentation only).
 
+- **Docs-prose drift sweep (docs-prose:F2, partial)** — corrected stale
+  documentation across surfaces, each fix verified against current code:
+  - spec §"Edge.evidence_type" cited three dynamic f-string `evidence_type`
+    emit sites (`websocket.py`, `inheritance.py`, `di_resolution.py`) to justify
+    the open-enum posture; a grep across all `packages/*/src` finds exactly one
+    (`inheritance.py:368`), so the claim now cites the single real site
+    (WI-rohod).
+  - spec §14 gains a "Role flags, not tier" note: the example/test/fuzz/bench
+    patterns set the `is_test_file` / `is_example_file` role flags, which are
+    independent of `supply_chain_tier` — a co-located test resolves to **tier 1,
+    not tier 2** (the patterns sit under the tier-2 detection subsection only
+    because role-flagging runs in the same pass). Keeps INV-tisid from
+    re-opening on a misread (WI-golov).
+  - the `--debug` help text no longer references the removed ripgrep-vs-Python
+    fallback path (INV-bugiz).
+  - the README annotates `--no-progress` as **sketch/run-only** (it is defined
+    only on those two subparsers), not a general flag (WI-figor).
+  Deferred from this sweep: WI-fukut-tisot (its fix lives in a `.agent/`
+  playbook — governance-adjacent, handled under the approval workflow) and the
+  docs-vs-argparse gate (docs-prose:F1 / G7, which follows the sweep so it is
+  not red on day one). Addresses members of the INV-rotup CLI-help/README-drift
+  umbrella.
+
 ### Added
 
 - **Spec-validator ratchet gate (validator:F1 / G1, WI-kafar + WI-himoj)** —
