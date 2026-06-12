@@ -1171,8 +1171,9 @@ def detect_entrypoints(
     this function maps those concepts to entrypoint kinds.
 
     Confidence Adjustments:
-    - Test files: 50% penalty (deprioritized, not excluded)
-    - Vendor/external deps (tier >= 3): 70% penalty
+    - Test files: 90% penalty (x 0.1, deprioritized not excluded)
+    - Utility files: 50% penalty (x 0.5)
+    - Vendor/external deps (tier >= 3): 70% penalty (x 0.3)
     - Connectivity: Up to +25% boost for entrypoints with many outgoing edges
 
     Args:

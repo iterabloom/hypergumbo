@@ -23,6 +23,24 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   0035–0042 batch had not declared, and the corresponding new-ADR headers
   (0036–0039) now declare them bidirectionally.
 
+- **Confidence spec truth-telling (confidence:F3 Stage A)** — `docs/hypergumbo-spec.md`
+  §12 no longer documents a confidence model that does not exist. Removed the
+  fictional `EVIDENCE_CONFIDENCE_MATRIX` lookup table and
+  `calculate_evidence_confidence()` pseudocode (zero implementation — the grep
+  for either symbol across `packages/` is empty), and withdrew the normative
+  "consumers MUST default unknown `evidence_type` to 0.30" obligation from both
+  §12 and Appendix C (the code default is 0.85, never 0.30; nothing consumed the
+  0.30 contract). The §12 table row and the analyzer-evidence subsection now
+  state the actual behaviour — per-producer hardcoded `confidence` values with
+  an `Edge.confidence` 0.85 default — and point forward to
+  [ADR-0039](docs/adr/0039-confidence-separation.md) for the planned
+  detection-reliability/`rank_score` separation. Also corrected a stale value:
+  the entrypoint-confidence **test-file penalty is −90% (×0.1), not −50%**
+  (verified against `entrypoints.py:1316`); the −70% vendor (tier ≥ 3, ×0.3) and
+  −50% utility (×0.5) penalties were already correct. Fixed in both the spec and
+  the matching `detect_entrypoints` docstring. Per D9a / ADR-0039; immediate
+  consumer-hazard removal (no behavioural change — documentation only).
+
 ### Added
 
 - **Spec-validator ratchet gate (validator:F1 / G1, WI-kafar + WI-himoj)** —

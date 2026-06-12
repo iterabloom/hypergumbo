@@ -723,7 +723,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 ### Confidence scoring
 
-The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations (including the 0.30 default for unknown evidence types).
+The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations.
 
 ### analysis_runs[] — provenance tracking
 
@@ -907,7 +907,7 @@ Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`,
 - 0.70: Naming heuristics (`*Controller`, `*Handler`)
 - 0.50: Connectivity-based fallback (top 5 most-connected callables when no patterns match)
 
-Penalties: test files (−50%), vendor/external deps (−70%), utility files (−50%). Connectivity boost: up to +0.25 for entrypoints with many outgoing edges.
+Penalties on the entrypoint `confidence` field: test files −90% (×0.1), vendor/external deps at tier ≥ 3 −70% (×0.3), utility files −50% (×0.5). Connectivity boost: up to +0.25 for entrypoints with many outgoing edges. (Per [ADR-0039](adr/0039-confidence-separation.md) these are ranking adjustments mixed into the detection-`confidence` field; they are slated to move to a separate `rank_score`.)
 
 **Sorting:** Ranked by confidence (highest first).
 
@@ -1154,65 +1154,37 @@ Hypergumbo assigns confidence scores (0.0–1.0) in three independent categories
 
 | Category | What it scores | Scoring basis | Score range | Defined in |
 |----------|---------------|---------------|-------------|------------|
-| **Analyzer edge confidence** | Intra-language relationships (calls, imports) | `(language, evidence_type)` matrix + contextual adjustments | 0.30–0.95 | [Below](#edge-confidence-analyzer-evidence) |
+| **Analyzer edge confidence** | Intra-language relationships (calls, imports) | 🟪 Per-producer hardcoded value (0.85 dataclass default); the deterministic evidence→score derivation is planned, not implemented ([ADR-0039](adr/0039-confidence-separation.md)) | 0.85 default | [Below](#edge-confidence-analyzer-evidence) |
 | **Linker edge confidence** | Linker-recovered relationships across all four subcategories — Bridge/Protocol examples include JNI, IPC, HTTP | Match quality (literal vs. dynamic, naming convention vs. annotation) | 0.40–0.95 | [Below](#edge-confidence-linker-edges), details in [§7](#7-linkers) |
 | **Entrypoint confidence** | Whether a symbol is an entry point | Detection method (manifest, decorator, convention, naming) | 0.70–0.99 | [Below](#entrypoint-confidence-tiers), details in [§8](#8-entrypoint-detection) |
 
-All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v1`) identifies the scoring algorithm version. Consumers MUST default unknown `evidence_type` values to 0.30 (see [Appendix C](#appendix-c-schema-compatibility-contract)).
+All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v1`) identifies the scoring algorithm version. There is no normative default-mapping for unknown `evidence_type` values — the deterministic evidence→confidence model is planned but unimplemented ([ADR-0039](adr/0039-confidence-separation.md)); consumers should read `confidence` purely as detection reliability on the 0.0–1.0 scale.
 
 ### Edge confidence: analyzer evidence
 
-🟪 Deterministic mapping from structured evidence → confidence score. This covers edges produced by language analyzers (Tier 1 passes). Not yet implemented: no `EVIDENCE_CONFIDENCE_MATRIX` lookup, no contextual adjustments (`dynamic_dispatch`, `missing_types`, `has_type_annotation`). Edge default confidence is 0.85 in code (not the 0.30 specified below).
+🟪 **Planned, not implemented.** The intended model is a deterministic mapping
+from structured evidence `(language, evidence_type)` to a base confidence score,
+with contextual adjustments (`dynamic_dispatch`, `missing_types`,
+`has_type_annotation`). **None of this exists in code today** — there is no
+`(language, evidence_type)` lookup table, no contextual adjustment, and no
+normative default for unknown evidence types.
 
-```python
-# (language, evidence_type) → base_score
-EVIDENCE_CONFIDENCE_MATRIX = {
-    ("python", "ast_call_direct"): 0.95,
-    ("python", "ast_call_method"): 0.85,
-    ("python", "ast_getattr_call"): 0.60,
-    ("python", "import_static"): 0.95,
-    ("python", "import_dynamic"): 0.40,
-    ("javascript", "import_static"): 0.95,
-    ("javascript", "require_static"): 0.90,
-    ("javascript", "require_dynamic"): 0.40,
-    ("html", "script_src"): 0.80,
-    ("html", "script_inline"): 0.70,
-}
+**Current behaviour:** analyzer-produced edges carry per-producer *hardcoded*
+`confidence` values (hundreds of literal `confidence=` sites across the
+analyzers), and the modal value is the `Edge.confidence` dataclass default of
+**0.85**. Treat that as the contract until the derived model lands.
 
-def calculate_evidence_confidence(
-    lang: str,
-    evidence_type: str,
-    context: dict
-) -> float:
-    """
-    Calculate confidence from evidence.
-
-    Args:
-        lang: Language (from edge.meta.evidence_lang or src.language)
-        evidence_type: From edge.meta.evidence_type
-        context: Additional flags (dynamic_dispatch, has_type_annotation, etc.)
-
-    Returns:
-        float in [0.0, 1.0]
-    """
-    base = EVIDENCE_CONFIDENCE_MATRIX.get((lang, evidence_type), 0.30)
-
-    adjustments = 0.0
-    if context.get("dynamic_dispatch"):
-        adjustments -= 0.1
-    if context.get("missing_types"):
-        adjustments -= 0.05
-    if context.get("has_type_annotation"):
-        adjustments += 0.05
-
-    return min(1.0, max(0.0, base + adjustments))
-```
-
-**Note**: Base scores are heuristic baselines (to be validated against benchmark suite). New evidence types can be added in minor versions.
+The redesign — `confidence` as pure detection reliability with a
+`confidence_source` discriminator, and ranking adjustments relocated to a
+separate `rank_score` — is specified in
+[ADR-0039](adr/0039-confidence-separation.md). The registry-generated
+evidence→score table that will replace this section is a later stage of the
+confidence-derivation work; this section will be regenerated from the
+implemented model when it exists.
 
 ### Edge confidence: linker edges
 
-Linkers (Tier 2 passes — all four subcategories) produce their own confidence scores based on match quality. These scores are independent of the analyzer evidence matrix above. See [§7 Linkers](#7-linkers) for detection rules and limitations.
+Linkers (Tier 2 passes — all four subcategories) produce their own confidence scores based on match quality. These scores are independent of the analyzer-evidence scoring above. See [§7 Linkers](#7-linkers) for detection rules and limitations.
 
 | Linker | Match type | Confidence |
 |--------|-----------|------------|
@@ -1794,7 +1766,7 @@ This appendix defines the **technical contract** for output consumers: which fie
 
 **4. Confidence scoring:**
 - `confidence_model` field identifies the scoring algorithm (`hypergumbo-evidence-v1`)
-- Consumers MUST default unknown `evidence_type` to 0.30
+- `confidence` is detection reliability (0.0–1.0); there is no normative default for unknown `evidence_type` (the deterministic evidence→confidence model is planned, not implemented — [ADR-0039](adr/0039-confidence-separation.md))
 
 ### Extensible Contracts (can add in minor versions)
 
