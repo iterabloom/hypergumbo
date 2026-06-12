@@ -30,3 +30,18 @@
     tags: [dogfood_tranche_03]  # fd36
   remove:  # fd36
     tags: [dogfood_tranch_03]  # fd36
+- op: update  # 564c
+  at: '2026-06-12T03:09:07Z'  # 564c
+  by: agent  # 564c
+  actor: jgstern_agent  # 564c
+  clock: 3  # 564c
+  nonce: 564c  # 564c
+  set:  # 564c
+    status: done  # 564c
+- op: discuss  # 3d6c
+  at: '2026-06-12T03:09:07Z'  # 3d6c
+  by: agent  # 3d6c
+  actor: jgstern_agent  # 3d6c
+  clock: 4  # 3d6c
+  nonce: 3d6c  # 3d6c
+  message: "docs-prose:F2 (PR #4205): spec Edge.evidence_type section now cites the single real dynamic f-string evidence_type site (inheritance.py:368), not the stale 3-site list (websocket.py/inheritance.py/di_resolution.py). Verified: grep for an f-string evidence_type assignment across packages/*/src returns exactly 1 hit. The same stale list in test_schema.py docstring was corrected too."  # 3d6c

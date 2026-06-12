@@ -63,3 +63,18 @@
     tags: [dogfood]  # b02a
   remove:  # b02a
     tags: [dogfooding]  # b02a
+- op: update  # 543f
+  at: '2026-06-12T03:09:08Z'  # 543f
+  by: agent  # 543f
+  actor: jgstern_agent  # 543f
+  clock: 6  # 543f
+  nonce: 543f  # 543f
+  set:  # 543f
+    status: satisfied  # 543f
+- op: discuss  # dae6
+  at: '2026-06-12T03:09:08Z'  # dae6
+  by: agent  # dae6
+  actor: jgstern_agent  # dae6
+  clock: 7  # dae6
+  nonce: dae6  # dae6
+  message: "docs-prose:F2 (PR #4205): the --debug help text no longer references the removed ripgrep-vs-Python fallback path; new text is 'Enable debug logging (verbose internal diagnostics)'. Behavioral evidence: cli.py:5827 help string updated, so hypergumbo --debug --help no longer promises ripgrep-fallback visibility for code that no longer exists."  # dae6

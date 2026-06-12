@@ -59,3 +59,18 @@
     tags: [dogfood]  # e269
   remove:  # e269
     tags: [dogfooding]  # e269
+- op: update  # 78e4
+  at: '2026-06-12T03:09:08Z'  # 78e4
+  by: agent  # 78e4
+  actor: jgstern_agent  # 78e4
+  clock: 6  # 78e4
+  nonce: '78e4'  # 78e4
+  set:  # 78e4
+    status: done  # 78e4
+- op: discuss  # 8b81
+  at: '2026-06-12T03:09:08Z'  # 8b81
+  by: agent  # 8b81
+  actor: jgstern_agent  # 8b81
+  clock: 7  # 8b81
+  nonce: 8b81  # 8b81
+  message: "docs-prose:F2 (PR #4205): README (and the synced meta-package README) annotate --no-progress as sketch/run-only — the --progress flag is defined only on the sketch and run subparsers (cli.py:5921/6146), not a general flag."  # 8b81

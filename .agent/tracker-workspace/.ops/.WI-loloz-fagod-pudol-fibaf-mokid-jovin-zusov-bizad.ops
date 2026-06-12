@@ -62,3 +62,18 @@
     tags: [dogfood]  # 2991
   remove:  # 2991
     tags: [dogfooding]  # 2991
+- op: update  # 0d2a
+  at: '2026-06-12T03:09:08Z'  # 0d2a
+  by: agent  # 0d2a
+  actor: jgstern_agent  # 0d2a
+  clock: 6  # 0d2a
+  nonce: 0d2a  # 0d2a
+  set:  # 0d2a
+    status: done  # 0d2a
+- op: discuss  # 851e
+  at: '2026-06-12T03:09:08Z'  # 851e
+  by: agent  # 851e
+  actor: jgstern_agent  # 851e
+  clock: 7  # 851e
+  nonce: 851e  # 851e
+  message: "Verified during the docs-prose:F2 sweep (PR #4205): already addressed in code. routes --help documents -x/--exclude-tests as '(deprecated; excluded by default)' with an inline no-op-alias comment (cli.py:6446-6461), so the help is honest about the flag being a deprecated no-op and no longer misleads. No edit needed. The flag remains as a backward-compat dead-code alias intentionally."  # 851e

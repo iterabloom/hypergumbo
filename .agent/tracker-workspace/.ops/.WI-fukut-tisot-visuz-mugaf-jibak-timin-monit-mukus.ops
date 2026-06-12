@@ -49,3 +49,18 @@
     tags: [dogfood]  # fa07
   remove:  # fa07
     tags: [dogfooding]  # fa07
+- op: update  # 6839
+  at: '2026-06-12T03:09:28Z'  # 6839
+  by: agent  # 6839
+  actor: jgstern_agent  # 6839
+  clock: 5  # 6839
+  nonce: '6839'  # 6839
+  set:  # 6839
+    status: needs_human_review  # 6839
+- op: discuss  # 5c84
+  at: '2026-06-12T03:09:28Z'  # 5c84
+  by: agent  # 5c84
+  actor: jgstern_agent  # 5c84
+  clock: 6  # 5c84
+  nonce: 5c84  # 5c84
+  message: "docs-prose:F2 surfaced this but DEFERRED it for human approval. The fix is a one-line correction in a .agent/ playbook (self-analysis-dogfooding-playbook.md line 165), which states 'There is no module:name shorthand' — but the shorthand IS implemented: slice --entry accepts module:name (e.g. cli:main) per cli.py:6244-6246 help. PROPOSED CHANGE: replace the false denial with a note that the module:name shorthand is supported. AGENTS.md:256 carves out that a playbook .md is not a governance file, but the Security-Boundaries .agent/** rule is in tension and CODEOWNERS has no entry, so I am routing through the approval workflow to be safe rather than self-merge a .agent/ edit. APPROVE and I will land the one-liner in the next docs PR."  # 5c84

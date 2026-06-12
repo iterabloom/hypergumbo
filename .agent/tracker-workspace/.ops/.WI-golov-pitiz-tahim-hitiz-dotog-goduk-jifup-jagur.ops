@@ -60,3 +60,18 @@
   clock: 6  # 3973
   nonce: '3973'  # 3973
   message: "2026-06-10 design-interview ruling (ADR-0041, merged in PR #4181): a full spec section 14 rewrite is ordered as part of the supply-tier redesign (tier 2 = workspace-internal only, directness as a registered meta key, stdlib = tier 3 with an ecosystem axis). This item folds into that rewrite rather than patching the stale tier-2 text in place. Waits on the ADR PR and the section 14 rewrite."  # 3973
+- op: update  # 5ce0
+  at: '2026-06-12T03:09:08Z'  # 5ce0
+  by: agent  # 5ce0
+  actor: jgstern_agent  # 5ce0
+  clock: 7  # 5ce0
+  nonce: 5ce0  # 5ce0
+  set:  # 5ce0
+    status: done  # 5ce0
+- op: discuss  # db87
+  at: '2026-06-12T03:09:08Z'  # db87
+  by: agent  # db87
+  actor: jgstern_agent  # db87
+  clock: 8  # db87
+  nonce: db87  # db87
+  message: "docs-prose:F2 (PR #4205): spec §14 gains a Role-flags-not-tier note — the example/test/fuzz/bench patterns set is_test_file/is_example_file role flags independent of supply_chain_tier; a co-located test resolves to tier 1, not tier 2 (the patterns sit under the tier-2 detection subsection only because role-flagging runs in the same pass). Keeps INV-tisid from re-opening on a spec misread. Code ground truth: supply_chain.py routes tests to tier 1 with is_test=True."  # db87
