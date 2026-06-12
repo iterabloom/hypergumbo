@@ -87,6 +87,21 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **Self-healing tracker-op recovery (`.githooks/reference-transaction`).** Completes
+  the out-of-repo op journal (see the hypergumbo-tracker changelog for the journal +
+  `tracker recover` substrate) with automatic recovery: a `reference-transaction` git
+  hook fires `tracker recover` on every `committed` ref transaction. Because
+  `git reset --hard` and `git checkout` rewrite the worktree *before* updating the ref,
+  the hook runs *after* any uncommitted `.ops` are dropped and union-restores them from
+  the journal — so the working-tree-destroying commands that historically lost pending
+  tracker ops now self-heal with no manual step. Idempotent (a no-op when nothing was
+  lost; `recover` does no git operation, so it never re-fires the hook), non-blocking
+  (acts only on `committed`, degrades silently when the tracker CLI is absent, always
+  exits 0). Auto-discovered via the existing `core.hooksPath=.githooks` — no
+  `install-hooks` change. Honest gaps: `git clean`/`git stash` don't update refs so don't
+  auto-fire it (run `tracker recover` manually); `rm -rf .git` recovers after re-init.
+  Exercised end-to-end in `.githooks/test_hooks.sh` (a real `git reset --hard` triggers
+  the hook → recover).
 - **ADR-0043: Stage-Ordering Contract for `run_behavior_map` (Decision ADRs)** —
   records the target stage DAG for the analysis pipeline (`cli.py:run_behavior_map`)
   as an engineering artifact governed by the 2026-06-10 design rulings (ADRs

@@ -608,6 +608,133 @@ else
   echo "⚠️  Skipping stop hook tests: $STOP_HOOK not found"
 fi
 
+# 8b. reference-transaction hook tests (auto-recover dropped tracker ops)
+# ------------------------------------------------------------------------------
+# The reference-transaction hook fires `tracker recover` after a ref update so a
+# working-tree-rewriting command (git reset --hard / git checkout — both update
+# the worktree BEFORE the ref, so the hook fires after the ops are dropped) is
+# self-healed from the out-of-repo journal. This is a REQUIRED hook (committed to
+# .githooks/), so its absence is a failure, not a skip.
+
+REFTX_HOOK="$SCRIPT_DIR/reference-transaction"
+
+echo ""
+echo "========================================================"
+echo "REFERENCE-TRANSACTION HOOK TESTS"
+echo "========================================================"
+
+# TEST: the hook file exists (required hook).
+echo "--------------------------------------------------------"
+echo "TEST: reference-transaction hook file exists"
+if [[ -f "$REFTX_HOOK" ]]; then
+  echo "  ✅ PASS"
+  ((PASS_COUNT++))
+else
+  echo "  ❌ FAIL (required hook $REFTX_HOOK is missing)"
+  ((FAIL_COUNT++))
+fi
+
+if [[ -f "$REFTX_HOOK" ]]; then
+  REFTX_DIR="$(mktemp -d -t hypergumbo-reftx-test.XXXXXX)"
+
+  # Sandbox git repo: real reference-transaction hook installed via core.hooksPath,
+  # plus a stub scripts/tracker that records each invocation (and drops a sentinel
+  # on `recover`). The log/sentinel paths are baked in absolutely so the stub works
+  # regardless of the CWD git hands the hook.
+  git -C "$REFTX_DIR" init -q
+  git -C "$REFTX_DIR" config user.email test@example.com
+  git -C "$REFTX_DIR" config user.name "Test"
+  mkdir -p "$REFTX_DIR/.githooks" "$REFTX_DIR/scripts"
+  cp "$REFTX_HOOK" "$REFTX_DIR/.githooks/reference-transaction"
+  chmod +x "$REFTX_DIR/.githooks/reference-transaction"
+  git -C "$REFTX_DIR" config core.hooksPath .githooks
+
+  cat > "$REFTX_DIR/scripts/tracker" <<TRK
+#!/bin/bash
+echo "\$*" >> "$REFTX_DIR/.tracker-calls"
+[[ "\$1" == "recover" ]] && : > "$REFTX_DIR/.recover-ran"
+exit 0
+TRK
+  chmod +x "$REFTX_DIR/scripts/tracker"
+
+  reftx_calls() { cat "$REFTX_DIR/.tracker-calls" 2>/dev/null; }
+  reset_reftx_log() { rm -f "$REFTX_DIR/.tracker-calls" "$REFTX_DIR/.recover-ran"; }
+
+  # TEST: state=committed → hook invokes `tracker recover`.
+  echo "--------------------------------------------------------"
+  echo "TEST: reference-transaction committed → calls 'tracker recover'"
+  reset_reftx_log
+  ( cd "$REFTX_DIR" && echo "" | ./.githooks/reference-transaction committed ) >/dev/null 2>&1
+  if reftx_calls | grep -qx "recover"; then
+    echo "  ✅ PASS (recover invoked on committed)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (expected 'recover' on committed; got: $(reftx_calls))"
+    ((FAIL_COUNT++))
+  fi
+
+  # TEST: state=prepared → no tracker call.
+  echo "--------------------------------------------------------"
+  echo "TEST: reference-transaction prepared → no tracker call"
+  reset_reftx_log
+  ( cd "$REFTX_DIR" && echo "" | ./.githooks/reference-transaction prepared ) >/dev/null 2>&1
+  if [[ -z "$(reftx_calls)" ]]; then
+    echo "  ✅ PASS (no call on prepared)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (prepared should be a no-op; got: $(reftx_calls))"
+    ((FAIL_COUNT++))
+  fi
+
+  # TEST: state=aborted → no tracker call.
+  echo "--------------------------------------------------------"
+  echo "TEST: reference-transaction aborted → no tracker call"
+  reset_reftx_log
+  ( cd "$REFTX_DIR" && echo "" | ./.githooks/reference-transaction aborted ) >/dev/null 2>&1
+  if [[ -z "$(reftx_calls)" ]]; then
+    echo "  ✅ PASS (no call on aborted)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (aborted should be a no-op; got: $(reftx_calls))"
+    ((FAIL_COUNT++))
+  fi
+
+  # TEST: a real `git reset --hard` fires the hook (state=committed) → recover runs.
+  # This proves the wiring end-to-end: git reset --hard updates the worktree, THEN
+  # the ref, firing reference-transaction committed → our hook → tracker recover.
+  echo "--------------------------------------------------------"
+  echo "TEST: real 'git reset --hard' fires hook → recover runs"
+  git -C "$REFTX_DIR" commit -q --allow-empty -m c1
+  git -C "$REFTX_DIR" commit -q --allow-empty -m c2
+  reset_reftx_log   # clear the calls the two commits themselves triggered
+  git -C "$REFTX_DIR" reset --hard HEAD~1 -q >/dev/null 2>&1
+  if [[ -f "$REFTX_DIR/.recover-ran" ]]; then
+    echo "  ✅ PASS (reset --hard triggered hook → recover)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (reset --hard did not trigger recover)"
+    ((FAIL_COUNT++))
+  fi
+
+  # TEST: missing scripts/tracker → hook still exits 0 (must never block a git op).
+  echo "--------------------------------------------------------"
+  echo "TEST: missing scripts/tracker → hook exits 0 (degrades silently)"
+  REFTX_NOTRK="$(mktemp -d -t hypergumbo-reftx-notrk.XXXXXX)"
+  git -C "$REFTX_NOTRK" init -q
+  cp "$REFTX_HOOK" "$REFTX_NOTRK/reference-transaction"
+  chmod +x "$REFTX_NOTRK/reference-transaction"
+  if ( cd "$REFTX_NOTRK" && echo "" | ./reference-transaction committed ) >/dev/null 2>&1; then
+    echo "  ✅ PASS (hook exits 0 without scripts/tracker)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (hook should exit 0 even without scripts/tracker)"
+    ((FAIL_COUNT++))
+  fi
+  rm -rf "$REFTX_NOTRK"
+
+  rm -rf "$REFTX_DIR"
+fi
+
 # 9. Summary
 # ------------------------------------------------------------------------------
 echo ""

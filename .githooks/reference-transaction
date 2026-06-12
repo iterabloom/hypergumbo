@@ -1,0 +1,38 @@
+#!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# reference-transaction hook: self-heal dropped tracker ops after a ref update.
+#
+# Pending tracker .ops live in the git working tree until auto-sync commits them;
+# the out-of-repo journal (hypergumbo_tracker.journal) is their durable write-ahead
+# log. A working-tree-rewriting ref update can drop those uncommitted .ops:
+#   * git reset --hard <commit>  — resets the worktree, THEN updates the ref
+#   * git checkout <branch>      — updates the worktree, THEN updates HEAD
+# In both, git rewrites the worktree BEFORE the ref transaction commits, so this
+# hook — firing on the "committed" state — runs AFTER the ops are dropped and can
+# restore them. It calls `tracker recover`, which union-restores journalled ops
+# back into the worktree .ops files. Idempotent: a no-op when nothing was lost
+# (recover does no git operation, so it never re-fires this hook).
+#
+# Best-effort and non-blocking by construction:
+#   * acts only on the "committed" state (skips "prepared" / "aborted");
+#   * degrades silently when the tracker CLI is absent (fresh clones before
+#     `pip install -e packages/hypergumbo-tracker`);
+#   * always exits 0 — it must never be able to fail the git operation it rides on.
+#
+# Known gaps (covered by the durable journal + a manual `tracker recover`, NOT by
+# this hook): `git clean` and `git stash` do not update refs, so they do not fire
+# this hook; after `rm -rf .git` recovery waits until the repo is re-init'd or
+# re-cloned (the journal data is still safe, keyed by the toplevel's abspath).
+
+state="$1"
+[[ "$state" == "committed" ]] || exit 0
+
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[[ -n "$root" ]] || exit 0
+cd "$root" || exit 0
+
+# Only when this repo ships the tracker wrapper (this hook is hypergumbo's own).
+if [[ -x ./scripts/tracker ]]; then
+  ./scripts/tracker recover >/dev/null 2>&1 || true
+fi
+exit 0
