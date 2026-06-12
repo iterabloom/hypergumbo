@@ -1,0 +1,22 @@
+- op: create  # 84ab
+  at: '2026-06-12T06:05:54Z'  # 84ab
+  by: agent  # 84ab
+  actor: jgstern_agent  # 84ab
+  clock: 1  # 84ab
+  nonce: 84ab  # 84ab
+  data:  # 84ab
+    kind: work_item  # 84ab
+    title: "Fail-open L3: contain any analyzer/linker worker crash (not just OSError file reads)"  # 84ab
+    status: todo_hard  # 84ab
+    priority: 2  # 84ab
+    parent:  # 84ab
+    tags:  # 84ab
+    - dogfood  # 84ab
+    - fail_open  # 84ab
+    - error_handling  # 84ab
+    isbefore: []  # 84ab
+    duplicate_of: []  # 84ab
+    not_duplicate_of: []  # 84ab
+    pr_ref:  # 84ab
+    description: "The cli-input:F4 fix (PR #4210, WI-madal) closed the L1 leaf reads\n(py.py:2169 analyzer read, repo_fingerprint.py:117 _hash_file_content) and\nthe L2 default-path fingerprint prepass — i.e. the OSError/PermissionError\nfile-read class on the primary read path. The L3 layer remains: ANY\nanalyzer/linker worker that lets ANY exception (not just OSError) escape is\nstill fatal to the whole run, voiding §17's partial-results guarantee.\n\nConcrete residual sites (from the cli-input:F4 5-lens review):\n\n1. Orchestrator join — all_analyzers.py:230 wraps `future.result()` with NO\n   try/except. Any analyzer raising any exception aborts the run.\n2. Parallel-linker join — linkers/registry.py:755 same unguarded\n   `future.result()` (and the sequential path at 719-721).\n3. Non-OSError post-parse crash — py.py:_extract_file_analysis guards only\n   read_text()+ast.parse() (py.py:2172-2185); all symbol extraction from\n   ~2186 onward runs unguarded, so an AST-walk bug (AttributeError /\n   KeyError / RecursionError — csharp.py switched to iterative traversal\n   specifically to avoid RecursionError) propagates through site 1 and is\n   fatal on the DEFAULT path.\n4. Pass-2 TOCTOU re-reads — ruby.py:3001 and c.py:1020 re-read the same\n   file with a bare `read_bytes()` and no try, while the adjacent\n   Pass-2b/2c/2d blocks DO `except (OSError, IOError)`. Persistent chmod-000\n   is unreachable (Pass-2 iterates only over files that survived Pass-1's\n   guarded read), so this is TOCTOU-only — but it is the exact\n   \"symbols pass guards, later pass re-reads unguarded\" shape WI-madal is\n   about. Fix: cache Pass-1 bytes (what Python does) or add\n   `except OSError: continue`.\n5. py.py:1083 (_resolve_imported_string_constant) reads under the same\n   narrow `except (SyntaxError, UnicodeDecodeError)  # pragma: no cover`\n   tuple that WI-madal widened at py.py:2175. Reachable only via an\n   APIRouter prefix= imported-constant pointing at an unreadable module.\n\nContainment design: when a worker crash is caught, set\n`analysis_incomplete: true` + add a `warnings[]` entry per §17 \"Analyzer\ncrashes\", and log the stack trace. NEITHER mechanism exists today —\n`analysis_incomplete` is never assigned True anywhere under packages/*/src\n(only the schema.py default False), and there is no `.hypergumbo/error.log`\nwriter. Spec §17 \"Analyzer crashes\" (docs/hypergumbo-spec.md:1563-1566) is\nmarked 🟩 (implemented) for both, which is false; re-mark honestly when this\nlands. The completeness-signaling coherence is tracked separately under\nWI-zafid (analysis_incomplete never trips / partial_results_reason set while\nflag false).\n\nBuilds on WI-madal (L1+L2 done, PR #4210). Relates to WI-zafid (signaling\ncoherence) and WI-himas-gohif (META: top-level graceful CLI handler, F5 —\ndistinct: that makes the crash graceful, this keeps it fail-OPEN with partial\nJSON). Surfaced by the cli-input:F4 review; this is the explicitly-deferred\nL3 scope WI-madal's discussion flagged as the structurally-complete fix."  # 84ab
+    fields: {}  # 84ab

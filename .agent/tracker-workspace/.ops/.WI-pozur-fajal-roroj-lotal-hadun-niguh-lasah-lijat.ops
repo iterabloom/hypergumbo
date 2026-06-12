@@ -1,0 +1,28 @@
+- op: create  # 260f
+  at: '2026-06-12T06:53:53Z'  # 260f
+  by: agent  # 260f
+  actor: jgstern_agent  # 260f
+  clock: 1  # 260f
+  nonce: 260f  # 260f
+  data:  # 260f
+    kind: work_item  # 260f
+    title: "Implement the run_behavior_map stage-ordering contract (ADR-0043)"  # 260f
+    status: todo_hard  # 260f
+    priority: 2  # 260f
+    parent: META-jalur-mikob-vatub-gagam-lomib-rojud-madip-rafil  # 260f
+    tags:  # 260f
+    - run_lifecycle  # 260f
+    - stage_ordering  # 260f
+    isbefore: []  # 260f
+    duplicate_of: []  # 260f
+    not_duplicate_of: []  # 260f
+    pr_ref:  # 260f
+    description: "Decision artifact: ADR-0043 (Stage-Ordering Contract for run_behavior_map).\nThis WI tracks the IMPLEMENTATION of the contract — the ADR fixes ORDER and\nnames the invariants; this item carries the code, coordinated across the ~10\nfamilies that touch the run_behavior_map stage order (seam (a),\ncli.py:7679-8400).\n\nTarget DAG (per ADR-0043 §1): COLLECT -> EARLY-RELATIVIZE -> IDEMPOTENT META\nSWEEP -> FILTER-TO-FINAL-NODE-SET -> TERMINAL SYNTHESIS + EDGE FINALIZATION ->\nRANK + FINALIZE + SERIALIZE. The five conflict resolutions:\n- C1 (§7): two-invocation validation against one predicate set (pre-filter\n  ratchet + post-filter referential-integrity in finalize) with\n  denominator_scope tagging. Pre-filter pass is validator:F3 (deferred).\n- C2 (§4): tier+noise filtering precedes boundary synthesis + edge\n  finalization (closes the post-filter dangling-src class).\n- C3 (§5): noise-filter exemption predicate for entrypoint-bearing symbols.\n- C4 (§2): early-relativize is total (rewrites meta-id keys incl. handler_ref)\n  with the post-condition \"no stage after early-relativize emits an absolute\n  path\"; a validator predicate fails on any downstream absolute path.\n- C5 (§6): one finalize stage as the single pre-serialization reconcile point\n  (subsumes the repo_fingerprint + skipped-files stamps); projections become\n  consumers via a shared re-derive helper; closure gate = serialization\n  round-trip property test.\n\nSequencing: this reorder OWNS seam (a) but sequences AFTER identity's seam-(b)\nscope-stack rewrite (per strategy line 113) — all other families rebase\nadditively. The finalize stage itself is carried by run-lifecycle:F1 (the\nMETA-jalur finalize carrier) and co-designed with projection-finalize +\ndeclared-fields + confidence BEFORE any implements independently. Do NOT\nover-specify the finalize helper's internal API here.\n\nCloses META-jalur (with META-hufaz run_signature + WI-mipul override-analyze\nstamping routed through the finalize stage) when run_signature, edge\nfinalization, validation, and compact members all route through the one\nfinalize stage with a serialization round-trip property test passing."  # 260f
+    fields: {}  # 260f
+- op: discuss  # d8c5
+  at: '2026-06-12T07:20:37Z'  # d8c5
+  by: agent  # d8c5
+  actor: jgstern_agent  # d8c5
+  clock: 2  # d8c5
+  nonce: d8c5  # d8c5
+  message: "Decision artifact landed: ADR-0043 (Stage-Ordering Contract for run_behavior_map), PR #4212. The contract — target six-phase DAG + the five conflict resolutions C1-C5 — is now recorded and indexed in docs/adr/README.md. Adversarially reviewed (3 lenses vs cli.py + the rulings; ship_with_nits): all four ordering defects C1-C4 and the five C5 finalizers were code-verified against the live run_behavior_map; §7 was corrected to distinguish the existing validate_ir STAGE (the C1 defect) from ADR-0037's not-yet-implemented referential-integrity/FK predicate. This WI now carries the IMPLEMENTATION (Wave 2): the reorder owns seam (a) and sequences AFTER identity's seam-(b) scope-stack rewrite; the finalize stage is carried by run-lifecycle:F1 and co-designed before its consumers implement. META-jalur stays violated until run_signature, edge finalization, validation, and the compact/budget projections all route through the one finalize stage with a serialization round-trip property test passing (ADR-0043 §6/§8)."  # d8c5

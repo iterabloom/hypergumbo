@@ -1,0 +1,24 @@
+- op: create  # ef71
+  at: '2026-06-12T20:58:19Z'  # ef71
+  by: agent  # ef71
+  actor: jgstern_agent  # ef71
+  clock: 1  # ef71
+  nonce: ef71  # ef71
+  data:  # ef71
+    kind: invariant  # ef71
+    title: "Pending tracker ops are never permanently lost by a working-tree git command (durable journal + self-healing recovery)"  # ef71
+    status: satisfied  # ef71
+    priority: 1  # ef71
+    parent:  # ef71
+    tags:  # ef71
+    - durability  # ef71
+    - tracker  # ef71
+    - ops_journal  # ef71
+    isbefore: []  # ef71
+    duplicate_of: []  # ef71
+    not_duplicate_of: []  # ef71
+    pr_ref:  # ef71
+    description: "INVARIANT. A recorded tracker op (an append to a worktree `.ops` file) must never be PERMANENTLY lost by any in-repo git command. Pending ops live in the working tree until auto-sync commits them, which historically made them collateral for working-tree-destroying commands (`git reset --hard`, `git checkout`, `git clean`) — a `reset --hard origin/dev` post-merge sync once discarded a human's in-flight approval messages on WI-fukut-tisot.\n\nSATISFIED structurally (not by a \"don't run that command\" rule), across the durability chain (merged on selfh under failover; repatriate to Codeberg on disengage):\n- PR1 (bf14e9ebb4): out-of-repo write-ahead journal at `~/hypergumbo_lab_notebook/tracker-ops-journal/<sha256(repo-toplevel)[:12]>/` (override `HYPERGUMBO_TRACKER_JOURNAL_ROOT`). Every op is mirror-appended INSIDE Store's existing per-file flock to a location git cannot see, so no in-repo git command can lose the DATA. Adds `tracker recover` (op-block union-restore).\n- PR2 (fc65b6e911): one canonical op-block restore primitive shared by `recover` and `do_sync`; corrected an earlier misdiagnosis (the line-level union was never corrupting the real format — nonce-on-every-line makes it equivalent).\n- PR4 (172ddb093c): self-healing — the `.githooks/reference-transaction` hook runs `tracker recover` on every \"committed\" ref transaction. `reset --hard` and `checkout` rewrite the worktree BEFORE updating the ref, so the hook fires AFTER the ops are dropped and restores them automatically.\n- PR5 (e5f55c34be): `cli.py` `__main__` guard. Found during validation: without it, `scripts/tracker`'s `python -m hypergumbo_tracker.cli` fallback (used when the `hypergumbo-tracker` console script is not on PATH) silently no-op'd — which would have made the recovery hook a silent no-op in those environments. Now dispatches.\n\nBEHAVIORAL EVIDENCE (closure-evidence discipline). Live end-to-end repro this session: a real `git reset --hard` drops a pending `.ops` written to both the worktree and the journal; with the real `scripts/tracker` wrapper the hook restores it (observed: RESTORED). Reproduced for BOTH wrapper paths — the console script AND the `-m` fallback after PR5. Production-path tests: `test_hooks.sh` (a real `git reset --hard` fires the hook), `test_journal.py` (recover restores after reset --hard / clean), `test_cli.py::TestModuleEntrypoint` (`-m` dispatches recover).\n\nSCOPE (explicit auto-heal coverage — no weasel words):\n- AUTO-healed (hook fires, because they update refs): `git reset --hard`, `git checkout`.\n- DATA-durable but MANUAL recover (hook does NOT fire — no ref update): `git clean`, `git stash`. The journal retains the data; run `tracker recover` after these. Not automatic.\n- After `rm -rf .git`: data still safe under the journal root (keyed by toplevel abspath); recover once the repo is re-init'd / re-cloned.\n\nRelated open gap: the recover<->concurrent-Store-append flock race (tracked as a separate, narrow, P4 item)."  # ef71
+    fields:  # ef71
+      statement: "A recorded tracker op (a worktree .ops append) is never permanently lost by any in-repo git command (reset --hard, checkout, clean, stash, rm -rf .git)."  # ef71
+      root_cause: "Pending ops lived only in the resettable git working tree with no durable copy outside it, so working-tree-destroying git commands silently discarded them."  # ef71
