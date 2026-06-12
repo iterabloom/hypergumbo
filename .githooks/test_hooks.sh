@@ -750,7 +750,129 @@ TRK
   fi
   rm -rf "$REFTX_NOTRK"
 
+  # TEST: GIT_REFLOG_ACTION=merge → skip recover (a constructive merge/pull/rebase
+  # brings ops rather than dropping them; recover would restore a journalled op
+  # untracked and abort the merge's own ff).
+  echo "--------------------------------------------------------"
+  echo "TEST: reference-transaction committed + GIT_REFLOG_ACTION=merge → skips recover"
+  reset_reftx_log
+  ( cd "$REFTX_DIR" && echo "" | GIT_REFLOG_ACTION="merge selfh/dev" ./.githooks/reference-transaction committed ) >/dev/null 2>&1
+  if [[ -z "$(reftx_calls)" ]]; then
+    echo "  ✅ PASS (recover skipped for merge reflog action)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (merge reflog action should skip recover; got: $(reftx_calls))"
+    ((FAIL_COUNT++))
+  fi
+
+  # TEST: stdin lists only remote-tracking refs → skip recover (a fetch never
+  # drops working-tree ops, so there is nothing to recover).
+  echo "--------------------------------------------------------"
+  echo "TEST: reference-transaction committed + only remote-tracking refs → skips recover"
+  reset_reftx_log
+  ( cd "$REFTX_DIR" && printf '%s %s %s\n' 0000 1111 refs/remotes/selfh/dev | env -u GIT_REFLOG_ACTION ./.githooks/reference-transaction committed ) >/dev/null 2>&1
+  if [[ -z "$(reftx_calls)" ]]; then
+    echo "  ✅ PASS (recover skipped for fetch — only remote-tracking refs)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (remote-tracking-only update should skip recover; got: $(reftx_calls))"
+    ((FAIL_COUNT++))
+  fi
+
+  # TEST: a LOCAL ref update (refs/heads) with no merge/pull/rebase reflog action
+  # still recovers — preserves the reset --hard durability path.
+  echo "--------------------------------------------------------"
+  echo "TEST: reference-transaction committed + local refs/heads → still recovers"
+  reset_reftx_log
+  ( cd "$REFTX_DIR" && printf '%s %s %s\n' 0000 1111 refs/heads/dev | env -u GIT_REFLOG_ACTION ./.githooks/reference-transaction committed ) >/dev/null 2>&1
+  if reftx_calls | grep -qx "recover"; then
+    echo "  ✅ PASS (local ref update still recovers — reset --hard path intact)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (local ref update must still recover; got: $(reftx_calls))"
+    ((FAIL_COUNT++))
+  fi
+
   rm -rf "$REFTX_DIR"
+fi
+
+# 8c. post-checkout hook tests (branch checkout self-heals dropped tracker ops)
+# ------------------------------------------------------------------------------
+# `git checkout <branch>` retargets HEAD as a SYMBOLIC ref, which does NOT fire
+# `reference-transaction` — so the reference-transaction hook can't self-heal a
+# checkout that drops pending ops. post-checkout fires after a branch switch and
+# closes that gap. Only on branch checkouts ($3 == 1), and skipped while the
+# tracker's own reconciliation holds the recover-disabled marker.
+
+PCO_HOOK="$SCRIPT_DIR/post-checkout"
+
+echo ""
+echo "========================================================"
+echo "POST-CHECKOUT HOOK TESTS"
+echo "========================================================"
+
+if [[ -f "$PCO_HOOK" ]]; then
+  PCO_DIR="$(mktemp -d -t hypergumbo-pco-test.XXXXXX)"
+  git -C "$PCO_DIR" init -q
+  mkdir -p "$PCO_DIR/.githooks" "$PCO_DIR/scripts"
+  cp "$PCO_HOOK" "$PCO_DIR/.githooks/post-checkout"
+  chmod +x "$PCO_DIR/.githooks/post-checkout"
+  git -C "$PCO_DIR" config core.hooksPath .githooks
+
+  cat > "$PCO_DIR/scripts/tracker" <<TRK
+#!/bin/bash
+[[ "\$1" == "recover" ]] && : > "$PCO_DIR/.recover-ran"
+exit 0
+TRK
+  chmod +x "$PCO_DIR/scripts/tracker"
+
+  pco_ran() { [[ -f "$PCO_DIR/.recover-ran" ]]; }
+  reset_pco() { rm -f "$PCO_DIR/.recover-ran"; }
+
+  # TEST: branch checkout (flag 1) → recover runs.
+  echo "--------------------------------------------------------"
+  echo "TEST: post-checkout branch switch (flag=1) → calls 'tracker recover'"
+  reset_pco
+  ( cd "$PCO_DIR" && ./.githooks/post-checkout 0000000 1111111 1 ) >/dev/null 2>&1
+  if pco_ran; then
+    echo "  ✅ PASS (recover invoked on branch checkout)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (branch checkout should self-heal via recover)"
+    ((FAIL_COUNT++))
+  fi
+
+  # TEST: file checkout (flag 0) → no recover (`git checkout -- file`).
+  echo "--------------------------------------------------------"
+  echo "TEST: post-checkout file checkout (flag=0) → no recover"
+  reset_pco
+  ( cd "$PCO_DIR" && ./.githooks/post-checkout 0000000 1111111 0 ) >/dev/null 2>&1
+  if ! pco_ran; then
+    echo "  ✅ PASS (no recover on file checkout)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (file checkout must not trigger recover)"
+    ((FAIL_COUNT++))
+  fi
+
+  # TEST: branch checkout + recover-disabled marker → skip recover.
+  echo "--------------------------------------------------------"
+  echo "TEST: post-checkout branch switch + recover-disabled marker → skips recover"
+  reset_pco
+  touch "$PCO_DIR/.git/tracker-recover-disabled"
+  ( cd "$PCO_DIR" && ./.githooks/post-checkout 0000000 1111111 1 ) >/dev/null 2>&1
+  if ! pco_ran; then
+    echo "  ✅ PASS (recover skipped while marker present)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (marker should suppress recover on checkout)"
+    ((FAIL_COUNT++))
+  fi
+  rm -f "$PCO_DIR/.git/tracker-recover-disabled"
+
+  rm -rf "$PCO_DIR"
+else
+  echo "⚠️  Skipping post-checkout tests: $PCO_HOOK not found"
 fi
 
 # 9. Summary

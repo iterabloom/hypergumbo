@@ -5,6 +5,12 @@
 # After branch switches or file checkouts:
 # 1. Repair pytest shims (ADR-0010)
 # 2. Repair .agent/ group permissions for two-user setup (WI-bujaz)
+# 3. Self-heal tracker ops a branch switch may have dropped (durability):
+#    `git checkout <branch>` retargets HEAD as a SYMBOLIC ref, which does NOT
+#    fire reference-transaction, so this hook is the only one that can recover
+#    checkout-dropped ops from the out-of-repo journal.
+#
+# Args: $1 prev-HEAD, $2 new-HEAD, $3 branch-flag (1 = branch checkout, 0 = file).
 
 # Run in repo root
 cd "$(git rev-parse --show-toplevel)" || exit 0
@@ -20,4 +26,12 @@ if [[ -f "$HOOKS_DIR/repair-agent-perms.sh" ]]; then
     # shellcheck source=repair-agent-perms.sh
     source "$HOOKS_DIR/repair-agent-perms.sh"
     repair_agent_perms "$(pwd)"
+fi
+
+# Self-heal tracker ops dropped by a branch switch (only branch checkouts,
+# $3 == 1, not `git checkout -- <file>`), skipped while the tracker's own
+# reconciliation (do_sync / auto-pr) holds the recover-disabled marker. recover
+# is idempotent and a no-op when nothing was dropped.
+if [[ "${3:-0}" == "1" && ! -f .git/tracker-recover-disabled && -x ./scripts/tracker ]]; then
+    ./scripts/tracker recover >/dev/null 2>&1 || true
 fi

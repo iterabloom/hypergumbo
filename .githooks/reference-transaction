@@ -44,6 +44,33 @@ if [[ -f .git/tracker-recover-disabled ]]; then
   exit 0
 fi
 
+# Skip CONSTRUCTIVE/reconciling operations that bring ops rather than drop them.
+# recover would restore a journalled-but-uncommitted op as an UNTRACKED file
+# mid-operation and abort the merge/ff that is about to commit it; these
+# operations never drop pending working-tree ops, so there is nothing to recover.
+# reset --hard and checkout update local refs with no merge/pull/rebase reflog
+# action (and a non-remote ref), so they fall through and still self-heal.
+#   * merge / pull / rebase — named by GIT_REFLOG_ACTION (covers `git pull`).
+case "${GIT_REFLOG_ACTION:-}" in
+  merge*|pull*|rebase*) exit 0 ;;
+esac
+#   * fetch — updates ONLY remote-tracking refs. The transaction's ref list is on
+#     stdin (`<old> <new> <ref>` per line); if every updated ref is remote-tracking
+#     this is a fetch, so skip. (No stdin / a local ref → fall through and recover.)
+only_remote=1
+saw_ref=0
+while read -r _old _new _refname; do
+  [[ -z "${_refname:-}" ]] && continue
+  saw_ref=1
+  case "$_refname" in
+    refs/remotes/*) ;;
+    *) only_remote=0 ;;
+  esac
+done
+if [[ "$saw_ref" == 1 && "$only_remote" == 1 ]]; then
+  exit 0
+fi
+
 # Only when this repo ships the tracker wrapper (this hook is hypergumbo's own).
 if [[ -x ./scripts/tracker ]]; then
   ./scripts/tracker recover >/dev/null 2>&1 || true
