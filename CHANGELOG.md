@@ -12,6 +12,27 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **`stable_id_scheme` version-history backfill (Decision ADRs, bump-calendar T0)** —
+  `docs/hypergumbo-spec.md` asserted `stable_id_scheme = hypergumbo-stableid-v2`
+  at three sites while the shipped value is `v5` (`schema.py:75`). Backfilled the
+  full, git-verified transition chain `v1 → v2 → v3 → v4 → v5`, each entry naming
+  its driver commit + ADR/invariant ref + date, the hash-basis delta, and the
+  measured collision impact recovered from the commit record: v2→v3
+  (`9f943e55fc` / INV-fusus, `class_body_sig`, 91% same-module collision); v3→v4
+  (`2d62c818bf` / INV-zudob, file identity folded into top-level ids, 18.94%
+  cross-module collision); v4→v5 (`ea0154e54f` / INV-bazij, `name` +
+  `qualified_name`, 60.2% baseline collision). Recorded the **v5 contract
+  rebrand** (`stable_id` survives body edits but **not** rename/move — rename
+  tracking is now `fingerprint`/`shape_id`'s job per ADR-0035 §2; `canonical_name`
+  is gone per ADR-0032) and a forward note that ADR-0035's `v6` is defined but
+  **not yet emitted**. Updated the two prose "current value" assertions and the
+  example-JSON `stable_id_scheme` to `v5`. Also corrected ADR-0014's amendment
+  chain, which omitted the real, shipped **v4** (`2d62c818bf` set
+  `STABLE_ID_SCHEME = "hypergumbo-stableid-v4"`); the spec history is now the
+  authoritative chain record. Precondition T0 of the identity bump calendar
+  (never bump a scheme onto an undocumented chain); resolves WI-foful, WI-vibag.
+  Documentation only — no behavioural change.
+
 - **ADR supersession hygiene** — amendment banners with per-section
   supersession tables on the two partially-superseded ADRs (0014 Generalized
   Symbol Identity, 0015 Dataflow Access Modes), recording which sections

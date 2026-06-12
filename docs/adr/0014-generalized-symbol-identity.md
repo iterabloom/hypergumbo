@@ -14,8 +14,10 @@ Superseded by: ADR-0035 (partial — see amendment table)
 > (Phase 6 PR3) already added `name` + `qualified_name` to the hash basis — an
 > amendment several citers reference as "ADR-0014's Phase-6 amendment" but
 > which was never written into this file until now (scheme history:
-> v1 → v2 [§5] → v3 [§5a] → v5 [Phase 6 PR3, name/qualified_name] → v6
-> [ADR-0035]; WI-foful's spec backfill owns the full chain record) — and
+> v1 → v2 [§5] → v3 [§5a] → v4 [INV-zudob, file identity] → v5
+> [Phase 6 PR3, name/qualified_name] → v6 [ADR-0035]; the full chain is now
+> recorded in the spec's `stable_id_scheme` version history, WI-foful's
+> backfill) — and
 > ADR-0035 §1 supersedes the formula again with full scope-chain folding at
 > v6. Rename-tracking is now the job of the content hashes
 > (`fingerprint`/`shape_id`), per ADR-0035 §2. Not all of this document dies:
@@ -53,8 +55,9 @@ precedence rule fold into the spec identity-fields section or an ADR-0035
 §3/§4 amendment after the path-anchoring audit decides their final formulas;
 §6 folds into `docs/grammars/vendor-sync.md` plus the spec's scheme-versioning
 section (spec:1838-1845); dead-section history (§2 formula, §5, §5a, the
-v1→v2→v3 bumps) is owned by WI-foful's backfill. **Until then, this document
-remains the authority for its in-force sections.**
+v1→v5 bumps) is recorded in the spec's `stable_id_scheme` version history
+(WI-foful's backfill). **Until then, this document remains the authority for
+its in-force sections.**
 
 ## Context
 
