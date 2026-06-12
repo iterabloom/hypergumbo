@@ -1,0 +1,23 @@
+- op: create  # 8b4e
+  at: '2026-06-12T00:59:51Z'  # 8b4e
+  by: agent  # 8b4e
+  actor: jgstern_agent  # 8b4e
+  clock: 1  # 8b4e
+  nonce: 8b4e  # 8b4e
+  data:  # 8b4e
+    kind: invariant  # 8b4e
+    title: "Java analyzer emits no imports edge for import declarations (analyzer-parity gap)"  # 8b4e
+    status: violated  # 8b4e
+    priority: 2  # 8b4e
+    parent: INV-jahiv-lugis-topum-totot-morin-somuv-pujoz-vijir  # 8b4e
+    tags:  # 8b4e
+    - analyzer_parity  # 8b4e
+    - emission_parity_g2  # 8b4e
+    isbefore: []  # 8b4e
+    duplicate_of: []  # 8b4e
+    not_duplicate_of: []  # 8b4e
+    pr_ref:  # 8b4e
+    description: "Surfaced by the emission-parity:F1 / G2 gate (packages/hypergumbo-core/tests/test_emission_parity_matrix.py). On the uniform injected fixture every mainstream analyzer emits >=1 imports edge except Java (edge_types==[calls]). Locked as a strict-xfail cell (java, edge_imports) in the G2 matrix; the ratchet XPASS-trips when the Java analyzer starts emitting import edges, pointing the maintainer here. Sibling of INV-golap/INV-loguk under the INV-jahiv analyzer-parity META."  # 8b4e
+    fields:  # 8b4e
+      statement: "The Java analyzer must emit an imports edge for each import declaration, at parity with every other mainstream analyzer; it currently emits zero. Verified on both a stdlib (import java.util.List) and a non-stdlib (import com.example.helper.Formatter) import — only calls edges are produced. C# emits 2 imports edges for using System, proving stdlib imports are edge-worthy in a sibling analyzer."  # 8b4e
+      root_cause: "The Java analyzer extracts call edges but never emits an imports edge for import declarations (java.py import handling produces no Edge of type=imports). Every other mainstream analyzer (python/javascript/typescript/go/rust/csharp/swift) emits >=1 imports edge on the same uniform fixture."  # 8b4e

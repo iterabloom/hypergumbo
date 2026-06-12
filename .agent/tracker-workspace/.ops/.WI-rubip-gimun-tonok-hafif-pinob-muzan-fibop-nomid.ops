@@ -30,3 +30,18 @@
     tags: [dogfood_tranche_04]  # 6605
   remove:  # 6605
     tags: [dogfood_tranch_04]  # 6605
+- op: update  # 67c4
+  at: '2026-06-12T01:45:18Z'  # 67c4
+  by: agent  # 67c4
+  actor: jgstern_agent  # 67c4
+  clock: 3  # 67c4
+  nonce: 67c4  # 67c4
+  set:  # 67c4
+    status: done  # 67c4
+- op: discuss  # f678
+  at: '2026-06-12T01:45:18Z'  # f678
+  by: agent  # f678
+  actor: jgstern_agent  # f678
+  clock: 4  # f678
+  nonce: f678  # f678
+  message: "Resolved by emission-parity:F1 / G2 gate (PR #4202, tests/test_emission_parity_matrix.py). WI-rubip core concern — substrate-derived matrices at n<=9 cannot separate analyzer-gap from construct-absent — is fixed by the gate INJECTED uniform fixtures: every language fixture provably contains a call and an import, so an empty edge_calls/edge_imports cell is unambiguously an analyzer gap. Live: edge_calls present for all 8 langs; edge_imports present for 7 (java is the documented INV-gojit hole). The methodology WI-rubip recommended (injected fixtures, never self-substrate counts) is now the standing gate."  # f678

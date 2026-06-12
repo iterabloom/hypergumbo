@@ -55,3 +55,10 @@
   clock: 5  # 6403
   nonce: '6403'  # 6403
   message: "Reopen: analyzer-parity is an ongoing invariant; current violations remain (WI-bujot is_exported None 100%; WI-fagab qualified_name misassigned; live run: bash cc 0/2, JS signature 2/5). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 6403
+- op: discuss  # d425
+  at: '2026-06-12T01:45:18Z'  # d425
+  by: agent  # d425
+  actor: jgstern_agent  # d425
+  clock: 6  # d425
+  nonce: d425  # d425
+  message: "emission-parity:F1 / G2 gate landed (PR #4202): tests/test_emission_parity_matrix.py is the standing per-(language, field/edge-type) parity enforcement this META called for — the missing audit gate named in root_cause. It LOCKS current emission with strict-xfail ratchets on the documented holes (python qualified_name=WI-fagab, java imports=INV-gojit, non-python entrypoint concepts=WI-tosul) so parity cannot regress silently; each Wave-3 emitter fix XPASS-trips the gate. STATUS STAYS VIOLATED: reading live emission the gate ratifies the invariant is currently violated in those cells — it operationalizes/ratchets the META, it does not satisfy it. Open children INV-golap/INV-loguk/INV-gilok + WI-fagab/WI-bujot/INV-gojit remain."  # d425

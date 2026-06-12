@@ -31,3 +31,10 @@
     tags: [dogfood]  # 2881
   remove:  # 2881
     tags: [dogfooding]  # 2881
+- op: discuss  # 8db0
+  at: '2026-06-12T01:45:42Z'  # 8db0
+  by: agent  # 8db0
+  actor: jgstern_agent  # 8db0
+  clock: 3  # 8db0
+  nonce: 8db0  # 8db0
+  message: "emission-parity:F1 / G2 gate (PR #4202) adds the entrypoint_concept row: only the Python analyzer emits entrypoint concepts (Symbol.meta concepts list / usage_contexts); js/ts/go/java/rust/csharp/swift all emit zero — locked as strict-xfail (the js/ts fixtures carry a top-level entrypoint idiom so the cell is falsifiable, not construct-absent). This is the upstream cause of the dead-code-maybe Python monoculture. The Wave-3 per-language EP-concept emission fix will XPASS-trip these 7 cells. Stays todo_hard."  # 8db0
