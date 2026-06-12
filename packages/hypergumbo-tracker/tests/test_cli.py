@@ -5695,3 +5695,46 @@ class TestSyncReminder:
         captured = capsys.readouterr()
         assert captured.err == ""
 
+
+class TestModuleEntrypoint:
+    """``python -m hypergumbo_tracker.cli`` must run ``main()`` (the __main__ guard).
+
+    Regression for a silent-failure bug: ``scripts/tracker``'s fallback path
+    ``exec python3 -m hypergumbo_tracker.cli "$@"`` (taken when the console
+    script is not on ``PATH``) silently did nothing — exit 0, no output, no
+    dispatch — because ``cli.py`` had no ``if __name__ == "__main__"`` guard, so
+    ``-m`` imported the module and exited without calling ``main()``. That made
+    the ``reference-transaction`` recovery hook a silent no-op in such
+    environments (and broke every tracker command routed through the fallback).
+    """
+
+    def test_dash_m_invocation_dispatches_recover(self, tmp_path: Path) -> None:
+        """``python -m hypergumbo_tracker.cli recover`` reaches ``_cmd_recover``.
+
+        A real subprocess is required: the bug is in module-as-``__main__``
+        execution, which an in-process ``main()`` call cannot exercise.
+        """
+        import sys
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(
+            ["git", "init"],  # noqa: S607
+            cwd=str(repo), capture_output=True, check=True,
+        )
+        env = dict(os.environ)
+        env["HYPERGUMBO_TRACKER_JOURNAL_ROOT"] = str(tmp_path / "journal")
+        result = subprocess.run(
+            [sys.executable, "-m", "hypergumbo_tracker.cli", "recover"],
+            cwd=str(repo), capture_output=True, text=True, env=env,
+        )
+        # Without the __main__ guard: exit 0, empty output, no dispatch.
+        # With it: _cmd_recover runs and reports "recover: nothing to restore".
+        assert result.returncode == EXIT_SUCCESS, (
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "recover" in result.stderr.lower(), (
+            f"expected recover output on stderr, got stdout={result.stdout!r} "
+            f"stderr={result.stderr!r}"
+        )
+

@@ -3471,3 +3471,14 @@ def textconv_main(argv: list[str] | None = None) -> None:
 
     print("\n".join(lines))
     raise SystemExit(0)
+
+
+# ``main`` already raises ``SystemExit`` for its own exit codes, so the guard
+# only needs to invoke it. Without this guard ``python -m hypergumbo_tracker.cli``
+# imports the module and exits 0 WITHOUT dispatching — which silently broke
+# ``scripts/tracker``'s ``-m`` fallback (taken when the ``hypergumbo-tracker``
+# console script is not on ``PATH``), including the reference-transaction
+# recovery hook. Exercised by test_cli.py::TestModuleEntrypoint via a real
+# subprocess; the guard line itself is unreachable in-process.
+if __name__ == "__main__":  # pragma: no cover
+    main()
