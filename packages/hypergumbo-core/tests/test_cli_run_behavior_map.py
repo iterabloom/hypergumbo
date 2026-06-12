@@ -364,3 +364,66 @@ def test_run_behavior_map_cbv_expansion(tmp_path: Path, monkeypatch: pytest.Monk
     ids = {n["id"] for n in data.get("nodes", [])}
     assert "python:views.py:0-0:GET /foo/:route" in ids
     assert "python:views.py:0-0:ANY /foo/:route" not in ids
+
+
+def test_run_behavior_map_tolerates_unreadable_file_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§17 / WI-madal (P0): an unreadable file must not abort the whole run.
+
+    This is the end-to-end regression for the fail-open containment. A
+    single chmod-000-style file is read at two pipeline stages — the
+    analyzer (``read_text``) and the repo-fingerprint (``read_bytes``) —
+    and before the fix either read raised ``PermissionError`` that escaped
+    to the top level and crashed ``run_behavior_map``. After the fix the
+    run emits valid partial JSON: the readable file is analyzed, the
+    fingerprint is still stamped, and the unreadable file is recorded in
+    ``limits.failed_files``.
+
+    Uses monkeypatch rather than ``chmod(0o000)`` so the test is
+    deterministic regardless of euid (``chmod`` does not deny root).
+    """
+    from hypergumbo_core.cli import run_behavior_map
+
+    (tmp_path / "good.py").write_text("def works():\n    pass\n")
+    (tmp_path / "bad.py").write_text("def also_works():\n    pass\n")
+
+    real_read_text = Path.read_text
+    real_read_bytes = Path.read_bytes
+
+    def deny_text(self: Path, *args: object, **kwargs: object) -> str:
+        if self.name == "bad.py":
+            raise PermissionError(13, "Permission denied")
+        return real_read_text(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    def deny_bytes(self: Path) -> bytes:
+        if self.name == "bad.py":
+            raise PermissionError(13, "Permission denied")
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_text", deny_text)
+    monkeypatch.setattr(Path, "read_bytes", deny_bytes)
+
+    out_path = tmp_path / "results.json"
+    run_behavior_map(
+        tmp_path, out_path, include_sketch_precomputed=False,
+    )
+
+    # Output is valid JSON and the readable file was analyzed.
+    data = json.loads(real_read_text(out_path))
+    assert len(data["nodes"]) == 1
+    assert data["nodes"][0]["name"] == "works"
+
+    # The fingerprint was still computed and stamped despite the unreadable
+    # file (proves the fail-open guard reached the non-git fingerprint walk).
+    runs = data["analysis_runs"]
+    assert runs
+    assert all(len(r["repo_fingerprint"]) == 64 for r in runs)
+
+    # §17: the unreadable file is surfaced in limits.failed_files.
+    py_failed = [
+        f for f in data["limits"]["failed_files"] if f["analyzer"] == "python"
+    ]
+    assert len(py_failed) == 1
+    assert py_failed[0]["path"].endswith("bad.py")
+    assert "PermissionError" in py_failed[0]["reason"]

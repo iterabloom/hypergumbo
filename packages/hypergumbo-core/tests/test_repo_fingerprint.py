@@ -303,3 +303,112 @@ class TestGitVsNonGitDivergence:
         fp_git = compute_repo_fingerprint(d_git)
 
         assert fp_non_git != fp_git
+
+
+# ---------------------------------------------------------------------------
+# Unreadable-file toleration (WI-madal / §17 fail-open)
+# ---------------------------------------------------------------------------
+
+
+class TestUnreadableFileToleration:
+    """A file that exists but cannot be read must not abort the fingerprint.
+
+    ``_hash_file_content`` is the single chokepoint where both the git and
+    non-git branches read file bytes, so guarding it there covers both with
+    one fail-open ``except OSError``. Tests force the read to fail via
+    monkeypatch rather than ``chmod(0o000)`` — ``chmod`` does not deny root
+    and CI may run as root, so a real-permission test would be euid-flaky.
+    """
+
+    def test_hash_file_content_returns_sentinel_when_unreadable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from hypergumbo_core.repo_fingerprint import (
+            _UNREADABLE_CONTENT_SENTINEL,
+            _hash_file_content,
+        )
+
+        f = tmp_path / "secret.py"
+        f.write_text("print('x')\n")
+
+        def boom(self: Path) -> bytes:
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(Path, "read_bytes", boom)
+        assert _hash_file_content(f) == _UNREADABLE_CONTENT_SENTINEL
+
+    def test_non_git_fingerprint_tolerates_unreadable_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / "ok.py").write_text("print('ok')\n")
+        (tmp_path / "bad.py").write_text("print('bad')\n")
+
+        real_read_bytes = Path.read_bytes
+
+        def deny_bad(self: Path) -> bytes:
+            if self.name == "bad.py":
+                raise PermissionError(13, "Permission denied")
+            return real_read_bytes(self)
+
+        monkeypatch.setattr(Path, "read_bytes", deny_bad)
+        fp = compute_repo_fingerprint(tmp_path)
+        assert isinstance(fp, str) and len(fp) == 64
+
+    def test_non_git_unreadable_fingerprint_is_deterministic(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two reads of the same unreadable-set produce the same fingerprint
+        — the sentinel is a fixed digest, so determinism is preserved."""
+        (tmp_path / "ok.py").write_text("print('ok')\n")
+        (tmp_path / "bad.py").write_text("print('bad')\n")
+
+        real_read_bytes = Path.read_bytes
+
+        def deny_bad(self: Path) -> bytes:
+            if self.name == "bad.py":
+                raise PermissionError(13, "Permission denied")
+            return real_read_bytes(self)
+
+        monkeypatch.setattr(Path, "read_bytes", deny_bad)
+        assert compute_repo_fingerprint(tmp_path) == compute_repo_fingerprint(tmp_path)
+
+    def test_git_fingerprint_tolerates_unreadable_dirty_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The git branch hashes dirty-file bytes through the same
+        ``_hash_file_content`` chokepoint, so the guard covers it too."""
+        _git(tmp_path, "init", "-q")
+        (tmp_path / "tracked.py").write_text("print('v1')\n")
+        _git(tmp_path, "add", "tracked.py")
+        _git(tmp_path, "commit", "-q", "-m", "init")
+        # Dirty the tracked file so it enters the dirty-file hashing path.
+        (tmp_path / "tracked.py").write_text("print('v2')\n")
+
+        real_read_bytes = Path.read_bytes
+
+        def deny_tracked(self: Path) -> bytes:
+            if self.name == "tracked.py":
+                raise PermissionError(13, "Permission denied")
+            return real_read_bytes(self)
+
+        monkeypatch.setattr(Path, "read_bytes", deny_tracked)
+        fp = compute_repo_fingerprint(tmp_path)
+        assert isinstance(fp, str) and len(fp) == 64
+
+    def test_sentinel_digest_is_pinned_to_scheme(self) -> None:
+        """Pin the sentinel's literal digest.
+
+        The sentinel feeds the repo_fingerprint, which is itself a cache-key
+        segment. Silently changing the sentinel byte-string would invalidate
+        every cache for a repo that contains an unreadable file — with zero
+        test failure, because the other tests compare against the imported
+        constant, not its value. Per spec line 392 a value-altering change to
+        the fingerprint must bump ``repo_fingerprint_scheme``
+        (``hypergumbo-repofp-v1``); this literal pin forces that coupling to be
+        a conscious, reviewed edit rather than an accidental cache wipe.
+        """
+        from hypergumbo_core.repo_fingerprint import _UNREADABLE_CONTENT_SENTINEL
+
+        assert _UNREADABLE_CONTENT_SENTINEL == (
+            "67d7acff712bc6477b6319b001dd00f0daf551b2c7c75705fc4fdc222becb4c2"
+        )

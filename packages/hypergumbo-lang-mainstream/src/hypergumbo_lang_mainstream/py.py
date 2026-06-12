@@ -2172,7 +2172,14 @@ def _extract_file_analysis(
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=SyntaxWarning)
             tree = ast.parse(source, filename=str(py_file))
-    except (SyntaxError, UnicodeDecodeError) as e:
+    except (SyntaxError, UnicodeDecodeError, OSError) as e:
+        # OSError covers PermissionError and transient I/O failures from
+        # read_text() — e.g. a chmod-000 or root-owned file encountered
+        # while scanning a tree. §17 / WI-madal: fail open — skip the
+        # unreadable file and record the reason in limits.failed_files
+        # rather than letting the exception escape and abort the whole run.
+        # ast.parse() performs no I/O, so broadening here only newly catches
+        # read errors, not anything from parsing.
         return None, f"{type(e).__name__}: {e}"
 
     symbols = []

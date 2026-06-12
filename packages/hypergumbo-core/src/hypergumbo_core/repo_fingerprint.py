@@ -112,9 +112,32 @@ def _run_git(args: list[str], cwd: Path) -> tuple[int, str]:
     return proc.returncode, proc.stdout
 
 
+# Fixed sentinel digest for files that exist but cannot be read (permission
+# denied, transient I/O error, or a TOCTOU race where the file vanished
+# between the directory walk and the read). §17 / WI-madal: fail open — an
+# unreadable file must not abort the whole fingerprint. The file's path is
+# already part of the ``(path, hash)`` pair the caller hashes, so a single
+# path-independent sentinel still records *which* file was unreadable while
+# keeping the fingerprint deterministic for a given unreadable-set. Readable
+# repos are byte-identical to before — only unreadable files take this path.
+_UNREADABLE_CONTENT_SENTINEL = hashlib.sha256(
+    b"\x00hypergumbo:unreadable-file\x00"
+).hexdigest()
+
+
 def _hash_file_content(path: Path) -> str:
-    """Return ``sha256`` of ``path``'s bytes as a 64-char hex digest."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """Return ``sha256`` of ``path``'s bytes as a 64-char hex digest.
+
+    Returns ``_UNREADABLE_CONTENT_SENTINEL`` when the bytes cannot be read
+    (``OSError`` — covers ``PermissionError`` and the ``FileNotFoundError``
+    from a walk/read TOCTOU race). This is the single chokepoint both the
+    git and non-git branches read through, so the fail-open guard lives
+    here once rather than at each call site.
+    """
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return _UNREADABLE_CONTENT_SENTINEL
 
 
 def _iter_non_git_files(repo_root: Path) -> list[Path]:

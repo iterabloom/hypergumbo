@@ -92,6 +92,58 @@ def test_run_skips_unicode_error_files(tmp_path: Path) -> None:
     assert "UnicodeDecodeError" in py_failed[0]["reason"]
 
 
+def test_run_skips_unreadable_permission_error_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """§17 / WI-madal: a file that exists but cannot be read (permission
+    denied, transient I/O error) must be skipped and recorded — not crash
+    the whole run.
+
+    The narrow ``except (SyntaxError, UnicodeDecodeError)`` let a
+    ``PermissionError`` raised by ``read_text()`` escape and abort the
+    entire analysis (the WI-madal P0). Broadening it to ``OSError`` routes
+    the failure into ``limits.failed_files`` like any other unparseable
+    file, so the run fails *open* — partial valid output rather than a
+    traceback.
+
+    Uses monkeypatch rather than ``chmod(0o000)`` so the test is
+    deterministic regardless of euid — ``chmod`` does not deny root and CI
+    may run as root.
+    """
+    good_file = tmp_path / "good.py"
+    good_file.write_text("def works():\n    pass\n")
+
+    # A normally-readable file whose *read* we force to fail, simulating an
+    # EACCES / transient-I/O condition without depending on the test's euid.
+    bad_file = tmp_path / "bad.py"
+    bad_file.write_text("def also_works():\n    pass\n")
+
+    real_read_text = Path.read_text
+
+    def deny_bad(self: Path, *args: object, **kwargs: object) -> str:
+        if self.name == "bad.py":
+            raise PermissionError(13, "Permission denied")
+        return real_read_text(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "read_text", deny_bad)
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    # The readable file is still analyzed; the run did not abort.
+    data = json.loads(out_path.read_text())
+    assert len(data["nodes"]) == 1
+    assert data["nodes"][0]["name"] == "works"
+
+    # §17: the unreadable file is recorded in limits.failed_files with the
+    # PermissionError reason so consumers can detect the partial analysis.
+    failed = data["limits"]["failed_files"]
+    py_failed = [f for f in failed if f["analyzer"] == "python"]
+    assert len(py_failed) == 1
+    assert py_failed[0]["path"].endswith("bad.py")
+    assert "PermissionError" in py_failed[0]["reason"]
+
+
 def test_run_analyzes_bom_prefixed_python_file(tmp_path: Path) -> None:
     """INV-kitot: a Python file with a UTF-8 BOM must be analyzed normally.
 

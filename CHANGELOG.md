@@ -160,6 +160,32 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### Error handling (fail-open)
+
+- **Unreadable source files no longer crash the run (cli-input:F4, P0 WI-madal)** —
+  a file that exists but cannot be read (permission denied, transient I/O, or a
+  walk/read TOCTOU race) raised `PermissionError` that escaped the analyzer's
+  narrow `except (SyntaxError, UnicodeDecodeError)` at the Python read site, was
+  re-raised through the orchestrator's `future.result()`, and aborted the whole
+  `run` with a traceback — violating §17's partial-results guarantee. The two
+  affected reads are now fail-open:
+  - the Python analyzer's file read (`py.py:_extract_file_analysis`) broadens its
+    catch to `OSError`, routing the unreadable file into `limits.failed_files[]`
+    with a `PermissionError: …` reason like any other unparseable file (§17
+    "parse errors" path); and
+  - the repo-fingerprint content hash (`repo_fingerprint._hash_file_content` —
+    the single chokepoint both the git and non-git branches read through) returns
+    a fixed sentinel digest on `OSError`, so the fingerprint still computes
+    deterministically. Readable repos are byte-identical to before.
+
+  Verified by a live `chmod 000` repro through the production CLI (exit 0, valid
+  JSON, one `failed_files` entry, fingerprint stamped) plus monkeypatch-driven
+  regression tests at both read sites and an end-to-end `run_behavior_map` test.
+  Scope note: whole-*analyzer* crash containment (the unguarded `future.result()`
+  joins → §17's `analysis_incomplete: true` + `warnings[]` path) is tracked
+  separately — patch 1 makes the Python analyzer catch its own read errors, so
+  that orchestrator-level path is not what this P0 exercises.
+
 #### Bakeoff infrastructure
 
 - **`resolve_workdir` prefix-isolates its session auto-discovery** (INV-fogat):
