@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Emission-parity python fixture.
+
+Uniform construct set (see tests/fixtures/emission-parity/README.md):
+import, documented callable with a branchy body (complexity > 1) that calls a
+helper, a helper callee, a class with a method, an exported public surface, and
+an entrypoint idiom (the ``__main__`` guard).
+"""
+import os
+
+
+def helper(value):
+    """Return a derived string."""
+    return os.getcwd() + str(value)
+
+
+def process(items, flag):
+    """Process items with branching."""
+    total = 0
+    if flag:
+        total += 1
+    if items:
+        total += len(items)
+    if total > 5:
+        total = 5
+    return helper(total)
+
+
+class Service:
+    """A small service."""
+
+    def run(self):
+        """Run the service."""
+        return process([1, 2, 3], True)
+
+
+if __name__ == "__main__":
+    Service().run()

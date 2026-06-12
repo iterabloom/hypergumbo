@@ -50,6 +50,35 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   a 24/66 = 36.4% None-stable_id cohort that the 4/42 non-null rate previously
   hid.)
 
+- **Analyzer emission-parity gate (emission-parity:F1 / G2, INV-jahiv +
+  WI-rubip + WI-litil + WI-tosul)** —
+  `tests/test_emission_parity_matrix.py`: a standing per-(language,
+  field/edge-type) matrix that locks which declared `Symbol`/`Edge` fields each
+  language analyzer actually emits, so analyzer-emission parity can no longer
+  regress silently (the analyzer-side complement of the G1 validator ratchet).
+  Eight mainstream languages (python, javascript, typescript, go, java, rust,
+  csharp, swift) × eight columns (`signature`, `qualified_name`, `is_exported`,
+  `docstring`, `complexity_nontrivial`, `edge_calls`, `edge_imports`,
+  `entrypoint_concept`), plus a `profile.languages`-vs-`analysis_runs` coverage
+  assertion. Two design decisions are load-bearing: **injected uniform
+  fixtures** (every language fixture carries the *same* construct set, so an
+  empty cell is an analyzer gap, never a construct-absent artifact — the
+  `WI-rubip` methodological fix), and **live-dataclass reads** (not serialized
+  JSON, which relocates fields like `is_exported` → `supply_chain.is_exported`
+  and produced the `WI-bujot` "100% None" probe artifact). Healthy cells are
+  hard locks; documented gaps are strict `xfail`s, so a Wave-3 emitter fix
+  XPASS-trips the gate and forces a flip to a lock — every emission fix strips
+  an xfail. The injected fixtures **falsify `WI-litil`** (every language
+  computes the branchy fixture's cyclomatic complexity as 4, not a hardcoded 1)
+  and surface a previously-unfiled, now-tracked parity gap (`INV-gojit`: the
+  Java analyzer emits no `imports` edge for any import declaration — verified
+  general on both stdlib and non-stdlib imports). The locked holes are Python
+  `qualified_name` (`WI-fagab`), Java imports (`INV-gojit`), and
+  entrypoint-concept emission outside Python (`WI-tosul`). The gate reads live
+  dataclasses (analyzer emission), so it does not by itself satisfy the
+  `INV-jahiv` parity invariant — it *operationalizes and ratchets* it, locking
+  the current holes until the Wave-3 emitter fixes land.
+
 - **Closure-evidence discipline (WI-dafun)** — a governance guard so that
   resolving a behavioral-invariant tracker item requires *behavioral* evidence
   (a live repro: command + observed exit code/stderr, or a production-path
