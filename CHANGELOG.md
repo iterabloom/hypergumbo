@@ -87,6 +87,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **ADR-0043: Stage-Ordering Contract for `run_behavior_map` (Decision ADRs)** —
+  records the target stage DAG for the analysis pipeline (`cli.py:run_behavior_map`)
+  as an engineering artifact governed by the 2026-06-10 design rulings (ADRs
+  0035–0042), not a new human decision. Six phases (collect → early-relativize →
+  idempotent meta sweep → filter-to-final-node-set → terminal synthesis + edge
+  finalization → rank/finalize/serialize) and five conflict resolutions for the
+  ~ten fix-families that share the stage-order seam: C1 two-invocation validation
+  with `denominator_scope` disclosure; C2 filter-before-boundary-synthesis (closes
+  the post-filter dangling-source class); C3 noise-filter exemption for
+  entrypoint-bearing symbols; C4 total early-relativize (rewrites id-bearing `meta`
+  keys, post-condition "no downstream absolute path"); C5 one finalize stage as the
+  single pre-serialization reconcile point (the `META-jalur` closure gate). The ADR
+  fixes order and names invariants; the code is deferred to the implementing fixes
+  (`run-lifecycle:F1`, `synthetic:F3`, `validator:F3`, `entrypoint:F4`), tracked
+  under a new META-jalur child (`WI-pozur`). Indexed in `docs/adr/README.md`.
+
 - **Docs-vs-argparse gate (docs-prose:F1 / G7, INV-rotup)** —
   `tests/test_cli_docs_prose_gate.py`: a standing gate that diffs CLI
   documentation against the live argparse parser — the structural fix for the
