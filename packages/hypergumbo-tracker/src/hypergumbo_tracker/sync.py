@@ -51,6 +51,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from hypergumbo_tracker.journal import _union_op_blocks
 from hypergumbo_tracker.sync_log import init_sync_log, write_log
 from hypergumbo_tracker.validation import validate_all
 
@@ -791,27 +792,6 @@ _OPS_PATHS = (
 AUTO_SYNC_DEFAULT_THRESHOLD = 80
 
 
-def _union_lines(target_content: str, backup_content: str) -> str:
-    """Order-preserving line-level union of two ``.ops`` file contents.
-
-    Mirrors ``cat target backup | awk '!seen[$0]++'`` from
-    ``scripts/lib/forgejo-api.sh`` (``_ops_union_restore_file``, WI-buhov).
-    Tracker ``.ops`` files are append-only union-merge CRDT logs
-    (``.gitattributes: merge=union``), so the lossless restore is to keep every
-    line from the current target, then append any backup line not already
-    present.  Idempotent when ``backup`` ⊆ ``target`` (returns the target
-    verbatim), so restoring an un-mutated file never rewrites it.
-    """
-    seen: set[str] = set()
-    out: list[str] = []
-    for content in (target_content, backup_content):
-        for line in content.splitlines():
-            if line not in seen:
-                seen.add(line)
-                out.append(line)
-    return "".join(f"{line}\n" for line in out)
-
-
 def _snapshot_ops_files(repo_root: Path) -> dict[Path, str]:
     """Capture the on-disk content of every tracker ops file under *repo_root*.
 
@@ -835,16 +815,27 @@ def _union_restore_ops(snapshot: dict[Path, str]) -> None:
     """Re-apply snapshotted ops content the post-sync cleanup discarded.
 
     For each captured file: if it still exists (reset to the sync-commit state
-    by ``checkout HEAD`` and the ff-only merge), union-append any snapshot lines
-    the merge lacks; if it was unlinked (a new item absent from the sync
-    commit), recreate it from the snapshot.  Idempotent for files not mutated
-    post-snapshot — the union returns the current content unchanged, so no
-    spurious rewrite occurs (INV-dalup).
+    by ``checkout HEAD`` and the ff-only merge), op-block-union-append any
+    snapshot ops the merge lacks; if it was unlinked (a new item absent from the
+    sync commit), recreate it from the snapshot.  Idempotent for files not
+    mutated post-snapshot — the union returns the current content unchanged, so
+    no spurious rewrite occurs (INV-dalup).
+
+    Uses the op-BLOCK union (:func:`journal._union_op_blocks`), the single
+    canonical restore primitive shared with the journal. It dedups whole ops
+    (the semantic unit of an append-only ``.ops`` log) rather than individual
+    lines. For the current format this is *equivalent* to the former line-level
+    union (``_union_lines``): ``_serialize_op`` stamps a per-op ``# <nonce>``
+    comment on every non-empty line (width set to ``sys.maxsize`` so no scalar
+    folds), so no line is shared across ops and a line-level dedup never
+    collides. Op-block is preferred only so that one primitive serves both the
+    journal restore and this sync restore — not because line-union corrupts the
+    real format (it does not).
     """
     for path, backup_content in snapshot.items():
         if path.exists():
             current = path.read_text()
-            merged = _union_lines(current, backup_content)
+            merged = _union_op_blocks(current, backup_content)
             if merged != current:
                 path.write_text(merged)
         else:

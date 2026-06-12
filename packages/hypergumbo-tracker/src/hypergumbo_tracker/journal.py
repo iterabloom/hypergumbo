@@ -34,14 +34,16 @@ Design properties:
   multiple clones of the same remote get distinct journals (no cross-clone op
   bleed).
 
-Recovery uses an **op-block** union (:func:`_union_op_blocks`), not a line-level
-one. Investigating this module surfaced a latent bug in the legacy line-level
-``sync._union_lines`` (and its forgejo-api.sh / do_merge twins): ``.ops`` ops
-share lines like ``by: agent`` / ``actor:``, so a global line-dedup strips those
-keys from every op after the first and corrupts the log. The unification
-follow-up (collapsing the three historical restorers onto one primitive) must
-adopt this op-block union, fixing that latent corruption in the sync paths too;
-the journal is the durable source all of them read from.
+Recovery uses an **op-block** union (:func:`_union_op_blocks`) — it dedups whole
+ops (the semantic unit of an append-only ``.ops`` log) rather than individual
+lines. For the current format this is *equivalent* to a line-level union:
+``store._serialize_op`` stamps a per-op ``# <nonce>`` comment on every non-empty
+line (with scalar folding disabled via ``width=sys.maxsize``), so every line is
+unique to its op and a line-level dedup never collides. Op-block is chosen as
+the single canonical restore primitive so the journal and the ``do_sync`` /
+``do_merge`` restorers share *one* implementation — not because the line-level
+union corrupts the real format (it does not). The journal is the durable source
+all of them read from.
 """
 from __future__ import annotations
 
@@ -163,14 +165,15 @@ def _split_op_blocks(content: str) -> list[str]:
 def _union_op_blocks(target: str, backup: str) -> str:
     """Order-preserving union of ``.ops`` content at the OP-BLOCK granularity.
 
-    Tracker ``.ops`` files are append-only logs of YAML list items (ops). The
-    lossless merge is at the op-block level, **not** the line level: a
-    line-level union (as in the legacy ``sync._union_lines``) silently drops a
-    line shared across ops — ``by: agent`` / ``actor:`` appear in every op, so
-    deduping them strips those keys from every op after the first and corrupts
-    the log. Whole blocks are deduped instead (identical ops — same
-    ``clock``+``nonce`` — serialize byte-identically). The op compiler orders by
-    Lamport clock, so appending backup-only blocks after the target's is safe.
+    Tracker ``.ops`` files are append-only logs of YAML list items (ops). This
+    unions them at the op-block level — whole ops are deduped (identical ops,
+    same ``clock``+``nonce``, serialize byte-identically) rather than individual
+    lines. For the current format that is equivalent to a line-level union,
+    because ``_serialize_op``'s per-op ``# <nonce>`` comment on every line makes
+    every line unique to its op (so a line-dedup never collides); op-block is
+    chosen as the one canonical primitive shared with the sync restorers, at the
+    op granularity. The op compiler orders by Lamport clock, so appending
+    backup-only blocks after the target's is safe.
 
     Precondition: dedup is by byte-exact block, which is sound because both the
     worktree ``.ops`` and the journal are written with the *same* ``serialized``

@@ -50,7 +50,6 @@ from hypergumbo_tracker.sync import (
     _format_sync_title,
     _snapshot_ops_files,
     _sum_added_lines,
-    _union_lines,
     _union_restore_ops,
     check_sync_gate_held,
     do_sync,
@@ -1847,27 +1846,6 @@ class TestOpsUnionRestore:
     branches.
     """
 
-    def test_union_lines_fresh_target(self) -> None:
-        assert _union_lines("", "op: a\nop: b\n") == "op: a\nop: b\n"
-
-    def test_union_lines_idempotent_when_backup_subset(self) -> None:
-        target = "op: a\nop: b\n"
-        # backup ⊆ target → target returned verbatim (the 'already seen' path)
-        assert _union_lines(target, "op: a\n") == target
-
-    def test_union_lines_appends_post_snapshot_line(self) -> None:
-        # target = reset/HEAD content; backup = HEAD + a post-snapshot op
-        assert (
-            _union_lines("op: a\nop: b\n", "op: a\nop: b\nop: c\n")
-            == "op: a\nop: b\nop: c\n"
-        )
-
-    def test_union_lines_preserves_order_target_first(self) -> None:
-        assert (
-            _union_lines("op: b\n", "op: a\nop: b\nop: c\n")
-            == "op: b\nop: a\nop: c\n"
-        )
-
     def test_snapshot_captures_files_skips_missing_dir_and_subdir(
         self, tmp_path: Path
     ) -> None:
@@ -1881,19 +1859,30 @@ class TestOpsUnionRestore:
 
     def test_restore_appends_to_reset_file(self, tmp_path: Path) -> None:
         # A tracked file reset to HEAD by checkout, missing a post-snapshot op.
+        # Realistic ``- op:`` blocks (each line nonce-stamped, as _serialize_op
+        # emits): current holds only create; snapshot holds create + update;
+        # restore re-appends the update op WHOLE (keeping its by/actor lines).
         p = tmp_path / ".WI-y.ops"
-        p.write_text("op: a\n")
-        _union_restore_ops({p: "op: a\nop: b\n"})
-        assert p.read_text() == "op: a\nop: b\n"
+        create = "- op: create  # aa\n  by: agent  # aa\n  actor: x  # aa\n"
+        update = "- op: update  # bb\n  by: agent  # bb\n  set:  # bb\n    status: done  # bb\n"
+        p.write_text(create)
+        _union_restore_ops({p: create + update})
+        restored = p.read_text()
+        assert restored == create + update
+        assert restored.count("op: update") == 1
+        assert restored.count("by: agent") == 2  # update op's by/actor not stripped
 
     def test_restore_does_not_rewrite_unchanged_file(
         self, tmp_path: Path
     ) -> None:
         p = tmp_path / ".WI-z.ops"
-        p.write_text("op: a\nop: b\n")
+        create = "- op: create  # aa\n  by: agent  # aa\n"
+        update = "- op: update  # bb\n  set:  # bb\n    status: done  # bb\n"
+        full = create + update
+        p.write_text(full)
         before = p.stat().st_mtime_ns
-        _union_restore_ops({p: "op: a\n"})  # backup ⊆ current → no write
-        assert p.read_text() == "op: a\nop: b\n"
+        _union_restore_ops({p: create})  # backup ⊆ current → no write
+        assert p.read_text() == full
         assert p.stat().st_mtime_ns == before
 
     def test_restore_recreates_unlinked_file(self, tmp_path: Path) -> None:
