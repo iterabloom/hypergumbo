@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **283** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 32 tracker)
-- **30793** symbols (functions, classes, methods)
-- **104738** edges by type:
-  - calls: 58530
-  - contains: 22045
-  - imports: 10318
-  - instantiates: 7940
-  - references: 3389
-  - module_attr_ref: 1152
-  - other: 1364
+- **30869** symbols (functions, classes, methods)
+- **104913** edges by type:
+  - calls: 58628
+  - contains: 22067
+  - imports: 10345
+  - instantiates: 7945
+  - references: 3408
+  - module_attr_ref: 1155
+  - other: 1365
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30793 Symbols + 104738 Edges + UsageContexts           │
+│  Output: 30869 Symbols + 104913 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -270,7 +270,7 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 5413.2 | ir.py |
 | `Span` | class | 4266.5 | ir.py |
-| `run_behavior_map` | function | 3028.8 | cli.py |
+| `run_behavior_map` | function | 3049.9 | cli.py |
 | `LinkerContext` | class | 2158.7 | registry.py |
 | `TrackerApp` | class | 1902.1 | tui.py |
 | `load_framework_patterns` | function | 1730.6 | framework_patterns.py |
@@ -452,6 +452,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 |--------|-------------|
 | `agent-notes` | Agent-owned notes CLI for the split state-file design (INV-jofaf facet 2). |
 | `agent-supervisor` | scripts/agent-supervisor — hypergumbo tmux session supervisor (WI-razub). |
+| `audit-closure-evidence` | audit-closure-evidence — advisory detector for proxy-only closures (WI-dafun). |
 | `audit-stale-timestamps` | Audit embedded timestamps in agent state files vs filesystem mtimes. |
 | `backfill-training-data-cohort-tags.py` | Backfill cohort metadata for v0 training corpus entries. |
 | `bakeoff-map` | bakeoff-map - Chronicle and map hypergumbo bakeoff artifacts. |
@@ -823,7 +824,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 3218484b765b
+  commit: 757e0ce7e7ca
   hypergumbo: 6.0.0
   python: 3.12.3
 -->
