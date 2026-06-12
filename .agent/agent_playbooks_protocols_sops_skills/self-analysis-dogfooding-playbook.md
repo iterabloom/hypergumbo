@@ -159,10 +159,11 @@ Pick a known entry point and verify the slice captures its actual dependencies. 
 1. Exact node ID (most specific): `python:/abs/path/to/file.py:span:name:kind`
 2. Exact file path
 3. Path suffix match — `hypergumbo_core/cli.py` matches the absolute path ending with it
-4. Exact symbol name
-5. Partial name match (contains)
+4. `module:name` shorthand — two tokens separated by a colon (e.g. `cli:main`) resolve to any symbol whose name equals the right side and whose file *stem* equals the left side; works across any extension and is the fastest way to disambiguate a short name like `main` that exists in many files (added by WI-hogun; see `slice.py` docstring)
+5. Exact symbol name
+6. Partial name match (contains)
 
-There is **no `module:name` shorthand**. If the form is ambiguous (e.g. `main` matches multiple symbols in different files) the error lists each candidate's full node ID so you can copy one.
+If the form is ambiguous (e.g. `main` matches multiple symbols in different files) the error lists each candidate's full node ID so you can copy one.
 
 ```bash
 # Slice the CLI via path-suffix match
