@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **283** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 32 tracker)
-- **30869** symbols (functions, classes, methods)
-- **104913** edges by type:
-  - calls: 58628
-  - contains: 22067
-  - imports: 10345
-  - instantiates: 7945
-  - references: 3408
-  - module_attr_ref: 1155
-  - other: 1365
+- **284** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 33 tracker)
+- **30944** symbols (functions, classes, methods)
+- **105200** edges by type:
+  - calls: 58833
+  - contains: 22074
+  - imports: 10380
+  - instantiates: 7952
+  - references: 3431
+  - module_attr_ref: 1164
+  - other: 1366
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 30869 Symbols + 104913 Edges + UsageContexts           │
+│  Output: 30944 Symbols + 105200 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -270,16 +270,16 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 5413.2 | ir.py |
 | `Span` | class | 4266.5 | ir.py |
-| `run_behavior_map` | function | 3049.9 | cli.py |
+| `run_behavior_map` | function | 3060.5 | cli.py |
 | `LinkerContext` | class | 2158.7 | registry.py |
 | `TrackerApp` | class | 1902.1 | tui.py |
 | `load_framework_patterns` | function | 1730.6 | framework_patterns.py |
-| `main` | function | 1537.8 | cli.py |
+| `main` | function | 1558.0 | cli.py |
 | `clear_pattern_cache` | function | 1332.6 | framework_patterns.py |
 | `find_files` | function | 1120.8 | discovery.py |
 | `TreeSitterAnalyzer` | class | 944.2 | base.py |
+| `Store` | class | 892.4 | store.py |
 | `match_patterns` | function | 873.0 | framework_patterns.py |
-| `Store` | class | 858.5 | store.py |
 | `register_analyzer` | function | 822.0 | registry.py |
 | `detect_entrypoints` | function | 804.9 | entrypoints.py |
 
@@ -795,6 +795,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.hotspot_markup`**: Wrap detected item IDs in Textual ``[@click=...]`` action markup.
 - **`hypergumbo_tracker.id_matching`**: Detect tracker item IDs embedded in free-text panes (descriptions, ...
 - **`hypergumbo_tracker.item_nav_render`**: Assemble the display content for the tracker TUI item-nav modal.
+- **`hypergumbo_tracker.journal`**: Out-of-repo write-ahead journal for tracker ops — the durability su...
 - **`hypergumbo_tracker.migration`**: Migration from markdown governance files to YAML tracker ops.
 - **`hypergumbo_tracker.models`**: Data model for the hypergumbo tracker.
 - **`hypergumbo_tracker.nav_history`**: Browser-style navigation history for the tracker TUI's item-nav modal.
@@ -824,7 +825,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 757e0ce7e7ca
+  commit: e94cc88dfc32
   hypergumbo: 6.0.0
   python: 3.12.3
 -->
