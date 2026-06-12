@@ -51,6 +51,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString
 
+from hypergumbo_tracker import journal
 from hypergumbo_tracker.models import (
     CompiledItem,
     DiscussionEntry,
@@ -1368,6 +1369,9 @@ class Store:
                 f.write(serialized)
                 f.flush()
                 os.fsync(f.fileno())
+                # Durability: mirror to the out-of-repo journal inside the
+                # flock so no working-tree git op can lose this create op.
+                journal.mirror_op(item_path, serialized)
             finally:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
@@ -2251,6 +2255,9 @@ class Store:
                 f.write(serialized)
                 f.flush()
                 os.fsync(f.fileno())
+                # Durability: mirror to the out-of-repo journal inside the
+                # flock so no working-tree git op can lose this appended op.
+                journal.mirror_op(filepath, serialized)
             finally:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 

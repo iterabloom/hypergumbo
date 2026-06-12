@@ -2292,6 +2292,45 @@ def _cmd_serve(args: argparse.Namespace, ts: TrackerSet) -> int:
     return EXIT_SUCCESS
 
 
+def _cmd_recover(args: argparse.Namespace) -> int:
+    """Handle 'recover' — restore pending ops from the out-of-repo journal.
+
+    The journal (``journal.py``) is the durable write-ahead log that survives
+    any working-tree-destroying git command (``reset --hard``, ``checkout``,
+    ``clean``). ``recover`` union-restores its ops back into the worktree
+    ``.ops`` files. Run it after such a command dropped pending ops; it is also
+    the primitive the reference-transaction hook calls automatically. Idempotent
+    and safe to run any time. Returns 0 (including a no-op), 1 if not in a git
+    repository.
+    """
+    from . import journal
+    from .store import _find_git_dir
+
+    start = Path(args.tracker_root) if args.tracker_root else Path.cwd()
+    git_dir = _find_git_dir(start.resolve())
+    if git_dir is None:
+        print(
+            "recover: not inside a git repository — no journal to restore from.",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
+    result = journal.recover(git_dir.parent)
+    if result.restored:
+        print(
+            f"Recovered {len(result.restored)} ops file(s) from "
+            f"{result.journal_dir}:",
+            file=sys.stderr,
+        )
+        for rel in result.restored:
+            print(f"  {rel}", file=sys.stderr)
+    else:
+        print(
+            f"recover: nothing to restore (journal: {result.journal_dir})",
+            file=sys.stderr,
+        )
+    return EXIT_SUCCESS
+
+
 # ---------------------------------------------------------------------------
 # Argparse setup
 # ---------------------------------------------------------------------------
@@ -2508,6 +2547,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # --- init ---
     sub.add_parser("init", help="Initialize tracker directory structure")
+    sub.add_parser(
+        "recover",
+        help="Restore pending ops from the out-of-repo journal "
+        "(after a reset --hard / checkout / clean dropped them)",
+    )
 
     # --- setup ---
     p_setup = sub.add_parser("setup", help="Idempotent setup wizard (diagnose + fix)")
@@ -3210,6 +3254,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(_cmd_setup(args))
     if args.command == "migrate":
         raise SystemExit(_cmd_migrate(args))
+    if args.command == "recover":
+        raise SystemExit(_cmd_recover(args))
     if args.command == "sync":
         raise SystemExit(_cmd_sync(args))
     if args.command == "serve" and (args.stop or args.status):

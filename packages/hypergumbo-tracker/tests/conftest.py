@@ -14,6 +14,26 @@ from typing import Any
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolate_ops_journal(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pin the out-of-repo ops journal to a per-test tmp dir.
+
+    Tracker mutations mirror each op to a journal outside the repo (durability
+    substrate, ``journal.py``). Several tests create real git repos (test_sync,
+    test_journal), so without this an op would be mirrored to the *real* default
+    journal under ``~/hypergumbo_lab_notebook``. Tests that need a specific
+    journal location override this via their own ``monkeypatch.setenv`` (which
+    runs after autouse setup).
+    """
+    from hypergumbo_tracker import journal
+
+    monkeypatch.setenv(
+        journal.JOURNAL_ROOT_ENV, str(tmp_path_factory.mktemp("ops-journal"))
+    )
+
+
 @pytest.fixture()
 def ops_dir(tmp_path: Path) -> Path:
     """Create a temporary .ops directory for store tests."""
