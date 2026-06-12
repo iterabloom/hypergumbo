@@ -1264,6 +1264,19 @@ def do_sync(
     if not acquired:
         return SyncResult(success=False, error=holder_msg, exit_code=1)
 
+    # Suppress the reference-transaction recovery hook for the span of this
+    # sync's git operations. The hook restores journalled-but-uncommitted ops as
+    # UNTRACKED files on ref updates; during do_sync's fetch + ``merge --ff-only``
+    # cleanup that collides with the very fast-forward that commits them (the
+    # merge re-fires the hook via its ORIG_HEAD write right before the overwrite
+    # check, so the restored untracked file aborts the ff). The hook checks for
+    # this marker and skips. ``recover_marker_created`` guards against clobbering
+    # a marker an outer caller (auto-pr) already set.
+    recover_marker = preflight.git_dir / "tracker-recover-disabled"
+    recover_marker_created = not recover_marker.exists()
+    if recover_marker_created:
+        recover_marker.touch()
+
     try:
         # 0b. Fetch latest base branch (non-fatal if offline — we'll use
         #     the local ref which may be slightly stale but still correct).
@@ -1710,3 +1723,7 @@ def do_sync(
 
         # Delete sync branch ref (non-fatal)
         _git(repo_root, "branch", "-D", sync_branch, check=False)
+
+        # Re-enable the recovery hook (only if this call set the marker).
+        if recover_marker_created and recover_marker.exists():
+            recover_marker.unlink()

@@ -299,6 +299,9 @@ _autopr_finalize() {
 	if [[ "$_autopr_state_keep_pending" != "true" ]]; then
 		rm -f "$REPO_ROOT/.git/PR_PENDING" 2>/dev/null || true
 	fi
+	# Always re-enable the tracker recovery hook (the marker is set at each
+	# action's start; unlike PR_PENDING it is never kept across the exit).
+	rm -f "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
 }
 
 # ------------------------------------------------------------------
@@ -747,6 +750,12 @@ flush_queue() {
 	# the earliest exits (auth) capture a final state.
 	trap _autopr_finalize EXIT
 
+	# Suppress the reference-transaction recovery hook during this action's git
+	# operations (fetch + post-merge fast-forward). The hook would restore a
+	# journalled-but-uncommitted op as an untracked file and abort the very ff
+	# that commits it; _autopr_finalize removes the marker on exit.
+	touch "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
+
 	# WI-dofaz: capture the run-start epoch before any Forgejo work.
 	_autopr_run_started_epoch=$(date +%s)
 
@@ -1114,6 +1123,12 @@ do_pr() {
 	# WI-miriz: install sentinel trap as the very first action so even
 	# the earliest exits (auth, branch check) capture a final state.
 	trap _autopr_finalize EXIT
+
+	# Suppress the reference-transaction recovery hook during this action's git
+	# operations (fetch + post-merge fast-forward). The hook would restore a
+	# journalled-but-uncommitted op as an untracked file and abort the very ff
+	# that commits it; _autopr_finalize removes the marker on exit.
+	touch "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
 
 	# WI-dofaz: capture the run-start epoch before any Forgejo work.
 	# The post-success orphan-tracker-sync check uses this as the cutoff
@@ -1829,6 +1844,12 @@ gov_cleanup() {
 	# WI-miriz: install sentinel trap as the very first action so even
 	# the earliest exits capture a final state.
 	trap _autopr_finalize EXIT
+
+	# Suppress the reference-transaction recovery hook during this action's git
+	# operations (fetch + post-merge fast-forward). The hook would restore a
+	# journalled-but-uncommitted op as an untracked file and abort the very ff
+	# that commits it; _autopr_finalize removes the marker on exit.
+	touch "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
 
 	local pr_num="${1:?Usage: auto-pr gov-cleanup <PR_NUM>}"
 	load_env

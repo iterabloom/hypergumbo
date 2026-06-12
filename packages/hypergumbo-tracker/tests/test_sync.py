@@ -2106,6 +2106,103 @@ class TestDoSync:
         assert result.exit_code == 0
         assert "pulls/42" in result.pr_url
 
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_recover_disabled_marker_spans_all_git_ops(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """The ``tracker-recover-disabled`` marker is present during every git
+        call and removed afterwards.
+
+        Without it, the reference-transaction hook restores a
+        journalled-but-uncommitted op as an untracked file during do_sync's
+        fetch and then aborts its own ``merge --ff-only`` reconciliation. The
+        marker must therefore cover ALL of do_sync's git operations (the try
+        body AND the finally cleanup ff) and never leak past the call.
+        """
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+        marker = pre.git_dir / "tracker-recover-disabled"
+
+        results = iter([
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
+            *self._cleanup(),
+        ])
+        marker_seen: list[bool] = []
+
+        def _git_side(*_args: Any, **_kwargs: Any) -> Any:
+            marker_seen.append(marker.exists())
+            return next(results)
+
+        mock_git.side_effect = _git_side
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        assert not marker.exists()  # absent before
+        do_sync(repo_root=tmp_path, preflight=pre)
+
+        assert marker_seen, "expected do_sync to make git calls"
+        assert all(marker_seen), (
+            "recover-disabled marker must be present during EVERY git call "
+            f"(saw {marker_seen.count(False)} call(s) without it)"
+        )
+        assert not marker.exists(), "marker must be removed after do_sync"
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_recover_disabled_marker_not_clobbered_when_preexisting(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """A marker set by an OUTER caller (auto-pr) survives do_sync.
+
+        do_sync only removes the marker it created itself; otherwise nested
+        invocations would re-enable the recovery hook while the outer git
+        operation is still running.
+        """
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+        marker = pre.git_dir / "tracker-recover-disabled"
+        marker.touch()  # outer caller already set it
+
+        mock_git.side_effect = [
+            *self._plumbing_setup(),
+            _make_completed_process(),  # push
+            *self._rebase_check_no_diverge(),
+            *self._cleanup(),
+        ]
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        do_sync(repo_root=tmp_path, preflight=pre)
+
+        assert marker.exists(), (
+            "do_sync must not remove a recover-disabled marker it did not create"
+        )
+
         # Gate file should be cleaned up
         assert not (tmp_path / ".git" / "TRACKER_SYNC_PENDING").exists()
         # Temp index should be cleaned up

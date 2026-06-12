@@ -673,6 +673,24 @@ TRK
     ((FAIL_COUNT++))
   fi
 
+  # TEST: recover-disabled marker present → hook SKIPS recover.
+  # The tracker's own git operations (do_sync's fetch+ff, auto-pr) set this
+  # marker so the hook does not restore journalled-uncommitted ops mid-merge —
+  # which otherwise collides with the very ff that reconciles them.
+  echo "--------------------------------------------------------"
+  echo "TEST: reference-transaction committed + recover-disabled marker → skips recover"
+  reset_reftx_log
+  touch "$REFTX_DIR/.git/tracker-recover-disabled"
+  ( cd "$REFTX_DIR" && echo "" | ./.githooks/reference-transaction committed ) >/dev/null 2>&1
+  if [[ -z "$(reftx_calls)" ]]; then
+    echo "  ✅ PASS (recover skipped while marker present)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (marker should suppress recover; got: $(reftx_calls))"
+    ((FAIL_COUNT++))
+  fi
+  rm -f "$REFTX_DIR/.git/tracker-recover-disabled"
+
   # TEST: state=prepared → no tracker call.
   echo "--------------------------------------------------------"
   echo "TEST: reference-transaction prepared → no tracker call"

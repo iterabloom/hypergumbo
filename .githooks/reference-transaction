@@ -31,6 +31,19 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 [[ -n "$root" ]] || exit 0
 cd "$root" || exit 0
 
+# Skip while the tracker's own git operations are in progress. do_sync (sync.py)
+# and auto-pr set this marker around their fetch + fast-forward, which reconcile
+# pending .ops from working-tree into committed state. A concurrent recover would
+# restore a journalled-but-uncommitted op as an UNTRACKED file mid-merge — and
+# `git merge --ff-only` itself re-fires this hook (via its ORIG_HEAD write) right
+# before its overwrite check, so the restored untracked file aborts the very
+# fast-forward that was about to commit it. The marker excludes the tracker's own
+# reconciliation while still self-healing a user-initiated reset --hard/checkout
+# (which never set it).
+if [[ -f .git/tracker-recover-disabled ]]; then
+  exit 0
+fi
+
 # Only when this repo ships the tracker wrapper (this hook is hypergumbo's own).
 if [[ -x ./scripts/tracker ]]; then
   ./scripts/tracker recover >/dev/null 2>&1 || true

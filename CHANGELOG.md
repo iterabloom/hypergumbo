@@ -212,6 +212,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### Tracker op durability
+
+- **Recovery hook no longer fights the tracker's own fast-forward reconciliation (`tracker-recover-disabled` marker).** The self-healing `reference-transaction` hook restores journalled-but-uncommitted ops as *untracked* files on every ref update — which broke auto-sync's (`do_sync`) and `auto-pr`'s local fast-forward: their reconciling `git fetch` restored the op untracked, and `git merge --ff-only` re-fired the hook (via its `ORIG_HEAD` write) right before the overwrite check, aborting the very fast-forward that was about to commit the op, so local dev perpetually lagged the synced remote. `do_sync` and `auto-pr` now set a `<git-dir>/tracker-recover-disabled` marker around their git operations and clear it on exit; the hook checks the marker and skips `recover` while it is present — excluding the tracker's *own* reconciliation while still self-healing a *user*-initiated `reset --hard`/`checkout` (which never set it). Proven end-to-end: the exact auto-sync ff sequence that aborted with the hook live now fast-forwards cleanly with the marker. Honest gap: a `SIGKILL` mid-operation leaks the marker (auto-recovery stays off until it is removed; the data stays journalled and `recover` still works manually).
+
 #### Error handling (fail-open)
 
 - **Unreadable source files no longer crash the run (cli-input:F4, P0 WI-madal)** —
