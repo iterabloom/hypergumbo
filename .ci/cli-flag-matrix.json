@@ -1,0 +1,268 @@
+{
+  "__global__": [
+    "--backend",
+    "--debug",
+    "--help",
+    "--version",
+    "-h"
+  ],
+  "add-extras": [
+    "--check",
+    "--help",
+    "--quiet",
+    "--skip",
+    "-h"
+  ],
+  "build-grammars": [
+    "--check",
+    "--help",
+    "--quiet",
+    "-h"
+  ],
+  "cache-clear": [
+    "--dry-run",
+    "--help",
+    "--keep-latest",
+    "--older-than",
+    "--quiet",
+    "--repo",
+    "-h"
+  ],
+  "cache-status": [
+    "--help",
+    "--per-repo",
+    "--quiet",
+    "-h"
+  ],
+  "catalog": [
+    "--help",
+    "-h"
+  ],
+  "compact": [
+    "--coverage",
+    "--help",
+    "--input",
+    "--max-symbols",
+    "--min-symbols",
+    "--no-connectivity",
+    "--out",
+    "-h"
+  ],
+  "config": [
+    "--format",
+    "--help",
+    "-h"
+  ],
+  "dead-code-maybe": [
+    "--exclude-annotated",
+    "--exclude-exports",
+    "--format",
+    "--help",
+    "--input",
+    "--min-confidence",
+    "--path",
+    "--seeds",
+    "-h"
+  ],
+  "explain": [
+    "--exclude-tests",
+    "--help",
+    "--input",
+    "--no-source",
+    "--path",
+    "--provenance",
+    "--tokens",
+    "--with-source",
+    "-h",
+    "-t",
+    "-x"
+  ],
+  "install-embeddings": [
+    "--check",
+    "--help",
+    "--quiet",
+    "-h"
+  ],
+  "install-gitleaks": [
+    "--check",
+    "--help",
+    "--quiet",
+    "-h"
+  ],
+  "install-rust-analyzer": [
+    "--check",
+    "--help",
+    "--quiet",
+    "-h"
+  ],
+  "io-boundaries": [
+    "--boundary",
+    "--by-file",
+    "--exclude-tests",
+    "--help",
+    "--include-tests",
+    "--input",
+    "--json",
+    "--path",
+    "--primitive",
+    "--show-external-potential",
+    "-h",
+    "-x"
+  ],
+  "remove-extras": [
+    "--help",
+    "--quiet",
+    "--skip",
+    "-h"
+  ],
+  "routes": [
+    "--exclude-tests",
+    "--help",
+    "--include-tests",
+    "--input",
+    "--language",
+    "--path",
+    "-h",
+    "-x"
+  ],
+  "run": [
+    "--budgets",
+    "--compact",
+    "--coverage",
+    "--exclude",
+    "--first-party-only",
+    "--frameworks",
+    "--gzip",
+    "--help",
+    "--include-docs",
+    "--locale",
+    "--max-file-bytes",
+    "--max-files",
+    "--max-handler-slices",
+    "--max-tier",
+    "--no-connectivity",
+    "--no-handler-slices",
+    "--no-progress",
+    "--no-sketch-fan-out",
+    "--out",
+    "--path",
+    "--progress",
+    "--tiers",
+    "-e",
+    "-h"
+  ],
+  "search": [
+    "--help",
+    "--input",
+    "--kind",
+    "--language",
+    "--limit",
+    "--path",
+    "-h"
+  ],
+  "sketch": [
+    "--config-extraction",
+    "--exclude",
+    "--exclude-tests",
+    "--fleximax-lines",
+    "--help",
+    "--input",
+    "--locale",
+    "--max-chunk-chars",
+    "--max-config-files",
+    "--no-first-party-priority",
+    "--no-language-proportional",
+    "--no-progress",
+    "--no-secret-scan",
+    "--no-source",
+    "--path",
+    "--progress",
+    "--readme-debug",
+    "--require-section",
+    "--tokens",
+    "--verbose",
+    "--with-source",
+    "-e",
+    "-h",
+    "-t",
+    "-v",
+    "-x"
+  ],
+  "slice": [
+    "--dataflow",
+    "--entry",
+    "--exclude-imports",
+    "--exclude-tests",
+    "--exclude-utility",
+    "--files",
+    "--flat",
+    "--group-by-module",
+    "--help",
+    "--hub-threshold",
+    "--inline",
+    "--input",
+    "--language",
+    "--list-entries",
+    "--max-files",
+    "--max-hops",
+    "--max-tier",
+    "--min-confidence",
+    "--out",
+    "--output",
+    "--path",
+    "--reverse",
+    "-h"
+  ],
+  "symbols": [
+    "--all",
+    "--col-width",
+    "--exclude-tests",
+    "--help",
+    "--input",
+    "--kind",
+    "--language",
+    "--limit",
+    "--max-per-file",
+    "--path",
+    "--wrap",
+    "-h",
+    "-x"
+  ],
+  "test-coverage": [
+    "--format",
+    "--help",
+    "--input",
+    "--max-tests",
+    "--min-tests",
+    "--path",
+    "--top",
+    "-h"
+  ],
+  "uninstall-embeddings": [
+    "--all",
+    "--help",
+    "--quiet",
+    "-h"
+  ],
+  "uninstall-gitleaks": [
+    "--help",
+    "--quiet",
+    "-h"
+  ],
+  "uninstall-rust-analyzer": [
+    "--help",
+    "--quiet",
+    "-h"
+  ],
+  "verify-claims": [
+    "--claims",
+    "--help",
+    "--input",
+    "--json",
+    "--path",
+    "--taint-sanitizers",
+    "--taint-sinks",
+    "--taint-sources",
+    "-h"
+  ]
+}

@@ -66,6 +66,24 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **Docs-vs-argparse gate (docs-prose:F1 / G7, INV-rotup)** —
+  `tests/test_cli_docs_prose_gate.py`: a standing gate that diffs CLI
+  documentation against the live argparse parser — the structural fix for the
+  CLI-help/README-drift umbrella (the docs-prose:F2 sweep could only correct
+  drift by hand because nothing detected it). Three checks, all reading
+  `build_parser()`: (1) a **removed-feature denylist** — names of deleted
+  features (e.g. `ripgrep`) must never reappear in `--help --all` output, the
+  exact INV-bugiz class; (2) **README invocation surface** — every
+  `hypergumbo …` example in a fenced README code block must reference only
+  subcommands/flags the parser exposes (honoring the `main()` default-`sketch`
+  argv injection and the `--all` flag `main()` handles outside argparse); and
+  (3) a **committed flag-availability matrix** (`.ci/cli-flag-matrix.json`)
+  locking the per-subcommand option set, so a CLI flag add/remove trips the gate
+  until the maintainer regenerates the baseline
+  (`HYPERGUMBO_UPDATE_CLI_MATRIX=1`) and reviews the docs. All three detectors
+  are verified to fire (a resurrected removed-feature term, a bogus README
+  flag, and a matrix change each trip the gate).
+
 - **Spec-validator ratchet gate (validator:F1 / G1, WI-kafar + WI-himoj)** —
   `tests/test_validation_report_empty.py`: a shrink-only, per-substrate CI
   ratchet that runs the spec-validator over a four-substrate matrix (default /
