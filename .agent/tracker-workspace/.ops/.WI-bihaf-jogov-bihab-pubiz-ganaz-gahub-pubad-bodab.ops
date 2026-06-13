@@ -29,3 +29,18 @@
   clock: 2  # 40a0
   nonce: 40a0  # 40a0
   message: "[Wave-0 hygiene re-verify] Verify and narrow WI-bihaf-jogov-bihab (mypy stubs item): tree-sitter 0.25.x ships py.typed, so remove it from scope. Focus instead on genuine types-* stub needs: types-PyYAML. Reference: tree-sitter:0.25.2 pinned in packages/hypergumbo-core/pyproject.toml:22; py.typed confirmed present in .venv/lib/python3.12/site-packages/tree_sitter/py.typed. All tree-sitter language packages (verified tree-sitter-javascript, tree-sitter-java, tree-sitter-language-pack) have py.typed. pyyaml 6.0.3 (line 28) lacks py.typed, but types-PyYAML~=6.0.12 is available on PyPI."  # 40a0
+- op: update  # e649
+  at: '2026-06-13T01:46:56Z'  # e649
+  by: agent  # e649
+  actor: jgstern_agent  # e649
+  clock: 3  # e649
+  nonce: e649  # e649
+  set:  # e649
+    status: done  # e649
+- op: discuss  # 44dd
+  at: '2026-06-13T01:46:56Z'  # 44dd
+  by: agent  # 44dd
+  actor: jgstern_agent  # 44dd
+  clock: 4  # 44dd
+  nonce: 44dd  # 44dd
+  message: "Done in PR #215 (merged to dev 09c41f7524). Scope narrowed per the 2026-06-11 re-verify: tree-sitter 0.25.x and all grammar packages ship py.typed, so only PyYAML (6.0.3, no py.typed) needed a typeshed stub. Added types-PyYAML~=6.0.12 to hypergumbo-core/hypergumbo-tracker dev deps and the mypy CI job's install step. No stubs/ dir required (the original tree-sitter .pyi scope is obsolete)."  # 44dd

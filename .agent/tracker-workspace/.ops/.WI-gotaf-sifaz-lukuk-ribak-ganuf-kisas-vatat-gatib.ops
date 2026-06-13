@@ -1,0 +1,22 @@
+- op: create  # b48c
+  at: '2026-06-13T01:26:54Z'  # b48c
+  by: agent  # b48c
+  actor: jgstern_agent  # b48c
+  clock: 1  # b48c
+  nonce: b48c  # b48c
+  data:  # b48c
+    kind: work_item  # b48c
+    title: "mypy F2 triage: ~80 [union-attr]/[attr-defined] None-safety findings from the F1 basic surface"  # b48c
+    status: todo_hard  # b48c
+    priority: 2  # b48c
+    parent:  # b48c
+    tags:  # b48c
+    - mypy_adoption  # b48c
+    - static_typing  # b48c
+    - analysis_quality  # b48c
+    isbefore: []  # b48c
+    duplicate_of: []  # b48c
+    not_duplicate_of: []  # b48c
+    pr_ref:  # b48c
+    description: "Deferred from mypy:F1 (which resolved WI-gusag/WI-bihaf: landed the non-blocking foundation + [tool.mypy] basic config + cleared the 20 [valid-type] and 2 malformed type:ignore). These ~80 [union-attr]/[attr-defined] findings (45 union-attr + 35 attr-defined at F1 landing) are the highest-signal remaining category: potential latent None/AttributeError bugs, e.g. .decode() on 'bytes | None', .children on 'Node | None', .symbols on 'FileAnalysis?'. Some are guarded-but-mypy-can't-narrow; some are likely real bugs. ACTION (F2): triage each during the per-package strict ratchet (Decision D13: strict on packages/*/src) — fix real None-unsafety, assert/guard the false positives. Root cause: loose Optional handling (deref without a mypy-visible guard); surfaced (not introduced) by F1. Per-package totals at F1 landing: core 169, mainstream 56, tracker 31, common 10, extended1 10 (all non-blocking). Reproduce: 'mypy packages/<pkg>/src/<module>' with the basic [tool.mypy] config, then grep '[union-attr]' / '[attr-defined]'."  # b48c
+    fields: {}  # b48c

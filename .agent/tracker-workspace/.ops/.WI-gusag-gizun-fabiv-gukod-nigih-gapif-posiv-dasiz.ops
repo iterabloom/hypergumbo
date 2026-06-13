@@ -57,3 +57,18 @@
   set: {}  # b3b0
   add:  # b3b0
     isbefore: [WI-totov-zavin-zonar-girub-sodib-pafab-hohim-dabib]  # b3b0
+- op: update  # 69dc
+  at: '2026-06-13T01:46:56Z'  # 69dc
+  by: agent  # 69dc
+  actor: jgstern_agent  # 69dc
+  clock: 6  # 69dc
+  nonce: 69dc  # 69dc
+  set:  # 69dc
+    status: done  # 69dc
+- op: discuss  # 6bcf
+  at: '2026-06-13T01:46:56Z'  # 6bcf
+  by: agent  # 6bcf
+  actor: jgstern_agent  # 6bcf
+  clock: 7  # 6bcf
+  nonce: 6bcf  # 6bcf
+  message: "Done in PR #215 (merged to dev 09c41f7524). Added root pyproject.toml [tool.mypy] basic/non-strict config (python_version=3.10, warn_unused_configs, no_implicit_optional, ignore_missing_imports) + mypy~=2.1 & types-PyYAML~=6.0.12 to hypergumbo-core/hypergumbo-tracker dev deps + a NON-BLOCKING mypy CI job (continue-on-error, outside ci-complete needs). Acceptance ('mypy runs cleanly on >=1 package src') MET: hypergumbo (top-level) and hypergumbo-lang-rust-analyzer both report 0 errors. Full basic surface ~276 errors (non-gating); cheapest 22 cleared at source (20 [valid-type] + 2 malformed type:ignore), net -42 with zero new errors. Strict ramp deferred to mypy:F2 (Decision D13). Unblocks WI-kotog/WI-rabum/WI-rokup/WI-totov."  # 6bcf

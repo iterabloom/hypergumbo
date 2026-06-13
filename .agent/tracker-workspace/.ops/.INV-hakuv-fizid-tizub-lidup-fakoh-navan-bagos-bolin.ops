@@ -23,3 +23,18 @@
     fields:  # dfd1
       statement: "journal.recover() reads, unions, and rewrites a worktree .ops WITHOUT taking the per-file flock Store uses for appends; a concurrent Store append on the same .ops can be transiently dropped from the worktree (but is retained in the journal, so the next recover restores it)."  # dfd1
       root_cause: "recover performs a non-locked read-modify-write of the whole .ops file, which is not serialized against Store's flocked O_APPEND on the same file."  # dfd1
+- op: update  # 940d
+  at: '2026-06-13T00:32:07Z'  # 940d
+  by: agent  # 940d
+  actor: jgstern_agent  # 940d
+  clock: 2  # 940d
+  nonce: 940d  # 940d
+  set:  # 940d
+    status: satisfied  # 940d
+- op: discuss  # 769e
+  at: '2026-06-13T00:32:07Z'  # 769e
+  by: agent  # 769e
+  actor: jgstern_agent  # 769e
+  clock: 3  # 769e
+  nonce: 769e  # 769e
+  message: "Fixed in PR #214 (merged to dev 473b8421a2). recover's per-file rewrite now takes the SAME fcntl.flock(LOCK_EX) on the worktree .ops inode that Store holds for its flocked O_APPEND (store.py create/_append_op), around the read->union->rewrite, rewriting IN PLACE (seek0+truncate+write+fsync on the held fd, never os.replace/rename). BEHAVIORAL EVIDENCE (closure-evidence discipline): (1) Live repro test_recover_does_not_clobber_concurrent_store_append forces the documented interleaving (recover reads stale worktree -> concurrent Store.update appends op X -> recover rewrites) -- on pre-fix code it FAILS by clobbering X from the worktree; on the fix it PASSES (X survives). Re-ran 12/12 flake-free; closure command 'pytest -k clobber_concurrent' exit 0. (2) Production-path test_recover_takes_per_file_flock_on_worktree_ops asserts LOCK_EX is taken AND released on the worktree .ops inode; test_recover_rewrites_ops_in_place_preserving_inode guards the no-os.replace (inode-stable) contract. (3) 100% coverage on journal.py. (4) Adversarially verified across 4 independent lenses (lock-serialization, inode/fs-semantics, test-validity, refactor-regression) -> COMMIT_AS_IS, with flock-cross-fd-same-inode contention and O_APPEND-repositions-to-EOF-after-concurrent-truncate empirically probed. Closes both the transient-worktree-drop and the torn-.ops-freeze degradations. INV-bufid (P1 top-level durability) was unaffected and remains satisfied."  # 769e

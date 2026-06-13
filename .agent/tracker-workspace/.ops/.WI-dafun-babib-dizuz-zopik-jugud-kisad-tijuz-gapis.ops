@@ -42,3 +42,25 @@
   clock: 4  # 2dce
   nonce: 2dce  # 2dce
   message: "I approve. I approve auto-pr WITHOUT --gov"  # 2dce
+- op: update  # 990c
+  at: '2026-06-13T00:33:13Z'  # 990c
+  by: agent  # 990c
+  actor: jgstern_agent  # 990c
+  clock: 5  # 990c
+  nonce: 990c  # 990c
+  set:  # 990c
+    status: done  # 990c
+- op: discuss  # 9a97
+  at: '2026-06-13T00:33:13Z'  # 9a97
+  by: agent  # 9a97
+  actor: jgstern_agent  # 9a97
+  clock: 6  # 9a97
+  nonce: 9a97  # 9a97
+  message: "Implemented and merged in commit 578464ad62 (feat(governance): closure-evidence discipline guard), 2026-06-11 — all 3 approved parts shipped, matching your design decisions ((1) ADVISORY, (2) FORWARD-ONLY): (1) playbook .agent/agent_playbooks_protocols_sops_skills/closure-evidence-discipline-playbook.md; (2) AGENTS.md essentialization in the Tracker section ('Closure-Evidence Discipline' bullet — 'Advisory, forward-only; the on-demand scripts/audit-closure-evidence surfaces proxy-only closures during the tracker-hygiene sweep') + playbook registered in .agent/hooks/_shared/on_transcript_change.py PLAYBOOKS; (3) on-demand scripts/audit-closure-evidence (executable, NOT a hard CI gate, folds into the tracker-hygiene sweep per decision (1)). No hard gate on 'tracker update --status satisfied' (heuristic detector → advisory only). Forward-only: no retroactive corpus re-probe (the proxy-shaped subset was already audited — 3 true pure-proxy, all benign; INV-nufob fixed in PR #4152). The discipline is in active use: INV-hakuv was just closed citing behavioral evidence (live repro command+exit-code + production-path tests) per this exact rule. Item was completed but left open — closing now. Thanks for the approval."  # 9a97
+- op: discuss  # 6547
+  at: '2026-06-13T00:33:25Z'  # 6547
+  by: agent  # 6547
+  actor: jgstern_agent  # 6547
+  clock: 7  # 6547
+  nonce: '6547'  # 6547
+  message: "Implemented and merged in commit 578464ad62 (feat(governance): closure-evidence discipline guard), 2026-06-11 — all 3 approved parts shipped, matching your design decisions ((1) ADVISORY, (2) FORWARD-ONLY): (1) playbook .agent/agent_playbooks_protocols_sops_skills/closure-evidence-discipline-playbook.md; (2) AGENTS.md essentialization in the Tracker section ('Closure-Evidence Discipline' bullet) + playbook registered in .agent/hooks/_shared/on_transcript_change.py PLAYBOOKS; (3) on-demand scripts/audit-closure-evidence (executable, NOT a hard CI gate, folds into the tracker-hygiene sweep per decision (1)). No hard gate on 'tracker update --status satisfied' (heuristic detector → advisory only). Forward-only: no retroactive corpus re-probe. The discipline is in active use — INV-hakuv was just closed citing behavioral evidence (live repro command+exit-code + production-path tests) per this exact rule. The item was completed but left in todo_soft — closing now. Thanks for the approval."  # 6547
