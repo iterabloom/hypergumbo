@@ -309,3 +309,15 @@ def test_diff_matrix_reports_drift() -> None:
     assert "newsub" in msg              # added subcommand surfaced
     assert "--new-global" in msg        # changed flags surfaced
     assert _diff_matrix(baseline, baseline) is None  # equal ⇒ no drift
+
+
+def test_config_help_discloses_it_takes_no_substrate_input() -> None:
+    """`config` shows the bundled per-language config (it reads no repo or
+    behavior-map substrate), so it accepts neither a path nor ``--input``. Its
+    help must say so — INV-rotup pass-30 found ``config --input`` is rejected
+    with no hint in the help text (a flag-availability discoverability gap).
+    """
+    config_parser = _subcommands(cli.build_parser())["config"]
+    help_text = config_parser.format_help().lower()
+    assert "--input" in help_text
+    assert "does not" in help_text or "neither" in help_text

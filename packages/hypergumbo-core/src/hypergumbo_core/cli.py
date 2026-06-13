@@ -7125,6 +7125,13 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
     p_config = sub.add_parser(
         "config",
         help="Show per-language configuration (dataflow, IO, function summaries)",
+        epilog=(
+            "`config` prints the built-in per-language analysis configuration "
+            "(dataflow patterns, I/O primitives, function summaries) that ships "
+            "with hypergumbo for the named LANGUAGE. It does not analyze a "
+            "repository or read a behavior-map substrate, so it accepts neither "
+            "a path nor `--input` (unlike the analysis subcommands)."
+        ),
     )
     p_config.add_argument(
         "language",

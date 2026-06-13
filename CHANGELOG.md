@@ -79,11 +79,18 @@ This changelog tracks the **tool version** (package releases). The **schema vers
     fallback path (INV-bugiz).
   - the README annotates `--no-progress` as **sketch/run-only** (it is defined
     only on those two subparsers), not a general flag (WI-figor).
+  - `config --help` now discloses that `config` prints hypergumbo's **bundled
+    per-language configuration** and analyzes no repo/substrate, so it accepts
+    neither a path nor `--input` — closing INV-rotup's pass-30 flag-availability
+    residual (`config --input` was rejected with no hint in the help). The
+    `verify-claims --claims` flag name is a UX-convention nit, not a false-scope
+    claim, so it is left as-is (renaming would break existing scripts).
   Deferred from this sweep: WI-fukut-tisot (its fix lives in a `.agent/`
-  playbook — governance-adjacent, handled under the approval workflow) and the
-  docs-vs-argparse gate (docs-prose:F1 / G7, which follows the sweep so it is
-  not red on day one). Addresses members of the INV-rotup CLI-help/README-drift
-  umbrella.
+  playbook — governance-adjacent, handled under the approval workflow). The
+  docs-vs-argparse gate (docs-prose:F1 / G7) followed this sweep. With the
+  config disclosure above, all four catalogued INV-rotup symptoms are fixed and
+  the G7 gate enforces against regression — **closing the INV-rotup
+  CLI-help/README-drift umbrella.**
 
 ### Added
 
