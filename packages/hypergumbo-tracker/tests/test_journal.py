@@ -10,8 +10,10 @@ through the public ``Store`` API so the wiring at both op-write sites (create an
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 import pytest
@@ -21,6 +23,13 @@ from hypergumbo_tracker import journal
 from hypergumbo_tracker.store import Store
 
 _INV_FIELDS = {"statement": "test", "root_cause": "test"}
+
+#: Max time recover's union-step hook waits for a concurrent append in the race
+#: test. It is a *ceiling*, not a delay the fixed path depends on: under the fix
+#: the append is blocked on the flock so this always times out and recover then
+#: proceeds; under the bug the append completes immediately and this returns at
+#: once. No assertion depends on its precise value, so the test never flakes on it.
+_HOOK_WAIT = 0.5
 
 
 def _git(root: Path, *args: str) -> None:
@@ -40,6 +49,27 @@ def _repo_with_ops(tmp_path: Path) -> tuple[Path, Path]:
     ops_dir = repo / ".agent" / "tracker-workspace" / ".ops"
     ops_dir.mkdir(parents=True)
     return repo, ops_dir
+
+
+def _repo_with_dropped_update(tmp_path: Path) -> tuple[Path, Path, Path, str]:
+    """A repo where an appended ``satisfied`` update survives in the journal but
+    was dropped from the worktree ``.ops`` by ``git reset --hard``.
+
+    ``recover`` must therefore take the per-file lock and rewrite the file in
+    place to restore it. Returns ``(repo, ops_dir, ops_file, item_id)``. Relies on
+    the autouse ``_isolate_ops_journal`` fixture to pin the journal under a tmp dir
+    (so both the Store append and ``recover`` resolve the same journal root).
+    """
+    repo, ops_dir = _repo_with_ops(tmp_path)
+    store = Store(ops_dir, config=make_test_config())
+    item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Locked")
+    ops_file = ops_dir / f".{item_id}.ops"
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base (create op)")
+    store.update(item_id, set_fields={"status": "satisfied"})
+    _git(repo, "reset", "--hard", "HEAD")  # drops the satisfied op from the worktree
+    assert "satisfied" not in ops_file.read_text()
+    return repo, ops_dir, ops_file, item_id
 
 
 def test_recover_restores_tracked_ops_reverted_by_reset_hard(
@@ -123,6 +153,23 @@ def test_recover_noop_when_no_journal_dir(
     monkeypatch.setenv(journal.JOURNAL_ROOT_ENV, str(tmp_path / "empty"))
     result = journal.recover(repo)
     assert result.restored == []
+
+
+def test_recover_skips_empty_journal_file(tmp_path: Path) -> None:
+    """A 0-byte journal file (mirror_op created it via O_CREAT but the write
+    failed) carries no op — recover skips it rather than materializing a spurious
+    empty worktree ``.ops``."""
+    repo, _ops_dir = _repo_with_ops(tmp_path)
+    jdir = journal.journal_root() / journal._repo_id(repo.resolve())
+    rel = Path(".agent/tracker-workspace/.ops/.INV-empty.ops")
+    jfile = jdir / rel
+    jfile.parent.mkdir(parents=True, exist_ok=True)
+    jfile.write_text("")  # the partial-write-failure shape
+
+    result = journal.recover(repo)
+
+    assert result.restored == []
+    assert not (repo / rel).exists()  # no spurious empty worktree file created
 
 
 def test_journal_path_none_outside_git_repo(
@@ -238,3 +285,113 @@ def test_recover_command_errors_outside_git(
     rc = _cmd_recover(argparse.Namespace(tracker_root=str(tmp_path)))
     assert rc == 1
     assert "not inside a git repository" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# INV-hakuv: recover serializes its read-union-rewrite with concurrent appends
+# ---------------------------------------------------------------------------
+
+
+def test_recover_takes_per_file_flock_on_worktree_ops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mock_agent_uid: None
+) -> None:
+    """recover acquires Store's per-file ``LOCK_EX`` flock on the worktree ``.ops``
+    inode before rewriting it, then releases it (INV-hakuv).
+
+    Store appends under ``fcntl.flock(fd, LOCK_EX)`` on the ``.ops`` file's own fd
+    (store.py create / ``_append_op``). For recover's whole-file read-union-rewrite
+    to serialize against a concurrent append instead of clobbering it, recover must
+    take the *same* per-inode lock — this asserts it does and then releases it.
+    """
+    import fcntl
+
+    repo, _ops_dir, ops_file, _item_id = _repo_with_dropped_update(tmp_path)
+
+    locked: list[tuple[int, int]] = []  # (inode, flock-operation)
+    real_flock = fcntl.flock
+
+    def spy(fd: int, operation: int) -> None:
+        locked.append((os.fstat(fd).st_ino, operation))
+        return real_flock(fd, operation)
+
+    monkeypatch.setattr("fcntl.flock", spy)
+    journal.recover(repo)
+
+    assert "satisfied" in ops_file.read_text()  # the op was restored...
+    target_ino = ops_file.stat().st_ino
+    assert (target_ino, fcntl.LOCK_EX) in locked  # ...under the per-file lock
+    assert (target_ino, fcntl.LOCK_UN) in locked  # ...which was then released
+
+
+def test_recover_rewrites_ops_in_place_preserving_inode(
+    tmp_path: Path, mock_agent_uid: None
+) -> None:
+    """recover restores a dropped op by an IN-PLACE locked rewrite, never an
+    atomic ``os.replace`` — which would swap the inode out from under Store's held
+    flock and leave a concurrent ``O_APPEND`` writing to a now-unlinked inode.
+
+    A regression guard for the in-place contract: the inode must be identical
+    before and after recover rewrites the file.
+    """
+    repo, _ops_dir, ops_file, _item_id = _repo_with_dropped_update(tmp_path)
+    ino_before = ops_file.stat().st_ino  # the inode recover will rewrite
+
+    result = journal.recover(repo)
+
+    assert str(ops_file.relative_to(repo)) in result.restored
+    assert "satisfied" in ops_file.read_text()  # restored
+    assert ops_file.stat().st_ino == ino_before  # same inode → in place, not os.replace
+
+
+def test_recover_does_not_clobber_concurrent_store_append(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mock_agent_uid: None
+) -> None:
+    """The INV-hakuv race, made deterministic: a Store append landing while a
+    recover is mid-flight is NOT dropped from the worktree.
+
+    A hook inside recover's union step forces the dangerous interleaving — recover
+    reads the (stale) worktree, a concurrent ``Store`` append commits a new op,
+    then recover rewrites. Without the shared flock, recover's rewrite clobbers the
+    concurrent op (the merge was computed from a now-stale read). With the flock,
+    the append blocks until recover releases and then lands on top — so BOTH the
+    journal-restored op and the concurrent op survive.
+    """
+    repo, ops_dir, ops_file, item_id = _repo_with_dropped_update(tmp_path)
+
+    recover_read = threading.Event()
+    append_done = threading.Event()
+    real_union = journal._union_op_blocks
+
+    def hooked_union(target: str, backup: str) -> str:
+        merged = real_union(target, backup)  # computed from recover's (stale) read
+        recover_read.set()                   # recover has read the worktree .ops
+        # Bug: the *unlocked* append completes and sets this at once, so recover
+        # proceeds to clobber it. Fix: the append is blocked on the flock recover
+        # holds, so this times out — recover finishes, releases, append lands after.
+        append_done.wait(timeout=_HOOK_WAIT)
+        return merged
+
+    monkeypatch.setattr(journal, "_union_op_blocks", hooked_union)
+
+    append_store = Store(ops_dir, config=make_test_config())
+    errors: list[BaseException] = []
+
+    def concurrent_append() -> None:
+        try:
+            recover_read.wait(timeout=5.0)
+            append_store.update(item_id, set_fields={"status": "needs_human_review"})
+            append_done.set()
+        except BaseException as exc:  # pragma: no cover - surfaced via the assert below
+            errors.append(exc)
+            append_done.set()  # unblock recover so the test cannot hang
+
+    worker = threading.Thread(target=concurrent_append)
+    worker.start()
+    journal.recover(repo)
+    worker.join(timeout=10.0)
+
+    assert not worker.is_alive()
+    assert not errors, errors
+    final = ops_file.read_text()
+    assert "satisfied" in final           # the journal-restored op
+    assert "needs_human_review" in final  # the concurrent append SURVIVED (not clobbered)

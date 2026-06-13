@@ -47,6 +47,7 @@ all of them read from.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import os
 from dataclasses import dataclass, field
@@ -195,14 +196,60 @@ def _union_op_blocks(target: str, backup: str) -> str:
     return "".join(out)
 
 
+def _locked_union_restore(worktree_file: Path, journal_content: str) -> bool:
+    """Union ``journal_content`` into ``worktree_file`` under Store's per-file lock.
+
+    Store appends to a worktree ``.ops`` file under ``fcntl.flock(fd, LOCK_EX)`` on
+    that file's own fd (``store.py`` create / ``_append_op``). :func:`recover` does a
+    whole-file read-modify-write, so without taking the SAME per-inode lock a
+    concurrent append landing between recover's read and its rewrite is clobbered
+    (INV-hakuv). This acquires that identical ``LOCK_EX`` around the read → union →
+    rewrite, so recover serializes with appends: a concurrent append blocks until
+    recover releases, then lands on top.
+
+    The rewrite is IN PLACE — ``truncate`` + ``write`` on the held fd — never via
+    ``os.replace``/rename, which would swap the inode out from under the lock and
+    leave Store's flocked ``O_APPEND`` writing to a now-unlinked inode (worse than
+    the original race). The fd is opened ``O_RDWR | O_CREAT`` (mode ``0o664`` with
+    the umask cleared, matching Store's append site) so a worktree ``.ops`` the
+    journal must recreate stays group-writable for two-user (agent + human) sharing.
+
+    Returns ``True`` iff the file's content changed (an op was restored).
+    """
+    worktree_file.parent.mkdir(parents=True, exist_ok=True)
+    old_umask = os.umask(0)
+    try:
+        fd = os.open(worktree_file, os.O_RDWR | os.O_CREAT, 0o664)
+    finally:
+        os.umask(old_umask)
+    with os.fdopen(fd, "r+", encoding="utf-8") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            current = f.read()
+            merged = _union_op_blocks(current, journal_content)
+            if merged == current:
+                return False
+            f.seek(0)
+            f.truncate()
+            f.write(merged)
+            f.flush()
+            os.fsync(f.fileno())
+            return True
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
 def recover(repo_root: Path) -> RecoverResult:
     """Union-restore journalled ops back into ``repo_root``'s worktree ``.ops``.
 
     For each journal file under ``<journal_root>/<repo_id>/``: op-block-union its
-    content into the corresponding worktree ``.ops`` file, recreating the file
-    if the worktree lost it entirely. Idempotent — a worktree file that already
-    contains every journalled op is left untouched (so a clean repo recovers to
-    a no-op).
+    content into the corresponding worktree ``.ops`` file, recreating the file if
+    the worktree lost it entirely. The per-file rewrite takes Store's ``LOCK_EX``
+    flock (:func:`_locked_union_restore`), so it serializes with concurrent Store
+    appends instead of clobbering them (INV-hakuv). Idempotent — a worktree file
+    that already contains every journalled op is left untouched (so a clean repo
+    recovers to a no-op). recover only ever reads the journal and writes the
+    worktree, never the reverse: the journal is the durable, append-only source.
     """
     repo_root = repo_root.resolve()
     jdir = journal_root() / _repo_id(repo_root)
@@ -215,12 +262,14 @@ def recover(repo_root: Path) -> RecoverResult:
                 continue
             jfile = Path(dirpath) / fname
             rel = jfile.relative_to(jdir)
-            worktree_file = repo_root / rel
-            journal_content = jfile.read_text()
-            current = worktree_file.read_text() if worktree_file.exists() else ""
-            merged = _union_op_blocks(current, journal_content)
-            if merged != current:
-                worktree_file.parent.mkdir(parents=True, exist_ok=True)
-                worktree_file.write_text(merged)
+            # Explicit utf-8 (matching mirror_op's utf-8 write and the worktree
+            # read in _locked_union_restore) — robust on non-utf-8 locales.
+            journal_content = jfile.read_text(encoding="utf-8")
+            if not journal_content:
+                # A 0-byte journal file (mirror_op created it via O_CREAT but the
+                # write failed) carries no op — skip it rather than materialize a
+                # spurious empty worktree .ops.
+                continue
+            if _locked_union_restore(repo_root / rel, journal_content):
                 result.restored.append(str(rel))
     return result
