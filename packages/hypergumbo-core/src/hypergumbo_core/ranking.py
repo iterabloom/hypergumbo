@@ -100,7 +100,7 @@ import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Callable, Dict, List
 
 from .edge_types import IMPORT_EDGE_TYPES
 from .ir import Symbol, Edge
@@ -1525,7 +1525,7 @@ def compute_symbol_mention_centrality_batch(
     in_degree: Dict[str, int],
     min_in_degree: int = 2,
     max_file_size: int = 100 * 1024,
-    progress_callback: "callable | None" = None,
+    progress_callback: Callable[..., Any] | None = None,
 ) -> CentralityResult:
     """Compute symbol mention centrality for multiple files efficiently.
 
@@ -1589,7 +1589,7 @@ def _compute_centrality_with_python(
     files: List[Path],
     name_to_in_degree: Dict[str, int],
     max_file_size: int,
-    progress_callback: "callable | None",
+    progress_callback: Callable[..., Any] | None,
 ) -> CentralityResult:
     """Compute centrality using Python regex (fallback path).
 

@@ -176,7 +176,7 @@ async def _api_update_item(request: Request) -> JSONResponse:
     item_id = request.path_params["item_id"]
     body = await request.json()
     try:
-        _tracker_set.get(item_id)  # type: ignore[union-attr] — verify exists
+        _tracker_set.get(item_id)  # type: ignore[union-attr]  # verify exists
     except Exception:
         return JSONResponse({"error": "Item not found"}, status_code=404)
     set_fields: dict[str, Any] = {}
@@ -200,7 +200,7 @@ async def _api_discuss_item(request: Request) -> JSONResponse:
             {"error": "Missing required field: message"}, status_code=400,
         )
     try:
-        _tracker_set.get(item_id)  # type: ignore[union-attr] — verify exists
+        _tracker_set.get(item_id)  # type: ignore[union-attr]  # verify exists
     except Exception:
         return JSONResponse({"error": "Item not found"}, status_code=404)
     _tracker_set.discuss(item_id, message)  # type: ignore[union-attr]

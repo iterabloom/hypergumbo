@@ -39,7 +39,7 @@ or member is considered exported only when its declaration carries the
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
@@ -478,7 +478,7 @@ def _extract_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[st
 
 
 # Use the base FileAnalysis; using_aliases maps to import_aliases
-FileAnalysis = _BaseFileAnalysis
+FileAnalysis: TypeAlias = _BaseFileAnalysis
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:

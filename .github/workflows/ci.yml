@@ -210,6 +210,41 @@ jobs:
         run: bandit -r packages/*/src/ -c pyproject.toml
 
 
+  # mypy:F1 foundation — NON-BLOCKING static type-check (WI-gusag).
+  # Intentionally absent from ci-complete's `needs` AND continue-on-error: true,
+  # so the type surface is reported on every PR but NEVER gates a merge. This is
+  # the first rung of the G11 ramp (non-blocking job -> per-package strict
+  # ratchet -> blocking). Config lives in root pyproject.toml [tool.mypy]
+  # (basic / non-strict; strict mode is mypy:F2 per Decision D13).
+  mypy:
+    needs: [changes, stop-the-line]
+    if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
+    runs-on: self-hosted
+    continue-on-error: true
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install mypy + typeshed stubs
+        run: |
+          pip install --upgrade pip
+          pip install "mypy~=2.1" "types-PyYAML~=6.0.12"
+      - name: Run mypy (non-blocking — basic config per [tool.mypy])
+        run: |
+          # Report the type surface per Python package; never fail the job (this
+          # is the foundation rung, not the gate). htrac-frontend is JS/TS (no .py).
+          for mod in packages/*/src/*/; do
+            case "$mod" in *htrac-frontend*|*.egg-info*) continue ;; esac
+            echo "::group::mypy ${mod}"
+            mypy "$mod" || true
+            echo "::endgroup::"
+          done
+
+
   # Run bash hook tests on every PR regardless of what changed.
   # test_hooks.sh exercises pre-push and stop hook behavior in a sandbox;
   # it takes ~10 seconds and its failure mode is "silent rot" (the script

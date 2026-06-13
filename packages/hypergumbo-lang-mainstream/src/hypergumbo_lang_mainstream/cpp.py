@@ -39,7 +39,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
@@ -96,7 +96,7 @@ _CPP_STL_METHODS: frozenset[str] = frozenset({
 })
 
 # Backwards compatibility alias
-CppAnalysisResult = AnalysisResult
+CppAnalysisResult: TypeAlias = AnalysisResult
 
 
 def _has_cpp_source_files(repo_root: Path) -> bool:

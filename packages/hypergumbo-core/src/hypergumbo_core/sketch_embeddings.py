@@ -21,7 +21,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     import numpy as np
@@ -1726,7 +1726,7 @@ def batch_embed_files(
     file_paths: list[Path],
     cache_dir: Path | None = None,
     batch_size: int = 64,
-    progress_callback: "callable | None" = None,
+    progress_callback: Callable[..., Any] | None = None,
 ) -> dict[Path, "np.ndarray | None"]:
     """Batch embed multiple files efficiently.
 

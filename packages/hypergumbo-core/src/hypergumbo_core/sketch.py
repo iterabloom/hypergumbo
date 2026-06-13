@@ -70,7 +70,7 @@ from __future__ import annotations
 import os
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Callable, Iterator, List, Optional
 
 from .discovery import find_files, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
@@ -1673,7 +1673,7 @@ def _extract_config_embedding(
     max_config_files: int = 15,
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
-    progress_callback: "callable | None" = None,
+    progress_callback: Callable[..., Any] | None = None,
 ) -> list[str]:
     """Extract config metadata using dual-probe stratified embedding selection.
 
@@ -2028,7 +2028,7 @@ def _extract_config_hybrid(
     max_config_files: int = 15,
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
-    progress_callback: "callable | None" = None,
+    progress_callback: Callable[..., Any] | None = None,
 ) -> list[str]:
     """Extract config using hybrid approach: heuristics first, then embeddings.
 
@@ -2171,7 +2171,7 @@ def _extract_config_info(
     max_config_files: int = 15,
     fleximax_lines: int = 100,
     max_chunk_chars: int = 800,
-    progress_callback: "callable | None" = None,
+    progress_callback: Callable[..., Any] | None = None,
 ) -> str:
     """Extract key metadata from config files via extractive summarization.
 
@@ -4197,8 +4197,8 @@ def _select_additional_files(
     in_degree: dict[str, int],
     max_files: int = 200,
     semantic_top_n: int = 10,
-    progress_callback: "callable | None" = None,
-    centrality_progress_callback: "callable | None" = None,
+    progress_callback: Callable[..., Any] | None = None,
+    centrality_progress_callback: Callable[..., Any] | None = None,
     cached_centrality_scores: dict[str, float] | None = None,
 ) -> tuple[list[Path], list[Path], dict[Path, set[str]], dict[str, int]]:
     """Select additional files using README-first hybrid ordering.
@@ -4346,7 +4346,7 @@ def _select_additional_files(
     similarity_iter = iter(similarity_ranked)
     centrality_iter = iter(centrality_ranked)
 
-    def next_from_iter(it: "iter") -> Optional[Path]:
+    def next_from_iter(it: Iterator[Path]) -> Optional[Path]:
         """Get next unselected file from iterator."""
         while True:
             try:
@@ -4408,8 +4408,8 @@ def _format_additional_files(
     in_degree: dict[str, int],
     max_files: int = 200,
     semantic_top_n: int = 10,
-    progress_callback: "callable | None" = None,
-    centrality_progress_callback: "callable | None" = None,
+    progress_callback: Callable[..., Any] | None = None,
+    centrality_progress_callback: Callable[..., Any] | None = None,
     cached_centrality_scores: dict[str, float] | None = None,
     exclude_tests: bool = False,
     token_budget: int | None = None,
@@ -5031,7 +5031,7 @@ def _run_analysis(
     repo_root: Path,
     profile: RepoProfile,
     exclude_tests: bool = False,
-    progress_callback: "callable | None" = None,
+    progress_callback: Callable[..., Any] | None = None,
 ) -> tuple[list[Symbol], list, tuple[int, int, float] | None]:
     """Run static analysis to get symbols and edges.
 

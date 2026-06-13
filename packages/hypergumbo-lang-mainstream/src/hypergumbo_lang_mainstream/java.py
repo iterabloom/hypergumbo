@@ -85,7 +85,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
@@ -119,7 +119,7 @@ if TYPE_CHECKING:
 PASS_ID = make_pass_id("java")
 
 # Backwards compatibility alias
-JavaAnalysisResult = AnalysisResult
+JavaAnalysisResult: TypeAlias = AnalysisResult
 
 
 def find_java_files(repo_root: Path) -> Iterator[Path]:

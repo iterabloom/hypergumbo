@@ -75,3 +75,17 @@ skips = [
   "B105",  # hardcoded_password_string - false positives on PASS_ID, PASS_VERSION
   "B110",  # try_except_pass - intentional pattern for optional analyzers
 ]
+
+[tool.mypy]
+# mypy:F1 foundation — basic (non-strict) type-check config (WI-gusag).
+# Strict mode is deferred to mypy:F2 (per-package strict ratchet, Decision D13);
+# this PR establishes the foundation only. The codebase is already substantially
+# annotated, so basic mode VERIFIES typing rather than introducing it.
+python_version = "3.10"
+warn_unused_configs = true
+no_implicit_optional = true
+# Initially silence missing third-party stubs; carve out per-import as stubs land.
+# types-PyYAML covers PyYAML; tree-sitter and its grammar packages ship py.typed.
+ignore_missing_imports = true
+# htrac-frontend is a JS/TS package (no Python under src/) — never type-check it.
+exclude = ["packages/htrac-frontend/"]

@@ -67,7 +67,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
@@ -261,7 +261,7 @@ def is_tree_sitter_available() -> bool:
 
 
 # Backwards compatibility alias
-JsAnalysisResult = AnalysisResult
+JsAnalysisResult: TypeAlias = AnalysisResult
 
 
 @dataclass

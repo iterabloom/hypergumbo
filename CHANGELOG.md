@@ -87,6 +87,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **mypy type-check foundation (`[tool.mypy]` + non-blocking CI job).** Bootstraps static type checking (mypy:F1, resolves WI-gusag/WI-bihaf): a basic, **non-strict** `[tool.mypy]` config in the root `pyproject.toml` (`python_version="3.10"`, `warn_unused_configs`, `no_implicit_optional`, `ignore_missing_imports`; strict mode is deferred to mypy:F2 per ADR/Decision D13), `mypy` + `types-PyYAML` added to dev deps, and a **non-blocking** `mypy` CI job (`continue-on-error`, absent from `ci-complete`'s `needs`) that reports the per-package type surface without gating merges — the first rung of the planned non-blocking → per-package strict ratchet → blocking progression. The basic run surfaced ~318 findings; this PR also cleared the cheapest/most-actionable ones at the source: the 20 `[valid-type]` errors (7 module-level alias idioms now declared `: TypeAlias`; 13 `callable`/`iter`-as-a-type annotations corrected to `Callable[..., Any]` / `Iterator[Path]`) and 2 malformed `# type: ignore` comments in `serve.py` (the em-dash form silently failed to suppress its `[union-attr]`). Net −42 errors with **zero new errors** introduced (verified by before/after subset diff). The remaining surface — notably ~80 `[union-attr]`/`[attr-defined]` None-safety findings — is filed (WI-gotaf) for triage during the F2 strict ratchet. `htrac-frontend` (JS/TS) is excluded.
+
 - **Self-healing tracker-op recovery (`.githooks/reference-transaction`).** Completes
   the out-of-repo op journal (see the hypergumbo-tracker changelog for the journal +
   `tracker recover` substrate) with automatic recovery: a `reference-transaction` git

@@ -42,7 +42,7 @@ import shutil
 import subprocess  # nosec B404 - subprocess needed for pip commands
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from rich.console import Console
 from rich.table import Table
@@ -2590,7 +2590,7 @@ def cmd_uninstall_rust_analyzer(args: argparse.Namespace) -> int:
 # is the single source of truth — adding a fifth component is a one-line
 # change in `_extras_components`. WI-huham's separate install-extras /
 # uninstall-extras umbrella was hard-removed in favor of this single table.
-def _extras_components() -> list[tuple[str, callable, callable, callable]]:
+def _extras_components() -> list[tuple[str, Callable[..., Any], Callable[..., Any], Callable[..., Any]]]:
     """Return the rows the add-extras / remove-extras umbrella iterates over.
 
     Names are stable identifiers consumed by ``--skip``; their pretty
