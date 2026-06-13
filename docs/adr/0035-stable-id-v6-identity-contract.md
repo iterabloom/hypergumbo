@@ -80,6 +80,28 @@ The normative kind→axis table. This table is the artifact; the validator enfor
 | `call_site` (sql) | `database_query.py:355` | SITE | `(path, query target, occurrence idx)` |
 | `call_site` (abi) | `solidity_abi.py:211` | SITE | `(path, contract/function, occurrence idx)` |
 | `link` (markdown) | `markdown.py:317` | SITE | `(path, link target, occurrence idx)` |
+| Protocol-synth stand-in — null-filled by the `make_synthetic_symbol_identity` chokepoint (IPC, Phoenix IPC, OpenAPI operation, ObjC bridge incl. `#selector` references, WebSocket, WASM-bindgen, yjs_crdt, crypto_flow, …) | `ipc.py`, `openapi.py`, `swift_objc.py`, `websocket.py`, `wasm_bindgen.py`, `yjs_crdt.py`, `crypto_flow.py`, … | injective (SITE-style) | `(protocol_origin, kind, path, name, occurrence)` |
+
+**Amendment (synthetic:F2, 5a).** The protocol-synth row above was added when the
+`make_synthetic_symbol_identity` chokepoint (`analyze/base.py`) began backstop-stamping
+`stable_id` / `display_label` / `fingerprint` on Class-B stand-ins (`language=None` +
+`protocol_origin` set) that their linkers left null. The stable_id key is **injective** over
+`(protocol_origin, kind, path, name, occurrence)`: `kind` separates a definition from a reference to
+the same name (`@objc func` vs a `#selector` use-site), `path` separates same-named stand-ins minted
+in different files, and the within-key `occurrence` index — the **line kept out of the hash** (the
+SITE rule above, applied uniformly) — separates role-distinct same-name siblings a linker leaves
+otherwise-identical (e.g. a CRDT writer and an observer on the same channel, both `kind="function"`
+with `name=channel`). A coarser `(protocol_origin, name)` key was **rejected**: applied to these
+families it manufactured by-design collisions (an `@objc` definition with a `#selector` reference; a
+writer with a same-channel observer), turning honest `stable_id=None` into a *wrong, colliding*
+value — exactly the "accepted collisions" option §1 rejects. Only **message_queue / event_sourcing /
+database_query** self-stamp `stable_id` at mint (with their own family-specific keys, e.g.
+message_queue's `(queue_type, type, topic)`) and are preserved byte-for-byte by the chokepoint's
+skip-if-set guard; the other protocol families — including **yjs_crdt** and **crypto_flow** — leave
+`stable_id=None` and are filled here. (graphql / graphql_resolver also mint Class-B nodes; their
+self-stamped `stable_id`s are preserved untouched, with any non-canonical-format residue tracked
+separately under `_check_stable_id_format`.) The 5b external_symbol kind-slot re-keying (ADR-0036
+Ruling 2, ~1,645 node-id changes) is deferred to the v6 / ADR-0037 coordinated event, not this slice.
 
 The External-symbol identity key matches the shipped boundary dedupe behavior for non-file kinds (`_dedupe_key` / `_canonical_external_stable_id`, `ir.py:1065-1137`): the module-path slot keeps same-named symbols in different external modules distinct, as §1's zero-by-design-collision contract requires. `(ecosystem, name)` is §4's presentation-time aggregation key — a view rule, never an identity key.
 

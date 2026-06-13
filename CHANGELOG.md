@@ -12,6 +12,36 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Class-B synthetic-node identity backstop + display_label (Wave-2 T0, synthetic:F2 5a)** —
+  a new post-linker orchestrator pass, `populate_synthetic_class_b_identity`
+  (`analyze/base.py`, wired in `run_behavior_map`), backstop-stamps `stable_id`,
+  `display_label`, and `fingerprint` on **Class-B synthetic protocol-synth
+  Symbols** (`language is None` AND `protocol_origin` set) that their linkers
+  left null — the ~7 zero-stable_id protocol linkers (ipc/openapi/phoenix_ipc/
+  solidity_abi/swift_objc/websocket/wasm_bindgen) plus the unstamped subset of
+  others. Stamping `display_label` on Class-B nodes **closes META-huvuh's
+  producer half** (display_label was null on these ~262 nodes), and the
+  validator gains the affirmative **Class-B `display_label` biconditional**
+  (the existing canary checked stable_id/fingerprint/discovery_language/origin
+  but not display_label; the Class-A contrapositive already forbade it on real
+  source). Identity stamping goes through a `make_synthetic_symbol_identity`
+  chokepoint whose stable_id key is **injective** over `(protocol_origin, kind,
+  path, name, occurrence)` — `kind` separates a definition from a reference,
+  `path` separates cross-file stand-ins, and the within-key `occurrence` index
+  (line kept out of the hash, ADR-0035 §3, table amended) separates
+  role-distinct same-name siblings (e.g. a CRDT writer/observer on one channel)
+  — so two distinct Class-B nodes can never share a stable_id (ADR-0035 §1
+  zero-by-design-collisions). **Identity-neutral** — per-field
+  skip-if-set never overrides an existing value, so the self-stamping linkers
+  (message_queue/event_sourcing/database_query) and any non-null field are
+  preserved byte-for-byte; only nulls are filled, changing zero existing
+  `stable_id`/`shape_id`/`fingerprint`/`node.id` values. Honors WI-lidig (never
+  writes `supply_chain_reason` at mint). Architecture chosen over a
+  construction-time factory threaded through ~44 sites (the existing
+  `populate_kind_stable_ids` backstop is the proven pre-linker analogue; this is
+  its post-linker sibling). The 5b external_symbol kind-slot re-keying (~1,645
+  node-id changes) is deferred to the v6/ADR-0037 train. Third Wave-2 T0 item.
+
 - **Synthetic-node provenance: AnalysisRun for both synthetic producers (Wave-2 T0, synthetic:F1)** —
   the two orchestrator-level synthesizers now emit a real `AnalysisRun` and
   stamp resolvable provenance on the nodes they mint, where they previously

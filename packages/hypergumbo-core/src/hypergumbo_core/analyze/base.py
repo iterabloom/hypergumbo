@@ -739,6 +739,123 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
         sym.stable_id = factory(sym)
 
 
+def make_synthetic_symbol_identity(
+    sym: Symbol, occurrence: int = 0,
+) -> tuple[str, str, str]:
+    """synthetic:F2 chokepoint resolver: derive ``(stable_id, display_label,
+    fingerprint)`` for a Class-B synthetic stand-in Symbol from its already-set
+    fields.
+
+    **Injective stable_id (ADR-0035 §1 zero-by-design-collisions).** The key is
+    ``(protocol_origin, kind, path, name, occurrence)`` hashed via
+    :func:`make_protocol_stable_id`. Every component earns its place:
+
+    * ``kind`` separates a *definition* from a *reference* to the same name
+      (e.g. an ``@objc func`` from a ``#selector`` use-site).
+    * ``path`` separates same-named stand-ins minted in different files.
+    * ``occurrence`` — a deterministic within-``(protocol_origin, kind, path,
+      name)`` index assigned by the caller — separates *role-distinct same-name
+      siblings* the producing linker leaves otherwise-identical (e.g. a CRDT
+      writer and an observer on the same channel, both ``kind="function"`` with
+      ``name=channel``; or two call sites to the same target in one file).
+
+    A coarser ``(protocol_origin, name)`` key (the first cut) manufactured
+    by-design collisions on exactly those families — turning honest
+    ``stable_id=None`` into a *wrong, colliding* value — so the key is the full
+    injective tuple uniformly, not a per-kind LOGICAL/SITE branch. **Line
+    numbers stay out of the hash** (occurrence, not line — the ADR-0035 §3 SITE
+    rule applied uniformly): a freshly-stamped id churns only when same-key
+    siblings in a file are added/removed/reordered, not on unrelated edits.
+
+    ADR-0036 (lines 134-138) defers the lang-slot binding for ``language=None``
+    synthetic node IDs to "the ``make_synthetic_symbol()`` chokepoint" — bound
+    to ``discovery_language or language``. In 5a that binding does NOT enter the
+    stable_id hash (``make_protocol_stable_id`` takes a *category*, not a
+    language) and ``node.id`` is owned by the producing linker (kind-slot
+    re-keying is the deferred 5b migration), so the binding is a recorded rule
+    honored here and consumed by 5b — not a 5a hash input.
+    """
+    stable_id = make_protocol_stable_id(
+        sym.protocol_origin, sym.kind, sym.path, sym.name, str(occurrence),
+    )
+    # display_label (ADR-0032): a human-readable stand-in label. The Symbol's
+    # ``name`` already carries the protocol-qualified identity for these nodes,
+    # so it is the honest display string. Stamping it closes META-huvuh's
+    # producer half (display_label was null on Class-B).
+    display_label = sym.name
+    # fingerprint: the central ``stamp_symbol_fingerprints`` pass cannot
+    # fingerprint a ``language=None`` symbol (no grammar), so stamp here,
+    # matching the bare 16-hex shape the already-stamped Class-B linkers
+    # (yjs_crdt / crypto_flow) use.
+    fingerprint = hashlib.sha256(sym.id.encode()).hexdigest()[:16]
+    return stable_id, display_label, fingerprint
+
+
+def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
+    """synthetic:F2 (5a): backstop identity/display stamping for Class-B
+    synthetic protocol-synth Symbols.
+
+    A Class-B stand-in (ADR-0031: ``language is None`` AND ``protocol_origin``
+    set) minted by a linker may ship without ``stable_id`` / ``display_label`` /
+    ``fingerprint`` (the ~7 zero-stable_id protocol linkers — ipc / openapi /
+    phoenix_ipc / solidity_abi / swift_objc / websocket / wasm_bindgen — plus
+    the unstamped subset of others such as yjs_crdt / crypto_flow). This
+    post-*linker* orchestrator pass — a sibling to
+    :func:`populate_kind_stable_ids`, run AFTER linkers extend ``symbols`` —
+    fills those three fields via the :func:`make_synthetic_symbol_identity`
+    chokepoint, each under a per-field skip-if-set guard so it NEVER overrides
+    an existing value. Identity-neutral: self-stamping linkers (message_queue /
+    event_sourcing / database_query) and any pre-existing value are preserved
+    byte-for-byte; only ``None`` fields are filled.
+
+    The stable_id key is injective over ``(protocol_origin, kind, path, name,
+    occurrence)`` so two distinct Class-B nodes can never share a stable_id
+    (ADR-0035 §1). The within-key ``occurrence`` index is pre-assigned here in a
+    deterministic ``(span, id)`` order so it is stable run-to-run regardless of
+    symbol-list order.
+
+    WI-lidig: this pass NEVER writes ``supply_chain_tier`` /
+    ``supply_chain_reason`` — the annotator re-classifies
+    ``(tier==1 AND reason=='')`` nodes via the path classifier, and stamping a
+    reason here would break that re-classification.
+    """
+    # Pre-assign occurrence indices for every Class-B null-stable_id node,
+    # grouped by (protocol_origin, kind, path, name) and ordered deterministically
+    # by (span, id), so role-distinct same-name siblings (and repeated sites) get
+    # distinct, line-independent stable_ids.
+    occurrence_of: dict[int, int] = {}
+    null_class_b = [
+        s for s in symbols
+        if s.language is None and s.protocol_origin is not None
+        and s.stable_id is None
+    ]
+    counters: dict[tuple, int] = {}
+    for s in sorted(
+        null_class_b,
+        key=lambda s: (
+            s.protocol_origin, s.kind, s.path, s.name,
+            s.span.start_line, s.span.start_col, s.id,
+        ),
+    ):
+        key = (s.protocol_origin, s.kind, s.path, s.name)
+        occ = counters.get(key, 0)
+        occurrence_of[id(s)] = occ
+        counters[key] = occ + 1
+
+    for sym in symbols:
+        if sym.language is not None or sym.protocol_origin is None:
+            continue  # not a Class-B synthetic stand-in
+        stable_id, display_label, fingerprint = make_synthetic_symbol_identity(
+            sym, occurrence=occurrence_of.get(id(sym), 0),
+        )
+        if sym.stable_id is None:
+            sym.stable_id = stable_id
+        if sym.display_label is None:
+            sym.display_label = display_label
+        if sym.fingerprint is None:
+            sym.fingerprint = fingerprint
+
+
 def make_typed_stable_id(
     kind: str,
     normalized_signature: str,

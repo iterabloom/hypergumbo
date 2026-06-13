@@ -2090,3 +2090,189 @@ class TestSynthesizeFileSymbolsHonorIdentity:
         assert new_syms[0].span.end_line == 1  # no file to count
 
 
+class TestPopulateSyntheticClassBIdentity:
+    """synthetic:F2 (5a): the ``populate_synthetic_class_b_identity`` post-pass
+    backstops ``stable_id`` / ``display_label`` / ``fingerprint`` on Class-B
+    synthetic protocol-synth Symbols (``language is None AND protocol_origin``
+    set) that linkers leave null — identity-neutrally (per-field skip-if-set,
+    so it never overrides an existing value). Closes META-huvuh's producer
+    half (display_label absent on Class-B). LOGICAL kinds hash by name;
+    SITE kinds (``call_site``) are occurrence-indexed, line out of the hash
+    (ADR-0035 §3). Never touches supply_chain_* (WI-lidig)."""
+
+    def _class_b(self, **kw):
+        from hypergumbo_core.ir import Symbol, Span
+
+        defaults = {
+            "id": "javascript:app.js:5-5:ipcrequestchan:function",
+            "name": "ipc:request:chan",
+            "kind": "function",
+            "language": None,
+            "path": "app.js",
+            "span": Span(start_line=5, end_line=5, start_col=0, end_col=0),
+            "protocol_origin": "ipc",
+            "discovery_language": "javascript",
+            "origin": ["ipc-linker"],
+            "origin_run_id": "uuid:run",
+        }
+        defaults.update(kw)
+        return Symbol(**defaults)
+
+    def test_logical_class_b_gets_identity_and_provenance_display(self) -> None:
+        import hashlib
+        from hypergumbo_core.analyze.base import (
+            populate_synthetic_class_b_identity, make_protocol_stable_id,
+        )
+
+        s = self._class_b()
+        populate_synthetic_class_b_identity([s])
+        # Injective key (protocol_origin, kind, path, name, occurrence).
+        assert s.stable_id == make_protocol_stable_id(
+            "ipc", "function", "app.js", "ipc:request:chan", "0",
+        )
+        assert s.display_label == "ipc:request:chan"
+        assert s.fingerprint == hashlib.sha256(s.id.encode()).hexdigest()[:16]
+
+    def test_same_key_siblings_are_occurrence_indexed_and_line_independent(self) -> None:
+        from hypergumbo_core.ir import Span
+        from hypergumbo_core.analyze.base import (
+            populate_synthetic_class_b_identity, make_protocol_stable_id,
+        )
+
+        # Two ABI call sites to the same function in the same file share
+        # (protocol_origin, kind, path, name) → the occurrence index separates
+        # them, with NO line number in the hash (ADR-0035 §3). Occurrence order
+        # follows span, so the line-10 site is occurrence 0 regardless of list
+        # order.
+        a = self._class_b(
+            id="typescript:c.ts:10-10:transfer:call_site",
+            name="transfer", kind="call_site", protocol_origin="solidity_abi",
+            discovery_language="typescript", path="c.ts",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=0),
+        )
+        b = self._class_b(
+            id="typescript:c.ts:20-20:transfer:call_site",
+            name="transfer", kind="call_site", protocol_origin="solidity_abi",
+            discovery_language="typescript", path="c.ts",
+            span=Span(start_line=20, end_line=20, start_col=0, end_col=0),
+        )
+        populate_synthetic_class_b_identity([b, a])  # list order reversed: order is span-driven
+        assert a.stable_id != b.stable_id
+        assert a.stable_id == make_protocol_stable_id(
+            "solidity_abi", "call_site", "c.ts", "transfer", "0",
+        )
+        assert b.stable_id == make_protocol_stable_id(
+            "solidity_abi", "call_site", "c.ts", "transfer", "1",
+        )
+
+    def test_distinct_nodes_never_share_stable_id(self) -> None:
+        """ADR-0035 §1 zero-by-design-collisions regression guard: distinct
+        Class-B nodes must get distinct stable_ids. The coarse first-cut key
+        (protocol_origin, name) collided (a) an @objc definition with a
+        #selector reference to the same name [kind separates them now] and
+        (b) a CRDT writer with a same-channel observer [occurrence separates
+        the role-distinct same-name, same-kind siblings]."""
+        from hypergumbo_core.ir import Span
+        from hypergumbo_core.analyze.base import populate_synthetic_class_b_identity
+
+        defn = self._class_b(
+            id="swift:A.swift:3-3:doThing:function", name="doThing",
+            kind="function", protocol_origin="objc_bridge",
+            discovery_language="swift", path="A.swift",
+        )
+        ref = self._class_b(
+            id="swift:A.swift:9-9:doThing:reference", name="doThing",
+            kind="reference", protocol_origin="objc_bridge",
+            discovery_language="swift", path="A.swift",
+        )
+        pub = self._class_b(
+            id="typescript:y.ts:10-10:doc:function", name="doc",
+            kind="function", protocol_origin="yjs_crdt",
+            discovery_language="typescript", path="y.ts",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=0),
+        )
+        sub = self._class_b(
+            id="typescript:y.ts:20-20:doc:function", name="doc",
+            kind="function", protocol_origin="yjs_crdt",
+            discovery_language="typescript", path="y.ts",
+            span=Span(start_line=20, end_line=20, start_col=0, end_col=0),
+        )
+        populate_synthetic_class_b_identity([defn, ref, pub, sub])
+        ids = [defn.stable_id, ref.stable_id, pub.stable_id, sub.stable_id]
+        assert len(set(ids)) == 4, f"by-design collision among distinct nodes: {ids}"
+
+    def test_skip_if_set_preserves_existing_values_byte_for_byte(self) -> None:
+        from hypergumbo_core.analyze.base import populate_synthetic_class_b_identity
+
+        s = self._class_b(
+            stable_id="sha256:deadbeefdeadbeef",
+            display_label="prebuilt-label",
+            fingerprint="cafebabecafebabe",
+        )
+        populate_synthetic_class_b_identity([s])
+        assert s.stable_id == "sha256:deadbeefdeadbeef"
+        assert s.display_label == "prebuilt-label"
+        assert s.fingerprint == "cafebabecafebabe"
+
+    def test_non_class_b_symbols_are_untouched(self) -> None:
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.analyze.base import populate_synthetic_class_b_identity
+
+        # Class-A real-source symbol (language set, no protocol_origin) and a
+        # Class-B-shaped symbol missing protocol_origin: neither is in scope.
+        class_a = Symbol(
+            id="python:m.py:1-2:foo:function", name="foo", kind="function",
+            language="python", path="m.py",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        )
+        no_proto = Symbol(
+            id="x:y:0-0:z:external_symbol", name="z", kind="external_symbol",
+            language=None, path="<external>",
+            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+        )
+        populate_synthetic_class_b_identity([class_a, no_proto])
+        assert class_a.stable_id is None
+        assert class_a.display_label is None
+        assert no_proto.stable_id is None
+        assert no_proto.display_label is None
+
+    def test_only_none_to_value_deltas_identity_neutral(self) -> None:
+        """The post-pass must never change an existing stable_id/fingerprint/
+        display_label VALUE — only fill nulls. Snapshot/compare."""
+        from hypergumbo_core.analyze.base import populate_synthetic_class_b_identity
+
+        gap = self._class_b()
+        stamped = self._class_b(
+            id="javascript:b.js:1-1:mq:function", name="mq:topic",
+            stable_id="sha256:aaaabbbbccccdddd", display_label="kept",
+            fingerprint="1111222233334444",
+        )
+        before = {
+            id(x): (x.stable_id, x.shape_id, x.fingerprint, x.display_label, x.id)
+            for x in (gap, stamped)
+        }
+        populate_synthetic_class_b_identity([gap, stamped])
+        # stamped: all fields byte-identical.
+        assert (stamped.stable_id, stamped.fingerprint, stamped.display_label) == (
+            "sha256:aaaabbbbccccdddd", "1111222233334444", "kept",
+        )
+        # gap: positive half — the null fields actually transitioned to values
+        # (a genuine revert detector: fails if the stamping body is neutered).
+        assert before[id(gap)][0] is None and gap.stable_id is not None
+        assert before[id(gap)][2] is None and gap.fingerprint is not None
+        assert before[id(gap)][3] is None and gap.display_label is not None
+        # gap: only None->value transitions; id and shape_id never written.
+        assert before[id(gap)][4] == gap.id  # id untouched
+        assert gap.shape_id is None  # shape_id never written
+
+    def test_preserves_supply_chain_fields_wi_lidig(self) -> None:
+        """WI-lidig: the post-pass must NOT stamp supply_chain_reason/tier at
+        mint (the annotator re-classifies tier==1 AND reason=='' nodes)."""
+        from hypergumbo_core.analyze.base import populate_synthetic_class_b_identity
+
+        s = self._class_b(supply_chain_tier=1, supply_chain_reason="")
+        populate_synthetic_class_b_identity([s])
+        assert s.supply_chain_tier == 1
+        assert s.supply_chain_reason == ""
+
+

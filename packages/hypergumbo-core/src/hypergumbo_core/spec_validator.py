@@ -754,6 +754,11 @@ def _check_cross_field_coherence(
         "Symbol.fingerprint": [],
         "Symbol.discovery_language": [],
         "Symbol.origin": [],
+        # META-huvuh (synthetic:F2): the affirmative half of the display_label
+        # biconditional — Class-A real-source declarations must NOT carry a
+        # display_label (the contrapositive check below), and Class-B synthetic
+        # stand-ins MUST. ADR-0032 reserves display_label for Class B.
+        "Symbol.display_label": [],
     }
 
     # ---- Symbol invariants ----
@@ -774,6 +779,8 @@ def _check_cross_field_coherence(
                 class_b_missing["Symbol.discovery_language"].append(str(sym_id))
             if not getattr(sym, "origin", None):
                 class_b_missing["Symbol.origin"].append(str(sym_id))
+            if display_label is None:
+                class_b_missing["Symbol.display_label"].append(str(sym_id))
 
         # ADR-0031 Class B coherence. File Symbols are an explicit
         # Class A exception per the ADR's per-linker producer policy.
@@ -860,7 +867,8 @@ def _check_cross_field_coherence(
             expected=(
                 "Every Class B synthetic stand-in (language=None, "
                 "protocol_origin populated) carries non-null stable_id, "
-                "fingerprint, discovery_language, and a non-empty origin."
+                "fingerprint, discovery_language, display_label, and a "
+                "non-empty origin."
             ),
             message=(
                 f"{len(missing_ids)} Class B synthetic stand-in(s) are "

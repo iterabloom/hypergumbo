@@ -671,7 +671,9 @@ def test_cross_field_class_b_coherent_passes() -> None:
         language=None,
         discovery_language="python",
         protocol_origin="websocket",
-        display_label=None,
+        # synthetic:F2: a coherent (fully-stamped) Class-B stand-in now also
+        # carries display_label (the affirmative half of the biconditional).
+        display_label="websocket:class-b",
         origin=["websocket-linker"],
         stable_id="sha256:" + "0" * 16,
         fingerprint="hgfp2:" + "0" * 16,
@@ -1483,7 +1485,10 @@ def _class_b_sym(**overrides):
         "language": None,
         "discovery_language": "python",
         "protocol_origin": "websocket",
-        "display_label": None,
+        # synthetic:F2: display_label is part of the Class-B contract now, so a
+        # "Class-B sym" fixture is fully-stamped by default; the unstamped-canary
+        # test overrides this back to None explicitly.
+        "display_label": "websocket:class-b",
         "origin": [],
         "qualified_name": None,
         "stable_id": None,
@@ -1498,9 +1503,10 @@ def _class_b_sym(**overrides):
 def test_cross_field_class_b_unstamped_emits_canary() -> None:
     """An unstamped Class B stand-in emits one umbrella violation per
     missing identity field (stable_id, fingerprint, discovery_language,
-    origin)."""
+    origin, and — since synthetic:F2 — display_label)."""
     sym = _class_b_sym(
         stable_id=None, fingerprint=None, discovery_language=None, origin=[],
+        display_label=None,
     )
     violations = validate_ir([sym], [], [])
     canary = [
@@ -1514,6 +1520,7 @@ def test_cross_field_class_b_unstamped_emits_canary() -> None:
         "Symbol.fingerprint",
         "Symbol.discovery_language",
         "Symbol.origin",
+        "Symbol.display_label",
     }
 
 
@@ -1584,3 +1591,40 @@ def test_cross_field_class_a_symbols_ignored_by_canary() -> None:
         for v in violations
         if v.validator_class == "cross_field"
     )
+
+
+def test_class_b_missing_display_label_is_flagged() -> None:
+    """META-huvuh validator half (synthetic:F2): a Class-B synthetic stand-in
+    (language=None, protocol_origin set) with display_label=None emits the
+    affirmative Symbol.display_label canary umbrella. The other Class-B fields
+    are stamped so ONLY the display_label gap is exercised."""
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    sym = _FakeSym(
+        id="javascript:app.js:5-5:ipc:function",
+        kind=a_kind, language=None, discovery_language="javascript",
+        protocol_origin="websocket", origin=["x"], qualified_name=None,
+        stable_id="sha256:aaaabbbbccccdddd", fingerprint="1111222233334444",
+        display_label=None,
+    )
+    violations = validate_ir([sym], [], [])
+    assert any(v.field_name == "Symbol.display_label" for v in violations)
+
+
+def test_class_b_with_display_label_not_flagged() -> None:
+    """A fully-stamped Class-B stand-in (display_label set) emits no
+    Symbol.display_label canary umbrella (and the Class-A contrapositive does
+    not fire either, since language is None)."""
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+    a_kind = next(iter(all_symbol_kind_names()))
+    sym = _FakeSym(
+        id="javascript:app.js:5-5:ipc:function",
+        kind=a_kind, language=None, discovery_language="javascript",
+        protocol_origin="websocket", origin=["x"], qualified_name=None,
+        stable_id="sha256:aaaabbbbccccdddd", fingerprint="1111222233334444",
+        display_label="websocket:ipc:request:chan",
+    )
+    violations = validate_ir([sym], [], [])
+    assert not any(v.field_name == "Symbol.display_label" for v in violations)

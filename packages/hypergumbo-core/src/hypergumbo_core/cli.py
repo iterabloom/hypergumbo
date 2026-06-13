@@ -49,7 +49,10 @@ from rich.table import Table
 
 from . import __version__
 from .analyze.all_analyzers import run_all_analyzers
-from .analyze.base import is_exported_from_modifiers
+from .analyze.base import (
+    is_exported_from_modifiers,
+    populate_synthetic_class_b_identity,
+)
 from .behavior_map_io import load_behavior_map
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 from .linkers.registry import LinkerContext, run_all_linkers
@@ -7927,6 +7930,13 @@ def run_behavior_map(
         normed = _norm_path(uc.path)
         if normed.startswith(_root_prefix):
             uc.path = normed[len(_root_prefix):]  # pragma: no cover
+
+    # synthetic:F2 (5a): backstop stable_id / display_label / fingerprint on
+    # Class-B synthetic protocol-synth Symbols the linkers left null (post-pass,
+    # AFTER linkers extend all_symbols and paths are normalized, BEFORE
+    # fingerprint stamping so that pass skips the now-stamped Class-B nodes).
+    # Identity-neutral (per-field skip-if-set); closes META-huvuh's producer half.
+    populate_synthetic_class_b_identity(all_symbols)
 
     # Check for partial installation issues (ADR-0010 Item 8)
     # Emit warnings for: unanalyzed files, partial linker requirements
