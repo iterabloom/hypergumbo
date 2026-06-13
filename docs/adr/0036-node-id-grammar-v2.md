@@ -170,6 +170,49 @@ Three layers, extending ADR-0034's:
 3. **Static linter** (WI-vodin) flags `Symbol(id=f"...")` construction at the source
    level, after the factory API is final (strategy id-format:F4).
 
+### Amendment — id-format:F3 partial landing (2026-06-13)
+
+The Enforcement layer-2 round-trip validator (`spec_validator._check_id_roundtrip`,
+wired into `validate_ir`) shipped as a Wave-2 T0 PR. What landed, and the gating:
+
+- **Round-trip (Ruling 2), advisory.** For ids already passing the shape-only
+  `_CANONICAL_ID_PATTERN`, the check parses the last three colon-free tokens via
+  `rsplit(":", 3)` and flags **kind-slot ∉ registry** and **kind-slot ≠
+  `Symbol.kind`**, both at `warning`. Ruling 2 phrases the membership half as
+  `node.kind ∈ registry`; the implementation instead checks the **id kind-slot**
+  ∈ registry, because `axis_conformance` already owns `node.kind` membership.
+  Checking the slot is the net-new "purity" instrument and is strictly stronger:
+  it also guards a malformed slot when `Symbol.kind` is absent. The two verdicts
+  coincide on every realistic case (when slot == kind, slot ∈ registry ⇔ kind ∈
+  registry).
+- **Name-slot non-empty, advisory.** A subset of the grammar; the full Ruling-1
+  `name slot == sanitized(Symbol.name)` round-trip and the producer-side
+  `make_symbol_id` `:`→`.` sanitization (id-changing for any colon-named symbol,
+  hence T1) are **not yet landed** — deferred follow-ups.
+- **Span `start <= end`, error.** A subset of Ruling 3 with no id-changing
+  backlog. The **full Ruling-3 sentinel enumeration** (path `<external>`; the
+  `0-0` and `1-1`+`file`+`file` span triples) is **not yet landed** — a deferred
+  follow-up (it risks false positives on uncatalogued conventions and wants a
+  corpus scan before going strict).
+- **Why advisory.** A strict (error) pass red-flags the known id-changing (T1)
+  backlog that cannot clear before the v6 stable_id bump: the ~1,645
+  external_symbol kind-slot disagreements (WI-pubiv), the 22-node route/event
+  role cohort (WI-kugaj), and the single tsconfig node (audit-findings 0005,
+  whose producer folded `Symbol.kind` → `file` but left `tsconfig` in the id
+  kind-slot). The canary makes that backlog **measurable now** (the
+  schema-coverage-corpus ratchet baselines were bumped +11 to pin it); a gating
+  tracker item promotes the membership/round-trip/name checks to `error` once
+  those folds land.
+- **Decision #5 (register-vs-fold), resolved.** GraphQL `mutation` /
+  `subscription` are **registered** as `language_construct` siblings of
+  `query`/`fragment` — they were an audit-findings 0007 omission, NOT a
+  deliberate unify-to-`query` fold (the only `query` verdict on record is
+  SPARQL's, audit-findings 0007). The anonymous-operation fallback `operation`
+  is registered as `pending_classification` (its semantic fold to `query` is
+  id-changing, deferred). `tsconfig` is **not** registered — it is
+  DEPRECATE-NO-FOLD (audit-findings 0005); the fix folds its id kind-slot to
+  `file` (id-changing/T1). Registering kinds is identity-neutral.
+
 ## Alternatives considered
 
 1. **Reversible percent-escaping in all slots** (escape `:` as `%3A` everywhere,

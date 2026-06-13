@@ -351,6 +351,20 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Base symbol (XML / OWL). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("query", AXIS_LANGUAGE_CONSTRUCT,
                    "Query symbol (GraphQL / SQL operation). CANONICAL per audit-findings 0007."),
+    # GraphQL operation siblings of `query`/`fragment`, omitted by
+    # audit-findings 0007 and registered per id-format:F3. The GraphQL
+    # analyzer (hypergumbo_lang_common/graphql.py) emits Symbol.kind ==
+    # the operation_type child (query / mutation / subscription) for an
+    # operation_definition node. The anonymous-operation fallback
+    # ("operation") is parked on AXIS_PENDING below.
+    SymbolKindSpec("mutation", AXIS_LANGUAGE_CONSTRUCT,
+                   "Mutation symbol (GraphQL operation). Top-level construct, "
+                   "sibling to query/fragment (audit-findings 0007 omission; "
+                   "registered per id-format:F3)."),
+    SymbolKindSpec("subscription", AXIS_LANGUAGE_CONSTRUCT,
+                   "Subscription symbol (GraphQL operation). Top-level construct, "
+                   "sibling to query/fragment (audit-findings 0007 omission; "
+                   "registered per id-format:F3)."),
     SymbolKindSpec("entry", AXIS_LANGUAGE_CONSTRUCT,
                    "Entry symbol. CANONICAL per audit-findings 0007."),
     SymbolKindSpec("entity", AXIS_LANGUAGE_CONSTRUCT,
@@ -510,6 +524,12 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("workgroup", AXIS_PENDING,
                    "WGSL `var<workgroup>` address space. "
                    "Pending cluster-H audit."),
+    SymbolKindSpec("operation", AXIS_PENDING,
+                   "Anonymous GraphQL operation fallback (graphql.py op_type "
+                   "default when an operation_definition has no operation_type "
+                   "child). Semantically an anonymous query; pending the "
+                   "producer fold to `query` (id-changing, deferred to v6). "
+                   "Registered per id-format:F3."),
 )
 
 

@@ -12,6 +12,43 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Symbol.id round-trip canary + GraphQL operation kinds (Wave-2 T0, id-format:F3)** —
+  a new advisory `id_format` sub-check, `_check_id_roundtrip` (`spec_validator.py`,
+  wired into `validate_ir`), closes the round-trip the shape-only
+  `_CANONICAL_ID_PATTERN` left open (ADR-0036 Ruling 2, "kind-slot purity"). For
+  every id that already passes the canonical 5-segment shape it parses the last
+  three colon-free tokens (span, name, kind) per Ruling 1's anchored grammar
+  (`rsplit(":", 3)`) and flags: a **kind-slot not in the symbol-kind registry**, a
+  **kind-slot that does not equal `Symbol.kind`** (the round-trip itself), and an
+  **empty name-slot** — all at advisory (`warning`) severity — plus a **span
+  `start <= end`** check at `error`. The net value over `axis_conformance` is
+  catching id-slot/`Symbol.kind` divergences it is blind to — e.g. the tsconfig
+  node, whose id kept the stale `tsconfig` kind-slot while `Symbol.kind` was folded
+  to the registered `file` (so axis_conformance passes it). The membership /
+  round-trip / name checks land at `warning` because a strict pass red-flags a
+  known **id-changing (T1) backlog** that cannot clear before the v6 stable_id
+  bump — the ~1,645 external_symbol kind-slot disagreements (WI-pubiv), the
+  route/event role cohort (WI-kugaj), and tsconfig (audit-findings 0005) — so the
+  canary makes that backlog measurable now and a gating item promotes the checks
+  to `error` once the Wave-2 folds land. (The membership check is expressed on the
+  *id kind-slot* rather than ADR-0036's literal `node.kind ∈ registry`, since
+  axis_conformance already owns the latter; this is the net-new slot-purity
+  instrument and is strictly stronger — it also guards a bad slot when
+  `Symbol.kind` is absent.) **Decision #5 (register-vs-fold):** GraphQL `mutation`
+  / `subscription` register as `language_construct` siblings of `query`/`fragment`
+  (an audit-findings 0007 omission, not a deliberate unify-to-`query` fold — the
+  only `query` verdict on record is SPARQL's); the anonymous-operation fallback
+  `operation` registers as `pending_classification` (its semantic fold to `query`
+  is id-changing and deferred); `tsconfig` is **not** registered (DEPRECATE-NO-FOLD
+  per audit-findings 0005 — the correct fix folds its id kind-slot to `file`, which
+  is id-changing/T1). **Identity-neutral:** the validator only reads ids, and
+  registering kinds changes no existing `node.id`/`stable_id`/`fingerprint`. The
+  full Ruling-3 sentinel enumeration (path `<external>`; span `0-0`/`1-1` triples)
+  and Ruling-1's producer-side `make_symbol_id` `:`→`.` name sanitization (which
+  changes the id of any colon-named symbol, T1) are deferred follow-ups. Re-measured
+  the schema-coverage-corpus validation-ratchet baselines (+11 advisory id_format
+  on external_symbol boundary nodes across every substrate). Fourth Wave-2 T0 item.
+
 - **Class-B synthetic-node identity backstop + display_label (Wave-2 T0, synthetic:F2 5a)** —
   a new post-linker orchestrator pass, `populate_synthetic_class_b_identity`
   (`analyze/base.py`, wired in `run_behavior_map`), backstop-stamps `stable_id`,

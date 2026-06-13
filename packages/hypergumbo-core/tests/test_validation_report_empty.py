@@ -76,30 +76,40 @@ SUBSTRATES: dict[str, dict[str, Any]] = {
     "max_tier_4": {"max_tier": 4},
 }
 
-# Shrink-only spec-validator baselines. Measured 2026-06-11 on the
-# schema-coverage-corpus. A substrate's total may shrink below its baseline
-# (ratchet it down here when it does) but never exceed it.
+# Shrink-only spec-validator baselines. Measured 2026-06-11; re-measured
+# 2026-06-13 for the id-format:F3 round-trip canary. A substrate's total may
+# shrink below its baseline (ratchet it down here when it does) but never
+# exceed it.
 #
 # What the non-zero baselines pin today:
 #   * every substrate: 1 cross_field stable_id collision (INV-bazij; the
 #     small corpus's 4/42 = 9.5% rate sits just over the 5% threshold).
-#   * include_docs: +5 id_format violations on markdown README section
-#     stable_ids (non-canonical ``markdown:README.md:...:section`` shape) —
-#     exactly the flag-gated producer defects WI-himoj exists to surface.
-#     Pinned here; fixed by later producer PRs that then ratchet this to 1.
+#   * every substrate: +11 id_format round-trip warnings (id-format:F3) on
+#     external_symbol boundary nodes (go/java/rust/solidity/swift) whose
+#     id kind-slot kept the original reference kind (unresolved / package /
+#     attribute / module) while Symbol.kind became external_symbol during
+#     boundary synthesis. This is the WI-pubiv ~1645-node kind-slot
+#     disagreement cohort, surfaced at advisory (warning) severity; the
+#     producer fix rebuilds node.id (id-changing, deferred to the v6 bump),
+#     after which these promote to error and ratchet back down.
+#   * include_docs: additionally +5 id_format violations on markdown README
+#     section stable_ids (non-canonical ``markdown:README.md:...:section``
+#     shape) — exactly the flag-gated producer defects WI-himoj exists to
+#     surface. Pinned here; fixed by later producer PRs that then ratchet down.
 #
 # These counts are corpus-coupled in BOTH directions, not just by code: the
-# default '1' is threshold-adjacent (4/42 = 9.5% vs the 5% INV-bazij
-# threshold), and the include_docs id_format count tracks the README's
-# section-header count one-for-one. So a *fixture* edit (e.g. adding a README
-# heading, or changing the corpus symbol count) can move these numbers with no
-# code change. On a red gate, re-measure before assuming a code regression;
-# ratchet DOWN on a genuine shrink, never UP.
+# cross_field '1' is threshold-adjacent (4/42 = 9.5% vs the 5% INV-bazij
+# threshold), the F3 '+11' tracks the corpus's external-reference count, and
+# the include_docs markdown count tracks the README's section-header count
+# one-for-one. So a *fixture* edit (e.g. adding a README heading or an import
+# to a new external symbol) can move these numbers with no code change. On a
+# red gate, re-measure before assuming a code regression; ratchet DOWN on a
+# genuine shrink, never UP.
 VALIDATION_BASELINES: dict[str, int] = {
-    "default": 1,
-    "frameworks_all": 1,
-    "include_docs": 6,
-    "max_tier_4": 1,
+    "default": 12,
+    "frameworks_all": 12,
+    "include_docs": 17,
+    "max_tier_4": 12,
 }
 
 # Shrink-only runtime_coherence (ADR-0023 §3 edge-type partition coherence)

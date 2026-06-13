@@ -463,6 +463,8 @@
             "prefix": "language_construct",
             "base": "language_construct",
             "query": "language_construct",
+            "mutation": "language_construct",
+            "subscription": "language_construct",
             "entry": "language_construct",
             "entity": "language_construct",
             "architecture": "language_construct",
@@ -519,7 +521,8 @@
             "varying": "pending_classification",
             "private": "pending_classification",
             "storage": "pending_classification",
-            "workgroup": "pending_classification"
+            "workgroup": "pending_classification",
+            "operation": "pending_classification"
           },
           "x-deprecated": []
         },

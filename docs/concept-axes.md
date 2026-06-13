@@ -206,6 +206,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`mixin`** — Mixin declaration (Ruby / Sass).
 - **`modifier`** — Solidity / Vyper modifier declaration. A function modifier is a reusable pre/post-condition block applied to contract functions (e.g., `onlyOwner`). Producer: `solidity.py:302` emits `add_symbol(mod_name, "modifier", ...)` for `modifier_definition` AST nodes.
 - **`module`** — Module declaration (the source-level construct).
+- **`mutation`** — Mutation symbol (GraphQL operation). Top-level construct, sibling to query/fragment (audit-findings 0007 omission; registered per id-format:F3).
 - **`namespace`** — Namespace declaration (C++ / TypeScript / C#).
 - **`node`** — Node symbol (k8s / DSL). CANONICAL per audit-findings 0007.
 - **`object`** — Object / singleton declaration (Scala / Kotlin).
@@ -249,6 +250,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`subdirectory`** — Subdirectory pseudo-symbol. CANONICAL per audit-findings 0007.
 - **`subroutine`** — Subroutine / sub declaration (Fortran / Perl).
 - **`subscript`** — Subscript symbol (Swift / Python __getitem__). CANONICAL per audit-findings 0007.
+- **`subscription`** — Subscription symbol (GraphQL operation). Top-level construct, sibling to query/fragment (audit-findings 0007 omission; registered per id-format:F3).
 - **`table`** — Table symbol (SQL / TOML / Markdown). CANONICAL per audit-findings 0007.
 - **`table_array`** — TOML table-array symbol. CANONICAL per audit-findings 0007.
 - **`target`** — Build-target symbol. CANONICAL per audit-findings 0006.
@@ -277,6 +279,7 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`example`** — Cargo `[[example]]` target kind. Pending cluster-G audit.
 - **`handler`** — Ansible playbook handler. Pending cluster-G audit.
 - **`helper`** — Handlebars block helper (non-builtin). Pending cluster-H audit.
+- **`operation`** — Anonymous GraphQL operation fallback (graphql.py op_type default when an operation_definition has no operation_type child). Semantically an anonymous query; pending the producer fold to `query` (id-changing, deferred to v6). Registered per id-format:F3.
 - **`pattern_rule`** — Make pattern-rule target. Pending cluster-G audit.
 - **`private`** — WGSL `var<private>` address space. Pending cluster-H audit.
 - **`storage`** — WGSL `var<storage>` address space. Pending cluster-H audit.

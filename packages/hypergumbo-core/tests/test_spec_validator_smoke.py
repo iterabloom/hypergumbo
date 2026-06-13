@@ -216,7 +216,10 @@ def test_axis_conformance_passes_on_catalog_conformant_symbol() -> None:
     a_lang = next(iter(all_known_languages()))
 
     sym = _FakeSym(
-        id="python:test/fake.py:1-1:sym:function",
+        # id-format:F3 round-trip: the kind-slot must equal Symbol.kind for a
+        # fully-conformant symbol, so build it from a_kind rather than a
+        # hardcoded "function".
+        id=f"python:test/fake.py:1-1:sym:{a_kind}",
         kind=a_kind,
         language=a_lang,
         discovery_language=None,
@@ -1628,3 +1631,167 @@ def test_class_b_with_display_label_not_flagged() -> None:
     )
     violations = validate_ir([sym], [], [])
     assert not any(v.field_name == "Symbol.display_label" for v in violations)
+
+
+# ----------------------------------------------------------------------
+# id-format:F3 — Symbol.id round-trip canary sub-checks
+# ----------------------------------------------------------------------
+#
+# These exercise ``_check_id_roundtrip``, which runs ONLY on ids that
+# already pass the shape-only ``_CANONICAL_ID_PATTERN`` (shape failures
+# are owned by ``_check_id_format``). It then parses the last-3 colon-free
+# tokens (span, name, kind) per ADR-0036 Ruling 1 and enforces: kind-slot
+# registry membership (advisory), kind-slot == Symbol.kind (advisory),
+# non-empty name-slot (advisory), and span start<=end (error). The advisory
+# checks land at ``warning`` until the Wave-2 id-changing folds (WI-pubiv
+# external_symbol kind-slot, WI-kugaj route/event role, audit-findings 0005
+# tsconfig) clear the known backlog, at which point they promote to error.
+
+
+def test_id_roundtrip_passes_on_registered_matching_canonical_id() -> None:
+    """A canonical id whose kind-slot is a registered kind equal to
+    Symbol.kind, with a non-empty name and start<=end span, is clean."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    sym = _FakeSym(id="python:pkg/foo.py:10-12:do_thing:function", kind="function")
+    assert _check_id_roundtrip([sym]) == []
+
+
+def test_id_roundtrip_flags_unregistered_kind_slot_warning() -> None:
+    """An id kind-slot that is not a registered symbol-kind is flagged at
+    advisory (warning) severity — the net value over the shape-only canonical
+    pattern. kind-slot == Symbol.kind here, isolating membership from the
+    mismatch check."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    sym = _FakeSym(
+        id="python:pkg/foo.py:1-1:name:zzznotarealkind", kind="zzznotarealkind"
+    )
+    violations = _check_id_roundtrip([sym])
+    assert len(violations) == 1
+    v = violations[0]
+    assert v.severity == "warning"
+    assert v.validator_class == "id_format"
+    assert v.field_name == "Symbol.id"
+    assert v.observed == "zzznotarealkind"
+    assert "registered symbol-kind" in v.message
+
+
+def test_id_roundtrip_flags_kind_slot_mismatch_warning() -> None:
+    """The id kind-slot must equal Symbol.kind. A divergence (both kinds
+    registered) is flagged at advisory severity."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    sym = _FakeSym(id="python:pkg/foo.py:1-1:name:function", kind="method")
+    violations = _check_id_roundtrip([sym])
+    assert len(violations) == 1
+    v = violations[0]
+    assert v.severity == "warning"
+    assert v.field_name == "Symbol.id"
+    assert "does not match Symbol.kind" in v.message
+
+
+def test_id_roundtrip_catches_tsconfig_divergence_invisible_to_axis_conformance() -> None:
+    """The tsconfig node (id kind-slot 'tsconfig', Symbol.kind 'file') is the
+    motivating case: Symbol.kind='file' is registered, so axis_conformance is
+    blind to the divergence, but the round-trip check catches both the
+    unregistered kind-slot and the kind-slot != Symbol.kind mismatch."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    sym = _FakeSym(
+        id="json:tsconfig.json:1-8:tsconfig.json:tsconfig",
+        kind="file",
+        language="json",
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[],
+        qualified_name=None,
+    )
+    # axis_conformance does NOT flag Symbol.kind (file is a registered kind)...
+    full = validate_ir([sym], [], [])
+    assert not any(v.field_name == "Symbol.kind" for v in full)
+    # ...but the round-trip check catches the divergence.
+    rt = _check_id_roundtrip([sym])
+    assert any("does not match Symbol.kind" in v.message for v in rt)
+    assert any("registered symbol-kind" in v.message for v in rt)
+    assert all(v.severity == "warning" for v in rt)
+
+
+def test_id_roundtrip_flags_empty_name_slot_warning() -> None:
+    """An empty name-slot is flagged at advisory severity."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    sym = _FakeSym(id="python:pkg/foo.py:1-1::function", kind="function")
+    violations = _check_id_roundtrip([sym])
+    assert len(violations) == 1
+    assert violations[0].severity == "warning"
+    assert "name-slot" in violations[0].message
+
+
+def test_id_roundtrip_flags_span_start_after_end_error() -> None:
+    """A span whose start exceeds its end is a malformation flagged at ERROR
+    severity (no known T1 backlog, unlike membership/mismatch)."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    sym = _FakeSym(id="python:pkg/foo.py:5-3:name:function", kind="function")
+    violations = _check_id_roundtrip([sym])
+    assert len(violations) == 1
+    v = violations[0]
+    assert v.severity == "error"
+    assert "start" in v.message and "end" in v.message
+
+
+def test_id_roundtrip_accepts_sentinel_and_equal_spans() -> None:
+    """The synthetic 0-0 and file 1-1 sentinel spans satisfy start<=end."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    for span in ("0-0", "1-1"):
+        sym = _FakeSym(id=f"python:pkg/foo.py:{span}:name:function", kind="function")
+        assert _check_id_roundtrip([sym]) == []
+
+
+def test_id_roundtrip_skips_noncanonical_id() -> None:
+    """Shape failures are owned by _check_id_format; the round-trip check
+    skips ids that fail the canonical pattern (it can't safely parse them)."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    sym = _FakeSym(id="packages/foo/bar.py::http_client::42", kind="call_site")
+    assert _check_id_roundtrip([sym]) == []
+
+
+def test_id_roundtrip_skips_when_kind_attr_absent() -> None:
+    """A Symbol with no kind attribute skips the kind-slot==Symbol.kind check
+    (required-field presence is axis_conformance's job); membership still
+    applies (function is registered, so still clean)."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    sym = _FakeSym(id="python:pkg/foo.py:1-1:bar:function")  # no kind attr
+    assert _check_id_roundtrip([sym]) == []
+
+
+def test_id_roundtrip_skips_none_and_nonstr_id() -> None:
+    """None / non-str ids are skipped (axis_conformance owns presence)."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    assert _check_id_roundtrip([_FakeSym(id=None, kind="function")]) == []
+    assert _check_id_roundtrip([_FakeSym(id=123, kind="function")]) == []
+
+
+def test_id_roundtrip_wired_into_validate_ir() -> None:
+    """validate_ir runs the round-trip check alongside the other classes."""
+    sym = _FakeSym(
+        id="python:pkg/foo.py:5-3:name:function",  # start>end -> error
+        kind="function",
+        language="python",
+        discovery_language=None,
+        protocol_origin=None,
+        origin=[],
+        qualified_name=None,
+    )
+    violations = validate_ir([sym], [], [])
+    assert any(
+        v.validator_class == "id_format"
+        and v.field_name == "Symbol.id"
+        and "start" in v.message
+        for v in violations
+    )

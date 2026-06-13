@@ -215,3 +215,34 @@ def test_find_axis_drift_excludes_protocol_kinds_and_bridge_kinds(tmp_path: Path
         'BRIDGE_KINDS = frozenset({"cgo", "ffi", "napi", "wasm"})\n',
     )
     assert find_axis_drift(tmp_path) == []
+
+
+def test_graphql_operation_siblings_registered() -> None:
+    """GraphQL ``mutation``/``subscription`` register as ``language_construct``
+    siblings of ``query``/``fragment``; the anonymous-operation fallback
+    registers as ``pending_classification`` (id-format:F3).
+
+    The GraphQL analyzer (``hypergumbo_lang_common/graphql.py``) emits
+    ``Symbol.kind == op_type`` for ``operation_definition`` nodes, where
+    ``op_type`` is ``query`` / ``mutation`` / ``subscription`` from the
+    ``operation_type`` child, or the literal ``"operation"`` fallback for an
+    anonymous operation (``{ ... }`` shorthand). ``query`` was already a
+    registered ``language_construct`` (audit-findings 0007, described as the
+    GraphQL/SQL query operation), but its ``mutation``/``subscription``
+    siblings were omitted — an oversight that made them fail both
+    axis_conformance and the id-format kind-slot membership check. The
+    anonymous ``operation`` fallback is semantically an anonymous query and
+    is parked on ``pending_classification`` rather than blessed as a
+    first-class construct (the producer fold to ``query`` is id-changing,
+    deferred to the v6 bump).
+    """
+    names = all_symbol_kind_names()
+    for canonical in ("mutation", "subscription"):
+        spec = find_symbol_kind(canonical)
+        assert spec is not None, f"{canonical!r} should be a registered symbol-kind"
+        assert spec.axis == AXIS_LANGUAGE_CONSTRUCT
+        assert canonical in names
+    op = find_symbol_kind("operation")
+    assert op is not None, "anonymous-operation fallback should be registered"
+    assert op.axis == AXIS_PENDING
+    assert "operation" in names

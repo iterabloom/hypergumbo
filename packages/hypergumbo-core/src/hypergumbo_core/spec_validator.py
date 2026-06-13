@@ -50,7 +50,12 @@ holds those counts shrink-only):
    same ``id_format`` validator class with a ``Symbol.stable_id`` sub-check
    pinning the canonical ``sha256:<16hex>`` shape that every
    ``make_*_stable_id`` factory produces. See ADR-0034 for the discipline
-   rationale.
+   rationale. id-format:F3 (``_check_id_roundtrip``) extends the class once
+   more with the ADR-0036 Ruling-2 *round-trip* canary: the id kind-slot must
+   be a registered symbol-kind and equal ``Symbol.kind`` (advisory ``warning``
+   until the v6 kind-slot folds clear the WI-pubiv/WI-kugaj/tsconfig backlog),
+   the name-slot must be non-empty (advisory), and the span must satisfy
+   ``start <= end`` (``error``).
 
 Why scaffold first
 ------------------
@@ -166,6 +171,7 @@ def validate_ir(
     violations.extend(_check_verdict_enum_completeness())
     violations.extend(_check_id_format(symbols))
     violations.extend(_check_stable_id_format(symbols))
+    violations.extend(_check_id_roundtrip(symbols))
     return violations
 
 
@@ -1379,6 +1385,135 @@ def _check_stable_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]
                 "hashlib.sha256(...).hexdigest()."
             ),
         ))
+    return violations
+
+
+# ----------------------------------------------------------------------
+# id-format:F3 — Symbol.id round-trip canary (ADR-0036 Rulings 1-3)
+# ----------------------------------------------------------------------
+#
+# The shape-only ``_CANONICAL_ID_PATTERN`` proves an id has the 5-segment
+# grammar but says nothing about the SEMANTICS of the kind / name / span
+# slots. This sub-check closes the round-trip: parse the last three
+# colon-free tokens (span, name, kind) per ADR-0036 Ruling 1 and assert
+# they round-trip to the Symbol's own fields and the symbol-kind registry.
+#
+# Severity gating (scope A of the Wave-2 identity train): the kind-slot
+# membership, kind-slot==Symbol.kind, and non-empty-name checks land at
+# ADVISORY (``_ID_ROUNDTRIP_ADVISORY``) because a strict pass red-flags a
+# known, id-CHANGING (T1) backlog that cannot clear before the v6 stable_id
+# bump:
+#   * the ~1645 external_symbol kind-slot disagreements (WI-pubiv),
+#   * the route/event role-disagreement cohort (WI-kugaj), and
+#   * the tsconfig id kind-slot (DEPRECATE-NO-FOLD per audit-findings 0005;
+#     the producer folded Symbol.kind->"file" but left "tsconfig" in the id).
+# Those folds change node.id, so they ride the v6 migration. Advisory
+# severity makes the violations visible/measurable now; the gating tracker
+# item promotes them to error once the backlog clears. The span start<=end
+# check has no such backlog and lands at error directly.
+
+_ID_ROUNDTRIP_ADVISORY = "warning"
+
+
+def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
+    """Round-trip conformance for canonical Symbol.ids (id-format:F3).
+
+    Runs only on ids that already pass ``_CANONICAL_ID_PATTERN`` — shape
+    failures are owned by ``_check_id_format`` and a non-canonical id
+    cannot be parsed safely. For the rest, parse the last three colon-free
+    tokens (span, name, kind) via ``rsplit(":", 3)`` (the IR's
+    last-3-tokens grammar; the path slot may itself contain colons) and
+    check:
+
+    * **kind-slot registry membership** (advisory) — the kind token is a
+      registered symbol-kind. Net value over the shape-only pattern: it
+      catches divergences like ``tsconfig`` that ``axis_conformance`` is
+      blind to (the *Symbol.kind* field carries the registered ``file``
+      while the id slot kept the stale ``tsconfig``).
+    * **kind-slot == Symbol.kind** (advisory) — the id round-trips to the
+      Symbol's own kind. Skipped when ``Symbol.kind`` is absent / None
+      (required-field presence is ``axis_conformance``'s job).
+    * **name-slot non-empty** (advisory).
+    * **span start <= end** (error) — a genuine malformation with no
+      id-changing backlog.
+
+    See ADR-0036 Rulings 1-3 and the module comment above for the
+    advisory-vs-error severity gating.
+    """
+    from .symbol_kinds import all_symbol_kind_names
+
+    registered = all_symbol_kind_names()
+    violations: list[ValidationViolation] = []
+    for sym in symbols:
+        sym_id = getattr(sym, "id", None)
+        if not isinstance(sym_id, str):
+            continue
+        if not _CANONICAL_ID_PATTERN.match(sym_id):
+            # Shape failures are owned by _check_id_format; the canonical
+            # match guarantees the rsplit below yields the span / name /
+            # kind slots, so we only parse ids that matched.
+            continue
+        _lang_path, span_slot, name_slot, kind_slot = sym_id.rsplit(":", 3)
+
+        if kind_slot not in registered:
+            violations.append(ValidationViolation(
+                severity=_ID_ROUNDTRIP_ADVISORY,
+                validator_class="id_format",
+                field_name="Symbol.id",
+                record_id=sym_id,
+                observed=kind_slot,
+                expected="a registered symbol-kind (symbol_kinds.all_symbol_kind_names())",
+                message=(
+                    f"Symbol.id kind-slot {kind_slot!r} is not a registered "
+                    "symbol-kind. Register it in symbol_kinds.py or fold the "
+                    "producer to a canonical kind via make_symbol_id(...)."
+                ),
+            ))
+
+        node_kind = getattr(sym, "kind", None)
+        if node_kind is not None and kind_slot != node_kind:
+            violations.append(ValidationViolation(
+                severity=_ID_ROUNDTRIP_ADVISORY,
+                validator_class="id_format",
+                field_name="Symbol.id",
+                record_id=sym_id,
+                observed=kind_slot,
+                expected=str(node_kind),
+                message=(
+                    f"Symbol.id kind-slot {kind_slot!r} does not match "
+                    f"Symbol.kind {node_kind!r} (round-trip violation). Rebuild "
+                    "the id via make_symbol_id(...) with the symbol's own kind."
+                ),
+            ))
+
+        if name_slot == "":
+            violations.append(ValidationViolation(
+                severity=_ID_ROUNDTRIP_ADVISORY,
+                validator_class="id_format",
+                field_name="Symbol.id",
+                record_id=sym_id,
+                observed=sym_id,
+                expected="a non-empty name-slot",
+                message=(
+                    "Symbol.id name-slot is empty; make_symbol_id(...) requires "
+                    "a non-empty name (file pseudo-symbols use the literal 'file')."
+                ),
+            ))
+
+        start_str, end_str = span_slot.split("-")
+        if int(start_str) > int(end_str):
+            violations.append(ValidationViolation(
+                severity="error",
+                validator_class="id_format",
+                field_name="Symbol.id",
+                record_id=sym_id,
+                observed=span_slot,
+                expected="start <= end",
+                message=(
+                    f"Symbol.id span {span_slot!r} has start {start_str} greater "
+                    f"than end {end_str}; spans must satisfy start <= end."
+                ),
+            ))
     return violations
 
 
