@@ -34,3 +34,10 @@
   clock: 3  # c2dd
   nonce: c2dd  # c2dd
   message: "Priority-inversion flag: this root_cause_family META is P2, but it holds the P0 member WI-kufib (262 synthesized stand-in nodes emit null Symbol.language, failing whole-doc schema validation). A 'tracker ready' reader sees the member's P0 urgency, not the family's P2. Documenting only; no priority change made. Consider bumping the family to P0 to match its highest-severity member if/when this cluster is actioned."  # c2dd
+- op: discuss  # 7937
+  at: '2026-06-13T21:08:06Z'  # 7937
+  by: agent  # 7937
+  actor: jgstern_agent  # 7937
+  clock: 4  # 7937
+  nonce: '7937'  # 7937
+  message: "synthetic:F2 (5a, PR #226, merged dev c058b59a55): Class-B synth stand-ins no longer leave stable_id/display_label/fingerprint at empty defaults — populate_synthetic_class_b_identity fills them via an injective (protocol_origin, kind, path, name, occurrence) key. Member status: META-huvuh -> satisfied (display_label producer+validator). WI-fozoh/WI-kapul-ganan/WI-sijut's external_symbol facets + the 5b kind-slot migration remain (deferred to v6/ADR-0037); WI-hulup is a path gap not addressed by 5a. Staying violated pending the external_symbol/5b work."  # 7937

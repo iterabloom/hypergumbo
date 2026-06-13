@@ -1,0 +1,20 @@
+- op: create  # 2d8b
+  at: '2026-06-13T23:57:31Z'  # 2d8b
+  by: agent  # 2d8b
+  actor: jgstern_agent  # 2d8b
+  clock: 1  # 2d8b
+  nonce: 2d8b  # 2d8b
+  data:  # 2d8b
+    kind: work_item  # 2d8b
+    title: "id-format:F3 continuation — Ruling-1 producer name-slot ':'->'.'  sanitization in make_symbol_id + name==sanitized(Symbol.name) round-trip (T1)"  # 2d8b
+    status: todo_soft  # 2d8b
+    priority: 3  # 2d8b
+    parent:  # 2d8b
+    tags:  # 2d8b
+    - id_format  # 2d8b
+    isbefore: []  # 2d8b
+    duplicate_of: []  # 2d8b
+    not_duplicate_of: []  # 2d8b
+    pr_ref:  # 2d8b
+    description: "make_symbol_id (packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py:306) is a raw f-string; a Symbol name containing ':' injects extra colon-separated slots and breaks the canonical 5-segment shape (the name slot must be colon-free). Add lossy ':'->'.' sanitization at construction (ADR-0036 Ruling-1) plus a sibling validator sub-check that the id name-slot == sanitized(Symbol.name); mirror the producer fix in js_ts.py if it has its own id builder. IDENTITY-CHANGING (T1): changes node.id for any symbol whose name currently contains ':', so it must ride the v6 stable_id bump, NOT land pre-v6. Deferred follow-up of id-format:F3 (PR #227)."  # 2d8b
+    fields: {}  # 2d8b

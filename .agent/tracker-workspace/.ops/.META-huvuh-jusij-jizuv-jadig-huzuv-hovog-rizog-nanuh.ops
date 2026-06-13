@@ -44,3 +44,18 @@
   clock: 4  # d7ac
   nonce: d7ac  # d7ac
   message: "Dogfood tranche 05 facet (F85.A1 / anon-card-011): adds the second half of the inversion — display_label is not merely absent from Class B; it IS populated, but on Class C (1645 external_symbol + 1 file node), exactly the class the validator EXEMPTS and that ADR-0032 does NOT reserve the field for. 0/262 Class B (protocol_origin-populated) carry it. The display_label value on external symbols is the node id with the 0-0: span segment removed (e.g. python:re:0-0:compile:unresolved -> python:re:compile:unresolved) — a derived id-form, NOT a human-readable label (name='Path', qualified_name=None). Last-segment distribution: unresolved 1312, attribute 214, doc_link 106, module 11, script 1, package 1. The validator's one-sided contrapositive check ('no display_label on Class A') would NOT catch this misdirected Class-C population. Evidence: frozen substrate.json. Blind severity 3/5, reproduced on frozen substrate."  # d7ac
+- op: update  # 9090
+  at: '2026-06-13T21:08:05Z'  # 9090
+  by: agent  # 9090
+  actor: jgstern_agent  # 9090
+  clock: 5  # 9090
+  nonce: '9090'  # 9090
+  set:  # 9090
+    status: satisfied  # 9090
+- op: discuss  # 18c2
+  at: '2026-06-13T21:08:05Z'  # 18c2
+  by: agent  # 18c2
+  actor: jgstern_agent  # 18c2
+  clock: 6  # 18c2
+  nonce: 18c2  # 18c2
+  message: "Satisfied — synthetic:F2 (5a), PR #226 (merged dev c058b59a55). Both halves of the display_label biconditional now hold for Class-B. PRODUCER: populate_synthetic_class_b_identity (analyze/base.py, post-linker) stamps display_label on Class-B protocol-synth nodes (language=None + protocol_origin) that linkers left null. VALIDATOR: the spec_validator Class-B canary gained the affirmative 'Class-B SHOULD carry display_label' check (it previously checked stable_id/fingerprint/discovery_language/origin but not display_label; the Class-A contrapositive already forbade it on real source). BEHAVIORAL EVIDENCE (live repro on merged dev via production code): a Class-B Symbol with display_label=None -> validate_ir flags Symbol.display_label (flagged-when-missing=True); populate_synthetic_class_b_identity fills it (None -> 'ipc:req:chan'); re-validate -> not flagged (flagged-after-fill=False). Production-path tests: test_class_b_missing_display_label_is_flagged / _with_display_label_not_flagged (validator) + the TestPopulateSyntheticClassBIdentity class (producer). The statement's first clause (Class-C external_symbol carrying display_label) is the pass-22 correction = INTENDED (validator exempts kind in {file, external_symbol}); the real residual was the Class-B omission + the two-class-blind validator, both now closed."  # 18c2

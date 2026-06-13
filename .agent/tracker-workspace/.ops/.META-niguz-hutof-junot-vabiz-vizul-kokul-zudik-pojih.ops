@@ -27,3 +27,10 @@
   clock: 2  # 7653
   nonce: '7653'  # 7653
   message: "Vocabulary-staleness flag (2026-06-09): see the parallel note on child META-nomiz. The shared identity+provenance stamping step this META mandates must stamp the POST-ADR-0031/0032 field set — stable_id, discovery_language, qualified_name/display_label, path, origin, origin_run_id, fingerprint, kind-slot — NOT the ADR-obsoleted canonical_name and language. language=None on synthetic stand-ins is by-design (ADR-0031; WI-nagam wont_do) and must NOT be treated as a stamping gap; the real gaps are null stable_id/fingerprint/origin/origin_run_id (e.g. WI-fozoh)."  # 7653
+- op: discuss  # 6848
+  at: '2026-06-13T21:08:05Z'  # 6848
+  by: agent  # 6848
+  actor: jgstern_agent  # 6848
+  clock: 3  # 6848
+  nonce: '6848'  # 6848
+  message: "synthetic:F2 (5a, PR #226, merged dev c058b59a55) lands the make_synthetic_symbol_identity chokepoint + the populate_synthetic_class_b_identity post-pass: Class-B protocol-synth nodes (language=None + protocol_origin) now get stable_id (INJECTIVE key (protocol_origin, kind, path, name, occurrence) — zero by-design collisions per ADR-0035 §1, after an adversarial review caught a coarse-key collision regression), display_label (closes META-huvuh), and fingerprint, where the ~7 zero-stable_id linkers + unstamped others left them null. PARTIAL toward this super-cluster: (a) it is a post-pass backstop (the architecture chosen for 5a), not yet a construction-time chokepoint every mint site routes through; (b) the external_symbol kind-slot re-keying (WI-kapul-ganan) is 5b, deferred to the v6/ADR-0037 train; (c) WI-hulup's npm_package path=''/language gap is a path concern, not the identity-stamp gap 5a fills. Staying violated pending those."  # 6848

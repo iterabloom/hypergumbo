@@ -55,3 +55,10 @@
   clock: 6  # 8933
   nonce: '8933'  # 8933
   message: "root-cause family member (a1) (connections-sweep 2026-06-08T1900Z)"  # 8933
+- op: discuss  # 3e28
+  at: '2026-06-13T11:21:16Z'  # 3e28
+  by: agent  # 3e28
+  actor: jgstern_agent  # 3e28
+  clock: 7  # 3e28
+  nonce: '3e28'  # 3e28
+  message: "synthetic:F1 (PR #224, merged dev 900463f0ce) fixes the BULK. The 2 synthetic producers (boundary external_symbol synthesis + orchestrator file-symbol synthesis) now emit real AnalysisRuns and stamp resolvable origin_run_id, closing all 1645 external_symbol nodes (python 1511 + markdown 106 + ts 19 + rust 3 + go 2 + java 1 + js 1) and the 489 file/orchestrator nodes = ~2134 of 2236. REMAINING (~96, kept open): the manifest/config-analyzer stragglers — toml dependency 76 + project 7, json dependency 6 + package 1, wgsl function 3 + struct 2, sql view 1 — whose AnalysisRuns are built by direct-constructor analyzers defaulting origin_run_id=''. Those are the run-lifecycle:F1 cohort (orchestrator-owned AR lifecycle + central origin_run_id backstop), tracked there. BEHAVIORAL EVIDENCE: live repro on merged dev shows 0 empty/unresolved origin_run_id among synthetic (boundary+file) nodes. Staying todo_hard pending the straggler backstop."  # 3e28

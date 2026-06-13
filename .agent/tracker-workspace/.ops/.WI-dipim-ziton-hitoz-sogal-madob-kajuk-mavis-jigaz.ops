@@ -1,0 +1,20 @@
+- op: create  # 0f65
+  at: '2026-06-13T23:57:29Z'  # 0f65
+  by: agent  # 0f65
+  actor: jgstern_agent  # 0f65
+  clock: 1  # 0f65
+  nonce: 0f65  # 0f65
+  data:  # 0f65
+    kind: work_item  # 0f65
+    title: "id-format:F3 continuation — full ADR-0036 Ruling-3 sentinel-enumeration validator sub-check (T0, advisory)"  # 0f65
+    status: todo_soft  # 0f65
+    priority: 3  # 0f65
+    parent:  # 0f65
+    tags:  # 0f65
+    - id_format  # 0f65
+    isbefore: []  # 0f65
+    duplicate_of: []  # 0f65
+    not_duplicate_of: []  # 0f65
+    pr_ref:  # 0f65
+    description: "Extend _check_id_roundtrip (spec_validator.py) to enforce ADR-0036 Ruling-3's path/span sentinel enumeration, beyond the span start<=end check already shipped in PR #227: path '<external>' is the only legal non-file path sentinel; span '0-0' is the synthetic-no-location sentinel; span '1-1' is legal ONLY in the file pseudo-symbol triple (name='file', kind='file'). Anything outside the enumeration is a violation. Identity-neutral (validator-only). Land advisory first and run a schema-coverage-corpus + self-analysis scan before promoting to error — the memo flagged false-positive risk on uncatalogued conventions. Deferred follow-up of id-format:F3 (PR #227)."  # 0f65
+    fields: {}  # 0f65

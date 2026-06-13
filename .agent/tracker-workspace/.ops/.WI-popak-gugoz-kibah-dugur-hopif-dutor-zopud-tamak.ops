@@ -1,0 +1,20 @@
+- op: create  # ee00
+  at: '2026-06-13T23:57:26Z'  # ee00
+  by: agent  # ee00
+  actor: jgstern_agent  # ee00
+  clock: 1  # ee00
+  nonce: ee00  # ee00
+  data:  # ee00
+    kind: work_item  # ee00
+    title: "Promote id-format:F3 round-trip checks (membership / kind-match / name-slot) from advisory to error once the v6 kind-slot folds land"  # ee00
+    status: todo_soft  # ee00
+    priority: 3  # ee00
+    parent:  # ee00
+    tags:  # ee00
+    - id_format  # ee00
+    isbefore: []  # ee00
+    duplicate_of: []  # ee00
+    not_duplicate_of: []  # ee00
+    pr_ref:  # ee00
+    description: "Flip _ID_ROUNDTRIP_ADVISORY in packages/hypergumbo-core/src/hypergumbo_core/spec_validator.py from 'warning' to 'error' (the kind-slot registry-membership, kind-slot==Symbol.kind, and non-empty-name sub-checks of _check_id_roundtrip), and ratchet the schema-coverage-corpus VALIDATION_BASELINES in tests/test_validation_report_empty.py back down (currently +11 advisory id_format on external_symbol boundary nodes). GATED on the id-changing (T1) folds that drain the backlog to zero: WI-pubiv (external_symbol kind-slot -> external_symbol + meta.reference_syntax), WI-kugaj (route/event role -> function + meta.framework_role), and the tsconfig id kind-slot fold (audit-findings 0005, json_config.py:759 tsconfig->file). All three are id-changing and ride the v6 stable_id bump. This item is the 'gating tracker item' forward-referenced by CHANGELOG.md (Unreleased), the ADR-0036 amendment (2026-06-13), and the spec_validator.py module comment. Span start<=end already lands at error. Landed by PR #227 (id-format:F3)."  # ee00
+    fields: {}  # ee00
