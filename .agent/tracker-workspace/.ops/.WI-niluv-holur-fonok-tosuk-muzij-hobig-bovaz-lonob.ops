@@ -31,3 +31,18 @@
     tags: [dogfood]  # 8637
   remove:  # 8637
     tags: [dogfooding]  # 8637
+- op: update  # 8d7d
+  at: '2026-06-13T03:52:37Z'  # 8d7d
+  by: agent  # 8d7d
+  actor: jgstern_agent  # 8d7d
+  clock: 3  # 8d7d
+  nonce: 8d7d  # 8d7d
+  set:  # 8d7d
+    status: done  # 8d7d
+- op: discuss  # ed09
+  at: '2026-06-13T03:52:37Z'  # ed09
+  by: agent  # ed09
+  actor: jgstern_agent  # ed09
+  clock: 4  # ed09
+  nonce: ed09  # ed09
+  message: "Landed in 7920564022 (2026-06-11, merged to dev), bundled with validator:F1. The validation_report now discloses denominator_scope explicitly (spec_validator.py:961-962 stable_id umbrella; :1049-1050 fingerprint umbrella) — exactly WI-niluv's fix-sketch 'documented exclusion' requirement. Behavioral evidence (live repro 2026-06-12, run_behavior_map on tests/fixtures/schema-coverage-corpus, default substrate, exit 0): the firing cross_field violation's observed text reads '4/42 non-null Symbols share stable_id (9.5%); denominator_scope=non_null (24/66 = 36.4% had stable_id=None, EXCLUDED from the rate)'. The biconditional disclosure fires in production output: the consumer can now recover both the non-null collision rate (4/42) and the total None-stable_id cohort (24/66), the two failure modes WI-niluv said were conflated. Was never-written-then-lost: item updated 2026-06-04 (pre-commit) with no closure entry — the 06-11 commit's 'Closes' message is inert in this CLI-driven tracker (see WI-bunag)."  # ed09

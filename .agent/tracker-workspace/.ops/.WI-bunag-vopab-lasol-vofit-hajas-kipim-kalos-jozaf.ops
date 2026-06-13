@@ -1,0 +1,30 @@
+- op: create  # 5c51
+  at: '2026-06-13T03:44:40Z'  # 5c51
+  by: agent  # 5c51
+  actor: jgstern_agent  # 5c51
+  clock: 1  # 5c51
+  nonce: 5c51  # 5c51
+  data:  # 5c51
+    kind: work_item  # 5c51
+    title: "auto-pr/merge-pr: merge-time guard detecting 'Closes (WI|INV|META)-…' in commit messages → auto-close or hard-warn the tracker closure (governance)"  # 5c51
+    status: needs_human_review  # 5c51
+    priority: 2  # 5c51
+    parent:  # 5c51
+    tags:  # 5c51
+    - ci_infrastructure  # 5c51
+    - governance  # 5c51
+    - tracker_infrastructure  # 5c51
+    - automation  # 5c51
+    isbefore: []  # 5c51
+    duplicate_of: []  # 5c51
+    not_duplicate_of: []  # 5c51
+    pr_ref:  # 5c51
+    description: "## Problem\n\nThis tracker is CLI/ops-driven, not commit-message-driven. A `Closes (WI|INV|META)-…`\nline in a git commit message is INERT here — `scripts/auto-pr` and `scripts/merge-pr`\ndo not parse it (verified: grep for commit-message closure parsing in both scripts\nreturns empty). So feature work that expresses closure only via the commit message\nleaves the tracker item stale (`todo_hard` / `violated`) even though the code landed\nand merged. This silently inflates the open-corpus denominator that the\nfundamental-correctness strategy is measured against (see\n`~/hypergumbo_lab_notebook/correctness_strategy_06102026.md`, Honest-Gap #1; the\nWave-0 corpus-hygiene batch exists precisely to correct this denominator).\n\n## Evidence of recurrence (this is not hypothetical)\n\n- **WI-dafun** (closure-evidence discipline) — landed but left open in a prior session;\n  closed retroactively.\n- **2026-06-11 validator commit `7920564022`** (\"feat(validator): G1 ratchet …\",\n  commit body: \"Closes WI-kafar, WI-himoj\"). The code landed and merged to dev, but\n  WI-kafar, WI-himoj, AND the bundled WI-niluv denominator-disclosure work all stayed\n  open. Diagnosed 2026-06-12: this was a process gap, NOT a durability/sync failure —\n  the items' `updated` timestamps predated the commit (2026-06-08) and there was no\n  closure discussion entry, so the closure ops were never written via the CLI (not\n  written-then-lost). `tracker recover` was clean, the journal was intact, and\n  local dev was in lockstep with selfh/dev. The sole cause was the inert \"Closes …\"\n  commit-message idiom.\n\n## Proposed fix\n\nAdd a merge-time guard to `scripts/auto-pr` and/or `scripts/merge-pr` that, at the\npoint a PR is being merged, scans the merging commit's message (and optionally the PR\nbody) for closure references of the form `Closes|Fixes|Resolves (WI|INV|META)-<proquint…>`.\nOn a match, do ONE of (the design decision below):\n\n  (a) AUTO-CLOSE — run the corresponding `scripts/tracker update <ID> --status\n      done|satisfied --note \"Closed by PR #N (<sha>).\"` automatically; or\n  (b) HARD-WARN / ABORT — block the merge from completing until the agent has run\n      the tracker closure explicitly (a non-blocking warning is insufficient — it\n      gets ignored).\n\n## Design decision needed (HUMAN)\n\nAuto-close vs. hard-warn — trade-offs:\n\n- **Auto-close**: zero-friction, but (1) risks closing on a typo'd or aspirational\n  \"Closes\" line, and (2) bypasses the closure-evidence discipline (G10 / WI-dafun),\n  which requires BEHAVIORAL evidence for behavioral items (CLI exit codes, stdout,\n  silently-accept/reject). An auto-close cannot supply that evidence. Mitigations:\n  auto-close only non-behavioral-axis items; always require a `--note`; or\n  downgrade-to-warn for behavioral items.\n- **Hard-warn (blocking abort)**: keeps the agent in the loop and preserves the\n  closure-evidence discipline, at the cost of merge friction.\n- **Hybrid (recommended starting point)**: hard-warn/abort always; auto-close ONLY\n  for an explicit opt-in syntax that carries evidence, e.g.\n  `Closes-with-evidence: WI-… (PR #N; repro: <cmd> -> exit 0)`.\n\n## Governance\n\n`scripts/auto-pr`, `scripts/merge-pr`, and `scripts/lib/forgejo-api.sh` are GOVERNANCE\nfiles per AGENTS.md — changes require explicit human approval and must NOT be\nself-merged. Per the AGENTS.md governance approval workflow, this item is filed\n`needs_human_review`: do NOT create a PR or begin implementation until explicit human\napproval is recorded in this item's discussion thread.\n\n## Scope / files\n\n- `scripts/auto-pr`, `scripts/merge-pr` (the merge-completion paths).\n- Possibly `scripts/lib/forgejo-api.sh` (shared merge helper).\n- Cross-reference: the closure-evidence discipline playbook\n  (`.agent/agent_playbooks_protocols_sops_skills/closure-evidence-discipline-playbook.md`)\n  and the WI-dafun item.\n\n## Source\n\nFiled via \"trackerize\" during the 2026-06-12 tracker-consistency investigation, which\nwas prompted by discovering that validator:F1 (WI-kafar/WI-himoj) had already landed\non 2026-06-11 but its tracker items were never closed."  # 5c51
+    fields: {}  # 5c51
+- op: discuss  # 57c8
+  at: '2026-06-13T03:44:56Z'  # 57c8
+  by: agent  # 57c8
+  actor: jgstern_agent  # 57c8
+  clock: 2  # 57c8
+  nonce: 57c8  # 57c8
+  message: "GOVERNANCE APPROVAL REQUESTED — do not implement until approved. This guard touches scripts/auto-pr and scripts/merge-pr (governance files), so per the AGENTS.md governance approval workflow it is filed needs_human_review with no preemptive PR. Two things to decide before implementation: (1) Auto-close vs. hard-warn vs. the hybrid (hard-warn always + auto-close only on an explicit evidence-carrying syntax) — my recommendation is the hybrid, because pure auto-close bypasses the closure-evidence discipline (G10/WI-dafun) for behavioral items. (2) Whether the guard lives in auto-pr only, merge-pr only, or both (and whether the shared logic belongs in scripts/lib/forgejo-api.sh, also governance). Motivation and full evidence are in the description: the inert 'Closes …' commit-message idiom has already left ≥3 items (WI-dafun, WI-kafar, WI-himoj, +WI-niluv) stale despite merged code — a process gap, not a sync/durability failure. Please reply with approval + your decision on (1) and (2), or redirect."  # 57c8

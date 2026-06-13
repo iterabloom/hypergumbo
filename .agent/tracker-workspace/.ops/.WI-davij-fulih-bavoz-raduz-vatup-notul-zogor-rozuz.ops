@@ -45,3 +45,18 @@
   clock: 4  # 7190
   nonce: '7190'  # 7190
   message: "root-cause family member (b3) (connections-sweep 2026-06-08T1900Z)"  # 7190
+- op: update  # dcbb
+  at: '2026-06-13T03:54:49Z'  # dcbb
+  by: agent  # dcbb
+  actor: jgstern_agent  # dcbb
+  clock: 5  # dcbb
+  nonce: dcbb  # dcbb
+  set:  # dcbb
+    status: done  # dcbb
+- op: discuss  # 6141
+  at: '2026-06-13T03:54:49Z'  # 6141
+  by: agent  # 6141
+  actor: jgstern_agent  # 6141
+  clock: 6  # 6141
+  nonce: '6141'  # 6141
+  message: "Landed in 7920564022 (2026-06-11, merged to dev) as the validator:F5/G1 ride-along. Both of WI-davij's offered remedies are met: (1) EMIT-TIME COHERENCE ENFORCEMENT ON THE PRODUCED GRAPH — runtime_coherence.find_offenders is no longer human-invocation-only; the G1 ratchet gate (tests/test_validation_report_empty.py:197-200) consumes it on the emitted behavior-map and co-ratchets the un-allow-listed offender count per substrate (shrink-only), so an analyzer that emits an incoherent substrate (dangling/leaky partition) now trips CI; (2) SCOPE-HONESTY DOCSTRING (runtime_coherence.py:28-36) stating the producer posture is WARN-only ('it does not fail hypergumbo run') and naming the gate as the enforcement surface — addresses the 'name oversells a source-call-site gate' complaint. Behavioral evidence: re-ran the G1 gate 2026-06-12 -> 4 passed, exit 0 (the find_offenders/filter_by_allowlist path is the emit-time check). NUANCE (human-confirmed 2026-06-12): enforcement is at the CI gate, not in-process during 'hypergumbo run' — this is the deliberate ADR-0033 gate-not-fail posture (the CI gate, not run, is the failure surface). The literal 'never run during hypergumbo run' is the symptom description; the offered fix options were both satisfied. If in-run enforcement is later wanted, that is a NEW item against ADR-0033, not a WI-davij reopen. Was never-written-then-lost: updated 2026-06-08 (pre-commit), no closure entry; the commit's 'Closes' message is inert in this CLI-driven tracker (see WI-bunag)."  # 6141

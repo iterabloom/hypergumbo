@@ -31,3 +31,18 @@
     tags: [dogfood]  # e262
   remove:  # e262
     tags: [dogfooding]  # e262
+- op: update  # b684
+  at: '2026-06-13T03:27:50Z'  # b684
+  by: agent  # b684
+  actor: jgstern_agent  # b684
+  clock: 3  # b684
+  nonce: b684  # b684
+  set:  # b684
+    status: done  # b684
+- op: discuss  # 1915
+  at: '2026-06-13T03:27:50Z'  # 1915
+  by: agent  # 1915
+  actor: jgstern_agent  # 1915
+  clock: 4  # 1915
+  nonce: '1915'  # 1915
+  message: "Already landed in 7920564022 (2026-06-11, merged to dev) alongside WI-kafar. The G1 gate runs a 4-substrate matrix (WI-himoj Path-1: multi-substrate test matrix), so flag-gated writer paths no longer escape the default-substrate gate — include_docs / frameworks_all / max_tier_4 each ratchet independently. The +5 --include-docs markdown section-id id_format defects (F35.A1) are pinned in the include_docs baseline=6 and trip the gate on any regression; their producer-level fixes (the Phase-2 followups: gitignore Symbol.id reuse, markdown section colons, markdown code_block span) remain downstream id-format / INV-kurup producer work, now ratchet-guarded. Behavioral evidence: gate green 2026-06-12, 4 passed exit 0."  # 1915
