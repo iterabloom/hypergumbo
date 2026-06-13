@@ -60,3 +60,18 @@
   clock: 6  # 01ab
   nonce: 01ab  # 01ab
   message: "root-cause family cross-link (a1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 01ab
+- op: update  # 45ee
+  at: '2026-06-13T11:20:50Z'  # 45ee
+  by: agent  # 45ee
+  actor: jgstern_agent  # 45ee
+  clock: 7  # 45ee
+  nonce: 45ee  # 45ee
+  set:  # 45ee
+    status: done  # 45ee
+- op: discuss  # 8bad
+  at: '2026-06-13T11:20:51Z'  # 8bad
+  by: agent  # 8bad
+  actor: jgstern_agent  # 8bad
+  clock: 8  # 8bad
+  nonce: 8bad  # 8bad
+  message: "Done — synthetic:F1, PR #224 (merged dev 900463f0ce). Boundary external_symbol nodes now carry origin=['boundary_external_symbol_synthesis'] (was origin=[] — zero provenance) plus a resolvable origin_run_id. Per the established synthesis-mechanism convention (ADR-0036 D1b; cf. orchestrator_file_symbol_synthesis/inheritance/scip), origin names the synthesis MECHANISM that minted the node; the new mechanism is registered in catalog._SYNTHESIS_MECHANISMS so it passes axis-conformance. BEHAVIORAL EVIDENCE (live repro on merged dev): every external_symbol node has origin==['boundary_external_symbol_synthesis'] and origin_run_id resolving to the boundary AnalysisRun's execution_id; 0 origin=[] external_symbol nodes. Production-path test asserts this end-to-end. The Symbol.__post_init__ non-empty-origin raise (the enforcement asymmetry this item notes — Edge raises, Symbol doesn't) is staged validator-error-first and deferred to land with validator:F2(d): other producers' stragglers still emit empty provenance, so a hard raise would crash them today."  # 8bad

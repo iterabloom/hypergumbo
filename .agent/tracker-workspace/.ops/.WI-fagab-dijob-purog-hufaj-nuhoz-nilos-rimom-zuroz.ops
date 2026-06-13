@@ -34,3 +34,18 @@
   clock: 3  # 0edf
   nonce: 0edf  # 0edf
   message: "emission-parity:F1 / G2 gate (PR #4202) locks (python, qualified_name) as a strict-xfail hole — confirmed live: Python qualified_name 0/5 on the fixture. Live-dataclass finding that narrows scope: JavaScript DOES populate qualified_name (5/6 live on the same gate), contradicting the F23.6 bash/javascript/solidity-also-0pct expansion — that was a serialized-JSON probe artifact. So the gap is Python-specific (py.py wires qualified_name into the Symbol.name kwarg). Stays todo_hard; the gate XPASS-trips when py.py is fixed."  # 0edf
+- op: update  # 9906
+  at: '2026-06-13T09:17:50Z'  # 9906
+  by: agent  # 9906
+  actor: jgstern_agent  # 9906
+  clock: 4  # 9906
+  nonce: '9906'  # 9906
+  set:  # 9906
+    status: done  # 9906
+- op: discuss  # b88b
+  at: '2026-06-13T09:17:50Z'  # b88b
+  by: agent  # b88b
+  actor: jgstern_agent  # b88b
+  clock: 5  # b88b
+  nonce: b88b  # b88b
+  message: "Done — PR #223 (merged dev a88dcf46a6).\n\nBEHAVIORAL EVIDENCE (re-ran the filed repro — was qualified_name 0% on Python):\n- Live repro on merged dev (analyze_python): qualified_name now populated 4/4 on\n  callable/class symbols (was 0/4): function 'top'→'top', nested 'top.inner'→\n  'top.inner', method 'C.meth'→'C.meth', class 'C'→'C'.\n- Production-path tests: TestWiFagabQualifiedNameField (4 tests, in\n  hypergumbo-lang-mainstream) assert qualified_name on function/method/class via\n  analyze_python, plus the name==qualified_name identity-neutrality invariant.\n- The G2 emission-parity matrix now HARD-LOCKS ('python','qualified_name')\n  (strict-xfail cell stripped — \"every emission fix strips an xfail\"), so the\n  field population cannot silently regress.\n\nROOT CAUSE / FIX: py.py built a container-qualified name (outer.inner for nested\nfunctions, Class.method for methods, the class name for classes) and routed it\nONLY into name=. The fix passes that same value through the separate\nqualified_name= kwarg on the function/method/class Symbol ctors. Additive +\nidentity-neutral: name= unchanged (still the dotted/qualified value, load-bearing\nfor Symbol.id/stable_id and the INV-mofav tests) → no existing stable_id/shape_id/\nid changes. The bare-name swap (name→short, matching js_ts) is the v6/T1 payload.\n\nDEFERRED (separable 2nd deliverable): the per-kind writer-contract validator entry\nproposed in this WI is filed as sibling WI-hudug-mojon (todo_soft P3).\n\nFirst Wave-2 (identity & provenance) T0 item, per the verified kickoff plan\n(~/hypergumbo_lab_notebook/wave2_kickoff_plan_06132026.md). Parent INV-jahiv stays\nviolated (analyzer-parity umbrella; other faces remain)."  # b88b

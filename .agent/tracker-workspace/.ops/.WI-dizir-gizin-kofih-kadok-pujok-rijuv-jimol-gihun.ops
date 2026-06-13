@@ -60,3 +60,18 @@
   clock: 6  # 532a
   nonce: 532a  # 532a
   message: "root-cause family cross-link (b3); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 532a
+- op: update  # e16b
+  at: '2026-06-13T11:20:50Z'  # e16b
+  by: agent  # e16b
+  actor: jgstern_agent  # e16b
+  clock: 7  # e16b
+  nonce: e16b  # e16b
+  set:  # e16b
+    status: done  # e16b
+- op: discuss  # e91d
+  at: '2026-06-13T11:20:50Z'  # e91d
+  by: agent  # e91d
+  actor: jgstern_agent  # e91d
+  clock: 8  # e91d
+  nonce: e91d  # e91d
+  message: "Done — synthetic:F1, PR #224 (merged dev 900463f0ce). Producer half fixed: the orchestrator file-symbol synthesizer now emits a real AnalysisRun(pass_id='orchestrator_file_symbol_synthesis') and threads its execution_id into the synthesized file nodes' origin_run_id. BEHAVIORAL EVIDENCE (live repro on merged dev, 2-file repo): 'orchestrator_file_symbol_synthesis' now present in analysis_runs and the synthesized file node's origin_run_id resolves to that run's execution_id (was the full 492-node cohort with the pass-id absent). Production-path test test_run_behavior_map.py::test_synthetic_producers_emit_resolvable_provenance asserts the pass appears AND every synthetic node's origin_run_id resolves (regression guard). The STANDING artifact-presence FK ratchet (origin/origin_run_id -> analysis_runs) is the separate validator:F2(d) layer per the correctness roadmap."  # e91d

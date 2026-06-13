@@ -46,3 +46,18 @@
   item: INV-rotup-kipir-habuv-hitis-bajis-zozal-mudus-pimil  # edaf
   target_nonce: '3219'  # edaf
   reason: "F34.D3 fully migrated to WI-runos per fold-audit Phase 2b"  # edaf
+- op: update  # cefd
+  at: '2026-06-13T06:56:21Z'  # cefd
+  by: agent  # cefd
+  actor: jgstern_agent  # cefd
+  clock: 5  # cefd
+  nonce: cefd  # cefd
+  set:  # cefd
+    status: satisfied  # cefd
+- op: discuss  # ad7f
+  at: '2026-06-13T06:56:22Z'  # ad7f
+  by: agent  # ad7f
+  actor: jgstern_agent  # ad7f
+  clock: 6  # ad7f
+  nonce: ad7f  # ad7f
+  message: "Closed by PR 70c758d8b6 (config --help disclosure), the last residual of the CLI-help/README-drift umbrella. INVARIANT HOLDS + ENFORCED. All four catalogued symptoms fixed: INV-bugiz (--debug ripgrep ref removed), WI-loloz (routes -x documented as deprecated no-op), WI-figor (README --no-progress marked sketch/run-only) — all done — and now config --help discloses it prints bundled per-language config and reads no repo/substrate, so it accepts neither a path nor --input (the pass-30 flag-availability residual). BEHAVIORAL EVIDENCE: (1) the G7 docs-vs-argparse gate (test_cli_docs_prose_gate.py, 28 tests green on the merge) enforces the removed-feature denylist + README-invocation parse + the committed .ci/cli-flag-matrix.json, so drift cannot silently reappear; (2) live 'hypergumbo config --help' renders 'accepts neither a path nor --input'; new gate test test_config_help_discloses_it_takes_no_substrate_input guards the disclosure. The verify-claims --claims flag name is a real/documented UX-convention nit (NOT a false-scope claim), left as-is to avoid breaking scripts — outside this invariant's scope."  # ad7f

@@ -1,0 +1,24 @@
+- op: create  # 2052
+  at: '2026-06-13T09:16:50Z'  # 2052
+  by: agent  # 2052
+  actor: jgstern_agent  # 2052
+  clock: 1  # 2052
+  nonce: '2052'  # 2052
+  data:  # 2052
+    kind: work_item  # 2052
+    title: "Per-kind writer-contract validator entry: qualified_name on Python function/method/class"  # 2052
+    status: todo_soft  # 2052
+    priority: 3  # 2052
+    parent: INV-jahiv-lugis-topum-totot-morin-somuv-pujoz-vijir  # 2052
+    tags:  # 2052
+    - language_parity  # 2052
+    - writer_contract  # 2052
+    - adr_0033  # 2052
+    - qualified_name  # 2052
+    - wave2  # 2052
+    isbefore: []  # 2052
+    duplicate_of: []  # 2052
+    not_duplicate_of: []  # 2052
+    pr_ref:  # 2052
+    description: "WI-fagab (PR #223) fixed the producer half: py.py now populates\nSymbol.qualified_name on function/method/class (additive, identity-neutral).\nThe emission-parity matrix (G2) now hard-locks ('python','qualified_name') so\nthe any()-level population cannot silently regress.\n\nThis sibling is WI-fagab's separable SECOND deliverable: a per-KIND\nwriter-contract validator entry (ADR-0033 writer-contract class) requiring\nqualified_name populated on the specific kinds (function/method/class) for which\nthe mainstream analyzers populate it — stronger than the parity gate's any()\nprobe, which would pass even if only one kind populated the field.\n\nScope notes:\n- The parity gate guards \"some symbol has qualified_name\"; this guards \"every\n  function/method/class does\", per-language.\n- For Python, function and method qualified_name are fully container-qualified\n  (outer.inner / Class.method); class qualified_name currently mirrors the bare\n  class name (node.name) because py.py does not compute enclosing-scope\n  qualification for classes (a nested class gets its bare name). If the\n  writer-contract requires TRUE class qualification, this WI must first add\n  enclosing-scope chaining for classes (a small feature, not a kwarg\n  pass-through) — decide at design time.\n- Coordinate with the broader writer-contract validator family\n  (declared-fields:F1 / ADR-0033) rather than adding a one-off check.\n\nFiled per the verified Wave-2 T0 kickoff plan (synthesis: \"file the\nwriter-contract entry as a sibling WI so the opener stays S and lands fast\")."  # 2052
+    fields: {}  # 2052
