@@ -1799,6 +1799,40 @@ class TestSynthesizeFileSymbolsForDanglingEdges:
         assert sym.span.end_line == 1
         assert sym.origin == ["orchestrator_file_symbol_synthesis"]
 
+    def test_stamps_provided_origin_run_id(self) -> None:
+        """synthetic:F1: a provided ``origin_run_id`` is stamped onto each
+        synthesized file Symbol so the node->AnalysisRun JOIN
+        (``origin_run_id`` -> ``execution_id``) resolves. ``origin`` stays the
+        synthesis-mechanism pass-id."""
+        caller = _make_caller_symbol()
+        edge = Edge.create(
+            src=make_file_id("python", "src/main.py"),
+            dst=caller.id,
+            edge_type="imports",
+            line=1,
+            origin="test", origin_run_id="test",
+        )
+        new_syms = synthesize_file_symbols_for_dangling_edges(
+            [caller], [edge], origin_run_id="uuid:file-synth-run",
+        )
+        assert len(new_syms) == 1
+        assert new_syms[0].origin == ["orchestrator_file_symbol_synthesis"]
+        assert new_syms[0].origin_run_id == "uuid:file-synth-run"
+
+    def test_origin_run_id_defaults_empty(self) -> None:
+        """The ``origin_run_id`` kwarg defaults to '' so pre-F1 call sites are
+        unaffected; the orchestrator supplies the real execution_id."""
+        caller = _make_caller_symbol()
+        edge = Edge.create(
+            src=make_file_id("python", "src/main.py"), dst=caller.id,
+            edge_type="imports", line=1, origin="test", origin_run_id="test",
+        )
+        new_syms = synthesize_file_symbols_for_dangling_edges([caller], [edge])
+        assert new_syms[0].origin_run_id == ""
+        # origin is always the synthesis mechanism (distinguishes the fixed code
+        # from a regression that drops the origin stamp).
+        assert new_syms[0].origin == ["orchestrator_file_symbol_synthesis"]
+
     def test_synthesizes_for_dangling_dst(self) -> None:
         """make_file_id-shape on the dst side is also covered."""
         caller = _make_caller_symbol()

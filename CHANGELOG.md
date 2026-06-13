@@ -12,6 +12,30 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Synthetic-node provenance: AnalysisRun for both synthetic producers (Wave-2 T0, synthetic:F1)** —
+  the two orchestrator-level synthesizers now emit a real `AnalysisRun` and
+  stamp resolvable provenance on the nodes they mint, where they previously
+  shipped the empty-string `origin_run_id` sentinel (and, for boundary nodes,
+  `origin=[]`) — a third state beyond null/UUID that broke the node→AnalysisRun
+  referential-integrity JOIN (~2,236 nodes). (1) Orchestrator file-symbol
+  synthesis (`synthesize_file_symbols_for_dangling_edges`) and (2) boundary
+  external_symbol synthesis (`create_boundary_nodes`) each create an
+  `AnalysisRun` (whose `pass_id` is the synthesis-mechanism string) when they
+  produce ≥1 node, append it to `analysis_runs`, and thread its `execution_id`
+  into the synthesized nodes' `origin_run_id`. Boundary nodes additionally gain
+  `origin=["boundary_external_symbol_synthesis"]` (was `[]` — zero provenance);
+  that mechanism is registered in the catalog so both `Symbol.origin` and the
+  new `AnalysisRun.pass_id` pass the axis-conformance check. **Additive and
+  identity-neutral:** `origin`/`origin_run_id` are not inputs to any
+  `stable_id`/`shape_id`/`fingerprint`/`node.id` hash, so no existing identity
+  value changes. Resolves the producer halves of WI-dizir (492 file nodes) and
+  WI-sijut (1,645 external_symbol `origin=[]`) and the bulk of WI-mosil. The
+  enforcement half — a `Symbol.__post_init__` non-empty-origin raise staged
+  validator-error-first — is deferred to land with the strict node→AnalysisRun
+  FK check (validator:F2(d)), since stragglers from other producers still emit
+  empty provenance and a hard raise would crash them. Prerequisite for the
+  `make_synthetic_symbol()` chokepoint (synthetic:F2). Second Wave-2 T0 item.
+
 - **Python `qualified_name` emission (Wave-2 T0, WI-fagab)** — the Python
   analyzer now populates `Symbol.qualified_name` (ADR-0032) on `function`,
   `method`, and `class` symbols, where it previously left the field `None` for

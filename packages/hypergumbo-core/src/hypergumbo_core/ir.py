@@ -1141,6 +1141,7 @@ def create_boundary_nodes(
     symbols: List[Symbol],
     edges: List[Edge],
     dependency_manifest: Any = None,
+    origin_run_id: str = "",
 ) -> tuple[List[Symbol], Dict[str, str]]:
     """Create boundary nodes for dangling edge endpoints, with cross-run identity.
 
@@ -1291,6 +1292,12 @@ def create_boundary_nodes(
             meta={"external_boundary": True},
             supply_chain_tier=best_tier,
             supply_chain_reason=best_reason,
+            # synthetic:F1 (WI-sijut/WI-mosil): boundary nodes previously shipped
+            # origin=[] / origin_run_id='' (zero provenance). Stamp the synthesis
+            # mechanism as origin and the orchestrator-emitted AnalysisRun's
+            # execution_id as origin_run_id so the node->AnalysisRun JOIN resolves.
+            origin="boundary_external_symbol_synthesis",
+            origin_run_id=origin_run_id,
         )
         boundary_nodes.append(sym)
         for member_id in members:

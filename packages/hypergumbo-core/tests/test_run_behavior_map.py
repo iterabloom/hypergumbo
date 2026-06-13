@@ -622,3 +622,111 @@ def test_run_behavior_map_gzip_and_no_sketch_fan_out_combine(tmp_path):
     with gzip.open(out_path, "rt") as f:
         data = json.load(f)
     assert "nodes" in data
+
+
+def test_synthetic_producers_emit_resolvable_provenance(tmp_path):
+    """synthetic:F1 behavioral closure: the two synthetic-node producers
+    (orchestrator file-symbol synthesis + boundary external_symbol synthesis)
+    emit a real AnalysisRun and stamp resolvable provenance on their nodes.
+
+    Previously these nodes shipped ``origin=[]`` / ``origin_run_id=''`` — a
+    third sentinel state that broke the node->AnalysisRun referential-integrity
+    JOIN (WI-dizir 492 file nodes, WI-sijut 1645 external_symbol origin=[],
+    WI-mosil 2236 origin_run_id=''). After the fix every synthetic node carries
+    a non-empty ``origin`` (a synthesis-mechanism pass-id) and an
+    ``origin_run_id`` that resolves to a real ``AnalysisRun.execution_id``.
+
+    The fixture deliberately triggers BOTH producers: ``import os`` (stdlib,
+    unresolved) yields boundary external_symbol nodes, and app.py's own
+    module-level import edges carry a ``make_file_id``-shape src that the
+    orchestrator synthesizes into a ``kind='file'`` Symbol (any import in
+    app.py fires this — the synthesized node is
+    ``python:app.py:1-1:file:file``, derived from app.py's import-edge src,
+    not from the import target).
+    """
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "app.py").write_text(
+        "import os\n"
+        "from helpers import greet\n"
+        "\n"
+        "def main():\n"
+        "    return greet(os.getcwd())\n"
+    )
+    (repo_root / "helpers.py").write_text(
+        "def greet(x):\n"
+        "    return f'hi {x}'\n"
+    )
+
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path,
+        include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    exec_ids = {r["execution_id"] for r in data["analysis_runs"]}
+    passes = {r.get("pass") for r in data["analysis_runs"]}
+    run_pass = {r["execution_id"]: r.get("pass") for r in data["analysis_runs"]}
+    SYNTH = {
+        "orchestrator_file_symbol_synthesis",
+        "boundary_external_symbol_synthesis",
+    }
+
+    # Boundary external_symbol nodes now carry the boundary synthesis mechanism
+    # (was origin=[] — zero provenance).
+    externals = [n for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert externals, "fixture produced no external_symbol boundary nodes"
+    for n in externals:
+        assert n["origin"] == ["boundary_external_symbol_synthesis"], n["id"]
+
+    # Every synthetic node's provenance resolves to a real AnalysisRun, and to
+    # ITS OWN producer's run (guards against a cross-wired execution_id).
+    synthetic_nodes = [
+        n for n in data["nodes"] if set(n.get("origin") or []) & SYNTH
+    ]
+    assert synthetic_nodes, "fixture produced no synthetic nodes to validate"
+    for n in synthetic_nodes:
+        assert n["origin_run_id"], (
+            f"synthetic node {n['id']} has empty origin_run_id"
+        )
+        assert n["origin_run_id"] in exec_ids, (
+            f"synthetic node {n['id']} origin_run_id {n['origin_run_id']!r} "
+            "does not resolve to any AnalysisRun.execution_id"
+        )
+        assert run_pass[n["origin_run_id"]] == n["origin"][0], (
+            f"synthetic node {n['id']} carries origin {n['origin']!r} but its "
+            f"origin_run_id points at a {run_pass[n['origin_run_id']]!r} run "
+            "(cross-wired producer)"
+        )
+
+    # Partition guard: BOTH producers actually fired (so the loop above can
+    # never go single-producer-vacuous), and each emitted its AnalysisRun.
+    origins_seen = {tuple(n.get("origin") or []) for n in synthetic_nodes}
+    assert ("orchestrator_file_symbol_synthesis",) in origins_seen
+    assert ("boundary_external_symbol_synthesis",) in origins_seen
+    assert "orchestrator_file_symbol_synthesis" in passes
+    assert "boundary_external_symbol_synthesis" in passes
+
+
+def test_synthesis_runs_absent_when_no_synthetic_nodes(tmp_path):
+    """synthetic:F1 conditional-append (FALSE branch): a synthesis AnalysisRun
+    is recorded ONLY when its producer actually mints nodes. A trivial repo with
+    no dangling/external edges leaves BOTH synthesis passes absent from
+    analysis_runs (no empty-pass records) — the stated rationale for the
+    ``if produced:`` guards at both orchestrator sites."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    # A module-level assignment: one analyzer runs, but no imports (no
+    # make_file_id-shape dangling edge) and no external calls (no boundary).
+    (repo_root / "m.py").write_text("VALUE = 1\n")
+
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path,
+        include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+    passes = {r.get("pass") for r in data["analysis_runs"]}
+    assert "orchestrator_file_symbol_synthesis" not in passes
+    assert "boundary_external_symbol_synthesis" not in passes

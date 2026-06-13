@@ -120,6 +120,7 @@ import hypergumbo_core.linkers._third_party_bases as _third_party_bases_linker  
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
 from .ir import (
+    AnalysisRun, PASS_VERSION,
     Symbol, Edge, UsageContext, apply_external_id_remap, create_boundary_nodes,
     deduplicate_edges,
     is_external_boundary,
@@ -7949,11 +7950,20 @@ def run_behavior_map(
     # returns an id_remap so we can rewrite edges to point at the canonical
     # boundary Symbols. Without this rewrite, edges would still reference the
     # original (now-absent) per-reference dangling ids.
+    # synthetic:F1 (WI-sijut/WI-mosil): emit a real AnalysisRun for boundary
+    # synthesis and stamp its execution_id into the boundary nodes'
+    # origin_run_id (the nodes previously carried origin=[] / origin_run_id='').
+    # Only record the run when boundary nodes were actually created.
+    _boundary_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password (bandit B106 false-positives on any "pass*" funcarg)
+        pass_id="boundary_external_symbol_synthesis", version=PASS_VERSION,
+    )
     boundary, id_remap = create_boundary_nodes(
         all_symbols, all_edges, dependency_manifest=dependency_manifest,
+        origin_run_id=_boundary_run.execution_id,
     )
     if boundary:
         all_symbols.extend(boundary)
+        analysis_runs.append(_boundary_run.to_dict())
     if id_remap:
         all_edges = apply_external_id_remap(all_edges, id_remap)
     _log_memory("after boundary nodes")

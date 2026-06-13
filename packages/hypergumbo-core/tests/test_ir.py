@@ -1411,6 +1411,45 @@ class TestCreateBoundaryNodes:
         # Canonical id == original id, so remap is empty (no rewrite needed).
         assert remap == {}
 
+    def test_stamps_origin_and_origin_run_id(self):
+        """synthetic:F1: boundary external_symbol nodes carry a non-empty
+        ``origin`` (the ``boundary_external_symbol_synthesis`` mechanism) and the
+        provided ``origin_run_id``, so the node->AnalysisRun JOIN resolves.
+        Previously both were empty (origin=[], origin_run_id='')."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="go:fmt:0-0:Errorf:unresolved",
+            edge_type="calls", line=5, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes(
+            [s1], [e], origin_run_id="uuid:boundary-run",
+        )
+        assert len(result) == 1
+        node = result[0]
+        assert node.kind == "external_symbol"
+        assert node.origin == ["boundary_external_symbol_synthesis"]
+        assert node.origin_run_id == "uuid:boundary-run"
+
+    def test_origin_run_id_defaults_empty_but_origin_is_stamped(self):
+        """``origin_run_id`` defaults to '' (legacy call form), but ``origin`` is
+        always the synthesis mechanism so node-side provenance is never empty."""
+        s1 = self._make_symbol("python:a.py:1-1:foo:function")
+        e = Edge.create(
+            src=s1.id, dst="go:fmt:0-0:Errorf:unresolved",
+            edge_type="calls", line=5, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes([s1], [e])
+        assert result[0].origin == ["boundary_external_symbol_synthesis"]
+        assert result[0].origin_run_id == ""
+
+    def test_boundary_synthesis_mechanism_is_a_known_pass_id(self):
+        """The boundary synthesis mechanism must be a registered pass-id so both
+        ``Symbol.origin`` and the synthetic ``AnalysisRun.pass_id`` pass the
+        axis-conformance check (``all_known_pass_ids``)."""
+        from hypergumbo_core.catalog import all_known_pass_ids
+
+        assert "boundary_external_symbol_synthesis" in all_known_pass_ids()
+
     def test_dangling_src_creates_boundary(self):
         """Edges with nonexistent src also get boundary nodes."""
         s1 = self._make_symbol("python:a.py:1-1:foo:function")

@@ -326,6 +326,7 @@ def synthesize_file_symbols_for_dangling_edges(
     symbols: list[Symbol],
     edges: list[Edge],
     repo_root: "Optional[Path]" = None,
+    origin_run_id: str = "",
 ) -> list[Symbol]:
     """Synthesize real file Symbols for any ``make_file_id``-shape dangling edge endpoint.
 
@@ -374,6 +375,11 @@ def synthesize_file_symbols_for_dangling_edges(
         repo_root: Repository root. When provided, paths normalise to
             repo-relative and ``span.end_line`` reflects each file's
             actual line count.
+        origin_run_id: Execution id of the ``AnalysisRun`` the orchestrator
+            emits for this synthesis pass (synthetic:F1). Stamped into each
+            synthesized Symbol's ``origin_run_id`` so the node->AnalysisRun
+            JOIN resolves. Defaults to ``""`` for legacy/unit-test callers
+            that don't supply a run.
 
     Returns:
         List of new Symbols (one per previously-dangling
@@ -436,7 +442,10 @@ def synthesize_file_symbols_for_dangling_edges(
                     end_line=end_line, end_col=0,
                 ),
                 origin="orchestrator_file_symbol_synthesis",
-                origin_run_id="",
+                # synthetic:F1: stamp the orchestrator-emitted AnalysisRun's
+                # execution_id so the node->AnalysisRun JOIN resolves (was the
+                # empty-string sentinel). Defaults to '' for legacy callers.
+                origin_run_id=origin_run_id,
             )
 
     return list(synthesized.values())

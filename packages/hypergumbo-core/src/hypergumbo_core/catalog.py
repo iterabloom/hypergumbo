@@ -505,12 +505,17 @@ _BUILTIN_PIPELINE_PASS_IDS: frozenset[str] = frozenset({
     "enclosure-linker",
 })
 
-# Symbol-synthesis mechanisms that are NOT pass IDs. ``Symbol.origin``
-# overloads the pass-id axis with these synthesis-mechanism values per
-# the Symbol docstring's "pending split into a sibling
-# ``synthesis_mechanism`` field" note. Until that ADR ships, accept
-# them here as legitimate origin values.
+# Symbol-synthesis mechanisms. ``Symbol.origin`` overloads the pass-id
+# axis with these synthesis-mechanism values per the Symbol docstring's
+# "pending split into a sibling ``synthesis_mechanism`` field" note;
+# until that ADR ships, accept them here as legitimate origin values.
+# synthetic:F1 (WI-dizir/WI-mosil/WI-sijut): the two orchestrator-level
+# synthesizers now also emit a real ``AnalysisRun`` whose ``pass_id`` is
+# the mechanism string, so ``orchestrator_file_symbol_synthesis`` and
+# ``boundary_external_symbol_synthesis`` double as actual pass IDs (their
+# synthesized nodes' ``origin_run_id`` joins to that run's execution_id).
 _SYNTHESIS_MECHANISMS: frozenset[str] = frozenset({
+    "boundary_external_symbol_synthesis",
     "inheritance",
     "orchestrator_file_symbol_synthesis",
     "scip",
@@ -529,11 +534,15 @@ def all_known_pass_ids() -> frozenset[str]:
     ``AnalysisRun.pass_id``, ``Symbol.origin``, ``Edge.origin``).
 
     ``Symbol.origin`` carries a small set of synthesis-mechanism values
-    (``inheritance``, ``orchestrator_file_symbol_synthesis``, ``scip``)
-    that aren't pass IDs; the Symbol docstring documents this as a
-    pending split into a sibling ``synthesis_mechanism`` field. Until
-    that ADR ships, ``_SYNTHESIS_MECHANISMS`` (above) carries them so
-    the axis-conformance check doesn't false-positive.
+    (``boundary_external_symbol_synthesis``, ``inheritance``,
+    ``orchestrator_file_symbol_synthesis``, ``scip``); the Symbol docstring
+    documents this as a pending split into a sibling ``synthesis_mechanism``
+    field. Per synthetic:F1 the two orchestrator-level synthesizers now also
+    emit a real ``AnalysisRun`` whose ``pass_id`` is the mechanism string, so
+    ``orchestrator_file_symbol_synthesis`` and
+    ``boundary_external_symbol_synthesis`` double as actual pass IDs. Until
+    the sibling-field ADR ships, ``_SYNTHESIS_MECHANISMS`` (above) carries
+    all of them so the axis-conformance check doesn't false-positive.
     """
     from .analyze.registry import _ANALYZER_REGISTRY, ensure_discovered
     from .linkers.registry import _LINKER_REGISTRY

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from ..discovery import set_global_on_file_skipped
-from ..ir import Edge, Symbol, UsageContext
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, UsageContext
 from ..limits import Limits
 from ..paths import normalize_path
 from .base import populate_kind_stable_ids, synthesize_file_symbols_for_dangling_edges
@@ -263,11 +263,21 @@ def run_all_analyzers(
     # external boundaries even though the file is first-party. Doing it
     # here at the orchestrator chokepoint covers every analyzer in one
     # place and obviates per-analyzer fixes.
-    all_symbols.extend(
-        synthesize_file_symbols_for_dangling_edges(
-            all_symbols, all_edges, repo_root=repo_root,
-        )
+    # synthetic:F1 (WI-dizir/WI-mosil): emit a real AnalysisRun for this
+    # synthesis pass and stamp its execution_id into the synthesized file
+    # Symbols' origin_run_id, so the node->AnalysisRun JOIN resolves (the
+    # nodes previously carried origin_run_id=''). Only record the run when
+    # synthesis actually produced Symbols (no empty-pass records).
+    _file_synth_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password (bandit B106 false-positives on any "pass*" funcarg)
+        pass_id="orchestrator_file_symbol_synthesis", version=PASS_VERSION,
     )
+    _synth_file_symbols = synthesize_file_symbols_for_dangling_edges(
+        all_symbols, all_edges, repo_root=repo_root,
+        origin_run_id=_file_synth_run.execution_id,
+    )
+    if _synth_file_symbols:
+        all_symbols.extend(_synth_file_symbols)
+        analysis_runs.append(_file_synth_run.to_dict())
 
     # Normalize paths: some analyzers produce absolute paths instead of
     # paths relative to repo_root.  Stripping the repo_root prefix ensures
