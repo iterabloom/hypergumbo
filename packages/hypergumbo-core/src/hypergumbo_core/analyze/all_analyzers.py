@@ -227,7 +227,14 @@ def run_all_analyzers(
 
         for future in as_completed(futures):
             analyzer = futures[future]
-            result = future.result()
+            try:
+                result = future.result()
+            except Exception as exc:
+                # §17 fail-open (WI-madal L3): a single analyzer raising must
+                # not abort the whole run. Record it pass-level and continue so
+                # the behavior map is still emitted with partial results.
+                limits.record_crashed_pass(analyzer.name, exc)
+                continue
 
             collect_analyzer_result(
                 result, analysis_runs, all_symbols, all_edges, all_usage_contexts, limits

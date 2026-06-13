@@ -111,6 +111,27 @@ class Limits:
             analyzer=analyzer,
         ))
 
+    def record_crashed_pass(self, pass_name: str, exc: BaseException) -> None:
+        """Record an analyzer/linker pass that crashed mid-run.
+
+        §17 fail-open / WI-madal L3: an exception escaping a *whole* pass is
+        pass-level (not tied to one file), so it lands in ``skipped_passes``
+        with a ``crashed:`` reason — distinct from the deliberate
+        ``"no files matched"`` / missing-dependency skips — rather than
+        ``failed_files`` (which is strictly per-file). Also sets
+        ``partial_results_reason`` (without clobbering an existing value) so the
+        top-level honesty signal fires. Keeping the crash on existing channels
+        means no new output-schema field is introduced.
+        """
+        self.skipped_passes.append({
+            "pass": pass_name,
+            "reason": f"crashed: {type(exc).__name__}: {exc}",
+        })
+        if not self.partial_results_reason:
+            self.partial_results_reason = (
+                "one or more passes crashed; results are partial"
+            )
+
     def add_skipped_language(self, language: str) -> None:
         """Record a language that was detected but not analyzed."""
         if language not in self.skipped_languages:

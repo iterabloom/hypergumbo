@@ -683,7 +683,7 @@ def _analysis_run_spec() -> ClassSpec:
             "files_analyzed": {"description": "Number of files analyzed by this pass"},
             "files_skipped": {"description": "Number of files skipped by this pass"},
             "skipped_passes": {
-                "description": "Passes skipped at dispatch time, with reasons",
+                "description": "Passes skipped at dispatch time or crashed mid-run, with reasons (a 'crashed: ' prefix marks a contained pass crash)",
             },
             "failed_files": {
                 "description": (
@@ -809,7 +809,7 @@ def _limits_spec() -> ClassSpec:
                 "description": "Languages detected but not analyzed",
             },
             "skipped_passes": {
-                "description": "Passes skipped at dispatch time, with reasons",
+                "description": "Passes skipped at dispatch time or crashed mid-run, with reasons (a 'crashed: ' prefix marks a contained pass crash)",
             },
             "truncated_files": {
                 "description": "Files truncated or skipped due to size",

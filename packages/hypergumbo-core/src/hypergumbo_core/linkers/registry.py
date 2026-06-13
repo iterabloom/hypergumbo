@@ -107,6 +107,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator
 
 if TYPE_CHECKING:
     from ..ir import AnalysisRun, Edge, Symbol
+    from ..limits import Limits
 
 
 @dataclass
@@ -659,7 +660,24 @@ def _stamp_pass_version(result: LinkerResult, linker: RegisteredLinker) -> None:
         result.run.pass_version = linker.pass_version
 
 
-def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
+def _record_linker_crash(
+    limits: "Limits | None", linker_name: str, exc: BaseException
+) -> None:
+    """Record a linker that crashed mid-run so the run stays fail-open.
+
+    §17 / WI-madal L3: an exception escaping a single linker must not abort the
+    whole linker phase. When a ``Limits`` sink is supplied (the
+    ``run_behavior_map`` path), the crash is recorded pass-level via
+    ``Limits.record_crashed_pass``; callers without a sink (direct/test
+    invocations) still get skip-and-continue containment.
+    """
+    if limits is not None:
+        limits.record_crashed_pass(linker_name, exc)
+
+
+def run_all_linkers(
+    ctx: LinkerContext, limits: "Limits | None" = None
+) -> list[tuple[str, LinkerResult]]:
     """Run all registered linkers in priority order.
 
     Linkers are filtered by their activation conditions:
@@ -667,12 +685,18 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     - frameworks=[...]: Run if any framework is detected
     - language_pairs=[...]: Run if both languages in a pair are detected
 
+    A linker that raises is contained (§17 fail-open / WI-madal L3): the run
+    continues with the remaining linkers, and — when ``limits`` is supplied —
+    the crash is recorded pass-level in ``limits.skipped_passes``.
+
     After all linkers run, a post-processing pass connects synthetic nodes
     (grpc_stub, mq_publisher, etc.) to their enclosing functions. This
     enables slice traversal from application code through linker boundaries.
 
     Args:
         ctx: LinkerContext with all inputs (including detected_frameworks/languages)
+        limits: Optional Limits sink; when provided, a crashing linker is
+            recorded there instead of being silently skipped.
 
     Returns:
         List of (name, result) tuples in execution order.
@@ -718,7 +742,13 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
             linker = group[0]
             running_ctx.linker_pass_id = linker.name
             running_ctx.linker_pass_version = linker.pass_version
-            result = _run_linker_with_cache(linker.func, running_ctx)
+            try:
+                result = _run_linker_with_cache(linker.func, running_ctx)
+            except Exception as exc:
+                # §17 fail-open (WI-madal L3): contain a crashing linker and
+                # move on to the next priority group.
+                _record_linker_crash(limits, linker.name, exc)
+                continue
             _stamp_pass_version(result, linker)
             results.append((linker.name, result))
             all_linker_symbols.extend(result.symbols)
@@ -752,7 +782,13 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
                     ] = linker
                 for future in as_completed(future_to_linker):
                     linker = future_to_linker[future]
-                    result = future.result()
+                    try:
+                        result = future.result()
+                    except Exception as exc:
+                        # §17 fail-open (WI-madal L3): contain a crashing
+                        # linker; the rest of the priority group still lands.
+                        _record_linker_crash(limits, linker.name, exc)
+                        continue
                     _stamp_pass_version(result, linker)
                     results.append((linker.name, result))
                     all_linker_symbols.extend(result.symbols)
@@ -776,12 +812,20 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
         pass_id=enclosure_pass_id,
         version=PASS_VERSION,
     )
-    enclosure_edges = _connect_synthetic_to_enclosing(
-        enclosure_ctx,
-        all_linker_symbols,
-        pass_id=enclosure_pass_id,
-        run_id=enclosure_run.execution_id,
-    )
+    try:
+        enclosure_edges = _connect_synthetic_to_enclosing(
+            enclosure_ctx,
+            all_linker_symbols,
+            pass_id=enclosure_pass_id,
+            run_id=enclosure_run.execution_id,
+        )
+    except Exception as exc:
+        # §17 fail-open (WI-madal L3): the enclosure post-pass is itself a pass
+        # (it mints its own AnalysisRun and is appended to results), so a crash
+        # here must not abort the run. Contain it and return the linker results
+        # gathered so far.
+        _record_linker_crash(limits, "enclosure", exc)
+        return results
     if enclosure_edges:
         results.append(("enclosure", LinkerResult(edges=enclosure_edges, run=enclosure_run)))
 

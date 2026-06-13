@@ -414,8 +414,8 @@ def test_run_behavior_map_normalizes_linker_absolute_paths(tmp_path):
 
     real_run_all_linkers = None
 
-    def patched_run_all_linkers(ctx):
-        results = real_run_all_linkers(ctx)
+    def patched_run_all_linkers(ctx, limits=None):
+        results = real_run_all_linkers(ctx, limits=limits)
         results.append(("fake_linker", fake_result))
         return results
 
@@ -435,6 +435,46 @@ def test_run_behavior_map_normalizes_linker_absolute_paths(tmp_path):
     linker_nodes = [n for n in data["nodes"] if n["id"] == "linker::generated"]
     assert len(linker_nodes) == 1
     assert linker_nodes[0]["path"] == "linker_generated.py"
+
+
+def test_run_behavior_map_emits_partial_json_when_analyzer_crashes(tmp_path):
+    """§17 fail-open end-to-end (WI-madal L3): a crashing registered analyzer
+    does not abort the run — valid partial JSON is still written to disk, the
+    healthy analyzers' nodes survive, and the crash is recorded pass-level.
+
+    This drives the full production ``run_behavior_map`` path (not just the
+    orchestrator function), exercising serialization of the ``crashed:`` entry
+    — the behavioral closure-evidence bar set by the sibling L1/L2 fix.
+    """
+    from hypergumbo_core.analyze.registry import _ANALYZER_REGISTRY, register_analyzer
+
+    (tmp_path / "mod.py").write_text("def f():\n    return 1\n")
+
+    @register_analyzer("crash-e2e", priority=999)
+    def _crash(root, **kwargs):
+        raise RuntimeError("e2e analyzer boom")
+
+    try:
+        out_path = tmp_path / "out.json"
+        run_behavior_map(
+            repo_root=tmp_path,
+            out_path=out_path,
+            budgets="none",
+            include_sketch_precomputed=False,
+        )
+
+        data = json.loads(out_path.read_text())  # (a) valid JSON on disk
+        assert len(data["nodes"]) >= 1  # (b) healthy analyzer output survived
+        crashed = [
+            s for s in data["limits"]["skipped_passes"] if s["pass"] == "crash-e2e"
+        ]
+        assert len(crashed) == 1  # (c) crash recorded pass-level
+        assert crashed[0]["reason"].startswith("crashed: RuntimeError")
+        assert "e2e analyzer boom" in crashed[0]["reason"]
+        # (d) top-level honesty signal reflects the crash (not clobbered).
+        assert "crashed" in data["limits"]["partial_results_reason"]
+    finally:
+        _ANALYZER_REGISTRY.pop("crash-e2e", None)
 
 
 

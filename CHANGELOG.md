@@ -241,10 +241,36 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Verified by a live `chmod 000` repro through the production CLI (exit 0, valid
   JSON, one `failed_files` entry, fingerprint stamped) plus monkeypatch-driven
   regression tests at both read sites and an end-to-end `run_behavior_map` test.
-  Scope note: whole-*analyzer* crash containment (the unguarded `future.result()`
-  joins → §17's `analysis_incomplete: true` + `warnings[]` path) is tracked
-  separately — patch 1 makes the Python analyzer catch its own read errors, so
-  that orchestrator-level path is not what this P0 exercises.
+- **Orchestrator passes now fail open — a crashing analyzer or linker no longer
+  aborts the whole run (cli-input:F4 "L3", completes P0 WI-madal)** — every
+  pass-level crash site in the two orchestrators was unguarded, so ANY exception
+  escaping a single pass — not just an unreadable file, but an analyzer/linker
+  bug, a parser crash, a contended resource — was fatal to the entire `run`,
+  voiding §17's partial-results guarantee (L1/L2 above only cover per-file read
+  errors). All three sites are now contained: the threaded analyzer dispatcher
+  `analyze/all_analyzers.run_all_analyzers`, *both* the serial and parallel paths
+  of `linkers/registry.run_all_linkers`, and the linker **enclosure post-pass**
+  (`_connect_synthetic_to_enclosing`, itself a pass that mints an `AnalysisRun`).
+  A crashing pass is contained and the remaining passes still run, so partial
+  output is still emitted as valid JSON. The crash is recorded *pass-level*
+  through a shared `Limits.record_crashed_pass()` — `limits.skipped_passes[]`
+  gains a `{"pass": …, "reason": "crashed: <ExcType>: …"}` entry (distinct from
+  the deliberate "no files matched" / missing-dependency skips) and
+  `partial_results_reason` is set — so no new output-schema field is introduced
+  (the `skipped_passes` schema description is updated to note crashed passes).
+  `run_all_linkers` takes an optional `limits` sink (mirroring `classify_file`);
+  direct/test callers without a sink still get skip-and-continue containment. The
+  pre-existing file-skip `partial_results_reason` write (cli.py) is now
+  non-clobbering, so a crash reason isn't downgraded when a file is also skipped.
+  Verified end-to-end (a crashing registered analyzer → valid partial JSON on
+  disk + a `crashed:` `skipped_passes` entry) plus orchestrator-level unit tests.
+  Channel note: the previously-predicted `analysis_incomplete: true` / `warnings[]`
+  path was *not* used — `analysis_incomplete` is a separate, still-constant field;
+  `skipped_passes` is the existing serialized pass-level channel. Out of scope
+  (two analogous joins that are NOT §17 sites on the production `run` path): a
+  third, non-production serial `run_all_analyzers` in `analyze/registry.py`
+  (test-only), and `ranking.py`'s centrality worker (which already catches its
+  own `OSError`) — both left for a separate orchestrator-consolidation cleanup.
 
 #### Bakeoff infrastructure
 

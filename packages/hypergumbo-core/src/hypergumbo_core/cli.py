@@ -7900,7 +7900,7 @@ def run_behavior_map(
         detected_frameworks=set(profile.frameworks),
         detected_languages=set(profile.languages.keys()),
     )
-    for _linker_name, linker_result in run_all_linkers(linker_ctx):
+    for _linker_name, linker_result in run_all_linkers(linker_ctx, limits=limits):
         if linker_result.run is not None:
             analysis_runs.append(linker_result.run.to_dict())
         all_symbols.extend(linker_result.symbols)
@@ -8277,9 +8277,11 @@ def run_behavior_map(
 
         behavior_map["sketch_precomputed"] = sketch_precomputed
 
-    # Record skipped files from analysis runs
+    # Record skipped files from analysis runs. Don't clobber a reason already
+    # set by record_crashed_pass (WI-madal L3) — a crashed pass is the more
+    # severe signal; the file-skip note only fills an otherwise-empty summary.
     for run in analysis_runs:
-        if run.get("files_skipped", 0) > 0:
+        if run.get("files_skipped", 0) > 0 and not limits.partial_results_reason:
             limits.partial_results_reason = "some files skipped during analysis"
     behavior_map["limits"] = limits.to_dict()
 

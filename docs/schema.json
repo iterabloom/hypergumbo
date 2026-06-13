@@ -1235,7 +1235,7 @@
           "items": {
             "type": "object"
           },
-          "description": "Passes skipped at dispatch time, with reasons"
+          "description": "Passes skipped at dispatch time or crashed mid-run, with reasons (a 'crashed: ' prefix marks a contained pass crash)"
         },
         "failed_files": {
           "type": "array",
@@ -1378,7 +1378,7 @@
           "items": {
             "type": "object"
           },
-          "description": "Passes skipped at dispatch time, with reasons"
+          "description": "Passes skipped at dispatch time or crashed mid-run, with reasons (a 'crashed: ' prefix marks a contained pass crash)"
         },
         "truncated_files": {
           "type": "array",
