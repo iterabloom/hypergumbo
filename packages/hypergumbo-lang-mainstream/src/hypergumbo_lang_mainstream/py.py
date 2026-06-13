@@ -2338,6 +2338,10 @@ def _extract_file_analysis(
             symbol = Symbol(
                 id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "class"),
                 name=node.name,
+                # WI-fagab: populate the ADR-0032 sibling field. T0 keeps name=
+                # as the (qualified) value — the bare-name swap is the v6/T1
+                # payload — so qualified_name mirrors name here (identity-neutral).
+                qualified_name=node.name,
                 kind="class",
                 language="python",
                 path=str(py_file),
@@ -2430,6 +2434,7 @@ def _extract_file_analysis(
                     method_symbol = Symbol(
                         id=_make_symbol_id(str(py_file), item.lineno, method_end_line, method_name, "method"),
                         name=method_name,
+                        qualified_name=method_name,  # WI-fagab (ADR-0032 sibling field)
                         kind="method",
                         language="python",
                         path=str(py_file),
@@ -2554,6 +2559,7 @@ def _extract_file_analysis(
                 symbol = Symbol(
                     id=_make_symbol_id(str(py_file), node.lineno, end_line, qualified_name, "function"),
                     name=qualified_name,
+                    qualified_name=qualified_name,  # WI-fagab (ADR-0032 sibling field)
                     kind="function",
                     language="python",
                     path=str(py_file),

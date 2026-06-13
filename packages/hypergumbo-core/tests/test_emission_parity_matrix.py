@@ -129,13 +129,9 @@ _WI_TOSUL = (
     "this xfail."
 )
 KNOWN_HOLES: dict[tuple[str, str], str] = {
-    ("python", "qualified_name"): (
-        "WI-fagab: py.py passes the qualified name to the Symbol.name kwarg "
-        "instead of Symbol.qualified_name, leaving Symbol.qualified_name None "
-        "for 100% of Python symbols. Python-specific (a live-dataclass check "
-        "shows every other language populates it — the broader 'js/bash also "
-        "0%' claims were serialized-JSON probe artifacts)."
-    ),
+    # ('python','qualified_name') was a strict-xfail hole; WI-fagab populated
+    # Symbol.qualified_name on py.py function/method/class symbols, so the cell
+    # is now a hard lock ("every emission fix strips an xfail").
     ("java", "edge_imports"): (
         "INV-gojit: Java analyzer emits no `imports` edge for ANY `import` "
         "declaration — verified general, not stdlib-specific: zero imports "

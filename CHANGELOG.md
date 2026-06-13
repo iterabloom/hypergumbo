@@ -12,6 +12,25 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Python `qualified_name` emission (Wave-2 T0, WI-fagab)** — the Python
+  analyzer now populates `Symbol.qualified_name` (ADR-0032) on `function`,
+  `method`, and `class` symbols, where it previously left the field `None` for
+  100% of Python symbols (every other mainstream analyzer already populated it;
+  the emission-parity matrix locked `('python','qualified_name')` as a
+  strict-xfail hole). `py.py` built a container-qualified name — `outer.inner`
+  for nested functions, `Class.method` for methods, the class name for classes —
+  and routed it only into the `name=` kwarg; the fix passes that same value
+  through the separate `qualified_name=` kwarg as well. **Additive and
+  identity-neutral:** `name=` is unchanged (still the dotted/qualified value,
+  load-bearing for `Symbol.id`/`stable_id` and the INV-mofav nested-name tests),
+  so no existing `stable_id`/`shape_id`/`id` value changes — the bare-name swap
+  (`name` → short name, matching js_ts) is the v6/T1 identity payload, not this
+  change. Stripped the now-satisfied `('python','qualified_name')` strict-xfail
+  cell from the parity matrix (its "every emission fix strips an xfail" ratchet),
+  flipping it to a hard lock. The per-`kind` writer-contract validator entry
+  proposed in WI-fagab is deferred to a sibling work item. First Wave-2
+  (identity & provenance) item, per the verified T0 kickoff plan.
+
 - **`stable_id_scheme` version-history backfill (Decision ADRs, bump-calendar T0)** —
   `docs/hypergumbo-spec.md` asserted `stable_id_scheme = hypergumbo-stableid-v2`
   at three sites while the shipped value is `v5` (`schema.py:75`). Backfilled the

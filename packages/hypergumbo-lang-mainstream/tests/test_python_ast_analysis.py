@@ -6608,3 +6608,81 @@ class TestSymbolIsExportedIntegration:
         # list_items is nested (INV-mofav: qualified name `get_router.list_items`)
         # → not exported, even though the short name is public.
         assert by_name["get_router.list_items"].is_exported is False
+
+
+class TestWiFagabQualifiedNameField:
+    """WI-fagab: py.py must populate ``Symbol.qualified_name`` (ADR-0032), not
+    only ``Symbol.name``.
+
+    Pre-fix, py.py routed the container-qualified name into the ``name=``
+    kwarg and left ``qualified_name=None`` for 100% of Python symbols, while
+    every other mainstream analyzer (js_ts/csharp/java/go/rust/swift) populates
+    the field — the emission-parity matrix locked ``('python','qualified_name')``
+    as a strict-xfail hole.
+
+    The T0 fix is **additive**: it passes the SAME container-qualified value
+    through a separate ``qualified_name=`` kwarg while KEEPING ``name=`` as the
+    dotted/qualified value (load-bearing for ``Symbol.id`` / ``stable_id`` and
+    the INV-mofav nested-name tests). The bare-name swap (``name`` → short
+    name, matching js_ts) is the v6/T1 identity payload, NOT this PR — so for
+    every kind here ``name`` MUST still equal ``qualified_name`` (the
+    identity-neutrality contract of the additive change).
+    """
+
+    def test_top_level_function_populates_qualified_name(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text("def greet():\n    return 1\n")
+        result = analyze_python(tmp_path)
+        fn = next(
+            s for s in result.symbols
+            if s.kind == "function" and s.name == "greet"
+        )
+        assert fn.qualified_name == "greet"
+        # T0 identity-neutrality: name is unchanged (still the qualified value).
+        assert fn.name == fn.qualified_name
+
+    def test_nested_function_populates_dotted_qualified_name(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(
+            "def outer():\n"
+            "    def inner_helper():\n"
+            "        return 42\n"
+            "    return inner_helper()\n"
+        )
+        result = analyze_python(tmp_path)
+        inner = next(
+            s for s in result.symbols
+            if s.kind == "function" and s.name == "outer.inner_helper"
+        )
+        assert inner.qualified_name == "outer.inner_helper"
+        assert inner.name == inner.qualified_name
+
+    def test_method_populates_class_qualified_name(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(
+            "class Greeter:\n"
+            "    def greet(self):\n"
+            "        return 1\n"
+        )
+        result = analyze_python(tmp_path)
+        method = next(
+            s for s in result.symbols
+            if s.kind == "method" and s.name == "Greeter.greet"
+        )
+        assert method.qualified_name == "Greeter.greet"
+        assert method.name == method.qualified_name
+
+    def test_class_populates_qualified_name(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text("class Greeter:\n    pass\n")
+        result = analyze_python(tmp_path)
+        cls = next(
+            s for s in result.symbols
+            if s.kind == "class" and s.name == "Greeter"
+        )
+        assert cls.qualified_name == "Greeter"
+        assert cls.name == cls.qualified_name
