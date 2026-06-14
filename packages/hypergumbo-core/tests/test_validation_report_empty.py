@@ -92,23 +92,23 @@ SUBSTRATES: dict[str, dict[str, Any]] = {
 #     disagreement cohort, surfaced at advisory (warning) severity; the
 #     producer fix rebuilds node.id (id-changing, deferred to the v6 bump),
 #     after which these promote to error and ratchet back down.
-#   * include_docs: additionally +5 id_format violations on markdown README
-#     section stable_ids (non-canonical ``markdown:README.md:...:section``
-#     shape) — exactly the flag-gated producer defects WI-himoj exists to
-#     surface. Pinned here; fixed by later producer PRs that then ratchet down.
+#   * include_docs: previously carried +5 id_format violations on markdown
+#     README section stable_ids (non-canonical ``markdown:README.md:...:section``
+#     shape — the flag-gated producer defect WI-himoj surfaced). FIXED by
+#     id-format:F2 4a (markdown/gitignore stable_ids now route through
+#     ``make_doc_stable_id`` -> canonical ``sha256:<16hex>``), so include_docs
+#     ratcheted 17 -> 12 (matching default: 1 cross_field + 11 F3 round-trip).
 #
 # These counts are corpus-coupled in BOTH directions, not just by code: the
 # cross_field '1' is threshold-adjacent (4/42 = 9.5% vs the 5% INV-bazij
-# threshold), the F3 '+11' tracks the corpus's external-reference count, and
-# the include_docs markdown count tracks the README's section-header count
-# one-for-one. So a *fixture* edit (e.g. adding a README heading or an import
-# to a new external symbol) can move these numbers with no code change. On a
-# red gate, re-measure before assuming a code regression; ratchet DOWN on a
-# genuine shrink, never UP.
+# threshold) and the F3 '+11' tracks the corpus's external-reference count. So a
+# *fixture* edit (e.g. adding an import to a new external symbol) can move these
+# numbers with no code change. On a red gate, re-measure before assuming a code
+# regression; ratchet DOWN on a genuine shrink, never UP.
 VALIDATION_BASELINES: dict[str, int] = {
     "default": 12,
     "frameworks_all": 12,
-    "include_docs": 17,
+    "include_docs": 12,
     "max_tier_4": 12,
 }
 

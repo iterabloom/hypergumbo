@@ -290,7 +290,11 @@ node_modules/
         result = analyze_gitignore(tmp_path)
         pattern = next((s for s in result.symbols if s.kind == "pattern"), None)
         assert pattern is not None
-        assert pattern.id == pattern.stable_id
+        # id-format:F2 4a: the id stays the composite identifier, but stable_id
+        # is now a canonical sha256 hash (it no longer reuses the composite id).
+        import re
+        assert pattern.stable_id != pattern.id
+        assert re.match(r"^sha256:[0-9a-f]{16}$", pattern.stable_id)
         assert "gitignore:" in pattern.id
 
     def test_span_info(self, tmp_path: Path) -> None:
@@ -403,3 +407,24 @@ __pycache__/
         pattern = next((s for s in result.symbols if s.kind == "pattern"), None)
         assert pattern is not None
         assert pattern.meta.get("category") == "temp"
+
+
+class TestGitignoreStableIdCanonical:
+    """id-format:F2 4a: gitignore pattern Symbols carry canonical sha256
+    stable_ids (previously reused the non-canonical composite Symbol.id)."""
+
+    def test_pattern_stable_ids_canonical_and_distinct(self, tmp_path: Path) -> None:
+        import re
+        make_gitignore_file(tmp_path, ".gitignore", "*.log\n*.tmp\nbuild/\n")
+        result = analyze_gitignore(tmp_path)
+        patterns = [s for s in result.symbols if s.kind == "pattern"]
+        assert len(patterns) >= 3
+        pat = re.compile(r"^sha256:[0-9a-f]{16}$")
+        assert all(pat.match(s.stable_id) for s in patterns)
+        assert len({s.stable_id for s in patterns}) == len(patterns)
+
+    def test_validator_clean_on_pattern_stable_ids(self, tmp_path: Path) -> None:
+        from hypergumbo_core.spec_validator import _check_stable_id_format
+        make_gitignore_file(tmp_path, ".gitignore", "*.log\n!keep.log\n/root\n")
+        result = analyze_gitignore(tmp_path)
+        assert _check_stable_id_format(result.symbols) == []

@@ -12,6 +12,28 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **markdown/gitignore stable_id canonicalization (Wave-2 T0, id-format:F2 4a)** —
+  the markdown (`section`/`code_block`/`link`) and gitignore (`pattern`) analyzers
+  reused the non-canonical composite `Symbol.id` as their `Symbol.stable_id`
+  (e.g. `markdown:README.md:1-2:Intro:section`), violating the canonical
+  `sha256:<16hex>` shape `_check_stable_id_format` enforces. They now route
+  through a new `make_doc_stable_id(language, path, kind, name, start, end)`
+  factory (`analyze/base.py`). The factory payload folds in `kind` and the
+  `{start}-{end}` span — these doc nodes routinely share a `name` (anonymous code
+  blocks are all `"code"`; a file can repeat a heading), so the span is the only
+  disambiguator and dropping it would collapse distinct siblings to one stable_id
+  (the INV-dubam/INV-tazaj collision class); distinctness is preserved 1:1 with
+  the old composite id. **Identity-neutral (T0):** all four affected kinds are in
+  `_NOISE_KINDS` (absent from default output — verified 0 in default, surfaced
+  only under `--include-docs`), and `Symbol.id` (the `--include-docs`-visible
+  identifier and edge endpoint) is unchanged — only a non-canonical →
+  canonical-unique stable_id on noise-filtered nodes changes. Clears the +5
+  markdown README section stable_id violations the WI-himoj gate surfaced, so the
+  include_docs validation-ratchet baseline shrinks 17 → 12. The identical
+  `stable_id = Symbol.id` reuse exists in ~17 other analyzers
+  (svelte/vue/astro/scss/rst/…); they are tracked separately (the real-source
+  ones are id-changing/T1). Fifth Wave-2 T0 item.
+
 - **Symbol.id round-trip canary + GraphQL operation kinds (Wave-2 T0, id-format:F3)** —
   a new advisory `id_format` sub-check, `_check_id_roundtrip` (`spec_validator.py`,
   wired into `validate_ir`), closes the round-trip the shape-only

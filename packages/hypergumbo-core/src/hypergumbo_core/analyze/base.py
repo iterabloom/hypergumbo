@@ -629,6 +629,36 @@ def make_export_stable_id(language: str, path: str, name: str) -> str:
     return _short_sha256(f"export:{language}:{path}:{name}")
 
 
+def make_doc_stable_id(
+    language: str, path: str, kind: str, name: str, start_line: int, end_line: int
+) -> str:
+    """Stable identity for documentation / config noise-node Symbols (id-format:F2 4a).
+
+    Identity formula:
+    ``sha256("doc:{language}:{path}:{kind}:{name}:{start_line}-{end_line}")[:16]``.
+
+    Used by the markdown and gitignore analyzers for their ``section`` /
+    ``code_block`` / ``link`` / ``pattern`` Symbols — all ``_NOISE_KINDS``
+    (absent from default output). Unlike the name-scoped
+    :func:`make_variable_stable_id` family (which deliberately omits the span so
+    a binding's identity survives edits), the payload here folds in ``kind`` and
+    the ``{start}-{end}`` span: these doc nodes routinely share a ``name``
+    (anonymous code blocks are all ``"code"``; a file can repeat a heading), so
+    the span is the only disambiguator and dropping it would collapse distinct
+    siblings to one stable_id (the INV-dubam / INV-tazaj collision class). This
+    preserves the per-node distinctness the previously-reused composite
+    ``Symbol.id`` carried, while replacing its non-canonical shape with the
+    canonical ``sha256:<16hex>``. Pass the same ``name`` and span that
+    :func:`make_symbol_id` received at the call site so the 1:1 distinctness is
+    exact. For single-line nodes (e.g. markdown links) pass the same value for
+    both ``start_line`` and ``end_line``; the factory hashes the span verbatim
+    and does not validate span plausibility.
+    """
+    return _short_sha256(
+        f"doc:{language}:{path}:{kind}:{name}:{start_line}-{end_line}"
+    )
+
+
 def make_project_stable_id(name: str) -> str:
     """INV-sotiv: stable identity for ``kind="project"`` Symbols.
 

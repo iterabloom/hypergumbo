@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
+    make_doc_stable_id,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -193,7 +194,13 @@ class GitignoreAnalyzer(TreeSitterAnalyzer):
 
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                # id-format:F2 4a: canonical sha256 stable_id (was the
+                # non-canonical composite Symbol.id); span folded in for
+                # distinctness. Symbol.id (edge endpoint) is left unchanged.
+                stable_id=make_doc_stable_id(
+                    "gitignore", str(rel_path), "pattern", pattern_text, line,
+                    node.end_point[0] + 1,
+                ),
                 name=pattern_text,
                 kind="pattern",
                 language="gitignore",

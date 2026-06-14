@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
+    make_doc_stable_id,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -193,7 +194,14 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            # id-format:F2 4a: canonical sha256 stable_id (was the non-canonical
+            # composite Symbol.id). kind+span folded in so repeated headings stay
+            # distinct. Symbol.id (the --include-docs-visible identifier and edge
+            # endpoint) is left unchanged.
+            stable_id=make_doc_stable_id(
+                "markdown", str(rel_path), "section", text, line,
+                node.end_point[0] + 1,
+            ),
             name=text,
             kind="section",
             language="markdown",
@@ -247,7 +255,13 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            # id-format:F2 4a: canonical sha256 stable_id. The span is the only
+            # disambiguator for anonymous code blocks (all named "code"); use the
+            # same name-slot the id used (f"code:{language or 'text'}").
+            stable_id=make_doc_stable_id(
+                "markdown", str(rel_path), "code_block",
+                f"code:{language or 'text'}", line, node.end_point[0] + 1,
+            ),
             name=f"code:{language}" if language else "code",
             kind="code_block",
             language="markdown",
@@ -312,7 +326,12 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
 
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                # id-format:F2 4a: canonical sha256 stable_id, using the same
+                # name-slot the id used (text or url[:20]) plus the line span.
+                stable_id=make_doc_stable_id(
+                    "markdown", str(rel_path), "link", text or url[:20], line,
+                    line,
+                ),
                 name=text or url,
                 kind="link",
                 language="markdown",

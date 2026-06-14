@@ -23,6 +23,7 @@ from hypergumbo_core.analyze.base import (
     is_grammar_available,
     iter_tree,
     iter_tree_with_context,
+    make_doc_stable_id,
     make_entry_stable_id,
     make_file_id,
     make_protocol_stable_id,
@@ -2276,3 +2277,32 @@ class TestPopulateSyntheticClassBIdentity:
         assert s.supply_chain_reason == ""
 
 
+class TestMakeDocStableId:
+    """make_doc_stable_id (id-format:F2 4a): canonical, span/kind-disambiguated
+    stable identity for documentation/config noise-node Symbols."""
+
+    def test_canonical_sha256_shape(self) -> None:
+        import re
+        sid = make_doc_stable_id("markdown", "README.md", "section", "Intro", 1, 2)
+        assert re.match(r"^sha256:[0-9a-f]{16}$", sid), sid
+
+    def test_span_disambiguates_same_name_and_kind(self) -> None:
+        # INV-dubam/INV-tazaj guard: two same-name same-kind nodes at different
+        # spans (anonymous code blocks all named "code"; repeated headings) must
+        # NOT collapse to one stable_id.
+        a = make_doc_stable_id("markdown", "R.md", "code_block", "code:text", 5, 7)
+        b = make_doc_stable_id("markdown", "R.md", "code_block", "code:text", 10, 12)
+        assert a != b
+
+    def test_each_component_changes_the_hash(self) -> None:
+        base = make_doc_stable_id("markdown", "R.md", "section", "X", 1, 2)
+        assert make_doc_stable_id("rst", "R.md", "section", "X", 1, 2) != base
+        assert make_doc_stable_id("markdown", "Q.md", "section", "X", 1, 2) != base
+        assert make_doc_stable_id("markdown", "R.md", "link", "X", 1, 2) != base
+        assert make_doc_stable_id("markdown", "R.md", "section", "Y", 1, 2) != base
+        assert make_doc_stable_id("markdown", "R.md", "section", "X", 9, 2) != base
+        assert make_doc_stable_id("markdown", "R.md", "section", "X", 1, 9) != base
+
+    def test_deterministic(self) -> None:
+        assert make_doc_stable_id("markdown", "R.md", "section", "X", 1, 2) == \
+            make_doc_stable_id("markdown", "R.md", "section", "X", 1, 2)

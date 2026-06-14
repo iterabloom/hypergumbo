@@ -246,7 +246,11 @@ some code
         result = analyze_markdown(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        assert section.id == section.stable_id
+        # id-format:F2 4a: the id stays the composite identifier, but stable_id
+        # is now a canonical sha256 hash (it no longer reuses the composite id).
+        import re
+        assert section.stable_id != section.id
+        assert re.match(r"^sha256:[0-9a-f]{16}$", section.stable_id)
         assert "markdown:" in section.id
         assert "README.md" in section.id
 
@@ -380,3 +384,54 @@ Does something.
         assert link is not None
         assert link.meta.get("is_internal") is True
         assert link.meta.get("is_external") is False
+
+
+class TestMarkdownStableIdCanonical:
+    """id-format:F2 4a: markdown section/code_block/link Symbols carry canonical
+    sha256 stable_ids (previously reused the non-canonical composite Symbol.id),
+    span-disambiguated so same-name siblings stay distinct."""
+
+    @staticmethod
+    def _canonical(sid: str) -> bool:
+        import re
+        return bool(re.match(r"^sha256:[0-9a-f]{16}$", sid))
+
+    def test_section_stable_id_canonical(self, tmp_path: Path) -> None:
+        make_markdown_file(tmp_path, "README.md", "# Title\n\n## Sub\n")
+        result = analyze_markdown(tmp_path)
+        sections = [s for s in result.symbols if s.kind == "section"]
+        assert sections
+        assert all(self._canonical(s.stable_id) for s in sections)
+
+    def test_repeated_heading_distinct_stable_ids(self, tmp_path: Path) -> None:
+        make_markdown_file(tmp_path, "README.md", "## Examples\n\nfoo\n\n## Examples\n\nbar\n")
+        result = analyze_markdown(tmp_path)
+        ex = [s for s in result.symbols if s.kind == "section" and s.name == "Examples"]
+        assert len(ex) == 2
+        assert ex[0].stable_id != ex[1].stable_id
+        assert all(self._canonical(s.stable_id) for s in ex)
+
+    def test_anonymous_code_blocks_distinct_stable_ids(self, tmp_path: Path) -> None:
+        make_markdown_file(tmp_path, "README.md", "# T\n\n```\na\n```\n\nx\n\n```\nb\n```\n")
+        result = analyze_markdown(tmp_path)
+        blocks = [s for s in result.symbols if s.kind == "code_block"]
+        assert len(blocks) == 2
+        assert blocks[0].stable_id != blocks[1].stable_id
+        assert all(self._canonical(s.stable_id) for s in blocks)
+
+    def test_link_stable_ids_canonical_and_distinct(self, tmp_path: Path) -> None:
+        make_markdown_file(tmp_path, "README.md", "# T\n\nSee [a](http://x.com) and [b](http://y.com)\n")
+        result = analyze_markdown(tmp_path)
+        links = [s for s in result.symbols if s.kind == "link"]
+        assert links
+        assert all(self._canonical(s.stable_id) for s in links)
+        assert len({s.stable_id for s in links}) == len(links)
+
+    def test_validator_clean_on_all_stable_ids(self, tmp_path: Path) -> None:
+        from hypergumbo_core.spec_validator import _check_stable_id_format
+        make_markdown_file(
+            tmp_path, "README.md",
+            "# Title\n\n## Sub\n\n```python\nx=1\n```\n\n[a](http://x.com)\n",
+        )
+        result = analyze_markdown(tmp_path)
+        assert _check_stable_id_format(result.symbols) == []
