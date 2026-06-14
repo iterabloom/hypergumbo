@@ -2451,6 +2451,18 @@ def _extract_file_analysis(
                     symbols.append(method_symbol)
                     # Store by short name for self.method() lookups
                     symbol_by_name[item.name] = method_symbol
+                    # WI-jafat CHANGE A: also register the method under its AST
+                    # node id (collision-immune, mirroring the FunctionDef path
+                    # below). Without this, caller resolution in _extract_edges
+                    # (the `func_symbol_by_node_id.get(id(node))` lookup) misses
+                    # for methods and falls through to the bare-name,
+                    # last-write-wins symbol_by_name dict, so same-short-name
+                    # sibling methods (to_dict, __init__, ...) own each other's
+                    # calls and the overwritten sibling's calls land out-of-span
+                    # (506 calls / 1194 combined edges on self-analysis). Keying
+                    # on id(item) lets each method own its own call lines; the
+                    # bare write above is retained for self.method() (Case 2a).
+                    func_symbol_by_node_id[id(item)] = method_symbol
                     # Track as processed to avoid duplicate extraction
                     processed_functions.add((item.lineno, item.name))
 
@@ -2730,6 +2742,23 @@ def _extract_file_analysis(
     # register it under its short name in the parent function's scope.
     nested_by_parent_id: dict[str, dict[str, Symbol]] = {}
     for _node_id, _sym in func_symbol_by_node_id.items():
+        # WI-jafat CHANGE B: methods are now in func_symbol_by_node_id (CHANGE A)
+        # so caller resolution finds them by node id, but a method must NOT be
+        # registered as a VALUE in any enclosing function's inner_scope —
+        # otherwise a method inside a class inside a function would shadow that
+        # function's own nested helper of the same short name at callee
+        # resolution (line ~3501). Skipping methods-as-values restores this
+        # map's method-keyed entries to their pre-CHANGE-A (empty) state.
+        #
+        # This does NOT make the whole map identical to pre-CHANGE-A: a method
+        # can still be a PARENT below, so a function nested inside a method now
+        # registers (keyed by the method's id) where the pre-fix parent lookup
+        # returned None. That is a new, correct behavior — such a nested
+        # helper's bare calls now resolve in-scope to the right callee — and is
+        # consistent with the resolution-improving intent (decision #8), not a
+        # regression.
+        if _sym.kind == "method":
+            continue
         _parent = parent_map.get(_node_id)
         while _parent is not None:
             if isinstance(_parent, (ast.FunctionDef, ast.AsyncFunctionDef)):

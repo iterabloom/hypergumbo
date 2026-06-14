@@ -12,6 +12,34 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Python call-ownership resolves by node identity (Wave-2 T0, WI-jafat)** —
+  the reader-side `_extract_edges` caller resolution attributed a `calls` /
+  `instantiates` / `references` edge's `src` (the enclosing caller) for
+  **methods** through the flat, bare-/short-name-keyed, last-write-wins
+  `symbol_by_name` dict. Two same-short-name sibling methods in one file
+  (`to_dict`, `__init__`, …) clobbered each other; the survivor owned ALL such
+  peers' calls and the overwritten sibling's calls landed out-of-span (1194
+  combined edges on the self-analysis tree — 967 calls + 170 instantiates +
+  57 references; matched before/after on the core package: 81 → 0). Methods are
+  now registered in the collision-immune `func_symbol_by_node_id` (keyed by
+  `id(ast_node)`, mirroring the plain-function path), so caller resolution hits
+  the correct method by node identity and never reaches the bare-name fallback
+  (CHANGE A); a paired guard keeps methods out of the enclosing-function
+  `inner_scope` so the registration does not newly shadow a function's own
+  nested helper at callee resolution (CHANGE B). **Identity-neutral (T0):** the
+  fix re-attributes already-minted `node.id` edge endpoints only — no
+  `Symbol.id` / `stable_id` / `shape_id` change (pinned by a before==after
+  golden-set gate, `test_identity_neutrality_call_resolution.py`, with a
+  strawman proving it has teeth); the producer-half hash change (WI-gitun,
+  enclosing function folded into `stable_id`) is T1, deferred to the v6 bump.
+  The `self.method()` DST collision (WI-kutal) and the framework route/view
+  consumer (WI-hahud) share the bare-name pattern but have unmeasured volume;
+  both are filed as gated follow-ups. (CHANGE A also correctly resolves a
+  function nested inside a method to that method's scope at callee resolution —
+  a beneficial side effect that did not resolve pre-fix, consistent with the
+  resolution-improving intent.) Sixth Wave-2 T0 item — the seam-(b) keystone
+  (ADR-0043) that unblocks the remaining chain.
+
 - **markdown/gitignore stable_id canonicalization (Wave-2 T0, id-format:F2 4a)** —
   the markdown (`section`/`code_block`/`link`) and gitignore (`pattern`) analyzers
   reused the non-canonical composite `Symbol.id` as their `Symbol.stable_id`
