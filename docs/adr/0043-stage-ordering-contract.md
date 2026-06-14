@@ -65,7 +65,98 @@ The noise filter carries a declared **exemption predicate**: entrypoint-bearing 
 
 ### 6. A single finalize stage is the only pre-serialization reconcile point (resolves C5)
 
-One **finalize** stage is the single point at which placeholder-derived fields are reconciled against final state before serialization. It subsumes the currently-scattered finalizers: the repo-fingerprint stamp and the skipped-files → `limits.partial_results_reason` scan fold into it; it recomputes `run_signature` from the final `AnalysisRun` fields (`META-hufaz`), stamps `pass_version`/emission counts and backstops `origin_run_id` including on override-analyze analyzers (`WI-mipul`), and runs the idempotent re-relativize backstop (§2). Budget-tier and compact projections become **consumers** of the finalized map via one shared re-derive helper with a deterministic lexicographic tie-break (so output does not depend on `PYTHONHASHSEED`). This ADR fixes the stage's *position and responsibilities*; its internal API is designed by `run-lifecycle:F1` (the finalize carrier) and is intentionally left unspecified here.
+One **finalize** stage is the single point at which placeholder-derived fields are reconciled against final state before serialization. It subsumes the currently-scattered finalizers: the repo-fingerprint stamp and the skipped-files → `limits.partial_results_reason` scan fold into it; it recomputes `run_signature` from the final `AnalysisRun` fields (`META-hufaz`), stamps `pass_version`/emission counts and backstops `origin_run_id` including on override-analyze analyzers (`WI-mipul`), and runs the idempotent re-relativize backstop (§2). Budget-tier and compact projections become **consumers** of the finalized map via one shared re-derive helper with a deterministic lexicographic tie-break (so output does not depend on `PYTHONHASHSEED`). This ADR fixes the stage's *position and responsibilities*; its internal API is designed by `run-lifecycle:F1` (the finalize carrier). That design — deferred when this ADR was first authored — is **now specified in §6.1 below** (amendment, 2026-06-13).
+
+### 6.1 Finalize internal API (amendment, 2026-06-13)
+
+**Decision provenance (distinct from this ADR's parent body).** Unlike the rest of
+ADR-0043 — which §"Decision provenance" notes records *no* fresh human ruling — this
+subsection **does** carry one: the cross-family finalize internal-API co-design
+(strategy "Compute-once-never-reconcile"; open decision #4) was produced and
+**ratified by the lead on 2026-06-13**. It is the explicitly-deferred second half of
+§6, not new policy about *what* finalize does. Working artifact:
+`~/hypergumbo_lab_notebook/finalize_stage_codesign_06132026.md`.
+
+**API shape.** A new module `analyze`-adjacent `finalize.py` exposing one public
+entry point whose **body is the ordering contract**:
+
+```python
+def finalize(ctx: FinalizeContext) -> FinalizedMap: ...
+```
+
+- `FinalizeContext` is a mutable carrier (`symbols`, `edges`, `usage_contexts`,
+  `analysis_runs` [dicts — note the `to_dict()` key is `"pass"`, not `"pass_id"`],
+  `behavior_map`, `limits`, `repo_root`, `config`, a `PassMetadataLookup`, and a
+  `violations` accumulator) threaded through the sub-steps.
+- Each sub-step is a free function `_finalize_<concern>(ctx) -> None` that mutates
+  `ctx` in place — identical in shape to the existing house pattern
+  (`stamp_symbol_fingerprints`, `populate_synthetic_class_b_identity`,
+  `_relativize_ir_paths`). The orchestrator body is a flat, hand-ordered call list;
+  **the source order IS the schedule.**
+- `finalize()` returns a `@dataclass(frozen=True) FinalizedMap` — the single
+  reconciled view §8's round-trip test asserts on. Immutability is **shallow**
+  (rebind raises; consumers contract not to mutate the inner dict).
+- A **registry / Protocol / topological-scheduler is explicitly rejected**: finalize
+  is a closed set with a shallow (~four-edge) dependency graph fixed by §6's
+  responsibility list, so a scheduler is apparatus the graph does not need. The two
+  load-bearing orderings are pinned by call-site adjacency **and** two ~5-line
+  white-box guard tests (R2, R3 below).
+
+**Ordered sub-steps.** `finalize()` runs, top to bottom:
+
+| # | sub-step | responsibility / family | depends on |
+|---|----------|-------------------------|-----------|
+| — | *(entry precondition)* final node/edge set fixed (Phase D filter + Phase E boundary/edge-final complete); finalize never changes membership | R1 | — |
+| 1 | `_finalize_re_relativize` | §2 idempotent re-relativize backstop (replaces the ad-hoc second normalize) | precondition |
+| 2 | `_finalize_stamp_run_lifecycle` | `WI-mipul`: backstop `pass_version`/`config_fingerprint`/`toolchain`/`origin_run_id` (incl. override-analyze) | 1 |
+| 3 | `_finalize_recompute_run_signature` | `META-hufaz`: re-hash from **final** AR fields | **2 (hard)** |
+| 4 | `_finalize_repo_fingerprint` | subsumes the scattered repo-fingerprint stamp | precondition |
+| 5 | `_finalize_emission_counts` | per-analyzer `files_analyzed`/`files_skipped` over the final substrate (per-run by `origin_run_id`) | precondition |
+| 6 | `_finalize_skipped_into_limits` | subsumes the skipped-files → `limits.partial_results_reason` scan (crashed-pass reason wins) | 5 |
+| 7 | `_finalize_confidence_aggregates` | confidence: recompute aggregate sums over the final EP/datamodel set (per-edge `Edge.confidence` left untouched, ADR-0039) | precondition |
+| 8 | `_finalize_commit_dicts` | write reconciled dicts into `behavior_map` so every downstream reader sees one view | all mutators |
+| 9 | `_finalize_declared_fields` | declared-fields writer/population-contract over the **final stamped** substrate (read-only) | 2, 3 |
+| 10 | `_finalize_referential_integrity` | §7 FK predicate (edges ⊆ nodes; `is_resolved ⇒ dst ∈ nodes`) + ADR-0039 per-edge range — **structurally LAST** | all preceding |
+| — | `re_derive_view(finalized, selected_ids)` — **not a sub-step**; the pure helper budget-tier/compact projections call *after* their shrink loops | projection-finalize | `finalize()` returned |
+
+**Dependency rules.** R1 entry-precondition (finalize never mutates membership);
+**R2 (hard):** run_signature recompute strictly after the AR-field stamp (else it
+hashes create-time placeholders — the META-hufaz defect); **R3 (hard):** the FK /
+referential-integrity check is the last violation-appending sub-step (validates
+exactly the substrate that serializes, §7); R4 declared-fields after the stamp
+sub-steps; R5 re-relativize first; R6 limits after counts; R7 projections are strictly
+downstream consumers of the frozen handle (a projection cannot re-introduce a
+reconciled value); R8 the remainder is order-free (the §3 idempotency property carried
+into Phase F). R2 and R3 are each pinned by a white-box test, not just by position.
+
+**Determinism.** `finalize()` itself iterates the existing list order and never
+iterates a set to drive output; `violations` are sorted before the report is built.
+The only `PYTHONHASHSEED` exposure lives in the **projections** and is removed by
+`re_derive_view`, which sorts every set into a lexicographically-ordered list before
+iterating and uses sorted-by-id as the tie-break at every decision point. Guarded by a
+subprocess test asserting byte-identical artifacts under `PYTHONHASHSEED=0` and `=1`.
+
+**Ratified sub-decisions.** (4) `config_fingerprint` on override-analyze runs:
+**backstop-with-violation** — retain the default only when no better value is
+available and record a violation, keeping `WI-mipul`'s broken-cache-key concern
+visible rather than silently papering over it. (5) emission-counts source of truth:
+**per-run, counted by `origin_run_id`** over the final substrate. (6) `FinalizedMap`
+immutability: **shallow `frozen=True`** plus a consumer-side no-mutation contract.
+
+**Phasing — `run-lifecycle:F1` is the carrier.** F1's PR lands the module + the
+orchestrator spine + the fully-implemented run-lifecycle sub-steps, with the other
+three families' sub-steps as **documented stubs** (confidence: no-op; declared-fields:
+the existing `validate_ir` subset; referential-integrity: the lifted existing
+`validate_ir` call, structurally last from day one), so F1 merges green **without**
+them. `projection-finalize`, `declared-fields`, and `confidence` then each fill one
+**named slot with zero orchestrator change** — this is what dissolves the seam-(a)
+merge-collision hazard. Per the §"Sequencing constraint", finalize still lands **after**
+the identity-v6 rewrite (seam b) and the Phase D/E reorder (`WI-pozur`), so the entry
+precondition (substrate final on entry) holds.
+
+**Closure.** Unchanged from §8: the serialization round-trip property test (every
+emitted artifact reflects one reconciled view) is the closure evidence for `META-jalur`
+(+ `META-hufaz`, `WI-mipul`); it lands with the implementing fixes, not this amendment.
 
 ### 7. Validation runs at two points, with denominator-scope disclosure (resolves C1)
 
