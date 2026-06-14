@@ -1,0 +1,21 @@
+- op: create  # 0f29
+  at: '2026-06-14T05:13:41Z'  # 0f29
+  by: agent  # 0f29
+  actor: jgstern_agent  # 0f29
+  clock: 1  # 0f29
+  nonce: 0f29  # 0f29
+  data:  # 0f29
+    kind: work_item  # 0f29
+    title: "Python framework route/view resolution uses bare-name symbol_by_name (same-named view collision)"  # 0f29
+    status: todo_soft  # 0f29
+    priority: 4  # 0f29
+    parent:  # 0f29
+    tags:  # 0f29
+    - analysis_quality  # 0f29
+    - python  # 0f29
+    isbefore: []  # 0f29
+    duplicate_of: []  # 0f29
+    not_duplicate_of: []  # 0f29
+    pr_ref:  # 0f29
+    description: "Sibling-of WI-jafat (reader-half call-ownership). The flat bare-/short-name-keyed, last-write-wins symbol_by_name dict has a SECOND consumer beyond call-graph resolution: framework route/view resolution (py.py Django ~848/861/866, DRF ~1223/1284/1298, Flask ~1443) resolves view_name/resource_name to a node.id (the DST of route edges) by bare name. A same-named view/handler across scopes (e.g. a method bare-key clobbering a same-named top-level function/class) can misattribute the route edge's target.\n\nCollision surface is strictly narrower than the call-graph method path: two same-name top-level defs in one module is illegal Python (runtime last-def-wins), so exploitable collisions are cross-kind/cross-scope only. VOLUME UNMEASURED — no out-of-span route-edge count exists in any analysis.\n\nGATE on a directed route-view collision probe (two same-named handlers — one top-level fn, one method — both route-registered) before implementing. Identity-neutral when fixed (re-attributes the dst edge endpoint only; no Symbol.id/stable_id/shape_id change). Source: ~/hypergumbo_lab_notebook/pypy_scope_rewrite_codesign_06142026.md (Phase 3)."  # 0f29
+    fields: {}  # 0f29

@@ -1,0 +1,20 @@
+- op: create  # c627
+  at: '2026-06-14T00:49:16Z'  # c627
+  by: agent  # c627
+  actor: jgstern_agent  # c627
+  clock: 1  # c627
+  nonce: c627  # c627
+  data:  # c627
+    kind: work_item  # c627
+    title: "Route the remaining ~17 analyzers' stable_id construction through factories (the broad stable_id=Symbol.id reuse family beyond markdown/gitignore)"  # c627
+    status: todo_soft  # c627
+    priority: 3  # c627
+    parent:  # c627
+    tags:  # c627
+    - id_format  # c627
+    isbefore: []  # c627
+    duplicate_of: []  # c627
+    not_duplicate_of: []  # c627
+    pr_ref:  # c627
+    description: "id-format:F2 4a (PR for markdown+gitignore) fixed the two named analyzers, but the SAME defect — Symbol.stable_id set to the non-canonical composite Symbol.id instead of a make_*_stable_id factory's canonical sha256:<16hex> — exists across ~17 more lang modules surfaced during the 4a investigation: svelte, vue, astro, scss, puppet, robot, rst, pony, twig, bitbake, kdl, sparql, bibtex, ini, requirements, properties (and possibly others). Instance of the INV-kurup-tidam-ribus-rorif-jigad-tijah-losus-funah META family (identifier-bearing fields emit non-canonical formats).\n\nSPLIT BY IDENTITY AXIS (critical — do NOT lump): for each analyzer, classify its emitted Symbol kinds against cli.py _NOISE_KINDS. Kinds in _NOISE_KINDS (absent from DEFAULT output, e.g. rst 'section', config 'pattern'/'setting') are default-output-neutral -> T0, batchable like 4a was. Kinds that ARE in default output (real-source/markup languages: svelte/vue/astro/scss components, sparql queries, etc.) are id-changing -> T1 and must ride the v6 stable_id bump, NOT land pre-v6. Lumping T0 and T1 would smuggle default-output id churn before the atomic v6 bump.\n\nFIX PATTERN: route each site through the appropriate make_*_stable_id factory (reuse make_doc_stable_id(language, path, kind, name, start, end) for doc/config noise nodes where the span is the needed disambiguator; use the kind-appropriate factory otherwise). Preserve 1:1 distinctness (fold span/kind where same-name siblings exist — the INV-dubam/INV-tazaj collision guard). Add per-analyzer producer tests (canonical shape + no-collision) + ratchet baselines for any analyzer present in the schema-coverage-corpus fixture."  # c627
+    fields: {}  # c627

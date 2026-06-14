@@ -47,3 +47,20 @@
   clock: 5  # 8825
   nonce: '8825'  # 8825
   message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): stable_id carries the full scope chain plus name, which disambiguates same-base-name sibling methods — the root cause of the 506 out-of-span src attributions. Waits on the hash-input/endpoint-resolution fix implementing the new contract."  # 8825
+- op: update  # 8507
+  at: '2026-06-14T06:39:51Z'  # 8507
+  by: agent  # 8507
+  actor: jgstern_agent  # 8507
+  clock: 6  # 8507
+  nonce: '8507'  # 8507
+  set:  # 8507
+    status: done  # 8507
+  add:  # 8507
+    tags: [awaits_bakeoff_validation]  # 8507
+- op: discuss  # b649
+  at: '2026-06-14T06:39:51Z'  # b649
+  by: agent  # b649
+  actor: jgstern_agent  # b649
+  clock: 7  # b649
+  nonce: b649  # b649
+  message: "Reader-half (T0) fixed in PR #231 (merge 688ab9ae8d). CHANGE A: methods registered in the node-id-keyed func_symbol_by_node_id so the calls-edge src resolves to the correct enclosing method, never the bare-name survivor; CHANGE B: paired inner_scope guard. Behavioral evidence (live before/after on analyze_python(packages/hypergumbo-core/src), matched via git-stash of py.py): out_of_span_src calls 65->0, instantiates 10->0, references 6->0; and 0/24152 funcdefs reach the bare-name fallback post-fix. Canonical two-class repro (Alpha.to_dict/Beta.to_dict each calling a distinct helper) now emits each method its own in-span call with the overwritten sibling regaining its edge (was: both pinned to Beta.to_dict, one out-of-span, Alpha 0 outgoing) -- pinned by test_call_ownership_scope_aware.py. The original io_boundary.py BoundaryMap.to_dict-vs-IoChain.to_dict out-of-span case is among the resolved core edges. Identity-neutral (T0) pinned by test_identity_neutrality_call_resolution.py golden gate. Producer-half (WI-gitun stable_id hash) stays T1/v6. self.method() DST (WI-kutal) and framework route/view (WI-hahud) are distinct residuals, filed. Tagged awaits_bakeoff_validation: resolution-improving per decision #8."  # b649

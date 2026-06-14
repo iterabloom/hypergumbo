@@ -1,0 +1,21 @@
+- op: create  # 325c
+  at: '2026-06-14T05:13:39Z'  # 325c
+  by: agent  # 325c
+  actor: jgstern_agent  # 325c
+  clock: 1  # 325c
+  nonce: 325c  # 325c
+  data:  # 325c
+    kind: work_item  # 325c
+    title: "Python self.method() DST resolves to wrong same-named method (bare-name symbol_by_name, py.py Case-2a)"  # 325c
+    status: todo_soft  # 325c
+    priority: 3  # 325c
+    parent:  # 325c
+    tags:  # 325c
+    - analysis_quality  # 325c
+    - python  # 325c
+    isbefore: []  # 325c
+    duplicate_of: []  # 325c
+    not_duplicate_of: []  # 325c
+    pr_ref:  # 325c
+    description: "Sibling-of WI-jafat (reader-half call-ownership). WI-jafat fixed the SRC (caller) endpoint by registering methods in the node-id-keyed func_symbol_by_node_id (py.py CHANGE A/B). The self.method() DST (callee) endpoint is a DISTINCT, still-open defect: py.py _process_call Case-2a (~line 3525, `callee_symbol = local_symbols.get(attr_name)`) resolves `self.<method>()` through the flat bare-/short-name-keyed, last-write-wins symbol_by_name dict. When two classes in one file share a method short-name, self.method() inside one class can resolve to the OTHER class's method.\n\nEmpirically confirmed STILL broken after the WI-jafat SRC fix (the WI-jafat behavioral test (d) covers only the correct single-class case; the cross-class self.method() case is the residual). VOLUME UNMEASURED — no out-of-span DST count exists (the out-of-span metric measures the SRC endpoint only).\n\nGATE on a directed dst-blast-radius probe before implementing. Recommended fix shape (if pursued): ADD (do not replace) a qualified `Class.method` key write at py.py ~2453 (a dotted key cannot clobber a bare identifier), then resolve Case-2a via the caller's class (caller_symbol.name.split('.')[0], now correct post-WI-jafat). Must be span-validated as resolution-improving with its own awaits_bakeoff_validation tag. Identity-neutral (re-attributes the dst edge endpoint only; no Symbol.id/stable_id/shape_id change). Source: ~/hypergumbo_lab_notebook/pypy_scope_rewrite_codesign_06142026.md (Phase 2)."  # 325c
+    fields: {}  # 325c

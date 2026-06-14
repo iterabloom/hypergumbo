@@ -106,3 +106,10 @@
   clock: 11  # 6d47
   nonce: 6d47  # 6d47
   message: "2026-06-10 design-interview ruling (ADR-0036, merged in PR #4181): node.id grammar is fixed as anchored 5-slot with colon-free lang/span/name/kind and a colon-tolerant path, parseable from both ends; names are sanitized ':' -> '.' (lossy — fidelity lives in Symbol.name) and sentinels are enumerated. The 12 escaping nodes (rust :: namespacing, npm packages, route IDs) become conformance bugs against this grammar. Stays violated until the emitter fixes land; re-validate then."  # 6d47
+- op: discuss  # 30c5
+  at: '2026-06-13T23:58:27Z'  # 30c5
+  by: agent  # 30c5
+  actor: jgstern_agent  # 30c5
+  clock: 12  # 30c5
+  nonce: 30c5  # 30c5
+  message: "id-format:F3 round-trip canary landed (PR #227, dev 05b8fd9cc9). The ADR-0036 Ruling-2 round-trip validator (_check_id_roundtrip in spec_validator.py, wired into validate_ir) now SURFACES and MEASURES the node.id kind-slot escapes at advisory (warning) severity: kind-slot not in the symbol-kind registry, and kind-slot != Symbol.kind. Behavioral evidence on merged dev: the tsconfig node (id kind-slot 'tsconfig', Symbol.kind 'file' — invisible to axis_conformance) and the external_symbol cohort (id 'go:fmt:0-0:Println:unresolved') both fire; the schema-coverage-corpus ratchet pins +11 such warnings. INV-dulah STAYS violated: the canary measures the cohort, but the producer folds that drain it to zero are id-changing (T1) and ride the v6 bump — WI-pubiv (external_symbol), WI-kugaj (route/event role), and the tsconfig fold (audit-findings 0005). Closes on the validated zero-violation cohort run after those folds, at which point the advisory checks promote to error (gating item WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak). Deferred F3 sub-checks: Ruling-3 sentinel enumeration (WI-dipim..., T0) and Ruling-1 producer name sanitization (WI-sikar..., T1)."  # 30c5
