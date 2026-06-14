@@ -3360,10 +3360,17 @@ def _extract_edges(
     # Process functions (including async functions)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            # INV-mofav: nested functions aren't registered in the flat
-            # symbol_by_name dict, so look them up by AST node id first.
+            # INV-mofav + WI-jafat: every FunctionDef / AsyncFunctionDef walked
+            # here is registered in func_symbol_by_node_id — plain functions
+            # (top-level and nested) at the elif branch above, and methods via
+            # CHANGE A — so the node-id lookup is authoritative. The bare-name
+            # fallback below was the path methods took pre-CHANGE-A; it is now a
+            # defensive backstop for any future node reaching this loop
+            # unregistered, unreachable on the current producer (verified
+            # 0/24152 funcdefs on self-analysis), mirroring the
+            # func_symbol_by_node_id-None backstop above.
             caller_symbol = func_symbol_by_node_id.get(id(node))
-            if caller_symbol is None:
+            if caller_symbol is None:  # pragma: no cover - WI-jafat: all FunctionDefs are node-id-registered
                 caller_symbol = local_symbols.get(node.name)
             if caller_symbol:
                 # Process decorators on the function
