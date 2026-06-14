@@ -12,6 +12,31 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Boundary synthesis runs after filtering (Wave-2 T0, WI-pozur — ADR-0043 §4/C2)** —
+  `run_behavior_map`'s boundary-node synthesis (`create_boundary_nodes` +
+  `apply_external_id_remap`) ran *before* tier+noise filtering, so synthesis saw
+  the pre-filter symbol set: a tier-4 DERIVED file (e.g. `*_pb2.py`) was still
+  present at synthesis time — its file-level outgoing edges were not yet dangling,
+  so no boundary was minted for it — and then filtering deleted the file while the
+  file-level `src` carve-out kept its edges, leaving a dangling `src` (the C2
+  residual dangling-source class ADR-0037 left as sibling work). The
+  boundary-synthesis block now runs **after** tier+noise filtering (Phase E after
+  Phase D in the ADR-0043 DAG), so the now-dangling `src` is seen and a boundary is
+  minted/remapped onto it — the class is closed by construction, and the node/edge
+  set is final once synthesis completes (the finalize / `run-lifecycle:F1` R1 entry
+  precondition). **Identity-neutral (T0):** surviving first-party `stable_id`s are
+  byte-identical across the reorder (content-derived, position-independent — pinned
+  by `test_phase_de_reorder.py`'s before==after golden gate plus a dangling-closed
+  assertion); the change is to output *set membership* only (orphaned dangling
+  `src`s close; a collapse boundary node may be added). Measured on the core
+  package: dangling-src edges 10 → 0, edge count unchanged, +1 boundary node. Scope
+  is **C2 only** — the noise-filter entrypoint exemption (C3, `entrypoint:F4`), total
+  `meta` relativization (C4, `identity:F1`), and the single finalize stage (C5,
+  `run-lifecycle:F1`) are separately owned; the now-vacuous tier-filter boundary
+  carve-out is kept as a defensive no-op with an explanatory comment (D-D). Tagged
+  `awaits_bakeoff_validation` (output set membership changes). Unblocks
+  `run-lifecycle:F1` / the finalize stage.
+
 - **Python call-ownership resolves by node identity (Wave-2 T0, WI-jafat)** —
   the reader-side `_extract_edges` caller resolution attributed a `calls` /
   `instantiates` / `references` edge's `src` (the enclosing caller) for

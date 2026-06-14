@@ -46,6 +46,28 @@ def _sym(language: str, path: str, start: int, end: int, name: str = "f") -> Sym
     )
 
 
+class TestNonStringGrammarGuard:
+    """A None / non-string language hits the non-str-grammar guard and yields None.
+
+    Directly covers ``_compute_fingerprint``'s non-tree-sitter-grammar guard
+    (``if not isinstance(grammar, str): return None``, fingerprint.py:489-490),
+    reached when a symbol's ``language`` is ``None`` — the value synthetic /
+    boundary symbols carry — or maps to a non-string grammar. The orchestrator
+    stamping pass cannot exercise this branch through synthetic nodes, because it
+    span-filters zero-span synthetics (``span.start_line <= 0`` at
+    fingerprint.py:540) before ever calling ``_compute_fingerprint``; the guard is
+    nonetheless reachable legitimate code via the public one-shot API. It surfaced
+    as the lone uncovered line while validating the WI-pozur Phase D/E reorder, so
+    it gets a direct unit test here.
+    """
+
+    def test_none_language_returns_none(self) -> None:
+        # language=None is exactly the boundary-node case; span is valid so the
+        # empty-span guard (start_line<=0) is not what produces the None.
+        fp = compute_symbol_fingerprint(None, _span(1, 1), b"x = 1\n")  # type: ignore[arg-type]
+        assert fp is None
+
+
 class TestPythonFingerprint:
     """Python uses the `ast` module path."""
 

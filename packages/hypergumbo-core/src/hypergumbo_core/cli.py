@@ -7953,31 +7953,6 @@ def run_behavior_map(
     all_edges = deduplicate_edges(all_edges, remove_self_loops=True)
     _log_memory("after linkers")
 
-    # Create boundary nodes for dangling edge endpoints (WI-sikur / INV-miniz).
-    # Edges to external functions (stdlib, npm packages, etc.) would otherwise
-    # break slice traversal by pointing to nonexistent nodes.
-    # WI-fozoh: synthesizer collapses dangling refs by (lang, name, kind) and
-    # returns an id_remap so we can rewrite edges to point at the canonical
-    # boundary Symbols. Without this rewrite, edges would still reference the
-    # original (now-absent) per-reference dangling ids.
-    # synthetic:F1 (WI-sijut/WI-mosil): emit a real AnalysisRun for boundary
-    # synthesis and stamp its execution_id into the boundary nodes'
-    # origin_run_id (the nodes previously carried origin=[] / origin_run_id='').
-    # Only record the run when boundary nodes were actually created.
-    _boundary_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password (bandit B106 false-positives on any "pass*" funcarg)
-        pass_id="boundary_external_symbol_synthesis", version=PASS_VERSION,
-    )
-    boundary, id_remap = create_boundary_nodes(
-        all_symbols, all_edges, dependency_manifest=dependency_manifest,
-        origin_run_id=_boundary_run.execution_id,
-    )
-    if boundary:
-        all_symbols.extend(boundary)
-        analysis_runs.append(_boundary_run.to_dict())
-    if id_remap:
-        all_edges = apply_external_id_remap(all_edges, id_remap)
-    _log_memory("after boundary nodes")
-
     # WI-fanun: stamp structural fingerprints on analyzer-produced source
     # Symbols that don't already carry one (toml-v1, json-v1, wgsl-v1 keep
     # their manifest-derived fingerprints unchanged). Centralised in
@@ -8023,6 +7998,11 @@ def run_behavior_map(
         # endpoints for external references and should be treated as if they
         # don't exist for tier filtering purposes (same as pre-boundary-node
         # behavior where unresolved IDs simply weren't in the symbol set).
+        # WI-pozur (ADR-0043 C2 / D-D): boundary synthesis now runs AFTER this
+        # filter, so no boundary nodes exist here and `is_external_boundary(s)`
+        # is always False — this clause is a defensive no-op. Kept (not deleted)
+        # so the carve-out restores itself automatically if synthesis is ever
+        # moved back before filtering.
         removed_symbol_ids = {
             s.id for s in all_symbols
             if s.id not in filtered_symbol_ids
@@ -8115,6 +8095,38 @@ def run_behavior_map(
             e for e in all_edges
             if e.src not in noise_ids and e.dst not in noise_ids
         ]
+
+    # Create boundary nodes for dangling edge endpoints (WI-sikur / INV-miniz).
+    # Edges to external functions (stdlib, npm packages, etc.) would otherwise
+    # break slice traversal by pointing to nonexistent nodes.
+    # WI-fozoh: synthesizer collapses dangling refs by (lang, name, kind) and
+    # returns an id_remap so we can rewrite edges to point at the canonical
+    # boundary Symbols. Without this rewrite, edges would still reference the
+    # original (now-absent) per-reference dangling ids.
+    # synthetic:F1 (WI-sijut/WI-mosil): emit a real AnalysisRun for boundary
+    # synthesis and stamp its execution_id into the boundary nodes'
+    # origin_run_id (the nodes previously carried origin=[] / origin_run_id='').
+    # Only record the run when boundary nodes were actually created.
+    # WI-pozur (ADR-0043 §4, C2 — Phase E): this block runs HERE, AFTER tier+noise
+    # filtering (Phase D), not before. Filtering can newly orphan an edge endpoint
+    # (e.g. a tier-4 file whose file-level outgoing edges the src carve-out keeps);
+    # running synthesis afterward sees that now-dangling src and mints/remaps a
+    # boundary for it, closing the dangling-source class by construction. The
+    # node/edge set is final at this point — finalize's (run-lifecycle:F1) R1 entry
+    # precondition. (Previously this ran pre-filter, leaving dangling srcs.)
+    _boundary_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password (bandit B106 false-positives on any "pass*" funcarg)
+        pass_id="boundary_external_symbol_synthesis", version=PASS_VERSION,
+    )
+    boundary, id_remap = create_boundary_nodes(
+        all_symbols, all_edges, dependency_manifest=dependency_manifest,
+        origin_run_id=_boundary_run.execution_id,
+    )
+    if boundary:
+        all_symbols.extend(boundary)
+        analysis_runs.append(_boundary_run.to_dict())
+    if id_remap:
+        all_edges = apply_external_id_remap(all_edges, id_remap)
+    _log_memory("after boundary nodes")
 
     # Rank symbols by importance (centrality + tier weighting) for output ordering
     show_progress("Ranking symbols", 65)
