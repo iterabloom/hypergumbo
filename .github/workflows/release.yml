@@ -424,23 +424,15 @@ jobs:
               --cov-config=.coveragerc.no-embeddings $TEST_PATHS
           fi
 
-      - name: Mark version as passed
-        if: success()
-        run: |
-          mkdir -p /tmp/matrix-result
-          echo "passed" > /tmp/matrix-result/py${{ matrix.python-version }}
-
-      - name: Upload pass marker
-        if: success()
-        uses: actions/upload-artifact@v3
-        with:
-          name: post-publish-pass-py${{ matrix.python-version }}
-          path: /tmp/matrix-result/py${{ matrix.python-version }}
-          retention-days: 1
-
   # ─────────────────────────────────────────────────────────────
   # Post-publish test matrix retry (handles transient infra failures)
-  # Only retries Python versions where the primary job failed.
+  # Re-runs the full Python matrix whenever the primary matrix had any
+  # failure. We intentionally do NOT skip already-passed versions via a
+  # cross-job pass-marker artifact: that required actions/upload-artifact,
+  # a JS action the runner pre-clones at job-setup time, so an unmirrored
+  # action repo (e.g. under CI failover) aborts the whole job before tests
+  # run. Re-running all four versions on the (rare) retry path is cheap
+  # insurance against that fragility.
   # ─────────────────────────────────────────────────────────────
   post-publish-matrix-retry:
     needs: [check-nightly, build-and-publish, post-publish-matrix]
@@ -461,38 +453,15 @@ jobs:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
     steps:
-      # Must run before `actions/download-artifact@v3` (a JS action) —
-      # see the identical note on the test-matrix-retry job in
-      # nightly.yml. Without this, download-artifact fails silently
-      # under continue-on-error, the pass marker never lands, and the
-      # skip-check incorrectly retries every Python version.
+      # Forgejo runner needs Node.js in the container to execute JS-based
+      # actions like actions/checkout@v4. python:*-bookworm images don't
+      # ship it.
       - name: Install Node.js for JS-based actions
         run: apt-get update && apt-get install -y nodejs
 
-      - name: Download pass marker
-        id: check-primary
-        uses: actions/download-artifact@v3
-        with:
-          name: post-publish-pass-py${{ matrix.python-version }}
-          path: /tmp/matrix-result
-        continue-on-error: true
-
-      - name: Skip if primary passed
-        id: skip-check
-        run: |
-          if [ -f /tmp/matrix-result/py${{ matrix.python-version }} ]; then
-            echo "Primary job passed for Python ${{ matrix.python-version }} — skipping retry"
-            echo "should_skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Primary job failed for Python ${{ matrix.python-version }} — retrying"
-            echo "should_skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@v4
-        if: steps.skip-check.outputs.should_skip != 'true'
 
       - name: Install dependencies
-        if: steps.skip-check.outputs.should_skip != 'true'
         run: |
           pip install --upgrade pip
           if [ -d "packages/hypergumbo-core" ]; then
@@ -509,11 +478,9 @@ jobs:
           fi
 
       - name: Build source-only grammars
-        if: steps.skip-check.outputs.should_skip != 'true'
         run: ./scripts/build-source-grammars
 
       - name: Check for sentence-transformers
-        if: steps.skip-check.outputs.should_skip != 'true'
         run: |
           if python -c "import sentence_transformers" 2>/dev/null; then
             echo "sentence-transformers available"
@@ -524,7 +491,6 @@ jobs:
           fi
 
       - name: Run tests with coverage
-        if: steps.skip-check.outputs.should_skip != 'true'
         run: |
           if [ -d "packages/hypergumbo-core" ]; then
             COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-lang-rust-analyzer/src --cov=packages/hypergumbo-tracker/src"
