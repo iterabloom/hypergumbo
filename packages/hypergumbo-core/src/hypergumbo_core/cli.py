@@ -55,7 +55,12 @@ from .analyze.base import (
 )
 from .behavior_map_io import load_behavior_map
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
+# ADR-0043 §6: finalize() is the single pre-serialization reconcile point. _relativize_ir_paths
+# lives there now (finalize sub-step 1 owns it); re-exported here for the Phase B call below
+# and for tests/test_cli_relativize_paths.py (which imports it from cli).
+from .finalize import FinalizeContext, _relativize_ir_paths, finalize
 from .linkers.registry import LinkerContext, run_all_linkers
+from .pass_metadata import build_pass_metadata
 from .safety_zones import (
     cache_rmtree,
     cache_write,
@@ -124,7 +129,7 @@ import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linke
 from .entrypoints import EntrypointKind, detect_entrypoints
 from .ir import (
     AnalysisRun, PASS_VERSION,
-    Symbol, Edge, UsageContext, apply_external_id_remap, create_boundary_nodes,
+    Symbol, Edge, apply_external_id_remap, create_boundary_nodes,
     deduplicate_edges,
     is_external_boundary,
 )
@@ -7633,57 +7638,8 @@ def _emit_handler_slices(
     return written
 
 
-def _relativize_ir_paths(
-    repo_root: Path,
-    symbols: list[Symbol],
-    edges: list[Edge],
-    usage_contexts: list[UsageContext],
-) -> None:
-    """Rewrite absolute paths under ``repo_root`` to repo-relative in IR objects in place.
-
-    WI-hopug: the behavior map JSON output embeds each Symbol's absolute file
-    path in its ``id`` and Edge endpoints, which makes the output non-portable
-    across machines and branches that hold the same repo under different
-    checkout roots. Stripping the ``str(repo_root) + "/"`` prefix from every
-    id-bearing string collapses those IDs to repo-relative form so two runs
-    of the same commit on two machines produce byte-identical behavior maps
-    (modulo analyzer nondeterminism).
-
-    Paths that do not sit under ``repo_root`` — external-library symbols,
-    synthetic module hints like ``python:external:0-0:foo:unresolved``, and
-    the like — never match the prefix and are left untouched. The rewrite
-    runs after ``resolve_deferred_symbol_refs`` (which populates
-    ``UsageContext.symbol_ref`` with live Symbol IDs) so that every
-    absolute-path reference is normalized in a single coordinated pass,
-    before ranking, entrypoint detection, and handler-slice emission
-    consume the IR.
-
-    UsageContext.id is a sha256 hash over ``path:start_line:context_name:
-    position``. Because ``path`` is part of the hash preimage, the id is
-    itself machine-dependent when ``path`` is absolute. We recompute the id
-    from the relativized path so the hash is stable across machines.
-    """
-    prefix = str(repo_root) + "/"
-    for sym in symbols:
-        if prefix in sym.id:
-            sym.id = sym.id.replace(prefix, "")
-        if sym.path and prefix in sym.path:
-            sym.path = sym.path.replace(prefix, "")
-    for edge in edges:
-        if prefix in edge.src:
-            edge.src = edge.src.replace(prefix, "")
-        if prefix in edge.dst:
-            edge.dst = edge.dst.replace(prefix, "")
-    for uc in usage_contexts:
-        path_was_absolute = prefix in uc.path
-        if path_was_absolute:
-            uc.path = uc.path.replace(prefix, "")
-            from .ir import _compute_usage_context_id
-            uc.id = _compute_usage_context_id(
-                uc.path, uc.span.start_line, uc.context_name, uc.position,
-            )
-        if uc.symbol_ref and prefix in uc.symbol_ref:
-            uc.symbol_ref = uc.symbol_ref.replace(prefix, "")
+# _relativize_ir_paths moved to finalize.py (it is finalize sub-step 1's logic, run once at
+# Phase B below and again as an idempotent backstop inside finalize()). Imported at the top.
 
 
 # RCT-pinned surface — see tests/test_rct_public_api_pinned.py before changing parameter names or defaults.
@@ -8148,28 +8104,32 @@ def run_behavior_map(
     # boundary's supply_chain.tier (e.g., tier-3 wrappers that may reach
     # the network).
 
-    # Convert to dicts for output (in ranked order)
-    all_nodes = [s.to_dict() for s in ranked_symbols]
-    all_edge_dicts = [e.to_dict() for e in all_edges]
-
-    # INV-tofur: stamp the spec-defined repo_fingerprint into every
-    # AnalysisRun. Producers (~83 AnalysisRun.create call sites across
-    # analyzers + linkers) don't carry repo_root, so we compute once at
-    # the orchestrator chokepoint and stamp the result. Per spec
-    # docs/hypergumbo-spec.md:378-384 the fingerprint identifies the
-    # exact code snapshot analyzed; see repo_fingerprint.py for the
-    # algorithm.
-    from .repo_fingerprint import compute_repo_fingerprint
-    _repo_fp = compute_repo_fingerprint(repo_root)
-    for _run_dict in analysis_runs:
-        if _run_dict.get("repo_fingerprint") is None:
-            _run_dict["repo_fingerprint"] = _repo_fp
-
-    behavior_map["analysis_runs"] = analysis_runs
-    behavior_map["nodes"] = all_nodes
-    behavior_map["edges"] = all_edge_dicts
-    behavior_map["usage_contexts"] = [uc.to_dict() for uc in all_usage_contexts]
-    del all_usage_contexts  # Free UsageContext objects
+    # ADR-0043 §6/§6.1: the single finalize() reconcile point. The node/edge set is final
+    # here (Phase D filtering + Phase E boundary synthesis + ranking are done — finalize's R1
+    # entry precondition). finalize() subsumes the formerly-scattered finalizers in one
+    # ordered pass: re-relativize backstop, pass_version backfill (WI-mipul), run_signature
+    # recompute (META-hufaz), repo_fingerprint stamp (INV-tofur), skipped→limits, commit-dicts,
+    # and the validate_ir call (now structurally last). Budget/compact projections still run
+    # after it returns (projection:F1 rewires them to a pure re_derive_view later).
+    _fin_ctx = FinalizeContext(
+        symbols=ranked_symbols,
+        edges=all_edges,
+        usage_contexts=all_usage_contexts,
+        analysis_runs=analysis_runs,
+        behavior_map=behavior_map,
+        limits=limits,
+        repo_root=repo_root,
+        pass_metadata=build_pass_metadata(),
+    )
+    finalize(_fin_ctx)
+    all_nodes = behavior_map["nodes"]
+    all_edge_dicts = behavior_map["edges"]
+    # Free the UsageContext objects before the expensive downstream passes (metrics,
+    # entrypoints, handler-slices, sketch, projections): finalize already serialized them
+    # into behavior_map["usage_contexts"], so drop both the local name AND the carrier's
+    # reference (otherwise _fin_ctx would pin them until the end of the function).
+    _fin_ctx.usage_contexts = []
+    del all_usage_contexts
 
     # Compute metrics from analyzed nodes and edges
     show_progress("Computing metrics", 70)
@@ -8316,13 +8276,7 @@ def run_behavior_map(
 
         behavior_map["sketch_precomputed"] = sketch_precomputed
 
-    # Record skipped files from analysis runs. Don't clobber a reason already
-    # set by record_crashed_pass (WI-madal L3) — a crashed pass is the more
-    # severe signal; the file-skip note only fills an otherwise-empty summary.
-    for run in analysis_runs:
-        if run.get("files_skipped", 0) > 0 and not limits.partial_results_reason:
-            limits.partial_results_reason = "some files skipped during analysis"
-    behavior_map["limits"] = limits.to_dict()
+    # (skipped→limits drain + behavior_map["limits"] commit moved into finalize() sub-step 6.)
 
     # Ensure parent directory exists (even if caller gives nested paths later)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -8392,20 +8346,14 @@ def run_behavior_map(
             connectivity_aware=connectivity,
         )
 
-    # ADR-0033 (INV-sugat): spec-vs-data validator stage. Runs at the end
-    # of the pipeline against the final form of Symbols/Edges/AnalysisRuns,
-    # emits a structured validation_report into the behavior_map artifact,
-    # warns to stderr on non-empty. Does not fail the run; the shrink-only
-    # multi-substrate ratchet gate (tests/test_validation_report_empty.py,
-    # validator:F1/G1) catches regressions.
-    from .spec_validator import (
-        build_validation_report,
-        emit_stderr_summary,
-        validate_ir,
-    )
-    _violations = validate_ir(all_symbols, all_edges, analysis_runs)
-    behavior_map["validation_report"] = build_validation_report(_violations)
-    emit_stderr_summary(_violations)
+    # ADR-0033/ADR-0043 §6: validate_ir + the validation_report now run inside finalize()
+    # (sub-step 10, structurally last over the final substrate). Only the stderr warning
+    # summary remains here (I/O). In compact mode behavior_map was rebound above, but
+    # format_compact_behavior_map does dict(behavior_map) so finalize's validation_report is
+    # preserved. The shrink-only ratchet gate (tests/test_validation_report_empty.py) is
+    # unchanged.
+    from .spec_validator import emit_stderr_summary
+    emit_stderr_summary(_fin_ctx.violations)
 
     # Free memory: Symbol/Edge objects no longer needed after tier/compact processing
     # All data is now in behavior_map as dicts. For large repos like tensorflow (154k
@@ -8413,6 +8361,7 @@ def run_behavior_map(
     del all_symbols
     del all_edges
     del ranked_symbols
+    del _fin_ctx  # holds refs to symbols/edges/usage_contexts via the carrier
     gc.collect()
     _log_memory("after cleanup")
 

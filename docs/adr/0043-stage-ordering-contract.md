@@ -65,7 +65,7 @@ The noise filter carries a declared **exemption predicate**: entrypoint-bearing 
 
 ### 6. A single finalize stage is the only pre-serialization reconcile point (resolves C5)
 
-One **finalize** stage is the single point at which placeholder-derived fields are reconciled against final state before serialization. It subsumes the currently-scattered finalizers: the repo-fingerprint stamp and the skipped-files → `limits.partial_results_reason` scan fold into it; it recomputes `run_signature` from the final `AnalysisRun` fields (`META-hufaz`), stamps `pass_version`/emission counts and backstops `origin_run_id` including on override-analyze analyzers (`WI-mipul`), and runs the idempotent re-relativize backstop (§2). Budget-tier and compact projections become **consumers** of the finalized map via one shared re-derive helper with a deterministic lexicographic tie-break (so output does not depend on `PYTHONHASHSEED`). This ADR fixes the stage's *position and responsibilities*; its internal API is designed by `run-lifecycle:F1` (the finalize carrier). That design — deferred when this ADR was first authored — is **now specified in §6.1 below** (amendment, 2026-06-13).
+One **finalize** stage is the single point at which placeholder-derived fields are reconciled against final state before serialization. It subsumes the currently-scattered finalizers: the repo-fingerprint stamp and the skipped-files → `limits.partial_results_reason` scan fold into it; it recomputes `run_signature` from the final `AnalysisRun` fields (`META-hufaz`) and backfills `pass_version` including on override-analyze analyzers (`WI-mipul`; the `config_fingerprint` backstop and the emission-counts recompute originally listed here are deferred/removed in `run-lifecycle:F1` — see §6.1's amended ratified sub-decisions), and runs the idempotent re-relativize backstop (§2). Budget-tier and compact projections become **consumers** of the finalized map via one shared re-derive helper with a deterministic lexicographic tie-break (so output does not depend on `PYTHONHASHSEED`). This ADR fixes the stage's *position and responsibilities*; its internal API is designed by `run-lifecycle:F1` (the finalize carrier). That design — deferred when this ADR was first authored — is **now specified in §6.1 below** (amendment, 2026-06-13).
 
 ### 6.1 Finalize internal API (amendment, 2026-06-13)
 
@@ -86,8 +86,10 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap: ...
 
 - `FinalizeContext` is a mutable carrier (`symbols`, `edges`, `usage_contexts`,
   `analysis_runs` [dicts — note the `to_dict()` key is `"pass"`, not `"pass_id"`],
-  `behavior_map`, `limits`, `repo_root`, `config`, a `PassMetadataLookup`, and a
-  `violations` accumulator) threaded through the sub-steps.
+  `behavior_map`, `limits`, `repo_root`, a `PassMetadataLookup`, and a
+  `violations` accumulator) threaded through the sub-steps. (The `run-lifecycle:F1`
+  carrier omits the originally-listed `config` field — no F1 sub-step reads it; it is added
+  when a later slot-filler needs it, no orchestrator change required.)
 - Each sub-step is a free function `_finalize_<concern>(ctx) -> None` that mutates
   `ctx` in place — identical in shape to the existing house pattern
   (`stamp_symbol_fingerprints`, `populate_synthetic_class_b_identity`,
@@ -108,11 +110,11 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap: ...
 |---|----------|-------------------------|-----------|
 | — | *(entry precondition)* final node/edge set fixed (Phase D filter + Phase E boundary/edge-final complete); finalize never changes membership | R1 | — |
 | 1 | `_finalize_re_relativize` | §2 idempotent re-relativize backstop (replaces the ad-hoc second normalize) | precondition |
-| 2 | `_finalize_stamp_run_lifecycle` | `WI-mipul`: backstop `pass_version`/`config_fingerprint`/`toolchain`/`origin_run_id` (incl. override-analyze) | 1 |
+| 2 | `_finalize_stamp_run_lifecycle` | `WI-mipul`: backstop `pass_version` from pass_metadata (incl. override-analyze). The `config_fingerprint` backstop is deferred to `WI-mipul`'s producer-side work (see amended ratified #4); `toolchain`/`origin_run_id` are populated upstream. | 1 |
 | 3 | `_finalize_recompute_run_signature` | `META-hufaz`: re-hash from **final** AR fields | **2 (hard)** |
 | 4 | `_finalize_repo_fingerprint` | subsumes the scattered repo-fingerprint stamp | precondition |
-| 5 | `_finalize_emission_counts` | per-analyzer `files_analyzed`/`files_skipped` over the final substrate (per-run by `origin_run_id`) | precondition |
-| 6 | `_finalize_skipped_into_limits` | subsumes the skipped-files → `limits.partial_results_reason` scan (crashed-pass reason wins) | 5 |
+| ~~5~~ | *(removed)* ~~`_finalize_emission_counts`~~ | **Removed**, not stubbed — the ratified per-run-by-`origin_run_id` recompute is unsound: `files_analyzed` is contractually a *file* count (`== profile.languages[L].files`), but the recompute yields a *node/path* count and does not close `INV-gizik` (IR-consuming passes stay 0). The real fix is a new provenance field, tracked under `INV-gizik`. Numbering keeps the gap to match the code. | — |
+| 6 | `_finalize_skipped_into_limits` | subsumes the skipped-files → `limits.partial_results_reason` scan (crashed-pass reason wins) | precondition |
 | 7 | `_finalize_confidence_aggregates` | confidence: recompute aggregate sums over the final EP/datamodel set (per-edge `Edge.confidence` left untouched, ADR-0039) | precondition |
 | 8 | `_finalize_commit_dicts` | write reconciled dicts into `behavior_map` so every downstream reader sees one view | all mutators |
 | 9 | `_finalize_declared_fields` | declared-fields writer/population-contract over the **final stamped** substrate (read-only) | 2, 3 |
@@ -124,7 +126,7 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap: ...
 hashes create-time placeholders — the META-hufaz defect); **R3 (hard):** the FK /
 referential-integrity check is the last violation-appending sub-step (validates
 exactly the substrate that serializes, §7); R4 declared-fields after the stamp
-sub-steps; R5 re-relativize first; R6 limits after counts; R7 projections are strictly
+sub-steps; R5 re-relativize first; R6 (vacated — the emission-counts step it ordered limits against was removed); R7 projections are strictly
 downstream consumers of the frozen handle (a projection cannot re-introduce a
 reconciled value); R8 the remainder is order-free (the §3 idempotency property carried
 into Phase F). R2 and R3 are each pinned by a white-box test, not just by position.
@@ -137,18 +139,32 @@ iterating and uses sorted-by-id as the tie-break at every decision point. Guarde
 subprocess test asserting byte-identical artifacts under `PYTHONHASHSEED=0` and `=1`.
 
 **Ratified sub-decisions.** (4) `config_fingerprint` on override-analyze runs:
-**backstop-with-violation** — retain the default only when no better value is
-available and record a violation, keeping `WI-mipul`'s broken-cache-key concern
-visible rather than silently papering over it. (5) emission-counts source of truth:
-**per-run, counted by `origin_run_id`** over the final substrate. (6) `FinalizedMap`
-immutability: **shallow `frozen=True`** plus a consumer-side no-mutation contract.
+**backstop-with-violation** was the original ruling, but the `run-lifecycle:F1` carrier
+**defers** it to `WI-mipul`'s producer-side work rather than recording a validation-class
+violation here. Recording one would *grow* the shrink-only validation ratchet
+(`test_validation_report_empty.py`) — `validate_ir` is silent on the default
+`config_fingerprint` today, so the backstop violations would be net-new (~+8/substrate) —
+for a concern whose real fix is producer-side. The broken-cache-key concern stays visible
+via `WI-mipul` / `INV-lidul` in the tracker (per "we track everything in git"), not a
+runtime key. F1 still performs the `pass_version` backfill (pure fill, ratchet-safe).
+(5) emission-counts: the original **per-run, counted by `origin_run_id`** ruling is
+**withdrawn as unsound** — `files_analyzed` is contractually a *file* count
+(`== profile.languages[L].files`), but that recompute yields a *node/path* count and does
+not close `INV-gizik` (IR-consuming passes stay 0). The sub-step is **removed** from
+finalize; the real fix is a new provenance field, tracked under `INV-gizik`. (6)
+`FinalizedMap` immutability: **shallow `frozen=True`** plus a consumer-side no-mutation
+contract.
 
 **Phasing — `run-lifecycle:F1` is the carrier.** F1's PR lands the module + the
 orchestrator spine + the fully-implemented run-lifecycle sub-steps, with the other
 three families' sub-steps as **documented stubs** (confidence: no-op; declared-fields:
 the existing `validate_ir` subset; referential-integrity: the lifted existing
 `validate_ir` call, structurally last from day one), so F1 merges green **without**
-them. `projection-finalize`, `declared-fields`, and `confidence` then each fill one
+them. Two run-lifecycle sub-steps named in the table above did **not** land as written:
+`_finalize_emission_counts` (5) is **removed** (unsound — amended ratified #5) and the
+`config_fingerprint` half of sub-step 2 is **deferred** to `WI-mipul` (amended #4); both
+are tracked in the tracker, not stubbed in code. `projection-finalize`, `declared-fields`,
+and `confidence` then each fill one
 **named slot with zero orchestrator change** — this is what dissolves the seam-(a)
 merge-collision hazard. Per the §"Sequencing constraint", finalize still lands **after**
 the **reader-half** of seam (b) — the `py.py` scope-stack / call-resolution rewrite

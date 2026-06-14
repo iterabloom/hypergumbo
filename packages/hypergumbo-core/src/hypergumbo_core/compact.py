@@ -1419,7 +1419,13 @@ def format_tiered_behavior_map(
     )
 
     # Build the initial tiered output, stripping large non-essential fields
-    _TIERED_STRIP_KEYS = {"analysis_runs", "usage_contexts", "sketch_precomputed"}
+    # validation_report describes the FULL substrate; a budget-tier is a shrunk projection,
+    # so the report's counts wouldn't match the tier's nodes — and it wastes token budget.
+    # (Before the ADR-0043 finalize rewire, validate_ir ran after tier generation, so tier
+    # files never carried it; stripping preserves that shape now that finalize sets it early.)
+    _TIERED_STRIP_KEYS = {
+        "analysis_runs", "usage_contexts", "sketch_precomputed", "validation_report",
+    }
     tiered_map = {k: v for k, v in behavior_map.items() if k not in _TIERED_STRIP_KEYS}
     tiered_map["view"] = "tiered"
     tiered_map["tier_tokens"] = target_tokens

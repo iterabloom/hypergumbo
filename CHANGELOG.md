@@ -12,6 +12,32 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Single finalize stage — the META-jalur carrier (Wave-2, run-lifecycle:F1 — ADR-0043 §6/§6.1)** —
+  the formerly-scattered pre-serialization finalizers (a stale `run_signature`, the
+  repo_fingerprint stamp, the skipped→limits scan, the dict-commit, and `validate_ir`)
+  are consolidated into one ordered `finalize(ctx)` reconcile point in a new
+  `finalize.py` module, run once the node/edge set is final (Phase E + ranking — the R1
+  entry precondition). **Headline fix (META-hufaz / WI-luzud):** each AnalysisRun's
+  `run_signature` is re-hashed from its *final* `config_fingerprint`/`toolchain` — it was
+  hashed once at `AnalysisRun.create` from create-time placeholders and never refreshed,
+  so every emitted signature was stale. **pass_version (WI-mipul):** the ~13
+  override-`analyze()` analyzers + synthetic passes emitted an empty `pass_version`; a new
+  `pass_metadata.py` (`build_pass_metadata`, hybrid registry auto-discovery keyed by each
+  pass's emitted `pass_id`) supplies the canonical code-hash and finalize backfills it.
+  The order contract is the function body (a registry/toposort scheduler is rejected — the
+  DAG is closed); the two hard orderings — run_signature recompute strictly after the
+  stamp (R2) and `validate_ir` structurally last (R3) — are pinned by white-box tests, and
+  closure is the §8 one-reconciled-view round-trip (`test_finalize_roundtrip.py`).
+  `_relativize_ir_paths` moved into `finalize.py` (sub-step 1, an idempotent backstop) and
+  is re-exported from `cli`. **Behavior:** `run_signature` values change to their correct
+  reconciled form and previously-empty `pass_version`s are backfilled (the ~13
+  override-`analyze()` + synthetic passes); no other output change (full suite green, TOTAL
+  100%). The ratified
+  `emission_counts` sub-step was **removed** as unsound (`files_analyzed` is a file count,
+  not a node count; real fix tracked under INV-gizik) and the `config_fingerprint`
+  backstop **deferred** to WI-mipul — see the ADR-0043 §6.1 amendment. Tagged
+  `awaits_bakeoff_validation` (run_signature values change).
+
 - **Boundary synthesis runs after filtering (Wave-2 T0, WI-pozur — ADR-0043 §4/C2)** —
   `run_behavior_map`'s boundary-node synthesis (`create_boundary_nodes` +
   `apply_external_id_remap`) ran *before* tier+noise filtering, so synthesis saw

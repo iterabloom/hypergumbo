@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **284** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 59 core, 4 CLI, 33 tracker)
-- **31037** symbols (functions, classes, methods)
-- **105559** edges by type:
-  - calls: 59036
-  - contains: 22120
-  - imports: 10431
-  - instantiates: 7986
-  - references: 3439
-  - module_attr_ref: 1171
-  - other: 1376
+- **286** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 61 core, 4 CLI, 33 tracker)
+- **32509** symbols (functions, classes, methods)
+- **106745** edges by type:
+  - calls: 59675
+  - contains: 22164
+  - imports: 10507
+  - instantiates: 8080
+  - references: 3727
+  - module_attr_ref: 1174
+  - other: 1418
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 31037 Symbols + 105559 Edges + UsageContexts           │
+│  Output: 32509 Symbols + 106745 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -268,20 +268,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 5418.8 | ir.py |
-| `Span` | class | 4274.9 | ir.py |
-| `run_behavior_map` | function | 3092.3 | cli.py |
-| `LinkerContext` | class | 2164.8 | registry.py |
-| `TrackerApp` | class | 1902.1 | tui.py |
-| `load_framework_patterns` | function | 1730.6 | framework_patterns.py |
+| `Symbol` | class | 5446.7 | ir.py |
+| `Span` | class | 4293.8 | ir.py |
+| `write_text` | external_symbol | 3221.0 | <external> |
+| `run_behavior_map` | function | 3124.1 | cli.py |
+| `LinkerContext` | class | 2167.9 | registry.py |
+| `TrackerApp` | class | 1934.9 | tui.py |
+| `load_framework_patterns` | function | 1733.7 | framework_patterns.py |
+| `Edge.create` | method | 1574.6 | ir.py |
 | `main` | function | 1558.0 | cli.py |
-| `clear_pattern_cache` | function | 1332.6 | framework_patterns.py |
+| `Path` | external_symbol | 1450.0 | <external> |
+| `clear_pattern_cache` | function | 1334.7 | framework_patterns.py |
+| `append` | external_symbol | 1203.0 | <external> |
 | `find_files` | function | 1120.8 | discovery.py |
 | `TreeSitterAnalyzer` | class | 944.2 | base.py |
-| `Store` | class | 902.1 | store.py |
-| `match_patterns` | function | 873.0 | framework_patterns.py |
-| `register_analyzer` | function | 840.2 | registry.py |
-| `detect_entrypoints` | function | 804.9 | entrypoints.py |
+| `Store` | class | 911.8 | store.py |
 
 ## Pattern System
 
@@ -540,6 +541,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.entrypoints`**: Entrypoint detection for code analysis using YAML-driven pattern ma...
 - **`hypergumbo_core.evidence_types`**: Canonical registry of Edge.evidence_type values in hypergumbo's beh...
 - **`hypergumbo_core.fallback_coherence`**: INV-zuhub fallback-coherence linter.
+- **`hypergumbo_core.finalize`**: The finalize stage: the single pre-serialization reconcile point (A...
 - **`hypergumbo_core.fingerprint`**: Symbol-level content fingerprinting (WI-fanun; context-aware since ...
 - **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-0003).
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
@@ -552,6 +554,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.multi_value_field_axis`**: Multi-value field axis declaration linter (WI-busij).
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
 - **`hypergumbo_core.partial_install_warnings`**: Runtime warnings for partial installations (ADR-0010 Item 8).
+- **`hypergumbo_core.pass_metadata`**: Per-pass metadata lookup for the finalize stage (run-lifecycle:F1 /...
 - **`hypergumbo_core.paths`**: Centralized path handling utilities for hypergumbo.
 - **`hypergumbo_core.producer_coherence`**: Producer-side axis-coherence linter for Edge / Symbol constructors.
 - **`hypergumbo_core.profile`**: Repo profile detection - language and framework heuristics.
@@ -825,7 +828,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 067d7bfcf736
+  commit: 50d046cefcf7
   hypergumbo: 6.0.0
   python: 3.12.3
 -->
