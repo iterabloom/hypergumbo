@@ -151,8 +151,15 @@ the existing `validate_ir` subset; referential-integrity: the lifted existing
 them. `projection-finalize`, `declared-fields`, and `confidence` then each fill one
 **named slot with zero orchestrator change** — this is what dissolves the seam-(a)
 merge-collision hazard. Per the §"Sequencing constraint", finalize still lands **after**
-the identity-v6 rewrite (seam b) and the Phase D/E reorder (`WI-pozur`), so the entry
-precondition (substrate final on entry) holds.
+the **reader-half** of seam (b) — the `py.py` scope-stack / call-resolution rewrite
+(`WI-jafat`, T0, **merged**) — and the Phase D/E reorder (`WI-pozur`, **merged**), so the
+entry precondition (substrate final on entry) holds. The **producer-half** of seam (b) —
+the stable-id v6 hash bump (`WI-gitun`, T1) — is *structurally independent* of finalize's
+landing: finalize reads `node.id` and the run-signature inputs
+(`pass_id`/version/config/toolchain), neither of which v6 changes, so finalize's v6
+dependency is **diff-churn coordination, not correctness or purpose** (the one predicted
+cross-run diff — the §8 round-trip golden — regenerates when v6 lands). F1 may therefore
+land as a T0 ahead of v6.
 
 **Closure.** Unchanged from §8: the serialization round-trip property test (every
 emitted artifact reflects one reconciled view) is the closure evidence for `META-jalur`
