@@ -1316,6 +1316,71 @@ def select_by_tokens(
     )
 
 
+def recompute_view_summary(
+    view_map: dict,
+    population: List[Symbol],
+    centrality: Dict[str, float],
+    *,
+    emit_edge_count: bool,
+) -> None:
+    """Re-derive ``view_map["nodes_summary"]`` from the FINAL on-disk arrays (INV-pazur).
+
+    The tiered projection assembles ``nodes_summary`` from the pre-shrink connectivity
+    selection, then a post-selection shrink loop prunes ``view_map["nodes"]`` /
+    ``["edges"]`` to fit the token budget — but never re-derives the summary, so its
+    ``included.count`` / ``included_edges_count`` and the whole ``omitted`` distribution
+    drift from the arrays actually written to disk (INV-pazur). This helper recomputes the
+    summary block as a pure function of the *authoritative* post-shrink arrays
+    (``len(view_map["nodes"])`` / ``len(view_map["edges"])``) plus the selection-time
+    centrality, so the counts can never again disagree with the arrays — by construction.
+
+    It re-derives the summary ONLY; it does not touch ``view_map["nodes"]`` / ``["edges"]``
+    / ``["entrypoints"]`` (the shrink loop already produced the correct sets), so the
+    emitted node/edge/entrypoint membership is provably unchanged — only the summary moves.
+
+    The omitted universe (``population``) and ``centrality`` are caller-supplied rather than
+    hardcoded so the tiered caller can pass its ``eligible_symbols`` (tests/examples/
+    boundary nodes pre-filtered) without baking that filter into the helper — a future
+    compact caller (WI-zotam) would pass its own universe. Iteration is over the
+    ``population`` list, so the bag-of-words tie-order (``Counter.most_common``) and the
+    whole summary are independent of ``PYTHONHASHSEED``. (The *selection* upstream is still
+    seed-dependent on score ties — that is WI-nivuj, deliberately out of scope here.)
+
+    ``emit_edge_count`` gates the ``included_edges_count`` key, which belongs only to the
+    connectivity-shaped summary (``ConnectivityResult.to_dict``); the coverage-shaped
+    summary (``CompactResult.to_dict``) omits it.
+    """
+    final_ids = {n["id"] for n in view_map["nodes"]}
+    total_centrality = sum(centrality.values()) or 1.0
+    selected = [s for s in population if s.id in final_ids]
+    omitted = [s for s in population if s.id not in final_ids]
+    included_centrality = sum(centrality.get(s.id, 0.0) for s in selected)
+
+    included = IncludedSummary(
+        # Read the count straight off the on-disk array so INV-pazur holds by construction.
+        count=len(view_map["nodes"]),
+        centrality_sum=included_centrality,
+        coverage=included_centrality / total_centrality,
+        symbols=selected,
+    )
+    omitted_summary = OmittedSummary(
+        count=len(omitted),
+        centrality_sum=sum(centrality.get(s.id, 0.0) for s in omitted),
+        max_centrality=max(
+            (centrality.get(s.id, 0.0) for s in omitted), default=0.0
+        ),
+        top_words=compute_word_frequencies(omitted).most_common(10),
+        top_paths=compute_path_frequencies(omitted).most_common(5),
+        kinds=compute_kind_distribution(omitted),
+        tiers=compute_tier_distribution(omitted),
+    )
+
+    summary = {"included": included.to_dict(), "omitted": omitted_summary.to_dict()}
+    if emit_edge_count:
+        summary["included_edges_count"] = len(view_map["edges"])
+    view_map["nodes_summary"] = summary
+
+
 def format_tiered_behavior_map(
     behavior_map: dict,
     symbols: List[Symbol],
@@ -1414,8 +1479,15 @@ def format_tiered_behavior_map(
     )
     force_include_ids |= lang_seeds
 
+    # Compute the selection-time dampened centrality ONCE and reuse it for both the
+    # connectivity selection and the post-shrink summary re-derive (INV-pazur), so both
+    # reflect the identical centrality and we don't pay for it twice. This is the FULL
+    # canonical dampener stack — distinct from the victim-removal centrality computed in
+    # the shrink loop below, which excludes selection-time dampeners and only orders victims.
+    selection_centrality = compute_dampened_centrality(eligible_symbols, edges)
     conn_result = select_by_connectivity(
-        eligible_symbols, edges, force_include_ids, max_additional
+        eligible_symbols, edges, force_include_ids, max_additional,
+        centrality=selection_centrality,
     )
 
     # Build the initial tiered output, stripping large non-essential fields
@@ -1451,6 +1523,8 @@ def format_tiered_behavior_map(
     tiered_map["nodes"] = [s.to_dict() for s in included_symbols]
     tiered_map["edges"] = induced_edges
     tiered_map["entrypoints"] = filtered_eps
+    # Pre-shrink summary: scratch for the in-loop token estimate only. The authoritative
+    # nodes_summary is re-derived from the FINAL arrays after the shrink loop (INV-pazur).
     tiered_map["nodes_summary"] = conn_result.to_dict()
 
     # --- Post-selection budget enforcement ---
@@ -1522,6 +1596,14 @@ def format_tiered_behavior_map(
             tiered_map["entrypoints"] = filtered_eps
             actual_tokens = estimate_behavior_map_tokens(tiered_map)
 
+    # INV-pazur: re-derive nodes_summary from the FINAL (post-shrink) on-disk arrays so its
+    # included.count / included_edges_count and the omitted distribution can never disagree
+    # with tiered_map["nodes"] / ["edges"]. Population is eligible_symbols (the same universe
+    # select_by_connectivity saw); centrality is the selection-time dampened centrality
+    # computed once above. The pre-shrink summary set during assembly was scratch only.
+    recompute_view_summary(
+        tiered_map, eligible_symbols, selection_centrality, emit_edge_count=True
+    )
     return tiered_map
 
 

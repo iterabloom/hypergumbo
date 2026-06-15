@@ -39,8 +39,11 @@ What this carrier (run-lifecycle:F1) implements vs. defers
 
 `FinalizedMap` is a shallow ``frozen=True`` handle (ratified §6 #6): rebinding a field
 raises, but the inner dicts remain mutable so the downstream budget-tier/compact
-projections (still in ``cli`` for the carrier; rewired to a pure ``re_derive_view`` in
-projection:F1) can run after finalize returns. Consumers must honor a no-mutation contract.
+projections (still in ``cli`` for the carrier) can run after finalize returns. The tiered
+projection re-derives its ``nodes_summary`` from the final post-shrink arrays via
+``compact.recompute_view_summary`` (projection:F1 / INV-pazur — a summary-only re-derive,
+narrower than the design-time ``re_derive_view``). Consumers must honor a no-mutation
+contract.
 """
 from __future__ import annotations
 

@@ -119,7 +119,7 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap: ...
 | 8 | `_finalize_commit_dicts` | write reconciled dicts into `behavior_map` so every downstream reader sees one view | all mutators |
 | 9 | `_finalize_declared_fields` | declared-fields writer/population-contract over the **final stamped** substrate (read-only) | 2, 3 |
 | 10 | `_finalize_referential_integrity` | §7 FK predicate (edges ⊆ nodes; `is_resolved ⇒ dst ∈ nodes`) + ADR-0039 per-edge range — **structurally LAST** | all preceding |
-| — | `re_derive_view(finalized, selected_ids)` — **not a sub-step**; the pure helper budget-tier/compact projections call *after* their shrink loops | projection-finalize | `finalize()` returned |
+| — | `recompute_view_summary(view_map, population, centrality)` — **not a sub-step**; the pure helper the tiered (budget-tier) projection calls *after* its shrink loop to re-derive `nodes_summary` from the FINAL on-disk arrays (projection:F1 / INV-pazur). Implemented narrower than the design-time `re_derive_view(finalized, selected_ids)`: it re-derives only the summary block from the authoritative post-shrink arrays, leaving the node/edge/entrypoint sets the shrink loop already produced untouched | projection-finalize | `finalize()` returned |
 
 **Dependency rules.** R1 entry-precondition (finalize never mutates membership);
 **R2 (hard):** run_signature recompute strictly after the AR-field stamp (else it
@@ -133,10 +133,17 @@ into Phase F). R2 and R3 are each pinned by a white-box test, not just by positi
 
 **Determinism.** `finalize()` itself iterates the existing list order and never
 iterates a set to drive output; `violations` are sorted before the report is built.
-The only `PYTHONHASHSEED` exposure lives in the **projections** and is removed by
-`re_derive_view`, which sorts every set into a lexicographically-ordered list before
-iterating and uses sorted-by-id as the tie-break at every decision point. Guarded by a
-subprocess test asserting byte-identical artifacts under `PYTHONHASHSEED=0` and `=1`.
+The tiered projection's `nodes_summary` is re-derived by `recompute_view_summary`,
+which iterates the caller-supplied **population list** (so its bag-of-words tie-order
+and the whole summary block are `PYTHONHASHSEED`-independent — projection:F1 /
+INV-pazur). A **separate** `PYTHONHASHSEED` exposure remains in the projection
+*selection* itself: `select_by_connectivity`'s frontier tie-break picks the first node
+in set-iteration order on score ties, so the selected node set/order can still vary
+across seeds. Removing it is a behavior change to a bakeoff-tuned hot loop, tracked
+separately as **WI-nivuj** (with the byte-identical-artifacts subprocess test as its
+closure evidence); it is deliberately out of scope for projection:F1, which closes the
+summary↔array inconsistency (INV-pazur) by construction without changing the emitted
+node/edge set.
 
 **Ratified sub-decisions.** (4) `config_fingerprint` on override-analyze runs:
 **backstop-with-violation** was the original ruling, but the `run-lifecycle:F1` carrier

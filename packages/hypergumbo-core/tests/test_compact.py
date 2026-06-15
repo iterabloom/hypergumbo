@@ -29,6 +29,7 @@ from hypergumbo_core.compact import (
     estimate_behavior_map_tokens,
     select_by_tokens,
     format_tiered_behavior_map,
+    recompute_view_summary,
     generate_tier_filename,
     DEFAULT_TIERS,
     CHARS_PER_TOKEN,
@@ -1026,6 +1027,120 @@ class TestFormatTieredBehaviorMap:
         included_ids = {n["id"] for n in result["nodes"]}
         for edge in result["edges"]:
             assert edge["src"] in included_ids and edge["dst"] in included_ids
+
+    def test_nodes_summary_reconciled_after_shrink(self):
+        """INV-pazur: after the post-selection shrink loop prunes nodes/edges to fit the
+        budget, nodes_summary must report the POST-shrink reality — included.count ==
+        len(nodes) and included_edges_count == len(edges) — not the pre-shrink selection.
+
+        Two oversized signatures make each node cost ~3000 tokens, far above the loop's
+        250-token/node estimate, so the assembled tier blows the 4k budget and the shrink
+        loop fires, evicting a node. Before the fix nodes_summary kept the pre-shrink
+        counts (2 nodes / 1 edge) while the on-disk arrays held 1 node / 0 edges.
+        """
+        big = "x" * 12000  # ~3000 tokens once serialized -> forces the shrink loop
+        a = make_symbol("alpha", path="src/a.py")
+        b = make_symbol("beta", path="src/b.py")
+        a.signature = big
+        b.signature = big
+        edges = [make_edge(a.id, b.id)]
+        behavior_map = {
+            "nodes": [a.to_dict(), b.to_dict()],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, [a, b], edges, target_tokens=4000,
+            force_include_entrypoints=False,
+        )
+
+        # Precondition: the shrink loop actually fired (two oversized nodes cannot both
+        # fit in 4k). If this ever fails the test is no longer exercising the bug.
+        assert len(result["nodes"]) < 2, "shrink loop must prune at least one node"
+
+        summary = result["nodes_summary"]
+        assert summary["included"]["count"] == len(result["nodes"])
+        assert summary["included_edges_count"] == len(result["edges"])
+        # Evicted nodes migrate into omitted over the eligible population (here: 2 symbols).
+        assert summary["included"]["count"] + summary["omitted"]["count"] == 2
+
+
+class TestRecomputeViewSummary:
+    """Pure-helper tests for recompute_view_summary (the INV-pazur reconciler).
+
+    These construct view_map dicts + Symbol populations + centrality directly (no analyzer),
+    so they fully cover the helper in hypergumbo-core isolation.
+    """
+
+    def test_counts_match_arrays_and_omitted_migrates(self):
+        # Population of 4; the on-disk view holds 2 nodes / 1 edge (as if post-shrink).
+        pop = [make_symbol(f"f{i}", path=f"src/{i}.py") for i in range(4)]
+        centrality = {s.id: 0.25 for s in pop}
+        kept = pop[:2]
+        view_map = {
+            "nodes": [s.to_dict() for s in kept],
+            "edges": [make_edge(kept[0].id, kept[1].id).to_dict()],
+        }
+
+        recompute_view_summary(view_map, pop, centrality, emit_edge_count=True)
+
+        s = view_map["nodes_summary"]
+        # INV-pazur: counts read straight off the on-disk arrays.
+        assert s["included"]["count"] == len(view_map["nodes"]) == 2
+        assert s["included_edges_count"] == len(view_map["edges"]) == 1
+        # Pruned nodes migrate into omitted; included + omitted partition the population.
+        assert s["omitted"]["count"] == 2
+        assert s["included"]["count"] + s["omitted"]["count"] == len(pop)
+        # included_centrality 2*0.25=0.5; total 4*0.25=1.0; coverage 0.5.
+        assert s["included"]["centrality_sum"] == 0.5
+        assert s["included"]["coverage"] == 0.5
+
+    def test_emit_edge_count_false_omits_key(self):
+        # The coverage-shaped summary (CompactResult) carries no included_edges_count.
+        pop = [make_symbol("a", path="src/a.py")]
+        view_map = {"nodes": [pop[0].to_dict()], "edges": []}
+
+        recompute_view_summary(view_map, pop, {pop[0].id: 1.0}, emit_edge_count=False)
+
+        assert "included_edges_count" not in view_map["nodes_summary"]
+
+    def test_all_selected_empty_omitted(self):
+        # Omitted empty -> max(..., default=0.0) default path and empty distributions.
+        pop = [make_symbol("a", path="src/a.py"), make_symbol("b", path="src/b.py")]
+        view_map = {"nodes": [s.to_dict() for s in pop], "edges": []}
+
+        recompute_view_summary(view_map, pop, {s.id: 0.5 for s in pop}, emit_edge_count=True)
+
+        s = view_map["nodes_summary"]
+        assert s["omitted"]["count"] == 0
+        assert s["omitted"]["max_centrality"] == 0.0
+        assert s["omitted"]["top_words"] == []
+        assert s["included"]["count"] == 2
+
+    def test_all_zero_centrality_no_zero_division(self):
+        # total_centrality `or 1.0` guard -> coverage = 0/1 = 0.0, no ZeroDivisionError.
+        pop = [make_symbol("a", path="src/a.py"), make_symbol("b", path="src/b.py")]
+        view_map = {"nodes": [pop[0].to_dict()], "edges": []}
+
+        recompute_view_summary(view_map, pop, {s.id: 0.0 for s in pop}, emit_edge_count=True)
+
+        s = view_map["nodes_summary"]
+        assert s["included"]["coverage"] == 0.0
+        assert s["included"]["centrality_sum"] == 0.0
+
+    def test_empty_nodes_degenerate(self):
+        # Degenerate: everything pruned -> included.count 0, omitted = whole population.
+        pop = [make_symbol("a", path="src/a.py")]
+        view_map = {"nodes": [], "edges": []}
+
+        recompute_view_summary(view_map, pop, {pop[0].id: 1.0}, emit_edge_count=True)
+
+        s = view_map["nodes_summary"]
+        assert s["included"]["count"] == 0
+        assert s["included"]["centrality_sum"] == 0.0
+        assert s["omitted"]["count"] == 1
+        assert s["included_edges_count"] == 0
 
 
 class TestGenerateTierFilename:

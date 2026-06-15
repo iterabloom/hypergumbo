@@ -8110,7 +8110,8 @@ def run_behavior_map(
     # ordered pass: re-relativize backstop, pass_version backfill (WI-mipul), run_signature
     # recompute (META-hufaz), repo_fingerprint stamp (INV-tofur), skipped→limits, commit-dicts,
     # and the validate_ir call (now structurally last). Budget/compact projections still run
-    # after it returns (projection:F1 rewires them to a pure re_derive_view later).
+    # after it returns; the tiered projection re-derives its nodes_summary from the FINAL
+    # post-shrink arrays via compact.recompute_view_summary (projection:F1 / INV-pazur).
     _fin_ctx = FinalizeContext(
         symbols=ranked_symbols,
         edges=all_edges,

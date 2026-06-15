@@ -35,8 +35,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   100%). The ratified
   `emission_counts` sub-step was **removed** as unsound (`files_analyzed` is a file count,
   not a node count; real fix tracked under INV-gizik) and the `config_fingerprint`
-  backstop **deferred** to WI-mipul — see the ADR-0043 §6.1 amendment. Tagged
-  `awaits_bakeoff_validation` (run_signature values change).
+  backstop **deferred** to WI-mipul — see the ADR-0043 §6.1 amendment. **Not** tagged
+  `awaits_bakeoff_validation`: `run_signature`/`pass_version` are provenance, not analysis
+  quality — the change makes no bakeoff-corpus claim.
 
 - **Boundary synthesis runs after filtering (Wave-2 T0, WI-pozur — ADR-0043 §4/C2)** —
   `run_behavior_map`'s boundary-node synthesis (`create_boundary_nodes` +
@@ -431,6 +432,28 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   their own PRs.
 
 ### Fixed
+
+#### Output projection (tiered budget maps)
+
+- **Tiered `nodes_summary` now matches the on-disk arrays after budget shrink (projection:F1, INV-pazur).**
+  `format_tiered_behavior_map` wrote `nodes_summary` from the *pre-shrink* connectivity
+  selection, then a post-selection shrink loop pruned `nodes`/`edges` to fit the token
+  budget without ever re-deriving the summary — so `included.count` /
+  `included_edges_count` and the whole `omitted` distribution overstated the arrays
+  actually written to the `behavior_map.<budget>.json` file (a 4k tier claimed ~19 nodes /
+  27 edges while serializing 1 node / 0 edges). A new pure helper
+  `compact.recompute_view_summary(view_map, population, centrality)` re-derives
+  `nodes_summary` from the FINAL post-shrink arrays after the shrink loop converges, so the
+  counts can never again disagree with the arrays — by construction. It re-derives the
+  summary block only (the shrink loop already produced the correct node/edge/entrypoint
+  sets), so the emitted membership is provably unchanged, and it iterates the
+  caller-supplied population list so the summary is `PYTHONHASHSEED`-independent. **Scope:**
+  tiered-only — compact's counts already matched (no shrink loop). **Deferred (now
+  tracked):** the projection *selection* tie-break in `select_by_connectivity` remains
+  `PYTHONHASHSEED`-dependent on score ties (WI-nivuj — a bakeoff-gated hot-loop change),
+  and routing compact through the helper to close the `--no-connectivity`
+  `included_edges_count` asymmetry stays with WI-zotam. Not tagged
+  `awaits_bakeoff_validation` (a by-construction consistency fix; no bakeoff-corpus claim).
 
 #### Tracker op durability
 
