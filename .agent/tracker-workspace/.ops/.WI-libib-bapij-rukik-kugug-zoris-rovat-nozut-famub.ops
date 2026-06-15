@@ -31,3 +31,10 @@
     tags: [dogfood]  # 7c1a
   remove:  # 7c1a
     tags: [dogfooding]  # 7c1a
+- op: discuss  # 14a8
+  at: '2026-06-15T10:12:13Z'  # 14a8
+  by: agent  # 14a8
+  actor: jgstern_agent  # 14a8
+  clock: 3  # 14a8
+  nonce: 14a8  # 14a8
+  message: "Confirmed as the home for the declared-fields:F1 / G8 population-contract engine. The finalize stage had a no-op '_finalize_declared_fields' sub-step (9) reserved for declared-fields:F1(a)/F5; a fill-vs-remove recon (2026-06-15) found that slot has no finalize-time tenant — F1(a) (getattr→_read, INV-zotip) already ships via sub-step 10's validate_ir over the final substrate, and the per-(kind,field) population-contract engine belongs in the writer-contract VALIDATOR (this item — fix-sketch (a), 'extend the validator class', inside _check_writer_contract where the record stream lives), NOT a finalize sub-step. A finalize-time population re-check would also grow the shrink-only validation ratchet (zero headroom at 12/substrate; measured +2..+57). The finalize stub was removed (not stubbed) in PR #243 (refactor, ADR-0043 §6.1 amended #9); declared-fields:F1's implementation home is therefore HERE. No status change — the engine is still unbuilt (todo_hard)."  # 14a8

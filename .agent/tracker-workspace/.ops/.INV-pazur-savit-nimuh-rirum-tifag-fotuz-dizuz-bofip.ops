@@ -76,3 +76,18 @@
     tags: [dogfood]  # 7d36
   remove:  # 7d36
     tags: [dogfooding]  # 7d36
+- op: update  # 25ec
+  at: '2026-06-15T07:40:29Z'  # 25ec
+  by: agent  # 25ec
+  actor: jgstern_agent  # 25ec
+  clock: 8  # 25ec
+  nonce: 25ec  # 25ec
+  set:  # 25ec
+    status: satisfied  # 25ec
+- op: discuss  # 146f
+  at: '2026-06-15T07:40:29Z'  # 146f
+  by: agent  # 146f
+  actor: jgstern_agent  # 146f
+  clock: 9  # 146f
+  nonce: 146f  # 146f
+  message: "Fixed in PR #242 (projection:F1). Root cause: format_tiered_behavior_map wrote nodes_summary from the PRE-shrink connectivity selection, then the post-selection shrink loop pruned nodes/edges without re-deriving the summary. Fix: new pure helper compact.recompute_view_summary re-derives nodes_summary from the FINAL post-shrink arrays after the shrink loop, so included.count==len(view_map['nodes']) and included_edges_count==len(view_map['edges']) hold BY CONSTRUCTION (counts read straight off the on-disk arrays). Behavioral evidence (filed-repro re-run on hypergumbo's own core, post-fix): 4k included.count=4==len(nodes)=4 & included_edges_count=3==len(edges)=3 (omitted 1816); 16k 25==25 & 51==51; 64k 83==83 & 266==266 — was ~19/27 claimed vs 1/0 serialized on dev. Production-path test test_tiered_nodes_summary_inv_pazur.py (mainstream) asserts the invariant across emitted tiers and was verified NON-VACUOUS (neuter experiment: with the recompute call removed it fails at 1k/2k/4k, e.g. 1k included.count 3 vs len(nodes) 1). Core regression test_nodes_summary_reconciled_after_shrink forces a shrink (precondition-guarded) and fails without the fix. Full suite 18983 passed, TOTAL 100%. Scope tiered-only; deferred + tracked: selection seed-determinism (WI-nivuj), compact --no-connectivity included_edges_count (WI-zotam)."  # 146f

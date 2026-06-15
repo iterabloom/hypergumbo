@@ -27,3 +27,18 @@
   clock: 2  # 8d59
   nonce: 8d59  # 8d59
   message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): the stable_id hash must carry the full scope chain, enclosing functions included, so same-name locals in different functions can no longer collapse. This item is now a straightforward conformance fix to the ruled contract; waits on the implementing fix."  # 8d59
+- op: update  # 18f5
+  at: '2026-06-15T23:25:11Z'  # 18f5
+  by: agent  # 18f5
+  actor: jgstern_agent  # 18f5
+  clock: 3  # 18f5
+  nonce: 18f5  # 18f5
+  set:  # 18f5
+    status: done  # 18f5
+- op: discuss  # e1e8
+  at: '2026-06-15T23:25:11Z'  # e1e8
+  by: agent  # e1e8
+  actor: jgstern_agent  # e1e8
+  clock: 4  # e1e8
+  nonce: e1e8  # e1e8
+  message: "Done in PR #245 (stable_id v6, ADR-0035). py.py folds the FULL enclosing scope chain (new _enclosing_scope_chain: classes+functions) into the class/function/method hash via the shared assemble_stable_id; HTTP-verb route-methods key on the scope-qualified class name too. BEHAVIORAL EVIDENCE — production-path test test_stable_id_v6_scope_chain.py (run_behavior_map): 8 function-local 'class Args' in distinct functions now split (was 1 collapsed id); a 'class Mock' / nested function inside methods of distinct classes split. body_sig dropped (measured 0/4345 corpus classes relied on it). Full suite green, TOTAL 100%."  # e1e8

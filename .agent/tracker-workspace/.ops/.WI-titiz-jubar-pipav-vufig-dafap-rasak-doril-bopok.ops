@@ -41,3 +41,18 @@
   clock: 4  # 677c
   nonce: 677c  # 677c
   message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): dependency identity is N per-manifest nodes — the manifest path joins the stable_id hash — with aggregate views keyed by (ecosystem, name). The cross-manifest collapse here is exactly what the ruling forbids. Waits on the implementing fix."  # 677c
+- op: update  # 45b5
+  at: '2026-06-15T23:25:11Z'  # 45b5
+  by: agent  # 45b5
+  actor: jgstern_agent  # 45b5
+  clock: 5  # 45b5
+  nonce: 45b5  # 45b5
+  set:  # 45b5
+    status: done  # 45b5
+- op: discuss  # 3e58
+  at: '2026-06-15T23:25:11Z'  # 3e58
+  by: agent  # 3e58
+  actor: jgstern_agent  # 3e58
+  clock: 6  # 3e58
+  nonce: '3e58'  # 3e58
+  message: "Done in PR #245 (ADR-0035 §4). make_dependency_stable_id gains the declaring manifest path (dependency:{language}:{path}:{name}); backstop lambda threads s.path. BEHAVIORAL EVIDENCE: same package declared in 2 manifests now emits 2 distinct nodes (review probe). The §4 same-shape audit also path-anchored make_module/make_interface/make_type/make_entry (proven cross-file collapses on Verilog modules, TS/Verilog interfaces, TS/Elm types, WGSL entries closed)."  # 3e58

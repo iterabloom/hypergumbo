@@ -52,3 +52,10 @@
   clock: 5  # 984d
   nonce: 984d  # 984d
   message: "compact finalize-after-shrink family (connections-sweep 2026-06-08T1900Z)"  # 984d
+- op: discuss  # 7d34
+  at: '2026-06-15T03:50:33Z'  # 7d34
+  by: agent  # 7d34
+  actor: jgstern_agent  # 7d34
+  clock: 6  # 7d34
+  nonce: 7d34  # 7d34
+  message: "Q2 deferral from projection:F1 (re_derive_view/INV-pazur). projection:F1 introduces a parameterized summary-recompute helper (recompute_view_summary) in compact.py that takes the omitted-universe + edge-source as params. That helper is the natural fix vehicle for THIS item's included_edges_count asymmetry: routing format_compact_behavior_map (esp. the --no-connectivity coverage branch, whose CompactResult.to_dict has NO included_edges_count key) through it would close the asymmetry. Deliberately DEFERRED from projection:F1 so that PR stays a tiered-only bug fix: adding included_edges_count to the coverage-branch payload is a schema change that deserves a deliberate schema_version bump (this item), not an incidental DRY side effect; and routing compact-connectivity through a parallel-preserving recompute would change edge counts for multigraph repos. projection:F1 keeps compact untouched; this item owns the compact-side reconciliation when picked up."  # 7d34

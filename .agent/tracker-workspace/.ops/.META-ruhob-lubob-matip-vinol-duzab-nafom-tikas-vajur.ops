@@ -20,3 +20,10 @@
     description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-suvil, WI-fuhof, WI-gifat, WI-suvat, WI-botif, WI-vakuh, WI-motug, WI-humok. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # cbbe
     fields:  # cbbe
       statement: "Edge confidence must be a deterministic function of evidence per the documented EVIDENCE_CONFIDENCE_MATRIX / 0.30 default / linker floor — not a hardcoded constant that diverges per emitter."  # cbbe
+- op: discuss  # 4ec2
+  at: '2026-06-15T16:46:28Z'  # 4ec2
+  by: agent  # 4ec2
+  actor: jgstern_agent  # 4ec2
+  clock: 2  # 4ec2
+  nonce: 4ec2  # 4ec2
+  message: "Scope clarification (provenance): the finalize stage briefly had a no-op '_finalize_confidence_aggregates' sub-step (7) reserved for 'confidence:F1/F2'. A fill-vs-remove recon (2026-06-15) found that a MISATTRIBUTION — confidence:F1 (per-edge evidence→confidence derivation layer) and F2 (ranking/detection separation into rank_score) are PRODUCER-SIDE work owned by THIS family (INV-suvil et al.) and governed by ADR-0039, which explicitly keeps per-edge confidence OUT of finalize. The 'aggregate over the final EP/datamodel set' the slot described already exists over the final substrate (metrics.avg_confidence, computed AFTER finalize; sketch.confidence_mass) with no reconcile gap and no consumer. The finalize stub was REMOVED (not stubbed) in PR #244 (ADR-0043 §6.1 amended #7); this family remains the home for the actual confidence-derivation work. No status change."  # 4ec2
