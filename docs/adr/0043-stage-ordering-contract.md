@@ -115,7 +115,7 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap: ...
 | 4 | `_finalize_repo_fingerprint` | subsumes the scattered repo-fingerprint stamp | precondition |
 | ~~5~~ | *(removed)* ~~`_finalize_emission_counts`~~ | **Removed**, not stubbed — the ratified per-run-by-`origin_run_id` recompute is unsound: `files_analyzed` is contractually a *file* count (`== profile.languages[L].files`), but the recompute yields a *node/path* count and does not close `INV-gizik` (IR-consuming passes stay 0). The real fix is a new provenance field, tracked under `INV-gizik`. Numbering keeps the gap to match the code. | — |
 | 6 | `_finalize_skipped_into_limits` | subsumes the skipped-files → `limits.partial_results_reason` scan (crashed-pass reason wins) | precondition |
-| 7 | `_finalize_confidence_aggregates` | confidence: recompute aggregate sums over the final EP/datamodel set (per-edge `Edge.confidence` left untouched, ADR-0039) | precondition |
+| ~~7~~ | *(removed)* ~~`_finalize_confidence_aggregates`~~ | **Removed**, not stubbed — the confidence:F1/F2 IDs denote per-edge *derivation* / ranking-detection *separation* (producer-side, ADR-0039, `INV-suvil` family), which ADR-0039 keeps **out** of finalize (`Edge.confidence` left untouched). The behavior_map confidence aggregate this row described already exists over the final set: `metrics.avg_confidence` is computed *after* `finalize()` (`cli.py`) over the committed final edges, and `sketch.confidence_mass` rolls up EP/datamodel confidence — so there is no reconcile gap and no consumer for a finalize-time tenant. Numbering keeps the gap to match the code. See amended ratified #7. | — |
 | 8 | `_finalize_commit_dicts` | write reconciled dicts into `behavior_map` so every downstream reader sees one view | all mutators |
 | ~~9~~ | *(removed)* ~~`_finalize_declared_fields`~~ | **Removed**, not stubbed — the writer-contract half already runs over the final substrate in sub-step 10's `validate_ir` (declared-fields:F1(a) / `INV-zotip`, satisfied); the population-contract half lands in the writer-contract *validator* (`WI-libib` — "extend the validator class", inside `_check_writer_contract` where the record stream lives) and in producers (declared-fields:F5 / `INV-dubam`), never in finalize. A finalize-time population re-check would append net-new violations and *grow* the shrink-only ratchet (measured +2…+57/substrate against the zero-headroom baseline of 12). Numbering keeps the gap to match the code. See amended ratified #9. | — |
 | 10 | `_finalize_referential_integrity` | §7 FK predicate (edges ⊆ nodes; `is_resolved ⇒ dst ∈ nodes`) + ADR-0039 per-edge range — **structurally LAST** | all preceding |
@@ -174,25 +174,40 @@ and F5 is producer-side (`INV-dubam`). The stub was a true no-op whose only poss
 finalize-time payload — appending population violations — would *grow* the shrink-only
 validation ratchet (`test_validation_report_empty.py`, zero headroom at 12/substrate; measured
 +2…+57). Per "we track everything in git" and the emission-counts precedent (#5), the slot is
-removed; the work stays visible via `WI-libib` / `INV-dubam` / `INV-jahiv`. The sibling
-confidence stub (7) is **retained**: unlike declared-fields, its payload is a `behavior_map`
-*aggregate* derived from the final substrate (a ratchet-safe finalize-time derivation), so it
-has a genuine finalize-time tenant.
+removed; the work stays visible via `WI-libib` / `INV-dubam` / `INV-jahiv`. (7)
+`_finalize_confidence_aggregates`: planned as a documented stub for confidence:F1/F2;
+**removed** (not stubbed) by a follow-on recon (the confidence-f1 fill-vs-remove recon,
+2026-06-15). *This reverses the retention #9 originally asserted* — that the confidence stub
+had "a genuine finalize-time tenant" because its payload would be a `behavior_map` aggregate.
+The recon falsified that premise exactly as #9 falsified declared-fields': (a) the
+confidence:F1/F2 IDs denote per-edge *derivation* and ranking-detection *separation*
+(producer-side, ADR-0039, `INV-suvil`/`META-ruhob` family), and ADR-0039 keeps per-edge
+confidence **out** of finalize — so the named owner never fills this slot; (b) the aggregate
+it described already exists over the final set (`metrics.avg_confidence`, computed *after*
+`finalize()`; `sketch.confidence_mass` over EP/datamodels), so there is no reconcile gap; (c)
+no consumer reads a finalize-emitted confidence field. "Ratchet-safe" only meant a fill would
+be *harmless*, not that the slot had a tenant. The slot is removed; the genuine confidence
+work stays tracked under `INV-suvil` / `META-ruhob` / ADR-0039.
 
 **Phasing — `run-lifecycle:F1` is the carrier.** F1's PR lands the module + the
 orchestrator spine + the fully-implemented run-lifecycle sub-steps, with the other
-three families' sub-steps as **documented stubs** (confidence: no-op; declared-fields:
-originally the existing `validate_ir` subset, **since removed** — see amended ratified #9;
-referential-integrity: the lifted existing `validate_ir` call, structurally last from day
-one), so F1 merges green **without** them. Two run-lifecycle sub-steps named in the table above did **not** land as written:
+three families' sub-steps as **documented stubs** (confidence: no-op, **since removed** — see
+amended ratified #7; declared-fields: originally the existing `validate_ir` subset, **since
+removed** — see amended ratified #9; referential-integrity: the lifted existing `validate_ir`
+call, structurally last from day one), so F1 merges green **without** them. Two run-lifecycle sub-steps named in the table above did **not** land as written:
 `_finalize_emission_counts` (5) is **removed** (unsound — amended ratified #5) and the
 `config_fingerprint` half of sub-step 2 is **deferred** to `WI-mipul` (amended #4); both
-are tracked in the tracker, not stubbed in code. `projection-finalize` and `confidence`
-then each fill one **named slot with zero orchestrator change** — this is what dissolves the
-seam-(a) merge-collision hazard. `declared-fields` was **subsequently removed** from the
-finalize phasing (amended ratified #9): a post-ratification recon found its work lands in the
-writer-contract *validator* (`WI-libib`) and in producers (declared-fields:F5), not a finalize
-slot, so it never fills one — the F1 carrier's declared-fields stub (9) is deleted, not filled. Per the §"Sequencing constraint", finalize still lands **after**
+are tracked in the tracker, not stubbed in code. **The Phase-2 "each family fills a named
+slot" model did not materialize.** Of the three families: `projection-finalize` became a
+*downstream consumer* (`compact.recompute_view_summary`, not a sub-step); and both the
+`declared-fields` (9) and `confidence` (7) stubs were **removed** (amended ratified #9 and #7)
+once follow-on recons found their work lands outside finalize — declared-fields in the
+writer-contract *validator* (`WI-libib`) + producers (declared-fields:F5), confidence in the
+per-edge derivation family (`INV-suvil`, ADR-0039) with its aggregate already covered by
+`metrics`/`sketch`. So no Phase-2 family adds a finalize sub-step; the finalize body is exactly
+the run-lifecycle:F1 carrier's own sub-steps (the seam-(a) merge-collision hazard the stubs
+were meant to dissolve simply did not arise, since the families landed elsewhere). Per the
+§"Sequencing constraint", finalize still lands **after**
 the **reader-half** of seam (b) — the `py.py` scope-stack / call-resolution rewrite
 (`WI-jafat`, T0, **merged**) — and the Phase D/E reorder (`WI-pozur`, **merged**), so the
 entry precondition (substrate final on entry) holds. The **producer-half** of seam (b) —

@@ -20,7 +20,6 @@ from hypergumbo_core.finalize import (
     FinalizeContext,
     FinalizedMap,
     _finalize_commit_dicts,
-    _finalize_confidence_aggregates,
     _finalize_re_relativize,
     _finalize_recompute_run_signature,
     _finalize_referential_integrity,
@@ -166,17 +165,10 @@ def test_commit_dicts_writes_reconciled_view(tmp_path: Path) -> None:
     assert ctx.behavior_map["analysis_runs"] is runs
 
 
-# --- Sub-steps 1, 7: backstop + stub ----------------------------------------------------
+# --- Sub-step 1: re-relativize backstop -------------------------------------------------
 def test_re_relativize_backstop_is_noop_on_empty(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     _finalize_re_relativize(ctx)  # must not raise on empty lists
-
-
-def test_confidence_stub_is_noop(tmp_path: Path) -> None:
-    ctx = _ctx(tmp_path)
-    before = dict(ctx.behavior_map)
-    assert _finalize_confidence_aggregates(ctx) is None
-    assert ctx.behavior_map == before
 
 
 # --- Sub-step 10: referential_integrity (validate_ir lift) ------------------------------
@@ -226,7 +218,6 @@ _SUBSTEPS = [
     "_finalize_recompute_run_signature",
     "_finalize_repo_fingerprint",
     "_finalize_skipped_into_limits",
-    "_finalize_confidence_aggregates",
     "_finalize_commit_dicts",
     "_finalize_referential_integrity",
 ]
@@ -236,9 +227,9 @@ def test_substeps_list_matches_module_functions() -> None:
     """``_SUBSTEPS`` must enumerate exactly the ``_finalize_*`` functions DEFINED in the module.
 
     Pins the *defined* set against the hand-maintained list: a re-introduced sub-step missing
-    from ``_SUBSTEPS`` (e.g. a resurrected declared-fields slot — removed because its work lands
-    in the validator/producers, not finalize) or a stale ``_SUBSTEPS`` entry with no definition
-    fails here. The complementary ``test_finalize_calls_each_substep_once`` ties the
+    from ``_SUBSTEPS`` (e.g. a resurrected declared-fields or confidence slot — both removed
+    because their work lands in the validator/producers, not finalize) or a stale ``_SUBSTEPS``
+    entry with no definition fails here. The complementary ``test_finalize_calls_each_substep_once`` ties the
     ``finalize()`` *body* (the order contract) to ``_SUBSTEPS`` — together they keep all three
     hand-maintained lists (definitions, ``_SUBSTEPS``, call sites) in lockstep.
     """

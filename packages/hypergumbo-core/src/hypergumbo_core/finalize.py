@@ -26,23 +26,29 @@ What this carrier (run-lifecycle:F1) implements vs. defers
   pass_version closure); run_signature recompute (3, the META-hufaz/WI-luzud headline —
   re-hash each AR from its *final* config_fingerprint/toolchain); repo_fingerprint stamp
   (4); skipped→limits (6); commit-dicts (8); referential-integrity validate_ir lift (10).
-* **Documented stub slot** (filled in Phase 2 with zero orchestrator change, per §6.1):
-  confidence aggregates (7 → confidence:F1/F2). It has a named Phase-2 owner; it is NOT dead
-  code — its payload is a ``behavior_map`` aggregate derived from the final EP/datamodel set,
-  a ratchet-safe finalize-time derivation.
-* **Deliberately absent:** an ``emission_counts`` sub-step was removed (not stubbed) — the
-  ratified "recompute files_analyzed by origin_run_id" mechanism is unsound (files_analyzed
-  is contractually a file count == profile.files; the recompute yields a node/path count and
-  does not close INV-gizik, whose real fix is a new provenance field). The config_fingerprint
-  backstop-with-violation is deferred to WI-mipul's producer-side work rather than recorded
-  here. And a ``declared-fields`` sub-step (planned as 9) was removed (not stubbed): its
-  writer-contract half already runs in sub-step 10's ``validate_ir`` over the final substrate
-  (declared-fields:F1(a) / INV-zotip, satisfied), and its population-contract half lands in
-  the writer-contract *validator* (WI-libib — "extend the validator class") and in producers
-  (declared-fields:F5 / INV-dubam), never in finalize; a finalize-time population re-check
-  would append net-new violations and grow the shrink-only validation ratchet. All are
-  tracked (INV-gizik, WI-mipul, WI-libib, INV-zotip); git carries the history. See the
-  ADR-0043 §6.1 amendment chain.
+* **No stub slots remain.** ADR-0043 §6.1 planned three Phase-2 families each filling a named
+  finalize stub with zero orchestrator change; none did. ``projection-finalize`` became a
+  downstream consumer (``compact.recompute_view_summary``), not a sub-step; and the
+  ``confidence`` (7) and ``declared-fields`` (9) stubs were both **removed** (not stubbed) once
+  recons showed their work lands outside finalize:
+
+  - ``confidence`` (7): the confidence:F1/F2 IDs denote per-edge derivation / ranking-detection
+    separation (producer-side, ADR-0039, INV-suvil family), which ADR-0039 keeps *out* of
+    finalize (``Edge.confidence`` untouched). The behavior_map confidence aggregate this slot
+    described already exists over the final set — ``metrics.avg_confidence`` (computed *after*
+    finalize) and ``sketch.confidence_mass`` (EP/datamodel) — so there is no reconcile gap and
+    no consumer for a finalize-time tenant.
+  - ``declared-fields`` (9): its writer-contract half already runs in sub-step 10's
+    ``validate_ir`` (declared-fields:F1(a) / INV-zotip), and its population-contract half lands
+    in the writer-contract *validator* (WI-libib) and producers (declared-fields:F5 / INV-dubam);
+    a finalize-time population re-check would grow the shrink-only validation ratchet.
+* **Other deliberately-absent run-lifecycle work:** an ``emission_counts`` sub-step was removed
+  (not stubbed) — the ratified "recompute files_analyzed by origin_run_id" mechanism is unsound
+  (files_analyzed is contractually a file count == profile.files; the recompute yields a
+  node/path count and does not close INV-gizik, whose real fix is a new provenance field). The
+  config_fingerprint backstop-with-violation is deferred to WI-mipul's producer-side work. All
+  are tracked (INV-gizik, WI-mipul, WI-libib, INV-zotip, INV-suvil); git carries the history.
+  See the ADR-0043 §6.1 amendment chain (#4/#5/#7/#9).
 
 `FinalizedMap` is a shallow ``frozen=True`` handle (ratified §6 #6): rebinding a field
 raises, but the inner dicts remain mutable so the downstream budget-tier/compact
@@ -205,14 +211,6 @@ def _finalize_skipped_into_limits(ctx: FinalizeContext) -> None:
     ctx.behavior_map["limits"] = ctx.limits.to_dict()
 
 
-def _finalize_confidence_aggregates(ctx: FinalizeContext) -> None:
-    """Sub-step 7 — STUB slot for confidence:F1/F2 (Phase 2). No-op in the carrier.
-
-    Per-edge ``Edge.confidence`` is left untouched (ADR-0039). The confidence family fills
-    this slot with zero orchestrator change.
-    """
-
-
 def _finalize_commit_dicts(ctx: FinalizeContext) -> None:
     """Sub-step 8 — commit the reconciled IR into behavior_map as one view."""
     ctx.behavior_map["analysis_runs"] = ctx.analysis_runs
@@ -267,7 +265,6 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap:
     _finalize_recompute_run_signature(ctx)  # 3  META-hufaz (R2: after 2)
     _finalize_repo_fingerprint(ctx)         # 4  repo_fingerprint stamp
     _finalize_skipped_into_limits(ctx)      # 6  skipped → limits
-    _finalize_confidence_aggregates(ctx)    # 7  stub (confidence:F1/F2)
     _finalize_commit_dicts(ctx)             # 8  commit reconciled view
     _finalize_referential_integrity(ctx)    # 10 validate_ir — LAST (R3)
     ctx.violations.sort(key=_violation_sort_key)  # §6 determinism: stable serialized order

@@ -50,10 +50,24 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   validation ratchet (`test_validation_report_empty.py`, zero headroom at 12/substrate;
   measured +2…+57). Per the `emission_counts` precedent ("we track everything in git"), the
   stub + its no-op test are **removed** (not stubbed); a new white-box guard asserts `_SUBSTEPS`
-  matches the module's actual `_finalize_*` set, so a resurrected slot fails CI. The sibling
-  confidence stub (7) is **retained** — its payload is a ratchet-safe `behavior_map` aggregate,
-  a genuine finalize-time derivation. **No output change** (the stub was a no-op; full suite
-  green, TOTAL 100%). Internal/contract refactor — not tagged `awaits_bakeoff_validation`.
+  matches the module's actual `_finalize_*` set, so a resurrected slot fails CI. **No output
+  change** (the stub was a no-op; full suite green, TOTAL 100%). Internal/contract refactor —
+  not tagged `awaits_bakeoff_validation`.
+
+- **Finalize sheds its confidence stub — no Phase-2 stub slots remain (Wave-2 Phase-2,
+  confidence:F1 — ADR-0043 §6.1 amended #7)** — a follow-on fill-vs-remove recon found the
+  `_finalize_confidence_aggregates` sub-step (a documented no-op) also has **no finalize-time
+  tenant**, and *reverses the retention the declared-fields PR asserted*. The confidence:F1/F2
+  IDs denote per-edge *derivation* / ranking-detection *separation* (producer-side, ADR-0039,
+  INV-suvil family), which ADR-0039 keeps **out** of finalize; the behavior_map confidence
+  aggregate the slot described already exists over the final set — `metrics.avg_confidence`
+  (computed *after* `finalize()`, over the committed final edges) and `sketch.confidence_mass`
+  (EP/datamodel) — so there is no reconcile gap and no consumer. "Ratchet-safe" only meant a
+  fill would be harmless, not that the slot had a tenant. The stub + its no-op test are
+  **removed**; this leaves **zero Phase-2 stub slots** — none of the three families
+  (projection / declared-fields / confidence) ended up adding a finalize sub-step. **No output
+  change** (the stub was a no-op; full suite green, TOTAL 100%). Internal/contract refactor —
+  not tagged `awaits_bakeoff_validation`.
 
 - **Boundary synthesis runs after filtering (Wave-2 T0, WI-pozur — ADR-0043 §4/C2)** —
   `run_behavior_map`'s boundary-node synthesis (`create_boundary_nodes` +
