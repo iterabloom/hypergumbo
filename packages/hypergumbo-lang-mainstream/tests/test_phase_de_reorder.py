@@ -84,16 +84,16 @@ FIXTURE_FILES = {
 # A reader-order change to boundary synthesis cannot change any of these (content-derived).
 # Regenerate this frozenset if the fixture changes.
 GOLDEN_FIRSTPARTY_STABLE_IDS = frozenset({
-    "sha256:2b42163e8563142f",  # pkg/app.py setup:function
+    "sha256:eabef7c9b0ca629a",  # pkg/app.py setup:function
     "sha256:43dec3a64c659abd",  # pkg/app.py file
-    "sha256:522f7f2da47856ee",  # pkg/service.py Service:class
-    "sha256:a2d240e33112eb59",  # pkg/app.py handler:function
-    "sha256:c3b2a0b07792e6b1",  # pkg/models.py Order.submit:method
-    "sha256:cf2cff265a6a0132",  # pkg/service.py Service.run:method
-    "sha256:d55415698d6a9c93",  # pkg/models.py Item:class
-    "sha256:d5fd72846c31f5da",  # pkg/models.py Item.total:method
-    "sha256:e8f7f8485868b300",  # pkg/models.py Order:class
-    "sha256:f4db53d9b7105ddb",  # pkg/service.py Service.stop:method
+    "sha256:29e41c02cfe5b84e",  # pkg/service.py Service:class
+    "sha256:70a8e859b1ee3b9c",  # pkg/app.py handler:function
+    "sha256:eb937f52b3e30564",  # pkg/models.py Order.submit:method
+    "sha256:81cf3c740bec2d42",  # pkg/service.py Service.run:method
+    "sha256:13474f4add8dfeb3",  # pkg/models.py Item:class
+    "sha256:d89075745234437a",  # pkg/models.py Item.total:method
+    "sha256:36d8981e5e413f29",  # pkg/models.py Order:class
+    "sha256:4e2034fe2ff7a100",  # pkg/service.py Service.stop:method
 })
 
 # The tier-4 DERIVED file-level symbol that must be filtered out (the defect precondition).

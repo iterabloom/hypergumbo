@@ -63,16 +63,18 @@ WIJAFAT_FIXTURE = (
     "    return 2\n"
 )
 
-# Golden identity sets captured on the pre-fix tree (dev 7f8e72a22e) for the
-# fixture above, via run_behavior_map (repo-relative, deterministic, tmp_path-
-# independent). A reader-only fix cannot change any of these.
+# Golden identity sets for the fixture above, via run_behavior_map (repo-relative,
+# deterministic, tmp_path-independent). GOLDEN_IDS (node ids) and GOLDEN_SHAPE_IDS were
+# captured on dev 7f8e72a22e and are UNCHANGED by the stable_id v6 bump (it touched only the
+# stable_id hash); GOLDEN_STABLE_IDS was regenerated for v6 (ADR-0035 full scope-chain hash),
+# same 6 symbols, new hash values. A reader-only fix cannot change any of these.
 GOLDEN_STABLE_IDS = frozenset({
-    "sha256:08bcfe9fec8c4ace",  # Beta.to_dict
-    "sha256:5714b712a11d41da",  # Beta
-    "sha256:5aef928d0c90f35b",  # helper_b
-    "sha256:603dc1445bbdda98",  # Alpha
-    "sha256:a0afb77758262d8f",  # Alpha.to_dict
-    "sha256:b5964fad356ea7e2",  # helper_a
+    "sha256:0fcbb9c686c93dae",  # helper_a
+    "sha256:6d07134c1021d31f",  # Alpha
+    "sha256:ba8ffea1ab1956c4",  # helper_b
+    "sha256:c6933702c1cec3b9",  # Alpha.to_dict
+    "sha256:fb9b04fa5f748655",  # Beta
+    "sha256:fc784ee2fa5561fb",  # Beta.to_dict
 })
 GOLDEN_IDS = frozenset({
     "python:models.py:1-3:Alpha:class",

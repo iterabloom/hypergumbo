@@ -841,6 +841,8 @@ def _extract_symbols(
                 norm_sig = normalize_php_signature(signature)
                 stable_id = make_typed_stable_id(
                     "function", norm_sig, visibility_from_modifiers(modifiers),
+                    name=name,
+                    qualified_name=_make_php_qualified_name(namespace_name, None, name),
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -916,6 +918,8 @@ def _extract_symbols(
                 norm_sig = normalize_php_signature(signature)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
+                    name=name,
+                    qualified_name=_make_php_qualified_name(namespace_name, enclosing_class, name),
                 ) if norm_sig else None
 
                 symbol = Symbol(

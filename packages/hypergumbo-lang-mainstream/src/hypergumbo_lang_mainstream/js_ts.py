@@ -3216,6 +3216,10 @@ def _extract_symbols(
                 norm_sig = normalize_jsts_signature(signature)
                 stable_id = make_typed_stable_id(
                     "function", norm_sig,
+                    name=name,
+                    qualified_name=_make_jsts_qualified_name(
+                        _get_jsts_class_ancestors(node, source), name, lang,
+                    ),
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -3274,6 +3278,10 @@ def _extract_symbols(
                         norm_sig = normalize_jsts_signature(signature)
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,
+                            name=name,
+                            qualified_name=_make_jsts_qualified_name(
+                                _get_jsts_class_ancestors(node, source), name, lang,
+                            ),
                         ) if norm_sig else None
 
                         symbol = Symbol(
@@ -3464,7 +3472,13 @@ def _extract_symbols(
                 if stable_id is None:
                     norm_sig = normalize_jsts_signature(signature)
                     if norm_sig:
-                        stable_id = make_typed_stable_id(kind, norm_sig)
+                        stable_id = make_typed_stable_id(
+                            kind, norm_sig,
+                            name=name,
+                            qualified_name=_make_jsts_qualified_name(
+                                _get_jsts_class_ancestors(node, source), name, lang,
+                            ),
+                        )
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, kind, lang),
@@ -3506,6 +3520,10 @@ def _extract_symbols(
                         norm_sig = normalize_jsts_signature(signature)
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,
+                            name=name,
+                            qualified_name=_make_jsts_qualified_name(
+                                _get_jsts_class_ancestors(child, source), name, lang,
+                            ),
                         ) if norm_sig else None
 
                         symbol = Symbol(

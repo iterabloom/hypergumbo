@@ -12,6 +12,32 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **stable_id v6 — atomic identity-contract bump (Wave-2 spine, ADR-0035; closes WI-gitun /
+  WI-titiz / WI-zitod, advances INV-tazaj)** — `STABLE_ID_SCHEME` bumps `v5 → v6` in one atomic
+  scheme flip (ADR-0035 §6), folding the **full enclosing scope chain** (enclosing classes →
+  enclosing functions → name) into a single shared `assemble_stable_id` formula that both the
+  tree-sitter `BaseAnalyzer.compute_stable_id` and the Python AST producer now call (the latter's
+  divergent local hasher is unified in, ADR-0035 §1). **Headline (WI-gitun):** Python
+  function-local definitions no longer collapse — 8 distinct `class Args` in distinct functions,
+  and a `class Mock` (or nested function) inside methods of distinct classes, now get distinct
+  ids. **body_sig dropped:** the Python class member-set signature is removed from the hash (it
+  churned the class id on every member add/remove, violating "survives body edits"; structural
+  identity is `shape_id`'s job) — measured to disambiguate 0 of 4,345 corpus classes once the full
+  scope chain is in. An **`occurrence_index`** slot is added for within-scope ties (`0` in this
+  bump; present so future population needs no further scheme bump). **Path-anchoring (ADR-0035 §4,
+  WI-titiz):** `make_module`/`make_interface`/`make_type`/`make_entry` fold the declaring file path
+  (proven cross-file collapses on Verilog modules, TS/Verilog interfaces, TS/Elm types, WGSL shader
+  entries), and `make_dependency` folds the declaring **manifest** path so a package declared in N
+  manifests becomes N nodes (`(ecosystem, name)` is a presentation-time aggregation key, not
+  identity). **Typed tier (WI-zitod):** `make_typed_stable_id` gains mandatory `name`/`qualified_name`
+  (24 call sites across 13 analyzers; rust_scip mirrors rust for its SCIP-dedup contract). **Contract:**
+  v6 survives line drift + body edits, churns on file move + rename (move-tracking stays with
+  `fingerprint`/`shape_id`). **Behavior:** every Python `stable_id` and most other languages' values
+  change (an intentional corpus-wide rehash; the two golden frozensets regenerated with cardinality
+  preserved). The §5 per-file-uniqueness enforcement validator and the full-corpus re-measure that
+  *close* INV-tazaj are a closely-following PR. Tagged `awaits_bakeoff_validation` (collision-rate
+  claim). Spec scheme-history backfilled with the v5→v6 row (WI-foful precondition).
+
 - **Single finalize stage — the META-jalur carrier (Wave-2, run-lifecycle:F1 — ADR-0043 §6/§6.1)** —
   the formerly-scattered pre-serialization finalizers (a stale `run_signature`, the
   repo_fingerprint stamp, the skipped→limits scan, the dict-commit, and `validate_ir`)

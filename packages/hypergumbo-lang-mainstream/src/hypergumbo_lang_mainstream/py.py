@@ -94,6 +94,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
+    assemble_stable_id,
     make_file_stable_id,
     make_route_stable_id,
     make_typed_stable_id,
@@ -1527,72 +1528,34 @@ def _extract_py_decorator_names(
     return ",".join(sorted(names))
 
 
-def _extract_class_body_sig(node: ast.ClassDef) -> str:
-    """Body shape signature for a ClassDef: sorted methods, fields, bases.
-
-    INV-fusus: the un-tiebroken untyped formula
-    ``{kind}:{param_count}:{arity_flags}:{decorators}:{containing}`` is
-    identical for any pair of ``@dataclass`` classes in the same module —
-    a 91% collision rate on hypergumbo's own self-analysis. Folding a
-    body-shape signature in restores intra-module identity discrimination
-    while preserving both halves of the ``Symbol.stable_id`` docstring
-    promise:
-
-    * Survives renames — the class's own name is not in the body sig.
-    * Survives moves — no line numbers, paths, or column offsets appear.
-
-    Two classes with byte-for-byte identical bodies still produce the
-    same hash; that is semantic identity, not an artifact. Consumers
-    needing absolute uniqueness should join on ``(stable_id,
-    canonical_name)`` per the ``Symbol`` docstring contract.
-    """
-    method_names: list[str] = []
-    field_names: list[str] = []
-    for stmt in node.body:
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            method_names.append(stmt.name)
-        elif isinstance(stmt, ast.AnnAssign):
-            if isinstance(stmt.target, ast.Name):
-                field_names.append(stmt.target.id)
-        elif isinstance(stmt, ast.Assign):
-            for tgt in stmt.targets:
-                if isinstance(tgt, ast.Name):
-                    field_names.append(tgt.id)
-    base_names: list[str] = []
-    for base in node.bases:
-        if isinstance(base, ast.Name):
-            base_names.append(base.id)
-        elif isinstance(base, ast.Attribute):
-            base_names.append(base.attr)
-    return (
-        f"methods={','.join(sorted(method_names))}|"
-        f"fields={','.join(sorted(field_names))}|"
-        f"bases={','.join(sorted(base_names))}"
-    )
-
-
 def _compute_stable_id(
     node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
     containing_stable_id: str = "",
     *,
     name: str = "",
+    qualified_name: str = "",
+    occurrence_index: int = 0,
 ) -> str:
-    """Compute stable_id based on signature (survives body edits, not renames).
+    """Compute a v6 stable_id for a Python function/class/method AST node.
 
-    Returns:
-    sha256({kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id}:{body_sig}:{name})
+    Delegates to the shared :func:`assemble_stable_id` (ADR-0035 §1), so the Python AST path
+    and the tree-sitter ``BaseAnalyzer.compute_stable_id`` path emit the identical formula::
 
-    arity_flags: has_defaults, has_varargs, has_kwargs
-    decorators: sorted list of decorator names
-    containing_stable_id: stable_id of the enclosing class/module (ADR-0014 §5)
-    body_sig: for ClassDef, sorted method/field/base names (INV-fusus);
-              empty string for functions
-    name: symbol's local name. Phase 6 PR3 (INV-bazij): without name in
-          the hash inputs, two distinct tests in the same module with
-          identical (kind, param_count, arity_flags, decorators, body_sig)
-          collide — observed on test_profile.py (152 tests sharing one
-          stable_id). Defaults to empty for back-compat; callers should
-          pass the AST node's `name`.
+        sha256({kind}:{param_count}:{arity_flags}:{decorators}
+               :{containing_stable_id}:{name}:{qualified_name}:{occurrence_index})
+
+    The v5 divergence — this producer folded a class ``body_sig`` (sorted member names) and
+    omitted ``qualified_name`` — is gone (WI-gitun / INV-tazaj):
+
+    * ``body_sig`` is DROPPED. It churned the class id on every member add/remove (violating
+      §1 "survives body edits"); structural identity is ``shape_id``'s job. With the full scope
+      chain in ``qualified_name`` it disambiguated nothing on the measured corpus.
+    * ``qualified_name`` carries the FULL enclosing scope chain (enclosing classes → enclosing
+      functions → local name), so same-local-name symbols in distinct scopes hash distinctly.
+
+    ``name`` is the bare local name; callers pass the scope-qualified chain as
+    ``qualified_name`` (see ``_enclosing_scope_chain``). ``occurrence_index`` is the §1
+    within-scope ordinal (``0`` in the carrier).
     """
     is_function = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     kind = "function" if is_function else "class"
@@ -1604,25 +1567,22 @@ def _compute_stable_id(
         has_varargs = args.vararg is not None
         has_kwargs = args.kwarg is not None
         arity_flags = f"{has_defaults},{has_varargs},{has_kwargs}"
-        body_sig = ""
     else:
-        # Classes don't have parameters in the same way
+        # Classes don't carry parameters in the same way.
         param_count = 0
         arity_flags = "False,False,False"
-        body_sig = _extract_class_body_sig(node)
 
     decorators_str = _extract_py_decorator_names(node)
-
-    # Build signature string and hash
-    # ADR-0014 §5: includes containing_stable_id
-    # INV-fusus: body_sig tiebreaker for ClassDef
-    # INV-bazij: name disambiguator for same-shape siblings
-    sig = (
-        f"{kind}:{param_count}:{arity_flags}:{decorators_str}:"
-        f"{containing_stable_id}:{body_sig}:{name}"
+    return assemble_stable_id(
+        kind,
+        param_count,
+        arity_flags,
+        decorators_str,
+        containing_stable_id,
+        name,
+        qualified_name,
+        occurrence_index,
     )
-    hash_val = hashlib.sha256(sig.encode()).hexdigest()[:16]
-    return f"sha256:{hash_val}"
 
 
 def _ast_structure(node: ast.AST) -> str:
@@ -2294,6 +2254,26 @@ def _extract_file_analysis(
         chain.reverse()  # outermost first
         return chain
 
+    def _enclosing_scope_chain(node: ast.AST) -> list[str]:
+        """Return ALL enclosing Class/Function ancestor names, outermost-first.
+
+        The stable_id v6 scope chain (ADR-0035 §1): unlike
+        ``_enclosing_function_chain`` (functions only — used for nested-function display
+        naming, INV-mofav), this also folds enclosing CLASSES, so a class/function defined
+        inside a *method* of two different classes (``A.t.Mock`` vs ``B.t.Mock``) gets distinct
+        ids. Function-only chains collapse those (they see only ``t``) — WI-gitun's residual.
+        """
+        chain: list[str] = []
+        current = parent_map.get(id(node))
+        while current is not None:
+            if isinstance(
+                current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+            ):
+                chain.append(current.name)
+            current = parent_map.get(id(current))
+        chain.reverse()  # outermost first
+        return chain
+
     # Scan for APIRouter prefix assignments (for route path composition)
     router_prefixes = _scan_router_prefixes(tree, repo_root, py_file)
 
@@ -2335,12 +2315,16 @@ def _extract_file_analysis(
                 node.col_offset == 0
                 and _is_python_top_level_exported(node.name, module_all)
             )
+            # stable_id v6 (ADR-0035 §1, WI-gitun): fold the FULL enclosing scope chain
+            # (enclosing classes + functions) into the IDENTITY only, so two same-named classes
+            # in distinct scopes (e.g. function-local ``class Args`` in distinct functions, or a
+            # ``class Mock`` inside methods of distinct classes) no longer collapse. The
+            # ``qualified_name`` FIELD is left as the bare name — v6 is a stable_id-only change;
+            # the field's scope-qualification (and its call-resolution effects) is separate work.
+            class_scoped_name = ".".join(_enclosing_scope_chain(node) + [node.name])
             symbol = Symbol(
                 id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "class"),
                 name=node.name,
-                # WI-fagab: populate the ADR-0032 sibling field. T0 keeps name=
-                # as the (qualified) value — the bare-name swap is the v6/T1
-                # payload — so qualified_name mirrors name here (identity-neutral).
                 qualified_name=node.name,
                 kind="class",
                 language="python",
@@ -2348,7 +2332,7 @@ def _extract_file_analysis(
                 span=span,
                 stable_id=_compute_stable_id(
                     node, containing_stable_id=file_containing_id,
-                    name=node.name,
+                    name=node.name, qualified_name=class_scoped_name,
                 ),
                 shape_id=_compute_shape_id(node),
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
@@ -2375,10 +2359,13 @@ def _extract_file_analysis(
                     method_name = f"{class_name}.{item.name}"
 
                     # For Django/DRF class-based views, methods named get/post/etc.
-                    # use route-style stable_id with class name as path for uniqueness
-                    # (ADR-0014 §4: sha256("route:{method}:{path}"))
+                    # use route-style stable_id with the class as path for uniqueness
+                    # (ADR-0014 §4: sha256("route:{method}:{path}")). v6 (WI-gitun): key on the
+                    # FULL scope-qualified class name, not the bare class name, so an HTTP-verb
+                    # method of a same-named class in distinct scopes splits too (identity-neutral
+                    # for top-level CBVs, where class_scoped_name == class_name).
                     if item.name.lower() in HTTP_METHODS:
-                        stable_id = make_route_stable_id(item.name, class_name)
+                        stable_id = make_route_stable_id(item.name, class_scoped_name)
                     else:
                         # Try typed tier first (ADR-0014 §3), fall back to untyped.
                         # INV-bazij (Phase 6 PR3): prepend the method's
@@ -2394,15 +2381,16 @@ def _extract_file_analysis(
                         modifiers = _python_visibility_modifiers(method_name)
                         if norm_sig:
                             stable_id = make_typed_stable_id(
-                                "method", f"{method_name}{norm_sig}",
+                                "method", norm_sig,
                                 visibility_from_modifiers(modifiers),
                                 symbol.stable_id,
                                 _extract_py_decorator_names(item),
+                                name=item.name, qualified_name=method_name,
                             )
                         else:
                             stable_id = _compute_stable_id(
                                 item, containing_stable_id=symbol.stable_id,
-                                name=method_name,
+                                name=item.name, qualified_name=method_name,
                             )
 
                     # Build rich metadata for method (ADR-0003)
@@ -2486,6 +2474,11 @@ def _extract_file_analysis(
             else:
                 qualified_name = node.name
                 immediate_parent_name = None
+            # stable_id v6 (ADR-0035 §1, WI-gitun): identity uses the FULL enclosing scope
+            # chain (classes + functions) so a function nested in a method of distinct classes
+            # (``A.t.helper`` vs ``B.t.helper``) gets distinct ids; the function-only
+            # ``qualified_name`` above is left untouched (display/lookup, not identity).
+            scoped_id_name = ".".join(_enclosing_scope_chain(node) + [node.name])
 
             if True:
                 # Track as processed
@@ -2537,10 +2530,11 @@ def _extract_file_analysis(
                     # the normalized signature so two same-signature
                     # top-level functions in the same module split.
                     func_stable_id = make_typed_stable_id(
-                        "function", f"{qualified_name}{norm_sig}",
+                        "function", norm_sig,
                         visibility_from_modifiers(func_modifiers),
                         file_containing_id,
                         decorators=_extract_py_decorator_names(node),
+                        name=node.name, qualified_name=scoped_id_name,
                     )
                 else:
                     # INV-zudob: same threading for the untyped fallback.
@@ -2549,7 +2543,7 @@ def _extract_file_analysis(
                     # in different modules stay distinct.
                     func_stable_id = _compute_stable_id(
                         node, containing_stable_id=file_containing_id,
-                        name=qualified_name,
+                        name=node.name, qualified_name=scoped_id_name,
                     )
 
                 _fds = ast.get_docstring(node)

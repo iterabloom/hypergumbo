@@ -11,9 +11,14 @@ containing_stable_id`` — five inputs that are identical for any pair of
 shared one ``stable_id``, and their four ``to_dict`` methods cascaded into
 a second collision because the containing class identity was already lost.
 
-This file pins the fix: the class body signature (sorted method names,
-sorted field names, sorted base names) is folded into the hash for
-``ClassDef`` nodes.
+**Updated for stable_id v6 (ADR-0035):** the class ``body_sig`` (sorted
+method/field/base names) that v2→v3 folded into the ``ClassDef`` hash has
+been **dropped** — it churned the class id on every member add/remove,
+violating "survives body edits"; structural identity is ``shape_id``'s job.
+Distinctness now comes from the symbol ``name`` plus the full enclosing
+scope chain (v6). The cases below therefore split by *name*, not by body
+shape; ``test_method_order_irrelevant`` is now the "survives body edits"
+contract (the member set is absent from the hash entirely).
 
 Phase 6 PR3 (INV-bazij) amended the contract: ``name`` and
 ``qualified_name`` are now also in the hash inputs, so stable_id no
@@ -94,8 +99,8 @@ class TestSameModuleDistinctClassesDistinct:
         assert "Symbol" in classes
         assert "Edge" in classes
         assert classes["Symbol"]["stable_id"] != classes["Edge"]["stable_id"], (
-            "Symbol and Edge dataclasses share stable_id — "
-            "class body signature not in the hash"
+            "Symbol and Edge dataclasses share stable_id — distinct class "
+            "names must split (v6: name + scope chain in the hash)"
         )
 
     def test_two_dataclasses_with_different_fields_only(self, tmp_path: Path) -> None:
@@ -258,8 +263,11 @@ class TestSurvivesRenamesAndMoves:
     def test_method_order_irrelevant(self, tmp_path: Path) -> None:
         """Reordering methods within a class body must not change class stable_id.
 
-        Same-module reorder: rewrites the same file so containing identity
-        is held constant; only the body order changes.
+        Under v6 (ADR-0035) the class hash excludes the member set entirely (the
+        v2→v3 ``body_sig`` was dropped), so reordering — and indeed any member
+        add/remove — leaves the class id unchanged: the "survives body edits"
+        contract. Same-module reorder: rewrites the same file so containing
+        identity is held constant; only the body order changes.
         """
         data_a = _run_and_load(
             tmp_path,

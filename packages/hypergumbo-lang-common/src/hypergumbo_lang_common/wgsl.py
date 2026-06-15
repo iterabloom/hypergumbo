@@ -231,7 +231,10 @@ def _extract_wgsl_symbols(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=make_entry_stable_id(entry_type, func_name) if entry_type else None,
+                    stable_id=(
+                        make_entry_stable_id(entry_type, func_name, rel_path)
+                        if entry_type else None
+                    ),
                     shape_id=None,
                     fingerprint=None,  # stamped by the central post-pass (WI-lisog facet c)
                     kind="function",

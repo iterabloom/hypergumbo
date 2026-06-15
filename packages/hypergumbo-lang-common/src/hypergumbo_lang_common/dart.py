@@ -246,6 +246,7 @@ def _extract_symbols_from_file(
             if norm_sig:
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
+                    name=name, qualified_name=full_name,
                 )
 
         return Symbol(

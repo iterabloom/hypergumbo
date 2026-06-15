@@ -1071,6 +1071,8 @@ def _extract_symbols_from_file(
                 norm_sig = normalize_go_signature(signature)
                 stable_id = make_typed_stable_id(
                     "function", norm_sig, visibility_from_modifiers(modifiers),
+                    name=func_name,
+                    qualified_name=_make_go_qualified_name(package_name, None, func_name),
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -1133,6 +1135,8 @@ def _extract_symbols_from_file(
                 norm_sig = normalize_go_signature(signature)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
+                    name=method_name,
+                    qualified_name=_make_go_qualified_name(package_name, receiver_type or None, method_name),
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -2925,6 +2929,8 @@ def _maybe_create_wrapper_symbol(
         ),
         stable_id=make_typed_stable_id(
             "function", wrapper_name,
+            name=wrapper_name,
+            qualified_name=wrapper_name,
         ),
         name=wrapper_name,
         kind="function",

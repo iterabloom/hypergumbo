@@ -867,7 +867,10 @@ def link_js_modules(
                 # canonical sha256:<16hex> dependency factory.
                 pkg_sym = Symbol(
                     id=pkg_id,
-                    stable_id=make_dependency_stable_id(lang, pkg_name),
+                    # Synthetic external-package stand-in (an unresolved import), not a
+                    # manifest declaration — no declaring manifest path, so path="" keeps it
+                    # a single logical node (ADR-0035 §4 governs manifest-declared deps).
+                    stable_id=make_dependency_stable_id(lang, "", pkg_name),
                     name=pkg_name,
                     kind="package",
                     language=None,

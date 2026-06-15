@@ -229,13 +229,13 @@ class TestKindSpecificFactories:
 
     @pytest.mark.parametrize("factory_name,args", [
         ("make_file_stable_id", ("python", "src/main.py")),
-        ("make_module_stable_id", ("python", "json")),
-        ("make_dependency_stable_id", ("python", "requests")),
+        ("make_module_stable_id", ("python", "src/main.py", "json")),
+        ("make_dependency_stable_id", ("python", "requirements.txt", "requests")),
         ("make_variable_stable_id", ("python", "src/main.py", "VERSION")),
         ("make_export_stable_id", ("javascript", "src/main.js", "default")),
         ("make_project_stable_id", ("hypergumbo",)),
-        ("make_interface_stable_id", ("csharp", "IRepository")),
-        ("make_type_stable_id", ("rust", "MyType")),
+        ("make_interface_stable_id", ("csharp", "src/repo.cs", "IRepository")),
+        ("make_type_stable_id", ("rust", "src/lib.rs", "MyType")),
     ])
     def test_factory_returns_sha256_prefixed_string(
         self, factory_name: str, args: tuple,
@@ -260,6 +260,7 @@ class TestKindSpecificFactories:
             make_module_stable_id,
         )
         assert make_file_stable_id("python", "a.py") != make_file_stable_id("python", "b.py")
-        assert make_module_stable_id("python", "json") != make_module_stable_id("python", "os")
-        # Cross-language: same name in different languages → different stable_ids
-        assert make_module_stable_id("python", "io") != make_module_stable_id("dart", "io")
+        # Isolate the name dimension: hold language and path constant.
+        assert make_module_stable_id("python", "m.py", "json") != make_module_stable_id("python", "m.py", "os")
+        # Cross-language: same name and path in different languages → different stable_ids
+        assert make_module_stable_id("python", "m.py", "io") != make_module_stable_id("dart", "m.py", "io")

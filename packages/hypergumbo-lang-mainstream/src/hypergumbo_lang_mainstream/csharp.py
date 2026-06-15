@@ -848,6 +848,7 @@ def _extract_symbols_from_file(
                 norm_sig = normalize_csharp_signature(signature)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
+                    name=name, qualified_name=full_name,
                 ) if norm_sig else None
 
                 ns_name = _get_csharp_enclosing_namespace(node, source)
@@ -899,6 +900,7 @@ def _extract_symbols_from_file(
                 norm_sig = normalize_csharp_signature(signature)
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
+                    name=name, qualified_name=full_name,
                 ) if norm_sig else None
 
                 ns_name = _get_csharp_enclosing_namespace(node, source)

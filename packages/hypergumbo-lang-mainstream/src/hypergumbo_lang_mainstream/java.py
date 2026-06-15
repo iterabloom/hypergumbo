@@ -1037,6 +1037,8 @@ def _extract_symbols(
                 norm_sig = normalize_java_signature(signature)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
+                    name=name,
+                    qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -1083,6 +1085,8 @@ def _extract_symbols(
                 norm_sig = normalize_java_signature(signature)
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
+                    name=name,
+                    qualified_name=_make_java_qualified_name(package_name, ancestors, name),
                 ) if norm_sig else None
 
                 symbol = Symbol(

@@ -547,7 +547,7 @@ def make_route_stable_id(method: str, path: str) -> str:
     return _short_sha256(f"route:{method.upper()}:{normalized}")
 
 
-def make_entry_stable_id(entry_type: str, name: str) -> str:
+def make_entry_stable_id(entry_type: str, name: str, path: str) -> str:
     """Compute a collision-free stable_id for entry-point symbols.
 
     Uses ``_short_sha256("entry:{entry_type}:{name}")`` per ADR-0014 §4 +
@@ -559,20 +559,63 @@ def make_entry_stable_id(entry_type: str, name: str) -> str:
     factory's output against the ``_check_stable_id_format`` regex
     without a special case.
 
+    ADR-0035 §4: the declaring file ``path`` is folded in. Shader entry names are file-scoped
+    (every shader has a ``main``), so without the path two ``@vertex fn main`` in distinct files
+    collapse to one stable_id.
+
     Args:
         entry_type: Entry point category (e.g. "vertex", "fragment", "compute").
         name: Symbol name (e.g. the function name).
+        path: Repo-relative path of the declaring file.
 
     Returns:
         A ``sha256:<16hex>``-shaped string that uniquely identifies the
-        (entry_type, name) pair.
+        (entry_type, name, path) triple.
     """
-    return _short_sha256(f"entry:{entry_type}:{name}")
+    return _short_sha256(f"entry:{entry_type}:{name}:{path}")
 
 
 def _short_sha256(payload: str) -> str:
     """Return the canonical ``sha256:{16-hex}`` form used by `_compute_stable_id`."""
     return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
+
+
+def assemble_stable_id(
+    kind: str,
+    param_count: int,
+    arity_flags: str,
+    decorators: str,
+    containing_stable_id: str,
+    name: str,
+    qualified_name: str,
+    occurrence_index: int = 0,
+) -> str:
+    """The single stable_id v6 hash formula (ADR-0035 §1), shared by every producer.
+
+    ``sha256(kind:param_count:arity_flags:decorators:containing_stable_id
+             :name:qualified_name:occurrence_index)``
+
+    This is the one place the formula lives; both :meth:`BaseAnalyzer.compute_stable_id`
+    (the tree-sitter path) and the Python analyzer's ``_compute_stable_id`` (the AST path)
+    call it, so they can no longer diverge (the v5 divergence — py.py folded ``body_sig`` and
+    omitted ``qualified_name`` — was the WI-gitun / INV-tazaj defect surface).
+
+    The ``qualified_name`` slot carries the FULL enclosing scope chain (enclosing classes →
+    enclosing functions → local name), which is what makes two same-local-name symbols in
+    distinct scopes hash distinctly (ADR-0035 §1 "unique within run"). ``body_sig`` is
+    deliberately ABSENT: structural identity is ``shape_id``'s job, and folding the member set
+    here churned the class id on every member add/remove (violating §1 "survives body edits").
+
+    ``occurrence_index`` is the §1 within-scope ordinal — a tiebreaker for two definitions that
+    are otherwise hash-identical in one scope (e.g. conditional redefinition). It is ``0`` in
+    the v6 carrier (no such collision exists on the measured corpus); the slot is present so
+    populating it later never requires another scheme bump (§6 "one atomic bump").
+    """
+    sig = (
+        f"{kind}:{param_count}:{arity_flags}:{decorators}"
+        f":{containing_stable_id}:{name}:{qualified_name}:{occurrence_index}"
+    )
+    return _short_sha256(sig)
 
 
 def make_file_stable_id(language: str, path: str) -> str:
@@ -587,24 +630,30 @@ def make_file_stable_id(language: str, path: str) -> str:
     return _short_sha256(f"file:{language}:{path}")
 
 
-def make_module_stable_id(language: str, name: str) -> str:
+def make_module_stable_id(language: str, path: str, name: str) -> str:
     """INV-sotiv: stable identity for ``kind="module"`` Symbols.
 
-    Identity formula: ``sha256("module:{language}:{name}")[:16]``. The
-    language namespace prevents a Python ``io`` module from sharing a
-    stable_id with a Dart ``io`` library.
+    Identity formula: ``sha256("module:{language}:{path}:{name}")[:16]``. The
+    declaring file ``path`` is folded in (ADR-0035 §4 same-shape audit): module
+    names are file-scoped local identifiers (e.g. two Verilog ``module counter``
+    in distinct files), so without the path they collapse cross-file. Mirrors
+    :func:`make_variable_stable_id` / :func:`make_export_stable_id`.
     """
-    return _short_sha256(f"module:{language}:{name}")
+    return _short_sha256(f"module:{language}:{path}:{name}")
 
 
-def make_dependency_stable_id(language: str, name: str) -> str:
-    """INV-sotiv: stable identity for ``kind="dependency"`` Symbols.
+def make_dependency_stable_id(language: str, path: str, name: str) -> str:
+    """ADR-0035 §4: stable identity for ``kind="dependency"`` Symbols — one node per
+    manifest declaration.
 
-    Identity formula: ``sha256("dependency:{language}:{name}")[:16]``. The
-    language namespace separates `requests` (Python PyPI) from `requests`
-    (a JS npm package with the same name).
+    Identity formula: ``sha256("dependency:{language}:{path}:{name}")[:16]``. The declaring
+    manifest ``path`` is folded in (WI-titiz): a package declared in N manifests becomes N
+    nodes, each keeping its own version constraint and provenance. ``(ecosystem, name)`` is a
+    presentation-time aggregation key, never an identity key. The language namespace still
+    separates ``requests`` (PyPI) from ``requests`` (npm). For a synthetic package stand-in
+    with no declaring manifest (an unresolved import), callers pass ``path=""``.
     """
-    return _short_sha256(f"dependency:{language}:{name}")
+    return _short_sha256(f"dependency:{language}:{path}:{name}")
 
 
 def make_variable_stable_id(language: str, path: str, name: str) -> str:
@@ -668,24 +717,27 @@ def make_project_stable_id(name: str) -> str:
     return _short_sha256(f"project:{name}")
 
 
-def make_interface_stable_id(language: str, name: str) -> str:
+def make_interface_stable_id(language: str, path: str, name: str) -> str:
     """INV-sotiv: stable identity for ``kind="interface"`` Symbols.
 
-    Identity formula: ``sha256("interface:{language}:{name}")[:16]``. A
-    C# ``IRepository`` and a TypeScript ``IRepository`` get distinct
-    stable_ids via the language namespace.
+    Identity formula: ``sha256("interface:{language}:{path}:{name}")[:16]``. The declaring file
+    ``path`` is folded in (ADR-0035 §4): interface names are file-scoped declarations that
+    routinely repeat across files (e.g. every TS file can declare ``interface Props``), so
+    without the path they collapse cross-file. The language namespace still separates a C#
+    ``IRepository`` from a TypeScript ``IRepository``.
     """
-    return _short_sha256(f"interface:{language}:{name}")
+    return _short_sha256(f"interface:{language}:{path}:{name}")
 
 
-def make_type_stable_id(language: str, name: str) -> str:
+def make_type_stable_id(language: str, path: str, name: str) -> str:
     """INV-sotiv: stable identity for ``kind="type"`` Symbols.
 
-    Identity formula: ``sha256("type:{language}:{name}")[:16]``. Used for
-    named type declarations (Rust ``type`` aliases, TypeScript ``type``
-    statements, etc.).
+    Identity formula: ``sha256("type:{language}:{path}:{name}")[:16]``. The declaring file
+    ``path`` is folded in (ADR-0035 §4): type/type-alias names are file-scoped and commonly
+    repeat (``type Id``, ``type User``), so without the path they collapse cross-file. Used for
+    named type declarations (Rust ``type`` aliases, TypeScript ``type`` statements, etc.).
     """
-    return _short_sha256(f"type:{language}:{name}")
+    return _short_sha256(f"type:{language}:{path}:{name}")
 
 
 def make_protocol_stable_id(category: str, *parts: str) -> str:
@@ -732,13 +784,13 @@ def make_protocol_stable_id(category: str, *parts: str) -> str:
 # until a future invariant adds them.
 _KIND_STABLE_ID_FACTORIES = {
     "file": lambda s: make_file_stable_id(s.language, s.path),
-    "module": lambda s: make_module_stable_id(s.language, s.name),
-    "dependency": lambda s: make_dependency_stable_id(s.language, s.name),
+    "module": lambda s: make_module_stable_id(s.language, s.path, s.name),
+    "dependency": lambda s: make_dependency_stable_id(s.language, s.path, s.name),
     "variable": lambda s: make_variable_stable_id(s.language, s.path, s.name),
     "export": lambda s: make_export_stable_id(s.language, s.path, s.name),
     "project": lambda s: make_project_stable_id(s.name),
-    "interface": lambda s: make_interface_stable_id(s.language, s.name),
-    "type": lambda s: make_type_stable_id(s.language, s.name),
+    "interface": lambda s: make_interface_stable_id(s.language, s.path, s.name),
+    "type": lambda s: make_type_stable_id(s.language, s.path, s.name),
 }
 
 
@@ -892,17 +944,28 @@ def make_typed_stable_id(
     visibility: str = "",
     containing_stable_id: str = "",
     decorators: str = "",
+    *,
+    name: str,
+    qualified_name: str,
 ) -> str:
     """Compute a typed-tier stable_id from a normalized signature.
 
-    Uses the formula from ADR-0014 §3::
+    v6 formula (ADR-0014 §3 + ADR-0035 §1 WI-zitod ``name``/``qualified_name`` slots)::
 
-        sha256({kind}:{normalized_signature}:{visibility}:{decorators}:{containing_stable_id})
+        sha256({kind}:{normalized_signature}:{visibility}:{decorators}
+               :{containing_stable_id}:{name}:{qualified_name})
 
     The typed tier is preferred when type information is available (e.g. Java,
     C#, Kotlin, TypeScript, Dart, Go, Python with annotations).  It produces
     higher-quality identity than the untyped tier because it captures the full
     interface shape including parameter and return types.
+
+    ``name`` and ``qualified_name`` are MANDATORY keyword args (ADR-0035 §1 WI-zitod):
+    without them two distinct-named symbols with the same normalized signature,
+    visibility, decorators, and container collapsed to one id (e.g. js_ts methods at
+    16.88% on HTRAC). ``qualified_name`` carries the full enclosing scope chain — the same
+    role it plays in :func:`assemble_stable_id`. They have no default so a producer that
+    forgets them fails loudly rather than silently re-opening the collision.
 
     Decorators/annotations are included because they change runtime behavior
     (e.g. ``@staticmethod``, ``@lru_cache``, ``@Override``).  Two functions
@@ -919,16 +982,17 @@ def make_typed_stable_id(
             module).  Empty string for top-level definitions.
         decorators: Sorted, comma-joined decorator/annotation names (e.g.
             ``"Override,Test"``).  Empty string when no decorators are present.
+        name: Symbol's local name (mandatory; the WI-zitod disambiguator).
+        qualified_name: Full scope-qualified name (mandatory; carries the scope chain).
 
     Returns:
         Stable ID in ``sha256:{16-hex-chars}`` format.
     """
     sig = (
         f"{kind}:{normalized_signature}:{visibility}"
-        f":{decorators}:{containing_stable_id}"
+        f":{decorators}:{containing_stable_id}:{name}:{qualified_name}"
     )
-    hash_val = hashlib.sha256(sig.encode()).hexdigest()[:16]
-    return f"sha256:{hash_val}"
+    return _short_sha256(sig)
 
 
 _VISIBILITY_MODIFIERS = frozenset({"public", "private", "protected", "internal"})
@@ -2437,13 +2501,14 @@ class TreeSitterAnalyzer:
         *,
         name: str = "",
         qualified_name: str = "",
+        occurrence_index: int = 0,
     ) -> str:
         """Compute an untyped-tier stable_id for a function/class/method node.
 
-        Uses the formula from ADR-0014 §2 augmented by Phase 6 PR3 (INV-bazij)::
+        Delegates to :func:`assemble_stable_id` — the single v6 formula (ADR-0035 §1)::
 
             sha256({kind}:{param_count}:{arity_flags}:{decorators}
-                   :{containing_stable_id}:{name}:{qualified_name})
+                   :{containing_stable_id}:{name}:{qualified_name}:{occurrence_index})
 
         Per INV-tazaj fix shape: the previous interface-shape-only signature
         produced ~60% collisions on the dogfood corpus because shape alone
@@ -2485,14 +2550,17 @@ class TreeSitterAnalyzer:
         decorators = self._extract_decorator_names(node)
         decorators_str = ",".join(sorted(decorators))
 
-        # 3. Build signature string and hash
-        sig = (
-            f"{kind}:{flags.param_count}:{flags.as_flags_str()}"
-            f":{decorators_str}:{containing_stable_id}"
-            f":{name}:{qualified_name}"
+        # 3. Hash via the shared v6 formula (ADR-0035 §1).
+        return assemble_stable_id(
+            kind,
+            flags.param_count,
+            flags.as_flags_str(),
+            decorators_str,
+            containing_stable_id,
+            name,
+            qualified_name,
+            occurrence_index,
         )
-        hash_val = hashlib.sha256(sig.encode()).hexdigest()[:16]
-        return f"sha256:{hash_val}"
 
     def _find_params_node(
         self, node: "tree_sitter.Node",

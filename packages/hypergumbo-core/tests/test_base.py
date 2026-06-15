@@ -307,14 +307,14 @@ class TestMakeEntryStableId:
 
     def test_different_names_produce_different_ids(self) -> None:
         """Two @vertex functions with different names must NOT collide."""
-        id1 = make_entry_stable_id("vertex", "main_vs")
-        id2 = make_entry_stable_id("vertex", "shadow_vs")
+        id1 = make_entry_stable_id("vertex", "main_vs", "shaders/a.wgsl")
+        id2 = make_entry_stable_id("vertex", "shadow_vs", "shaders/a.wgsl")
         assert id1 != id2
 
     def test_different_types_produce_different_ids(self) -> None:
         """@vertex main and @fragment main must NOT collide."""
-        id1 = make_entry_stable_id("vertex", "main")
-        id2 = make_entry_stable_id("fragment", "main")
+        id1 = make_entry_stable_id("vertex", "main", "shaders/a.wgsl")
+        id2 = make_entry_stable_id("fragment", "main", "shaders/a.wgsl")
         assert id1 != id2
 
     def test_returns_canonical_sha256_prefixed_form(self) -> None:
@@ -323,7 +323,7 @@ class TestMakeEntryStableId:
         See ``TestMakeRouteStableId.test_returns_canonical_sha256_prefixed_form``
         for the migration rationale.
         """
-        result = make_entry_stable_id("compute", "dispatch")
+        result = make_entry_stable_id("compute", "dispatch", "shaders/a.wgsl")
         assert result.startswith("sha256:")
         suffix = result[len("sha256:"):]
         assert len(suffix) == 16
@@ -331,8 +331,8 @@ class TestMakeEntryStableId:
 
     def test_deterministic(self) -> None:
         """Same inputs produce same output."""
-        id1 = make_entry_stable_id("fragment", "main_fs")
-        id2 = make_entry_stable_id("fragment", "main_fs")
+        id1 = make_entry_stable_id("fragment", "main_fs", "shaders/a.wgsl")
+        id2 = make_entry_stable_id("fragment", "main_fs", "shaders/a.wgsl")
         assert id1 == id2
 
 
@@ -387,56 +387,82 @@ class TestMakeTypedStableId:
 
     def test_returns_sha256_format(self) -> None:
         """Result uses sha256:{16-hex} format."""
-        result = make_typed_stable_id("method", "(String,int)User")
+        result = make_typed_stable_id(
+            "method", "(String,int)User", name="m", qualified_name="m"
+        )
         assert result.startswith("sha256:")
         assert len(result) == len("sha256:") + 16
 
     def test_deterministic(self) -> None:
         """Same inputs produce same output."""
-        id1 = make_typed_stable_id("method", "(String,int)User", "public")
-        id2 = make_typed_stable_id("method", "(String,int)User", "public")
+        id1 = make_typed_stable_id(
+            "method", "(String,int)User", "public", name="m", qualified_name="m"
+        )
+        id2 = make_typed_stable_id(
+            "method", "(String,int)User", "public", name="m", qualified_name="m"
+        )
         assert id1 == id2
 
     def test_different_signatures_produce_different_ids(self) -> None:
         """Different normalized signatures produce different hashes."""
-        id1 = make_typed_stable_id("method", "(String)void")
-        id2 = make_typed_stable_id("method", "(int)void")
+        id1 = make_typed_stable_id("method", "(String)void", name="m", qualified_name="m")
+        id2 = make_typed_stable_id("method", "(int)void", name="m", qualified_name="m")
         assert id1 != id2
 
     def test_different_visibility_produces_different_ids(self) -> None:
         """Same signature with different visibility produces different hashes."""
-        id1 = make_typed_stable_id("method", "(String)void", "public")
-        id2 = make_typed_stable_id("method", "(String)void", "private")
+        id1 = make_typed_stable_id(
+            "method", "(String)void", "public", name="m", qualified_name="m"
+        )
+        id2 = make_typed_stable_id(
+            "method", "(String)void", "private", name="m", qualified_name="m"
+        )
         assert id1 != id2
 
     def test_different_containing_produces_different_ids(self) -> None:
         """Same signature in different containers produces different hashes."""
-        id1 = make_typed_stable_id("method", "(int)bool", "", "sha256:aaa")
-        id2 = make_typed_stable_id("method", "(int)bool", "", "sha256:bbb")
+        id1 = make_typed_stable_id(
+            "method", "(int)bool", "", "sha256:aaa", name="m", qualified_name="m"
+        )
+        id2 = make_typed_stable_id(
+            "method", "(int)bool", "", "sha256:bbb", name="m", qualified_name="m"
+        )
         assert id1 != id2
 
     def test_empty_visibility_accepted(self) -> None:
         """Empty visibility (Python, Go) produces a valid hash."""
-        result = make_typed_stable_id("function", "(int)bool", "")
+        result = make_typed_stable_id(
+            "function", "(int)bool", "", name="m", qualified_name="m"
+        )
         assert result.startswith("sha256:")
 
     def test_different_decorators_produce_different_ids(self) -> None:
         """Same signature with different decorators produces different hashes."""
-        id1 = make_typed_stable_id("function", "()", decorators="lru_cache")
-        id2 = make_typed_stable_id("function", "()", decorators="")
+        id1 = make_typed_stable_id(
+            "function", "()", decorators="lru_cache", name="m", qualified_name="m"
+        )
+        id2 = make_typed_stable_id(
+            "function", "()", decorators="", name="m", qualified_name="m"
+        )
         assert id1 != id2
 
     def test_decorator_order_matters(self) -> None:
         """Decorator string is included verbatim; callers sort before passing."""
-        id1 = make_typed_stable_id("method", "(int)void", decorators="A,B")
-        id2 = make_typed_stable_id("method", "(int)void", decorators="B,A")
+        id1 = make_typed_stable_id(
+            "method", "(int)void", decorators="A,B", name="m", qualified_name="m"
+        )
+        id2 = make_typed_stable_id(
+            "method", "(int)void", decorators="B,A", name="m", qualified_name="m"
+        )
         assert id1 != id2
 
     def test_differs_from_untyped(self) -> None:
         """Typed tier hash differs from what untyped would produce."""
         # Typed uses normalized_signature, untyped uses param_count + arity_flags.
         # These should never collide since the sig components are different.
-        typed = make_typed_stable_id("method", "(String,int)User", "public")
+        typed = make_typed_stable_id(
+            "method", "(String,int)User", "public", name="m", qualified_name="m"
+        )
         # An untyped-tier hash would look like "method:2:False,False,False:..."
         # Verify they don't accidentally match (sanity check)
         assert "method:2:" not in typed

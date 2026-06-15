@@ -942,6 +942,7 @@ def _extract_symbols_from_file(
                 norm_sig = normalize_rust_signature(signature)
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
+                    name=func_name, qualified_name=full_name,
                 ) if norm_sig else None
 
                 mod_path = _get_rust_mod_path(node, source)

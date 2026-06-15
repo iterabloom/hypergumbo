@@ -1193,11 +1193,15 @@ class TestComputeStableId:
             MockNode(type="identifier"),
         ])
         sid = self.analyzer.compute_stable_id(node, kind="function")
-        # Manual: kind=function, param_count=2, arity=False,False,False,
-        # decorators="", containing="", name="", qualified_name=""
-        # (Phase 6 PR3 / INV-bazij added name and qualified_name; defaults
-        # are empty strings, so the trailing "::" pair is intentional.)
-        expected_sig = "function:2:False,False,False::::"
+        # Manual (stable_id v6 / ADR-0035 §1): the single formula is
+        # kind:param_count:arity_flags:decorators:containing_stable_id
+        # :name:qualified_name:occurrence_index
+        # Here kind=function, param_count=2, arity=False,False,False,
+        # decorators="", containing="", name="", qualified_name="",
+        # occurrence_index=0 (the v6 carrier default). The four empty
+        # decorators/containing/name/qualified_name slots give the run of
+        # ":" between the arity flags and the trailing "0".
+        expected_sig = "function:2:False,False,False:::::0"
         expected_hash = hashlib.sha256(expected_sig.encode()).hexdigest()[:16]
         assert sid == f"sha256:{expected_hash}"
 

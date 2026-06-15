@@ -35,12 +35,14 @@ from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.analyze.base import (
     make_typed_stable_id,
+    node_text,
     visibility_from_modifiers,
 )
 
 from hypergumbo_lang_mainstream.rust import (
     _extract_modifiers_rust,
     _extract_rust_signature,
+    _find_child_by_field,
     _get_impl_target,
     is_rust_tree_sitter_available,
     normalize_rust_signature,
@@ -109,8 +111,21 @@ def compute_rust_stable_id_from_source(
 
         modifiers = _extract_modifiers_rust(node, source)
         visibility = visibility_from_modifiers(modifiers)
-        kind = "method" if _get_impl_target(node, source) else "function"
+        impl_target = _get_impl_target(node, source)
+        kind = "method" if impl_target else "function"
 
-        return make_typed_stable_id(kind, norm_sig, visibility)
+        # Dedup contract (WI-zakub): name/qualified_name must be byte-identical
+        # to what rust.py:_analyze_rust computes for the same function_item, so
+        # the resulting stable_id matches. rust.py uses func_name (the bare
+        # ``name`` field) and full_name (``{impl_target}::{func_name}`` for
+        # impl methods, else func_name).
+        name_node = _find_child_by_field(node, "name")
+        func_name = node_text(name_node, source) if name_node else ""
+        full_name = f"{impl_target}::{func_name}" if impl_target else func_name
+
+        return make_typed_stable_id(
+            kind, norm_sig, visibility,
+            name=func_name, qualified_name=full_name,
+        )
 
     return None

@@ -1448,7 +1448,7 @@ def test_make_entry_stable_id_emits_canonical_shape() -> None:
     from hypergumbo_core.analyze.base import make_entry_stable_id
     from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 
-    out = make_entry_stable_id("vertex", "main")
+    out = make_entry_stable_id("vertex", "main", "pkg/main.py")
     assert _CANONICAL_STABLE_ID_PATTERN.match(out)
 
 

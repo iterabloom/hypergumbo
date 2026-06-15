@@ -527,6 +527,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     norm_sig = normalize_groovy_signature(signature)
                     stable_id = make_typed_stable_id(
                         "method", norm_sig, visibility_from_modifiers(modifiers),
+                        name=method_name, qualified_name=full_name,
                     ) if norm_sig else None
 
                     symbol = Symbol(
@@ -569,6 +570,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     norm_sig = normalize_groovy_signature(signature)
                     stable_id = make_typed_stable_id(
                         "function", norm_sig, visibility_from_modifiers(modifiers),
+                        name=func_name, qualified_name=func_name,
                     ) if norm_sig else None
 
                     symbol = Symbol(
