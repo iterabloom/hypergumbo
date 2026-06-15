@@ -63,3 +63,10 @@
   clock: 6  # c52b
   nonce: c52b  # c52b
   message: "RELATED_BUT_DISTINCT to WI-mipul: per-pass stamping; mipul wires pass_version/config_fingerprint/toolchain on 14 override-analyze analyzers, the gizik/lidul/nihug tail. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # c52b
+- op: discuss  # ab1b
+  at: '2026-06-14T23:10:02Z'  # ab1b
+  by: agent  # ab1b
+  actor: jgstern_agent  # ab1b
+  clock: 7  # ab1b
+  nonce: ab1b  # ab1b
+  message: "ADR-0043 §6.1's ratified emission_counts sub-step (recompute files_analyzed/files_skipped per-run by origin_run_id over the final substrate) was found UNSOUND and REMOVED from finalize in run-lifecycle:F1 (PR #236) — NOT stubbed. files_analyzed is contractually a FILE count (== profile.languages[L].files, pinned by test_inv_hokig/test_profile), but the per-origin_run_id recompute yields a NODE/path count and does not close this item (IR-consuming passes stay 0; the 6 scan-linkers would regress to 0). This item OWNS the real fix: a NEW provenance field (e.g. ir_units_processed / pass_kind) that does NOT overload files_analyzed. Re-ratification recorded in ADR §6.1 ratified sub-decision #5."  # ab1b

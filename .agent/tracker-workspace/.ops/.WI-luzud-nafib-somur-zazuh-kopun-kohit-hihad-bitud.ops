@@ -40,3 +40,18 @@
   clock: 4  # 4afc
   nonce: 4afc  # 4afc
   message: "root-cause family member (b1) (connections-sweep 2026-06-08T1900Z)"  # 4afc
+- op: update  # 723e
+  at: '2026-06-14T23:09:20Z'  # 723e
+  by: agent  # 723e
+  actor: jgstern_agent  # 723e
+  clock: 5  # 723e
+  nonce: 723e  # 723e
+  set:  # 723e
+    status: done  # 723e
+- op: discuss  # b314
+  at: '2026-06-14T23:09:20Z'  # b314
+  by: agent  # b314
+  actor: jgstern_agent  # b314
+  clock: 6  # b314
+  nonce: b314  # b314
+  message: "Fixed by run-lifecycle:F1 (PR #236). _finalize_recompute_run_signature recomputes run_signature over ALL analysis_runs unconditionally, so the 30/84 grammar ARs that were hashed from stale pre-mutation config/toolchain (before _extend_toolchain/_stamp_config_fingerprint mutated them) are now re-hashed from final fields. Behavioral evidence: test_finalize_roundtrip.py::test_run_signature_self_consistent asserts every emitted AR (grammar passes included) re-derives correctly from its final fields; smoke 0/64 mismatches."  # b314

@@ -20,3 +20,18 @@
     description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-lidul, WI-mipul, WI-luzud, WI-riroz. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # 104e
     fields:  # 104e
       statement: "run_signature = hash(pass_id:version:config_fingerprint:toolchain) must be re-derived from the (version, config_fingerprint, toolchain) actually stamped on the final AnalysisRun, not from create-time placeholders."  # 104e
+- op: update  # 376e
+  at: '2026-06-14T23:08:35Z'  # 376e
+  by: agent  # 376e
+  actor: jgstern_agent  # 376e
+  clock: 2  # 376e
+  nonce: 376e  # 376e
+  set:  # 376e
+    status: satisfied  # 376e
+- op: discuss  # 255e
+  at: '2026-06-14T23:08:35Z'  # 255e
+  by: agent  # 255e
+  actor: jgstern_agent  # 255e
+  clock: 3  # 255e
+  nonce: 255e  # 255e
+  message: "Fixed by run-lifecycle:F1 (PR #236), finalize sub-step 3 (_finalize_recompute_run_signature). Behavioral evidence: run_behavior_map now emits every AnalysisRun's run_signature == _compute_run_signature(pass, version, config_fingerprint, toolchain) re-derived from its FINAL fields (was: the create-time placeholder signature persisted). Live repro: smoke over a Python fixture showed 0/64 run_signature mismatches; pinned by production-path test packages/hypergumbo-lang-mainstream/tests/test_finalize_roundtrip.py::TestReconciledView::test_run_signature_self_consistent (asserts self-consistency over the real run_behavior_map substrate)."  # 255e

@@ -26,3 +26,26 @@
   clock: 2  # d8c5
   nonce: d8c5  # d8c5
   message: "Decision artifact landed: ADR-0043 (Stage-Ordering Contract for run_behavior_map), PR #4212. The contract — target six-phase DAG + the five conflict resolutions C1-C5 — is now recorded and indexed in docs/adr/README.md. Adversarially reviewed (3 lenses vs cli.py + the rulings; ship_with_nits): all four ordering defects C1-C4 and the five C5 finalizers were code-verified against the live run_behavior_map; §7 was corrected to distinguish the existing validate_ir STAGE (the C1 defect) from ADR-0037's not-yet-implemented referential-integrity/FK predicate. This WI now carries the IMPLEMENTATION (Wave 2): the reorder owns seam (a) and sequences AFTER identity's seam-(b) scope-stack rewrite; the finalize stage is carried by run-lifecycle:F1 and co-designed before its consumers implement. META-jalur stays violated until run_signature, edge finalization, validation, and the compact/budget projections all route through the one finalize stage with a serialization round-trip property test passing (ADR-0043 §6/§8)."  # d8c5
+- op: update  # e1ba
+  at: '2026-06-14T09:52:48Z'  # e1ba
+  by: agent  # e1ba
+  actor: jgstern_agent  # e1ba
+  clock: 3  # e1ba
+  nonce: e1ba  # e1ba
+  set: {}  # e1ba
+  add:  # e1ba
+    tags: [awaits_bakeoff_validation]  # e1ba
+- op: discuss  # 250c
+  at: '2026-06-14T09:52:48Z'  # 250c
+  by: agent  # 250c
+  actor: jgstern_agent  # 250c
+  clock: 4  # 250c
+  nonce: 250c  # 250c
+  message: "C2 / Phase D/E reorder slice landed: PR #234 (selfh/dev a04ea91b99). BEHAVIORAL EVIDENCE: boundary-node synthesis (create_boundary_nodes + apply_external_id_remap) now runs AFTER tier+noise filtering (Phase E after Phase D), not before. Measured via run_behavior_map on the core package: dangling-src edges 10 -> 0 (2 -> 0 on the gate fixture pkg/foo_pb2.py), edge count unchanged, +1 collapse boundary node, surviving first-party stable_id byte-identical. Production-path gate: packages/hypergumbo-lang-mainstream/tests/test_phase_de_reorder.py (G1 survivor-identity golden, G2 zero-dangling + pb2-import-src-resolved, G3 no-orphans, precondition non-vacuity) RED(2)->GREEN(5) across the reorder. Identity-neutral T0 (no v6 dependency — survivor stable_id unchanged). Adversarial impl review (4 agents, empirical A/B): GO; the one raised MAJOR (supply_chain_summary semantics) was empirically refuted. Tagged awaits_bakeoff_validation (output set membership changes on real repos). SCOPE: C2 only. REMAINING for the full contract / this umbrella: C3 noise-filter entrypoint exemption (entrypoint:F4), C4 total meta relativize (identity:F1), C5 single finalize stage (run-lifecycle:F1), C1 two-pass validation (validator:F3). Item stays OPEN — closes when finalize routing + the serialization round-trip property test land. This reorder UNBLOCKS run-lifecycle:F1 (its R1 entry precondition: substrate final on entry). Design artifact: ~/hypergumbo_lab_notebook/wipozur_phase_de_codesign_06142026.md; D-D carve-out kept as commented no-op."  # 250c
+- op: discuss  # d14f
+  at: '2026-06-14T23:10:03Z'  # d14f
+  by: agent  # d14f
+  actor: jgstern_agent  # d14f
+  clock: 5  # d14f
+  nonce: d14f  # d14f
+  message: "C5 (run-lifecycle:F1 — the single finalize stage) landed in PR #236. WI-pozur umbrella remaining scope: C3 (entrypoint:F4 noise-filter exemption), C4 (identity:F1 total meta relativization), C1 (validator:F3 two-point validation + FK predicate)."  # d14f

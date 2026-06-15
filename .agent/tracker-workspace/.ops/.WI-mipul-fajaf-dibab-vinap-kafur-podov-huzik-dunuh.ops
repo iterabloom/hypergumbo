@@ -89,3 +89,10 @@
   clock: 10  # 69ea
   nonce: 69ea  # 69ea
   message: "root-cause family cross-link (b1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 69ea
+- op: discuss  # 8424
+  at: '2026-06-14T23:10:02Z'  # 8424
+  by: agent  # 8424
+  actor: jgstern_agent  # 8424
+  clock: 11  # 8424
+  nonce: '8424'  # 8424
+  message: "pass_version half landed in run-lifecycle:F1 (PR #236), finalize sub-step 2 (_finalize_stamp_run_lifecycle): the ~13 override-analyze + synthetic passes that emitted empty pass_version are now backfilled from pass_metadata's canonical code-hash (new pass_metadata.py). Verified by test_finalize_roundtrip.py::test_pass_version_backfilled_everywhere (no AR leaves pass_version empty). REMAINING SCOPE (this item stays open): the config_fingerprint backstop — DEFERRED to producer-side work per the ADR-0043 §6.1 amendment. Recording a backstop-with-violation in finalize would grow the shrink-only validation ratchet (~+8/substrate; validate_ir is silent on the default config_fingerprint today, so they'd be net-new); the real fix is producer-side per-analyzer config_fingerprint computation. toolchain is already populated upstream."  # 8424
