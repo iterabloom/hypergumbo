@@ -21,7 +21,6 @@ from hypergumbo_core.finalize import (
     FinalizedMap,
     _finalize_commit_dicts,
     _finalize_confidence_aggregates,
-    _finalize_declared_fields,
     _finalize_re_relativize,
     _finalize_recompute_run_signature,
     _finalize_referential_integrity,
@@ -167,7 +166,7 @@ def test_commit_dicts_writes_reconciled_view(tmp_path: Path) -> None:
     assert ctx.behavior_map["analysis_runs"] is runs
 
 
-# --- Sub-steps 1, 7, 9: backstop + stubs ------------------------------------------------
+# --- Sub-steps 1, 7: backstop + stub ----------------------------------------------------
 def test_re_relativize_backstop_is_noop_on_empty(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     _finalize_re_relativize(ctx)  # must not raise on empty lists
@@ -177,13 +176,6 @@ def test_confidence_stub_is_noop(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     before = dict(ctx.behavior_map)
     assert _finalize_confidence_aggregates(ctx) is None
-    assert ctx.behavior_map == before
-
-
-def test_declared_fields_stub_is_noop(tmp_path: Path) -> None:
-    ctx = _ctx(tmp_path)
-    before = dict(ctx.behavior_map)
-    assert _finalize_declared_fields(ctx) is None
     assert ctx.behavior_map == before
 
 
@@ -236,9 +228,24 @@ _SUBSTEPS = [
     "_finalize_skipped_into_limits",
     "_finalize_confidence_aggregates",
     "_finalize_commit_dicts",
-    "_finalize_declared_fields",
     "_finalize_referential_integrity",
 ]
+
+
+def test_substeps_list_matches_module_functions() -> None:
+    """``_SUBSTEPS`` must enumerate exactly the ``_finalize_*`` functions DEFINED in the module.
+
+    Pins the *defined* set against the hand-maintained list: a re-introduced sub-step missing
+    from ``_SUBSTEPS`` (e.g. a resurrected declared-fields slot — removed because its work lands
+    in the validator/producers, not finalize) or a stale ``_SUBSTEPS`` entry with no definition
+    fails here. The complementary ``test_finalize_calls_each_substep_once`` ties the
+    ``finalize()`` *body* (the order contract) to ``_SUBSTEPS`` — together they keep all three
+    hand-maintained lists (definitions, ``_SUBSTEPS``, call sites) in lockstep.
+    """
+    import hypergumbo_core.finalize as F
+
+    module_substeps = {name for name in dir(F) if name.startswith("_finalize_")}
+    assert module_substeps == set(_SUBSTEPS)
 
 
 def _record_order(monkeypatch) -> list[str]:
@@ -262,6 +269,20 @@ def test_r3_referential_integrity_is_last_substep(monkeypatch, tmp_path: Path) -
     calls = _record_order(monkeypatch)
     finalize(_ctx(tmp_path))
     assert calls[-1] == "_finalize_referential_integrity"
+
+
+def test_finalize_calls_each_substep_once(monkeypatch, tmp_path: Path) -> None:
+    """The ``finalize()`` body must call exactly the registered sub-steps, each once.
+
+    Ties the body (the actual order contract) to ``_SUBSTEPS`` so a *half-removal* — dropping a
+    sub-step's call while leaving its definition + ``_SUBSTEPS`` entry — fails here rather than
+    surviving as a silent never-invoked function (caught only as a coverage miss). Multiset
+    equality, not sequence equality: it pins membership + count without over-constraining the
+    R8 order-free remainder (only R2/R3 are hard orderings, pinned by the guards above).
+    """
+    calls = _record_order(monkeypatch)
+    finalize(_ctx(tmp_path))
+    assert sorted(calls) == sorted(_SUBSTEPS)
 
 
 # --- Violation sort determinism (ADR-0043 §6: "violations sorted before the report") ----

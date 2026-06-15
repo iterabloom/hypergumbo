@@ -39,6 +39,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   `awaits_bakeoff_validation`: `run_signature`/`pass_version` are provenance, not analysis
   quality — the change makes no bakeoff-corpus claim.
 
+- **Finalize sheds its declared-fields stub (Wave-2 Phase-2, declared-fields:F1 — ADR-0043
+  §6.1 amended #9)** — a fill-vs-remove recon found the `_finalize_declared_fields` sub-step
+  (a documented no-op since the run-lifecycle:F1 carrier) has **no finalize-time tenant**: its
+  writer-contract half already runs over the final substrate in sub-step 10's `validate_ir`
+  (declared-fields:F1(a) / INV-zotip, satisfied), and its population-contract half lands in the
+  writer-contract *validator* (WI-libib — inside `_check_writer_contract`, where the record
+  stream lives) and in producers (declared-fields:F5 / INV-dubam), never in finalize. Filling
+  it with a population re-check would append net-new violations and *grow* the shrink-only
+  validation ratchet (`test_validation_report_empty.py`, zero headroom at 12/substrate;
+  measured +2…+57). Per the `emission_counts` precedent ("we track everything in git"), the
+  stub + its no-op test are **removed** (not stubbed); a new white-box guard asserts `_SUBSTEPS`
+  matches the module's actual `_finalize_*` set, so a resurrected slot fails CI. The sibling
+  confidence stub (7) is **retained** — its payload is a ratchet-safe `behavior_map` aggregate,
+  a genuine finalize-time derivation. **No output change** (the stub was a no-op; full suite
+  green, TOTAL 100%). Internal/contract refactor — not tagged `awaits_bakeoff_validation`.
+
 - **Boundary synthesis runs after filtering (Wave-2 T0, WI-pozur — ADR-0043 §4/C2)** —
   `run_behavior_map`'s boundary-node synthesis (`create_boundary_nodes` +
   `apply_external_id_remap`) ran *before* tier+noise filtering, so synthesis saw
