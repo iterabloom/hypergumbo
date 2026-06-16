@@ -72,7 +72,7 @@ from typing import Any, Dict
 
 SCHEMA_VERSION = "0.14.1"
 CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
-STABLE_ID_SCHEME = "hypergumbo-stableid-v7"
+STABLE_ID_SCHEME = "hypergumbo-stableid-v8"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v2"
 REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v1"
 # WI-fanun: scheme tag for Symbol.fingerprint, populated by the

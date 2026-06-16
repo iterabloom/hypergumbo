@@ -590,16 +590,17 @@ class TestDatabaseQueryLinker:
         assert result.run.duration_ms >= 0
 
     def test_symbol_stable_id(self, tmp_path: Path):
-        """Query symbols have canonical-shape stable IDs for deduplication.
+        """Query symbols have canonical-shape SITE-axis stable IDs.
 
-        Phase 6 PR1 (INV-hunup): the linker now routes its stable_id
-        through ``make_protocol_stable_id`` so the value matches the
-        ``sha256:<16hex>`` shape the validator enforces. The exact 16-hex
-        suffix is deterministic from the (category, query_type, tables)
-        tuple — we re-derive it here to keep the assertion pinned to the
-        producer's contract rather than to an opaque magic literal.
+        v8 (WI-napoh): the SQL query call_site is a SITE-axis node (ADR-0035 §3),
+        so the linker routes its stable_id through ``make_site_stable_id`` —
+        folding the declaring file's repo-relative path so the same query in two
+        files does not collide (pre-v8 it borrowed the file-blind LOGICAL
+        ``make_protocol_stable_id``). The 16-hex suffix is deterministic from
+        ``(protocol_origin, rel_path, "{query_type}:{tables}")`` — re-derived here
+        to pin the assertion to the producer's contract, not a magic literal.
         """
-        from hypergumbo_core.analyze.base import make_protocol_stable_id
+        from hypergumbo_core.analyze.base import make_site_stable_id
 
         py_file = tmp_path / "app.py"
         py_file.write_text(dedent('''
@@ -610,7 +611,7 @@ class TestDatabaseQueryLinker:
 
         assert len(result.symbols) == 1
         symbol = result.symbols[0]
-        expected = make_protocol_stable_id("db_query", "SELECT", "users")
+        expected = make_site_stable_id("db_query", "app.py", "SELECT:users")
         assert symbol.stable_id == expected
         assert symbol.stable_id.startswith("sha256:")
 

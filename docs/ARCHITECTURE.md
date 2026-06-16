@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **286** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 61 core, 4 CLI, 33 tracker)
-- **32558** symbols (functions, classes, methods)
-- **107029** edges by type:
-  - calls: 59924
-  - contains: 22177
-  - imports: 10576
-  - instantiates: 8107
-  - references: 3748
+- **32580** symbols (functions, classes, methods)
+- **107098** edges by type:
+  - calls: 59969
+  - contains: 22196
+  - imports: 10579
+  - instantiates: 8110
+  - references: 3747
   - module_attr_ref: 1174
   - other: 1323
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 32558 Symbols + 107029 Edges + UsageContexts           │
+│  Output: 32580 Symbols + 107098 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -268,10 +268,10 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 5469.1 | ir.py |
-| `Span` | class | 4312.6 | ir.py |
+| `Symbol` | class | 5471.8 | ir.py |
+| `Span` | class | 4314.7 | ir.py |
 | `write_text` | external_symbol | 3222.0 | <external> |
-| `run_behavior_map` | function | 3177.1 | cli.py |
+| `run_behavior_map` | function | 3184.9 | cli.py |
 | `LinkerContext` | class | 2167.9 | registry.py |
 | `TrackerApp` | class | 1934.9 | tui.py |
 | `load_framework_patterns` | function | 1733.7 | framework_patterns.py |
@@ -282,7 +282,7 @@ These symbols have the highest bidirectional centrality
 | `append` | external_symbol | 1205.0 | <external> |
 | `find_files` | function | 1120.8 | discovery.py |
 | `TreeSitterAnalyzer` | class | 961.9 | base.py |
-| `get` | external_symbol | 916.0 | <external> |
+| `get` | external_symbol | 917.0 | <external> |
 
 ## Pattern System
 
@@ -828,7 +828,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 09b3e2fb2809
+  commit: f7fb8c9ad9ac
   hypergumbo: 6.0.0
   python: 3.12.3
 -->

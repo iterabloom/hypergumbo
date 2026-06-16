@@ -1942,8 +1942,14 @@ class TestCreateClientSymbolStableId:
         sym_b = _create_client_symbol(call_b, tmp_path)
         assert sym_a.stable_id != sym_b.stable_id
 
-    def test_same_url_produces_same_stable_id(self, tmp_path: Path):
-        """Same method+URL from different lines should have the same stable_id."""
+    def test_same_url_different_files_distinct_stable_id(self, tmp_path: Path):
+        """v8 (WI-napoh): the SAME request from DIFFERENT files must NOT collide.
+
+        The HTTP client call_site is a SITE-axis node (ADR-0035 §3): its identity
+        folds the declaring file's repo-relative path, so two files issuing
+        ``GET /api/users`` get distinct stable_ids. Pre-v8 they shared the
+        file-blind ``make_route_stable_id`` value — the Wave-2 corpus residual.
+        """
         call_a = HttpClientCall(
             method="GET", url="/api/users", line=10,
             file_path=str(tmp_path / "a.py"), language="python",
@@ -1951,6 +1957,22 @@ class TestCreateClientSymbolStableId:
         call_b = HttpClientCall(
             method="GET", url="/api/users", line=99,
             file_path=str(tmp_path / "b.py"), language="python",
+        )
+        sym_a = _create_client_symbol(call_a, tmp_path)
+        sym_b = _create_client_symbol(call_b, tmp_path)
+        assert sym_a.stable_id != sym_b.stable_id
+
+    def test_same_url_same_file_same_stable_id(self, tmp_path: Path):
+        """Same method+URL in the SAME file mints identically — the within-file
+        occurrence ordinal is added downstream by
+        ``split_within_file_stable_id_collisions``, not at mint."""
+        call_a = HttpClientCall(
+            method="GET", url="/api/users", line=10,
+            file_path=str(tmp_path / "a.py"), language="python",
+        )
+        call_b = HttpClientCall(
+            method="GET", url="/api/users", line=99,
+            file_path=str(tmp_path / "a.py"), language="python",
         )
         sym_a = _create_client_symbol(call_a, tmp_path)
         sym_b = _create_client_symbol(call_b, tmp_path)

@@ -548,6 +548,31 @@ def make_route_stable_id(method: str, path: str) -> str:
     return _short_sha256(f"route:{method.upper()}:{normalized}")
 
 
+def make_site_stable_id(protocol_origin: str, rel_path: str, target: str) -> str:
+    """ADR-0035 §3 SITE-axis identity for ``call_site`` stand-ins (v8, WI-napoh).
+
+    Identity formula: ``sha256("site:{protocol_origin}:{rel_path}:{target}")[:16]``.
+
+    SITE-axis kinds represent a CODE LOCATION — "this file issues this call" — so
+    their identity MUST fold the declaring file's repo-relative path (``rel_path``),
+    unlike LOGICAL kinds (message_queue / event_sourcing topics, routes) whose
+    identity is the external target deduped across reference sites. Before v8 the
+    HTTP client ``call_site`` borrowed :func:`make_route_stable_id` and the SQL
+    query ``call_site`` borrowed :func:`make_protocol_stable_id` — both LOGICAL and
+    file-blind — so two files issuing ``GET /api/users`` (or running ``SELECT
+    users``) collided cross-file (the Wave-2 identity-gate residual, INV-tazaj
+    corpus limb / WI-napoh). The dedicated ``site:`` namespace also guarantees a
+    SITE id can never collide with a LOGICAL id by construction.
+
+    ``target`` is the per-family logical target string (e.g. ``"GET:/api/users"``
+    for http, ``"SELECT:users"`` for sql). The within-file occurrence ordinal is
+    NOT folded here — :func:`split_within_file_stable_id_collisions` adds the
+    ``:occ:<n>`` suffix downstream, completing the §3 ``(path, target, occurrence)``
+    SITE key (line numbers stay OUT of the hash, §3).
+    """
+    return _short_sha256(f"site:{protocol_origin}:{rel_path}:{target}")
+
+
 def make_entry_stable_id(entry_type: str, name: str, path: str) -> str:
     """Compute a collision-free stable_id for entry-point symbols.
 
@@ -1058,6 +1083,69 @@ def split_within_file_stable_id_collisions(symbols: list[Symbol]) -> int:
             sym.stable_id = _short_sha256(f"{sym.stable_id}:occ:{occurrence}")
             reminted += 1
     return reminted
+
+
+def _is_route_for_widening(sym: Symbol) -> bool:
+    """Identify LOGICAL ``route`` Symbols whose file-blind v6 id needs the v8 fold.
+
+    Route stand-ins are emitted across analyzers/linkers with three non-uniform
+    markers (no single one covers every producer, verified against the
+    ``make_route_stable_id`` call sites): the ``make_symbol_id`` kind suffix
+    ``:route`` / ``:route_mount``; ``meta["framework_role"]`` ==
+    ``"route"`` / ``"route_mount"``; or a ``meta`` carrying both ``route_path``
+    and ``http_method`` (the synthesized per-route handler ``function`` nodes,
+    which use a ``:function`` id suffix and set no framework_role). Their union
+    covers every producer (py / go / js_ts / framework materializer / grpc). SITE
+    ``call_site`` stand-ins are EXCLUDED — their file-identity fold happens at mint
+    via :func:`make_site_stable_id` (WI-napoh), not here.
+    """
+    if sym.kind == "call_site":
+        return False
+    meta = sym.meta or {}
+    if meta.get("framework_role") in ("route", "route_mount"):
+        return True
+    if meta.get("route_path") is not None and meta.get("http_method"):
+        return True
+    sid = sym.id or ""
+    return ":" in sid and sid.rsplit(":", 1)[-1] in ("route", "route_mount")
+
+
+def widen_route_stable_ids(symbols: list[Symbol]) -> int:
+    """ADR-0035 §3 + WI-gokiv (v8): fold file identity into LOGICAL ``route`` ids.
+
+    :func:`make_route_stable_id` keys a route on ``route:{method}:{path}`` only —
+    file-blind by the ADR-0014 §4 contract carried into v6. The Wave-2 identity
+    gate showed this is the dominant corpus-collision class: the same
+    ``(method, path)`` declared in different files (express's 33 example apps) or
+    different LANGUAGES (gin-Go + express-JS both minting ``route:GET:/``) shares
+    one stable_id though the registrations are semantically distinct. The
+    2026-06-16 ruling: route stays LOGICAL *in spirit* (within-app dedup is owned
+    structurally by the route materializer's ``seen_routes``, keyed on meta — not
+    by stable_id), but the IDENTITY widens with the declaring file + language so
+    cross-file / cross-language routes no longer collide.
+
+    This is a post-pass (mirroring :func:`split_within_file_stable_id_collisions`)
+    rather than a per-producer change because the ~16 ``make_route_stable_id`` call
+    sites carry the file path as an ABSOLUTE string at mint, whereas ``sym.path``
+    is normalised to the repo-relative form only later (``all_analyzers``' path
+    pass). Folding the *normalised* ``sym.path`` here is the single point that is
+    both complete (no straggler producer) and location-independent (no absolute
+    path baked into identity — the regression WI-bokab's location-independence
+    guard forbids). Must run BEFORE :func:`split_within_file_stable_id_collisions`
+    so two same-route declarations in one file (now sharing the folded id) get the
+    ``:occ:<n>`` ordinal. Returns the count of re-minted ids.
+    """
+    widened = 0
+    for sym in symbols:
+        if sym.stable_id is None or not sym.path:
+            continue
+        if not _is_route_for_widening(sym):
+            continue
+        sym.stable_id = _short_sha256(
+            f"route_site:{sym.language or ''}:{normalize_path(sym.path)}:{sym.stable_id}"
+        )
+        widened += 1
+    return widened
 
 
 def make_typed_stable_id(

@@ -54,6 +54,7 @@ from .analyze.base import (
     is_exported_from_modifiers,
     populate_synthetic_class_b_identity,
     split_within_file_stable_id_collisions,
+    widen_route_stable_ids,
 )
 from .behavior_map_io import load_behavior_map
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
@@ -7904,6 +7905,11 @@ def run_behavior_map(
     # to one hub node FIRST, then occurrence-index the remaining within-file SITE
     # collisions so each distinct site gets a distinct stable_id.
     dedup_logical_synthetic_identities(all_symbols, all_edges)
+    # WI-gokiv (v8): widen LOGICAL route ids with the (now repo-relative) declaring
+    # file + language so cross-file / cross-language same-(method,path) routes stop
+    # colliding (Wave-2 gate's dominant residual). Runs BEFORE the within-file split
+    # so two same-route declarations in one file get the :occ: ordinal afterwards.
+    widen_route_stable_ids(all_symbols)
     split_within_file_stable_id_collisions(all_symbols)
 
     # Check for partial installation issues (ADR-0010 Item 8)

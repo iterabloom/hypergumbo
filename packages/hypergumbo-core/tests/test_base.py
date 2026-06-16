@@ -28,6 +28,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_protocol_stable_id,
     make_route_stable_id,
+    make_site_stable_id,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -42,6 +43,7 @@ from hypergumbo_core.analyze.base import (
     strip_fqn_prefix,
     synthesize_file_symbols_for_dangling_edges,
     visibility_from_modifiers,
+    widen_route_stable_ids,
 )
 from hypergumbo_core.ir import Edge, Span, Symbol
 
@@ -300,6 +302,148 @@ class TestMakeRouteStableId:
         id_empty = make_route_stable_id("GET", "")
         id_root = make_route_stable_id("GET", "/")
         assert id_empty == id_root
+
+
+class TestMakeSiteStableId:
+    """ADR-0035 §3 SITE-axis call_site identity (v8, WI-napoh)."""
+
+    def test_same_target_different_files_distinct(self) -> None:
+        """The Wave-2 fix: the same request in two files must NOT collide."""
+        a = make_site_stable_id("http", "a/client.py", "GET:/api/users")
+        b = make_site_stable_id("http", "b/client.py", "GET:/api/users")
+        assert a != b
+
+    def test_same_inputs_deterministic(self) -> None:
+        a = make_site_stable_id("db_query", "app.py", "SELECT:users")
+        b = make_site_stable_id("db_query", "app.py", "SELECT:users")
+        assert a == b
+
+    def test_different_protocol_origin_distinct(self) -> None:
+        a = make_site_stable_id("http", "app.py", "GET:/x")
+        b = make_site_stable_id("db_query", "app.py", "GET:/x")
+        assert a != b
+
+    def test_different_target_distinct(self) -> None:
+        a = make_site_stable_id("http", "app.py", "GET:/users")
+        b = make_site_stable_id("http", "app.py", "POST:/users")
+        assert a != b
+
+    def test_canonical_shape(self) -> None:
+        result = make_site_stable_id("http", "app.py", "GET:/users")
+        assert result.startswith("sha256:")
+        suffix = result[len("sha256:"):]
+        assert len(suffix) == 16
+        assert all(c in "0123456789abcdef" for c in suffix)
+
+    def test_site_namespace_cannot_collide_with_route(self) -> None:
+        """The ``site:`` prefix keeps SITE ids disjoint from LOGICAL route ids."""
+        # Even if a route's logical key string equalled a site target, the
+        # namespace prefix differs, so the hashes differ.
+        site = make_site_stable_id("", "", "GET:/users")
+        route = make_route_stable_id("GET", "/users")
+        assert site != route
+
+
+def _route_sym(
+    stable_id: str | None,
+    path: str,
+    language: str | None = "python",
+    *,
+    id_suffix: str = "route",
+    framework_role: str | None = None,
+    route_meta: bool = False,
+    kind: str = "function",
+) -> Symbol:
+    """Build a route-ish Symbol exercising one of the three v8 widening markers."""
+    meta: dict[str, object] = {}
+    if framework_role is not None:
+        meta["framework_role"] = framework_role
+    if route_meta:
+        meta["route_path"] = "/"
+        meta["http_method"] = "GET"
+    return Symbol(
+        id=f"{language or 'x'}:{path}:1-1:thing:{id_suffix}",
+        name="thing",
+        kind=kind,
+        language=language,
+        path=path,
+        span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        stable_id=stable_id,
+        meta=meta or None,
+    )
+
+
+class TestWidenRouteStableIds:
+    """WI-gokiv (v8): post-pass folding file+language into LOGICAL route ids."""
+
+    def test_same_route_distinct_across_files(self) -> None:
+        """The dominant Wave-2 residual: GET / in two files must NOT collide."""
+        shared = make_route_stable_id("GET", "/")
+        a = _route_sym(shared, "examples/auth/index.js", "javascript", id_suffix="route")
+        b = _route_sym(shared, "examples/cookies/index.js", "javascript", id_suffix="route")
+        n = widen_route_stable_ids([a, b])
+        assert n == 2
+        assert a.stable_id != b.stable_id
+
+    def test_cross_language_distinct(self) -> None:
+        """gin(Go) and express(JS) both minting route:GET:/ must not collide."""
+        shared = make_route_stable_id("GET", "/")
+        go = _route_sym(shared, "main.go", "go", id_suffix="route")
+        js = _route_sym(shared, "main.go", "javascript", id_suffix="route")
+        widen_route_stable_ids([go, js])
+        assert go.stable_id != js.stable_id
+
+    def test_location_independent(self) -> None:
+        """Same repo-relative path → same widened id (no absolute path baked in)."""
+        shared = make_route_stable_id("GET", "/")
+        a = _route_sym(shared, "app/routes.py", "python", id_suffix="route")
+        b = _route_sym(shared, "app/routes.py", "python", id_suffix="route")
+        widen_route_stable_ids([a, b])
+        assert a.stable_id == b.stable_id
+
+    def test_identified_by_framework_role(self) -> None:
+        shared = make_route_stable_id("GET", "/")
+        a = _route_sym(shared, "a.go", "go", id_suffix="function", framework_role="route")
+        b = _route_sym(shared, "b.go", "go", id_suffix="function", framework_role="route")
+        assert widen_route_stable_ids([a, b]) == 2
+        assert a.stable_id != b.stable_id
+
+    def test_identified_by_route_meta(self) -> None:
+        """Synthesized handler functions (id-suffix :function, no framework_role)."""
+        shared = make_route_stable_id("GET", "/")
+        a = _route_sym(shared, "a.js", "javascript", id_suffix="function", route_meta=True)
+        b = _route_sym(shared, "b.js", "javascript", id_suffix="function", route_meta=True)
+        assert widen_route_stable_ids([a, b]) == 2
+        assert a.stable_id != b.stable_id
+
+    def test_route_mount_suffix_widened(self) -> None:
+        shared = make_route_stable_id("MOUNT", "/api")
+        a = _route_sym(shared, "a.go", "go", id_suffix="route_mount")
+        assert widen_route_stable_ids([a]) == 1
+
+    def test_call_site_excluded(self) -> None:
+        """SITE call_sites are file-anchored at mint (make_site_stable_id), not here."""
+        sid = make_site_stable_id("http", "a.py", "GET:/")
+        cs = _route_sym(sid, "a.py", None, id_suffix="call_site",
+                        framework_role="route", kind="call_site")
+        assert widen_route_stable_ids([cs]) == 0
+        assert cs.stable_id == sid
+
+    def test_plain_function_untouched(self) -> None:
+        sid = make_route_stable_id("GET", "/")  # arbitrary id, no route markers
+        fn = _route_sym(sid, "a.py", "python", id_suffix="function")
+        assert widen_route_stable_ids([fn]) == 0
+        assert fn.stable_id == sid
+
+    def test_none_stable_id_skipped(self) -> None:
+        none_route = _route_sym(None, "a.py", "python", id_suffix="route")
+        assert widen_route_stable_ids([none_route]) == 0
+        assert none_route.stable_id is None
+
+    def test_pathless_skipped(self) -> None:
+        sid = make_route_stable_id("GET", "/")
+        no_path = _route_sym(sid, "", "python", id_suffix="route")
+        assert widen_route_stable_ids([no_path]) == 0
 
 
 class TestMakeEntryStableId:

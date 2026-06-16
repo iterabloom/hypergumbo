@@ -92,7 +92,7 @@ from pathlib import Path
 from typing import Iterator
 from urllib.parse import urlparse
 
-from ..analyze.base import make_route_stable_id, make_symbol_id
+from ..analyze.base import make_site_stable_id, make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..url_folding import (
@@ -1335,8 +1335,13 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
         language=None,
         discovery_language=call.language,
         protocol_origin="http",
-        stable_id=make_route_stable_id(
-            call.method, _extract_path_from_url(call.url) or call.url
+        # ADR-0035 §3 / WI-napoh (v8): the HTTP client call_site is a SITE-axis
+        # node — its identity folds the declaring file's repo-relative path so two
+        # files issuing the same request do not collide cross-file. (Pre-v8 this
+        # borrowed the LOGICAL make_route_stable_id, which is file-blind.)
+        stable_id=make_site_stable_id(
+            "http", str(rel_path),
+            f"{call.method}:{_extract_path_from_url(call.url) or call.url}",
         ),
         meta={
             "http_method": call.method,

@@ -12,6 +12,29 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **stable_id v7 → v8 scheme bump — SITE-key + widened-route-key (Wave-2; WI-gokiv / WI-napoh / WI-bolup; closes INV-tazaj's corpus limb)** —
+  the Wave-2 identity gate (27-repo corpus + self-tree) confirmed the v7 producers + per-file gate are clean but
+  found the corpus collision rate was not ~0: 149 cross-file collisions, all in synthetic/linker-stamped nodes the
+  file-identity train had not reached. v8 closes the three residual classes in one atomic bump (ADR-0035 §6):
+  **(1) routes** — `make_route_stable_id` keys `route:{method}:{path}` file-blind, so the same `(method, path)` in
+  different files (express's 33 example apps) or languages (gin-Go + express-JS both minting `route:GET:/`) collided.
+  A new post-pass `widen_route_stable_ids` folds the declaring `{language}:{normalize_path(rel_path)}` onto route nodes
+  (route stays LOGICAL *in spirit* — within-app dedup is owned by the route materializer's meta-keyed `seen_routes`,
+  not by stable_id; a post-pass, not 16 producer edits, because producers carry absolute paths at mint while `sym.path`
+  is repo-relative only after normalisation). **(2) http/sql `call_site`** — these SITE-axis kinds borrowed the LOGICAL
+  `make_route_stable_id`/`make_protocol_stable_id` factories (file-blind), so the same request/query in two files
+  collided; a new `make_site_stable_id(protocol_origin, rel_path, target)` factory (dedicated `site:` namespace)
+  path-anchors them at mint (the `:occ:` within-file ordinal is still completed by
+  `split_within_file_stable_id_collisions`). **(3) CBV HTTP-verb methods** — `py.py` routed `kind="method"`
+  declarations through `make_route_stable_id(verb, class_name)` (a category error keyed on the class name, not the
+  route path); that branch is deleted so they flow through the normal file-anchored `make_typed_stable_id` /
+  `_compute_stable_id` path. The closure metric stays **all-axis** (no LOGICAL exclusion): the producer fixes drive
+  the honest count to ~0, and by-design LOGICAL kinds (message_queue/event_sourcing) are collapsed to one node by
+  `dedup_logical_synthetic_identities` so they never present as collisions. **`STABLE_ID_SCHEME` →
+  `hypergumbo-stableid-v8`; every `route` and http/sql `call_site` and CBV-verb-method `stable_id` value changed;
+  analyzer value-pin tests are unchanged (the route producers' provisional 2-arg `make_route_stable_id` id is folded
+  only in the full-pipeline post-pass).**
+
 - **stable_id v6 → v7 scheme bump — file-identity fold for the tree-sitter producers (Wave-2, WI-bokab; closes the corpus limb of INV-tazaj)** —
   the v3→v4 INV-zudob fix folded file identity into the **Python AST** path only; the ~46 tree-sitter analyzers
   passed an empty `containing_stable_id` and carried scope solely in `qualified_name`, so two

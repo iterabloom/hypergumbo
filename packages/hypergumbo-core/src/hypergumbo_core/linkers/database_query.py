@@ -55,7 +55,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..analyze.base import make_protocol_stable_id, make_symbol_id
+from ..analyze.base import make_site_stable_id, make_symbol_id
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
@@ -366,14 +366,13 @@ def _create_query_symbol(pattern: DatabaseQueryPattern, root: Path) -> Symbol:
         language=None,
         discovery_language=pattern.language,
         protocol_origin="database_query",
-        # Phase 6 PR1 (INV-hunup): was ``f"{query_type}:{tables}"`` (1-colon
-        # form, escape category ``colon_1``). The new factory hashes the
-        # (category, query_type, tables) tuple into the canonical
-        # ``sha256:<16hex>`` shape the validator pins.
-        stable_id=make_protocol_stable_id(
-            "db_query",
-            pattern.query_type,
-            ",".join(sorted(pattern.tables)),
+        # ADR-0035 §3 / WI-napoh (v8): the SQL query call_site is a SITE-axis node
+        # — its identity folds the declaring file's repo-relative path so the same
+        # query in two files does not collide cross-file. (Pre-v8 this borrowed the
+        # LOGICAL make_protocol_stable_id, which is file-blind.)
+        stable_id=make_site_stable_id(
+            "db_query", str(rel_path),
+            f"{pattern.query_type}:{','.join(sorted(pattern.tables))}",
         ),
         meta={
             "query_type": pattern.query_type,

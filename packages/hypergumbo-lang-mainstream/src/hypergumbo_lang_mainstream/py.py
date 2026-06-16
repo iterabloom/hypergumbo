@@ -407,9 +407,6 @@ def _lookup_symbol_by_module(
     return lookup_symbol(global_symbols, module_name, symbol_name)
 
 
-# HTTP methods recognized as route decorators (FastAPI, Flask 2.0+)
-HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "route"}
-
 # Django URL pattern functions (call-based routing)
 # These emit UsageContext records for YAML pattern matching (v1.1.x)
 DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
@@ -2358,40 +2355,35 @@ def _extract_file_analysis(
                     )
                     method_name = f"{class_name}.{item.name}"
 
-                    # For Django/DRF class-based views, methods named get/post/etc.
-                    # use route-style stable_id with the class as path for uniqueness
-                    # (ADR-0014 §4: sha256("route:{method}:{path}")). v6 (WI-gitun): key on the
-                    # FULL scope-qualified class name, not the bare class name, so an HTTP-verb
-                    # method of a same-named class in distinct scopes splits too (identity-neutral
-                    # for top-level CBVs, where class_scoped_name == class_name).
-                    if item.name.lower() in HTTP_METHODS:
-                        stable_id = make_route_stable_id(item.name, class_scoped_name)
+                    # v8 (WI-bolup): HTTP-verb-named methods of class-based views
+                    # (get/post/...) flow through the SAME file-anchored identity
+                    # path as every other method — make_typed_stable_id /
+                    # _compute_stable_id with containing_stable_id=symbol.stable_id
+                    # (the file-anchored parent class). Pre-v8 they were keyed via
+                    # the LOGICAL make_route_stable_id(verb, class_scoped_name),
+                    # which omits the file, so two same-named top-level CBVs' same
+                    # verb method collided cross-file (Wave-2 gate, INV-tazaj). The
+                    # route/endpoint signal lives on the SEPARATE kind="route" nodes
+                    # (below), never on the method's own identity.
+                    # INV-bazij (Phase 6 PR3): the method's qualified name threads
+                    # through name/qualified_name so two same-signature test methods
+                    # in one class don't collide.
+                    sig = _format_function_signature(item)
+                    norm_sig = normalize_python_signature(sig)
+                    modifiers = _python_visibility_modifiers(method_name)
+                    if norm_sig:
+                        stable_id = make_typed_stable_id(
+                            "method", norm_sig,
+                            visibility_from_modifiers(modifiers),
+                            symbol.stable_id,
+                            _extract_py_decorator_names(item),
+                            name=item.name, qualified_name=method_name,
+                        )
                     else:
-                        # Try typed tier first (ADR-0014 §3), fall back to untyped.
-                        # INV-bazij (Phase 6 PR3): prepend the method's
-                        # qualified name into the normalized signature so
-                        # two same-signature test methods don't collide.
-                        # The make_typed_stable_id factory hashes the
-                        # signature opaquely; threading the name through
-                        # this slot is the analyzer's responsibility per
-                        # the "factories already disambiguate via their
-                        # per-formula inputs" constraint.
-                        sig = _format_function_signature(item)
-                        norm_sig = normalize_python_signature(sig)
-                        modifiers = _python_visibility_modifiers(method_name)
-                        if norm_sig:
-                            stable_id = make_typed_stable_id(
-                                "method", norm_sig,
-                                visibility_from_modifiers(modifiers),
-                                symbol.stable_id,
-                                _extract_py_decorator_names(item),
-                                name=item.name, qualified_name=method_name,
-                            )
-                        else:
-                            stable_id = _compute_stable_id(
-                                item, containing_stable_id=symbol.stable_id,
-                                name=item.name, qualified_name=method_name,
-                            )
+                        stable_id = _compute_stable_id(
+                            item, containing_stable_id=symbol.stable_id,
+                            name=item.name, qualified_name=method_name,
+                        )
 
                     # Build rich metadata for method (ADR-0003)
                     method_meta: dict[str, object] = {}
