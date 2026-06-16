@@ -50,8 +50,10 @@ from rich.table import Table
 from . import __version__
 from .analyze.all_analyzers import run_all_analyzers
 from .analyze.base import (
+    dedup_logical_synthetic_identities,
     is_exported_from_modifiers,
     populate_synthetic_class_b_identity,
+    split_within_file_stable_id_collisions,
 )
 from .behavior_map_io import load_behavior_map
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
@@ -7893,6 +7895,16 @@ def run_behavior_map(
     # fingerprint stamping so that pass skips the now-stamped Class-B nodes).
     # Identity-neutral (per-field skip-if-set); closes META-huvuh's producer half.
     populate_synthetic_class_b_identity(all_symbols)
+
+    # ADR-0035 §3 identity reconciliation (closes INV-tazaj's producer half).
+    # Runs AFTER the enclosure post-pass (so per-site `uses` edges exist to
+    # rewire onto LOGICAL hubs) and BEFORE finalize (R1: set membership is final
+    # on finalize entry) and the deduplicate_edges call below (which collapses
+    # the now-identical rewired edges). Order matters: dedup the LOGICAL families
+    # to one hub node FIRST, then occurrence-index the remaining within-file SITE
+    # collisions so each distinct site gets a distinct stable_id.
+    dedup_logical_synthetic_identities(all_symbols, all_edges)
+    split_within_file_stable_id_collisions(all_symbols)
 
     # Check for partial installation issues (ADR-0010 Item 8)
     # Emit warnings for: unanalyzed files, partial linker requirements

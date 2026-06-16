@@ -12,6 +12,27 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **stable_id v6 identity reconciliation — per-file uniqueness achieved (Wave-2, ADR-0035 §3; advances INV-tazaj)** —
+  two post-linker passes that populate v6's reserved occurrence/dedup behavior, **staying on scheme v6** (ADR-0035
+  §6 reserved the occurrence slot precisely so this needs no scheme bump; only the colliding symbols' values change,
+  a narrow blast radius — not a corpus-wide rehash). **(1) SITE occurrence-indexing**
+  (`split_within_file_stable_id_collisions`): within one file, repeated same-target sites (SQL/HTTP call-sites, shell
+  `export`s, markdown links, manifest script entries, throwaway vars) that shared one `stable_id` are re-minted with a
+  deterministic `:occ:<n>` suffix so each distinct site gets a distinct id. **(2) LOGICAL dedup**
+  (`dedup_logical_synthetic_identities`): message-queue / event-channel topics — §3 LOGICAL "one node per logical
+  thing" — collapse to a single hub node, with every edge endpoint (`src` / `dst` / `derived_from`) that referenced a
+  dropped duplicate **rewired onto the survivor** so a topic's full publisher/subscriber connectivity is preserved
+  (the caller's `deduplicate_edges` then collapses the now-identical rewired edges). graphql is deliberately
+  **excluded** from dedup — its `graphql` protocol_origin is shared by resolver fields *and* `graphql.py` client
+  call-sites (SITE-axis, keyed on a raw operation name), so a coarse origin dedup would collapse distinct client
+  sites; graphql collisions flow to the SITE pass (1) instead. Both run post-linker (after the enclosure pass wires per-site `uses` edges) and before `finalize`
+  (R1: set membership final on finalize entry); dedup precedes the SITE split. **Measured (self-tree):** per-file
+  stable_id collisions **35 → 0** (the ADR-0035 §5 HARD gate is now clean on the real corpus); corpus-wide collisions
+  43 → 14 groups (149 → 37 symbols, 0.43% → 0.1%). **Residual (tracked, not closed):** the remaining ~14 are
+  cross-file collisions of a *different* mechanism — same-named top-level symbols in file-scoped tree-sitter languages
+  (e.g. a bash `usage()` in several scripts) whose hash omits file identity (the INV-zudob class, a corpus-wide-rehash
+  fix), plus one path-less `db_query` call-site key — out of scope for this occurrence/dedup pass and filed separately.
+
 - **stable_id v6 closure gate — the ADR-0035 §5 validator surface (Wave-2, advances INV-tazaj)** —
   three enforcement changes to the spec-validator (`validate_ir`), **validator-only** (no hash
   change, no scheme bump). **(1) Per-file uniqueness — HARD `error`:** within one file, a duplicated

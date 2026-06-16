@@ -938,6 +938,127 @@ def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
             sym.fingerprint = fingerprint
 
 
+# ADR-0035 §3 LOGICAL families: external targets that exist once regardless of
+# how many code sites reference them (a message-queue topic, an event channel).
+# Their linkers mint one Class-B stand-in per reference SITE — all sharing the
+# LOGICAL stable_id — so they dedup to one hub node per logical thing. (SITE-axis
+# stand-ins like http / sql call_sites carry a DIFFERENT protocol_origin and are
+# occurrence-indexed instead, below.)
+#
+# graphql is deliberately EXCLUDED. The `graphql` protocol_origin is shared by two
+# producers on DIFFERENT identity axes: graphql_resolver.py (resolver fields, a
+# canonical sha256 LOGICAL key) AND graphql.py's client call-sites (one stand-in per
+# call, keyed on the raw operation_name — SITE-axis). A coarse origin-only dedup
+# would silently collapse distinct client call sites (and their per-call metadata)
+# across files, so graphql collisions flow to the SITE occurrence-index pass instead;
+# the cross-file graphql residue rides the same tracked file-identity follow-up as the
+# top-level tree-sitter (INV-zudob) family.
+_LOGICAL_DEDUP_PROTOCOL_ORIGINS = frozenset({"message_queue", "event_sourcing"})
+
+
+def _occurrence_sort_key(sym: Symbol) -> tuple:
+    """Deterministic within-group order (ADR-0043 §6): span position, then id."""
+    sp = sym.span
+    return (sp.start_line, sp.start_col, sp.end_line, sp.end_col, sym.id)
+
+
+def dedup_logical_synthetic_identities(
+    symbols: list[Symbol], edges: list[Edge]
+) -> int:
+    """ADR-0035 §3 LOGICAL dedup: collapse duplicate external-target stand-ins.
+
+    Message-queue / event-channel topics are LOGICAL nodes — "one node per logical
+    thing, deduped" (ADR-0035 §3). Their linkers emit one Class-B Symbol per
+    reference SITE (each with its own ``id``), all sharing the LOGICAL
+    ``stable_id``. (graphql is excluded — see
+    :data:`_LOGICAL_DEDUP_PROTOCOL_ORIGINS`.) This collapses each duplicate group to one
+    survivor (deterministic by span/id) and rewires EVERY edge endpoint
+    (``src`` / ``dst`` / ``derived_from``) that pointed at a dropped node to the
+    survivor — so a topic's full publisher/subscriber connectivity lands on the
+    one hub node (the caller's ``deduplicate_edges`` then collapses the now-
+    identical rewired edges). Returns the count of dropped duplicate Symbols.
+
+    Runs post-linker (AFTER the enclosure post-pass wires per-site ``uses`` edges,
+    so they survive on the hub) and BEFORE ``finalize`` (R1: set membership is
+    final on finalize entry). Keyed on ``stable_id`` so only true logical
+    duplicates collapse; SITE-axis stand-ins (http / sql call_sites, whose
+    protocol_origin is not in :data:`_LOGICAL_DEDUP_PROTOCOL_ORIGINS`) are left
+    for :func:`split_within_file_stable_id_collisions`.
+    """
+    groups: dict[str, list[Symbol]] = {}
+    for sym in symbols:
+        if (
+            sym.protocol_origin in _LOGICAL_DEDUP_PROTOCOL_ORIGINS
+            and sym.stable_id is not None
+        ):
+            groups.setdefault(sym.stable_id, []).append(sym)
+    id_remap: dict[str, str] = {}
+    dropped: set[int] = set()
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        survivor = min(group, key=_occurrence_sort_key)
+        for sym in group:
+            if sym is survivor:
+                continue
+            id_remap[sym.id] = survivor.id
+            dropped.add(id(sym))
+    if not id_remap:
+        return 0
+    symbols[:] = [s for s in symbols if id(s) not in dropped]
+    for edge in edges:
+        changed = False
+        if edge.src in id_remap:
+            edge.src = id_remap[edge.src]
+            changed = True
+        if edge.dst in id_remap:
+            edge.dst = id_remap[edge.dst]
+            changed = True
+        if edge.derived_from and any(x in id_remap for x in edge.derived_from):
+            edge.derived_from = [id_remap.get(x, x) for x in edge.derived_from]
+        if changed:
+            # Force the caller's deduplicate_edges to recompute the line-
+            # insensitive key from the rewritten endpoints.
+            edge.edge_key = None
+    return len(dropped)
+
+
+def split_within_file_stable_id_collisions(symbols: list[Symbol]) -> int:
+    """ADR-0035 §3 SITE occurrence-indexing: disambiguate within-file collisions.
+
+    Within one file, two emitted Symbols sharing a ``stable_id`` are distinct code
+    SITES (repeated SQL/HTTP call sites, repeated shell ``export``s, repeated
+    markdown links, manifest script entries, …). v6 leaves them colliding because
+    the producers do not populate an occurrence index. This pass groups by
+    ``(path, stable_id)`` and, for each colliding group, re-mints the 2nd-and-later
+    members (ordered deterministically by span/id) with a ``:occ:<n>`` suffix
+    re-hash — the 1st keeps the original id. Line numbers stay OUT of identity
+    (§3); the occurrence ordinal goes in. Returns the count of re-minted ids.
+
+    Per ADR-0035 §6 the occurrence-disambiguation slot was reserved precisely so
+    this needs no scheme bump (it stays scheme v6); only the colliding symbols'
+    values change. LOGICAL stand-ins are already collapsed by
+    :func:`dedup_logical_synthetic_identities` (run first), so they present no
+    within-file collision here. Pathless / null-stable_id Symbols are out of
+    scope (this is the in-a-file guarantee).
+    """
+    groups: dict[tuple[str, str], list[Symbol]] = {}
+    for sym in symbols:
+        if sym.stable_id is None or not sym.path:
+            continue
+        groups.setdefault((sym.path, sym.stable_id), []).append(sym)
+    reminted = 0
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        for occurrence, sym in enumerate(sorted(group, key=_occurrence_sort_key)):
+            if occurrence == 0:
+                continue
+            sym.stable_id = _short_sha256(f"{sym.stable_id}:occ:{occurrence}")
+            reminted += 1
+    return reminted
+
+
 def make_typed_stable_id(
     kind: str,
     normalized_signature: str,

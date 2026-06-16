@@ -133,10 +133,28 @@ already validates *every* `Symbol.kind` (synthetic stand-ins via the `language=N
 `external_symbol` / markdown-`link` markers included) against the registry; the LOGICAL/SITE axis
 *shape* is not hash-verifiable post-hoc and remains a producer/factory concern (the
 `make_*_stable_id` factory chosen, ADR-0034). The gates are live and the fixture corpus is
-collision-free, but the self-tree still carries ~35 per-file collisions (SITE kinds whose
-`occurrence_index` is unpopulated; un-deduped LOGICAL stand-ins). **Driving those to zero is a
-producer hash change = a follow-on v7 scheme bump; INV-tazaj closes on that re-measure, not on
-this validator surface alone.**
+collision-free.
+
+**Producer reconciliation (landed; stays scheme v6 per §6).** The per-file collisions the gate
+surfaced are now driven to zero by two post-linker passes (`analyze/base.py`,
+`split_within_file_stable_id_collisions` + `dedup_logical_synthetic_identities`), run after the
+enclosure post-pass and before `finalize` (R1). SITE families (call-sites, shell `export`s,
+markdown links, manifest entries, throwaway vars) are occurrence-indexed via a deterministic
+`:occ:<n>` re-hash of the colliding 2nd+ members; the LOGICAL families (message-queue/event
+topics) are deduped to one hub node with all edges rewired onto the survivor. (graphql is
+excluded from the LOGICAL set — its `graphql` protocol_origin is shared by resolver fields and
+`graphql.py` client call-sites, so a coarse dedup would collapse distinct client sites; graphql
+collisions flow to the SITE occurrence pass instead.) This **realizes §6's reserved occurrence-disambiguation, so it carries no scheme bump**
+— the re-hash mechanism is used because Symbols do not retain their hash inputs post-mint
+(re-calling `assemble_stable_id` is impossible without widening the Symbol), but it stays scheme
+v6 and only the colliding symbols' values change (narrow blast radius, not a corpus-wide rehash).
+**Measured (self-tree):** per-file collisions 35 → 0; corpus-wide 43 → 14 groups (0.43% → 0.1%).
+**The residual ~14 are a DIFFERENT mechanism, NOT closed here:** cross-file collisions of
+same-named top-level symbols in file-scoped tree-sitter languages (e.g. a bash `usage()` defined
+in several scripts) whose hash omits file identity — the INV-zudob class, whose fix folds file
+identity into the top-level `containing_stable_id` (a genuine corpus-wide rehash), tracked
+separately. **INV-tazaj's per-file (HARD) contract is now met on the real corpus; full closure of
+the corpus-rate limb awaits that cross-file file-identity fix.**
 
 ### 6. One atomic v5→v6 scheme bump
 
