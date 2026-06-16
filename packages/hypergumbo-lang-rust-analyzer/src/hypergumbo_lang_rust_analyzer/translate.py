@@ -119,6 +119,7 @@ def reassign_rust_stable_ids(
             if source is not None:
                 parity = compute_rust_stable_id_from_source(
                     source, sym.span.start_line, sym.span.end_line,
+                    rel_path=sym.path,
                 )
                 if parity is not None:
                     new_sym = Symbol(

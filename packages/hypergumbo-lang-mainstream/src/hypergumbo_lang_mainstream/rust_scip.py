@@ -34,10 +34,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.analyze.base import (
+    make_file_stable_id,
     make_typed_stable_id,
     node_text,
     visibility_from_modifiers,
 )
+from hypergumbo_core.paths import normalize_path
 
 from hypergumbo_lang_mainstream.rust import (
     _extract_modifiers_rust,
@@ -68,6 +70,7 @@ def compute_rust_stable_id_from_source(
     source: bytes,
     start_line: int,
     end_line: int,
+    rel_path: str = "",
 ) -> Optional[str]:
     """Derive rust.py-compatible stable_id for the function at the given span.
 
@@ -75,6 +78,13 @@ def compute_rust_stable_id_from_source(
     used by ``Symbol.span`` across the codebase and by rust-analyzer's SCIP
     emit (per WI-zakub). Column precision is not required: a function
     definition is uniquely identified by its start line in well-formed Rust.
+
+    ``rel_path`` is the symbol's repo-relative path (WI-bokab v7). It is folded
+    into the typed-tier ``file_stable_id`` exactly as ``rust.py`` does — both call
+    ``make_file_stable_id("rust", normalize_path(path))`` — so the byte-for-byte
+    parity contract survives file-anchoring. Callers MUST pass the SAME repo-relative
+    path rust.py sees for the file; an empty ``rel_path`` reproduces the pre-v7
+    (file-less) id and would NOT match rust.py's anchored id.
 
     Returns ``None`` when:
 
@@ -91,6 +101,9 @@ def compute_rust_stable_id_from_source(
     tree = _parse_rust_source(source)
     if tree is None:
         return None
+
+    # WI-bokab (v7): the file anchor, byte-identical to rust.py's for the same path.
+    file_stable_id = make_file_stable_id("rust", normalize_path(rel_path)) if rel_path else ""
 
     from hypergumbo_core.analyze.base import iter_tree
 
@@ -126,6 +139,7 @@ def compute_rust_stable_id_from_source(
         return make_typed_stable_id(
             kind, norm_sig, visibility,
             name=func_name, qualified_name=full_name,
+            file_stable_id=file_stable_id,
         )
 
     return None

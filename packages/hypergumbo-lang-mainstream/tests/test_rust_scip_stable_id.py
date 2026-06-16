@@ -82,7 +82,11 @@ class TestComputeRustStableIdFromSource:
 
         source = RUST_SAMPLE.encode("utf-8")
         for (start_line, end_line), expected in baseline.items():
-            got = compute_rust_stable_id_from_source(source, start_line, end_line)
+            # rel_path mirrors the file _collect_rust_py_stable_ids writes ("sample.rs"),
+            # so the WI-bokab file anchor byte-matches rust.py's (WI-zakub parity).
+            got = compute_rust_stable_id_from_source(
+                source, start_line, end_line, rel_path="sample.rs",
+            )
             assert got == expected, (
                 f"stable_id mismatch at lines {start_line}-{end_line}: "
                 f"rust.py={expected!r} helper={got!r}"
@@ -122,7 +126,7 @@ impl Greeter for Counter {
         # Both greet methods should appear in rust.py's output.
         source = src.encode("utf-8")
         helper_ids = {
-            span: compute_rust_stable_id_from_source(source, *span)
+            span: compute_rust_stable_id_from_source(source, *span, rel_path="sample.rs")
             for span in greet_spans
         }
         for span, expected in baseline.items():
