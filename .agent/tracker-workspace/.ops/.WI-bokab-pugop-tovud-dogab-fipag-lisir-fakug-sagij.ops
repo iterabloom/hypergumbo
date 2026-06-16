@@ -1,0 +1,22 @@
+- op: create  # a55a
+  at: '2026-06-16T08:15:49Z'  # a55a
+  by: agent  # a55a
+  actor: jgstern_agent  # a55a
+  clock: 1  # a55a
+  nonce: a55a  # a55a
+  data:  # a55a
+    kind: work_item  # a55a
+    title: "stable_id: tree-sitter top-level symbols omit file identity — same-name symbols collide cross-file (e.g. bash usage() across scripts)"  # a55a
+    status: todo_hard  # a55a
+    priority: 2  # a55a
+    parent: INV-tazaj-bufod-dinuh-damoh-lubaf-zadod-jisav-duzuj  # a55a
+    tags:  # a55a
+    - stable_id  # a55a
+    - identity  # a55a
+    - analysis_quality  # a55a
+    isbefore: []  # a55a
+    duplicate_of: []  # a55a
+    not_duplicate_of: []  # a55a
+    pr_ref:  # a55a
+    description: "Residual surfaced by the stable_id v6 identity-reconciliation (PR c9b6240701, ADR-0035 §3). The within-file occurrence-index + LOGICAL-dedup passes drove self-tree per-file collisions 35->0, but ~14 cross-file corpus collision groups remain (0.1% of 35080 nodes). The dominant family: same-named TOP-LEVEL symbols in file-scoped tree-sitter languages whose hash omits file identity — e.g. a bash 'usage()' defined in scripts/ci-debug, list-my-prs, merge-pr, stop-hook-preview all share one stable_id; likewise '_log'/'assert_exit' across the tracker permission test scripts, 'run' across release scripts, 'have' across githooks. Mechanism: BaseAnalyzer.compute_stable_id (analyze/base.py) passes an empty containing_stable_id for a top-level (no-enclosing-scope) symbol, so (kind, name, '') is identical across files. The Python AST producer folds file identity (make_file_stable_id) into top-level symbols' containing (the v3->v4 fix that closed INV-zudob for Python classes); the tree-sitter BaseAnalyzer path never got the analogous fold. FIX: fold make_file_stable_id(language, path) as the containing_stable_id for top-level tree-sitter symbols (mirroring py.py). NOTE: this changes the stable_id VALUE of every top-level tree-sitter symbol = a genuine corpus-wide rehash (much larger blast radius than v7's narrow occurrence change), so it needs the scheme-bump discipline (likely a v6->v7 scheme bump, a human decision per ADR-0035 §6). Also folds in 1 cross-file db_query call_site key ('SELECT users' across 3 test files) whose self-stamped make_protocol_stable_id lacks path. Closes INV-tazaj's corpus-rate limb (the per-file HARD limb is already met)."  # a55a
+    fields: {}  # a55a

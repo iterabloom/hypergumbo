@@ -33,3 +33,18 @@
   clock: 3  # 153b
   nonce: 153b  # 153b
   message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): the spec's stable_id worked example gets rewritten wholesale under the new contract (full scope chain in hash, name retained, move-churn semantics), so don't patch the v2 -> v5 references piecemeal. Fold this cleanup into the ADR-0035 spec rewrite; waits on that rewrite landing."  # 153b
+- op: update  # e994
+  at: '2026-06-15T23:25:37Z'  # e994
+  by: agent  # e994
+  actor: jgstern_agent  # e994
+  clock: 4  # e994
+  nonce: e994  # e994
+  set:  # e994
+    status: done  # e994
+- op: discuss  # 0db1
+  at: '2026-06-15T23:25:37Z'  # 0db1
+  by: agent  # 0db1
+  actor: jgstern_agent  # 0db1
+  clock: 5  # 0db1
+  nonce: 0db1  # 0db1
+  message: "Done in PR #245. docs/hypergumbo-spec.md scheme-history backfilled with the v5->v6 transition row; all current-value mentions updated to hypergumbo-stableid-v6 (the §6 precondition: never bump onto an undocumented chain)."  # 0db1

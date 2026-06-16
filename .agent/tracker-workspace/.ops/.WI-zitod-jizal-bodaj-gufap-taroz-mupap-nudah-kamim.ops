@@ -39,3 +39,18 @@
   clock: 3  # 57b2
   nonce: 57b2  # 57b2
   message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): the stable_id contract requires name and the full scope chain in the hash, so the js_ts analyzer's insufficient hash inputs are a conformance bug against it. The new validator (per-file emit-time uniqueness + ~0 corpus collision) will catch regressions. Waits on the analyzer fix."  # 57b2
+- op: update  # 38e9
+  at: '2026-06-15T23:25:36Z'  # 38e9
+  by: agent  # 38e9
+  actor: jgstern_agent  # 38e9
+  clock: 4  # 38e9
+  nonce: '38e9'  # 38e9
+  set:  # 38e9
+    status: done  # 38e9
+- op: discuss  # 65e2
+  at: '2026-06-15T23:25:36Z'  # 65e2
+  by: agent  # 65e2
+  actor: jgstern_agent  # 65e2
+  clock: 5  # 65e2
+  nonce: '65e2'  # 65e2
+  message: "Done in PR #245 (ADR-0035 §1). make_typed_stable_id gains MANDATORY name/qualified_name folded into the typed-tier hash; 24 call sites updated across 13 analyzers (rust_scip mirrors rust for the SCIP-dedup contract). Distinct-named TS function/method symbols with identical normalized signature no longer collapse."  # 65e2

@@ -72,3 +72,32 @@
   clock: 7  # 4cc7
   nonce: 4cc7  # 4cc7
   message: "2026-06-10 design-interview ruling (ADR-0035, merged in PR #4181): stable_id is a unique-within-run key with the full scope chain and name in the hash; it survives line drift/body edits and churns on file move/rename (move tracking belongs to fingerprint/shape_id). Validator = per-file emit-time uniqueness plus ~0 corpus collisions with the None-cohort counted. Stays violated until the hash-input fixes land; re-validate against the new validator."  # 4cc7
+- op: update  # 16e0
+  at: '2026-06-15T23:25:58Z'  # 16e0
+  by: agent  # 16e0
+  actor: jgstern_agent  # 16e0
+  clock: 8  # 16e0
+  nonce: '16e0'  # 16e0
+  set:  # 16e0
+    status: pending_validation  # 16e0
+- op: discuss  # 3fb4
+  at: '2026-06-15T23:25:58Z'  # 3fb4
+  by: agent  # 3fb4
+  actor: jgstern_agent  # 3fb4
+  clock: 9  # 3fb4
+  nonce: 3fb4  # 3fb4
+  message: "PRODUCER HALF landed in PR #245 (stable_id v6 atomic bump, ADR-0035 §1/§4/§6): full scope-chain hash (WI-gitun done), §4 path-anchoring on module/interface/type/entry + manifest-path dependency (WI-titiz done), typed-tier mandatory name/qualified_name (WI-zitod done), body_sig dropped, py.py unified onto the shared assemble_stable_id, STABLE_ID_SCHEME v5->v6, occurrence_index slot (=0). Closure gate (ADR-0035 §5) is a closely-following PR2 — NOT yet done: (a) per-file emit-time uniqueness HARD check (error, zero tolerance); (b) whole-corpus collision threshold 5%->~0 with the None-cohort IN the denominator; (c) kind->axis conformance; (d) ratchet test_validation_report_empty baselines down on the v6 collision shrink (deferred from PR1, where the shrink-only gate passed without it); (e) full-corpus re-measure as POSITIVE closure evidence. Keeps awaits_bakeoff_validation. violated -> pending_validation."  # 3fb4
+- op: discuss  # e601
+  at: '2026-06-16T04:28:53Z'  # e601
+  by: agent  # e601
+  actor: jgstern_agent  # e601
+  clock: 10  # e601
+  nonce: e601  # e601
+  message: "ADR-0035 §5 VALIDATOR SURFACE landed in PR2 (commit 1350fa06dd, validator-only, no hash change). Behavioral evidence: validate_ir now (a) emits a HARD per-file uniqueness error per colliding (path, stable_id) group, (b) fires the corpus umbrella on ANY collision (threshold 5%->~0) over an all-Symbols denominator with the None-cohort counted+disclosed, (c) always surfaces validation_report.stable_id_stats. §5 kind->axis is satisfied by the pre-existing axis_conformance kind-in-registry check (no new code). Measured: fixture corpus collision-free (ratchet 12->11); SELF-TREE still carries ~35 per-file collision groups (43 corpus-wide / 149 symbols, 0.43%) across SITE families (call_site sql/http, shell export, markdown link [WI-sirid], manifest file) and LOGICAL families (message_queue/graphql stand-ins). These are NOT closed: the per-file check SURFACES them. Closing INV-tazaj requires the v7 producer fix (populate occurrence_index for SITE kinds / dedup LOGICAL stand-ins) + a clean full-corpus re-measure. Stays pending_validation + awaits_bakeoff_validation."  # e601
+- op: discuss  # b778
+  at: '2026-06-16T08:16:38Z'  # b778
+  by: agent  # b778
+  actor: jgstern_agent  # b778
+  clock: 11  # b778
+  nonce: b778  # b778
+  message: "PRODUCER RECONCILIATION landed in PR c9b6240701 (ADR-0035 §3, stays scheme v6 per §6). Two post-linker passes: split_within_file_stable_id_collisions (SITE occurrence-index, :occ:<n> re-hash) + dedup_logical_synthetic_identities (message_queue/event_sourcing LOGICAL dedup to one hub, edges rewired). BEHAVIORAL EVIDENCE (self-tree re-measure via run_behavior_map, 35080 nodes): per-file stable_id collision groups 35 -> 0 (the ADR-0035 §5 HARD per-file uniqueness gate is now CLEAN on the real corpus); corpus-wide collisions 43->14 groups, 149->37 symbols (0.43% -> 0.1%). Adversarially reviewed (4 dims, skeptic-verified); only confirmed finding was a graphql allowlist over-inclusion (graphql protocol_origin shared by resolver fields + client call-sites), fixed by excluding graphql from the LOGICAL set so client sites are not collapsed. STATUS: the per-file HARD limb of this META is MET; the corpus-rate limb is NOT yet ~0 — the residual 14 are a distinct mechanism (same-named top-level tree-sitter symbols, e.g. bash usage() across scripts, whose hash omits file identity — the INV-zudob class for tree-sitter, never folded for the BaseAnalyzer path) filed as WI-bokab (fix = fold file identity into tree-sitter top-level containing_stable_id, a corpus-wide rehash needing a scheme-bump decision). Stays pending_validation + awaits_bakeoff_validation until WI-bokab closes the corpus limb and a bakeoff confirms the collision-rate movement."  # b778
