@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """WI-bokab (v7) completeness gate: every tree-sitter producer anchors file identity.
 
-A grammar-free, AST-based structural lint over ``packages/hypergumbo-lang-*/src``: every
-call to ``compute_stable_id`` (the untyped tier, called as ``<analyzer>.compute_stable_id``)
+A grammar-free, AST-based structural lint over every package's ``src`` tree
+(``packages/*/src``): every call to ``compute_stable_id`` (the untyped tier, called as ``<analyzer>.compute_stable_id``)
 or ``make_typed_stable_id`` (the typed tier, an imported free function) MUST pass a
 ``file_stable_id=`` keyword. That is the WI-bokab fold (ADR-0035 §1/§4) that gives
 file-resident symbols a per-file identity so same-``(kind, name, qualified_name)`` symbols
@@ -27,8 +27,11 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _TARGET_CALLS = {"compute_stable_id", "make_typed_stable_id"}
-# py.py uses the containing_stable_id idiom (it is the AST analyzer, not tree-sitter).
-_EXEMPT_FILENAMES = {"py.py"}
+# py.py uses the containing_stable_id idiom (it is the AST analyzer, not tree-sitter):
+# it threads the file id / enclosing-class id through the *positional* containing slot,
+# not via file_stable_id=. Keyed on the full relative path so a future same-named file
+# under another package is NOT silently exempted.
+_EXEMPT_PATH_SUFFIXES = ("hypergumbo_lang_mainstream/py.py",)
 
 
 def _called_name(call: ast.Call) -> str | None:
@@ -45,10 +48,13 @@ def _producer_calls_missing_anchor() -> list[str]:
     """Return ``file:line`` for every producer call lacking a ``file_stable_id=`` kwarg."""
     violations: list[str] = []
     found = 0
-    src_files = sorted(_REPO_ROOT.glob("packages/hypergumbo-lang-*/src/**/*.py"))
-    assert src_files, f"no analyzer sources found under {_REPO_ROOT}/packages/hypergumbo-lang-*/src"
+    # Repo-wide scope (every package's src), not just hypergumbo-lang-* — a producer
+    # call added to hypergumbo-core or a future package must not false-pass the gate.
+    src_files = sorted(_REPO_ROOT.glob("packages/*/src/**/*.py"))
+    assert src_files, f"no package sources found under {_REPO_ROOT}/packages/*/src"
     for path in src_files:
-        if path.name in _EXEMPT_FILENAMES:
+        rel = path.relative_to(_REPO_ROOT).as_posix()
+        if any(rel.endswith(suffix) for suffix in _EXEMPT_PATH_SUFFIXES):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
@@ -60,9 +66,11 @@ def _producer_calls_missing_anchor() -> list[str]:
             if not any(kw.arg == "file_stable_id" for kw in node.keywords):
                 rel = path.relative_to(_REPO_ROOT)
                 violations.append(f"{rel}:{node.lineno}")
-    # Non-vacuous guard: there are dozens of producer call sites; if the scan finds
-    # almost none, the matcher silently broke (e.g. a refactor renamed the entrypoints).
-    assert found >= 30, f"producer-call scan found only {found} calls — matcher likely broken"
+    # Non-vacuous guard: there are ~117 producer call sites across the analyzers. A floor
+    # well below that (but far above 0) catches a total matcher break AND a large partial
+    # regression (e.g. a refactor that silently stops matching one entrypoint or deletes
+    # many analyzers) rather than only the rename-to-zero case.
+    assert found >= 100, f"producer-call scan found only {found} calls — matcher likely broken"
     return violations
 
 

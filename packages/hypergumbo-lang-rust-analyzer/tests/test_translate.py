@@ -9,6 +9,7 @@ to end. No live ``rust-analyzer`` invocation — that arrives in Slice B.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import pytest
@@ -151,6 +152,34 @@ class TestReassignRustStableIds:
             # Happy path: parity overwrote the id; new id must be a
             # hex-style typed stable_id (make_typed_stable_id output).
             assert ":" in out[0].stable_id or len(out[0].stable_id) > 8
+
+    def test_parity_byte_matches_rust_py_for_nested_path(self, tmp_path: Path) -> None:
+        """WI-bokab v7: the SCIP parity helper's id must byte-EQUAL ``analyze_rust``'s id
+        for the same function at the same repo-relative NESTED path. Post-v7 the file path
+        is folded into the typed-tier hash, so a path-representation divergence between the
+        SCIP backend (``doc.relative_path`` -> ``sym.path``) and rust.py's
+        ``str(source_file.relative_to(repo_root))`` would silently break cross-pass dedup
+        (double-counting). tree-sitter-rust is a hard dependency of the rust analyzer, so
+        no graceful-degrade guard is needed — a missing grammar must fail loudly."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        src = "pub fn add(a: i32, b: i32) -> i32 { a + b }\n"
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "lib.rs").write_text(src)
+        baseline = {
+            (s.span.start_line, s.span.end_line): s.stable_id
+            for s in analyze_rust(tmp_path).symbols
+            if s.name == "add" and s.stable_id
+        }
+        assert baseline, "rust.py produced no stable_id for add at src/lib.rs"
+        span, expected = next(iter(baseline.items()))
+
+        sym = self._symbol(path="src/lib.rs", span=Span(span[0], span[1], 0, 0))
+        out = reassign_rust_stable_ids([sym], lambda _p: src.encode("utf-8"))
+        assert out[0].stable_id == expected, (
+            "SCIP parity broke under v7 file-anchoring at nested path src/lib.rs: "
+            f"helper={out[0].stable_id!r} rust.py={expected!r}"
+        )
 
     def test_source_cached_per_path(self) -> None:
         """Reader fires once per path even when multiple symbols share it."""
