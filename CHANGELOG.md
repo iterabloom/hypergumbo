@@ -12,6 +12,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **stable_id v6 → v7 scheme bump — file-identity fold for the tree-sitter producers (Wave-2, WI-bokab; closes the corpus limb of INV-tazaj)** —
+  the v3→v4 INV-zudob fix folded file identity into the **Python AST** path only; the ~46 tree-sitter analyzers
+  passed an empty `containing_stable_id` and carried scope solely in `qualified_name`, so two
+  same-`(kind, name, qualified_name)` symbols in different files collided cross-file (confirmed cross-language:
+  Go `main`/`init`, Rust `project_root`, TS `createMockClient`, bash `usage()`). v7 threads
+  `make_file_stable_id(lang, normalize_path(rel_path))` into the `containing_stable_id` slot of the two shared
+  producer entrypoints — `compute_stable_id` (untyped tier) and `make_typed_stable_id` (typed tier) — at **every**
+  producer call site (a new `file_stable_id=` argument the shared formula folds when no enclosing-scope containing
+  is supplied; an explicit containing always wins). A grammar-independent AST lint
+  (`test_wibokab_producer_anchoring_lint.py`) guards completeness across the long tail of analyzers. The
+  `rust.py` ↔ `rust_scip.py` byte-for-byte SCIP-parity contract (WI-zakub) is preserved by anchoring both backends
+  with the identical repo-relative path. **`STABLE_ID_SCHEME` → `hypergumbo-stableid-v7`; every tree-sitter-language
+  `stable_id` value changed; Python (`py.py`) values are unchanged (already file-anchored since v4).** Measured:
+  cross-file corpus collisions on a Rust/Go/TS/bash sample dropped to 0. This resolves the cross-file residual the
+  v6 reconciliation entry (below) explicitly deferred.
+
 - **stable_id v6 identity reconciliation — per-file uniqueness achieved (Wave-2, ADR-0035 §3; advances INV-tazaj)** —
   two post-linker passes that populate v6's reserved occurrence/dedup behavior, **staying on scheme v6** (ADR-0035
   §6 reserved the occurrence slot precisely so this needs no scheme bump; only the colliding symbols' values change,
