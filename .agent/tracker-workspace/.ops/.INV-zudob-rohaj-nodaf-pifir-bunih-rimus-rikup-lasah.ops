@@ -101,3 +101,19 @@
   clock: 11  # 0914
   nonce: '0914'  # 0914
   message: "[Wave-0 pending-validation sweep] INV-zudob satisfied — cross-module class collision fix shipped in PR #3891 (commit 2d62c818bf). File identity now properly threaded through hash. Post-fix empirical residue 1.76% (down from 18.94%) is same-file identical-body groups, preserved by design per docstring contract. ADR-0035 (merged 2026-06-11, design ruling 2026-06-10) specifies v6 further enhancement using full scope chain, but this is future implementation (\"Waits on hash-input implementation\"), not a regression of current v5 behavior. [HYGIENE OVERRIDE NOTE] Satisfied for the cross-module-distinction invariant (PR #3891, file-path in hash). The SAME-FILE-residue policy (INV-zudob's load-bearing teaching: the (stable_id, canonical_name) join field was removed by ADR-0032) is a DISTINCT facet that the stable_id v6 property test must re-decide — carried forward to the Wave-2 identity train, not closed here."  # 0914
+- op: update  # 62dd
+  at: '2026-06-16T19:31:36Z'  # 62dd
+  by: agent  # 62dd
+  actor: jgstern_agent  # 62dd
+  clock: 12  # 62dd
+  nonce: 62dd  # 62dd
+  set: {}  # 62dd
+  remove:  # 62dd
+    tags: [awaits_bakeoff_validation]  # 62dd
+- op: discuss  # baba
+  at: '2026-06-16T19:31:36Z'  # baba
+  by: agent  # baba
+  actor: jgstern_agent  # baba
+  clock: 13  # baba
+  nonce: baba  # baba
+  message: "MOVED (Wave-2 identity gate self-tree, Python-heavy 35082 non-null symbols). Cross-module structurally-identical CLASSES are file-anchored and distinct: the only colliding Python nodes are route-synthesis handlers and ONE CBV HTTP-verb method, NOT plain cross-module classes; the adversarial review verified the parent class ids differ cross-file (py.py:2333-2335 folds make_file_stable_id). INV-zudob class-level claim holds. Tag stripped. The CBV-method residual (py.py:2368) is a sibling-but-distinct method-level gap filed as WI-bolup, NOT an INV-zudob regression."  # baba

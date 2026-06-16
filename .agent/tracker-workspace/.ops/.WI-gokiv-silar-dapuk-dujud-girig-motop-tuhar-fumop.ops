@@ -1,0 +1,38 @@
+- op: create  # eb76
+  at: '2026-06-16T19:30:48Z'  # eb76
+  by: agent  # eb76
+  actor: jgstern_agent  # eb76
+  clock: 1  # eb76
+  nonce: eb76  # eb76
+  data:  # eb76
+    kind: work_item  # eb76
+    title: "DECISION: route kind LOGICAL-vs-SITE + INV-tazaj closure-metric LOGICAL-axis exclusion (146-node route collision class, Wave-2 gate)"  # eb76
+    status: needs_human_review  # eb76
+    priority: 1  # eb76
+    parent: INV-tazaj-bufod-dinuh-damoh-lubaf-zadod-jisav-duzuj  # eb76
+    tags:  # eb76
+    - stable_id  # eb76
+    - identity  # eb76
+    - analysis_quality  # eb76
+    - dogfood_corpus_20260616  # eb76
+    isbefore: []  # eb76
+    duplicate_of: []  # eb76
+    not_duplicate_of: []  # eb76
+    pr_ref:  # eb76
+    description: "**DECISION NEEDED (Wave-2 identity gate, 2026-06-16). Would revise the settled ADR-0035 §3 ruling that `route` = LOGICAL — surfacing for human ruling rather than overriding unilaterally.**\n\n**Two coupled questions, both gating INV-tazaj closure and the v7→v8 scheme-bump scope:**\n\n**Q1 — Is `route` correctly LOGICAL, or should it be SITE / scoped?** The Wave-2 gate found 146 of 149 corpus stable_id collisions are `route`-kind nodes. `make_route_stable_id(method, path)` (base.py:548) hashes `route:{method}:{path}` file-blind. ADR-0035 §3 (the 2026-06-10 design-interview ruling, \"decided, not a proposal\") classifies `route` as LOGICAL \"(unchanged, ADR-0014 §4)\", so this file-blindness is the documented contract.\n\nAdversarial review SPLIT (medium confidence the violation verdict is wrong):\n- *For keeping LOGICAL (skeptic, the refutation):* (a) ADR-0035 §3 decided it; (b) NO production consumer keys on route stable_id — `linkers/route_handler.py` builds `routes_to` edges on `Symbol.id` (path+span unique), so the \"wrong-source reverse-lookup\" harm has no referent; (c) WI-misud (framework_patterns.py:1798-1800) DELIBERATELY dedups handler routes cross-file (\"Django urls.py + views.py declaring the same route\" → one registration), per-file-distinct ONLY for `kind=file` server entry points.\n- *For SITE / re-scoping (investigator):* cross-LANGUAGE collision — `gin` (Go) and `express` (JS) both emit `sha256:1f804e03235b87dc` for `route:GET:/` — cannot be \"one logical endpoint\"; and express's 33-way collision is across 33 INDEPENDENT example apps in one repo, which LOGICAL-by-method:path wrongly merges.\n\nRecommendation: route stays LOGICAL in concept (cross-file dedup WITHIN one app is desirable) but the identity is UNDER-SCOPED — fold at least `language` (and likely the app/package root) so cross-language and cross-app routes don't collide, while urls.py+views.py within an app still dedup.\n\n**Q2 — Should the INV-tazaj closure metric exclude LOGICAL-axis kinds?** The current corpus-collision count (the probe + the ADR-0035 §5 corpus umbrella) counts ALL shared stable_ids, including LOGICAL-axis kinds (route, message_queue, event_sourcing) whose shared identity is BY DESIGN (dedup-to-hub is the feature). ADR-0035 §1 forbids \"by-design collisions [of] semantically distinct symbols\" — but LOGICAL nodes are NOT semantically distinct (same logical target). So the closure metric should count only SITE-axis + declaration-kind collisions. Under that re-spec, the gate's REAL violations are CLASS 2 (31 http/sql SITE call_sites) + CLASS 3 (2 CBV methods) = 33; the 146 route nodes are excluded once route identity is correctly scoped (Q1).\n\n**Consequence.** This item + its two sibling items (CLASS 2, CLASS 3) define the v7→v8 scheme bump scope and the corrected INV-tazaj closure criterion. Fix shape per roadmap: factory/post-pass + content-gated SITE-axis validator, one atomic scheme bump (ADR-0035 §6). Evidence: ~/hypergumbo_lab_notebook/wave2_identity_gate_06162026_1904.md."  # eb76
+    fields: {}  # eb76
+- op: update  # d272
+  at: '2026-06-16T20:00:45Z'  # d272
+  by: agent  # d272
+  actor: jgstern_agent  # d272
+  clock: 2  # d272
+  nonce: d272  # d272
+  set:  # d272
+    status: todo_hard  # d272
+- op: discuss  # 0364
+  at: '2026-06-16T20:00:45Z'  # 0364
+  by: agent  # 0364
+  actor: jgstern_agent  # 0364
+  clock: 3  # 0364
+  nonce: '0364'  # 0364
+  message: "HUMAN RULING (2026-06-16): keep route LOGICAL in spirit, WIDEN the key — add language + app/package root so within-app urls.py+views.py still dedup but cross-app/cross-language do NOT. Coupled metric decision RULED: INV-tazaj closure metric counts SITE-axis + declaration kinds only; LOGICAL-axis by-design dedup (route, message_queue, event_sourcing) EXCLUDED. This item becomes the route-key-widening implementation, shipped in the one atomic v7->v8 bump alongside WI-napoh (call_site SITE-key) + WI-bolup (CBV-method). Design note: 'app/package root' must distinguish express's 33 example apps (one manifest) while preserving Django urls.py+views.py dedup — exact scope-component formula to be pinned in design (manifest-scope vs handler-identity vs path-root); language fold is unconditional (fixes the gin-Go+express-JS cross-language collision). needs_human_review -> todo_hard (decided)."  # 0364

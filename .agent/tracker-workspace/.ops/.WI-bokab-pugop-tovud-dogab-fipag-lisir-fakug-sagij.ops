@@ -44,3 +44,19 @@
   set: {}  # 58b3
   add:  # 58b3
     tags: [awaits_bakeoff_validation]  # 58b3
+- op: update  # 6d02
+  at: '2026-06-16T19:31:35Z'  # 6d02
+  by: agent  # 6d02
+  actor: jgstern_agent  # 6d02
+  clock: 5  # 6d02
+  nonce: 6d02  # 6d02
+  set: {}  # 6d02
+  remove:  # 6d02
+    tags: [awaits_bakeoff_validation]  # 6d02
+- op: discuss  # 39a6
+  at: '2026-06-16T19:31:35Z'  # 39a6
+  by: agent  # 39a6
+  actor: jgstern_agent  # 39a6
+  clock: 6  # 39a6
+  nonce: 39a6  # 39a6
+  message: "MOVED (Wave-2 identity gate, 2026-06-16, 27-repo corpus + self-tree @ scheme v7 commit 7577945512). WI-bokab claim VALIDATED: per-file uniqueness gate is 0 in EVERY repo, and NOT ONE plain base-tree-sitter top-level symbol collides cross-file (the exact class WI-bokab fixed). The smoke-test cohort tree-sitter top-level collisions (vte/imara-diff/compose-go/docker-credential-helpers/claude-agent-acp) all measure 0. Remaining corpus collisions (56 groups/149 symbols) are DIFFERENT classes WI-bokab structurally carved out: route synthesis make_route_stable_id (146, WI-gokiv decision), http/sql call_site SITE-key (31, WI-napoh), py.py CBV-method (2, WI-bolup) — NOT a WI-bokab regression. Tag stripped. Cohort + taxonomy: hypergumbo_lab_notebook/wave2_identity_gate_06162026_1904.md."  # 39a6
