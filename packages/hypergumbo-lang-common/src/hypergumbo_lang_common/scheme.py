@@ -136,7 +136,10 @@ def _extract_scheme_symbols(
                         node.start_point[0] + 1, node.end_point[0] + 1,
                         name, "function",
                     ),
-                    stable_id=analyzer.compute_stable_id(node, kind="function", name=name),
+                    stable_id=analyzer.compute_stable_id(
+                        node, kind="function", name=name,
+                        file_stable_id=analyzer._file_anchor(rel_path),
+                    ),
                     name=name,
                     kind="function",
                     language="scheme",
@@ -163,7 +166,10 @@ def _extract_scheme_symbols(
                         node.start_point[0] + 1, node.end_point[0] + 1,
                         name, "variable",
                     ),
-                    stable_id=analyzer.compute_stable_id(node, kind="variable", name=name),
+                    stable_id=analyzer.compute_stable_id(
+                        node, kind="variable", name=name,
+                        file_stable_id=analyzer._file_anchor(rel_path),
+                    ),
                     name=name,
                     kind="variable",
                     language="scheme",

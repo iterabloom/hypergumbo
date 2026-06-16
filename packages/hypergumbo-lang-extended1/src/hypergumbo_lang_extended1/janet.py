@@ -149,14 +149,22 @@ class JanetAnalyzer(TreeSitterAnalyzer):
         for _ in rel_parts:
             repo_root = repo_root.parent
 
+        # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path``
+        # is the repo-relative path (the named parameter threaded from analyze()), so
+        # folding it into compute_stable_id's containing slot makes same-(kind, name,
+        # qualified_name) symbols in different files hash distinctly — additive, since
+        # tree-sitter producers carry no enclosing-scope containing today.
+        file_stable_id = self._file_anchor(rel_path)
         self._extract_symbols_recursive(
-            tree.root_node, file_path, repo_root, rel_path, run, analysis
+            tree.root_node, file_path, repo_root, rel_path, run, analysis,
+            file_stable_id,
         )
         return analysis
 
     def _extract_symbols_recursive(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         rel_path: str, run: "AnalysisRun", analysis: FileAnalysis,
+        file_stable_id: str,
     ) -> None:
         """Extract symbols from a syntax tree node recursively."""
         if node.type == "extra_defs":
@@ -167,7 +175,10 @@ class JanetAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("janet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "fn"),
-                    stable_id=self.compute_stable_id(node, kind="fn", name=name),
+                    stable_id=self.compute_stable_id(
+                        node, kind="fn", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                     name=name,
                     kind="function",
                     language="janet",
@@ -193,7 +204,10 @@ class JanetAnalyzer(TreeSitterAnalyzer):
             if name:
                 sym = Symbol(
                     id=make_symbol_id("janet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "var"),
-                    stable_id=self.compute_stable_id(node, kind="var", name=name),
+                    stable_id=self.compute_stable_id(
+                        node, kind="var", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                     name=name,
                     kind="variable",
                     language="janet",
@@ -214,7 +228,8 @@ class JanetAnalyzer(TreeSitterAnalyzer):
         # Recursively process children
         for child in node.children:
             self._extract_symbols_recursive(
-                child, path, repo_root, rel_path, run, analysis
+                child, path, repo_root, rel_path, run, analysis,
+                file_stable_id,
             )
 
     def extract_edges_from_file(

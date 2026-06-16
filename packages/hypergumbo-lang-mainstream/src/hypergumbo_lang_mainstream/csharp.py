@@ -53,12 +53,14 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
     node_text,
     populate_docstrings_from_tree,
     visibility_from_modifiers,
 )
+from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
@@ -648,10 +650,20 @@ def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
+    rel_path: str,
 ) -> FileAnalysis:
     """Extract symbols from a single C# file.
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
+
+    ``rel_path`` is the repo-relative path of ``file_path`` (computed by the
+    ``analyze()`` override, which holds ``repo_root``). It is the WI-bokab (v7)
+    file-identity input — folded into ``make_typed_stable_id``'s
+    ``containing_stable_id`` slot so same-``(kind, name, qualified_name)`` methods
+    and constructors in different files hash distinctly. ``file_path`` itself is
+    ABSOLUTE here (it comes from ``find_csharp_files(repo_root)``), so it must NOT
+    be used for the anchor — folding an absolute path would make stable_ids
+    location-dependent.
     """
     try:
         source = file_path.read_bytes()
@@ -659,6 +671,13 @@ def _extract_symbols_from_file(
     except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
         run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
         return FileAnalysis()
+
+    # WI-bokab (v7): file-identity anchor for this file's symbols. Built from the
+    # repo-relative ``rel_path`` (NOT the absolute ``file_path``) so it byte-matches
+    # the file Symbol's own stable_id (``populate_kind_stable_ids`` computes the same
+    # value from the normalized repo-relative path). Folded into
+    # make_typed_stable_id's containing slot below.
+    file_stable_id = make_file_stable_id("csharp", normalize_path(rel_path))
 
     # Extract using aliases for disambiguation
     using_aliases = _extract_using_aliases(tree, source)
@@ -849,6 +868,7 @@ def _extract_symbols_from_file(
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=name, qualified_name=full_name,
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 ns_name = _get_csharp_enclosing_namespace(node, source)
@@ -901,6 +921,7 @@ def _extract_symbols_from_file(
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
                     name=name, qualified_name=full_name,
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 ns_name = _get_csharp_enclosing_namespace(node, source)
@@ -1678,7 +1699,12 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
             if max_files is not None and len(file_analyses) >= max_files:
                 break  # pragma: no cover
 
-            analysis = _extract_symbols_from_file(cs_file, parser, run)
+            # WI-bokab (v7): compute the repo-relative path here (where repo_root
+            # is in scope) and thread it down. ``cs_file`` from
+            # find_csharp_files(repo_root) is ABSOLUTE; folding it would make
+            # stable_ids location-dependent (the absolute-path regression trap).
+            rel_path = str(cs_file.relative_to(repo_root))
+            analysis = _extract_symbols_from_file(cs_file, parser, run, rel_path)
             if analysis.symbols:
                 file_analyses[cs_file] = analysis
             else:

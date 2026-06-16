@@ -91,7 +91,15 @@ def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tre
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        stable_id=analyzer.compute_stable_id(node, kind=kind, name=name),
+        stable_id=analyzer.compute_stable_id(
+            node, kind=kind, name=name,
+            # WI-bokab (v7): fold the declaring file's identity so two symbols
+            # with the same (kind, name) in different files hash distinctly.
+            # ``rel_path`` is the repo-relative path threaded down from
+            # extract_symbols_from_file; the base helper byte-matches the file
+            # Symbol's own stable_id.
+            file_stable_id=analyzer._file_anchor(rel_path),
+        ),
         signature=signature,
         meta=meta,
     )

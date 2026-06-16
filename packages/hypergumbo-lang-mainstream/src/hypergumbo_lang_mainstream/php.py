@@ -52,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     make_file_id,
+    make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -59,6 +60,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     visibility_from_modifiers,
 )
+from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
@@ -810,6 +812,17 @@ def _extract_symbols(
             file_name = str(file_path.relative_to(repo_root))
         except ValueError:  # pragma: no cover - defensive
             pass
+
+    # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_path`` is
+    # ABSOLUTE here (the analyze() override discovers files via find_php_files(repo_root),
+    # which yields absolute paths), so we anchor on the repo-relative ``file_name`` computed
+    # above — folding an absolute path would make the stable_id location-dependent (a
+    # regression). Folded into make_typed_stable_id's containing slot so same-name
+    # functions/methods in different files hash distinctly. Byte-matches the file node's own
+    # stable_id (make_file_stable_id over the normalized repo-relative path). For the legacy
+    # repo_root-less test path, ``file_name`` degrades to ``str(file_path)`` (same fallback
+    # the file pseudo-node uses).
+    file_stable_id = make_file_stable_id("php", normalize_path(file_name))
     module_symbol = Symbol(
         id=make_file_id("php", str(file_path)),
         name=file_name,
@@ -843,6 +856,7 @@ def _extract_symbols(
                     "function", norm_sig, visibility_from_modifiers(modifiers),
                     name=name,
                     qualified_name=_make_php_qualified_name(namespace_name, None, name),
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -920,6 +934,7 @@ def _extract_symbols(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=name,
                     qualified_name=_make_php_qualified_name(namespace_name, enclosing_class, name),
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 symbol = Symbol(

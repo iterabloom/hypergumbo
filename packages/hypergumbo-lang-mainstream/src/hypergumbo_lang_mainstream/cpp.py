@@ -351,6 +351,15 @@ def _extract_symbols_from_tree(
     """Extract symbols from a single C++ file."""
     analysis = FileAnalysis()
 
+    # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path`` is
+    # the repo-relative path (the base class computes it via
+    # ``source_file.relative_to(repo_root)`` and the extract override threads it
+    # here). Folded into compute_stable_id's containing slot so same-name
+    # classes/structs/enums/functions/methods in different files hash distinctly.
+    # Reuses the base helper so the value byte-matches the file Symbol's own
+    # stable_id (both use make_file_stable_id("cpp", normalize_path(rel_path))).
+    file_stable_id = _analyzer._file_anchor(rel_path)
+
     # Extract namespace aliases for ADR-0007
     analysis.import_aliases = _extract_namespace_aliases(tree.root_node, source)
 
@@ -383,7 +392,10 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    stable_id=_analyzer.compute_stable_id(node, kind="class", name=name),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind="class", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -423,7 +435,10 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    stable_id=_analyzer.compute_stable_id(node, kind="struct", name=name),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind="struct", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -458,7 +473,10 @@ def _extract_symbols_from_tree(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="enum", name=name),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind="enum", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -495,7 +513,10 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
-                    stable_id=_analyzer.compute_stable_id(node, kind=kind, name=name),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind=kind, name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

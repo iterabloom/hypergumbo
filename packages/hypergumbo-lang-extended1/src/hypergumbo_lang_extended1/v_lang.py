@@ -164,14 +164,22 @@ class VAnalyzer(TreeSitterAnalyzer):
         for _ in rel_parts:
             repo_root = repo_root.parent
 
+        # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path`` is
+        # the repo-relative path threaded from the base extract loop; folded into
+        # compute_stable_id's containing slot so same-(kind, name, qualified_name)
+        # symbols in different files hash distinctly. Computed once and reused.
+        file_stable_id = self._file_anchor(rel_path)
+
         self._extract_symbols_recursive(
-            tree.root_node, file_path, repo_root, rel_path, run, analysis
+            tree.root_node, file_path, repo_root, rel_path, run, analysis,
+            file_stable_id,
         )
         return analysis
 
     def _extract_symbols_recursive(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         rel_path: str, run: "AnalysisRun", analysis: FileAnalysis,
+        file_stable_id: str,
     ) -> None:
         """Extract symbols from a syntax tree node recursively."""
         if node.type == "function_declaration":
@@ -187,7 +195,7 @@ class VAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "fn"),
-                    stable_id=self.compute_stable_id(node, kind="fn", name=name),
+                    stable_id=self.compute_stable_id(node, kind="fn", name=name, file_stable_id=file_stable_id),
                     name=name,
                     kind="function",
                     language="v",
@@ -214,7 +222,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                 is_pub = _is_public(node)
                 sym = Symbol(
                     id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "struct"),
-                    stable_id=self.compute_stable_id(node, kind="struct", name=name),
+                    stable_id=self.compute_stable_id(node, kind="struct", name=name, file_stable_id=file_stable_id),
                     name=name,
                     kind="class",
                     language="v",
@@ -239,7 +247,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                 is_pub = _is_public(node)
                 sym = Symbol(
                     id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
-                    stable_id=self.compute_stable_id(node, kind="enum", name=name),
+                    stable_id=self.compute_stable_id(node, kind="enum", name=name, file_stable_id=file_stable_id),
                     name=name,
                     kind="enum",
                     language="v",
@@ -263,7 +271,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                 is_pub = _is_public(node)
                 sym = Symbol(
                     id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "interface"),
-                    stable_id=self.compute_stable_id(node, kind="interface", name=name),
+                    stable_id=self.compute_stable_id(node, kind="interface", name=name, file_stable_id=file_stable_id),
                     name=name,
                     kind="interface",
                     language="v",
@@ -284,7 +292,7 @@ class VAnalyzer(TreeSitterAnalyzer):
         # Recursively process children
         for child in node.children:
             self._extract_symbols_recursive(
-                child, path, repo_root, rel_path, run, analysis
+                child, path, repo_root, rel_path, run, analysis, file_stable_id
             )
 
     def extract_edges_from_file(

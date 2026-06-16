@@ -133,6 +133,12 @@ class AsmAnalyzer(TreeSitterAnalyzer):
         """Extract labels from an assembly file, tracking section context."""
         analysis = FileAnalysis()
         current_section = ".text"
+        # WI-bokab (v7): file-identity anchor for this file's labels. ``rel_path``
+        # is the repo-relative path. Folded into compute_stable_id's containing slot
+        # so same-named labels in different files hash distinctly (tree-sitter
+        # analyzers leave containing_stable_id empty and carry scope only in
+        # qualified_name). Additive — this analyzer passes no containing today.
+        file_stable_id = self._file_anchor(rel_path)
 
         for node in iter_tree(tree.root_node):
             # Track section changes
@@ -169,7 +175,10 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                         ),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        stable_id=self.compute_stable_id(node, kind=kind, name=label_name),
+                        stable_id=self.compute_stable_id(
+                            node, kind=kind, name=label_name,
+                            file_stable_id=file_stable_id,
+                        ),
                     )
                     analysis.symbols.append(sym)
                     analysis.node_for_symbol[sym.id] = node

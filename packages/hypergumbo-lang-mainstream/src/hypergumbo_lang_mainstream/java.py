@@ -101,12 +101,14 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     iter_tree,
     make_file_id,
+    make_file_stable_id,
     make_symbol_id as _base_make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
     node_text as _node_text,
     visibility_from_modifiers,
 )
+from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
@@ -848,13 +850,38 @@ def _extract_symbols(
     source: bytes,
     file_path: Path,
     run: AnalysisRun,
+    repo_root: Optional[Path] = None,
 ) -> list[Symbol]:
     """Extract symbols from a parsed Java tree (pass 1).
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
+
+    When ``repo_root`` is provided, the WI-bokab (v7) file-identity anchor is
+    folded into each method/constructor's typed stable_id ``containing_stable_id``
+    slot so two symbols sharing ``(kind, name, qualified_name)`` in DIFFERENT
+    files hash distinctly. The anchor MUST be derived from the repo-relative
+    path (``file_path`` here is the ABSOLUTE path yielded by
+    ``find_java_files`` — folding it would make the stable_id location-dependent,
+    a regression). When ``repo_root`` is ``None`` (the legacy single-file
+    ``_analyze_java_file`` test helper, which has no repo_root in scope) the
+    anchor is empty and the fold is a no-op — identical to pre-WI-bokab
+    behavior, since ``make_typed_stable_id`` only folds a non-empty anchor.
     """
     symbols: list[Symbol] = []
     package_name = _extract_java_package(tree.root_node, source)
+
+    # WI-bokab (v7): file-identity anchor for this file's symbols. Byte-matches
+    # the file node's own stable_id (``populate_kind_stable_ids`` →
+    # ``make_file_stable_id("java", <normalized repo-relative path>)``), so a
+    # child symbol's anchor resolves to its declaring file. Computed once and
+    # reused across every make_typed_stable_id call below.
+    file_stable_id = ""
+    if repo_root is not None:
+        try:
+            rel_path = str(file_path.relative_to(repo_root))
+            file_stable_id = make_file_stable_id("java", normalize_path(rel_path))
+        except ValueError:  # pragma: no cover - defensive: file always under repo_root
+            pass
 
     for node in iter_tree(tree.root_node):
         # Class declarations
@@ -1039,6 +1066,7 @@ def _extract_symbols(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=name,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -1087,6 +1115,7 @@ def _extract_symbols(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
                     name=name,
                     qualified_name=_make_java_qualified_name(package_name, ancestors, name),
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -2095,7 +2124,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                 imports=file_imports, static_imports=file_static_imports,
                 wildcard_imports=file_wildcard_imports,
             ))
-            symbols = _extract_symbols(tree, source, file_path, run)
+            symbols = _extract_symbols(tree, source, file_path, run, repo_root=repo_root)
             populate_docstrings_from_tree(tree.root_node, source, symbols)
             all_symbols.extend(symbols)
             files_analyzed += 1

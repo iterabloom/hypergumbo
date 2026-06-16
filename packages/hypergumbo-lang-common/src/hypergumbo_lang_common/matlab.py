@@ -139,6 +139,7 @@ def _extract_symbols_recursive(
                 ),
                 stable_id=analyzer.compute_stable_id(
                     node, kind=kind, name=name, qualified_name=qualified_name,
+                    file_stable_id=analyzer._file_anchor(rel_path),
                 ),
                 name=name,
                 kind=kind,
@@ -168,7 +169,10 @@ def _extract_symbols_recursive(
                     node.start_point[0] + 1, node.end_point[0] + 1,
                     name, "class",
                 ),
-                stable_id=analyzer.compute_stable_id(node, kind="class", name=name),
+                stable_id=analyzer.compute_stable_id(
+                    node, kind="class", name=name,
+                    file_stable_id=analyzer._file_anchor(rel_path),
+                ),
                 name=name,
                 kind="class",
                 language="matlab",

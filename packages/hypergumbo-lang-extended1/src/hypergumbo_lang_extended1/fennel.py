@@ -164,12 +164,19 @@ class FennelAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract function and variable symbols from a Fennel file."""
         analysis = FileAnalysis()
-        self._extract_symbols_recursive(tree.root_node, rel_path, run.execution_id, analysis)
+        # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path``
+        # is the repo-relative path (the extract signature's parameter). Folded into
+        # compute_stable_id's containing slot so same-name fns/vars in different files
+        # hash distinctly. Computed once and threaded down to every call site.
+        file_stable_id = self._file_anchor(rel_path)
+        self._extract_symbols_recursive(
+            tree.root_node, rel_path, run.execution_id, analysis, file_stable_id,
+        )
         return analysis
 
     def _extract_symbols_recursive(
         self, node: "tree_sitter.Node", rel_path: str, run_id: str,
-        analysis: FileAnalysis,
+        analysis: FileAnalysis, file_stable_id: str,
     ) -> None:
         """Recursively extract symbols, stopping descent into fn/local bodies."""
         if node.type == "fn":
@@ -180,7 +187,10 @@ class FennelAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "fn"),
-                    stable_id=self.compute_stable_id(node, kind="fn", name=name),
+                    stable_id=self.compute_stable_id(
+                        node, kind="fn", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                     name=name,
                     kind="function",
                     language="fennel",
@@ -205,7 +215,10 @@ class FennelAnalyzer(TreeSitterAnalyzer):
             if name:
                 sym = Symbol(
                     id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "var"),
-                    stable_id=self.compute_stable_id(node, kind="var", name=name),
+                    stable_id=self.compute_stable_id(
+                        node, kind="var", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                     name=name,
                     kind="variable",
                     language="fennel",
@@ -224,7 +237,9 @@ class FennelAnalyzer(TreeSitterAnalyzer):
 
         # Recursively process children
         for child in node.children:
-            self._extract_symbols_recursive(child, rel_path, run_id, analysis)
+            self._extract_symbols_recursive(
+                child, rel_path, run_id, analysis, file_stable_id,
+            )
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,

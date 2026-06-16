@@ -69,11 +69,13 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
     node_text,
     visibility_from_modifiers,
 )
+from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 
 from hypergumbo_core.symbol_resolution import ListNameResolver
@@ -217,6 +219,13 @@ def _extract_symbols_from_file(
     """Extract all symbols from a parsed Dart file."""
     symbols: list[Symbol] = []
 
+    # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_path`` is
+    # the repo-relative path (DartAnalyzer.extract_symbols_from_file passes ``rel_path``).
+    # Folded into make_typed_stable_id's containing slot so same-name methods/functions
+    # in different files hash distinctly. Matches the file Symbol's own stable_id
+    # (make_file_stable_id("dart", normalize_path(p))).
+    file_stable_id = make_file_stable_id("dart", normalize_path(file_path))
+
     def make_symbol(
         start_line: int,
         end_line: int,
@@ -247,6 +256,7 @@ def _extract_symbols_from_file(
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
                     name=name, qualified_name=full_name,
+                    file_stable_id=file_stable_id,
                 )
 
         return Symbol(

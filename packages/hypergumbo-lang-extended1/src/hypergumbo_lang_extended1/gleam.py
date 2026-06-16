@@ -156,12 +156,19 @@ class GleamAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract function, type, and type alias symbols from Gleam."""
         analysis = FileAnalysis()
-        self._extract_symbols_recursive(tree.root_node, rel_path, run.execution_id, analysis)
+        # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path`` is the
+        # repo-relative path (the base-class extract signature). Folded into
+        # compute_stable_id's containing slot so same-name functions/types/aliases in
+        # different files hash distinctly. Computed once and threaded through the recursion.
+        file_anchor = self._file_anchor(rel_path)
+        self._extract_symbols_recursive(
+            tree.root_node, rel_path, run.execution_id, analysis, file_anchor,
+        )
         return analysis
 
     def _extract_symbols_recursive(
         self, node: "tree_sitter.Node", rel_path: str, run_id: str,
-        analysis: FileAnalysis,
+        analysis: FileAnalysis, file_anchor: str,
     ) -> None:
         """Recursively extract symbols from Gleam AST."""
         if node.type == "function":
@@ -177,7 +184,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "fn"),
-                    stable_id=self.compute_stable_id(node, kind="fn", name=name),
+                    stable_id=self.compute_stable_id(node, kind="fn", name=name, file_stable_id=file_anchor),
                     name=name,
                     kind="function",
                     language="gleam",
@@ -203,7 +210,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                 is_pub = _is_public(node)
                 sym = Symbol(
                     id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type"),
-                    stable_id=self.compute_stable_id(node, kind="type", name=name),
+                    stable_id=self.compute_stable_id(node, kind="type", name=name, file_stable_id=file_anchor),
                     name=name,
                     kind="class",
                     language="gleam",
@@ -226,7 +233,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                 is_pub = _is_public(node)
                 sym = Symbol(
                     id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type_alias"),
-                    stable_id=self.compute_stable_id(node, kind="type_alias", name=name),
+                    stable_id=self.compute_stable_id(node, kind="type_alias", name=name, file_stable_id=file_anchor),
                     name=name,
                     kind="type",
                     language="gleam",
@@ -245,7 +252,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
 
         # Recursively process children
         for child in node.children:
-            self._extract_symbols_recursive(child, rel_path, run_id, analysis)
+            self._extract_symbols_recursive(child, rel_path, run_id, analysis, file_anchor)
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,

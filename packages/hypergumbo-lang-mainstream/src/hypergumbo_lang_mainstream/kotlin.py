@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
@@ -55,6 +56,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -658,8 +660,19 @@ def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
+    file_stable_id: str = "",
 ) -> FileAnalysis:
-    """Extract symbols from a single Kotlin file."""
+    """Extract symbols from a single Kotlin file.
+
+    WI-bokab (v7): ``file_stable_id`` is the file-identity anchor for this
+    file's symbols. ``KotlinAnalyzer.analyze`` computes it once per file from
+    the REPO-RELATIVE path (``make_file_stable_id("kotlin", normalize_path(rel_path))``)
+    — ``file_path`` here is ABSOLUTE (``find_kotlin_files`` yields absolute
+    paths), so it cannot be folded directly. The anchor is threaded into the
+    ``make_typed_stable_id`` call's ``file_stable_id=`` slot so same-name
+    functions/methods in different files hash distinctly. Defaults to ``""``
+    (the no-op fold) for legacy/test callers that don't supply it.
+    """
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -701,6 +714,7 @@ def _extract_symbols_from_file(
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
                     name=func_name, qualified_name=full_name,
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 # Extract annotations (decorators)
@@ -1622,7 +1636,14 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
         files_skipped = 0
 
         for kt_file in find_kotlin_files(repo_root):
-            analysis = _extract_symbols_from_file(kt_file, parser, run)
+            # WI-bokab (v7): compute the file-identity anchor from the
+            # REPO-RELATIVE path. ``kt_file`` is absolute (``find_kotlin_files``
+            # yields absolute paths joined onto ``repo_root``), so folding
+            # ``str(kt_file)`` directly would make stable_ids
+            # location-dependent — the regression the WI-bokab smoke test guards.
+            rel_path = str(kt_file.relative_to(repo_root))
+            file_stable_id = make_file_stable_id("kotlin", normalize_path(rel_path))
+            analysis = _extract_symbols_from_file(kt_file, parser, run, file_stable_id)
             if analysis.symbols:
                 file_analyses[kt_file] = analysis
             else:

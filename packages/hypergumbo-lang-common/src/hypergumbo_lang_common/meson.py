@@ -174,7 +174,10 @@ def _extract_symbols_recursive(
                             node.start_point[0] + 1, node.end_point[0] + 1,
                             proj_name, "project",
                         ),
-                        stable_id=analyzer.compute_stable_id(node, kind="project", name=proj_name),
+                        stable_id=analyzer.compute_stable_id(
+                            node, kind="project", name=proj_name,
+                            file_stable_id=analyzer._file_anchor(rel_path),
+                        ),
                         name=proj_name,
                         kind="project",
                         language="meson",
@@ -209,7 +212,10 @@ def _extract_symbols_recursive(
                             node.start_point[0] + 1, node.end_point[0] + 1,
                             target_name, kind,
                         ),
-                        stable_id=analyzer.compute_stable_id(node, kind=kind, name=target_name),
+                        stable_id=analyzer.compute_stable_id(
+                            node, kind=kind, name=target_name,
+                            file_stable_id=analyzer._file_anchor(rel_path),
+                        ),
                         name=target_name,
                         kind=kind,
                         language="meson",

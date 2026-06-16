@@ -168,7 +168,10 @@ def _extract_method_symbol(
 
         return Symbol(
             id=make_symbol_id("hack", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "method"),
-            stable_id=analyzer.compute_stable_id(node, kind="method", name=qualified_name),
+            stable_id=analyzer.compute_stable_id(
+                node, kind="method", name=qualified_name,
+                file_stable_id=analyzer._file_anchor(rel_path),
+            ),
             name=qualified_name,
             kind="method",
             language="hack",
@@ -222,7 +225,10 @@ def _extract_class_like(
 
         sym = Symbol(
             id=make_symbol_id("hack", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, kind),
-            stable_id=analyzer.compute_stable_id(node, kind=kind, name=qualified_name),
+            stable_id=analyzer.compute_stable_id(
+                node, kind=kind, name=qualified_name,
+                file_stable_id=analyzer._file_anchor(rel_path),
+            ),
             name=qualified_name,
             kind=kind,
             language="hack",
@@ -257,7 +263,10 @@ def _extract_symbols_recursive(
                 ns_name = _get_node_text(child)
                 sym = Symbol(
                     id=make_symbol_id("hack", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, ns_name, "namespace"),
-                    stable_id=analyzer.compute_stable_id(node, kind="namespace", name=ns_name),
+                    stable_id=analyzer.compute_stable_id(
+                        node, kind="namespace", name=ns_name,
+                        file_stable_id=analyzer._file_anchor(rel_path),
+                    ),
                     name=ns_name,
                     kind="namespace",
                     language="hack",
@@ -311,7 +320,10 @@ def _extract_symbols_recursive(
 
             sym = Symbol(
                 id=make_symbol_id("hack", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "fn"),
-                stable_id=analyzer.compute_stable_id(node, kind="fn", name=qualified_name),
+                stable_id=analyzer.compute_stable_id(
+                    node, kind="fn", name=qualified_name,
+                    file_stable_id=analyzer._file_anchor(rel_path),
+                ),
                 name=qualified_name,
                 kind="function",
                 language="hack",

@@ -97,12 +97,14 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_file_stable_id,
     make_route_stable_id,
     make_symbol_id,
     make_typed_stable_id,
     node_text,
     visibility_from_modifiers,
 )
+from hypergumbo_core.paths import normalize_path
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
@@ -1005,10 +1007,20 @@ def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
+    file_stable_id: str = "",
 ) -> FileAnalysis:
     """Extract symbols from a single Go file.
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
+
+    WI-bokab (v7): ``file_stable_id`` is the file-identity anchor for this
+    file's symbols. ``_analyze_go_impl`` computes it once per file from the
+    REPO-RELATIVE path (``make_file_stable_id("go", normalize_path(rel_path))``)
+    — ``file_path`` here is ABSOLUTE (``find_go_files`` yields absolute paths),
+    so it cannot be folded directly. The anchor is threaded into every
+    ``make_typed_stable_id`` call's ``file_stable_id=`` slot so same-name
+    functions/methods in different files hash distinctly. Defaults to ``""``
+    (the no-op fold) for legacy/test callers that don't supply it.
     """
     try:
         source = file_path.read_bytes()
@@ -1073,6 +1085,7 @@ def _extract_symbols_from_file(
                     "function", norm_sig, visibility_from_modifiers(modifiers),
                     name=func_name,
                     qualified_name=_make_go_qualified_name(package_name, None, func_name),
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -1137,6 +1150,7 @@ def _extract_symbols_from_file(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=method_name,
                     qualified_name=_make_go_qualified_name(package_name, receiver_type or None, method_name),
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -2907,6 +2921,7 @@ def _maybe_create_wrapper_symbol(
     wrapper_symbols_created: dict[str, Symbol],
     file_path: Path,
     run: AnalysisRun,
+    file_stable_id: str = "",
 ) -> tuple[Symbol | None, bool]:
     """Create a Symbol for a closure wrapper variable, if not already created.
 
@@ -2916,6 +2931,12 @@ def _maybe_create_wrapper_symbol(
 
     Returns ``(symbol, is_new)`` where ``is_new`` is True only when a
     new Symbol was created (False for cache hits and non-matches).
+
+    WI-bokab (v7): ``file_stable_id`` is the repo-relative file-identity anchor
+    (computed in ``_analyze_go_impl``, threaded through ``_extract_go_routes``)
+    folded into the wrapper Symbol's ``make_typed_stable_id`` so same-named
+    closure wrappers in different files hash distinctly. Defaults to ``""``
+    (no-op fold) for legacy/test callers.
     """
     if wrapper_name in wrapper_symbols_created:
         return wrapper_symbols_created[wrapper_name], False
@@ -2931,6 +2952,7 @@ def _maybe_create_wrapper_symbol(
             "function", wrapper_name,
             name=wrapper_name,
             qualified_name=wrapper_name,
+            file_stable_id=file_stable_id,
         ),
         name=wrapper_name,
         kind="function",
@@ -3260,6 +3282,7 @@ def _extract_go_routes(
     file_path: Path,
     run: AnalysisRun,
     local_symbols: dict[str, Symbol] | None = None,
+    file_stable_id: str = "",
 ) -> tuple[list[Symbol], list[Edge]]:
     """Extract Go web framework route symbols from a tree-sitter node.
 
@@ -3383,6 +3406,7 @@ def _extract_go_routes(
                                             w_name, closure_var_map,
                                             _wrapper_symbols_created,
                                             file_path, run,
+                                            file_stable_id=file_stable_id,
                                         )
                                         if wrapper_sym:
                                             if is_new:
@@ -3505,6 +3529,7 @@ def _extract_go_routes(
                                             w_name, closure_var_map,
                                             _wrapper_symbols_created,
                                             file_path, run,
+                                            file_stable_id=file_stable_id,
                                         )
                                         if wrapper_sym:
                                             if is_new:
@@ -4152,7 +4177,13 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     for go_file in find_go_files(repo_root):
         if max_files is not None and files_processed >= max_files:  # pragma: no cover
             break
-        analysis = _extract_symbols_from_file(go_file, parser, run)
+        # WI-bokab (v7): compute the file-identity anchor from the REPO-RELATIVE
+        # path. ``go_file`` is absolute (``find_go_files`` joins onto ``repo_root``),
+        # so folding ``str(go_file)`` directly would make stable_ids
+        # location-dependent — the regression the WI-bokab smoke test guards.
+        rel_path = str(go_file.relative_to(repo_root))
+        file_stable_id = make_file_stable_id("go", normalize_path(rel_path))
+        analysis = _extract_symbols_from_file(go_file, parser, run, file_stable_id)
         if analysis.symbols:
             file_analyses[go_file] = analysis
             files_processed += 1
@@ -4234,9 +4265,15 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         try:
             source = go_file.read_bytes()
             tree = parser.parse(source)
+            # WI-bokab (v7): same repo-relative anchor as Pass 1 (``go_file``
+            # is absolute), threaded into closure-wrapper Symbol stable_ids.
+            route_file_stable_id = make_file_stable_id(
+                "go", normalize_path(str(go_file.relative_to(repo_root))),
+            )
             route_syms, route_mount_edges = _extract_go_routes(
                 tree.root_node, source, go_file, run,
                 local_symbols=analysis.symbol_by_name,
+                file_stable_id=route_file_stable_id,
             )
             all_route_syms.extend(route_syms)
             all_edges.extend(route_mount_edges)

@@ -194,6 +194,13 @@ def _extract_symbols_from_file(
     """
     symbols: list[Symbol] = []
 
+    # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_path`` is
+    # the repo-relative path (``analyze()`` passes ``rel_path = lua_file.relative_to
+    # (repo_root)``). Folded into compute_stable_id's containing slot so same-name
+    # functions/methods in different files hash distinctly. Computed once per file
+    # and reused across every symbol in this file scope.
+    file_stable_id = _analyzer._file_anchor(file_path)
+
     for node in iter_tree(tree.root_node):
         if node.type == "function_declaration":
             name, kind = _get_function_name(node, source)
@@ -217,7 +224,9 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=_extract_lua_signature(node, source),
-                    stable_id=_analyzer.compute_stable_id(node, kind=kind, name=name),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind=kind, name=name, file_stable_id=file_stable_id,
+                    ),
                     shape_id=_analyzer.compute_shape_id(node),
                 ))
 

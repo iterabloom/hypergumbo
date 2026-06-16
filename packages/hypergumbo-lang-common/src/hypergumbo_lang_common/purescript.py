@@ -213,7 +213,7 @@ class _PureScriptExtractor:
                 rel_path = str(path.relative_to(self.repo_root))
                 sym = Symbol(
                     id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, mod_name, "module"),
-                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="module", name=mod_name, qualified_name=mod_name),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="module", name=mod_name, qualified_name=mod_name, file_stable_id=self._ts_analyzer._file_anchor(rel_path)),
                     name=mod_name,
                     kind="module",
                     language="purescript",
@@ -237,7 +237,7 @@ class _PureScriptExtractor:
 
                 sym = Symbol(
                     id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "function"),
-                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="function", name=name, qualified_name=qualified_name),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="function", name=name, qualified_name=qualified_name, file_stable_id=self._ts_analyzer._file_anchor(rel_path)),
                     name=qualified_name,
                     kind="function",
                     language="purescript",
@@ -271,7 +271,7 @@ class _PureScriptExtractor:
                     rel_path = str(path.relative_to(self.repo_root))
                     sym = Symbol(
                         id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "function"),
-                        stable_id=self._ts_analyzer.compute_stable_id(node, kind="function", name=name, qualified_name=qualified_name),
+                        stable_id=self._ts_analyzer.compute_stable_id(node, kind="function", name=name, qualified_name=qualified_name, file_stable_id=self._ts_analyzer._file_anchor(rel_path)),
                         name=qualified_name,
                         kind="function",
                         language="purescript",
@@ -300,7 +300,7 @@ class _PureScriptExtractor:
 
                 sym = Symbol(
                     id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "type"),
-                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="type", name=name, qualified_name=qualified_name),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="type", name=name, qualified_name=qualified_name, file_stable_id=self._ts_analyzer._file_anchor(rel_path)),
                     name=qualified_name,
                     kind="type",
                     language="purescript",
@@ -325,7 +325,7 @@ class _PureScriptExtractor:
 
                 sym = Symbol(
                     id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "type_alias"),
-                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="type_alias", name=name, qualified_name=qualified_name),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="type_alias", name=name, qualified_name=qualified_name, file_stable_id=self._ts_analyzer._file_anchor(rel_path)),
                     name=qualified_name,
                     kind="type_alias",
                     language="purescript",
@@ -350,7 +350,7 @@ class _PureScriptExtractor:
 
                 sym = Symbol(
                     id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "class"),
-                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="class", name=name, qualified_name=qualified_name),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="class", name=name, qualified_name=qualified_name, file_stable_id=self._ts_analyzer._file_anchor(rel_path)),
                     name=qualified_name,
                     kind="class",
                     language="purescript",
@@ -375,7 +375,7 @@ class _PureScriptExtractor:
 
                 sym = Symbol(
                     id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "instance"),
-                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="instance", name=name, qualified_name=qualified_name),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="instance", name=name, qualified_name=qualified_name, file_stable_id=self._ts_analyzer._file_anchor(rel_path)),
                     name=qualified_name,
                     kind="instance",
                     language="purescript",

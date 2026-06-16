@@ -289,6 +289,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                         stable_id=self.compute_stable_id(
                             node, kind="function", name=sub_name,
                             qualified_name=qualified_name,
+                            file_stable_id=self._file_anchor(rel_path),
                         ),
                     )
                     analysis.symbols.append(symbol)

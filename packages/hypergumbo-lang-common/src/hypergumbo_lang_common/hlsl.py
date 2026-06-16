@@ -128,7 +128,15 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        stable_id=analyzer.compute_stable_id(node, kind=kind, name=name),
+        # WI-bokab (v7): fold this file's identity into the stable_id so two
+        # same-(kind, name) symbols in different files hash distinctly. The
+        # tree-sitter producer passes no enclosing-scope containing, so the
+        # anchor lands in the containing slot. ``rel_path`` is repo-relative
+        # (the base ``analyze()`` loop derives it via relative_to(repo_root)).
+        stable_id=analyzer.compute_stable_id(
+            node, kind=kind, name=name,
+            file_stable_id=analyzer._file_anchor(rel_path),
+        ),
         signature=signature,
         meta=meta,
     )

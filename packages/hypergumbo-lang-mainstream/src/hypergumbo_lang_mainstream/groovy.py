@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
+from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -50,6 +51,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -370,6 +372,12 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         inside classes, and top-level function definitions (def keyword).
         """
         analysis = FileAnalysis()
+        # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path``
+        # is the repo-relative path (the base orchestration loop passes it as
+        # ``str(source_file.relative_to(repo_root))``). Folded into
+        # make_typed_stable_id's containing slot so same-name methods/functions in
+        # different files hash distinctly.
+        file_stable_id = make_file_stable_id("groovy", normalize_path(rel_path))
 
         for node in iter_tree(tree.root_node):
             # Class declaration
@@ -528,6 +536,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     stable_id = make_typed_stable_id(
                         "method", norm_sig, visibility_from_modifiers(modifiers),
                         name=method_name, qualified_name=full_name,
+                        file_stable_id=file_stable_id,
                     ) if norm_sig else None
 
                     symbol = Symbol(
@@ -571,6 +580,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     stable_id = make_typed_stable_id(
                         "function", norm_sig, visibility_from_modifiers(modifiers),
                         name=func_name, qualified_name=func_name,
+                        file_stable_id=file_stable_id,
                     ) if norm_sig else None
 
                     symbol = Symbol(

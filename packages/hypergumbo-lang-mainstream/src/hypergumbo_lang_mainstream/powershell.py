@@ -251,6 +251,12 @@ def _extract_powershell_symbols(
     Optionally populates *node_for_symbol* to enable base-class shape_id
     auto-wiring (ADR-0014 §1).
     """
+    # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_path``
+    # is the repo-relative path here — the ``extract_symbols_from_file`` override
+    # passes ``rel_path`` into this argument. Folded into compute_stable_id's
+    # containing slot (via the base ``_file_anchor`` helper) so same-name
+    # functions/filters/workflows in different files hash distinctly.
+    file_stable_id = _analyzer._file_anchor(file_path)
     for node in iter_tree(tree.root_node):
         if node.type == "function_statement":
             # Process a function, filter, or workflow definition
@@ -273,7 +279,10 @@ def _extract_powershell_symbols(
                 sym = _make_powershell_symbol(
                     file_path, run_id, node, func_name, kind, signature=sig
                 )
-                sym.stable_id = _analyzer.compute_stable_id(node, kind=kind, name=func_name)
+                sym.stable_id = _analyzer.compute_stable_id(
+                    node, kind=kind, name=func_name,
+                    file_stable_id=file_stable_id,
+                )
                 symbols.append(sym)
                 if node_for_symbol is not None:
                     node_for_symbol[sym.id] = node

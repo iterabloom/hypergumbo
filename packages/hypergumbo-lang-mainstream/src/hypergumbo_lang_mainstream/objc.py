@@ -264,13 +264,26 @@ def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
+    repo_rel_path: str,
 ) -> FileAnalysis:
     """Extract symbols from a single Objective-C file.
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
+
+    ``repo_rel_path`` is the repo-relative path of this file (computed in
+    ``analyze()`` via ``relative_to(repo_root)``). ``file_path`` / the legacy
+    ``rel_path`` local below are absolute (``find_objc_files`` yields absolute
+    paths), so the WI-bokab file-identity anchor MUST be derived from
+    ``repo_rel_path`` — folding the absolute path would make stable_ids
+    location-dependent (a regression).
     """
     analysis = FileAnalysis()
     rel_path = str(file_path)
+    # WI-bokab (v7): file-identity anchor for this file's symbols. Folded into
+    # compute_stable_id's containing slot so same-(kind, name, qualified_name)
+    # symbols in different files hash distinctly. Uses the repo-relative path
+    # (NOT the absolute ``rel_path`` above) so the id is location-independent.
+    file_stable_id = _analyzer._file_anchor(repo_rel_path)
 
     try:
         source = file_path.read_bytes()
@@ -306,7 +319,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    stable_id=_analyzer.compute_stable_id(node, kind="class", name=class_name),
+                    stable_id=_analyzer.compute_stable_id(node, kind="class", name=class_name, file_stable_id=file_stable_id),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
@@ -335,7 +348,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="protocol", name=protocol_name),
+                    stable_id=_analyzer.compute_stable_id(node, kind="protocol", name=protocol_name, file_stable_id=file_stable_id),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
@@ -369,7 +382,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
-                    stable_id=_analyzer.compute_stable_id(node, kind="method", name=full_name),
+                    stable_id=_analyzer.compute_stable_id(node, kind="method", name=full_name, file_stable_id=file_stable_id),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
@@ -397,7 +410,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="property", name=full_name),
+                    stable_id=_analyzer.compute_stable_id(node, kind="property", name=full_name, file_stable_id=file_stable_id),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
@@ -658,7 +671,15 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
         global_methods: dict[str, Symbol] = {}
 
         for objc_file in all_files:
-            analysis = _extract_symbols_from_file(objc_file, parser, run)
+            # WI-bokab (v7): repo-relative path for the file-identity anchor.
+            # ``find_objc_files`` yields absolute paths, so we derive the
+            # repo-relative form here (where ``repo_root`` is in scope) and
+            # thread it down — folding an absolute path would make stable_ids
+            # location-dependent.
+            repo_rel_path = str(objc_file.relative_to(repo_root))
+            analysis = _extract_symbols_from_file(
+                objc_file, parser, run, repo_rel_path
+            )
             file_analyses[objc_file] = analysis
             all_symbols.extend(analysis.symbols)
 

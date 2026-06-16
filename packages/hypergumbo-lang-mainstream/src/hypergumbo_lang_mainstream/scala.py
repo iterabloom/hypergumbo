@@ -45,12 +45,14 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
     node_text,
     visibility_from_modifiers,
 )
+from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -347,6 +349,11 @@ def _extract_symbols_from_file(
 ) -> FileAnalysis:
     """Extract symbols from a single Scala file."""
     analysis = FileAnalysis()
+    # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_path`` is
+    # the repo-relative path (the extract override passes ``rel_path``). Folded into
+    # make_typed_stable_id's containing slot so same-name functions/methods in
+    # different files hash distinctly.
+    file_stable_id = make_file_stable_id("scala", normalize_path(file_path))
 
     for node in iter_tree(tree.root_node):
         if node.type == "function_definition":
@@ -387,6 +394,7 @@ def _extract_symbols_from_file(
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
                     name=func_name, qualified_name=full_name,
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 # WI-rupum: secondary constructors are inherently part
@@ -442,6 +450,7 @@ def _extract_symbols_from_file(
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=func_name, qualified_name=full_name,
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 symbol = Symbol(

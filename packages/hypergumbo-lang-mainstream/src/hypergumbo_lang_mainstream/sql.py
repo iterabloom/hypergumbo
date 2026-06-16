@@ -209,6 +209,11 @@ def _extract_sql_symbols(
     Optionally populates *node_for_symbol* to enable base-class shape_id
     auto-wiring (ADR-0014 §1).
     """
+    # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path``
+    # is the repo-relative path threaded down from ``extract_symbols_from_file``.
+    # Folded into compute_stable_id's containing slot so same-(kind, name)
+    # symbols in different files hash distinctly. Computed once and reused.
+    file_stable_id = _analyzer._file_anchor(rel_path)
     for node in iter_tree(root_node):
         if node.type == "create_table":
             name = _extract_table_name(node, source)
@@ -218,7 +223,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "table")
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="table", name=name),
+                    stable_id=_analyzer.compute_stable_id(node, kind="table", name=name, file_stable_id=file_stable_id),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="table",
@@ -246,7 +251,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "view")
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="view", name=name),
+                    stable_id=_analyzer.compute_stable_id(node, kind="view", name=name, file_stable_id=file_stable_id),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="view",
@@ -274,7 +279,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "function")
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="function", name=name),
+                    stable_id=_analyzer.compute_stable_id(node, kind="function", name=name, file_stable_id=file_stable_id),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="function",
@@ -303,7 +308,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "procedure")  # pragma: no cover
                 sym = Symbol(  # pragma: no cover
                     id=symbol_id,  # pragma: no cover
-                    stable_id=_analyzer.compute_stable_id(node, kind="procedure", name=name),  # pragma: no cover
+                    stable_id=_analyzer.compute_stable_id(node, kind="procedure", name=name, file_stable_id=file_stable_id),  # pragma: no cover
                     shape_id=None,  # pragma: no cover
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="procedure",  # pragma: no cover
@@ -331,7 +336,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "trigger")
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="trigger", name=name),
+                    stable_id=_analyzer.compute_stable_id(node, kind="trigger", name=name, file_stable_id=file_stable_id),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="trigger",
@@ -359,7 +364,7 @@ def _extract_sql_symbols(
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "index")
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="index", name=name),
+                    stable_id=_analyzer.compute_stable_id(node, kind="index", name=name, file_stable_id=file_stable_id),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="index",

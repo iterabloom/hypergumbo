@@ -128,7 +128,7 @@ def _extract_params(node: "tree_sitter.Node") -> list[str]:
 
 def _extract_function(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
-    analyzer: "LuauAnalyzer",
+    analyzer: "LuauAnalyzer", file_anchor: str,
 ) -> None:
     """Extract a function definition."""
     name = None
@@ -169,7 +169,9 @@ def _extract_function(
 
         sym = Symbol(
             id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "function"),
-            stable_id=analyzer.compute_stable_id(node, kind="function", name=name),
+            stable_id=analyzer.compute_stable_id(
+                node, kind="function", name=name, file_stable_id=file_anchor,
+            ),
             name=name,
             kind="function",
             language="luau",
@@ -191,7 +193,7 @@ def _extract_function(
 
 def _extract_type(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
-    analyzer: "LuauAnalyzer",
+    analyzer: "LuauAnalyzer", file_anchor: str,
 ) -> None:
     """Extract a type definition."""
     name = None
@@ -211,7 +213,9 @@ def _extract_type(
 
         sym = Symbol(
             id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "type"),
-            stable_id=analyzer.compute_stable_id(node, kind="type", name=name),
+            stable_id=analyzer.compute_stable_id(
+                node, kind="type", name=name, file_stable_id=file_anchor,
+            ),
             name=name,
             kind="type",
             language="luau",
@@ -232,7 +236,7 @@ def _extract_type(
 
 def _extract_variable(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
-    analyzer: "LuauAnalyzer",
+    analyzer: "LuauAnalyzer", file_anchor: str,
 ) -> None:
     """Extract a variable declaration."""
     # Only extract top-level module tables (e.g., local MyModule = {})
@@ -248,7 +252,10 @@ def _extract_variable(
                             if name and name[0].isupper():
                                 sym = Symbol(
                                     id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "variable"),
-                                    stable_id=analyzer.compute_stable_id(node, kind="variable", name=name),
+                                    stable_id=analyzer.compute_stable_id(
+                                        node, kind="variable", name=name,
+                                        file_stable_id=file_anchor,
+                                    ),
                                     name=name,
                                     kind="variable",
                                     language="luau",
@@ -269,19 +276,19 @@ def _extract_variable(
 
 def _extract_symbols_recursive(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
-    analyzer: "LuauAnalyzer",
+    analyzer: "LuauAnalyzer", file_anchor: str,
 ) -> None:
     """Recursively extract symbols from a syntax tree."""
     if node.type == "function_declaration":
-        _extract_function(node, rel_path, analysis, analyzer)
+        _extract_function(node, rel_path, analysis, analyzer, file_anchor)
     elif node.type == "type_definition":
-        _extract_type(node, rel_path, analysis, analyzer)
+        _extract_type(node, rel_path, analysis, analyzer, file_anchor)
     elif node.type == "variable_declaration":
-        _extract_variable(node, rel_path, analysis, analyzer)
+        _extract_variable(node, rel_path, analysis, analyzer, file_anchor)
 
     # Recurse into children
     for child in node.children:
-        _extract_symbols_recursive(child, rel_path, analysis, analyzer)
+        _extract_symbols_recursive(child, rel_path, analysis, analyzer, file_anchor)
 
 
 def _extract_function_call(
@@ -433,7 +440,13 @@ class LuauAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single Luau file."""
         analysis = FileAnalysis()
-        _extract_symbols_recursive(tree.root_node, rel_path, analysis, self)
+        # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path`` is
+        # the repo-relative path supplied by the base class. Folded into
+        # compute_stable_id's containing slot so same-(kind, name) symbols in different
+        # files hash distinctly (the luau producer carries scope in qualified_name and
+        # passes no enclosing-scope containing today, so the fold is purely additive).
+        file_anchor = self._file_anchor(rel_path)
+        _extract_symbols_recursive(tree.root_node, rel_path, analysis, self, file_anchor)
         return analysis
 
     def register_symbol(

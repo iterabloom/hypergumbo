@@ -89,13 +89,18 @@ def _extract_namespace(
     analyzer: "SmithyAnalyzer",
 ) -> tuple[Optional[Symbol], Optional[str]]:
     """Extract namespace declaration. Returns (symbol, namespace_name)."""
+    # WI-bokab (v7): file-identity anchor folded into compute_stable_id's
+    # containing slot so same-(kind, name, qualified_name) symbols in
+    # different files hash distinctly. ``rel_path`` is repo-relative (passed
+    # down from extract_symbols_from_file's ``rel_path`` parameter).
+    file_anchor = analyzer._file_anchor(rel_path)
     for child in node.children:
         if child.type == "namespace" and child.text:
             text = _get_node_text(child)
             if text != "namespace":  # Skip the keyword
                 sym = Symbol(
                     id=make_symbol_id("smithy", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, text, "namespace"),
-                    stable_id=analyzer.compute_stable_id(node, kind="namespace", name=text),
+                    stable_id=analyzer.compute_stable_id(node, kind="namespace", name=text, file_stable_id=file_anchor),
                     name=text,
                     kind="namespace",
                     language="smithy",
@@ -138,9 +143,11 @@ def _extract_shape(
     if name:
         qualified_name = _get_qualified_name(name, current_namespace)
 
+        # WI-bokab (v7): file-identity anchor; ``rel_path`` is repo-relative.
+        file_anchor = analyzer._file_anchor(rel_path)
         return Symbol(
             id=make_symbol_id("smithy", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, kind),
-            stable_id=analyzer.compute_stable_id(node, kind=kind, name=qualified_name),
+            stable_id=analyzer.compute_stable_id(node, kind=kind, name=qualified_name, file_stable_id=file_anchor),
             name=qualified_name,
             kind=kind,
             language="smithy",
@@ -176,9 +183,11 @@ def _extract_simple_shape(
     if name:
         qualified_name = _get_qualified_name(name, current_namespace)
 
+        # WI-bokab (v7): file-identity anchor; ``rel_path`` is repo-relative.
+        file_anchor = analyzer._file_anchor(rel_path)
         return Symbol(
             id=make_symbol_id("smithy", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "simple_type"),
-            stable_id=analyzer.compute_stable_id(node, kind="simple_type", name=qualified_name),
+            stable_id=analyzer.compute_stable_id(node, kind="simple_type", name=qualified_name, file_stable_id=file_anchor),
             name=qualified_name,
             kind="simple_type",
             language="smithy",

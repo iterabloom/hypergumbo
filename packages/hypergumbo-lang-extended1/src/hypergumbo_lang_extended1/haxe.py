@@ -197,15 +197,23 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
         for _ in rel_parts:
             repo_root = repo_root.parent
 
+        # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path`` is
+        # the repo-relative path threaded into extract_symbols_from_file. Folded into
+        # compute_stable_id's containing slot so same-name classes/interfaces/functions
+        # in different files hash distinctly. Computed once and reused across the
+        # recursive walk (every symbol in this file shares the same anchor).
+        file_stable_id = self._file_anchor(rel_path)
+
         self._extract_symbols_recursive(
-            tree.root_node, file_path, repo_root, rel_path, run, analysis, None
+            tree.root_node, file_path, repo_root, rel_path, run, analysis, None,
+            file_stable_id,
         )
         return analysis
 
     def _extract_symbols_recursive(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         rel_path: str, run: "AnalysisRun", analysis: FileAnalysis,
-        current_class: Optional[str],
+        current_class: Optional[str], file_stable_id: str,
     ) -> None:
         """Extract symbols from a syntax tree node recursively."""
         if node.type == "class_declaration":
@@ -215,7 +223,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
-                    stable_id=self.compute_stable_id(node, kind="class", name=name),
+                    stable_id=self.compute_stable_id(node, kind="class", name=name, file_stable_id=file_stable_id),
                     name=name,
                     kind="class",
                     language="haxe",
@@ -235,7 +243,8 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
 
                 for child in node.children:
                     self._extract_symbols_recursive(
-                        child, path, repo_root, rel_path, run, analysis, name
+                        child, path, repo_root, rel_path, run, analysis, name,
+                        file_stable_id,
                     )
                 return
 
@@ -244,7 +253,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
             if name:
                 sym = Symbol(
                     id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "interface"),
-                    stable_id=self.compute_stable_id(node, kind="interface", name=name),
+                    stable_id=self.compute_stable_id(node, kind="interface", name=name, file_stable_id=file_stable_id),
                     name=name,
                     kind="interface",
                     language="haxe",
@@ -263,7 +272,8 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
 
                 for child in node.children:
                     self._extract_symbols_recursive(
-                        child, path, repo_root, rel_path, run, analysis, name
+                        child, path, repo_root, rel_path, run, analysis, name,
+                        file_stable_id,
                     )
                 return
 
@@ -282,7 +292,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "fn"),
-                    stable_id=self.compute_stable_id(node, kind="fn", name=qualified_name),
+                    stable_id=self.compute_stable_id(node, kind="fn", name=qualified_name, file_stable_id=file_stable_id),
                     name=qualified_name,
                     kind="function",
                     language="haxe",
@@ -311,7 +321,8 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
         # Recursively process children
         for child in node.children:
             self._extract_symbols_recursive(
-                child, path, repo_root, rel_path, run, analysis, current_class
+                child, path, repo_root, rel_path, run, analysis, current_class,
+                file_stable_id,
             )
 
     def extract_edges_from_file(

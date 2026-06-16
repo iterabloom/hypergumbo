@@ -228,12 +228,23 @@ def _extract_symbols(
     file_path: Path,
     run: AnalysisRun,
     node_for_symbol: dict[str, "tree_sitter.Node"] | None = None,
+    file_stable_id: str = "",
 ) -> list[Symbol]:
     """Extract symbols from a parsed C tree (pass 1).
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     Optionally populates *node_for_symbol* to enable base-class shape_id
     auto-wiring (ADR-0014 §1).
+
+    ``file_stable_id`` is the WI-bokab (v7) file-identity anchor for this
+    file's symbols (``CAnalyzer._file_anchor(rel_path)``, derived from the
+    repo-relative path). It is folded into ``compute_stable_id``'s
+    ``containing_stable_id`` slot so two same-``(kind, name)`` symbols in
+    different files hash distinctly — C carries no enclosing-scope containing
+    today, so the fold is purely additive. The legacy single-pass
+    ``_analyze_c_file`` test path has only an absolute ``file_path`` in scope
+    and passes the empty-string default (preserving its prior behavior; a
+    single-file path cannot collide cross-file).
     """
     symbols: list[Symbol] = []
 
@@ -259,7 +270,10 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
-                    stable_id=_analyzer.compute_stable_id(node, kind="function", name=name),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind="function", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:
@@ -290,7 +304,10 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             signature=signature,
                             modifiers=["declaration"],
-                            stable_id=_analyzer.compute_stable_id(node, kind="function", name=name),
+                            stable_id=_analyzer.compute_stable_id(
+                                node, kind="function", name=name,
+                                file_stable_id=file_stable_id,
+                            ),
                         )
                         symbols.append(symbol)
                         if node_for_symbol is not None:
@@ -317,7 +334,10 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="struct", name=name),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind="struct", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:
@@ -344,7 +364,10 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="enum", name=name),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind="enum", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:
@@ -373,7 +396,10 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="typedef", name=name),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind="typedef", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                 )
                 symbols.append(symbol)
                 if node_for_symbol is not None:
@@ -878,9 +904,14 @@ class CAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single C file."""
         analysis = FileAnalysis()
+        # WI-bokab (v7): file-identity anchor from the repo-relative ``rel_path``
+        # (NOT the absolute ``file_path``). Folded into compute_stable_id's
+        # containing slot so same-(kind, name) symbols in different files hash
+        # distinctly. Reuses the base ``_file_anchor`` helper.
         symbols = _extract_symbols(
             tree, source, file_path, run,
             node_for_symbol=analysis.node_for_symbol,
+            file_stable_id=self._file_anchor(rel_path),
         )
         analysis.symbols = symbols
         for sym in symbols:

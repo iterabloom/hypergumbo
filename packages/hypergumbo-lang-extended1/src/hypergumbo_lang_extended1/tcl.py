@@ -178,15 +178,22 @@ class TclAnalyzer(TreeSitterAnalyzer):
         for _ in rel_parts:
             repo_root = repo_root.parent
 
+        # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path``
+        # is the repo-relative path (the base class passes it). Folded into
+        # compute_stable_id's containing slot so same-name procs/namespaces in
+        # different files hash distinctly (ADR-0035 §1/§4).
+        file_anchor = self._file_anchor(rel_path)
+
         self._extract_symbols_recursive(
-            tree.root_node, file_path, repo_root, rel_path, run, analysis, None
+            tree.root_node, file_path, repo_root, rel_path, run, analysis, None,
+            file_anchor,
         )
         return analysis
 
     def _extract_symbols_recursive(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         rel_path: str, run: "AnalysisRun", analysis: FileAnalysis,
-        namespace: Optional[str],
+        namespace: Optional[str], file_anchor: str,
     ) -> None:
         """Extract symbols from a syntax tree node recursively."""
         if node.type == "procedure":
@@ -199,7 +206,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "proc"),
-                    stable_id=self.compute_stable_id(node, kind="proc", name=qualified_name),
+                    stable_id=self.compute_stable_id(node, kind="proc", name=qualified_name, file_stable_id=file_anchor),
                     name=name,
                     kind="function",
                     language="tcl",
@@ -226,7 +233,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "namespace"),
-                    stable_id=self.compute_stable_id(node, kind="namespace", name=name),
+                    stable_id=self.compute_stable_id(node, kind="namespace", name=name, file_stable_id=file_anchor),
                     name=name,
                     kind="namespace",
                     language="tcl",
@@ -253,13 +260,15 @@ class TclAnalyzer(TreeSitterAnalyzer):
                                     self._extract_symbols_recursive(
                                         inner, path, repo_root, rel_path,
                                         run, analysis, namespace=name,
+                                        file_anchor=file_anchor,
                                     )
                 return  # Don't recursively process namespace children again
 
         # Recursively process children
         for child in node.children:
             self._extract_symbols_recursive(
-                child, path, repo_root, rel_path, run, analysis, namespace
+                child, path, repo_root, rel_path, run, analysis, namespace,
+                file_anchor,
             )
 
     def extract_edges_from_file(

@@ -96,7 +96,16 @@ def _make_symbol(
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        stable_id=analyzer.compute_stable_id(node, kind=kind, name=name),
+        # WI-bokab (v7): fold the declaring file's identity into the
+        # containing slot via the base helper. ``rel_path`` is the
+        # repo-relative path threaded down from
+        # ``extract_symbols_from_file(... rel_path ...)``, so the anchor is
+        # location-independent — two same-(kind, name) procs in different
+        # files now hash distinctly.
+        stable_id=analyzer.compute_stable_id(
+            node, kind=kind, name=name,
+            file_stable_id=analyzer._file_anchor(rel_path),
+        ),
         signature=signature,
         meta=meta,
     )

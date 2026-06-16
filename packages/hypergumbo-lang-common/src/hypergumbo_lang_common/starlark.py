@@ -106,6 +106,7 @@ class _FileContext:
         edges: list[Edge],
         target_ids: dict[str, str],
         load_aliases: Optional[dict[str, str]] = None,
+        file_anchor: str = "",
     ) -> None:
         self.source = source
         self.rel_path = rel_path
@@ -115,6 +116,11 @@ class _FileContext:
         self.edges = edges
         self.target_ids = target_ids
         self.load_aliases: dict[str, str] = load_aliases if load_aliases is not None else {}
+        # WI-bokab (v7): file-identity anchor for this file's symbols. Folded into
+        # compute_stable_id's containing slot (when the symbol carries no enclosing
+        # scope) so same-(kind, name) symbols in different files hash distinctly.
+        # ``rel_path`` is repo-relative (built via file_path.relative_to(repo_root)).
+        self.file_anchor = file_anchor
 
 
 def _make_symbol(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
@@ -139,7 +145,10 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
         span=span,
         origin=PASS_ID,
         origin_run_id=ctx.run_id,
-        stable_id=analyzer.compute_stable_id(node, kind=kind, name=name),
+        stable_id=analyzer.compute_stable_id(
+            node, kind=kind, name=name,
+            file_stable_id=ctx.file_anchor,  # WI-bokab (v7): cross-file disambiguation
+        ),
         signature=signature,
         meta=meta,
     )
@@ -481,6 +490,9 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
                 symbols=symbols,
                 edges=edges,
                 target_ids=target_ids,
+                # WI-bokab (v7): repo-relative anchor, computed once per file and
+                # reused across every symbol's compute_stable_id call below.
+                file_anchor=self._file_anchor(rel_path),
             )
 
             before = len(ctx.symbols)

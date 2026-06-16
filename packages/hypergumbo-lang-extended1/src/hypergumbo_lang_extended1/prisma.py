@@ -101,14 +101,23 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
         for _ in rel_parts:
             repo_root = repo_root.parent
 
+        # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path``
+        # is the repo-relative path threaded into ``extract_symbols_from_file``.
+        # Folded into compute_stable_id's containing slot so same-(kind, name)
+        # models/enums/configs in different files hash distinctly. Reuses the base
+        # helper, which returns make_file_stable_id(self.lang, normalize_path(rel_path)).
+        file_stable_id = self._file_anchor(rel_path)
+
         self._extract_symbols_recursive(
-            tree.root_node, file_path, repo_root, rel_path, run, analysis
+            tree.root_node, file_path, repo_root, rel_path, run, analysis,
+            file_stable_id,
         )
         return analysis
 
     def _extract_symbols_recursive(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         rel_path: str, run: "AnalysisRun", analysis: FileAnalysis,
+        file_stable_id: str,
     ) -> None:
         """Extract symbols from a syntax tree node recursively."""
         if node.type == "model_block":
@@ -117,7 +126,10 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                 field_count = sum(1 for c in node.children if c.type == "model_field")
                 sym = Symbol(
                     id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "model"),
-                    stable_id=self.compute_stable_id(node, kind="model", name=name),
+                    stable_id=self.compute_stable_id(
+                        node, kind="model", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                     name=name,
                     kind="class",
                     language="prisma",
@@ -143,7 +155,10 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                 variant_count = len(identifiers) - 1  # Subtract 1 for the enum name
                 sym = Symbol(
                     id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
-                    stable_id=self.compute_stable_id(node, kind="enum", name=name),
+                    stable_id=self.compute_stable_id(
+                        node, kind="enum", name=name,
+                        file_stable_id=file_stable_id,
+                    ),
                     name=name,
                     kind="enum",
                     language="prisma",
@@ -180,7 +195,10 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                     # retains ``block_type`` for stable_id continuity.
                     sym = Symbol(
                         id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, block_type),
-                        stable_id=self.compute_stable_id(node, kind=block_type, name=name),
+                        stable_id=self.compute_stable_id(
+                            node, kind=block_type, name=name,
+                            file_stable_id=file_stable_id,
+                        ),
                         name=name,
                         kind="block",
                         language="prisma",
@@ -201,7 +219,8 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
         # Recursively process children
         for child in node.children:
             self._extract_symbols_recursive(
-                child, path, repo_root, rel_path, run, analysis
+                child, path, repo_root, rel_path, run, analysis,
+                file_stable_id,
             )
 
     def extract_edges_from_file(

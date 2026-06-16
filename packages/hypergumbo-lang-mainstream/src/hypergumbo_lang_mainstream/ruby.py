@@ -1800,6 +1800,13 @@ def _extract_symbols_from_file(
         run_id: Execution ID for provenance
     """
     analysis = FileAnalysis()
+    # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_path`` is
+    # the repo-relative path (the analyze() override passes ``rel_path`` =
+    # ``rb_file.relative_to(repo_root)``). Folded into compute_stable_id's
+    # containing slot so same-name methods/classes/modules in different files hash
+    # distinctly. Reuses the base helper (= make_file_stable_id("ruby",
+    # normalize_path(file_path))) so it byte-matches any sibling producer's anchor.
+    file_stable_id = _analyzer._file_anchor(file_path)
 
     for node in iter_tree(tree.root_node):
         # Method definition (instance methods)
@@ -1839,6 +1846,7 @@ def _extract_symbols_from_file(
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="method", name=full_name,
                         qualified_name=_make_ruby_qualified_name(ruby_chain, method_name),
+                        file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
@@ -1886,6 +1894,7 @@ def _extract_symbols_from_file(
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="method", name=full_name,
                         qualified_name=_make_ruby_qualified_name(ruby_chain, method_name),
+                        file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
@@ -1950,6 +1959,7 @@ def _extract_symbols_from_file(
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="class", name=class_name,
                         qualified_name=_make_ruby_qualified_name(ruby_chain, class_name),
+                        file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,
@@ -1996,6 +2006,7 @@ def _extract_symbols_from_file(
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="module", name=module_name,
                         qualified_name=_make_ruby_qualified_name(ruby_chain, module_name),
+                        file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
                     lines_of_code=end_line - start_line + 1,

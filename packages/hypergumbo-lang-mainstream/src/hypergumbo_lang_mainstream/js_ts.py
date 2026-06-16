@@ -74,6 +74,7 @@ from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
     make_pass_id,
 )
+from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
@@ -84,6 +85,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_field,
     iter_tree,
     make_file_id,
+    make_file_stable_id,
     make_route_stable_id,
     make_typed_stable_id,
     node_text as _node_text,
@@ -3042,6 +3044,15 @@ def _extract_symbols(
             file_name = str(file_path.relative_to(repo_root))
         except ValueError:  # pragma: no cover - defensive
             pass
+    # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_name``
+    # is the repo-relative path (``file_path`` is ABSOLUTE here — it comes from
+    # ``find_js_ts_files(repo_root)`` etc.; the absolute-path trap), so we fold
+    # the relativized form, NOT ``str(file_path)``. Folded into
+    # make_typed_stable_id's containing slot so same-(kind, name, qualified_name)
+    # functions/methods in different files hash distinctly. Keyed on the per-file
+    # runtime ``lang`` to match the file Symbol's ``language=lang`` and the
+    # orchestrator's make_file_stable_id(s.language, s.path) backstop.
+    file_stable_id = make_file_stable_id(lang, normalize_path(file_name))
     module_symbol = Symbol(
         id=make_file_id(lang, str(file_path)),
         name=file_name,
@@ -3220,6 +3231,7 @@ def _extract_symbols(
                     qualified_name=_make_jsts_qualified_name(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
+                    file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
                 symbol = Symbol(
@@ -3282,6 +3294,7 @@ def _extract_symbols(
                             qualified_name=_make_jsts_qualified_name(
                                 _get_jsts_class_ancestors(node, source), name, lang,
                             ),
+                            file_stable_id=file_stable_id,
                         ) if norm_sig else None
 
                         symbol = Symbol(
@@ -3478,6 +3491,7 @@ def _extract_symbols(
                             qualified_name=_make_jsts_qualified_name(
                                 _get_jsts_class_ancestors(node, source), name, lang,
                             ),
+                            file_stable_id=file_stable_id,
                         )
 
                 symbol = Symbol(
@@ -3524,6 +3538,7 @@ def _extract_symbols(
                             qualified_name=_make_jsts_qualified_name(
                                 _get_jsts_class_ancestors(child, source), name, lang,
                             ),
+                            file_stable_id=file_stable_id,
                         ) if norm_sig else None
 
                         symbol = Symbol(

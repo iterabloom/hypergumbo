@@ -114,9 +114,18 @@ def _extract_procedure_return_type(node: "tree_sitter.Node") -> Optional[str]:
 
 def _extract_symbols_recursive(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
-    analyzer: "OdinAnalyzer",
+    analyzer: "OdinAnalyzer", file_stable_id: str,
 ) -> None:
-    """Extract symbols from a syntax tree node."""
+    """Extract symbols from a syntax tree node.
+
+    ``file_stable_id`` is the WI-bokab (v7) file-identity anchor
+    (``analyzer._file_anchor(rel_path)``), threaded so it is computed once per
+    file and folded into every ``compute_stable_id`` call's
+    ``containing_stable_id`` slot. This makes two symbols sharing
+    ``(kind, name, qualified_name)`` in different files hash distinctly,
+    closing the cross-file stable_id collision (the tree-sitter producers carry
+    scope only in ``qualified_name`` and pass no enclosing-scope containing).
+    """
     if node.type == "procedure_declaration":
         name = _get_identifier(node)
         if name:
@@ -128,7 +137,10 @@ def _extract_symbols_recursive(
 
             sym = Symbol(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "proc"),
-                stable_id=analyzer.compute_stable_id(node, kind="proc", name=name),
+                stable_id=analyzer.compute_stable_id(
+                    node, kind="proc", name=name,
+                    file_stable_id=file_stable_id,
+                ),
                 name=name,
                 kind="function",
                 language="odin",
@@ -154,7 +166,10 @@ def _extract_symbols_recursive(
 
             sym = Symbol(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "struct"),
-                stable_id=analyzer.compute_stable_id(node, kind="struct", name=name),
+                stable_id=analyzer.compute_stable_id(
+                    node, kind="struct", name=name,
+                    file_stable_id=file_stable_id,
+                ),
                 name=name,
                 kind="class",
                 language="odin",
@@ -177,7 +192,10 @@ def _extract_symbols_recursive(
         if name:
             sym = Symbol(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
-                stable_id=analyzer.compute_stable_id(node, kind="enum", name=name),
+                stable_id=analyzer.compute_stable_id(
+                    node, kind="enum", name=name,
+                    file_stable_id=file_stable_id,
+                ),
                 name=name,
                 kind="enum",
                 language="odin",
@@ -199,7 +217,10 @@ def _extract_symbols_recursive(
         if name:
             sym = Symbol(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "union"),
-                stable_id=analyzer.compute_stable_id(node, kind="union", name=name),
+                stable_id=analyzer.compute_stable_id(
+                    node, kind="union", name=name,
+                    file_stable_id=file_stable_id,
+                ),
                 name=name,
                 kind="class",
                 language="odin",
@@ -219,7 +240,9 @@ def _extract_symbols_recursive(
 
     # Recursively process children
     for child in node.children:
-        _extract_symbols_recursive(child, rel_path, analysis, analyzer)
+        _extract_symbols_recursive(
+            child, rel_path, analysis, analyzer, file_stable_id,
+        )
 
 
 def _find_enclosing_function(
@@ -356,7 +379,13 @@ class OdinAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single Odin file."""
         analysis = FileAnalysis()
-        _extract_symbols_recursive(tree.root_node, rel_path, analysis, self)
+        # WI-bokab (v7): compute the file-identity anchor once per file. ``rel_path``
+        # is the repo-relative path (base-class contract for
+        # ``extract_symbols_from_file``), so this is location-independent.
+        file_stable_id = self._file_anchor(rel_path)
+        _extract_symbols_recursive(
+            tree.root_node, rel_path, analysis, self, file_stable_id,
+        )
         return analysis
 
     def extract_edges_from_file(

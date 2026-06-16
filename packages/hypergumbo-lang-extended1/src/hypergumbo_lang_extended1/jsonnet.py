@@ -116,9 +116,16 @@ def _is_builtin(name: str) -> bool:
 
 def _extract_symbols_recursive(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
-    analyzer: "JsonnetAnalyzer",
+    analyzer: "JsonnetAnalyzer", file_stable_id: str,
 ) -> None:
-    """Recursively extract symbols from a syntax tree."""
+    """Recursively extract symbols from a syntax tree.
+
+    ``file_stable_id`` is the WI-bokab (v7) file-identity anchor
+    (``analyzer._file_anchor(rel_path)``), computed once per file and threaded
+    through the recursion so each symbol's stable_id folds in its declaring
+    file — same-``(kind, name, qualified_name)`` symbols in different files
+    then hash distinctly (the tree-sitter cross-file collision class).
+    """
     if node.type == "bind":
         name = None
         is_function = False
@@ -137,7 +144,9 @@ def _extract_symbols_recursive(
 
             sym = Symbol(
                 id=make_symbol_id("jsonnet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, kind),
-                stable_id=analyzer.compute_stable_id(node, kind=kind, name=name),
+                stable_id=analyzer.compute_stable_id(
+                    node, kind=kind, name=name, file_stable_id=file_stable_id,
+                ),
                 name=name,
                 kind=kind,
                 language="jsonnet",
@@ -178,7 +187,10 @@ def _extract_symbols_recursive(
 
             sym = Symbol(
                 id=make_symbol_id("jsonnet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, field_name, kind),
-                stable_id=analyzer.compute_stable_id(node, kind=kind, name=field_name),
+                stable_id=analyzer.compute_stable_id(
+                    node, kind=kind, name=field_name,
+                    file_stable_id=file_stable_id,
+                ),
                 name=field_name,
                 kind=kind,
                 language="jsonnet",
@@ -208,7 +220,9 @@ def _extract_symbols_recursive(
         pass
 
     for child in node.children:
-        _extract_symbols_recursive(child, rel_path, analysis, analyzer)
+        _extract_symbols_recursive(
+            child, rel_path, analysis, analyzer, file_stable_id,
+        )
 
 
 def _extract_edges_recursive(
@@ -301,7 +315,12 @@ class JsonnetAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single Jsonnet file."""
         analysis = FileAnalysis()
-        _extract_symbols_recursive(tree.root_node, rel_path, analysis, self)
+        # WI-bokab (v7): compute the file-identity anchor once per file from the
+        # repo-relative ``rel_path`` (the base helper normalizes + folds it).
+        file_stable_id = self._file_anchor(rel_path)
+        _extract_symbols_recursive(
+            tree.root_node, rel_path, analysis, self, file_stable_id,
+        )
         return analysis
 
     def extract_edges_from_file(

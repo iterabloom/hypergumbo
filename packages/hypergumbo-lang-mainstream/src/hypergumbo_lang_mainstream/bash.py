@@ -177,6 +177,13 @@ class BashAnalyzer(TreeSitterAnalyzer):
         """
         analysis = FileAnalysis()
 
+        # WI-bokab (v7): file-identity anchor for this file's symbols.
+        # ``rel_path`` is the repo-relative path (the base-class extract
+        # contract passes it). Folded into compute_stable_id's
+        # containing_stable_id slot so same-name functions in different files
+        # hash distinctly. Computed once and reused across this file's symbols.
+        file_anchor = self._file_anchor(rel_path)
+
         # INV-kokaj: emit the file pseudo-node as kind="file" with the
         # canonical file-id shape so the orchestrator file-symbol synthesizer
         # dedups against it (existing_ids check). Before this fix, every
@@ -239,6 +246,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                         lines_of_code=end_line - start_line + 1,
                         stable_id=self.compute_stable_id(
                             node, kind="function", name=func_name,
+                            file_stable_id=file_anchor,
                         ),
                     )
                     analysis.symbols.append(symbol)

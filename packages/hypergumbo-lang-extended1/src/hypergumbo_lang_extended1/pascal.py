@@ -200,11 +200,19 @@ class PascalAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract program, unit, function, and procedure symbols from Pascal."""
         analysis = FileAnalysis()
-        self._extract_symbols_recursive(tree.root_node, rel_path, analysis)
+        # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path``
+        # is repo-relative (the base two-pass orchestrator passes it). Folded into
+        # compute_stable_id's containing slot so same-name programs/units/functions
+        # in different files hash distinctly.
+        file_anchor = self._file_anchor(rel_path)
+        self._extract_symbols_recursive(
+            tree.root_node, rel_path, analysis, file_anchor,
+        )
         return analysis
 
     def _extract_symbols_recursive(
         self, node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+        file_anchor: str,
     ) -> None:
         """Recursively extract symbols, stopping descent into defProc bodies."""
         if node.type == "program":
@@ -222,7 +230,10 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                 )
                 sym = Symbol(
                     id=sym_id,
-                    stable_id=self.compute_stable_id(node, kind="program", name=name),
+                    stable_id=self.compute_stable_id(
+                        node, kind="program", name=name,
+                        file_stable_id=file_anchor,
+                    ),
                     name=name,
                     kind="program",
                     language="pascal",
@@ -254,7 +265,10 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                 )
                 sym = Symbol(
                     id=sym_id,
-                    stable_id=self.compute_stable_id(node, kind="module", name=name),
+                    stable_id=self.compute_stable_id(
+                        node, kind="module", name=name,
+                        file_stable_id=file_anchor,
+                    ),
                     name=name,
                     kind="module",
                     language="pascal",
@@ -289,7 +303,10 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                 )
                 sym = Symbol(
                     id=sym_id,
-                    stable_id=self.compute_stable_id(node, kind="function", name=name),
+                    stable_id=self.compute_stable_id(
+                        node, kind="function", name=name,
+                        file_stable_id=file_anchor,
+                    ),
                     name=name,
                     kind="function",
                     language="pascal",
@@ -311,7 +328,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
 
         # Recursively process children
         for child in node.children:
-            self._extract_symbols_recursive(child, rel_path, analysis)
+            self._extract_symbols_recursive(child, rel_path, analysis, file_anchor)
 
     def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
         """Register symbols with lowercase names for case-insensitive matching."""
