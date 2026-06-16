@@ -12,6 +12,31 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **stable_id v6 closure gate — the ADR-0035 §5 validator surface (Wave-2, advances INV-tazaj)** —
+  three enforcement changes to the spec-validator (`validate_ir`), **validator-only** (no hash
+  change, no scheme bump). **(1) Per-file uniqueness — HARD `error`:** within one file, a duplicated
+  `stable_id` is now an error (zero tolerance) — v6's collision-free-by-design contract (ADR-0035
+  §1) made executable at the producer boundary, one violation per colliding `(path, stable_id)`
+  group. **(2) Corpus collision umbrella — threshold 5% → ~0 with an honest denominator:** any
+  collision now fires (not a rate tolerated below an alarm line), and the rate is computed over an
+  **all-Symbols** denominator with the `stable_id=None` cohort counted and disclosed in the same
+  line (WI-niluv) — a clean non-null rate can never again hide a None-cohort (the 2026-06-01
+  false-all-clear shape). **(3) `stable_id_stats` disclosure:** a new
+  `validation_report.stable_id_stats` block (population / None-cohort / collision rate / per-file
+  groups) is **always** present, independent of whether an umbrella fired (validation_report
+  `schema_version` 0.1 → 0.2; `docs/schema.json` + generator updated). The §5 **kind→axis
+  conformance** clause is already satisfied by the existing `axis_conformance` check (every
+  `Symbol.kind`, synthetic stand-ins included, is validated against the registry) — no redundant
+  code added. **Honest status:** the fixture corpus is collision-free under v6, but self-analysis
+  surfaces ~35 real per-file collisions (repeated SQL/HTTP call-sites, repeated shell `export`s,
+  un-deduped message-queue stand-ins) — eliminating these needs `occurrence_index` populated /
+  LOGICAL stand-ins deduped, a **producer hash change deferred to a follow-on v7 bump** that
+  *closes* INV-tazaj on a clean re-measure. The CI ratchet runs on the fixture corpus (per-substrate
+  baseline `12 → 11` on the v6 shrink) with new §5 floors (zero per-file errors; stats cross-checked
+  against the emitted nodes). Also fixed two ADR-0043 §6 byte-determinism leaks in the
+  collision/fingerprint umbrellas (per-file `record_id` and equal-size-group tie-breaks are now
+  symbol-iteration-order independent).
+
 - **stable_id v6 — atomic identity-contract bump (Wave-2 spine, ADR-0035; closes WI-gitun /
   WI-titiz / WI-zitod, advances INV-tazaj)** — `STABLE_ID_SCHEME` bumps `v5 → v6` in one atomic
   scheme flip (ADR-0035 §6), folding the **full enclosing scope chain** (enclosing classes →

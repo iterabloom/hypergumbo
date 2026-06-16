@@ -21,6 +21,7 @@ from hypergumbo_core.spec_validator import (
     VALIDATION_REPORT_SCHEMA_VERSION,
     ValidationViolation,
     build_validation_report,
+    compute_stable_id_stats,
     emit_stderr_summary,
     validate_ir,
 )
@@ -50,6 +51,9 @@ def test_build_validation_report_empty_is_clean() -> None:
         "verdict_enum": 0,
         "id_format": 0,
     }
+    # ADR-0035 §5: stats are None on a bare call (no symbols supplied);
+    # the production finalize path always supplies them.
+    assert report["stable_id_stats"] is None
 
 
 def test_build_validation_report_counts_by_class() -> None:
@@ -770,7 +774,13 @@ def test_cross_field_flags_class_a_with_display_label() -> None:
     from hypergumbo_core.catalog import all_known_languages
     from hypergumbo_core.symbol_kinds import all_symbol_kind_names
 
-    a_kind = next(k for k in all_symbol_kind_names() if k != "file")
+    # Deterministic non-exempt kind: sorted() avoids frozenset hash-order
+    # flakiness, and the exemptions (file/external_symbol, line ~839) must be
+    # excluded or the check correctly emits 0 for those kinds.
+    a_kind = next(
+        k for k in sorted(all_symbol_kind_names())
+        if k not in ("file", "external_symbol")
+    )
     a_lang = next(iter(all_known_languages()))
     sym = _FakeSym(
         id="python:test/fake.py:1-1:label-on-class-a:function",
@@ -871,17 +881,10 @@ def _make_sym_with_stable_id(idx: int, sid: str, name: str = "f") -> _FakeSym:
     )
 
 
-def test_cross_field_stable_id_collisions_below_threshold_pass() -> None:
-    """A small number of collisions (under the 5% threshold) does not
-    emit the umbrella violation — the validator only flags when the rate
-    crosses the threshold."""
-    # 100 distinct stable_ids + 1 collision (1/101 ≈ 1%, under 5%).
-    syms: list[_FakeSym] = []
-    for i in range(100):
-        syms.append(_make_sym_with_stable_id(i, f"sha256:{i:016x}"))
-    # Add one collision against the first stable_id (sha256:{0:016x})
-    syms.append(_make_sym_with_stable_id(100, "sha256:0000000000000000", name="dup"))
-    syms.append(_make_sym_with_stable_id(101, "sha256:0000000000000000", name="dup2"))
+def test_cross_field_stable_id_zero_collisions_pass() -> None:
+    """All-distinct stable_ids → no corpus umbrella. The ~0 threshold
+    (ADR-0035 §5) does not fire when there is genuinely no collision."""
+    syms = [_make_sym_with_stable_id(i, f"sha256:{i:016x}") for i in range(100)]
     violations = validate_ir(syms, [], [])
     assert not any(
         v.validator_class == "cross_field"
@@ -890,15 +893,31 @@ def test_cross_field_stable_id_collisions_below_threshold_pass() -> None:
     )
 
 
-def test_cross_field_stable_id_collisions_above_threshold_flags() -> None:
-    """When >5% of Symbols share stable_id, the umbrella violation fires
-    with the collision rate and top-3 collision groups described in the
-    message — and exactly ONE violation, not one-per-Symbol."""
+def test_cross_field_stable_id_any_collision_flags() -> None:
+    """ADR-0035 §5: the corpus threshold drops from 5% to ~0 — even a
+    single collision (well under the old 5% alarm line) now fires the
+    umbrella. v6's contract is collision-free BY DESIGN, not collision-rare.
+    """
+    # 100 distinct + one collision group of 2 == 2/101 ≈ 2% (was below 5%).
+    syms = [_make_sym_with_stable_id(i, f"sha256:{i + 1:016x}") for i in range(100)]
+    syms.append(_make_sym_with_stable_id(100, "sha256:0000000000000001", name="dup"))
+    violations = validate_ir(syms, [], [])
+    matched = [
+        v for v in violations
+        if v.validator_class == "cross_field"
+        and v.field_name == "Symbol.stable_id"
+        and v.severity == "warning"  # the corpus umbrella (not the per-file error)
+    ]
+    assert len(matched) == 1, "a single collision must fire the ~0-threshold umbrella"
+
+
+def test_cross_field_stable_id_collisions_flags_rate_and_top_groups() -> None:
+    """The corpus umbrella fires exactly ONE warning naming the rate
+    (over an all-Symbols denominator) and the top collision groups."""
     syms: list[_FakeSym] = []
-    # 10 distinct stable_ids
+    # 10 distinct stable_ids + 5 colliding == 5/15 = 33.3% of all Symbols.
     for i in range(10):
         syms.append(_make_sym_with_stable_id(i, f"sha256:{i:016x}"))
-    # 5 colliding symbols (5/15 = 33%, well above 5%)
     for i in range(5):
         syms.append(_make_sym_with_stable_id(
             100 + i, "sha256:cccccccccccccccc", name=f"colliding_{i}",
@@ -908,35 +927,35 @@ def test_cross_field_stable_id_collisions_above_threshold_flags() -> None:
         v for v in violations
         if v.validator_class == "cross_field"
         and v.field_name == "Symbol.stable_id"
+        and v.severity == "warning"
     ]
     # Exactly one umbrella, regardless of collision-group size.
     assert len(matched) == 1
     v = matched[0]
     assert v.severity == "warning"
     assert v.record_id is None
-    assert "33.3%" in (v.observed or "")
+    assert "33.3%" in (v.observed or "")  # 5/15 over the all-Symbols denominator
     assert "sha256:cccccccccccccccc" in (v.message or "")
     assert "colliding_0" in (v.message or "")
 
 
 def test_cross_field_stable_id_collision_discloses_none_cohort() -> None:
-    """WI-niluv: when the collision umbrella fires, the violation must
-    DISCLOSE its denominator scope — how many Symbols carry stable_id=None
-    and are EXCLUDED from the (collided/total) rate — so the encoding is
-    biconditional. A low reported non-null rate must not silently hide an
-    even more ambiguous no-stable_id-at-all cohort (the original bug:
-    178/757 reported vs 178/893 population, 136 None-cohort Symbols
-    vanished from the denominator with no disclosure).
+    """WI-niluv / ADR-0035 §5: the collision rate is computed over an
+    ALL-Symbols denominator (the None-stable_id cohort INCLUDED), and the
+    None cohort is disclosed in the same line, so a clean non-null rate can
+    never silently hide a large no-stable_id cohort (the 2026-06-01 false
+    all-clear shape: 178/757 reported while 136 None-cohort Symbols
+    vanished from the denominator).
     """
     syms: list[_FakeSym] = []
-    # 10 distinct stable_ids + 5 colliding == 5/15 = 33.3% > 5% threshold.
+    # 10 distinct + 5 colliding + 3 None == 5 collided / 18 population = 27.8%.
     for i in range(10):
         syms.append(_make_sym_with_stable_id(i, f"sha256:{i:016x}"))
     for i in range(5):
         syms.append(_make_sym_with_stable_id(
             100 + i, "sha256:cccccccccccccccc", name=f"colliding_{i}",
         ))
-    # 3 Symbols with stable_id=None — the silently-dropped cohort.
+    # 3 Symbols with stable_id=None — now COUNTED in the denominator.
     for i in range(3):
         syms.append(_FakeSym(
             id=f"python:test/fake.py:{200 + i}-{200 + i}:nosid{i}:function",
@@ -950,15 +969,162 @@ def test_cross_field_stable_id_collision_discloses_none_cohort() -> None:
         v for v in violations
         if v.validator_class == "cross_field"
         and v.field_name == "Symbol.stable_id"
+        and v.severity == "warning"
     ]
     assert len(matched) == 1
     observed = matched[0].observed or ""
-    # Back-compat: the non-null collision rate is still surfaced.
-    assert "33.3%" in observed
-    # WI-niluv disclosure: explicit scope + None cohort over full population.
-    assert "denominator_scope=non_null" in observed
-    assert "3/18" in observed  # 3 None of (15 non-null + 3 None) = 18 population
+    # Rate is now over the full population (5/18 = 27.8%), not 5/15 = 33.3%.
+    assert "5/18" in observed
+    assert "27.8%" in observed
+    # None cohort disclosed in the same line; the old non-null wording is gone.
+    assert "none_cohort=3/18" in observed
     assert "stable_id=None" in observed
+    assert "denominator_scope=non_null" not in observed
+
+
+# ----------------------------------------------------------------------
+# ADR-0035 §5 — per-file stable_id uniqueness (HARD error) + stats
+# ----------------------------------------------------------------------
+
+
+def _make_sym_pathed(
+    idx: int, sid: str, path: str, name: str = "f", kind: str = "function",
+) -> _FakeSym:
+    """A Symbol stand-in carrying a ``path`` (needed for the per-file check)."""
+    return _FakeSym(
+        id=f"python:{path}:{idx}-{idx}:{name}:{kind}",
+        kind=kind, language="python", discovery_language=None,
+        protocol_origin=None, display_label=None, origin=[],
+        qualified_name=None, stable_id=sid, name=name, path=path,
+        dst_ref=None, dst=None,
+    )
+
+
+def _per_file_errors(violations) -> list:
+    """The error-severity per-file stable_id violations (not the warning umbrella)."""
+    return [
+        v for v in violations
+        if v.validator_class == "cross_field"
+        and v.field_name == "Symbol.stable_id"
+        and v.severity == "error"
+    ]
+
+
+def test_per_file_stable_id_collision_flags_error() -> None:
+    """Two Symbols in ONE file sharing a stable_id is a HARD error (ADR-0035
+    §5 per-file uniqueness), one violation per colliding (path, id) group."""
+    syms = [
+        _make_sym_pathed(1, "sha256:aaaaaaaaaaaaaaaa", "a.py", name="alpha"),
+        _make_sym_pathed(2, "sha256:aaaaaaaaaaaaaaaa", "a.py", name="beta"),
+    ]
+    errors = _per_file_errors(validate_ir(syms, [], []))
+    assert len(errors) == 1
+    v = errors[0]
+    assert v.severity == "error"
+    assert "a.py" in (v.observed or "")
+    assert "sha256:aaaaaaaaaaaaaaaa" in (v.observed or "")
+    assert "alpha" in (v.observed or "") and "beta" in (v.observed or "")
+
+
+def test_per_file_stable_id_same_id_distinct_files_no_error() -> None:
+    """The SAME stable_id in DIFFERENT files is NOT a per-file error (the
+    corpus umbrella still warns about it, but the hard check is per-file)."""
+    syms = [
+        _make_sym_pathed(1, "sha256:bbbbbbbbbbbbbbbb", "a.py"),
+        _make_sym_pathed(1, "sha256:bbbbbbbbbbbbbbbb", "b.py"),
+    ]
+    violations = validate_ir(syms, [], [])
+    assert _per_file_errors(violations) == []
+    # ...but the cross-file collision IS surfaced by the soft umbrella.
+    assert any(
+        v.severity == "warning" and v.field_name == "Symbol.stable_id"
+        for v in violations
+    )
+
+
+def test_per_file_pathless_symbols_skipped() -> None:
+    """Pathless symbols are out of scope for the per-file check (no file to
+    be 'within'); the corpus umbrella covers them instead."""
+    syms = [
+        _make_sym_with_stable_id(1, "sha256:cccccccccccccccc"),
+        _make_sym_with_stable_id(2, "sha256:cccccccccccccccc"),
+    ]
+    # _make_sym_with_stable_id sets no ``path`` attribute.
+    assert _per_file_errors(validate_ir(syms, [], [])) == []
+
+
+def test_compute_stable_id_stats_counts_population_and_collisions() -> None:
+    """ADR-0035 §5 stats: population includes the None cohort; collision
+    rate is over ALL symbols; per-file groups are counted separately. The
+    fixture exercises all three branches: pathed, stable_id-but-no-path, None.
+    """
+    syms = [
+        _make_sym_pathed(1, "sha256:1111111111111111", "a.py"),
+        _make_sym_pathed(2, "sha256:2222222222222222", "a.py"),
+        # per-file collision in a.py (shares sha256:1111... with sym 1)
+        _make_sym_pathed(3, "sha256:1111111111111111", "a.py", name="dup"),
+        # stable_id but NO path — exercises the `if path` false branch.
+        _make_sym_with_stable_id(4, "sha256:4444444444444444"),
+        # None cohort: no stable_id (and no path).
+        _FakeSym(
+            id="python:x.py:5-5:n:function", kind="function", language="python",
+            discovery_language=None, protocol_origin=None, display_label=None,
+            origin=[], qualified_name=None, stable_id=None, name="n",
+            dst_ref=None, dst=None,
+        ),
+    ]
+    stats = compute_stable_id_stats(syms)
+    assert stats["total_symbols"] == 5
+    assert stats["non_null"] == 4
+    assert stats["none_cohort"] == 1
+    assert stats["collision_groups"] == 1  # only sha256:1111... is shared
+    assert stats["collided_symbols"] == 2
+    assert stats["per_file_collision_groups"] == 1
+    assert stats["none_cohort_pct"] == 20.0  # 1/5
+    assert stats["collision_rate_pct"] == 40.0  # 2/5
+
+
+def test_compute_stable_id_stats_empty_is_zeroed() -> None:
+    """No symbols → all-zero stats, no ZeroDivision."""
+    stats = compute_stable_id_stats([])
+    assert stats["total_symbols"] == 0
+    assert stats["none_cohort_pct"] == 0.0
+    assert stats["collision_rate_pct"] == 0.0
+
+
+def test_per_file_collision_record_id_is_order_deterministic() -> None:
+    """ADR-0043 §6: the per-file violation's record_id must not depend on
+    symbol-iteration order — it is the lexicographically-smallest id in the
+    group, not the first-encountered (which would leak ranked-vs-append order).
+    """
+    a = _make_sym_pathed(1, "sha256:dddddddddddddddd", "a.py", name="alpha")
+    b = _make_sym_pathed(2, "sha256:dddddddddddddddd", "a.py", name="beta")
+    rid_ab = _per_file_errors(validate_ir([a, b], [], []))[0].record_id
+    rid_ba = _per_file_errors(validate_ir([b, a], [], []))[0].record_id
+    assert rid_ab == rid_ba
+    assert rid_ab == min(a.id, b.id)
+
+
+def test_corpus_umbrella_message_is_order_deterministic() -> None:
+    """ADR-0043 §6: equal-size collision groups are tie-broken on the
+    stable_id, so the umbrella message is byte-stable across iteration orders.
+    """
+    def build() -> list[_FakeSym]:
+        return [
+            _make_sym_with_stable_id(1, "sha256:aaaaaaaaaaaaaaaa", name="a1"),
+            _make_sym_with_stable_id(2, "sha256:aaaaaaaaaaaaaaaa", name="a2"),
+            _make_sym_with_stable_id(3, "sha256:bbbbbbbbbbbbbbbb", name="b1"),
+            _make_sym_with_stable_id(4, "sha256:bbbbbbbbbbbbbbbb", name="b2"),
+        ]
+
+    def umbrella_msg(syms) -> str:
+        vs = [
+            v for v in validate_ir(syms, [], [])
+            if v.field_name == "Symbol.stable_id" and v.severity == "warning"
+        ]
+        return vs[0].message
+
+    assert umbrella_msg(build()) == umbrella_msg(list(reversed(build())))
 
 
 # ----------------------------------------------------------------------

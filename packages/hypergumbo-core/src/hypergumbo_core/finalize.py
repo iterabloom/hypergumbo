@@ -67,7 +67,11 @@ from typing import TYPE_CHECKING
 from .ir import _compute_run_signature
 from .pass_metadata import PassMetadataLookup
 from .repo_fingerprint import compute_repo_fingerprint
-from .spec_validator import build_validation_report, validate_ir
+from .spec_validator import (
+    build_validation_report,
+    compute_stable_id_stats,
+    validate_ir,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .ir import Edge, Symbol, UsageContext
@@ -268,5 +272,8 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap:
     _finalize_commit_dicts(ctx)             # 8  commit reconciled view
     _finalize_referential_integrity(ctx)    # 10 validate_ir — LAST (R3)
     ctx.violations.sort(key=_violation_sort_key)  # §6 determinism: stable serialized order
-    ctx.behavior_map["validation_report"] = build_validation_report(ctx.violations)
+    ctx.behavior_map["validation_report"] = build_validation_report(
+        ctx.violations,
+        stable_id_stats=compute_stable_id_stats(ctx.symbols),
+    )
     return _freeze(ctx)

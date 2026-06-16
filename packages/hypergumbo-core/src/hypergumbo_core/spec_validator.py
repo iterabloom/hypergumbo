@@ -110,7 +110,7 @@ import sys
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Iterable, Optional
 
-VALIDATION_REPORT_SCHEMA_VERSION = "0.1"
+VALIDATION_REPORT_SCHEMA_VERSION = "0.2"  # 0.2: ADR-0035 §5 added stable_id_stats
 
 # Stable enum-like sets. Mirrored in the ADR-0033 §"Output format" table
 # and in `ValidationViolation.severity` / `validator_class` axis annotations.
@@ -168,6 +168,7 @@ def validate_ir(
     violations.extend(_check_axis_conformance(symbols, edges, analysis_runs))
     violations.extend(_check_writer_contract(symbols, edges, analysis_runs))
     violations.extend(_check_cross_field_coherence(symbols, edges, analysis_runs))
+    violations.extend(_check_stable_id_per_file_uniqueness(symbols))
     violations.extend(_check_verdict_enum_completeness())
     violations.extend(_check_id_format(symbols))
     violations.extend(_check_stable_id_format(symbols))
@@ -913,46 +914,47 @@ def _check_cross_field_coherence(
                 ),
             ))
 
-    # ---- INV-bazij umbrella: stable_id collision rate -------------------
+    # ---- INV-bazij / ADR-0035 §5 umbrella: corpus stable_id collision ----
     # Phase 6 PR3 (INV-bazij P0): stable_id was documented as carrying
-    # per-symbol structural identity but the original hash inputs
-    # (kind, param_count, arity_flags, decorators, containing_stable_id)
-    # collided at ~60% on the dogfood corpus — 155 bash functions in one
-    # file all shared one stable_id; 152 zero-parameter pytest tests
-    # collided likewise. The fix (`name` + `qualified_name` in the hash
-    # inputs) is regression-proofed by this umbrella check: emit ONE
-    # ValidationViolation summarizing the collision rate and the top-3
-    # largest collision groups, not one-per-Symbol (which would flood the
-    # report when a regression returns).
-    #
-    # Threshold: 5%. Self-analysis post-fix is expected to land well
-    # under this; CI fails fast if a future analyzer change loses the
-    # disambiguators.
-    _STABLE_ID_COLLISION_THRESHOLD = 0.05
+    # per-symbol structural identity but the original hash inputs collided
+    # at ~60% on the dogfood corpus. v6 (ADR-0035 §1) makes stable_id
+    # unique WITHIN A RUN by design, so §5 drops this corpus threshold from
+    # 5% to effectively ZERO: any collision is a not-yet-migrated producer
+    # to surface, never a rate tolerated below an alarm line. Two changes
+    # from the 5%-era check:
+    #   * Threshold 0.0 — fire whenever collided > 0.
+    #   * Denominator INCLUDES the None-stable_id cohort (WI-niluv): the
+    #     rate is over ALL Symbols and the None cohort is disclosed in the
+    #     same line, so a clean non-null rate can never silently hide a
+    #     large no-stable_id cohort (the 2026-06-01 false all-clear shape).
+    # This is the SOFT (warning) cross-file signal for the migration
+    # backlog; the HARD per-file uniqueness guarantee is a separate error
+    # check (_check_stable_id_per_file_uniqueness). One umbrella violation
+    # naming the top-3 groups, not one-per-Symbol. (The fingerprint twin
+    # below keeps the non-null denominator — WI-falum, out of §5 scope.)
+    _STABLE_ID_COLLISION_THRESHOLD = 0.0
     counter: dict[str, list[Any]] = {}
     total = 0
     none_cohort = 0
     for sym in symbols:
         sid = getattr(sym, "stable_id", None)
         if sid is None:
-            # WI-niluv: count the None cohort instead of silently dropping it.
-            # The denominator below is non-null-only by design (a collision
-            # rate is undefined for records with no key), but a low non-null
-            # rate must not hide a large no-stable_id-at-all cohort — so the
-            # firing violation discloses this count and the full population.
             none_cohort += 1
             continue
         total += 1
         counter.setdefault(sid, []).append(sym)
-    if total > 0:
+    population = total + none_cohort
+    if population > 0:
         collided = sum(len(g) for g in counter.values() if len(g) > 1)
-        rate = collided / total
+        rate = collided / population
         if rate > _STABLE_ID_COLLISION_THRESHOLD:
-            # Top 3 largest collision groups, by member count.
+            # Top 3 largest collision groups, by member count. Secondary key
+            # on the stable_id breaks size ties deterministically so the
+            # rendered message is byte-stable across symbol-iteration orders
+            # (ADR-0043 §6); a bare reverse-by-length leaks insertion order.
             top_groups = sorted(
                 ((sid, g) for sid, g in counter.items() if len(g) > 1),
-                key=lambda item: len(item[1]),
-                reverse=True,
+                key=lambda item: (-len(item[1]), item[0]),
             )[:3]
             top_descriptions = []
             for sid, group in top_groups:
@@ -964,17 +966,14 @@ def _check_cross_field_coherence(
                     f"{', '.join(sample_names)})"
                 )
             top_str = "; ".join(top_descriptions) if top_descriptions else "(none)"
-            # WI-niluv denominator disclosure: make the scope explicit so the
-            # encoding is biconditional (a reader can reconstruct both the
-            # non-null rate collided/total and the full population).
-            # population >= 1 here (total >= 1 inside this block), so no
-            # division guard is needed (mirrors the fingerprint twin below).
-            population = total + none_cohort
+            # WI-niluv disclosure: the rate is over the full population
+            # (None included); the None cohort is named in the same line so
+            # the encoding stays biconditional (reader can recover both the
+            # collision count and the None count from population).
             none_frac = none_cohort / population
-            denom_disclosure = (
-                f"; denominator_scope=non_null ({none_cohort}/{population} = "
-                f"{none_frac*100:.1f}% had stable_id=None, EXCLUDED from the "
-                "rate)"
+            none_disclosure = (
+                f"; none_cohort={none_cohort}/{population} "
+                f"({none_frac*100:.1f}% had stable_id=None)"
             )
             violations.append(ValidationViolation(
                 severity="warning",
@@ -982,23 +981,22 @@ def _check_cross_field_coherence(
                 field_name="Symbol.stable_id",
                 record_id=None,
                 observed=(
-                    f"{collided}/{total} non-null Symbols share stable_id "
-                    f"({rate*100:.1f}%)" + denom_disclosure
+                    f"{collided}/{population} Symbols share a stable_id "
+                    f"({rate*100:.1f}% of all Symbols)" + none_disclosure
                 ),
                 expected=(
-                    f"Collision rate must stay below "
-                    f"{_STABLE_ID_COLLISION_THRESHOLD*100:.0f}% (INV-bazij). "
-                    "Augment compute_stable_id hash inputs with name+"
-                    "qualified_name when adding new symbol kinds."
+                    "stable_id must be unique within a run (ADR-0035 §1; "
+                    "collision-free by design). The corpus collision "
+                    "threshold is ~0 (ADR-0035 §5); any collision is a "
+                    "producer whose hash inputs are too coarse."
                 ),
                 message=(
-                    f"stable_id collision rate {rate*100:.1f}% exceeds "
-                    f"{_STABLE_ID_COLLISION_THRESHOLD*100:.0f}% threshold "
-                    f"({collided}/{total} symbols). Top groups: {top_str}. "
-                    "Per INV-bazij, two symbols with the same shape "
-                    "(0-param + 0-decorator + same containing scope) must "
-                    "still get distinct stable_ids by virtue of name and "
-                    "qualified_name being in the hash inputs."
+                    f"stable_id collision detected: {collided}/{population} "
+                    f"Symbols ({rate*100:.1f}% of all Symbols) share an id. "
+                    f"Top groups: {top_str}. Per ADR-0035 §5 the corpus "
+                    "threshold is ~0; a SITE-axis kind needs its "
+                    "occurrence_index populated, a LOGICAL-axis stand-in "
+                    "needs deduping (§3)."
                 ),
             ))
 
@@ -1039,13 +1037,15 @@ def _check_cross_field_coherence(
         simple = name.rsplit(".", 1)[-1].rsplit("::", 1)[-1].rsplit("\\", 1)[-1]
         fp_names.setdefault(fp, set()).add(simple)
         fp_counts[fp] = fp_counts.get(fp, 0) + 1
+    # Secondary key on the fingerprint value breaks size ties deterministically
+    # (ADR-0043 §6 byte-determinism; the analogue of the stable_id umbrella's
+    # tie-break above), so the rendered message does not leak iteration order.
     degenerate = sorted(
         (
             (fp, names) for fp, names in fp_names.items()
             if len(names) >= _FINGERPRINT_DEGENERACY_MIN_NAMES
         ),
-        key=lambda item: len(item[1]),
-        reverse=True,
+        key=lambda item: (-len(item[1]), item[0]),
     )
     if degenerate:
         top_descriptions = []
@@ -1090,6 +1090,123 @@ def _check_cross_field_coherence(
         ))
 
     return violations
+
+
+# ----------------------------------------------------------------------
+# ADR-0035 §5 — per-file stable_id uniqueness (HARD check) + corpus stats
+# ----------------------------------------------------------------------
+#
+# v6 (ADR-0035 §1) makes stable_id unique within a run by design. §5 turns
+# that contract into two enforcement surfaces:
+#   * Per-file uniqueness — a HARD (error) check below: within ONE file's
+#     emitted Symbols a duplicated stable_id is an error, zero tolerance.
+#     This is the by-design-collision-free contract at the producer
+#     boundary. (The corpus-wide rate umbrella in _check_cross_field_
+#     coherence is the SOFT/warning cross-file companion.)
+#   * Honest disclosure — compute_stable_id_stats below surfaces the
+#     None-cohort + collision rate over an ALL-Symbols denominator into the
+#     report ALWAYS (not only when an umbrella fires), so the 2026-06-01
+#     false all-clear (a hidden None-cohort) cannot recur.
+
+
+def _check_stable_id_per_file_uniqueness(
+    symbols: Iterable[Any],
+) -> list[ValidationViolation]:
+    """ADR-0035 §5 per-file emit-time uniqueness — HARD check (error).
+
+    Within one file's emitted Symbols, a duplicated ``stable_id`` is an
+    error, not a rate contribution. Symbols without a ``path`` (pathless
+    synthetic stand-ins) are out of scope here — they are caught by the
+    corpus-wide umbrella; this check is specifically the in-a-file
+    guarantee. One violation per colliding ``(path, stable_id)`` group, not
+    one-per-Symbol, so a regression that reintroduces collisions surfaces a
+    readable summary rather than flooding the report.
+    """
+    violations: list[ValidationViolation] = []
+    by_file_sid: dict[tuple[str, str], list[Any]] = {}
+    for sym in symbols:
+        sid = getattr(sym, "stable_id", None)
+        if sid is None:
+            continue
+        path = getattr(sym, "path", None)
+        if not path:
+            continue
+        by_file_sid.setdefault((path, sid), []).append(sym)
+    for (path, sid), group in sorted(by_file_sid.items()):
+        if len(group) < 2:
+            continue
+        names = sorted({(getattr(s, "name", None) or "?")[:50] for s in group})
+        kinds = sorted({getattr(s, "kind", None) or "?" for s in group})
+        # Deterministic representative id (ADR-0043 §6 byte-determinism): the
+        # lexicographically-smallest id, independent of symbol-iteration order
+        # (group[0] would leak ranked-vs-analyzer-append ordering).
+        record_id = min((getattr(s, "id", None) or "") for s in group) or None
+        violations.append(ValidationViolation(
+            severity="error",
+            validator_class="cross_field",
+            field_name="Symbol.stable_id",
+            record_id=record_id,
+            observed=(
+                f"{len(group)} Symbols in {path} share stable_id {sid} "
+                f"(names: {', '.join(names)}; kinds: {', '.join(kinds)})"
+            ),
+            expected=(
+                "Within one file, every emitted Symbol.stable_id must be "
+                "unique (ADR-0035 §5 per-file uniqueness; v6 collision-free "
+                "by design)."
+            ),
+            message=(
+                f"Per-file stable_id collision in {path}: {len(group)} "
+                f"Symbols share {sid}. A SITE-axis kind (call_site, link) "
+                "needs its occurrence_index populated; a LOGICAL-axis "
+                "stand-in needs deduping (ADR-0035 §3)."
+            ),
+        ))
+    return violations
+
+
+def compute_stable_id_stats(symbols: Iterable[Any]) -> dict[str, Any]:
+    """ADR-0035 §5 honest-denominator disclosure.
+
+    Corpus-level stable_id population stats over an ALL-Symbols denominator,
+    surfaced in ``validation_report.stable_id_stats`` so the None-cohort and
+    collision rate are ALWAYS visible — independent of whether the collision
+    umbrella fired. This is the structural guard against the 2026-06-01
+    false all-clear (a hidden None-cohort behind a clean non-null rate).
+    """
+    counter: dict[str, list[Any]] = {}
+    by_file_sid: dict[tuple[str, str], int] = {}
+    total = 0
+    none_cohort = 0
+    for sym in symbols:
+        sid = getattr(sym, "stable_id", None)
+        if sid is None:
+            none_cohort += 1
+            continue
+        total += 1
+        counter.setdefault(sid, []).append(sym)
+        path = getattr(sym, "path", None)
+        if path:
+            key = (path, sid)
+            by_file_sid[key] = by_file_sid.get(key, 0) + 1
+    population = total + none_cohort
+    collided = sum(len(g) for g in counter.values() if len(g) > 1)
+    collision_groups = sum(1 for g in counter.values() if len(g) > 1)
+    per_file_collision_groups = sum(1 for c in by_file_sid.values() if c > 1)
+    return {
+        "total_symbols": population,
+        "non_null": total,
+        "none_cohort": none_cohort,
+        "none_cohort_pct": (
+            round(100 * none_cohort / population, 2) if population else 0.0
+        ),
+        "collision_groups": collision_groups,
+        "collided_symbols": collided,
+        "collision_rate_pct": (
+            round(100 * collided / population, 2) if population else 0.0
+        ),
+        "per_file_collision_groups": per_file_collision_groups,
+    }
 
 
 # ----------------------------------------------------------------------
@@ -1519,12 +1636,21 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
 
 def build_validation_report(
     violations: list[ValidationViolation],
+    *,
+    stable_id_stats: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Construct the ``validation_report`` section for the artifact dict.
 
     Surfaced as a top-level key alongside ``schema_version``, ``symbols``,
     ``edges``, etc. The ``violations_by_class`` counter is computed here
     so consumers can read summary counts without iterating ``violations``.
+
+    ``stable_id_stats`` (ADR-0035 §5, schema_version 0.2): the corpus
+    stable_id population/collision/None-cohort disclosure (from
+    ``compute_stable_id_stats``). Surfaced as a separate top-level key so
+    it is ALWAYS present, independent of whether the collision umbrella
+    fired. ``None`` on bare calls (unit tests); the production finalize
+    path always supplies it.
     """
     by_class: dict[str, int] = dict.fromkeys(_VALIDATOR_CLASSES, 0)
     for v in violations:
@@ -1534,6 +1660,7 @@ def build_validation_report(
         "schema_version": VALIDATION_REPORT_SCHEMA_VERSION,
         "violations": [asdict(v) for v in violations],
         "violations_by_class": by_class,
+        "stable_id_stats": stable_id_stats,
     }
 
 

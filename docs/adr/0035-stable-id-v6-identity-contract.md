@@ -123,6 +123,21 @@ Two validator changes (ADR-0033 substrate), replacing the 5% umbrella threshold 
 
 Closure of the identity umbrellas (INV-tazaj, META-fabaz, INV-zudob) requires one full-corpus re-measurement under the new gates — positive evidence, not non-reproduction.
 
+**Implementation status (validator surface landed; producer fix deferred).** The validator
+half of this section shipped as a follow-on PR to the §6 atomic bump: `validate_ir` now runs
+`_check_stable_id_per_file_uniqueness` (the hard `error`), the corpus umbrella threshold dropped
+to ~0 over an all-Symbols denominator, and `compute_stable_id_stats` surfaces the always-present
+`validation_report.stable_id_stats` disclosure (report `schema_version` 0.1 → 0.2). The
+**kind→axis conformance** limb is satisfied by the pre-existing `axis_conformance` check, which
+already validates *every* `Symbol.kind` (synthetic stand-ins via the `language=None` /
+`external_symbol` / markdown-`link` markers included) against the registry; the LOGICAL/SITE axis
+*shape* is not hash-verifiable post-hoc and remains a producer/factory concern (the
+`make_*_stable_id` factory chosen, ADR-0034). The gates are live and the fixture corpus is
+collision-free, but the self-tree still carries ~35 per-file collisions (SITE kinds whose
+`occurrence_index` is unpopulated; un-deduped LOGICAL stand-ins). **Driving those to zero is a
+producer hash change = a follow-on v7 scheme bump; INV-tazaj closes on that re-measure, not on
+this validator surface alone.**
+
 ### 6. One atomic v5→v6 scheme bump
 
 All hash-input changes in this ADR — scope-chain folding (§1), `make_typed_stable_id` name parameters (§1), occurrence policy hash parts (§3), manifest-path dependency identity and any analogue changes from the §4 audit, plus the py.py producer unification — land as **one** `STABLE_ID_SCHEME` bump, `hypergumbo-stableid-v5` → `hypergumbo-stableid-v6`. Rationale: each piece alone invalidates most of the Python substrate; serial bumps re-trigger the ADR-0031 class of fallout (predicted 20-30 changed ids, actual 262) once per bump. Spec and migration guide update in the same PR train. Precondition: the spec's scheme-history backfill (WI-foful — the spec still says v2 in places, e.g. `docs/hypergumbo-spec.md:388,684,1842`).

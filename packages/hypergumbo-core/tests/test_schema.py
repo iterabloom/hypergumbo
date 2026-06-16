@@ -723,6 +723,7 @@ class TestTopLevelBlockTyping:
         vr_props = schema["properties"]["validation_report"]["properties"]
         assert set(vr_props) == {
             "schema_version", "violations", "violations_by_class",
+            "stable_id_stats",
         }
         assert (
             vr_props["violations"]["items"].get("$ref")

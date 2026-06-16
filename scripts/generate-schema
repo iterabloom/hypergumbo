@@ -386,6 +386,35 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                         "type": "object",
                         "additionalProperties": {"type": "integer"},
                         "description": "Per-validator-class counts"
+                    },
+                    "stable_id_stats": {
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "total_symbols": {"type": "integer"},
+                                    "non_null": {"type": "integer"},
+                                    "none_cohort": {"type": "integer"},
+                                    "none_cohort_pct": {"type": "number"},
+                                    "collision_groups": {"type": "integer"},
+                                    "collided_symbols": {"type": "integer"},
+                                    "collision_rate_pct": {"type": "number"},
+                                    "per_file_collision_groups": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "additionalProperties": False
+                            },
+                            {"type": "null"}
+                        ],
+                        "description": (
+                            "ADR-0035 §5 corpus stable_id "
+                            "population/collision/None-cohort disclosure over "
+                            "an all-Symbols denominator; always present so a "
+                            "clean non-null rate can never hide a None-cohort. "
+                            "Null on bare build_validation_report calls (unit "
+                            "tests)."
+                        )
                     }
                 }
             },

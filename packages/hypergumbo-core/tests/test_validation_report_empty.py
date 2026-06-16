@@ -77,39 +77,39 @@ SUBSTRATES: dict[str, dict[str, Any]] = {
 }
 
 # Shrink-only spec-validator baselines. Measured 2026-06-11; re-measured
-# 2026-06-13 for the id-format:F3 round-trip canary. A substrate's total may
-# shrink below its baseline (ratchet it down here when it does) but never
-# exceed it.
+# 2026-06-13 (id-format:F3 round-trip canary) and 2026-06-15 (stable_id v6
+# closure gate, ADR-0035 §5). A substrate's total may shrink below its
+# baseline (ratchet it down here when it does) but never exceed it.
 #
-# What the non-zero baselines pin today:
-#   * every substrate: 1 cross_field stable_id collision (INV-bazij; the
-#     small corpus's 4/42 = 9.5% rate sits just over the 5% threshold).
-#   * every substrate: +11 id_format round-trip warnings (id-format:F3) on
+# What the non-zero baselines pin today (all 11 are id_format):
+#   * every substrate: 11 id_format round-trip warnings (id-format:F3) on
 #     external_symbol boundary nodes (go/java/rust/solidity/swift) whose
 #     id kind-slot kept the original reference kind (unresolved / package /
 #     attribute / module) while Symbol.kind became external_symbol during
 #     boundary synthesis. This is the WI-pubiv ~1645-node kind-slot
 #     disagreement cohort, surfaced at advisory (warning) severity; the
-#     producer fix rebuilds node.id (id-changing, deferred to the v6 bump),
-#     after which these promote to error and ratchet back down.
-#   * include_docs: previously carried +5 id_format violations on markdown
-#     README section stable_ids (non-canonical ``markdown:README.md:...:section``
-#     shape — the flag-gated producer defect WI-himoj surfaced). FIXED by
-#     id-format:F2 4a (markdown/gitignore stable_ids now route through
-#     ``make_doc_stable_id`` -> canonical ``sha256:<16hex>``), so include_docs
-#     ratcheted 17 -> 12 (matching default: 1 cross_field + 11 F3 round-trip).
+#     producer fix rebuilds node.id (id-changing, deferred), after which
+#     these promote to error and ratchet back down.
+#   * cross_field stable_id collision: 0. Was 1 in the v5 era (the small
+#     corpus's 4/42 = 9.5% rate over the 5% threshold); the v6 atomic bump
+#     (ADR-0035 §1, PR #245) drove the fixture's collisions to 0, so the
+#     umbrella no longer fires here — even though §5 dropped the threshold
+#     to ~0. Per-file uniqueness (the new HARD error) is ALSO 0 on this
+#     fixture (asserted explicitly below); the self-tree still carries
+#     ~35 per-file collisions that the v7 producer fix will eliminate.
+#   * include_docs: previously +5 id_format on markdown README sections
+#     (WI-himoj); FIXED by id-format:F2 4a, so include_docs ratcheted to
+#     match default.
 #
-# These counts are corpus-coupled in BOTH directions, not just by code: the
-# cross_field '1' is threshold-adjacent (4/42 = 9.5% vs the 5% INV-bazij
-# threshold) and the F3 '+11' tracks the corpus's external-reference count. So a
-# *fixture* edit (e.g. adding an import to a new external symbol) can move these
-# numbers with no code change. On a red gate, re-measure before assuming a code
-# regression; ratchet DOWN on a genuine shrink, never UP.
+# These counts are corpus-coupled in BOTH directions: the F3 '11' tracks the
+# corpus's external-reference count, so a *fixture* edit can move it with no
+# code change. On a red gate, re-measure before assuming a code regression;
+# ratchet DOWN on a genuine shrink, never UP.
 VALIDATION_BASELINES: dict[str, int] = {
-    "default": 12,
-    "frameworks_all": 12,
-    "include_docs": 12,
-    "max_tier_4": 12,
+    "default": 11,
+    "frameworks_all": 11,
+    "include_docs": 11,
+    "max_tier_4": 11,
 }
 
 # Shrink-only runtime_coherence (ADR-0023 §3 edge-type partition coherence)
@@ -186,6 +186,43 @@ def test_substrate_within_ratchet_baseline(
         f"[{substrate}] by-class counter {by_class} disagrees with "
         f"{len(violations)} violations"
     )
+
+    # --- ADR-0035 §5 HARD floor: zero per-file stable_id collisions. ------
+    # The per-file uniqueness check is zero-tolerance (error severity). The
+    # fixture corpus is collision-free under v6; this pins that and catches a
+    # producer regression that reintroduces a within-file collision.
+    per_file_errors = [
+        v for v in violations
+        if v.get("validator_class") == "cross_field"
+        and v.get("field_name") == "Symbol.stable_id"
+        and v.get("severity") == "error"
+    ]
+    assert not per_file_errors, (
+        f"[{substrate}] per-file stable_id uniqueness (ADR-0035 §5) breached:\n      "
+        + "\n      ".join(
+            (v.get("observed") or v.get("message") or "")[:160]
+            for v in per_file_errors
+        )
+    )
+
+    # --- ADR-0035 §5 disclosure floor: stable_id_stats present + honest. --
+    # The None-cohort + collision rate must ALWAYS be surfaced (over an
+    # all-Symbols denominator) so a clean rate can never hide a None-cohort.
+    # Cross-checked against the ACTUAL emitted nodes (not self-consistency):
+    # the stats must describe the real corpus the artifact serializes.
+    stats = report.get("stable_id_stats")
+    assert stats is not None, f"[{substrate}] stable_id_stats missing from report"
+    nodes = bm.get("nodes", [])
+    actual_none = sum(1 for n in nodes if n.get("stable_id") is None)
+    assert stats["total_symbols"] == len(nodes), (
+        f"[{substrate}] stats total_symbols {stats['total_symbols']} != "
+        f"{len(nodes)} emitted nodes"
+    )
+    assert stats["none_cohort"] == actual_none, (
+        f"[{substrate}] stats none_cohort {stats['none_cohort']} != actual "
+        f"{actual_none} None-stable_id nodes"
+    )
+    assert stats["non_null"] == len(nodes) - actual_none
 
     # --- Shrink-only ratchet across both dimensions. ---------------------
     failures: list[str] = []
