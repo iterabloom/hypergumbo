@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, Iterator, Optio
 
 from ..dataflow import annotate_dataflow, get_dataflow_config
 from ..discovery import find_files
+from ..paths import normalize_path
 from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext,
     compute_pass_version, make_pass_id,
@@ -1068,6 +1069,7 @@ def make_typed_stable_id(
     *,
     name: str,
     qualified_name: str,
+    file_stable_id: str = "",
 ) -> str:
     """Compute a typed-tier stable_id from a normalized signature.
 
@@ -1105,10 +1107,22 @@ def make_typed_stable_id(
             ``"Override,Test"``).  Empty string when no decorators are present.
         name: Symbol's local name (mandatory; the WI-zitod disambiguator).
         qualified_name: Full scope-qualified name (mandatory; carries the scope chain).
+        file_stable_id: WI-bokab (v7) file-identity anchor. When ``containing_stable_id``
+            is empty (the tree-sitter producers carry scope in ``qualified_name`` rather
+            than threading an enclosing-scope id), this value is folded into the
+            ``containing_stable_id`` slot so same-``(kind, name, qualified_name)`` symbols
+            in different files hash distinctly — mirroring py.py's ``file_containing_id``
+            (ADR-0035 §1/§4). Produce it via :meth:`TreeSitterAnalyzer._file_anchor`. An
+            explicit non-empty ``containing_stable_id`` always wins.
 
     Returns:
         Stable ID in ``sha256:{16-hex-chars}`` format.
     """
+    # WI-bokab (v7): fold the declaring file's identity for file-resident symbols
+    # that don't already carry an enclosing scope. Additive — tree-sitter producers
+    # never pass a real containing_stable_id today.
+    if not containing_stable_id and file_stable_id:
+        containing_stable_id = file_stable_id
     sig = (
         f"{kind}:{normalized_signature}:{visibility}"
         f":{decorators}:{containing_stable_id}:{name}:{qualified_name}"
@@ -2614,6 +2628,19 @@ class TreeSitterAnalyzer:
         "function_parameters",   # Rust
     })
 
+    def _file_anchor(self, rel_path: str) -> str:
+        """WI-bokab (v7): the file-identity value folded into ``containing_stable_id``
+        for this analyzer's file-resident symbols.
+
+        Returns ``make_file_stable_id(self.lang, normalize_path(rel_path))`` — the same
+        value the file Symbol's own stable_id carries (``populate_kind_stable_ids``
+        computes it from the normalized repo-relative path), so a child symbol's anchor
+        byte-matches its file node. ``rel_path`` MUST be repo-relative; folding an
+        absolute path would make the stable_id location-dependent (the regression
+        WI-bokab's smoke test guarded against).
+        """
+        return make_file_stable_id(self.lang, normalize_path(rel_path))
+
     def compute_stable_id(
         self,
         node: "tree_sitter.Node",
@@ -2623,6 +2650,7 @@ class TreeSitterAnalyzer:
         name: str = "",
         qualified_name: str = "",
         occurrence_index: int = 0,
+        file_stable_id: str = "",
     ) -> str:
         """Compute an untyped-tier stable_id for a function/class/method node.
 
@@ -2651,10 +2679,21 @@ class TreeSitterAnalyzer:
             qualified_name: Dotted full-qualified name (e.g.,
                 ``"module.Class.method"``). Defaults to empty when the
                 analyzer does not compute one at stable_id time.
+            file_stable_id: WI-bokab (v7) file-identity anchor (see
+                :meth:`_file_anchor`). When ``containing_stable_id`` is empty,
+                this is folded into the containing slot so same-named symbols in
+                different files hash distinctly. An explicit ``containing_stable_id``
+                wins. Pass ``file_stable_id=self._file_anchor(rel_path)``.
 
         Returns:
             Stable ID in ``sha256:{16-hex-chars}`` format.
         """
+        # WI-bokab (v7): fold the declaring file's identity for file-resident
+        # symbols lacking an enclosing-scope containing. Additive — tree-sitter
+        # producers carry scope in qualified_name and pass no containing today.
+        if not containing_stable_id and file_stable_id:
+            containing_stable_id = file_stable_id
+
         # 1. Extract parameter arity
         params_node = self._find_params_node(node)
         if params_node is not None:
