@@ -20,3 +20,27 @@
     pr_ref:  # a55a
     description: "Residual surfaced by the stable_id v6 identity-reconciliation (PR c9b6240701, ADR-0035 §3). The within-file occurrence-index + LOGICAL-dedup passes drove self-tree per-file collisions 35->0, but ~14 cross-file corpus collision groups remain (0.1% of 35080 nodes). The dominant family: same-named TOP-LEVEL symbols in file-scoped tree-sitter languages whose hash omits file identity — e.g. a bash 'usage()' defined in scripts/ci-debug, list-my-prs, merge-pr, stop-hook-preview all share one stable_id; likewise '_log'/'assert_exit' across the tracker permission test scripts, 'run' across release scripts, 'have' across githooks. Mechanism: BaseAnalyzer.compute_stable_id (analyze/base.py) passes an empty containing_stable_id for a top-level (no-enclosing-scope) symbol, so (kind, name, '') is identical across files. The Python AST producer folds file identity (make_file_stable_id) into top-level symbols' containing (the v3->v4 fix that closed INV-zudob for Python classes); the tree-sitter BaseAnalyzer path never got the analogous fold. FIX: fold make_file_stable_id(language, path) as the containing_stable_id for top-level tree-sitter symbols (mirroring py.py). NOTE: this changes the stable_id VALUE of every top-level tree-sitter symbol = a genuine corpus-wide rehash (much larger blast radius than v7's narrow occurrence change), so it needs the scheme-bump discipline (likely a v6->v7 scheme bump, a human decision per ADR-0035 §6). Also folds in 1 cross-file db_query call_site key ('SELECT users' across 3 test files) whose self-stamped make_protocol_stable_id lacks path. Closes INV-tazaj's corpus-rate limb (the per-file HARD limb is already met)."  # a55a
     fields: {}  # a55a
+- op: update  # 1bb1
+  at: '2026-06-16T13:36:54Z'  # 1bb1
+  by: agent  # 1bb1
+  actor: jgstern_agent  # 1bb1
+  clock: 2  # 1bb1
+  nonce: 1bb1  # 1bb1
+  set:  # 1bb1
+    status: done  # 1bb1
+- op: discuss  # a00b
+  at: '2026-06-16T13:36:54Z'  # a00b
+  by: agent  # a00b
+  actor: jgstern_agent  # a00b
+  clock: 3  # a00b
+  nonce: a00b  # a00b
+  message: "Fixed by the stable_id v6->v7 scheme bump (merged selfh/dev @ 7577945512). Folded make_file_stable_id(lang, normalize_path(rel_path)) into the containing_stable_id slot of compute_stable_id (untyped) + make_typed_stable_id (typed) at every tree-sitter producer call site across 46 analyzers; py.py was already file-anchored (v4). BEHAVIORAL EVIDENCE: (1) cross-language probe via run_behavior_map — corpus_collision_groups on a Rust/Go/TS/bash sample 1-2 -> 0 (live repro); (2) the filed repro (bash usage() across scripts) is now a passing production-path test, test_wibokab_crossfile_anchor.py::test_bash_same_name_function_distinct_across_files; (3) per-tier cross-file-uniqueness + location-independence tests for bash/ruby/go/rust; (4) full suite 19019 passed / 100% coverage; (5) grammar-independent AST completeness lint proves every producer call threads the anchor. rust.py<->rust_scip.py SCIP byte-parity (WI-zakub) preserved. Residual (opt-in rust-analyzer SCIP doc.relative_path representation + _disk_source_reader CWD gap) split to WI-kilih."  # a00b
+- op: update  # 58b3
+  at: '2026-06-16T13:36:54Z'  # 58b3
+  by: agent  # 58b3
+  actor: jgstern_agent  # 58b3
+  clock: 4  # 58b3
+  nonce: 58b3  # 58b3
+  set: {}  # 58b3
+  add:  # 58b3
+    tags: [awaits_bakeoff_validation]  # 58b3

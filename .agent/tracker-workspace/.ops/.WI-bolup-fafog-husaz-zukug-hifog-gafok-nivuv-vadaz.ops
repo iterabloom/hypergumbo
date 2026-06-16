@@ -1,0 +1,23 @@
+- op: create  # 57ca
+  at: '2026-06-16T19:30:20Z'  # 57ca
+  by: agent  # 57ca
+  actor: jgstern_agent  # 57ca
+  clock: 1  # 57ca
+  nonce: 57ca  # 57ca
+  data:  # 57ca
+    kind: work_item  # 57ca
+    title: "stable_id: py.py CBV HTTP-verb methods routed through make_route_stable_id(method, class_name) bypass file anchoring → cross-file method collisions (Wave-2 gate)"  # 57ca
+    status: todo_hard  # 57ca
+    priority: 2  # 57ca
+    parent: INV-tazaj-bufod-dinuh-damoh-lubaf-zadod-jisav-duzuj  # 57ca
+    tags:  # 57ca
+    - stable_id  # 57ca
+    - identity  # 57ca
+    - analysis_quality  # 57ca
+    - dogfood_corpus_20260616  # 57ca
+    isbefore: []  # 57ca
+    duplicate_of: []  # 57ca
+    not_duplicate_of: []  # 57ca
+    pr_ref:  # 57ca
+    description: "**Wave-2 identity gate finding (2026-06-16), CLASS 3 — adversarially verified, skeptic could NOT refute (high confidence).**\n\n**Mechanic.** py.py's Python-AST class-method walk has an HTTP-verb special-case branch that routes `kind=\"method\"` declarations through the LOGICAL route factory, bypassing the file anchoring every other Python method gets:\n- `py.py:2367` — `if item.name.lower() in HTTP_METHODS:` (HTTP_METHODS at py.py:411 includes \"get\"/\"post\"/...)\n- `py.py:2368` — `stable_id = make_route_stable_id(item.name, class_scoped_name)` where `class_scoped_name` (py.py:2324) is `\".\".join(_enclosing_scope_chain(node) + [node.name])` = just `\"HelloWorld\"` for a top-level CBV.\n- `make_route_stable_id` (base.py:548) hashes only `route:{method.upper()}:{normalized}` — NO file path. Verified: `_short_sha256(\"route:GET:HelloWorld\") = sha256:5833fa740f190574`, identical for both files.\n\n**Why it's a real violation (not by-design).** The parent `class HelloWorld` IS file-anchored (py.py:2333-2335 via `_compute_stable_id` with `containing_stable_id=make_file_stable_id(\"python\", rel_path)`), so the two parent-class ids DIFFER cross-file. The collision exists ONLY at the method level because the HTTP-verb branch discards `symbol.stable_id` (the file-anchored parent) and the path. The \"path\" argument fed to make_route_stable_id is the CLASS NAME (\"HelloWorld\"), not a route path — so it collides for ANY two same-named CBV methods in any two files regardless of their actual routes (test_api.py registers HelloWorld at '/', test_api_with_blueprint.py at '/' and '/hi'). A name collision masquerading as a logical hub. `kind=\"method\"` appears NOWHERE in ADR-0035 §3's LOGICAL table; applying the route formula to a method DECLARATION is a category error. ADR-0035 §1 mandates \"zero by-design collisions — two semantically distinct symbols never share a stable_id.\" The other three make_route_stable_id callers in py.py (Django 2656, Starlette 2687, flask-restful add_resource 2716) all emit `kind=\"function\"` SYNTHETIC route nodes keyed on the real route_path — confirming the method-level reuse at 2368 is the anomaly.\n\n**Scope.** 2 nodes (flask-restful HelloWorld.get across tests/test_api.py + tests/test_api_with_blueprint.py) in the Wave-2 gate cohort; the pattern affects any same-named class-based-view HTTP-verb method across files.\n\n**Fix.** Delete the special-case branch at py.py:2367-2368 so HTTP-verb methods fall into the existing else-branch (py.py:2369-2394), which already folds the file-anchored parent (`containing_stable_id=symbol.stable_id`) and the method's qualified_name — that alone closes the collision because the parent id differs cross-file. If a distinct ENDPOINT route identity is genuinely wanted, emit a separate `kind=\"route\"` synthetic node keyed on the real route_path alongside the method (keep declaration=site and route=logical on two different nodes). Add a production-path test asserting two top-level same-named CBVs' same HTTP-verb method in distinct files get distinct stable_id (mirrors WI-bokab's test_wibokab_crossfile_anchor.py). Hash-input change → rides the v7→v8 scheme bump; blast radius is narrow (only HTTP-verb methods of classes). Evidence: ~/hypergumbo_lab_notebook/wave2_identity_gate_06162026_1904.md."  # 57ca
+    fields: {}  # 57ca

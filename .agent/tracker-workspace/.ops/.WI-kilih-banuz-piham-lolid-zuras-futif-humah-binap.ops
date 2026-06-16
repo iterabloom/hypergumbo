@@ -1,0 +1,19 @@
+- op: create  # 3c2e
+  at: '2026-06-16T12:26:08Z'  # 3c2e
+  by: agent  # 3c2e
+  actor: jgstern_agent  # 3c2e
+  clock: 1  # 3c2e
+  nonce: 3c2e  # 3c2e
+  data:  # 3c2e
+    kind: work_item  # 3c2e
+    title: "Verify rust-analyzer SCIP doc.relative_path byte-matches rust.py rel_path under v7 file-anchoring (+ _disk_source_reader CWD gap)"  # 3c2e
+    status: todo_hard  # 3c2e
+    priority: 2  # 3c2e
+    parent:  # 3c2e
+    tags: []  # 3c2e
+    isbefore: []  # 3c2e
+    duplicate_of: []  # 3c2e
+    not_duplicate_of: []  # 3c2e
+    pr_ref:  # 3c2e
+    description: "Surfaced by the WI-bokab v7 implementation review (wf_8c022fdc-817, lens R3). Pre-v7, the rust.py<->rust_scip.py byte-parity contract (WI-zakub/WI-duzul) did NOT depend on the file path (path was not in the typed-tier hash). v7 folds make_file_stable_id('rust', normalize_path(rel_path)) into the containing slot, so parity is now PATH-REPRESENTATION-SENSITIVE: rust.py uses str(source_file.relative_to(repo_root)); translate.py passes rel_path=sym.path (the SCIP doc.relative_path). normalize_path only swaps backslashes — it does NOT strip a leading './', collapse '..', or strip trailing slashes. Empirically reproduced: for a fn at 'src/lib.rs', rel_path='src/lib.rs' MATCHES rust.py but './src/lib.rs' and 'src/lib.rs/' do NOT. If real rust-analyzer emits doc.relative_path in any divergent form, SCIP-translated rust symbols get a different stable_id and cross-pass dedup double-counts every rust function (when HYPERGUMBO_RUST_ANALYZER is opted into). MITIGATION ALREADY LANDED: test_translate.py::test_parity_byte_matches_rust_py_for_nested_path pins the contract for a clean repo-relative nested path (the mechanism is correct when paths match). REMAINING: (1) capture/construct a real rust-analyzer SCIP index (gated on binary availability) for a nested-path file and assert the translate-reassigned id byte-equals analyze_rust's id; if doc.relative_path diverges, normalize it to rust.py's form in translate.py before folding. (2) PRE-EXISTING related nit: _disk_source_reader (analyzer.py:69) reads Path(sym.path).read_bytes() on the workspace-relative path while invoke.py:150 runs rust-analyzer in cwd=mkdtemp(); if the reader CWD isn't the workspace root the read returns None and parity reassignment is skipped ENTIRELY — the v7 anchor on rust_scip may be dead on the real production path. Confirm whether _disk_source_reader resolves sym.path against repo_root. Bounded: opt-in backend, not the default analysis path."  # 3c2e
+    fields: {}  # 3c2e
