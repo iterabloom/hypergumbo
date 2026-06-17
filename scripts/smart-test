@@ -235,10 +235,29 @@ write_fallback_diagnostic() {
 get_baseline() {
     local base_branch="${1:-origin/dev}"
 
-    # Try to fetch last-green-sha from badges branch
-    if git fetch origin badges:refs/remotes/origin/badges 2>/dev/null; then
+    # WI-tolil / INV-bifud: failover-aware remote selection. Under permanent CI
+    # failover the authoritative remote is selfh and origin/dev is stale —
+    # anchoring the merge-base on origin/dev would span the whole tree and force
+    # a slow, failure-prone whole-repo slice on every run. Mirror the
+    # auto-pr/pre-work failover detection. Guarded on selfh/dev resolving so a
+    # missing ref can never drop us to a HEAD~1 under-select.
+    local remote="origin"
+    if [[ -f "$REPO_ROOT/.git/CI_FAILOVER_ACTIVE" ]] && \
+       git rev-parse --verify selfh/dev &>/dev/null; then
+        remote="selfh"
+        base_branch="selfh/dev"
+    fi
+
+    # Try the last-green-sha marker on the authoritative remote's badges branch.
+    # WI-tolil note: the CI write side (.github/workflows/full-suite.yml) only
+    # writes this marker inside an exact-100%-coverage branch that currently
+    # never fires, so on BOTH remotes the badges branch carries only
+    # coverage.json and this lookup is inert today — the merge-base below is the
+    # live path. Kept (failover-corrected) so the optimization activates for
+    # free once the write side is fixed.
+    if git fetch "$remote" "badges:refs/remotes/$remote/badges" 2>/dev/null; then
         local last_green
-        last_green=$(git show origin/badges:last-green-sha.txt 2>/dev/null || echo "")
+        last_green=$(git show "$remote/badges:last-green-sha.txt" 2>/dev/null || echo "")
         if [[ -n "$last_green" ]] && git rev-parse --verify "$last_green^{commit}" &>/dev/null; then
             log "Using last-green-sha marker: $last_green"
             echo "$last_green"
@@ -246,7 +265,7 @@ get_baseline() {
         fi
     fi
 
-    # Fall back to merge-base with dev
+    # Fall back to merge-base with the authoritative dev.
     local merge_base
     merge_base=$(git merge-base HEAD "$base_branch" 2>/dev/null || echo "HEAD~1")
     log "No last-green-sha marker found, using merge-base: $merge_base"
@@ -559,8 +578,14 @@ trap "rm -f $CHANGED_FILE_LIST $SLICE_OUTPUT $SLICE_STDERR" EXIT
 # can record them on either fallback path.
 SLICE_CMD="$STABLE_HG slice --files $CHANGED_FILE_LIST --output $SLICE_OUTPUT"
 SLICE_START_S=$SECONDS
-$STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR"
-SLICE_EXIT=$?
+# WI-tolil: `set -euo pipefail` would abort the WHOLE script HERE on a non-zero
+# slice exit — before SLICE_EXIT is captured and before the slice-failure
+# fallback below (run_full_suite) can run — swallowing the failure silently
+# (empty exit, no .ci/pytest-output.log, zero tests run; an agent/CI then
+# believes tests passed). Capture the real exit via `||` so the fallback is
+# reachable. The `|| SLICE_EXIT=$?` idiom is not subject to `set -e`.
+SLICE_EXIT=0
+$STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR" || SLICE_EXIT=$?
 SLICE_DURATION_S=$((SECONDS - SLICE_START_S))
 
 if [[ $SLICE_EXIT -ne 0 ]]; then
