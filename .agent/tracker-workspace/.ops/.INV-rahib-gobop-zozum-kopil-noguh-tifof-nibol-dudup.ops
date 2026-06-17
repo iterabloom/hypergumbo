@@ -243,3 +243,40 @@
   clock: 31  # 9959
   nonce: '9959'  # 9959
   message: "Fresh instance (2026-06-17, human-observed). auto-pr on the WI-moriz PR did NOT converge: it ran hung-run retries (closed PR #260, re-pushed as #261), then exited 1 reporting 'CI Failed. Contexts: pytest / pytest-retry / ci-complete' — but ci-debug status for the same commit (f32afafd) showed Overall: PENDING with NO failed contexts (lint/mypy/dco/audit/hook-tests/stop-the-line/changes green, the rest still running). Root cause per human: the scheduled nightly (multi-Python matrix + integration, ~05:30 UTC) was running concurrently, creating duplicate/contended CI jobs — auto-pr's poll tripped over a duplicate failed/timed-out context while the real run was still alive. Recovery: merge-pr 261 --wait-for-ci (reused the in-progress run) merged cleanly once the nightly cleared. So auto-pr diverged to a FALSE explicit-failure under concurrent activity — the exact INV-rahib failure mode. Candidate hardening: auto-pr should distinguish a genuinely-failed required context from a transient/duplicate one (e.g., re-query status before declaring failure, or tolerate a context that has a sibling pending run) before exiting 1."  # 9959
+- op: update  # 1c93
+  at: '2026-06-17T15:50:35Z'  # 1c93
+  by: agent  # 1c93
+  actor: jgstern_agent  # 1c93
+  clock: 32  # 1c93
+  nonce: 1c93  # 1c93
+  set:  # 1c93
+    status: needs_human_review  # 1c93
+- op: discuss  # 9818
+  at: '2026-06-17T15:50:35Z'  # 9818
+  by: agent  # 9818
+  actor: jgstern_agent  # 9818
+  clock: 33  # 9818
+  nonce: '9818'  # 9818
+  message: "GOVERNANCE PROPOSAL — awaiting approval before implementing (touches scripts/lib/forgejo-api.sh + scripts/auto-pr, both governance; no self-merge).\n\nNEW (third) surface of INV-rahib, distinct from the 2026-04-26 fix (Surface 1 _pre_scenario_b_gate close-boundary check; Surface 2 post-rebase re-poll). Today's incident (2026-06-17, WI-moriz PR): auto-pr ran hung-run retries (closed PR #260, re-pushed #261), then poll_ci declared 'CI Failed. Contexts: pytest / pytest-retry / ci-complete' and exited 1 — but ci-debug status for the same SHA showed Overall: PENDING, no failed contexts. Recovery: merge-pr --wait-for-ci merged cleanly once the nightly cleared.\n\nCONFIRMED CODE: poll_ci in forgejo-api.sh:460-533. There is ALREADY a global has_pending short-circuit (487-504: if ANY status is pending -> keep polling), so a simple failed-context-with-pending-sibling is ALREADY handled — the false failure is NOT that. The failed-context extraction (506-516) then declares failure.\n\nLIKELY MECHANISM (UNCONFIRMED — the open question): the hung-retry's close of PR #260 CANCELLED its in-flight run, which posts failure/error commit-statuses for #260's contexts on the SAME HEAD SHA. If Forgejo's /commits/SHA/status endpoint returns the LATEST status per context, those cancellation-errors (posted after #261's pending) shadow #261's pending -> has_pending=no -> false failure. I cannot confirm this without the actual API response from the incident or Forgejo /status-endpoint semantics (latest-per-context vs all-entries; how cancelled-run statuses are represented). The recon's 'dedup by context' framing only helps if the endpoint returns BOTH entries — if it returns latest-only, dedup can't see the shadowed pending.\n\nCANDIDATE FIXES (tradeoffs; all carry false-NEGATIVE risk = suppressing a real failure, which is why I'm gating on your approval):\n  (A) RECOMMENDED — confirmation re-poll: before declaring failure, require the failure-with-no-pending signal to be STABLE across 2 consecutive polls (re-fetch after the normal sleep; if the re-fetch shows pending, keep polling). Mechanism-AGNOSTIC (works regardless of why a single snapshot was transiently failure-no-pending), minimal, directly enforces 'converge to ... explicit failure regardless of concurrent activity' by requiring a stable failure. Cost: one extra poll-interval (~16s) before a genuine failure is declared — acceptable.\n  (B) per-context pending precedence: if any status entry for a context is pending, treat the context as pending even if a later error exists. Only works if /status returns all entries (the open question).\n  (C) hung-retry hygiene: when closing PR #260, cancel/ignore its statuses so they don't pollute #261's SHA verdict. Larger change; depends on cancellation semantics.\n\nPROPOSED (pending your pick): implement (A) in poll_ci. Diff sketch: at the failure branch, when has_pending==no and failed contexts exist, instead of immediately 'return 1', record the failure, sleep one interval, re-fetch API_RESPONSE, and re-evaluate; only declare failure (return 1) if the SECOND observation is still failure-with-no-pending. Add a FAILURE_CONFIRM_POLLS knob (default 2). I'll extend tests/test_autopr_rahib_convergence.py with seam-driven cases proving both directions: (i) snapshot1=failure+no-pending, snapshot2=pending => keep polling (no false failure); (ii) two consecutive failure+no-pending snapshots => still returns 1 (genuine failures still fail).\n\nQUESTIONS FOR YOU: (1) Approve direction (A), or prefer (B)/(C)/other? (2) Do you have the actual /commits/SHA/status response from the #261 incident (or know whether Forgejo returns latest-per-context vs all)? That would let me confirm the mechanism and possibly do (B) precisely. On approval I'll implement on a branch, red-green the harness, and hand it to you to merge (no self-merge)."  # 9818
+- op: discuss  # 07f0
+  at: '2026-06-17T16:32:01Z'  # 07f0
+  by: human  # 07f0
+  actor: jgstern  # 07f0
+  clock: 34  # 07f0
+  nonce: 07f0  # 07f0
+  message: "I approve direction A. I am flipping status to todo_soft. I approve auto-pr without --gov. Re 261, I assume you mean PR 261? I do not have time to get into the weeds on this. PR 261 links here for CI logs: http://forgejo-ci.internal:3000/admin-josh/hypergumbo/actions/runs/2204/jobs/11"  # 07f0
+- op: update  # a9b2
+  at: '2026-06-17T16:32:24Z'  # a9b2
+  by: human  # a9b2
+  actor: jgstern  # a9b2
+  clock: 35  # a9b2
+  nonce: a9b2  # a9b2
+  set:  # a9b2
+    status: violated  # a9b2
+- op: discuss  # 7fce
+  at: '2026-06-17T16:32:51Z'  # 7fce
+  by: human  # 7fce
+  actor: jgstern  # 7fce
+  clock: 36  # 7fce
+  nonce: 7fce  # 7fce
+  message: "correction: I changed the status to Violated since this is an INV not a WI"  # 7fce

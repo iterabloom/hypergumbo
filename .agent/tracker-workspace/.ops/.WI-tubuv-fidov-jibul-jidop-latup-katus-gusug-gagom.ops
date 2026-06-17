@@ -1,0 +1,34 @@
+- op: create  # 00a5
+  at: '2026-06-17T15:18:38Z'  # 00a5
+  by: agent  # 00a5
+  actor: jgstern_agent  # 00a5
+  clock: 1  # 00a5
+  nonce: 00a5  # 00a5
+  data:  # 00a5
+    kind: work_item  # 00a5
+    title: "last-green-sha CI marker is never written: full-suite.yml writes it only in a never-firing exact-100% branch + pushes hardcoded to origin (smart-test optimization inert)"  # 00a5
+    status: todo_soft  # 00a5
+    priority: 3  # 00a5
+    parent:  # 00a5
+    tags:  # 00a5
+    - ci_infrastructure  # 00a5
+    isbefore: []  # 00a5
+    duplicate_of: []  # 00a5
+    not_duplicate_of: []  # 00a5
+    pr_ref:  # 00a5
+    description: "FOLLOW-UP to WI-tolil (read side fixed; this is the write side). scripts/smart-test's get_baseline tries a 'last-green-sha.txt' marker on the badges branch to scope the affected-test diff tightly; WI-tolil made that read failover-aware. But the marker is NEVER written, so the lookup is permanently inert and smart-test always falls to merge-base.\n\nEVIDENCE (2026-06-17): both remotes' badges branches carry ONLY coverage.json, no last-green-sha.txt (git ls-tree selfh/badges == git ls-tree origin/badges == [coverage.json]; selfh updated 06-13, origin 06-11). ROOT CAUSE in .github/workflows/full-suite.yml (badge-publish step, ~lines 962-993): it always writes coverage.json but writes last-green-sha.txt ONLY inside 'if all packages at 100% coverage' (lines 970-971) -- and that branch is not firing (the badge's own COV calc isn't hitting exactly 100%, even though per-package CI is 100%), so the marker is never produced. Compounding: the push is hardcoded 'git push origin badges --force' (line 993); under permanent failover the authoritative remote is selfh (when the workflow runs on selfh, 'origin' resolves to selfh, which is why selfh/badges DID update coverage.json -- but the marker still wasn't written due to the 100% gate).\n\nCONSEQUENCE: the affected-test optimization that the marker enables is dead; every broad change falls to merge-base. WI-tolil's failover-aware merge-base (selfh/dev) keeps that CORRECT and reasonably tight under failover, so this is a PERFORMANCE/optimization item, not a correctness one.\n\nFIX (CI workflow change -- .github/workflows/full-suite.yml; sensitive, coordinate): (a) investigate why the badge COV calc isn't exactly 100% (combined-vs-per-package-isolation discrepancy? rounding?) and gate the marker write correctly, or write the marker on any all-green run regardless of the coverage-badge number; (b) ensure the marker lands on the AUTHORITATIVE remote's badges branch (the read side already prefers selfh under failover). Cross-ref: WI-tolil (read side, done)."  # 00a5
+    fields: {}  # 00a5
+- op: discuss  # f06d
+  at: '2026-06-17T16:00:57Z'  # f06d
+  by: agent  # f06d
+  actor: jgstern_agent  # f06d
+  clock: 2  # f06d
+  nonce: f06d  # f06d
+  message: "INVESTIGATION (2026-06-17, recon + my verification of full-suite.yml): the recon's 'remove ALL_100, write marker on conclusion==success' is UNSOUND. The full-suite per-job pytest invocations (e.g. lines 233-234, 299-300, ...) run 'pytest --cov=... --cov-report=term' with NO --cov-fail-under=100 (grep count = 0 across the whole workflow). So a job result==success means TESTS PASSED, not 100% coverage; conclusion==success (853-865) therefore does NOT imply full coverage. The ALL_100 check (965-969) is the ONLY place full-coverage is verified for the marker — relaxing to 'write on success' would write last-green-sha at a possibly-under-covered commit, and smart-test would then scope the affected-test baseline to it (under-selection risk; this is exactly the recon's own caveat). WHY ALL_100 never fires is INDISTINGUISHABLE without the actual full-suite run's COV_CORE..COV_TRACKER values: either (i) a real per-package full-isolation coverage gap (some COV_X != '100' — e.g. rust-analyzer optional-backend paths), or (ii) an extraction/comparison bug (the grep TOTAL|awk|tr pipeline). FIX OPTIONS: (a) add --cov-fail-under=100 to the full-suite jobs so success<=>100%, THEN write marker on success [RISK: turns full-suite RED if any package is <100% in full isolation; cannot verify locally]; (b) fix the ALL_100 extraction/comparison [needs the run data to know what's actually wrong]; (c) leave the marker dead — it is a correctness-NEUTRAL optimization: smart-test's merge-base fallback (now failover-aware per WI-tolil) is CORRECT, just less optimal, so 'do nothing' is safe. NOTE on the earlier 'hardcoded origin push' concern: it is a NON-issue — in CI 'origin' resolves to the forge the workflow ran on (selfh under failover), so the marker would correctly land on selfh/badges, which WI-tolil's read side now prefers. Recommend deciding (a)/(b)/(c) with the next full-suite run's COV values in hand."  # f06d
+- op: discuss  # 1d37
+  at: '2026-06-17T16:41:30Z'  # 1d37
+  by: agent  # 1d37
+  actor: jgstern_agent  # 1d37
+  clock: 3  # 1d37
+  nonce: 1d37  # 1d37
+  message: "DIAGNOSTIC RESULT (local check-package-coverage, decisive): the dead marker is NOT a workflow-logic bug — the ALL_100 gate is working CORRECTLY. hypergumbo-core is at 99% IN ISOLATION: fingerprint.py:310,361 are uncovered by core's OWN tests (covered cross-package in the combined suite, hence the 100% I saw in the WI-moriz full run, but NOT in per-package isolation). So full-suite CI computes COV_CORE=99 -> ALL_100 correctly false -> marker correctly withheld. (mainstream/common/extended/tracker all passed isolation at 100%.) ROOT-CAUSE FIX (supersedes the earlier a/b/c options): CLOSE THE ISOLATION GAP — add hypergumbo-core tests covering fingerprint.py:310,361 so core hits 100% in isolation; then ALL_100 fires naturally and the marker writes with ZERO workflow change. This is also a genuine test-placement-discipline fix (core SHOULD be 100% in isolation). Locally verifiable (re-run check-package-coverage core). OPTIONAL FOLLOW-UP (separate): add --cov-fail-under=100 to the full-suite per-job pytest so a FUTURE isolation gap fails loudly instead of silently killing the marker again — now lower-risk since local shows only this one gap, but it's an unverifiable CI-workflow change so I'll propose it separately if you want it. Implementing the gap-closure."  # 1d37
