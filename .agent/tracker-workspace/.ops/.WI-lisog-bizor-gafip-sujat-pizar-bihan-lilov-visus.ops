@@ -81,3 +81,20 @@
   clock: 9  # ab4b
   nonce: ab4b  # ab4b
   message: "PR #4167 (merged b6403f6669) fixed two of this item's facets at root. Facet (a) Python-test-methods-null: the context-aware fingerprint rewrite parses the whole file and hashes the def's subtree, so the column-0-heredoc dedent failure is gone (tracker-package self-analysis: 0 null python method/function fingerprints; full self-analysis re-measurement pending). Facet (c) WGSL bare-hex: the 4 producer-side sha256(bytes)[:16] stampings in wgsl.py are demolished; the central post-pass solely owns the field (verified: 0 non-hgfp2 prefixes on self-analysis). NOT fixed: facet (b) external_symbol nulls (span 0-0, no source — now explicitly documented as a legitimate null condition in the spec fingerprint definition) and the scattered-other null population. The spec now documents null conditions, addressing this item's 'or the spec documents the conditions' branch. Scheme bumped to hgfp2:/symbol-fp-v2. Leaving status todo_hard pending a full-corpus null-population re-measurement."  # ab4b
+- op: update  # 55eb
+  at: '2026-06-17T19:48:57Z'  # 55eb
+  by: agent  # 55eb
+  actor: jgstern_agent  # 55eb
+  clock: 10  # 55eb
+  nonce: 55eb  # 55eb
+  set:  # 55eb
+    status: done  # 55eb
+  add:  # 55eb
+    tags: [awaits_bakeoff_validation]  # 55eb
+- op: discuss  # d265
+  at: '2026-06-17T19:48:57Z'  # d265
+  by: agent  # d265
+  actor: jgstern_agent  # d265
+  clock: 11  # d265
+  nonce: d265  # d265
+  message: "DONE & merged (selfh/dev faeaee15f4). All three populations resolved. (a) Python test-method null: was a v1 snippet-parse bug (column-0 heredoc -> IndentationError -> None), already fixed by the v2 context-aware rewrite (regression test test_fingerprint.py exists). (c) WGSL bare-hex: WGSL's own 3 sites already set fingerprint=None (central pass owns it) — BUT recon+verification found the SAME bare-hex leak still live in ~10 sibling analyzers (cuda/fortran/glsl/graphql/nix/r_lang/verilog/vhdl/dockerfile/make, ~30 sites) surviving via the line-531 precedence guard. FIX (this PR): stamp_symbol_fingerprints now NORMALIZES — preserves an existing fingerprint only if canonical (hgfp2:) or an identity-hash on a language=None Class-B synthetic; a non-canonical fingerprint on a real source node (language!=None) is recomputed canonically, so bare hex never reaches the output + future copy-paste is self-healed. (b) external_symbol null: spec carveout — tightened docs/hypergumbo-spec.md to name synthetic boundary/external_symbol (span 0-0, no source) as a legitimate null + document the single-producer rule + the Class-B identity-hash SECOND shape (so 'no analyzer-internal serializations leak' is met by enforcement). BEHAVIORAL EVIDENCE: 4 unit tests in test_fingerprint.py pin the guard both directions (normalize source-leak->hgfp2:; preserve hgfp2:; preserve Class-B language=None bare-hex; clear leak when unfingerprintable->None); core 100% in isolation (check-package-coverage core). CHURN-FREE: fingerprint is not in any id/stable_id/shape_id/node-id. awaits_bakeoff_validation: the ~30-site output flip (bare-hex->hgfp2:) + 0-bare-hex on a multi-language corpus is the quantitative claim; full-corpus re-measurement pending. FOLLOW-UP filed: delete the now-overwritten producer-side bare-hex computation from the 10 analyzers (hygiene)."  # d265

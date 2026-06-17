@@ -32,3 +32,18 @@
   clock: 3  # 1d37
   nonce: 1d37  # 1d37
   message: "DIAGNOSTIC RESULT (local check-package-coverage, decisive): the dead marker is NOT a workflow-logic bug — the ALL_100 gate is working CORRECTLY. hypergumbo-core is at 99% IN ISOLATION: fingerprint.py:310,361 are uncovered by core's OWN tests (covered cross-package in the combined suite, hence the 100% I saw in the WI-moriz full run, but NOT in per-package isolation). So full-suite CI computes COV_CORE=99 -> ALL_100 correctly false -> marker correctly withheld. (mainstream/common/extended/tracker all passed isolation at 100%.) ROOT-CAUSE FIX (supersedes the earlier a/b/c options): CLOSE THE ISOLATION GAP — add hypergumbo-core tests covering fingerprint.py:310,361 so core hits 100% in isolation; then ALL_100 fires naturally and the marker writes with ZERO workflow change. This is also a genuine test-placement-discipline fix (core SHOULD be 100% in isolation). Locally verifiable (re-run check-package-coverage core). OPTIONAL FOLLOW-UP (separate): add --cov-fail-under=100 to the full-suite per-job pytest so a FUTURE isolation gap fails loudly instead of silently killing the marker again — now lower-risk since local shows only this one gap, but it's an unverifiable CI-workflow change so I'll propose it separately if you want it. Implementing the gap-closure."  # 1d37
+- op: update  # ba44
+  at: '2026-06-17T17:46:24Z'  # ba44
+  by: agent  # ba44
+  actor: jgstern_agent  # ba44
+  clock: 4  # ba44
+  nonce: ba44  # ba44
+  set:  # ba44
+    status: done  # ba44
+- op: discuss  # de95
+  at: '2026-06-17T17:46:24Z'  # de95
+  by: agent  # de95
+  actor: jgstern_agent  # de95
+  clock: 5  # de95
+  nonce: de95  # de95
+  message: "FIXED & merged (selfh/dev 815d11ed6e). Root cause was NOT a workflow bug — the ALL_100 gate works correctly; hypergumbo-core measured 99% IN ISOLATION (fingerprint.py:310 _content_byte_range whitespace-only-span->None; :361 _node_has_error True for an ERROR node — both exercised cross-package in the combined suite but not by core's own tests). That isolation gap made full-suite's COV_CORE=99 -> ALL_100 correctly false -> marker correctly withheld. FIX: two direct-call tests for those lines in packages/hypergumbo-core/tests/test_fingerprint.py. EVIDENCE (directly verified): scripts/check-package-coverage core now PASSES at 100% in isolation (was 99% on lines 310,361). With core at 100% in isolation, full-suite's per-package COV_CORE will be 100, ALL_100 fires, and the last-green-sha marker writes — ZERO workflow change. The final downstream confirmation (marker actually committed to the badges branch) will manifest on the next scheduled full-suite run (a CI behavior I cannot trigger locally). No combined-coverage change (lines were already covered cross-package); this only lifts ISOLATION coverage 99->100. OPTIONAL FOLLOW-UP (not done, your call): add --cov-fail-under=100 to the full-suite per-job pytest so a FUTURE isolation gap fails loudly (red CI) instead of silently re-killing the marker — an unverifiable CI-workflow change, so I left it out unless you want it filed/done."  # de95

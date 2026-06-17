@@ -43,3 +43,25 @@
   clock: 4  # 11ce
   nonce: 11ce  # 11ce
   message: "I approve and I approve using auto-pr without --gov. Re (1) hybrid. Re (2), use your judgement. think about the pros and cons and then make a decision. Do not block further."  # 11ce
+- op: discuss  # 6dda
+  at: '2026-06-17T16:43:52Z'  # 6dda
+  by: agent  # 6dda
+  actor: jgstern_agent  # 6dda
+  clock: 5  # 6dda
+  nonce: 6dda  # 6dda
+  message: "Approval received — thank you. (1) HYBRID confirmed: hard-warn/abort the merge when a 'Closes|Fixes|Resolves (WI|INV|META)-…' reference is present but the item is still open; auto-close ONLY on an explicit evidence-carrying line ('Closes-with-evidence: <ID> (PR #N; repro: <cmd> -> <result>)'). (2) DECISION: shared closure-scan + closure logic in scripts/lib/forgejo-api.sh, invoked from the merge-completion paths of BOTH auto-pr AND merge-pr — both can complete a merge so guarding one leaves a hole; centralizing in the shared lib avoids duplicated regex and gives one tested seam. Auto-close always passes --note with the evidence string (preserves WI-dafun/G10). Sequencing after INV-rahib; auto-pr per your approval."  # 6dda
+- op: update  # ac0f
+  at: '2026-06-17T18:38:51Z'  # ac0f
+  by: agent  # ac0f
+  actor: jgstern_agent  # ac0f
+  clock: 6  # ac0f
+  nonce: ac0f  # ac0f
+  set:  # ac0f
+    status: done  # ac0f
+- op: discuss  # ab3f
+  at: '2026-06-17T18:38:51Z'  # ab3f
+  by: agent  # ab3f
+  actor: jgstern_agent  # ab3f
+  clock: 7  # ab3f
+  nonce: ab3f  # ab3f
+  message: "DONE & merged (selfh/dev 0e31f54f29, via auto-pr per human approval of the hybrid + auto-pr without --gov). Implemented as do_merge_guarded() in scripts/lib/forgejo-api.sh, which BOTH auto-pr (2 sites) and merge-pr (1 site) now call instead of do_merge — the single shared merge path ((2) decision: shared seam, no duplication). HYBRID: PRE-merge a bare Closes/Fixes/Resolves-verb + WI|INV|META id to a still-OPEN item aborts the merge (return 1, hard-warn, tracker-read-only); POST-merge a closes-with-evidence opt-in line auto-closes the item (tracker update --status done --note <evidence+PR ref>), running only after do_merge succeeds (post-merge/post-rebase/bash-sequential, so no race with the merge or the .ops rebase-restore). BEHAVIORAL EVIDENCE: (1) 10 seam-driven tests (tests/test_autopr_closure_guard.py, stub tracker via AUTOPR_TRACKER_CLI) prove both directions — pre-gate aborts on bare-to-open (rc=1), passes on resolved/none/evidence-form/unknown-id (fail-open); post-merge auto-close invokes tracker update with --status done --note carrying PR # + short sha; ref extraction distinguishes bare vs evidence. 10 new + 102 existing auto-pr/merge-pr/forgejo tests pass (112 total). (2) DOGFOOD: this very PR's merge ran through the new do_merge_guarded — the pre-gate scanned the commit (pre-verified clean via the guard's own _closure_refs extractor) and passed with no false abort; the merge completed and converged (auto-pr exit 0). Closed manually here (not via the auto-close) to keep the first live run conservative; the evidence-auto-close path is exercised by the seam tests + will be dogfooded on a future lower-stakes PR."  # ab3f

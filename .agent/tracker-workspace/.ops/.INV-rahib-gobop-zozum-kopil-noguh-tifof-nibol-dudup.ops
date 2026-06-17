@@ -280,3 +280,25 @@
   clock: 36  # 7fce
   nonce: 7fce  # 7fce
   message: "correction: I changed the status to Violated since this is an INV not a WI"  # 7fce
+- op: discuss  # 9df2
+  at: '2026-06-17T16:43:52Z'  # 9df2
+  by: agent  # 9df2
+  actor: jgstern_agent  # 9df2
+  clock: 37  # 9df2
+  nonce: 9df2  # 9df2
+  message: "Approval received — thank you. Implementing direction A (confirmation re-poll: require a STABLE failure-with-no-pending across 2 consecutive polls before declaring CI failed) now. Confirmed '261' = the WI-moriz PR #261; Option A is mechanism-agnostic so it holds regardless of the exact cancelled-run-shadows-pending detail. Noted your status correction to 'violated' (correct for an INV; stays violated until the fix lands + a clean converge-under-concurrency observation validates it). Plan: add the re-poll to poll_ci (scripts/lib/forgejo-api.sh) + red-green the harness (tests/test_autopr_rahib_convergence.py) with both directions (stale-failure+live-pending => keep polling; genuine failure, no pending sibling => still returns 1), then auto-pr per your 'without --gov' approval. Will report the merge."  # 9df2
+- op: update  # 6153
+  at: '2026-06-17T17:17:15Z'  # 6153
+  by: agent  # 6153
+  actor: jgstern_agent  # 6153
+  clock: 38  # 6153
+  nonce: '6153'  # 6153
+  set:  # 6153
+    status: pending_validation  # 6153
+- op: discuss  # 8003
+  at: '2026-06-17T17:17:15Z'  # 8003
+  by: agent  # 8003
+  actor: jgstern_agent  # 8003
+  clock: 39  # 8003
+  nonce: '8003'  # 8003
+  message: "Fix MERGED (selfh/dev d738315910, via auto-pr per human approval of direction A + auto-pr without --gov). Surface 3: poll_ci now requires the failure-with-no-pending signal to be STABLE across FAILURE_CONFIRM_POLLS (default 2) consecutive polls before returning 1; the counter resets on any pending-sibling/in-progress poll. EVIDENCE: (1) behavioral tests in tests/test_autopr_rahib_convergence.py drive the REAL poll_ci loop against a scripted api_get sequence (CI_POLL_NO_SLEEP test knob) — a stable double-failure still returns 1 (genuine failures NOT masked); the incident shape (failure->pending->success) converges to 0 (no false failure). 3/3 new tests + 16 existing pass. (2) This very auto-pr merge ran WITH the fix active and converged cleanly (exit 0), though it did not hit concurrent contention so that is only a weak positive. PENDING_VALIDATION rather than satisfied: full validation requires observing auto-pr converge (no false explicit-failure) during a REAL concurrent-nightly run — the original failure condition. The two prior surfaces (2026-04-26 close-boundary gate; post-rebase re-poll) remain covered by their existing tests; this adds the third."  # 8003

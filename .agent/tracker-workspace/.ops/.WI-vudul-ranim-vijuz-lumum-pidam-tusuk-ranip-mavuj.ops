@@ -1,0 +1,20 @@
+- op: create  # 8edb
+  at: '2026-06-17T19:49:35Z'  # 8edb
+  by: agent  # 8edb
+  actor: jgstern_agent  # 8edb
+  clock: 1  # 8edb
+  nonce: 8edb  # 8edb
+  data:  # 8edb
+    kind: work_item  # 8edb
+    title: "Delete now-overwritten producer-side bare-hex fingerprint stamping from 10 analyzers (WI-lisog follow-up)"  # 8edb
+    status: todo_soft  # 8edb
+    priority: 3  # 8edb
+    parent:  # 8edb
+    tags:  # 8edb
+    - analysis_quality  # 8edb
+    isbefore: []  # 8edb
+    duplicate_of: []  # 8edb
+    not_duplicate_of: []  # 8edb
+    pr_ref:  # 8edb
+    description: "FOLLOW-UP to WI-lisog (done, faeaee15f4). After WI-lisog's central normalization guard, ~10 tree-sitter analyzers still COMPUTE a producer-side bare 'fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16]' which stamp_symbol_fingerprints now overwrites with the canonical hgfp2: form. So this producer code is dead/wasted (computes a value immediately replaced) and inconsistent with WGSL (which already sets fingerprint=None). HYGIENE: delete the bare-hex computation from each, set fingerprint=None (mirror the WGSL fix at wgsl.py:239/269/328), and let the central post-pass own it.\n\nSITES (verified by grep 2026-06-17): packages/hypergumbo-lang-common/src/hypergumbo_lang_common/{cuda.py,fortran.py,glsl.py,graphql.py,nix.py,r_lang.py}, packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/{verilog.py,vhdl.py}, packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/{dockerfile.py,make.py} (~30 source-byte sites total).\n\nCAVEATS: (1) r_lang.py:266 hashes file_path.encode() (NOT source bytes) — a file-node fingerprint; verify whether that is a legitimate separate case before changing it. (2) Add a per-package 'no producer-side fingerprint' unit test mirroring test_wgsl_analyzer.py:351 (tests must live in each affected package per the coverage-and-test-placement rule); assert None-OR-hgfp2 (not unconditionally hgfp2) in case any language is regex-only/grammar-absent. (3) Output is already correct post-WI-lisog (the guard normalizes), so this is hygiene, NOT a correctness fix — non-urgent.\n\nOPTIONAL HARDENING (separate, consider): extend the spec-validator fingerprint-degeneracy check (test_spec_validator_smoke.py) to ALSO assert the hgfp2: prefix on every non-null source-code (language is not None) fingerprint at the output boundary — a structural guard catching FORMAT drift (not just degenerate-shared-value), so a future producer leak is caught even before the normalization guard runs. CHANGELOG nit: WGSL '4 emit sites' -> 3."  # 8edb
+    fields: {}  # 8edb
