@@ -1035,7 +1035,7 @@ Individual commits are preserved in the history."
 		squash_flag="--squash"
 	fi
 
-	if ! do_merge "$PR_NUM" "$pr_title" "$pr_desc" "$tip_sha" "$squash_flag"; then
+	if ! do_merge_guarded "$PR_NUM" "$pr_title" "$pr_desc" "$tip_sha" "$squash_flag"; then
 		echo ""
 		echo "Recovery: ./scripts/merge-pr $PR_NUM"
 		_autopr_state_final="failed_merge"
@@ -1672,7 +1672,7 @@ do_pr() {
 		squash_flag="--squash"
 	fi
 
-	if ! do_merge "$PR_NUM" "$TITLE" "$DESC" "$LOCAL_SHA" "$squash_flag"; then
+	if ! do_merge_guarded "$PR_NUM" "$TITLE" "$DESC" "$LOCAL_SHA" "$squash_flag"; then
 		echo ""
 		echo "Recovery: ./scripts/merge-pr $PR_NUM"
 		_autopr_state_final="failed_merge"

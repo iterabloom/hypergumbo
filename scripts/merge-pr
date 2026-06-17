@@ -373,7 +373,7 @@ if [[ "$FORCE_SQUASH" == "true" ]]; then
 	squash_flag="--squash"
 fi
 
-if ! do_merge "$PR_NUM" "$PR_TITLE" "$PR_BODY" "$HEAD_SHA" "$squash_flag"; then
+if ! do_merge_guarded "$PR_NUM" "$PR_TITLE" "$PR_BODY" "$HEAD_SHA" "$squash_flag"; then
 	echo ""
 	echo "Recovery: fix the issue and retry:"
 	echo "  ./scripts/merge-pr $PR_NUM"

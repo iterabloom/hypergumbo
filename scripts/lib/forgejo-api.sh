@@ -1342,6 +1342,135 @@ do_merge() {
 }
 
 # ------------------------------------------------------------------
+# WI-bunag — commit-message / PR-body tracker-closure guard (HYBRID)
+# ------------------------------------------------------------------
+# This tracker is CLI-driven; a bare "Closes WI-…" line in a commit message or
+# PR body is INERT (neither auto-pr nor merge-pr parses it), so closure
+# expressed only that way leaves the item stale (the WI-kafar/WI-himoj/WI-dafun
+# stale-after-merge class). do_merge_guarded() wraps do_merge with the
+# human-approved (2026-06-17) hybrid guard:
+#
+#   PRE-merge  — a bare Closes|Fixes|Resolves (WI|INV|META)-<id> referencing a
+#                still-OPEN item ABORTS the merge (hard-warn). The agent must
+#                close it explicitly (preserving the closure-evidence
+#                discipline, WI-dafun) or use the evidence opt-in below.
+#   POST-merge — a "Closes-with-evidence: <id> (<evidence>)" line AUTO-CLOSES
+#                the item (status done; --note carries the evidence + PR ref).
+#                Runs ONLY after do_merge succeeds — post-merge, post-rebase,
+#                bash-sequential — so it never races the merge/rebase or the
+#                rebase-restore .ops backup.
+#
+# Shared here so BOTH auto-pr and merge-pr get it by calling do_merge_guarded.
+
+_RESOLVED_STATUSES="done satisfied wont_do"
+
+# Resolve scripts/tracker relative to this lib; AUTOPR_TRACKER_CLI overrides
+# (used by the seam tests to inject a stub tracker).
+_tracker_cli() {
+	if [[ -n "${AUTOPR_TRACKER_CLI:-}" ]]; then
+		echo "$AUTOPR_TRACKER_CLI"
+	else
+		echo "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tracker"
+	fi
+}
+
+# Extract closure references from $1. $2=mode:
+#   bare      → print each Closes|Fixes|Resolves <id> (NOT the evidence form)
+#   evidence  → print "<id>\t<evidence>" for each Closes-with-evidence: line
+_closure_refs() {
+	AUTOPR_CLOSURE_TEXT="$1" python3 - "$2" <<'PY'
+import os, re, sys
+text = os.environ.get("AUTOPR_CLOSURE_TEXT", "")
+mode = sys.argv[1]
+ID = r'(?:WI|INV|META)-[a-z0-9]+(?:-[a-z0-9]+)*'
+seen = set()
+if mode == "bare":
+    for m in re.finditer(r'(?i)\b(?:closes|fixes|resolves)(?!-with-evidence)\b[\s:]+(' + ID + ')', text):
+        cid = m.group(1)
+        if cid not in seen:
+            seen.add(cid); print(cid)
+elif mode == "evidence":
+    for m in re.finditer(r'(?i)\bcloses-with-evidence\b[\s:]+(' + ID + r')\s*(.*)', text):
+        cid = m.group(1)
+        if cid not in seen:
+            seen.add(cid); print(cid + "\t" + m.group(2).strip())
+PY
+}
+
+# Return 0 if tracker item <id> is OPEN (not done/satisfied/wont_do); 1 if
+# resolved OR unknown (fail-open: an unknown id must not block the merge).
+_closure_item_open() {
+	local cid="$1" status
+	status=$("$(_tracker_cli)" show "$cid" 2>/dev/null \
+		| grep -oE 'status: [a-z_]+' | head -1 | awk '{print $2}')
+	[[ -z "$status" ]] && return 1
+	case " $_RESOLVED_STATUSES " in
+		*" $status "*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+
+# PRE-merge gate. Aborts (return 1) when a bare closure reference targets an
+# open item. $1=scan_text.
+_closure_guard_pre_merge() {
+	local scan_text="$1" cid
+	local -a open_ids=()
+	while IFS= read -r cid; do
+		[[ -z "$cid" ]] && continue
+		if _closure_item_open "$cid"; then
+			open_ids+=("$cid")
+		fi
+	done < <(_closure_refs "$scan_text" bare)
+
+	if [[ ${#open_ids[@]} -gt 0 ]]; then
+		echo "" >&2
+		echo "❌ WI-bunag closure guard: bare 'Closes …' reference(s) to STILL-OPEN tracker item(s):" >&2
+		printf '     - %s\n' "${open_ids[@]}" >&2
+		echo "   This tracker is CLI-driven — a bare Closes line does NOT close the item, so" >&2
+		echo "   merging now would leave it stale. Before merging, EITHER:" >&2
+		echo "     1. close it explicitly (with evidence):" >&2
+		echo "          scripts/tracker update <ID> --status done --note \"…repro/PR…\"" >&2
+		echo "     2. or use the auto-close opt-in line in the commit/PR body:" >&2
+		echo "          Closes-with-evidence: <ID> (PR #N; repro: <cmd> -> <result>)" >&2
+		return 1
+	fi
+	return 0
+}
+
+# POST-merge auto-close for the evidence opt-in. $1=scan_text $2=pr_num $3=sha.
+_closure_guard_post_merge() {
+	local scan_text="$1" pr_num="$2" sha="$3" line cid evidence
+	local short_sha="${3:0:12}"
+	while IFS= read -r line; do
+		[[ -z "$line" ]] && continue
+		cid="${line%%$'\t'*}"
+		evidence="${line#*$'\t'}"
+		echo "🔖 WI-bunag: auto-closing $cid (Closes-with-evidence, PR #$pr_num)" >&2
+		"$(_tracker_cli)" update "$cid" --status done \
+			--note "Closed by PR #$pr_num ($short_sha) via Closes-with-evidence. $evidence" \
+			>&2 2>&1 || echo "   ⚠️  auto-close of $cid failed — close it manually" >&2
+	done < <(_closure_refs "$scan_text" evidence)
+}
+
+# Guarded merge: pre-gate → do_merge → post-merge auto-close. Drop-in for
+# do_merge; both auto-pr and merge-pr call THIS (WI-bunag).
+do_merge_guarded() {
+	local pr_num="$1" title="$2" desc="$3" orig_sha="$4" force_squash="${5:-false}"
+	local commit_msg
+	commit_msg="$(git log -1 --format=%B "$orig_sha" 2>/dev/null || echo "")"
+	local scan_text="$title"$'\n'"$desc"$'\n'"$commit_msg"
+
+	if ! _closure_guard_pre_merge "$scan_text"; then
+		return 1
+	fi
+	if ! do_merge "$pr_num" "$title" "$desc" "$orig_sha" "$force_squash"; then
+		return 1
+	fi
+	_closure_guard_post_merge "$scan_text" "$pr_num" "$orig_sha"
+	return 0
+}
+
+# ------------------------------------------------------------------
 # _check_pr_merged PR_NUM  (internal helper)
 # ------------------------------------------------------------------
 _check_pr_merged() {
