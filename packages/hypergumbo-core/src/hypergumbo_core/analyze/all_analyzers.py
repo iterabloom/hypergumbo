@@ -84,6 +84,21 @@ def collect_analyzer_result(
         })
     else:
         analysis_runs.append(result.run.to_dict())
+        # WI-mosil central origin_run_id backstop. Direct-constructor analyzers
+        # (toml/json/wgsl/sql and any future ones that build Symbols by hand
+        # rather than through _analyze_body) leave Symbol.origin_run_id='' — a
+        # sentinel that resolves to no AnalysisRun, breaking the node->AR join.
+        # This is the single point where every analyzer's symbols meet their run,
+        # so stamp the run's execution_id onto any Symbol the producer left
+        # unstamped (the chokepoint fix, not a per-analyzer sweep). Pure fill:
+        # a value a multi-pass producer already set is preserved. Edges are not
+        # backfilled — Edge.__post_init__ already requires a non-empty
+        # origin_run_id (WI-higap), so none can reach here empty.
+        _run_exec_id = getattr(result.run, "execution_id", "")
+        if _run_exec_id:
+            for sym in result.symbols:
+                if not sym.origin_run_id:
+                    sym.origin_run_id = _run_exec_id
         all_symbols.extend(result.symbols)
         all_edges.extend(result.edges)
         all_usage_contexts.extend(getattr(result, "usage_contexts", []))

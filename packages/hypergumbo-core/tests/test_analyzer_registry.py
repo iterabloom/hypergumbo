@@ -806,6 +806,63 @@ class TestCollectAnalyzerResult:
         assert limits.failed_files[1].path == "bad-utf8.py"
         assert limits.failed_files[1].analyzer == "python"
 
+    def test_backfills_empty_origin_run_id_from_run(self) -> None:
+        """WI-mosil central backstop: a direct-constructor analyzer's Symbol with
+        origin_run_id='' is stamped from the run's execution_id at collection so the
+        node->AnalysisRun join resolves (toml/json/wgsl/sql producers don't thread it)."""
+        from hypergumbo_core.ir import AnalysisRun, Span, Symbol, UsageContext
+        from hypergumbo_core.limits import Limits
+
+        sym = Symbol(
+            id="toml:pyproject.toml:0-0:requests:dependency",
+            name="requests",
+            kind="dependency",
+            language="toml",
+            path="pyproject.toml",
+            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+            origin="toml-v1",
+            origin_run_id="",
+        )
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "toml-v1"}
+        run.pass_id = "toml-v1"
+        run.execution_id = "uuid:EXEC-TOML"
+
+        result = AnalysisResult(
+            symbols=[sym], edges=[], usage_contexts=[], run=run, skipped=False,
+        )
+        all_symbols: list[Symbol] = []
+        collect_analyzer_result(result, [], all_symbols, [], [], Limits())
+        assert all_symbols[0].origin_run_id == "uuid:EXEC-TOML"
+
+    def test_does_not_overwrite_present_origin_run_id(self) -> None:
+        """The backstop is pure fill: a Symbol that already carries an origin_run_id
+        (a multi-pass producer that threaded its own) is left untouched."""
+        from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+        from hypergumbo_core.limits import Limits
+
+        sym = Symbol(
+            id="python:m.py:1-2:f:function",
+            name="f",
+            kind="function",
+            language="python",
+            path="m.py",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+            origin="python",
+            origin_run_id="uuid:ALREADY",
+        )
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "python"}
+        run.pass_id = "python"
+        run.execution_id = "uuid:DIFFERENT"
+
+        result = AnalysisResult(
+            symbols=[sym], edges=[], usage_contexts=[], run=run, skipped=False,
+        )
+        all_symbols: list[Symbol] = []
+        collect_analyzer_result(result, [], all_symbols, [], [], Limits())
+        assert all_symbols[0].origin_run_id == "uuid:ALREADY"
+
     def test_drains_failed_files_from_partially_skipped_result(self) -> None:
         """failed_files drain even when result.skipped=True — partial-skip analyzers may have already recorded entries before bailing."""
         from hypergumbo_core.ir import AnalysisRun, Symbol, UsageContext

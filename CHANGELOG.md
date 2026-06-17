@@ -10,6 +10,21 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+- **Provenance: central `origin_run_id` backstop for direct-constructor analyzers (Wave-2; closes WI-mosil stragglers)** —
+  Direct-constructor analyzers (toml/json/wgsl/sql) build `Symbol`s by hand rather than through
+  `_analyze_body`, leaving `Symbol.origin_run_id=''` — a sentinel that resolves to no `AnalysisRun`,
+  silently breaking the node→AnalysisRun join. `synthetic:F1` (PR #224) fixed the ~2,134-node synthetic
+  bulk; this closes the ~96-node manifest/config straggler tail. The fix is a single backstop in
+  `collect_analyzer_result` — the chokepoint where every analyzer's symbols meet their run — which
+  stamps the run's `execution_id` onto any `Symbol` the producer left unstamped (cross-family
+  mechanism #1: one chokepoint, not a per-analyzer sweep). Pure fill: a value a multi-pass producer
+  already set is preserved. Edges need no backfill (`Edge.__post_init__` already requires a non-empty
+  `origin_run_id`, WI-higap). `origin_run_id` is not part of any id/hash, so zero identity churn.
+  Behavioral evidence (live re-probe): `origin_run_id=''` nodes 15→0 on the tracker package, and 0
+  nodes fail the node→AnalysisRun join.
+
 ### Changed
 
 - **Edge resolution semantics — single edge-finalization verdict (ADR-0037 rulings 1/2/3/5; Wave-2; closes WI-kukuk / WI-zuhon / WI-ninuv / WI-mutuk)** —
