@@ -67,9 +67,12 @@ provides all possible inputs, and each linker takes what it needs.
 
 ``run_all_linkers()`` populates per-linker identity fields
 (``linker_pass_id``, ``linker_pass_version``) on each context before
-dispatch, and stamps ``pass_version`` on the returned ``AnalysisRun``
-via ``_stamp_pass_version()`` — so linker bodies don't need to thread
-pass_version manually.
+dispatch, and stamps both ``pass_version`` (via ``_stamp_pass_version()``)
+and a producer-identity ``config_fingerprint`` (via
+``_stamp_config_fingerprint()``, INV-lidul / WI-mipul) on the returned
+``AnalysisRun`` — so linker bodies don't need to thread either manually.
+Without the config_fingerprint stamp every linker run would carry the
+constant default sentinel, collapsing ~40 passes onto one cache key.
 
 Usage
 -----
@@ -660,6 +663,41 @@ def _stamp_pass_version(result: LinkerResult, linker: RegisteredLinker) -> None:
         result.run.pass_version = linker.pass_version
 
 
+def _stamp_config_fingerprint(
+    result: LinkerResult, linker: RegisteredLinker
+) -> None:
+    """Stamp a producer-identity config_fingerprint onto the linker's run.
+
+    INV-lidul / WI-mipul: linker bodies build their ``AnalysisRun`` via
+    ``AnalysisRun.create(...)`` with no ``config_fingerprint``, so every one
+    falls through to the constant ``_default_config_fingerprint()`` sentinel
+    (sha256 of ``{}``) — collapsing ~40 linker passes onto one cache-keying
+    fingerprint. This is the linker analogue of
+    ``TreeSitterAnalyzer._stamp_config_fingerprint``: it derives a stable
+    ``sha256:<16hex>`` from the ``RegisteredLinker``'s IDENTITY (module +
+    qualname of the linker func, plus the registration metadata). It mirrors
+    ``_stamp_pass_version``'s shape and guard exactly — only the
+    default-valued sentinel is overwritten, so a linker body that already set
+    a real fingerprint is respected. ``pass_version`` (the code-hash) is
+    deliberately omitted from the digest: config_fingerprint keys on config
+    identity, not code (the analyzer scheme omits it too).
+    """
+    from ..ir import _default_config_fingerprint, compute_config_fingerprint
+    if result.run is None:
+        return
+    if result.run.config_fingerprint != _default_config_fingerprint():
+        return
+    func = linker.func
+    result.run.config_fingerprint = compute_config_fingerprint({
+        "func": f"{func.__module__}.{getattr(func, '__qualname__', func.__name__)}",
+        "name": linker.name,
+        "pass_label": linker.pass_label,
+        "backend": linker.backend,
+        "languages": list(linker.languages),
+        "availability": linker.availability,
+    })
+
+
 def _record_linker_crash(
     limits: "Limits | None", linker_name: str, exc: BaseException
 ) -> None:
@@ -750,6 +788,7 @@ def run_all_linkers(
                 _record_linker_crash(limits, linker.name, exc)
                 continue
             _stamp_pass_version(result, linker)
+            _stamp_config_fingerprint(result, linker)
             results.append((linker.name, result))
             all_linker_symbols.extend(result.symbols)
             if result.edges:
@@ -790,6 +829,7 @@ def run_all_linkers(
                         _record_linker_crash(limits, linker.name, exc)
                         continue
                     _stamp_pass_version(result, linker)
+                    _stamp_config_fingerprint(result, linker)
                     results.append((linker.name, result))
                     all_linker_symbols.extend(result.symbols)
                     if result.edges:
@@ -806,11 +846,19 @@ def run_all_linkers(
         detected_frameworks=ctx.detected_frameworks,
         detected_languages=ctx.detected_languages,
     )
-    from ..ir import PASS_VERSION, AnalysisRun, make_pass_id
+    from ..ir import (
+        PASS_VERSION, AnalysisRun, compute_config_fingerprint, make_pass_id,
+    )
     enclosure_pass_id = make_pass_id("enclosure-linker")
+    # The enclosure pass has no RegisteredLinker; key its config_fingerprint on
+    # its pass_id so it carries a distinct (non-default) fingerprint like every
+    # other producer (INV-lidul / WI-mipul).
     enclosure_run = AnalysisRun.create(  # nosec B106 - pass_id is not a password
         pass_id=enclosure_pass_id,
         version=PASS_VERSION,
+        config_fingerprint=compute_config_fingerprint(
+            {"pass_id": enclosure_pass_id}
+        ),
     )
     try:
         enclosure_edges = _connect_synthetic_to_enclosing(

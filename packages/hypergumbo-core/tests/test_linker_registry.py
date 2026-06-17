@@ -5,11 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo_core.ir import AnalysisRun, Edge, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, Symbol, _default_config_fingerprint
 from hypergumbo_core.linkers.registry import (
     LinkerContext,
     LinkerRequirement,
     LinkerResult,
+    _stamp_config_fingerprint,
     _stamp_pass_version,
     check_linker_requirements,
     clear_registry,
@@ -1330,6 +1331,49 @@ class TestStampPassVersion:
         )
         _stamp_pass_version(result, linker)
         assert run.pass_version == "original"
+
+
+class TestStampConfigFingerprint:
+    """Tests for the _stamp_config_fingerprint linker helper (INV-lidul/WI-mipul)."""
+
+    def _linker(self, name="lk"):
+        from hypergumbo_core.linkers.registry import RegisteredLinker
+        return RegisteredLinker(
+            name=name, func=lambda ctx: LinkerResult(), pass_version="abc123",
+        )
+
+    def test_stamps_default_config_fingerprint(self):
+        """A run carrying the default sentinel gets a real producer-identity
+        fingerprint."""
+        run = AnalysisRun.create(pass_id="test", version="1.0.0")
+        assert run.config_fingerprint == _default_config_fingerprint()
+        result = LinkerResult(run=run)
+        _stamp_config_fingerprint(result, self._linker())
+        assert run.config_fingerprint != _default_config_fingerprint()
+        assert run.config_fingerprint.startswith("sha256:")
+
+    def test_skips_none_run(self):
+        """No-op when run is None (mirrors _stamp_pass_version)."""
+        result = LinkerResult()
+        _stamp_config_fingerprint(result, self._linker())
+        assert result.run is None
+
+    def test_preserves_nondefault_config_fingerprint(self):
+        """Does not overwrite a fingerprint the linker body already set."""
+        run = AnalysisRun.create(
+            pass_id="test", version="1.0.0", config_fingerprint="sha256:deadbeefdeadbeef"
+        )
+        result = LinkerResult(run=run)
+        _stamp_config_fingerprint(result, self._linker())
+        assert run.config_fingerprint == "sha256:deadbeefdeadbeef"
+
+    def test_distinct_linkers_get_distinct_fingerprints(self):
+        """Two differently-identified linkers produce distinct fingerprints."""
+        run_a = AnalysisRun.create(pass_id="a", version="1.0.0")
+        run_b = AnalysisRun.create(pass_id="b", version="1.0.0")
+        _stamp_config_fingerprint(LinkerResult(run=run_a), self._linker("alpha"))
+        _stamp_config_fingerprint(LinkerResult(run=run_b), self._linker("beta"))
+        assert run_a.config_fingerprint != run_b.config_fingerprint
 
 
 class TestAllRegisteredLinkersHavePassVersion:

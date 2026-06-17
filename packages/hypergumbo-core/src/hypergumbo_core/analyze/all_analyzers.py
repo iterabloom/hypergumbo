@@ -18,7 +18,10 @@ from pathlib import Path
 from typing import Any
 
 from ..discovery import set_global_on_file_skipped
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, UsageContext
+from ..ir import (
+    AnalysisRun, Edge, PASS_VERSION, Symbol, UsageContext,
+    _default_config_fingerprint, compute_config_fingerprint,
+)
 from ..limits import Limits
 from ..paths import normalize_path
 from .base import populate_kind_stable_ids, synthesize_file_symbols_for_dangling_edges
@@ -42,6 +45,40 @@ def get_analyzers() -> list[RegisteredAnalyzer]:
 def clear_analyzer_cache() -> None:
     """Clear the analyzer cache and registry. For testing only."""
     clear_registry()
+
+
+def stamp_analyzer_config_fingerprint(result: Any, analyzer: Any) -> None:
+    """Orchestrator chokepoint that stamps a producer-identity
+    config_fingerprint onto the run of any analyzer that bypasses
+    ``TreeSitterAnalyzer._analyze_body``.
+
+    The ~30 inherited-``analyze()`` tree-sitter analyzers self-stamp via
+    ``_stamp_config_fingerprint`` (hashing the richer class+grammar+globs
+    dict). The remaining cohort — override-``analyze()`` subclasses (go, java,
+    js_ts, json, csharp, toml, xml, make, yaml_ansible, manifest_targets,
+    play-routes) and bare ``@register_analyzer`` functions (python, html, the
+    rust-analyzer SCIP path) — build their ``AnalysisRun`` by hand and never
+    call it, so each falls through to the constant ``_default_config_fingerprint``
+    sentinel (INV-lidul: 56/86 self-analysis runs collapsed onto one cache key).
+
+    This is the analyzer analogue of the linker registry's
+    ``_stamp_config_fingerprint``: the ``RegisteredAnalyzer`` (in scope at the
+    orchestrator loop, unlike inside ``collect_analyzer_result``) is the only
+    producer handle available — ``AnalysisResult`` carries no analyzer
+    instance, so the digest keys on the registration identity. Guarded on the
+    default sentinel so the self-stamped cohort is never overwritten, and so
+    new override analyzers are covered automatically (WI-mipul future-proofing).
+    """
+    run = getattr(result, "run", None)
+    if run is None or run.config_fingerprint != _default_config_fingerprint():
+        return
+    func = analyzer.func
+    run.config_fingerprint = compute_config_fingerprint({
+        "func": f"{func.__module__}.{getattr(func, '__qualname__', func.__name__)}",
+        "name": analyzer.name,
+        "backend": analyzer.backend,
+        "languages": list(analyzer.languages),
+    })
 
 
 def collect_analyzer_result(
@@ -251,6 +288,13 @@ def run_all_analyzers(
                 limits.record_crashed_pass(analyzer.name, exc)
                 continue
 
+            # INV-lidul / WI-mipul: stamp a producer-identity config_fingerprint
+            # for the override-analyze / function-registered cohort that bypasses
+            # _analyze_body. Must run before collect_analyzer_result captures
+            # result.run.to_dict(). Guarded on the default sentinel, so the
+            # self-stamped analyzers are untouched.
+            stamp_analyzer_config_fingerprint(result, analyzer)
+
             collect_analyzer_result(
                 result, analysis_runs, all_symbols, all_edges, all_usage_contexts, limits
             )
@@ -285,6 +329,9 @@ def run_all_analyzers(
     # synthesis actually produced Symbols (no empty-pass records).
     _file_synth_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password (bandit B106 false-positives on any "pass*" funcarg)
         pass_id="orchestrator_file_symbol_synthesis", version=PASS_VERSION,
+        config_fingerprint=compute_config_fingerprint(
+            {"pass_id": "orchestrator_file_symbol_synthesis"}
+        ),
     )
     _synth_file_symbols = synthesize_file_symbols_for_dangling_edges(
         all_symbols, all_edges, repo_root=repo_root,

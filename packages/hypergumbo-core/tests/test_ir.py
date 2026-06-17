@@ -5,6 +5,7 @@ from pathlib import Path
 from hypergumbo_core.ir import (
     VALID_ACCESS_MODES,
     AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext, create_boundary_nodes,
+    _default_config_fingerprint, compute_config_fingerprint,
     format_legacy_dst, is_external_boundary, validate_symbol_id_format,
 )
 from hypergumbo_lang_mainstream.py import analyze_python
@@ -108,6 +109,18 @@ def test_analysis_run_direct_construction_gets_config_fingerprint() -> None:
         "Direct AnalysisRun() must not leave config_fingerprint empty"
     )
     assert run.config_fingerprint.startswith("sha256:")
+
+
+def test_compute_config_fingerprint_deterministic_and_keysorted() -> None:
+    """compute_config_fingerprint is the shared producer-identity primitive:
+    sorted-keys deterministic, sha256:<16hex> shape, distinct for distinct
+    inputs, and never equal to the empty-config default for a non-empty dict."""
+    a = compute_config_fingerprint({"b": 1, "a": 2})
+    b = compute_config_fingerprint({"a": 2, "b": 1})
+    assert a == b  # key order does not matter
+    assert a.startswith("sha256:") and len(a) == len("sha256:") + 16
+    assert a != compute_config_fingerprint({"a": 2, "b": 3})
+    assert a != _default_config_fingerprint()
 
 
 def test_analysis_run_explicit_config_fingerprint_preserved() -> None:

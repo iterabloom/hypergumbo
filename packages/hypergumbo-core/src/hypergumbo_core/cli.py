@@ -132,7 +132,8 @@ import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linke
 from .entrypoints import EntrypointKind, detect_entrypoints
 from .ir import (
     AnalysisRun, PASS_VERSION,
-    Symbol, Edge, apply_external_id_remap, create_boundary_nodes,
+    Symbol, Edge, apply_external_id_remap, compute_config_fingerprint,
+    create_boundary_nodes,
     deduplicate_edges,
     is_external_boundary,
 )
@@ -8090,6 +8091,9 @@ def run_behavior_map(
     # precondition. (Previously this ran pre-filter, leaving dangling srcs.)
     _boundary_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password (bandit B106 false-positives on any "pass*" funcarg)
         pass_id="boundary_external_symbol_synthesis", version=PASS_VERSION,
+        config_fingerprint=compute_config_fingerprint(
+            {"pass_id": "boundary_external_symbol_synthesis"}
+        ),
     )
     boundary, id_remap = create_boundary_nodes(
         all_symbols, all_edges, dependency_manifest=dependency_manifest,

@@ -16,8 +16,10 @@ import pytest
 from hypergumbo_core.analyze.all_analyzers import (
     clear_analyzer_cache,
     collect_analyzer_result,
+    stamp_analyzer_config_fingerprint,
 )
 from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import AnalysisRun, _default_config_fingerprint
 from hypergumbo_core.analyze import registry as _registry_mod
 from hypergumbo_core.analyze.registry import (
     RegisteredAnalyzer,
@@ -107,6 +109,54 @@ class TestRegisteredAnalyzer:
         assert ra.priority == 10
         assert ra.supports_max_files is True
         assert ra.capture_symbols_as == "java"
+
+
+# ---------------------------------------------------------------------------
+# stamp_analyzer_config_fingerprint — orchestrator chokepoint (INV-lidul/WI-mipul)
+# ---------------------------------------------------------------------------
+
+
+class TestStampAnalyzerConfigFingerprint:
+    """The orchestrator-loop chokepoint that stamps a producer-identity
+    config_fingerprint for the override-analyze / function-registered cohort
+    that bypasses TreeSitterAnalyzer._analyze_body."""
+
+    def _analyzer(self, name="zz"):
+        return RegisteredAnalyzer(
+            name=name, func=lambda root: AnalysisResult(),
+            backend="tree-sitter", languages=[name],
+        )
+
+    def test_stamps_default_run(self):
+        """A run carrying the default sentinel is stamped with a real
+        producer-identity fingerprint."""
+        run = AnalysisRun.create(pass_id="zz", version="1.0.0")
+        assert run.config_fingerprint == _default_config_fingerprint()
+        stamp_analyzer_config_fingerprint(AnalysisResult(run=run), self._analyzer())
+        assert run.config_fingerprint != _default_config_fingerprint()
+        assert run.config_fingerprint.startswith("sha256:")
+
+    def test_skips_none_run(self):
+        """No-op when the result has no run."""
+        stamp_analyzer_config_fingerprint(AnalysisResult(run=None), self._analyzer())
+
+    def test_preserves_self_stamped_run(self):
+        """A run already carrying a non-default (self-stamped) fingerprint is
+        left untouched — the ~30 _analyze_body analyzers keep their richer
+        class+grammar+globs digest."""
+        run = AnalysisRun.create(
+            pass_id="zz", version="1.0.0", config_fingerprint="sha256:cafecafecafecafe"
+        )
+        stamp_analyzer_config_fingerprint(AnalysisResult(run=run), self._analyzer())
+        assert run.config_fingerprint == "sha256:cafecafecafecafe"
+
+    def test_distinct_analyzers_distinct_fingerprints(self):
+        """Two differently-identified analyzers produce distinct fingerprints."""
+        run_a = AnalysisRun.create(pass_id="a", version="1.0.0")
+        run_b = AnalysisRun.create(pass_id="b", version="1.0.0")
+        stamp_analyzer_config_fingerprint(AnalysisResult(run=run_a), self._analyzer("alpha"))
+        stamp_analyzer_config_fingerprint(AnalysisResult(run=run_b), self._analyzer("beta"))
+        assert run_a.config_fingerprint != run_b.config_fingerprint
 
 
 # ---------------------------------------------------------------------------

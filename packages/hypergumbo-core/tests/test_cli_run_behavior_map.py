@@ -154,6 +154,48 @@ def test_boundary_nodes_appear_in_output(tmp_path: Path) -> None:
     assert urlopen_node["span"]["end_line"] == 0
 
 
+def test_no_analysis_run_carries_default_config_fingerprint(tmp_path: Path) -> None:
+    """INV-lidul / WI-mipul production-path witness: after a real run, NO
+    AnalysisRun may carry the constant default config_fingerprint sentinel.
+
+    This is the headline regression guard for the producer-side
+    config_fingerprint fix. The fixture exercises a Class-C function-registered
+    analyzer (python), the orchestrator file-symbol synthesis pass, the
+    boundary external-symbol synthesis pass, and the enclosure pass — every one
+    of which previously fell through to ``_default_config_fingerprint()``. A new
+    override-analyze analyzer that regresses (or a new synthesis create-site
+    that forgets to stamp) trips this test.
+    """
+    import json
+    from hypergumbo_core.cli import run_behavior_map
+    from hypergumbo_core.ir import _default_config_fingerprint
+
+    (tmp_path / "fetch.py").write_text(
+        "from urllib.request import urlopen\n"
+        "class Client:\n"
+        "    def fetch(self, url):\n"
+        "        return urlopen(url).read()\n"
+    )
+    out_path = tmp_path / "results.json"
+    run_behavior_map(
+        tmp_path, out_path, budgets="none",
+        include_sketch_precomputed=False, enable_handler_slices=False,
+    )
+    data = json.loads(out_path.read_text())
+    runs = data["analysis_runs"]
+    assert runs, "expected at least one analysis_run"
+    default = _default_config_fingerprint()
+    offenders = [
+        r.get("pass") or r.get("pass_id")
+        for r in runs
+        if r.get("config_fingerprint") == default
+    ]
+    assert not offenders, (
+        "AnalysisRuns still carrying the default config_fingerprint "
+        f"(producer-side stamp gap): {offenders}"
+    )
+
+
 def test_run_behavior_map_returns_generated_files(tmp_path: Path) -> None:
     """Test that run_behavior_map returns list of generated file paths."""
     from hypergumbo_core.cli import run_behavior_map

@@ -31,6 +31,7 @@ Provenance Fields
 """
 import hashlib
 import inspect
+import json
 import platform
 import types
 import uuid
@@ -183,6 +184,31 @@ def _default_config_fingerprint() -> str:
     return f"sha256:{hashlib.sha256(b'{}').hexdigest()[:16]}"
 
 
+def compute_config_fingerprint(config: Dict[str, Any]) -> str:
+    """Derive a ``sha256:<16hex>`` config_fingerprint from a producer's
+    identity dict.
+
+    This is the single hashing primitive shared by every producer that
+    stamps ``AnalysisRun.config_fingerprint`` — tree-sitter analyzers
+    (``TreeSitterAnalyzer._stamp_config_fingerprint`` via
+    ``_get_config_dict``), the orchestrator chokepoint for override-analyze
+    and function-registered analyzers, the linker registry
+    (``_stamp_config_fingerprint``), and the boundary / file-symbol /
+    enclosure synthesis passes. Keys are sorted for determinism and the
+    digest truncated to 16 hex chars, mirroring ``_compute_run_signature``.
+
+    NOTE (INV-lidul / concept-audit): despite the ``config`` name, the
+    production producers all key this on PRODUCER IDENTITY (analyzer/linker
+    class + grammar + static file globs, or the pass_id for synthesis
+    passes), NOT on the run-time effective CLI config. It exists to make
+    distinct passes carry distinct cache-keying fingerprints; it does not
+    (yet) distinguish two runs of the *same* pass under different runtime
+    flags. See ``AnalysisRun.config_fingerprint``'s field note.
+    """
+    payload = json.dumps(config, sort_keys=True, default=str)
+    return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]}"
+
+
 @dataclass
 class AnalysisRun:
     """Provenance tracking for an analysis pass execution.
@@ -198,6 +224,14 @@ class AnalysisRun:
     run_signature: str = ""  # axis: identity
     repo_fingerprint: Optional[str] = None  # axis: identity
     toolchain: Dict[str, str] = field(default_factory=dict)
+    # PRODUCER-IDENTITY fingerprint, NOT runtime CLI config (INV-lidul /
+    # concept-audit 2026-06-17). Every production producer keys this on its
+    # own identity — analyzer/linker class + grammar + static file globs, or
+    # the pass_id for synthesis passes — via compute_config_fingerprint, so
+    # distinct passes carry distinct cache-keying fingerprints. It does NOT
+    # currently distinguish two runs of the same pass under different runtime
+    # flags (e.g. --include-docs); that residual collision is tracked
+    # separately and would require wiring CLI flags into the digest.
     config_fingerprint: str = ""  # axis: identity
     files_analyzed: int = 0
     files_skipped: int = 0
@@ -241,7 +275,9 @@ class AnalysisRun:
             pass_id: Identifier for the analysis pass (e.g., 'python-ast-v1')
             version: Hypergumbo package version (``PASS_VERSION``). All
                 producers pass the same value (INV-kohat).
-            config_fingerprint: Hash of effective config (defaults to empty config hash)
+            config_fingerprint: Producer-identity fingerprint (NOT runtime CLI
+                config — see the field note); defaults to the empty-config hash
+                sentinel, which producers replace via compute_config_fingerprint.
             toolchain: Runtime info dict (defaults to current Python runtime)
             repo_fingerprint: Hash of repo state for cache keying (optional)
             pass_version: Code-hash of the pass module (via

@@ -12,6 +12,28 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Provenance: producer-side `config_fingerprint` for the override-analyze / linker / synthesis cohort (Wave-2; closes WI-mipul config_fingerprint half + INV-lidul sub-claim 1)** —
+  `AnalysisRun.config_fingerprint` was the constant default sentinel (`sha256:44136fa355b3678a`, sha256 of `{}`) on
+  56 of 86 self-analysis runs — every analyzer that overrides `analyze()` or is a bare `@register_analyzer` function
+  (~13 pass-ids incl. python/html), every linker (~40), and the 2 synthesis passes. Only the ~30 inherited-`analyze()`
+  tree-sitter analyzers self-stamped (via `TreeSitterAnalyzer._stamp_config_fingerprint`), so distinct passes collapsed
+  onto one cache-keying fingerprint. The fix stamps a producer-identity fingerprint at **chokepoints**, not per-site:
+  the orchestrator loop (`stamp_analyzer_config_fingerprint`, keyed on the `RegisteredAnalyzer` — the symmetric analog of
+  the linker registry) covers the whole override/function-registered analyzer cohort and auto-covers future ones; a new
+  `_stamp_config_fingerprint(result, linker)` beside `_stamp_pass_version` covers every linker at both dispatch sites;
+  the enclosure / boundary / file-symbol synthesis passes pass `config_fingerprint=` at create-time. All four producer
+  classes route through one shared `ir.compute_config_fingerprint` primitive. Each stamp is guarded on the default
+  sentinel, so the ~30 self-stamped analyzers (which hash the richer class+grammar+globs dict) are untouched — zero churn
+  for them; only the 56 previously-default runs get a new (distinct) fingerprint. `pass_version` (the code-hash) is
+  deliberately omitted from the digest — config_fingerprint keys on identity, not code. Behavioral evidence
+  (production-path test + self-analysis re-probe): **0 of N AnalysisRuns carry the default** after the fix (was 56/86).
+  Per ADR-0043 amended ratified #4 the fill is producer-side (not a finalize backstop), so the shrink-only validation
+  ratchet is unchanged. *Concept-audit (2026-06-17): `config_fingerprint` is a producer-IDENTITY fingerprint, not a
+  runtime-CLI-config hash — the field note, docstrings, and `compute_config_fingerprint` now say so explicitly; the
+  same-pass-under-different-runtime-flags collision is a tracked follow-up, not closed here. INV-lidul's original
+  `--backend` example was mis-diagnosed (rust vs rust-analyzer are distinct passes, already separated by `pass_id`) and
+  is split off accordingly.*  Directly-verified referential/shape metric; no bakeoff claim.
+
 - **Provenance: central `origin_run_id` backstop for direct-constructor analyzers (Wave-2; closes WI-mosil stragglers)** —
   Direct-constructor analyzers (toml/json/wgsl/sql) build `Symbol`s by hand rather than through
   `_analyze_body`, leaving `Symbol.origin_run_id=''` — a sentinel that resolves to no `AnalysisRun`,

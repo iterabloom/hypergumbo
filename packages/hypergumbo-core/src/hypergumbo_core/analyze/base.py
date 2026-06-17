@@ -41,7 +41,7 @@ from ..discovery import find_files
 from ..paths import normalize_path
 from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext,
-    compute_pass_version, make_pass_id,
+    compute_config_fingerprint, compute_pass_version, make_pass_id,
 )
 from ..symbol_resolution import NameResolver
 
@@ -2195,16 +2195,12 @@ class TreeSitterAnalyzer:
         default; this method derives a stable fingerprint from the
         analyzer's effective config so distinct analyzers register
         distinct fingerprints and within-analyzer config changes
-        propagate via ``compute_pass_version``.
+        propagate via ``compute_pass_version``. Delegates to the shared
+        :func:`ir.compute_config_fingerprint` primitive (also used by the
+        orchestrator chokepoint, the linker registry, and the synthesis
+        passes) so every producer hashes identity the same way.
         """
-        import hashlib
-        import json as _json
-        config = self._get_config_dict()
-        # Sort keys for determinism. The hash truncation (first 16
-        # hex chars) mirrors ``_compute_run_signature``'s convention.
-        payload = _json.dumps(config, sort_keys=True, default=str)
-        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
-        run.config_fingerprint = f"sha256:{digest}"
+        run.config_fingerprint = compute_config_fingerprint(self._get_config_dict())
 
     def _extend_toolchain(self, run: AnalysisRun) -> None:
         """Extend ``run.toolchain`` with grammar/library version info.
