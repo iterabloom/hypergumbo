@@ -1,0 +1,22 @@
+- op: create  # 8500
+  at: '2026-06-17T01:53:25Z'  # 8500
+  by: agent  # 8500
+  actor: jgstern_agent  # 8500
+  clock: 1  # 8500
+  nonce: '8500'  # 8500
+  data:  # 8500
+    kind: work_item  # 8500
+    title: "ADR-0037 ruling 4: fold the :unresolved id-kind-slot into :external_symbol (deferred from the edge-resolution PR)"  # 8500
+    status: todo_hard  # 8500
+    priority: 2  # 8500
+    parent:  # 8500
+    tags:  # 8500
+    - analysis_quality  # 8500
+    - identity  # 8500
+    - schema  # 8500
+    isbefore: []  # 8500
+    duplicate_of: []  # 8500
+    not_duplicate_of: []  # 8500
+    pr_ref:  # 8500
+    description: "ADR-0037 ruling 4 was DEFERRED from the edge-resolution finalization PR (selfh/dev 2dd851297d, which shipped rulings 1/2/3/5). This item is the remaining piece.\n\nPROBLEM (the pre-existing dual-mint): external-placeholder NODES are minted with kind='external_symbol' (ir.py create_boundary_nodes ~1287) but their id's kind-SLOT still says ':unresolved' (forced at ir.py ~1242-1243 via _canonical_external_id, and stamped by format_legacy_dst ~573 / make_unresolved_edge ~500). One entity answers 'what are you' two different ways — the construct-vs-relationship leak ADR-0027 forbids (resolution state is a property of the REFERENCE, not the referent). Measured: ~458 placeholder nodes on the core package carry the :unresolved id-slot while kind=external_symbol; this is the bulk of the validation_report id_format count (~1002 on the core package; INV-kurup family).\n\nSCOPE (per ADR-0037 ruling 4 + §Implementation-status):\n1. Change the three producer loci to emit ':external_symbol' instead of ':unresolved' in the id kind-slot: format_legacy_dst (ir.py ~573), the boundary remap kind force (ir.py ~1242-1243), make_unresolved_edge (analyze/base.py ~500).\n2. Refactor the three ':unresolved'-string-matching CONSUMERS to read edge.is_resolved / edge.dst_ref instead of the suffix: linkers/cgo.py (~67/76/165/170), taint.py (~282), taint_refine.py (~548). NOTE: this is a DIFFERENT root-cause family (consumer re-derives the producer verdict; cross-family mechanism #3 in correctness_strategy_06102026.md) — keep it cohesive but it's the reason ruling 4 was split out.\n3. Update the ~58 test assertions that string-match ':unresolved' (blast-radius recon: CATEGORY A).\n4. This is an id-string-shape change (458 node ids + their inbound edge dsts) — coordinate with the ADR-0035/0036 identity migration per ADR-0037 §Negative; assess whether a node-id grammar version note is warranted (ADR-0036).\n\nWHY DEFERRED (not needed for the four closures): flipping is_resolved to False leaves the :unresolved dst suffix on is_resolved=False edges, which is the internally-CONSISTENT state (flag and suffix agree). WI-kukuk/WI-zuhon/WI-ninuv/WI-mutuk all closed without it (ADR-0037's own disposition table cites only rulings 1/2/3). Ruling 4 closes the separate dual-mint leak. Unblocks the validator's kind-slot <-> Symbol.kind equality predicate (no :unresolved exemption needed). Relates to INV-kurup (id-format umbrella)."  # 8500
+    fields: {}  # 8500

@@ -58,3 +58,10 @@
   clock: 6  # 653d
   nonce: 653d  # 653d
   message: "Closed via PR #3991 (merged 2026-05-31). Mechanical retrofit applied to 4 analyzers (kotlin/php/scala/swift) — the empirical sweep universe under WI-huzuv's stated criterion 'make_unresolved_edge with module_hint != external'. New parametric test (tests/test_wi_huzuv_dst_ref_sweep.py) verifies dst_ref is populated on each retrofitted analyzer's emit path. 3655 mainstream tests pass. CHANGELOG documents the sweep. The other long-tail analyzers identified during scope re-evaluation (groovy mechanical-equivalent, plus lua/perl/powershell/objc/17-extended1 per-analyzer threading) move back under WI-nigah's residual scope (to be converted from needs_human_review to todo_soft separately)."  # 653d
+- op: discuss  # 4e73
+  at: '2026-06-17T01:52:48Z'  # 4e73
+  by: agent  # 4e73
+  actor: jgstern_agent  # 4e73
+  clock: 7  # 4e73
+  nonce: '4e73'  # 4e73
+  message: "ADR-0037 ruling 2 (PR merged selfh/dev 2dd851297d) touched the exact code this invariant governs (make_unresolved_edge dst_ref derivation) and PRESERVES it: make_unresolved_edge derives dst_ref ONLY when module_hint != 'external', and the new finalizer backstop _derive_dst_ref_from_id returns None for the 'external' (and '<unknown>') path. Verified: the 7 *_leaves_dst_ref_none tests (objc/perl/powershell/lua/kotlin/tcl bare-call sentinel) stay green. The 'external' sentinel remains the ADR-0037 'unidentified reference' cell (is_resolved=False, dst_ref=None) — never promoted to a fabricated path."  # 4e73

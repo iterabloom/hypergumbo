@@ -66,3 +66,12 @@
   clock: 7  # 4e74
   nonce: '4e74'  # 4e74
   message: "Closed structurally by ADR-0037 ruling 2 (PR merged selfh/dev 2dd851297d). The new finalize sub-step _finalize_edge_resolution derives is_resolved from the dst node's KIND (external_symbol => external placeholder), so no producer can independently stamp the flag/suffix contradiction. BEHAVIORAL EVIDENCE — re-ran this item's repro (hypergumbo run on packages/hypergumbo-core/src, editable install with the fix): edges with dst ':unresolved' suffix AND is_resolved=True = 987 -> 0; full contradiction class (is_resolved=True at an external_symbol placeholder) 1312 -> 0; validation_report cross_field violations = 0 (the new ruling-5 FK predicate finds none post-finalize). Full suite 19061 passed, 100% cov."  # 4e74
+- op: update  # 5fbb
+  at: '2026-06-17T01:52:04Z'  # 5fbb
+  by: agent  # 5fbb
+  actor: jgstern_agent  # 5fbb
+  clock: 8  # 5fbb
+  nonce: 5fbb  # 5fbb
+  set: {}  # 5fbb
+  add:  # 5fbb
+    tags: [awaits_bakeoff_validation]  # 5fbb

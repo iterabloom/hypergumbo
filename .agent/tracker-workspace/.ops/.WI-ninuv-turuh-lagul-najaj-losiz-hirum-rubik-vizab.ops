@@ -52,3 +52,18 @@
   clock: 5  # 20da
   nonce: 20da  # 20da
   message: "2026-06-10 design-interview ruling (ADR-0037, merged in PR #4181): is_resolved is redefined as 'dst is a real in-repo node' — external_symbol placeholders are by definition not in-repo, so the overloaded meaning this item documents is replaced by an explicit contract enforced by an FK validator check. The 'unresolved' node kind folds into 'external_symbol'. Waits on the implementation and doc update."  # 20da
+- op: update  # 7f10
+  at: '2026-06-17T01:52:48Z'  # 7f10
+  by: agent  # 7f10
+  actor: jgstern_agent  # 7f10
+  clock: 6  # 7f10
+  nonce: 7f10  # 7f10
+  set:  # 7f10
+    status: done  # 7f10
+- op: discuss  # da53
+  at: '2026-06-17T01:52:48Z'  # da53
+  by: agent  # da53
+  actor: jgstern_agent  # da53
+  clock: 7  # da53
+  nonce: da53  # da53
+  message: "Closed by ADR-0037 ruling 1 (PR merged selfh/dev 2dd851297d). The empirical semantic WI-ninuv documented — is_resolved=False does NOT mean dst-absent; all unresolved dsts exist as materialized external_symbol placeholders (present-but-synthetic) — is now the DOCUMENTED contract. Edge.is_resolved docstring (ir.py) rewritten: 'Whether dst is a real, in-repo (first-party) symbol node present in the graph … External/stdlib targets are materialized as external_symbol placeholder nodes and are always is_resolved=False even though the dst node exists (present-but-synthetic, not absent).' ADR-0037 §Implementation-status records the same. Documentation fix per the ADR disposition table."  # da53

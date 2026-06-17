@@ -32,3 +32,18 @@
   clock: 3  # 27be
   nonce: 27be  # 27be
   message: "2026-06-10 design-interview ruling (ADR-0037, merged in PR #4181): is_resolved becomes purely 'dst is a real in-repo node', computed once at finalization and decoupled from resolution_quality provenance — so a recovery edge whose dst is a real in-repo node is legitimately is_resolved=True under the new contract. Waits on the finalization implementation to make that pairing principled rather than accidental."  # 27be
+- op: update  # 0236
+  at: '2026-06-17T01:52:48Z'  # 0236
+  by: agent  # 0236
+  actor: jgstern_agent  # 0236
+  clock: 4  # 0236
+  nonce: '0236'  # 0236
+  set:  # 0236
+    status: done  # 0236
+- op: discuss  # 7063
+  at: '2026-06-17T01:52:48Z'  # 7063
+  by: agent  # 7063
+  actor: jgstern_agent  # 7063
+  clock: 5  # 7063
+  nonce: '7063'  # 7063
+  message: "Closed by ADR-0037 ruling 3 (PR merged selfh/dev 2dd851297d). Under ruling 1 the recovery edges are CORRECTLY is_resolved=True (their dsts are real in-repo methods — confirmed first-party by the finalizer classifier). BEHAVIORAL EVIDENCE — live re-probe on packages/hypergumbo-core/src: 7 resolution_quality='recovery' edges, all is_resolved=True and pointing at non-external_symbol (first-party) nodes. The fix is the doc: the resolution_quality MetaKeySpec (axis_meta_keys.py) no longer claims 'set alongside Edge.is_resolved=False' — it is re-documented as a pathway-quality label ORTHOGONAL to is_resolved (target locality lives on is_resolved per ADR-0037; resolution certainty in confidence/evidence_type per ADR-0028)."  # 7063

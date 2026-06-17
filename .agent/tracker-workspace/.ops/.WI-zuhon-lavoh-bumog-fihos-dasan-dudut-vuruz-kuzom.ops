@@ -37,3 +37,27 @@
   clock: 3  # fa41
   nonce: fa41  # fa41
   message: "2026-06-10 design-interview ruling (ADR-0037, merged in PR #4181): all resolution surfaces are derived in a single finalization pass from one verdict, eliminating the disjoint-producer-sets root cause behind the 67.8% null dst_ref on unresolved edges. Waits on the finalization implementation."  # fa41
+- op: update  # 0ab9
+  at: '2026-06-17T01:52:04Z'  # 0ab9
+  by: agent  # 0ab9
+  actor: jgstern_agent  # 0ab9
+  clock: 4  # 0ab9
+  nonce: 0ab9  # 0ab9
+  set:  # 0ab9
+    status: done  # 0ab9
+- op: discuss  # 4ea7
+  at: '2026-06-17T01:52:04Z'  # 4ea7
+  by: agent  # 4ea7
+  actor: jgstern_agent  # 4ea7
+  clock: 5  # 4ea7
+  nonce: 4ea7  # 4ea7
+  message: "Closed by ADR-0037 ruling 2 (PR merged selfh/dev 2dd851297d). make_unresolved_edge now derives dst_ref from (lang, module_hint, callee_name), and the finalizer backstop _derive_dst_ref_from_id reconstructs it from the dst id for any bypassing producer. BEHAVIORAL EVIDENCE — live re-probe on packages/hypergumbo-core/src: dst_ref coverage on is_resolved=False edges WITH A REAL MODULE PATH = 19% -> 100% (1996/1996). The remaining sentinel-'external' edges correctly stay dst_ref=None (WI-huzuv: the ADR-0037 'unidentified reference' cell — never fabricate module_path='external'), which is why the all-edges figure is 41%, not 100%. Full suite 19061 passed, 100% cov."  # 4ea7
+- op: update  # aab5
+  at: '2026-06-17T01:52:04Z'  # aab5
+  by: agent  # aab5
+  actor: jgstern_agent  # aab5
+  clock: 6  # aab5
+  nonce: aab5  # aab5
+  set: {}  # aab5
+  add:  # aab5
+    tags: [awaits_bakeoff_validation]  # aab5
