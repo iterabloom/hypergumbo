@@ -99,3 +99,18 @@
   clock: 11  # 7c20
   nonce: 7c20  # 7c20
   message: "root-cause family cross-link (b3); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 7c20
+- op: update  # 73e5
+  at: '2026-06-17T07:14:18Z'  # 73e5
+  by: agent  # 73e5
+  actor: jgstern_agent  # 73e5
+  clock: 12  # 73e5
+  nonce: '73e5'  # 73e5
+  set:  # 73e5
+    status: done  # 73e5
+- op: discuss  # 902e
+  at: '2026-06-17T07:14:18Z'  # 902e
+  by: agent  # 902e
+  actor: jgstern_agent  # 902e
+  clock: 13  # 902e
+  nonce: 902e  # 902e
+  message: "Closed by PR #261 (merged selfh/dev f32afafd9a). validator:F2 keystone. Resolved STRUCTURALLY: build_validation_report now emits a 'wired_checks' manifest (validation_report schema 0.2->0.3) disclosing every predicate wired into validate_ir mapped to its validator_class; a white-box drift guard (test_wired_checks_manifest_matches_validate_ir) pins the manifest to the live _check_* set, so a check cannot be wired without disclosure nor disclosed without wiring -- the false-all-clear is structurally un-reproducible. PLUS a new _check_origin_run_id_fk cross-field predicate re-derives Symbol/Edge.origin_run_id->analysis_runs.execution_id at validation time (content-gated on a non-empty run set; LEGACY_DESERIALIZED_SENTINEL exempt), and the G1 ratchet (test_validation_report_empty.py) gained a hard zero-tolerance FK floor. BEHAVIORAL EVIDENCE (live self-tree re-probe, the item's own repro surface): BEFORE -- report had NO wired_checks key and the FK dimension was entirely unchecked (a 0 indistinguishable from 'unchecked'). AFTER (merged code) -- wired_checks present with 9 entries covering all 5 validator classes {axis_conformance, writer_contract, cross_field, verdict_enum, id_format}; schema_version 0.3; origin_run_id FK = 0 across 35,168 nodes / 114,221 edges / 86 runs (pure regression guard at baseline, confirming WI-mosil + synthetic:F1 hold). Full suite 19,072 passed, 100% coverage. Dangling-endpoint (the sibling FK half) deferred to WI-mujor, which owns the producer-side src-placeholder synthesis it pairs with (per the ADR-0037 comment). No awaits_bakeoff_validation tag -- directly-verified referential-integrity/shape property, not a bakeoff-corpus claim."  # 902e

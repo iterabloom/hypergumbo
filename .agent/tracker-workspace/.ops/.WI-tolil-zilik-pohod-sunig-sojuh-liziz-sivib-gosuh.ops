@@ -1,0 +1,20 @@
+- op: create  # 56d6
+  at: '2026-06-17T14:37:39Z'  # 56d6
+  by: agent  # 56d6
+  actor: jgstern_agent  # 56d6
+  clock: 1  # 56d6
+  nonce: 56d6  # 56d6
+  data:  # 56d6
+    kind: work_item  # 56d6
+    title: "smart-test silently swallows reverse-slice failure/timeout (empty exit-1, no log); failover forces stale-merge-base path via origin-sourced last-green marker"  # 56d6
+    status: todo_hard  # 56d6
+    priority: 2  # 56d6
+    parent:  # 56d6
+    tags:  # 56d6
+    - ci_infrastructure  # 56d6
+    isbefore: []  # 56d6
+    duplicate_of: []  # 56d6
+    not_duplicate_of: []  # 56d6
+    pr_ref:  # 56d6
+    description: "SYMPTOM: `pytest` with no explicit test targets (the affected-detection path, scripts/smart-test) can exit non-zero with ZERO output on its own stdout/stderr AND without writing .ci/pytest-output.log — a silently swallowed failure. Because smart-test is the MANDATED test runner (ADR-0010, via the .venv/bin/pytest shim), an agent can believe tests ran when they never did. Observed 2026-06-17: two backgrounded `pytest > file 2>&1` runs exited 1 with 0 bytes and a stale .ci/pytest-output.log; a `script -qec 'pytest --verbose'` pseudo-tty run (and explicit-file runs) worked.\n\nROOT CAUSE (traced via `timeout 90 bash -x scripts/smart-test`, EXIT=124): the no-arg/--verbose path runs `hypergumbo slice --files <changed> --output <tmp>` (the reverse slice) to compute the affected-test set. The slice's stdout/stderr are captured to TEMP FILES (SLICE_OUTPUT/SLICE_STDERR) that an `EXIT` trap deletes. On a broad change-set the slice is very slow (still running at 90s in the trace); when it is killed/times-out or exits non-zero, smart-test propagates a non-zero exit with NOTHING on its own streams (it never reached pytest) and the slice diagnostics are removed by the trap. Net: opaque failure.\n\nDEFECT 2 (why the broad change-set / why it's chronic under failover): the 'last-green-sha' marker that would scope the diff to a small, recent set is fetched from `origin` badges (scripts/smart-test:~239, `git fetch origin badges:...`). Permanent CI failover (selfh authoritative, origin stale/unavailable — see .git/CI_FAILOVER_ACTIVE / INV-bifud) makes that fetch fail, so the marker is never found and smart-test falls back to the merge-base (observed: stale 613bda8b), yielding HUNDREDS of changed files and a slow/failure-prone slice every time.\n\nNON-SWALLOWING WORKAROUNDS (today): pass explicit test files (HAS_EXPLICIT_TESTS=true skips the slice entirely — reliable); or the canonical full cmd `SMART_TEST_ACTIVE=1 pytest packages/*/tests/ -n auto --cov=<5 src paths> --cov-fail-under=100`.\n\nCANDIDATE FIXES: (a) on slice non-zero/timeout, do NOT swallow — print the captured SLICE_STDERR to smart-test's stderr and emit an explicit '[smart-test] affected-detection failed; falling back to <full-suite|committed manifest>' message, then fall back rather than exiting opaque; (b) source the last-green-sha marker from the AUTHORITATIVE remote (selfh when .git/CI_FAILOVER_ACTIVE present, else origin), mirroring auto-pr/pre-work failover detection, so the broad merge-base path isn't forced under failover; (c) consider a bounded timeout on the slice with a clean fallback. Adjacent (different layer): INV-rahib (auto-pr convergence under concurrent activity). The flock guard (WI-sinap) is done and unrelated to this swallow."  # 56d6
+    fields: {}  # 56d6

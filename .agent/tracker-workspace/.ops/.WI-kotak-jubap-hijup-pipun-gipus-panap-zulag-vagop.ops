@@ -1,0 +1,20 @@
+- op: create  # e63f
+  at: '2026-06-17T14:56:45Z'  # e63f
+  by: agent  # e63f
+  actor: jgstern_agent  # e63f
+  clock: 1  # e63f
+  nonce: e63f  # e63f
+  data:  # e63f
+    kind: work_item  # e63f
+    title: "nightly test-matrix leg marked failed on runner Docker-archive timeout despite all tests passing (context deadline exceeded)"  # e63f
+    status: todo_soft  # e63f
+    priority: 3  # e63f
+    parent:  # e63f
+    tags:  # e63f
+    - ci_infrastructure  # e63f
+    isbefore: []  # e63f
+    duplicate_of: []  # e63f
+    not_duplicate_of: []  # e63f
+    pr_ref:  # e63f
+    description: "OBSERVED 2026-06-17 (human-reported): the nightly.yml test-matrix (Python 3.13) leg ran all 19,083 collected items to completion — output reached [ 99%] with only skips (s) and xfailed (x), ZERO failures (F) — then the JOB was marked FAILED with a runner-side error at teardown:\n\n  ⚙️ [runner]: context deadline exceeded\n  Get \"http://%2Fvar%2Frun%2Fdocker.sock/v1.51/containers/<id>/archive?path=%2Fvar%2Frun%2Fact%2Fworkflow%2FSUMMARY.md\": context deadline exceeded\n  Get \"...archive?path=...pathcmd.txt\": context deadline exceeded\n\nSo the tests PASSED; the Forgejo-Actions/act runner timed out talking to the Docker socket while archiving the workflow artifacts (SUMMARY.md, pathcmd.txt) at job teardown, and that transient infra timeout marked the leg failed. CONSEQUENCE: a green multi-Python matrix run produces a false andon-cord / red nightly, prompting wasted investigation (and could mask a real failure under the same symptom). NOT a code defect — confirmed the change on dev (WI-moriz, f32afafd9a) is 3.13-clean (its tests passed in this very leg).\n\nTHEME: same CI runner contention/timeout family as INV-rahib (auto-pr declaring a false explicit-failure under concurrent CI activity / nightly-overlap). RELATED_BUT_DISTINCT: INV-rahib is the auto-pr convergence layer; this is a nightly job-teardown artifact-archival timeout. Cross-link, not fold.\n\nCANDIDATE MITIGATIONS: (a) retry the artifact-archival / increase the runner Docker context deadline; (b) make the matrix leg's pass/fail key off the pytest exit code rather than the teardown archival step; (c) job-level retry for transient runner errors (distinguish 'tests failed' from 'runner errored'); (d) reduce per-leg artifact size if SUMMARY.md/pathcmd.txt archival is the bottleneck. Touches .github/workflows/nightly.yml (CI workflow; sensitive — coordinate)."  # e63f
+    fields: {}  # e63f

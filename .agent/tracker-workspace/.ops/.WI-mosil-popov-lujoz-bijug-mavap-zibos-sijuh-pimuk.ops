@@ -62,3 +62,26 @@
   clock: 7  # 3e28
   nonce: '3e28'  # 3e28
   message: "synthetic:F1 (PR #224, merged dev 900463f0ce) fixes the BULK. The 2 synthetic producers (boundary external_symbol synthesis + orchestrator file-symbol synthesis) now emit real AnalysisRuns and stamp resolvable origin_run_id, closing all 1645 external_symbol nodes (python 1511 + markdown 106 + ts 19 + rust 3 + go 2 + java 1 + js 1) and the 489 file/orchestrator nodes = ~2134 of 2236. REMAINING (~96, kept open): the manifest/config-analyzer stragglers — toml dependency 76 + project 7, json dependency 6 + package 1, wgsl function 3 + struct 2, sql view 1 — whose AnalysisRuns are built by direct-constructor analyzers defaulting origin_run_id=''. Those are the run-lifecycle:F1 cohort (orchestrator-owned AR lifecycle + central origin_run_id backstop), tracked there. BEHAVIORAL EVIDENCE: live repro on merged dev shows 0 empty/unresolved origin_run_id among synthetic (boundary+file) nodes. Staying todo_hard pending the straggler backstop."  # 3e28
+- op: update  # 952c
+  at: '2026-06-17T02:15:16Z'  # 952c
+  by: agent  # 952c
+  actor: jgstern_agent  # 952c
+  clock: 8  # 952c
+  nonce: 952c  # 952c
+  set:  # 952c
+    status: todo_hard  # 952c
+- op: update  # 7545
+  at: '2026-06-17T03:18:41Z'  # 7545
+  by: agent  # 7545
+  actor: jgstern_agent  # 7545
+  clock: 9  # 7545
+  nonce: '7545'  # 7545
+  set:  # 7545
+    status: done  # 7545
+- op: discuss  # 4f11
+  at: '2026-06-17T03:18:41Z'  # 4f11
+  by: agent  # 4f11
+  actor: jgstern_agent  # 4f11
+  clock: 10  # 4f11
+  nonce: 4f11  # 4f11
+  message: "DONE — straggler tail closed by the central origin_run_id backstop in collect_analyzer_result (PR merged selfh/dev 1e87875088). synthetic:F1 (PR #224) fixed the ~2134-node synthetic bulk; this closes the remaining direct-constructor cohort (toml/json/wgsl/sql). Root-cause fix at the chokepoint where every analyzer's symbols meet their AnalysisRun: stamp run.execution_id onto any Symbol the producer left with origin_run_id='' (pure fill; never overwrites a set value). Catches all current AND future direct-constructor analyzers uniformly — not a per-site sweep. BEHAVIORAL EVIDENCE (live re-probe, editable install): RE-RAN THE ITEM'S OWN REPRO on the self-tree (35168 nodes): origin_run_id='' nodes = 0 (was 2236 total / ~96 after synthetic:F1); 0 nodes fail the node->AnalysisRun join. Tracker package: 15 (14 toml dependency + 1 toml project) -> 0. Production-path regression guard: test_analyzer_registry.py::TestCollectAnalyzerResult::test_backfills_empty_origin_run_id_from_run + test_does_not_overwrite_present_origin_run_id. Full suite 19063 passed, 100% cov. NOTE: the STANDING artifact-presence FK ratchet (origin_run_id -> analysis_runs) remains the separate validator:F2(d) layer."  # 4f11
