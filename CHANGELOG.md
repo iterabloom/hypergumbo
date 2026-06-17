@@ -27,6 +27,24 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Fingerprint: central post-pass normalizes producer-side bare-hex leaks; single shape at the output (Wave-2; closes WI-lisog)** —
+  `Symbol.fingerprint` is contractually `hgfp2:<16hex>` (a whitespace/comment-invariant structural-subtree hash), but
+  ~10 tree-sitter analyzers (cuda/fortran/glsl/graphql/nix/r_lang/verilog/vhdl/dockerfile/make, ~30 sites) still stamped a
+  producer-side bare `sha256(source[start:end])[:16]` directly, and the central pass's precedence guard
+  (`if sym.fingerprint is not None: continue`) let those analyzer-internal serializations survive to the output. The guard
+  in `stamp_symbol_fingerprints` now **normalizes**: it preserves an existing fingerprint only if it is already canonical
+  (`hgfp2:`) or is an identity-derived value on a `language is None` Class-B synthetic (a documented second shape); a
+  non-canonical fingerprint on a real source node (`language is not None`) is recomputed in the canonical scheme — so bare
+  hex never reaches the output, and a future analyzer copy-pasting the bare-hex idiom is self-healed. WI-lisog's other two
+  populations were already resolved: facet (a) Python test-methods-null was a v1 snippet-parse bug fixed by the v2
+  context-aware rewrite (regression test in place); facet (c) WGSL's own bare-hex was removed when the central pass took
+  sole ownership. The spec's fingerprint `None`-when carveout is tightened to name synthetic boundary / `external_symbol`
+  nodes (span `0-0`, no source) explicitly and to document the single-producer rule + the Class-B identity-hash second
+  shape (so "no analyzer-internal serializations leak" is met by enforcement, not omission). Churn-free: `fingerprint` is
+  not an input to any id/stable_id/shape_id/node-id. *Quantitative claim — carries `awaits_bakeoff_validation`: the ~30
+  producer sites' output flips bare-hex → hgfp2: on a multi-language corpus; full-corpus 0-bare-hex re-measurement pending.
+  Producer-side cleanup (delete the now-overwritten bare-hex computation from the 10 analyzers) is a tracked follow-up.*
+
 - **Validator: `origin_run_id` FK predicate + wired-checks disclosure manifest (validator:F2; Wave-2; closes WI-moriz keystone)** —
   the spec-validator's published `validation_report.violations_by_class` reported a per-class count with no way to
   distinguish *"0 defects on this dimension"* from *"0 because no wired predicate covers this dimension"* — a false

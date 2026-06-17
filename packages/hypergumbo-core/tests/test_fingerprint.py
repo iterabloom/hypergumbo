@@ -180,13 +180,53 @@ class TestTreeSitterFingerprint:
 class TestStampOrchestrator:
     """Cover the post-pass that mutates Symbol.fingerprint in place."""
 
-    def test_skips_already_populated(self, tmp_path: Path) -> None:
+    def test_preserves_canonical_hgfp2_fingerprint(self, tmp_path: Path) -> None:
+        """An already-canonical (hgfp2:) fingerprint is left untouched."""
         f = tmp_path / "a.py"
         f.write_text("def f(): pass\n")
         sym = _sym("python", "a.py", 1, 1)
-        sym.fingerprint = "preexisting-from-toml"
+        sym.fingerprint = "hgfp2:0123456789abcdef"
         stamp_symbol_fingerprints([sym], tmp_path)
-        assert sym.fingerprint == "preexisting-from-toml"
+        assert sym.fingerprint == "hgfp2:0123456789abcdef"
+
+    def test_normalizes_noncanonical_fingerprint_on_source_node(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-lisog: a non-canonical (bare-hex / legacy) fingerprint on a real
+        source node (language is not None) is a producer-side leak — it is
+        RECOMPUTED in the canonical hgfp2: scheme, not preserved. This inverts
+        the old line-531 precedence trap that let producer bare-hex survive to
+        output."""
+        f = tmp_path / "a.py"
+        f.write_text("def f(): pass\n")
+        sym = _sym("python", "a.py", 1, 1)
+        sym.fingerprint = "deadbeefdeadbeef"  # bare 16-hex producer leak
+        stamp_symbol_fingerprints([sym], tmp_path)
+        assert sym.fingerprint is not None
+        assert sym.fingerprint.startswith("hgfp2:")
+        assert sym.fingerprint != "deadbeefdeadbeef"
+
+    def test_preserves_bare_hex_on_language_none_synthetic(
+        self, tmp_path: Path,
+    ) -> None:
+        """A bare-hex identity fingerprint on a language=None Class-B synthetic
+        is a documented second shape (the central pass cannot source-fingerprint
+        a source-less synthetic) — it is preserved, not recomputed."""
+        sym = _sym(None, "a.py", 1, 1)  # language=None ⇒ Class-B synthetic
+        sym.fingerprint = "1b86eea11f129a27"
+        stamp_symbol_fingerprints([sym], tmp_path)
+        assert sym.fingerprint == "1b86eea11f129a27"
+
+    def test_clears_noncanonical_leak_when_unfingerprintable(
+        self, tmp_path: Path,
+    ) -> None:
+        """A bare-hex leak on a source node whose source can't be read is
+        CLEARED to None (an honest null), never left as bare hex — the leak must
+        not reach the output even when the recompute yields nothing."""
+        sym = _sym("python", "nonexistent.py", 1, 1)
+        sym.fingerprint = "deadbeefdeadbeef"
+        stamp_symbol_fingerprints([sym], tmp_path)
+        assert sym.fingerprint is None
 
     def test_stamps_when_null(self, tmp_path: Path) -> None:
         f = tmp_path / "a.py"

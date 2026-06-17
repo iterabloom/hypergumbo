@@ -516,9 +516,13 @@ def stamp_symbol_fingerprints(
     demolished the seven config-analyzer Format-1 hashes; the WI-falum
     revision demolished wgsl's).
 
-    Skips:
-    - Symbols whose ``fingerprint`` is already populated (defensive — no
-      current producer stamps one).
+    Skips (leaves the existing value):
+    - Symbols whose ``fingerprint`` is already canonical (``hgfp2:`` prefix),
+      or is an identity-derived synthetic fingerprint on a ``language is None``
+      Class-B node (a documented second shape). A NON-canonical fingerprint on
+      a real source node (``language is not None``) is NOT skipped: it is a
+      producer-side bare-hex leak and is recomputed in the canonical scheme
+      (WI-lisog) — bare hex must never reach the output.
     - Symbols without a ``path`` or whose path can't be opened.
     - Symbols whose ``span`` is None or has end_line < start_line.
     - Synthesized boundary / external Symbols (their span typically is
@@ -529,7 +533,25 @@ def stamp_symbol_fingerprints(
     tree_cache: dict[Any, Any] = {}
     for sym in symbols:
         if sym.fingerprint is not None:
-            continue
+            # WI-lisog normalization: preserve an existing fingerprint ONLY if
+            # it is already canonical (``hgfp2:``) OR it is an identity-derived
+            # synthetic fingerprint on a ``language is None`` Class-B node (a
+            # documented second shape — the central pass cannot source-
+            # fingerprint a source-less synthetic). A non-canonical fingerprint
+            # on a real source node (``language is not None``) is a
+            # producer-side analyzer-internal-serialization leak — the bare
+            # 16-hex ``sha256(source[start:end])[:16]`` still emitted by several
+            # tree-sitter analyzers (cuda/glsl/fortran/… — WI-lisog facet c).
+            # The line-531 precedence guard used to let those leaks survive to
+            # the output; clear it instead so the recompute below replaces it
+            # with the canonical hgfp2: form (or an honest None when the
+            # language has no grammar). Bare hex must never reach the output.
+            if (
+                sym.fingerprint.startswith(_SCHEME_PREFIX)
+                or getattr(sym, "language", None) is None
+            ):
+                continue
+            sym.fingerprint = None
         if not getattr(sym, "path", None):
             continue
         span = getattr(sym, "span", None)
