@@ -110,7 +110,7 @@ import sys
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Iterable, Optional
 
-VALIDATION_REPORT_SCHEMA_VERSION = "0.2"  # 0.2: ADR-0035 §5 added stable_id_stats
+VALIDATION_REPORT_SCHEMA_VERSION = "0.3"  # 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
 
 # Stable enum-like sets. Mirrored in the ADR-0033 §"Output format" table
 # and in `ValidationViolation.severity` / `validator_class` axis annotations.
@@ -121,6 +121,52 @@ _VALIDATOR_CLASSES = (
     "cross_field",
     "verdict_enum",
     "id_format",
+)
+
+# validator:F2 (WI-moriz) — the wired-checks disclosure manifest.
+#
+# A class count of 0 in ``violations_by_class`` is ambiguous between "the
+# substrate is clean on that dimension" and "no wired predicate covers that
+# dimension" — and the counter alone cannot tell them apart. That ambiguity
+# IS the WI-moriz false-all-clear: a reader treats 0 as a clean bill of health
+# when whole defect classes may simply be unchecked. ``build_validation_report``
+# embeds this manifest so a consumer can map each class count to the named
+# predicates that produced it; an un-listed defect class is, by absence, NOT
+# yet validated. The ``check`` stems here are pinned to the ``_check_*``
+# functions actually wired into ``validate_ir`` by
+# ``test_wired_checks_manifest_matches_validate_ir`` — you cannot wire a new
+# check without disclosing it, nor disclose one you did not wire, so the
+# manifest can never drift back into a silent false-all-clear.
+_WIRED_CHECKS: tuple[dict[str, str], ...] = (
+    {"check": "axis_conformance", "validator_class": "axis_conformance",
+     "description": "Every axis-tagged Symbol/Edge/AnalysisRun field value is "
+                    "in its registry/catalog (ADR-0024)."},
+    {"check": "writer_contract", "validator_class": "writer_contract",
+     "description": "Declared-and-writable fields are populated, not left at a "
+                    "default sentinel across the whole corpus."},
+    {"check": "cross_field_coherence", "validator_class": "cross_field",
+     "description": "Field-pair invariants: Class-B stamping canary, ADR-0031 "
+                    "language/protocol_origin, ADR-0032 display_label scope, "
+                    "ADR-0037 is_resolved<->dst FK, dst_ref<->dst back-compat, "
+                    "stable_id collision + fingerprint degeneracy umbrellas."},
+    {"check": "stable_id_per_file_uniqueness", "validator_class": "cross_field",
+     "description": "No two symbols in the same file share a stable_id "
+                    "(ADR-0035 §5, zero-tolerance error)."},
+    {"check": "verdict_enum_completeness", "validator_class": "verdict_enum",
+     "description": "ClaimVerdict enum completeness."},
+    {"check": "id_format", "validator_class": "id_format",
+     "description": "Symbol.id matches the canonical lang:path:span:name:kind "
+                    "grammar."},
+    {"check": "stable_id_format", "validator_class": "id_format",
+     "description": "Symbol.stable_id matches the sha256:<16hex> scheme."},
+    {"check": "id_roundtrip", "validator_class": "id_format",
+     "description": "Symbol.id kind-slot matches Symbol.kind and is a "
+                    "registered kind; span/name well-formed."},
+    {"check": "origin_run_id_fk", "validator_class": "cross_field",
+     "description": "Symbol/Edge.origin_run_id is non-empty and references an "
+                    "existing AnalysisRun.execution_id (content-gated on a "
+                    "non-empty run set; WI-mosil + synthetic:F1 regression "
+                    "guard)."},
 )
 
 
@@ -173,6 +219,7 @@ def validate_ir(
     violations.extend(_check_id_format(symbols))
     violations.extend(_check_stable_id_format(symbols))
     violations.extend(_check_id_roundtrip(symbols))
+    violations.extend(_check_origin_run_id_fk(symbols, edges, analysis_runs))
     return violations
 
 
@@ -1675,6 +1722,98 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
     return violations
 
 
+# ----------------------------------------------------------------------
+# validator:F2 — referential-integrity FK predicate (WI-moriz keystone;
+# regression guard for WI-mosil + synthetic:F1)
+# ----------------------------------------------------------------------
+#
+# Every Symbol and Edge carries an ``origin_run_id`` naming the AnalysisRun
+# that produced it (ir.py Symbol.origin_run_id / Edge.origin_run_id). The
+# provenance join node -> AnalysisRun is only sound if that id resolves:
+# WI-mosil fixed ~96 direct-constructor analyzer symbols left with an EMPTY
+# origin_run_id, and synthetic:F1 stamped AnalysisRun provenance for the
+# orchestrator/boundary synthesis producers. This predicate is the matching
+# regression guard — it re-derives the FK at validation time so a producer
+# regression that drops provenance (empty) or names a non-existent run
+# (dangling) trips CI instead of silently breaking the join. Both sub-cases
+# emit ``cross_field`` (the existing home of FK-style predicates, e.g. the
+# ADR-0037 is_resolved<->dst check).
+#
+# CONTENT-GATED on a non-empty run set: ``validate_ir`` is called with
+# ``analysis_runs=[]`` by every isolated unit fixture in the smoke suite (no
+# run set to validate against), so gating on "runs exist" scopes the check to
+# the production/integration path with zero unit-fixture collateral. The
+# LEGACY_DESERIALIZED_SENTINEL is exempt: it is the stand-in
+# Symbol/Edge.from_dict substitutes when re-hydrating legacy behavior-map JSON
+# that predates the field, NOT a producer defect.
+_ORIGIN_FK_CLASS = "cross_field"
+
+
+def _check_origin_run_id_fk(
+    symbols: Iterable[Any],
+    edges: Iterable[Any],
+    analysis_runs: Iterable[Any],
+) -> list[ValidationViolation]:
+    """Referential integrity: origin_run_id must reference a real AnalysisRun.
+
+    See ADR-0033 §"Validator classes" #3 (cross-field) and the validator:F2
+    family. Content-gated on ``analysis_runs`` being non-empty.
+    """
+    from .ir import LEGACY_DESERIALIZED_SENTINEL
+
+    runs = list(analysis_runs)
+    if not runs:
+        return []
+    valid_run_ids = {_read(r, "execution_id", None) for r in runs}
+    valid_run_ids.discard(None)
+    valid_run_ids.discard("")
+
+    violations: list[ValidationViolation] = []
+    for record_class, items in (("Symbol", symbols), ("Edge", edges)):
+        for obj in items:
+            origin_run_id = _read(obj, "origin_run_id", "")
+            if origin_run_id == LEGACY_DESERIALIZED_SENTINEL:
+                continue
+            record_id = _read(obj, "id", None)
+            field_name = f"{record_class}.origin_run_id"
+            if not origin_run_id:
+                violations.append(ValidationViolation(
+                    severity="error",
+                    validator_class=_ORIGIN_FK_CLASS,
+                    field_name=field_name,
+                    record_id=record_id,
+                    observed=repr(origin_run_id),
+                    expected=(
+                        "a non-empty origin_run_id naming the producing "
+                        "AnalysisRun (WI-mosil: direct-constructor analyzers "
+                        "must stamp the run's execution_id)."
+                    ),
+                    message=(
+                        f"{record_class} {record_id!r} has an empty "
+                        "origin_run_id; its node->AnalysisRun provenance join "
+                        "is broken (WI-mosil regression)."
+                    ),
+                ))
+            elif origin_run_id not in valid_run_ids:
+                violations.append(ValidationViolation(
+                    severity="error",
+                    validator_class=_ORIGIN_FK_CLASS,
+                    field_name=field_name,
+                    record_id=record_id,
+                    observed=repr(origin_run_id),
+                    expected=(
+                        "origin_run_id must match an AnalysisRun.execution_id "
+                        "in this artifact's analysis_runs."
+                    ),
+                    message=(
+                        f"{record_class} {record_id!r} names origin_run_id "
+                        f"{origin_run_id!r} with no matching AnalysisRun "
+                        "(dangling provenance FK)."
+                    ),
+                ))
+    return violations
+
+
 def build_validation_report(
     violations: list[ValidationViolation],
     *,
@@ -1685,6 +1824,13 @@ def build_validation_report(
     Surfaced as a top-level key alongside ``schema_version``, ``symbols``,
     ``edges``, etc. The ``violations_by_class`` counter is computed here
     so consumers can read summary counts without iterating ``violations``.
+
+    ``wired_checks`` (validator:F2, schema_version 0.3) discloses the set of
+    predicates actually wired into ``validate_ir``, mapped to the
+    ``validator_class`` each contributes to. It makes a 0 count interpretable:
+    "0 instances of these named checks" rather than "0 defects of any kind".
+    A defect class absent from this manifest is, by absence, not yet validated
+    (WI-moriz: the false-all-clear is now structurally diagnosable).
 
     ``stable_id_stats`` (ADR-0035 §5, schema_version 0.2): the corpus
     stable_id population/collision/None-cohort disclosure (from
@@ -1701,6 +1847,7 @@ def build_validation_report(
         "schema_version": VALIDATION_REPORT_SCHEMA_VERSION,
         "violations": [asdict(v) for v in violations],
         "violations_by_class": by_class,
+        "wired_checks": [dict(c) for c in _WIRED_CHECKS],
         "stable_id_stats": stable_id_stats,
     }
 

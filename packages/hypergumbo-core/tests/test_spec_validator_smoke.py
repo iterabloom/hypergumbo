@@ -927,6 +927,131 @@ def test_cross_field_resolved_edge_dst_absent_not_fk_flagged() -> None:
 
 
 # ----------------------------------------------------------------------
+# validator:F2 — origin_run_id -> analysis_runs FK predicate
+# (WI-moriz keystone; regression guard for WI-mosil + synthetic:F1)
+# ----------------------------------------------------------------------
+_ORIGIN_FK_FIELDS = ("Symbol.origin_run_id", "Edge.origin_run_id")
+
+
+def _run(execution_id: str) -> dict:
+    """An AnalysisRun stand-in. Runs reach the validator as dicts in
+    production (cli.py accumulates ``run.to_dict()``), so the FK set is
+    built via the dict-aware ``_read`` helper — model that here. Only
+    ``execution_id`` is read by the FK predicate; ``"pass"`` is included
+    for realism."""
+    return {"execution_id": execution_id, "pass": "analyze"}
+
+
+def _origin_fk(violations: list) -> list:
+    return [v for v in violations if v.field_name in _ORIGIN_FK_FIELDS]
+
+
+def test_origin_fk_content_gated_skips_without_runs() -> None:
+    """No analysis_runs => the FK predicate is inert. Every isolated unit
+    fixture in this suite calls validate_ir with analysis_runs=[]; gating on a
+    non-empty run set keeps the check off them with zero collateral, and a
+    degenerate no-runs corpus has nothing to validate against."""
+    sym = _FakeSym(id="m.py:1-1:f:function", origin_run_id="ghost-run")
+    assert _origin_fk(validate_ir([sym], [], [])) == []
+
+
+def test_origin_fk_passes_when_origin_matches_a_run() -> None:
+    """origin_run_id naming an existing AnalysisRun.execution_id is correct —
+    the node->AnalysisRun provenance join resolves; no violation."""
+    sym = _FakeSym(id="m.py:1-1:f:function", origin_run_id="run-1")
+    assert _origin_fk(validate_ir([sym], [], [_run("run-1")])) == []
+
+
+def test_origin_fk_flags_empty_origin_when_runs_exist() -> None:
+    """Empty origin_run_id with a run set present is the WI-mosil regression (a
+    node whose node->AnalysisRun provenance join is broken) — one error."""
+    sym = _FakeSym(id="m.py:1-1:f:function", origin_run_id="")
+    matched = _origin_fk(validate_ir([sym], [], [_run("run-1")]))
+    assert len(matched) == 1
+    assert matched[0].severity == "error"
+    assert matched[0].validator_class == "cross_field"
+    assert matched[0].field_name == "Symbol.origin_run_id"
+
+
+def test_origin_fk_flags_dangling_origin() -> None:
+    """A non-empty origin_run_id matching no AnalysisRun is a dangling
+    provenance FK — one error."""
+    sym = _FakeSym(id="m.py:1-1:f:function", origin_run_id="run-GONE")
+    matched = _origin_fk(validate_ir([sym], [], [_run("run-1")]))
+    assert len(matched) == 1
+    assert matched[0].severity == "error"
+    assert "no matching AnalysisRun" in matched[0].message
+
+
+def test_origin_fk_exempts_legacy_deserialized_sentinel() -> None:
+    """The from_dict legacy-rehydration sentinel is a deserialization marker,
+    not a producer defect — exempt from the FK predicate."""
+    from hypergumbo_core.ir import LEGACY_DESERIALIZED_SENTINEL
+
+    sym = _FakeSym(id="m.py:1-1:f:function",
+                   origin_run_id=LEGACY_DESERIALIZED_SENTINEL)
+    assert _origin_fk(validate_ir([sym], [], [_run("run-1")])) == []
+
+
+def test_origin_fk_checks_edges() -> None:
+    """The predicate covers edges as well as symbols (Edge.origin_run_id)."""
+    edge = _FakeSym(id="edge:1", origin_run_id="run-GONE")
+    matched = _origin_fk(validate_ir([], [edge], [_run("run-1")]))
+    assert len(matched) == 1
+    assert matched[0].field_name == "Edge.origin_run_id"
+
+
+def test_origin_fk_flags_empty_edge_origin() -> None:
+    """Edge with empty origin_run_id + runs present => one error. Edge's
+    __post_init__ blocks empty at construction (WI-higap), so this branch
+    guards the deserialized/dict path that bypasses the constructor."""
+    edge = _FakeSym(id="edge:1", origin_run_id="")
+    matched = _origin_fk(validate_ir([], [edge], [_run("run-1")]))
+    assert len(matched) == 1
+    assert matched[0].field_name == "Edge.origin_run_id"
+
+
+# ----------------------------------------------------------------------
+# validator:F2 (WI-moriz) — wired-checks disclosure manifest
+# ----------------------------------------------------------------------
+def test_wired_checks_manifest_present_in_report() -> None:
+    """build_validation_report discloses the wired predicate set so a 0 class
+    count reads as '0 instances of these named checks', not '0 defects of any
+    kind' — the structural answer to WI-moriz's false-all-clear complaint."""
+    from hypergumbo_core.spec_validator import _VALIDATOR_CLASSES
+
+    report = build_validation_report([])
+    manifest = report["wired_checks"]
+    assert isinstance(manifest, list) and manifest
+    for entry in manifest:
+        assert set(entry) == {"check", "validator_class", "description"}
+        assert entry["validator_class"] in set(_VALIDATOR_CLASSES)
+    # Every published violation class is backed by at least one wired check.
+    assert {e["validator_class"] for e in manifest} == set(_VALIDATOR_CLASSES)
+
+
+def test_wired_checks_manifest_matches_validate_ir() -> None:
+    """Structural drift guard (the WI-moriz root cause made un-reproducible):
+    the disclosed check set must equal the set of ``_check_*`` predicates
+    actually wired into ``validate_ir``. You cannot wire a new check without
+    disclosing it, nor disclose one you did not wire — so the report can never
+    silently imply a class is checked when it is not (or vice versa)."""
+    import inspect
+    import re
+
+    from hypergumbo_core import spec_validator
+
+    src = inspect.getsource(spec_validator.validate_ir)
+    wired_in_code = set(re.findall(r"_check_(\w+)\(", src))
+    wired_in_manifest = {c["check"] for c in spec_validator._WIRED_CHECKS}
+    assert wired_in_code == wired_in_manifest, (
+        "wired-checks manifest drift: wired-but-undisclosed="
+        f"{wired_in_code - wired_in_manifest}; disclosed-but-unwired="
+        f"{wired_in_manifest - wired_in_code}"
+    )
+
+
+# ----------------------------------------------------------------------
 # Phase 6 PR3 — INV-bazij stable_id collision umbrella check
 # ----------------------------------------------------------------------
 

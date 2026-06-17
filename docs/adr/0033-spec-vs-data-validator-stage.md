@@ -104,6 +104,12 @@ The `validation_report` section in the behavior-map artifact is a JSON object:
 }
 ```
 
+**Amendment (2026-06-17, validator:F2 — WI-moriz disclosure + FK predicate).** Two additions ride `validation_report` schema_version `0.3`:
+
+1. **`wired_checks` manifest.** A `violations_by_class` count of `0` is ambiguous between "clean on this dimension" and "no wired predicate covers this dimension" — the counter alone cannot distinguish them (WI-moriz's false-all-clear). The report now carries a `wired_checks` array — one `{check, validator_class, description}` entry per `_check_*` predicate wired into `validate_ir` — so a `0` reads as "0 instances of *these named checks*", and a defect class *absent* from the manifest is, by absence, not yet validated. A white-box drift test pins the manifest to the live wired set: a check can never be wired without being disclosed (nor disclosed without being wired), so the false-all-clear is structurally un-reproducible.
+
+2. **`origin_run_id` → `analysis_runs` FK predicate (`cross_field`).** Re-derives the `Symbol/Edge.origin_run_id → AnalysisRun.execution_id` foreign key at validation time (content-gated on a non-empty run set; the `LEGACY_DESERIALIZED_SENTINEL` is exempt), turning a provenance regression — empty or dangling `origin_run_id` — into a CI failure. It is the regression guard for the WI-mosil + synthetic:F1 producer-side provenance fixes.
+
 ### Default failure behavior
 
 The validator does **not** fail the `hypergumbo run` command by default. Violations are:

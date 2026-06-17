@@ -111,6 +111,9 @@ class TestSentinelOnlyInIrModule:
     _ALLOWLIST_BASENAMES: ClassVar[set[str]] = {
         "ir.py",
         "cli.py",  # consumer-side dead-code maybe path
+        "spec_validator.py",  # validator:F2 origin_run_id FK — read-only
+        # comparison to EXEMPT the sentinel, never a stamp (the invariant
+        # guards against producers *writing* it into fresh maps).
         "test_edge_provenance_invariant.py",
     }
 

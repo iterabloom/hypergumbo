@@ -387,6 +387,26 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                         "additionalProperties": {"type": "integer"},
                         "description": "Per-validator-class counts"
                     },
+                    "wired_checks": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "check": {"type": "string"},
+                                "validator_class": {"type": "string"},
+                                "description": {"type": "string"}
+                            },
+                            "additionalProperties": False
+                        },
+                        "description": (
+                            "validator:F2 (WI-moriz) — the predicates actually "
+                            "wired into validate_ir, each mapped to the "
+                            "validator_class it contributes to. Makes a 0 "
+                            "count interpretable ('0 of these named checks', "
+                            "not '0 defects of any kind'); a defect class "
+                            "absent here is, by absence, not yet validated."
+                        )
+                    },
                     "stable_id_stats": {
                         "oneOf": [
                             {

@@ -27,6 +27,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Validator: `origin_run_id` FK predicate + wired-checks disclosure manifest (validator:F2; Wave-2; closes WI-moriz keystone)** —
+  the spec-validator's published `validation_report.violations_by_class` reported a per-class count with no way to
+  distinguish *"0 defects on this dimension"* from *"0 because no wired predicate covers this dimension"* — a false
+  all-clear (WI-moriz). `build_validation_report` now emits a `wired_checks` manifest (validation_report schema_version
+  0.2 → 0.3) listing every predicate actually wired into `validate_ir`, each mapped to the `validator_class` it
+  contributes to; a defect class absent from the manifest is, *by absence*, not yet validated. A white-box drift guard
+  pins the manifest to the live `_check_*` set in `validate_ir`, so a new check cannot be wired without being disclosed
+  (nor disclosed without being wired) — the false-all-clear is now structurally un-reproducible. Additionally, a new
+  `_check_origin_run_id_fk` cross-field predicate (content-gated on a non-empty run set; exempts the
+  legacy-deserialization sentinel) re-derives the `Symbol/Edge.origin_run_id → analysis_runs.execution_id` foreign key
+  at validation time, turning a provenance regression (empty or dangling `origin_run_id`) into a CI failure — the
+  regression guard for the just-shipped WI-mosil + synthetic:F1 work. The G1 ratchet
+  (`test_validation_report_empty.py`) gains a hard, zero-tolerance FK floor on every substrate. Behavioral evidence
+  (self-tree: 35,168 nodes / 114,221 edges / 86 runs): 0 empty and 0 dangling `origin_run_id` — the FK predicate is a
+  pure regression guard at baseline. Directly-verified referential-integrity/shape property; no bakeoff claim.
+
 - **Edge resolution semantics — single edge-finalization verdict (ADR-0037 rulings 1/2/3/5; Wave-2; closes WI-kukuk / WI-zuhon / WI-ninuv / WI-mutuk)** —
   `Edge.is_resolved` now contractually means *"`dst` is a real, in-repo (first-party) symbol node"* — in-repo-ness, not
   target-identification. A new finalize sub-step `_finalize_edge_resolution` (sub-step 7, before commit and before

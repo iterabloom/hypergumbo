@@ -286,10 +286,12 @@ def _finalize_commit_dicts(ctx: FinalizeContext) -> None:
 def _finalize_referential_integrity(ctx: FinalizeContext) -> None:
     """Sub-step 10 — validate the emitted substrate (§7). STRUCTURALLY LAST (R3).
 
-    Lifts the existing ``validate_ir`` call (axis/writer-contract/cross-field/verdict/
-    id-format/stable-id/round-trip). The ADR-0037 referential-integrity FK predicate itself
-    lands later (validator:F3); this carrier preserves today's validation behavior, moved to
-    its structurally-last home so it sees exactly the substrate that serializes.
+    Runs the full ``validate_ir`` aggregator (axis/writer-contract/cross-field/verdict/
+    id-format/stable-id/round-trip, the ADR-0037 is_resolved<->dst FK, and the
+    validator:F2 origin_run_id->analysis_runs FK). Lives in its structurally-last home so
+    it sees exactly the substrate that serializes. The remaining endpoint-closure predicate
+    (dangling src/dst) lands with its producer-side src-placeholder synthesis (WI-mujor),
+    not here.
     """
     ctx.violations.extend(validate_ir(ctx.symbols, ctx.edges, ctx.analysis_runs))
 

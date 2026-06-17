@@ -205,6 +205,22 @@ def test_substrate_within_ratchet_baseline(
         )
     )
 
+    # --- validator:F2 HARD floor: zero origin_run_id->analysis_runs FK breaches.
+    # WI-mosil + synthetic:F1 made every emitted node/edge name a real
+    # producing AnalysisRun. This pins that (error severity, zero-tolerance):
+    # a provenance regression that drops (empty) or dangles origin_run_id trips
+    # CI here instead of silently breaking the node->AnalysisRun join. This is
+    # the realization of the docstring's "origin->analysis_runs FK" future HOST.
+    fk_errors = [
+        v for v in violations
+        if v.get("validator_class") == "cross_field"
+        and v.get("field_name") in ("Symbol.origin_run_id", "Edge.origin_run_id")
+    ]
+    assert not fk_errors, (
+        f"[{substrate}] origin_run_id->analysis_runs FK breached:\n      "
+        + "\n      ".join((v.get("message") or "")[:160] for v in fk_errors)
+    )
+
     # --- ADR-0035 §5 disclosure floor: stable_id_stats present + honest. --
     # The None-cohort + collision rate must ALWAYS be surfaced (over an
     # all-Symbols denominator) so a clean rate can never hide a None-cohort.
