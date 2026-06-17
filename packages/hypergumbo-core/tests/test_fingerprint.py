@@ -473,3 +473,32 @@ def test_prefix_is_hgfp2() -> None:
     assert fp is not None
     assert fp.startswith("hgfp2:")
     assert len(fp) == len("hgfp2:") + 16
+
+
+# WI-tubuv: close hypergumbo-core's per-package isolation coverage gap on
+# fingerprint.py (lines 310, 361). These paths were exercised cross-package in
+# the combined suite but not by core's OWN tests, so `core` measured 99% in
+# isolation — which kept the full-suite ALL_100 gate (and thus the last-green-sha
+# marker) from ever firing. Covering them in isolation lets that gate work.
+
+
+def test_content_byte_range_whitespace_only_span_returns_none() -> None:
+    """A span whose lines hold only whitespace has no content to hash, so
+    _content_byte_range returns None (fingerprint.py:310)."""
+    from hypergumbo_core.fingerprint import _content_byte_range
+
+    # Lines 2-3 are whitespace-only (spaces, tab, blank); the stripped chunk is
+    # empty → None.
+    source = b"x = 1\n   \n\t\ny = 2\n"
+    assert _content_byte_range(source, 2, 3) is None
+
+
+def test_node_has_error_true_for_error_typed_node() -> None:
+    """A node whose ``type`` is 'ERROR' is a parse error → True
+    (fingerprint.py:361), independent of the ``has_error`` attribute."""
+    from hypergumbo_core.fingerprint import _node_has_error
+
+    class _ErrorNode:
+        type = "ERROR"
+
+    assert _node_has_error(_ErrorNode()) is True
