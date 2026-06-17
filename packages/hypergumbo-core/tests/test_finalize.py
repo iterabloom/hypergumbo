@@ -19,7 +19,9 @@ import pytest
 from hypergumbo_core.finalize import (
     FinalizeContext,
     FinalizedMap,
+    _derive_dst_ref_from_id,
     _finalize_commit_dicts,
+    _finalize_edge_resolution,
     _finalize_re_relativize,
     _finalize_recompute_run_signature,
     _finalize_referential_integrity,
@@ -29,7 +31,7 @@ from hypergumbo_core.finalize import (
     _violation_sort_key,
     finalize,
 )
-from hypergumbo_core.ir import _compute_run_signature
+from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, _compute_run_signature
 from hypergumbo_core.limits import Limits
 from hypergumbo_core.pass_metadata import PassMeta, PassMetadataLookup
 from hypergumbo_core.spec_validator import ValidationViolation, validate_ir
@@ -218,6 +220,7 @@ _SUBSTEPS = [
     "_finalize_recompute_run_signature",
     "_finalize_repo_fingerprint",
     "_finalize_skipped_into_limits",
+    "_finalize_edge_resolution",
     "_finalize_commit_dicts",
     "_finalize_referential_integrity",
 ]
@@ -294,3 +297,146 @@ def test_finalize_emits_sorted_violations(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path, analysis_runs=[_ar("a")])
     finalize(ctx)
     assert ctx.violations == sorted(ctx.violations, key=_violation_sort_key)
+
+
+# --- Sub-step 7: edge-resolution verdict (ADR-0037 rulings 1/2/5) -----------------------
+def _span() -> Span:
+    return Span(start_line=1, end_line=1, start_col=0, end_col=0)
+
+
+def _node(node_id: str, kind: str, *, language: str | None = "python", name: str = "n") -> Symbol:
+    """A minimal Symbol. external_symbol placeholders carry language=None by convention."""
+    return Symbol(
+        id=node_id,
+        name=name,
+        kind=kind,
+        language=(None if kind == "external_symbol" else language),
+        path="m.py",
+        span=_span(),
+        origin=["p"],
+        origin_run_id="r1",
+    )
+
+
+def _redge(dst: str, *, is_resolved: bool = True, dst_ref=None, src: str = "src:1") -> Edge:
+    return Edge.create(
+        src=src,
+        dst=dst,
+        edge_type="calls",
+        line=1,
+        origin="p",
+        origin_run_id="r1",
+        is_resolved=is_resolved,
+        dst_ref=dst_ref,
+    )
+
+
+def test_edge_resolution_first_party_sets_resolved(tmp_path: Path) -> None:
+    """dst is a real (non-external_symbol) node ⇒ is_resolved=True, dst_ref cleared."""
+    node = _node("m.py:1-1:f:function", "function")
+    # Producer wrongly stamped False + a dst_ref; the verdict overrides to first-party.
+    edge = _redge("m.py:1-1:f:function", is_resolved=False, dst_ref=ExternalRef("python", "m", "f"))
+    ctx = _ctx(tmp_path, symbols=[node], edges=[edge])
+    _finalize_edge_resolution(ctx)
+    assert edge.is_resolved is True
+    assert edge.dst_ref is None
+
+
+def test_edge_resolution_external_placeholder_sets_unresolved(tmp_path: Path) -> None:
+    """dst is an external_symbol placeholder ⇒ is_resolved=False, dst_ref derived (WI-kukuk/WI-zuhon)."""
+    node = _node("python:os.path:0-0:join:attribute", "external_symbol", name="join")
+    edge = _redge("python:os.path:0-0:join:attribute", is_resolved=True, dst_ref=None)
+    ctx = _ctx(tmp_path, symbols=[node], edges=[edge])
+    _finalize_edge_resolution(ctx)
+    assert edge.is_resolved is False
+    assert edge.dst_ref == ExternalRef(lang="python", module_path="os.path", name="join")
+
+
+def test_edge_resolution_preserves_producer_dst_ref(tmp_path: Path) -> None:
+    """An external edge that already carries a dst_ref keeps it (the 987-import case)."""
+    node = _node("python:requests:0-0:get:external_symbol", "external_symbol", name="get")
+    ref = ExternalRef(lang="python", module_path="requests", name="requests.get")
+    edge = _redge("python:requests:0-0:get:external_symbol", is_resolved=True, dst_ref=ref)
+    ctx = _ctx(tmp_path, symbols=[node], edges=[edge])
+    _finalize_edge_resolution(ctx)
+    assert edge.is_resolved is False
+    assert edge.dst_ref is ref  # not overwritten
+
+
+def test_edge_resolution_dangling_dst_unidentified(tmp_path: Path) -> None:
+    """dst absent from the node set with a malformed id ⇒ is_resolved=False, dst_ref None (dangling cell)."""
+    edge = _redge("short:id", is_resolved=True, dst_ref=None)
+    ctx = _ctx(tmp_path, symbols=[], edges=[edge])
+    _finalize_edge_resolution(ctx)
+    assert edge.is_resolved is False
+    assert edge.dst_ref is None
+
+
+def test_edge_resolution_overrides_producer_advisory(tmp_path: Path) -> None:
+    """The 4,507-edge WI-kukuk contradiction: producer is_resolved=True on an external
+    placeholder is flipped to False. This is the structural close."""
+    node = _node("c:libfoo:0-0:foo:unresolved", "external_symbol", name="foo")
+    edge = _redge("c:libfoo:0-0:foo:unresolved", is_resolved=True, dst_ref=None)
+    ctx = _ctx(tmp_path, symbols=[node], edges=[edge])
+    _finalize_edge_resolution(ctx)
+    assert edge.is_resolved is False
+    assert edge.dst_ref == ExternalRef(lang="c", module_path="libfoo", name="foo")
+
+
+def test_edge_resolution_is_idempotent(tmp_path: Path) -> None:
+    node = _node("python:os.path:0-0:join:attribute", "external_symbol", name="join")
+    edge = _redge("python:os.path:0-0:join:attribute", is_resolved=True, dst_ref=None)
+    ctx = _ctx(tmp_path, symbols=[node], edges=[edge])
+    _finalize_edge_resolution(ctx)
+    first = (edge.is_resolved, edge.dst_ref)
+    _finalize_edge_resolution(ctx)
+    assert (edge.is_resolved, edge.dst_ref) == first
+
+
+def test_edge_resolution_runs_before_commit_and_validate(monkeypatch, tmp_path: Path) -> None:
+    """Order guard: the verdict sub-step runs before commit (so the serialized edges array
+    reflects it) and before referential-integrity (so the FK predicate validates it)."""
+    calls = _record_order(monkeypatch)
+    finalize(_ctx(tmp_path))
+    assert calls.index("_finalize_edge_resolution") < calls.index("_finalize_commit_dicts")
+    assert calls.index("_finalize_edge_resolution") < calls.index(
+        "_finalize_referential_integrity"
+    )
+
+
+def test_finalize_serializes_edge_resolution_verdict(tmp_path: Path) -> None:
+    """End-to-end: the committed behavior_map["edges"] carries the verdict, not the
+    producer-stamped advisory value (proves placement-before-commit)."""
+    node = _node("python:os.path:0-0:join:attribute", "external_symbol", name="join")
+    edge = _redge("python:os.path:0-0:join:attribute", is_resolved=True, dst_ref=None)
+    ctx = _ctx(tmp_path, symbols=[node], edges=[edge], analysis_runs=[_ar("python")])
+    finalize(ctx)
+    committed = ctx.behavior_map["edges"][0]
+    assert committed["is_resolved"] is False
+    assert committed["dst_ref"] == {"lang": "python", "module_path": "os.path", "name": "join"}
+
+
+# --- _derive_dst_ref_from_id backstop ---------------------------------------------------
+def test_derive_dst_ref_from_id_module_attr() -> None:
+    ref = _derive_dst_ref_from_id("python:os.path:0-0:os.path.join:attribute")
+    assert ref == ExternalRef(lang="python", module_path="os.path", name="os.path.join")
+
+
+def test_derive_dst_ref_from_id_malformed_returns_none() -> None:
+    assert _derive_dst_ref_from_id("short:id") is None
+
+
+def test_derive_dst_ref_from_id_external_sentinel_returns_none() -> None:
+    """The "external" module sentinel is unidentified — never fabricate a path (WI-huzuv)."""
+    assert _derive_dst_ref_from_id("go:external:0-0:unknownFunc:unresolved") is None
+
+
+def test_edge_resolution_external_sentinel_leaves_dst_ref_none(tmp_path: Path) -> None:
+    """An external placeholder whose module is the "external" sentinel is the
+    unidentified-reference cell: is_resolved=False, dst_ref=None."""
+    node = _node("go:external:0-0:unknownFunc:unresolved", "external_symbol", name="unknownFunc")
+    edge = _redge("go:external:0-0:unknownFunc:unresolved", is_resolved=True, dst_ref=None)
+    ctx = _ctx(tmp_path, symbols=[node], edges=[edge])
+    _finalize_edge_resolution(ctx)
+    assert edge.is_resolved is False
+    assert edge.dst_ref is None

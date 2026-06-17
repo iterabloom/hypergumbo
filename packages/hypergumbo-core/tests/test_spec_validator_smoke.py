@@ -859,6 +859,74 @@ def test_cross_field_dst_ref_none_passes() -> None:
 
 
 # ----------------------------------------------------------------------
+# ADR-0037 ruling 5 — is_resolved ⇒ first-party FK predicate
+# ----------------------------------------------------------------------
+_FK_FIELD = "Edge.is_resolved / Edge.dst"
+
+
+def _ext_node(node_id: str) -> _FakeSym:
+    """An external_symbol placeholder node (not a first-party target)."""
+    return _FakeSym(
+        id=node_id, kind="external_symbol", language=None,
+        protocol_origin=None, discovery_language="python", display_label="x",
+    )
+
+
+def _fp_node(node_id: str) -> _FakeSym:
+    """A first-party (in-repo) function node."""
+    return _FakeSym(
+        id=node_id, kind="function", language="python",
+        protocol_origin=None, discovery_language=None, display_label=None,
+    )
+
+
+def _res_edge(dst: str, *, is_resolved: bool) -> _FakeSym:
+    return _FakeSym(
+        id=f"edge:{dst}", edge_type="calls", evidence_type="ast_call",
+        evidence_lang=None, origin=[], dst=dst, dst_ref=None,
+        is_resolved=is_resolved,
+    )
+
+
+def test_cross_field_flags_resolved_edge_to_external_placeholder() -> None:
+    """is_resolved=True pointing at an external_symbol placeholder is the WI-kukuk
+    contradiction (resolution names in-repo-ness, ADR-0037 ruling 1) — one error."""
+    node = _ext_node("python:os.path:0-0:join:external_symbol")
+    edge = _res_edge("python:os.path:0-0:join:external_symbol", is_resolved=True)
+    violations = validate_ir([node], [edge], [])
+    matched = [v for v in violations if v.field_name == _FK_FIELD]
+    assert len(matched) == 1
+    assert matched[0].severity == "error"
+    assert matched[0].validator_class == "cross_field"
+
+
+def test_cross_field_resolved_edge_to_first_party_passes() -> None:
+    """is_resolved=True pointing at a real in-repo node is correct — no violation."""
+    node = _fp_node("m.py:1-1:f:function")
+    edge = _res_edge("m.py:1-1:f:function", is_resolved=True)
+    violations = validate_ir([node], [edge], [])
+    assert not any(v.field_name == _FK_FIELD for v in violations)
+
+
+def test_cross_field_unresolved_edge_to_external_placeholder_passes() -> None:
+    """is_resolved=False pointing at an external placeholder is the normal external
+    case — the converse is deliberately not enforced (ADR-0037 ruling 5)."""
+    node = _ext_node("python:os.path:0-0:join:external_symbol")
+    edge = _res_edge("python:os.path:0-0:join:external_symbol", is_resolved=False)
+    violations = validate_ir([node], [edge], [])
+    assert not any(v.field_name == _FK_FIELD for v in violations)
+
+
+def test_cross_field_resolved_edge_dst_absent_not_fk_flagged() -> None:
+    """is_resolved=True with a dst absent from the node set is the dangling case,
+    owned by the sibling endpoint-closure work — NOT this predicate (so isolated
+    unit fixtures that point outside their symbol set don't trip it)."""
+    edge = _res_edge("missing:target:id", is_resolved=True)
+    violations = validate_ir([], [edge], [])
+    assert not any(v.field_name == _FK_FIELD for v in violations)
+
+
+# ----------------------------------------------------------------------
 # Phase 6 PR3 — INV-bazij stable_id collision umbrella check
 # ----------------------------------------------------------------------
 

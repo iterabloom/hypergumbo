@@ -768,6 +768,11 @@ def _check_cross_field_coherence(
         "Symbol.display_label": [],
     }
 
+    # ADR-0037 ruling 5: the edge FK predicate below needs each dst node's kind to
+    # tell a first-party target from an external_symbol placeholder. Built in the
+    # symbol pass so the edge pass needs no second iteration over symbols.
+    node_kind_by_id: dict = {}
+
     # ---- Symbol invariants ----
     for sym in symbols:
         sym_id = getattr(sym, "id", None)
@@ -775,6 +780,7 @@ def _check_cross_field_coherence(
         protocol_origin = getattr(sym, "protocol_origin", None)
         kind = getattr(sym, "kind", None)
         display_label = getattr(sym, "display_label", None)
+        node_kind_by_id[sym_id] = kind
 
         if language is None and protocol_origin is not None:
             # Class B synthetic stand-in: collect missing identity stamps.
@@ -892,6 +898,41 @@ def _check_cross_field_coherence(
         edge_id = getattr(edge, "id", None)
         dst_ref = getattr(edge, "dst_ref", None)
         dst = getattr(edge, "dst", None)
+
+        # ADR-0037 ruling 5: is_resolved=True ⇒ dst is a real, in-repo
+        # (first-party) symbol node. The single edge-finalization verdict
+        # (finalize sub-step 7) derives is_resolved from exactly this fact,
+        # so a surviving violation means a producer/linker wrote is_resolved
+        # independently — the WI-kukuk contradiction (resolved flag on an
+        # external_symbol placeholder), now a CI failure not a latent defect.
+        #
+        # Scoped to the external_symbol case: the bare "dst ∈ nodes" half of
+        # the FK is satisfied by construction post-boundary-synthesis (every
+        # external dst is materialized as a placeholder node), so the only
+        # enforceable discriminator is the dst node's KIND. The dst-absent
+        # ("dangling") case is owned by the sibling endpoint-closure work
+        # (INV-jukok family), not this predicate — keeping it out also means
+        # isolated unit fixtures that point an edge outside their symbol set
+        # don't trip it.
+        if getattr(edge, "is_resolved", True):
+            if node_kind_by_id.get(dst) == "external_symbol":
+                violations.append(ValidationViolation(
+                    severity="error",
+                    validator_class="cross_field",
+                    field_name="Edge.is_resolved / Edge.dst",
+                    record_id=edge_id,
+                    observed=f"is_resolved=True, dst={dst!r}, dst_kind='external_symbol'",
+                    expected=(
+                        "is_resolved=True requires dst to be a first-party "
+                        "node (kind != 'external_symbol'); external targets "
+                        "are is_resolved=False per ADR-0037 ruling 1."
+                    ),
+                    message=(
+                        f"Edge {edge_id!r} claims is_resolved=True but its dst "
+                        f"{dst!r} is an external_symbol placeholder, not an "
+                        "in-repo target (ADR-0037 ruling 5)."
+                    ),
+                ))
 
         # dst_ref ↔ dst coherence: when dst_ref is populated, the legacy
         # dst string must also be populated.

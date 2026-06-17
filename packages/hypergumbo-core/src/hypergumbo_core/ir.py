@@ -591,8 +591,8 @@ class Edge:
         evidence_type: Type of evidence (e.g., ast_call_direct)
         evidence_lang: Language for confidence scoring
         evidence_spans: Structured locations of evidence
-        is_resolved: Whether the dst symbol was resolved at analysis time. Default True (the ~90% case); set to False for unresolved external targets per ADR-0028.
-        dst_ref: Structured identity for the dst endpoint, populated when the dst points at an external symbol (stdlib / dependency / unresolved external). Canonical source of truth for external dsts — the legacy `dst` string is built from the same `ExternalRef` and stays populated alongside for back-compat. None for in-repo dsts whose `dst` is a real Symbol ID.
+        is_resolved: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
+        dst_ref: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
         derived_from: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
@@ -663,6 +663,11 @@ class Edge:
 
         ADR-0015 dataflow kwargs (access_mode, dest_access_mode, channel)
         are merged into the meta dict when non-None.
+
+        ``is_resolved`` here is ADVISORY: the finalize edge-resolution sub-step
+        (ADR-0037 ruling 1/2) derives the authoritative value from the dst
+        node's kind. The ``= True`` default is retained as the RCT-pinned
+        producer surface; do not rely on it surviving to the serialized map.
         """
         if access_mode is not None and access_mode not in VALID_ACCESS_MODES:
             raise ValueError(

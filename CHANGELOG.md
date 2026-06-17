@@ -12,6 +12,29 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Edge resolution semantics — single edge-finalization verdict (ADR-0037 rulings 1/2/3/5; Wave-2; closes WI-kukuk / WI-zuhon / WI-ninuv / WI-mutuk)** —
+  `Edge.is_resolved` now contractually means *"`dst` is a real, in-repo (first-party) symbol node"* — in-repo-ness, not
+  target-identification. A new finalize sub-step `_finalize_edge_resolution` (sub-step 7, before commit and before
+  referential-integrity) classifies every edge's `dst` against the final node set purely by node *kind*
+  (`kind == "external_symbol"` ⇒ external placeholder) and derives both resolution surfaces from that one verdict:
+  first-party ⇒ `is_resolved=True, dst_ref=None`; external/dangling ⇒ `is_resolved=False` with `dst_ref` kept-or-derived.
+  Producer-stamped `is_resolved`/`dst_ref` become advisory. This makes **WI-kukuk**'s contradiction (4,507 edges
+  `is_resolved=True` while the dst was an `:unresolved` external placeholder; 1,312 measured on the core package alone)
+  structurally impossible — no surface is written independently of the verdict. `make_unresolved_edge` now derives
+  `dst_ref` from `(lang, module_hint, callee_name)` (closing **WI-zuhon**'s 19% → ~100% external `dst_ref` coverage),
+  and the finalizer's `_derive_dst_ref_from_id` backstops bypassing producers — **except** when the module is the
+  `"external"` sentinel (module unknown), where `dst_ref` stays `None` (WI-huzuv: the "unidentified reference" cell;
+  never fabricate `module_path="external"`). **WI-ninuv** (the present-but-synthetic placeholder semantic) and
+  **WI-mutuk** (recovery edges are correctly `is_resolved=True`; the `resolution_quality` MetaKeySpec is re-documented as
+  a pathway-quality label orthogonal to `is_resolved`) are documentation fixes. A new `spec_validator` cross-field FK
+  predicate (`is_resolved=True ⇒ dst.kind != "external_symbol"`, error severity, ADR-0037 ruling 5) turns any regression
+  into a CI failure. Ruling 4 (the `:unresolved` → `:external_symbol` id-kind-slot fold) is **deferred** to a follow-up
+  riding the ADR-0036 node-id-grammar migration — it is not needed for the four closures (flipping the flag leaves the
+  `:unresolved` suffix on `is_resolved=False` edges, which is the *consistent* state). This finalization is the missing
+  input for the io-boundary receiver-contract work and must precede it (ADR-0037 §5). *Quantitative claim — carries
+  `awaits_bakeoff_validation`: ~4,507 edges flip `is_resolved` True→False; expectation is parity-or-better on
+  slice/dead-code/io-chain output, which now branch on the documented in-repo-ness contract.*
+
 - **stable_id v7 → v8 scheme bump — SITE-key + widened-route-key (Wave-2; WI-gokiv / WI-napoh / WI-bolup; closes INV-tazaj's corpus limb)** —
   the Wave-2 identity gate (27-repo corpus + self-tree) confirmed the v7 producers + per-file gate are clean but
   found the corpus collision rate was not ~0: 149 cross-file collisions, all in synthetic/linker-stamped nodes the

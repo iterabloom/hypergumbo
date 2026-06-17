@@ -134,9 +134,16 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Disambiguates ``ast_call`` + ``call_construct=method`` "
                 "edges per audit-findings 0012."),
     MetaKeySpec("resolution_quality", AXIS_EDGE_META,
-                "Resolution confidence label on ``ast_call`` "
-                "(e.g. 'ambiguous'). Set alongside "
-                "``Edge.is_resolved=False`` per ADR-0028."),
+                "Pathway-quality label on ``ast_call`` edges "
+                "(e.g. 'recovery', 'ambiguous'), ORTHOGONAL to "
+                "``Edge.is_resolved``. It names uncertainty in the "
+                "resolution *pathway* (heuristic line-proximity vs. direct "
+                "binding), NOT target locality — in-repo-ness lives on "
+                "``is_resolved`` (ADR-0037 ruling 1/3), and resolution "
+                "certainty proper lives in ``confidence`` / ``evidence_type`` "
+                "(ADR-0028). A recovery edge to a real in-repo method is "
+                "correctly ``is_resolved=True`` with "
+                "``resolution_quality='recovery'``."),
     # ------------------------------------------------------------------
     # Edge.meta — protocol / bridge / dispatch vocabularies (predates
     # the axis-registry pattern; PROTOCOL_KINDS and BRIDGE_KINDS in

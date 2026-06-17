@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **286** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 61 core, 4 CLI, 33 tracker)
-- **32580** symbols (functions, classes, methods)
-- **107098** edges by type:
-  - calls: 59969
-  - contains: 22196
-  - imports: 10579
-  - instantiates: 8110
-  - references: 3747
+- **32607** symbols (functions, classes, methods)
+- **107186** edges by type:
+  - calls: 60027
+  - contains: 22198
+  - imports: 10589
+  - instantiates: 8124
+  - references: 3751
   - module_attr_ref: 1174
   - other: 1323
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 32580 Symbols + 107098 Edges + UsageContexts           │
+│  Output: 32607 Symbols + 107186 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -233,8 +233,8 @@ A relationship between two symbols (e.g., function calls).
 - `evidence_type`: Type of evidence (e.g., ast_call_direct)
 - `evidence_lang`: Language for confidence scoring
 - `evidence_spans`: Structured locations of evidence
-- `is_resolved`: Whether the dst symbol was resolved at analysis time. Default True (the ~90% case); set to False for unresolved external targets per ADR-0028.
-- `dst_ref`: Structured identity for the dst endpoint, populated when the dst points at an external symbol (stdlib / dependency / unresolved external). Canonical source of truth for external dsts — the legacy `dst` string is built from the same `ExternalRef` and stays populated alongside for back-compat. None for in-repo dsts whose `dst` is a real Symbol ID.
+- `is_resolved`: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
+- `dst_ref`: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
 - `derived_from`: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges.
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict. Dataflow edges (ADR-0015) store access_mode, dest_access_mode, and channel here.
@@ -268,21 +268,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 5471.8 | ir.py |
-| `Span` | class | 4314.7 | ir.py |
+| `Symbol` | class | 5477.4 | ir.py |
+| `Span` | class | 4318.9 | ir.py |
 | `write_text` | external_symbol | 3222.0 | <external> |
 | `run_behavior_map` | function | 3184.9 | cli.py |
 | `LinkerContext` | class | 2167.9 | registry.py |
 | `TrackerApp` | class | 1934.9 | tui.py |
 | `load_framework_patterns` | function | 1733.7 | framework_patterns.py |
-| `Edge.create` | method | 1582.9 | ir.py |
+| `Edge.create` | method | 1585.7 | ir.py |
 | `main` | function | 1558.0 | cli.py |
 | `Path` | external_symbol | 1458.0 | <external> |
 | `clear_pattern_cache` | function | 1334.7 | framework_patterns.py |
 | `append` | external_symbol | 1205.0 | <external> |
 | `find_files` | function | 1120.8 | discovery.py |
 | `TreeSitterAnalyzer` | class | 961.9 | base.py |
-| `get` | external_symbol | 917.0 | <external> |
+| `get` | external_symbol | 918.0 | <external> |
 
 ## Pattern System
 
@@ -828,7 +828,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: f7fb8c9ad9ac
+  commit: 496c1329c577
   hypergumbo: 6.0.0
   python: 3.12.3
 -->

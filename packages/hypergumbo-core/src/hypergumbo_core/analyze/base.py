@@ -480,12 +480,13 @@ def make_unresolved_edge(
         pass_id: Analyzer pass ID
         run_id: Execution run ID
         module_hint: Module/package context when known (default "external").
-        dst_ref: Optional structured ``ExternalRef`` (WI-tihup). When
-            provided, attached as the Edge's ``dst_ref`` for downstream
-            consumers that prefer structured-axis lookups; the legacy
-            ``dst`` string remains keyed by ``module_hint`` and
-            ``callee_name``. Callers are responsible for keeping the
-            two coherent.
+        dst_ref: Optional structured ``ExternalRef`` (WI-tihup). When a
+            caller supplies a richer ref it wins; otherwise one is derived
+            from ``(lang, module_hint, callee_name)`` (ADR-0037 ruling 2),
+            EXCEPT when ``module_hint`` is the ``"external"`` sentinel — then
+            the module is unknown and ``dst_ref`` stays ``None`` (WI-huzuv,
+            the ADR-0037 "unidentified reference" cell). The legacy ``dst``
+            string is built from the same components so the two stay coherent.
         enclosing_class: Owning class short name of the call site (Site 1:
             bare / `this` / `self` calls). Lands on ``Edge.meta`` under
             ``"enclosing_class"`` for the inherited_calls linker (INV-nilud
@@ -498,6 +499,15 @@ def make_unresolved_edge(
             ``"inherited_field_receiver"``.
     """
     dst_id = f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"
+    # ADR-0037 ruling 2: derive dst_ref from the components this helper already holds,
+    # instead of leaving it the optional-and-usually-omitted kwarg that left 67.8% of
+    # external edges without a structured ref (WI-zuhon). A caller-supplied richer ref
+    # still wins. EXCEPTION (WI-huzuv): when module_hint is the "external" sentinel the
+    # module is unknown, so dst_ref stays None — the "unidentified reference" cell of the
+    # ADR-0037 table (False, None); promoting the literal sentinel to a path would invent
+    # false precision. The finalize edge-resolution sub-step backstops bypassing producers.
+    if dst_ref is None and module_hint != "external":
+        dst_ref = ExternalRef(lang=lang, module_path=module_hint, name=callee_name)
     hint_meta: Dict[str, Any] = {}
     if enclosing_class is not None:
         hint_meta["enclosing_class"] = enclosing_class

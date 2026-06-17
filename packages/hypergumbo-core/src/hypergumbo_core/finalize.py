@@ -25,12 +25,19 @@ What this carrier (run-lifecycle:F1) implements vs. defers
 * **Fully implemented:** re-relativize backstop (1); pass_version backfill (2, the WI-mipul
   pass_version closure); run_signature recompute (3, the META-hufaz/WI-luzud headline —
   re-hash each AR from its *final* config_fingerprint/toolchain); repo_fingerprint stamp
-  (4); skipped→limits (6); commit-dicts (8); referential-integrity validate_ir lift (10).
-* **No stub slots remain.** ADR-0043 §6.1 planned three Phase-2 families each filling a named
-  finalize stub with zero orchestrator change; none did. ``projection-finalize`` became a
-  downstream consumer (``compact.recompute_view_summary``), not a sub-step; and the
-  ``confidence`` (7) and ``declared-fields`` (9) stubs were both **removed** (not stubbed) once
-  recons showed their work lands outside finalize:
+  (4); skipped→limits (6); **edge-resolution verdict (7, ADR-0037 rulings 1/2** — classify
+  every ``edge.dst`` against the final node set and derive ``is_resolved`` + ``dst_ref`` from
+  one verdict; closes WI-kukuk/WI-zuhon/WI-ninuv/WI-mutuk. This slot is NOT a §6.1 stub fill;
+  it is an ADR-0037 addition that postdates the §6.1 plan, placed before commit so the
+  serialized edges carry the verdict and before referential-integrity so the FK predicate
+  validates it**); commit-dicts (8); referential-integrity validate_ir lift (10, now also
+  carrying the ADR-0037 ruling-5 ``is_resolved ⇒ first-party`` FK predicate).
+* **Two §6.1 stub slots stayed empty.** ADR-0043 §6.1 planned three Phase-2 families each
+  filling a named finalize stub with zero orchestrator change; none did. ``projection-finalize``
+  became a downstream consumer (``compact.recompute_view_summary``), not a sub-step; and the
+  ``confidence`` (the former slot 7, now hosting edge-resolution) and ``declared-fields`` (9)
+  stubs were both **removed** (not stubbed) once recons showed their work lands outside
+  finalize:
 
   - ``confidence`` (7): the confidence:F1/F2 IDs denote per-edge derivation / ranking-detection
     separation (producer-side, ADR-0039, INV-suvil family), which ADR-0039 keeps *out* of
@@ -62,9 +69,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from .ir import _compute_run_signature
+from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
 from .pass_metadata import PassMetadataLookup
 from .repo_fingerprint import compute_repo_fingerprint
 from .spec_validator import (
@@ -215,6 +222,59 @@ def _finalize_skipped_into_limits(ctx: FinalizeContext) -> None:
     ctx.behavior_map["limits"] = ctx.limits.to_dict()
 
 
+def _derive_dst_ref_from_id(dst_id: str) -> Optional[ExternalRef]:
+    """Reconstruct an ``ExternalRef`` from a placeholder dst id (ADR-0037 ruling 2 backstop).
+
+    The edge-resolution verdict needs a structured ``dst_ref`` on every external edge, but
+    ~68% of producers stamp the legacy ``dst`` string without one (WI-zuhon). When the dst
+    id is well-formed (``{lang}:{path}:{span}:{name}:{kind}``) we recover the ref from it.
+    Two ids yield ``None`` — the legitimate "unidentified reference" cell
+    (``is_resolved=False, dst_ref=None``): a malformed/short id (``_parse_dangling_id``
+    returns the ``"<unknown>"`` path sentinel), and one whose module path is the
+    ``"external"`` sentinel (module unknown — WI-huzuv forbids promoting the literal
+    sentinel to a fabricated path).
+    """
+    language, path, name, _kind = _parse_dangling_id(dst_id)
+    if path in ("<unknown>", "external"):
+        return None
+    return ExternalRef(lang=language, module_path=path, name=name)
+
+
+def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
+    """Sub-step 7 — single edge-resolution verdict (ADR-0037 rulings 1/2).
+
+    Classifies every ``edge.dst`` exactly once against the FINAL node set and derives both
+    resolution surfaces from one verdict, overriding the producer-stamped (now advisory)
+    ``is_resolved`` / ``dst_ref``:
+
+    * dst is a real in-repo node (``kind != "external_symbol"``) → ``is_resolved=True``,
+      ``dst_ref=None`` (first-party). ``is_resolved`` names in-repo-ness, not
+      target-identification (ADR-0037 ruling 1).
+    * dst is an ``external_symbol`` placeholder, or absent from the node set →
+      ``is_resolved=False``; ``dst_ref`` kept if the producer supplied one, else derived
+      from the dst id (backstop above). A dst id we cannot parse leaves ``dst_ref=None``.
+
+    Runs BEFORE ``_finalize_commit_dicts`` (8) so the serialized ``edges`` array carries the
+    verdict (mutating after commit would diverge the JSON from the live objects), and BEFORE
+    ``_finalize_referential_integrity`` (10) so the ADR-0037 FK predicate validates exactly
+    this verdict. R1-safe: only mutates fields, never adds/removes a node or edge — appends
+    no violations, so R3 holds. Because no surface is written independently of this verdict,
+    WI-kukuk's flag/suffix contradiction (4,507 edges ``is_resolved=True`` at an external
+    placeholder) becomes structurally impossible, and external ``dst_ref`` coverage reaches
+    100% (WI-zuhon).
+    """
+    node_kind_by_id = {s.id: s.kind for s in ctx.symbols}
+    for edge in ctx.edges:
+        dst_kind = node_kind_by_id.get(edge.dst)
+        if dst_kind is not None and dst_kind != "external_symbol":
+            edge.is_resolved = True
+            edge.dst_ref = None
+        else:
+            edge.is_resolved = False
+            if edge.dst_ref is None:
+                edge.dst_ref = _derive_dst_ref_from_id(edge.dst)
+
+
 def _finalize_commit_dicts(ctx: FinalizeContext) -> None:
     """Sub-step 8 — commit the reconciled IR into behavior_map as one view."""
     ctx.behavior_map["analysis_runs"] = ctx.analysis_runs
@@ -269,6 +329,7 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap:
     _finalize_recompute_run_signature(ctx)  # 3  META-hufaz (R2: after 2)
     _finalize_repo_fingerprint(ctx)         # 4  repo_fingerprint stamp
     _finalize_skipped_into_limits(ctx)      # 6  skipped → limits
+    _finalize_edge_resolution(ctx)          # 7  edge-resolution verdict (ADR-0037; before 8)
     _finalize_commit_dicts(ctx)             # 8  commit reconciled view
     _finalize_referential_integrity(ctx)    # 10 validate_ir — LAST (R3)
     ctx.violations.sort(key=_violation_sort_key)  # §6 determinism: stable serialized order

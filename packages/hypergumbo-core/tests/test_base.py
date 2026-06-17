@@ -45,7 +45,7 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
     widen_route_stable_ids,
 )
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol
 
 if TYPE_CHECKING:
     pass
@@ -1925,6 +1925,22 @@ class TestMakeUnresolvedEdge:
         edge = self._call(module_hint="java.util", enclosing_class="Foo")
         assert edge.dst == "java:java.util:0-0:baz:unresolved"
         assert edge.meta == {"enclosing_class": "Foo"}
+
+    def test_derives_dst_ref_when_omitted(self) -> None:
+        """ADR-0037 ruling 2: dst_ref is derived unconditionally from the
+        (lang, module_hint, callee_name) the helper already holds — no longer
+        the optional-and-usually-None field that left 67.8% of external edges
+        without a structured ref (WI-zuhon)."""
+        edge = self._call(module_hint="java.util", callee_name="parseInt")
+        assert edge.dst_ref == ExternalRef(
+            lang="java", module_path="java.util", name="parseInt",
+        )
+
+    def test_explicit_dst_ref_is_preserved(self) -> None:
+        """A caller passing a richer ExternalRef still wins over the derivation."""
+        ref = ExternalRef(lang="java", module_path="java.util.stream", name="Stream.of")
+        edge = self._call(dst_ref=ref)
+        assert edge.dst_ref is ref
 
 
 def _make_caller_symbol(
