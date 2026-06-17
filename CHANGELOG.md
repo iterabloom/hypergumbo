@@ -45,6 +45,19 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   producer sites' output flips bare-hex → hgfp2: on a multi-language corpus; full-corpus 0-bare-hex re-measurement pending.
   Producer-side cleanup (delete the now-overwritten bare-hex computation from the 10 analyzers) is a tracked follow-up.*
 
+- **Validator: dangling-endpoint referential-integrity predicate (synthetic:F5 / validator:F2; Wave-2; closes WI-mujor)** —
+  the spec-validator had no check that an edge's endpoints resolve, so the 23 `src`-dangling edges WI-mujor was filed
+  against (a tier-filtered substrate) passed clean. A new `_check_dangling_endpoint` cross-field predicate (content-gated
+  on a non-empty run set, exactly like the `origin_run_id` FK) flags any non-empty `Edge.src`/`Edge.dst` that names no
+  node in the symbol set — the dst-absent half deliberately deferred from the ADR-0037 `is_resolved`↔`dst` FK, now its own
+  predicate covering both endpoints. It is registered in the `wired_checks` disclosure manifest (so its coverage is
+  visible, not implicit) and pinned by the white-box drift guard. The **producer** side was already closed by the
+  ADR-0037 edge-finalization train: the 23 `src`-dangling edges no longer reproduce. Behavioral evidence (production-path
+  `_check_dangling_endpoint` over the real self-analysis): **0 dangling endpoints** on all three substrates — default
+  (114,352 edges), `--max-tier 1` (114,314), and `--include-docs` (114,705) — so the new predicate is a pure standing
+  regression guard at baseline. An empty/None endpoint is not flagged here (that is the `dst_ref`↔`dst` predicate's
+  concern), so the two never double-count. Directly-verified referential-integrity property; no bakeoff claim.
+
 - **Validator: `origin_run_id` FK predicate + wired-checks disclosure manifest (validator:F2; Wave-2; closes WI-moriz keystone)** —
   the spec-validator's published `validation_report.violations_by_class` reported a per-class count with no way to
   distinguish *"0 defects on this dimension"* from *"0 because no wired predicate covers this dimension"* — a false

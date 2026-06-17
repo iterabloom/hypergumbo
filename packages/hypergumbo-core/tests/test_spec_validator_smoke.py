@@ -1012,6 +1012,76 @@ def test_origin_fk_flags_empty_edge_origin() -> None:
 
 
 # ----------------------------------------------------------------------
+# WI-mujor — dangling-endpoint referential-integrity predicate
+# (the dst-absent half deferred from the ADR-0037 is_resolved<->dst FK)
+# ----------------------------------------------------------------------
+_DANGLING_FIELDS = ("Edge.src", "Edge.dst")
+
+
+def _dangling(violations: list) -> list:
+    return [v for v in violations if v.field_name in _DANGLING_FIELDS]
+
+
+def test_dangling_content_gated_skips_without_runs() -> None:
+    """No analysis_runs => the predicate is inert. Every isolated unit fixture
+    points edges outside its tiny symbol set; gating on a non-empty run set
+    keeps the check off them with zero collateral (mirrors origin_run_id_fk)."""
+    edge = _FakeSym(id="e:1", src="ghost-src", dst="ghost-dst")
+    assert _dangling(validate_ir([], [edge], [])) == []
+
+
+def test_dangling_passes_when_both_endpoints_resolve() -> None:
+    """An edge whose src and dst are both present in the symbol set is
+    endpoint-closed; no violation."""
+    a = _FakeSym(id="m.py:1-1:a:function", src=None, dst=None)
+    b = _FakeSym(id="m.py:2-2:b:function", src=None, dst=None)
+    edge = _FakeSym(id="e:1", src="m.py:1-1:a:function", dst="m.py:2-2:b:function")
+    assert _dangling(validate_ir([a, b], [edge], [_run("run-1")])) == []
+
+
+def test_dangling_flags_absent_src_when_runs_exist() -> None:
+    """A non-empty Edge.src naming no node is a dangling endpoint — the
+    WI-mujor regression (the 23 tier-filtered src-dangling edges) surfacing as
+    one error instead of passing the validator silently."""
+    b = _FakeSym(id="m.py:2-2:b:function", src=None, dst=None)
+    edge = _FakeSym(id="e:1", src="m.py:9-9:gone:function", dst="m.py:2-2:b:function")
+    matched = _dangling(validate_ir([b], [edge], [_run("run-1")]))
+    assert len(matched) == 1
+    assert matched[0].severity == "error"
+    assert matched[0].validator_class == "cross_field"
+    assert matched[0].field_name == "Edge.src"
+    assert "dangling" in matched[0].message
+
+
+def test_dangling_flags_absent_dst_when_runs_exist() -> None:
+    """The dst side too: a dst naming no node (and no placeholder) is dangling.
+    Post-boundary-synthesis externals resolve to placeholder nodes, so a truly
+    absent dst is a finalization/filter regression."""
+    a = _FakeSym(id="m.py:1-1:a:function", src=None, dst=None)
+    edge = _FakeSym(id="e:1", src="m.py:1-1:a:function", dst="m.py:9-9:gone:function")
+    matched = _dangling(validate_ir([a], [edge], [_run("run-1")]))
+    assert len(matched) == 1
+    assert matched[0].field_name == "Edge.dst"
+
+
+def test_dangling_flags_both_endpoints() -> None:
+    """An edge with BOTH endpoints absent emits two violations (one per slot)."""
+    edge = _FakeSym(id="e:1", src="gone-a", dst="gone-b")
+    matched = _dangling(validate_ir([], [edge], [_run("run-1")]))
+    assert {v.field_name for v in matched} == {"Edge.src", "Edge.dst"}
+    assert len(matched) == 2
+
+
+def test_dangling_ignores_empty_endpoint() -> None:
+    """An empty/None endpoint is not 'dangling' (that's the dst_ref<->dst
+    coherence predicate's job); only a non-empty-but-unresolved ref trips this
+    check, so the two predicates don't double-count."""
+    a = _FakeSym(id="m.py:1-1:a:function", src=None, dst=None)
+    edge = _FakeSym(id="e:1", src="m.py:1-1:a:function", dst="")
+    assert _dangling(validate_ir([a], [edge], [_run("run-1")])) == []
+
+
+# ----------------------------------------------------------------------
 # validator:F2 (WI-moriz) — wired-checks disclosure manifest
 # ----------------------------------------------------------------------
 def test_wired_checks_manifest_present_in_report() -> None:

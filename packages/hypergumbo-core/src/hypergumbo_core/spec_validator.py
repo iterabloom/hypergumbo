@@ -167,6 +167,11 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
                     "existing AnalysisRun.execution_id (content-gated on a "
                     "non-empty run set; WI-mosil + synthetic:F1 regression "
                     "guard)."},
+    {"check": "dangling_endpoint", "validator_class": "cross_field",
+     "description": "Every non-empty Edge.src/Edge.dst references a node id "
+                    "present in the symbol set (content-gated on a non-empty "
+                    "run set; WI-mujor endpoint-integrity guard — the dst-absent "
+                    "half deferred from the ADR-0037 is_resolved<->dst FK)."},
 )
 
 
@@ -220,6 +225,7 @@ def validate_ir(
     violations.extend(_check_stable_id_format(symbols))
     violations.extend(_check_id_roundtrip(symbols))
     violations.extend(_check_origin_run_id_fk(symbols, edges, analysis_runs))
+    violations.extend(_check_dangling_endpoint(symbols, edges, analysis_runs))
     return violations
 
 
@@ -1811,6 +1817,77 @@ def _check_origin_run_id_fk(
                         "(dangling provenance FK)."
                     ),
                 ))
+    return violations
+
+
+# ----------------------------------------------------------------------
+# WI-mujor — dangling-endpoint referential-integrity predicate
+# ----------------------------------------------------------------------
+#
+# Every Edge.src / Edge.dst must reference a node id present in the symbol
+# set. Post-boundary-synthesis the graph is endpoint-closed by construction:
+# every unresolved dst is materialised as an external_symbol placeholder node
+# (the ~27% placeholder-dst cohort; the dst slot carries that placeholder's
+# id), and the ADR-0037 edge-finalization train closed the src side — the 23
+# tier-filtered src-dangling edges WI-mujor was filed against (substrate
+# a32c4a31) no longer reproduce: 0 dangling on default / --max-tier 1 /
+# --include-docs as re-measured 2026-06-17. This predicate is the standing
+# regression guard the Wave-2 gate requires: a producer/filter regression that
+# drops a referenced node (so an edge points at a now-absent id) trips CI
+# instead of silently passing the validator (the WI-moriz false-all-clear
+# class). It is exactly the dst-absent ("dangling") half deliberately left out
+# of the is_resolved<->dst FK check (see _check_cross_field_coherence's edge
+# loop), now its own predicate covering both endpoints.
+#
+# CONTENT-GATED on a non-empty run set, identically to _check_origin_run_id_fk:
+# every isolated unit fixture calls validate_ir with analysis_runs=[] and
+# routinely points an edge outside its tiny symbol set; gating on "runs exist"
+# scopes the check to the production/integration path with zero unit-fixture
+# collateral. An empty/None endpoint is NOT flagged here (that is the
+# dst_ref<->dst coherence predicate's concern) — only a non-empty-but-unresolved
+# reference is "dangling", so the two predicates never double-count.
+_DANGLING_ENDPOINT_CLASS = "cross_field"
+
+
+def _check_dangling_endpoint(
+    symbols: Iterable[Any],
+    edges: Iterable[Any],
+    analysis_runs: Iterable[Any],
+) -> list[ValidationViolation]:
+    """Referential integrity: every non-empty Edge.src/Edge.dst resolves to a
+    node in the symbol set. Content-gated on ``analysis_runs`` being non-empty
+    (WI-mujor; the dst-absent half deferred from the ADR-0037 is_resolved<->dst
+    FK check)."""
+    runs = list(analysis_runs)
+    if not runs:
+        return []
+    node_ids = {_read(s, "id", None) for s in symbols}
+    node_ids.discard(None)
+
+    violations: list[ValidationViolation] = []
+    for edge in edges:
+        edge_id = _read(edge, "id", None)
+        for slot in ("src", "dst"):
+            endpoint = _read(edge, slot, None)
+            if not endpoint or endpoint in node_ids:
+                continue
+            violations.append(ValidationViolation(
+                severity="error",
+                validator_class=_DANGLING_ENDPOINT_CLASS,
+                field_name=f"Edge.{slot}",
+                record_id=edge_id,
+                observed=f"{slot}={endpoint!r}",
+                expected=(
+                    f"Edge.{slot} must reference a node id present in the "
+                    "symbol set (endpoint-closed by boundary synthesis + "
+                    "ADR-0037 edge finalization)."
+                ),
+                message=(
+                    f"Edge {edge_id!r} has a dangling {slot} {endpoint!r} "
+                    "with no matching node — its endpoint->node join is "
+                    "broken (WI-mujor endpoint-integrity guard)."
+                ),
+            ))
     return violations
 
 
