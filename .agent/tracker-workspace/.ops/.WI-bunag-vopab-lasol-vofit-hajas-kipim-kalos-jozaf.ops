@@ -28,3 +28,18 @@
   clock: 2  # 57c8
   nonce: 57c8  # 57c8
   message: "GOVERNANCE APPROVAL REQUESTED — do not implement until approved. This guard touches scripts/auto-pr and scripts/merge-pr (governance files), so per the AGENTS.md governance approval workflow it is filed needs_human_review with no preemptive PR. Two things to decide before implementation: (1) Auto-close vs. hard-warn vs. the hybrid (hard-warn always + auto-close only on an explicit evidence-carrying syntax) — my recommendation is the hybrid, because pure auto-close bypasses the closure-evidence discipline (G10/WI-dafun) for behavioral items. (2) Whether the guard lives in auto-pr only, merge-pr only, or both (and whether the shared logic belongs in scripts/lib/forgejo-api.sh, also governance). Motivation and full evidence are in the description: the inert 'Closes …' commit-message idiom has already left ≥3 items (WI-dafun, WI-kafar, WI-himoj, +WI-niluv) stale despite merged code — a process gap, not a sync/durability failure. Please reply with approval + your decision on (1) and (2), or redirect."  # 57c8
+- op: update  # 70d7
+  at: '2026-06-17T01:14:51Z'  # 70d7
+  by: human  # 70d7
+  actor: jgstern  # 70d7
+  clock: 3  # 70d7
+  nonce: 70d7  # 70d7
+  set:  # 70d7
+    status: todo_soft  # 70d7
+- op: discuss  # 11ce
+  at: '2026-06-17T01:17:27Z'  # 11ce
+  by: human  # 11ce
+  actor: jgstern  # 11ce
+  clock: 4  # 11ce
+  nonce: 11ce  # 11ce
+  message: "I approve and I approve using auto-pr without --gov. Re (1) hybrid. Re (2), use your judgement. think about the pros and cons and then make a decision. Do not block further."  # 11ce

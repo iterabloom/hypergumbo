@@ -57,3 +57,10 @@
   clock: 6  # 769e
   nonce: 769e  # 769e
   message: "2026-06-10 design-interview rulings (ADR-0035, merged in PR #4181) settle the identity contracts this META tracks: synthetic occurrences follow a per-kind two-axis rule (target kinds = logical identity/dedup; location kinds = site identity keyed by path, target, and within-file occurrence index — line numbers leave identity hashes), and stable_id becomes a unique-within-run key with the full scope chain in the hash plus an explicit emit-time/corpus validator. Re-validate the family after the implementing fixes land."  # 769e
+- op: discuss  # d939
+  at: '2026-06-16T23:02:52Z'  # d939
+  by: agent  # d939
+  actor: jgstern_agent  # d939
+  clock: 7  # d939
+  nonce: d939  # d939
+  message: "Progress: the stable_id-uniqueness-on-large-monorepos sub-claim that drove this META's 2026-06-08 violation (live: 96 collision groups / 291 nodes) is now MET — the Wave-2 v8 identity gate shows 0 corpus + 0 per-file stable_id collisions on the hypergumbo self-tree (35139 nodes, a >10K-symbol monorepo) and across a 27-repo cohort (INV-tazaj satisfied, PR 0d740169bf). STAYS violated: the META's other 'Not checked' sub-claims (symbol ID stability across tree-sitter grammar upgrades; edge ID stability across analyzer order) remain unverified — this note records the stable_id face only."  # d939

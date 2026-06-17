@@ -115,3 +115,20 @@
   clock: 13  # de99
   nonce: de99  # de99
   message: "WAVE-2 IDENTITY GATE (2026-06-16, 27-repo corpus + self-tree @ scheme v7 commit 7577945512; evidence hypergumbo_lab_notebook/wave2_identity_gate_06162026_1904.md). Per-file HARD uniqueness gate (ADR-0035 section5 error-limb): 0 collisions in EVERY repo. Corpus-wide: 56 groups / 149 symbols across 8/27 repos -- NOT ~0, so this META does NOT close. POSITIVE LIVE EVIDENCE REFUTES closure (not a false-close; the opposite of the 2026-06-01 validator-clean mistake). Complete taxonomy + adversarial verification (workflow: 3 investigators + 3 skeptics, all file:line-grounded, verified repros): EVERY colliding node is synthetic/linker-stamped (containing_stable_id=null); NONE is a plain base-tree-sitter top-level symbol, so WI-bokab producer fix holds (its awaits_bakeoff_validation stripped MOVED). Three residual classes: (1) route synthesis make_route_stable_id file-blind, 146 nodes -- CONTESTED: ADR-0035 section3 already classifies route as LOGICAL, skeptic refuted the violation verdict medium-confidence (no consumer keys on route stable_id; WI-misud dedups handler routes cross-file by design) BUT cross-language gin+express sharing route:GET:/ shows LOGICAL is under-scoped -> DECISION item WI-gokiv (needs_human_review); (2) http/sql call_site, 31 nodes, hash endpoint/query content omitting path while ADR-0035 section3 classifies them SITE -> WI-napoh (skeptic could NOT refute, high conf); (3) py.py CBV HTTP-verb method via make_route_stable_id(method, class_name), 2 nodes -> WI-bolup (skeptic could NOT refute, high conf). KEY FINDING: the corpus-collision metric counts LOGICAL-axis kinds whose shared identity is BY DESIGN; the closure metric must be re-specified to SITE-axis + declaration only. Closure now blocked on WI-napoh + WI-bolup (SITE-key producer fixes, one atomic v7->v8 bump) + WI-gokiv (route axis + metric re-spec ruling). Stays pending_validation + awaits_bakeoff_validation."  # de99
+- op: update  # 3090
+  at: '2026-06-16T23:02:52Z'  # 3090
+  by: agent  # 3090
+  actor: jgstern_agent  # 3090
+  clock: 14  # 3090
+  nonce: '3090'  # 3090
+  set:  # 3090
+    status: satisfied  # 3090
+  remove:  # 3090
+    tags: [awaits_bakeoff_validation]  # 3090
+- op: discuss  # c0ff
+  at: '2026-06-16T23:02:52Z'  # c0ff
+  by: agent  # c0ff
+  actor: jgstern_agent  # c0ff
+  clock: 15  # c0ff
+  nonce: c0ff  # c0ff
+  message: "SATISFIED — corpus limb MET with positive live behavioral evidence (NOT a validator all-clear; the opposite of the 2026-06-01 false-close). The Wave-2 identity gate was re-run on the IDENTICAL 27-repo cohort + the self-tree after the v8 fix train (PR merged @ selfh/dev 0d740169bf): corpus_collision_groups 56->0, collided symbols 149->0, per-file 0->0, Symbol.stable_id cross_field violations 8->0 — ZERO across ALL 27 repos. RE-RAN THIS ITEM'S OWN FILED REPRO: the hypergumbo self-tree dogfood (35139 non-null symbols, the original INV-tazaj collision measurement surface) now shows 0 corpus + 0 per-file collisions (was 60% mass-collision at filing; 43 groups at v6; 5 at v7). The three residual classes the gate surfaced are all closed: route synthesis (WI-gokiv, widen_route_stable_ids post-pass folds file+language), http/sql call_site SITE-key (WI-napoh, make_site_stable_id), CBV HTTP-verb methods (WI-bolup, py.py branch deleted). Per-file HARD limb was already met (v6 reconciliation). The closure metric is honest all-axis (no LOGICAL exclusion — the adversarial review showed that would be unsafe + unnecessary). Evidence: hypergumbo_lab_notebook/wave2_identity_gate_06162026_1904.md + v8_siteky_design_06162026.md. Tag stripped (MOVED)."  # c0ff

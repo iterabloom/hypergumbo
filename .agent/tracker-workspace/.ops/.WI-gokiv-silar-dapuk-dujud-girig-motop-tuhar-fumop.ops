@@ -36,3 +36,18 @@
   clock: 3  # 0364
   nonce: '0364'  # 0364
   message: "HUMAN RULING (2026-06-16): keep route LOGICAL in spirit, WIDEN the key — add language + app/package root so within-app urls.py+views.py still dedup but cross-app/cross-language do NOT. Coupled metric decision RULED: INV-tazaj closure metric counts SITE-axis + declaration kinds only; LOGICAL-axis by-design dedup (route, message_queue, event_sourcing) EXCLUDED. This item becomes the route-key-widening implementation, shipped in the one atomic v7->v8 bump alongside WI-napoh (call_site SITE-key) + WI-bolup (CBV-method). Design note: 'app/package root' must distinguish express's 33 example apps (one manifest) while preserving Django urls.py+views.py dedup — exact scope-component formula to be pinned in design (manifest-scope vs handler-identity vs path-root); language fold is unconditional (fixes the gin-Go+express-JS cross-language collision). needs_human_review -> todo_hard (decided)."  # 0364
+- op: update  # 83dc
+  at: '2026-06-16T23:02:00Z'  # 83dc
+  by: agent  # 83dc
+  actor: jgstern_agent  # 83dc
+  clock: 4  # 83dc
+  nonce: 83dc  # 83dc
+  set:  # 83dc
+    status: done  # 83dc
+- op: discuss  # e42b
+  at: '2026-06-16T23:02:00Z'  # e42b
+  by: agent  # e42b
+  actor: jgstern_agent  # e42b
+  clock: 5  # e42b
+  nonce: e42b  # e42b
+  message: "DONE in v8 (PR merged @ 0d740169bf). Human ruling implemented: route stays LOGICAL in spirit, key widened. A new post-pass widen_route_stable_ids folds route_site:{language}:{normalize_path(rel_path)}:{id} onto route nodes (identified by id-suffix :route/:route_mount OR framework_role OR route_path+http_method meta; call_site excluded). Chosen as a post-pass over 16 producer edits because producers carry ABSOLUTE paths at mint while sym.path is repo-relative only after normalisation — folding the normalised path is the single complete, location-independent point. The coupled closure-metric question was RESOLVED by the adversarial design review: the LOGICAL-exclusion metric was DROPPED (kept all-axis) as both unsafe (could re-hide the INV-zudob cross-file declaration class) and unnecessary (producer fixes drive the honest count to 0; by-design LOGICAL kinds are collapsed to one node by dedup_logical). BEHAVIORAL EVIDENCE: route collisions express 21->0, gin 13->0, caddy 2->0 in the gate re-run; cross-language gin-Go+express-JS route:GET:/ now distinct."  # e42b

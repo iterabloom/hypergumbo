@@ -51,3 +51,18 @@
   clock: 5  # 64cf
   nonce: 64cf  # 64cf
   message: "2026-06-10 design-interview ruling (ADR-0037, merged in PR #4181): is_resolved := dst is a real in-repo node, and a single finalization step derives every surface (flag, id suffix, dst_ref) from that one verdict — making the 4507 suffix/flag disagreements structurally impossible. Node kind 'unresolved' also folds into 'external_symbol'. Waits on the finalization implementation plus the FK validator check."  # 64cf
+- op: update  # 59ae
+  at: '2026-06-17T01:51:17Z'  # 59ae
+  by: agent  # 59ae
+  actor: jgstern_agent  # 59ae
+  clock: 6  # 59ae
+  nonce: 59ae  # 59ae
+  set:  # 59ae
+    status: done  # 59ae
+- op: discuss  # 4e74
+  at: '2026-06-17T01:51:18Z'  # 4e74
+  by: agent  # 4e74
+  actor: jgstern_agent  # 4e74
+  clock: 7  # 4e74
+  nonce: '4e74'  # 4e74
+  message: "Closed structurally by ADR-0037 ruling 2 (PR merged selfh/dev 2dd851297d). The new finalize sub-step _finalize_edge_resolution derives is_resolved from the dst node's KIND (external_symbol => external placeholder), so no producer can independently stamp the flag/suffix contradiction. BEHAVIORAL EVIDENCE — re-ran this item's repro (hypergumbo run on packages/hypergumbo-core/src, editable install with the fix): edges with dst ':unresolved' suffix AND is_resolved=True = 987 -> 0; full contradiction class (is_resolved=True at an external_symbol placeholder) 1312 -> 0; validation_report cross_field violations = 0 (the new ruling-5 FK predicate finds none post-finalize). Full suite 19061 passed, 100% cov."  # 4e74
