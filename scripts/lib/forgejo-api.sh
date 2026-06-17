@@ -391,6 +391,21 @@ poll_ci() {
 	# Track whether any job has left pending state (stale-pending detection)
 	local any_job_started=false
 
+	# INV-rahib (confirmation re-poll): a single failure snapshot during
+	# concurrent CI activity can be transiently inconsistent — e.g. a cancelled
+	# concurrent run's error status shadowing the live run's still-pending
+	# status for the same context. Require the failure-with-no-pending signal
+	# to be STABLE across FAILURE_CONFIRM_POLLS consecutive polls before
+	# declaring CI failed, so a stale/transient failure can never preempt a
+	# still-live run. Reset to 0 whenever a poll shows pending/in-progress.
+	local failure_confirm_count=0
+	local failure_confirm_polls="${FAILURE_CONFIRM_POLLS:-2}"
+
+	# Testability: with CI_POLL_NO_SLEEP set, skip the inter-poll sleeps so the
+	# convergence loop can be exercised against a scripted api_get sequence in
+	# milliseconds (the INV-rahib behavioral harness). Unset in production.
+	_poll_sleep() { [[ -n "${CI_POLL_NO_SLEEP:-}" ]] || sleep "$1"; }
+
 	while true; do
 		elapsed=$(( $(date +%s) - start_time ))
 		poll_count=$((poll_count + 1))
@@ -407,7 +422,7 @@ poll_ci() {
 
 		if ! api_get "$API_BASE/commits/$head_sha/status"; then
 			printf "?"
-			sleep 10
+			_poll_sleep 10
 			continue
 		fi
 
@@ -497,9 +512,23 @@ except Exception:
 " 2>/dev/null || echo "no")
 
 			if [[ "$has_pending" == "yes" ]]; then
-				# Jobs still running — keep polling
+				# Jobs still running — keep polling. A pending sibling means we
+				# are NOT in a stable failure: reset the confirmation counter.
+				failure_confirm_count=0
 				printf "."
-				sleep 16
+				_poll_sleep 16
+				continue
+			fi
+
+			# INV-rahib: require the failure-with-no-pending signal to be stable
+			# across consecutive polls before declaring failure. A single
+			# snapshot can be a stale concurrent/cancelled run shadowing the
+			# live run; re-poll until confirmed (or a pending sibling / success
+			# resets the counter).
+			failure_confirm_count=$((failure_confirm_count + 1))
+			if [[ $failure_confirm_count -lt $failure_confirm_polls ]]; then
+				printf "f"
+				_poll_sleep 16
 				continue
 			fi
 
@@ -532,6 +561,11 @@ except Exception:
 			echo "💡 Full log: ./scripts/ci-debug logs ${first_failed_job:-}"
 			return 1
 		fi
+
+		# Reached here ⇒ state is pending/in-progress (the failure branch above
+		# always continues or returns), so we are NOT in a stable failure:
+		# reset the confirmation counter (INV-rahib).
+		failure_confirm_count=0
 
 		# Scenario A check: is ci-complete the sole holdout?
 		local scenario_a_result
@@ -592,7 +626,7 @@ except Exception:
 			printf "."
 		fi
 
-		sleep 10
+		_poll_sleep 10
 	done
 }
 

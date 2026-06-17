@@ -327,3 +327,119 @@ def test_gate_api_get_failure_returns_one(tmp_path: Path) -> None:
     )
     assert rc == 1
     assert "RC=1" in out
+
+
+# --------------------------------------------------------------------
+# Surface 3 (2026-06-17) — poll_ci confirmation re-poll under concurrency.
+#
+# A single failure snapshot during concurrent CI activity can be transiently
+# inconsistent (e.g. the hung-run retry's PR-close cancels its in-flight run,
+# whose error statuses shadow the live run's still-pending status for the same
+# context). The fix requires the failure-with-no-pending signal to be STABLE
+# across FAILURE_CONFIRM_POLLS consecutive polls before poll_ci returns 1.
+#
+# These drive the REAL poll_ci loop (NOT the AUTOPR_TEST_POLL_EXITS seam, which
+# would bypass the loop under test) against a scripted api_get response
+# sequence, with CI_POLL_NO_SLEEP skipping the inter-poll sleeps.
+# --------------------------------------------------------------------
+
+_RESP_FAIL = (
+    '{"state": "failure", "statuses": '
+    '[{"context": "CI / pytest (pull_request)", "status": "failure"}]}'
+)
+_RESP_PENDING = (
+    '{"state": "pending", "statuses": '
+    '[{"context": "CI / pytest (pull_request)", "status": "pending"}]}'
+)
+_RESP_SUCCESS = (
+    '{"state": "success", "statuses": '
+    '[{"context": "CI / pytest (pull_request)", "status": "success"}]}'
+)
+
+
+def _run_poll_ci(responses: list[str], tmp_path: Path) -> tuple[int, str]:
+    """Drive the real poll_ci loop against a scripted api_get sequence.
+
+    Each element is the JSON body api_get sets into API_RESPONSE on successive
+    polls (clamped to the last once exhausted). Returns (poll_rc, stdout)."""
+    seq_dir = tmp_path / "aget"
+    seq_dir.mkdir()
+    for i, body in enumerate(responses):
+        (seq_dir / str(i)).write_text(body)
+    pos_file = tmp_path / "aget_pos"
+    n = len(responses)
+    script = f"""
+set +e
+source '{FORGEJO_LIB}' >/dev/null 2>&1
+
+# Walk the scripted api_get response sequence (clamp to last when exhausted).
+api_get() {{
+    local pos
+    pos=$(cat '{pos_file}' 2>/dev/null || echo 0)
+    if [ "$pos" -ge {n} ]; then
+        pos=$(( {n} - 1 ))
+    else
+        echo $((pos + 1)) > '{pos_file}'
+    fi
+    API_RESPONSE=$(cat '{seq_dir}/'"$pos")
+    return 0
+}}
+# The failure path fetches a job log over the network — stub it out.
+fetch_job_log() {{ return 1; }}
+
+API_BASE="https://example/api/v1/repos/test/test"
+poll_ci dummy-sha
+rc=$?
+echo ""
+echo "RC=$rc"
+"""
+    result = subprocess.run(
+        ["bash", "-c", script],
+        env={
+            "PATH": "/usr/bin:/bin",
+            "CI_POLL_NO_SLEEP": "1",
+            "CI_TIMEOUT_SECONDS": "60",
+        },
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    rc = -1
+    for line in result.stdout.splitlines():
+        if line.startswith("RC="):
+            rc = int(line.split("=", 1)[1])
+            break
+    return rc, result.stdout
+
+
+def test_poll_ci_stable_failure_still_returns_one(tmp_path: Path) -> None:
+    """A genuine failure (failure-with-no-pending on TWO consecutive polls)
+    must still return 1 — the confirmation re-poll must not mask real
+    failures."""
+    rc, out = _run_poll_ci([_RESP_FAIL, _RESP_FAIL], tmp_path)
+    assert rc == 1, f"stable failure must return 1, got {rc}\n{out}"
+
+
+def test_poll_ci_transient_failure_then_pending_recovers(tmp_path: Path) -> None:
+    """INV-rahib incident shape: a transient failure-with-no-pending snapshot
+    followed by the live run reappearing pending and then succeeding must
+    converge to 0 — NOT a false explicit failure (the regression this fixes)."""
+    rc, out = _run_poll_ci(
+        [_RESP_FAIL, _RESP_PENDING, _RESP_SUCCESS], tmp_path
+    )
+    assert rc == 0, (
+        f"transient failure that recovers must return 0 (no false failure), "
+        f"got {rc}\n{out}"
+    )
+
+
+def test_poll_ci_confirmation_logic_present() -> None:
+    """Structural guard: the confirmation re-poll (counter + threshold gate +
+    pending/in-progress resets) must stay wired into poll_ci."""
+    text = FORGEJO_LIB.read_text()
+    assert "failure_confirm_count" in text
+    assert 'failure_confirm_polls="${FAILURE_CONFIRM_POLLS:-2}"' in text
+    assert "failure_confirm_count -lt $failure_confirm_polls" in text
+    # Reset on a pending sibling AND at the in-progress loop bottom — the two
+    # resets that make the count require CONSECUTIVE failure observations.
+    assert text.count("failure_confirm_count=0") >= 2
