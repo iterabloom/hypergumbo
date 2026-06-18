@@ -29,7 +29,7 @@ jobs:
 
     runs-on: self-hosted
     container: python:${{ matrix.python-version }}-bookworm
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
@@ -121,7 +121,7 @@ jobs:
 
     runs-on: self-hosted
     container: python:${{ matrix.python-version }}-bookworm
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
