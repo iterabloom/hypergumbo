@@ -12,6 +12,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Provenance: play-routes reported `version="1"`, corrupting its run_signature (Wave-2; closes WI-riroz, INV-pitab symptom 6)** —
+  `play_routes.py` defined a module-local `PASS_VERSION="1"` that shadowed the canonical `ir.PASS_VERSION`
+  (= package `__version__`). Because `AnalysisRun.version` feeds `_compute_run_signature`, the stale `"1"` decoupled
+  play-routes' run_signature from the package release — a release bump changed every other pass's signature but never
+  play-routes' — and the self-analysis `analysis_runs[].version` distribution was `{<semver>: 83, "1": 1}`, the lone
+  outlier being play-routes. play-routes was the *only* analyzer under `packages/*/src/` with a literal `PASS_VERSION`
+  string. Fixed to import the canonical `PASS_VERSION`; play-routes now reports the same version as every other pass and
+  its run_signature recomputes once (single-pass blast radius — distinct from INV-pitab symptom 2's cohort-wide churn,
+  which remains deferred).
+
 - **Circom skip-path emitted `toolchain` as a `str`, crashing run_signature recompute (Wave-2; WI-luliv)** —
   the grammar-unavailable skip-path built `AnalysisRun(..., toolchain="tree-sitter-circom", ...)` — a bare string where
   the field type is `Dict[str, str]`. `to_dict` then serialized a schema-violating string, and `finalize`'s

@@ -38,10 +38,20 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import (
+    PASS_VERSION,
+    AnalysisRun,
+    Edge,
+    Span,
+    Symbol,
+    make_pass_id,
+)
 
 PASS_ID = make_pass_id("play-routes")
-PASS_VERSION = "1"
+# WI-riroz: use the canonical ir.PASS_VERSION (=__version__). A module-local
+# PASS_VERSION="1" previously shadowed it, corrupting this pass's run_signature
+# (AnalysisRun.version feeds _compute_run_signature) and decoupling it from the
+# package release version that every other pass reports.
 
 # HTTP methods recognised by Play Framework router.
 _HTTP_METHODS = frozenset({

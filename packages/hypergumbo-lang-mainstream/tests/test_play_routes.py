@@ -213,6 +213,26 @@ POST  /api/data         controllers.Api.create
         assert not result.skipped
         assert len(result.symbols) == 0
 
+    def test_run_version_is_canonical_not_stale_one(self, tmp_path: Path) -> None:
+        """WI-riroz: play-routes must report the canonical package version.
+
+        play_routes.py historically defined a module-local ``PASS_VERSION="1"``
+        shadowing the canonical ``ir.PASS_VERSION`` (= package ``__version__``).
+        Because ``AnalysisRun.version`` feeds ``_compute_run_signature``, the
+        stale ``"1"`` corrupted play-routes' run_signature and decoupled it from
+        the release version every other pass reports (distribution was
+        ``{<semver>: 83, "1": 1}`` on self-analysis). Assert the run carries the
+        canonical version, not ``"1"``.
+        """
+        from hypergumbo_core.ir import PASS_VERSION as CANONICAL_VERSION
+
+        conf = tmp_path / "conf"
+        conf.mkdir()
+        (conf / "routes").write_text("GET / controllers.Home.index\n")
+        result = analyze_play_routes(tmp_path)
+        assert result.run.version == CANONICAL_VERSION
+        assert result.run.version != "1"
+
     def test_analyze_with_module_includes(self, tmp_path: Path) -> None:
         conf = tmp_path / "conf"
         conf.mkdir()
