@@ -68,3 +68,10 @@
   clock: 7  # e2e7
   nonce: e2e7  # e2e7
   message: "All four members resolved: INV-fusus (satisfied — stable_id collision 91%→0% on 35281-symbol substrate), INV-sotiv (satisfied — coverage gap closed, 0.1% null), WI-fanun (done — fingerprint), WI-luvig (done — canonical_name docstring clarified). The write-side identity contract now holds on the fresh full-corpus re-measurement (selfh/dev 288a5a0190): stable_id uniquely identifies (0/35246 collision) at 99.9% coverage; fingerprint folded into the cache key (INV-nofof); canonical_name docstring no longer oversells. Closed on re-measurement + member resolution."  # e2e7
+- op: discuss  # 6505
+  at: '2026-06-18T07:35:37Z'  # 6505
+  by: agent  # 6505
+  actor: jgstern_agent  # 6505
+  clock: 8  # 6505
+  nonce: '6505'  # 6505
+  message: "Closure stands (4 members resolved). For the record: the 2026-06-18 gate re-measurement surfaced 1 warning-level cross_field violation — a degenerate hgfp2 Symbol.fingerprint on 44 trivial nested test-stub functions (2 values / ~35 distinct names, test files only). DISTINCT from this META's members and from the done TOML WI-falum; filed as its own item (bug-vs-legitimate open question). Does not reopen INV-zadum (stable_id contract solid: 0 collision; this is a fingerprint-quality residual on test stubs)."  # 6505

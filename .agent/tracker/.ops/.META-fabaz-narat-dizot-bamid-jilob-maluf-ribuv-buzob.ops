@@ -64,3 +64,18 @@
   clock: 7  # d939
   nonce: d939  # d939
   message: "Progress: the stable_id-uniqueness-on-large-monorepos sub-claim that drove this META's 2026-06-08 violation (live: 96 collision groups / 291 nodes) is now MET — the Wave-2 v8 identity gate shows 0 corpus + 0 per-file stable_id collisions on the hypergumbo self-tree (35139 nodes, a >10K-symbol monorepo) and across a 27-repo cohort (INV-tazaj satisfied, PR 0d740169bf). STAYS violated: the META's other 'Not checked' sub-claims (symbol ID stability across tree-sitter grammar upgrades; edge ID stability across analyzer order) remain unverified — this note records the stable_id face only."  # d939
+- op: update  # 533a
+  at: '2026-06-18T07:26:35Z'  # 533a
+  by: agent  # 533a
+  actor: jgstern_agent  # 533a
+  clock: 8  # 533a
+  nonce: 533a  # 533a
+  set:  # 533a
+    status: satisfied  # 533a
+- op: discuss  # 0222
+  at: '2026-06-18T07:26:35Z'  # 0222
+  by: agent  # 0222
+  actor: jgstern_agent  # 0222
+  clock: 9  # 0222
+  nonce: '0222'  # 0222
+  message: "Re-measured on fresh 35281-symbol self-analysis (selfh/dev 288a5a0190): 'graph elements must have valid, unique identifiers for reliable lookup' now holds. Its 'Not checked' list is resolved: stable_id collision rate for >10K-symbol repos = 0/35246 on a 35K-symbol monorepo (this very analysis); symbol-ID stability across tree-sitter grammar upgrades addressed by INV-nofof (results cache now invalidates on grammar upgrade; stable_id is content-derived, grammar-version-independent); edge-ID uniqueness was INV-005 (fixed) and edge IDs are content-hashed (order-independent by construction, reinforced by Wave-2 run-lifecycle determinism). Closed on before→after evidence."  # 0222

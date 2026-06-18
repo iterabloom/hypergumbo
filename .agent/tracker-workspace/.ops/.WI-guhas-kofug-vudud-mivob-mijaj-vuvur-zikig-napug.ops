@@ -1,0 +1,52 @@
+- op: create  # e36c
+  at: '2026-06-18T07:35:35Z'  # e36c
+  by: agent  # e36c
+  actor: jgstern_agent  # e36c
+  clock: 1  # e36c
+  nonce: e36c  # e36c
+  data:  # e36c
+    kind: work_item  # e36c
+    title: "Degenerate hgfp2 Symbol.fingerprint: 44 trivial nested test-stub functions share 2 values across ~35 distinct names"  # e36c
+    status: todo_soft  # e36c
+    priority: 3  # e36c
+    parent:  # e36c
+    tags:  # e36c
+    - dogfood  # e36c
+    - self_analysis  # e36c
+    - identity  # e36c
+    isbefore: []  # e36c
+    duplicate_of: []  # e36c
+    not_duplicate_of: []  # e36c
+    pr_ref:  # e36c
+    description: "Surfaced by the WI-falum degenerate-fingerprint cross_field check on the\n2026-06-18 full-corpus self-analysis (35281 symbols, selfh/dev 288a5a0190).\nDISTINCT from WI-falum (done): that was TOML dependency nodes, hgfp1: scheme.\nThis is the hgfp2: scheme on Python test-stub functions.\n\nObserved: 2 fingerprint values each shared by >=10 distinctly-named symbols —\n  hgfp2:91e04b3962f12994 (23 symbols, 18 names)\n  hgfp2:97672410d1aaf58d (21 symbols, 17 names)\nAll 44 are tiny (2-line) nested stub functions inside test functions:\n  21 in tests/test_analyzer_registry.py, 20 in tests/test_linker_registry.py,\n  3 in tests/test_orchestrator_fail_open.py.\nExamples: test_basic_registration.analyze_rust, test_all_metadata_fields.analyze_js,\ntest_check_requirements_all_met.link_check, test_clears_all.analyze_a.\n\nOPEN QUESTION (bug vs legitimate):\n(a) BUG — the fingerprint post-pass (fingerprint.py stamp_symbol_fingerprints ->\n    _tree_sitter_fingerprint) drops content on these tiny spans and emits a shared\n    constant, the same failure shape as WI-falum's TOML case. If so: unparseable/\n    degenerate spans must yield None, never a shared constant.\n(b) LEGITIMATE — these test stubs really ARE structurally identical (same 2-line\n    body shape, same literals), so a purely-structural fingerprint correctly\n    collides; the check over-fires by treating distinct NAMES as distinct CONTENT.\nResolve by reading the actual stub bodies + how _tree_sitter_fingerprint handles\n2-line function spans. If (a), it is a fingerprint-honesty bug (INV-zadum family);\nif (b), the WI-falum check needs a same-structure carve-out.\n\nScope: 44/35281 (0.12%), warning severity, TEST FILES ONLY (no production source).\nNot a Wave-2-gate blocker (the identity umbrellas closed on stable_id evidence);\ntracked here as a fingerprint-quality residual."  # e36c
+    fields: {}  # e36c
+- op: update  # cbf7
+  at: '2026-06-18T07:42:08Z'  # cbf7
+  by: agent  # cbf7
+  actor: jgstern_agent  # cbf7
+  clock: 2  # cbf7
+  nonce: cbf7  # cbf7
+  set:  # cbf7
+    status: todo_hard  # cbf7
+- op: discuss  # 7f65
+  at: '2026-06-18T07:42:08Z'  # 7f65
+  by: agent  # 7f65
+  actor: jgstern_agent  # 7f65
+  clock: 3  # 7f65
+  nonce: 7f65  # 7f65
+  message: "SETTLED: BUG (not legitimate over-fire). Root cause in _python_context_fingerprint (fingerprint.py:222-265): for a DECORATED function whose producer-span starts at the def line (decorator excluded), the smallest covering node is the FunctionDef, but _py_effective_lines extends its start up to the decorator line (< span-start), so the 'covering node fits inside span' branch (line 249, lines[0] >= start_line) FAILS. Falls to the container-case (255), which walks only the FunctionDef children line-inside the span (body Return + return-annotation) and SKIPS the arguments node (no lineno) and never emits def:<name>. Net: hashes BODY ONLY, dropping name AND signature. Proof: analyze_rust(repo_root) vs analyze_js(repo_root,max_files=None) — diff signatures, same body -> same hgfp2:97672410; link_check(ctx) vs link_unmet(ctx) — diff names only -> same hgfp2:91e04b39. LATENT SCOPE: degrades fingerprint of EVERY decorated function whose span excludes the decorator (name+sig dropped); only VISIBLY collides on trivial-bodied stubs (these 44) because production bodies differ and mask it. FIX sketch: in the fit-check, accept a covering def/class as the match when its RAW node.lineno (post-decorator) >= start_line, so the whole def is walked (name+args captured). Churns fingerprint VALUES for decorated functions repo-wide (one-time; fingerprint is NOT a cache key, so no cache/run_signature hazard). Upgraded todo_soft->todo_hard (confirmed bug, broader than test stubs)."  # 7f65
+- op: update  # 7b71
+  at: '2026-06-18T08:48:03Z'  # 7b71
+  by: agent  # 7b71
+  actor: jgstern_agent  # 7b71
+  clock: 4  # 7b71
+  nonce: 7b71  # 7b71
+  set:  # 7b71
+    status: todo_hard  # 7b71
+- op: discuss  # 9809
+  at: '2026-06-18T08:48:03Z'  # 9809
+  by: agent  # 9809
+  actor: jgstern_agent  # 9809
+  clock: 5  # 9809
+  nonce: '9809'  # 9809
+  message: "INVESTIGATION COMPLETE (2-vantage workflow wf_160de918, behaviorally verified). Confirmed BUG; scope MUCH larger than the 44 visible stubs: a SINGLE AST-path root cause across ~1,043 decorated declaration nodes (768 function + 32 async + 243 class + @property) on the self-tree — every decorated def/class whose producer-span excludes the decorator. The 44 were just the VISIBLE collisions (trivial bodies); production decorated fns also have name+signature dropped, masked by differing bodies. TWO compounding drops in the container path (fingerprint.py:255-265): (1) def/class NAME (a node attribute emitted only when the node itself is walked at :190-193, skipped by the iter_child_nodes container walk); (2) arguments node (no lineno -> _py_effective_lines None -> skipped :259-260). Root: fit-check :249 (lines[0] >= start_line) uses the DECORATOR-EXTENDED start, so a decorated def whose span excludes the decorator fails the fit and degrades to a body-only hash. WI-falum (tree-sitter/TOML) is a SEPARATE already-fixed family, NOT a co-member (tree-sitter names are child nodes, immune). FIX (one edit, simulation-verified 0 residual on all 1,043): when best is FunctionDef/AsyncFunctionDef/ClassDef with best.lineno >= start_line and best.end_lineno <= end_line, route to the SUBTREE path (walk best whole) not the container path. Blast radius: 1,043 fingerprint VALUES change (3.1%), concentrated in decorated test files. fingerprint is NOT a cache key/run_signature input -> no cache hazard; one-time churn. REQUIRES TDD red/green on the real post-pass before closure (fix validated by isolated re-simulation, not a patched end-to-end build)."  # 9809

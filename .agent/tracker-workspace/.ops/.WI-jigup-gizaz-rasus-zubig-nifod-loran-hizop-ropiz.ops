@@ -1,0 +1,22 @@
+- op: create  # 2933
+  at: '2026-06-18T08:48:04Z'  # 2933
+  by: agent  # 2933
+  actor: jgstern_agent  # 2933
+  clock: 1  # 2933
+  nonce: '2933'  # 2933
+  data:  # 2933
+    kind: work_item  # 2933
+    title: "Validation ratchet: warning checks are advisory (total-count-only) + the strategy-promised self-tree gate does not exist"  # 2933
+    status: todo_hard  # 2933
+    priority: 2  # 2933
+    parent:  # 2933
+    tags:  # 2933
+    - dogfood  # 2933
+    - ci_infrastructure  # 2933
+    - analysis_quality  # 2933
+    isbefore: []  # 2933
+    duplicate_of: []  # 2933
+    not_duplicate_of: []  # 2933
+    pr_ref:  # 2933
+    description: "Surfaced by the WI-guhas frame audit (workflow wf_160de918, behaviorally verified\nby running run_behavior_map on the self-tree: 35281 nodes, 3013 violations, ALL\nseverity=warning, 0 errors).\n\nSYSTEMIC DETECTION GAP (two halves):\n\n(1) WARNING CHECKS ARE ADVISORY. test_validation_report_empty.py has exactly TWO\nerror-only hard floors (per-file stable_id :194-199; origin_run_id FK :214-218) and\nexactly ONE separate co-ratcheted dimension (RUNTIME_COHERENCE_BASELINES — not even\na spec_validator check). EVERYTHING else flows only through the single scalar\n`total = sum(by_class.values())` vs VALIDATION_BASELINES. So NO spec_validator\nwarning check has a dedicated ratchet dimension. ~11 warning checks are thus\ntotal-count-only / detection-advisory: degenerate-fingerprint (:1167), the three\nid-roundtrip warnings (:1677/:1693/:1708 — the 3012 id_format-on-Symbol.id self-tree\ncohort = INV-kurup), stable_id collision-RATE umbrella (:1079, shares Symbol.stable_id\nwith the hard floor but warning severity dodges the error-only filter),\nlanguage/protocol_origin (:868), display_label scope (:907), Class-B canaries (:931,\n5 fields), qualified_name separator (:497), config_fingerprint default (:681). A\nsingle-scalar total also permits SIGNED CANCELLATION: a +1 regression hidden behind\na -1 elsewhere.\n\n(2) THE SELF-TREE GATE IS VAPORWARE. Strategy G1 (correctness_strategy_06102026.md\n:254) promises \"fixture corpus per-PR; self-tree in full-suite.\" VERIFIED: no test\nruns validate_ir/run_behavior_map against the real repo root; full-suite.yml only\nre-runs `pytest packages/*/tests/` (same files, un-smart-selected). So the self-tree's\n3013 warnings (1 cross_field/Symbol.fingerprint = WI-guhas + 3012 id_format/Symbol.id\n= INV-kurup) are caught by NOTHING automated — only manual self-analysis dogfooding +\na human reading the report. Also: 3 of the 4 per-PR fixture substrates are byte-identical\nto default (no framework code, no tier>1 symbols), so the per-PR matrix is weaker than\nit looks.\n\nFIX (three coordinated changes; (1) is the keystone):\n (1) Per-(validator_class x severity) shrink-only ratchet dimensions, modeled on the\n     existing RUNTIME_COHERENCE_BASELINES pattern. Kills signed cancellation; makes\n     each warning class independently ratcheted. For the highest-churn families\n     (Symbol.fingerprint degeneracy, Symbol.id roundtrip) ratchet per (class, field, severity).\n (2) Add the missing full-suite self-tree gate: a full-suite-only test running\n     run_behavior_map(repo_root=parents[3]) ratcheting the violation matrix shrink-only;\n     commit SELF_TREE_BASELINES at today's measured floor {cross_field/Symbol.fingerprint/warning:1,\n     id_format/Symbol.id/warning:3012}; the fingerprint floor ratchets 1->0 when WI-guhas lands\n     (self-validating gate).\n (3) Per-PR fixture coverage requirement: every _WIRED_CHECKS entry must have >=1 per-PR\n     fixture that demonstrably exercises it; add a decorated-Python-declarations-differing-only-\n     by-name fixture (the LIVE WI-guhas surface) + framework code + tier>1 symbols so the\n     degenerate fixture substrates stop being byte-identical.\n\nMETA-RULE: every check in _WIRED_CHECKS must declare an `enforcement` field\n(error-floor | ratchet-dimension | advisory) and have a dimension-specific shrink-only\nratchet keyed on >=(validator_class, severity) on >=1 exercising substrate; warning/info\nseverity permitted ONLY with a dedicated dimension; a test asserts no check claims\n\"enforced\" while sitting in the total-count bucket. Extends the existing\ntest_wired_checks_manifest_matches_validate_ir (anti-silent-UNwiring) with an\nanti-silent-NONENFORCEMENT axis. Relates to strategy G8/G9."  # 2933
+    fields: {}  # 2933
