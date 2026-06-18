@@ -42,3 +42,18 @@
   clock: 4  # 313f
   nonce: 313f  # 313f
   message: "root-cause family cross-link (b1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 313f
+- op: update  # a0b1
+  at: '2026-06-18T04:01:05Z'  # a0b1
+  by: agent  # a0b1
+  actor: jgstern_agent  # a0b1
+  clock: 5  # a0b1
+  nonce: a0b1  # a0b1
+  set:  # a0b1
+    status: done  # a0b1
+- op: discuss  # 8782
+  at: '2026-06-18T04:01:05Z'  # 8782
+  by: agent  # 8782
+  actor: jgstern_agent  # 8782
+  clock: 6  # 8782
+  nonce: '8782'  # 8782
+  message: "Fixed in PR #279 (selfh/dev fa2973a33d). Behavioral evidence: before, analyze_play_routes on a conf/routes fixture produced run.version=='1' (the lone outlier; self-analysis distribution {<semver>:83,'1':1}), poisoning run_signature. After, run.version == ir.PASS_VERSION ('6.0.0') and != '1'; run_signature recomputes once (single-pass blast radius). play_routes.py now imports the canonical PASS_VERSION (the local literal is deleted) — it was the only analyzer under packages/*/src/ with a literal PASS_VERSION string. Production-path test test_run_version_is_canonical_not_stale_one asserts both. Resolves INV-pitab symptom 6."  # 8782

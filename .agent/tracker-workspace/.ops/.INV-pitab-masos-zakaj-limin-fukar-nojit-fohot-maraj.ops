@@ -109,3 +109,10 @@
   clock: 12  # 4c6d
   nonce: 4c6d  # 4c6d
   message: "Symptom 5 (no nodes_emitted/edges_emitted productivity counters) CLOSED by PR #272 (selfh/dev 4e716987a5): AnalysisRun gained both int fields, stamped at chokepoints; per-pass productivity is now a first-class field, not reverse-derivable-only. Symptom 1 (pass_version empty) already fixed (0/86). REMAINING (this item stays open): symptom 2 (toolchain.name hardcoded to host interpreter 'python' x86), symptom 3 (execution_id per-pass-uuid not per-invocation), symptom 6 (version drift play-routes='1' vs '6.0.0'). These are deferred to a dedicated follow-up because they all churn run_signature (toolchain+version feed _compute_run_signature); PR #272 deliberately touched neither, for zero run_signature blast radius. Symptom 3 execution_id rename is OFF the table (it's the hard-validated origin_run_id FK join key, spec_validator)."  # 4c6d
+- op: discuss  # b25b
+  at: '2026-06-18T04:01:05Z'  # b25b
+  by: agent  # b25b
+  actor: jgstern_agent  # b25b
+  clock: 13  # b25b
+  nonce: b25b  # b25b
+  message: "Symptom 6 (version drift play-routes='1') CLOSED by WI-riroz PR #279 (selfh/dev fa2973a33d): play_routes.py local PASS_VERSION='1' replaced with canonical ir.PASS_VERSION; run.version now '6.0.0' like every other pass. Adjacent: WI-luliv (PR c62101604d) fixed circom's skip-path emitting toolchain as a str (crashed finalize run_signature recompute). REMAINING open scope on this item is symptom 2 ONLY: tree-sitter analyzers stamp toolchain.name='python' (host interpreter) not the grammar/language, AND _compute_run_signature hashes only name+version, ignoring the grammar_module/grammar_version that _extend_toolchain already stamps — so a grammar upgrade does NOT invalidate the cache. Symptom 2 churns run_signature cohort-wide (~79 grammar-backed passes) and is HELD for human go-ahead (deliberate cache-invalidation + release-versioning + per-producer-class policy: linkers/synthesis legitimately stay 'python'). Symptom 3 (execution_id) remains OFF-table (hard-validated origin_run_id FK join key)."  # b25b

@@ -1,0 +1,36 @@
+- op: create  # ff24
+  at: '2026-06-18T02:56:05Z'  # ff24
+  by: agent  # ff24
+  actor: jgstern_agent  # ff24
+  clock: 1  # ff24
+  nonce: ff24  # ff24
+  data:  # ff24
+    kind: work_item  # ff24
+    title: "circom skip-path emits toolchain as a str, not Dict[str,str] — crashes finalize run_signature recompute"  # ff24
+    status: todo_hard  # ff24
+    priority: 2  # ff24
+    parent:  # ff24
+    tags:  # ff24
+    - dogfood  # ff24
+    - analysis_runs  # ff24
+    isbefore: []  # ff24
+    duplicate_of: []  # ff24
+    not_duplicate_of: []  # ff24
+    pr_ref:  # ff24
+    description: "**Defect.** `analyze_circom` grammar-unavailable skip-path (circom.py:472-477)\nbuilds `AnalysisRun(pass_id=PASS_ID, toolchain=\"tree-sitter-circom\", ...)` —\npassing `toolchain` as a **str** where the field type is `Dict[str,str]`.\n\n**Mechanic / live repro.** With the grammar mocked unavailable,\n`analyze_circom('/tmp').run.toolchain == 'tree-sitter-circom'` (a str), and\n`run.to_dict()['toolchain']` is that same str. `finalize._finalize_recompute_run_signature`\n(finalize.py:200) calls `_compute_run_signature(..., run[\"toolchain\"])`, which does\n`toolchain.get('name', '')` → `AttributeError: 'str' object has no attribute 'get'`.\nSo any analysis where circom files are present but the grammar is unavailable, if\nits skip-run reaches finalize, crashes the run_signature recompute. Confirmed live\nvia direct repro.\n\n**Scope.** circom skip-path only (the success path goes through TreeSitterAnalyzer\nwith the base-class dict toolchain). Every other direct-constructor analyzer\n(puppet/robot/rst/meson/purescript/racket/matlab) already passes\n`{\"name\": <lang>, \"version\": \"unknown\"}`; circom is the lone outlier.\n\n**Expectation.** circom skip-path emits `toolchain={\"name\": \"circom\", \"version\": \"unknown\"}`\nmatching the sibling convention; `to_dict` emits a dict; finalize's `.get('name')`\ndoes not crash.\n\n**Fix.** circom.py:474 `toolchain=\"tree-sitter-circom\"` -> `{\"name\": \"circom\", \"version\": \"unknown\"}`.\n\n**Relation.** Distinct from INV-pitab symptom 2 (toolchain.name='python' on tree-sitter\nSUCCESS paths — the policy fork). This is a malformed-TYPE/crash bug, fix is unambiguous\nand independent of that policy decision."  # ff24
+    fields: {}  # ff24
+- op: update  # 7813
+  at: '2026-06-18T03:29:08Z'  # 7813
+  by: agent  # 7813
+  actor: jgstern_agent  # 7813
+  clock: 2  # 7813
+  nonce: '7813'  # 7813
+  set:  # 7813
+    status: done  # 7813
+- op: discuss  # 3d1c
+  at: '2026-06-18T03:29:08Z'  # 3d1c
+  by: agent  # 3d1c
+  actor: jgstern_agent  # 3d1c
+  clock: 3  # 3d1c
+  nonce: 3d1c  # 3d1c
+  message: "Fixed in PR (selfh/dev c62101604d). Behavioral evidence: with the grammar mocked unavailable, analyze_circom('/tmp').run.toolchain was the str 'tree-sitter-circom' and run.to_dict()['toolchain'].get('name') raised AttributeError: 'str' object has no attribute 'get' (the finalize._finalize_recompute_run_signature path). After fix, run.toolchain == {'name':'circom','version':'unknown'} (a dict), to_dict serializes a dict, and the finalize-style .get('name') returns 'circom' without crashing. Production-path test test_skip_toolchain_is_dict_not_str asserts the dict shape + the .get access. Distinct from INV-pitab symptom 2 (the toolchain.name='python' policy fork, still held)."  # 3d1c
