@@ -12,6 +12,19 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Cache correctness: the results cache now invalidates on a tree-sitter grammar upgrade (Wave-2; INV-nofof)** —
+  the analysis results cache is keyed by `~/.cache/hypergumbo/<repo_fingerprint>/results/<state_hash>/<analyzer_identity>/`,
+  and none of the three segments captured the tree-sitter grammar version: `analyzer_identity` hashed only
+  `hypergumbo_core.__version__` + the `.py` content of installed `hypergumbo_*` packages, and grammar packages
+  (`tree_sitter_rust`, `tree-sitter-language-pack`, …) are *not* `hypergumbo_*` packages. So upgrading a grammar between two
+  runs on an unchanged repo with the same hypergumbo version returned a cache **hit** on results produced by the *old*
+  grammar (confirmed: `_get_results_cache_dir` returned a byte-identical path after a simulated grammar upgrade). Fixed by
+  folding the tree-sitter library version + every grammar package version (via `schema._detect_tree_sitter_versions`, the
+  same detector `reproducibility_context` uses) into `compute_analyzer_identity_hash`. Note uncovered along the way:
+  `run_signature` — despite its "for cache keying" docstring — is consulted by *nothing* (zero consumers); the real cache
+  key is `analyzer_identity`. Tradeoff: the identity hash is global, so any grammar upgrade rebuilds the whole cache once
+  (over-invalidation, safe); per-language cache granularity is deferred as a future optimization.
+
 - **Provenance: play-routes reported `version="1"`, corrupting its run_signature (Wave-2; closes WI-riroz, INV-pitab symptom 6)** —
   `play_routes.py` defined a module-local `PASS_VERSION="1"` that shadowed the canonical `ir.PASS_VERSION`
   (= package `__version__`). Because `AnalysisRun.version` feeds `_compute_run_signature`, the stale `"1"` decoupled

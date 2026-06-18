@@ -21,11 +21,16 @@ entry — which is wrong because:
    in ``hypergumbo-lang-extended1`` without bumping
    ``hypergumbo-core``'s ``__version__`` changes output for some
    target repos; pre-upgrade cached results would still be served.
+4. **Tree-sitter grammar upgrades (INV-nofof).** Upgrading a grammar
+   package (``tree_sitter_rust``, ``tree-sitter-language-pack``, ...)
+   changes parse output but touches no ``hypergumbo_*`` file, so
+   without the grammar-version signal below the cache would serve
+   results produced by the *old* grammar.
 
 How it works
 ------------
 
-The hash combines two signals so neither failure mode above goes
+The hash combines three signals so none of the failure modes above goes
 unobserved:
 
 - ``hypergumbo_core.__version__`` — a cheap base discriminator that
@@ -33,6 +38,9 @@ unobserved:
 - A SHA256 over every installed ``hypergumbo_*`` package's ``.py``
   file content (sorted by relative path), capturing dev edits AND
   lang-package upgrades AND the presence of new lang packages.
+- The installed tree-sitter library version + every tree-sitter grammar
+  package's version (via ``schema._detect_tree_sitter_versions``), so a
+  grammar upgrade invalidates the cache (failure mode 4 above).
 
 The discovery walks ``importlib.metadata.distributions()`` for any
 distribution whose ``Name`` starts with ``hypergumbo``, then imports
@@ -109,6 +117,19 @@ def compute_analyzer_identity_hash() -> str:
     parts = [f"__version__={version}"]
     for name in sorted(package_hashes.keys()):
         parts.append(f"{name}={package_hashes[name]}")
+    # INV-nofof: fold the tree-sitter library + grammar package versions into
+    # the identity. Grammar packages (tree_sitter_rust,
+    # tree-sitter-language-pack, ...) are NOT hypergumbo_* packages, so without
+    # this a grammar upgrade changes analysis output but leaves the cache key
+    # unchanged — serving stale results. Reuse the same detector
+    # reproducibility_context uses; the import is lazy to avoid a
+    # schema <-> analyzer_identity import cycle.
+    from .schema import _detect_tree_sitter_versions
+
+    ts_version, grammars = _detect_tree_sitter_versions()
+    parts.append(f"tree_sitter={ts_version}")
+    for gname in sorted(grammars):
+        parts.append(f"grammar:{gname}={grammars[gname]}")
     combined = "\n".join(parts)
     _CACHED_HASH = hashlib.sha256(combined.encode("utf-8")).hexdigest()[:16]
     return _CACHED_HASH

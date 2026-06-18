@@ -319,3 +319,61 @@ def test_results_cache_dir_includes_analyzer_identity_segment(tmp_path: Path):
     parts = cache_dir.parts
     assert parts[-2] != ""  # state_hash present
     assert parts[-3] == "results"
+
+
+def test_hash_changes_when_grammar_version_changes():
+    """INV-nofof: a tree-sitter grammar upgrade must shift the identity.
+
+    Grammar packages (``tree_sitter_rust``, ``tree-sitter-language-pack``,
+    ...) aren't ``hypergumbo_*`` packages, so before INV-nofof a grammar
+    bump left every cache-key segment unchanged and the results cache
+    served output produced by the *old* grammar. The identity now folds in
+    the grammar versions reported by ``schema._detect_tree_sitter_versions``
+    (lazily imported), so mocking that detector to report a different
+    grammar version changes the hash.
+    """
+    with patch(
+        "hypergumbo_core.schema._detect_tree_sitter_versions",
+        return_value=("1.0.0", {"tree-sitter-go": "1.0.0"}),
+    ):
+        reset_cache_for_testing()
+        h1 = compute_analyzer_identity_hash()
+    with patch(
+        "hypergumbo_core.schema._detect_tree_sitter_versions",
+        return_value=("1.0.0", {"tree-sitter-go": "2.0.0"}),  # grammar upgraded
+    ):
+        reset_cache_for_testing()
+        h2 = compute_analyzer_identity_hash()
+    assert h1 != h2
+
+
+def test_hash_changes_when_tree_sitter_library_version_changes():
+    """The tree-sitter *library* version is also part of the identity."""
+    with patch(
+        "hypergumbo_core.schema._detect_tree_sitter_versions",
+        return_value=("0.21.0", {"tree-sitter-go": "1.0.0"}),
+    ):
+        reset_cache_for_testing()
+        h1 = compute_analyzer_identity_hash()
+    with patch(
+        "hypergumbo_core.schema._detect_tree_sitter_versions",
+        return_value=("0.22.0", {"tree-sitter-go": "1.0.0"}),  # lib upgraded
+    ):
+        reset_cache_for_testing()
+        h2 = compute_analyzer_identity_hash()
+    assert h1 != h2
+
+
+def test_hash_handles_absent_tree_sitter():
+    """When no tree-sitter library/grammars are installed the detector
+    returns ``(None, {})``; the identity still computes (covers the
+    ``None`` library-version path and the empty-grammars no-iteration path).
+    """
+    with patch(
+        "hypergumbo_core.schema._detect_tree_sitter_versions",
+        return_value=(None, {}),
+    ):
+        reset_cache_for_testing()
+        h = compute_analyzer_identity_hash()
+    assert len(h) == 16
+    int(h, 16)  # raises if non-hex
