@@ -205,6 +205,31 @@ def test_analysis_run_to_dict_includes_new_fields() -> None:
     assert "repo_fingerprint" in d
     assert "skipped_passes" in d
     assert "warnings" in d
+    assert "nodes_emitted" in d
+    assert "edges_emitted" in d
+
+
+def test_analysis_run_to_dict_duration_floor_on_emission() -> None:
+    """INV-gizik: a run that emitted output (nodes/edges) must serialize
+    duration_ms>=1 — 0ms with output is structurally impossible. A run with no
+    output keeps its measured duration (a no-op pass legitimately reports 0)."""
+    # Emitted edges but sub-ms (duration_ms still 0) -> floored to 1.
+    r1 = AnalysisRun.create(pass_id="lk", version="1.0.0")
+    r1.edges_emitted = 5
+    assert r1.duration_ms == 0
+    assert r1.to_dict()["duration_ms"] == 1
+    # Emitted nodes, same floor.
+    r2 = AnalysisRun.create(pass_id="lk", version="1.0.0")
+    r2.nodes_emitted = 3
+    assert r2.to_dict()["duration_ms"] == 1
+    # No output -> measured 0 preserved (not floored).
+    r3 = AnalysisRun.create(pass_id="noop", version="1.0.0")
+    assert r3.to_dict()["duration_ms"] == 0
+    # Real measured duration is never lowered/overwritten by the floor.
+    r4 = AnalysisRun.create(pass_id="lk", version="1.0.0")
+    r4.edges_emitted = 5
+    r4.duration_ms = 42
+    assert r4.to_dict()["duration_ms"] == 42
 
 
 def test_symbol_has_qualified_name() -> None:

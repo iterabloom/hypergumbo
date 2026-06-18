@@ -12,6 +12,25 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Provenance: per-pass productivity counters + IR-consuming-pass timer (Wave-2; closes INV-gizik, INV-pitab symptom 5)** —
+  `AnalysisRun` gained two `int` fields, `nodes_emitted` / `edges_emitted` (schema 0.14.1 → 0.14.2), and the per-pass
+  `duration_ms` timer — previously wired only on the file-walking branch — is now started for every pass. Before this,
+  20/86 self-analysis runs reported `duration_ms=0` while emitting edges (type-hierarchy: 324 edges "in 0ms";
+  decorator-dispatch: 292), 58/86 reported `files_analyzed=0` (IR-consuming linker/synthesis passes have no file
+  counter), and there were no productivity counters at all — "how many edges did pyffi-linker emit" required scanning the
+  whole edge list. The counters are stamped at **chokepoints**, not per-producer: analyzers at the orchestrator
+  (`collect_analyzer_result`, before `to_dict` snapshots the run), linkers in `_run_linker_with_cache` (the one locus that
+  times each linker individually — the parallel pool defeats post-dispatch timing), and the boundary / file-symbol /
+  enclosure synthesis passes at their create sites. `duration_ms` is serialized with an **INV-gizik floor**: a run that
+  emitted output cannot report `0ms` (sub-millisecond work rounds up to `1`), so `0ms` now unambiguously means "did
+  nothing", never "was never timed". `files_analyzed` is left untouched — it remains a file count (ADR-0043 §6.1 ratified
+  #5: a new field, not a recompute-by-`origin_run_id`, which yields a node/path count and is unsound). Behavioral evidence
+  (production-path test `test_inv_gizik_no_emission_in_zero_duration`): 0 runs carry output with `duration_ms=0`. The
+  remaining INV-pitab symptoms (toolchain.name hardcoded to the host interpreter, `version` drift on play-routes,
+  `execution_id` per-pass-vs-per-invocation) are deferred to a follow-up — they all churn `run_signature`, whereas this PR
+  touches neither toolchain nor version (zero run_signature blast radius). Directly-verified provenance/shape metric; no
+  bakeoff claim.
+
 - **Provenance: producer-side `config_fingerprint` for the override-analyze / linker / synthesis cohort (Wave-2; closes WI-mipul config_fingerprint half + INV-lidul sub-claim 1)** —
   `AnalysisRun.config_fingerprint` was the constant default sentinel (`sha256:44136fa355b3678a`, sha256 of `{}`) on
   56 of 86 self-analysis runs — every analyzer that overrides `analyze()` or is a bare `@register_analyzer` function

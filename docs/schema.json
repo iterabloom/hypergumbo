@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.14.1"
+      "const": "0.14.2"
     },
     "confidence_model": {
       "type": "string",
@@ -1323,6 +1323,14 @@
         "pass_version": {
           "type": "string",
           "description": "Code-hash of the pass module (compute_pass_version); distinct from `version` (the package version)"
+        },
+        "nodes_emitted": {
+          "type": "integer",
+          "description": "Number of Symbols this pass contributed (INV-gizik / INV-pitab); distinct from files_analyzed (a file count)"
+        },
+        "edges_emitted": {
+          "type": "integer",
+          "description": "Number of Edges this pass contributed (INV-gizik / INV-pitab); a pass with edges_emitted>0 must carry duration_ms>0"
         }
       },
       "required": [

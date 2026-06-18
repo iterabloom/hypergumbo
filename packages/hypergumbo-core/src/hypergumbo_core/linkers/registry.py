@@ -102,6 +102,7 @@ In cli.py:
 from __future__ import annotations
 
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from itertools import groupby
@@ -629,10 +630,26 @@ def _run_linker_with_cache(
     from ._text_filters import reset_active_parse_cache, set_active_parse_cache
 
     token = set_active_parse_cache(ctx.parsed_trees)
+    _t0 = time.perf_counter()
     try:
-        return func(ctx)
+        result = func(ctx)
     finally:
         reset_active_parse_cache(token)
+    # INV-gizik / INV-pitab: every linker invocation flows through this wrapper
+    # (serial dispatch, parallel-pool submit, and run_linker by-name), so it is
+    # the one locus that can time EACH linker individually — the parallel pool's
+    # out-of-order as_completed makes per-linker wall-clock impossible at the
+    # post-dispatch sites. Stamp the per-pass productivity counters here too
+    # (result.symbols/result.edges are this pass's direct output, before any
+    # accumulation). duration_ms is guarded so the ~40 linker bodies that
+    # self-time keep their value; the counters are derived facts, always set.
+    _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+    if result.run is not None:
+        if not result.run.duration_ms:
+            result.run.duration_ms = _elapsed_ms
+        result.run.nodes_emitted = len(result.symbols)
+        result.run.edges_emitted = len(result.edges)
+    return result
 
 
 def run_linker(
@@ -860,6 +877,7 @@ def run_all_linkers(
             {"pass_id": enclosure_pass_id}
         ),
     )
+    _encl_t0 = time.perf_counter()
     try:
         enclosure_edges = _connect_synthetic_to_enclosing(
             enclosure_ctx,
@@ -874,6 +892,10 @@ def run_all_linkers(
         # gathered so far.
         _record_linker_crash(limits, "enclosure", exc)
         return results
+    # INV-gizik: this synthesis pass does not flow through _run_linker_with_cache,
+    # so stamp its duration + edge count here (no nodes; it only emits edges).
+    enclosure_run.duration_ms = int((time.perf_counter() - _encl_t0) * 1000)
+    enclosure_run.edges_emitted = len(enclosure_edges)
     if enclosure_edges:
         results.append(("enclosure", LinkerResult(edges=enclosure_edges, run=enclosure_run)))
 

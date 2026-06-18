@@ -196,6 +196,47 @@ def test_no_analysis_run_carries_default_config_fingerprint(tmp_path: Path) -> N
     )
 
 
+def test_inv_gizik_no_emission_in_zero_duration(tmp_path: Path) -> None:
+    """INV-gizik production-path witness: after a real run, NO AnalysisRun may
+    carry nodes_emitted>0 or edges_emitted>0 while reporting duration_ms==0
+    ('324 edges in 0ms is impossible'). Exercises the analyzer chokepoint, the
+    linker chokepoint (_run_linker_with_cache), and the boundary / file-symbol /
+    enclosure synthesis passes — every locus that previously left the timer
+    unstarted on IR-consuming passes. Also asserts the new productivity fields
+    are present on every run.
+    """
+    import json
+    from hypergumbo_core.cli import run_behavior_map
+
+    (tmp_path / "fetch.py").write_text(
+        "from urllib.request import urlopen\n"
+        "class Client:\n"
+        "    def fetch(self, url):\n"
+        "        return urlopen(url).read()\n"
+    )
+    out_path = tmp_path / "results.json"
+    run_behavior_map(
+        tmp_path, out_path, budgets="none",
+        include_sketch_precomputed=False, enable_handler_slices=False,
+    )
+    runs = json.loads(out_path.read_text())["analysis_runs"]
+    assert runs, "expected at least one analysis_run"
+    for r in runs:
+        assert "nodes_emitted" in r and "edges_emitted" in r
+        emitted = (r.get("nodes_emitted", 0) or 0) + (r.get("edges_emitted", 0) or 0)
+        if emitted > 0:
+            assert r.get("duration_ms", 0) > 0, (
+                f"pass {r.get('pass')!r} emitted {emitted} nodes+edges but "
+                f"reports duration_ms={r.get('duration_ms')!r} (INV-gizik)"
+            )
+    # At least one IR-consuming pass (a linker or synthesis pass) must now carry
+    # a real emission count — proves the chokepoints fire, not just the floor.
+    assert any(
+        (r.get("edges_emitted", 0) or 0) > 0 and r.get("pass") not in ("python",)
+        for r in runs
+    ), "expected at least one linker/synthesis pass with edges_emitted>0"
+
+
 def test_run_behavior_map_returns_generated_files(tmp_path: Path) -> None:
     """Test that run_behavior_map returns list of generated file paths."""
     from hypergumbo_core.cli import run_behavior_map

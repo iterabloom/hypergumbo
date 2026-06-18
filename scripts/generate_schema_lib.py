@@ -703,6 +703,19 @@ def _analysis_run_spec() -> ClassSpec:
                     "distinct from `version` (the package version)"
                 ),
             },
+            "nodes_emitted": {
+                "description": (
+                    "Number of Symbols this pass contributed (INV-gizik / "
+                    "INV-pitab); distinct from files_analyzed (a file count)"
+                ),
+            },
+            "edges_emitted": {
+                "description": (
+                    "Number of Edges this pass contributed (INV-gizik / "
+                    "INV-pitab); a pass with edges_emitted>0 must carry "
+                    "duration_ms>0"
+                ),
+            },
         },
         sample_factory=_sample_analysis_run,
     )

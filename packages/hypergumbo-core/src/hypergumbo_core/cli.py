@@ -8095,12 +8095,18 @@ def run_behavior_map(
             {"pass_id": "boundary_external_symbol_synthesis"}
         ),
     )
+    _boundary_t0 = time.perf_counter()
     boundary, id_remap = create_boundary_nodes(
         all_symbols, all_edges, dependency_manifest=dependency_manifest,
         origin_run_id=_boundary_run.execution_id,
     )
     if boundary:
         all_symbols.extend(boundary)
+        # INV-gizik: stamp this synthesis pass's duration + node count (it emits
+        # external_symbol placeholder Symbols; edge changes are remaps, not new
+        # edges, so edges_emitted stays 0).
+        _boundary_run.duration_ms = int((time.perf_counter() - _boundary_t0) * 1000)
+        _boundary_run.nodes_emitted = len(boundary)
         analysis_runs.append(_boundary_run.to_dict())
     if id_remap:
         all_edges = apply_external_id_remap(all_edges, id_remap)

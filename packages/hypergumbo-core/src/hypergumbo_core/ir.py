@@ -244,6 +244,18 @@ class AnalysisRun:
     # set it from self.pass_version; linkers are stamped by _stamp_pass_version
     # in run_all_linkers. Distinct from ``version`` (the package version).
     pass_version: str = ""  # axis: identity
+    # Per-pass productivity counters (INV-gizik / INV-pitab symptom 5). Number
+    # of Symbols / Edges this pass contributed, stamped centrally:
+    # analyzers at the orchestrator chokepoint (collect_analyzer_result),
+    # linkers in _run_linker_with_cache, synthesis passes at their create site.
+    # Distinct from files_analyzed (a FILE count, contractually ==
+    # profile.languages[L].files — ADR-0043 §6.1 #5: do NOT overload it).
+    # INV-gizik invariant: a pass with edges_emitted>0 (or nodes_emitted>0)
+    # must not also carry duration_ms==0 — producing output in zero time is
+    # structurally impossible (the timer was previously wired only on the
+    # file-walking branch, so IR-consuming linker/synthesis passes reported 0).
+    nodes_emitted: int = 0
+    edges_emitted: int = 0
 
     def __post_init__(self) -> None:
         if not self.config_fingerprint:
@@ -318,8 +330,18 @@ class AnalysisRun:
             "failed_files": self.failed_files,
             "warnings": self.warnings,
             "started_at": self.started_at,
-            "duration_ms": self.duration_ms,
+            # INV-gizik: a pass that emitted output cannot serialize duration_ms=0
+            # ("324 edges in 0ms is impossible"). The timer is now wired on every
+            # branch, but sub-millisecond work rounds int(elapsed*1000) down to 0;
+            # floor it at 1ms when this run emitted Symbols/Edges so 0ms always
+            # means "did nothing", never "was never timed". Passes with no output
+            # keep their measured value (a no-op pass legitimately reports ~0ms).
+            "duration_ms": self.duration_ms or (
+                1 if (self.nodes_emitted or self.edges_emitted) else 0
+            ),
             "pass_version": self.pass_version,
+            "nodes_emitted": self.nodes_emitted,
+            "edges_emitted": self.edges_emitted,
         }
 
 

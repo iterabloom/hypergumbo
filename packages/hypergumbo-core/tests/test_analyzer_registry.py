@@ -19,7 +19,8 @@ from hypergumbo_core.analyze.all_analyzers import (
     stamp_analyzer_config_fingerprint,
 )
 from hypergumbo_core.analyze.base import AnalysisResult
-from hypergumbo_core.ir import AnalysisRun, _default_config_fingerprint
+from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, _default_config_fingerprint
+from hypergumbo_core.limits import Limits
 from hypergumbo_core.analyze import registry as _registry_mod
 from hypergumbo_core.analyze.registry import (
     RegisteredAnalyzer,
@@ -157,6 +158,43 @@ class TestStampAnalyzerConfigFingerprint:
         stamp_analyzer_config_fingerprint(AnalysisResult(run=run_a), self._analyzer("alpha"))
         stamp_analyzer_config_fingerprint(AnalysisResult(run=run_b), self._analyzer("beta"))
         assert run_a.config_fingerprint != run_b.config_fingerprint
+
+
+class TestCollectAnalyzerResultStampsEmissionCounts:
+    """INV-gizik / INV-pitab: collect_analyzer_result stamps nodes_emitted /
+    edges_emitted on the run (before to_dict snapshots it) at the universal
+    analyzer chokepoint."""
+
+    def test_counts_stamped_into_appended_run(self):
+        run = AnalysisRun.create(pass_id="python", version="1.0.0")
+        sym = Symbol(
+            id="python:m.py:1-1:f:function", name="f", kind="function",
+            language="python", path="m.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=1),
+        )
+        edge = Edge(
+            id="python:m.py:1-1:f:function->g", src="python:m.py:1-1:f:function",
+            dst="g", edge_type="calls", line=1, origin=["python"],
+            origin_run_id=run.execution_id,
+        )
+        result = AnalysisResult(symbols=[sym], edges=[edge], run=run)
+        runs: list = []
+        collect_analyzer_result(result, runs, [], [], [], Limits())
+        assert len(runs) == 1
+        assert runs[0]["nodes_emitted"] == 1
+        assert runs[0]["edges_emitted"] == 1
+
+    def test_skipped_result_records_no_run(self):
+        """A skipped analyzer records a skipped_passes entry, not analysis_runs —
+        no counts are stamped onto a run nobody serializes."""
+        run = AnalysisRun.create(pass_id="rust", version="1.0.0")
+        result = AnalysisResult(symbols=[], edges=[], run=run, skipped=True,
+                                skip_reason="grammar unavailable")
+        runs: list = []
+        limits = Limits()
+        collect_analyzer_result(result, runs, [], [], [], limits)
+        assert runs == []
+        assert any(s["pass"] == "rust" for s in limits.skipped_passes)
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ Import points:
 from __future__ import annotations
 
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -120,6 +121,14 @@ def collect_analyzer_result(
             "reason": skip_reason,
         })
     else:
+        # INV-gizik / INV-pitab: stamp per-pass productivity counters at the
+        # universal analyzer chokepoint, BEFORE to_dict() snapshots the run.
+        # result.symbols/result.edges are this analyzer's direct output. Covers
+        # inherited-_analyze_body, override-analyze, and function-registered
+        # analyzers in one site (the same chokepoint as the origin_run_id /
+        # config_fingerprint stamps).
+        result.run.nodes_emitted = len(result.symbols)
+        result.run.edges_emitted = len(result.edges)
         analysis_runs.append(result.run.to_dict())
         # WI-mosil central origin_run_id backstop. Direct-constructor analyzers
         # (toml/json/wgsl/sql and any future ones that build Symbols by hand
@@ -333,12 +342,17 @@ def run_all_analyzers(
             {"pass_id": "orchestrator_file_symbol_synthesis"}
         ),
     )
+    _file_synth_t0 = time.perf_counter()
     _synth_file_symbols = synthesize_file_symbols_for_dangling_edges(
         all_symbols, all_edges, repo_root=repo_root,
         origin_run_id=_file_synth_run.execution_id,
     )
     if _synth_file_symbols:
         all_symbols.extend(_synth_file_symbols)
+        # INV-gizik: this synthesis pass bypasses both analyzer + linker
+        # chokepoints; stamp its duration + node count (it emits only Symbols).
+        _file_synth_run.duration_ms = int((time.perf_counter() - _file_synth_t0) * 1000)
+        _file_synth_run.nodes_emitted = len(_synth_file_symbols)
         analysis_runs.append(_file_synth_run.to_dict())
 
     # Normalize paths: some analyzers produce absolute paths instead of

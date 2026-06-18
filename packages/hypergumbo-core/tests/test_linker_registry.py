@@ -10,6 +10,7 @@ from hypergumbo_core.linkers.registry import (
     LinkerContext,
     LinkerRequirement,
     LinkerResult,
+    _run_linker_with_cache,
     _stamp_config_fingerprint,
     _stamp_pass_version,
     check_linker_requirements,
@@ -1374,6 +1375,39 @@ class TestStampConfigFingerprint:
         _stamp_config_fingerprint(LinkerResult(run=run_a), self._linker("alpha"))
         _stamp_config_fingerprint(LinkerResult(run=run_b), self._linker("beta"))
         assert run_a.config_fingerprint != run_b.config_fingerprint
+
+
+class TestRunLinkerWithCacheStampsEmissionAndDuration:
+    """INV-gizik / INV-pitab: _run_linker_with_cache is the per-linker chokepoint
+    that stamps nodes_emitted/edges_emitted and (guarded) duration_ms."""
+
+    def _ctx(self):
+        return LinkerContext(repo_root=Path("/test"))
+
+    def test_stamps_counts_and_duration_when_run_present(self):
+        run = AnalysisRun.create(pass_id="lk", version="1.0.0")
+        assert run.duration_ms == 0
+        result = LinkerResult(symbols=[object(), object()], edges=[object()], run=run)
+        out = _run_linker_with_cache(lambda ctx: result, self._ctx())
+        assert out is result
+        assert run.nodes_emitted == 2
+        assert run.edges_emitted == 1
+        assert run.duration_ms >= 0  # measured (>=0; floored to 1 at to_dict if 0)
+
+    def test_preserves_self_timed_duration(self):
+        """A linker body that already set duration_ms keeps its value."""
+        run = AnalysisRun.create(pass_id="lk", version="1.0.0")
+        run.duration_ms = 999
+        result = LinkerResult(symbols=[], edges=[object()], run=run)
+        _run_linker_with_cache(lambda ctx: result, self._ctx())
+        assert run.duration_ms == 999
+        assert run.edges_emitted == 1
+
+    def test_no_run_is_noop(self):
+        """A result with no run does not raise."""
+        result = LinkerResult(symbols=[object()], edges=[], run=None)
+        out = _run_linker_with_cache(lambda ctx: result, self._ctx())
+        assert out is result
 
 
 class TestAllRegisteredLinkersHavePassVersion:
