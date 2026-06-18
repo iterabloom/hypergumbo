@@ -49,3 +49,18 @@
   clock: 5  # 029c
   nonce: 029c  # 029c
   message: "emission-parity:F1 / G2 gate finding (PR #4202, LIVE dataclasses): Symbol.is_exported IS populated by the analyzers — 3/N True for ALL 8 mainstream langs. The is_exported-None-100pct reading was a SERIALIZED-JSON probe artifact: the field is relocated to supply_chain.is_exported on serialization (cli.py / ir.py from_dict). So this is NOT an analyzer-emission gap — the is_exported gate cell is a hard lock (green) for every language. Reframes WI-bujot from analyzer-never-populates to the two-writer / serialization-relocation concern, which remains open. Closing WI-bujot on this basis would require citing the relocation code paths, not just the live-field lock."  # 029c
+- op: update  # 9a15
+  at: '2026-06-18T01:13:01Z'  # 9a15
+  by: agent  # 9a15
+  actor: jgstern_agent  # 9a15
+  clock: 6  # 9a15
+  nonce: 9a15  # 9a15
+  set:  # 9a15
+    status: wont_do  # 9a15
+- op: discuss  # 8bff
+  at: '2026-06-18T01:13:01Z'  # 8bff
+  by: agent  # 8bff
+  actor: jgstern_agent  # 8bff
+  clock: 7  # 8bff
+  nonce: 8bff  # 8bff
+  message: "PROBE ARTIFACT — no real defect (matches the correctness-strategy's own verdict: 'is_exported 100% None was a probe artifact — the gate must read live dataclasses/correct path, never the wrong JSON key'). Evidence (2026-06-17, self-analysis 35267 nodes + live analyzer probe): (1) SCHEMA: is_exported is serialized under node.supply_chain.is_exported, NOT top-level node.is_exported — the original pass-23 probe read the non-existent top-level key and saw absent->'None'. (2) SERIALIZED: supply_chain.is_exported = 9234 True / 26033 False (26% exported), not '100% None'. (3) CROSS-LANGUAGE: True is populated by every mainstream CODE analyzer — python 9184, typescript 13, go 9, csharp 8, rust 7, java 6, javascript 4, swift 3. (4) LIVE dataclass: analyze_python correctly sets is_exported=True for __all__-listed public_fn/Public and False for _private_fn. The 0-True languages (toml/json/sql/wgsl/html/ansible/solidity) are config/data/markup where public-API export is arguably N/A; bash (0/231) is the one possible narrow code-analyzer gap — that belongs to the parent INV-jahiv emission-parity matrix (which owns 'which analyzer populates which field'), not a re-file. Closing wont_do: the field works and is schema-consistent; nothing to fix."  # 8bff

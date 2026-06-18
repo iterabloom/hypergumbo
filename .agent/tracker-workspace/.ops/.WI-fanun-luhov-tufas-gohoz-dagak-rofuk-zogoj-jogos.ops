@@ -118,3 +118,18 @@
     tags: [dogfood]  # b2dc
   remove:  # b2dc
     tags: [dogfooding]  # b2dc
+- op: update  # 77ea
+  at: '2026-06-18T01:07:43Z'  # 77ea
+  by: agent  # 77ea
+  actor: jgstern_agent  # 77ea
+  clock: 13  # 77ea
+  nonce: 77ea  # 77ea
+  set:  # 77ea
+    status: done  # 77ea
+- op: discuss  # e7cf
+  at: '2026-06-18T01:07:43Z'  # e7cf
+  by: agent  # e7cf
+  actor: jgstern_agent  # e7cf
+  clock: 14  # e7cf
+  nonce: e7cf  # e7cf
+  message: "Systemic complaint RESOLVED (re-measured 2026-06-17 on self-analysis, 35229 nodes). WI-fanun was filed (2026-05-16) because fingerprint was null on 99.7% of nodes and 'only manifest-parsing analyzers populate it' / repo_fingerprint null on 100% of runs. Both are now false: (a) Symbol.fingerprint on SOURCE-CODE symbols is ~100% populated by NON-manifest analyzers — method 0/18646 null, class 0/4528, variable 0/1701, function 1/7534 — via WI-lisog's v2 context-aware fingerprinting + central normalization (faeaee15f4); (b) AnalysisRun.repo_fingerprint is 0/86 null (populated by the run-lifecycle finalize work). Overall null dropped 99.7% -> 4.7%, and that 4.7% is almost entirely LEGIT: 1602 external_symbol synthetic nodes (span 0-0, no source — spec carveout) + 219 non-canonical fingerprints that are ALL Class-B language=None identity-hashes (0 real leak — WI-lisog's normalization holds: no language!=None node carries a non-canonical fingerprint). NARROW residual (61 file-nodes + 1 bash function + 1 toml dependency = 0.18% of nodes) carved to WI-sijug-sizaj-huzag-luzal-nasip-rovip-jozuj-kakon — distinct from WI-fanun's systemic statement. No bakeoff tag (directly-verified self-analysis re-measurement)."  # e7cf

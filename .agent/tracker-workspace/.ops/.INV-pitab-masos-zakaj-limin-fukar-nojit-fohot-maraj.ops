@@ -102,3 +102,10 @@
   clock: 11  # 6f7d
   nonce: 6f7d  # 6f7d
   message: "RELATED_BUT_DISTINCT to INV-gizik: AR field-set inadequacy: gizik=timer/files_analyzed=0 on IR-consuming passes; pitab symptom-4/5 = overhead unaccounted + nodes_emitted/edges_emitted missing. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 6f7d
+- op: discuss  # 4c6d
+  at: '2026-06-18T00:56:36Z'  # 4c6d
+  by: agent  # 4c6d
+  actor: jgstern_agent  # 4c6d
+  clock: 12  # 4c6d
+  nonce: 4c6d  # 4c6d
+  message: "Symptom 5 (no nodes_emitted/edges_emitted productivity counters) CLOSED by PR #272 (selfh/dev 4e716987a5): AnalysisRun gained both int fields, stamped at chokepoints; per-pass productivity is now a first-class field, not reverse-derivable-only. Symptom 1 (pass_version empty) already fixed (0/86). REMAINING (this item stays open): symptom 2 (toolchain.name hardcoded to host interpreter 'python' x86), symptom 3 (execution_id per-pass-uuid not per-invocation), symptom 6 (version drift play-routes='1' vs '6.0.0'). These are deferred to a dedicated follow-up because they all churn run_signature (toolchain+version feed _compute_run_signature); PR #272 deliberately touched neither, for zero run_signature blast radius. Symptom 3 execution_id rename is OFF the table (it's the hard-validated origin_run_id FK join key, spec_validator)."  # 4c6d

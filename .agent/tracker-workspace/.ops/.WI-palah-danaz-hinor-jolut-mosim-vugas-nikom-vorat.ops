@@ -1,0 +1,21 @@
+- op: create  # fef9
+  at: '2026-06-18T00:57:53Z'  # fef9
+  by: agent  # fef9
+  actor: jgstern_agent  # fef9
+  clock: 1  # fef9
+  nonce: fef9  # fef9
+  data:  # fef9
+    kind: work_item  # fef9
+    title: "smart-test forward slice intermittently fails 'Input file not found: None', forcing full-suite manifest"  # fef9
+    status: todo_soft  # fef9
+    priority: 3  # fef9
+    parent:  # fef9
+    tags:  # fef9
+    - ci_infrastructure  # fef9
+    - developer_experience  # fef9
+    isbefore: []  # fef9
+    duplicate_of: []  # fef9
+    not_duplicate_of: []  # fef9
+    pr_ref:  # fef9
+    description: "Observed 3x during the 2026-06-17 Wave-2 multi-PR campaign (PR2 x2, PR3 x1). When 'pytest' (full smart-test) runs the forward slice to compute the affected-test manifest, the stable hypergumbo 'slice --files <list> --output <out>' sometimes runs the full analysis (340-552s) then errors 'Error: Input file not found: None' (exit 1), tripping smart-test's fallback to a full-suite manifest (which the pre-commit hook + CI then reject). Root cause (cli.py:_get_or_run_analysis ~510-512): run_behavior_map() completes (reaches validation) but the subsequent _discover_input_file(repo_root) returns None, so input_path is None -> 'Input file not found: None'. The cache <state> dir is keyed on git/working-tree state; the leading hypothesis is that something shifts that state between the analysis-WRITE and the discover-READ during the ~5-9min slice — most likely the tracker AUTO-SYNC firing mid-slice (it creates a branch + commits + pushes when pending ops cross 80, changing git state), compounded by cache bloat (~/.cache/hypergumbo was 40G, disk 94% full). RELIABLE WORKAROUND: regenerate the manifest standalone via 'pytest --manifest' with nothing else running (no concurrent test run, no pending tracker auto-sync) — succeeded every time. Candidate fixes: (a) make the cache <state> key stable across a single slice invocation (snapshot once); (b) have smart-test's slice pin the analysis output path explicitly instead of round-tripping through _discover_input_file; (c) suppress tracker auto-sync during a slice; (d) cap/GC ~/.cache/hypergumbo. Also worth a smart-test self-test that asserts the slice fallback diagnostic (.ci/smart-test-fallback.log) is written and surfaces the real stderr (it does — that's how this was diagnosed)."  # fef9
+    fields: {}  # fef9

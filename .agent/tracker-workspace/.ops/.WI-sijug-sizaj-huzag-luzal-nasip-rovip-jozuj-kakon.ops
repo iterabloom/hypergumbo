@@ -1,0 +1,23 @@
+- op: create  # 6896
+  at: '2026-06-18T01:07:41Z'  # 6896
+  by: agent  # 6896
+  actor: jgstern_agent  # 6896
+  clock: 1  # 6896
+  nonce: '6896'  # 6896
+  data:  # 6896
+    kind: work_item  # 6896
+    title: "file-node fingerprint null for ~6% of files (bash/ts/go/rust/swift) + isolated bash function"  # 6896
+    status: todo_soft  # 6896
+    priority: 4  # 6896
+    parent: INV-zadum-rukig-zasum-sinaj-rozij-dadin-mutus-sakir  # 6896
+    tags:  # 6896
+    - identity  # 6896
+    - schema  # 6896
+    - self_analysis  # 6896
+    - dogfood  # 6896
+    isbefore: []  # 6896
+    duplicate_of: []  # 6896
+    not_duplicate_of: []  # 6896
+    pr_ref:  # 6896
+    description: "Narrow residual carved from WI-fanun at its close (PR-chain post-WI-lisog). After WI-lisog populated source-code Symbol fingerprints, self-analysis (35229 nodes) shows fingerprint-null down to 4.7%, almost all legit: 1602 external_symbol (synthetic Class-C, span 0-0, no source — legit-null per spec carveout) + 219 non-canonical that are all Class-B language=None identity-hashes (legit second shape). The REAL residual: 61/940 kind=file nodes carry null fingerprint (languages bash .sh x11, typescript .ts x9, javascript/go/rust/swift x2 each, + githook scripts), 1 kind=function (bash:scripts/ci-debug:209-225:cmd_logs, language=bash), and 1 kind=dependency (toml pyproject). 879/940 file nodes ARE fingerprinted, so file-node fingerprinting is INCONSISTENT across languages/creation-paths — some file nodes get a structural fingerprint, some don't. Investigate where file-node fingerprints are (not) computed (stamp_symbol_fingerprints file-node path vs synthesized file nodes) and the isolated bash-function gap. Low priority: these are 0.18% of nodes and not the systemic 'source-code symbols universally null' problem WI-fanun was filed for (that is fixed)."  # 6896
+    fields: {}  # 6896
