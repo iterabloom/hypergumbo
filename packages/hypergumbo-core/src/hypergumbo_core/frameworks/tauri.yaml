@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Tauri framework patterns (ADR-0003)
+# Tauri framework patterns (ADR-3aaa)
 #
 # Detects Tauri IPC command handlers in Rust code. Functions annotated with
 # #[tauri::command] are IPC endpoints callable from the TypeScript/JavaScript

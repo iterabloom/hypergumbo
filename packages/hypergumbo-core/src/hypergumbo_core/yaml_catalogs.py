@@ -50,7 +50,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         purpose="Framework + convention patterns for symbol enrichment "
         "(decorators, annotations, naming conventions).",
         loader="hypergumbo_core.framework_patterns",
-        adr="ADR-0003",
+        adr="ADR-3aaa",
     ),
     CatalogSpec(
         directory="dataflow_patterns",

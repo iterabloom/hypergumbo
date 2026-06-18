@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Phoenix Framework patterns (ADR-0003 v1.0.x + v1.1.x)
+# Phoenix Framework patterns (ADR-3aaa v1.0.x + v1.1.x)
 #
 # Matches Phoenix/Elixir conventions for controllers, channels, LiveView, etc.
 # Symbols matching these patterns get enriched with concept metadata.

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Next.js framework patterns (ADR-0003 v1.1.x)
+# Next.js framework patterns (ADR-3aaa v1.1.x)
 #
 # Matches Next.js file-based routing patterns.
 # Symbols matching these patterns get enriched with concept metadata.

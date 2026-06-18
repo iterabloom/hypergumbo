@@ -7691,7 +7691,7 @@ def run_behavior_map(
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
             Affects profile detection (language stats). Use for excluding
             project-specific files like "*.json" or "vendor".
-        frameworks: Framework specification (ADR-0003):
+        frameworks: Framework specification (ADR-3aaa):
             - None: Auto-detect (default)
             - "none": Skip framework detection
             - "all": Check all frameworks for detected languages
@@ -7821,7 +7821,7 @@ def run_behavior_map(
         profile = refine_frameworks(profile, all_edges, all_symbols)
         behavior_map["profile"] = profile.to_dict()
 
-    # Enrich symbols with framework concept metadata (ADR-0003)
+    # Enrich symbols with framework concept metadata (ADR-3aaa)
     # This applies YAML-based patterns to add concept info (route, model, etc.)
     # to symbols based on their decorators, base classes, annotations, AND
     # usage contexts (v1.1.x) for call-based frameworks like Django URLs.

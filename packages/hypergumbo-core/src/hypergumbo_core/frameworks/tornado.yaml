@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Tornado framework patterns (ADR-0003)
+# Tornado framework patterns (ADR-3aaa)
 #
 # Tornado is a Python async web framework. Handlers are classes
 # inheriting from RequestHandler with get(), post(), etc. methods.

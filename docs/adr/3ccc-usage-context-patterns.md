@@ -1,12 +1,12 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# ADR-0003 Extension: Usage Context Patterns
+# ADR-3ccc: Usage Context Patterns (extends ADR-3aaa)
 
 ## Status
-Implemented — the `UsageContext` IR type is live at `packages/hypergumbo-core/src/hypergumbo_core/ir.py:538`, serialised via `schema.py`, produced by `analyze/base.py` + `analyze/all_analyzers.py`, surfaced in `cli.py` output, and consumed by `linkers/route_handler.py`. All five example frameworks listed in this document have YAML pattern files: `django.yaml` (call-based), `express.yaml` (call-based), `hapi.yaml` (data-driven), `nextjs.yaml` (file-based), and `sinatra.yaml` (block/DSL-based). The Clojure data-driven axis is covered by `ring-compojure.yaml`. 22 framework YAML files currently use usage-context patterns in one shape or another. The Django YAML's header comment ("ADR-0003 v1.0.x + v1.1.x … Usage-based patterns (v1.1.x): Match URL routing via `path()`/`re_path()` calls") tracks the phased rollout explicitly.
+Implemented — the `UsageContext` IR type is live at `packages/hypergumbo-core/src/hypergumbo_core/ir.py:538`, serialised via `schema.py`, produced by `analyze/base.py` + `analyze/all_analyzers.py`, surfaced in `cli.py` output, and consumed by `linkers/route_handler.py`. All five example frameworks listed in this document have YAML pattern files: `django.yaml` (call-based), `express.yaml` (call-based), `hapi.yaml` (data-driven), `nextjs.yaml` (file-based), and `sinatra.yaml` (block/DSL-based). The Clojure data-driven axis is covered by `ring-compojure.yaml`. 22 framework YAML files currently use usage-context patterns in one shape or another. The Django YAML's header comment ("ADR-3aaa v1.0.x + v1.1.x … Usage-based patterns (v1.1.x): Match URL routing via `path()`/`re_path()` calls") tracks the phased rollout explicitly.
 
-## Relationship to ADR-0003
+## Relationship to ADR-3aaa
 
-This document extends [ADR-0003: Architectural Analysis and Revision Plan](0003-architectural-analysis-and-revision-plan.md). It addresses a gap identified in the main ADR's framework concept table (section 1.4):
+This document extends [ADR-3aaa: Architectural Analysis and Revision Plan](3aaa-architectural-analysis-and-revision-plan.md). It addresses a gap identified in the main ADR's framework concept table (section 1.4):
 
 | Concept | FastAPI | Express | Spring | Django |
 |---------|---------|---------|--------|--------|
@@ -16,7 +16,7 @@ Note that FastAPI and Spring use **decorators/annotations** (definition-based), 
 
 ## Context
 
-ADR-0003 established that framework semantics should be externalized from analyzers into YAML pattern files. The initial implementation supports **definition-based patterns** that match against symbol metadata (what ADR-0003 calls "rich metadata": decorators, base classes, annotations, parameters).
+ADR-3aaa established that framework semantics should be externalized from analyzers into YAML pattern files. The initial implementation supports **definition-based patterns** that match against symbol metadata (what ADR-3aaa calls "rich metadata": decorators, base classes, annotations, parameters).
 
 However, many frameworks express semantics through **how symbols are used**, not how they're defined:
 
@@ -805,7 +805,7 @@ When the model encounters patterns it cannot fully analyze, it should:
 
 This allows partial analysis rather than all-or-nothing failure.
 
-## Alignment with ADR-0003 Data Flow
+## Alignment with ADR-3aaa Data Flow
 
 The main ADR defines a data flow pipeline (section 4). Here's how UsageContext fits in:
 
@@ -854,7 +854,7 @@ SOURCE FILES
 
 2. **FRAMEWORK_PATTERNS remains data-driven**: The new `usage:` pattern syntax is still YAML, not code. Adding Clojure Reitit support means adding `reitit.yaml`, not editing Python.
 
-3. **Rich metadata extended, not replaced**: ADR-0003's "rich metadata" (decorators, base classes, parameters) is definition context. UsageContext adds usage context. Both feed into FRAMEWORK_PATTERNS.
+3. **Rich metadata extended, not replaced**: ADR-3aaa's "rich metadata" (decorators, base classes, parameters) is definition context. UsageContext adds usage context. Both feed into FRAMEWORK_PATTERNS.
 
 4. **Semantic entry detection preserved**: Entry kinds still derive from enriched symbol metadata, not path heuristics. A function enriched via usage-based route matching is treated identically to one enriched via decorator matching.
 

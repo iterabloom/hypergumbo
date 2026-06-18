@@ -428,7 +428,7 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
                 # Exclude registry.py (the linker registry scaffolding, not a
                 # linker module itself). Matching its subcategory convention
                 # would be meaningless since it doesn't belong to any of the
-                # ADR-0003-ext subcategories; counting it as a linker would
+                # ADR-3bbb subcategories; counting it as a linker would
                 # inflate the total and flag it Uncategorized forever.
                 if module_path.name == "registry":
                     categories["Core"].append((module_name, docstring))
@@ -730,7 +730,7 @@ def count_language_analyzers(categories: dict[str, list[tuple[str, str | None]]]
     return counts
 
 
-# Subcategory vocabulary from ADR-0003 §2.4 as restored by ADR-0003-ext
+# Subcategory vocabulary from ADR-3aaa §2.4 as restored by ADR-3bbb
 # (Linker Subcategory Restoration). Each linker module's docstring must
 # open with one of these four labels. An "Uncategorized" bucket catches
 # files that don't follow the convention so the generator surfaces the
@@ -742,17 +742,17 @@ _LINKER_SUBCATEGORIES = ("Protocol", "Bridge", "Framework", "Infrastructure")
 def count_linker_subcategories(
     categories: dict[str, list[tuple[str, str | None]]],
 ) -> dict[str, int]:
-    """Count linker modules by ADR-0003-ext subcategory.
+    """Count linker modules by ADR-3bbb subcategory.
 
     Reads the first line of each linker module's docstring and matches it
-    against the four ADR-0003-ext subcategory labels. The convention (from
-    ADR-0003-ext §2 decision point #2) is that every linker module's
+    against the four ADR-3bbb subcategory labels. The convention (from
+    ADR-3bbb §2 decision point #2) is that every linker module's
     docstring opens with ``"<Subcategory> linker: <purpose>."``.
 
     Returns a dict keyed by subcategory name ("Protocol", "Bridge",
     "Framework", "Infrastructure") plus an "Uncategorized" bucket for
     modules that don't declare a subcategory in the expected form. The
-    Uncategorized count SHOULD be zero after ADR-0003-ext is fully rolled
+    Uncategorized count SHOULD be zero after ADR-3bbb is fully rolled
     out; a non-zero count is a documentation-drift signal that surfaces
     automatically in the generated architecture doc.
     """
@@ -1013,7 +1013,7 @@ def generate_architecture_md() -> str:
         (
             f"- **{total_modules}** Python modules ({analyzer_count} analyzers, "
             f"{linker_count} linkers across four subcategories per "
-            f"[ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — "
+            f"[ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — "
             f"Protocol {linker_subcats['Protocol']}, "
             f"Bridge {linker_subcats['Bridge']}, "
             f"Framework {linker_subcats['Framework']}, "
@@ -1071,7 +1071,7 @@ def generate_architecture_md() -> str:
         "| Package | Role |",
         "|---------|------|",
         "| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, "
-        f"{linker_count} linkers (Protocol / Bridge / Framework / Infrastructure — ADR-0003-ext), "
+        f"{linker_count} linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), "
         f"{pattern_total} YAML pattern files, sketch/slice output, "
         "supply chain classification, symbol resolution, ranking |",
         f"| **hypergumbo-lang-mainstream** | {mainstream_n} tree-sitter analyzers for widely-used languages "
@@ -1123,7 +1123,7 @@ def generate_architecture_md() -> str:
         "     ▼",
         "┌─────────────────────────────────────────────────────────────────┐",
         "│                     4. PATTERN ENRICHMENT                       │",
-        "│  YAML-driven pattern matching (ADR-0003):                       │",
+        "│  YAML-driven pattern matching (ADR-3aaa):                       │",
         f"│  - {conv_count} convention patterns (always loaded)".ljust(66) + "│",
         f"│  - {fw_count} framework patterns (loaded when framework detected)".ljust(66) + "│",
         "│  Output: Symbols enriched with meta.concepts                    │",
@@ -1132,7 +1132,7 @@ def generate_architecture_md() -> str:
         "     ▼",
         "┌─────────────────────────────────────────────────────────────────┐",
         "│                        5. LINKERS                               │",
-        "│  Tier 2 edge recovery (ADR-0003-ext — Protocol / Bridge /       │",
+        "│  Tier 2 edge recovery (ADR-3bbb — Protocol / Bridge /       │",
         "│  Framework / Infrastructure). Match via meta.concepts and       │",
         "│  symbol metadata across files and language boundaries.          │",
         (
@@ -1441,7 +1441,7 @@ def generate_architecture_md() -> str:
     lines.extend([
         "## Adding a New Linker",
         "",
-        "Per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md), the first "
+        "Per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md), the first "
         "line of every linker module's docstring must declare its subcategory in the "
         "form `\"\"\"<Protocol|Bridge|Framework|Infrastructure> linker: <one-line purpose>.`",
         "",

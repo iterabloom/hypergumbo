@@ -841,7 +841,7 @@ class Utils {
 
 
 # ============================================================================
-# UsageContext Extraction Tests (ADR-0003 v1.1.x - YAML Pattern Support)
+# UsageContext Extraction Tests (ADR-3aaa v1.1.x - YAML Pattern Support)
 # ============================================================================
 
 

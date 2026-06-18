@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Micronaut framework patterns (ADR-0003)
+# Micronaut framework patterns (ADR-3aaa)
 #
 # Micronaut is a Java/Kotlin microservices framework. Controllers use
 # @Controller with @Get/@Post/@Put/@Delete method annotations.

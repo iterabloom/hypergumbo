@@ -30,7 +30,7 @@ Detection is intentionally shallow - we look for package names in
 dependency files rather than analyzing imports. This keeps profiling
 fast (milliseconds) even for large repos.
 
-Framework Specification (ADR-0003)
+Framework Specification (ADR-3aaa)
 ----------------------------------
 The --frameworks flag controls which frameworks to check for:
 - none: Skip framework detection (base analysis only)
@@ -578,7 +578,7 @@ IMPORT_OVERRIDES: dict[str, str] = {
 
 
 class FrameworkMode(Enum):
-    """Mode for framework detection (ADR-0003).
+    """Mode for framework detection (ADR-3aaa).
 
     - NONE: Skip framework detection entirely
     - ALL: Check all known frameworks for detected languages
@@ -594,7 +594,7 @@ class FrameworkMode(Enum):
 
 @dataclass
 class FrameworkSpec:
-    """Specification for which frameworks to check (ADR-0003).
+    """Specification for which frameworks to check (ADR-3aaa).
 
     Attributes:
         mode: How frameworks were specified
@@ -3310,7 +3310,7 @@ def detect_profile(
     Args:
         repo_root: Path to the repository root.
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
-        frameworks: Framework specification (ADR-0003):
+        frameworks: Framework specification (ADR-3aaa):
             - None: Auto-detect (default)
             - "none": Skip framework detection
             - "all": Check all frameworks for detected languages

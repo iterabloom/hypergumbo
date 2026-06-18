@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Fastify framework patterns (ADR-0003)
+# Fastify framework patterns (ADR-3aaa)
 #
 # Fastify is a fast Node.js web framework. Routes are defined using
 # fastify.get(), fastify.post(), etc. or via route schemas.

@@ -254,7 +254,7 @@ def test_linker_subcategories_pinned() -> None:
 
     ``dgumbo`` selectively disables linker subcategories to study recall
     contributions per subcategory. The four names must remain exactly as
-    declared in ADR-0003-ext.
+    declared in ADR-3bbb.
     """
     mod = _load_generate_architecture_module()
     assert hasattr(mod, "_LINKER_SUBCATEGORIES"), (
@@ -267,7 +267,7 @@ def test_linker_subcategories_pinned() -> None:
         "Protocol", "Bridge", "Framework", "Infrastructure",
     ), (
         f"_LINKER_SUBCATEGORIES changed to {mod._LINKER_SUBCATEGORIES!r}; "
-        "the four names are ADR-0003-ext load-bearing vocabulary that "
+        "the four names are ADR-3bbb load-bearing vocabulary that "
         "dgumbo references. Coordinate before merging."
     )
 
@@ -285,7 +285,7 @@ def test_linker_activation_surface_present() -> None:
     fields = LinkerActivation.__dataclass_fields__
     for name in ("always", "frameworks", "language_pairs"):
         assert name in fields, (
-            f"LinkerActivation.{name} removed; ADR-0003-ext subcategory "
+            f"LinkerActivation.{name} removed; ADR-3bbb subcategory "
             "gating depends on this field. dgumbo coordinates here. "
             "Coordinate before merging."
         )

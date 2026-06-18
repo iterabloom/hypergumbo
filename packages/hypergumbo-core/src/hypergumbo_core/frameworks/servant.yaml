@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Servant framework patterns (ADR-0003 v1.1.x)
+# Servant framework patterns (ADR-3aaa v1.1.x)
 #
 # Servant is a Haskell library for defining type-safe APIs.
 # APIs are defined at the type level using combinators.

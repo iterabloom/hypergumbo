@@ -5,7 +5,7 @@ Linkers are Tier 2 passes that recover edges the language analyzers could not se
 
 ## Subcategories
 
-Per [ADR-0003 §2.4](adr/0003-architectural-analysis-and-revision-plan.md) and the extension in [ADR-0003-ext: Linker Subcategory Restoration](adr/0003-linker-subcategory-restoration.md), every linker falls into one of four subcategories:
+Per [ADR-3aaa §2.4](adr/3aaa-architectural-analysis-and-revision-plan.md) and the extension in [ADR-3bbb: Linker Subcategory Restoration](adr/3bbb-linker-subcategory-restoration.md), every linker falls into one of four subcategories:
 
 - **Protocol** — framework-agnostic pattern matching (URL paths, SQL table names, message topics, event names, developer annotations). Activates regardless of detected frameworks.
 - **Bridge** — language-pair-specific FFI or runtime-bridging conventions. Activates when both languages of the pair are present (e.g., JNI activates when Java + C are both detected).
@@ -67,7 +67,7 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 
 **Count:** 46 linkers — Protocol 13, Bridge 10, Framework 17, Infrastructure 6.
 
-Subcategory assignments above are the initial baseline per ADR-0003-ext Appendix B; borderline cases (e.g., `grpc` is framework-specific in protocol but cross-language in use) are documented in that ADR's appendix and will be refined as the subcategory vocabulary matures.
+Subcategory assignments above are the initial baseline per ADR-3bbb Appendix B; borderline cases (e.g., `grpc` is framework-specific in protocol but cross-language in use) are documented in that ADR's appendix and will be refined as the subcategory vocabulary matures.
 
 ## Disambiguation-fallback contract (cross-linker)
 
@@ -168,4 +168,4 @@ The transitive BFS for test coverage estimation currently builds an adjacency li
 
 ### Framework-Subcategory Linker Pipeline
 
-Linker investment is ranked by false-positive-reduction volume. Current highest-value follow-ups in the Framework subcategory: Jackson / JavaBean serialisation reflection, Airflow Hook / Sensor / Trigger / Operator dispatch, and Kafka Streams topology-builder. Each is a Framework-subcategory linker in the ADR-0003-ext sense — the dispatch is framework-injected within one language, even where the downstream effect crosses a language boundary.
+Linker investment is ranked by false-positive-reduction volume. Current highest-value follow-ups in the Framework subcategory: Jackson / JavaBean serialisation reflection, Airflow Hook / Sensor / Trigger / Operator dispatch, and Kafka Streams topology-builder. Each is a Framework-subcategory linker in the ADR-3bbb sense — the dispatch is framework-injected within one language, even where the downstream effect crosses a language boundary.

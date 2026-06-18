@@ -297,7 +297,7 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             # produces but the schema didn't declare. All three are part
             # of hypergumbo's documented output contract:
             #   - entrypoints: per-language entrypoint detection results.
-            #   - usage_contexts: per ADR-0003-ext usage_context_patterns.
+            #   - usage_contexts: per ADR-3ccc usage_context_patterns.
             #   - sketch_precomputed: payload computed during run for
             #     reuse by the sketch step; included by default for
             #     downstream tooling.
@@ -311,7 +311,7 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "items": {"$ref": "#/$defs/UsageContext"},
                 "description": (
                     "Concept-tagged call/usage sites (per "
-                    "ADR-0003-ext usage_context_patterns)"
+                    "ADR-3ccc usage_context_patterns)"
                 )
             },
             # WI-kutas PR2: reproducibility_context is built by
@@ -525,11 +525,11 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
         "required": ["symbol_id", "kind"]
     }
 
-    # Add UsageContext definition (INV-piroh; see ADR-0003-ext)
+    # Add UsageContext definition (INV-piroh; see ADR-3ccc)
     schema["$defs"]["UsageContext"] = {
         "type": "object",
         "description": (
-            "Concept-tagged usage site (per ADR-0003-ext "
+            "Concept-tagged usage site (per ADR-3ccc "
             "usage_context_patterns) — e.g. a Flask `@app.route` "
             "call or a Django ORM filter."
         ),
@@ -559,7 +559,7 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "type": "string",
                 "description": (
                     "Position descriptor — e.g. args[0], view_func, "
-                    "default (per ADR-0003-ext positional vocabulary)"
+                    "default (per ADR-3ccc positional vocabulary)"
                 )
             },
             "span": {"$ref": "#/$defs/Span"},

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Web Audio API framework patterns (ADR-0003)
+# Web Audio API framework patterns (ADR-3aaa)
 #
 # Detects Web Audio API usage patterns in JavaScript/TypeScript code.
 # The Web Audio API provides a graph-based model for audio processing:

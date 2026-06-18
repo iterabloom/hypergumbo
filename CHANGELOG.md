@@ -761,7 +761,7 @@ Internal: the audit methodology behind ADR-0023 generalises into ADR-0024 (axis 
 
 ### Changed
 
-- **Linker subcategory vocabulary restored** (ADR-0003-ext): Protocol / Bridge / Framework / Infrastructure subcategory taxonomy is now first-class. Every linker module docstring declares its subcategory; `docs/LINKERS.md` enumerates all 45 linkers with a Subcategory column.
+- **Linker subcategory vocabulary restored** (ADR-3bbb): Protocol / Bridge / Framework / Infrastructure subcategory taxonomy is now first-class. Every linker module docstring declares its subcategory; `docs/LINKERS.md` enumerates all 45 linkers with a Subcategory column.
 - **Stop hook: process-aware pause replaces 150 s blanket sleep**: polls every 3 s (1800 s cap) while `pytest` / `smart-test` / `auto-pr` / `merge-pr` are alive; returns immediately when none. Configurable via `stop_hook.watched_*` keys; `watched_process.py` filters `bash -c` / `sh -c` wrappers and normalises Python version suffixes.
 - **Dead-code prospector: 8 → 46 gap categories**: adds language-gated rules (Rust trait impls; Python dunders / Django / Airflow; Go receiver methods / k8s / Cilium; Java JavaBean / Kafka / Spring; TS/JS React / Redux / Superset / Apollo). Reduces `uncategorized` on the 2026-04-11 corpus (92,218 candidates, 11 polyglot repos) from **94.0 % → 43.5 %**.
 - **Behavior map node IDs use repo-relative paths**: strips the `repo_root` prefix from every Symbol/Edge/UsageContext path. Paths outside `repo_root` preserved.
@@ -1736,7 +1736,7 @@ Major expansion: **37 new analyzers** across languages, templates, config format
 
 ### Added
 
-**YAML-Driven Analysis (ADR-0003)**
+**YAML-Driven Analysis (ADR-3aaa)**
 - Main function detection via `main-functions.yaml` for 10 languages (Go, Java, Python, C, C++, Rust, C#, Kotlin, Swift, Dart)
 - Test function detection via `test-frameworks.yaml` for 10+ frameworks (pytest, JUnit, RSpec, etc.)
 - Language conventions: CUDA kernels, WGSL shaders, COBOL, LaTeX, Starlark (`language-conventions.yaml`)
@@ -1867,7 +1867,7 @@ and completing the migration to YAML-driven semantic analysis.
 
 ### Fixed
 - **Incomplete v0.9.0 release:** v0.9.0 was accidentally built from the wrong branch. This
-  release includes all ADR-0003 features. Users should upgrade from v0.9.0 to v0.9.1.
+  release includes all ADR-3aaa features. Users should upgrade from v0.9.0 to v0.9.1.
 
 ## [0.9.0] - 2026-01-09 (INCOMPLETE RELEASE)
 
@@ -1966,7 +1966,7 @@ Initial public release with comprehensive static analysis capabilities.
 | 1.2.1   | 2026-01-29 | 37 new analyzers, route-handler linker, compact subcommand   |
 | 1.1.0   | 2026-01-24 | Breaking changes (not published to PyPI)                     |
 | 1.0.0   | 2026-01-12 | Memory optimization (80% reduction), YAML-driven entrypoints (not published to PyPI) |
-| 0.9.1   | 2026-01-09 | ADR-0003 implementation (was missing in 0.9.0)               |
+| 0.9.1   | 2026-01-09 | ADR-3aaa implementation (was missing in 0.9.0)               |
 | 0.9.0   | 2026-01-09 | Schema 0.2.0, --frameworks flag, YAML patterns (incomplete)  |
 | 0.6.9   | 2026-01-07 | Fewer false positives, richer slice traversal                |
 | 0.6.0   | 2025-12-29 | Lean, Wolfram, Agda analyzers; release automation            |

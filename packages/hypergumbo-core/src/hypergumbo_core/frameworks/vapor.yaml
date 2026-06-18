@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Vapor framework patterns (ADR-0003)
+# Vapor framework patterns (ADR-3aaa)
 #
 # Vapor is a Swift web framework. Routes are defined using
 # app.get(), app.post(), etc. Controllers extend RouteCollection.

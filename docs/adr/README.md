@@ -9,9 +9,9 @@ This directory contains the project's ADRs, documenting significant design decis
 |-----|-------|--------|------|
 | [0001](0001-portable-agent-instructions.md) | Portable Agent Instructions | Accepted | 2025-12-20 |
 | [0002](0002-test-dependency-handling.md) | Test Dependency Handling | Accepted | 2025-12-27 |
-| [0003](0003-architectural-analysis-and-revision-plan.md) | Architectural Analysis and Revision Plan | Accepted (§5 migration plan complete) | 2026-01-07 |
-| [0003-ext](0003-usage-context-patterns.md) | Usage Context Patterns | Implemented | |
-| [0003-ext](0003-linker-subcategory-restoration.md) | Linker Subcategory Restoration | Implemented | 2026-04-16 |
+| [3aaa](3aaa-architectural-analysis-and-revision-plan.md) | Architectural Analysis and Revision Plan | Accepted (§5 migration plan complete) | 2026-01-07 |
+| [3bbb](3bbb-linker-subcategory-restoration.md) | Linker Subcategory Restoration (extends 3aaa §2.4) | Implemented | 2026-04-16 |
+| [3ccc](3ccc-usage-context-patterns.md) | Usage Context Patterns (extends 3aaa) | Implemented | |
 | [0004](0004-file-taxonomy.md) | File Taxonomy: Tier and Role Classification | Accepted | 2025-01-14 |
 | [0005](0005-sketch-budget-allocation.md) | Sketch Budget Allocation and Section Composition | Accepted | 2025-01-15 |
 | [0006](0006-variable-type-inference.md) | Variable Type Inference for Method Call Resolution | Accepted | 2025-01-21 |
@@ -53,11 +53,13 @@ This directory contains the project's ADRs, documenting significant design decis
 
 > ADR numbers 0025 and 0026 were filed under the ADR series in error and have been **reclassified as audit-findings documents** (per-value verdicts under existing law from ADR-0023 and ADR-0024, not new architecture decisions). They now live at [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md) and [`docs/audits/0002-ipc-family.md`](../audits/0002-ipc-family.md). Stubs at the old paths are kept for URL-level discoverability but are not principles. The bucket boundary is documented in the next section.
 
+> **ADR `0003` was a three-way number collision** — one base document plus two extensions, all filed as `0003`. Per the one-identifier-per-ADR rule (see *ADR lifecycle* below), they were renamed to share the `3` lineage while being uniquely addressable: **`3aaa`** (Architectural Analysis — the base), **`3bbb`** (Linker Subcategory Restoration — extends `3aaa` §2.4), and **`3ccc`** (Usage Context Patterns — extends `3aaa`). Bare `ADR-0003` citations were resolved to the specific file (mostly `3aaa`, the framework-patterns base).
+
 ## When to write an ADR vs an audit-findings document vs a survey
 
 Three buckets, each with its own home:
 
-- **Bucket 1 — ADR (`docs/adr/<NN>-<topic>.md`).** A load-bearing decision document. May have a substantial Context section that includes analysis, surveys, or comparisons of alternatives — those serve the decision. Use even when Context is long, as long as the deliverable is fundamentally a decision. The decision is the deliverable; the analysis is in service of it. Examples in this directory: ADR-0023 (axis principle), ADR-0024 (axis-declaration template), ADR-0003 lineage (decisions with substantial Context).
+- **Bucket 1 — ADR (`docs/adr/<NN>-<topic>.md`).** A load-bearing decision document. May have a substantial Context section that includes analysis, surveys, or comparisons of alternatives — those serve the decision. Use even when Context is long, as long as the deliverable is fundamentally a decision. The decision is the deliverable; the analysis is in service of it. Examples in this directory: ADR-0023 (axis principle), ADR-0024 (axis-declaration template), the ADR-3aaa/3bbb/3ccc lineage (decisions with substantial Context).
 - **Bucket 2 — Audit-findings (`docs/audits/<NN>-<topic>.md`).** A record of per-value verdicts produced by applying an existing methodology (typically the [Fundamental Concept Audit](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md)) to a specific scope. Records case rulings under existing law, NOT new principles. Carries lifecycle states + structured YAML format per [`docs/audits/README.md`](../audits/README.md). Worked examples: [audit-findings 0001](../audits/0001-dispatch-publish-family.md), [audit-findings 0002](../audits/0002-ipc-family.md).
 - **Bucket 3 — Survey/snapshot (`docs/surveys/<topic>.md` or `docs/architecture-snapshots/<date>.md`).** A catalog or point-in-time inventory with no associated decision. Pure descriptive — may *inform* a future ADR or per-value audit but isn't itself a decision or ruling. Worked example: [Symbol Emit-Site Coherence survey](../surveys/symbol-emit-coherence.md) (the audit that informed PR #3984, PR #3986, and ADR-0031). See [`docs/surveys/README.md`](../surveys/README.md) for the format.
 

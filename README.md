@@ -190,7 +190,7 @@ All analyzers produce the same IR types:
 - **Edge**: A relationship between symbols (calls, imports, extends, implements)
 - **Span**: Source location (file, line, column)
 
-This uniform IR is what allows all language analyzers and linkers (Protocol / Bridge / Framework / Infrastructure — see [ADR-0003-ext](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/adr/0003-linker-subcategory-restoration.md)) to work together coherently.
+This uniform IR is what allows all language analyzers and linkers (Protocol / Bridge / Framework / Infrastructure — see [ADR-3bbb](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/adr/3bbb-linker-subcategory-restoration.md)) to work together coherently.
 
 ## Architecture
 

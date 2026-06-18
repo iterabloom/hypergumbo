@@ -18,7 +18,7 @@ Cross-file call edges populate ``Edge.dst_ref`` with the canonical
 import scope's ``named_import_originals`` map, so renamed imports
 (``import { foo as bar }``) attribute to ``foo``, not ``bar``.
 
-Rich Metadata (ADR-0003)
+Rich Metadata (ADR-3aaa)
 ------------------------
 Class and method symbols include rich metadata in their `meta` field:
 
@@ -653,11 +653,11 @@ JS_KNOWN_GLOBALS: frozenset[str] = frozenset({
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
 # Note: Express-style route detection uses function calls (app.get, router.post) rather
-# than decorators. These are now matched via UsageContext (ADR-0003 v1.1.x) which
+# than decorators. These are now matched via UsageContext (ADR-3aaa v1.1.x) which
 # enables YAML patterns for call-based frameworks.
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
-# Known router/app receiver names for route detection (ADR-0003)
+# Known router/app receiver names for route detection (ADR-3aaa)
 # Only calls like app.get(), router.post(), etc. are treated as routes.
 # This prevents false positives from test mocks like fetchMock.get().
 ROUTER_RECEIVER_NAMES = {"app", "router", "express", "server", "fastify", "koa"}
@@ -1328,7 +1328,7 @@ def _detect_route_call(node: "tree_sitter.Node", source: bytes) -> tuple[str | N
     if callee_node is None or args_node is None:
         return None, None
 
-    # Validate the receiver is a known router/app name (ADR-0003)
+    # Validate the receiver is a known router/app name (ADR-3aaa)
     receiver_name = _get_receiver_name(callee_node, source)
     if receiver_name not in ROUTER_RECEIVER_NAMES:
         return None, None

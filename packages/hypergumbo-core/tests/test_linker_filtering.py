@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for linker filtering by framework/language detection (ADR-0003 v0.8.x).
+"""Tests for linker filtering by framework/language detection (ADR-3aaa v0.8.x).
 
 Linkers should only run when their activation conditions are met:
 - Framework linkers: only when framework is detected

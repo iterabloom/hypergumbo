@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """INV-suhob: Bridge linkers must encode consistent activation/depends_on constraints.
 
-Bridge linkers (per ADR-0003-ext subcategory) declare the same language
+Bridge linkers (per ADR-3bbb subcategory) declare the same language
 constraint twice in different syntax:
 
 - ``activation.language_pairs`` — list of ``(anchor_language, impl_language)``
@@ -50,7 +50,7 @@ js_module) also use ``language_pairs`` but their ``depends_on`` is not
 expected to mirror the pairs symmetrically — their constraint shape is
 different (e.g., a Framework linker depends on the language its templates
 embed, not on a separate impl language). The subcategory is read from the
-first line of the linker module's docstring per ADR-0003-ext §2.
+first line of the linker module's docstring per ADR-3bbb §2.
 """
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ def _build_language_to_pass_id() -> dict[str, str]:
 def _bridge_subcategory(linker: RegisteredLinker) -> bool:
     """Return True if the linker's module docstring declares the Bridge subcategory.
 
-    Per ADR-0003-ext §2, every linker module's docstring opens with
+    Per ADR-3bbb §2, every linker module's docstring opens with
     ``"<Subcategory> linker: <one-line purpose>."``.
     """
     module = inspect.getmodule(linker.func)

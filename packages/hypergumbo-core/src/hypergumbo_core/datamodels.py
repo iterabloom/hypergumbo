@@ -12,7 +12,7 @@ How It Works
 Data model detection uses multiple signals to identify classes that represent
 data structures in the codebase - the "nouns" of the domain model:
 
-1. **Semantic concepts** (ADR-0003): YAML framework patterns emit "model",
+1. **Semantic concepts** (ADR-3aaa): YAML framework patterns emit "model",
    "schema", or "entity" concepts for ORM models, Pydantic models, etc.
 
 2. **Decorator detection**: Looks for @dataclass, @Entity, @Table, etc.

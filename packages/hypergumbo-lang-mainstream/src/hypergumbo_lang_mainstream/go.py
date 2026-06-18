@@ -170,7 +170,7 @@ _GO_STDLIB_INTERFACE_METHODS: frozenset[str] = frozenset({
 # Fiber uses lowercase: Get, Post, Put, Delete, Patch, Head, Options
 #
 # Route detection produces two outputs from the same extraction pass:
-# 1. UsageContext records — matched by YAML patterns (ADR-0003 v1.1.x) to enrich
+# 1. UsageContext records — matched by YAML patterns (ADR-3aaa v1.1.x) to enrich
 #    handler symbols with concept: route metadata.
 # 2. Route symbols (kind="route") — consumed by the route_handler linker to
 #    create routes_to edges. See py.py docstring for full architecture notes.

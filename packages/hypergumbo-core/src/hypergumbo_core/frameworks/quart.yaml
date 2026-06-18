@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Quart framework patterns (ADR-0003)
+# Quart framework patterns (ADR-3aaa)
 #
 # Quart is an async Python micro-framework for building web applications.
 # It is an asyncio reimplementation of Flask with the same API.

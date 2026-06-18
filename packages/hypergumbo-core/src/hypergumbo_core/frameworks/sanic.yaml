@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Sanic framework patterns (ADR-0003)
+# Sanic framework patterns (ADR-3aaa)
 #
 # Sanic is an async Python web framework built for speed.
 # It supports async/await syntax and has a similar API to Flask.

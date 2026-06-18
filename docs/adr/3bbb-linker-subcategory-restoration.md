@@ -1,18 +1,18 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# ADR-0003 Extension: Linker Subcategory Restoration
+# ADR-3bbb: Linker Subcategory Restoration (extends ADR-3aaa §2.4)
 
 Date: 2026-04-16
-Status: Implemented — all seven rollout PRs merged 2026-04-16 to 2026-04-17 (this ADR PR #3076, `docs/LINKERS.md` rewrite PR #3077, `docs/hypergumbo-spec.md` in-place corrections PR #3078, ADR-0003/0010/0012/0015 corrections PR #3079, module-docstring sweep + README/ARCHITECTURE/CHANGELOG PR #3080, `generate-architecture` subcategory enforcement PR #3084, governance-file edits — `AGENTS.md` + three playbooks — PR #3089 via tracker item WI-hizab). All 45 linker modules declare their subcategory; the `generate-architecture` Uncategorized counter is 0 and will surface any future regression.
+Status: Implemented — all seven rollout PRs merged 2026-04-16 to 2026-04-17 (this ADR PR #3076, `docs/LINKERS.md` rewrite PR #3077, `docs/hypergumbo-spec.md` in-place corrections PR #3078, ADR-3aaa/0010/0012/0015 corrections PR #3079, module-docstring sweep + README/ARCHITECTURE/CHANGELOG PR #3080, `generate-architecture` subcategory enforcement PR #3084, governance-file edits — `AGENTS.md` + three playbooks — PR #3089 via tracker item WI-hizab). All 45 linker modules declare their subcategory; the `generate-architecture` Uncategorized counter is 0 and will surface any future regression.
 
 ## Supplements
 
-This ADR supplements [ADR-0003 §2.4](0003-architectural-analysis-and-revision-plan.md). It does **not** supersede ADR-0003 as a whole — the analyzer-vs-linker / FRAMEWORK_PATTERNS architecture from that document remains authoritative. This extension addresses a specific drift in ADR-0003 §2.4's subcategory vocabulary and proposes a remediation.
+This ADR supplements [ADR-3aaa §2.4](3aaa-architectural-analysis-and-revision-plan.md). It does **not** supersede ADR-3aaa as a whole — the analyzer-vs-linker / FRAMEWORK_PATTERNS architecture from that document remains authoritative. This extension addresses a specific drift in ADR-3aaa §2.4's subcategory vocabulary and proposes a remediation.
 
 ## Context
 
 ### The taxonomy as originally specified
 
-ADR-0003 §2.4 defined three linker subcategories:
+ADR-3aaa §2.4 defined three linker subcategories:
 
 | Subcategory | Definition | Original enumeration |
 |---|---|---|
@@ -28,11 +28,11 @@ Crucially, the **Protocol Linkers** subcategory was designed to cover within-lan
 
 Between 2026-01-07 and 2026-04-16, the linker count grew from 14 to **45** files under ~20 distinct introducing commits. During that growth the subcategory vocabulary was never used again in working diction:
 
-- **Module docstrings:** 34 of 45 linker files self-describe as "linker" with no subcategory qualifier (`LINKER_UNQUALIFIED` in our G-doc audit). Only 2 files explicitly call themselves within-language (`di_resolution.py`, `type_hierarchy.py`). 10 files explicitly call themselves cross-language / FFI bridges. **Zero files reference ADR-0003 §2.4 or the Protocol / Bridge / Framework terms.**
+- **Module docstrings:** 34 of 45 linker files self-describe as "linker" with no subcategory qualifier (`LINKER_UNQUALIFIED` in our G-doc audit). Only 2 files explicitly call themselves within-language (`di_resolution.py`, `type_hierarchy.py`). 10 files explicitly call themselves cross-language / FFI bridges. **Zero files reference ADR-3aaa §2.4 or the Protocol / Bridge / Framework terms.**
 - **Commit messages:** A stratified sample of 5 within-language-dispatch linker introducing commits (`f96300b2b` openapi, `b45f306c7` di_resolution, `9cc7d54a7` decorator_dispatch, `e825294d0` middleware_chain, `aabf1d945` method_call_recovery) — **zero engaged with the subcategory taxonomy**. Placement in `linkers/` was treated as the natural default. The FRAMEWORK_PATTERNS alternative home was never considered.
 - **Restructuring discussions:** A full-history git-log pickaxe search plus tracker item sweep returned null findings. No commit, PR body, tracker item, or lab-notebook entry proposed restructuring `linkers/`, renaming the concept, or revising §2.4. The taxonomy was neither endorsed nor opposed — it was forgotten.
-- **ADR-0003 itself:** 2 commits total touch the file — its creation (`66fd92c5c`) and a blanket SPDX license header addition (`e1433706c`). §2.4 has never received a content revision.
-- **Downstream documents** (ADR-0010 directory comment, ADR-0012's "24 cross-language linkers" line, ADR-0015's repeated "cross-language linker" framing, `docs/LINKERS.md`'s title and opening sentence, `docs/hypergumbo-spec.md` §7, `README.md`, `docs/ARCHITECTURE.md`, `AGENTS.md` BROAD/DEEP priorities, three bakeoff playbooks) collectively treat "linker" as a synonym for "cross-language linker." The narrow framing pre-dates ADR-0003 (lab-notebook entry 2025-12-25 already used "cross-language linkers" as a casual category label for IPC and WebSocket) and was never corrected.
+- **ADR-3aaa itself:** 2 commits total touch the file — its creation (`66fd92c5c`) and a blanket SPDX license header addition (`e1433706c`). §2.4 has never received a content revision.
+- **Downstream documents** (ADR-0010 directory comment, ADR-0012's "24 cross-language linkers" line, ADR-0015's repeated "cross-language linker" framing, `docs/LINKERS.md`'s title and opening sentence, `docs/hypergumbo-spec.md` §7, `README.md`, `docs/ARCHITECTURE.md`, `AGENTS.md` BROAD/DEEP priorities, three bakeoff playbooks) collectively treat "linker" as a synonym for "cross-language linker." The narrow framing pre-dates ADR-3aaa (lab-notebook entry 2025-12-25 already used "cross-language linkers" as a casual category label for IPC and WebSocket) and was never corrected.
 
 ### Why this matters
 
@@ -53,11 +53,11 @@ Three new tracker items (WI-gupah Jackson/JavaBean, WI-nutav Airflow framework, 
 
 ## Decision
 
-Restore the ADR-0003 §2.4 subcategory vocabulary as a first-class classification that every linker declares, every documented catalogue reports, and every bakeoff priority respects. Extend the taxonomy with a fourth subcategory to accommodate files that were already absorbed into `linkers/` but don't fit the original three.
+Restore the ADR-3aaa §2.4 subcategory vocabulary as a first-class classification that every linker declares, every documented catalogue reports, and every bakeoff priority respects. Extend the taxonomy with a fourth subcategory to accommodate files that were already absorbed into `linkers/` but don't fit the original three.
 
 ### 1. Restore Protocol / Bridge / Framework as active terms
 
-The three original subcategories retain their ADR-0003 §2.4 definitions:
+The three original subcategories retain their ADR-3aaa §2.4 definitions:
 
 - **Protocol Linker** — framework-agnostic; match on protocol semantics (URL pattern, SQL table name, message topic, event name). Typically activates always, regardless of detected frameworks.
 - **Bridge Linker** — language-pair-specific; connect symbols across language boundaries via FFI or runtime-bridging conventions. Typically activates when both languages of the pair are present.
@@ -69,7 +69,7 @@ Some files in `packages/hypergumbo-core/src/hypergumbo_core/linkers/` operate as
 
 - **Infrastructure Linker** — graph-structural utilities run as Tier 2 passes but not doing dispatch recovery. Examples: `containment.py` (class→method `contains` edges), `inheritance.py` (base_classes → extends edges), `js_module.py` (import-path-to-file resolution), `build_target.py` (build manifest → entry point), `dependency.py` (import statement → manifest declaration).
 
-The fourth subcategory is a documented **extension** of ADR-0003 §2.4, not a replacement.
+The fourth subcategory is a documented **extension** of ADR-3aaa §2.4, not a replacement.
 
 ### 3. Every linker module's docstring declares its subcategory
 
@@ -103,17 +103,17 @@ The `trackerize` playbook's well-known-tags list adds:
 
 The pre-existing `cross_language_linkers` tag is retained for backwards-continuity with already-tagged items. New items use the finer-grained tags; no backfill is required. `cross_language_linkers` remains a reasonable tag for any item that genuinely spans a language boundary (typically Bridge-subcategory work and some Framework work).
 
-### 8. ADR-0003 §2.4's original table is extended
+### 8. ADR-3aaa §2.4's original table is extended
 
 §2.4's three-subcategory table (Protocol / Bridge / Framework) is extended to four (adding Infrastructure). The original three subcategories' definitions and activation-condition framing are preserved verbatim — only the enumerated examples are expanded to reflect the current 45-file catalogue. This is an **additive** revision; it does not contradict the original.
 
 ## Alternatives considered
 
-**Alternative A — Amend ADR-0003 in place.** Rewrite §2.4 directly with the expanded tables and forward-looking commitment. Rejected: ADR-0003 is a sprawling document (~1000 lines) whose strongest contribution is the analyzer-vs-linker / FRAMEWORK_PATTERNS architecture. A multi-page §2.4 rehabilitation would dilute that focus. The extension-ADR pattern (already used by `0003-call-patterns-extension.md` and `0003-usage-context-patterns.md`) is a known idiom in this repo for scoped follow-ups.
+**Alternative A — Amend ADR-3aaa in place.** Rewrite §2.4 directly with the expanded tables and forward-looking commitment. Rejected: ADR-3aaa is a sprawling document (~1000 lines) whose strongest contribution is the analyzer-vs-linker / FRAMEWORK_PATTERNS architecture. A multi-page §2.4 rehabilitation would dilute that focus. The extension-ADR pattern (already used by `0003-call-patterns-extension.md` and `3ccc-usage-context-patterns.md`) is a known idiom in this repo for scoped follow-ups.
 
 **Alternative B — Abandon the subcategory vocabulary and commit to "just linkers."** Rejected: the Protocol / Bridge / Framework distinction has genuine prioritization value (different activation conditions, different FP profiles, different implementation styles). Collapsing the vocabulary would make the roadmap-bias problem (INV-nimuj) harder to reason about, not easier.
 
-**Alternative C — Introduce a new vocabulary.** Rejected: ADR-0003's terms are already correct. The failure was vocabulary inertia (the terms were coined, then never repeated in practice), not vocabulary inadequacy. Introducing new terms would pay the introduction cost without solving the inertia problem.
+**Alternative C — Introduce a new vocabulary.** Rejected: ADR-3aaa's terms are already correct. The failure was vocabulary inertia (the terms were coined, then never repeated in practice), not vocabulary inadequacy. Introducing new terms would pay the introduction cost without solving the inertia problem.
 
 **Alternative D — Defer the Infrastructure subcategory to a follow-up ADR.** Rejected: split creates more churn than it saves. The Infrastructure subcategory is a small additive clarification (covers ~5-6 files that are already in `linkers/`); addressing it alongside the main restoration keeps the effort in one ADR, one set of PRs, and one human-review cycle.
 
@@ -123,10 +123,10 @@ Implementation is sequenced across six PRs, five non-governance and one governan
 
 | PR | Surface | Governance | Depends on |
 |---|---|---|---|
-| 1 | This ADR (`docs/adr/0003-linker-subcategory-restoration.md`, new) | No | — |
+| 1 | This ADR (`docs/adr/3bbb-linker-subcategory-restoration.md`, new) | No | — |
 | 2 | `docs/LINKERS.md` rewrite (rename + Subcategory column + enumerate all 45 files) | No | (can ship in parallel with PR 1) |
 | 3 | `docs/hypergumbo-spec.md` in-place corrections | No | PR 1 (forward pointers) |
-| 4 | ADR-0003 / 0010 / 0012 / 0015 in-place corrections | No | PR 1 (forward pointers) |
+| 4 | ADR-3aaa / 0010 / 0012 / 0015 in-place corrections | No | PR 1 (forward pointers) |
 | 5 | Module docstring sweep + `README.md` + `ARCHITECTURE.md` + `CHANGELOG.md` | No | PR 1 Appendix B reviewed |
 | 6 | `AGENTS.md` + three bakeoff playbooks + `trackerize` well-known-tags | **Yes** | PR 1 + `needs_human_review` tracker item approved |
 
@@ -144,9 +144,9 @@ This ADR's evidence base was produced via a multi-phase audit with explicit bias
 
 Before running any survey, seven testable predictions were written down. Each had a pre-specified verdict rubric (supported / refuted / insufficient evidence). The predictions are preserved verbatim in the session that produced this ADR — summarised:
 
-- **P1.** ADR-0003 §2.4 has not been meaningfully expanded since authoring.
-- **P2.** ≥ half of within-language framework-dispatch linkers were added after ADR-0003.
-- **P3.** At least one introducing commit for a within-language linker does NOT reference ADR-0003 §2.4.
+- **P1.** ADR-3aaa §2.4 has not been meaningfully expanded since authoring.
+- **P2.** ≥ half of within-language framework-dispatch linkers were added after ADR-3aaa.
+- **P3.** At least one introducing commit for a within-language linker does NOT reference ADR-3aaa §2.4.
 - **P4.** ADR-0012's "24 cross-language linkers" line was written when within-language linkers already existed.
 - **P5.** No commit, PR, or tracker item proposed restructuring the linker taxonomy.
 - **P6.** Within-language linkers were added in ≥3 distinct introducing commits, not one refactor.
@@ -171,11 +171,11 @@ Each subagent prompt:
 
 ### A.3 Mechanical git queries
 
-Deterministic timeline anchoring: ADR introduction commits (`git log --diff-filter=A --reverse -- docs/adr/<NNNN>-*.md`), linker-file true first-commits (via `--follow` across the `src/hypergumbo/linkers/ → packages/hypergumbo-core/src/hypergumbo_core/linkers/` relocation), §2.4-adjacent ADR-0003 edit history (`git log -S 'cross-language linkers'`). The `--follow` step revealed a reorganisation (commit `55296f544`) that polluted a naïve `--diff-filter=A` query and would have shifted the first-commit dates by 5 weeks if uncaught.
+Deterministic timeline anchoring: ADR introduction commits (`git log --diff-filter=A --reverse -- docs/adr/<NNNN>-*.md`), linker-file true first-commits (via `--follow` across the `src/hypergumbo/linkers/ → packages/hypergumbo-core/src/hypergumbo_core/linkers/` relocation), §2.4-adjacent ADR-3aaa edit history (`git log -S 'cross-language linkers'`). The `--follow` step revealed a reorganisation (commit `55296f544`) that polluted a naïve `--diff-filter=A` query and would have shifted the first-commit dates by 5 weeks if uncaught.
 
 ### A.4 Lab-notebook survey
 
-`~/hypergumbo_lab_notebook/*.md` (216 files) was surveyed for restructuring discussions. The 2026-01-07 architecture analysis v2 (the ADR-0003 drafting notebook) was the key find: it contained an explicit 14-file linker inventory classified into Protocol / Bridge / Framework / Other — confirming the taxonomy was informed by existing code, not aspirational. Post-ADR notebooks revert to casual "cross-language linker" phrasing; the subcategory vocabulary appears in **zero** entries after the ADR was committed.
+`~/hypergumbo_lab_notebook/*.md` (216 files) was surveyed for restructuring discussions. The 2026-01-07 architecture analysis v2 (the ADR-3aaa drafting notebook) was the key find: it contained an explicit 14-file linker inventory classified into Protocol / Bridge / Framework / Other — confirming the taxonomy was informed by existing code, not aspirational. Post-ADR notebooks revert to casual "cross-language linker" phrasing; the subcategory vocabulary appears in **zero** entries after the ADR was committed.
 
 ### A.5 Prediction-by-prediction verdicting
 
@@ -185,7 +185,7 @@ One substantive revision: the original "gradual drift" narrative did not survive
 
 ## Appendix B: Current-state linker inventory
 
-**Status:** Draft. The subcategory assignments below are derived from the B-classify blind classification cross-referenced with ADR-0003 §2.4's original enumeration and the author's understanding of each file's code. Borderline cases are flagged. This table should be reviewed by a human before PR 5 (module docstring sweep) ships — individual entries may move between subcategories based on that review.
+**Status:** Draft. The subcategory assignments below are derived from the B-classify blind classification cross-referenced with ADR-3aaa §2.4's original enumeration and the author's understanding of each file's code. Borderline cases are flagged. This table should be reviewed by a human before PR 5 (module docstring sweep) ships — individual entries may move between subcategories based on that review.
 
 | File | Subcategory | Notes |
 |---|---|---|
@@ -194,51 +194,51 @@ One substantive revision: the original "gradual drift" narrative did not survive
 | `cgo.py` | Bridge | Go↔C FFI (cgo `import "C"` pseudo-package). |
 | `containment.py` | Infrastructure | Class→method `contains` edges; structural. |
 | `crypto_flow.py` | Protocol | Framework-agnostic crypto-API pattern matching; data-mediated coupling. |
-| `database_query.py` | Protocol | Per ADR-0003 §2.4 original. |
+| `database_query.py` | Protocol | Per ADR-3aaa §2.4 original. |
 | `decorator_dispatch.py` | Framework | Decorator-registry patterns (`@register_analyzer`, `@register_linker`). Framework-specific in spirit (which decorator dialect). |
 | `dependency.py` | Infrastructure | Manifest-dependency → code-import edges. |
 | `di_resolution.py` | Framework | Spring/Guice/Inversify/etc. DI-binding resolution. |
-| `event_sourcing.py` | Protocol | Per ADR-0003 §2.4 original. |
+| `event_sourcing.py` | Protocol | Per ADR-3aaa §2.4 original. |
 | `go_cobra.py` | Framework | Cobra command struct literal → RunE handler dispatch (Go-specific). |
 | `go_memberlist.py` | Framework | Memberlist delegate-callback dispatch (Go-specific, HashiCorp memberlist). |
-| `graphql.py` | Framework | Per ADR-0003 §2.4 original. |
-| `graphql_resolver.py` | Framework | Per ADR-0003 §2.4 original. |
-| `grpc.py` | Framework | Per ADR-0003 §2.4 original. Also Bridge-flavoured (cross-language RPC). |
-| `http.py` | Protocol | Per ADR-0003 §2.4 original. |
+| `graphql.py` | Framework | Per ADR-3aaa §2.4 original. |
+| `graphql_resolver.py` | Framework | Per ADR-3aaa §2.4 original. |
+| `grpc.py` | Framework | Per ADR-3aaa §2.4 original. Also Bridge-flavoured (cross-language RPC). |
+| `http.py` | Protocol | Per ADR-3aaa §2.4 original. |
 | `inheritance.py` | Infrastructure | base_classes → extends/implements edges; structural cross-language convention-mapping. |
-| `ipc.py` | Protocol | Per ADR-0003 §2.4 original (covers Electron IPC, Web Workers, postMessage). |
-| `jni.py` | Bridge | Per ADR-0003 §2.4 original. |
+| `ipc.py` | Protocol | Per ADR-3aaa §2.4 original (covers Electron IPC, Web Workers, postMessage). |
+| `jni.py` | Bridge | Per ADR-3aaa §2.4 original. |
 | `js_module.py` | Infrastructure | Import-path → file resolution; structural. |
 | `lua_ffi.py` | Bridge | LuaJIT FFI → C. |
 | `message_dispatch.py` | Protocol | Typed wire-protocol message matching (JS/Rust). |
-| `message_queue.py` | Protocol | Per ADR-0003 §2.4 original (Kafka/RabbitMQ/etc. topic matching). |
+| `message_queue.py` | Protocol | Per ADR-3aaa §2.4 original (Kafka/RabbitMQ/etc. topic matching). |
 | `method_call_recovery.py` | Protocol | Language-agnostic chained-call recovery; framework-agnostic by design. |
 | `middleware_chain.py` | Framework | Middleware ordering is framework-convention-specific (Flask, Django, Express, Go, Rails). |
 | `napi.py` | Bridge | JS↔C/C++ via Node-API. |
-| `openapi.py` | Framework | Per ADR-0003 §2.4-analogous (framework-tied to OpenAPI spec convention). |
+| `openapi.py` | Framework | Per ADR-3aaa §2.4-analogous (framework-tied to OpenAPI spec convention). |
 | `orm.py` | Framework | Django/SQLAlchemy/ActiveRecord model reference conventions. |
 | `otp.py` | Framework | Elixir/Erlang GenServer call/cast dispatch. |
-| `phoenix_ipc.py` | Framework | Per ADR-0003 §2.4 original. |
+| `phoenix_ipc.py` | Framework | Per ADR-3aaa §2.4 original. |
 | `pyffi.py` | Bridge | Python↔C via ctypes/cffi/PyO3. |
 | `react_component.py` | Framework | JSX composition (React-specific). |
 | `route_handler.py` | Framework | Route → handler via framework-specific metadata (Rails, Phoenix, Express, Django). |
 | `ruby_ffi.py` | Bridge | Ruby↔C via FFI gem / C extensions. |
 | `solidity_abi.py` | Bridge | TS/JS↔Solidity via ABI. |
 | `subprocess_cli.py` | Protocol | Subprocess invocation → CLI entry-point matching (language-agnostic). |
-| `swift_objc.py` | Bridge | Per ADR-0003 §2.4 original. |
+| `swift_objc.py` | Bridge | Per ADR-3aaa §2.4 original. |
 | `tauri_ipc.py` | Bridge | TS/JS↔Rust via Tauri's typed IPC. |
 | `type_hierarchy.py` | Framework | Polymorphic dispatch via interface/abstract-class hierarchy (cross-language but dispatch-mechanism-specific). |
 | `view_template.py` | Framework | Rails controller-to-template by-convention rendering. |
 | `vue_component.py` | Infrastructure | Vue import-path → `.vue` file resolution. |
 | `vue_template_method.py` | Framework | Vue template event handler → script method (Vue-specific). |
 | `wasm_bindgen.py` | Bridge | JS/TS↔Rust via wasm-bindgen. |
-| `websocket.py` | Protocol | Per ADR-0003 §2.4 original. |
+| `websocket.py` | Protocol | Per ADR-3aaa §2.4 original. |
 | `yjs_crdt.py` | Framework | Yjs shared-types reactive flow (Yjs-specific). |
 
 **Summary:** Protocol 13 · Bridge 10 · Framework 16 · Infrastructure 6. Total 45 (excluding `__init__.py` and `registry.py`).
 
 **Borderline cases flagged for reviewer judgment:**
-- `grpc.py` — listed as Framework per ADR-0003 §2.4 original. Has Bridge-style cross-language RPC semantics too. Keeping Framework to match ADR-0003's original enumeration.
+- `grpc.py` — listed as Framework per ADR-3aaa §2.4 original. Has Bridge-style cross-language RPC semantics too. Keeping Framework to match ADR-3aaa's original enumeration.
 - `inheritance.py`, `type_hierarchy.py` — both address dispatch via class-hierarchy polymorphism. Inheritance edges (extends/implements) are structural (Infrastructure); polymorphic method dispatch is framework-specific-in-spirit (Framework). Split placements reflect this: inheritance.py → Infrastructure; type_hierarchy.py → Framework.
 - `decorator_dispatch.py` — covers multiple decorator dialects (Flask, Click, register_analyzer, etc.). Placed in Framework because the decorator dialect is framework-specific; the mechanism (decorator registry) could arguably be Protocol.
 - `annotation_convention.py` — developer-provided annotations, framework-agnostic. Placed in Protocol. Arguable because "annotation" itself is a framework-ish affordance.
@@ -246,7 +246,7 @@ One substantive revision: the original "gradual drift" narrative did not survive
 
 ## Cross-references
 
-- [ADR-0003 Architectural Analysis and Revision Plan](0003-architectural-analysis-and-revision-plan.md) — the supplemented document.
+- [ADR-3aaa Architectural Analysis and Revision Plan](3aaa-architectural-analysis-and-revision-plan.md) — the supplemented document.
 - [ADR-0010 Modular Packages and Smart Testing](0010-modular-packages-and-smart-testing.md) — directory comment at line 34 to be corrected in PR 4.
 - [ADR-0012 Pass Unification and Multi-Fidelity](0012-pass-unification-and-multi-fidelity.md) — "24 cross-language linkers" count to be corrected in PR 4.
 - [ADR-0015 Dataflow Access Modes on Edges](0015-dataflow-access-modes.md) — "cross-language linker" / "polyglot linker" framing to be corrected in PR 4.

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Shiny framework patterns (ADR-0003 v1.1.x)
+# Shiny framework patterns (ADR-3aaa v1.1.x)
 #
 # Shiny is R's most popular web framework for interactive dashboards.
 # Apps consist of UI and server components, with reactive expressions.

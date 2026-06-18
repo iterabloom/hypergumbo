@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Play Framework patterns for Scala (ADR-0003)
+# Play Framework patterns for Scala (ADR-3aaa)
 #
 # Play Framework is a high-productivity Scala/Java web framework.
 # Routes are defined in conf/routes, controllers extend BaseController.

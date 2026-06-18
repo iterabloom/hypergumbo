@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Hummingbird framework patterns (ADR-0003 v1.1.x)
+# Hummingbird framework patterns (ADR-3aaa v1.1.x)
 #
 # Hummingbird is a lightweight async-first HTTP server for Swift built on
 # SwiftNIO. Uses result builder routing and middleware protocols.

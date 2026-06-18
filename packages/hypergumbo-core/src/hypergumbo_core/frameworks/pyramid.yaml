@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Pyramid framework patterns (ADR-0003)
+# Pyramid framework patterns (ADR-3aaa)
 #
 # Pyramid is a flexible Python web framework that supports both traversal
 # and URL dispatch routing. Matches view_config decorators and config patterns.

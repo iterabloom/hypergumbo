@@ -31,7 +31,7 @@ packages/
       ranking.py
       profile.py
       supply_chain.py
-      linkers/           # Tier 2 edge-recovery passes (Protocol / Bridge / Framework / Infrastructure subcategories per ADR-0003-ext)
+      linkers/           # Tier 2 edge-recovery passes (Protocol / Bridge / Framework / Infrastructure subcategories per ADR-3bbb)
       framework_patterns.yaml
       analyze/
         base.py

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# aiohttp framework patterns (ADR-0003)
+# aiohttp framework patterns (ADR-3aaa)
 #
 # aiohttp is a Python async HTTP client/server framework.
 # Server routes use app.router.add_get() or @routes.get() decorators.

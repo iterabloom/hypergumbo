@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Lumen framework patterns (ADR-0003 v1.1.x)
+# Lumen framework patterns (ADR-3aaa v1.1.x)
 #
 # Lumen is Laravel's micro-framework for APIs and microservices.
 # Routes: $router->get('/path', handler), $app->get('/path', handler)

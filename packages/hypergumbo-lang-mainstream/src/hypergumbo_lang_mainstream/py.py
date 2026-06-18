@@ -14,7 +14,7 @@ Analysis proceeds in two passes for cross-file resolution:
 - Extract methods nested inside classes
 - Build import mappings for cross-file resolution
 - Compute stable_id (signature-based) and shape_id (structure-based)
-- Extract rich metadata (decorators, base classes, parameters) per ADR-0003
+- Extract rich metadata (decorators, base classes, parameters) per ADR-3aaa
 
 **Pass 2 - Edge Extraction:**
 - Walk AST to find function/method call sites
@@ -64,7 +64,7 @@ ID Schemes
 - **shape_id**: sha256 of AST structure (control flow, nesting).
   Detects clones with different variable names.
 
-Rich Metadata (ADR-0003)
+Rich Metadata (ADR-3aaa)
 ------------------------
 Symbols include structured metadata in `meta` dict:
 - **decorators**: List of decorator info with name, args, kwargs.
@@ -80,7 +80,7 @@ Why This Design
 - Two-pass approach enables cross-file call resolution via imports
 - col_offset == 0 heuristic distinguishes top-level from nested functions
 - Import resolution handles both absolute and relative imports
-- Rich metadata feeds YAML-driven framework pattern enrichment (ADR-0003)
+- Rich metadata feeds YAML-driven framework pattern enrichment (ADR-3aaa)
 """
 import ast
 import hashlib
@@ -2286,7 +2286,7 @@ def _extract_file_analysis(
                 end_col=end_col,
             )
 
-            # Build rich metadata for class (ADR-0003)
+            # Build rich metadata for class (ADR-3aaa)
             class_meta: dict[str, object] = {}
 
             # Extract decorators with arguments
@@ -2385,7 +2385,7 @@ def _extract_file_analysis(
                             name=item.name, qualified_name=method_name,
                         )
 
-                    # Build rich metadata for method (ADR-0003)
+                    # Build rich metadata for method (ADR-3aaa)
                     method_meta: dict[str, object] = {}
 
                     # Extract decorators with arguments
@@ -2484,7 +2484,7 @@ def _extract_file_analysis(
                     end_col=end_col,
                 )
 
-                # Build rich metadata for function (ADR-0003)
+                # Build rich metadata for function (ADR-3aaa)
                 # Route detection moved to FRAMEWORK_PATTERNS phase
                 func_meta: dict[str, object] = {}
 

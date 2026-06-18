@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for linker activation conditions (ADR-0003 item 4).
+"""Tests for linker activation conditions (ADR-3aaa item 4).
 
 Linkers have different activation conditions:
 - Protocol linkers: Always run (http, websocket, message_queue)

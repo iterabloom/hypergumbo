@@ -522,7 +522,7 @@ class TestCatalogStaticConsistency:
 class TestBridgeLinkerDependsOnPopulated:
     """Language-pair Bridge linkers declare CNF: anchor AND any-of-impls.
 
-    Per ADR-0003-ext, Bridge linkers are unambiguous: their dependency set
+    Per ADR-3bbb, Bridge linkers are unambiguous: their dependency set
     has one anchor language and a set of impl languages. CNF expresses this
     as ``[[anchor], [impl1, impl2, ...]]``.
     """

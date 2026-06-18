@@ -14,7 +14,7 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **287** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 62 core, 4 CLI, 33 tracker)
+- **287** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 62 core, 4 CLI, 33 tracker)
 - **32707** symbols (functions, classes, methods)
 - **107509** edges by type:
   - calls: 60218
@@ -50,7 +50,7 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 57 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-0003-ext), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 57 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
 | **hypergumbo-lang-mainstream** | 44 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
@@ -91,7 +91,7 @@ Source Files
      ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                     4. PATTERN ENRICHMENT                       │
-│  YAML-driven pattern matching (ADR-0003):                       │
+│  YAML-driven pattern matching (ADR-3aaa):                       │
 │  - 8 convention patterns (always loaded)                        │
 │  - 99 framework patterns (loaded when framework detected)       │
 │  Output: Symbols enriched with meta.concepts                    │
@@ -100,7 +100,7 @@ Source Files
      ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        5. LINKERS                               │
-│  Tier 2 edge recovery (ADR-0003-ext — Protocol / Bridge /       │
+│  Tier 2 edge recovery (ADR-3bbb — Protocol / Bridge /       │
 │  Framework / Infrastructure). Match via meta.concepts and       │
 │  symbol metadata across files and language boundaries.          │
 │  57 linkers: P11 / B10 / F29 / I7 (HTTP, JNI, gRPC, React, ...) │
@@ -354,7 +354,7 @@ The `hypergumbo-core` package ships 153 YAML catalog files across 8 directories.
 
 | Directory | Files | ADR | Loader | Purpose |
 |---|---:|---|---|---|
-| `frameworks/` | 107 | ADR-0003 | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
+| `frameworks/` | 107 | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
 | `dataflow_patterns/` | 20 | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
 | `io_primitives/` | 14 | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
 | `cfg_nodes/` | 5 | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
@@ -500,7 +500,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 
 ## Adding a New Linker
 
-Per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md), the first line of every linker module's docstring must declare its subcategory in the form `"""<Protocol|Bridge|Framework|Infrastructure> linker: <one-line purpose>.`
+Per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md), the first line of every linker module's docstring must declare its subcategory in the form `"""<Protocol|Bridge|Framework|Infrastructure> linker: <one-line purpose>.`
 
 1. Create `packages/hypergumbo-core/src/hypergumbo_core/linkers/<name>.py`
 2. Register using the decorator pattern:
@@ -544,7 +544,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.fallback_coherence`**: INV-zuhub fallback-coherence linter.
 - **`hypergumbo_core.finalize`**: The finalize stage: the single pre-serialization reconcile point (A...
 - **`hypergumbo_core.fingerprint`**: Symbol-level content fingerprinting (WI-fanun; context-aware since ...
-- **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-0003).
+- **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-3aaa).
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
 - **`hypergumbo_core.io_boundary`**: I/O boundary analysis — catalog loading and edge matching (ADR-0016).
@@ -830,7 +830,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 2ee70299f0c7
+  commit: 701c1c7e6d70
   hypergumbo: 6.0.0
   python: 3.12.3
 -->

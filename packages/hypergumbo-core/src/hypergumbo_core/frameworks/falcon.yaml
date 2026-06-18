@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Falcon framework patterns (ADR-0003)
+# Falcon framework patterns (ADR-3aaa)
 #
 # Falcon is a bare-metal Python web API framework for building
 # high-performance microservices and app backends.

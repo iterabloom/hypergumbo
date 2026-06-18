@@ -4471,12 +4471,12 @@ class TestVariableMethodCalls:
 
 
 # ============================================================================
-# Rich Metadata Extraction Tests (ADR-0003)
+# Rich Metadata Extraction Tests (ADR-3aaa)
 # ============================================================================
 
 
 class TestDecoratorMetadata:
-    """Tests for rich decorator metadata extraction per ADR-0003."""
+    """Tests for rich decorator metadata extraction per ADR-3aaa."""
 
     def test_simple_decorator_no_args(self, tmp_path: Path) -> None:
         """Simple decorator like @dataclass should capture name with empty args."""
@@ -4835,7 +4835,7 @@ class TestDecoratorMetadata:
 
 
 class TestBaseClassMetadata:
-    """Tests for base class metadata extraction per ADR-0003."""
+    """Tests for base class metadata extraction per ADR-3aaa."""
 
     def test_single_base_class(self, tmp_path: Path) -> None:
         """Class with single base class should capture it."""
@@ -4944,7 +4944,7 @@ class TestBaseClassMetadata:
 
 
 class TestParameterMetadata:
-    """Tests for structured parameter metadata extraction per ADR-0003."""
+    """Tests for structured parameter metadata extraction per ADR-3aaa."""
 
     def test_simple_parameters(self, tmp_path: Path) -> None:
         """Function with simple parameters."""

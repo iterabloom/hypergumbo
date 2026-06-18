@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Javalin framework patterns (ADR-0003 v1.1.x)
+# Javalin framework patterns (ADR-3aaa v1.1.x)
 #
 # Javalin is a lightweight Java/Kotlin web framework.
 # Routes are defined using app.get(), app.post(), etc. with lambda handlers.

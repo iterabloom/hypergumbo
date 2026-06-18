@@ -170,7 +170,7 @@ class TestIsTestFile:
 class TestSemanticEntryDetection:
     """Tests for semantic entry detection from concept metadata.
 
-    ADR-0003 v0.9.x introduces semantic entry detection: detecting entrypoints
+    ADR-3aaa v0.9.x introduces semantic entry detection: detecting entrypoints
     based on enriched symbol metadata (meta.concepts) from the FRAMEWORK_PATTERNS
     phase, rather than path-based heuristics.
 
@@ -2143,7 +2143,7 @@ class TestConnectivityBasedRanking:
 
 
 class TestLifecycleHookConceptDetection:
-    """Tests for lifecycle_hook concept-based entrypoint detection (ADR-0003 v1.1.x).
+    """Tests for lifecycle_hook concept-based entrypoint detection (ADR-3aaa v1.1.x).
 
     The lifecycle_hook concept is used by android.yaml to match Android lifecycle
     methods like Activity.onCreate(), Application.onCreate(), etc.

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# CLI entrypoint patterns - Python (ADR-0003)
+# CLI entrypoint patterns - Python (ADR-3aaa)
 #
 # Patterns for detecting command-line interface entrypoints in Python:
 # Click, Typer, Fire, argparse, and Django management commands.

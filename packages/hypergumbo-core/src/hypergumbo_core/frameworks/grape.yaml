@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Grape framework patterns (ADR-0003)
+# Grape framework patterns (ADR-3aaa)
 #
 # Grape is a Ruby REST-like API framework. APIs are defined as
 # classes inheriting from Grape::API with route DSL methods.

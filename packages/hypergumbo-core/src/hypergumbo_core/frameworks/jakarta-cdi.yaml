@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Jakarta CDI (Contexts and Dependency Injection) patterns (ADR-0003)
+# Jakarta CDI (Contexts and Dependency Injection) patterns (ADR-3aaa)
 #
 # Jakarta CDI is the standard DI framework for Jakarta EE (formerly Java EE).
 # Used by application servers (WildFly, GlassFish) and projects like Keycloak.

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# MCP (Model Context Protocol) Python framework patterns (ADR-0003)
+# MCP (Model Context Protocol) Python framework patterns (ADR-3aaa)
 #
 # Patterns for Python MCP servers and clients:
 # - FastMCP (mcp.server.fastmcp)

@@ -14,7 +14,7 @@ Inheritance-aware call resolution used to live in two analyzers: Java
 Ruby (``ruby.py:1901-1956``, ``_find_inherited_initialize``). The other
 12 analyzers shared the same silent gap with no equivalent walk. The
 WI-puluf Ruby mixin investigation surfaced the deeper duplication, and
-per ADR-0003-ext this work belongs in a Tier-2 Infrastructure linker
+per ADR-3bbb this work belongs in a Tier-2 Infrastructure linker
 — same layer as ``inheritance.py``.
 
 Three Sites
@@ -258,7 +258,7 @@ def _walk_single_then_interfaces(
 
 
 # Per-language MRO dispatch. Hardcoded clauses (no YAML / no decorator
-# hooks) because the table is static language semantics — see ADR-0003-ext
+# hooks) because the table is static language semantics — see ADR-3bbb
 # and the WI-hatip plan discussion at ~/puluf-plan.md.
 _MRO_WALKERS: dict[str, Callable[
     [str, str, dict[str, list[tuple[str, str]]],

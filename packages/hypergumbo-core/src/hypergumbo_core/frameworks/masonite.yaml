@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Masonite framework patterns (ADR-0003 v1.1.x)
+# Masonite framework patterns (ADR-3aaa v1.1.x)
 #
 # Masonite is a modern Python framework with Laravel-inspired routing.
 # Routes use string-based controller references: 'ControllerName@method'

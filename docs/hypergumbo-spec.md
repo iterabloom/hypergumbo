@@ -227,7 +227,7 @@ Each analyzer returns an `AnalysisResult` containing symbols, edges, and usage c
 After all analyzers run, the orchestrator (`run_behavior_map`) collects the unified symbol graph and runs post-processing:
 1. Deferred symbol reference resolution (cross-file call targets)
 2. Framework pattern enrichment (YAML-driven concept metadata)
-3. Linkers (registered via `@register_linker` decorator, receiving `LinkerContext` with the full symbol graph; see [LINKERS.md](LINKERS.md) for the full list, grouped by subcategory — Protocol, Bridge, Framework, Infrastructure — per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md))
+3. Linkers (registered via `@register_linker` decorator, receiving `LinkerContext` with the full symbol graph; see [LINKERS.md](LINKERS.md) for the full list, grouped by subcategory — Protocol, Bridge, Framework, Infrastructure — per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md))
 4. Entrypoint detection
 
 Linkers use a decorator-based registry (`linkers/registry.py`) and receive the accumulated analysis state:
@@ -418,7 +418,7 @@ Public outputs are **compiled views** from this IR — the IR defines the canoni
 
 ## 7) Linkers
 
-Hypergumbo provides **best-effort edge recovery** for patterns that language analyzers cannot see statically. These are AST-based heuristics with string literal matching and metadata comparison, not type-resolved or dataflow analysis. Linkers fall into four subcategories per [ADR-0003-ext](adr/0003-linker-subcategory-restoration.md): Protocol (framework-agnostic pattern matching), Bridge (language-pair-specific FFI conventions), Framework (framework-specific dispatch), and Infrastructure (graph-structural utilities). This section specifies three linkers in detail — JNI (Bridge), IPC (Protocol), HTTP client-server (Protocol); for the full catalog of 45 linkers grouped by subcategory, see [LINKERS.md](LINKERS.md).
+Hypergumbo provides **best-effort edge recovery** for patterns that language analyzers cannot see statically. These are AST-based heuristics with string literal matching and metadata comparison, not type-resolved or dataflow analysis. Linkers fall into four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md): Protocol (framework-agnostic pattern matching), Bridge (language-pair-specific FFI conventions), Framework (framework-specific dispatch), and Infrastructure (graph-structural utilities). This section specifies three linkers in detail — JNI (Bridge), IPC (Protocol), HTTP client-server (Protocol); for the full catalog of 45 linkers grouped by subcategory, see [LINKERS.md](LINKERS.md).
 
 ### JNI Boundary Detection (Java ↔ C)
 
@@ -644,7 +644,7 @@ The framework pattern system supports multiple detection strategies:
 
 **Path inheritance (v1.3.x):** Patterns can use `prefix_from_parent` to inherit path prefixes from parent concepts. For example, NestJS route handlers use `prefix_from_parent: "controller"` to combine `@Controller('/users')` prefix with `@Get(':id')` path into `/users/:id`.
 
-See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the design rationale and [UsageContext extension](adr/0003-usage-context-patterns.md) for call-based framework support.
+See [ADR-3aaa](adr/3aaa-architectural-analysis-and-revision-plan.md) for the design rationale and [UsageContext extension](adr/3ccc-usage-context-patterns.md) for call-based framework support.
 
 ### Entrypoint Confidence Tiers
 
@@ -916,7 +916,7 @@ Penalties on the entrypoint `confidence` field: test files −90% (×0.1), vendo
 
 ### usage_contexts[] — framework pattern evidence
 
-🟩 Intermediate representation of how symbols are *used* (as opposed to how they are *defined*). Each entry records a call site, data value, export, or macro invocation that gives semantic meaning to a symbol through its usage context. See [ADR-0003](adr/0003-usage-context-patterns.md) for design rationale.
+🟩 Intermediate representation of how symbols are *used* (as opposed to how they are *defined*). Each entry records a call site, data value, export, or macro invocation that gives semantic meaning to a symbol through its usage context. See [ADR-3aaa](adr/3ccc-usage-context-patterns.md) for design rationale.
 
 ```json
 {

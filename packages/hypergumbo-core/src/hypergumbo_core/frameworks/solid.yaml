@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Solid.js framework patterns (ADR-0003)
+# Solid.js framework patterns (ADR-3aaa)
 #
 # Solid.js is a reactive UI framework similar to React but with fine-grained
 # reactivity. Instead of virtual DOM diffing, Solid compiles JSX to real DOM

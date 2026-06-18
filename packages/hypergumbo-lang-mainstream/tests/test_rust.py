@@ -1636,7 +1636,7 @@ fn handler(svc: Service) {
 
 
 # ============================================================================
-# Annotation Extraction Tests (ADR-0003 v1.0.x - YAML Pattern Support)
+# Annotation Extraction Tests (ADR-3aaa v1.0.x - YAML Pattern Support)
 # ============================================================================
 
 

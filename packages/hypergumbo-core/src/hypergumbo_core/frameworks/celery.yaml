@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Celery framework patterns (ADR-0003 v1.0.x)
+# Celery framework patterns (ADR-3aaa v1.0.x)
 #
 # Matches Celery task queue decorators and patterns.
 # Symbols matching these patterns get enriched with concept metadata.

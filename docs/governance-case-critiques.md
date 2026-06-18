@@ -849,7 +849,7 @@ Implementation: Streaming JSON output + aggressive cleanup of intermediate data 
 
 ## Appendix B: Related Documents
 
-- **ADR-0003:** YAML-driven analysis architecture
+- **ADR-3aaa:** YAML-driven analysis architecture
 - **ADR-0004:** File taxonomy with FileRole enum
 - **ADR-0005:** Sketch budget allocation
 - **ADR-0006:** AST-based type inference

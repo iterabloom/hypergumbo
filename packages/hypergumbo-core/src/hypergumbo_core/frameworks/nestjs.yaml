@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# NestJS framework patterns (ADR-0003 v1.0.x)
+# NestJS framework patterns (ADR-3aaa v1.0.x)
 #
 # Matches NestJS decorators for controllers, routes, services, and modules.
 # Symbols matching these patterns get enriched with concept metadata.

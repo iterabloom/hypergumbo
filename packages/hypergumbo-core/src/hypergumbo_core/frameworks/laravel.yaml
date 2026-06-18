@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Laravel framework patterns (ADR-0003 v1.0.x + v1.1.x)
+# Laravel framework patterns (ADR-3aaa v1.0.x + v1.1.x)
 #
 # Matches Laravel conventions for controllers, models, jobs, events, etc.
 # Symbols matching these patterns get enriched with concept metadata.

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for --frameworks flag (ADR-0003 item 3).
+"""Tests for --frameworks flag (ADR-3aaa item 3).
 
 The --frameworks flag controls which frameworks hypergumbo checks for:
 - none: Skip framework detection entirely (base analysis only)

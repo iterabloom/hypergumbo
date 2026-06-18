@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# SwiftUI and iOS/macOS app lifecycle patterns (ADR-0003 v1.1.x)
+# SwiftUI and iOS/macOS app lifecycle patterns (ADR-3aaa v1.1.x)
 #
 # Detects native Swift application entry points across Apple platforms:
 # - SwiftUI apps: struct conforming to App protocol

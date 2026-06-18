@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Entrypoint detection for code analysis using YAML-driven pattern matching.
 
-Detects entrypoints via semantic concepts from YAML framework patterns (ADR-0003):
+Detects entrypoints via semantic concepts from YAML framework patterns (ADR-3aaa):
 - HTTP routes (Django, Flask, FastAPI, Express, Rails, Spring, etc.)
 - CLI commands (Click, Typer, argparse, Commander, Cobra, etc.)
 - WebSocket handlers
@@ -16,7 +16,7 @@ Entrypoint detection uses YAML framework patterns to identify "entry points"
 into a codebase - places where execution typically starts or where external
 requests arrive.
 
-Detection is based on two mechanisms (ADR-0003):
+Detection is based on two mechanisms (ADR-3aaa):
 
 1. **Definition-based patterns** (v1.0.x): Matches decorators, base classes,
    and annotations on symbol definitions. E.g., @app.route, @Get(), extends
@@ -186,7 +186,7 @@ class EntrypointKind(Enum):
     # Mobile app entry kinds
     ANDROID_ACTIVITY = "android_activity"  # Android Activity.onCreate()
     ANDROID_APPLICATION = "android_application"  # Android Application.onCreate()
-    # Semantic concept-based entry kinds (ADR-0003 v0.9.x)
+    # Semantic concept-based entry kinds (ADR-3aaa v0.9.x)
     CONTROLLER = "controller"  # Generic controller from concept metadata
     BACKGROUND_TASK = "background_task"  # Async/background task
     WEBSOCKET_HANDLER = "websocket_handler"  # WebSocket event handler
@@ -290,7 +290,7 @@ def _pick_best_bootstrap_framework(concepts: list[dict]) -> str:
 def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect entrypoints from semantic concept metadata.
 
-    ADR-0003 introduces semantic entry detection: the FRAMEWORK_PATTERNS phase
+    ADR-3aaa introduces semantic entry detection: the FRAMEWORK_PATTERNS phase
     enriches symbols with concept metadata (meta.concepts) based on YAML pattern
     matching. This function checks for entrypoint-worthy concepts and maps them
     to EntrypointKind values.
@@ -657,7 +657,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 added_kinds.add(EntrypointKind.GRAPHQL_SERVER)
 
             # Lifecycle hook concept -> ANDROID_ACTIVITY or ANDROID_APPLICATION
-            # (ADR-0003 v1.1.x - pattern-based Android detection)
+            # (ADR-3aaa v1.1.x - pattern-based Android detection)
             elif concept_type == "lifecycle_hook":
                 # Determine the specific Android entrypoint kind from matched_parent_base_class
                 matched_base = concept.get("matched_parent_base_class", "")
@@ -708,7 +708,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     added_kinds.add(EntrypointKind.CONTROLLER)
 
             # Language-level main() function concept -> MAIN_FUNCTION
-            # (ADR-0003 v1.2.x - YAML-based language convention patterns)
+            # (ADR-3aaa v1.2.x - YAML-based language convention patterns)
             elif concept_type == "main_function":
                 if EntrypointKind.MAIN_FUNCTION in added_kinds:
                     continue
@@ -772,7 +772,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 added_kinds.add(EntrypointKind.MAIN_FUNCTION)
 
             # Library export concept -> LIBRARY_EXPORT
-            # (ADR-0003 v1.3.x - Library public API detection)
+            # (ADR-3aaa v1.3.x - Library public API detection)
             # Exports from index files (index.ts, index.js) are treated as library
             # entry points since they define the public API surface.
             elif concept_type == "library_export":
@@ -815,7 +815,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
 
             # Naming-based heuristics (lowest confidence tier)
             # These are fallbacks when no explicit annotation/base class is found
-            # ADR-0003 v1.4.x - naming-conventions.yaml
+            # ADR-3aaa v1.4.x - naming-conventions.yaml
             elif concept_type == "controller_by_name":
                 if EntrypointKind.CONTROLLER in added_kinds:
                     continue  # Already detected via framework pattern
@@ -1158,7 +1158,7 @@ def detect_entrypoints(
 ) -> List[Entrypoint]:
     """Detect entrypoints in the codebase using semantic detection.
 
-    Detection sources (ADR-0003 v1.2.x):
+    Detection sources (ADR-3aaa v1.2.x):
     1. Framework patterns (HTTP routes, CLI commands, controllers, etc.)
        - Highest confidence (0.95)
        - Detected via YAML patterns matching decorators, base classes, etc.

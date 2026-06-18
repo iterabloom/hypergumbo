@@ -24,7 +24,7 @@ the canonical ``(lang, module_path, name)`` triple resolved through
 the static-import scope (WI-tihup). Aliased / starred imports bind
 ``name`` to the imported symbol, not any local alias.
 
-Rich Metadata Extraction (ADR-0003)
+Rich Metadata Extraction (ADR-3aaa)
 -----------------------------------
 Symbols include rich metadata in the `meta` field:
 
@@ -1023,7 +1023,7 @@ def _extract_symbols(
                 meta: dict[str, object] | None = None
 
                 # Extract all annotations for rich metadata
-                # Route detection is now handled by YAML patterns (ADR-0003 v1.0.x)
+                # Route detection is now handled by YAML patterns (ADR-3aaa v1.0.x)
                 decorators = _extract_annotations(node, source)
                 if decorators:
                     meta = {"decorators": decorators}
@@ -1033,7 +1033,7 @@ def _extract_symbols(
                         meta = {}
                     meta["is_native"] = True
 
-                # Extract parent class base_classes for lifecycle hook detection (ADR-0003 v1.1.x)
+                # Extract parent class base_classes for lifecycle hook detection (ADR-3aaa v1.1.x)
                 # This enables YAML patterns to match methods like onCreate() in Activity subclasses
                 parent_base_classes = _get_parent_class_base_classes(node, source)
                 if parent_base_classes:

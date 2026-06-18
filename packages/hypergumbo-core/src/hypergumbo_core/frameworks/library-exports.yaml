@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Library export detection (ADR-0003 v1.3.x)
+# Library export detection (ADR-3aaa v1.3.x)
 #
 # Detects exports that define the public API surface of a library.
 #

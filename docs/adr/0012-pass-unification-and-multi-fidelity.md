@@ -27,7 +27,7 @@ The analysis pipeline in `run_behavior_map()` runs in two tiers:
 
 **Tier 1 — Language analyzers (independent producers):** 100+ analyzer functions, each taking `repo_root` and returning `AnalysisResult` (symbols + edges). They run independently and do not see each other's output. Dispatched via `all_analyzers.py`.
 
-**Tier 2 — Linkers and enrichment (context-dependent refiners):** After all analyzers complete, the orchestrator collects the unified symbol graph and runs: deferred symbol resolution, framework pattern enrichment, 45 linkers (via `linkers/registry.py`) across four subcategories — Protocol / Bridge / Framework / Infrastructure per [ADR-0003-ext](0003-linker-subcategory-restoration.md) — and entrypoint detection. These passes receive the accumulated state and produce new edges or metadata.
+**Tier 2 — Linkers and enrichment (context-dependent refiners):** After all analyzers complete, the orchestrator collects the unified symbol graph and runs: deferred symbol resolution, framework pattern enrichment, 45 linkers (via `linkers/registry.py`) across four subcategories — Protocol / Bridge / Framework / Infrastructure per [ADR-3bbb](3bbb-linker-subcategory-restoration.md) — and entrypoint detection. These passes receive the accumulated state and produce new edges or metadata.
 
 ### The spec's `AnalysisPass(Protocol)`
 
@@ -49,7 +49,7 @@ AST-only analysis tends to be sufficient for architectural maps, simple function
 
 **Graduated fidelity with transparent uncertainty.** No existing tool offers a code graph where AST-derived edges carry lower confidence scores that get upgraded when type resolution confirms them. Both edges coexist: `ast_call_method (0.85)` and `type_resolved_call (0.95)` at the same callsite, with provenance tracking which pass produced each. This maps directly to how AI agents should reason about code — making bolder edits when analysis is high-confidence and more cautious exploration when it isn't.
 
-**Cross-language type anchoring.** Language servers operate within a single language boundary. Hypergumbo's Bridge and cross-language Framework linkers (a subset of the 45 total linkers — see [ADR-0003-ext](0003-linker-subcategory-restoration.md)) already bridge those boundaries at the AST level. Adding type-resolved anchors on each side of a cross-language edge (e.g., confirming that a Python function calling a REST endpoint actually matches the TypeScript handler's type signature) would create a level of cross-language assurance that no tool currently provides.
+**Cross-language type anchoring.** Language servers operate within a single language boundary. Hypergumbo's Bridge and cross-language Framework linkers (a subset of the 45 total linkers — see [ADR-3bbb](3bbb-linker-subcategory-restoration.md)) already bridge those boundaries at the AST level. Adding type-resolved anchors on each side of a cross-language edge (e.g., confirming that a Python function calling a REST endpoint actually matches the TypeScript handler's type signature) would create a level of cross-language assurance that no tool currently provides.
 
 **Token-budgeted, multi-fidelity slicing.** An AI agent could request: "Give me the high-confidence, type-resolved subgraph around this function, plus the medium-confidence AST-heuristic neighborhood two hops out, fitted to 8K tokens." Fewer missing callees means fewer hallucinations about what happens downstream. This graduated context construction aligns with research showing that context quality matters more than context quantity.
 
@@ -127,7 +127,7 @@ An alternative or complementary path: build an importer that accepts externally-
 ## Relationship to Other ADRs
 
 - **ADR-0010** (Modular Packages): Introduced the `AnalyzerSpec` + entry-points system during the monorepo migration. Its bootstrap safety section previously referenced `analyze/registry.py` as the dispatch system; this has been corrected to reference `all_analyzers.py`.
-- **ADR-0003** (YAML-driven Framework Patterns): Framework enrichment is a Tier 2 refiner that would become a pass under the unified interface.
+- **ADR-3aaa** (YAML-driven Framework Patterns): Framework enrichment is a Tier 2 refiner that would become a pass under the unified interface.
 - **ADR-0006** (Variable Type Inference): AST-based type inference is a precursor to multi-fidelity; the current heuristics would be refined (not replaced) by language server passes.
 
 ## References

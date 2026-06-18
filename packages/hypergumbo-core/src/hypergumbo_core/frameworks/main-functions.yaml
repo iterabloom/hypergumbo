@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Language-level main() function detection (ADR-0003 v1.2.x)
+# Language-level main() function detection (ADR-3aaa v1.2.x)
 #
 # Detects idiomatic entry point functions across languages:
 # - Go: func main() in package main

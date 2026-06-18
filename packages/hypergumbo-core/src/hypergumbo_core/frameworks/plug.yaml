@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Plug framework patterns (ADR-0003)
+# Plug framework patterns (ADR-3aaa)
 #
 # Plug is Elixir's HTTP middleware library. Routes are defined
 # using the Plug.Router DSL with get/post/put/delete macros.

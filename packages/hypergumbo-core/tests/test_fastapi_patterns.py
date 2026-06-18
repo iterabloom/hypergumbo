@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for FastAPI framework patterns (ADR-0003 v0.8.x).
+"""Tests for FastAPI framework patterns (ADR-3aaa v0.8.x).
 
 Verifies that FastAPI patterns correctly match and enrich symbols.
 """

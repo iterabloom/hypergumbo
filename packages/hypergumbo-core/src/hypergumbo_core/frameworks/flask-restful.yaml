@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Flask-RESTful framework patterns (ADR-0003)
+# Flask-RESTful framework patterns (ADR-3aaa)
 #
 # Flask-RESTful is a Flask extension for building REST APIs with Resource classes.
 # Routes are registered via api.add_resource(ResourceClass, '/path').

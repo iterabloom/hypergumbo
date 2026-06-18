@@ -5,7 +5,7 @@
 - Date: 2026-05-25
 - Supersedes: —
 - Superseded by: —
-- Related: ADR-0003-ext (linker subcategory restoration — Infrastructure subcategory), ADR-0023 (edge-type axis), ADR-0028 (evidence-type axis)
+- Related: ADR-3bbb (linker subcategory restoration — Infrastructure subcategory), ADR-0023 (edge-type axis), ADR-0028 (evidence-type axis)
 
 ## Context
 
@@ -131,7 +131,7 @@ A follow-on META (filed after PR-5 closes) covers "Inherited-call parity across 
 ## References
 
 - `~/puluf-plan.md` — canonical campaign plan (Alternative B post-WI-puluf design discussion).
-- ADR-0003-ext: linker subcategory restoration (Infrastructure subcategory).
+- ADR-3bbb: linker subcategory restoration (Infrastructure subcategory).
 - ADR-0023: edge-type axis (`includes` is on the `relationship` axis).
 - ADR-0028: evidence-type axis (`ast_call_inherited` and `ast_includes` on the `inference_pathway` axis).
 - Tracker:

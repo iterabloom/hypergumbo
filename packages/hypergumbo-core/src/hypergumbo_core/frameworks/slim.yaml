@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Slim framework patterns (ADR-0003)
+# Slim framework patterns (ADR-3aaa)
 #
 # Slim is a PHP micro framework. Routes are defined using
 # $app->get(), $app->post(), etc. or with controllers.

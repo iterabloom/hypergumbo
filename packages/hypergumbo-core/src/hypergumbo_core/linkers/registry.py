@@ -5,7 +5,7 @@ This module provides a registration system for cross-language
 linkers (Tier 2 edge-recovery passes), enabling loop-based dispatch
 in run_behavior_map() instead of many repetitive code blocks.
 
-Subcategory taxonomy (ADR-0003-ext)
+Subcategory taxonomy (ADR-3bbb)
 -----------------------------------
 Every linker belongs to one of four subcategories. The categorization
 is declared in each linker module's top-level docstring (per the
@@ -27,7 +27,7 @@ How It Works
    - ``priority``: orders execution; lower runs first
    - ``activation``: a ``LinkerActivation`` declaring when the
      linker should run (``always``, ``frameworks=...``,
-     ``language_pairs=...``). Per ADR-0003, framework-gated
+     ``language_pairs=...``). Per ADR-3aaa, framework-gated
      linkers stay dormant when their framework isn't detected.
    - ``requirements``: language presence the linker depends on,
      consumed by ``partial_install_warnings`` to surface "linker X
@@ -390,7 +390,7 @@ LinkerFunc = Callable[[LinkerContext], LinkerResult]
 
 @dataclass
 class LinkerActivation:
-    """Activation conditions for a linker (ADR-0003).
+    """Activation conditions for a linker (ADR-3aaa).
 
     Linkers have different activation conditions:
     - Protocol linkers: always=True (run unconditionally)
@@ -471,7 +471,7 @@ class RegisteredLinker:
             Early linkers (JNI) run first; late linkers (dependency) run last.
         description: Human-readable description
         requirements: List of requirements the linker needs to produce useful edges.
-        activation: Conditions under which this linker should run (ADR-0003).
+        activation: Conditions under which this linker should run (ADR-3aaa).
     """
 
     name: str
@@ -534,7 +534,7 @@ def register_linker(  # nosec B107 — pass_label/backend defaults are tag strin
         description: Human-readable description of what the linker does.
         requirements: List of requirements the linker needs. When requirements
             are unmet (check returns 0), the linker may produce no edges.
-        activation: Conditions under which this linker should run (ADR-0003).
+        activation: Conditions under which this linker should run (ADR-3aaa).
             If None, defaults to always=True (protocol linker behavior).
 
     Returns:

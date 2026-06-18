@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Scalatra framework patterns (ADR-0003 v1.1.x)
+# Scalatra framework patterns (ADR-3aaa v1.1.x)
 #
 # Scalatra is a Sinatra-like web framework for Scala.
 # Routes use DSL methods: get("/path") { handler }, post("/path") { handler }

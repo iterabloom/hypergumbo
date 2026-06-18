@@ -195,7 +195,7 @@
       "items": {
         "$ref": "#/$defs/UsageContext"
       },
-      "description": "Concept-tagged call/usage sites (per ADR-0003-ext usage_context_patterns)"
+      "description": "Concept-tagged call/usage sites (per ADR-3ccc usage_context_patterns)"
     },
     "reproducibility_context": {
       "type": "object",
@@ -1775,7 +1775,7 @@
     },
     "UsageContext": {
       "type": "object",
-      "description": "Concept-tagged usage site (per ADR-0003-ext usage_context_patterns) \u2014 e.g. a Flask `@app.route` call or a Django ORM filter.",
+      "description": "Concept-tagged usage site (per ADR-3ccc usage_context_patterns) \u2014 e.g. a Flask `@app.route` call or a Django ORM filter.",
       "properties": {
         "id": {
           "type": "string",
@@ -1795,7 +1795,7 @@
         },
         "position": {
           "type": "string",
-          "description": "Position descriptor \u2014 e.g. args[0], view_func, default (per ADR-0003-ext positional vocabulary)"
+          "description": "Position descriptor \u2014 e.g. args[0], view_func, default (per ADR-3ccc positional vocabulary)"
         },
         "span": {
           "$ref": "#/$defs/Span"

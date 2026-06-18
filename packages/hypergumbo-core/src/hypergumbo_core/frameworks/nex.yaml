@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Nex framework patterns (ADR-0003)
+# Nex framework patterns (ADR-3aaa)
 #
 # Nex is a minimalist Elixir web framework powered by HTMX.
 # It uses file-based routing (convention over configuration):

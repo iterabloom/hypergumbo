@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for framework pattern matching (ADR-0003 v0.8.x).
+"""Tests for framework pattern matching (ADR-3aaa v0.8.x).
 
 Tests the YAML-based framework pattern system that enriches symbols
 with concept metadata (route, model, task, etc.).
@@ -7975,7 +7975,7 @@ class TestJavaAnalyzerIntegration:
     """Integration tests: Java analyzer + YAML patterns end-to-end.
 
     These tests prove that YAML patterns can replace deprecated analyzer-level
-    route detection (ADR-0003 v1.0.x). They run the actual Java analyzer, then
+    route detection (ADR-3aaa v1.0.x). They run the actual Java analyzer, then
     enrich_symbols(), and verify both concepts and legacy fields are populated.
     """
 
@@ -9624,7 +9624,7 @@ class TestResolveDeferredSymbolRefs:
 
 
 class TestMainFunctionPatterns:
-    """Tests for language-level main() function pattern detection (ADR-0003 v1.2.x)."""
+    """Tests for language-level main() function pattern detection (ADR-3aaa v1.2.x)."""
 
     def test_main_function_pattern_match_go(self) -> None:
         """Pattern matches Go main function."""
@@ -10062,7 +10062,7 @@ class TestMainFunctionPatterns:
 
 
 class TestTestFrameworkPatterns:
-    """Tests for test-frameworks.yaml patterns (ADR-0003 v1.2.x)."""
+    """Tests for test-frameworks.yaml patterns (ADR-3aaa v1.2.x)."""
 
     def test_test_frameworks_yaml_loads(self) -> None:
         """test-frameworks.yaml loads correctly."""
@@ -10360,7 +10360,7 @@ class TestTestFrameworkPatterns:
 
 
 class TestLanguageConventionPatterns:
-    """Tests for language-conventions.yaml patterns (ADR-0003 v1.2.x)."""
+    """Tests for language-conventions.yaml patterns (ADR-3aaa v1.2.x)."""
 
     def test_language_conventions_yaml_loads(self) -> None:
         """language-conventions.yaml loads correctly."""
@@ -10581,7 +10581,7 @@ class TestLanguageConventionPatterns:
 
 
 class TestConfigConventionPatterns:
-    """Tests for config-conventions.yaml patterns (ADR-0003 v1.2.x)."""
+    """Tests for config-conventions.yaml patterns (ADR-3aaa v1.2.x)."""
 
     def test_config_conventions_yaml_loads(self) -> None:
         """config-conventions.yaml loads correctly."""
@@ -11146,7 +11146,7 @@ class TestAkkaHttpPatterns:
 
 
 class TestNamingConventionsPatterns:
-    """Tests for naming-conventions.yaml patterns (ADR-0003 v1.4.x).
+    """Tests for naming-conventions.yaml patterns (ADR-3aaa v1.4.x).
 
     These patterns detect entrypoints by naming conventions alone, providing
     a fallback when no framework-specific detection matches. This is the

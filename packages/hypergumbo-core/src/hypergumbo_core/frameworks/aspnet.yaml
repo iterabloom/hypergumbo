@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# ASP.NET Core framework patterns (ADR-0003 v1.0.x)
+# ASP.NET Core framework patterns (ADR-3aaa v1.0.x)
 #
 # Matches ASP.NET Core MVC/Web API patterns for controllers, routes, services.
 # Symbols matching these patterns get enriched with concept metadata.

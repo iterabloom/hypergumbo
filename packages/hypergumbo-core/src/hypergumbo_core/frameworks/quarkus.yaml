@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Quarkus framework patterns (ADR-0003)
+# Quarkus framework patterns (ADR-3aaa)
 #
 # Quarkus is a Kubernetes-native Java framework designed for fast startup
 # and low memory footprint. It supports JAX-RS (RESTEasy Reactive),

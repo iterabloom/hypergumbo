@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Yesod framework patterns (ADR-0003)
+# Yesod framework patterns (ADR-3aaa)
 #
 # Yesod is a Rails-inspired web framework for Haskell. Route registration
 # happens in a Template Haskell quasi-quoter (`parseRoutes`) that hypergumbo

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Padrino framework patterns (ADR-0003 v1.1.x)
+# Padrino framework patterns (ADR-3aaa v1.1.x)
 #
 # Padrino is a Ruby web framework built on Sinatra.
 # Controllers use routing DSL: get '/path' do ... end

@@ -1140,7 +1140,7 @@ public abstract class Shape {
 
 
 class TestSpringBootRouteDetection:
-    """Tests for Spring Boot route detection via YAML patterns (ADR-0003 v1.0.x).
+    """Tests for Spring Boot route detection via YAML patterns (ADR-3aaa v1.0.x).
 
     These tests verify that Spring Boot routes are detected through the YAML
     pattern system rather than deprecated analyzer-level detection.
@@ -1382,7 +1382,7 @@ public class Controller {
 
 
 class TestJaxRsRouteDetection:
-    """Tests for JAX-RS route detection via YAML patterns (ADR-0003 v1.0.x).
+    """Tests for JAX-RS route detection via YAML patterns (ADR-3aaa v1.0.x).
 
     These tests verify that JAX-RS routes are detected through the YAML
     pattern system rather than deprecated analyzer-level detection.
@@ -3312,7 +3312,7 @@ public class Roles {
 class TestMethodParentBaseClasses:
     """Tests for extracting parent class base_classes in method metadata.
 
-    ADR-0003 v1.1.x requires methods to include their parent class's base_classes
+    ADR-3aaa v1.1.x requires methods to include their parent class's base_classes
     to enable YAML pattern matching for lifecycle hooks (e.g., Android Activity.onCreate).
     """
 

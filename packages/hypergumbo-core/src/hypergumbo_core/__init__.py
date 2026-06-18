@@ -13,7 +13,7 @@ Submodules
   UsageContext (the IR types every analyzer emits)
 - ``analyze`` — analyzer base classes + entry-point registry
 - ``linkers`` — Tier 2 edge-recovery passes (Protocol / Bridge /
-  Framework / Infrastructure, per ADR-0003-ext)
+  Framework / Infrastructure, per ADR-3bbb)
 - ``frameworks`` (data) + ``framework_patterns`` (code) — YAML-driven
   framework detection
 - ``cli`` — argparse entry point
