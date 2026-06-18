@@ -2,6 +2,9 @@
 # ADR-0033: Spec-vs-Data Validator Stage
 
 - Status: **Accepted**
+
+> Amended in place 3x — see amendments (2026-06-11 x2, 2026-06-17); the assert-empty gate is now a shrink-only multi-substrate fixture ratchet.
+
 - Date: 2026-05-31
 - Supersedes: —
 - Superseded by: —
@@ -81,7 +84,7 @@ The `validation_report` section in the behavior-map artifact is a JSON object:
 ```json
 {
   "validation_report": {
-    "schema_version": "0.1",
+    "schema_version": "0.1",  // (stale example — current schema_version is 0.3 per the 2026-06-17 amendment; see below)
     "violations": [
       {
         "severity": "error",

@@ -7,6 +7,8 @@
 - Superseded by: —
 - Related: ADR-0024 (the axis-declaration template instantiated here), ADR-0023 (the worked example whose four-phase migration shape this ADR mirrors), ADR-0014 (Generalized Symbol Identity — the dataclass this axis types one field of), ADR-0028 (the sibling-axis ADR for `Edge.evidence_type`; ADR-0028 Phase 1 retroactively re-opened this ADR's `Symbol.kind` JSON Schema enum — see the schema-impact note appended to Phase 1 step #5 below), tracker item `WI-dumiz-bikul-pitaf-gutiv-nudig-vovam-sinad-vogaj` (the deep audit whose verdict produced this ADR; the cluster taxonomy in §3 below is that audit's output), [`docs/MIGRATION-6.0-CONCEPT-AXES.md`](../MIGRATION-6.0-CONCEPT-AXES.md) (per-value rename tables for JSON consumers post-closure)
 
+> **Amended in place** — the Status line above carries closure news (Phases 1–4 complete through `SCHEMA_VERSION` 0.6.0; all 71 endpoint_shape values removed per audit-findings 0005/0006/0007/0009/0010/0011/0013 and [`docs/MIGRATION-6.0-CONCEPT-AXES.md`](../MIGRATION-6.0-CONCEPT-AXES.md)), but the §Decision corollaries, §Migration phases, and §Open questions below were originally written prospectively. Per-phase and per-OQ DONE/RESOLVED markers have been added inline so a fragment reader does not treat the prospective prose as pending. No section body was removed; the markers annotate, they do not excise.
+
 ## Context
 
 Hypergumbo's `Symbol` dataclass (`packages/hypergumbo-core/src/hypergumbo_core/ir.py:251`) defines `kind` as a free-form `str` with the docstring "Type of symbol (function, class, etc.)". There is no enum, no canonical vocabulary, and no governing principle that constrains what a `kind` value should encode. Each analyzer and linker invents its label in isolation.
@@ -60,6 +62,8 @@ Adopt the following typing rule for the `Symbol.kind` field:
 > **`Symbol.kind` names the source-language syntactic construct that the symbol represents. Properties of the symbol's participation in framework patterns, dispatch protocols, or roles in larger architectural structures go in `Symbol.meta` (or a dedicated `Symbol` field, when first-class enough to deserve one). Edge-shaped relationships go on the `Edge`, not the `Symbol`.**
 
 Three operational corollaries:
+
+> **DONE (corollary 3 executed) — the controlled migration referenced by corollary 3 completed (Phases 1–4); the deprecation set was settled per-cluster in audit-findings 0005/0006/0007/0009/0010/0011/0013 and all 71 endpoint_shape values were removed. Corollaries 1 and 2 remain the standing in-force typing rule.**
 
 1. **No new `kind` value may encode information already on an `Edge` or in framework metadata.** If a proposed new kind would only differ from an existing one based on what edges the symbol participates in or what framework context surrounds it, the right answer is to reuse the existing kind and let consumers query the edges or `meta["framework_role"]`.
 
@@ -168,9 +172,13 @@ Estimated emit-site distribution: Cluster 27D has ~25 values across ~15-20 produ
 
 ## Migration
 
+> **DONE (all phases) — Phases 1–4 complete through `SCHEMA_VERSION` 0.6.0; all 71 endpoint_shape values removed (audit-findings 0005/0006/0007/0009/0010/0011/0013).** The phase-by-phase prose below is retained as the historical migration plan; per-phase DONE markers follow.
+
 Mirrors ADR-0023's four-phase shape; consumers can keep working throughout. JSON output stability is treated as additive deprecation in Phase 1, hard rename in Phase 4.
 
 ### Phase 1 — registry + drift linter
+
+> **DONE — landed PR #3546 (registry, drift linter, property test, by-axis view, JSON Schema integration); see the schema-impact note in step #5.**
 
 Mirrors ADR-0023 Phase 1. Land:
 
@@ -186,6 +194,8 @@ Estimated effort: ~1-2 days. No producer or consumer changes ship in this phase;
 
 ### Phase 2 — migrate consumers
 
+> **DONE — consumer surfaces (ranking, slice, sketch) migrated to `symbol_kinds_on_axis` / the composed `(kind, edge_type, meta)` shape ahead of producer migration.**
+
 Update consumers that maintain hardcoded `kind` sets to query `symbol_kinds_on_axis(AXIS_LANGUAGE_CONSTRUCT)` or the composed `(kind, edge_type, meta)` shape. Known consumer surfaces (audit during Phase 1):
 
 - Centrality weight tables in `packages/hypergumbo-core/src/hypergumbo_core/ranking.py` — likely an `_NODE_KIND_WEIGHTS` table with a frozen subset of kinds.
@@ -198,6 +208,8 @@ Each consumer migration is reversible: the old `kind` semantics still produce th
 Estimated effort: ~1-2 days, comparable to ADR-0023 Phase 2.
 
 ### Phase 3 — unify producers
+
+> **DONE — all deprecation-list producer sites migrated to canonical (Cluster 27A) kinds plus `meta["framework_role"]` where a fact was carried; per-cluster `awaits_bakeoff_validation` tags cleared.**
 
 Sweep the producer sites that emit deprecation-list `kind` values. For each:
 
@@ -216,6 +228,8 @@ Producer migration order, lowest-risk-first:
 Estimated effort: ~5-10 days plus bakeoff validation per phase, comparable to ADR-0023 Phase 3.
 
 ### Phase 4 — schema bump and deprecation removal
+
+> **DONE — Phase 4a (additive deprecation window) shipped, then Phase 4b removed all 71 endpoint_shape values from `SYMBOL_KINDS` through `SCHEMA_VERSION` 0.6.0 (audit-findings 0005/0006/0007/0009/0010/0011/0013).**
 
 Mirrors ADR-0023 Phase 4's split shape:
 
@@ -275,15 +289,27 @@ Both axes were flagged by the same Adjacent Concept Sweep; both have DEPRECATE v
 
 ## Open questions
 
+> **RESOLVED (all) — the open questions below were settled by the per-cluster audit-findings docs (0005/0006/0007/0009/0010/0011/0013) and the Phases 1–4 closure; per-OQ RESOLVED markers follow. The prose is retained as the historical question framing.**
+
 1. **Cluster 27B (file-shape) resolution.** Is `file` a language construct, a separate axis, or something else? Decision deferred to the cluster-27B audit-findings doc; this ADR parks Cluster 27B values on `pending_classification`.
+
+   > **RESOLVED — settled by the cluster-27B audit-findings doc; Cluster 27B no longer parked on `pending_classification`.**
 
 2. **Cluster 27G (build/config) resolution.** Same shape as Cluster 27B but for build-system / config-system entities. Likely a separate `Symbol.role` or `Symbol.config_shape` axis. Decision deferred to the cluster-27G audit-findings doc.
 
+   > **RESOLVED — settled by the cluster-27G audit-findings doc.**
+
 3. **Apex selection in Cluster 27C.** When two language-specific labels coexist (`fn` vs `function`, `proc` vs `procedure`), which is the apex? The ADR-0023 heuristic was "most-frequent emitter wins"; the ADR-0027 default is the same. Per-pair confirmation in the cluster-27C audit-findings doc.
+
+   > **RESOLVED — apex per pair confirmed in the cluster-27C audit-findings doc and applied in Phase 3 (apex/peer collapse).**
 
 4. **Coordination with `Symbol.meta` schema.** The Cluster 27D fold target depends on `meta["framework_role"]` becoming a recognized convention. Should there be a parallel registry of meta keys (an `axis_meta_keys.py`)? Probably yes once the recurrence-promotion threshold per ADR-0024 §"Fold-residue discipline" rule 3 fires for the second time (the first being whatever this ADR introduces). Defer to a follow-on tracker item.
 
+   > **RESOLVED — the Cluster 27D fold to `meta["framework_role"]` shipped in Phase 3; the parallel-meta-key-registry question is the deferred follow-on tracker item, not a blocker for this ADR's closure.**
+
 5. **Coordination with ADR-0028 (evidence_type axis).** Both ADRs depend on `axis_drift.find_drift` and the audit-findings filing convention; both will land registries that share the JSON Schema extension. Phasing: Phase 1 of either can land independently; Phase 3 producer migrations may benefit from sequencing (do the cluster with the smallest blast radius first across both axes). Tracked at the parent items WI-dahim and WI-pilit; the work-item chain for each axis's migration phases is filed once Phase 1 lands.
+
+   > **RESOLVED — both axes shipped; ADR-0028 Phase 1 's re-open of this ADR's schema enum is recorded in the Phase 1 step #5 schema-impact note above.**
 
 ## Related
 

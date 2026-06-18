@@ -4,7 +4,7 @@
 - Status: **Accepted**
 - Date: 2026-06-01
 - Supersedes: —
-- Superseded by: —
+- Superseded by: Partially superseded by ADR-0037 (Out-of-scope `:unresolved` blessing), ADR-0036 (reviewer-checklist item 5 correction); core factory-discipline decision in force
 - Related: ADR-0014 (Typed stable_id factories — the family of `make_*_stable_id` factories whose discipline this ADR generalizes to `Symbol.id` construction), ADR-0033 (Spec-vs-Data Validator Stage — the runtime enforcement substrate; this ADR's policy is enforced by ADR-0033's `id_format` validator class), ADR-0031 (Symbol.language reshape — its Class B "synthetic stand-in" classification clarifies which language string belongs in the canonical ID's first segment for linker-emitted Symbols); tracker items INV-sadiv (218 call_site nodes emitted with ad-hoc `<path>::<role>::<line>` IDs — closed by this ADR's six-site migration), INV-dulah (META: ID-format escapes), INV-hunup (META: stable_id multiplicity — out of scope here, addressed by Phase 6 PR1).
 
 > **Amendment (2026-06-11, per the 2026-06-10 design interview — ADRs 0035–0042, PR #4181):** Two corrections. (a) §"Out of scope" blesses `make_unresolved_edge` and the `:unresolved` dst shape it stamps; ADR-0037 ruling 4 retires that shape (the `unresolved` kind-slot token folds into `external_symbol`), and the Edge-ID validation question this ADR deferred to "a future ADR" is taken up by ADR-0036/ADR-0037. (b) Reviewer-checklist item 5's claim that the `id_format` validator "pairs `Symbol.id`'s trailing segment with `Symbol.kind`" was inaccurate — ADR-0036 Evidence #2 establishes the shipped gate was shape-only and never round-tripped slot values against `Symbol.name`/`Symbol.kind`; ADR-0036's round-trip checks (Ruling 2, enforcement layer 2) are the fix.
@@ -93,14 +93,14 @@ return Symbol(
 2. Does the line read `id=make_symbol_id(...)` or `id=make_file_id(...)`? If yes, you're conforming.
 3. If the line reads `id=f"..."` or `id="..." + something`, **stop**. Replace with the appropriate factory call.
 4. For Class B synthetic stand-ins: confirm the factory's first argument is the host's `discovery_language`, not the (`None`) `Symbol.language`.
-5. Confirm the `kind` argument (5th positional) is in the `symbol_kinds` registry — the `id_format` validator pairs `Symbol.id`'s trailing segment with `Symbol.kind`, and cross-axis coherence is enforced separately by `axis_conformance`.
+5. Confirm the `kind` argument (5th positional) is in the `symbol_kinds` registry — the `id_format` validator pairs `Symbol.id`'s trailing segment with `Symbol.kind`, and cross-axis coherence is enforced separately by `axis_conformance`. <!-- corrected/retired — see amendment (ADR-0036 Evidence #2: the shipped `id_format` gate was shape-only and never round-tripped slot values against `Symbol.name`/`Symbol.kind`; ADR-0036 Ruling 2 / enforcement layer 2 round-trip checks are the fix) -->
 
 ### Out of scope
 
 This ADR addresses only `Symbol.id` construction. Three adjacent identity-discipline gaps remain open and are tracked separately:
 
 - **`Symbol.stable_id` format and multiplicity** (INV-hunup, INV-bazij) — Phase 6 PR1 / PR3 territory. The `stable_id` field has its own schema (`sha256:<16hex>` and family-specific factory outputs) and its own validator class (Phase 6).
-- **`Edge.id` format** — Edge IDs are addressed by a separate canonical factory at `analyze/base.py:make_unresolved_edge` and have a different shape constraint. A future ADR (Phase 6 PR1 sibling) extends the validator to Edge IDs.
+- **`Edge.id` format** — Edge IDs are addressed by a separate canonical factory at `analyze/base.py:make_unresolved_edge` and have a different shape constraint. A future ADR (Phase 6 PR1 sibling) extends the validator to Edge IDs. <!-- corrected/retired — see amendment (ADR-0037 Ruling 4 retires the `:unresolved` dst shape this bullet blesses: the `unresolved` kind-slot token folds into `external_symbol`; the deferred "future ADR" Edge-ID validation question is taken up by ADR-0036/ADR-0037) -->
 - **Stable-id collision counting** (INV-bazij P0, 60% collision rate) — Phase 6 PR3 territory. Collision detection is a separate validator concern (cross-record coherence), not a per-record shape check.
 
 ## Enforcement

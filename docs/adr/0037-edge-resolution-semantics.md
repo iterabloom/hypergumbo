@@ -1,9 +1,10 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0037: Edge Resolution Semantics — `is_resolved` Means In-Repo Target; Single Edge-Finalization Verdict; the `unresolved` Placeholder Kind Folds Into `external_symbol`
 
-- Status: **Accepted**
+- Status: **Mosaic — Rulings 1, 2, 3, 5 Implemented; Ruling 4 (`unresolved`→`external_symbol` kind fold) pending ADR-0036 identity migration**
+> Amended in place — see the "Implementation status" section for the per-ruling landed/deferred split (rulings 1/2/3/5 landed; ruling 4 deferred). Status line and inline pointers normalized so a fragment read cannot mistake ruling 4's prose for landed state.
 - Date: 2026-06-10
-- Supersedes: ADR-0028's "Sibling-field design call-out" (the producer-stamped `is_resolved` contract — ruling 2's central derivation replaces it); ADR-0034's out-of-scope blessing of `make_unresolved_edge`'s `:unresolved` dst shape (retired by ruling 4's kind fold); ADR-0017's dst-id string-shape coupling (the `{lang}:external:0-0:{name}:unresolved` matching and refinement-pass rewrites — re-keyed on `dst_ref` by the implementing fixes)
+- Supersedes: ADR-0017 (partial), ADR-0028 (partial), ADR-0034 (partial). Detail: ADR-0028's "Sibling-field design call-out" (the producer-stamped `is_resolved` contract — ruling 2's central derivation replaces it); ADR-0034's out-of-scope blessing of `make_unresolved_edge`'s `:unresolved` dst shape (retired by ruling 4's kind fold — see Ruling 4's DEFERRED marker); ADR-0017's dst-id string-shape coupling (the `{lang}:external:0-0:{name}:unresolved` matching and refinement-pass rewrites — re-keyed on `dst_ref` by the implementing fixes)
 - Superseded by: —
 - Related: ADR-0027 (Symbol.kind names the source-language construct — the construct-vs-relationship principle the node-kind fold here applies), ADR-0028 (evidence_type names the inference pathway — `resolution_quality` is its fold residue, whose MetaKeySpec doc this ADR corrects), ADR-0033 (Spec-vs-Data Validator Stage — the enforcement substrate gaining the FK predicate; its cross-field coherence invariant (a) re-anchors to the finalization verdict here), ADR-0035 (stable-id v6 identity contract — placeholder-node identity changes coordinate there), ADR-0036 (node.id grammar v2 — owns the kind-slot vocabulary the fold removes `unresolved` from). Tracker items: see the dedicated "Tracker items" section at the end.
 
@@ -62,13 +63,15 @@ A single finalization step at the boundary-synthesis/remap stage — the `apply_
 Consequences for the producers:
 
 - The producer-side default `is_resolved=True` (`ir.py:613`/`ir.py:654`) **stops being load-bearing**. Producer-stamped values become advisory inputs; the finalizer's verdict is what serializes. This is what makes WI-kukuk's 4,507-edge contradiction structurally impossible rather than individually patched.
-- `make_unresolved_edge` (`analyze/base.py:445`) derives `dst_ref` **unconditionally** from the `(lang, module_hint, callee_name)` components it already has (`analyze/base.py:490-509`), instead of accepting it as an optional kwarg that 67.8% of callers omit. This closes WI-zuhon at the producer side; the finalizer backstops any producer that bypasses the helper.
+- `make_unresolved_edge` (`analyze/base.py:445`) derives `dst_ref` **unconditionally** [SENTINEL EXCEPTION (WI-huzuv): "unconditionally" reads as "for every edge with a *real* external module"; when the module is the `"external"` sentinel (module unknown) `dst_ref` stays `None` — the table's third "unidentified reference" cell — rather than fabricating `module_path="external"`. See "Implementation status".] from the `(lang, module_hint, callee_name)` components it already has (`analyze/base.py:490-509`), instead of accepting it as an optional kwarg that 67.8% of callers omit. This closes WI-zuhon at the producer side; the finalizer backstops any producer that bypasses the helper.
 
 ### 3. Recovery edges are correctly resolved; the `resolution_quality` doc is what gets fixed
 
 Under ruling 1, the 31 method-call-recovery edges whose dsts ARE real in-repo nodes become **correctly** `is_resolved=True` by definition — a heuristic line-proximity resolution to a first-party method is uncertain in *pathway*, not in *locality*. WI-mutuk therefore resolves as a documentation fix, not a producer flip: the `resolution_quality` MetaKeySpec (`axis_meta_keys.py:136-139`) drops its "set alongside `Edge.is_resolved=False`" pairing claim and instead documents `resolution_quality` as a pathway-quality label orthogonal to `is_resolved` (resolution certainty lives in `confidence` and `evidence_type` per ADR-0028; target locality lives in `is_resolved`).
 
 ### 4. Node-kind fold: `unresolved` folds into `external_symbol`
+
+> NOT YET LANDED — deferred; see "Implementation status". Ruling 4 (the `:unresolved` → `:external_symbol` id-kind-slot fold) is the one ruling in this ADR that has *not* shipped: it churns 458 node ids and rides the ADR-0036 identity migration. The remaining prose in this section describes the intended end state, not current behavior.
 
 The placeholder node kind `unresolved` — today forced into the canonical boundary id's kind slot by the remap (`ir.py:1242` → `ir.py:1004`) and stamped into producer dst ids by `format_legacy_dst` (`ir.py:573`) / `make_unresolved_edge` (`analyze/base.py:490`) — **folds into `external_symbol`**. Resolution state is a property of the REFERENCE (the edge), not of the thing referenced; after this ADR it lives only on the edge surfaces of ruling 1. One external target gets one kind, regardless of which path minted it, eliminating the dual-minting inconsistency.
 

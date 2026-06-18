@@ -4,6 +4,12 @@
 Date: 2025-01-14
 Status: Accepted
 
+> Amended in place — see implementation-state and cross-ref notes below (additions only; no section bodies removed).
+>
+> Implementation state: the Decision/Migration Path below read as a forward-looking proposal, but the core taxonomy has landed. `Tier` (IntEnum: FIRST_PARTY/INTERNAL_DEP/EXTERNAL_DEP/DERIVED) lives in `packages/hypergumbo-core/src/hypergumbo_core/supply_chain.py`; `FileRole` (Flag: ANALYZABLE/CONFIG/DOCUMENTATION/DATA), the `LanguageSpec` dataclass, the `LANGUAGES` dict, and the composed `CODE_ROLES` constant all live in `packages/hypergumbo-core/src/hypergumbo_core/taxonomy.py`. (Role flags on `FileClassification` — `is_test`/`is_example`/`is_config`/`is_generated` — are independent boolean axes per WI-jobuj/WI-rigun-patuz and INV-tisid.)
+>
+> Cross-ref (NOT supersession): ADR-0022 (Language Profile Registry) and ADR-0041 (Supply-Tier Purity) are topically adjacent successors that build on this taxonomy but do NOT supersede it; this ADR remains Accepted/in force.
+
 ## Context
 
 Hypergumbo currently classifies files using several overlapping, independently-maintained systems:
@@ -47,6 +53,8 @@ We will introduce a **two-dimensional classification** where every file has both
 
 ### Dimension 1: Tier (Provenance)
 
+> Implemented as the `Tier` IntEnum in `supply_chain.py` (see implementation-state note above).
+
 Unchanged from the existing supply chain model:
 
 ```python
@@ -60,6 +68,8 @@ class Tier(IntEnum):
 
 ### Dimension 2: Role (Purpose)
 
+> Implemented as the `FileRole` Flag enum in `taxonomy.py` (see implementation-state note above).
+
 New classification for content type:
 
 ```python
@@ -72,6 +82,8 @@ class FileRole(Flag):
 ```
 
 ### Single Source of Truth
+
+> Implemented as the `LanguageSpec` dataclass and `LANGUAGES` dict in `taxonomy.py` (see implementation-state note above).
 
 All file type information consolidated in one place:
 
@@ -202,6 +214,8 @@ def classify_json_file(path: Path) -> FileRole:
 * **Learning curve**: Contributors must understand two dimensions instead of one. However, the dimensions are intuitive (where from? what for?) and the composed functions hide complexity.
 
 ## Migration Path
+
+> Status update (see implementation-state note above): the core taxonomy (`Tier`, `FileRole`, `LanguageSpec`, `LANGUAGES`, `CODE_ROLES`) has landed in `supply_chain.py` / `taxonomy.py`. The phase numbering below is retained as the original plan of record.
 
 1. **Phase 1**: Add `FileRole` enum and `LanguageSpec` dataclass alongside existing code. Implement `get_role()` function.
 

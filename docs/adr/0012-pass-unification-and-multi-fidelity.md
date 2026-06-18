@@ -3,13 +3,17 @@
 
 ## Status
 
-Step 1 implemented (analyzer registration unified). Steps 2-3 remain design targets.
+Status: Step 1 implemented (analyzer registration unified); Steps 2-3 remain design targets.
+
+> Amended in place — see docs/adr/README.md "ADR lifecycle" (status-line convention + Context/References reconciliation note).
 
 ## Context
 
 The analysis pipeline currently has two coexisting analyzer registration systems and a two-tier execution model. Understanding how we got here — and where the architecture should go — requires tracing the history.
 
 ### The two analyzer registries
+
+> Note (post-Step-1 reality): The dead-code framing below describes the *pre-Step-1* state. After Step 1 the roles inverted — `analyze/registry.py` is the canonical active registry and `analyze/all_analyzers.py` is a facade delegating to it. See the **References** section for the current authoritative description; do not ingest the "vestigial dead code" claim below as current.
 
 On January 5, 2026 (commit `9f74a49`), a single refactoring commit created both systems simultaneously:
 

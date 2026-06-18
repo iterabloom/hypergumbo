@@ -2,7 +2,9 @@
 # ADR-0017: Taint-Zone Dataflow Analysis
 
 Date: 2026-03-22
-Status: Accepted
+Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance); core taint analysis in force
+
+> Amended in place — see the 2026-06-11 amendment banner below and the inline pointer markers in §3a and the "Interaction with ADR-0015 `access_mode` metadata" subsection.
 
 > **Amendment (2026-06-11, per the 2026-06-10 design interview — ADRs 0035–0042, PR #4181):** Two notes. (a) The machinery below keyed to the dst-id string shape `{lang}:external:0-0:{name}:unresolved` — the `_sink_module_compatible` external exemption and the post-DDG refinement pass's module-segment string rewrites of `edge.dst` — is invalidated by ADR-0037: the `unresolved` kind-slot token folds into `external_symbol`, and `dst_ref` becomes unconditionally derived precisely so consumers stop string-parsing `dst`; implementing fixes will re-key sink matching and refinement on `dst_ref`. (b) The §"Interaction with ADR-0015 `access_mode` metadata" subsection's reliance on `dest_access_mode` is superseded by ADR-0038: bridge direction moves to the new `data_direction` meta key, `dest_access_mode` is removed, and taint's trust of `access_mode` is gated on the ADR-0038 rebuild — until taint re-keys to `data_direction`, bridge edges degrade to this ADR's conservative bidirectional fallback.
 
@@ -553,6 +555,8 @@ When a function has been analyzed by the native CFG builder + reaching-def solve
 4. **At sanitizer calls (§2c), transform the taint label** (e.g., `plaintext` → `ciphertext`).
 5. **If tainted data reaches a sink (§2b), record a taint-flow finding.**
 
+> **[Invalidated by ADR-0037]** The dst-string machinery in this subsection and the next — the `{lang}:external:0-0:{name}:unresolved` dst shape, the `external`/`<external>` exemption in `_sink_module_compatible`, and the post-DDG refinement pass's string rewrites of `edge.dst`'s module segment — is invalidated by ADR-0037: the `unresolved` kind-slot token folds into `external_symbol` and `dst_ref` becomes unconditionally derived so consumers stop string-parsing `dst`. Implementing fixes re-key sink matching and refinement on `dst_ref`. The text below is retained as-is for historical context.
+
 **Short-name sink-matching disambiguation.** Sinks are declared with a module-qualified name (e.g., `multiprocessing.Queue.get`, `os.environ.get`). Edges, however, are not always resolved to a specific module: when the analyzer can't pin down a callee's origin, it emits a synthetic external dst of shape `{lang}:external:0-0:{name}:unresolved`. A naive "match sinks by callee short-name" rule then fires the sink on every `.get()` call site in the codebase. The propagator applies `_sink_module_compatible(sink_module, callee_module)` as a filter:
 
 - When the edge's dst carries a module hint, the sink's declared module must match that hint by direct equality or by prefix (e.g., callee module `os.environ` is compatible with sink module `os.environ` or with `os`).
@@ -560,7 +564,7 @@ When a function has been analyzed by the native CFG builder + reaching-def solve
 
 This disambiguation runs at sink-match time and applies to both the DDG path here and the structural fallback in §3b.
 
-**Post-DDG IR refinement pass for unresolved-external dsts.** When a function's analyzer cannot type-infer a method-call receiver (e.g., `x = os.environ; x.get(...)`), py.py emits the call as `python:external:0-0:get:unresolved` rather than guessing at the receiver's origin. The refinement pass — a §1c consumer that runs between `solve_reaching_defs` and the propagation step — recovers the module-of-origin when the DDG can prove it: for each `recv.method()` call site whose receiver is a local variable, it walks the DDG backward to the receiver's reaching definition, inspects the assignment's RHS for an import-rooted attribute chain (or a `from`-import alias), and rewrites `edge.dst`'s module segment from `external` to the recovered path (e.g., `python:os.environ:0-0:get:unresolved`). The rewritten dst then participates in `_sink_module_compatible` directly, so the `external` exemption no longer applies to receivers that could be resolved.
+**Post-DDG IR refinement pass for unresolved-external dsts.** *(See the [Invalidated by ADR-0037] marker above: the `edge.dst` module-segment rewrites described here are re-keyed onto `dst_ref` under ADR-0037.)* When a function's analyzer cannot type-infer a method-call receiver (e.g., `x = os.environ; x.get(...)`), py.py emits the call as `python:external:0-0:get:unresolved` rather than guessing at the receiver's origin. The refinement pass — a §1c consumer that runs between `solve_reaching_defs` and the propagation step — recovers the module-of-origin when the DDG can prove it: for each `recv.method()` call site whose receiver is a local variable, it walks the DDG backward to the receiver's reaching definition, inspects the assignment's RHS for an import-rooted attribute chain (or a `from`-import alias), and rewrites `edge.dst`'s module segment from `external` to the recovered path (e.g., `python:os.environ:0-0:get:unresolved`). The rewritten dst then participates in `_sink_module_compatible` directly, so the `external` exemption no longer applies to receivers that could be resolved.
 
 Scope follows the §1c accretion model: the refinement pass is a §1c-extractor consumer and therefore applies only to languages where a def/use extractor exists (Python today, Rust and TypeScript when their extractors land). Languages without a §1c extractor have no DDG to walk backwards through; their unresolved-external edges remain at the short-name-matching fallback by design, consistent with the ADR's per-language precision framing. Receivers that no DDG-resolution can recover — call-RHS bindings (`x = requests.Session()`), parameter receivers, closure captures — also remain unresolved; the refinement does not invent hints where the DDG cannot supply them, so the `external` exemption still covers those edges to avoid suppressing legitimate findings.
 
@@ -840,6 +844,8 @@ Verdicts become more precise:
 | ADR-0016 (IO boundaries) | Taint-zone analysis replaces call-graph BFS with DDG-backed tracing for languages with extractors; structural tracing remains the fallback |
 
 #### Interaction with ADR-0015 `access_mode` metadata
+
+> **[Superseded by ADR-0038]** This subsection's reliance on `dest_access_mode` (and on `access_mode` for bridge direction generally) is superseded by ADR-0038: bridge direction moves to the new `data_direction` meta key and `dest_access_mode` is removed. Until taint re-keys to `data_direction`, bridge edges are gated to this ADR's conservative bidirectional fallback. The text below is retained as-is for historical context.
 
 ADR-0015's `access_mode` field (read/write/mutate/delete) classifies what an edge *does*. Taint labels classify what data an edge *carries*. These are complementary, not competing:
 
