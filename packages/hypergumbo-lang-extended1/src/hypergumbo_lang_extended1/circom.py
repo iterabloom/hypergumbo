@@ -471,7 +471,9 @@ def analyze_circom(repo_root: Path) -> AnalysisResult:
 
         run = AnalysisRun(
             pass_id=PASS_ID,
-            toolchain="tree-sitter-circom",
+            # WI-luliv: toolchain is Dict[str, str], not a bare str — a string
+            # value crashes finalize's run_signature recompute (.get on a str).
+            toolchain={"name": "circom", "version": "unknown"},
             execution_id=f"skip-{PASS_ID}",
             version=PASS_VERSION,
         )

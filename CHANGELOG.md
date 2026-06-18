@@ -12,6 +12,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Circom skip-path emitted `toolchain` as a `str`, crashing run_signature recompute (Wave-2; WI-luliv)** —
+  the grammar-unavailable skip-path built `AnalysisRun(..., toolchain="tree-sitter-circom", ...)` — a bare string where
+  the field type is `Dict[str, str]`. `to_dict` then serialized a schema-violating string, and `finalize`'s
+  run_signature recompute (`toolchain.get("name", "")`) raised `AttributeError: 'str' object has no attribute 'get'` on
+  any analysis whose circom skip-run reached finalize (circom files present, grammar unavailable). Fixed to
+  `{"name": "circom", "version": "unknown"}`, matching the convention every other direct-constructor analyzer
+  (puppet/robot/rst/meson/purescript/racket/matlab) already follows. circom was the lone outlier. Behavioral evidence:
+  `analyze_circom` skip-path now returns a dict toolchain and the finalize-style `.get` no longer crashes.
+
 - **Provenance: per-pass productivity counters + IR-consuming-pass timer (Wave-2; closes INV-gizik, INV-pitab symptom 5)** —
   `AnalysisRun` gained two `int` fields, `nodes_emitted` / `edges_emitted` (schema 0.14.1 → 0.14.2), and the per-pass
   `duration_ms` timer — previously wired only on the file-walking branch — is now started for every pass. Before this,

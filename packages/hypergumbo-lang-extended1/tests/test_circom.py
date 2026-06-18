@@ -265,6 +265,31 @@ class TestCircomSkipped:
         assert result.skipped is True
         assert len(result.symbols) == 0
 
+    def test_skip_toolchain_is_dict_not_str(self, tmp_path: Path) -> None:
+        """WI-luliv: skip-path toolchain must be a ``Dict[str, str]``, not a str.
+
+        The skip-path historically passed ``toolchain="tree-sitter-circom"``
+        (a bare string) to the ``AnalysisRun`` constructor. ``to_dict`` then
+        emitted a schema-violating string, and ``finalize`` recomputes
+        run_signature via ``toolchain.get("name", "")`` — which raises
+        ``AttributeError`` on a str. Assert the dict shape and that the
+        finalize-style ``.get`` access does not crash.
+        """
+        _make_circom_file(tmp_path, "test.circom", "template T() {}")
+        with patch.object(
+            circom_module, "is_circom_tree_sitter_available", return_value=False
+        ):
+            with pytest.warns(UserWarning, match="Circom analysis skipped"):
+                result = circom_module.analyze_circom(tmp_path)
+        tc = result.run.toolchain
+        assert isinstance(tc, dict), f"toolchain must be a dict, got {type(tc).__name__}"
+        assert tc.get("name") == "circom"
+        assert "version" in tc
+        # to_dict must serialize a dict (schema contract); finalize's
+        # ``run["toolchain"].get("name", "")`` must not crash.
+        assert isinstance(result.run.to_dict()["toolchain"], dict)
+        assert result.run.to_dict()["toolchain"].get("name", "") == "circom"
+
 
 class TestCircomSignalFlowConstraints:
     """Tests for signal flow constraint edge detection (WI-zijos)."""
