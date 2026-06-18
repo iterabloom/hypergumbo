@@ -254,6 +254,11 @@ Three operational corollaries:
 
 ### Deprecation candidates (reconciled with the canonical registry)
 
+> **FIRST-CUT / provisional — authoritative classification is the
+> `EDGE_TYPES` registry (commit `3b60ba3dd`); the registry overrides
+> this table.** The table below is retained for its rationale narrative,
+> not as a source of truth.
+
 The table below was the first cut at status-Draft time. As of commit
 `50e3a7303` it is reconciled with the canonical registry — the
 authoritative axis classification for every emitted edge type lives
@@ -278,6 +283,11 @@ audit during migration: some may be genuinely distinct relationships, others
 are protocol-conditional labels.
 
 ### Edge types that stay (and why)
+
+> **FIRST-CUT / provisional — authoritative classification is the
+> `EDGE_TYPES` registry (commit `3b60ba3dd`); the registry overrides
+> this list.** The list below is illustrative of the reasoning; the
+> registry's `relationship`-axis membership is the binding answer.
 
 The following are NOT subject to deprecation under this rule, because each
 names a distinct syntactic construct or semantic action that is not
@@ -326,6 +336,14 @@ Three follow-ons sharpen the static check incrementally:
 **2. Runtime corpus-based — landed (WI-funis-funam).**
 Parameterized invariant that auto-discovers new offenders by
 inspecting actual emitted edges:
+
+> **SUPERSEDED (partition key): the six-field partition key specified
+> in the pseudocode and prose below is superseded by the as-built
+> four-field key `(src.kind, src.language, dst.kind, dst.language)`.**
+> See the "shipped implementation uses a four-field partition key"
+> paragraph below for the rationale (no top-level `Symbol.framework`
+> field today). The six-field key is retained here as the design intent
+> to restore if a `Symbol.framework` registry lands.
 
 ```
 test_edge_type_does_not_encode_endpoint_metadata:

@@ -3,7 +3,7 @@
 
 Date: 2025-01-15
 Updated: 2026-03-19
-Status: Accepted
+Status: Partially superseded by ADR-0039 (entrypoint-selection rows; takes effect once ADR-0039 implementation lands)
 
 > **Amendment (2026-06-11):** The decision tables below key file sampling ("Highest-confidence entrypoint") and the detector-tier prose (0.95 / 0.99 / 0.70–0.85) on entrypoint `confidence` as a composite ranking signal. Under ADR-0039 (2026-06-10 design interview, ADRs 0035–0042, PR #4181), ranking adjustments relocate to the new `rank_score` field and published `confidence` becomes pure detection reliability; once ADR-0039's implementation lands, this ADR's entrypoint-selection rules should be read as `rank_score`-keyed. The cited tier constants also become registry-generated under ADR-0039 ruling 5 Stage B rather than the prose values quoted here.
 
@@ -93,7 +93,7 @@ This rebalancing addresses the problem where a 32k `--with-source` sketch would 
 | Structure | Tree built from important files (see below) |
 | Frameworks | Detection order (alphabetical in output) |
 | Configuration | Heuristic priority, then semantic similarity to query |
-| Entry Points | Confidence score (descending)* |
+| Entry Points | Confidence score (descending)* — see ADR-0039: read as `rank_score`-keyed; tier constants become registry-generated |
 | Data Models | Centrality (most-referenced models first) |
 | Source Files | Symbol importance density = Σ(in-degrees) / LOC |
 | Key Symbols | Two-phase: coverage-first, then centrality × tier weight |
@@ -101,7 +101,7 @@ This rebalancing addresses the problem where a 32k `--with-source` sketch would 
 | Source Content | Same as Source Files (top density first) |
 | Additional File Content | Same as Additional Files (top of README-first hybrid round-robin first) |
 
-*Entry Point confidence reflects detection reliability. Current detectors use decorator/annotation patterns (0.95). Future work may add manifest-based detection (0.99) and naming-convention heuristics (0.70-0.85).
+*Entry Point confidence reflects detection reliability. Current detectors use decorator/annotation patterns (0.95). Future work may add manifest-based detection (0.99) and naming-convention heuristics (0.70-0.85). (see ADR-0039: read as `rank_score`-keyed; tier constants become registry-generated)
 
 **Data Models** are framework-afforded concepts like Entry Points. Detection identifies ORM models, entities, and core data structures via:
 - Framework decorators: `@dataclass`, `@Entity`, Django `models.Model`, SQLAlchemy `Base`, Pydantic `BaseModel`
@@ -139,7 +139,7 @@ The Structure section displays a `tree`-like visualization showing paths to impo
 |----------|--------|---------|---------|
 | 1 | Configuration | 2+ files | Show where config lives |
 | 2 | Tests | 1+ file | Highest-LOC test file |
-| 3 | Entry Points | 1+ file | Highest-confidence entrypoint |
+| 3 | Entry Points | 1+ file | Highest-confidence entrypoint (see ADR-0039: read as `rank_score`-keyed; tier constants become registry-generated) |
 | 4 | Source Files | 3+ files | Top centrality density |
 | 5 | Additional Files | 3+ files | Top semantic picks |
 

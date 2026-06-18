@@ -2,7 +2,7 @@
 # ADR-0022: Per-Language Configuration Surface and Language Profile Registry
 
 Date: 2026-04-10
-Status: Proposed — by-category drift-detection half landed via c00ec84615 (`hypergumbo_core.yaml_catalogs` + `scripts/yaml-catalog-index`); by-language `LanguageProfile` runtime aggregation deferred pending consumer demand. See "Status Update (2026-05-13)" below.
+Status: Partially superseded by its own evolution — by-CATEGORY discoverability landed (yaml_catalogs.py + scripts/yaml-catalog-index, commit c00ec84615); by-LANGUAGE LanguageProfile half DEFERRED/UNIMPLEMENTED — see Status Update 2026-05-13
 
 ## Context
 
@@ -29,57 +29,7 @@ For cross-cutting work like INV-dihos Phase 1-5 (return-type registry rollout ac
 
 ## Decision
 
-Introduce a `LanguageProfile` dataclass and `language_profile.py` registry module. The registry loads, merges, and exposes all applicable per-language rules as a single object. Analyzers consume the registry instead of reading YAML directly.
-
-### LanguageProfile dataclass
-
-```python
-@dataclass(frozen=True)
-class LanguageProfile:
-    """Unified per-language configuration surface.
-
-    All rules that apply to a language are loaded here and exposed as
-    a single object.  Analyzers request the profile for their language
-    and consume whichever sections apply.
-    """
-    language: str
-    dataflow_patterns: DataflowPatterns | None
-    io_primitives: list[IOPrimitive]
-    function_summaries: dict[str, FunctionSummary]
-    framework_patterns: list[FrameworkPattern]
-    signatures: SignatureConfig | None  # INV-dihos Phase 1+
-    test_detection: TestDetectionRules | None
-    type_hierarchy: TypeHierarchyConfig | None
-```
-
-### Registry API
-
-```python
-def load_profile(language: str) -> LanguageProfile:
-    """Load all applicable config surfaces for a language.
-
-    Missing sections default to empty.  Unknown languages produce a
-    profile with all sections None/empty.
-    """
-```
-
-The profile is computed once per analysis run and cached. Analyzers receive it via their existing `AnalyzerContext` or equivalent.
-
-### Consumers
-
-**Runtime consumers (analyzers):**
-- `dataflow.py` reads `profile.dataflow_patterns` instead of loading YAML directly
-- `io_boundary.py` reads `profile.io_primitives` instead of loading catalog directly
-- `taint.py` reads `profile.function_summaries` instead of loading YAML directly
-- `framework_patterns.py` reads `profile.framework_patterns`
-- Analyzers consuming INV-dihos signatures read `profile.signatures`
-
-**Build-time consumers (docs generation):**
-- A new `scripts/generate-language-reference` script walks the registry and emits one markdown page per language: "What does hypergumbo know about <language>?". This addresses the auto-generated reference page concern that motivates the same registry from the contributor-onboarding side.
-
-**Contribution surface:**
-- Contributors add rules by editing the appropriate YAML file under `<section>/<language>.yaml`. They do not need to touch Python.
-- The ADR defines the schema for each section in a dedicated reference page (auto-generated from dataclass docstrings).
+DEFERRED design — not implemented; see Status Update (2026-05-13); original: git show 5163551892:docs/adr/0022-language-profile-registry.md
 
 ## Status Update (2026-05-13)
 
@@ -120,13 +70,7 @@ Until one of those triggers fires, do not implement the runtime aggregation half
 
 ## Migration Path
 
-Phase 1: Implement `LanguageProfile` + `load_profile()` with only the `dataflow_patterns` section populated. Migrate one analyzer (Python `dataflow.py`) to consume it. Validate against bakeoff.
-
-Phase 2: Populate the remaining sections (`io_primitives`, `function_summaries`, `framework_patterns`) in the dataclass and migrate their analyzers one at a time.
-
-Phase 3: Integrate INV-dihos `signatures` as a LanguageProfile section. This unblocks Phase 5 of INV-dihos (cross-linker integration).
-
-Phase 4: Write `scripts/generate-language-reference` to emit per-language markdown pages.
+DEFERRED design — not implemented; see Status Update (2026-05-13); original: git show 5163551892:docs/adr/0022-language-profile-registry.md
 
 ## Alternatives Considered
 
@@ -150,13 +94,7 @@ Rejected because: YAML is explicitly designed for external contribution without 
 
 ## Open Questions
 
-1. **Schema evolution.** How do we evolve the LanguageProfile dataclass without breaking analyzers that consume specific sections? Probably: version the dataclass and provide migration adapters.
-
-2. **Profile composition for multi-language analyzers.** An analyzer that handles JS+TS may want `load_profile("javascript")` AND `load_profile("typescript")`. Should the registry support profile composition, or should the analyzer merge two profiles itself?
-
-3. **Test detection rules.** Test-file detection is currently hardcoded in `taxonomy.py` rather than per-language YAML. Moving it to the profile would unify it but requires a migration from code to data.
-
-4. **Performance.** Loading four+ YAML files per language times N languages at startup adds up. Is lazy per-language loading sufficient, or do we need eager caching?
+DEFERRED design — not implemented; see Status Update (2026-05-13); original: git show 5163551892:docs/adr/0022-language-profile-registry.md
 
 ## References
 

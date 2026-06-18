@@ -115,6 +115,8 @@ When the channel is a literal string, confidence is high. When inferred from a v
 
 Use the existing `meta` dict on `Edge`. No schema change required:
 
+> **Note:** the `dest_access_mode` key shown in the example below is being removed by [ADR-0038](0038-access-mode-contract.md) ruling 3 (condemned as zero-entropy; bridge direction migrates to the `data_direction` meta key). It remains in shipping code until the ADR-0038 rebuild lands.
+
 ```python
 Edge.create(
     src=writer_id,
@@ -147,6 +149,8 @@ Edge.create(
 The `Edge.create` factory gains optional `access_mode`, `dest_access_mode`, and `channel` kwargs that flow into `meta` as a convenience — one-line additions to the factory.
 
 ### 4. YAML-driven pattern classification
+
+> **Retired as guidance by [ADR-0038](0038-access-mode-contract.md) rulings 1/3/4, but still describes SHIPPING behavior until the ADR-0038 rebuild lands — migration window open.**
 
 Rather than adding per-language bespoke code to classify reads and writes, define the patterns declaratively in YAML. The tree-sitter AST node types for assignments, calls, deletions, and attribute access are structurally similar across languages — they differ in node type names but not in shape.
 
@@ -234,6 +238,8 @@ A single module (`dataflow.py`, ~380 lines) provides:
 3. **`scan_library_patterns(file_content, language) -> List[DataflowSite]`**: matches library-specific patterns (the `library_patterns` section) against source text via regex, returning structured write/read sites with channels. This is the same approach used by the event sourcing, message queue, and WebSocket linkers — but driven by YAML instead of per-linker Python code.
 
 ### 5. Two-tier integration model
+
+> **Retired as guidance by [ADR-0038](0038-access-mode-contract.md) rulings 1/3/4, but still describes SHIPPING behavior until the ADR-0038 rebuild lands — migration window open.**
 
 Dataflow annotation applies to two distinct populations of edges, with different integration strategies for each:
 

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Hypergumbo Architectural Analysis — January 7, 2026 (updated 21:30)
 
-**Status:** Accepted — the architectural analysis and taxonomy in this document remain the current contract (§1 Language/Dialect/Framework distinction, §2 analyzer-vs-linker principle with §2.4 subcategory vocabulary, §2.6 FRAMEWORK_PATTERNS phase, §3 framework-afforded concept taxonomy, §6 semantic entry detection). The §5 Migration Path (v0.7.x / v0.8.x / v0.9.x phases) is complete and retained for historical context. The design-target portions flagged 🟪 in `docs/hypergumbo-spec.md` (notably the unified `AnalysisPass(Protocol)`) are addressed by later ADRs.
+**Status:** Partially superseded by ADR-3bbb (§2.4 linker subcategories), ADR-3ccc (§1.4/§2.6 framework concepts); core architecture in force. The architectural analysis and taxonomy in this document remain the current contract (§1 Language/Dialect/Framework distinction, §2 analyzer-vs-linker principle with §2.4 subcategory vocabulary, §2.6 FRAMEWORK_PATTERNS phase, §3 framework-afforded concept taxonomy, §6 semantic entry detection). The §5 Migration Path (v0.7.x / v0.8.x / v0.9.x phases) is complete and retained for historical context. The design-target portions flagged 🟪 in `docs/hypergumbo-spec.md` (notably the unified `AnalysisPass(Protocol)`) are addressed by later ADRs.
 
 **Supplemented by:**
 - [ADR-3bbb: Linker Subcategory Restoration](3bbb-linker-subcategory-restoration.md) — the §2.4 Protocol / Bridge / Framework subcategory vocabulary defined here is restored as the authoritative classification, extended with a fourth subcategory (Infrastructure), and made actively maintained across the linker catalogue, the spec, and the bakeoff playbooks.
@@ -230,6 +230,8 @@ Linkers examine the symbol graph and create edges by:
 
 ### 2.4 Linker Subcategories
 
+> Note: the three-subcategory table below (Protocol / Bridge / Framework) is extended to four subcategories (adding Infrastructure) in [ADR-3bbb: Linker Subcategory Restoration](3bbb-linker-subcategory-restoration.md), which is the authoritative classification.
+
 #### Protocol Linkers (framework-agnostic)
 Match on protocol semantics, regardless of framework.
 
@@ -384,12 +386,8 @@ Semantic detection:
 ## 3. Framework as First-Class Concept
 
 ### 3.1 Current State (Broken)
-```
-profile.py detects:
-├── languages → Used by catalog to suggest passes
-└── frameworks → UNUSED (stored in output JSON only)
-```
-Framework detection exists but doesn't influence behavior.
+
+Historical Jan-2026 snapshot; migration complete — original: git show 5163551892:docs/adr/3aaa-architectural-analysis-and-revision-plan.md
 
 ### 3.2 Desired State
 ```
@@ -625,51 +623,11 @@ SOURCE FILES
 
 ### 5.1 Identified Gaps
 
-| Gap | Current State | Desired State (Revised Architecture) |
-|-----|---------------|--------------------------------------|
-| Framework detection unused | Stored in JSON only | Configures FRAMEWORK_PATTERNS + linkers |
-| Analyzers have framework code | Route patterns baked into analyzers | Pure analyzers with rich metadata capture |
-| Only routes detected | Route patterns only | All framework-afforded concepts (models, tasks, etc.) |
-| Patterns are code | Framework logic in Python | Framework patterns as DATA (YAML) |
-| Packs are vestigial | Never auto-selected | Remove or repurpose as framework bundles |
-| Linkers unconditional | All linkers always run | Activation conditions |
-| Entrypoints use path heuristics | Guessing from file paths | Semantic detection from enriched metadata |
-| `entrypoints.py` misnamed | Path-based heuristics | Becomes thin wrapper over FRAMEWORK_PATTERNS output |
+Historical Jan-2026 snapshot; migration complete — original: git show 5163551892:docs/adr/3aaa-architectural-analysis-and-revision-plan.md
 
 ### 5.2 Migration Path
 
-**v0.6.x (current):**
-- Monolithic analyzers with framework patterns baked in
-- Vestigial packs
-- Framework detection stored but unused
-- Exclusion-based false positive fixes (whack-a-mole)
-- Path-based entrypoint heuristics
-
-**v0.7.x (foundation):** *[Low Risk]*
-1. Document the revised architecture in ARCHITECTURE.md
-2. Enrich analyzer metadata capture - decorators with args, base classes, parameter types
-3. Add `--frameworks` flag with `none/all/explicit` options
-4. Add linker activation conditions (framework, language-pair)
-5. Remove or deprecate Packs
-
-**v0.8.x (separation):** *[Moderate Risk]*
-6. Create framework pattern YAML schema - define structure for data-driven patterns
-7. Implement FRAMEWORK_PATTERNS phase - reads YAML, matches against symbol metadata
-8. Extract FastAPI patterns as first YAML file (proof of concept)
-9. Remove FastAPI detection from py.py - analyzer becomes pure
-10. Add framework → linker mapping (only run gRPC linker if gRPC detected)
-
-**v0.9.x (semantic entry detection):** *[Moderate Risk]*
-11. Implement semantic entry detection - query enriched metadata, not paths
-12. Refactor `entrypoints.py` - becomes thin wrapper over FRAMEWORK_PATTERNS output
-13. Deprecate path heuristics - retain only for `main()` fallback
-14. Validate with bakeoff - verify React Router false positives eliminated
-
-**v1.0.x (complete):** *[Higher Risk]*
-15. Extract all framework patterns to YAML - Express, Spring, Django, etc.
-16. All analyzers become pure - no framework knowledge
-17. Expand concept taxonomy - models, tasks, hooks, DI, etc.
-18. Plugin architecture for custom framework patterns
+Historical Jan-2026 snapshot; migration complete — original: git show 5163551892:docs/adr/3aaa-architectural-analysis-and-revision-plan.md
 
 ---
 
@@ -782,22 +740,7 @@ Version detection from manifests is complex and probably not worth it unless pat
 ### Analyzers (68 total)
 One per language/dialect. Located in `src/hypergumbo/analyze/`.
 
-**Current state:** Framework patterns baked in.
-**Future state:** Pure language processors with rich metadata capture.
-
-Key examples:
-- `py.py` - Python
-  - Current: includes FastAPI/Flask/Django patterns
-  - Future: pure language, captures decorators/base classes
-- `js_ts.py` - JavaScript/TypeScript
-  - Current: includes Express/Koa/React patterns
-  - Future: pure language, captures all AST metadata
-- `go.py` - Go (already relatively pure)
-- `java.py` - Java
-  - Current: includes Spring/Micronaut patterns
-  - Future: pure language, captures annotations/inheritance
-- `cuda.py` - CUDA (dialect of C++)
-- `proto.py` - Protocol Buffers
+Current/Future "state" columns: Historical Jan-2026 snapshot; migration complete — original: git show 5163551892:docs/adr/3aaa-architectural-analysis-and-revision-plan.md
 
 ### Linkers (14 total)
 Cross-boundary edge creation. Located in `src/hypergumbo/linkers/`.
@@ -809,8 +752,7 @@ Cross-boundary edge creation. Located in `src/hypergumbo/linkers/`.
 - `profile.py` - Language and framework detection
 - `catalog.py` - Pass/Pack registry (vestigial; to be deprecated)
 - `entrypoints.py` - Entry point detection
-  - Current: path-based heuristics
-  - Future: semantic detection from enriched metadata
+  - Current/Future "state" bullets: Historical Jan-2026 snapshot; migration complete — original: git show 5163551892:docs/adr/3aaa-architectural-analysis-and-revision-plan.md
 - `ir.py` - Symbol, Edge, AnalysisRun data structures
 - `discovery.py` - File discovery with excludes
 - `slice.py` - Graph slicing for context extraction

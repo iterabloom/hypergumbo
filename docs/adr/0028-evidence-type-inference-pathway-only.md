@@ -176,24 +176,11 @@ Estimated emit-site distribution: ~140 production files have `evidence_type` lit
 
 ### Sibling-field design call-out (`Edge.is_resolved`)
 
-Per ADR-0024 §"Fold-residue discipline" rule 3, Cluster 28B's "resolution status" property meets the recurrence-promotion threshold (≥3 distinct axis values; ≥2 producer modules). The fold target is therefore a dedicated `Edge` field, not a `meta` key.
-
-Two options for the field shape, decided here:
-
-- **Option 1 — `Edge.is_resolved: bool` (default `True`).** Producer marks `is_resolved=False` whenever the dst symbol couldn't be resolved at analysis time. Simplest possible API. Captures the binary distinction Cluster 28B's `_unresolved` values already encode.
-
-- **Option 2 — `Edge.resolution_status: Literal["resolved", "unresolved", "stub", "ambiguous"]`.** Richer state. `stub` for gRPC-stub edges where the dst is known to exist but its symbol record isn't in scope; `ambiguous` for edges where multiple candidate dsts exist and the analyzer didn't pick one.
-
-**Decision: Option 1 (`Edge.is_resolved: bool`).** Rationale:
-- The Cluster 28B values empirically encode a binary distinction (resolved vs not); the richer states in Option 2 are speculative.
-- Bool is JSON-stable across schema versions; enum changes require coordinated bumps.
-- If a producer subsequently needs to record stub or ambiguous state, the existing `meta` is the right home for that distinction (per ADR-0024 §"Fold-residue discipline" rule 3 — promote *only* when the recurrence threshold fires; speculative fields rot).
-
-The bool defaults to `True` because the **dominant case is resolved**: ~90% of edges have well-determined dsts. Producers explicitly set `is_resolved=False` only in the unresolved case, minimizing producer-side churn.
-
-Schema impact: `SCHEMA_VERSION` minor bump in Phase 1 (additive — old consumers ignore the new field; new consumers rely on the default). Phase 4 schema bump removes the deprecated `*_unresolved` evidence types but leaves the field shape stable.
+> SUPERSEDED by ADR-0037: is_resolved is centrally derived at edge finalization (True iff dst is a real in-repo symbol); producer stamps advisory — see ADR-0037 ruling 2; original: git show 5163551892:docs/adr/0028-evidence-type-inference-pathway-only.md
 
 ## Migration
+
+> **COMPLETE (per Status line): Phases 1–4 below all shipped through `SCHEMA_VERSION` 0.7.0 — all 111 endpoint_shape values removed from `EVIDENCE_TYPES` (audit-findings 0008/0012/0014). The prose below is retained as the historical migration plan, not as pending work.**
 
 Mirrors ADR-0023's four-phase shape; consumers can keep working throughout. JSON output stability is treated as additive deprecation in Phase 1, hard rename in Phase 4.
 
@@ -312,7 +299,7 @@ Sequence the migrations: ship ADR-0027's Phase 1 first, then ADR-0028's Phase 1.
 
 3. **Cluster 28B canonical-form additions.** Some `_unresolved` values may need new Cluster 28A canonical inference labels (`grpc_stub_resolution`, `luajit_ffi_lookup`, …). Decision deferred to the cluster-28B audit-findings doc, which lists the new canonical labels per row.
 
-4. **`is_resolved` semantics for stub edges.** Some gRPC / FFI edges have a known-existing dst whose symbol record is out of scope (the dst is in a generated stub the analyzer doesn't see). Should these be `is_resolved=True` or `is_resolved=False`? Empirically the simpler answer is `is_resolved=False` because the dst is unrecovered for the analysis pass; consumers can disambiguate via `meta["resolution_method"]="stub"` if needed. Deferred to the cluster-28B audit-findings doc; the chosen rule applies uniformly to all 6 Cluster 28B values.
+4. SUPERSEDED by ADR-0037: is_resolved is centrally derived at edge finalization (True iff dst is a real in-repo symbol); producer stamps advisory — see ADR-0037 ruling 2; original: git show 5163551892:docs/adr/0028-evidence-type-inference-pathway-only.md
 
 5. **Coordination with ADR-0027.** Both ADRs depend on `axis_drift.find_drift` and the audit-findings filing convention. Phasing: Phase 1 of either can land independently (no merge-conflict surface beyond `concept-axes.md` regeneration); subsequent phases proceed independently per ADR. Tracked at the parent items WI-dahim and WI-pilit.
 

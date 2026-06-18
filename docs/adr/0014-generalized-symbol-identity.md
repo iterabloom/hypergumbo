@@ -138,12 +138,7 @@ class ArityFlags:
 
 Languages where concepts don't exist (Go has no defaults, Rust has no varargs) set those flags to `False` — the hash still differentiates on `param_count` and `kind`.
 
-The base-class `compute_stable_id()` method computes:
-```
-sha256({kind}:{param_count}:{arity_flags}:{decorator_names_sorted}:{containing_stable_id})
-```
-
-This matches the spec's untyped tier formula. Analyzers can override the entire method if their language needs fundamentally different identity semantics.
+The base-class `compute_stable_id()` formula body is **SUPERSEDED by ADR-0035 §1** — see amendment table; original: `git show 5163551892:docs/adr/0014-generalized-symbol-identity.md`. (The `ArityFlags` / `classify_parameter_flags` mechanism above survives as a structural input.)
 
 ### 3. stable_id typed tier: design principles (deferred)
 
@@ -214,11 +209,7 @@ Analyzers currently setting `stable_id` to bare HTTP methods (Go, JS/TS Express,
 
 ### 5. containing_module_stable_id: recursive resolution
 
-The `containing_stable_id` component is computed recursively: a method's `stable_id` includes its class's `stable_id`, which includes its module's `stable_id`. Top-level functions (no containing module) use an empty string for this component.
-
-**Fix Python first.** The current Python implementation (`py.py:836-877`) omits `containing_module_stable_id`. This must be corrected before the base-class design is finalized, because the base class should be modeled on a known-correct implementation.
-
-**Hash stability impact:** Adding `containing_module_stable_id` to Python's formula changes all existing `stable_id` values. This requires bumping `STABLE_ID_SCHEME` from `hypergumbo-stableid-v1` to `hypergumbo-stableid-v2`.
+SUPERSEDED by ADR-0035 §1 — see amendment table; original: `git show 5163551892:docs/adr/0014-generalized-symbol-identity.md`.
 
 ### 5b. Kind-specific stable_id factories + orchestrator backstop (INV-sotiv)
 
@@ -245,30 +236,7 @@ The orchestrator pass `populate_kind_stable_ids(symbols)` runs in `analyze.all_a
 
 ### 5a. class_body_sig: same-module class identity discrimination (INV-fusus)
 
-Self-analysis dogfooding on 2026-05-16 found that the §5 formula (with `containing_module_stable_id` empty for top-level classes) still produced a 91% collision rate across 29,367 `stable_id`-bearing nodes on hypergumbo's own codebase. Five `@dataclass` classes in `ir.py` — `Symbol`, `Edge`, `Span`, `AnalysisRun`, `ExternalRef` — shared one `stable_id` because the only inputs that varied across them were the class's *own name* (excluded by design — `survives renames`) and the class's *contents* (not yet in the formula). Methods cascaded into a second 5,500-node collision group.
-
-The fix extends the Python `_compute_stable_id` formula by one component for `ClassDef` nodes only:
-
-```
-class_body_sig = "methods={sorted_method_names}|fields={sorted_field_names}|bases={sorted_base_names}"
-```
-
-Folded in as:
-
-```
-sha256({kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id}:{class_body_sig})
-```
-
-This preserves both halves of the `Symbol.stable_id` docstring promise:
-
-* **Survives renames.** The class's own name is not in `class_body_sig`.
-* **Survives moves.** No line numbers, paths, or column offsets appear.
-
-Two classes with byte-for-byte identical bodies still produce the same `stable_id`; that is *semantic identity*, not an artifact. Consumers needing absolute uniqueness should join on `(stable_id, canonical_name)` per the Symbol docstring contract — that's the documented escape hatch, and it's what the typed tier (§3) eventually makes redundant for type-bearing languages.
-
-**Hash stability impact:** Bumps `STABLE_ID_SCHEME` from `hypergumbo-stableid-v2` to `hypergumbo-stableid-v3`. All Python class and method `stable_id` values change.
-
-**Out of scope:** Same-shape top-level functions in the same module (e.g. two parameterless functions with no decorator) still collide. They were not part of the INV-fusus measurement and addressing them would require either a body-content hash (changes "survives renames" semantics for functions) or absorbing them into the typed tier. Leaving for §3 / Phase 3.
+SUPERSEDED by ADR-0035 §2 — see amendment table; original: `git show 5163551892:docs/adr/0014-generalized-symbol-identity.md`.
 
 ### 6. Grammar version stability contract
 
