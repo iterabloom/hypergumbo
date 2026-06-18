@@ -246,9 +246,23 @@ def _python_context_fingerprint(
     if not isinstance(best, ast.Module):
         lines = _py_effective_lines(best)
         assert lines is not None  # covering candidates all had lines
-        if lines[0] >= start_line and lines[1] <= end_line:
+        # WI-guhas: _py_effective_lines extends a decorated def/class start up
+        # to its earliest decorator, but producers commonly span only the
+        # declaration keyword .. body (decorator excluded). For def/class nodes
+        # compare the lower bound against the raw declaration-keyword line
+        # (best.lineno) rather than the decorator-extended start, so a decorated
+        # declaration whose keyword+body lie in the span is hashed WHOLE (name +
+        # signature + body) via the subtree path below — not degraded to a
+        # name/signature-stripped container fragment that aliases distinct
+        # symbols onto one constant.
+        decl_start = (
+            best.lineno
+            if isinstance(best, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            else lines[0]
+        )
+        if decl_start >= start_line and lines[1] <= end_line:
             # The covering node fits inside the span: it IS the span's
-            # content (modulo surrounding blank lines).
+            # content (modulo surrounding blank lines / leading decorators).
             parts: list[str] = []
             _walk_python_ast(best, parts)
             return _hash(parts)

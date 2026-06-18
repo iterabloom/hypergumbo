@@ -12,6 +12,20 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Fingerprint: decorated declarations no longer collapse to a name/signature-stripped constant (Wave-2; WI-guhas)** —
+  `_python_context_fingerprint` located the correct covering AST node for a decorated `def`/`class`, but because
+  `_py_effective_lines` extends that node's start up to its decorator while producers span only the keyword‥body
+  (decorator excluded), the "node fits inside span" fit-check failed and the path degraded to a body-only *container*
+  hash that **dropped the symbol's name and signature**. Any two decorated declarations with identical bodies then shared
+  one fingerprint regardless of name or arity — ~1,043 decorated nodes (functions, async functions, methods, classes,
+  `@property`) on self-analysis, *visibly* colliding on trivial-bodied test stubs and *silently* degraded everywhere
+  else (production bodies differ, masking the dropped identity). Fixed by comparing the fit-check lower bound against the
+  raw declaration-keyword line (`best.lineno`) for def/class nodes, so a decorated declaration whose keyword+body lie in
+  the span is hashed *whole* (name + full signature + body) via the subtree walk. `Symbol.fingerprint` is not a cache key
+  or `run_signature` input, so there is no cache-invalidation hazard — one-time fingerprint-value churn for decorated
+  symbols. (Distinct from WI-falum, the already-fixed tree-sitter/TOML span-collapse — the tree-sitter path keeps names
+  as child nodes and is immune.)
+
 - **Cache correctness: the results cache now invalidates on a tree-sitter grammar upgrade (Wave-2; INV-nofof)** —
   the analysis results cache is keyed by `~/.cache/hypergumbo/<repo_fingerprint>/results/<state_hash>/<analyzer_identity>/`,
   and none of the three segments captured the tree-sitter grammar version: `analyzer_identity` hashed only

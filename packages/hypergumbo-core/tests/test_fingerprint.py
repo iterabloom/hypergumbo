@@ -145,6 +145,68 @@ class TestPythonFingerprint:
         assert fp_b is not None
         assert fp_a != fp_b
 
+    def test_decorated_function_name_is_part_of_fingerprint(self) -> None:
+        """WI-guhas: a decorated function whose producer-span starts at the
+        `def` line (decorator excluded) must still hash its NAME.
+
+        Before the fit-check fix, _py_effective_lines pulled the FunctionDef
+        start up to the decorator line (above the span); the fit-check failed
+        and the path degraded to a body-only container hash that dropped the
+        name. Two decorated functions differing only by name then collided.
+        """
+        a = b"@deco\ndef alpha(x):\n    return None\n"
+        b = b"@deco\ndef omega(x):\n    return None\n"
+        # Span is the def line + body (line 2-3), excluding the decorator (1).
+        fp_a = compute_symbol_fingerprint("python", _span(2, 3), a)
+        fp_b = compute_symbol_fingerprint("python", _span(2, 3), b)
+        assert fp_a is not None
+        assert fp_b is not None
+        assert fp_a != fp_b
+
+    def test_decorated_function_signature_is_part_of_fingerprint(self) -> None:
+        """WI-guhas: the SIGNATURE (parameter list) of a decorated function
+        whose span excludes the decorator must be in the fingerprint.
+
+        The container path skipped the ``arguments`` node (it carries no
+        lineno), so a decorated fn's params were dropped — same-name/different-
+        arity decorated fns with identical bodies collided.
+        """
+        a = b"@deco\ndef f(x):\n    return None\n"
+        b = b"@deco\ndef f(x, y):\n    return None\n"
+        fp_a = compute_symbol_fingerprint("python", _span(2, 3), a)
+        fp_b = compute_symbol_fingerprint("python", _span(2, 3), b)
+        assert fp_a is not None
+        assert fp_b is not None
+        assert fp_a != fp_b
+
+    def test_decorated_class_name_is_part_of_fingerprint(self) -> None:
+        """WI-guhas: a decorated class whose span excludes the decorator must
+        still hash its name (ClassDef, same root cause as the function case)."""
+        a = b"@reg\nclass Alpha:\n    pass\n"
+        b = b"@reg\nclass Beta:\n    pass\n"
+        fp_a = compute_symbol_fingerprint("python", _span(2, 3), a)
+        fp_b = compute_symbol_fingerprint("python", _span(2, 3), b)
+        assert fp_a is not None
+        assert fp_b is not None
+        assert fp_a != fp_b
+
+    def test_body_fragment_span_uses_container_path(self) -> None:
+        """Container case: a span covering only a fragment of a function body
+        (not the def keyword) leaves the FunctionDef as a non-fitting covering
+        node, so its in-span children are hashed individually. This exercises
+        the lineno-less-child skip (``ast.arguments`` carries no lineno) — the
+        path the WI-guhas fix deliberately stopped routing whole decorated defs
+        through.
+        """
+        # def line 1; body statements lines 2-3. Span covers only the body.
+        source = b"def f(a, b):\n    x = 1\n    y = 2\n"
+        fp = compute_symbol_fingerprint("python", _span(2, 3), source)
+        assert fp is not None
+        # The body fragment discriminates on its content (the assigned names).
+        other = b"def f(a, b):\n    x = 1\n    z = 9\n"
+        fp_other = compute_symbol_fingerprint("python", _span(2, 3), other)
+        assert fp != fp_other
+
 
 class TestTreeSitterFingerprint:
     """Tree-sitter languages use the language pack."""
