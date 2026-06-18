@@ -65,6 +65,45 @@ Three buckets, each with its own home:
 
 **Bucket-1 self-justification guard.** Bucket 1 requires a load-bearing decision (a principle adopted, a template defined, an architectural change committed to). Context may be substantial in service of the decision, but the decision is the deliverable. If the deliverable is fundamentally a description with a "we should..." paragraph at the end, that's bucket 3 with weak decision content, not bucket 1.
 
+## ADR lifecycle: status, supersession, and excision
+
+ADRs here are **edited in place** as decisions evolve. Git history is the immutable record, so the *file* is kept current rather than accumulating superseded text behind banners. The governing goal: **no reader — human or LLM, full read or fragment — should be able to mistake superseded text for the current decision.** Traditional "ADRs are immutable, never edit" practice predates ubiquitous version control; here git provides the permanent trail, and the live file carries only what is true now plus pointers to where superseded pieces went.
+
+### Status line — one form, at the top, greppable
+
+Every ADR opens with a single `Status:` line right after the title, in one of these forms:
+
+- `Status: Proposed` — proposed, not adopted.
+- `Status: Accepted` — adopted (implementation may be partial).
+- `Status: Implemented` — adopted and shipped.
+- `Status: Superseded by ADR-NNNN (YYYY-MM-DD)` — fully replaced; tombstone the body (see below).
+- `Status: Partially superseded by ADR-NNNN[, ADR-MMMM]` — some sections replaced; the rest remains authoritative.
+- `Status: Mosaic — §A → ADR-X; §B → ADR-Y; §C in force; §D pending ADR-Z` — different slivers superseded by different successors (common for fast-churning topics like identity). The status line *is* the per-section map.
+- `Status: Reclassified → <path>` — moved to another bucket; the file is a redirect stub.
+
+The truth lives at the top. Never leave `Status: Accepted` up top with the real supersession buried in a mid-body amendment — a `grep` of the status line must not lie.
+
+### Supersession is symmetric and by-number
+
+Both endpoints name each other: the predecessor's `Status:` names the successor ADR number, and the successor carries a `Supersedes: ADR-NNNN (§sections)` line. The relationship must be greppable from *either* ADR. Do not record it only as one-sided prose ("amends ADR-XXXX").
+
+### Excise the superseded body — don't banner it
+
+Replace a superseded section's body with a one-line pointer to its successor — e.g. `> §2 (untyped-tier formula): superseded by ADR-0035 §1.` Do **not** retain the stale text under a "the following is superseded by…" banner: a fragment read ingests the stale text and never sees the banner. Still-current sections stay; pending ones keep a one-line "pending ADR-X" note. A mosaic ADR gets one pointer per superseded sliver, each naming its own successor.
+
+### Tombstone vs delete
+
+- **Tombstone** (default when an ADR is *fully* superseded): replace the whole body with the `Status:` line, a 2–4 sentence "what it decided / why replaced," and a `git show <sha>:<path>` pointer to the original. **Keep the file** — ADR numbers are stable addresses cited throughout the repo; deleting one dangles every reference.
+- **Delete** (rare): only when an ADR is fully superseded *and* has zero inbound references repo-wide. Git preserves the content.
+
+### Self-containment of the *decision*, not of all context
+
+A successor must let a reader grasp the **current decision** without reading the superseded one. It need **not** duplicate durable, still-valid context (problem framing, alternatives) — reference it instead, provided the referenced content is itself current (not superseded). Before excising or tombstoning a predecessor, relocate any still-needed snippet a current doc points at; do not bloat the successor by absorbing the whole predecessor.
+
+### One identifier per ADR
+
+Each ADR has a unique identifier; number collisions are resolved by renaming the colliding files (git makes this safe) and rewriting their references, so a bare `ADR-NNNN` citation is never ambiguous. Disambiguating an ADR *file* this way is distinct from the cluster notation `<ADR-number><letter>` (e.g. `27A`) used for value sub-groups *within* an axis (see Common terms).
+
 ## Common terms
 
 - **Axis** (or **concept-axis**) — a typing dimension along which every value of a multi-value field must be classified, governed by a one-sentence axiom. The hypergumbo IR has three (`Edge.edge_type`, `Symbol.kind`, `Edge.evidence_type`); the abstract framework for declaring one is [ADR-0024](0024-axis-declaration-template.md).
