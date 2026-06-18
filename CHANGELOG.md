@@ -68,6 +68,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Fingerprint: delete dead producer bare-hex + add an output-boundary format guard (Wave-2; closes WI-vudul)** —
+  After WI-lisog's central normalization, ~10 tree-sitter analyzers (cuda/fortran/glsl/graphql/nix/r_lang in
+  hypergumbo-lang-common, verilog/vhdl in -extended1, dockerfile/make in -mainstream) still **computed** a producer-side
+  bare `sha256(source[start:end])[:16]` fingerprint that `stamp_symbol_fingerprints` immediately overwrote — 29 dead
+  source-byte sites. All 29 are replaced with `fingerprint=None` (mirroring the WGSL fix), letting the central post-pass be
+  the single producer; two now-unused `import hashlib` lines (verilog/vhdl) removed. Pure hygiene — output was already
+  correct (re-measured: of 219 non-canonical fingerprints on self-analysis, **0 are real leaks** — all are Class-B
+  `language is None` identity-hash stand-ins, which the normalizer preserves by design). The r_lang file-path-hash site
+  (a file-node fingerprint, not a source-byte hash) is deliberately left intact. **Higher-value half:** a new
+  `_check_fingerprint_format` spec-validator predicate (`id_format` class, content-gated, in the `wired_checks` manifest +
+  drift guard) asserts every non-null `Symbol.fingerprint` on a real source node (`language is not None`) carries the
+  canonical `hgfp2:` prefix — so a future producer/normalization regression that lets a bare hex value reach output trips
+  CI instead of silently shipping a non-canonical identity (INV-kurup's "non-canonical formats" class, at the fingerprint
+  field). Behavioral evidence: `_check_fingerprint_format` over the real self-analysis (35,267 nodes) = **0 violations** —
+  a pure standing guard at baseline. Directly-verified referential/format property; no bakeoff claim.
+
 - **Fingerprint: central post-pass normalizes producer-side bare-hex leaks; single shape at the output (Wave-2; closes WI-lisog)** —
   `Symbol.fingerprint` is contractually `hgfp2:<16hex>` (a whitespace/comment-invariant structural-subtree hash), but
   ~10 tree-sitter analyzers (cuda/fortran/glsl/graphql/nix/r_lang/verilog/vhdl/dockerfile/make, ~30 sites) still stamped a

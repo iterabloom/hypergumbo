@@ -31,7 +31,6 @@ Why This Design
 """
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -130,7 +129,7 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                         kind="entity",
                         name=entity_name,
                         path=rel_path,
@@ -159,7 +158,7 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
                         stable_id=None,
                         shape_id=None,
                         display_label=f"{arch_name}({entity_name})",
-                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                         kind="architecture",
                         name=arch_name,
                         path=rel_path,
@@ -187,7 +186,7 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                         kind="package",
                         name=pkg_name,
                         path=rel_path,
@@ -215,7 +214,7 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
                             id=symbol_id,
                             stable_id=None,
                             shape_id=None,
-                            fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                            fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                             kind="component",
                             name=comp_name,
                             path=rel_path,

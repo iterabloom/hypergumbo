@@ -171,7 +171,7 @@ def _process_dockerfile_tree(
                 stable_id=None,
                 shape_id=None,
                 # ADR-0032: canonical_name dropped (was redundant with name=).
-                fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                 kind="stage",
                 name=stage_name,
                 path=rel_path,
@@ -217,7 +217,7 @@ def _process_dockerfile_tree(
                     stable_id=None,
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=).
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="exposed_port",
                     name=port_value,
                     path=rel_path,
@@ -247,7 +247,7 @@ def _process_dockerfile_tree(
                         stable_id=None,
                         shape_id=None,
                         # ADR-0032: canonical_name dropped (was redundant with name=).
-                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                         kind="env_var",
                         name=var_name,
                         path=rel_path,
@@ -275,7 +275,7 @@ def _process_dockerfile_tree(
                     stable_id=None,
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=).
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="build_arg",
                     name=arg_name,
                     path=rel_path,

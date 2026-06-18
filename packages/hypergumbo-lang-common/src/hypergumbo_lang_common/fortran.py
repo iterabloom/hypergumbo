@@ -247,7 +247,7 @@ def _extract_fortran_symbols(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="module",
                     name=name,
                     path=rel_path,
@@ -281,7 +281,7 @@ def _extract_fortran_symbols(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="program",
                     name=name,
                     path=rel_path,
@@ -313,7 +313,7 @@ def _extract_fortran_symbols(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="function",
                     name=name,
                     path=rel_path,
@@ -346,7 +346,7 @@ def _extract_fortran_symbols(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="subroutine",
                     name=name,
                     path=rel_path,
@@ -376,7 +376,7 @@ def _extract_fortran_symbols(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="type",
                     name=name,
                     path=rel_path,

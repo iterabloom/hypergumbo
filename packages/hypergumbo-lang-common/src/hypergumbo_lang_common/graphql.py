@@ -157,7 +157,7 @@ def _process_graphql_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind=kind,
                     name=type_name,
                     path=rel_path,
@@ -186,7 +186,7 @@ def _process_graphql_tree(
                     stable_id=None,
                     shape_id=None,
                     display_label=f"@{directive_name}",
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="directive",
                     name=directive_name,
                     path=rel_path,
@@ -218,7 +218,7 @@ def _process_graphql_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="fragment",
                     name=frag_name,
                     path=rel_path,
@@ -256,7 +256,7 @@ def _process_graphql_tree(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind=op_type,
                     name=op_name,
                     path=rel_path,

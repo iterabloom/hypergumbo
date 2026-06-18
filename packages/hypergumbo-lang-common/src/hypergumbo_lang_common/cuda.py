@@ -240,7 +240,7 @@ def _extract_cuda_symbols(
                     id=symbol_id,
                     stable_id=None,
                     shape_id=None,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                    fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind=kind,
                     name=func_name,
                     path=rel_path,

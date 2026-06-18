@@ -31,7 +31,6 @@ Why This Design
 """
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -160,7 +159,7 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                         kind="module",
                         name=module_name,
                         path=rel_path,
@@ -187,7 +186,7 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
                         id=symbol_id,
                         stable_id=None,
                         shape_id=None,
-                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                         kind="interface",
                         name=interface_name,
                         path=rel_path,

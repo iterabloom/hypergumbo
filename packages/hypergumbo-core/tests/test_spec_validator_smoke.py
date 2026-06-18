@@ -1082,6 +1082,59 @@ def test_dangling_ignores_empty_endpoint() -> None:
 
 
 # ----------------------------------------------------------------------
+# WI-vudul — fingerprint output-boundary format guard
+# ----------------------------------------------------------------------
+_FP_FIELD = "Symbol.fingerprint"
+
+
+def _fp_fmt(violations: list) -> list:
+    return [v for v in violations if v.field_name == _FP_FIELD]
+
+
+def _fp_sym(**kw):
+    base = {"id": "m.py:1-1:f:function", "language": "python", "fingerprint": None}
+    base.update(kw)
+    return _FakeSym(**base)
+
+
+def test_fingerprint_format_content_gated_skips_without_runs() -> None:
+    """No analysis_runs => inert. Some unit fixtures carry bare placeholder
+    fingerprints (fingerprint='fp1') on language-typed Symbols; gating on a
+    non-empty run set keeps the check off them."""
+    sym = _fp_sym(fingerprint="deadbeef")
+    assert _fp_fmt(validate_ir([sym], [], [])) == []
+
+
+def test_fingerprint_format_passes_canonical_hgfp2() -> None:
+    sym = _fp_sym(fingerprint="hgfp2:deadbeefdeadbeef")
+    assert _fp_fmt(validate_ir([sym], [], [_run("run-1")])) == []
+
+
+def test_fingerprint_format_passes_none() -> None:
+    """A None fingerprint (synthetic external_symbol / file null) is fine."""
+    sym = _fp_sym(fingerprint=None)
+    assert _fp_fmt(validate_ir([sym], [], [_run("run-1")])) == []
+
+
+def test_fingerprint_format_flags_bare_hex_on_source_node() -> None:
+    """A bare hex fingerprint on a real source node (language is not None) is a
+    producer leak that survived to output — one error."""
+    sym = _fp_sym(fingerprint="deadbeefdeadbeef")
+    matched = _fp_fmt(validate_ir([sym], [], [_run("run-1")]))
+    assert len(matched) == 1
+    assert matched[0].severity == "error"
+    assert matched[0].validator_class == "id_format"
+    assert "non-canonical" in matched[0].message
+
+
+def test_fingerprint_format_exempts_class_b_language_none() -> None:
+    """Class-B synthetic stand-ins (language is None) carry an identity-hash
+    second shape, not hgfp2 — exempt (ADR-0031 / WI-lisog)."""
+    sym = _fp_sym(language=None, fingerprint="deadbeefdeadbeef")
+    assert _fp_fmt(validate_ir([sym], [], [_run("run-1")])) == []
+
+
+# ----------------------------------------------------------------------
 # validator:F2 (WI-moriz) — wired-checks disclosure manifest
 # ----------------------------------------------------------------------
 def test_wired_checks_manifest_present_in_report() -> None:
