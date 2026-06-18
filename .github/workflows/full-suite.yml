@@ -235,6 +235,50 @@ jobs:
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
+  # WI-jigup: full-suite-only self-tree validation ratchet. Runs the full
+  # analysis on hypergumbo's OWN tree (the substrate the per-PR fixture corpus
+  # cannot exercise) and ratchets its per-(validator_class, severity) violation
+  # matrix shrink-only against a committed baseline. This is the enforcement
+  # locus the strategy promised ("self-tree in full-suite", G1) but that did not
+  # previously exist. Kept out of the per-PR loop (the ~2-min analysis would
+  # add to every core PR); runs here in parallel, off the critical path.
+  self-tree-validation:
+    needs: [changes, prep]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install jsonschema
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Self-tree validation ratchet (WI-jigup)
+        run: |
+          hypergumbo run . --out /tmp/self-tree.json
+          python scripts/check-self-tree-validation \
+            /tmp/self-tree.json .ci/self-tree-validation-baselines.json
+
   test-mainstream:
     needs: [changes, prep]
     if: needs.changes.outputs.code == 'true'

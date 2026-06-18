@@ -1,0 +1,4 @@
+{
+  "_comment": "Shrink-only self-tree validation ratchet baseline (WI-jigup). Per-(validator_class|severity) ceiling for `hypergumbo run .` on this repo, enforced by the full-suite self-tree-validation job via scripts/check-self-tree-validation. A cell may shrink below its ceiling (ratchet it DOWN here when it does) but never grow; an unbaselined cell has ceiling 0. The lone 3012 id_format|warning cell is the :unresolved id-kind-slot cohort (INV-kurup), which WI-jopil (Wave 3) will drive down. Measured 2026-06-18 on default flags, 35285 symbols.",
+  "id_format|warning": 3012
+}

@@ -12,6 +12,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Detection: per-(class,severity) ratchet dimension + the (previously nonexistent) full-suite self-tree validation gate (Wave-2; WI-jigup)** —
+  the spec-validator ratchet had exactly two error-only hard floors and one lumped per-substrate *total*; every
+  warning-severity check (~11 of them) was therefore detection-*advisory* — a regression could hide behind *signed
+  cancellation* (a `+1` in one class masked by a `-1` in another) in the scalar total, and the strategy's promised
+  "self-tree in full-suite" gate (G1) **did not actually exist** (full-suite only re-ran `pytest`; nothing ran
+  `validate_ir` on the real repo, so the self-tree's 3012 `id_format` + the WI-guhas degeneracy warnings were caught only
+  by manual dogfooding). Fixed with two pieces sharing one tested primitive (`hypergumbo_core.validation_ratchet`): (1) a
+  per-`(validator_class, severity)` shrink-only ratchet dimension on the four fixture substrates (a regression in any one
+  warning class now trips independently — no cancellation); (2) a real **full-suite-only** self-tree gate
+  (`.github/workflows/full-suite.yml` `self-tree-validation` job → `scripts/check-self-tree-validation`) that runs
+  `hypergumbo run .` and ratchets the per-cell violation matrix against a committed baseline
+  (`.ci/self-tree-validation-baselines.json`, `id_format|warning: 3012`, else 0). Zero per-PR cost (the ~2-min analysis
+  runs off the critical path in full-suite); the baseline's `id_format` cell ratchets down as WI-jopil (Wave 3) drains
+  the `:unresolved` cohort. (The `_WIRED_CHECKS` per-check `enforcement`-field meta-rule — formalizing "no check is
+  enforced unless error-floored or ratchet-dimensioned" — is tracked as a WI-jigup follow-on.)
+
 - **Fingerprint: decorated declarations no longer collapse to a name/signature-stripped constant (Wave-2; WI-guhas)** —
   `_python_context_fingerprint` located the correct covering AST node for a decorated `def`/`class`, but because
   `_py_effective_lines` extends that node's start up to its decorator while producers span only the keyword‥body

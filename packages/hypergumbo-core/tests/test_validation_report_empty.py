@@ -62,6 +62,7 @@ from hypergumbo_core.runtime_coherence import (
     find_offenders,
     load_allowlist,
 )
+from hypergumbo_core.validation_ratchet import matrix_breaches
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CORPUS = REPO_ROOT / "tests" / "fixtures" / "schema-coverage-corpus"
@@ -123,6 +124,19 @@ RUNTIME_COHERENCE_BASELINES: dict[str, int] = {
     "frameworks_all": 1,
     "include_docs": 1,
     "max_tier_4": 1,
+}
+
+# Shrink-only per-(validator_class, severity) baselines — a finer dimension than
+# the lumped ``total`` below, so a regression in one warning class cannot hide
+# behind a shrink in another (signed cancellation). Measured 2026-06-18; all 11
+# of each substrate's violations are the id-format:F3 external_symbol kind-slot
+# round-trip warnings. Shrink-only: ratchet a cell DOWN on a genuine shrink,
+# never UP; an unbaselined (class|severity) cell has a ceiling of 0. (WI-jigup.)
+CLASS_SEVERITY_BASELINES: dict[str, dict[str, int]] = {
+    "default": {"id_format|warning": 11},
+    "frameworks_all": {"id_format|warning": 11},
+    "include_docs": {"id_format|warning": 11},
+    "max_tier_4": {"id_format|warning": 11},
 }
 
 # Liveness floor (NOT a ratchet): the smallest node count that still proves the
@@ -271,6 +285,16 @@ def test_substrate_within_ratchet_baseline(
         failures.append(
             f"runtime_coherence: {len(remaining)} un-allow-listed offenders "
             f"> baseline {rc_base}:\n      " + "\n      ".join(rc_desc)
+        )
+
+    # Per-(validator_class, severity) ratchet (WI-jigup): finer than the lumped
+    # total above, so a regression in one warning class cannot hide behind a
+    # shrink in another. The same primitive guards the full-suite self-tree gate.
+    cell_breaches = matrix_breaches(report, CLASS_SEVERITY_BASELINES[substrate])
+    if cell_breaches:
+        failures.append(
+            "validation_report per-(class,severity) ratchet breached "
+            "(signed-cancellation guard):\n      " + "\n      ".join(cell_breaches)
         )
 
     assert not failures, (

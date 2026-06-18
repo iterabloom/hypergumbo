@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Full-suite self-tree validation ratchet gate (WI-jigup).
+
+Usage: check-self-tree-validation <behavior-map.json> <baselines.json>
+
+Loads the behavior map's ``validation_report``, compares its per-(class,
+severity) violation matrix against the committed shrink-only baselines, and
+exits non-zero on any breach. This is the full-suite-only enforcement locus for
+self-tree validation warnings (the per-PR fixture corpus does not exercise every
+check). The comparison logic lives in — and is unit-tested via —
+``hypergumbo_core.validation_ratchet``; this script is a thin CI wrapper, so it
+is intentionally not coverage-gated.
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+from hypergumbo_core.validation_ratchet import matrix_breaches, violation_matrix
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 3:
+        print(__doc__)
+        return 2
+    report = json.loads(Path(argv[1]).read_text())["validation_report"]
+    baselines = json.loads(Path(argv[2]).read_text())
+    print("self-tree violation matrix:", violation_matrix(report))
+    breaches = matrix_breaches(report, baselines)
+    if breaches:
+        print("SELF-TREE VALIDATION RATCHET BREACHED (WI-jigup):")
+        for b in breaches:
+            print(f"  {b}")
+        print(
+            "If this is a genuine shrink, ratchet the baseline DOWN in "
+            f"{argv[2]} (never UP). If it is a regression, fix the producer."
+        )
+        return 1
+    print("OK: self-tree validation within baselines.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
