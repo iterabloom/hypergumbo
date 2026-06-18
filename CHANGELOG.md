@@ -128,6 +128,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   Behavioral evidence (live re-probe): `origin_run_id=''` nodes 15→0 on the tracker package, and 0
   nodes fail the node→AnalysisRun join.
 
+- **Dev-workflow hardening (auto-pr / smart-test).** `auto-pr` gained a commit-message tracker-closure guard
+  (`do_merge_guarded` aborts a merge whose message *bare*-closes a still-open `WI`/`INV`/`META` item, WI-bunag) and a
+  `poll_ci` confirmation re-poll that no longer false-fails a merge under concurrent CI (INV-rahib); `smart-test` no
+  longer silently swallows reverse-slice failures and is failover-aware when establishing its baseline (WI-tolil).
+
 ### Changed
 
 - **Fingerprint: delete dead producer bare-hex + add an output-boundary format guard (Wave-2; closes WI-vudul)** —
