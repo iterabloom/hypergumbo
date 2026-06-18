@@ -8,6 +8,8 @@ All notable changes to hypergumbo are documented in this file. The format is bas
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
+> **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-6.X.md](docs/RELEASE-NOTES-6.X.md)** for the audience-organized release notes (CLI users, JSON consumers, per language/framework). This file is the **implementer log**: structured, mechanism-level entries per release.
+
 ## [Unreleased]
 
 ### Added
@@ -59,10 +61,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **stable_id scheme-history backfill and ADR/spec corrections.** Backfilled the git-verified v1->v5 scheme transition chain in `docs/hypergumbo-spec.md`, corrected three stale `v2` assertions to v5, and fixed ADR-0014's amendment chain (omitted v4); added per-section supersession tables to partially-superseded ADRs (0014, 0015) and bidirectional supersession declarations on the new ADR headers (0036-0039); removed the fictional `EVIDENCE_CONFIDENCE_MATRIX`/`calculate_evidence_confidence()` and never-honored 0.30 unknown-evidence default from spec §12/Appendix C, documenting the actual per-producer hardcoded confidence (0.85 default, -90% test-entrypoint penalty); and corrected stale docs-prose across surfaces (evidence_type open-enum claim, spec §14 role-flags-not-tier note, `--debug` ripgrep-fallback reference, README `--no-progress` scope, `config --help` disclosure), closing the CLI-help/README-drift umbrella. Documentation only.
 
 ## [6.0.0] - 2026-06-10
-
-> **User-facing view:** see [docs/RELEASE-NOTES-6.X.md](docs/RELEASE-NOTES-6.X.md)
-> for the reader-friendly summary of what's changed. This file (CHANGELOG.md)
-> remains the implementer log.
 
 ### Summary
 

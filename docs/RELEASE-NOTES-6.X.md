@@ -12,6 +12,39 @@ One file exists per major version line; for the previous line see
 
 ---
 
+## Unreleased
+
+> **These versions are in active development.** Everything below is part of an ongoing correctness campaign, and it is *not* a stabilized release. In particular, **identity values (`stable_id`, fingerprints) and the `validation_report` schema are still moving between in-development versions** — diffing or persisting them across these versions is at your own risk. Re-run hypergumbo to regenerate; do not treat cross-version identity or validation output as stable. (This section is intentionally leaner than 6.0.0; it is expanded at release-cut.)
+
+### At a glance
+
+- **The results cache now invalidates on a tree-sitter grammar upgrade** — previously an unchanged repo returned a stale cache hit computed by the *old* grammar after you upgraded a grammar package. If you upgrade tree-sitter or a grammar, hypergumbo now re-analyzes instead of serving stale output.
+- **Analyzer and linker crashes no longer abort the whole run** — a single crashing analyzer, linker, or unreadable file now yields *partial* results (the crashed pass is recorded in `limits.skipped_passes`) instead of failing the entire `hypergumbo run`.
+- **Python symbol and call-graph fixes** — Python functions/methods/classes now populate `qualified_name` (was `null` for 100% of Python symbols), and `calls` / `instantiates` / `references` edges now attribute `src` to the correct method instead of a last-write-wins bare-name lookup.
+- **More complete identity on synthetic nodes** — `AnalysisRun` gains per-pass productivity counters and an always-on timer, synthetic nodes now carry resolvable provenance and (for protocol stand-ins) populated `stable_id` / `display_label` / `fingerprint`, and the validator surface grew.
+- **Identity scheme moved again** — `stable_id` advanced v5 → v8 and fingerprinting was hardened, so identity values **differ from 6.0.0**. This is a cross-version-stability caveat, not a feature break: within a single run identities still discriminate correctly.
+
+### For JSON consumers
+
+These are the consumer-visible field and schema changes since 6.0.0. Because the campaign is mid-flight, treat identity values and the `validation_report` schema as unstable across in-development versions.
+
+- **Python `qualified_name` now populated.** Python functions, methods, and classes now carry `qualified_name` (the existing container-qualified name threaded through), where 6.0.0 emitted `null` for 100% of Python symbols. `name` is unchanged. Identity-neutral.
+- **Python call-graph `src` attribution corrected.** Caller resolution for `calls` / `instantiates` / `references` edges now keys on AST node identity rather than a last-write-wins bare-name dict, so each edge's `src` is attributed to the correct method (a paired guard keeps methods out of `inner_scope` so nested helpers aren't shadowed). Consumers reading the Python call graph will see corrected source attribution.
+- **Synthetic protocol stand-ins now carry full identity.** A post-linker backstop stamps `stable_id`, `display_label`, and `fingerprint` on Class-B synthetic protocol-synth Symbols (from ~7 linkers) that previously emitted those fields as null; a validator biconditional pins the `display_label` invariant. Additive and identity-neutral for non-synthetic nodes.
+- **`AnalysisRun` productivity counters and timer** (SCHEMA_VERSION 0.14.1 → 0.14.2). New `nodes_emitted` / `edges_emitted` fields per `AnalysisRun`, and `duration_ms` now starts for *every* pass (previously IR-consuming passes reported `0ms` while emitting edges). A floor makes `0ms` now unambiguously mean "did nothing."
+- **`stable_id_stats` block added** (`validation_report` schema 0.1 → 0.2). An always-present stats block lands; per-file duplicate `stable_id` is now a hard validator error and the corpus-collision umbrella reports against an all-Symbols denominator with the `None`-cohort disclosed.
+- **`wired_checks` manifest added** (`validation_report` schema 0.2 → 0.3). `build_validation_report` now emits a `wired_checks` disclosure manifest so an unvalidated defect class is visible by its absence. New validator predicates cover dangling edge endpoints and the `origin_run_id → analysis_runs.execution_id` foreign key.
+- **Identity values differ from 6.0.0** (cross-version-stability caveat). `stable_id` advanced **v5 → v8** (full enclosing-scope chain folded into one shared formula, occurrence-index slot, path-anchoring of module/interface/type/entry/dependency IDs, cross-file disambiguation, and route/call-site path anchoring), decorated Python declarations now fingerprint name+signature+body whole (they previously collapsed to a body-only hash), and producer-side bare-hex fingerprint leaks are normalized to the canonical `hgfp2:` prefix at the output boundary. Net effect: identity values emitted by these in-development versions are *not* comparable to 6.0.0's. Detect the boundary and regenerate; do not diff identities across it.
+- **`Edge.is_resolved` semantics tightened.** `is_resolved` now contractually means the destination is a real in-repo first-party node; a finalization step derives both `is_resolved` and `dst_ref` from one verdict, so producer-stamped values are advisory. Consumers that branched on the prior looser meaning should re-check.
+- **GraphQL operation kinds now classified.** GraphQL mutation and subscription are registered as `language_construct`, and the anonymous-operation fallback as `pending_classification` (previously unclassified).
+
+### Reliability & correctness
+
+- **Results cache invalidates on tree-sitter grammar upgrade.** The analyzer-identity cache key hashed only hypergumbo package versions, so a grammar upgrade on an unchanged repo returned a stale hit from the old grammar. The key now folds in the tree-sitter library and grammar package versions, so a grammar upgrade forces re-analysis.
+- **Orchestrator passes fail open.** Every pass-level crash site in both orchestrators was unguarded, so any single-pass exception aborted the whole run. Crashes are now contained and recorded pass-level (in `limits.skipped_passes` with a `crashed:` reason and a `partial_results_reason`) so the remaining passes still run and you get partial results. Unreadable files are routed into `failed_files` rather than crashing the run.
+- **Tiered `nodes_summary` now matches the on-disk arrays.** `format_tiered_behavior_map` wrote `nodes_summary` from the pre-shrink connectivity selection, so summary counts overstated the arrays actually serialized after the budget-shrink loop pruned them. The summary is now recomputed from the final post-shrink arrays, so the counts match what is on disk.
+- **Synthetic-node provenance repaired.** File-symbol synthesis and boundary `external_symbol` synthesis each now emit a real `AnalysisRun` and stamp a resolvable `origin_run_id`, where the empty-string sentinel previously broke the node → AnalysisRun join for thousands of synthetic nodes. Direct-constructor analyzers (toml/json/wgsl/sql) also get a central `origin_run_id` backstop. Additive and identity-neutral.
+
 ## 6.0.0 — 2026-06-10
 
 ### At a glance
