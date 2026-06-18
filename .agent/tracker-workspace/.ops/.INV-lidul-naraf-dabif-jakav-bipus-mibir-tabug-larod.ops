@@ -108,3 +108,18 @@
   clock: 11  # 8f17
   nonce: 8f17  # 8f17
   message: "root-cause family cross-link (b1); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 8f17
+- op: update  # 8a24
+  at: '2026-06-17T23:15:37Z'  # 8a24
+  by: agent  # 8a24
+  actor: jgstern_agent  # 8a24
+  clock: 12  # 8a24
+  nonce: 8a24  # 8a24
+  set:  # 8a24
+    status: satisfied  # 8a24
+- op: discuss  # c3b6
+  at: '2026-06-17T23:15:37Z'  # c3b6
+  by: agent  # c3b6
+  actor: jgstern_agent  # c3b6
+  clock: 13  # c3b6
+  nonce: c3b6  # c3b6
+  message: "Restored — invariant statement ('config_fingerprint constant sha256:44136fa355b3678a across all runs') no longer holds. PR #271 (merged selfh/dev 158b714269) stamps a producer-identity config_fingerprint at chokepoints for the cohort that bypassed _analyze_body (override-analyze/function-registered analyzers via the orchestrator-loop stamp_analyzer_config_fingerprint; ~40 linkers via registry _stamp_config_fingerprint; enclosure/boundary/file-symbol synthesis at create-time). Behavioral/production-path evidence: the new test test_no_analysis_run_carries_default_config_fingerprint asserts 0/N runs carry the default; self-analysis re-probe confirmed 0/86 default (was 56/86, originally claimed 84/84). IMPORTANT (mis-diagnosis corrected): the original Consumer-impact harm example — '--backend tree-sitter vs rust-analyzer share a cache key' — is FALSE: those are distinct passes (pass_id make_pass_id('rust') vs 'rust-scip-translate'), already separated in run_signature regardless of config_fingerprint. The genuine residual collision (same pass under different RUNTIME CLI flags) is split off as INV-nogom-nunor-zufus-muhur-sihin-dokiz-nojar-fuhon. Concept-audit (2026-06-17): config_fingerprint is a producer-IDENTITY fingerprint, NOT effective-CLI-config — field note + docstrings + compute_config_fingerprint updated to say so."  # c3b6

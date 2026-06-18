@@ -62,3 +62,18 @@
   clock: 6  # abd1
   nonce: abd1  # abd1
   message: "root-cause family cross-link (a2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # abd1
+- op: update  # e25c
+  at: '2026-06-17T21:41:42Z'  # e25c
+  by: agent  # e25c
+  actor: jgstern_agent  # e25c
+  clock: 7  # e25c
+  nonce: e25c  # e25c
+  set:  # e25c
+    status: done  # e25c
+- op: discuss  # 81ec
+  at: '2026-06-17T21:41:42Z'  # 81ec
+  by: agent  # 81ec
+  actor: jgstern_agent  # 81ec
+  clock: 8  # 81ec
+  nonce: 81ec  # 81ec
+  message: "Closed in PR #270 (merged selfh/dev e9a06f658f). Two-part item, both halves addressed. (a) VALIDATOR: new _check_dangling_endpoint cross-field predicate (content-gated on a non-empty run set, mirroring _check_origin_run_id_fk) flags any non-empty Edge.src/Edge.dst that names no node in the symbol set — the dst-absent half deliberately deferred from the ADR-0037 is_resolved<->dst FK (spec_validator.py:960), now its own predicate over BOTH endpoints; registered in the wired_checks disclosure manifest + pinned by the white-box drift guard. (b) PRODUCER: the 23 src-dangling edges (filed on substrate a32c4a31, tier-filtered sources) were already closed by the ADR-0037 edge-finalization train — they no longer reproduce. Behavioral/production-path evidence: running _check_dangling_endpoint against fresh self-analysis yields 0 dangling endpoints on ALL THREE substrates — default (35229 nodes/114352 edges), --max-tier 1 (114314), --include-docs (114705) — so the predicate is a pure standing regression guard at baseline. 19086 passed, 100% coverage. No bakeoff tag (directly-verified referential-integrity property, not a corpus-improvement claim)."  # 81ec

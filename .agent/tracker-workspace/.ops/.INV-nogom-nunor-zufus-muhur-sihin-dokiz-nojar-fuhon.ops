@@ -1,0 +1,25 @@
+- op: create  # 118d
+  at: '2026-06-17T23:14:52Z'  # 118d
+  by: agent  # 118d
+  actor: jgstern_agent  # 118d
+  clock: 1  # 118d
+  nonce: 118d  # 118d
+  data:  # 118d
+    kind: invariant  # 118d
+    title: "config_fingerprint does not distinguish same-pass runs under different runtime CLI flags"  # 118d
+    status: violated  # 118d
+    priority: 3  # 118d
+    parent:  # 118d
+    tags:  # 118d
+    - run_lifecycle  # 118d
+    - config_fingerprint  # 118d
+    - concept_audit_2026_06_17  # 118d
+    - dogfood  # 118d
+    isbefore: []  # 118d
+    duplicate_of: []  # 118d
+    not_duplicate_of: []  # 118d
+    pr_ref:  # 118d
+    description: "Split from INV-lidul (2026-06-17). INV-lidul's original harm example — 'cache keys collapse across --backend tree-sitter vs rust-analyzer' — was MIS-DIAGNOSED: those are distinct passes (pass_id make_pass_id('rust') vs 'rust-scip-translate'), already separated in run_signature regardless of config_fingerprint. The GENUINE residual: two runs of the SAME pass under different RUNTIME flags share one config_fingerprint. Also the re-eval trigger for the config_fingerprint concept-audit DOCUMENT verdict (2026-06-17): if/when a consumer needs same-pass-different-flag cache distinction, re-open as a rename/redefinition and wire CLI flags into the digest. Larger than the producer-side stamping closed in WI-mipul/INV-lidul (which only made distinct PASSES distinct)."  # 118d
+    fields:  # 118d
+      statement: "AnalysisRun.config_fingerprint must distinguish two runs of the same pass produced under different runtime effective configuration (e.g. --include-docs, --max-tier, file/lang filters), so run_signature cache keys do not collide across configurations."  # 118d
+      root_cause: "config_fingerprint is computed as a producer-IDENTITY digest (analyzer/linker class + grammar + static file globs, via ir.compute_config_fingerprint / TreeSitterAnalyzer._get_config_dict); runtime CLI flags are never threaded into it. The _get_config_dict override hook that could thread per-run config exists but has zero production overrides."  # 118d

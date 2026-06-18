@@ -70,3 +70,18 @@
   clock: 7  # ab1b
   nonce: ab1b  # ab1b
   message: "ADR-0043 §6.1's ratified emission_counts sub-step (recompute files_analyzed/files_skipped per-run by origin_run_id over the final substrate) was found UNSOUND and REMOVED from finalize in run-lifecycle:F1 (PR #236) — NOT stubbed. files_analyzed is contractually a FILE count (== profile.languages[L].files, pinned by test_inv_hokig/test_profile), but the per-origin_run_id recompute yields a NODE/path count and does not close this item (IR-consuming passes stay 0; the 6 scan-linkers would regress to 0). This item OWNS the real fix: a NEW provenance field (e.g. ir_units_processed / pass_kind) that does NOT overload files_analyzed. Re-ratification recorded in ADR §6.1 ratified sub-decision #5."  # ab1b
+- op: update  # b7e7
+  at: '2026-06-18T00:55:12Z'  # b7e7
+  by: agent  # b7e7
+  actor: jgstern_agent  # b7e7
+  clock: 8  # b7e7
+  nonce: b7e7  # b7e7
+  set:  # b7e7
+    status: satisfied  # b7e7
+- op: discuss  # 08f5
+  at: '2026-06-18T00:55:12Z'  # 08f5
+  by: agent  # 08f5
+  actor: jgstern_agent  # 08f5
+  clock: 9  # 08f5
+  nonce: 08f5  # 08f5
+  message: "Closed by PR #272 (merged selfh/dev 4e716987a5). Two-part fix: (1) AnalysisRun gains nodes_emitted/edges_emitted int counters (schema 0.14.1->0.14.2; INV-pitab symptom 5); (2) the duration_ms timer, previously wired only on the file-walking branch, is now started for EVERY pass — at chokepoints: analyzers in collect_analyzer_result (before to_dict snapshots), linkers in _run_linker_with_cache (the one locus that times each linker individually; the parallel pool defeats post-dispatch timing), and the boundary/file-symbol/enclosure synthesis passes at their create sites. duration_ms serializes with an INV-gizik floor: a run that emitted output cannot report 0ms (sub-ms rounds up to 1), so 0ms now unambiguously means 'did nothing', never 'never timed'. files_analyzed left untouched (ADR-0043 §6.1 #5: a NEW field, not the unsound per-origin_run_id recompute). Behavioral/production-path evidence: the new test test_inv_gizik_no_emission_in_zero_duration asserts 0 runs carry nodes_emitted>0 or edges_emitted>0 with duration_ms=0 on a real run (was 20/86 with duration_ms=0 while emitting edges, e.g. type-hierarchy 324 edges 'in 0ms'). 19103 passed/100%. No bakeoff tag (directly-verified provenance/shape metric)."  # 08f5

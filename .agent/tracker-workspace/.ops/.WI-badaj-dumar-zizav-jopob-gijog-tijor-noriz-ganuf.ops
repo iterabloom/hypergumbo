@@ -79,3 +79,11 @@
   item: WI-badaj-dumar-zizav-jopob-gijog-tijor-noriz-ganuf  # a528
   target_nonce: '2380'  # a528
   reason: "test deletion of msg 5 via WI-zonur"  # a528
+- op: update  # 3d35
+  at: '2026-06-17T23:28:14Z'  # 3d35
+  by: human  # 3d35
+  actor: jgstern  # 3d35
+  clock: 10  # 3d35
+  nonce: 3d35  # 3d35
+  set:  # 3d35
+    status: deleted  # 3d35
