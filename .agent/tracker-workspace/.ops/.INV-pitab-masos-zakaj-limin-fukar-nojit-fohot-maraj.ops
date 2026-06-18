@@ -123,3 +123,18 @@
   clock: 14  # a1c6
   nonce: a1c6  # a1c6
   message: "Symptom 2 REFRAMED after direct code inspection (the recon framing flipped). Key findings: (1) run_signature is NOT a cache key — it has zero consumers; the real results cache keys on ~/.cache/hypergumbo/<repo_fingerprint>/results/<state_hash>/<analyzer_identity>/ (sketch_embeddings._get_results_cache_dir). So 'folding grammar into run_signature' would churn a hash nothing reads. (2) The genuine cache-correctness bug — analyzer_identity omits grammar versions, so a tree-sitter grammar upgrade serves stale cache — was filed separately as INV-nofof and FIXED (folded _detect_tree_sitter_versions into compute_analyzer_identity_hash; behavioral repro confirmed). (3) Per-pass toolchain duplicates a subset of the top-level reproducibility_context block (which already records python/tree_sitter/grammar versions). NET for symptom 2: it is PURELY cosmetic (toolchain.name='python' + the 7 language-named outliers), no cache or logic stakes — nothing branches on toolchain.name. Parked as low-priority cleanup in the new provenance-concept-cleanup WI (also covers run_signature's false 'cache key' docstrings). INV-pitab remains open on: symptom 2 (parked cosmetic) + symptom 4 (overhead instrumentation, pending human decision). Symptom 3 off-table."  # a1c6
+- op: update  # f45b
+  at: '2026-06-18T07:08:37Z'  # f45b
+  by: agent  # f45b
+  actor: jgstern_agent  # f45b
+  clock: 15  # f45b
+  nonce: f45b  # f45b
+  set:  # f45b
+    status: satisfied  # f45b
+- op: discuss  # 024b
+  at: '2026-06-18T07:08:37Z'  # 024b
+  by: agent  # 024b
+  actor: jgstern_agent  # 024b
+  clock: 16  # 024b
+  nonce: 024b  # 024b
+  message: "All field-semantics symptoms resolved or dispositioned; the invariant (every declared AnalysisRun field carries the semantics its name implies) holds. Sym1 pass_version-empty: 0/86 (fixed). Sym5 nodes_emitted/edges_emitted: added PR #272. Sym6 play-routes version='1': canonical ir.PASS_VERSION, PR #279. Sym2 toolchain.name='python': REFRAMED cosmetic — name is the execution runtime (valid semantic; grammar specificity is in grammar_module/grammar_version, now folded into the cache key via INV-nofof), and per-pass toolchain duplicates top-level reproducibility_context; residual normalization parked in WI-zugol. Sym3 execution_id: OFF-table (hard-validated origin_run_id FK join key). Sym4 non-pass overhead unaccounted: a COVERAGE gap not a field-semantics bug — split to WI-balaf. No declared field now lies about its meaning."  # 024b

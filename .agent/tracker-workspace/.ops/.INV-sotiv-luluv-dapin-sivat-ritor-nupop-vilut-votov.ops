@@ -83,3 +83,18 @@
     tags: [dogfood]  # 008f
   remove:  # 008f
     tags: [dogfooding]  # 008f
+- op: update  # 83b8
+  at: '2026-06-18T07:25:22Z'  # 83b8
+  by: agent  # 83b8
+  actor: jgstern_agent  # 83b8
+  clock: 9  # 83b8
+  nonce: 83b8  # 83b8
+  set:  # 83b8
+    status: satisfied  # 83b8
+- op: discuss  # 5b67
+  at: '2026-06-18T07:25:22Z'  # 5b67
+  by: agent  # 5b67
+  actor: jgstern_agent  # 5b67
+  clock: 10  # 5b67
+  nonce: 5b67  # 5b67
+  message: "Re-measured (same 35281-symbol substrate): stable_id NULL 35/35281 (0.1%). Every kind this item flagged as never-populated is now 0% null: file 0/940 (was 99.4% null), variable 0/1704, export 0/20, dependency 0/82, interface 0/7, project 0/7. Structural coverage gap closed by the v6+ kind-gate widening. Residual: a 0.1% tail (struct 7/7, class 12, function 2, method 1) — NOT the structural gap this item described (struct was never in its enumerated set). The struct-7 tail is a ragged-cell that the future population-ratchet (WI-libib) would catch; negligible (7 nodes). Closed on before→after evidence."  # 5b67

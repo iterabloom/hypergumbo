@@ -53,3 +53,18 @@
   clock: 5  # bdfc
   nonce: bdfc  # bdfc
   message: "Reopen: child WI-fanun reproduces (fingerprint null on 3911 test-methods + 1645 external_symbol nodes). (tracker-hygiene-sweep 2026-06-08T174504Z)"  # bdfc
+- op: update  # f5ba
+  at: '2026-06-18T07:26:11Z'  # f5ba
+  by: agent  # f5ba
+  actor: jgstern_agent  # f5ba
+  clock: 6  # f5ba
+  nonce: f5ba  # f5ba
+  set:  # f5ba
+    status: satisfied  # f5ba
+- op: discuss  # e2e7
+  at: '2026-06-18T07:26:11Z'  # e2e7
+  by: agent  # e2e7
+  actor: jgstern_agent  # e2e7
+  clock: 7  # e2e7
+  nonce: e2e7  # e2e7
+  message: "All four members resolved: INV-fusus (satisfied — stable_id collision 91%→0% on 35281-symbol substrate), INV-sotiv (satisfied — coverage gap closed, 0.1% null), WI-fanun (done — fingerprint), WI-luvig (done — canonical_name docstring clarified). The write-side identity contract now holds on the fresh full-corpus re-measurement (selfh/dev 288a5a0190): stable_id uniquely identifies (0/35246 collision) at 99.9% coverage; fingerprint folded into the cache key (INV-nofof); canonical_name docstring no longer oversells. Closed on re-measurement + member resolution."  # e2e7

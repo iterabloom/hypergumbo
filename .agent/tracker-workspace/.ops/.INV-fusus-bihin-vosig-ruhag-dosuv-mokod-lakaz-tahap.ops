@@ -103,3 +103,18 @@
     tags: [dogfood]  # 8a7b
   remove:  # 8a7b
     tags: [dogfooding]  # 8a7b
+- op: update  # 01ea
+  at: '2026-06-18T07:25:21Z'  # 01ea
+  by: agent  # 01ea
+  actor: jgstern_agent  # 01ea
+  clock: 12  # 01ea
+  nonce: 01ea  # 01ea
+  set:  # 01ea
+    status: satisfied  # 01ea
+- op: discuss  # 779c
+  at: '2026-06-18T07:25:22Z'  # 779c
+  by: agent  # 779c
+  actor: jgstern_agent  # 779c
+  clock: 13  # 779c
+  nonce: 779c  # 779c
+  message: "Re-measured on fresh full-corpus self-analysis (selfh/dev 288a5a0190, 35281 symbols): stable_id collision rate 0/35246 non-null (0.0%) — ZERO nodes share a stable_id (top-5 most-common ids all count=1). Was 91% (26,742/29,367 in collision groups, 5 dataclasses sharing sha256:1e29284a...). The v6/v7/v8 stable-id train (scope-chain hashing + make_typed_stable_id) resolved _compute_stable_id's coarseness; the 91% figure was pre-v6 stale text. Closed on before→after evidence on the real artifact."  # 779c

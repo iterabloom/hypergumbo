@@ -38,3 +38,18 @@
   clock: 3  # 14a8
   nonce: 14a8  # 14a8
   message: "Confirmed as the home for the declared-fields:F1 / G8 population-contract engine. The finalize stage had a no-op '_finalize_declared_fields' sub-step (9) reserved for declared-fields:F1(a)/F5; a fill-vs-remove recon (2026-06-15) found that slot has no finalize-time tenant — F1(a) (getattr→_read, INV-zotip) already ships via sub-step 10's validate_ir over the final substrate, and the per-(kind,field) population-contract engine belongs in the writer-contract VALIDATOR (this item — fix-sketch (a), 'extend the validator class', inside _check_writer_contract where the record stream lives), NOT a finalize sub-step. A finalize-time population re-check would also grow the shrink-only validation ratchet (zero headroom at 12/substrate; measured +2..+57). The finalize stub was removed (not stubbed) in PR #243 (refactor, ADR-0043 §6.1 amended #9); declared-fields:F1's implementation home is therefore HERE. No status change — the engine is still unbuilt (todo_hard)."  # 14a8
+- op: update  # 0fd4
+  at: '2026-06-18T07:08:37Z'  # 0fd4
+  by: agent  # 0fd4
+  actor: jgstern_agent  # 0fd4
+  clock: 4  # 0fd4
+  nonce: 0fd4  # 0fd4
+  set:  # 0fd4
+    status: todo_soft  # 0fd4
+- op: discuss  # 195d
+  at: '2026-06-18T07:08:37Z'  # 195d
+  by: agent  # 195d
+  actor: jgstern_agent  # 195d
+  clock: 5  # 195d
+  nonce: 195d  # 195d
+  message: "REFRAMED (2026-06-18 cost interview). REJECT the full 312-cell enforced applicability matrix: upfront cost is dominated by adjudicating ~194 empty cells (most legitimately empty), and an enforced expected/forbidden matrix carries irreducible false-positive risk (paid in human trust + CI-signal erosion) that cheap agent labor does NOT remove. Sound, cheaper design = POPULATION RATCHET: auto-snapshot the (kind,field) cells populated above a threshold, assert in CI they never drop to null — sound by construction (no subjective judgments), catches the load-bearing regression class (WI-lisog fingerprint-on-method), regenerated on intentional population changes. Empty-cell discovery stays with dogfooding. BUILD DEFERRED per Zeno-scope decision — not Wave 2; pick up as a scoped ratchet item later. Downgraded todo_hard -> todo_soft."  # 195d

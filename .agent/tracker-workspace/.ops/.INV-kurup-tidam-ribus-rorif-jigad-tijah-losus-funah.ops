@@ -67,3 +67,10 @@
   clock: 7  # fac8
   nonce: fac8  # fac8
   message: "2026-06-10 design-interview ruling (ADR-0036, merged in PR #4181): a single canonical node.id grammar now exists — anchored 5-slot, colon-free lang/span/name/kind, colon-tolerant path, parse from both ends, enumerated sentinels, kind slot == node.kind always. The non-canonical emission paths this META tracks are now measurable against one contract. Stays violated until the per-emitter conformance fixes land; re-validate then."  # fac8
+- op: discuss  # 6172
+  at: '2026-06-18T07:08:38Z'  # 6172
+  by: agent  # 6172
+  actor: jgstern_agent  # 6172
+  clock: 8  # 6172
+  nonce: '6172'  # 6172
+  message: "Dominant fix WI-jopil (:unresolved->:external_symbol id-slot fold, ~458 nodes = bulk of this umbrella's id_format count) DEFERRED to Wave 3 item 10 (2026-06-18). Correction: ADR-0036 is Accepted — NOT a blocker (earlier 'blocked on ADR-0036' framing was wrong). INV-kurup stays violated; closes in Wave 5 (§Wave 5 item 2 + vocab item 6 zero-axis-violation cohort) after WI-jopil lands in Wave 3."  # 6172
