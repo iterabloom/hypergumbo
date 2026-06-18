@@ -2,7 +2,7 @@
 # ADR-3ccc: Usage Context Patterns (extends ADR-3aaa)
 
 ## Status
-Implemented — the `UsageContext` IR type is live at `packages/hypergumbo-core/src/hypergumbo_core/ir.py:538`, serialised via `schema.py`, produced by `analyze/base.py` + `analyze/all_analyzers.py`, surfaced in `cli.py` output, and consumed by `linkers/route_handler.py`. All five example frameworks listed in this document have YAML pattern files: `django.yaml` (call-based), `express.yaml` (call-based), `hapi.yaml` (data-driven), `nextjs.yaml` (file-based), and `sinatra.yaml` (block/DSL-based). The Clojure data-driven axis is covered by `ring-compojure.yaml`. 22 framework YAML files currently use usage-context patterns in one shape or another. The Django YAML's header comment ("ADR-3aaa v1.0.x + v1.1.x … Usage-based patterns (v1.1.x): Match URL routing via `path()`/`re_path()` calls") tracks the phased rollout explicitly.
+Implemented — the `UsageContext` IR type is live at `packages/hypergumbo-core/src/hypergumbo_core/ir.py:939`, serialised via `schema.py`, produced by `analyze/base.py` + `analyze/all_analyzers.py`, surfaced in `cli.py` output, and consumed by `linkers/route_handler.py`. All five example frameworks listed in this document have YAML pattern files: `django.yaml` (call-based), `express.yaml` (call-based), `hapi.yaml` (data-driven), `nextjs.yaml` (file-based), and `sinatra.yaml` (block/DSL-based). The Clojure data-driven axis is covered by `ring-compojure.yaml`. 22 framework YAML files currently use usage-context patterns in one shape or another. The Django YAML's header comment ("ADR-3aaa v1.0.x + v1.1.x … Usage-based patterns (v1.1.x): Match URL routing via `path()`/`re_path()` calls") tracks the phased rollout explicitly.
 
 ## Relationship to ADR-3aaa
 
@@ -20,7 +20,9 @@ ADR-3aaa established that framework semantics should be externalized from analyz
 
 However, many frameworks express semantics through **how symbols are used**, not how they're defined:
 
-| Pattern Type | Example | Current Support |
+> **Proposal-era design — IMPLEMENTED.** See the Status line above for shipped state (the `UsageContext` IR type is live; ~22 framework YAMLs use usage-context patterns; call/data-driven/file-based/block-DSL shapes all have working YAML). The "❌ Not supported / ❌ Hardcoded" cells in the table immediately below describe the situation *at the time this ADR was written*, not pending work — they are the gaps this ADR proposed to close, and they have since been closed.
+
+| Pattern Type | Example | Support (at time of writing) |
 |--------------|---------|-----------------|
 | Decorator-based | `@app.get("/users")` | ✅ Supported |
 | Call-based | `path("/users/", handler)` | ❌ Hardcoded |
@@ -33,10 +35,10 @@ An initial proposal (0003-call-patterns-extension.md) addressed call-based patte
 
 A symbol's framework semantics can be derived from **context**:
 
-1. **Definition context** — How the symbol is defined (decorators, base classes)
-2. **Usage context** — How the symbol is used (calls, data structures, exports)
+1. **Definition context** — How the symbol is defined (decorators, base classes, annotations, parameters). This is what ADR-3aaa calls "rich metadata" — see ADR-3aaa §1.4 and §2.6 for the full treatment.
+2. **Usage context** — How the symbol is *used* (passed as a call argument, named as a value in a route data structure, exported from a file, wrapped in a block/DSL). The symbol itself may carry no framework-revealing definition metadata; its meaning comes from the surrounding call/data/export site.
 
-The current pattern system handles (1). This proposal extends it to handle (2) in a unified way.
+In short: definition context answers "what does this symbol's own declaration say?"; usage context answers "what does the code *around* this symbol's use sites say about it?". `UsageContext` (defined below) is the IR record that captures the latter. The current pattern system handles (1). This proposal extends it to handle (2) in a unified way.
 
 ## Survey of Framework Patterns
 
@@ -135,6 +137,8 @@ get "/users", UserController, :index
 | Rust | Axum | Call (builder) |
 
 ## Proposed Solution: Unified Usage Context
+
+> **Proposal-era design — IMPLEMENTED; see the Status line for shipped state** (the `UsageContext` IR type is live at `ir.py:939`, serialised via `schema.py`, produced by the analyzers, surfaced in `cli.py`, consumed by `linkers/route_handler.py`; ~22 framework YAMLs use usage-context patterns). The dataclass, YAML syntax, extraction DSL, and per-framework examples below are the original design as proposed; the field names / DSL operators / YAML key shapes shown here may differ in detail from the shipped implementation — treat the live code (`ir.py`, the framework YAML files, `route_handler.py`) as authoritative, and the blocks below as the design rationale.
 
 ### Core Abstraction
 
@@ -883,6 +887,8 @@ SOURCE FILES
 
 ## Migration Path
 
+> **Proposal-era design — IMPLEMENTED; see the Status line for shipped state.** Phases 1-4 below are the *original rollout plan*, not pending work. The Status line records the shipped result: the `UsageContext` IR type is live, the analyzers emit it, and the five worked-example frameworks plus others ship as YAML (`django.yaml`, `express.yaml`, `hapi.yaml`, `nextjs.yaml`, `sinatra.yaml`, `ring-compojure.yaml`, … ~22 framework YAMLs use usage-context patterns). Do not read the unchecked phase steps below as a TODO list.
+
 ### Phase 1: Infrastructure
 1. Add `UsageContext` to IR (`ir.py`)
 2. Extend `AnalysisResult` with `usage_contexts: list[UsageContext]`
@@ -908,13 +914,15 @@ SOURCE FILES
 
 ## Open Questions
 
-1. **Inline handlers**: For blocks/lambdas, do we create synthetic symbols or treat the call site as the symbol?
+> **Proposal-era design — IMPLEMENTED; see the Status line for shipped state.** These were the open questions *at the time of writing*. Some have evident resolutions in this document and the shipped design (marked RESOLVED below); others are noted as proposal-era and were not separately answered in this ADR — consult the live code/tests for current behavior rather than treating them as pending decisions.
 
-2. **Performance**: Building the reverse index is O(contexts). Acceptable for most repos, but may need optimization for very large codebases.
+1. **Inline handlers**: For blocks/lambdas, do we create synthetic symbols or treat the call site as the symbol? — **RESOLVED (synthetic symbols).** The Sinatra worked example above adopts a synthetic block symbol ID (`ruby:app.rb:5-10:<block>:block`) together with `creates_symbol: true`, so a block becomes a route symbol rather than the bare call site being treated as the symbol.
 
-3. **Macro expansion**: For Elixir/Clojure, should we match pre- or post-expansion? Post-expansion is more uniform but loses source fidelity.
+2. **Performance**: Building the reverse index is O(contexts). Acceptable for most repos, but may need optimization for very large codebases. — *Proposal-era; not separately answered in this ADR.*
 
-4. **Partial extraction**: If path extraction succeeds but method fails, do we still enrich? Probably yes, with method=None.
+3. **Macro expansion**: For Elixir/Clojure, should we match pre- or post-expansion? Post-expansion is more uniform but loses source fidelity. — *Proposal-era; not separately answered in this ADR (the `expand`/`generates` extensions in the "Macro Expansion" limitation above sketch both options).*
+
+4. **Partial extraction**: If path extraction succeeds but method fails, do we still enrich? Probably yes, with method=None. — **RESOLVED (yes, partial enrichment).** This matches the "Graceful Degradation" design principle above: extract what we can, enrich with `path`/`method` set to `null` for the part that could not be statically determined, rather than failing all-or-nothing.
 
 ## Appendix: Comparison with Initial Proposal
 

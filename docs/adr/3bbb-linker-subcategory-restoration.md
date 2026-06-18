@@ -57,7 +57,7 @@ Restore the ADR-3aaa §2.4 subcategory vocabulary as a first-class classificatio
 
 ### 1. Restore Protocol / Bridge / Framework as active terms
 
-The three original subcategories retain their ADR-3aaa §2.4 definitions:
+The three original subcategories retain their ADR-3aaa §2.4 definitions. The one-line definitions are inlined here so this ADR stands alone; see [ADR-3aaa §2.4](3aaa-architectural-analysis-and-revision-plan.md) for the full table with the original per-subcategory enumeration. (A fourth subcategory, **Infrastructure**, is added by this ADR in §2.)
 
 - **Protocol Linker** — framework-agnostic; match on protocol semantics (URL pattern, SQL table name, message topic, event name). Typically activates always, regardless of detected frameworks.
 - **Bridge Linker** — language-pair-specific; connect symbols across language boundaries via FFI or runtime-bridging conventions. Typically activates when both languages of the pair are present.
@@ -79,7 +79,7 @@ The opening sentence of every file in `packages/hypergumbo-core/src/hypergumbo_c
 """[Protocol|Bridge|Framework|Infrastructure] linker: <one-line purpose>.
 ```
 
-This is enforced by convention (not tooling for now), checked by spot audit at any linker-modifying PR's review phase.
+**Update (landed):** This was originally proposed as convention-only ("enforced by convention, not tooling for now"). Tooling now exists — `generate-architecture` parses every linker docstring's opening sentence, counts modules by subcategory, and surfaces any that don't declare one in an `Uncategorized` bucket (PR #3084, see Status line). The post-rollout invariant is `Uncategorized == 0`, so a missing or malformed subcategory declaration is caught mechanically at doc-regeneration time rather than only by spot audit at review.
 
 ### 4. Cataloguing documents use the subcategory vocabulary
 
@@ -88,7 +88,9 @@ This is enforced by convention (not tooling for now), checked by spot audit at a
 
 ### 5. Every new linker PR includes a subcategory declaration
 
-The subcategory label is part of the standard header for a new linker module. The PR body cites this ADR and includes a corresponding entry in `LINKERS.md`'s table. This is a convention-level commitment; no automated check is introduced today. Future automation (e.g., a pre-commit hook that scans `linkers/*.py` for the subcategory token) is deferred to a follow-up work item.
+The subcategory label is part of the standard header for a new linker module. The PR body cites this ADR and includes a corresponding entry in `LINKERS.md`'s table.
+
+**Update (landed):** The proposal text below described this as "a convention-level commitment; no automated check is introduced today," deferring automation to a follow-up. That follow-up landed: `generate-architecture` scans `linkers/*.py` for the subcategory token in each module's opening docstring sentence and reports any module lacking one as `Uncategorized` (PR #3084, see Status line and §3). The convention is therefore now mechanically checked at doc-regeneration time, not merely by review-phase spot audit.
 
 ### 6. Bakeoff prioritization follows INV-nimuj
 
@@ -119,22 +121,23 @@ The pre-existing `cross_language_linkers` tag is retained for backwards-continui
 
 ## Consequences
 
-Implementation is sequenced across six PRs, five non-governance and one governance:
+Implementation was sequenced across **seven** PRs, six non-governance and one governance. (The proposal originally planned six; the `generate-architecture` enforcement work — PR 7 below — was added during rollout and is reflected in the Status line's seven-PR count.) The PR-number mapping to the merged commits is in the Status line at the top of this ADR.
 
-| PR | Surface | Governance | Depends on |
-|---|---|---|---|
-| 1 | This ADR (`docs/adr/3bbb-linker-subcategory-restoration.md`, new) | No | — |
-| 2 | `docs/LINKERS.md` rewrite (rename + Subcategory column + enumerate all 45 files) | No | (can ship in parallel with PR 1) |
-| 3 | `docs/hypergumbo-spec.md` in-place corrections | No | PR 1 (forward pointers) |
-| 4 | ADR-3aaa / 0010 / 0012 / 0015 in-place corrections | No | PR 1 (forward pointers) |
-| 5 | Module docstring sweep + `README.md` + `ARCHITECTURE.md` + `CHANGELOG.md` | No | PR 1 Appendix B reviewed |
-| 6 | `AGENTS.md` + three bakeoff playbooks + `trackerize` well-known-tags | **Yes** | PR 1 + `needs_human_review` tracker item approved |
+| PR | Surface | Merged as | Governance | Depends on |
+|---|---|---|---|---|
+| 1 | This ADR (`docs/adr/3bbb-linker-subcategory-restoration.md`, new) | #3076 | No | — |
+| 2 | `docs/LINKERS.md` rewrite (rename + Subcategory column + enumerate all 45 files) | #3077 | No | (can ship in parallel with PR 1) |
+| 3 | `docs/hypergumbo-spec.md` in-place corrections | #3078 | No | PR 1 (forward pointers) |
+| 4 | ADR-3aaa / 0010 / 0012 / 0015 in-place corrections | #3079 | No | PR 1 (forward pointers) |
+| 5 | Module docstring sweep + `README.md` + `ARCHITECTURE.md` + `CHANGELOG.md` | #3080 | No | PR 1 Appendix B reviewed |
+| 6 | `generate-architecture` subcategory enforcement (Uncategorized counter; see §3/§5) | #3084 | No | PR 5 (docstrings must be declared first) |
+| 7 | `AGENTS.md` + three bakeoff playbooks + `trackerize` well-known-tags | #3089 | **Yes** | PR 1 + `needs_human_review` tracker item (WI-hizab) approved |
 
-Verification after all six land:
+Verification (all seven PRs landed 2026-04-16 to 2026-04-17; see Status line):
 
-1. **Bias re-audit.** Re-run the G-doc survey (check module docstrings for the subcategory label). Target: ≥43 of 45 files declare a subcategory in their opening sentence.
-2. **Bakeoff prioritization cross-check.** Re-run `./scripts/dead-code-prospector-run.py` aggregation against the 2026-04-11 corpus. The categorizer output is unchanged by this vocabulary work (expected and desired — the WI-vupin categorizer operates on candidate names, not linker docstrings) — but any follow-up tracker items filed after this ADR should tag themselves with the new finer-grained tags rather than the legacy `cross_language_linkers`.
-3. **Retrospective notebook entry.** `~/hypergumbo_lab_notebook/linker_subcategory_restoration_retrospective_04162026.md` records before/after counts, unresolved judgment calls, and any residual risk.
+1. **Bias re-audit (verified — landed).** The G-doc survey was re-run (module docstrings checked for the subcategory label). The post-rollout invariant is that all 45 linker modules declare a subcategory in their opening sentence — mechanically confirmed by `generate-architecture`'s `Uncategorized` counter reading 0 (see Status line and §3). This exceeded the original ≥43-of-45 target.
+2. **Bakeoff prioritization cross-check (verified — landed).** The `./scripts/dead-code-prospector-run.py` aggregation was re-run against the 2026-04-11 corpus. The categorizer output was unchanged by this vocabulary work (expected and desired — the WI-vupin categorizer operates on candidate names, not linker docstrings). Follow-up tracker items filed after this ADR tag themselves with the new finer-grained tags rather than the legacy `cross_language_linkers`.
+3. **Retrospective notebook entry (verified — landed).** `~/hypergumbo_lab_notebook/linker_subcategory_restoration_retrospective_04162026.md` records before/after counts, unresolved judgment calls, and any residual risk.
 
 ## Appendix A: Investigative methodology
 
@@ -185,7 +188,7 @@ One substantive revision: the original "gradual drift" narrative did not survive
 
 ## Appendix B: Current-state linker inventory
 
-**Status:** Draft. The subcategory assignments below are derived from the B-classify blind classification cross-referenced with ADR-3aaa §2.4's original enumeration and the author's understanding of each file's code. Borderline cases are flagged. This table should be reviewed by a human before PR 5 (module docstring sweep) ships — individual entries may move between subcategories based on that review.
+**Status:** Finalized at rollout. The table below was authored as a Draft (subcategory assignments derived from the B-classify blind classification cross-referenced with ADR-3aaa §2.4's original enumeration and the author's understanding of each file's code, with borderline cases flagged), to be human-reviewed before PR 5 (module docstring sweep). That review happened and the assignments were finalized when PR 5 landed (see Status line); the per-module docstrings written in PR 5 are the canonical record, and `generate-architecture`'s `Uncategorized == 0` invariant confirms every module carries a finalized subcategory. The borderline-case discussion below is preserved as the rationale of record for the judgment calls made.
 
 | File | Subcategory | Notes |
 |---|---|---|
