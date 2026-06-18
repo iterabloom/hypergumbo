@@ -50,3 +50,18 @@
   clock: 5  # 9809
   nonce: '9809'  # 9809
   message: "INVESTIGATION COMPLETE (2-vantage workflow wf_160de918, behaviorally verified). Confirmed BUG; scope MUCH larger than the 44 visible stubs: a SINGLE AST-path root cause across ~1,043 decorated declaration nodes (768 function + 32 async + 243 class + @property) on the self-tree — every decorated def/class whose producer-span excludes the decorator. The 44 were just the VISIBLE collisions (trivial bodies); production decorated fns also have name+signature dropped, masked by differing bodies. TWO compounding drops in the container path (fingerprint.py:255-265): (1) def/class NAME (a node attribute emitted only when the node itself is walked at :190-193, skipped by the iter_child_nodes container walk); (2) arguments node (no lineno -> _py_effective_lines None -> skipped :259-260). Root: fit-check :249 (lines[0] >= start_line) uses the DECORATOR-EXTENDED start, so a decorated def whose span excludes the decorator fails the fit and degrades to a body-only hash. WI-falum (tree-sitter/TOML) is a SEPARATE already-fixed family, NOT a co-member (tree-sitter names are child nodes, immune). FIX (one edit, simulation-verified 0 residual on all 1,043): when best is FunctionDef/AsyncFunctionDef/ClassDef with best.lineno >= start_line and best.end_lineno <= end_line, route to the SUBTREE path (walk best whole) not the container path. Blast radius: 1,043 fingerprint VALUES change (3.1%), concentrated in decorated test files. fingerprint is NOT a cache key/run_signature input -> no cache hazard; one-time churn. REQUIRES TDD red/green on the real post-pass before closure (fix validated by isolated re-simulation, not a patched end-to-end build)."  # 9809
+- op: update  # ea93
+  at: '2026-06-18T09:57:43Z'  # ea93
+  by: agent  # ea93
+  actor: jgstern_agent  # ea93
+  clock: 6  # ea93
+  nonce: ea93  # ea93
+  set:  # ea93
+    status: done  # ea93
+- op: discuss  # 616e
+  at: '2026-06-18T09:57:43Z'  # 616e
+  by: agent  # 616e
+  actor: jgstern_agent  # 616e
+  clock: 7  # 616e
+  nonce: 616e  # 616e
+  message: "Fixed + merged (PR #290, selfh/dev 23e929428c). Behavioral evidence (before->after self-tree re-measurement, 35285 symbols): the degenerate-fingerprint VALIDATION violation (cross_field/Symbol.fingerprint) went 1->0 — violations_by_class.cross_field is now 0 (was 1, the WI-guhas miss). The 12 pre-fix degenerate groups dropped to 9; the 9 remaining are LEGITIMATE same-bare-name structural duplicates (tracker_set identical across 20 test classes, action_cancel across 8, etc.) which the check correctly does NOT flag (identical bare name+signature+body = genuinely identical content). Production-path TDD red->green: test_decorated_function_name/signature/class_is_part_of_fingerprint assert decorated declarations differing only by name or signature now get distinct fingerprints. Fix: _python_context_fingerprint fit-check compares the raw declaration-keyword line (best.lineno) for def/class nodes, routing decorated declarations to the whole-subtree walk; the ~1043 affected nodes now carry name+signature-bearing fingerprints. Not a cache key -> no cache hazard. Distinct from WI-falum (tree-sitter, already fixed)."  # 616e
