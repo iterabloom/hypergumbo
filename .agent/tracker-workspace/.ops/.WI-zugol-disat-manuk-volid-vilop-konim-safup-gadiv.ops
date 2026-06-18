@@ -1,0 +1,21 @@
+- op: create  # ca49
+  at: '2026-06-18T05:10:34Z'  # ca49
+  by: agent  # ca49
+  actor: jgstern_agent  # ca49
+  clock: 1  # ca49
+  nonce: ca49  # ca49
+  data:  # ca49
+    kind: work_item  # ca49
+    title: "Provenance concept cleanup (parked): toolchain.name cosmetics + run_signature documented-but-unused"  # ca49
+    status: todo_soft  # ca49
+    priority: 3  # ca49
+    parent:  # ca49
+    tags:  # ca49
+    - dogfood  # ca49
+    - analysis_runs  # ca49
+    isbefore: []  # ca49
+    duplicate_of: []  # ca49
+    not_duplicate_of: []  # ca49
+    pr_ref:  # ca49
+    description: "Parked low-priority cleanup, split out of INV-pitab symptom 2 after it was\nreframed (the cache-correctness stakes turned out to live elsewhere — INV-nofof).\n\n(a) **toolchain.name cosmetics.** Tree-sitter analyzers stamp toolchain.name='python'\n(the host interpreter); 7 hand-written analyzers (puppet/robot/rst/meson/purescript/\nracket/matlab) stamp the language name instead — internally inconsistent. This is\nPURELY cosmetic: nothing branches on toolchain.name, and the real analysis cache keys\non analyzer_identity (not toolchain). Decision space: declare name = execution runtime\n(so 'python'/'tree-sitter' is correct) and normalize the 7 outliers — OR slim/deprecate\nthe per-pass toolchain field entirely, because it duplicates a SUBSET of the top-level\nreproducibility_context block (which already records hypergumbo_version, python_version,\ntree_sitter_version, and per-grammar versions). The overlap is a Fundamental-Concept-Audit\ncandidate (toolchain-per-pass vs reproducibility_context-top-level: same info, two places).\n\n(b) **run_signature is documented-but-unused.** ir.py docstrings (lines ~11, ~217) call\nrun_signature the \"cache key\", but it has ZERO consumers — the cache uses analyzer_identity.\nrun_signature is computed at create, recomputed in finalize, serialized, and never read for\nany decision. Minimum: fix the lying docstrings. Then decide its fate: keep as provenance-only\n(document it as such), wire it to a real purpose, or deprecate.\n\nBoth are low-stakes tidiness; no behavior breaks either way (nothing internal branches on\nthese fields; only external behavior-map readers see them)."  # ca49
+    fields: {}  # ca49

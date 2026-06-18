@@ -1,0 +1,21 @@
+- op: create  # 3e4f
+  at: '2026-06-18T07:06:32Z'  # 3e4f
+  by: agent  # 3e4f
+  actor: jgstern_agent  # 3e4f
+  clock: 1  # 3e4f
+  nonce: 3e4f  # 3e4f
+  data:  # 3e4f
+    kind: work_item  # 3e4f
+    title: "Overhead-phase observability: instrument non-pass wall-clock (split from INV-pitab symptom 4)"  # 3e4f
+    status: todo_soft  # 3e4f
+    priority: 3  # 3e4f
+    parent:  # 3e4f
+    tags:  # 3e4f
+    - dogfood  # 3e4f
+    - analysis_runs  # 3e4f
+    isbefore: []  # 3e4f
+    duplicate_of: []  # 3e4f
+    not_duplicate_of: []  # 3e4f
+    pr_ref:  # 3e4f
+    description: "Split out of INV-pitab symptom 4 (2026-06-18 interview decision). DISTINCT in kind\nfrom INV-pitab's other symptoms: those were field-semantics bugs (a declared field\nlying about its meaning); this is a COVERAGE gap (whole categories of work have no\nprovenance card at all).\n\nProblem: ~half of a full `hypergumbo` run's wall-clock is non-pass overhead —\nframework discovery, file-index build, embedding-cache priming, gitleaks, repo\nfingerprinting, schema validation, JSON serialization — and none of it gets an\nAnalysisRun entry. Original repro (INV-pitab): total ~114s, pass span ~56s; the\nmissing ~58s is unaccounted at the provenance level, so \"where did the time go\" is\nunanswerable from analysis_runs[].\n\nDesign note: probably wants a NEW lightweight timing block\n(`overhead_phases: [{phase, duration_ms}]`), NOT reused AnalysisRun cards — those\ncarry pass-specific fields (pass_version, toolchain, nodes_emitted) meaningless for\n\"JSON serialization took 4s\". Schema addition + timers around ~6 phases.\n\nStatus: todo_soft / build deferred — lower value than correctness work; pick up when\noverhead observability is prioritized (candidate for a later wave)."  # 3e4f
+    fields: {}  # 3e4f

@@ -1,0 +1,38 @@
+- op: create  # 577d
+  at: '2026-06-18T05:04:37Z'  # 577d
+  by: agent  # 577d
+  actor: jgstern_agent  # 577d
+  clock: 1  # 577d
+  nonce: 577d  # 577d
+  data:  # 577d
+    kind: invariant  # 577d
+    title: "Results cache does not invalidate on tree-sitter grammar upgrade (analyzer_identity omits grammar versions)"  # 577d
+    status: violated  # 577d
+    priority: 2  # 577d
+    parent:  # 577d
+    tags:  # 577d
+    - dogfood  # 577d
+    - analysis_quality  # 577d
+    isbefore: []  # 577d
+    duplicate_of: []  # 577d
+    not_duplicate_of: []  # 577d
+    pr_ref:  # 577d
+    description: "Discovered while reframing INV-pitab symptom 2. The per-pass toolchain field and run_signature are NOT cache keys (run_signature has zero consumers; its 'for cache keying' docstring is false). The real cache is ~/.cache/hypergumbo/<repo_fingerprint>/results/<state_hash>/<analyzer_identity>/ (sketch_embeddings._get_results_cache_dir). None of the three segments captures grammar version. reproducibility_context already DETECTS grammar versions for the top-level block but the cache never consults them."  # 577d
+    fields:  # 577d
+      statement: "The hypergumbo results cache must invalidate when any input that affects analysis output changes. The tree-sitter grammar version affects output but is absent from all three cache-key segments (repo_fingerprint, state_hash, analyzer_identity), so a grammar upgrade serves stale cached results."  # 577d
+      root_cause: "compute_analyzer_identity_hash (analyzer_identity.py) hashes hypergumbo_core.__version__ + the .py content of every installed hypergumbo_* package. tree-sitter grammar packages (tree_sitter_rust, tree-sitter-language-pack, ...) are NOT hypergumbo_* packages, so their versions never enter the identity hash. repo_fingerprint/state_hash key only on target-repo content (path:size:mtime). Net: upgrading a grammar between two runs on the same unchanged repo with the same hypergumbo version yields a cache HIT on results produced by the OLD grammar. Confirmed behaviorally: _get_results_cache_dir returns a byte-identical path (analyzer_identity 5ca857265b4683d3) after a simulated grammar upgrade. Fix: fold _detect_tree_sitter_versions() output (ts lib + grammar pkg versions) into compute_analyzer_identity_hash. Tradeoff: global identity over-invalidates (any grammar upgrade rebuilds whole cache); per-language granularity deferred as future optimization."  # 577d
+- op: update  # f781
+  at: '2026-06-18T07:06:31Z'  # f781
+  by: agent  # f781
+  actor: jgstern_agent  # f781
+  clock: 2  # f781
+  nonce: f781  # f781
+  set:  # f781
+    status: satisfied  # f781
+- op: discuss  # fe22
+  at: '2026-06-18T07:06:31Z'  # fe22
+  by: agent  # fe22
+  actor: jgstern_agent  # fe22
+  clock: 3  # fe22
+  nonce: fe22  # fe22
+  message: "Fixed + merged (PR #285, selfh/dev 95840f1780). Behavioral evidence: before, _get_results_cache_dir returned a byte-identical path (analyzer_identity 5ca857265b4683d3) after a simulated grammar upgrade -> stale cache hit. After, compute_analyzer_identity_hash folds tree-sitter library + grammar package versions (schema._detect_tree_sitter_versions); production-path tests test_hash_changes_when_grammar_version_changes + test_hash_changes_when_tree_sitter_library_version_changes assert the hash now shifts on a grammar/lib version change, and test_hash_handles_absent_tree_sitter covers the no-tree-sitter path. Tradeoff documented: global identity over-invalidates (any grammar upgrade rebuilds whole cache once); per-language granularity deferred as future optimization."  # fe22
