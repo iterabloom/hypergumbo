@@ -9358,3 +9358,174 @@ class TestJsTsCyclomaticComplexity:
         method = next(s for s in result.symbols if s.name == "C.branchy")
         assert method.cyclomatic_complexity is not None
         assert method.cyclomatic_complexity >= 2
+
+
+class TestWizavadCjsModuleBindingParity:
+    """WI-zavad / emission-parity F2: CommonJS module bindings are first-class
+    import aliases (parity with ESM), and module-variant extensions
+    (.mjs/.cjs/.mts/.cts) are discovered.
+
+    Before this fix the ``require()`` edge-emitter recorded the *import* edge
+    but never registered the bound name as a namespace/named alias, so member
+    calls on a require-bound module
+    (``const fs = require('fs'); fs.readFileSync(...)``) emitted ZERO ``calls``
+    edges — leaving CommonJS Node I/O invisible to the io-boundaries layer (the
+    WI-zavad P0 symptom: a CJS service file reports zero I/O, output identical
+    to a genuinely I/O-free file). ESM ``import * as fs`` / ``import { x }``
+    already routed through the namespace (Case 2 / WI-vurop) and named-import
+    (WI-banaf) unresolved-call paths; CommonJS now reaches the same parity.
+    """
+
+    def test_cjs_default_binding_member_call_emits_unresolved_edge(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "const fs = require('fs');\n"
+            "function main() { return fs.readFileSync('x'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        hits = [c for c in callees if "readFileSync" in c]
+        assert hits, callees
+        # dst format: ``{lang}:{module}:0-0:{name}:unresolved`` — module hint
+        # is the second colon-segment and feeds the io-boundary catalog.
+        assert hits[0].split(":")[1] == "fs", hits[0]
+
+    def test_cjs_destructured_binding_bare_call_emits_unresolved_edge(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "const { exec } = require('child_process');\n"
+            "function run() { return exec('ls'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        hits = [c for c in callees if "exec" in c]
+        assert hits, callees
+        assert hits[0].split(":")[1] == "child_process", hits[0]
+
+    def test_cjs_aliased_destructure_uses_canonical_name(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "const { readFile: rf } = require('node:fs');\n"
+            "function f() { return rf('x'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        # canonical imported name (readFile), not the local alias (rf);
+        # the ``node:`` module prefix is normalised away to ``fs``.
+        hits = [c for c in callees if "readFile" in c]
+        assert hits, callees
+        assert hits[0].split(":")[1] == "fs", hits[0]
+        assert all(":rf:" not in c for c in callees), callees
+
+    def test_module_variant_extensions_are_discovered(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import find_js_ts_files
+
+        for name in ("a.mjs", "b.cjs", "c.mts", "d.cts", "keep.js"):
+            (tmp_path / name).write_text("export function f(){ return 1; }\n")
+        found = {p.name for p in find_js_ts_files(tmp_path)}
+        assert {"a.mjs", "b.cjs", "c.mts", "d.cts", "keep.js"} <= found, found
+
+    def test_cjs_file_extension_is_analyzed(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "worker.cjs").write_text(
+            "const fs = require('fs');\n"
+            "function main() { return fs.readFileSync('x'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        assert not result.skipped
+        assert any(s.kind == "function" and s.name == "main" for s in result.symbols)
+        assert any(
+            e.edge_type == "calls" and ":unresolved" in e.dst and "readFileSync" in e.dst
+            for e in result.edges
+        )
+
+    def test_module_variant_extension_language_tags(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _get_language_for_file
+
+        assert _get_language_for_file(Path("x.mts")) == "typescript"
+        assert _get_language_for_file(Path("x.cts")) == "typescript"
+        assert _get_language_for_file(Path("x.mjs")) == "javascript"
+        assert _get_language_for_file(Path("x.cjs")) == "javascript"
+
+    def test_mts_file_analyzed_as_typescript(self, tmp_path: Path) -> None:
+        pytest.importorskip("tree_sitter_typescript")
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "mod.mts").write_text(
+            "export function helper(x: number): string { return String(x); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        assert not result.skipped
+        helper = next((s for s in result.symbols if s.name == "helper"), None)
+        assert helper is not None
+        assert helper.language == "typescript"
+
+    # --- direct unit tests for the alias extractors (edge-case branches) ---
+
+    def test_extract_namespace_imports_captures_require_default(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import (
+            _extract_namespace_imports, _get_parser_for_lang,
+        )
+        src = b"const fs = require('fs');\nvar http = require('http');\n"
+        tree = _get_parser_for_lang(False).parse(src)
+        ns = _extract_namespace_imports(tree, src)
+        assert ns.get("fs") == "fs"
+        assert ns.get("http") == "http"
+
+    def test_extract_named_imports_captures_require_destructure(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import (
+            _extract_named_imports, _get_parser_for_lang,
+        )
+        src = b"const { exec, spawn: sp } = require('child_process');\n"
+        tree = _get_parser_for_lang(False).parse(src)
+        nm, orig = _extract_named_imports(tree, src)
+        assert nm.get("exec") == "child_process"
+        assert orig.get("exec") == "exec"
+        assert nm.get("sp") == "child_process"
+        assert orig.get("sp") == "spawn"
+
+    def test_dynamic_require_binding_registers_no_alias(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import (
+            _extract_namespace_imports, _get_parser_for_lang,
+        )
+        # require(name) has no string literal -> no alias (dynamic require).
+        src = b"const m = require(name);\n"
+        tree = _get_parser_for_lang(False).parse(src)
+        assert "m" not in _extract_namespace_imports(tree, src)
+
+    def test_non_require_initializer_registers_no_alias(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import (
+            _extract_namespace_imports, _extract_named_imports, _get_parser_for_lang,
+        )
+        # A non-require call (identifier callee), a member-expression callee,
+        # and a *destructured* non-require call must all be ignored by the
+        # require-alias extraction (no module string -> no alias).
+        src = (
+            b"const x = compute('fs');\n"
+            b"const y = obj.load('fs');\n"
+            b"const { z } = build();\n"
+        )
+        tree = _get_parser_for_lang(False).parse(src)
+        ns = _extract_namespace_imports(tree, src)
+        nm, _orig = _extract_named_imports(tree, src)
+        assert "x" not in ns and "y" not in ns
+        assert "x" not in nm and "y" not in nm and "z" not in nm

@@ -109,8 +109,16 @@ _df_config = get_dataflow_config("javascript")
 def find_js_ts_files(
     repo_root: Path, max_files: int | None = None
 ) -> Iterator[Path]:
-    """Yield all JS/TS files in the repository, excluding common non-source dirs."""
-    yield from find_files(repo_root, ["*.js", "*.jsx", "*.ts", "*.tsx"], max_files=max_files)
+    """Yield all JS/TS files in the repository, excluding common non-source dirs.
+
+    Includes the module-variant extensions ``.mjs``/``.cjs`` (ES-module /
+    CommonJS JavaScript) and ``.mts``/``.cts`` (their TypeScript counterparts);
+    omitting them left whole CommonJS service files undiscovered (WI-zavad)."""
+    yield from find_files(
+        repo_root,
+        ["*.js", "*.jsx", "*.ts", "*.tsx", "*.mjs", "*.cjs", "*.mts", "*.cts"],
+        max_files=max_files,
+    )
 
 
 def find_svelte_files(
@@ -246,7 +254,10 @@ class JstsTreeSitterAnalyzer(TreeSitterAnalyzer):
     """
 
     lang = "javascript"
-    file_patterns: ClassVar[list[str]] = ["*.js", "*.jsx", "*.ts", "*.tsx", "*.svelte", "*.vue"]
+    file_patterns: ClassVar[list[str]] = [
+        "*.js", "*.jsx", "*.ts", "*.tsx", "*.mjs", "*.cjs", "*.mts", "*.cts",
+        "*.svelte", "*.vue",
+    ]
     grammar_module = "tree_sitter_javascript"
 
     def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
@@ -301,9 +312,12 @@ def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: 
 
 
 def _get_language_for_file(file_path: Path) -> str:
-    """Determine language based on file extension."""
+    """Determine language based on file extension.
+
+    ``.mts``/``.cts`` are TypeScript (ES-module / CommonJS variants);
+    ``.mjs``/``.cjs`` fall through to JavaScript like ``.js``."""
     suffix = file_path.suffix.lower()
-    if suffix in (".ts", ".tsx"):
+    if suffix in (".ts", ".tsx", ".mts", ".cts"):
         return "typescript"
     return "javascript"
 
@@ -319,7 +333,7 @@ def _get_parser_for_file(file_path: Path) -> Optional["tree_sitter.Parser"]:
     suffix = file_path.suffix.lower()
     parser = tree_sitter.Parser()
 
-    if suffix in (".ts", ".tsx"):
+    if suffix in (".ts", ".tsx", ".mts", ".cts"):
         try:
             import tree_sitter_typescript
 
@@ -362,6 +376,34 @@ def _normalize_import_module_hint(module: str) -> str:
     return module
 
 
+def _require_module_string(
+    call_node: "tree_sitter.Node", source: bytes
+) -> str | None:
+    """Module string of a ``require('<literal>')`` call expression, else None.
+
+    Mirrors the require-detection in :func:`_extract_edges`: the callee must be
+    the bare identifier ``require`` and the first argument a string literal.
+    Returns None for non-require calls (e.g. ``compute(x)``, ``obj.load(x)``)
+    and for dynamic ``require(name)`` (no string literal), so a non-module
+    binding never masquerades as a CommonJS import alias.
+    """
+    func_node = None
+    args_node = None
+    for child in call_node.children:
+        if child.type in ("identifier", "member_expression"):
+            func_node = child
+        elif child.type == "arguments":
+            args_node = child
+    if func_node is None or func_node.type != "identifier":
+        return None
+    if _node_text(func_node, source) != "require" or args_node is None:
+        return None
+    for arg in args_node.children:
+        if arg.type == "string":
+            return _node_text(arg, source).strip("'\"")
+    return None
+
+
 def _extract_namespace_imports(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -371,6 +413,7 @@ def _extract_namespace_imports(
     Tracks:
     - import * as alias from 'module' -> alias: module
     - import alias from 'module' (default import) -> alias: module
+    - CommonJS ``const alias = require('module')`` -> alias: module (WI-zavad)
 
     Returns dict mapping alias -> module name.
     """
@@ -400,6 +443,33 @@ def _extract_namespace_imports(
 
         if module_name and alias:
             namespace_imports[alias] = module_name
+
+    # CommonJS default-style binding: ``const fs = require('fs')`` /
+    # ``var http = require('http')`` binds a module to a name exactly like an
+    # ESM default/namespace import (WI-zavad). Registering it here lets member
+    # calls (``fs.readFileSync()``) route through the same namespace resolution
+    # (Case 2 / WI-vurop) in _extract_edges instead of vanishing — the gap that
+    # left CommonJS Node I/O invisible to the io-boundaries layer.
+    for node in iter_tree(tree.root_node):
+        if node.type != "variable_declarator":
+            continue
+        name_node = None
+        value_node = None
+        for child in node.children:
+            if child.type in ("identifier", "object_pattern") and name_node is None:
+                name_node = child
+            elif child.type == "call_expression":
+                value_node = child
+        if value_node is None:
+            continue
+        module = _require_module_string(value_node, source)
+        if module is None:
+            continue
+        # Destructuring (``const { x } = require(...)``) is a *named* import,
+        # handled by _extract_named_imports; only a plain identifier name binds
+        # the whole module as a namespace alias.
+        if name_node is not None and name_node.type == "identifier":
+            namespace_imports[_node_text(name_node, source)] = module
 
     return namespace_imports
 
@@ -466,6 +536,46 @@ def _extract_named_imports(
             for local_name, original_name in import_pairs:
                 named_imports[local_name] = module_name
                 named_import_originals[local_name] = original_name
+
+    # CommonJS destructuring: ``const { exec, spawn: sp } = require('cp')``
+    # binds named exports exactly like ``import { exec, spawn as sp } from 'cp'``
+    # (WI-zavad). Registering these lets a bare call (``exec()``) route through
+    # the WI-banaf unresolved-named-import path in _extract_edges. The aliased
+    # form preserves the canonical export name (``spawn``) over the local alias
+    # (``sp``) — io-boundary catalogs key on the canonical name (cf. WI-kujom).
+    for node in iter_tree(tree.root_node):
+        if node.type != "variable_declarator":
+            continue
+        pattern_node = None
+        value_node = None
+        for child in node.children:
+            if child.type == "object_pattern" and pattern_node is None:
+                pattern_node = child
+            elif child.type == "call_expression":
+                value_node = child
+        if pattern_node is None or value_node is None:
+            continue
+        module = _require_module_string(value_node, source)
+        if module is None:
+            continue
+        for spec in pattern_node.children:
+            if spec.type == "shorthand_property_identifier_pattern":
+                local = _node_text(spec, source)
+                named_imports[local] = module
+                named_import_originals[local] = local
+            elif spec.type == "pair_pattern":
+                # ``{ readFile: rf }`` -> property_identifier (original) then
+                # identifier (local alias).
+                key_name = None
+                local_name = None
+                for sc in spec.children:
+                    if sc.type == "property_identifier":
+                        key_name = _node_text(sc, source)
+                    elif sc.type == "identifier":
+                        local_name = _node_text(sc, source)
+                if key_name is not None and local_name is not None:
+                    named_imports[local_name] = module
+                    named_import_originals[local_name] = key_name
 
     return named_imports, named_import_originals
 
