@@ -1390,3 +1390,112 @@ contract Test {
         ]
         # msg.sender.call is a member access that can't be resolved
         assert any("call" in e.dst or "sender" in e.dst for e in unresolved)
+
+
+class TestSolidityComplexityAndLoc:
+    """INV-loguk slice B: callable Solidity symbols carry non-null
+    cyclomatic_complexity and lines_of_code (CC table relocated to
+    hypergumbo_core.analyze.cyclomatic). Real-grammar verification of the
+    solidity BRANCH_NODE_TYPES entry."""
+
+    def test_branchy_function_has_cc_and_loc(self, temp_repo: Path) -> None:
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    function classify(uint x) public pure returns (uint) {
+        if (x > 10) { return 1; } else if (x > 5) { return 2; }
+        for (uint i = 0; i < x; i++) { if (i % 2 == 0 && i > 0) { return i; } }
+        return 0;
+    }
+}
+""")
+        result = analyze_solidity(temp_repo)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and "classify" in s.name)
+        # base 1 + 3 if + 1 for + 1 short-circuit (&&) = 6
+        assert fn.cyclomatic_complexity is not None
+        assert fn.cyclomatic_complexity >= 5
+        assert fn.lines_of_code is not None
+        assert fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, temp_repo: Path) -> None:
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    function noop(uint x) public pure returns (uint) {
+        return x;
+    }
+}
+""")
+        result = analyze_solidity(temp_repo)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and "noop" in s.name)
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_constructor_and_modifier_have_cc_and_loc(self, temp_repo: Path) -> None:
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    address owner;
+    constructor(uint x) {
+        if (x > 0) { owner = msg.sender; }
+    }
+    modifier onlyOwner(uint x) {
+        if (x > 0) { require(msg.sender == owner); }
+        _;
+    }
+}
+""")
+        result = analyze_solidity(temp_repo)
+        for kind in ("constructor", "modifier"):
+            sym = next(s for s in result.symbols if s.kind == kind)
+            assert sym.cyclomatic_complexity is not None, kind
+            assert sym.cyclomatic_complexity >= 2, kind
+            assert sym.lines_of_code is not None, kind
+
+    def test_all_callables_have_non_null_cc_and_loc(self, temp_repo: Path) -> None:
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    constructor() {}
+    modifier m() { _; }
+    function f() public {}
+    function g(uint x) public pure returns (uint) { return x; }
+}
+""")
+        result = analyze_solidity(temp_repo)
+        callables = [s for s in result.symbols
+                     if s.kind in ("function", "constructor", "modifier")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+
+    def test_non_callable_symbols_have_null_cc(self, temp_repo: Path) -> None:
+        # Contracts/events are not callables; CC must stay None (we gate the
+        # computation on callable kinds so a contract's CC does not silently
+        # aggregate every branch in its body).
+        (temp_repo / "C.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract C {
+    event Transfer(address indexed from, uint256 value);
+    function f(uint x) public pure returns (uint) {
+        if (x > 0) { return 1; }
+        return 0;
+    }
+}
+""")
+        result = analyze_solidity(temp_repo)
+        contract = next(s for s in result.symbols if s.kind == "contract")
+        assert contract.cyclomatic_complexity is None

@@ -370,3 +370,72 @@ fn vs_main(in: VertexInput) -> @builtin(position) vec4<f32> {
         assert sym.fingerprint is None, (
             f"{sym.id} carries producer-side fingerprint {sym.fingerprint!r}"
         )
+
+
+# --- INV-loguk slice B: cyclomatic_complexity + lines_of_code -----------------
+# Real-grammar verification of the wgsl BRANCH_NODE_TYPES entry relocated to
+# hypergumbo_core.analyze.cyclomatic.
+
+def test_branchy_function_has_cc_and_loc(tmp_path):
+    """A branchy WGSL function carries non-null CC and LOC."""
+    (tmp_path / "shader.wgsl").write_text("""
+fn classify(x: i32) -> i32 {
+  if (x > 10) { return 1; } else if (x > 5) { return 2; }
+  for (var i: i32 = 0; i < x; i = i + 1) { if (i % 2 == 0 && i > 0) { return i; } }
+  return 0;
+}
+""")
+    result = analyze_wgsl_files(tmp_path)
+    fn = next(s for s in result.symbols
+              if s.kind == "function" and s.name == "classify")
+    # base 1 + 3 if + 1 for + 1 short-circuit (&&) = 6
+    assert fn.cyclomatic_complexity is not None
+    assert fn.cyclomatic_complexity >= 5
+    assert fn.lines_of_code is not None
+    assert fn.lines_of_code >= 4
+
+
+def test_straight_line_function_cc_is_one(tmp_path):
+    """A WGSL function with no decision points has CC 1."""
+    (tmp_path / "shader.wgsl").write_text("""
+fn noop(x: i32) -> i32 {
+  return x;
+}
+""")
+    result = analyze_wgsl_files(tmp_path)
+    fn = next(s for s in result.symbols
+              if s.kind == "function" and s.name == "noop")
+    assert fn.cyclomatic_complexity == 1
+    assert fn.lines_of_code is not None
+
+
+def test_switch_and_loop_count_toward_cc(tmp_path):
+    """WGSL-specific node types — switch case arms and ``loop`` — count."""
+    (tmp_path / "shader.wgsl").write_text("""
+fn route(x: i32) -> i32 {
+  switch (x) { case 0: { return 9; } case 1, 2: { return 7; } default: { return 8; } }
+  loop { if (x > 0) { break; } }
+  return 0;
+}
+""")
+    result = analyze_wgsl_files(tmp_path)
+    fn = next(s for s in result.symbols
+              if s.kind == "function" and s.name == "route")
+    # base 1 + 3 case arms + 1 loop + 1 if = 6
+    assert fn.cyclomatic_complexity is not None
+    assert fn.cyclomatic_complexity >= 5
+
+
+def test_all_functions_have_non_null_cc_and_loc(tmp_path):
+    """Every function-kind WGSL symbol carries non-null CC and LOC (INV-loguk)."""
+    (tmp_path / "shader.wgsl").write_text("""
+@vertex
+fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
+fn helper(x: i32) -> i32 { if (x > 0) { return 1; } return 0; }
+""")
+    result = analyze_wgsl_files(tmp_path)
+    functions = [s for s in result.symbols if s.kind == "function"]
+    assert functions
+    for s in functions:
+        assert s.cyclomatic_complexity is not None, s.name
+        assert s.lines_of_code is not None, s.name

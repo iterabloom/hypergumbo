@@ -40,6 +40,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -231,8 +232,16 @@ def _extract_symbols_from_tree(
         prefix: str = "",
         signature: Optional[str] = None,
         modifiers: Optional[list[str]] = None,
+        complexity: bool = False,
     ) -> Symbol:
-        """Helper to create and register a symbol."""
+        """Helper to create and register a symbol.
+
+        ``complexity=True`` (callable kinds — function / constructor /
+        modifier) populates ``cyclomatic_complexity`` and ``lines_of_code``
+        per INV-loguk. It is gated rather than unconditional so a non-callable
+        symbol (contract / interface / event) does not silently aggregate
+        every branch node in its whole subtree.
+        """
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
         full_name = f"{prefix}.{name}" if prefix else name
@@ -253,6 +262,10 @@ def _extract_symbols_from_tree(
             origin_run_id=run_id,
             signature=signature,
             modifiers=modifiers or [],
+            cyclomatic_complexity=(
+                compute_cyclomatic_complexity(node, "solidity") if complexity else None
+            ),
+            lines_of_code=(end_line - start_line + 1) if complexity else None,
         )
         analysis.symbols.append(symbol)
         analysis.symbol_by_name[name] = symbol
@@ -289,12 +302,12 @@ def _extract_symbols_from_tree(
                 current_contract = _get_enclosing_contract(node, source) or ""
                 signature = _extract_solidity_signature(node, source)
                 modifiers = _extract_visibility_modifiers(node, source)
-                add_symbol(func_name, "function", node, current_contract, signature=signature, modifiers=modifiers)
+                add_symbol(func_name, "function", node, current_contract, signature=signature, modifiers=modifiers, complexity=True)
 
         # Constructor definition
         elif node.type == "constructor_definition":
             current_contract = _get_enclosing_contract(node, source) or ""
-            add_symbol("constructor", "constructor", node, current_contract)
+            add_symbol("constructor", "constructor", node, current_contract, complexity=True)
 
         # Modifier definition
         elif node.type == "modifier_definition":
@@ -302,7 +315,7 @@ def _extract_symbols_from_tree(
             if name_node:
                 mod_name = node_text(name_node, source)
                 current_contract = _get_enclosing_contract(node, source) or ""
-                add_symbol(mod_name, "modifier", node, current_contract)
+                add_symbol(mod_name, "modifier", node, current_contract, complexity=True)
 
         # Event definition
         elif node.type == "event_definition":
