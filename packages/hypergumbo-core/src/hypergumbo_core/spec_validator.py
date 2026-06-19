@@ -72,8 +72,9 @@ Default failure behavior
 The validator does NOT fail ``hypergumbo run`` by default. Violations are:
 
 * Written into the artifact's ``validation_report`` section.
-* Summarized to stderr (``"[warn] N axis-conformance violations; see
-  validation_report in <artifact>"``).
+* Summarized to stderr, one line per non-empty validator class
+  (``"[warn] N <class> validation violation(s); see validation_report in
+  artifact"``).
 * CI-gated by a separate test (``tests/test_validation_report_empty.py``).
 
 The gate's realized form (validator:F1 / G1, WI-kafar + WI-himoj). The

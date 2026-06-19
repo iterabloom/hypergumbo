@@ -24,7 +24,7 @@ How It Works
 Uses the TreeSitterAnalyzer base class for two-pass orchestration:
 1. extract_symbols_from_file: extracts classes, interfaces, enums, methods, functions
 2. get_import_aliases: extracts 'import X as Y' aliases for path_hint disambiguation
-3. register_symbol: registers both short and full names for cross-file resolution
+3. register_symbol: registers each symbol by its qualified name (the NameResolver suffix index handles short-name lookups for cross-file resolution)
 4. extract_edges_from_file: resolves import statements and function/method calls
 
 Why This Design

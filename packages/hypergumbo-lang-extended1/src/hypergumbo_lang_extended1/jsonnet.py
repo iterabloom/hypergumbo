@@ -21,7 +21,6 @@ Symbol Types
 - variable: Local variable bindings (local x = ...)
 - method: Object method definitions (greet():: "Hello")
 - field: Object field definitions (name: "value")
-- import: Import statements (import "file.libsonnet")
 
 Edge Types
 ----------

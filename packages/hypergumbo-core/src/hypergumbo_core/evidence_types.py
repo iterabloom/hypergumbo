@@ -45,16 +45,21 @@ audit-findings 0008 / 0012 / 0014 for per-value fold targets.
 Seeding completeness (per the Phase 1 plan file):
 
 - 207 static-literal evidence_type values from ``grep packages/*/src``.
-- 10 enumerable dynamic variants from f-string emits at
-  ``websocket.py:572`` (``{pattern_type}_emit``) and
-  ``websocket.py:613`` (``{pattern_type}_endpoint``) for the 5
-  registered ``pattern_type`` literals (``socketio``, ``native``, ``ws``,
-  ``fastapi``, ``django_channels``).
-- 1 placeholder ``di_binding`` for the unbounded colon-form emit at
-  ``di_resolution.py:608`` (``f"di_binding:{binding.source}"``);
-  Phase 3 producer migration normalizes that site to a canonical
-  inference label plus ``meta["framework_dispatch"]``.
-- The dynamic ``f"ast_{edge_type}"`` at ``inheritance.py:258`` only
+- 10 enumerable dynamic variants from the f-string emits
+  (``{pattern_type}_emit`` / ``{pattern_type}_endpoint``) in
+  ``websocket.py`` for the 6 registered ``pattern_type`` literals
+  (``socketio``, ``native``, ``ws``, ``fastapi``, ``starlette``,
+  ``django_channels``). This Phase 1 seed was folded in Phase 3
+  (audit-findings 0014): those variants were collapsed to
+  ``ast_call_direct`` + ``meta["framework_dispatch"]``, so they are
+  no longer seeded.
+- The Phase-3 producer migration retired the former ``di_binding``
+  colon-form placeholder: the DI-resolution site
+  (``di_resolution.py:628``) now emits the canonical ``ast_call_direct``
+  evidence type plus ``meta["framework_dispatch"]=binding.source`` and
+  ``meta["mechanism"]="di"``, so ``di_binding`` is no longer seeded
+  (``find_evidence_type('di_binding')`` returns None).
+- The dynamic ``f"ast_{edge_type}"`` at ``inheritance.py:368`` only
   yields ``ast_extends`` / ``ast_implements``, both already in the
   static set.
 """

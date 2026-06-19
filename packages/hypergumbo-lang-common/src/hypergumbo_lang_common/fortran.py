@@ -8,7 +8,7 @@ This analyzer uses tree-sitter to parse Fortran files and extract:
 - Subroutine definitions
 - Derived type definitions
 - Use statements (imports)
-- Subroutine/function calls
+- Subroutine calls (the explicit `call foo(...)` statement form; function calls in expression context are not emitted as call edges)
 
 If tree-sitter-fortran is not installed, the analyzer
 gracefully degrades and returns an empty result.

@@ -5,7 +5,6 @@ This analyzer uses tree-sitter to parse WebGPU Shading Language files and extrac
 - Shader functions (entry points marked with @vertex, @fragment, @compute)
 - Struct definitions
 - Uniform/storage buffer bindings (@group/@binding)
-- Global variable declarations
 - Function calls
 
 If tree-sitter-wgsl is not installed, the analyzer

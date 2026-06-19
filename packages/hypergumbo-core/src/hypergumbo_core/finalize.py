@@ -53,8 +53,11 @@ What this carrier (run-lifecycle:F1) implements vs. defers
   (not stubbed) — the ratified "recompute files_analyzed by origin_run_id" mechanism is unsound
   (files_analyzed is contractually a file count == profile.files; the recompute yields a
   node/path count and does not close INV-gizik, whose real fix is a new provenance field). The
-  config_fingerprint backstop-with-violation is deferred to WI-mipul's producer-side work. All
-  are tracked (INV-gizik, WI-mipul, WI-libib, INV-zotip, INV-suvil); git carries the history.
+  config_fingerprint backstop-with-violation landed in WI-mipul's producer-side work (done). Of
+  the tracked work, INV-gizik (satisfied — closed by the new nodes_emitted/edges_emitted
+  provenance field), WI-mipul (done), and INV-zotip (satisfied) are resolved; WI-libib
+  (per-(kind,field) writer-contract validator) and INV-suvil (evidence-derived confidence) remain
+  open. git carries the history.
   See the ADR-0043 §6.1 amendment chain (#4/#5/#7/#9).
 
 `FinalizedMap` is a shallow ``frozen=True`` handle (ratified §6 #6): rebinding a field

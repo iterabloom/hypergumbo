@@ -6,7 +6,7 @@ Detects:
 - Function and procedure declarations/implementations
 - Type definitions (records, enums, arrays)
 - Constants and variables
-- With/use clauses (imports)
+- With clauses (imports)
 
 Ada is a strongly-typed, safety-critical language used in aerospace,
 defense, medical devices, and embedded systems where reliability is paramount.

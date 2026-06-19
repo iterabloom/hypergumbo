@@ -2,7 +2,7 @@
 """MATLAB language analyzer using tree-sitter.
 
 This module provides static analysis for MATLAB source code, extracting symbols
-(functions, classes, properties, methods) and edges (calls).
+(functions, classes, methods) plus a per-class property/method count, and edges (calls).
 
 MATLAB is a high-level language and interactive environment for numerical
 computation, visualization, and programming, commonly used in engineering
@@ -17,7 +17,7 @@ The analyze() method is fully overridden because MATLAB requires:
 Key constructs extracted:
 - function_definition: function output = name(args)
 - class_definition: classdef Name
-- properties: Property declarations within a class
+- properties: counted per class and recorded in the class symbol's meta (property_count), not emitted as separate symbols
 - methods: Method definitions within a class
 - function_call: Direct function calls
 """

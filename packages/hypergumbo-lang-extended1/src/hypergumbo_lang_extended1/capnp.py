@@ -14,7 +14,7 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for single-pass orchestration:
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Parse all .capnp files and extract symbols
 2. Detect import statements and create import edges
 3. Create contains edges from interfaces to their methods

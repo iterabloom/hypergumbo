@@ -2,7 +2,7 @@
 """PureScript language analyzer using tree-sitter.
 
 This module provides static analysis for PureScript source code, extracting symbols
-(modules, functions, data types, classes) and edges (calls, imports).
+(modules, functions, data types, classes) and call edges.
 
 PureScript is a strongly-typed functional programming language that compiles to
 JavaScript. It features a powerful type system inspired by Haskell, with support

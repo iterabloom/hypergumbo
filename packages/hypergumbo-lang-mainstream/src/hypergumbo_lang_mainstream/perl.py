@@ -13,7 +13,7 @@ Uses the TreeSitterAnalyzer base class with the tree-sitter-perl grammar
 from tree-sitter-language-pack. Full two-pass analysis:
 
 1. extract_symbols_from_file: extracts packages and subroutines
-2. register_symbol: dual-key registration (qualified Package::sub + unqualified sub)
+2. register_symbol: registers by the qualified name only (Package::sub); short-name (unqualified) lookups are handled by the NameResolver suffix index, not by a second registry key
 3. extract_edges_from_file: resolves use/require, function calls, method calls
 4. Per-file package names stored on instance for Pass 2 access
 

@@ -12,7 +12,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hypergumbo_core.cli import _relativize_ir_paths
+# Import from the canonical home (finalize sub-step 1 owns _relativize_ir_paths;
+# cli.py only re-exports it). Importing from finalize keeps smart-test's reverse
+# slice able to link this coverage to finalize.py when that module changes.
+from hypergumbo_core.finalize import _relativize_ir_paths
 from hypergumbo_core.ir import (
     Edge,
     Span,

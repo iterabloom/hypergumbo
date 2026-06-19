@@ -2,7 +2,7 @@
 """Base classes and utilities for language analyzers.
 
 This module provides shared infrastructure for all language analyzers,
-eliminating duplication across the ~127 analyzer files spread across
+eliminating duplication across the ~128 analyzer files spread across
 the four ``hypergumbo-lang-*`` packages.
 
 Shared Components

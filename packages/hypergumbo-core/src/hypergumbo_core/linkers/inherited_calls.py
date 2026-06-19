@@ -63,11 +63,13 @@ ceremony for static language semantics). Initial table (PR-2):
 
 - ``_walk_insertion_order``: Ruby, Groovy. BFS through inheritance edges
   in declaration order. Per-source visited set guards against cycles.
+- ``_walk_single_then_interfaces`` (Java; PR-3 / WI-dukog): single
+  superclass (``extends``) walked before interfaces
+  (``implements``/``includes``) via edge-type priority. Default /
+  Kotlin / C# extension still future.
 
 Future PRs:
 
-- ``_walk_single_then_interfaces`` (default + Java/Kotlin/C#): single
-  superclass before interface list — PR-3.
 - ``_walk_c3`` (Python): C3 linearization — future.
 - ``_walk_left_to_right`` (PHP/Swift/Obj-C/C++): left-to-right depth
   first — future.

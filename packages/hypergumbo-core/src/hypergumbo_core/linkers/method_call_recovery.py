@@ -105,8 +105,8 @@ def parse_unresolved_name(dst: str) -> str | None:
 
 
 # Backward-compat aliases for callers that imported the private names before
-# WI-gifar (PR-1 of INV-nilud) promoted them so the upcoming inherited_calls
-# linker can share the unresolved-dst parsing and short-form helpers.
+# WI-gifar (PR-1 of INV-nilud) promoted them so the inherited_calls linker
+# (priority 18) can share the unresolved-dst parsing and short-form helpers.
 _short_name = short_name
 _parse_unresolved_name = parse_unresolved_name
 

@@ -5,8 +5,6 @@ This analyzer uses tree-sitter to parse Verilog/SystemVerilog files and extract:
 - Module definitions
 - Interface definitions (SystemVerilog)
 - Module instantiations
-- Input/output ports
-- Wire/register declarations
 
 If tree-sitter-verilog is not installed, the analyzer
 gracefully degrades and returns an empty result.
