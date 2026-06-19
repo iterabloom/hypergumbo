@@ -421,7 +421,7 @@ Public outputs are **compiled views** from this IR — the IR defines the canoni
 
 ## 7) Linkers
 
-Hypergumbo provides **best-effort edge recovery** for patterns that language analyzers cannot see statically. These are AST-based heuristics with string literal matching and metadata comparison, not type-resolved or dataflow analysis. Linkers fall into four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md): Protocol (framework-agnostic pattern matching), Bridge (language-pair-specific FFI conventions), Framework (framework-specific dispatch), and Infrastructure (graph-structural utilities). This section specifies three linkers in detail — JNI (Bridge), IPC (Protocol), HTTP client-server (Protocol); for the full catalog of 46 linkers grouped by subcategory, see [LINKERS.md](LINKERS.md).
+Hypergumbo provides **best-effort edge recovery** for patterns that language analyzers cannot see statically. These are AST-based heuristics with string literal matching and metadata comparison, not type-resolved or dataflow analysis. Linkers fall into four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md): Protocol (framework-agnostic pattern matching), Bridge (language-pair-specific FFI conventions), Framework (framework-specific dispatch), and Infrastructure (graph-structural utilities). This section specifies three linkers in detail — JNI (Bridge), IPC (Protocol), HTTP client-server (Protocol); for the full catalog of 57 linkers grouped by subcategory, see [LINKERS.md](LINKERS.md).
 
 ### JNI Boundary Detection (Java ↔ C)
 

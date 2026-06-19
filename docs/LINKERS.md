@@ -18,15 +18,18 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 
 | Linker | Subcategory | Description |
 |--------|-------------|-------------|
+| airflow_framework_dispatch | Framework | Airflow class-based plugin dispatch: subclasses of `BaseOperator` / `BaseHook` / `BaseSensor` / `BaseTrigger` → their framework-called lifecycle methods (`execute`, `poke`, `run`, `on_kill`, …) via `dispatches_to` edges. |
 | annotation_convention | Protocol | Developer-provided comment directives (`@hg:dispatches`, `@hg:publishes`, `@hg:subscribes`) for cases where pattern-matching alone cannot recover the edge. |
 | build_target | Infrastructure | Build manifest files (`Dockerfile`, `Makefile`, entry scripts) → `main()` function or equivalent entry point. |
 | cgo | Bridge | Go `C.funcName()` calls via `import "C"` pseudo-package ↔ C/C++ function implementations. |
 | containment | Infrastructure | Class / interface symbols → their member method / getter / setter symbols via `contains` edges. Consumed by slice, method-call-recovery, and other linkers that assume structural containment. |
+| controller_routes | Framework | Symbols tagged `concept: controller` (class groupings per framework YAML) → the route-handler method symbols whose spans nest within the controller's span in the same file, via `contains_routes` edges (NestJS, Spring Boot, ASP.NET, Laravel, Symfony, Phoenix, Micronaut, Ktor, Grails, CakePHP). |
 | crypto_flow | Protocol | Cryptographic API call sites (WebCrypto in JS/TS, `aes-gcm` in Rust, similar in others) connected by key-material and ciphertext flow. |
 | database_query | Protocol | SQL queries embedded in application code (Python, JavaScript, Java) ↔ table definitions in schema files. |
 | decorator_dispatch | Framework | Decorator-based registries (`@register_analyzer("go")`, Flask `@app.route`, Click `@command`) → dispatch call sites that iterate the registry. |
 | dependency | Infrastructure | Manifest dependency declarations (`Cargo.toml`, `pyproject.toml`, `package.json`) → code imports that consume them. |
 | di_resolution | Framework | Interface methods → DI-bound implementation methods via `di_resolves` edges. Supports Guice, Spring `@Bean`, ASP.NET Core DI, NestJS/Angular, InversifyJS, Koin, Python `injector`, Java SPI. Heuristic fallbacks for single-impl and naming conventions. |
+| django_orm_dispatch | Framework | Django ORM/admin/form dispatch: subclasses of Django `Model` / `Manager` / `QuerySet` (and form/admin/DRF/Wagtail bases) → their framework-called override methods (`save`, `delete`, `clean`, `get_queryset`, `__str__`, …) via `dispatches_to` edges. |
 | event_sourcing | Protocol | Event publishers (`EventEmitter.emit`, Django signals, Spring `@EventListener`) → subscribers by event name. |
 | go_cobra | Framework | Cobra `cobra.Command{Run: handler}` struct-literal dispatch → `RunE`/`PreRunE` handler functions. |
 | go_memberlist | Framework | HashiCorp `memberlist.Create(delegate)` call sites → `NodeMeta` / `NotifyJoin` / etc. delegate callback methods. |
@@ -35,9 +38,12 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | grpc | Framework | Protobuf services, generated stubs, and servicer implementations across languages. Cross-language in use, but framework-specific by protocol. |
 | http | Protocol | `fetch()`, `axios`, `requests`, `http.Get`, `RestTemplate`, etc. HTTP client calls → server route handlers via URL pattern matching. |
 | inheritance | Infrastructure | `base_classes` analyzer metadata → `extends` / `implements` edges. Shared across all languages. |
+| inherited_calls | Infrastructure | Inheritance-aware call resolution: unresolved `field.method()` / `super().method()` / inherited-method call sites → the ancestor-defined target by walking the class's base chain (Java sites + Ruby `include`/`extend` mixins). |
 | ipc | Protocol | Electron `ipcRenderer` / `ipcMain`, Web Workers, `postMessage` patterns. Publisher → handler by channel name. |
+| jackson_dispatch | Framework | Jackson / JavaBean serialization dispatch: classes the Jackson / JAX-B / Spring-binding runtime reflects over → their bean-convention accessors (`getX` / `setX` / `isX`) via `dispatches_to` edges (Java, Kotlin, Scala). |
 | jni | Bridge | Java `native` method declarations ↔ C / C++ / Rust JNI function implementations (`Java_ClassName_methodName` naming convention). |
 | js_module | Infrastructure | JS / TS `import` path → resolved file. Creates `module_file` symbols and cross-file edge chains. |
+| kafka_streams_dispatch | Framework | Kafka Streams topology-builder dispatch: concrete impls of Kafka Streams callback interfaces → the framework-called interface methods via `dispatches_to` edges (Java, Kotlin, Scala). |
 | lua_ffi | Bridge | LuaJIT FFI (`ffi.C.funcname`, `ffi.load`) ↔ C function implementations. |
 | message_dispatch | Protocol | Typed wire-protocol messages (JS/TS object discriminators, Rust `#[serde(tag)]` enums) — senders ↔ handlers by message-type name. |
 | message_queue | Protocol | Kafka, RabbitMQ, SQS, Redis Pub/Sub — publishers ↔ subscribers by topic / queue name. |
@@ -51,21 +57,26 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | pyffi | Bridge | Python `ctypes` / `cffi` calls, PyO3 bindings ↔ C / C++ / Rust function implementations. |
 | react_component | Framework | JSX `<ComponentName />` usage → component definitions via `renders_component` edges. |
 | route_handler | Framework | Route symbols → handler functions using framework-specific resolution (Rails, Phoenix, Laravel, Express, Django). |
+| router_routes | Framework | Symbols tagged `concept: router` (module / combinator / route-table groupings per framework YAML) → the `concept: route` registration symbols whose spans nest within the router's span in the same file, via `registers_routes` edges (Phoenix, http4s, Nuxt/Remix filesystem routes, Yesod `parseRoutes`). |
 | ruby_ffi | Bridge | Ruby `FFI.attach_function` / `rb_define_method` C extension registrations ↔ C / C++ function implementations. |
+| rust_trait_dispatch | Framework | Rust trait-impl method dispatch: consumes the analyzer's `implements` edges (one per `impl Trait for Struct`) and emits `dispatches_to` edges from the trait to every concrete method, resolving static (generic-bound) and dynamic (`&dyn Trait`) dispatch targets. |
 | solidity_abi | Bridge | TypeScript / JavaScript contract calls via `ethers.js` / `viem` ↔ Solidity function implementations via ABI function-name matching. |
 | subprocess_cli | Protocol | `subprocess.run` / `subprocess.call` / `Popen` invocations (Python) → CLI command entry points (Click, Typer, argparse) in the same repository. |
 | swift_objc | Bridge | Swift ↔ Objective-C interop via `@objc` annotations, `NSObject` subclasses, `#selector()`, bridging headers. |
 | tauri_ipc | Bridge | TypeScript / JavaScript `invoke()` call sites ↔ Rust functions annotated with `#[tauri::command]`. |
 | type_hierarchy | Framework | Interface / abstract-class methods → concrete implementations via `dispatches_to` edges. Polymorphic dispatch resolution. |
 | view_template | Framework | Convention-based controller → template rendering across 5 frameworks: Rails (`app/views/<ctrl>/<action>.{erb,haml,...}`), Django (`render(...)` calls + class-based view `template_name`), Phoenix (1.x `lib/<app>_web/templates/...` + 1.7+ co-located `controllers/<ctx>_html/...`), Spring MVC (`@Controller` returning view-name strings; Thymeleaf / FreeMarker / Velocity / JSP), Laravel Blade (`view(...)` / `View::make(...)` → `.blade.php`). Per-framework strategy lives in `linkers/_view_template_core.py`. |
-| django_third_party_dispatch | Framework | Django-framework-gated companion to `django_orm_dispatch`. `dispatches_to` edges from Python subclasses of HierarkeyForm, django-filter `FilterSet` / `WagtailFilterSet`, DRF `Serializer` family, and Wagtail `Page` → the framework-called override methods. |
+| view_template_django | Framework | Django controller action → view template binding: `render(...)` string args, `TemplateView.template_name` class attributes, and generic-CBV model+suffix defaults → the resolved template file via `renders` edges (re-parses view source with stdlib `ast`). |
+| view_template_laravel | Framework | Laravel Blade view-helper → template binding: `view('users.show')` / `View::make('users.show')` dotted view names in controllers under `app/Http/Controllers/` → `resources/views/users/show.blade.php` (re-parses controller source with tree-sitter PHP). |
+| view_template_phoenix | Framework | Phoenix controller action → template binding by convention: 1.x `lib/<app_web>/templates/<resource>/<action>.html.<ext>` and 1.7+ co-located `controllers/<resource>_html/<action>.html.heex` (including the parallel `*HTML` helper module). |
+| view_template_spring | Framework | Spring MVC view-name → template binding: a `@Controller` mapping method's string return value (and `ModelAndView` view name) → `templates/<name>.{html,ftl,vm}` or `WEB-INF/views/<name>.jsp` (re-parses controller source with tree-sitter Java). |
 | vue_component | Infrastructure | Vue `import` paths → `.vue` component files, establishing composition edges. |
 | vue_template_method | Framework | Vue template event-handler directives → script methods via `handler_expression` metadata matching within the same file. |
 | wasm_bindgen | Bridge | JavaScript / TypeScript imports from a wasm-pack `pkg/` directory ↔ Rust functions annotated with `#[wasm_bindgen]`. |
 | websocket | Protocol | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket — senders ↔ receivers by event name. |
 | yjs_crdt | Framework | Yjs shared-type reactive data flow — writers → observers via `crdt_publishes` edges. |
 
-**Count:** 46 linkers — Protocol 13, Bridge 10, Framework 17, Infrastructure 6.
+**Count:** 57 linkers — Protocol 11, Bridge 10, Framework 29, Infrastructure 7.
 
 Subcategory assignments above are the initial baseline per ADR-3bbb Appendix B; borderline cases (e.g., `grpc` is framework-specific in protocol but cross-language in use) are documented in that ADR's appendix and will be refined as the subcategory vocabulary matures.
 
@@ -79,14 +90,14 @@ across implementations — the resulting `Edge` carries:
 - `Edge.confidence ≤ 0.5`
 - `Edge.meta["disambiguation_fallback"] = True`
 
-13 linkers currently implement this contract:
-`django_orm_dispatch`, `airflow_framework_dispatch`, `jackson_dispatch`,
-`kafka_streams_dispatch`, `grpc`, `subprocess_cli`, `route_handler`,
-`method_call_recovery`, the FFI bridges (`cgo`, `napi`, `lua_ffi`,
-`ruby_ffi`, `jni`, `pyffi`), `interface_dispatch`, `go_cobra`,
-`annotation_convention`, `di_resolution`, `orm`, `database_query`,
-`react_component`. A static linter (`scripts/check-fallback-coherence`)
-pins the contract at every linker emission site.
+21 linkers currently implement this contract:
+`airflow_framework_dispatch`, `annotation_convention`, `database_query`,
+`di_resolution`, `django_orm_dispatch`, `go_cobra`, `grpc`, `inheritance`,
+`jackson_dispatch`, `kafka_streams_dispatch`, `method_call_recovery`, `orm`,
+`react_component`, `route_handler`, `subprocess_cli`, and the FFI bridges
+(`cgo`, `napi`, `lua_ffi`, `ruby_ffi`, `jni`, `pyffi`). A static linter
+(`scripts/check-fallback-coherence`) pins the contract at every linker
+emission site.
 
 **For consumers of the JSON output:** filtering on `confidence > 0.5`
 reliably excludes ambiguous-resolution edges; querying on
