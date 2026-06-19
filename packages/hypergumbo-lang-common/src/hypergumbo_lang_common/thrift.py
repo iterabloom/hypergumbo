@@ -8,7 +8,11 @@ This analyzer uses tree-sitter to parse .thrift files and extract:
 - Enum definitions
 - Typedef definitions
 - Const definitions
+- Function signatures (parameters and return type)
 - Include relationships
+
+Comment-derived docstrings are attached to extracted symbols via
+``populate_docstrings_from_tree``.
 
 If tree-sitter with Thrift support is not installed, the analyzer
 gracefully degrades and returns an empty result.

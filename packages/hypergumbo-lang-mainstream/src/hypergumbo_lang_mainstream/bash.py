@@ -2,8 +2,11 @@
 """Bash/shell script analyzer using tree-sitter.
 
 This analyzer extracts functions, exported variables, aliases, and source statements
-from Bash and shell scripts. It uses tree-sitter-bash for parsing when available,
-falling back gracefully when the grammar is not installed.
+from Bash and shell scripts. It also emits a per-file ``file`` pseudo-node Symbol
+stamped with a ``shell_script`` entrypoint concept (INV-tajap), since every parsed
+bash/.sh/.bash file is treated as an executable entry point and is consumed by
+entrypoints.py as a SHELL_SCRIPT entrypoint. It uses tree-sitter-bash for parsing
+when available, falling back gracefully when the grammar is not installed.
 
 Node types handled:
 - function_definition: Both 'function name()' and 'name()' styles
@@ -20,7 +23,7 @@ How It Works
 ------------
 Uses the TreeSitterAnalyzer base class for two-pass orchestration:
 1. extract_symbols_from_file: extracts functions, exports, aliases
-2. register_symbol: only registers function symbols for cross-file resolution
+2. register_symbol: registers function and file symbols for cross-file resolution (the file pseudo-node, per INV-kokaj, so top-level calls outside any function can be attributed to it)
 3. extract_edges_from_file: resolves source/dot imports and function calls
 4. _find_source_files: overridden for shebang-based file discovery
 

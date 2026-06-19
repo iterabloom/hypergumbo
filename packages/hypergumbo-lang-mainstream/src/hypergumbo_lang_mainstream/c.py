@@ -7,7 +7,13 @@ This analyzer uses tree-sitter-c to parse C files and extract:
 - Typedef declarations (symbols)
 - Enum declarations (symbols)
 - Function call relationships (edges)
-- JNI export patterns (Java_ClassName_methodName)
+- Function-pointer references and callback-argument calls (edges)
+- Dispatch tables from static-array and designated-struct initializers
+  (dispatches_to edges)
+- stdio global references (stdout/stderr/stdin) as module_attr_ref edges
+
+The analyzer also extracts function signatures (``_extract_c_signature``)
+and applies ADR-0015 Tier 1 dataflow annotation to the resulting edges.
 
 If tree-sitter-c is not installed, the analyzer gracefully degrades
 and returns an empty result.
@@ -21,7 +27,8 @@ How It Works
 4. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
-5. Detect function calls and JNI export patterns
+5. Detect function calls, function-pointer references, and dispatch-table /
+   designated-initializer function-pointer edges
 
 Why This Design
 ---------------
@@ -884,7 +891,7 @@ class CAnalyzer(TreeSitterAnalyzer):
     """Tree-sitter-based C analyzer.
 
     Uses tree-sitter-c to parse C files and extract functions, structs, enums,
-    typedefs, call edges, and JNI patterns. Overrides ``analyze`` to use
+    typedefs, and call edges. Overrides ``analyze`` to use
     custom file discovery that skips .h files when C++ files exist (avoids
     duplicates with the C++ analyzer). Overrides ``register_symbol`` to prefer
     definitions in .c files over declarations in .h files.

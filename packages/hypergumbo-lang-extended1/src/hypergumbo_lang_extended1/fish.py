@@ -4,7 +4,7 @@
 Detects:
 - Function definitions (with --argument options)
 - Alias declarations
-- Global variable assignments (set -g, set -gx, set -U)
+- Global variable assignments (set -g, set -gx, set -U, set -Ux, set -x)
 - Source statements for imports
 - Command calls
 

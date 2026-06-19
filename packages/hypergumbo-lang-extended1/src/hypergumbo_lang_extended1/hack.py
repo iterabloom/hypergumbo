@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Hack language analyzer.
 
-This module analyzes Hack files (.hack, .php with <?hh header) using tree-sitter.
+This module analyzes Hack files (.hack, .hh, and .php files with a <?hh header) using tree-sitter.
 Hack is a statically-typed programming language developed by Meta (Facebook)
 that runs on HHVM and is a dialect of PHP.
 
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-- Pass 1: Collect symbols (classes, interfaces, traits, functions, methods)
+- Pass 1: Collect symbols (namespaces, classes, interfaces, traits, functions, methods)
 - Pass 2: Extract edges (function calls, method calls, static calls)
 
 The base class handles grammar checking, parser creation, file discovery,

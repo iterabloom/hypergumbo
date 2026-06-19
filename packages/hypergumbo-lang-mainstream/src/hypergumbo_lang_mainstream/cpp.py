@@ -6,11 +6,13 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Struct declarations
 - Enum declarations
 - Function definitions (standalone and class methods)
-- Namespace declarations
+- Namespace aliases (used as resolution path hints, ADR-0007)
 - Function call relationships
 - Include directives
-- Object instantiation (new expressions)
+- Object instantiation (new expressions, stack construction, and compound literals)
 - Dispatch table edges (function pointers in static array initializers)
+- Function-pointer references (address-of expressions like `&func` or `&Class::method`)
+- Module attribute references for iostream IO (`std::cout`/`std::cerr`/`std::cin` and namespace-alias attribute reads; feeds io-boundaries)
 
 If tree-sitter with C++ support is not installed, the analyzer
 gracefully degrades and returns an empty result.

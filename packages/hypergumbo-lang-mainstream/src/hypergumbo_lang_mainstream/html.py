@@ -9,9 +9,13 @@ How It Works
 ------------
 1. Find all .html and .htm files in the repository
 2. For each file, create a file-level symbol
-3. Scan content with regex for <script src="..."> patterns
-4. Create script_src edges from the HTML file to referenced scripts
-5. Track line numbers for accurate source mapping
+3. When a file is named index.html (case-insensitive), stamp an
+   html_entry concept onto its file symbol's meta so entrypoints.py
+   can emit a HTML_ENTRY entry; other HTML files (templates, 404
+   pages, docs) are not flagged
+4. Scan content with regex for <script src="..."> patterns
+5. Create script_src edges from the HTML file to referenced scripts
+6. Track line numbers for accurate source mapping
 
 The regex pattern handles both single and double quotes, and is
 case-insensitive to match HTML conventions.
@@ -35,6 +39,9 @@ Why This Design
 ---------------
 - Regex is sufficient for this simple pattern (no need for HTML parser)
 - File-level symbols enable graph connectivity from HTML entry points
+- Convention-named index.html files are marked as SPA-root / HTML
+  entrypoints via a concept on the file symbol, keeping entrypoint
+  detection in entrypoints.py rather than this pass
 - High confidence (0.95) reflects reliability of static <script> tags
 - Reference IDs allow graceful handling of external/missing scripts
 """

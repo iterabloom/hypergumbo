@@ -6,6 +6,9 @@ Computes summary statistics from nodes and edges:
 - Average confidence across edges
 - Per-language breakdowns
 - Per-supply-chain-tier breakdowns
+- A ``debug`` sub-block with introspection counts
+  (``unique_paths_in_analysis``, ``analyzed_file_symbols``, and an
+  optional ``profile_files_sum`` when a ``profile`` is supplied)
 
 These metrics help agents quickly assess the scope and quality
 of an analysis without traversing the full graph. The supply chain

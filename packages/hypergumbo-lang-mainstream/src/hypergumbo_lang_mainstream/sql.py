@@ -16,7 +16,7 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract tables, views, functions, triggers, indexes with fingerprints
+1. Pass 1: Extract tables, views, functions, procedures, triggers, indexes (fingerprints stamped later by the central post-pass, not here)
 2. Pass 2: Extract foreign key reference edges using NameResolver
 
 The base class handles grammar checking, parser creation, file discovery,

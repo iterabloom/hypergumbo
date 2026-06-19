@@ -2,9 +2,14 @@
 """Limits tracking for behavior map output.
 
 Tracks known limitations and failures during analysis:
-- Files that failed to parse (syntax errors, encoding issues)
+- Files that failed during analysis (syntax/encoding errors)
 - Languages detected but not analyzed (no analyzer available)
+- Whole passes that crashed or were skipped (§17 fail-open)
+- Files truncated or skipped due to size
+- Supply chain classification failures and ambiguous tier assignments
 - Fundamental limitations of static analysis (dynamic imports, eval, etc.)
+Plus scalar honesty signals: analysis_depth, partial_results_reason,
+max_tier_applied, max_files_per_analyzer, test_files_excluded.
 
 This explicit acknowledgment of gaps helps agents understand what
 the analysis does NOT capture, preventing false confidence.

@@ -1,16 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Infrastructure linker: inheritance for creating extends/implements edges.
+"""Infrastructure linker: inheritance for creating extends/implements/includes edges.
 
-This linker creates graph edges from base_classes metadata, providing a single
-implementation that works across ALL languages instead of duplicating edge
-creation logic in each analyzer.
+This linker creates graph edges from base_classes metadata (extends/implements)
+and from included_modules metadata (includes), providing a single implementation
+that works across ALL languages instead of duplicating edge creation logic in
+each analyzer.
 
 How It Works
 ------------
-1. Finds all class/interface symbols with base_classes metadata
+1. Finds class/interface/struct/trait symbols with base_classes metadata (for
+   extends/implements) and class/module symbols with included_modules metadata
+   (for includes)
 2. For each base class name, looks up the target symbol
 3. Creates extends (for classes) or implements (for interfaces) edges
-4. Runs BEFORE type_hierarchy linker (which needs these edges)
+4. Also emits ``includes`` edges (evidence_type=ast_includes) from
+   ``included_modules`` metadata for Ruby mixins (WI-hatip), resolving module
+   names via a dedicated module-name map
+5. Runs BEFORE type_hierarchy linker (which needs these edges)
 
 Why a Linker Instead of Per-Analyzer Logic
 ------------------------------------------
@@ -141,8 +147,7 @@ def resolve_target_symbol(
 
 
 # Backward-compat alias for callers that imported the private name before
-# WI-gifar (PR-1 of INV-nilud) promoted it to the public surface so the
-# upcoming inherited_calls linker can share the disambiguation logic.
+# WI-gifar (PR-1 of INV-nilud) promoted it to the public surface.
 _resolve_target_symbol = resolve_target_symbol
 
 

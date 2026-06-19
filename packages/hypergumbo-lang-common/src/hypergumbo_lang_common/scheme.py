@@ -9,7 +9,8 @@ continuations. It's widely used in computer science education and research.
 
 Implementation approach:
 - Uses TreeSitterAnalyzer base class for grammar checking and parser creation
-- Two-pass analysis: First pass collects all symbols, second pass extracts edges
+- Two-pass analysis: First pass collects all symbols and attaches docstrings
+  (via populate_docstrings_from_tree); second pass extracts call edges
 - Handles Scheme-specific constructs like define, lambda, let
 
 Key constructs extracted:

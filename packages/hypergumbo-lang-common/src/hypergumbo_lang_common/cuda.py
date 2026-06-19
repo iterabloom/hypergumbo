@@ -29,6 +29,17 @@ Why This Design
 - Uses tree-sitter-cuda package for grammar
 - Two-pass allows cross-file kernel launch resolution
 - CUDA-specific: kernels, device functions, launches are first-class
+
+Symbol Kind Fold (WI-vibaz / ADR-0027)
+---------------------------------------
+Per the canonical fold, every CUDA function is emitted as
+``Symbol(kind="function")`` regardless of its CUDA attributes. The
+GPU/CPU execution space is carried instead on
+``meta["cuda_execution_space"]`` (one of ``global`` / ``device`` /
+``host_device`` / ``host``, or absent for a plain host function).
+``__global__`` kernels additionally carry ``meta["is_kernel"] = True``,
+which downstream consumers (kernel_launch edges, GPU-entry-point
+detection) key on directly.
 """
 from __future__ import annotations
 

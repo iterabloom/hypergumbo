@@ -2,7 +2,7 @@
 """Haxe language analyzer using tree-sitter.
 
 This module provides static analysis for Haxe source code, extracting symbols
-(classes, interfaces, functions) and edges (calls, inheritance).
+(classes, interfaces, functions) and call edges.
 
 Haxe is a high-level, cross-platform programming language and compiler that
 can compile to many target platforms including JavaScript, C++, C#, Java,
@@ -12,6 +12,11 @@ Implementation approach:
 - Uses TreeSitterAnalyzer base class for two-pass orchestration
 - Uses tree-sitter-language-pack for Haxe grammar
 - Handles classes, interfaces, functions, and method calls
+- Filters a built-in/stdlib name set (`_BUILTINS`: trace/Math/Std/Array/String
+  builtins) so those calls do not generate edges
+- Emits unresolved-external call edges (confidence 0.50) for callees not
+  resolvable to a project symbol; abstract classes are flagged via
+  `meta['is_abstract']`
 
 Key constructs extracted:
 - class Name { ... } - class definitions

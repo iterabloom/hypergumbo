@@ -22,6 +22,10 @@ Symbol Types
 - structure: Structure (data type) definitions
 - resource: Resource definitions
 - simple_type: Simple type aliases (string, integer, etc.)
+- union: Union (tagged union) definitions
+- enum: Enum definitions
+- list: List collection definitions
+- map: Map collection definitions
 - namespace: Namespace declarations
 
 Edge Types

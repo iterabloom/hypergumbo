@@ -7,6 +7,7 @@ This analyzer uses tree-sitter to parse .proto files and extract:
 - Message declarations
 - Enum declarations
 - Import relationships
+- Doc comments (populated onto extracted symbols via populate_docstrings_from_tree)
 
 If tree-sitter with Proto support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -18,6 +19,7 @@ How It Works
 3. Parse all .proto files and extract symbols
 4. Detect import statements and create import edges
 5. Create contains edges from services to their RPC methods
+6. Populate doc comments onto extracted symbols by position lookup
 
 Why This Design
 ---------------

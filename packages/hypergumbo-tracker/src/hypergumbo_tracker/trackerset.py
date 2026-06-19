@@ -4,18 +4,26 @@
 Merges three Store instances into a single read surface with tier-annotated
 CompiledItems, write routing to the correct tier, tier movement operations
 (promote/demote/stealth/unstealth), scope-aware count_todos, and self-healing
-reconciliation for cross-tier duplicates.
+reconciliation for cross-tier duplicates. Also provides human-authority
+message moderation / edit-mode windows (edit_mode_on/off/status, delete_msg,
+undelete_msg, edit_msg_text; WI-zonur), field freeze/drift and lock/unlock,
+the hash_todos circuit-breaker fingerprint, the ops_mtime_signature change
+signal plus race-log wiring for the TUI, and tag-name validation on write
+paths (_validate_tag_names, INV-pahoj).
 
 Design rationale:
 - Three tiers map to three physical directories under tracker_root:
   canonical: tracker_root/"tracker"/".ops"
   workspace: tracker_root/"tracker-workspace"/".ops"
   stealth:   tracker_root/"tracker-workspace"/"stealth" (acts as its own .ops)
-- Each tier has its own Store instance with independent config loading.
+- Each tier has its own Store instance; all three share a single config
+  loaded once from the canonical tracker directory.
 - Merged reads annotate each CompiledItem with .tier so consumers know provenance.
 - Write routing defaults to workspace; callers can specify tier explicitly.
 - Tier movement appends an audit op and physically moves the ops file.
-- Reconciliation is append-only (never deletes ops), capped at 3 attempts.
+- Reconciliation merges all tiers' ops into a winning tier and deletes the
+  loser copies; it is capped at 3 attempts before flagging a persistent
+  conflict.
 - Cache integration is optional — TrackerSet works without it.
 
 See ADR-0013 for the full design specification.

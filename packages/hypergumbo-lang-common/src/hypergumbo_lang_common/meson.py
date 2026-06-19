@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Meson build system analyzer using tree-sitter.
 
-This module provides static analysis for Neson build files, extracting symbols
-(projects, executables, libraries, variables) and edges (dependencies, subdirs).
+This module provides static analysis for Meson build files, extracting symbols
+(projects, executables, libraries) and edges (dependencies, subdirs). Variable
+assignments are tracked internally (target registry) to resolve dependencies but
+are not emitted as symbols.
 
 Meson is a modern build system designed to be fast and user-friendly. It uses
 a simple declarative language in meson.build files that define build targets
@@ -17,8 +19,9 @@ The analyze() method is fully overridden because Meson requires:
 Key constructs extracted:
 - project('name', ...) - project definition
 - executable('name', ...) - executable target
-- library/shared_library/static_library('name', ...) - library targets
-- var = command(...) - variable assignments
+- library/shared_library/static_library/both_libraries('name', ...) - library targets
+- custom_target/run_target('name', ...) - other build targets (emitted as kind 'target')
+- var = command(...) - variable assignments are tracked (not emitted as symbols) to resolve cross-target dependencies
 - subdir('path') - subdirectory includes
 - dependencies: [...] - target dependencies
 """

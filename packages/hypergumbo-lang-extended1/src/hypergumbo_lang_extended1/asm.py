@@ -26,9 +26,13 @@ Why This Design
 Assembly-Specific Considerations
 -------------------------------
 - Labels are the primary symbols (no function keyword in assembly)
-- .global directives indicate exported symbols
+- .global directives (which mark exported symbols in assembly) are not parsed;
+  all labels are treated uniformly and none is flagged as exported.
 - Call targets may be external (libc functions, syscalls)
-- Section directives (.text, .data, .bss) hint at symbol purpose
+- Indirect calls through CPU registers (e.g. `call rax`) are skipped via the
+  `_REGISTER_NAMES` set, since registers aren't function names and would
+  otherwise create false external call edges.
+- Section directives (.text, .data, .bss, .rodata) hint at symbol purpose
 """
 from __future__ import annotations
 

@@ -7,6 +7,7 @@ This analyzer uses tree-sitter to parse Nix files and extract:
 - Flake inputs
 - Derivation declarations
 - Import expressions
+- Call-graph edges between functions
 
 If tree-sitter-nix is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -21,7 +22,9 @@ and result assembly. This module provides only the Nix-specific extraction logic
 2. If not available, return skipped result (not an error)
 3. Parse all .nix files
 4. Extract bindings, functions, derivations
-5. Create imports edges for import expressions
+5. Create imports edges for import expressions and calls edges for function
+   applications (callee resolved via NameResolver, falling back to
+   nix:external:<name>:function)
 
 Why This Design
 ---------------

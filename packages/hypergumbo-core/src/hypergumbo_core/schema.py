@@ -32,9 +32,13 @@ This module defines several versioned schemes:
 - **stable_id_scheme**: How stable_id hashes are generated
 - **shape_id_scheme**: How shape_id (structure) hashes are generated
 - **repo_fingerprint_scheme**: How repo state is fingerprinted for caching
+- **symbol_fingerprint_scheme**: How Symbol.fingerprint values are computed
+  (context-aware whole-file subtree hashing; populated by the
+  `hypergumbo_core.fingerprint` post-pass)
 
 new_behavior_map() returns an empty structure with all top-level fields
-initialized, ensuring consistent output even for empty analyses.
+initialized, ensuring consistent output even for empty analyses. It also
+embeds a reproducibility_context block built by build_reproducibility_context().
 
 Why This Design
 ---------------
@@ -50,6 +54,10 @@ This module works with two other components to provide schema infrastructure:
 **This file (schema.py)** - Runtime constants and factory
 - Defines SCHEMA_VERSION and scheme identifiers
 - Provides new_behavior_map() factory for output generation
+- Builds the L2 reproducibility_context block via
+  build_reproducibility_context() (INV-morag): captures
+  hypergumbo/Python/tree-sitter/grammar versions and documents the
+  L3-L5 factors that are explicitly not captured.
 - Used at runtime when hypergumbo generates JSON output
 
 **scripts/generate-schema** - Documentation generator

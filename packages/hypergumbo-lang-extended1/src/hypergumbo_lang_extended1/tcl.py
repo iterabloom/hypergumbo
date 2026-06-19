@@ -2,7 +2,7 @@
 """Tcl language analyzer using tree-sitter.
 
 This module provides static analysis for Tcl source code, extracting symbols
-(procedures, namespaces, variables) and edges (calls).
+(procedures, namespaces) and edges (calls).
 
 Tcl (Tool Command Language) is a dynamic scripting language commonly used for
 rapid prototyping, scripted applications, GUIs, and testing. It's particularly
@@ -16,7 +16,7 @@ Implementation approach:
 Key constructs extracted:
 - procedure: proc name {args} {body}
 - namespace: namespace eval name {body}
-- command_substitution: [command args] (function calls)
+- command / command_substitution: a bare `command args` invocation or a bracketed `[command args]` substitution (both produce call edges)
 """
 
 from __future__ import annotations

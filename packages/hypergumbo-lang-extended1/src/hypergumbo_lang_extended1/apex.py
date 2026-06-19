@@ -8,8 +8,8 @@ Force.com platform.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-- Pass 1: Collect symbols (classes, interfaces, enums, methods, fields)
-- Pass 2: Extract edges (method calls, static calls)
+- Pass 1: Collect symbols (classes, interfaces, enums, methods, constructors, fields, triggers)
+- Pass 2: Extract edges (method calls and `new ClassName()` constructor calls)
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Apex-specific extraction
@@ -23,6 +23,7 @@ Symbol Types
 - method: Method definitions
 - constructor: Constructor definitions
 - field: Field/property declarations
+- trigger: Trigger definitions (with sObject metadata)
 
 Edge Types
 ----------

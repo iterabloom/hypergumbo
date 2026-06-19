@@ -4,8 +4,11 @@
 Detects:
 - Function definitions (vertex, pixel, compute shaders)
 - Struct definitions (input/output structures)
-- Constant buffer declarations (cbuffer)
-- Resource declarations (Texture, Sampler, Buffer)
+- Variable declarations (including the fields inside cbuffer blocks; the
+  cbuffer block itself is not captured as a distinct symbol)
+- Variable declarations (including textures, samplers, and buffers, all
+  emitted as kind='variable')
+- Call edges (function-to-function 'calls' edges)
 
 HLSL is Microsoft's High Level Shading Language for DirectX.
 The tree-sitter-hlsl parser handles .hlsl, .hlsli, and .fx files.
@@ -21,7 +24,12 @@ and result assembly. This module provides only the HLSL-specific extraction logi
 3. Parse all .hlsl, .hlsli, and .fx files
 4. Extract function definitions with signatures
 5. Extract struct definitions
-6. Track constant buffer and resource declarations
+6. Extract variable declarations as kind='variable' (constant buffers and
+   resource declarations are not distinctly tracked).
+7. Extract call edges (pass 2): for each call_expression, resolve the callee
+   via the NameResolver and emit a 'calls' edge — to the resolved symbol
+   (confidence 0.85 * resolver confidence) or to an
+   'hlsl:external:<name>:function' target at 0.70 confidence.
 
 Why This Design
 ---------------

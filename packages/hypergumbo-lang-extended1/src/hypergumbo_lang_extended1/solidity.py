@@ -11,6 +11,9 @@ This analyzer uses tree-sitter to parse Solidity smart contract files and extrac
 - Event definitions
 - Function call relationships
 - Import relationships
+- Inheritance relationships (contract A is B)
+- Function override relationships
+- Event emit references (emit Event(...))
 
 If tree-sitter with Solidity support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -19,7 +22,7 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 - Pass 1: Parse all files, extract all symbols into global registry
-- Pass 2: Detect calls, imports, and resolve against global symbol registry
+- Pass 2: Detect calls, imports, inheritance, event emits, and function overrides, resolving against the global symbol registry
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Solidity-specific

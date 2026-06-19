@@ -51,20 +51,35 @@ Ranking uses multiple signals combined:
    CheckError (in=195, LoC=3), syncTask.name (in=109, LoC=2) all dominated
    rankings despite being plumbing.
 
-6. **Sibling Implementation Dampening**: When many methods share the same
-   name (e.g., 19 ``Notifier.Notify`` variants — one per notification
-   channel in alertmanager), they flood top rankings even after common
-   method name dampening.  Within each name group of 6+ methods, the top 3
-   by score keep full weight; the rest get a 0.15x multiplier.  This
-   ensures users see 2-3 representative implementations, not 19 variants
-   of the same interface method.
+6. **Noise Path Dampening**: Symbols in database-migration / noise paths
+   (e.g. ``db/migrate/``, ``migrations/``) get a 0.1x multiplier
+   (``apply_noise_weights``).  Migrations are structurally connected but
+   run once and are irrelevant to runtime architecture.
 
-7. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
-   method calls with confidence <0.5) are excluded from centrality
-   computation. This prevents method name collisions from inflating
-   in-degree: DirLocker.Lock gets 255 false in-degree from unrelated
-   .Lock() calls, MemoryCache.get gets 228 from unrelated .get() calls.
-   Filtering at confidence 0.5 eliminates these artifacts.
+7. **Common Method Name Dampening**: Method/function names defined on more
+   than ``name_threshold`` (default 10) distinct symbols get a
+   ``max(floor, name_threshold / count)`` multiplier
+   (``apply_common_method_name_weights``).  This suppresses false in-degree
+   from ``receiver_call`` name collisions (e.g., every unresolved
+   ``.execute()`` call attributed to one ``execute``).
+
+8. **Generated Code Dampening**: Symbols with ``is_generated_file=True``
+   (OpenAPI models, protobuf stubs, Kubernetes code-gen) get a 0.05x
+   multiplier (``apply_generated_code_weights``).  These are structurally
+   central but have near-zero developer relevance.
+
+9. **File-Kind Suppression**: ``kind="file"`` pseudo-symbols are zeroed
+   (default 0.0x) unless the language opts in via
+   ``_FILE_KIND_RANKING_ALLOWED_LANGUAGES`` (``apply_file_kind_weights``,
+   WI-ramuv).  Their in-degree equals each file's import count, which would
+   otherwise displace real functions/classes.
+
+10. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
+    method calls with confidence <0.5) are excluded from centrality
+    computation. This prevents method name collisions from inflating
+    in-degree: DirLocker.Lock gets 255 false in-degree from unrelated
+    .Lock() calls, MemoryCache.get gets 228 from unrelated .get() calls.
+    Filtering at confidence 0.5 eliminates these artifacts.
 
 Why These Heuristics
 --------------------
@@ -1212,8 +1227,8 @@ def rank_symbols(
     )
 
     # WI-tahum: dampener stack via shared internal helper. Order:
-    # tier → noise → utility → common-method → sibling-impl →
-    # trivial-sink → generated → file-kind.
+    # tier → noise → utility → common-method → trivial-sink →
+    # generated → file-kind.
     weighted_centrality = _apply_canonical_dampeners(
         raw_centrality, symbols, filtered_edges,
         first_party_priority=first_party_priority,

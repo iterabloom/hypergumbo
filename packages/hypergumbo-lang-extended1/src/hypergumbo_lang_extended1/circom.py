@@ -9,6 +9,7 @@ This analyzer uses tree-sitter to parse Circom (.circom) files and extract:
 - Template instantiation edges (component declarations → template calls)
 - Function call edges
 - Include directive edges (imports)
+- Signal flow constraint edges (<==, ==>, === → references edges with evidence_type=signal_constraint)
 
 Circom is a domain-specific language for writing zero-knowledge circuits.
 Templates define reusable circuit components with typed I/O signals.
@@ -19,7 +20,7 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract templates, functions, signals, main
-2. Pass 2: Detect include directives, template instantiations, function calls
+2. Pass 2: Detect include directives, template instantiations, function calls, and signal flow constraints (references edges)
 
 Why This Design
 ---------------

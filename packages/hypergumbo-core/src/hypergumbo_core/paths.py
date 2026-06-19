@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Centralized path handling utilities for hypergumbo.
 
-This module provides consistent path normalization and comparison functions
-used throughout the codebase. All paths stored in Symbol IDs, Symbol.path,
-and UsageContext.path should be normalized using these utilities.
+This module provides (1) path normalization and comparison (normalize_path,
+to_relative_path, paths_match, path_ends_with, get_filename,
+is_under_directory), and (2) heuristic path/node classification used by
+entrypoint ranking and production-slice filtering (is_utility_file,
+is_infrastructure_path, is_test_file, is_test_node). All paths stored in
+Symbol IDs, Symbol.path, and UsageContext.path should be normalized using
+the normalization utilities.
 
 Key design decisions:
 - Paths use forward slashes (/) regardless of OS

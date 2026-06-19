@@ -18,7 +18,7 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract classes, functions, methods, constructors, enums, mixins
+1. Pass 1: Extract classes, functions, methods, constructors, getters, setters, enums, mixins, extensions
 2. Pass 2: Detect calls, imports, and instantiations using NameResolver
 
 The base class handles grammar checking, parser creation, file discovery,

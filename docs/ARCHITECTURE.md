@@ -15,7 +15,7 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **287** Python modules (131 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 62 core, 4 CLI, 33 tracker)
-- **32707** symbols (functions, classes, methods)
+- **32706** symbols (functions, classes, methods)
 - **107509** edges by type:
   - calls: 60218
   - contains: 22230
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 32707 Symbols + 107509 Edges + UsageContexts           │
+│  Output: 32706 Symbols + 107509 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -744,7 +744,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.graphql_resolver`**: Framework linker: GraphQL resolver for detecting resolver implement...
 - **`hypergumbo_core.linkers.grpc`**: Framework linker: gRPC/Protobuf for detecting RPC communication pat...
 - **`hypergumbo_core.linkers.http`**: Protocol linker: HTTP client-server for detecting cross-language AP...
-- **`hypergumbo_core.linkers.inheritance`**: Infrastructure linker: inheritance for creating extends/implements ...
+- **`hypergumbo_core.linkers.inheritance`**: Infrastructure linker: inheritance for creating extends/implements/...
 - **`hypergumbo_core.linkers.inherited_calls`**: Infrastructure linker: inherited-call resolution via ancestor walking.
 - **`hypergumbo_core.linkers.ipc`**: Protocol linker: IPC for detecting inter-process communication patt...
 - **`hypergumbo_core.linkers.jackson_dispatch`**: Framework linker: Jackson / JavaBean serialization dispatch (WI-gup...
@@ -830,7 +830,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 28b82a40ddf2
+  commit: c9406ccd5455
   hypergumbo: 6.1.0
   python: 3.12.3
 -->

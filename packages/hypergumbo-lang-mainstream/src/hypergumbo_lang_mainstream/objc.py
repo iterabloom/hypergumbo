@@ -15,9 +15,10 @@ Node types handled:
 - preproc_include: #import statements
 - message_expression: [receiver message] method calls
 
-Two-pass analysis:
-- Pass 1: Extract all symbols from all files
-- Pass 2: Resolve method calls using global symbol registry
+Three-pass analysis:
+- Pass 1: Extract all symbols from all files and collect methods into a global registry
+- Pass 1.5: Propagate each class's base_classes into its methods' meta['parent_base_classes'] (so .m @implementation methods inherit the .h @interface bases for framework pattern matching)
+- Pass 2: Extract edges using the global symbol registry — resolve method-call edges (local, then cross-file via NameResolver), emit #import edges, and emit unresolved calls with a module hint for PascalCase (class) receivers.
 """
 
 from __future__ import annotations

@@ -7,8 +7,15 @@ This analyzer uses tree-sitter to parse Scala files and extract:
 - Object definitions (object)
 - Trait definitions (trait)
 - Method definitions (inside classes/objects/traits)
+- Secondary constructors (def this(...), kind=constructor)
 - Function call relationships
 - Import statements
+- Annotations/decorators (into symbol meta["decorators"], for functions, methods, and classes)
+- Inheritance: extends/with base classes and traits (into symbol meta["base_classes"], for classes and traits)
+
+Modifiers (access/abstract/sealed/case) are captured on Symbol.modifiers,
+and parameter/variable types are tracked to disambiguate type-qualified
+method calls.
 
 If tree-sitter with Scala support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -17,7 +24,7 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, classes, objects, traits with signatures
-2. Pass 2: Extract call edges and import edges using NameResolver
+2. Pass 2: Extract call edges, import edges, and eta-expansion references edges using NameResolver
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Scala-specific extraction

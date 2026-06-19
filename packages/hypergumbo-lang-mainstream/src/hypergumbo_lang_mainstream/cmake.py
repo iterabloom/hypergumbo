@@ -9,6 +9,7 @@ This analyzer uses tree-sitter to parse CMakeLists.txt files and extract:
 - Macro definitions
 - Target link dependencies
 - Subdirectory includes
+- External package dependencies (find_package)
 
 If tree-sitter-cmake is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -17,16 +18,18 @@ How It Works
 ------------
 1. Check if tree-sitter-cmake is available
 2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all target/function/macro definitions
-   - Pass 2: Resolve target_link_libraries and create edges
+3. Single-pass, file-by-file analysis: for each file, a single tree traversal
+   extracts target/function/macro definitions into a shared target registry
+   and resolves target_link_libraries into edges in the same pass
 4. Create links edges for library dependencies
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-cmake package for grammar
-- Two-pass allows cross-file target resolution
+- Shared target registry across files allows resolution of targets defined
+  earlier in iteration order; unresolved names are treated as external library
+  references
 - Build-system-specific: targets, functions, macros are first-class
 """
 from __future__ import annotations
