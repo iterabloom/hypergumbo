@@ -9,41 +9,41 @@ This directory contains the project's ADRs, documenting significant design decis
 |-----|-------|--------|------|
 | [0001](0001-portable-agent-instructions.md) | Portable Agent Instructions | Accepted | 2025-12-20 |
 | [0002](0002-test-dependency-handling.md) | Test Dependency Handling | Accepted | 2025-12-27 |
-| [3aaa](3aaa-architectural-analysis-and-revision-plan.md) | Architectural Analysis and Revision Plan | Accepted (§5 migration plan complete) | 2026-01-07 |
+| [3aaa](3aaa-architectural-analysis-and-revision-plan.md) | Architectural Analysis and Revision Plan | Partially superseded by 3bbb/3ccc; core in force | 2026-01-07 |
 | [3bbb](3bbb-linker-subcategory-restoration.md) | Linker Subcategory Restoration (extends 3aaa §2.4) | Implemented | 2026-04-16 |
 | [3ccc](3ccc-usage-context-patterns.md) | Usage Context Patterns (extends 3aaa) | Implemented | |
 | [0004](0004-file-taxonomy.md) | File Taxonomy: Tier and Role Classification | Accepted | 2025-01-14 |
-| [0005](0005-sketch-budget-allocation.md) | Sketch Budget Allocation and Section Composition | Accepted | 2025-01-15 |
+| [0005](0005-sketch-budget-allocation.md) | Sketch Budget Allocation and Section Composition | Accepted — partially superseded by ADR-0039 (forward-conditional) | 2025-01-15 |
 | [0006](0006-variable-type-inference.md) | Variable Type Inference for Method Call Resolution | Accepted | 2025-01-21 |
 | [0007](0007-import-tracking-for-call-resolution.md) | Import Tracking for Cross-File Call Resolution | Accepted | 2026-01-22 |
 | [0008](0008-autonomous-governance-and-vendor-agnostic-hooks.md) | Autonomous Governance and Vendor-Agnostic Hooks | Accepted | 2026-01-24 |
 | [0009](0009-feature-focused-bakeoff.md) | Feature-Focused Bakeoff Suite (DEEP mode) | Accepted | 2026-01-30 |
 | [0010](0010-modular-packages-and-smart-testing.md) | Modular Packages and Smart Testing | Implemented | |
 | [0011](0011-scoped-coverage-and-green-baseline.md) | Scoped Coverage and Green Baseline Tracking | Implemented | |
-| [0012](0012-pass-unification-and-multi-fidelity.md) | Pass Unification and Multi-Fidelity Architecture | Partially implemented | |
+| [0012](0012-pass-unification-and-multi-fidelity.md) | Pass Unification and Multi-Fidelity Architecture | Step 1 implemented; Steps 2–3 design targets | |
 | [0013](0013-structured-tracker.md) | Structured Tracker | Accepted | 2026-02-13 |
 | [0014](0014-generalized-symbol-identity.md) | Generalized Symbol Identity (stable_id / shape_id) | Accepted — partially superseded by ADR-0035 (see amendment table) | 2026-02-20 |
 | [0015](0015-dataflow-access-modes.md) | Dataflow Access Modes on Edges | Accepted — partially superseded by ADR-0038 (emission guidance only) | 2026-03-15 |
 | [0016](0016-io-boundary-analysis.md) | I/O Boundary Analysis and Security Claim Verification | Accepted | 2026-03-18 |
-| [0017](0017-taint-zone-dataflow.md) | Taint-Zone Dataflow Analysis | Accepted | 2026-03-22 |
+| [0017](0017-taint-zone-dataflow.md) | Taint-Zone Dataflow Analysis | Partially superseded by ADR-0037, ADR-0038 | 2026-03-22 |
 | [0018](0018-transcript-sync-and-playbook-injection.md) | Vendor-Agnostic Transcript Sync and LLM-Driven Playbook Injection | Accepted | 2026-03-29 |
 | [0019](0019-remote-access-transport.md) | Remote Access Transport | Proposed | 2026-03-30 |
 | [0020](0020-tui-screenshot-annotation-and-inline-preview.md) | TUI Screenshot Annotation and Inline Preview | Proposed | 2026-03-30 |
 | [0021](0021-tracker-federation.md) | Tracker Federation | Proposed | 2026-03-30 |
-| [0022](0022-language-profile-registry.md) | Per-Language Configuration Surface and Language Profile Registry | Proposed (exploratory) | 2026-04-10 |
+| [0022](0022-language-profile-registry.md) | Per-Language Configuration Surface and Language Profile Registry | Partially superseded by own evolution (by-language half deferred) | 2026-04-10 |
 | [0023](0023-edge-type-relationship-not-endpoints.md) | Edge Type Names the Relationship, Not the Endpoints | Accepted (§6 migration in progress) | 2026-04-29 |
 | [0024](0024-axis-declaration-template.md) | Axis Declaration Template for Multi-Value Fields | Accepted | 2026-04-30 (updated 2026-05-02) |
-| [0027](0027-symbol-kind-language-construct-only.md) | Symbol.kind Names the Source-Language Syntactic Construct | Draft | 2026-05-02 |
-| [0028](0028-evidence-type-inference-pathway-only.md) | Edge.evidence_type Names the Inference Pathway | Draft | 2026-05-02 |
+| [0027](0027-symbol-kind-language-construct-only.md) | Symbol.kind Names the Source-Language Syntactic Construct | Accepted (Phases 1–4 complete) | 2026-05-02 |
+| [0028](0028-evidence-type-inference-pathway-only.md) | Edge.evidence_type Names the Inference Pathway | Accepted — §sibling-field superseded by ADR-0037 | 2026-05-02 |
 | [0029](0029-cross-language-inherited-call-linker.md) | Cross-Language Inherited-Call Linker | Accepted | 2026-05-25 |
 | [0030](0030-prov-vocabulary-mapping.md) | PROV Vocabulary Mapping for Behavior Map Provenance | Accepted | 2026-05-27 |
 | [0031](0031-symbol-language-reshape.md) | Symbol.language Reshape — discovery_language and protocol_origin Typed Fields | Accepted | 2026-05-30 |
 | [0032](0032-canonical-name-fingerprint-reshape.md) | canonical_name and fingerprint Reshape — display_label and qualified_name Typed Fields; Format 1 Fingerprint Demolition | Accepted | 2026-05-31 |
 | [0033](0033-spec-vs-data-validator-stage.md) | Spec-vs-Data Validator Stage | Accepted | 2026-05-31 |
-| [0034](0034-id-construction-discipline.md) | ID-Construction Discipline | Accepted | 2026-06-01 |
+| [0034](0034-id-construction-discipline.md) | ID-Construction Discipline | Partially superseded by ADR-0037, ADR-0036 | 2026-06-01 |
 | [0035](0035-stable-id-v6-identity-contract.md) | stable_id v6 Identity Contract | Accepted | 2026-06-10 |
 | [0036](0036-node-id-grammar-v2.md) | node.id Grammar v2 | Accepted | 2026-06-10 |
-| [0037](0037-edge-resolution-semantics.md) | Edge Resolution Semantics | Accepted | 2026-06-10 |
+| [0037](0037-edge-resolution-semantics.md) | Edge Resolution Semantics | Mosaic — rulings 1/2/3/5 done; ruling 4 deferred | 2026-06-10 |
 | [0038](0038-access-mode-contract.md) | The access_mode Contract | Accepted | 2026-06-10 |
 | [0039](0039-confidence-separation.md) | Confidence Separation | Accepted | 2026-06-10 |
 | [0040](0040-evidence-field-descope.md) | Evidence-Field Descope | Accepted | 2026-06-10 |
