@@ -9529,3 +9529,108 @@ class TestWizavadCjsModuleBindingParity:
         nm, _orig = _extract_named_imports(tree, src)
         assert "x" not in ns and "y" not in ns
         assert "x" not in nm and "y" not in nm and "z" not in nm
+
+
+class TestWizavadGlobalIoEmission:
+    """WI-zavad / emission-parity F2 (slice 2): browser/worker global I/O calls
+    reach the io-boundary catalog.
+
+    The JavaScript io-primitives catalog already lists ``caches`` (Service
+    Worker CacheStorage), ``indexedDB``, and the global ``fetch`` — but the
+    analyzer never emitted calls for them, so a Service Worker file built
+    entirely from top-level ``self.addEventListener('fetch', e => caches.open(...))``
+    callbacks produced zero edges (the WI-zavad frozen-substrate repro:
+    ``service-worker.js`` full of ``caches.open()``/``fetch()`` emitted only
+    event-subscriber 'uses' edges). ``caches``/``indexedDB`` join
+    ``JS_KNOWN_GLOBALS`` (member-call Case 3b) and bare ``fetch()`` gets an
+    unresolved-call path; calls in top-level/anonymous-callback scope attribute
+    to the file pseudo-node (``module_symbol``).
+    """
+
+    def test_caches_member_call_emits_unresolved_edge(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "sw.js").write_text(
+            "function warm() { return caches.open('v1'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        hits = [c for c in callees if c.split(":")[1] == "caches" and ":open:" in c]
+        assert hits, callees
+
+    def test_indexeddb_member_call_emits_unresolved_edge(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "db.js").write_text(
+            "function load() { return indexedDB.open('store'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        hits = [c for c in callees if c.split(":")[1] == "indexedDB" and ":open:" in c]
+        assert hits, callees
+
+    def test_bare_fetch_call_emits_unresolved_edge(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "net.js").write_text(
+            "function load(url) { return fetch(url); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        # module hint AND callee name are both ``fetch`` (catalog: module fetch,
+        # functions [fetch]).
+        hits = [c for c in callees if c.split(":")[1] == "fetch" and ":fetch:" in c]
+        assert hits, callees
+
+    def test_service_worker_idiom_emits_io_calls(self, tmp_path: Path) -> None:
+        """The WI-zavad P0 reproduction: a Service Worker built from top-level
+        anonymous-callback event listeners now emits its CacheStorage + network
+        I/O calls (attributed to the file pseudo-node), where it previously
+        emitted zero call edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "service-worker.js").write_text(
+            "self.addEventListener('fetch', (event) => {\n"
+            "  event.respondWith(\n"
+            "    caches.open('v1').then((cache) =>\n"
+            "      cache.match(event.request) || fetch(event.request))\n"
+            "  );\n"
+            "});\n"
+        )
+        result = analyze_javascript(tmp_path)
+        callees = {
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and ":unresolved" in e.dst
+        }
+        assert any(c.split(":")[1] == "caches" for c in callees), callees
+        assert any(c.split(":")[1] == "fetch" for c in callees), callees
+
+    def test_local_function_named_fetch_is_not_treated_as_global(
+        self, tmp_path: Path
+    ) -> None:
+        """A user-defined ``fetch`` resolves intra-repo and must NOT also emit
+        the global-fetch unresolved edge (resolution precedes the global path)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "function fetch(u) { return u; }\n"
+            "function main() { return fetch('/x'); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        # main -> local fetch resolves (a resolved edge exists)
+        assert any(e.is_resolved and "fetch" in e.dst for e in calls), calls
+        # and no unresolved global-fetch edge was emitted
+        assert not any(
+            not e.is_resolved and e.dst.split(":")[1] == "fetch" and ":fetch:" in e.dst
+            for e in calls
+        ), calls

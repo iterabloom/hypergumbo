@@ -759,6 +759,18 @@ JS_KNOWN_GLOBALS: frozenset[str] = frozenset({
     "navigator",      # net_send / env_read (sendBeacon, userAgent, geolocation)
     "window",         # net_send / env_read (fetch, location, navigator, screen)
     "Deno",           # Deno runtime (readFile, writeFile, connect, listen, ...)
+    "caches",         # Service Worker CacheStorage (open, match, has, keys)
+    "indexedDB",      # Browser IndexedDB (open, databases)
+})
+
+# Bare global functions (called as ``fn(...)``, not ``obj.fn(...)``) that the
+# io-boundary catalog recognises. ``fetch`` is the global network primitive
+# (Node 18+ and browsers); unlike the JS_KNOWN_GLOBALS member receivers it is
+# invoked directly, so it needs its own emission path. Resolution to an
+# intra-repo or imported ``fetch`` takes precedence — only a truly-global bare
+# ``fetch()`` reaches this set (WI-zavad / emission-parity F2).
+JS_KNOWN_GLOBAL_CALLS: frozenset[str] = frozenset({
+    "fetch",          # net_send (catalog: module fetch, functions [fetch])
 })
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
@@ -4160,6 +4172,32 @@ def _extract_edges(
                                     lang=lang,
                                     module_path=module_hint,
                                     name=canonical_name,
+                                ),
+                            )
+                            edges.append(edge)
+                        elif func_name in JS_KNOWN_GLOBAL_CALLS:
+                            # Bare global I/O function (``fetch(url)``) that did
+                            # not resolve intra-repo and was not imported: emit
+                            # an unresolved-call edge whose module hint AND name
+                            # are the function itself, matching the catalog's
+                            # ``module: fetch, functions: [fetch]`` shape so the
+                            # io-boundaries layer can tag the network call
+                            # (WI-zavad / emission-parity F2).
+                            dst_id = f"{lang}:{func_name}:0-0:{func_name}:unresolved"
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_call_direct",
+                                is_resolved=False,
+                                confidence=0.70,
+                                dst_ref=ExternalRef(
+                                    lang=lang,
+                                    module_path=func_name,
+                                    name=func_name,
                                 ),
                             )
                             edges.append(edge)
