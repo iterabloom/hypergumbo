@@ -17,6 +17,7 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Fixed
 
+- **Bump `starlette` floor to `>=1.3.1` (CVE-2026-54282, CVE-2026-54283).** The `>=1.0` constraint resolved to a vulnerable 1.2.1; 1.3.1 patches both starlette advisories. starlette is the tracker's remote/federation transport dependency (ADR-0019/ADR-0021).
 - **`recover` serializes its `.ops` rewrite with concurrent Store appends via a shared lock.** `recover`'s per-file rewrite now takes the same `LOCK_EX` as Store appends around read/union/rewrite and rewrites in place, fixing a race where a concurrent append landing mid-recover was clobbered (or left a torn `.ops`); exposure rose after the hook made recover fire on every committed ref transaction.
 - **`scripts/tracker`'s `python -m cli` fallback now dispatches instead of silently no-opping.** `cli.py` lacked an `__main__` guard, so `python -m hypergumbo_tracker.cli` exited 0 without dispatching, silently breaking every tracker command (including the recovery hook) in environments using that fallback path.
 - **`do_sync` suppresses the recovery hook during its own git operations.** The auto-firing `reference-transaction` hook restored journalled-uncommitted ops as untracked files mid-sync, aborting the very `merge --ff-only` that reconciles them so local dev perpetually lagged the remote; `do_sync` now sets a `tracker-recover-disabled` marker around all its git ops (user-initiated reset/checkout still self-heal).
