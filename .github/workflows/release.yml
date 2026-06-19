@@ -107,6 +107,7 @@ jobs:
           pip install "pygments~=2.20.0"   # CVE-2026-4539
           pip install "urllib3>=2.7.0"     # CVE-2026-44431 / CVE-2026-44432
           pip install "idna>=3.15"         # CVE-2026-45409
+          pip install "msgpack>=1.2.1"     # GHSA-6v7p-g79w-8964 (via CacheControl->pip-audit)
 
       - name: Vulnerability scan (pip-audit)
         run: |

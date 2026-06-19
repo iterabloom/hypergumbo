@@ -331,6 +331,13 @@ jobs:
           # the self-hosted runner's baseline ships idna 3.11. Mirrors the
           # requests / pygments / urllib3 pin pattern above.
           pip install "idna>=3.15"
+          # GHSA-6v7p-g79w-8964: msgpack <1.2.1 — fix in 1.2.1. Transitive
+          # through CacheControl[filecache] -> pip-audit (the audit tool's own
+          # dependency, not a hypergumbo runtime dep — msgpack is declared in
+          # no package's pyproject.toml). Pinning upgrades the audit env past
+          # the advisory rather than ignoring it, matching the requests /
+          # pygments / urllib3 / idna pin pattern above.
+          pip install "msgpack>=1.2.1"
       - name: Run pip-audit (dependency vulnerabilities)
         run: |
           # CVE-2025-71176: pytest /tmp/pytest-of-{user} TOCTOU on UNIX.
