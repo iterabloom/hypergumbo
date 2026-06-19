@@ -50,6 +50,9 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -247,6 +250,11 @@ class BashAnalyzer(TreeSitterAnalyzer):
                         # bash function symbols render as ``? LOC`` in
                         # dead-code-maybe output.
                         lines_of_code=end_line - start_line + 1,
+                        # INV-loguk: McCabe complexity over the bash grammar's
+                        # if/elif/for/while/case decision points.
+                        cyclomatic_complexity=compute_cyclomatic_complexity(
+                            node, "bash",
+                        ),
                         stable_id=self.compute_stable_id(
                             node, kind="function", name=func_name,
                             file_stable_id=file_anchor,

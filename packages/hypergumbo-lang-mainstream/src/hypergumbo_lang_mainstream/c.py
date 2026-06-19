@@ -62,6 +62,9 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -277,6 +280,12 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    # INV-loguk: analytical fields, uniform with the other
+                    # mainstream callable analyzers.
+                    lines_of_code=span.end_line - span.start_line + 1,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(
+                        node, "c",
+                    ),
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="function", name=name,
                         file_stable_id=file_stable_id,
@@ -311,6 +320,13 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             signature=signature,
                             modifiers=["declaration"],
+                            # INV-loguk: a bodyless prototype is straight-line
+                            # (the walker finds no decision points → CC == 1)
+                            # spanning its declaration line(s).
+                            lines_of_code=span.end_line - span.start_line + 1,
+                            cyclomatic_complexity=compute_cyclomatic_complexity(
+                                node, "c",
+                            ),
                             stable_id=_analyzer.compute_stable_id(
                                 node, kind="function", name=name,
                                 file_stable_id=file_stable_id,

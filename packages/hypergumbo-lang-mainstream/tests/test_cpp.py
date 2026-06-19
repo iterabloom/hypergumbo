@@ -2293,3 +2293,62 @@ int main() { return helper(); }
         ]
         assert len(unresolved_helper) == 0
 
+
+class TestCppComplexityAndLoc:
+    """INV-loguk: C++ function and method Symbols populate
+    cyclomatic_complexity and lines_of_code."""
+
+    def test_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "f.cpp").write_text(
+            "int classify(int x) {\n"
+            "  if (x > 10) { return 1; } else if (x > 5) { return 2; }\n"
+            "  for (int i = 0; i < x; i++) { if (i % 2 == 0 || i < 0) return i; }\n"
+            "  return 0;\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        assert not result.skipped
+        fn = next(
+            s for s in result.symbols
+            if s.name == "classify" and s.kind == "function"
+        )
+        # if + else-if + for + inner-if + || → >= 4 above base
+        assert fn.cyclomatic_complexity is not None
+        assert fn.cyclomatic_complexity >= 4
+        assert fn.lines_of_code == 5
+
+    def test_method_has_cc_and_loc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "c.cpp").write_text(
+            "class C {\n"
+            "public:\n"
+            "  int score(int x) {\n"
+            "    if (x > 0) { return x; }\n"
+            "    return 0;\n"
+            "  }\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert methods
+        for m in methods:
+            assert m.cyclomatic_complexity is not None and m.cyclomatic_complexity >= 2
+            assert m.lines_of_code is not None and m.lines_of_code >= 1
+
+    def test_no_cpp_callable_has_null_cc_or_loc(self, tmp_path: Path) -> None:
+        """Property: every C++ function/method Symbol has non-null CC and LOC."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "f.cpp").write_text(
+            "int add(int a, int b) { return a + b; }\n"
+        )
+        result = analyze_cpp(tmp_path)
+        funcs = [s for s in result.symbols if s.kind in ("function", "method")]
+        assert funcs
+        for fn in funcs:
+            assert fn.cyclomatic_complexity is not None, fn.name
+            assert fn.lines_of_code is not None, fn.name
+

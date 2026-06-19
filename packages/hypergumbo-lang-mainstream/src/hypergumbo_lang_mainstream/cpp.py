@@ -61,6 +61,9 @@ from hypergumbo_core.analyze.base import (
     node_text as _node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.symbol_introspection import (
+    compute_cyclomatic_complexity,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -515,6 +518,11 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    # INV-loguk: analytical fields for C++ functions/methods.
+                    lines_of_code=end_line - start_line + 1,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(
+                        node, "cpp",
+                    ),
                     stable_id=_analyzer.compute_stable_id(
                         node, kind=kind, name=name,
                         file_stable_id=file_stable_id,

@@ -779,3 +779,68 @@ class TestWiPulorFunctionLinesOfCode:
                 f"WI-pulor regression"
             )
             assert func.lines_of_code >= 1
+
+
+class TestBashCyclomaticComplexity:
+    """INV-loguk: bash function Symbols populate cyclomatic_complexity.
+
+    Bash already populated lines_of_code (WI-pulor); this closes the CC half.
+    Short-circuit ``&&``/``||`` between commands are NOT counted (they live in
+    ``list`` nodes, outside the shared binary-expression scope) — only
+    if/elif/for/while/case decision points contribute.
+    """
+
+    def test_branchy_function_has_nontrivial_cc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "s.sh").write_text(
+            "#!/bin/bash\n"
+            "greet() {\n"
+            "  if [ \"$1\" = a ]; then echo a\n"
+            "  elif [ \"$1\" = b ]; then echo b\n"
+            "  else echo c\n"
+            "  fi\n"
+            "  for i in 1 2 3; do echo \"$i\"; done\n"
+            "  while true; do break; done\n"
+            "}\n"
+        )
+        result = analyze_bash(tmp_path)
+        assert not result.skipped
+        fn = next(
+            s for s in result.symbols
+            if s.name == "greet" and s.kind == "function"
+        )
+        # if + elif + for + while = 4 above base
+        assert fn.cyclomatic_complexity is not None
+        assert fn.cyclomatic_complexity >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "s.sh").write_text(
+            "#!/bin/bash\n"
+            "hello() {\n"
+            "  echo hello\n"
+            "}\n"
+        )
+        result = analyze_bash(tmp_path)
+        fn = next(
+            s for s in result.symbols
+            if s.name == "hello" and s.kind == "function"
+        )
+        assert fn.cyclomatic_complexity == 1
+
+    def test_no_bash_function_has_null_cc(self, tmp_path: Path) -> None:
+        """Property: every bash function Symbol has non-null CC."""
+        from hypergumbo_lang_mainstream.bash import analyze_bash
+
+        (tmp_path / "s.sh").write_text(
+            "#!/bin/bash\n"
+            "a() { echo 1; }\n"
+            "b() { if true; then echo 2; fi; }\n"
+        )
+        result = analyze_bash(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for fn in funcs:
+            assert fn.cyclomatic_complexity is not None, fn.name

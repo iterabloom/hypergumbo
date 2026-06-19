@@ -1,10 +1,26 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Shared per-language dispatchers for Symbol.signature and Symbol.docstring.
+"""Shared per-language dispatchers for Symbol introspection fields.
 
 This module provides a uniform entry point so analyzer code does not have
 to know the per-language extraction logic at every Symbol() emit site.
 The dispatcher routes to per-language extractors based on the language
 string passed at call time.
+
+Two distinct capability axes
+----------------------------
+There are *two* independent sets of supported languages here, because the
+fields they back are independent capabilities:
+
+- ``SUPPORTED_LANGUAGES`` — languages with a ``signature``/``docstring``
+  extractor (the 10 ADR-0033-Phase-4 languages). Gates
+  :func:`extract_signature` and :func:`extract_preceding_doc_comment`.
+- ``BRANCH_NODE_TYPES`` — languages with a ``cyclomatic_complexity``
+  decision-point table. Gates :func:`compute_cyclomatic_complexity`.
+
+``BRANCH_NODE_TYPES`` is a *superset*: every signature/docstring language
+also computes complexity, but ``bash``/``c``/``cpp`` compute complexity
+(INV-loguk) without yet having a signature/docstring extractor. Do not
+conflate the two sets — they are different questions.
 
 Why centralized
 ---------------
@@ -132,6 +148,25 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
         "case_statement", "catch_block", "ternary_expression",
         "guard_statement",
     }),
+    # CC-only languages (INV-loguk): these have a cyclomatic-complexity table
+    # but no signature/docstring extractor in this module, so they appear here
+    # without being in SUPPORTED_LANGUAGES. ``else_clause`` is deliberately
+    # NOT counted (it is the alternative path of an already-counted ``if``);
+    # ``elif_clause`` (bash) IS counted, mirroring py.py treating each ``elif``
+    # as its own ``ast.If``.
+    "bash": frozenset({
+        "if_statement", "elif_clause", "for_statement", "while_statement",
+        "case_item",
+    }),
+    "c": frozenset({
+        "if_statement", "for_statement", "while_statement", "do_statement",
+        "case_statement", "conditional_expression",
+    }),
+    "cpp": frozenset({
+        "if_statement", "for_statement", "for_range_loop", "while_statement",
+        "do_statement", "case_statement", "conditional_expression",
+        "catch_clause",
+    }),
 }
 
 
@@ -150,6 +185,12 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     "ruby": frozenset({"&&", "||", "and", "or"}),
     "kotlin": frozenset({"&&", "||"}),
     "swift": frozenset({"&&", "||"}),
+    # C/C++ ``&&``/``||`` live in ``binary_expression`` nodes (already in
+    # _BINARY_EXPR_NODE_TYPES). Bash is intentionally absent: its command-list
+    # ``&&``/``||`` live in ``list`` nodes (see the bash AST), outside the
+    # shared binary-expression scope, so they are not counted (conservative).
+    "c": frozenset({"&&", "||"}),
+    "cpp": frozenset({"&&", "||"}),
 }
 
 
