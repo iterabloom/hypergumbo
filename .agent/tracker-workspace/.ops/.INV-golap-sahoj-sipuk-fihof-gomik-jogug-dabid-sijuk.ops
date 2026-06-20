@@ -93,3 +93,18 @@
   clock: 9  # 9400
   nonce: '9400'  # 9400
   message: "root-cause family cross-link (t3); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 9400
+- op: update  # d182
+  at: '2026-06-20T21:52:20Z'  # d182
+  by: agent  # d182
+  actor: jgstern_agent  # d182
+  clock: 10  # d182
+  nonce: d182  # d182
+  set:  # d182
+    status: satisfied  # d182
+- op: discuss  # b17d
+  at: '2026-06-20T21:52:20Z'  # b17d
+  by: agent  # b17d
+  actor: jgstern_agent  # b17d
+  clock: 11  # b17d
+  nonce: b17d  # b17d
+  message: "Satisfied. Filed-repro re-run (whole-repo self-analysis): JavaScript signature 4/4 (100%), TypeScript 31/31 (100%), ZERO null-signature function|method|getter|setter symbols (was 0/10). An ~18-family construct probe (function decl, arrow, async, class/static/async methods, getters/setters, object methods, named/default/const exports, default/rest params) shows JS at full TS parity for every EXTRACTED ordinary construct — the original 0/10 was stale (the _extract_jsts_signature path postdated the pass-9 measurement, as the 2026-05-30 note suspected). The one genuine residual the re-probe isolated — inline Express route-handler pseudo-symbols emitted as kind=function with signature=None despite a real arrow/function handler node — is fixed on origin/dev as commit 15c1d3e7 (PR #4247): _extract_jsts_signature now handles function_expression and is called at the inline-handler emit site. Synthetic route pseudo-symbols (external-ref handlers, JSX <Route>, createBrowserRouter config) correctly stay None. Production-path regression guard TestJsTsSignatureParityINVgolap locks JS<->TS signature-population parity. Adversarial verification workflow: 10/10 handler/route probes clean + completeness critic enumerated all 8 function-emit sites (real_gaps empty, function_expression change confirmed additive/safe). NB: generators and const-bound function expressions are not EXTRACTED as symbols at all (symmetric JS+TS, distinct from this signature-asymmetry item) — documented on WI-zavad."  # b17d

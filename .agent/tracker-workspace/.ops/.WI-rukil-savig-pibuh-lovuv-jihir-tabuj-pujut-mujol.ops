@@ -1,0 +1,20 @@
+- op: create  # 375f
+  at: '2026-06-20T19:50:43Z'  # 375f
+  by: agent  # 375f
+  actor: jgstern_agent  # 375f
+  clock: 1  # 375f
+  nonce: 375f  # 375f
+  data:  # 375f
+    kind: work_item  # 375f
+    title: "test_check_schema_coverage._BaselineSwap races on the shared real baseline file under pytest -n auto"  # 375f
+    status: todo_soft  # 375f
+    priority: 3  # 375f
+    parent:  # 375f
+    tags:  # 375f
+    - ci_infrastructure  # 375f
+    isbefore: []  # 375f
+    duplicate_of: []  # 375f
+    not_duplicate_of: []  # 375f
+    pr_ref:  # 375f
+    description: "Pre-existing parallel-isolation flake (surfaced 2026-06-20 during INV-loguk closure). packages/hypergumbo-core/tests/test_check_schema_coverage.py uses a _BaselineSwap context manager + _run_gate subprocess that read/write/delete the SHARED real repo file .ci/schema-coverage-baseline.json (the gate script reads a fixed path, so tests mutate the real file in place and restore on exit). Under pytest -n auto (the smart-test default), concurrent xdist workers running different _BaselineSwap contexts race on that single file — one test does _BaselineSwap(None) which DELETES it while another expects its written baseline — producing spurious gate exit-1 (observed: TestSchemaConformanceFold::test_baseline_tolerated_violation_warning_mode_passes failing with 'corpus output has 1 nodes / 1 edges; assert 1==0'). Passes cleanly in isolation and serially (verified: 97 passed serial). Risk: spurious CI failures on any PR touching symbol_kinds.py / the gate (pulls these tests into the affected set). Fix options: (a) add a baseline-path override to scripts/check-schema-coverage (env var e.g. HYPERGUMBO_SCHEMA_BASELINE or a --baseline flag) and have _BaselineSwap/_run_gate point at a per-worker tmp file via tmp_path instead of mutating the repo file; or (b) mark the affected tests no-xdist (serial group). Option (a) is the structural fix. scripts/check-schema-coverage is NOT a governance file."  # 375f
+    fields: {}  # 375f

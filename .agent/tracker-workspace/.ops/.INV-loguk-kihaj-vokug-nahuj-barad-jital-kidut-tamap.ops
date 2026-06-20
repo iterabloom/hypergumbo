@@ -123,3 +123,41 @@
   clock: 13  # 07c9
   nonce: 07c9  # 07c9
   message: "Re-confirmed VIOLATED at HEAD (live hypergumbo run): bash cyclomatic_complexity 0/2 while java/go/rust/swift/csharp/ts 100%. Kept violated; earlier source-wiring fixed-claim was MED and contradicted by the live run. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 07c9
+- op: discuss  # 4bc7
+  at: '2026-06-19T20:39:39Z'  # 4bc7
+  by: agent  # 4bc7
+  actor: jgstern_agent  # 4bc7
+  clock: 14  # 4bc7
+  nonce: 4bc7  # 4bc7
+  message: "Slice A MERGED (PR #4231, b09c14d93c -> origin/dev 79457ad46c). bash/c/cpp now populate cyclomatic_complexity (and c/cpp lines_of_code) via the symbol_introspection dispatcher: added bash/c/cpp BRANCH_NODE_TYPES + c/cpp SHORT_CIRCUIT_OPS, wired compute_cyclomatic_complexity + span LOC into all three analyzers' callable emit sites (incl. bodyless C prototypes -> CC=1). Behavioral evidence (live analyzer runs on branchy fixtures): bash greet CC=5 (was None); c classify CC=6/LOC=5 (both None pre-fix); cpp classify CC=6/LOC=5 (both None pre-fix). 16 new tests (per-language dispatcher CC + analyzer-level property tests asserting no function-kind Symbol has null CC/LOC); full suite 19153 passed, 100% cov. Two capability axes now explicit: BRANCH_NODE_TYPES (CC) is a documented superset of SUPPORTED_LANGUAGES (signature/docstring). STILL VIOLATED -> slice B: solidity (hypergumbo-lang-extended1) and wgsl (hypergumbo-lang-common) still emit null CC/LOC; they depend only on hypergumbo-core and cannot reach the mainstream dispatcher. Closing slice B requires relocating the CC table+dispatcher (BRANCH_NODE_TYPES/SHORT_CIRCUIT_OPS/compute_cyclomatic_complexity) into hypergumbo-core. Re-probe note: markdown has no callable symbols, so CC is N/A there (not a hole). Keeping status=violated until slice B lands."  # 4bc7
+- op: discuss  # 2d99
+  at: '2026-06-19T22:55:04Z'  # 2d99
+  by: agent  # 2d99
+  actor: jgstern_agent  # 2d99
+  clock: 14  # 2d99
+  nonce: 2d99  # 2d99
+  message: "Slice B shipped (PR f2269717b8, preceded by audit-fix PR b64b4e4407 pinning msgpack>=1.2.1 in the pip-audit env). Relocated the CC dispatcher (BRANCH_NODE_TYPES / SHORT_CIRCUIT_OPS / compute_cyclomatic_complexity) from hypergumbo-lang-mainstream into hypergumbo-core (analyze/cyclomatic.py) so EVERY analyzer package can reach it; wired solidity (extended1: function/constructor/modifier, gated off non-callable contracts) + wgsl (common: function).\n\nBEHAVIORAL EVIDENCE (probe on merged dev, /tmp/loguk/probe2.py): bash CC=5/LOC=10, c CC=6/LOC=5, cpp CC=6/LOC=5, solidity CC=5/LOC=5, wgsl CC=5/LOC=5 — all None before slices A/B. The 5 languages enumerated in the correctness-strategy scope are now fixed; with the 10 ADR-0033-Phase-4 mainstream langs already covered, 15 languages now populate CC.\n\nSTATUS STAYS violated. The strategy's 5-language scope was INCOMPLETE — it only captured languages present in hypergumbo's own (Python-heavy) dogfood corpus. A 20-language re-probe (/tmp/loguk/broadprobe.py) shows the 'regardless of language' invariant still fails for at least 18 more callable-emitting analyzers, all CC=None AND LOC=None: scala, dart, lua, perl, haskell, elixir, julia, ocaml, zig, erlang, gleam, nim, fortran, groovy, powershell, r, v, d. True residual is larger (the ~30+ programming-language analyzers absent from BRANCH_NODE_TYPES). Architecture is now correct (one central, package-reachable dispatcher), so remaining work is mechanical per-language: dump each grammar's decision-point node types, add a BRANCH_NODE_TYPES entry, wire the callable emit site, add real-grammar tests. Tracked as slice C."  # 2d99
+- op: discuss  # 1c3c
+  at: '2026-06-20T03:41:43Z'  # 1c3c
+  by: agent  # 1c3c
+  actor: jgstern_agent  # 1c3c
+  clock: 15  # 1c3c
+  nonce: 1c3c  # 1c3c
+  message: "Slice C batches 1-3 merged (origin/dev e0f9ee781c): 34 languages now populate non-null CC/LOC (10 phase-4 + python + bash/c/cpp + solidity/wgsl + haskell/ocaml/julia/dart/erlang + scala/lua/perl/groovy/powershell/objc + zig/gleam/nim/d/v/hack/haxe/odin). Each verified against branchy real-grammar fixtures with exact expected CC; per-package isolation 100%. INV-loguk STAYS violated — remaining callable-emitting tail (empirically being triaged via discovery): common (fortran/fsharp/elm/purescript/matlab/r/cuda/glsl/scss), extended1 (ada/pascal/pony/gdscript/tcl/luau/apex/lean/agda/circom/jsonnet/llvm_ir/hlsl), nix/wolfram/asm, homoiconic-defer (elixir/clojure/commonlisp/fennel/janet/racket/scheme — need an AST-aware walker branch), and config/schema langs that emit kind=function for non-callable constructs (need empirical emits_callables triage). \n\nSEPARATE BUG FOUND (pre-existing, phase-4): ruby CC OVER-COUNTS. tree-sitter-ruby emits both a NAMED node and an ANONYMOUS keyword token sharing the same .type (e.g. 'if'), and compute_cyclomatic_complexity counts by .type with no is_named filter, so every if/while/for/case/when/until/unless/rescue inflates CC by +1. Repro: a method with a single if reports CC=3 (McCabe-correct=2). Fix = add an is_named guard to the branch-counting in cyclomatic.py (also lets nim/perl/haskell drop their collision-exclusions). Will ship as its own focused PR with re-verification of all wired languages."  # 1c3c
+- op: update  # aca1
+  at: '2026-06-20T19:49:27Z'  # aca1
+  by: agent  # aca1
+  actor: jgstern_agent  # aca1
+  clock: 16  # aca1
+  nonce: aca1  # aca1
+  set:  # aca1
+    status: satisfied  # aca1
+  remove:  # aca1
+    tags: [awaits_bakeoff_validation]  # aca1
+- op: discuss  # 11cc
+  at: '2026-06-20T19:49:27Z'  # 11cc
+  by: agent  # 11cc
+  actor: jgstern_agent  # 11cc
+  clock: 17  # 11cc
+  nonce: 11cc  # 11cc
+  message: "SATISFIED across every callable-emitting analyzer (two PRs on origin/dev). PR #4245 (538d5e64e6): homoiconic head-symbol CC walker (_HOMOICONIC_SPECS + _compute_homoiconic_cyclomatic_complexity in core/analyze/cyclomatic.py, dispatched ahead of the node-type walker) wired clojure/commonlisp/scheme/racket/elixir (common) + fennel/janet (extended1) — their control flow is S-expression/call nodes keyed by head-symbol text, not node type, so a BRANCH_NODE_TYPES entry could not see them. Brought the count to 67 languages. PR #4246 (c9f528aa63): the closure re-probe found two residual gaps the per-language sweeps missed — cmake function()/macro() (node-type path: BRANCH_NODE_TYPES cmake={if_command,elseif_command,foreach_command,while_command}) and jupyter notebook Python cells (reuse the py.py Python-AST walkers). CLOSURE RE-PROBE: a static audit enumerated all 86 analyzer modules emitting a function-like Symbol.kind and cross-referenced compute_cyclomatic_complexity wiring; the 8 unwired real analyzers were empirically triaged (run analyzer on a branchy fixture, observe CC) yielding 2 REAL gaps (cmake, jupyter, now fixed) + 6 documented N/A: make (define body flattens to one opaque raw_text node, no control-flow AST), play_routes (single-line route-DSL rows), rust_scip (external SCIP index, no tree-sitter AST), qml + gnuplot (regex line-scanners, no parser), twig macro (body if/for are flat sibling symbols, macro node base-1). The other ~27 static-audit hits are linkers/core-infra that filter or reference kinds, not source-callable emitters. BEHAVIORAL EVIDENCE (live analyzer runs on branchy fixtures, all None pre-fix): cmake my_func CC=5/LOC=15, my_macro CC=3/LOC=8, simple_func CC=1/LOC=3; jupyter classify CC=8/LOC=11, Calc.run CC=3/LOC=7; homoiconic 21 real-grammar per-callable tests (clojure classify=6/process=9, elixir Demo.classify=4, janet process=7, fennel handle=4, etc.) all matched discovery-predicted values; plus the prior 60-language CC suites. check-package-coverage core/common/extended/mainstream all 100% in isolation. The original filed repro (dogfood per-language CC%: non-Python at 0%) is resolved — every callable-emitting language now populates non-null CC/LOC when a control-flow-bearing source AST is available; the 6 no-AST/single-expr constructs are conservative documented N/A. Removed awaits_bakeoff_validation: the closure rests on deterministic per-language unit tests + live repro, not a bakeoff metric."  # 11cc

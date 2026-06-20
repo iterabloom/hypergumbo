@@ -1,0 +1,21 @@
+- op: create  # 69ba
+  at: '2026-06-20T06:56:44Z'  # 69ba
+  by: agent  # 69ba
+  actor: jgstern_agent  # 69ba
+  clock: 1  # 69ba
+  nonce: 69ba  # 69ba
+  data:  # 69ba
+    kind: work_item  # 69ba
+    title: "auto-pr: fall back to branch-push + API PR-create when AGit proc-receive fails (desync resilience)"  # 69ba
+    status: needs_human_review  # 69ba
+    priority: 2  # 69ba
+    parent:  # 69ba
+    tags:  # 69ba
+    - ci_infrastructure  # 69ba
+    - developer_experience  # 69ba
+    isbefore: []  # 69ba
+    duplicate_of: []  # 69ba
+    not_duplicate_of: []  # 69ba
+    pr_ref:  # 69ba
+    description: "All merge friction in the 2026-06-20 session traced to one root cause: Codeberg's recurring 'database representation out of synchronization' desync breaks AGit's proc-receive hook (which does DB writes to create the PR on a refs/for/dev push), producing 504s, 'Internal Server Error / fail to run proc-receive hook', phantom/closed PRs, and 405 merge-desyncs. A PLAIN branch push (refs/heads/<branch>, post-receive only) is resilient AND its post-receive recomputes the DB representation, clearing the desync (the banner's own 'push a commit' remedy). Empirically: after one plain branch push, the subsequent AGit push + merge worked and the banner cleared. PROPOSAL: when auto-pr's AGit push returns a proc-receive Internal Server Error (or repeated 504s), fall back to (1) plain 'git push origin HEAD:refs/heads/<branch>', then (2) create the PR via the Forgejo API (POST /repos/.../pulls) using the approved forgejo-api.sh lib, then (3) proceed to the normal CI-poll + merge. This makes auto-pr desync-resilient instead of routing every merge through the one path the desync breaks. GOVERNANCE: auto-pr + forgejo-api.sh are governance files; needs human approval before implementation. See agent_notes + this session's transcript for the empirical evidence."  # 69ba
+    fields: {}  # 69ba
