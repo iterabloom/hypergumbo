@@ -3998,6 +3998,128 @@ function greet(name: string): string {
         assert "name: string" in as_dict["signature"]
 
 
+class TestJsTsSignatureParityINVgolap:
+    """INV-golap: JS function/method nodes must populate ``signature`` at
+    parity with TypeScript.
+
+    The original "0/10 JS vs 25/26 TS" asymmetry was stale for ordinary
+    constructs (the signature code path was added after the measuring pass).
+    The residual real gap was route-handler pseudo-symbols: the inline
+    handler emit site created a ``kind="function"`` Symbol without ever
+    calling ``_extract_jsts_signature``, leaving ``signature=None`` even
+    though ``(req, res)`` is right there on the handler node. These tests
+    lock in parity so the closure cannot silently regress.
+    """
+
+    # Construct families that the analyzer extracts as named function/method
+    # symbols (generators / bare function-expressions are separately tracked).
+    _JS_CONSTRUCTS = """
+function fd(a, b) { return a; }
+const ac = (a, b) => a;
+async function af(a) { return a; }
+const o = { om(a) { return a; } };
+export function ef(a) { return a; }
+export const eca = (a) => a;
+export default function edf(a) { return a; }
+class C {
+  m(a) { return a; }
+  static sm(a) { return a; }
+  async am(a) { return a; }
+  get g() { return 1; }
+  set s(v) { this._v = v; }
+}
+"""
+    _TS_CONSTRUCTS = """
+function fd(a: number, b: string): number { return a; }
+const ac = (a: number, b: string): number => a;
+async function af(a: number): Promise<number> { return a; }
+const o = { om(a: number): number { return a; } };
+export function ef(a: number): number { return a; }
+export const eca = (a: number): number => a;
+export default function edf(a: number): number { return a; }
+class C {
+  m(a: number): number { return a; }
+  static sm(a: number): number { return a; }
+  async am(a: number): Promise<number> { return a; }
+  get g(): number { return 1; }
+  set s(v: number) { this._v = v; }
+}
+"""
+
+    _FUNC_KINDS = ("function", "method", "getter", "setter")
+
+    def _funcs(self, result):
+        return [s for s in result.symbols if s.kind in self._FUNC_KINDS]
+
+    def test_js_extracted_constructs_all_populate_signature(self, tmp_path: Path) -> None:
+        """Every extracted JS function/method/getter/setter has a signature."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "mod.js").write_text(self._JS_CONSTRUCTS)
+        funcs = self._funcs(analyze_javascript(tmp_path))
+        assert funcs  # sanity: constructs were extracted
+        nulls = [(f.kind, f.name) for f in funcs if not f.signature]
+        assert not nulls, f"JS symbols missing signature: {nulls}"
+
+    def test_ts_extracted_constructs_all_populate_signature(self, tmp_path: Path) -> None:
+        """TypeScript parity baseline: every extracted node has a signature."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "mod.ts").write_text(self._TS_CONSTRUCTS)
+        funcs = self._funcs(analyze_javascript(tmp_path))
+        assert funcs
+        nulls = [(f.kind, f.name) for f in funcs if not f.signature]
+        assert not nulls, f"TS symbols missing signature: {nulls}"
+
+    def test_js_ts_signature_population_at_parity(self, tmp_path: Path) -> None:
+        """JS and TS populate signature on the SAME set of construct names."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        js_dir = tmp_path / "js"
+        js_dir.mkdir()
+        (js_dir / "mod.js").write_text(self._JS_CONSTRUCTS)
+        ts_dir = tmp_path / "ts"
+        ts_dir.mkdir()
+        (ts_dir / "mod.ts").write_text(self._TS_CONSTRUCTS)
+
+        js_named = {f.name for f in self._funcs(analyze_javascript(js_dir)) if f.signature}
+        ts_named = {f.name for f in self._funcs(analyze_javascript(ts_dir)) if f.signature}
+        assert js_named == ts_named, (
+            f"signature-population asymmetry: JS-only={js_named - ts_named}, "
+            f"TS-only={ts_named - js_named}"
+        )
+
+    def test_route_handler_inline_arrow_populates_signature(self, tmp_path: Path) -> None:
+        """Express inline arrow handler gets a signature from its (req, res)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "const app = require('express')();\n"
+            "app.get('/health', (req, res) => { res.json({ ok: 1 }); });\n"
+        )
+        handlers = [
+            s for s in analyze_javascript(tmp_path).symbols
+            if s.kind == "function" and s.meta and s.meta.get("http_method") == "GET"
+        ]
+        assert len(handlers) == 1
+        assert handlers[0].signature == "(req, res)"
+
+    def test_route_handler_function_expression_populates_signature(self, tmp_path: Path) -> None:
+        """Express named-function-expression handler gets a signature."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(
+            "const app = require('express')();\n"
+            "app.post('/x', function doPost(req, res) { res.send('ok'); });\n"
+        )
+        handlers = [
+            s for s in analyze_javascript(tmp_path).symbols
+            if s.kind == "function" and s.meta and s.meta.get("http_method") == "POST"
+        ]
+        assert len(handlers) == 1
+        assert handlers[0].signature == "(req, res)"
+
+
 class TestNamespaceImports:
     """Tests for namespace import tracking and resolution."""
 

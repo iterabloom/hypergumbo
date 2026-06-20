@@ -814,7 +814,10 @@ def _extract_jsts_signature(
             # Single parameter without parens: x => x
             params_node = _find_child_by_field(node, "parameter")
         return_type_node = _find_child_by_field(node, "return_type")
-    elif node.type in ("method_definition", "function"):
+    elif node.type in ("method_definition", "function", "function_expression"):
+        # ``function`` / ``function_expression`` cover both anonymous and named
+        # function expressions used as values — e.g. Express route handlers
+        # ``app.get('/x', function h(req, res) {})`` (INV-golap route-handler gap).
         params_node = _find_child_by_field(node, "parameters")
         return_type_node = _find_child_by_field(node, "return_type")
     else:
@@ -3251,6 +3254,11 @@ def _extract_symbols(
                             start_col=handler_node.start_point[1],
                             end_col=handler_node.end_point[1],
                         )
+                        # INV-golap: the inline handler IS a real function node
+                        # (arrow / function / function_expression), so extract
+                        # its signature like any other function symbol — the
+                        # earlier omission left route handlers as the lone
+                        # null-signature function|method nodes vs TS parity.
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                             name=name,
@@ -3262,6 +3270,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
                             meta={"route_path": route_path, "http_method": http_method} if route_path else None,
+                            signature=_extract_jsts_signature(handler_node, source),
                             lines_of_code=span.end_line - span.start_line + 1,
                         )
                         symbols.append(symbol)
