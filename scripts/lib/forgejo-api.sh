@@ -229,6 +229,96 @@ find_open_pr() {
 }
 
 # ------------------------------------------------------------------
+# create_pr HEAD BASE TITLE BODY
+#   Create a pull request via the Forgejo API (POST /pulls). Used by
+#   auto-pr's WI-hubod desync fallback: when the AGit (refs/for) proc-receive
+#   push fails under a Codeberg DB desync but a plain branch push succeeds,
+#   the PR can no longer be created by the push itself, so we create it from
+#   the freshly-pushed branch ref via the API instead.
+#   Sets CREATED_PR_NUM on success. Returns 1 on failure.
+#   Test seam: AUTOPR_TEST_CREATE_PR=<num> returns that number without an
+#   API call; AUTOPR_TEST_CREATE_PR=fail simulates an API failure.
+# ------------------------------------------------------------------
+create_pr() {
+	local head="$1" base="$2" title="$3" body="$4"
+	CREATED_PR_NUM=""
+
+	if [[ -n "${AUTOPR_TEST_CREATE_PR:-}" ]]; then
+		if [[ "$AUTOPR_TEST_CREATE_PR" == "fail" ]]; then
+			return 1
+		fi
+		CREATED_PR_NUM="$AUTOPR_TEST_CREATE_PR"
+		return 0
+	fi
+
+	local payload
+	payload=$(python3 -c "import json,sys; print(json.dumps({'title': sys.argv[1], 'body': sys.argv[2], 'head': sys.argv[3], 'base': sys.argv[4]}))" \
+		"$title" "$body" "$head" "$base") || return 1
+
+	if ! api_post "$API_BASE/pulls" "$payload"; then
+		return 1
+	fi
+
+	CREATED_PR_NUM=$(echo "$API_RESPONSE" | json_field "number")
+	if [[ -z "$CREATED_PR_NUM" || "$CREATED_PR_NUM" == "None" ]]; then
+		return 1
+	fi
+	return 0
+}
+
+# ------------------------------------------------------------------
+# _merge_failure_is_desync HTTP_CODE RESPONSE
+#   True (returns 0) when a failed merge response matches the signature of
+#   Codeberg's recurring DB desync on the merge endpoint — HTTP 405 / 000 /
+#   504, a "Please try again later" body, or a proc-receive failure. Used by
+#   do_merge (WI-hubod) to decide whether a plain-branch-push DB resync +
+#   one merge retry is worth attempting before giving up.
+# ------------------------------------------------------------------
+_merge_failure_is_desync() {
+	local http_code="$1" response="$2"
+	case "$http_code" in
+	405 | 000 | 500 | 502 | 503 | 504) return 0 ;;
+	esac
+	echo "$response" | grep -qiE "please try again later|proc-receive|database representation out of sync|fail to run proc-receive"
+}
+
+# ------------------------------------------------------------------
+# _attempt_desync_resync_push
+#   One plain branch push (refs/heads/<current-branch>) whose post-receive
+#   hook recomputes Codeberg's DB representation, clearing the desync that
+#   405s the merge endpoint (WI-hubod). Returns 0 if a resync push was
+#   performed, 1 if it could not be (detached HEAD / protected branch /
+#   push rejected). Never pushes to a protected branch (dev/main).
+#   Test seam: AUTOPR_TEST_RESYNC_PUSH=ok|fail bypasses the real push.
+# ------------------------------------------------------------------
+_attempt_desync_resync_push() {
+	case "${AUTOPR_TEST_RESYNC_PUSH:-}" in
+	ok) return 0 ;;
+	fail) return 1 ;;
+	esac
+
+	local cur_branch
+	cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+	if [[ -z "$cur_branch" || "$cur_branch" == "HEAD" || "$cur_branch" == "dev" || "$cur_branch" == "main" ]]; then
+		return 1
+	fi
+
+	local push_remote="origin" push_user="${FORGEJO_USER:-}" push_token="${FORGEJO_TOKEN:-}"
+	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
+		push_remote="selfh"
+		push_user="${SELFHOSTED_FORGEJO_USER:-$push_user}"
+		push_token="${SELFHOSTED_FORGEJO_TOKEN:-$push_token}"
+	fi
+
+	echo "   🔁 WI-hubod: plain branch push to resync Codeberg DB, then retry merge..." >&2
+	if ! git -c credential.helper="!f() { echo username=$push_user; echo password=$push_token; }; f" \
+		push "$push_remote" "HEAD:refs/heads/$cur_branch" >&2; then
+		return 1
+	fi
+	return 0
+}
+
+# ------------------------------------------------------------------
 # find_merged_pr TYPE VALUE
 #   Find a merged (state=closed AND merged=true) PR by "sha" or "branch".
 #   Used by auto-pr's WI-bahuf already-merged detection: when a refs/for/
@@ -1349,6 +1439,32 @@ do_merge() {
 				rm -f "$tmp_file"
 				return 0
 			fi
+
+			# WI-hubod: a 405/000/5xx here is usually a Codeberg DB desync on
+			# the merge endpoint (the ref FF often lands server-side anyway —
+			# the "reports-failure-but-succeeds" pattern). One plain branch
+			# push recomputes the DB representation; retry the merge once.
+			if [[ "${_autopr_merge_resynced:-}" != "true" ]] \
+			   && _merge_failure_is_desync "$merge_http_code" "$merge_response"; then
+				_autopr_merge_resynced=true
+				if _attempt_desync_resync_push; then
+					# Retry the merge, then verify by EITHER the PR record OR git
+					# ground truth. Under an active desync the PR `merged` flag
+					# lags even when the ref FF-landed server-side (the
+					# "reports-failure-but-succeeds" pattern this block targets),
+					# so an API-only check (_check_pr_merged) can miss the
+					# success — mirror the INV-lovih _pr_landed_in_base
+					# git-ancestor fallback the post-rebase path already uses.
+					api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload" || true
+					if _check_pr_merged "$pr_num" \
+					   || _pr_landed_in_base "$orig_sha" "${BASE_BRANCH:-dev}"; then
+						echo "✅ Merged after DB resync!"
+						rm -f "$tmp_file"
+						return 0
+					fi
+				fi
+			fi
+
 			echo "❌ Merge failed after $max_retries attempts (last HTTP $merge_http_code)"
 			echo "Response: $merge_response"
 			print_desync_recovery_hint
