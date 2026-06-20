@@ -342,3 +342,69 @@ fn main() {
         assert call_edges[0].confidence == 0.50
         assert ":unresolved" in call_edges[0].dst
         assert "unknown_function" in call_edges[0].dst
+
+
+class TestVCyclomaticComplexity:
+    """INV-loguk slice C: callable V symbols carry non-null CC + LOC.
+    Real-grammar verification (if_expression/for_statement +
+    expression_case/default_case match arms + &&/||)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "f.v").write_text("""module main
+
+fn classify(n int) int {
+    mut r := 0
+    if n < 0 && n > -100 {
+        r = 1
+    } else if n == 0 {
+        r = 2
+    }
+    for i := 0; i < n; i++ {
+        r += i
+    }
+    match n {
+        1 { r = 10 }
+        else { r = 20 }
+    }
+    return r
+}
+""")
+        result = analyze_v(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "classify")
+        # base 1 + 2 if_expression + && + for + expression_case + default_case = 7
+        assert fn.cyclomatic_complexity == 7
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "g.v").write_text("module main\n\nfn g(x int) int {\n    return x\n}\n")
+        result = analyze_v(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        (tmp_path / "m.v").write_text("""module main
+
+struct Point {
+    x int
+    y int
+}
+
+fn f(x int) int {
+    if x > 0 {
+        return 1
+    }
+    return 0
+}
+""")
+        result = analyze_v(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

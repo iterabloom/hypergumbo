@@ -274,3 +274,58 @@ class TestAnalyzeHaxe:
         assert priv is not None
         assert pub.meta["is_public"] is True
         assert priv.meta["is_public"] is False
+
+
+class TestHaxeCyclomaticComplexity:
+    """INV-loguk slice C: callable Haxe symbols carry non-null CC + LOC.
+    Real-grammar verification (conditional_statement + case_statement arms).
+    NOTE: this grammar has no loop node types (for/while surface only as a
+    generic `keyword` node, deliberately NOT counted to avoid over-counting),
+    so loops do not contribute to CC — CC stays non-null but conservative."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "C.hx").write_text("""class C {
+  function f(a:Int, b:Int):Int {
+    var x = 0;
+    if (a > 0 && b > 0) { x = 1; } else { x = 2; }
+    for (i in 0...a) { x += i; }
+    while (x > 0) { x -= 1; }
+    switch (a) {
+      case 0: x = 1;
+      case 1: x = 2;
+      default: x = 3;
+    }
+    return x;
+  }
+}
+""")
+        result = analyze_haxe(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and "f" in s.name)
+        # base 1 + 1 conditional_statement + 3 case_statement = 5
+        # (for/while are `keyword` nodes, intentionally uncounted)
+        assert fn.cyclomatic_complexity == 5
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "G.hx").write_text("class G {\n  function g(x:Int):Int { return x; }\n}\n")
+        result = analyze_haxe(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and "g" in s.name)
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        (tmp_path / "M.hx").write_text("""class Box {
+  function get(x:Int):Int { if (x > 0) { return x; } return 0; }
+}
+""")
+        result = analyze_haxe(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

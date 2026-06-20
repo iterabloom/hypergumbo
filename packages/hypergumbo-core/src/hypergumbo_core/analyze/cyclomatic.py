@@ -258,6 +258,73 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
         "if_statement", "for_statement", "while_statement", "do_statement",
         "case_statement", "conditional_expression", "catch_clause",
     }),
+    # INV-loguk slice C (extended1-package batch 3). Node-type names verified by
+    # dumping each real grammar (see each owning analyzer's package tests).
+    # Zig: `switch_case` = each arm incl. `else =>` default; else-if is a nested
+    # if_statement (else_clause wrapper not counted). and/or short-circuit via
+    # binary_expression.
+    "zig": frozenset({
+        "if_statement", "for_statement", "while_statement", "switch_case",
+    }),
+    # Gleam (pure functional): the only control flow is `case`. `case_clause` =
+    # each match arm; `case_clause_guard` = a guarded arm's extra predicate
+    # (a real fall-through path, counted like haskell `guards`). &&/|| via
+    # binary_expression.
+    "gleam": frozenset({
+        "case_clause", "case_clause_guard",
+    }),
+    # Nim: tree-sitter-nim reuses keyword strings (`if`/`for`/`while`/`case`/
+    # `try`) as BOTH named construct nodes AND anonymous keyword tokens with the
+    # same `.type`, so counting those primaries would double-count (same
+    # collision class as perl `elsif`, haskell `case`). The collision-free arm
+    # nodes are counted instead: `elif_branch` (own condition), `of_branch`
+    # (case arm), `except_branch` (try handler). `else_branch`/`finally_branch`
+    # excluded. Conservative: a lone if/for/while with no elif/of/except reports
+    # CC=1. and/or short-circuit via `infix_expression` (added below).
+    "nim": frozenset({
+        "elif_branch", "of_branch", "except_branch",
+    }),
+    # D (C-family): `case_statement` = each case incl. default; do-while =
+    # `do_statement`; ternary = `ternary_expression`. Like Dart, D's &&/|| are
+    # dedicated `logical_and`/`logical_or_expression` nodes (one per operator),
+    # counted as branch nodes rather than via the operator scan.
+    "d": frozenset({
+        "if_statement", "for_statement", "while_statement", "do_statement",
+        "case_statement", "ternary_expression", "logical_and_expression",
+        "logical_or_expression",
+    }),
+    # V: expression-oriented if (`if_expression`); a single `for_statement`
+    # subsumes C-style/for-in/while forms. Match arms are `expression_case` +
+    # `default_case` (Go-family node names; match_expression wrapper not
+    # counted). &&/|| short-circuit via binary_expression.
+    "v": frozenset({
+        "if_expression", "for_statement", "expression_case", "default_case",
+    }),
+    # Hack (Java/PHP-shaped): `switch_case`/`switch_default` arms (default
+    # counted); try via `catch_clause`. An if/else-if/else chain is one flat
+    # `if_statement` in this grammar (else-if not nested), so it counts once.
+    # &&/||/?? short-circuit via binary_expression.
+    "hack": frozenset({
+        "if_statement", "for_statement", "foreach_statement", "while_statement",
+        "do_statement", "switch_case", "switch_default", "catch_clause",
+        "ternary_expression",
+    }),
+    # Haxe: this grammar is degenerate — `else if`/do-while/try do not parse,
+    # and for/while have NO dedicated node type (they surface only as a generic
+    # `keyword` node, deliberately NOT counted to avoid over-counting). So only
+    # `conditional_statement` (if) and `case_statement` (switch arms incl.
+    # default) are counted; loops are uncounted (CC still non-null). &&/|| are
+    # named `operator` children unreachable by the scan — no short-circuit.
+    "haxe": frozenset({
+        "conditional_statement", "case_statement",
+    }),
+    # Odin: `else_if_clause` carries its own condition (counted); `else_clause`
+    # excluded. `switch_case` = each arm incl. the value-less default `case:`.
+    # A single `for_statement` covers C-style and condition-only loops. &&/||
+    # short-circuit via binary_expression.
+    "odin": frozenset({
+        "if_statement", "else_if_clause", "for_statement", "switch_case",
+    }),
 }
 
 
@@ -303,6 +370,19 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     # ``logical_expression`` (added to _BINARY_EXPR_NODE_TYPES below). The
     # non-short-circuiting ``-xor`` is excluded by omission.
     "powershell": frozenset({"-and", "-or"}),
+    # INV-loguk slice C batch 3 (extended1). Zig/V/Odin/Hack short-circuit live
+    # as unnamed children of ``binary_expression``; Zig uses word-forms
+    # ``and``/``or``. Gleam uses symbolic ``&&``/``||``. Hack adds ``??``
+    # (null-coalesce, short-circuiting). Nim's ``and``/``or`` live in
+    # ``infix_expression`` (added to _BINARY_EXPR_NODE_TYPES below). (D and Haxe
+    # are absent — D counts logical_*_expression branch nodes; Haxe's operators
+    # are unreachable named children.)
+    "zig": frozenset({"and", "or"}),
+    "gleam": frozenset({"&&", "||"}),
+    "nim": frozenset({"and", "or"}),
+    "v": frozenset({"&&", "||"}),
+    "hack": frozenset({"&&", "||", "??"}),
+    "odin": frozenset({"&&", "||"}),
 }
 
 
@@ -318,6 +398,10 @@ _BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
     "binary",             # Ruby (tree-sitter-ruby names it ``binary``)
     "binary_op_expr",     # Erlang (andalso / orelse live here, INV-loguk slice C)
     "logical_expression", # PowerShell (-and / -or live here, INV-loguk slice C)
+    "infix_expression",   # Nim (and / or live here, INV-loguk slice C batch 3).
+                          #   Scala also produces infix_expression but its
+                          #   operators are NAMED children and it is absent from
+                          #   SHORT_CIRCUIT_OPS, so the scan never runs for it.
 })
 
 

@@ -691,3 +691,59 @@ void run() { add(1, 2); }
             f"Dotted module import should be resolved, edges: {[e.dst for e in math_imports]}"
         )
         assert any("pkg/math.d" in e.dst or "pkg.math" in e.dst for e in resolved)
+
+
+class TestDCyclomaticComplexity:
+    """INV-loguk slice C: callable D symbols carry non-null CC + LOC.
+    Real-grammar verification (if/for/while/do/case/ternary +
+    logical_and/or_expression short-circuit nodes, Dart-style)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "f.d").write_text("""module testmod;
+int compute(int x, int y) {
+    int result = 0;
+    if (x > 0 && y > 0) { result = x + y; }
+    else if (x < 0 || y < 0) { result = x - y; }
+    else { result = 0; }
+    for (int i = 0; i < x; i++) { result += i; }
+    while (result > 100) { result -= 10; }
+    do { result += 1; } while (result < 5);
+    switch (x) {
+        case 1: result = 1; break;
+        case 2: result = 2; break;
+        default: result = -1;
+    }
+    int t = (x > y) ? x : y;
+    return result;
+}
+""")
+        result = analyze_d(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "compute")
+        # base 1 + 2 if + && + || + for + while + do + 3 case + ternary = 12
+        assert fn.cyclomatic_complexity == 12
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "g.d").write_text("module m;\nint g(int x) { return x; }\n")
+        result = analyze_d(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        (tmp_path / "m.d").write_text("""module m;
+class Box {
+    int get(int x) { if (x > 0) { return x; } return 0; }
+}
+""")
+        result = analyze_d(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ("function", "method")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ("function", "method"):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

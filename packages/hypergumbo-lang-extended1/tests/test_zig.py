@@ -553,3 +553,62 @@ class TestZigSignatureExtraction:
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "getAnswer"]
         assert len(funcs) == 1
         assert funcs[0].signature == "() i32"
+
+
+class TestZigCyclomaticComplexity:
+    """INV-loguk slice C: callable Zig symbols carry non-null CC + LOC.
+    Real-grammar verification (if/for/while/switch_case + and/or)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "f.zig").write_text("""fn complex(x: i32, n: i32, tag: u8) i32 {
+    var total: i32 = 0;
+    if (x > 0 and n > 0) {
+        total += 1;
+    } else if (x < 0 or n < 0) {
+        total -= 1;
+    }
+    var i: i32 = 0;
+    while (i < n) : (i += 1) {
+        total += i;
+    }
+    for (0..10) |j| {
+        total += @intCast(j);
+    }
+    switch (tag) {
+        0 => total += 1,
+        else => total += 2,
+    }
+    return total;
+}
+""")
+        result = analyze_zig(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "complex")
+        # base 1 + 2 if + and + or + while + for + 2 switch_case = 9
+        assert fn.cyclomatic_complexity == 9
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "g.zig").write_text("fn g(x: i32) i32 { return x; }\n")
+        result = analyze_zig(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        (tmp_path / "m.zig").write_text("""const Point = struct {
+    x: i32,
+    fn dist(self: Point) i32 { if (self.x > 0) { return self.x; } return 0; }
+};
+fn top(x: i32) i32 { return x; }
+""")
+        result = analyze_zig(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ("function", "method")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ("function", "method"):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

@@ -277,3 +277,70 @@ class TestAnalyzeOdin:
         assert vector is not None
         assert vector.meta is not None
         assert vector.meta.get("field_count") == 3
+
+
+class TestOdinCyclomaticComplexity:
+    """INV-loguk slice C: callable Odin symbols carry non-null CC + LOC.
+    Real-grammar verification (if/else_if_clause/for/switch_case + &&/||)."""
+
+    def test_branchy_proc_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "f.odin").write_text("""package main
+
+branchy :: proc(x: int) -> int {
+    total := 0
+    if x > 0 && x < 10 {
+        total = 1
+    } else if x < 0 {
+        total = 2
+    }
+    for i := 0; i < x; i += 1 {
+        total += i
+    }
+    switch x {
+    case 1:
+        total = 100
+    case:
+        total = 200
+    }
+    return total
+}
+""")
+        result = analyze_odin(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "branchy")
+        # base 1 + if + else_if_clause + && + for + 2 switch_case = 7
+        assert fn.cyclomatic_complexity == 7
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_proc_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "g.odin").write_text("package main\n\nsimple :: proc() {\n}\n")
+        result = analyze_odin(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "simple")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        (tmp_path / "m.odin").write_text("""package main
+
+Point :: struct {
+    x: int,
+    y: int,
+}
+
+f :: proc(x: int) -> int {
+    if x > 0 {
+        return 1
+    }
+    return 0
+}
+""")
+        result = analyze_odin(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

@@ -336,3 +336,65 @@ class TestUnresolvedCalls:
         assert call_edges[0].confidence == 0.50
         assert ":unresolved" in call_edges[0].dst
         assert "unknown_function" in call_edges[0].dst
+
+
+class TestGleamCyclomaticComplexity:
+    """INV-loguk slice C: callable Gleam symbols carry non-null CC + LOC.
+    Real-grammar verification (case_clause arms + case_clause_guard + &&/||).
+    Gleam is purely functional — the only control flow is `case`."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "f.gleam").write_text("""pub fn check(a: Bool, b: Bool, c: Int) -> Int {
+  case a && b {
+    True -> {
+      case c {
+        0 -> 10
+        n if n < 5 -> 20
+        _ -> 30
+      }
+    }
+    False ->
+      case c > 0 || c < 100 {
+        True -> 1
+        False -> 0
+      }
+  }
+}
+""")
+        result = analyze_gleam(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "check")
+        # base 1 + 7 case_clause + 1 case_clause_guard + && + || = 11
+        assert fn.cyclomatic_complexity == 11
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "g.gleam").write_text("pub fn g(x: Int) -> Int {\n  x\n}\n")
+        result = analyze_gleam(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        (tmp_path / "m.gleam").write_text("""pub type Shape {
+  Circle(Float)
+  Square(Float)
+}
+
+pub fn area(s: Int) -> Int {
+  case s {
+    0 -> 0
+    _ -> 1
+  }
+}
+""")
+        result = analyze_gleam(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

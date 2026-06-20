@@ -52,6 +52,7 @@ from hypergumbo_core.discovery import classify_dot_d_file, find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -86,6 +87,9 @@ def _make_symbol(
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
+    # INV-loguk: CC only for callables; module/struct/class/interface funnel
+    # through this same helper and would otherwise aggregate their subtrees.
+    _is_callable = kind in ("function", "method")
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -111,6 +115,10 @@ def _make_symbol(
         ),
         signature=signature,
         meta=meta,
+        cyclomatic_complexity=(
+            compute_cyclomatic_complexity(node, "d") if _is_callable else None
+        ),
+        lines_of_code=(end_line - start_line + 1) if _is_callable else None,
     )
 
 

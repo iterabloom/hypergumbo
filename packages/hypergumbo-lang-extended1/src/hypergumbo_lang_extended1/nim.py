@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -80,6 +81,9 @@ def _make_symbol(
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
+    # INV-loguk: CC only for callables; the "type" kind funnels through this
+    # same helper and would otherwise aggregate nested proc branches.
+    _is_callable = kind in ("function", "method")
     sym_id = make_symbol_id("nim", rel_path, start_line, end_line, name, kind)
     span = Span(
         start_line=start_line,
@@ -108,6 +112,10 @@ def _make_symbol(
         ),
         signature=signature,
         meta=meta,
+        cyclomatic_complexity=(
+            compute_cyclomatic_complexity(node, "nim") if _is_callable else None
+        ),
+        lines_of_code=(end_line - start_line + 1) if _is_callable else None,
     )
 
 

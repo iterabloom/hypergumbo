@@ -330,3 +330,66 @@ proc processText(text: string) =
         proc_calls = [e for e in call_edges if "processText" in e.src]
         # Should have at least the echo call
         assert len(proc_calls) >= 1
+
+
+class TestNimCyclomaticComplexity:
+    """INV-loguk slice C: callable Nim symbols carry non-null CC + LOC.
+    Real-grammar verification of the collision-free arm nodes (elif_branch /
+    of_branch / except_branch) + and/or short-circuit via infix_expression.
+    Note: primary if/for/while/case/try are NOT counted (keyword/named-node
+    .type collision would double-count), so CC is a conservative estimate."""
+
+    def test_branchy_proc_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "f.nim").write_text("""proc classify(n: int): string =
+  if n > 0 and n < 10:
+    result = "small"
+  elif n >= 10 or n == -1:
+    result = "big"
+  else:
+    result = "other"
+  case n
+  of 1:
+    echo "one"
+  of 2:
+    echo "two"
+  else:
+    echo "many"
+  try:
+    echo n
+  except ValueError:
+    echo "err"
+""")
+        result = analyze_nim(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "classify")
+        # base 1 + elif + 2 of_branch + except + and + or = 7
+        assert fn.cyclomatic_complexity == 7
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_proc_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "g.nim").write_text("proc g(x: int): int =\n  return x\n")
+        result = analyze_nim(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_type_null(self, tmp_path: Path) -> None:
+        (tmp_path / "m.nim").write_text("""type
+  Color = enum
+    Red, Green, Blue
+
+proc f(x: int): int =
+  if x > 0:
+    return 1
+  return 0
+""")
+        result = analyze_nim(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ("function", "method")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        for s in result.symbols:
+            if s.kind not in ("function", "method"):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

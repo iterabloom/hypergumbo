@@ -383,3 +383,74 @@ class Test {
         # $this alone should not create an edge
         this_edges = [e for e in result.edges if e.dst == "$this"]
         assert len(this_edges) == 0
+
+
+class TestHackCyclomaticComplexity:
+    """INV-loguk slice C: callable Hack symbols (function + method) carry
+    non-null CC + LOC. Real-grammar verification (if/for/foreach/while/do/
+    switch_case/switch_default/catch/ternary + &&/||/??). An if/else-if/else
+    chain is one flat if_statement in this grammar, so it counts once."""
+
+    def test_branchy_function_and_method(self, tmp_path: Path) -> None:
+        make_hack_file(tmp_path, "f.hack", """<?hh
+namespace App;
+
+function classify(int $x, int $y): string {
+  if ($x > 0 && $y > 0) {
+    return "both";
+  } else if ($x > 0 || $y > 0) {
+    return "one";
+  } else {
+    return "none";
+  }
+}
+
+class Calculator {
+  public function compute(int $n): int {
+    $total = 0;
+    for ($i = 0; $i < $n; $i++) { $total += $i; }
+    while ($total > 100) { $total -= 10; }
+    switch ($total) {
+      case 0: return 0;
+      case 1: return 1;
+      default: return $total;
+    }
+  }
+}
+""")
+        result = analyze_hack(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and "classify" in s.name)
+        # base 1 + 1 if_statement (flat chain) + && + || = 4
+        assert fn.cyclomatic_complexity == 4
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+        m = next(s for s in result.symbols
+                 if s.kind == "method" and "compute" in s.name)
+        # base 1 + for + while + 2 switch_case + switch_default = 6
+        assert m.cyclomatic_complexity == 6
+        assert m.lines_of_code is not None
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        make_hack_file(tmp_path, "g.hack", "<?hh\nfunction g(int $x): int { return $x; }\n")
+        result = analyze_hack(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and "g" in s.name)
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        make_hack_file(tmp_path, "m.hack", """<?hh
+namespace App;
+class Box {
+  public function get(int $x): int { if ($x > 0) { return $x; } return 0; }
+}
+""")
+        result = analyze_hack(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ("function", "method")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ("function", "method"):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

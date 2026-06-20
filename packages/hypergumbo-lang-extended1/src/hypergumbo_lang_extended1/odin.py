@@ -42,6 +42,7 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -153,6 +154,8 @@ def _extract_symbols_recursive(
                 ),
                 origin=PASS_ID,
                 signature=signature,
+                cyclomatic_complexity=compute_cyclomatic_complexity(node, "odin"),
+                lines_of_code=node.end_point[0] - node.start_point[0] + 1,
             )
             analysis.symbols.append(sym)
             analysis.node_for_symbol[sym.id] = node
