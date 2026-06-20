@@ -412,3 +412,31 @@ class TestNixCallResolution:
         # Resolved calls have confidence 0.85 * lookup confidence
         assert resolved_call.confidence > 0.70
 
+
+
+class TestNixCyclomaticComplexity:
+    """INV-loguk slice C: callable nix symbols carry non-null CC + LOC.
+    Real-grammar verification (if_expression + &&/|| (bindings excluded))."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_common.nix import analyze_nix_files
+        (tmp_path / 'd.nix').write_text('let\n  classify = x:\n    if x > 10 then "big"\n    else if x > 5 && x > 7 then "medium"\n    else if x < 0 || x == -1 then "neg"\n    else "small";\n  plain = 42;\nin\n{ inherit classify; }\n')
+        result = analyze_nix_files(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        m = by.get('classify') or next(s for n, s in by.items() if n.split('.')[-1] == 'classify' or n.endswith('classify'))
+        assert m.cyclomatic_complexity == 6, m.cyclomatic_complexity
+        assert m.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_common.nix import analyze_nix_files
+        (tmp_path / 'd.nix').write_text('let\n  classify = x:\n    if x > 10 then "big"\n    else if x > 5 && x > 7 then "medium"\n    else if x < 0 || x == -1 then "neg"\n    else "small";\n  plain = 42;\nin\n{ inherit classify; }\n')
+        result = analyze_nix_files(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

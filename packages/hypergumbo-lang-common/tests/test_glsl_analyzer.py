@@ -340,3 +340,31 @@ void main() {}
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "computeNormal"]
         assert len(funcs) == 1
         assert funcs[0].signature == "(vec3 p1, vec3 p2, vec3 p3) vec3"
+
+
+class TestGlslCyclomaticComplexity:
+    """INV-loguk slice C: callable glsl symbols carry non-null CC + LOC.
+    Real-grammar verification (C-family branches + &&/||)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_common.glsl import analyze_glsl_files
+        (tmp_path / 's.frag').write_text('#version 330 core\nfloat helper(float x) {\n    if (x > 0.0 && x < 1.0) { return x; }\n    else if (x < 0.0) { return -x; }\n    else { return 0.0; }\n}\nvoid straight() { return; }\n')
+        result = analyze_glsl_files(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        m = by.get('helper') or next(s for n, s in by.items() if n.split('.')[-1] == 'helper' or n.endswith('helper'))
+        assert m.cyclomatic_complexity == 4, m.cyclomatic_complexity
+        assert m.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_common.glsl import analyze_glsl_files
+        (tmp_path / 's.frag').write_text('#version 330 core\nfloat helper(float x) {\n    if (x > 0.0 && x < 1.0) { return x; }\n    else if (x < 0.0) { return -x; }\n    else { return 0.0; }\n}\nvoid straight() { return; }\n')
+        result = analyze_glsl_files(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

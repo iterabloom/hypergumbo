@@ -421,3 +421,31 @@ $font-size: 14px;
         # include Symbol dropped; uses_mixin Edge carries the relationship.
         edges = [e for e in result.edges if e.edge_type == "uses_mixin"]
         assert len(edges) == 2
+
+
+class TestScssCyclomaticComplexity:
+    """INV-loguk slice C: callable scss symbols carry non-null CC + LOC.
+    Real-grammar verification (@if/@else if/@for/@while/@each)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_common.scss import analyze_scss
+        (tmp_path / 's.scss').write_text('@function classify($x, $y) {\n  @if $x > 0 {\n    @return $x;\n  } @else if $x < 0 {\n    @return 0;\n  } @else {\n    @return $y;\n  }\n  @for $i from 1 through 3 {\n    @if $i == 2 {\n      @return $i;\n    }\n  }\n  @while $y > 0 {\n    @return $y;\n  }\n}')
+        result = analyze_scss(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('mixin', 'function')}
+        m = by.get('classify') or next(s for n, s in by.items() if n.split('.')[-1] == 'classify' or n.endswith('classify'))
+        assert m.cyclomatic_complexity == 6, m.cyclomatic_complexity
+        assert m.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_common.scss import analyze_scss
+        (tmp_path / 's.scss').write_text('@function classify($x, $y) {\n  @if $x > 0 {\n    @return $x;\n  } @else if $x < 0 {\n    @return 0;\n  } @else {\n    @return $y;\n  }\n  @for $i from 1 through 3 {\n    @if $i == 2 {\n      @return $i;\n    }\n  }\n  @while $y > 0 {\n    @return $y;\n  }\n}')
+        result = analyze_scss(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('mixin', 'function')]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('mixin', 'function'):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

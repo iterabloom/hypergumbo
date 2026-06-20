@@ -59,6 +59,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -265,6 +266,8 @@ def _extract_cuda_symbols(
                     origin=PASS_ID,
                     signature=signature,
                     meta=meta,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "cuda"),
+                    lines_of_code=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 symbol_registry[func_name.lower()] = sym

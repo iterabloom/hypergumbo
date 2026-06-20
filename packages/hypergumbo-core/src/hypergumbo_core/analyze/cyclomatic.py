@@ -462,6 +462,70 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
     # Also: the analyzer emits the type-signature node (single line), not the
     # clause body, so CC is structurally base-1 regardless.
     "agda": frozenset(),
+    # INV-loguk slice C (batch 6, shader/GPU + functional/config languages).
+    # Node-type names verified by dumping each real grammar.
+    # CUDA/GLSL/HLSL are C-family (same decision-point set as `c`): if/for/while/
+    # do/case-arm/ternary + &&/|| via binary_expression.
+    "cuda": frozenset({
+        "if_statement", "for_statement", "while_statement", "do_statement",
+        "case_statement", "conditional_expression",
+    }),
+    "glsl": frozenset({
+        "if_statement", "for_statement", "while_statement", "do_statement",
+        "case_statement", "conditional_expression",
+    }),
+    "hlsl": frozenset({
+        "if_statement", "for_statement", "while_statement", "do_statement",
+        "case_statement", "conditional_expression",
+    }),
+    # Nix (pure functional): only `if_expression` (else-if nests; no else
+    # wrapper). No loops/switch in the language. &&/|| via binary_expression.
+    "nix": frozenset({"if_expression"}),
+    # SCSS: `@if`/`@else if`/`@for`/`@while`/`@each`. `else_if_clause` carries its
+    # own condition (counted); `else_clause` wrapper excluded. and/or are
+    # unreachable (named children inside ERROR nodes), so no short-circuit.
+    "scss": frozenset({
+        "if_statement", "else_if_clause", "for_statement", "while_statement",
+        "each_statement",
+    }),
+    # Circom (Solidity-shaped): if/for/while/ternary + &&/|| via binary_expression.
+    # else-if is a nested if_statement (else is a bare keyword).
+    "circom": frozenset({
+        "if_statement", "for_statement", "while_statement", "ternary_expression",
+    }),
+    # SQL: the only control-flow node is the `case` expression (flat WHEN arms,
+    # so one count per CASE). AND/OR are named keyword children — unreachable, no
+    # short-circuit. plpgsql `$$ ... $$` bodies don't parse to structured nodes,
+    # so an IF/WHILE-heavy plpgsql function reports base CC=1 (honest gap).
+    "sql": frozenset({"case"}),
+    # Jsonnet (functional config): `conditional` (if/then/else, else-if nests);
+    # `forspec`/`ifspec` = comprehension generator/filter clauses. &&/|| are
+    # dedicated NAMED `and`/`or` nodes (Dart-style — counted as branch nodes, one
+    # per operator, NOT via the operator-token scan).
+    "jsonnet": frozenset({
+        "conditional", "and", "or", "forspec", "ifspec",
+    }),
+    # LLVM IR: count only unambiguous multi-way / exceptional / select
+    # instructions. `instruction_br` is DELIBERATELY EXCLUDED — the grammar uses
+    # one node type for BOTH conditional and unconditional branch (differ only by
+    # child count, which the walker can't inspect), and unconditional br is
+    # ubiquitous. icmp/fcmp are values, not branches (excluded). Conservative
+    # undercount of true branching; CC stays non-null.
+    "llvm_ir": frozenset({
+        "instruction_switch", "instruction_select", "instruction_indirectbr",
+        "instruction_invoke", "instruction_callbr", "instruction_catchswitch",
+    }),
+    # Wolfram: DEGENERATE grammar — If/While/For/Switch/Which/Do are ordinary
+    # `call` nodes (head + brackets), indistinguishable from any function call,
+    # so there is no countable decision-point node type (empty set, like agda).
+    # CC derives solely from short-circuit &&/|| (named `infix` nodes, added to
+    # _BINARY_EXPR_NODE_TYPES below); an If-heavy function with no &&/|| is base 1.
+    "wolfram": frozenset(),
+    # Assembly: DEGENERATE flat grammar — conditional/unconditional jumps are all
+    # `instruction` nodes distinguished only by opcode text (which the walker
+    # can't inspect), so no decision-point node type. Empty set -> base CC=1 for
+    # every label (non-null, satisfying INV-loguk).
+    "asm": frozenset(),
 }
 
 
@@ -543,6 +607,17 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     "luau": frozenset({"and", "or"}),
     "apex": frozenset({"&&", "||"}),
     "lean": frozenset({"&&", "||"}),
+    # INV-loguk slice C batch 6. CUDA/GLSL/HLSL/Circom &&/|| live in
+    # binary_expression (already a member). Nix &&/|| in binary_expression.
+    # Wolfram &&/|| live in `infix` (added to _BINARY_EXPR_NODE_TYPES below).
+    # SCSS (and/or unreachable), SQL (named keyword children), Jsonnet (and/or
+    # counted as branch nodes), LLVM IR / Asm (no short-circuit ops) get no entry.
+    "cuda": frozenset({"&&", "||"}),
+    "glsl": frozenset({"&&", "||"}),
+    "hlsl": frozenset({"&&", "||"}),
+    "nix": frozenset({"&&", "||"}),
+    "circom": frozenset({"&&", "||"}),
+    "wolfram": frozenset({"&&", "||"}),
 }
 
 
@@ -569,6 +644,10 @@ _BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
                           #   BRANCH_NODE_TYPES (walker returns None first).
     "binop_expr",         # Tcl (&&/|| live here, INV-loguk slice C batch 5)
     "binary_op",          # Lean (&&/|| live here, INV-loguk slice C batch 5)
+    "infix",              # Wolfram (&&/|| live here, INV-loguk slice C batch 6).
+                          #   Haskell/Scala/F#/PureScript also produce `infix`-
+                          #   family nodes but are absent from SHORT_CIRCUIT_OPS,
+                          #   so the scan never runs for them.
 })
 
 

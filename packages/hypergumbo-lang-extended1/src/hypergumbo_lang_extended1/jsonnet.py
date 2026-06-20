@@ -42,6 +42,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -158,6 +159,14 @@ def _extract_symbols_recursive(
                 ),
                 origin=PASS_ID,
                 meta={"param_count": param_count} if is_function else {},
+                cyclomatic_complexity=(
+                    compute_cyclomatic_complexity(node, "jsonnet")
+                    if kind == "function" else None
+                ),
+                lines_of_code=(
+                    node.end_point[0] - node.start_point[0] + 1
+                    if kind == "function" else None
+                ),
             )
             analysis.symbols.append(sym)
             analysis.node_for_symbol[sym.id] = node
@@ -205,6 +214,14 @@ def _extract_symbols_recursive(
                     "hidden": is_hidden,
                     **({"param_count": param_count} if has_params else {}),
                 },
+                cyclomatic_complexity=(
+                    compute_cyclomatic_complexity(node, "jsonnet")
+                    if kind == "method" else None
+                ),
+                lines_of_code=(
+                    node.end_point[0] - node.start_point[0] + 1
+                    if kind == "method" else None
+                ),
             )
             analysis.symbols.append(sym)
             analysis.node_for_symbol[sym.id] = node

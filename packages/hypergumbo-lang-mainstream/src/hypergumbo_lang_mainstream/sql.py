@@ -49,6 +49,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -294,6 +295,8 @@ def _extract_sql_symbols(
                     ),
                     origin=PASS_ID,
                     signature=_extract_sql_signature(node, source),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "sql"),
+                    lines_of_code=end_line - start_line + 1,
                 )
                 symbols.append(sym)
                 if node_for_symbol is not None:
@@ -322,6 +325,8 @@ def _extract_sql_symbols(
                         end_col=node.end_point[1],  # pragma: no cover
                     ),  # pragma: no cover
                     origin=PASS_ID,  # pragma: no cover
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "sql"),  # pragma: no cover
+                    lines_of_code=end_line - start_line + 1,  # pragma: no cover
                 )  # pragma: no cover
                 symbols.append(sym)  # pragma: no cover
                 if node_for_symbol is not None:  # pragma: no cover

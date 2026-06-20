@@ -45,6 +45,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -249,6 +250,8 @@ def _extract_mixin(
             "params": params,
             "param_count": len(params),
         },
+        cyclomatic_complexity=compute_cyclomatic_complexity(node, "scss"),
+        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
     )
     symbols.append(symbol)
 
@@ -298,6 +301,8 @@ def _extract_function(
             "params": params,
             "param_count": len(params),
         },
+        cyclomatic_complexity=compute_cyclomatic_complexity(node, "scss"),
+        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
     )
     symbols.append(symbol)
 

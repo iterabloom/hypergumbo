@@ -52,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -183,6 +184,13 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                             node, kind=kind, name=label_name,
                             file_stable_id=file_stable_id,
                         ),
+                        # INV-loguk: degenerate grammar -> base CC=1 for callable
+                        # (function-kind) labels; data/bss labels stay None.
+                        cyclomatic_complexity=(
+                            compute_cyclomatic_complexity(node, "asm")
+                            if kind == "function" else None
+                        ),
+                        lines_of_code=(end_line - start_line + 1) if kind == "function" else None,
                     )
                     analysis.symbols.append(sym)
                     analysis.node_for_symbol[sym.id] = node
