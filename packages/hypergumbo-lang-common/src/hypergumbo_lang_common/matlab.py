@@ -31,6 +31,7 @@ from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -154,6 +155,8 @@ def _extract_symbols_recursive(
                 origin=PASS_ID,
                 signature=signature,
                 meta={"class": class_name} if class_name else None,
+                cyclomatic_complexity=compute_cyclomatic_complexity(node, "matlab"),
+                lines_of_code=node.end_point[0] - node.start_point[0] + 1,
             )
             symbols.append(sym)
 

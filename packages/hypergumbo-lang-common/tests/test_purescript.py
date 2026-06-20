@@ -250,3 +250,57 @@ myFunc = 42
         assert func is not None
         assert func.name == "MyModule.myFunc"
         assert func.meta["module"] == "MyModule"
+
+
+class TestPureScriptCyclomaticComplexity:
+    """INV-loguk slice C: callable PureScript symbols carry non-null CC + LOC.
+    Real-grammar verification (exp_if + case `alt` arms + `guards`)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        # No type signature: the analyzer emits one function symbol with the
+        # body. (A `name :: Type` signature triggers a separate signature-only
+        # function Symbol — pre-existing purescript dual-emit — whose CC is the
+        # bodyless base 1; both are non-null, satisfying INV-loguk.)
+        (tmp_path / "Test.purs").write_text("""module Test where
+
+grade n =
+  if n >= 90 && n <= 100
+    then "A"
+    else case n of
+      0 -> "zero"
+      x | x > 50 || x == 49 -> "pass"
+        | otherwise -> "fail"
+""")
+        result = analyze_purescript(tmp_path)
+        grades = [s for s in result.symbols
+                  if s.kind == "function" and s.name.endswith("grade")]
+        assert len(grades) == 1
+        fn = grades[0]
+        # base 1 + exp_if + 2 alt + 2 guards = 6
+        assert fn.cyclomatic_complexity == 6
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "G.purs").write_text("module G where\n\ndouble :: Int -> Int\ndouble n = n * 2\n")
+        result = analyze_purescript(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and s.name.endswith("double"))
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        (tmp_path / "M.purs").write_text("""module M where
+
+data Shape = Circle | Square
+
+classify :: Int -> Int
+classify n = if n > 0 then 1 else 0
+""")
+        result = analyze_purescript(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

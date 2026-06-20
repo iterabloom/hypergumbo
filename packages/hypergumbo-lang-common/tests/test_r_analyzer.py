@@ -358,3 +358,58 @@ class TestIsRTreeSitterAvailable:
             return_value=False,
         ):
             assert is_r_tree_sitter_available() is False
+
+
+class TestRCyclomaticComplexity:
+    """INV-loguk slice C: callable R symbols carry non-null CC + LOC.
+    Real-grammar verification (if/for/while/repeat + &&/||). R's switch() is an
+    ordinary call (no control-flow node), so it is conservatively uncounted."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path) -> None:
+        (tmp_path / "f.R").write_text("""f <- function(x, y) {
+  if (x > 0 && y > 0) {
+    for (i in 1:10) {
+      while (i < 5) {
+        i <- i + 1
+      }
+    }
+  } else if (x < 0 || y < 0) {
+    repeat {
+      break
+    }
+  } else {
+    z <- switch(x, a = 1, b = 2, 3)
+  }
+  return(x)
+}""")
+        result = analyze_r_files(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and s.name == "f")
+        # base 1 + 2 if + for + while + repeat + && + || = 8
+        assert fn.cyclomatic_complexity == 8
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path) -> None:
+        (tmp_path / "g.R").write_text("g <- function(x) {\n  x * 2\n}\n")
+        result = analyze_r_files(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        (tmp_path / "m.R").write_text("""source("helper.R")
+h <- function(x) {
+  if (x > 0) {
+    return(1)
+  }
+  return(0)
+}
+""")
+        result = analyze_r_files(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

@@ -273,3 +273,78 @@ end
         # Should have lower confidence for unresolved target
         assert call_edges[0].confidence == 0.6
         assert "unresolved:unknown_function" in call_edges[0].dst
+
+
+class TestMatlabCyclomaticComplexity:
+    """INV-loguk slice C: callable MATLAB symbols (function + method) carry
+    non-null CC + LOC. Real-grammar verification (if/elseif/for/while/case/
+    otherwise/catch + &&/||)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        (tmp_path / "foo.m").write_text("""function r = foo(a, b)
+  r = 0;
+  if a > 0 && b < 10
+    r = 1;
+  elseif a > 100 || b == 0
+    r = 2;
+  else
+    if b > 5
+      r = 3;
+    end
+  end
+  for i = 1:10
+    r = r + i;
+  end
+  while a > 0
+    a = a - 1;
+  end
+  switch r
+    case 1
+      r = 10;
+    case 2
+      r = 20;
+    otherwise
+      r = 30;
+  end
+  try
+    r = bar(r);
+  catch err
+    r = -1;
+  end
+end
+""")
+        result = analyze_matlab(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and s.name == "foo")
+        # base 1 + 2 if + elseif + for + while + 2 case + otherwise + catch + && + || = 12
+        assert fn.cyclomatic_complexity == 12
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        (tmp_path / "bar.m").write_text("function y = bar(x)\n  y = x * 2;\nend\n")
+        result = analyze_matlab(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and s.name == "bar")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        (tmp_path / "Box.m").write_text("""classdef Box
+  methods
+    function r = get(obj, x)
+      if x > 0
+        r = x;
+      else
+        r = 0;
+      end
+    end
+  end
+end
+""")
+        result = analyze_matlab(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ("function", "method")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ("function", "method"):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

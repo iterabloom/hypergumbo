@@ -335,6 +335,58 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
     "odin": frozenset({
         "if_statement", "else_if_clause", "for_statement", "switch_case",
     }),
+    # INV-loguk slice C (batch 4, common-package programming languages). Node-type
+    # names verified by dumping each real grammar (see each owning analyzer's
+    # package tests).
+    # Fortran: `elseif_clause` carries its own condition (counted); `else_clause`
+    # excluded. BOTH the counting `do` loop and the `do while` loop parse to
+    # `do_loop_statement` (count that, NOT the do-while's inner `while_statement`
+    # child, which would double-count). `case_statement` = each select-case arm
+    # incl. `case default`. `.and.`/`.or.` short-circuit via logical_expression.
+    "fortran": frozenset({
+        "if_statement", "elseif_clause", "do_loop_statement", "case_statement",
+    }),
+    # F# is expression-oriented: `elif_expression` carries its own condition
+    # (counted); `else` is a bare keyword (no wrapper to exclude). `rule` = each
+    # match arm (the match_expression/rules wrappers are NOT counted). &&/|| are
+    # named infix_op children, unreachable by the unnamed scan — no short-circuit.
+    "fsharp": frozenset({
+        "if_expression", "elif_expression", "for_expression",
+        "while_expression", "rule",
+    }),
+    # Elm (pure functional): `if_else_expr` is FLAT — an entire if/else-if/else
+    # chain is ONE node (conservatively counts once, like Hack's flat
+    # if_statement); a nested if elsewhere is its own node. `case_of_branch` =
+    # each case-of arm incl. the `_` wildcard (the case_of_expr/`case` wrappers
+    # are NOT counted). &&/|| are named operator children — no short-circuit.
+    "elm": frozenset({
+        "if_else_expr", "case_of_branch",
+    }),
+    # PureScript (Haskell-shaped): `exp_if` = each if/then/else (else-if nests);
+    # `alt` = each case arm (the exp_case/alts wrappers NOT counted); `guards` =
+    # each ``| ...`` guarded clause (mirrors haskell `guards` — a guarded arm
+    # counts its `alt` AND its `guards`). &&/|| are named operator children of
+    # exp_infix — no short-circuit.
+    "purescript": frozenset({
+        "exp_if", "alt", "guards",
+    }),
+    # MATLAB: `elseif_clause` carries its own condition (counted); `else_clause`
+    # excluded. `case_clause` = each switch arm; `otherwise_clause` = the switch
+    # default (counted). try via `catch_clause`. &&/|| (short-circuit) live in
+    # `boolean_operator` (already in _BINARY_EXPR_NODE_TYPES); the element-wise
+    # `&`/`|` go to a different node and are correctly excluded.
+    "matlab": frozenset({
+        "if_statement", "elseif_clause", "for_statement", "while_statement",
+        "case_clause", "otherwise_clause", "catch_clause",
+    }),
+    # R: `else`/`else if` are bare-keyword + nested if_statement (no wrapper to
+    # exclude). `repeat_statement` is R's infinite loop. R's `switch(...)` is an
+    # ordinary call node (no control-flow node type), so it is conservatively
+    # uncounted. &&/|| (short-circuit) live in `binary_operator` (added to
+    # _BINARY_EXPR_NODE_TYPES below); the vectorized `&`/`|` are excluded.
+    "r": frozenset({
+        "if_statement", "for_statement", "while_statement", "repeat_statement",
+    }),
 }
 
 
@@ -393,6 +445,16 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     "v": frozenset({"&&", "||"}),
     "hack": frozenset({"&&", "||", "??"}),
     "odin": frozenset({"&&", "||"}),
+    # INV-loguk slice C batch 4 (common). Fortran's ``.and.``/``.or.`` live in
+    # ``logical_expression`` (already a member); MATLAB's short-circuit
+    # ``&&``/``||`` live in ``boolean_operator`` (already a member; the
+    # element-wise ``&``/``|`` go to a different node and are excluded); R's
+    # ``&&``/``||`` live in ``binary_operator`` (added below; the vectorized
+    # ``&``/``|`` are excluded). F#/Elm/PureScript have named operator children
+    # unreachable by the unnamed scan, so they get no short-circuit entry.
+    "fortran": frozenset({".and.", ".or."}),
+    "matlab": frozenset({"&&", "||"}),
+    "r": frozenset({"&&", "||"}),
 }
 
 
@@ -403,15 +465,20 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
 _BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
     "binary_expression",  # Go / Rust / C# / PHP / JS / TS / Kotlin / Swift /
                           #   C / C++ / Solidity / WGSL
-    "boolean_operator",   # (Python-only — not actually reached here,
-                          #  kept defensive)
+    "boolean_operator",   # MATLAB (&&/|| live here; element-wise &/| use a
+                          #   different node). Also a Python-only defensive entry.
     "binary",             # Ruby (tree-sitter-ruby names it ``binary``)
     "binary_op_expr",     # Erlang (andalso / orelse live here, INV-loguk slice C)
-    "logical_expression", # PowerShell (-and / -or live here, INV-loguk slice C)
+    "logical_expression", # PowerShell -and/-or, Fortran .and./.or. (INV-loguk
+                          #   slice C)
     "infix_expression",   # Nim (and / or live here, INV-loguk slice C batch 3).
-                          #   Scala also produces infix_expression but its
-                          #   operators are NAMED children and it is absent from
-                          #   SHORT_CIRCUIT_OPS, so the scan never runs for it.
+                          #   Scala/F#/PureScript also produce *infix* nodes but
+                          #   their operators are NAMED children and they are
+                          #   absent from SHORT_CIRCUIT_OPS, so the scan never
+                          #   runs for them.
+    "binary_operator",    # R (&&/|| live here; vectorized &/| excluded).
+                          #   Elixir also uses binary_operator but is absent from
+                          #   BRANCH_NODE_TYPES (walker returns None first).
 })
 
 
