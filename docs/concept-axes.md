@@ -184,6 +184,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`for_loop`** — For-loop symbol (control-flow). CANONICAL per audit-findings 0007.
 - **`fragment`** — Fragment symbol (GraphQL / template). CANONICAL per audit-findings 0007.
 - **`function`** — Top-level function definition.
+- **`generic`** — Generic-function declaration (Common Lisp `defgeneric`). The dispatch-declaration construct, sibling to `method` (`defmethod`) and `function` (`defun`). Producer: `commonlisp.py` maps `defgeneric` -> kind="generic" via its `kind_map` dict. Surfaced (and registered) when the INV-loguk homoiconic-CC slice added the first registry-scanned `*_KINDS` set naming it — the original ADR-0027 Phase-1 seeding missed it because the producer emits via `kind_map` indirection, not a literal `kind="generic"` kwarg (same literal-grep blind-spot class as `message` / `inductive` / `theorem`).
 - **`getter`** — Property getter accessor.
 - **`id`** — Id symbol (k8s / DSL). CANONICAL per audit-findings 0007.
 - **`id_selector`** — CSS id selector symbol. CANONICAL per audit-findings 0007.

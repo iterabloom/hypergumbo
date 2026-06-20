@@ -62,6 +62,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -69,6 +70,14 @@ if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = make_pass_id("commonlisp")
+
+# INV-loguk: Common Lisp callable kinds get non-null CC/LOC. The ``defun``-node
+# emit site is always one of these; the ``list_lit`` fallback site is shared
+# with non-callable defs (variable/constant/class/package/struct), which stay
+# None.
+_COMMONLISP_CALLABLE_KINDS: frozenset[str] = frozenset(
+    {"function", "macro", "method", "generic"}
+)
 
 
 def find_commonlisp_files(repo_root: Path) -> Iterator[Path]:
@@ -234,6 +243,8 @@ def _extract_symbols_from_file(
                     end_col=node.end_point[1],
                 )
                 sym_id = make_symbol_id("commonlisp", file_path, start_line, end_line, name, kind)
+                # The ``defun`` node type is only produced by defun/defmacro/
+                # defmethod/defgeneric, so the kind is always callable here.
                 symbols.append(Symbol(
                     id=sym_id,
                     name=name,
@@ -244,6 +255,10 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=signature,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(
+                        node, "commonlisp",
+                    ),
+                    lines_of_code=end_line - start_line + 1,
                 ))
 
         # Handle list_lit for defvar, defparameter, defconstant, defclass, etc.
@@ -264,6 +279,9 @@ def _extract_symbols_from_file(
                     end_col=node.end_point[1],
                 )
                 sym_id = make_symbol_id("commonlisp", file_path, start_line, end_line, name, kind)
+                # Shared with non-callable defs (defvar/defclass/...): gate CC/LOC
+                # on the callable kinds (e.g. uppercase ``DEFUN``).
+                is_callable = kind in _COMMONLISP_CALLABLE_KINDS
                 symbols.append(Symbol(
                     id=sym_id,
                     name=name,
@@ -274,6 +292,13 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=signature,
+                    cyclomatic_complexity=(
+                        compute_cyclomatic_complexity(node, "commonlisp")
+                        if is_callable else None
+                    ),
+                    lines_of_code=(
+                        end_line - start_line + 1 if is_callable else None
+                    ),
                 ))
 
     return symbols

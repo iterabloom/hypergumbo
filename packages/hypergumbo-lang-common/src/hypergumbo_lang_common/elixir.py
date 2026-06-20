@@ -51,6 +51,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 # Phoenix HTTP method macros for route detection
 PHOENIX_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
@@ -802,6 +803,13 @@ def _extract_symbols_from_tree(
                             origin_run_id=run_id,
                             signature=_extract_elixir_signature(node, source),
                             modifiers=modifiers,
+                            # INV-loguk: homoiconic head-symbol CC; LOC from span.
+                            # The analyzer emits one Symbol per def clause, so the
+                            # walker is applied per-clause (no aggregation).
+                            cyclomatic_complexity=compute_cyclomatic_complexity(
+                                node, "elixir",
+                            ),
+                            lines_of_code=end_line - start_line + 1,
                         )
                         symbols.append(symbol)
                         symbol_by_name[func_name] = symbol  # Store by short name for local calls
@@ -837,6 +845,11 @@ def _extract_symbols_from_tree(
                             origin_run_id=run_id,
                             signature=_extract_elixir_signature(node, source),
                             modifiers=modifiers,
+                            # INV-loguk: homoiconic head-symbol CC; LOC from span.
+                            cyclomatic_complexity=compute_cyclomatic_complexity(
+                                node, "elixir",
+                            ),
+                            lines_of_code=end_line - start_line + 1,
                         )
                         symbols.append(symbol)
                         symbol_by_name[macro_name] = symbol

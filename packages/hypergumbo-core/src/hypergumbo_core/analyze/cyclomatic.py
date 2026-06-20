@@ -52,6 +52,7 @@ binary-expression scope).
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Optional
 
 if TYPE_CHECKING:  # pragma: no cover - import-time only
@@ -651,6 +652,236 @@ _BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
 })
 
 
+# ---------------------------------------------------------------------------
+# Homoiconic (Lisp-family + Elixir) head-symbol walker.
+# ---------------------------------------------------------------------------
+# In homoiconic languages, control flow is NOT distinct grammar node types:
+# ``(if c a b)`` / ``(cond ...)`` / ``(when ...)`` / ``(and ...)`` are all
+# ordinary S-expression / call nodes — the SAME node type as any plain
+# function call. The construct is identified by the form's *head symbol text*
+# (``if`` / ``cond`` / ``when`` / ...), not by ``node.type``. So the
+# ``BRANCH_NODE_TYPES`` path above structurally cannot see them; this second
+# walker keys on the head symbol instead.
+#
+# Counting is conservative (and honest, matching every other CC slice): each
+# control-form occurrence adds exactly 1, base 1. A variadic ``(and a b c)``
+# or a multi-clause ``(cond ...)``/``(case ...)`` counts ONCE — clause/operand
+# counts are not inspected. ``and``/``or`` are head-symbol *forms* here (Lisp
+# macros), NOT operator tokens, so they are counted via the head walker, never
+# via ``SHORT_CIRCUIT_OPS`` (homoiconic languages are absent from that table).
+# Sequencing/binding/definition heads (``do``/``let``/``begin``/``defn`` ...)
+# are deliberately excluded — they introduce no new path.
+@dataclass(frozen=True)
+class _HomoiconicSpec:
+    """Per-language config for the head-symbol cyclomatic walker.
+
+    - ``form_node_types``: node types that wrap an S-expression / call form
+      whose head symbol identifies the construct (``list_lit`` for clojure /
+      commonlisp, ``list`` for scheme / racket / fennel, ``call`` for elixir,
+      ``tuple`` for janet). The head is the form's first *named* child.
+    - ``head_node_types``: child node types that qualify as a head-symbol node
+      (``sym_lit`` / ``symbol`` / ``identifier``). A form whose first named
+      child is not one of these (e.g. a nested list, a module-qualified
+      ``dot``) has no head and is skipped.
+    - ``control_forms``: head-symbol *strings* that are decision points.
+    - ``dedicated_control_types``: node types that ARE decision points by their
+      type alone — for the *partially* homoiconic grammars (fennel exposes
+      ``for``/``each``/``match`` as dedicated nodes; janet exposes
+      ``if``/``while``), where the construct keyword is an anonymous token, not
+      a head symbol. Counted under the ``is_named`` guard, which de-duplicates
+      the named-construct-vs-anonymous-keyword collision (same hazard the base
+      walker guards for ruby/nim/tcl).
+    - ``head_subchild_type``: if set, descend into the head node for a child of
+      this type and use ITS text (clojure's ``sym_lit`` wraps a ``sym_name``).
+    - ``head_type_aliases``: head-node-type -> synthetic head string, for heads
+      that are a dedicated child node rather than a symbol (commonlisp parses
+      ``(loop ...)`` as ``list_lit`` -> ``loop_macro``, mapped to ``"loop"``).
+    - ``lowercase``: normalize head text to lowercase (commonlisp is
+      case-insensitive).
+    """
+
+    form_node_types: frozenset[str]
+    head_node_types: frozenset[str]
+    control_forms: frozenset[str]
+    dedicated_control_types: frozenset[str] = frozenset()
+    head_subchild_type: Optional[str] = None
+    head_type_aliases: tuple[tuple[str, str], ...] = ()
+    lowercase: bool = False
+
+
+# Per-language head-symbol decision-point registry. Each control_forms set was
+# verified against the real tree-sitter grammar (heads parse cleanly and appear
+# as form heads) and the per-callable expected CC asserted in each owning
+# analyzer package's test suite (test_clojure.py / test_commonlisp.py /
+# test_scheme.py / test_racket.py / test_elixir.py in hypergumbo-lang-common;
+# test_fennel.py / test_janet.py in hypergumbo-lang-extended1).
+_HOMOICONIC_SPECS: Final[dict[str, _HomoiconicSpec]] = {
+    # Clojure: every form is a ``list_lit``; head is the first ``sym_lit``,
+    # whose bare name lives in a ``sym_name`` child (so a namespaced head like
+    # ``clojure.core/when`` resolves to ``when``). and/or/some->/cond->/etc. are
+    # ordinary macro forms, counted as heads.
+    "clojure": _HomoiconicSpec(
+        form_node_types=frozenset({"list_lit"}),
+        head_node_types=frozenset({"sym_lit"}),
+        head_subchild_type="sym_name",
+        control_forms=frozenset({
+            "if", "when", "when-not", "if-not", "cond", "condp", "case",
+            "and", "or", "while", "doseq", "dotimes", "for", "cond->",
+            "cond->>", "some->", "when-let", "if-let",
+        }),
+    ),
+    # Common Lisp: forms are ``list_lit`` with a ``sym_lit`` head (case-folded:
+    # CL is case-insensitive). ``loop`` is special — the grammar parses
+    # ``(loop ...)`` into ``list_lit -> loop_macro`` (the ``loop`` keyword is an
+    # anonymous token), so the first named child is ``loop_macro``, aliased to
+    # the head string ``"loop"``.
+    "commonlisp": _HomoiconicSpec(
+        form_node_types=frozenset({"list_lit"}),
+        head_node_types=frozenset({"sym_lit"}),
+        head_type_aliases=(("loop_macro", "loop"),),
+        lowercase=True,
+        control_forms=frozenset({
+            "if", "when", "unless", "cond", "case", "typecase", "and", "or",
+            "loop", "do", "dotimes", "dolist", "when-let", "while",
+        }),
+    ),
+    # Scheme: forms are ``list`` with a ``symbol`` head. ``loop`` is NOT a
+    # special form (it only appears as a named-let recursion variable, a call,
+    # not a branch) — deliberately excluded to avoid false positives.
+    "scheme": _HomoiconicSpec(
+        form_node_types=frozenset({"list"}),
+        head_node_types=frozenset({"symbol"}),
+        control_forms=frozenset({
+            "if", "when", "unless", "cond", "case", "and", "or", "do",
+            "match", "for", "for/list",
+        }),
+    ),
+    # Racket: forms are ``list`` with a ``symbol`` head. Adds Racket's family of
+    # ``for/...`` comprehension forms and ``when-let``/``if-let`` over scheme.
+    "racket": _HomoiconicSpec(
+        form_node_types=frozenset({"list"}),
+        head_node_types=frozenset({"symbol"}),
+        control_forms=frozenset({
+            "if", "when", "unless", "cond", "case", "and", "or", "do",
+            "match", "for", "for/list", "for/vector", "for/hash", "for/and",
+            "for/or", "for/sum", "for/product", "for/fold", "when-let",
+            "if-let",
+        }),
+    ),
+    # Elixir: control forms are ``call`` nodes whose first named child is an
+    # ``identifier`` head (``if``/``cond``/``case``/...). Module-qualified calls
+    # (``Enum.map``) have a ``dot`` first child (not ``identifier``) -> no head
+    # -> skipped. and/or/&&/|| are ``binary_operator`` nodes (NOT calls), so the
+    # head walker skips them — conservative v1, matching the spec. The analyzer
+    # emits one Symbol PER def clause, so no cross-clause aggregation is needed.
+    "elixir": _HomoiconicSpec(
+        form_node_types=frozenset({"call"}),
+        head_node_types=frozenset({"identifier"}),
+        control_forms=frozenset({
+            "if", "unless", "cond", "case", "with", "for", "receive", "try",
+        }),
+    ),
+    # Fennel: PARTIALLY homoiconic. ``if``/``when``/``cond``/``case``/``and``/
+    # ``or``/``while`` and the ``when-not``/``if-not`` forms are ``list`` nodes
+    # with a ``symbol`` head; but ``for``/``each``/``match`` are DEDICATED node
+    # types (keyword is an anonymous token) that collide named-vs-anonymous —
+    # the ``is_named`` guard counts each once.
+    "fennel": _HomoiconicSpec(
+        form_node_types=frozenset({"list"}),
+        head_node_types=frozenset({"symbol"}),
+        dedicated_control_types=frozenset({"for", "each", "match"}),
+        control_forms=frozenset({
+            "if", "when", "when-not", "if-not", "cond", "case", "and", "or",
+            "while",
+        }),
+    ),
+    # Janet: PARTIALLY homoiconic. ``if``/``while`` are DEDICATED node types
+    # (keyword is an anonymous token, named-vs-anon collision -> is_named guard);
+    # everything else (``when``/``unless``/``cond``/``case``/``and``/``or``/
+    # ``loop``/``for``/``each``) is a generic ``tuple`` with a ``symbol`` head.
+    "janet": _HomoiconicSpec(
+        form_node_types=frozenset({"tuple"}),
+        head_node_types=frozenset({"symbol"}),
+        dedicated_control_types=frozenset({"if", "while"}),
+        control_forms=frozenset({
+            "when", "unless", "cond", "case", "and", "or", "loop", "for",
+            "each",
+        }),
+    ),
+}
+
+
+def _homoiconic_head_text(
+    form_node: "tree_sitter.Node",
+    spec: _HomoiconicSpec,
+) -> Optional[str]:
+    """Return the head-symbol text of a form node, or ``None``.
+
+    The head is the form's first *named* child (the opening/closing
+    delimiters are anonymous, so they are skipped). The head string is then:
+    a configured ``head_type_aliases`` mapping for dedicated head nodes (e.g.
+    commonlisp ``loop_macro`` -> ``"loop"``); otherwise the head node's text
+    (optionally that of a ``head_subchild_type`` child, e.g. clojure
+    ``sym_name``), lower-cased when ``spec.lowercase``. Returns ``None`` when
+    the first named child is not a recognized head-symbol node (a nested form,
+    a module-qualified ``dot``, ...), so non-control calls are not counted.
+    """
+    head_node = None
+    for child in form_node.children:
+        if child.is_named:
+            head_node = child
+            break
+    if head_node is None:
+        return None
+    head_type = head_node.type
+    for alias_type, alias_text in spec.head_type_aliases:
+        if head_type == alias_type:
+            return alias_text
+    if head_type not in spec.head_node_types:
+        return None
+    text_node = head_node
+    if spec.head_subchild_type is not None:
+        for child in head_node.children:
+            if child.type == spec.head_subchild_type:
+                text_node = child
+                break
+    try:
+        text = text_node.text.decode("utf-8", errors="ignore")
+    except (AttributeError, UnicodeDecodeError):  # pragma: no cover - defensive
+        return None
+    return text.lower() if spec.lowercase else text
+
+
+def _compute_homoiconic_cyclomatic_complexity(
+    node: "tree_sitter.Node",
+    spec: _HomoiconicSpec,
+) -> int:
+    """Head-symbol cyclomatic walker for homoiconic languages.
+
+    Base complexity 1; +1 per named node that is either a dedicated control
+    node type or a form node whose head symbol is a control form. Iterative
+    (like the base walker) to avoid ``RecursionError`` on deep nesting.
+    """
+    complexity = 1
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        # The ``is_named`` guard de-duplicates the named-construct-vs-anonymous-
+        # keyword collision for the dedicated control nodes (fennel for/each/
+        # match, janet if/while); it is harmless for the always-named form
+        # nodes (list/list_lit/call/tuple).
+        if current.is_named:
+            current_type = current.type
+            if current_type in spec.dedicated_control_types:
+                complexity += 1
+            elif current_type in spec.form_node_types:
+                head = _homoiconic_head_text(current, spec)
+                if head is not None and head in spec.control_forms:
+                    complexity += 1
+        stack.extend(current.children)
+    return complexity
+
+
 def compute_cyclomatic_complexity(
     node: "tree_sitter.Node",
     language: str,
@@ -662,6 +893,10 @@ def compute_cyclomatic_complexity(
     (the implicit entry path); each branch node and each short-circuit
     operator occurrence adds 1.
 
+    Homoiconic languages (Lisp family + Elixir; see ``_HOMOICONIC_SPECS``) are
+    dispatched to the head-symbol walker, since their control flow is ordinary
+    call/list nodes identified by head-symbol text rather than by node type.
+
     Returns ``None`` for unsupported languages so callers can wire the
     dispatcher into every callable Symbol emit site without per-call
     language gating.
@@ -670,6 +905,9 @@ def compute_cyclomatic_complexity(
     deeply nested code — matching the pattern used by every other
     tree-walking helper in this package (see ``iter_tree``).
     """
+    homoiconic_spec = _HOMOICONIC_SPECS.get(language)
+    if homoiconic_spec is not None:
+        return _compute_homoiconic_cyclomatic_complexity(node, homoiconic_spec)
     if language not in BRANCH_NODE_TYPES:
         return None
     branch_types = BRANCH_NODE_TYPES[language]

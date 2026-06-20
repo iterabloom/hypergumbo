@@ -466,6 +466,7 @@
             "simple_type": "language_construct",
             "defined_type": "language_construct",
             "macro": "language_construct",
+            "generic": "language_construct",
             "mixin": "language_construct",
             "record": "language_construct",
             "abstract": "language_construct",

@@ -14,6 +14,7 @@ suite (mainstream ``test_symbol_introspection.py``, extended1
 from __future__ import annotations
 
 from hypergumbo_core.analyze.cyclomatic import (
+    _HOMOICONIC_SPECS,
     BRANCH_NODE_TYPES,
     SHORT_CIRCUIT_OPS,
     compute_cyclomatic_complexity,
@@ -160,3 +161,173 @@ class TestRelocatedLanguageTables:
         ])
         # base 1 + if 1 + for 1 + 2 arms + loop 1 = 6
         assert compute_cyclomatic_complexity(tree, "wgsl") == 6
+
+
+# ---------------------------------------------------------------------------
+# Homoiconic head-symbol walker (clojure / commonlisp / scheme / racket /
+# elixir / fennel / janet). The duck-typed nodes below mimic each grammar's
+# *shape* (the form-wrapping node type, the head-symbol child, the anonymous
+# delimiter tokens); the real per-callable CC values are verified against the
+# actual grammars in each owning analyzer package's test suite.
+# ---------------------------------------------------------------------------
+
+
+def _lparen() -> _FakeNode:
+    """An anonymous opening-paren delimiter token (skipped as not is_named)."""
+    return _FakeNode("(", is_named=False, text=b"(")
+
+
+def _rparen() -> _FakeNode:
+    return _FakeNode(")", is_named=False, text=b")")
+
+
+def _list_form(form_type: str, head: _FakeNode, *args: _FakeNode) -> _FakeNode:
+    """A delimited form node: ( <head> <args...> ) with anonymous parens."""
+    return _FakeNode(form_type, [_lparen(), head, *args, _rparen()])
+
+
+class TestHomoiconicSpecTable:
+    def test_all_seven_homoiconic_languages_present(self) -> None:
+        assert set(_HOMOICONIC_SPECS) == {
+            "clojure", "commonlisp", "scheme", "racket", "elixir",
+            "fennel", "janet",
+        }
+
+    def test_homoiconic_languages_absent_from_node_type_tables(self) -> None:
+        # They are dispatched to the head-symbol walker, so they must NOT also
+        # appear in the node.type-keyed tables (the homoiconic branch returns
+        # first, but keeping the tables disjoint avoids confusion).
+        for lang in _HOMOICONIC_SPECS:
+            assert lang not in BRANCH_NODE_TYPES
+            assert lang not in SHORT_CIRCUIT_OPS
+
+
+class TestHomoiconicBaseAndCounting:
+    def test_no_control_forms_returns_base_one(self) -> None:
+        # A scheme define whose body is a single non-control call.
+        tree = _list_form(
+            "list", _FakeNode("symbol", text=b"define"),
+            _list_form("list", _FakeNode("symbol", text=b"+")),
+        )
+        assert compute_cyclomatic_complexity(tree, "scheme") == 1
+
+    def test_control_head_adds_one(self) -> None:
+        tree = _list_form(
+            "list", _FakeNode("symbol", text=b"define"),
+            _list_form("list", _FakeNode("symbol", text=b"cond")),
+        )
+        assert compute_cyclomatic_complexity(tree, "scheme") == 2
+
+    def test_nested_control_forms_accumulate(self) -> None:
+        inner = _list_form("list", _FakeNode("symbol", text=b"when"))
+        outer = _list_form("list", _FakeNode("symbol", text=b"if"), inner)
+        tree = _list_form(
+            "list", _FakeNode("symbol", text=b"define"), outer,
+        )
+        # base 1 + if 1 + when 1 = 3
+        assert compute_cyclomatic_complexity(tree, "scheme") == 3
+
+    def test_variadic_form_counts_once(self) -> None:
+        # (and a b c) is a single form -> +1 regardless of operand count; the
+        # operand symbols are not themselves forms, so they add nothing.
+        tree = _list_form(
+            "list", _FakeNode("symbol", text=b"and"),
+            _FakeNode("symbol", text=b"a"),
+            _FakeNode("symbol", text=b"b"),
+            _FakeNode("symbol", text=b"c"),
+        )
+        assert compute_cyclomatic_complexity(tree, "scheme") == 2
+
+    def test_non_control_head_not_counted(self) -> None:
+        # A plain call (head not in the control set) is walked but not counted.
+        tree = _list_form("list", _FakeNode("symbol", text=b"display"))
+        assert compute_cyclomatic_complexity(tree, "scheme") == 1
+
+    def test_form_with_no_named_head_not_counted(self) -> None:
+        # A form node with only anonymous children -> no head -> not counted.
+        tree = _FakeNode("list", [_lparen(), _rparen()])
+        assert compute_cyclomatic_complexity(tree, "scheme") == 1
+
+    def test_form_head_of_wrong_node_type_not_counted(self) -> None:
+        # First named child is a nested list (not a ``symbol``) -> no head.
+        tree = _list_form(
+            "list", _list_form("list", _FakeNode("symbol", text=b"f")),
+        )
+        assert compute_cyclomatic_complexity(tree, "scheme") == 1
+
+
+class TestHomoiconicElixir:
+    def test_identifier_head_counted(self) -> None:
+        tree = _FakeNode("call", [_FakeNode("identifier", text=b"if")])
+        assert compute_cyclomatic_complexity(tree, "elixir") == 2
+
+    def test_module_qualified_dot_head_not_counted(self) -> None:
+        # ``Enum.map`` -> first named child is a ``dot`` node (not identifier),
+        # so it has no head and is correctly skipped.
+        tree = _FakeNode("call", [_FakeNode("dot"), _FakeNode("arguments")])
+        assert compute_cyclomatic_complexity(tree, "elixir") == 1
+
+
+class TestHomoiconicClojureSubchild:
+    def test_head_via_sym_name_subchild(self) -> None:
+        # clojure ``sym_lit`` wraps the bare name in a ``sym_name`` child.
+        head = _FakeNode("sym_lit", [_FakeNode("sym_name", text=b"when")])
+        tree = _list_form("list_lit", head)
+        assert compute_cyclomatic_complexity(tree, "clojure") == 2
+
+    def test_head_falls_back_to_sym_lit_text_when_no_subchild(self) -> None:
+        # If a ``sym_lit`` has no ``sym_name`` child, fall back to its own text.
+        head = _FakeNode("sym_lit", text=b"cond")
+        tree = _list_form("list_lit", head)
+        assert compute_cyclomatic_complexity(tree, "clojure") == 2
+
+
+class TestHomoiconicCommonLisp:
+    def test_loop_macro_alias_counted(self) -> None:
+        # ``(loop ...)`` parses to ``list_lit -> loop_macro``; the dedicated
+        # head node aliases to the head string ``"loop"``.
+        tree = _list_form("list_lit", _FakeNode("loop_macro"))
+        assert compute_cyclomatic_complexity(tree, "commonlisp") == 2
+
+    def test_head_lowercased_for_case_insensitive_match(self) -> None:
+        # CL is case-insensitive: an uppercase ``IF`` head matches ``if``.
+        tree = _list_form("list_lit", _FakeNode("sym_lit", text=b"IF"))
+        assert compute_cyclomatic_complexity(tree, "commonlisp") == 2
+
+
+class TestHomoiconicDedicatedControlTypes:
+    def test_fennel_dedicated_nodes_counted(self) -> None:
+        # fennel ``for``/``each``/``match`` are dedicated node types.
+        tree = _FakeNode("fn", [
+            _FakeNode("for"), _FakeNode("each"), _FakeNode("match"),
+        ])
+        # base 1 + for + each + match = 4
+        assert compute_cyclomatic_complexity(tree, "fennel") == 4
+
+    def test_fennel_anonymous_keyword_token_not_double_counted(self) -> None:
+        # The grammar emits BOTH a named ``for`` construct node AND an anonymous
+        # ``for`` keyword token of the same .type; the is_named guard counts the
+        # named one only.
+        tree = _FakeNode("fn", [
+            _FakeNode("for", [_FakeNode("for", is_named=False, text=b"for")]),
+        ])
+        assert compute_cyclomatic_complexity(tree, "fennel") == 2
+
+    def test_fennel_list_form_head_also_counted(self) -> None:
+        tree = _FakeNode("fn", [
+            _list_form("list", _FakeNode("symbol", text=b"when")),
+        ])
+        assert compute_cyclomatic_complexity(tree, "fennel") == 2
+
+    def test_janet_dedicated_if_while_counted(self) -> None:
+        tree = _FakeNode("extra_defs", [
+            _FakeNode("if"), _FakeNode("while"),
+        ])
+        # base 1 + if + while = 3
+        assert compute_cyclomatic_complexity(tree, "janet") == 3
+
+    def test_janet_tuple_head_counted(self) -> None:
+        tree = _FakeNode("extra_defs", [
+            _list_form("tuple", _FakeNode("symbol", text=b"cond")),
+        ])
+        assert compute_cyclomatic_complexity(tree, "janet") == 2

@@ -148,6 +148,18 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Defined / nominal type declaration (Puppet / Coq)."),
     SymbolKindSpec("macro", AXIS_LANGUAGE_CONSTRUCT,
                    "Macro definition (Rust / C / Scheme)."),
+    SymbolKindSpec("generic", AXIS_LANGUAGE_CONSTRUCT,
+                   "Generic-function declaration (Common Lisp `defgeneric`). "
+                   "The dispatch-declaration construct, sibling to `method` "
+                   "(`defmethod`) and `function` (`defun`). Producer: "
+                   "`commonlisp.py` maps `defgeneric` -> kind=\"generic\" via "
+                   "its `kind_map` dict. Surfaced (and registered) when the "
+                   "INV-loguk homoiconic-CC slice added the first registry-"
+                   "scanned `*_KINDS` set naming it — the original ADR-0027 "
+                   "Phase-1 seeding missed it because the producer emits via "
+                   "`kind_map` indirection, not a literal `kind=\"generic\"` "
+                   "kwarg (same literal-grep blind-spot class as `message` / "
+                   "`inductive` / `theorem`)."),
     SymbolKindSpec("mixin", AXIS_LANGUAGE_CONSTRUCT,
                    "Mixin declaration (Ruby / Sass)."),
     SymbolKindSpec("record", AXIS_LANGUAGE_CONSTRUCT,
