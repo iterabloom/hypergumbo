@@ -544,6 +544,54 @@ class TestCyclomaticPerLanguage:
         # base + unless + and = 3
         assert cc is not None and cc >= 3
 
+    def test_ruby_named_node_not_double_counted(self) -> None:
+        """Regression lock: tree-sitter-ruby emits a named construct node AND a
+        same-``.type`` anonymous keyword token for if/while/etc. The walker's
+        ``is_named`` guard must count each exactly once (was CC=3 for a single
+        ``if`` before the guard; McCabe-correct is 2)."""
+        parser = _ts_parser_for("ruby", "tree_sitter_ruby")
+        src = b"def f(x)\n  if x > 0\n    1\n  end\nend\n"
+        tree = parser.parse(src)
+        m = _first_node_of_type(tree.root_node, "method")
+        # base 1 + exactly one if = 2 (NOT 3 — the anonymous ``if`` keyword
+        # token must not double-count)
+        assert compute_cyclomatic_complexity(m, "ruby") == 2
+
+    def test_ruby_case_when_counts_arms_not_wrapper(self) -> None:
+        """Regression lock: a case/when counts per ``when`` arm, not the ``case``
+        wrapper (arms-only convention, matching c/java/go). 2 arms => CC 3."""
+        parser = _ts_parser_for("ruby", "tree_sitter_ruby")
+        src = (
+            b"def g(x)\n"
+            b"  case x\n"
+            b"  when 1 then :a\n"
+            b"  when 2 then :b\n"
+            b"  else :c\n"
+            b"  end\n"
+            b"end\n"
+        )
+        tree = parser.parse(src)
+        m = _first_node_of_type(tree.root_node, "method")
+        # base 1 + 2 when arms = 3 (the ``case`` wrapper and ``else`` are NOT
+        # decision points)
+        assert compute_cyclomatic_complexity(m, "ruby") == 3
+
+    def test_ruby_case_in_pattern_match_counts_arms(self) -> None:
+        """Ruby 3 case/in: count per ``in_clause`` arm (the ``case_match``
+        wrapper is not counted). 2 arms => CC 3."""
+        parser = _ts_parser_for("ruby", "tree_sitter_ruby")
+        src = (
+            b"def h(x)\n"
+            b"  case x\n"
+            b"  in 1 then :a\n"
+            b"  in 2 then :b\n"
+            b"  end\n"
+            b"end\n"
+        )
+        tree = parser.parse(src)
+        m = _first_node_of_type(tree.root_node, "method")
+        assert compute_cyclomatic_complexity(m, "ruby") == 3
+
     def test_kotlin(self) -> None:
         parser = _ts_parser_for("kotlin", "tree_sitter_kotlin")
         src = (

@@ -98,8 +98,18 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
         "while_statement", "do_statement", "switch_case", "switch_default",
         "catch_clause", "ternary_expression",
     }),
+    # Ruby: count per-arm, not the switch wrapper, matching the arms-only
+    # convention used by every other language (c ``case_statement`` / java
+    # ``switch_label`` / go ``expression_case``). ``when`` = each case/when arm;
+    # ``in_clause`` = each case/in pattern-match arm (Ruby 3). The ``case`` /
+    # ``case_match`` wrapper nodes are deliberately NOT counted (they would add
+    # a spurious +1 per switch). ``if``/``while``/``for``/etc. are single-
+    # condition constructs counted once. The ``is_named`` guard in
+    # :func:`compute_cyclomatic_complexity` is essential here: tree-sitter-ruby
+    # emits a named construct node AND a same-``.type`` anonymous keyword token
+    # for each of these, and only the named one is a decision point.
     "ruby": frozenset({
-        "if", "unless", "while", "until", "for", "case", "when",
+        "if", "unless", "while", "until", "for", "when", "in_clause",
         "rescue", "ternary",
     }),
     "kotlin": frozenset({
@@ -433,7 +443,15 @@ def compute_cyclomatic_complexity(
     while stack:
         current = stack.pop()
         current_type = current.type
-        if current_type in branch_types:
+        # The ``is_named`` guard is essential: several grammars (notably
+        # tree-sitter-ruby and tree-sitter-nim) emit BOTH a named construct
+        # node AND an anonymous keyword token sharing the same ``.type`` string
+        # (e.g. a named ``if`` expression node and the bare ``if`` keyword token
+        # are both ``.type == "if"``). Decision points are always *named*
+        # construct/clause nodes, so requiring ``is_named`` counts each branch
+        # exactly once and prevents the keyword-token double-count. (This is why
+        # ``BRANCH_NODE_TYPES["ruby"]`` can safely list ``if``/``while``/etc.)
+        if current.is_named and current_type in branch_types:
             complexity += 1
         elif current_type in _BINARY_EXPR_NODE_TYPES and short_circuit_ops:
             # Short-circuit operator detection. tree-sitter exposes the
