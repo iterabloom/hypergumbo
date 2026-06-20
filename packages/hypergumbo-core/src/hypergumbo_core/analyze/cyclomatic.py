@@ -387,6 +387,81 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
     "r": frozenset({
         "if_statement", "for_statement", "while_statement", "repeat_statement",
     }),
+    # INV-loguk slice C (batch 5, extended1-package programming languages).
+    # Node-type names verified by dumping each real grammar (see each owning
+    # analyzer's package tests).
+    # Ada: `elsif_statement_item` carries its own condition (counted); `else`
+    # is a bare keyword. ONE `loop_statement` covers for/while/infinite loops.
+    # `case_statement_alternative` = each `when` arm incl. `when others`. No
+    # symbolic &&/||; `and then`/`or else` are unreachable token pairs.
+    "ada": frozenset({
+        "if_statement", "elsif_statement_item", "loop_statement",
+        "case_statement_alternative",
+    }),
+    # Pascal: `if` (no-else) and `ifElse` (else-if nests as a child ifElse,
+    # counted per node); `for`/`while`/`repeat` loops; `caseCase` = each switch
+    # arm (the `case` wrapper and `else` default are not counted). `and`/`or`
+    # are named children of exprBinary — unreachable, no short-circuit.
+    "pascal": frozenset({
+        "if", "ifElse", "for", "while", "repeat", "caseCase",
+    }),
+    # Pony: `if_block`/`elseif_block` (each its own condition; else_block/
+    # then_block excluded); `for`/`while`; `case_statement` = each match arm
+    # (match_statement wrapper excluded). and/or short-circuit via
+    # binary_expression. (No symbolic &&/|| in Pony.)
+    "pony": frozenset({
+        "if_block", "elseif_block", "for_statement", "while_statement",
+        "case_statement",
+    }),
+    # GDScript: `if_statement`/`elif_clause` (else_clause excluded); `for`/
+    # `while`; `pattern_section` = each match arm; `pattern_guard` = a `when`
+    # guard on an arm (extra fall-through path, like haskell guards); ternary =
+    # `conditional_expression`. and/or AND &&/|| short-circuit via
+    # binary_operator.
+    "gdscript": frozenset({
+        "if_statement", "elif_clause", "for_statement", "while_statement",
+        "pattern_section", "conditional_expression", "pattern_guard",
+    }),
+    # Tcl: `if`/`elseif` (else wrapper excluded); `while`/`foreach`; `catch`
+    # (error handling). `for`/`switch` are generic command nodes (no dedicated
+    # node type) — conservatively uncounted. &&/|| short-circuit via
+    # `binop_expr` (added to _BINARY_EXPR_NODE_TYPES below). The if/elseif/
+    # while/foreach/catch keywords collide named-vs-anon; the is_named guard
+    # counts each once.
+    "tcl": frozenset({
+        "if", "elseif", "while", "foreach", "catch",
+    }),
+    # Luau (lua-shaped): `if_statement`/`elseif_statement` (else_statement
+    # excluded); `for`/`while`/`repeat`. and/or short-circuit via
+    # binary_expression. Distinct registered language from `lua`.
+    "luau": frozenset({
+        "if_statement", "elseif_statement", "for_statement", "while_statement",
+        "repeat_statement",
+    }),
+    # Apex (Java/C#-shaped): `if_statement` (else-if nests as a nested
+    # if_statement; bare else excluded); `for_statement` + `enhanced_for_statement`
+    # (for-each); `while`/`do`; `switch_rule` = each `when` arm incl. `when else`;
+    # `catch_clause`; ternary. &&/|| short-circuit via binary_expression.
+    "apex": frozenset({
+        "if_statement", "for_statement", "enhanced_for_statement",
+        "while_statement", "do_statement", "switch_rule", "catch_clause",
+        "ternary_expression",
+    }),
+    # Lean (pure functional): `if_then_else` (else-if nests, counted per node);
+    # `match_alt` = each match arm. &&/|| short-circuit via `binary_op` (added
+    # to _BINARY_EXPR_NODE_TYPES below). Imperative for/while/do don't parse in
+    # this experimental grammar (uncounted; conservative).
+    "lean": frozenset({
+        "if_then_else", "match_alt",
+    }),
+    # Agda: DEGENERATE grammar (like haxe/tcl-for). Its `if_then_else_` /
+    # `case_of_` / `&&` / `||` are ordinary mixfix identifiers (atom>qid nodes),
+    # indistinguishable from any function application — there is NO decision-point
+    # node type to count, and no binary-expr node for short-circuit. The empty
+    # set yields base CC=1 for every callable (non-null, satisfying INV-loguk).
+    # Also: the analyzer emits the type-signature node (single line), not the
+    # clause body, so CC is structurally base-1 regardless.
+    "agda": frozenset(),
 }
 
 
@@ -455,6 +530,19 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     "fortran": frozenset({".and.", ".or."}),
     "matlab": frozenset({"&&", "||"}),
     "r": frozenset({"&&", "||"}),
+    # INV-loguk slice C batch 5 (extended1). Pony/Luau use word-forms and/or
+    # (binary_expression, already a member). GDScript supports BOTH word-forms
+    # and symbolic (binary_operator, already a member). Tcl uses symbolic &&/||
+    # in `binop_expr` (added below). Apex uses &&/|| in binary_expression. Lean
+    # uses &&/|| in `binary_op` (added below). Ada (and-then/or-else token pairs),
+    # Pascal (named kAnd/kOr), and Agda (mixfix identifiers) are unreachable, so
+    # they get no short-circuit entry.
+    "pony": frozenset({"and", "or"}),
+    "gdscript": frozenset({"and", "or", "&&", "||"}),
+    "tcl": frozenset({"&&", "||"}),
+    "luau": frozenset({"and", "or"}),
+    "apex": frozenset({"&&", "||"}),
+    "lean": frozenset({"&&", "||"}),
 }
 
 
@@ -479,6 +567,8 @@ _BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
     "binary_operator",    # R (&&/|| live here; vectorized &/| excluded).
                           #   Elixir also uses binary_operator but is absent from
                           #   BRANCH_NODE_TYPES (walker returns None first).
+    "binop_expr",         # Tcl (&&/|| live here, INV-loguk slice C batch 5)
+    "binary_op",          # Lean (&&/|| live here, INV-loguk slice C batch 5)
 })
 
 

@@ -642,3 +642,32 @@ record Pair : Set where
         fst_sym = next((s for s in result.symbols if s.name == "fst"), None)
         assert fst_sym is not None
         assert fst_sym.signature == ": Nat"
+
+
+class TestAgdaCyclomaticComplexity:
+    """INV-loguk slice C: callable agda symbols carry non-null CC + LOC.
+    Real-grammar verification (degenerate grammar: no decision-point nodes, so callables get base CC=1 (non-null))."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.agda import analyze_agda
+        (tmp_path / 'T.agda').write_text('module T where\n\nclassify : Nat -> Nat -> Nat\nclassify x y = 0\n\ncheck : Bool -> Nat\ncheck b = 1\n')
+        result = analyze_agda(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        assert by['classify'].cyclomatic_complexity == 1, by['classify'].cyclomatic_complexity
+        assert by['classify'].lines_of_code is not None
+        assert by['check'].cyclomatic_complexity == 1, by['check'].cyclomatic_complexity
+        assert by['check'].lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.agda import analyze_agda
+        (tmp_path / 'T.agda').write_text('module T where\n\nclassify : Nat -> Nat -> Nat\nclassify x y = 0\n\ncheck : Bool -> Nat\ncheck b = 1\n')
+        result = analyze_agda(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

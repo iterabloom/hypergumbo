@@ -51,6 +51,7 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -148,6 +149,8 @@ def _extract_constructor(
         origin=PASS_ID,
         signature=signature,
         meta={"params": params, "parent_type": current_type},
+        cyclomatic_complexity=compute_cyclomatic_complexity(node, "pony"),
+        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
     )
 
 
@@ -201,6 +204,8 @@ def _extract_method(
         origin=PASS_ID,
         signature=signature,
         meta=meta,
+        cyclomatic_complexity=compute_cyclomatic_complexity(node, "pony"),
+        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
     )
 
 

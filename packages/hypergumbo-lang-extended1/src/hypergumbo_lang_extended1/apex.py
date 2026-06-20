@@ -44,6 +44,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -234,6 +235,8 @@ def _extract_method_symbol(
         origin=PASS_ID,
         signature=signature,
         meta=meta if meta else {},
+        cyclomatic_complexity=compute_cyclomatic_complexity(node, "apex"),
+        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
     )
 
 
@@ -290,6 +293,8 @@ def _extract_constructor_symbol(
         origin=PASS_ID,
         signature=signature,
         meta=meta if meta else {},
+        cyclomatic_complexity=compute_cyclomatic_complexity(node, "apex"),
+        lines_of_code=node.end_point[0] - node.start_point[0] + 1,
     )
 
 

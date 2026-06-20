@@ -344,3 +344,30 @@ end.
         assert func.span is not None
         assert func.span.start_line >= 1
         assert func.span.end_line >= func.span.start_line
+
+
+class TestPascalCyclomaticComplexity:
+    """INV-loguk slice C: callable pascal symbols carry non-null CC + LOC.
+    Real-grammar verification (if/ifElse/for/while/repeat/caseCase)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.pascal import analyze_pascal
+        (tmp_path / 'demo.pas').write_text('program Demo;\n\nfunction Score(n: Integer): Integer;\nvar i, total: Integer;\nbegin\n  total := 0;\n  if (n > 0) and (n < 10) then\n    total := 1\n  else if n >= 10 then\n    total := 2;\n  for i := 1 to n do\n    total := total + i;\n  while total > 100 do\n    total := total - 1;\n  case n of\n    0: total := 0;\n    1: total := 1;\n  end;\n  Score := total;\nend;\n\nbegin\nend.\n')
+        result = analyze_pascal(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        assert by['Score'].cyclomatic_complexity == 7, by['Score'].cyclomatic_complexity
+        assert by['Score'].lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.pascal import analyze_pascal
+        (tmp_path / 'demo.pas').write_text('program Demo;\n\nfunction Score(n: Integer): Integer;\nvar i, total: Integer;\nbegin\n  total := 0;\n  if (n > 0) and (n < 10) then\n    total := 1\n  else if n >= 10 then\n    total := 2;\n  for i := 1 to n do\n    total := total + i;\n  while total > 100 do\n    total := total - 1;\n  case n of\n    0: total := 0;\n    1: total := 1;\n  end;\n  Score := total;\nend;\n\nbegin\nend.\n')
+        result = analyze_pascal(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

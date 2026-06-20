@@ -803,3 +803,30 @@ public class Standalone {
         assert standalone is not None
         # Either no base_classes key or empty list
         assert "base_classes" not in standalone.meta or standalone.meta["base_classes"] == []
+
+
+class TestApexCyclomaticComplexity:
+    """INV-loguk slice C: callable apex symbols carry non-null CC + LOC.
+    Real-grammar verification (if/for/enhanced_for/while/do/switch_rule/catch/ternary + &&/||)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.apex import analyze_apex
+        (tmp_path / 'Calc.cls').write_text('public class Calc {\n    public Integer score(Integer x, Boolean flag) {\n        Integer total = 0;\n        if (x > 0 && flag) {\n            total = 1;\n        } else if (x < 0 || flag) {\n            total = 2;\n        } else {\n            total = 3;\n        }\n        for (Integer i = 0; i < x; i++) {\n            total += i;\n        }\n        while (total > 100) {\n            total -= 10;\n        }\n        switch on x {\n            when 1 { total = 10; }\n            when 2, 3 { total = 20; }\n            when else { total = 0; }\n        }\n        try {\n            total = total / x;\n        } catch (Exception e) {\n            total = -1;\n        }\n        return total;\n    }\n}')
+        result = analyze_apex(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('method', 'constructor')}
+        assert by['Calc.score'].cyclomatic_complexity == 11, by['Calc.score'].cyclomatic_complexity
+        assert by['Calc.score'].lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.apex import analyze_apex
+        (tmp_path / 'Calc.cls').write_text('public class Calc {\n    public Integer score(Integer x, Boolean flag) {\n        Integer total = 0;\n        if (x > 0 && flag) {\n            total = 1;\n        } else if (x < 0 || flag) {\n            total = 2;\n        } else {\n            total = 3;\n        }\n        for (Integer i = 0; i < x; i++) {\n            total += i;\n        }\n        while (total > 100) {\n            total -= 10;\n        }\n        switch on x {\n            when 1 { total = 10; }\n            when 2, 3 { total = 20; }\n            when else { total = 0; }\n        }\n        try {\n            total = total / x;\n        } catch (Exception e) {\n            total = -1;\n        }\n        return total;\n    }\n}')
+        result = analyze_apex(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('method', 'constructor')]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('method', 'constructor'):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

@@ -453,3 +453,32 @@ class Main
         ]
         assert len(resolved_edges) == 1
         assert resolved_edges[0].confidence == 1.0
+
+
+class TestPonyCyclomaticComplexity:
+    """INV-loguk slice C: callable pony symbols carry non-null CC + LOC.
+    Real-grammar verification (if_block/elseif_block/for/while/case + and/or)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.pony import analyze_pony
+        (tmp_path / 'main.pony').write_text('actor Main\n  new create(env: Env) =>\n    for x in xs.values() do\n      if x > 10 and x < 100 then\n        total = total + x\n      elseif x == 5 then\n        total = total + 1\n      else\n        total = total - 1\n      end\n    end\n    while total > 0 do\n      total = total - 1\n    end\n    match total\n    | 0 => env.out.print("zero")\n    | 1 => env.out.print("one")\n    else\n      env.out.print("many")\n    end\n\n  fun compute(a: U32, b: U32): U32 =>\n    if a > b or b == 0 then\n      a\n    else\n      b\n    end\n')
+        result = analyze_pony(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('constructor', 'method')}
+        assert by['Main.create'].cyclomatic_complexity == 8, by['Main.create'].cyclomatic_complexity
+        assert by['Main.create'].lines_of_code is not None
+        assert by['Main.compute'].cyclomatic_complexity == 3, by['Main.compute'].cyclomatic_complexity
+        assert by['Main.compute'].lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.pony import analyze_pony
+        (tmp_path / 'main.pony').write_text('actor Main\n  new create(env: Env) =>\n    for x in xs.values() do\n      if x > 10 and x < 100 then\n        total = total + x\n      elseif x == 5 then\n        total = total + 1\n      else\n        total = total - 1\n      end\n    end\n    while total > 0 do\n      total = total - 1\n    end\n    match total\n    | 0 => env.out.print("zero")\n    | 1 => env.out.print("one")\n    else\n      env.out.print("many")\n    end\n\n  fun compute(a: U32, b: U32): U32 =>\n    if a > b or b == 0 then\n      a\n    else\n      b\n    end\n')
+        result = analyze_pony(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('constructor', 'method')]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('constructor', 'method'):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

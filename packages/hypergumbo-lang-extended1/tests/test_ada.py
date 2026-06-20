@@ -419,3 +419,30 @@ end Main;
         # 'TIO' should map to 'Ada.Text_IO'
         assert "TIO" in renames
         assert renames["TIO"] == "Ada.Text_IO"
+
+
+class TestAdaCyclomaticComplexity:
+    """INV-loguk slice C: callable ada symbols carry non-null CC + LOC.
+    Real-grammar verification (if/elsif/loop/case-arm; CC from the subprogram body, not the spec node)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.ada import analyze_ada
+        (tmp_path / 'demo.adb').write_text('with Ada.Text_IO; use Ada.Text_IO;\n\npackage body Demo is\n\n   function Classify (X : Integer; Y : Integer) return Integer is\n      Result : Integer := 0;\n   begin\n      if X > 0 and then Y > 0 then\n         Result := 1;\n      elsif X < 0 or else Y < 0 then\n         Result := 2;\n      else\n         Result := 3;\n      end if;\n\n      for I in 1 .. X loop\n         Result := Result + I;\n      end loop;\n\n      while Result > 100 loop\n         Result := Result - 1;\n      end loop;\n\n      case X is\n         when 0 =>\n            Result := 0;\n         when 1 =>\n            Result := 10;\n         when others =>\n            Result := -1;\n      end case;\n\n      return Result;\n   end Classify;\nend Demo;\n')
+        result = analyze_ada(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function', 'procedure')}
+        assert by['Classify'].cyclomatic_complexity == 8, by['Classify'].cyclomatic_complexity
+        assert by['Classify'].lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.ada import analyze_ada
+        (tmp_path / 'demo.adb').write_text('with Ada.Text_IO; use Ada.Text_IO;\n\npackage body Demo is\n\n   function Classify (X : Integer; Y : Integer) return Integer is\n      Result : Integer := 0;\n   begin\n      if X > 0 and then Y > 0 then\n         Result := 1;\n      elsif X < 0 or else Y < 0 then\n         Result := 2;\n      else\n         Result := 3;\n      end if;\n\n      for I in 1 .. X loop\n         Result := Result + I;\n      end loop;\n\n      while Result > 100 loop\n         Result := Result - 1;\n      end loop;\n\n      case X is\n         when 0 =>\n            Result := 0;\n         when 1 =>\n            Result := 10;\n         when others =>\n            Result := -1;\n      end case;\n\n      return Result;\n   end Classify;\nend Demo;\n')
+        result = analyze_ada(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function', 'procedure')]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function', 'procedure'):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

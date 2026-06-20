@@ -369,3 +369,30 @@ end
         # self:helper() call should be extracted
         edges = [e for e in result.edges if "helper" in e.dst]
         assert len(edges) >= 1
+
+
+class TestLuauCyclomaticComplexity:
+    """INV-loguk slice C: callable luau symbols carry non-null CC + LOC.
+    Real-grammar verification (if/elseif/for/while/repeat + and/or)."""
+
+    def test_branchy_callables_have_expected_cc(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.luau import analyze_luau
+        (tmp_path / 'c.luau').write_text('local function classify(n)\n\tif n > 100 and n < 200 then\n\t\treturn 1\n\telseif n > 50 or n == 0 then\n\t\treturn 2\n\telse\n\t\tif n < 0 then\n\t\t\treturn 3\n\t\tend\n\tend\n\tfor i = 1, n do print(i) end\n\twhile n > 0 do n = n - 1 end\n\trepeat n = n + 1 until n > 10\n\treturn 4\nend')
+        result = analyze_luau(tmp_path)
+        assert not result.skipped
+        by = {s.name: s for s in result.symbols if s.kind in ('function',)}
+        assert by['classify'].cyclomatic_complexity == 9, by['classify'].cyclomatic_complexity
+        assert by['classify'].lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_extended1.luau import analyze_luau
+        (tmp_path / 'c.luau').write_text('local function classify(n)\n\tif n > 100 and n < 200 then\n\t\treturn 1\n\telseif n > 50 or n == 0 then\n\t\treturn 2\n\telse\n\t\tif n < 0 then\n\t\t\treturn 3\n\t\tend\n\tend\n\tfor i = 1, n do print(i) end\n\twhile n > 0 do n = n - 1 end\n\trepeat n = n + 1 until n > 10\n\treturn 4\nend')
+        result = analyze_luau(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ('function',)]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in ('function',):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

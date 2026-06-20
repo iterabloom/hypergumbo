@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -71,8 +72,16 @@ def _extract_formal_part(node: "tree_sitter.Node", source: bytes) -> Optional[st
 
 
 def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node", name: str, kind: str,
-                 source: bytes, signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
-    """Create a Symbol with consistent formatting."""
+                 source: bytes, signature: Optional[str] = None, meta: Optional[dict] = None,
+                 cc_node: "Optional[tree_sitter.Node]" = None) -> Symbol:
+    """Create a Symbol with consistent formatting.
+
+    INV-loguk: ``cc_node`` is the subtree to compute cyclomatic_complexity +
+    lines_of_code from — the subprogram BODY for callables (the ``node`` used
+    for the id/span is the spec, which is a single line and carries no body).
+    Only callable body paths pass it; non-callable kinds (package/type/
+    variable) leave it None and keep CC/LOC None.
+    """
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
     sym_id = make_symbol_id("ada", rel_path, start_line, end_line, name, kind)
@@ -102,6 +111,13 @@ def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tre
         ),
         signature=signature,
         meta=meta,
+        cyclomatic_complexity=(
+            compute_cyclomatic_complexity(cc_node, "ada") if cc_node is not None else None
+        ),
+        lines_of_code=(
+            cc_node.end_point[0] - cc_node.start_point[0] + 1
+            if cc_node is not None else None
+        ),
     )
 
 
@@ -142,14 +158,16 @@ def _process_subprogram_body(analyzer: "AdaAnalyzer", source: bytes, rel_path: s
     func_spec = find_child_by_type(node, "function_specification")
     proc_spec = find_child_by_type(node, "procedure_specification")
 
+    # INV-loguk: the spec node carries no body, so CC/LOC must be computed from
+    # the enclosing subprogram_body subtree (passed as cc_node).
     if func_spec:
-        return _process_function_spec(analyzer, source, rel_path, run_id, func_spec)
+        return _process_function_spec(analyzer, source, rel_path, run_id, func_spec, cc_node=node)
     elif proc_spec:
-        return _process_procedure_spec(analyzer, source, rel_path, run_id, proc_spec)
+        return _process_procedure_spec(analyzer, source, rel_path, run_id, proc_spec, cc_node=node)
     return None  # pragma: no cover - defensive
 
 
-def _process_function_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
+def _process_function_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node", cc_node: "Optional[tree_sitter.Node]" = None) -> Optional[Symbol]:
     """Process a function specification."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
@@ -168,10 +186,10 @@ def _process_function_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str
         signature_parts.append(node_text(result, source))
 
     signature = " ".join(signature_parts) if signature_parts else None
-    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature, cc_node=cc_node)
 
 
-def _process_procedure_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
+def _process_procedure_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node", cc_node: "Optional[tree_sitter.Node]" = None) -> Optional[Symbol]:
     """Process a procedure specification."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
@@ -179,7 +197,7 @@ def _process_procedure_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: st
 
     proc_name = node_text(name_node, source)
     signature = _extract_formal_part(node, source)
-    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "procedure", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "procedure", source, signature=signature, cc_node=cc_node)
 
 
 def _process_type_declaration(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
