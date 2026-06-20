@@ -946,6 +946,7 @@ Individual commits are preserved in the history."
 		echo ""
 		echo "❌ Remote still unavailable after $max_attempts attempts"
 		echo "   vPRs remain queued. Try again later with: ./scripts/auto-pr flush"
+		print_desync_recovery_hint
 		_autopr_state_final="failed_flush_remote_unavailable"
 		exit 1
 	fi
@@ -1396,6 +1397,7 @@ do_pr() {
 	if [[ "$push_success" != "true" ]]; then
 		echo ""
 		echo "❌ Remote unavailable after $max_attempts attempts"
+		print_desync_recovery_hint
 		queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
 		_autopr_state_final="queued_vpr"
 		exit 0 # Exit cleanly - vPR is queued
@@ -1514,6 +1516,7 @@ do_pr() {
 				if ! git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
 					git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" 2>/dev/null || {
 						echo "❌ Re-push failed"
+						print_desync_recovery_hint
 						exit 1
 					}
 				fi

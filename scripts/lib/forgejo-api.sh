@@ -129,6 +129,25 @@ api_post() { api_call POST "$@"; }
 api_patch() { api_call PATCH "$@"; }
 
 # ------------------------------------------------------------------
+# print_desync_recovery_hint
+#   Workaround hint for Codeberg's recurring "database representation out of
+#   synchronization" desync, printed at the failure points that hit it so the
+#   fix is self-documenting (and not bloating AGENTS.md). stderr, so it never
+#   pollutes parsed stdout.
+# ------------------------------------------------------------------
+print_desync_recovery_hint() {
+	cat >&2 <<'HINT'
+
+💡 504 / HTTP 000 / 405 / "remote rejected: same commit" / "fail to run
+   proc-receive hook" usually means a Codeberg DB desync. Workaround:
+   do ONE plain branch push, then retry:
+       git push origin "HEAD:refs/heads/<your-branch>"
+   If still broken after that: STOP and tell the human. Do NOT contact
+   Codeberg admins (no issue / email / chat) — that is a human-only action.
+HINT
+}
+
+# ------------------------------------------------------------------
 # json_field DOTPATH
 #   Safe field extraction from JSON on stdin.
 #   Returns empty string on failure, never crashes.
@@ -1332,6 +1351,7 @@ do_merge() {
 			fi
 			echo "❌ Merge failed after $max_retries attempts (last HTTP $merge_http_code)"
 			echo "Response: $merge_response"
+			print_desync_recovery_hint
 			rm -f "$tmp_file"
 			return 1
 		fi

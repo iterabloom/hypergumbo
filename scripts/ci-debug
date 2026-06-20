@@ -68,6 +68,7 @@ cmd_runs() {
     got_runs=true
   else
     echo "❌ Failed to fetch runs (HTTP $API_HTTP_CODE)"
+    print_desync_recovery_hint
     exit 1
   fi
 
@@ -106,6 +107,7 @@ cmd_status() {
 
   if ! api_get "$API_BASE/commits/$sha/status"; then
     echo "❌ Failed to fetch status (HTTP $API_HTTP_CODE)"
+    print_desync_recovery_hint
     exit 1
   fi
 

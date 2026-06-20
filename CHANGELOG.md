@@ -12,6 +12,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Changed
+
+- **Self-documenting Codeberg desync workaround in CI/forge scripts.** When `auto-pr` / `merge-pr` / `ci-debug` hit the failure signatures of Codeberg's recurring "database representation out of synchronization" desync (504 / HTTP 000 / 405 / "remote rejected: same commit" / "fail to run proc-receive hook"), they now print a terse recovery hint via a shared `print_desync_recovery_hint` helper in `forgejo-api.sh`: do one plain branch push (its `post-receive` recomputes the DB representation and clears the desync), then retry. The hint explicitly directs the agent to surface the problem to the human and **never** contact Codeberg admins. Keeps the recipe at the point of failure instead of bloating AGENTS.md.
+
 ### Fixed
 
 - **CommonJS module bindings reach call-graph parity with ESM; `.mjs/.cjs/.mts/.cts` are now discovered (WI-zavad).** The `require()` emitter recorded the *import* edge but never registered the bound name as an import alias, so member/bare calls on a require-bound module (`const fs = require('fs'); fs.readFileSync(...)`, `const { exec } = require('child_process'); exec(...)`) emitted **zero `calls` edges** — leaving CommonJS Node I/O invisible to the io-boundaries layer (a CJS service file reported zero I/O, output identical to a genuinely I/O-free file). `_extract_namespace_imports`/`_extract_named_imports` now also harvest CommonJS default (`const x = require('m')`) and destructured (`const { a, b: c } = require('m')`) bindings, routing their calls through the same namespace (WI-vurop) and named-import (WI-banaf) unresolved-call paths as ESM, with aliased destructures keyed on the canonical export name. Separately, the file-discovery globs and analyzer `file_patterns` gained `.mjs/.cjs` (JavaScript) and `.mts/.cts` (TypeScript), which were previously never analyzed at all.
