@@ -1277,3 +1277,59 @@ class TestGroovyShapeId:
         cls = next(s for s in result.symbols if s.kind == "class")
         assert cls.shape_id is not None
         assert cls.shape_id.startswith("sha256:")
+
+
+class TestGroovyCyclomaticComplexity:
+    """INV-loguk slice C: callable Groovy symbols carry non-null CC + LOC.
+    Real-grammar verification (if/for/while/do/switch_label/catch/ternary +
+    &&/|| short-circuit)."""
+
+    def test_branchy_method_has_cc_and_loc(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+        (tmp_path / "Calc.groovy").write_text("""class Calc {
+    int classify(int a, int b) {
+        if (a > 0 && b > 0) { return 1 }
+        else if (a < 0 || b < 0) { return -1 }
+        for (int i = 0; i < a; i++) { println i }
+        int j = 0
+        while (j < b) { j++ }
+        switch (a) {
+            case 1: return 10
+            case 2: return 20
+            default: return 0
+        }
+        try { risky() } catch (Exception e) { handle(e) }
+        return a > b ? a : b
+    }
+}
+""")
+        result = analyze_groovy(tmp_path)
+        fn = next(s for s in result.symbols if s.name == "Calc.classify")
+        # base 1 + if x2 + for + while + 3 switch_label + catch + ternary + && + || = 12
+        assert fn.cyclomatic_complexity == 12
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_top_level_function_cc_is_one(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+        (tmp_path / "T.groovy").write_text("def plain(int x) { return x }\n")
+        result = analyze_groovy(tmp_path)
+        fn = next(s for s in result.symbols if s.kind == "function" and s.name == "plain")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+        (tmp_path / "M.groovy").write_text("""class Box {
+    int get(int x) { if (x > 0) { return x }; return 0 }
+}
+""")
+        result = analyze_groovy(tmp_path)
+        callable_kinds = ("function", "method")
+        callables = [s for s in result.symbols if s.kind in callable_kinds]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in callable_kinds:
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

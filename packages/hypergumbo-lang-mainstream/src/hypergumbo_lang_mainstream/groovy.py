@@ -59,6 +59,7 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -557,6 +558,8 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         signature=signature,
                         modifiers=modifiers,
                         meta=method_meta,
+                        cyclomatic_complexity=compute_cyclomatic_complexity(node, "groovy"),
+                        lines_of_code=end_line - start_line + 1,
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node
@@ -600,6 +603,8 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         stable_id=stable_id,
                         signature=signature,
                         modifiers=modifiers,
+                        cyclomatic_complexity=compute_cyclomatic_complexity(node, "groovy"),
+                        lines_of_code=end_line - start_line + 1,
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node

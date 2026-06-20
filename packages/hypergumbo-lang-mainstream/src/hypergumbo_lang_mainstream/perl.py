@@ -54,6 +54,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -291,6 +292,8 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             qualified_name=qualified_name,
                             file_stable_id=self._file_anchor(rel_path),
                         ),
+                        cyclomatic_complexity=compute_cyclomatic_complexity(node, "perl"),
+                        lines_of_code=end_line - start_line + 1,
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node

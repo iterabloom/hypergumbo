@@ -826,3 +826,56 @@ class TestLuaStableShapeId:
         assert func.stable_id.startswith("sha256:")
         assert func.shape_id is not None
         assert func.shape_id.startswith("sha256:")
+
+
+class TestLuaCyclomaticComplexity:
+    """INV-loguk slice C: callable Lua symbols carry non-null CC + LOC.
+    Real-grammar verification (if/elseif/for/while/repeat + and/or)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+        (tmp_path / "f.lua").write_text("""local function classify(x, y)
+    if x > 0 and y > 0 then
+        return 1
+    elseif x < 0 or y < 0 then
+        return 2
+    end
+    for i = 1, 10 do print(i) end
+    local n = 0
+    while n < 5 do n = n + 1 end
+    repeat n = n - 1 until n == 0
+    return 0
+end
+""")
+        result = analyze_lua(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "classify")
+        # base 1 + if + elseif + for + while + repeat + and + or = 8
+        assert fn.cyclomatic_complexity == 8
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+        (tmp_path / "g.lua").write_text("local function g(x) return x end\n")
+        result = analyze_lua(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind in ("function", "method") and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_all_callables_non_null(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+        (tmp_path / "m.lua").write_text("""local M = {}
+function M.f(x) if x > 0 then return 1 end return 0 end
+function M:m(y) return y end
+return M
+""")
+        result = analyze_lua(tmp_path)
+        callables = [s for s in result.symbols if s.kind in ("function", "method")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        for s in result.symbols:
+            if s.kind not in ("function", "method"):
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

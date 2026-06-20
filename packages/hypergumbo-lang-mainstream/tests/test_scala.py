@@ -1436,3 +1436,59 @@ def helper(): Unit = {
                 f"Normal name 'helper' should have confidence >= 0.50, "
                 f"got {edge.confidence}"
             )
+
+
+class TestScalaCyclomaticComplexity:
+    """INV-loguk slice C: callable Scala symbols carry non-null CC + LOC.
+    Real-grammar verification of the scala BRANCH_NODE_TYPES entry
+    (if/for/while/do_while_expression + case_clause)."""
+
+    def test_branchy_method_has_cc_and_loc(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+        (tmp_path / "F.scala").write_text("""object Demo {
+  def classify(n: Int): String = {
+    if (n < 0) "neg"
+    else if (n == 0) "zero"
+    else {
+      for (i <- 0 until n) { println(i) }
+      while (n > 100) { println(n) }
+      n match {
+        case 1 => "one"
+        case 2 => "two"
+        case _ => "many"
+      }
+    }
+  }
+}
+""")
+        result = analyze_scala(tmp_path)
+        fn = next(s for s in result.symbols if s.name == "Demo.classify")
+        # base 1 + 2 if_expression + for + while + 3 case_clause = 8
+        assert fn.cyclomatic_complexity == 8
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_method_cc_is_one(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+        (tmp_path / "G.scala").write_text("object G { def plain(x: Int): Int = x + 1 }\n")
+        result = analyze_scala(tmp_path)
+        fn = next(s for s in result.symbols if s.name == "G.plain")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+        (tmp_path / "M.scala").write_text("""class Box {
+  def get(x: Int): Int = if (x > 0) x else 0
+}
+trait Shape { def area(): Double }
+""")
+        result = analyze_scala(tmp_path)
+        callable_kinds = ("function", "method", "constructor")
+        callables = [s for s in result.symbols if s.kind in callable_kinds]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        for s in result.symbols:
+            if s.kind not in callable_kinds:
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

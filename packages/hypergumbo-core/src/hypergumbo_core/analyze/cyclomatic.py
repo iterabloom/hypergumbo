@@ -200,6 +200,64 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
         "conditional_expression", "logical_and_expression",
         "logical_or_expression",
     }),
+    # INV-loguk slice C (mainstream-package batch 2). Node-type names verified
+    # by dumping each real grammar (see test_symbol_introspection.py).
+    # Scala is expression-oriented: control flow ends in _expression; do-while
+    # is a distinct `do_while_expression`. `case_clause` = each match arm AND
+    # each try/catch handler arm (catch_clause wraps a case_block of
+    # case_clauses, like OCaml's match_case — so catch_clause itself is NOT
+    # counted). `else` is a bare keyword (else-if = nested if_expression).
+    # &&/|| are named operator_identifier children of infix_expression,
+    # unreachable by the unnamed scan — absent.
+    "scala": frozenset({
+        "if_expression", "for_expression", "while_expression",
+        "do_while_expression", "case_clause",
+    }),
+    # Lua: `elseif_statement` carries its own condition (counted, like bash
+    # elif); `repeat_statement` is the repeat/until post-test loop. and/or are
+    # short-circuit (unnamed children of binary_expression).
+    "lua": frozenset({
+        "if_statement", "elseif_statement", "for_statement", "while_statement",
+        "repeat_statement",
+    }),
+    # Perl: if/unless => `conditional_statement`; while/until => `loop_statement`;
+    # for/foreach => `for_statement`; ternary => `conditional_expression`; the
+    # statement-modifier forms are `postfix_conditional_expression` /
+    # `postfix_loop_expression`. `elsif` is DELIBERATELY excluded — the grammar
+    # gives the named elsif wrapper AND the bare elsif keyword token the same
+    # `.type`, so counting it would double-count (same collision class as
+    # haskell `case`); an if/elsif chain conservatively counts as 1.
+    # &&/||/// are short-circuit (unnamed children of binary_expression); the
+    # word-forms and/or live in a different node and are not counted.
+    "perl": frozenset({
+        "conditional_statement", "for_statement", "loop_statement",
+        "conditional_expression", "postfix_conditional_expression",
+        "postfix_loop_expression",
+    }),
+    # Groovy (Java-shaped): `switch_label` = each case incl. default; else-if is
+    # a nested if_statement (else is a bare keyword). &&/|| short-circuit via
+    # binary_expression.
+    "groovy": frozenset({
+        "if_statement", "for_statement", "while_statement", "do_statement",
+        "switch_label", "catch_clause", "ternary_expression",
+    }),
+    # PowerShell: `elseif_clause` carries its own condition (counted); `else_clause`
+    # wrapper excluded. `switch_clause` = each switch arm incl. default. Both
+    # `for_statement` (C-style) and `foreach_statement`. -and/-or are short-circuit
+    # but live in `logical_expression` (added to _BINARY_EXPR_NODE_TYPES below);
+    # the non-short-circuiting -xor is excluded by omission from SHORT_CIRCUIT_OPS.
+    "powershell": frozenset({
+        "if_statement", "elseif_clause", "for_statement", "foreach_statement",
+        "while_statement", "do_statement", "switch_clause", "catch_clause",
+    }),
+    # Objective-C (C-family grammar): `case_statement` = each case incl. default;
+    # else-if = nested if_statement inside an else_clause wrapper (wrapper
+    # excluded). objc adds @try/@catch over C, hence `catch_clause`. &&/||
+    # short-circuit via binary_expression.
+    "objc": frozenset({
+        "if_statement", "for_statement", "while_statement", "do_statement",
+        "case_statement", "conditional_expression", "catch_clause",
+    }),
 }
 
 
@@ -232,6 +290,19 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     # non-short-circuiting ``and``/``or`` always evaluate both operands (no extra
     # path) and are deliberately excluded. (INV-loguk slice C.)
     "erlang": frozenset({"andalso", "orelse"}),
+    # INV-loguk slice C batch 2. Lua/Perl/Groovy/Obj-C short-circuit operators
+    # live as unnamed children of ``binary_expression`` (already in the set).
+    # Lua's word-forms ``and``/``or`` ARE short-circuiting. Perl counts the
+    # symbolic ``&&``/``||``/``//`` (defined-or); its word-forms ``and``/``or``
+    # live in a different node and are not counted.
+    "lua": frozenset({"and", "or"}),
+    "perl": frozenset({"&&", "||", "//"}),
+    "groovy": frozenset({"&&", "||"}),
+    "objc": frozenset({"&&", "||"}),
+    # PowerShell's ``-and``/``-or`` live as unnamed children of
+    # ``logical_expression`` (added to _BINARY_EXPR_NODE_TYPES below). The
+    # non-short-circuiting ``-xor`` is excluded by omission.
+    "powershell": frozenset({"-and", "-or"}),
 }
 
 
@@ -246,6 +317,7 @@ _BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
                           #  kept defensive)
     "binary",             # Ruby (tree-sitter-ruby names it ``binary``)
     "binary_op_expr",     # Erlang (andalso / orelse live here, INV-loguk slice C)
+    "logical_expression", # PowerShell (-and / -or live here, INV-loguk slice C)
 })
 
 

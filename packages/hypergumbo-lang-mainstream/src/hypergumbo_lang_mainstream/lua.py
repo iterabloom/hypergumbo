@@ -74,6 +74,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 
 if TYPE_CHECKING:
@@ -228,6 +229,8 @@ def _extract_symbols_from_file(
                         node, kind=kind, name=name, file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "lua"),
+                    lines_of_code=end_line - start_line + 1,
                 ))
 
     return symbols

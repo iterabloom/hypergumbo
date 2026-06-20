@@ -788,3 +788,65 @@ class TestObjCStableShapeId:
         assert cls.stable_id.startswith("sha256:")
         assert cls.shape_id is not None
         assert cls.shape_id.startswith("sha256:")
+
+
+class TestObjcCyclomaticComplexity:
+    """INV-loguk slice C: callable Obj-C symbols (methods) carry non-null
+    CC + LOC. Real-grammar verification (if/for/while/do/case/ternary/catch +
+    &&/|| short-circuit)."""
+
+    def test_branchy_method_has_cc_and_loc(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+        (tmp_path / "Foo.m").write_text("""@implementation Foo
+- (int)classify:(int)x with:(int)y {
+    if (x > 0 && y > 0) { NSLog(@"a"); }
+    if (x < 0 || y < 0) { NSLog(@"b"); }
+    for (int i = 0; i < x; i++) { NSLog(@"%d", i); }
+    while (x > 0) { x--; }
+    switch (x) {
+        case 1: return 10;
+        case 2: return 20;
+        default: return 0;
+    }
+    return x > y ? x : y;
+}
+@end
+""")
+        result = analyze_objc(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "method" and "classify" in s.name)
+        # base 1 + if x2 + && + || + for + while + 3 case + ternary = 11
+        assert fn.cyclomatic_complexity == 11
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_method_cc_is_one(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+        (tmp_path / "Bar.m").write_text("""@implementation Bar
+- (int)plain:(int)x { return x; }
+@end
+""")
+        result = analyze_objc(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "method" and "plain" in s.name)
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path) -> None:
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+        (tmp_path / "Baz.m").write_text("""@interface Baz : NSObject
+@property (nonatomic) int count;
+- (int)compute:(int)x;
+@end
+@implementation Baz
+- (int)compute:(int)x { if (x > 0) { return 1; } return 0; }
+@end
+""")
+        result = analyze_objc(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert methods
+        for s in methods:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        for s in result.symbols:
+            if s.kind != "method":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)
