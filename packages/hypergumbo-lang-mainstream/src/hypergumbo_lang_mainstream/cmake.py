@@ -42,6 +42,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -331,6 +332,13 @@ def _process_cmake_tree(
                             ),
                             origin=PASS_ID,
                             signature=_extract_cmake_signature(child, source),
+                            # INV-loguk: function() bodies carry control flow
+                            # (if/elseif/foreach/while); walk the full
+                            # function_def subtree (node). LOC from span.
+                            cyclomatic_complexity=compute_cyclomatic_complexity(
+                                node, "cmake",
+                            ),
+                            lines_of_code=end_line - start_line + 1,
                         )
                         symbols.append(sym)
                         target_registry[func_name.lower()] = symbol_id
@@ -363,6 +371,12 @@ def _process_cmake_tree(
                             ),
                             origin=PASS_ID,
                             signature=_extract_cmake_signature(child, source),
+                            # INV-loguk: macro() bodies carry control flow too;
+                            # walk the full macro_def subtree (node). LOC from span.
+                            cyclomatic_complexity=compute_cyclomatic_complexity(
+                                node, "cmake",
+                            ),
+                            lines_of_code=end_line - start_line + 1,
                         )
                         symbols.append(sym)
                         target_registry[macro_name.lower()] = symbol_id

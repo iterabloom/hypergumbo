@@ -49,6 +49,13 @@ from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+# INV-loguk: notebook code cells are Python, so reuse py.py's language-agnostic
+# Python-AST complexity walkers (the tree-sitter `compute_cyclomatic_complexity`
+# dispatcher operates on tree-sitter nodes, not `ast.AST`). Same package.
+from hypergumbo_lang_mainstream.py import (
+    _compute_cyclomatic_complexity,
+    _compute_lines_of_code,
+)
 
 PASS_ID = make_pass_id("jupyter")
 
@@ -218,6 +225,9 @@ def _analyze_notebook_file(
                 span=span,
                 origin=PASS_ID,
                 origin_run_id="",
+                # INV-loguk: Python-AST CC/LOC over the function node.
+                cyclomatic_complexity=_compute_cyclomatic_complexity(node),
+                lines_of_code=_compute_lines_of_code(node),
             )
             symbols.append(symbol)
             symbol_by_name[name] = symbol
@@ -268,6 +278,9 @@ def _analyze_notebook_file(
                         span=m_span,
                         origin=PASS_ID,
                         origin_run_id="",
+                        # INV-loguk: Python-AST CC/LOC over the method node.
+                        cyclomatic_complexity=_compute_cyclomatic_complexity(item),
+                        lines_of_code=_compute_lines_of_code(item),
                     )
                     symbols.append(method_symbol)
                     symbol_by_name[method_name] = method_symbol

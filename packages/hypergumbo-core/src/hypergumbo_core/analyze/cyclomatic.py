@@ -527,6 +527,18 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
     # can't inspect), so no decision-point node type. Empty set -> base CC=1 for
     # every label (non-null, satisfying INV-loguk).
     "asm": frozenset(),
+    # INV-loguk residual gap: CMake `function()`/`macro()` blocks are real
+    # callables whose bodies carry control flow. `if_command` = each if() (one
+    # per if); `elseif_command` carries its own condition (counted, like bash
+    # `elif_clause`); `foreach_command`/`while_command` are the two loop forms.
+    # `else_command` (alternative path) and all closers (`endif_command`/… )
+    # are excluded. The keyword tokens (`if`/`elseif`/`foreach`/`while`) are a
+    # different `.type` than the `*_command` wrappers, so the is_named guard
+    # counts each construct once. CMake `AND`/`OR` are `unquoted_argument` text
+    # (no binary-expr node), so cmake stays out of SHORT_CIRCUIT_OPS (like bash).
+    "cmake": frozenset({
+        "if_command", "elseif_command", "foreach_command", "while_command",
+    }),
 }
 
 

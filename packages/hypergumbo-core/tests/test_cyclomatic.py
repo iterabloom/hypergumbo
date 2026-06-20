@@ -162,6 +162,23 @@ class TestRelocatedLanguageTables:
         # base 1 + if 1 + for 1 + 2 arms + loop 1 = 6
         assert compute_cyclomatic_complexity(tree, "wgsl") == 6
 
+    def test_cmake_counts_command_wrappers_not_closers_or_else(self) -> None:
+        # CMake function()/macro() body: each if_command/elseif_command/
+        # foreach_command/while_command is a decision point; else_command and
+        # the end*_command closers add nothing.
+        tree = _FakeNode("function_def", [
+            _FakeNode("if_command"),
+            _FakeNode("elseif_command"),
+            _FakeNode("else_command"),
+            _FakeNode("endif_command"),
+            _FakeNode("foreach_command"),
+            _FakeNode("endforeach_command"),
+            _FakeNode("while_command"),
+            _FakeNode("endwhile_command"),
+        ])
+        # base 1 + if + elseif + foreach + while = 5
+        assert compute_cyclomatic_complexity(tree, "cmake") == 5
+
 
 # ---------------------------------------------------------------------------
 # Homoiconic head-symbol walker (clojure / commonlisp / scheme / racket /
