@@ -879,3 +879,63 @@ instance Showable Person where
         assert len(instance_syms) >= 1
         # Both Showable and Person are in exports, so the instance is exported
         assert any(s.is_exported for s in instance_syms)
+
+
+class TestHaskellCyclomaticComplexity:
+    """INV-loguk slice C: callable Haskell symbols carry non-null
+    cyclomatic_complexity and lines_of_code. Real-grammar verification of the
+    haskell BRANCH_NODE_TYPES entry (conditional / alternative / guards)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.haskell import analyze_haskell
+        make_haskell_file(tmp_path, "F.hs", """module F (classify) where
+
+classify :: Int -> Int -> String
+classify x y =
+  if x > 0
+    then "pos"
+    else if y > 0
+      then "ypos"
+      else case x of
+        0 -> "zero"
+        _ -> "other"
+""")
+        result = analyze_haskell(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "classify")
+        # base 1 + 2 conditional (if + else-if) + 2 alternative (case arms) = 5
+        assert fn.cyclomatic_complexity == 5
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.haskell import analyze_haskell
+        make_haskell_file(tmp_path, "G.hs", """module G (g) where
+
+g :: Int -> Int
+g x = x
+""")
+        result = analyze_haskell(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.haskell import analyze_haskell
+        make_haskell_file(tmp_path, "M.hs", """module M (f, Color(..)) where
+
+data Color = Red | Green | Blue
+
+f :: Int -> Int
+f x = if x > 0 then 1 else 0
+""")
+        result = analyze_haskell(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        # data / file (non-callable) keep null CC
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

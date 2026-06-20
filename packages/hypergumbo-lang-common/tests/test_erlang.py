@@ -788,3 +788,77 @@ class TestErlangDocstrings:
 
         # Confidence should be lower than resolved calls
         assert all(e.confidence == 0.70 for e in ext_edges)
+
+
+class TestErlangCyclomaticComplexity:
+    """INV-loguk slice C: callable Erlang symbols carry non-null
+    cyclomatic_complexity (aggregated across coalesced clauses) and
+    lines_of_code. Real-grammar verification of the erlang BRANCH_NODE_TYPES
+    entry (cr_clause / if_clause / receive_after) + andalso/orelse short-circuit."""
+
+    def test_multi_clause_function_aggregates_cc(self, tmp_path: Path) -> None:
+        make_erl_file(tmp_path, "branchy.erl", """-module(branchy).
+-export([classify/1, lookup/1]).
+
+classify(X) when X > 0 ->
+    case X of
+        1 -> one;
+        2 -> two;
+        _ -> other
+    end;
+classify(X) ->
+    if
+        X =:= 0 -> zero;
+        true -> dunno
+    end.
+
+lookup(K) ->
+    A = (K > 1) andalso (K < 100),
+    B = (K =:= 0) orelse (K =:= 50),
+    receive
+        ok -> done;
+        stop -> halt
+    end.
+""")
+        result = analyze_erlang(tmp_path)
+        classify = next(s for s in result.symbols
+                        if s.kind == "function" and s.name == "classify/1")
+        # base 1 + clause1 case (3 arms) + clause2 if (2 arms) = 6
+        assert classify.cyclomatic_complexity == 6
+        assert classify.lines_of_code is not None and classify.lines_of_code >= 4
+        lookup = next(s for s in result.symbols
+                      if s.kind == "function" and s.name == "lookup/1")
+        # base 1 + andalso + orelse + receive (2 arms) = 5
+        assert lookup.cyclomatic_complexity == 5
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        make_erl_file(tmp_path, "simple.erl", """-module(simple).
+-export([id/1]).
+
+id(X) -> X.
+""")
+        result = analyze_erlang(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "id/1")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        make_erl_file(tmp_path, "m.erl", """-module(m).
+-export([f/1]).
+
+-record(state, {count = 0}).
+
+f(X) when X > 0 -> pos;
+f(_) -> nonpos.
+""")
+        result = analyze_erlang(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        # module / record / file (non-callable) keep null CC
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

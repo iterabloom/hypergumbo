@@ -484,3 +484,71 @@ end
         # Should have at least one call edge from setup (P.add)
         # Since P.add is external, it may not create a resolved edge,
         # but the parsing should succeed without errors
+
+
+class TestJuliaCyclomaticComplexity:
+    """INV-loguk slice C: callable Julia symbols carry non-null
+    cyclomatic_complexity and lines_of_code. Real-grammar verification of the
+    julia BRANCH_NODE_TYPES entry (if/elseif/for/while/catch/ternary), covering
+    both the full-form and short-form (f(x)=...) emit sites."""
+
+    def test_branchy_full_form_function(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.julia import analyze_julia
+        (tmp_path / "f.jl").write_text("""function classify(x)
+    if x > 0
+        return 1
+    elseif x < 0
+        return -1
+    end
+    for i in 1:10
+        x += i
+    end
+    while x > 0
+        x -= 1
+    end
+    r = x > 0 ? 1 : 0
+    try
+        risky()
+    catch e
+        handle(e)
+    end
+    return x
+end
+""")
+        result = analyze_julia(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "classify")
+        # base 1 + if + elseif + for + while + ternary + catch = 7
+        assert fn.cyclomatic_complexity == 7
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_short_form_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.julia import analyze_julia
+        (tmp_path / "g.jl").write_text("classify2(x) = x > 0 ? 1 : 0\n")
+        result = analyze_julia(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "classify2")
+        # base 1 + 1 ternary = 2
+        assert fn.cyclomatic_complexity == 2
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.julia import analyze_julia
+        (tmp_path / "m.jl").write_text("""struct Point
+    x
+    y
+end
+
+function f(x)
+    return x
+end
+""")
+        result = analyze_julia(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

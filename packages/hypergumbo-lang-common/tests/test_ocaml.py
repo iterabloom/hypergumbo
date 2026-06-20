@@ -362,3 +362,52 @@ let double_length lst =
         assert not result.skipped
         symbols = [s for s in result.symbols if s.kind == "function"]
         assert any(s.name == "double_length" for s in symbols)
+
+
+class TestOCamlCyclomaticComplexity:
+    """INV-loguk slice C: callable OCaml symbols carry non-null
+    cyclomatic_complexity and lines_of_code. Real-grammar verification of the
+    ocaml BRANCH_NODE_TYPES entry (if/for/while_expression + match_case)."""
+
+    def test_branchy_function_has_cc_and_loc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
+        make_ocaml_file(tmp_path, "f.ml", """let classify items x =
+  if x > 5 then ignore 1
+  else if x > 2 then ignore 2
+  else ignore 0;
+  match items with
+  | [] -> 0
+  | [y] -> y
+  | _ -> 99
+""")
+        result = analyze_ocaml(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "classify")
+        # base 1 + 2 if_expression (if + else-if) + 3 match_case = 6
+        assert fn.cyclomatic_complexity == 6
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_straight_line_function_cc_is_one(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
+        make_ocaml_file(tmp_path, "g.ml", "let g x = x\n")
+        result = analyze_ocaml(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "g")
+        assert fn.cyclomatic_complexity == 1
+        assert fn.lines_of_code is not None
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.ocaml import analyze_ocaml
+        make_ocaml_file(tmp_path, "m.ml", """type color = Red | Green | Blue
+
+let f x = if x > 0 then 1 else 0
+""")
+        result = analyze_ocaml(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert funcs
+        for s in funcs:
+            assert s.cyclomatic_complexity is not None, s.name
+            assert s.lines_of_code is not None, s.name
+        for s in result.symbols:
+            if s.kind != "function":
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)

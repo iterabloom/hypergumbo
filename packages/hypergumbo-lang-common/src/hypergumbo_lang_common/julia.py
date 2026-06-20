@@ -52,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -259,6 +260,8 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=signature,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "julia"),
+                    lines_of_code=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -292,6 +295,8 @@ def _extract_symbols_from_tree(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         signature=signature,
+                        cyclomatic_complexity=compute_cyclomatic_complexity(node, "julia"),
+                        lines_of_code=end_line - start_line + 1,
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[func_name] = symbol

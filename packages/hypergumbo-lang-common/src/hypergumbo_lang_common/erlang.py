@@ -61,6 +61,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -207,6 +208,12 @@ def _extract_symbols_from_file(
             "erlang", file_path, pf["start_line"], pf["end_line"],
             full_name, "function",
         )
+        # INV-loguk: aggregate CC across all coalesced clauses. The first
+        # clause is the implicit entry path (base 1); each clause contributes
+        # its own decision points (its per-clause CC minus its own base 1).
+        cc = 1
+        for clause_node in pf["clause_nodes"]:
+            cc += compute_cyclomatic_complexity(clause_node, "erlang") - 1
         symbols.append(Symbol(
             id=sym_id,
             name=full_name,
@@ -218,6 +225,8 @@ def _extract_symbols_from_file(
             origin_run_id=run_id,
             meta={"arity": pf["arity"], "base_name": pf["func_name"]},
             signature=pf["signature"],
+            cyclomatic_complexity=cc,
+            lines_of_code=pf["end_line"] - pf["start_line"] + 1,
         ))
 
     for node in tree.root_node.children:
@@ -272,6 +281,9 @@ def _extract_symbols_from_file(
                     ):
                         pending_func["end_line"] = clause_end
                         pending_func["end_col"] = node.end_point[1]
+                        # INV-loguk: collect each clause's fun_decl node so the
+                        # coalesced symbol's CC aggregates every clause's branches.
+                        pending_func["clause_nodes"].append(node)
                     else:
                         # Different function — flush previous, start new
                         _flush_pending_func()
@@ -285,6 +297,7 @@ def _extract_symbols_from_file(
                             "signature": _extract_erlang_signature(
                                 clause, source,
                             ),
+                            "clause_nodes": [node],
                         }
             continue
 

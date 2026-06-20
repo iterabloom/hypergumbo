@@ -77,6 +77,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 from hypergumbo_core.symbol_resolution import ListNameResolver
 
@@ -235,8 +236,16 @@ def _extract_symbols_from_file(
         kind: str,
         prefix: Optional[str] = None,
         signature: Optional[str] = None,
+        complexity: bool = False,
+        def_node: Optional["tree_sitter.Node"] = None,
     ) -> Symbol:
-        """Create a Symbol with given span."""
+        """Create a Symbol with given span.
+
+        ``complexity=True`` (callable kinds) populates cyclomatic_complexity
+        (walked from ``def_node`` — the function_body when present, else the
+        signature node) and lines_of_code, per INV-loguk. Gated so non-callable
+        kinds (class/mixin/extension/enum) don't aggregate their whole subtree.
+        """
         full_name = f"{prefix}.{name}" if prefix else name
         span = Span(
             start_line=start_line,
@@ -271,6 +280,10 @@ def _extract_symbols_from_file(
             stable_id=stable_id,
             signature=signature,
             modifiers=modifiers,
+            cyclomatic_complexity=(
+                compute_cyclomatic_complexity(def_node, "dart") if complexity else None
+            ),
+            lines_of_code=(end_line - start_line + 1) if complexity else None,
         )
 
     for node in iter_tree(tree.root_node):
@@ -323,7 +336,7 @@ def _extract_symbols_from_file(
                     # Find the function_body sibling
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
-                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "getter", class_name))
+                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "getter", class_name, complexity=True, def_node=(body if body is not None else node)))
                 continue
 
             # Check for setter_signature
@@ -334,7 +347,7 @@ def _extract_symbols_from_file(
                     name = node_text(name_node, source)
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
-                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "setter", class_name))
+                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "setter", class_name, complexity=True, def_node=(body if body is not None else node)))
                 continue
 
             # Check for constructor_signature (rare in method_signature)
@@ -348,7 +361,7 @@ def _extract_symbols_from_file(
                     name = ".".join(name_parts)
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
-                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "constructor", class_name))
+                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "constructor", class_name, complexity=True, def_node=(body if body is not None else node)))
                 continue
 
             # Regular function_signature inside method_signature
@@ -360,7 +373,7 @@ def _extract_symbols_from_file(
                     body = _find_next_sibling_by_type(node, "function_body")
                     start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                     sig = _extract_dart_signature(func_sig, source)
-                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "method", class_name, signature=sig))
+                    symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "method", class_name, signature=sig, complexity=True, def_node=(body if body is not None else node)))
             continue
 
         # Top-level function_signature (not inside method_signature)
@@ -373,7 +386,7 @@ def _extract_symbols_from_file(
                 body = _find_next_sibling_by_type(node, "function_body")
                 start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                 sig = _extract_dart_signature(node, source)
-                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "function" if not class_name else "method", class_name, signature=sig))
+                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "function" if not class_name else "method", class_name, signature=sig, complexity=True, def_node=(body if body is not None else node)))
             continue
 
         # Constructor signature at top level of class body (rare but possible)
@@ -387,7 +400,7 @@ def _extract_symbols_from_file(
                 name = ".".join(name_parts)
                 body = _find_next_sibling_by_type(node, "function_body")
                 start_line, end_line, start_col, end_col = _get_combined_span(node, body)
-                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "constructor", class_name))
+                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "constructor", class_name, complexity=True, def_node=(body if body is not None else node)))
             continue
 
     return symbols

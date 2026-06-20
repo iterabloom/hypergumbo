@@ -45,6 +45,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -196,6 +197,13 @@ def _extract_symbols_from_tree(
             origin=PASS_ID,
             origin_run_id=run_id,
             signature=signature,
+            # INV-loguk: CC only for callables (kind=="function"); type/module
+            # subtrees would otherwise aggregate. LOC likewise callable-only.
+            cyclomatic_complexity=(
+                compute_cyclomatic_complexity(node, "ocaml")
+                if kind == "function" else None
+            ),
+            lines_of_code=(end_line - start_line + 1) if kind == "function" else None,
         )
         analysis.symbols.append(sym)
         analysis.symbol_by_name[name] = sym

@@ -59,6 +59,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
 )
+from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -264,6 +265,13 @@ def _extract_symbols_from_file(
             origin_run_id=run_id,
             signature=signature,
             is_exported=is_exported,
+            # INV-loguk: CC gated to the callable kind so data/class/instance
+            # subtrees don't aggregate; LOC likewise only for callables.
+            cyclomatic_complexity=(
+                compute_cyclomatic_complexity(node, "haskell")
+                if kind == "function" else None
+            ),
+            lines_of_code=(end_line - start_line + 1) if kind == "function" else None,
         ))
 
     # Second pass: extract symbols

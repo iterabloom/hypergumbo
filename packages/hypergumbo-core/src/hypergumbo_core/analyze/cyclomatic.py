@@ -148,6 +148,58 @@ BRANCH_NODE_TYPES: Final[dict[str, frozenset[str]]] = {
         "if_statement", "for_statement", "while_statement", "loop_statement",
         "case_compound_statement",
     }),
+    # INV-loguk slice C (common-package batch 1). Node-type names verified by
+    # dumping each real grammar (see each owning analyzer's package tests).
+    # Haskell: `conditional` = if/then/else (else is a bare keyword, else-if is
+    # a nested `conditional`); `alternative` = one per case-of arm (NOT `case`,
+    # which collides with the anonymous `case` keyword token); `guards` = one
+    # per ``| ...`` guarded alternative. `match` is NOT counted (it wraps every
+    # function clause body). Short-circuit &&/|| are named `operator` children
+    # of `infix`, unreachable by the unnamed-child scan — deliberately absent.
+    "haskell": frozenset({
+        "conditional", "alternative", "guards",
+    }),
+    # OCaml is expression-oriented: control flow ends in _expression. `match_case`
+    # = one per match arm AND per try/with handler arm (try_expression's handlers
+    # are match_case nodes, so they count automatically — do NOT add
+    # try_expression). `else_clause` is the alternative path (excluded); else-if
+    # is a nested `if_expression` (counted). &&/|| are named and_operator/
+    # or_operator children, unreachable by the unnamed scan — absent.
+    "ocaml": frozenset({
+        "if_expression", "for_expression", "while_expression", "match_case",
+    }),
+    # Julia: `elseif_clause` carries its own condition (counted, like bash elif);
+    # `else_clause` is the alternative path (excluded). No switch in core Julia.
+    # &&/|| are named `operator` children of binary_expression, skipped by the
+    # unnamed scan — absent.
+    "julia": frozenset({
+        "if_statement", "elseif_clause", "for_statement", "while_statement",
+        "catch_clause", "ternary_expression",
+    }),
+    # Erlang: `cr_clause` = case AND receive arms (same node type); `if_clause` =
+    # each if guard-arm; `receive_after` = the receive ``after`` timeout branch.
+    # `function_clause` is NOT counted (the first clause is the base entry path;
+    # additional clauses are aggregated by the analyzer's coalescing wiring).
+    # `guard_clause` is NOT counted (it qualifies an already-counted arm).
+    # andalso/orelse ARE counted (short-circuiting) via SHORT_CIRCUIT_OPS plus
+    # the `binary_op_expr` member added to _BINARY_EXPR_NODE_TYPES below; the
+    # non-short-circuiting `and`/`or` are excluded.
+    "erlang": frozenset({
+        "cr_clause", "if_clause", "receive_after",
+    }),
+    # Dart: `else` is a bare keyword (else-if = nested `if_statement`, counted).
+    # Switch arms are `switch_statement_case` / `switch_statement_default` (both
+    # counted, incl. default). do-while = `do_statement`; ternary =
+    # `conditional_expression`; try/catch = `catch_clause`. Dart has no
+    # `binary_expression`; short-circuit &&/|| are dedicated
+    # `logical_and_expression` / `logical_or_expression` nodes (one per
+    # operator), counted as branch nodes rather than via the operator scan.
+    "dart": frozenset({
+        "if_statement", "for_statement", "while_statement", "do_statement",
+        "switch_statement_case", "switch_statement_default", "catch_clause",
+        "conditional_expression", "logical_and_expression",
+        "logical_or_expression",
+    }),
 }
 
 
@@ -175,6 +227,11 @@ SHORT_CIRCUIT_OPS: Final[dict[str, frozenset[str]]] = {
     # ``binary_expression`` nodes (verified by dumping the grammars).
     "solidity": frozenset({"&&", "||"}),
     "wgsl": frozenset({"&&", "||"}),
+    # Erlang's short-circuiting ``andalso``/``orelse`` live as unnamed children
+    # of ``binary_op_expr`` (added to _BINARY_EXPR_NODE_TYPES below). The
+    # non-short-circuiting ``and``/``or`` always evaluate both operands (no extra
+    # path) and are deliberately excluded. (INV-loguk slice C.)
+    "erlang": frozenset({"andalso", "orelse"}),
 }
 
 
@@ -188,6 +245,7 @@ _BINARY_EXPR_NODE_TYPES: Final[frozenset[str]] = frozenset({
     "boolean_operator",   # (Python-only — not actually reached here,
                           #  kept defensive)
     "binary",             # Ruby (tree-sitter-ruby names it ``binary``)
+    "binary_op_expr",     # Erlang (andalso / orelse live here, INV-loguk slice C)
 })
 
 

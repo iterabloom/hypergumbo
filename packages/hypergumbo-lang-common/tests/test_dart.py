@@ -1103,3 +1103,78 @@ class TestNormalizeDartSignature:
         from hypergumbo_lang_common.dart import normalize_dart_signature
         assert normalize_dart_signature(None) is None
 
+
+class TestDartCyclomaticComplexity:
+    """INV-loguk slice C: callable Dart symbols carry non-null
+    cyclomatic_complexity and lines_of_code. Real-grammar verification of the
+    dart BRANCH_NODE_TYPES entry (if/for/while/do/switch arms/catch/ternary +
+    logical_and/or_expression). Short-circuit &&/|| are counted via the
+    dedicated logical_*_expression branch nodes."""
+
+    def test_branchy_top_level_function(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.dart import analyze_dart
+        make_dart_file(tmp_path, "f.dart", """int classify(int x, bool flag) {
+  if (x > 0 && flag) {
+    for (int i = 0; i < x; i++) {
+      if (i % 2 == 0 || i == 5) { print(i); }
+    }
+  } else if (x < 0) {
+    while (x < 100) { x++; }
+  }
+  switch (x) {
+    case 1: return 1;
+    case 2: return 2;
+    default: return 0;
+  }
+}
+""")
+        result = analyze_dart(tmp_path)
+        fn = next(s for s in result.symbols
+                  if s.kind == "function" and s.name == "classify")
+        # base 1 + if x3 + for + while + 2 case + default + && + || = 11
+        assert fn.cyclomatic_complexity == 11
+        assert fn.lines_of_code is not None and fn.lines_of_code >= 4
+
+    def test_methods_getters_setters_have_cc(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.dart import analyze_dart
+        make_dart_file(tmp_path, "c.dart", """class Counter {
+  int _n = 0;
+  int get value => _n > 0 ? _n : 0;
+  set value(int v) { if (v > 0) { _n = v; } }
+  int bump(int by) {
+    if (by > 0) { _n += by; }
+    return _n;
+  }
+}
+""")
+        result = analyze_dart(tmp_path)
+        callables = [s for s in result.symbols
+                     if s.kind in ("method", "getter", "setter")]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+
+    def test_callables_non_null_non_callables_null(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.dart import analyze_dart
+        make_dart_file(tmp_path, "m.dart", """class Widget {
+  int build(int x) {
+    if (x > 0) { return 1; }
+    return 0;
+  }
+}
+
+int top(int x) => x;
+""")
+        result = analyze_dart(tmp_path)
+        callable_kinds = ("function", "method", "getter", "setter", "constructor")
+        callables = [s for s in result.symbols if s.kind in callable_kinds]
+        assert callables
+        for s in callables:
+            assert s.cyclomatic_complexity is not None, (s.kind, s.name)
+            assert s.lines_of_code is not None, (s.kind, s.name)
+        # class (non-callable) keeps null CC
+        for s in result.symbols:
+            if s.kind not in callable_kinds:
+                assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
