@@ -275,7 +275,13 @@ jobs:
           ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Self-tree validation ratchet (WI-jigup)
         run: |
-          hypergumbo run . --out /tmp/self-tree.json
+          # Invoke via `python -m hypergumbo_core`, not the bare `hypergumbo`
+          # console script: this job installs the packages individually (the
+          # `hypergumbo` entry point lives in the meta-package, which CI never
+          # installs because it pulls PyTorch/CUDA), so the bare command is not
+          # on PATH (exit 127). Mirrors the `check-schema-coverage` CI pattern
+          # (subprocess `sys.executable -m hypergumbo_core run`).
+          python -m hypergumbo_core run . --out /tmp/self-tree.json
           python scripts/check-self-tree-validation \
             /tmp/self-tree.json .ci/self-tree-validation-baselines.json
 
