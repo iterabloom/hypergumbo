@@ -3278,6 +3278,83 @@ def _extract_implements_names(
     return names
 
 
+def _callee_last_name(
+    call: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """Return the last identifier of a call_expression's callee.
+
+    ``foo(...)`` -> ``foo``; ``a.b.forEach(...)`` -> ``forEach``. Used to name
+    anonymous call-argument callbacks ``_cb_<callee>``. Returns ``None`` when
+    the callee is itself an expression with no trailing name (e.g. the curried
+    ``getHandler()(cb)``), in which case the caller falls back to a generic
+    name.
+    """
+    fn = call.child_by_field_name("function")
+    if fn is None:
+        # ``new X(cb)`` is a ``new_expression`` whose callee is the
+        # ``constructor`` field, not ``function``.
+        fn = call.child_by_field_name("constructor")
+    if fn is None:  # pragma: no cover - defensive: a call/new always has a callee
+        return None
+    if fn.type == "identifier":
+        return _node_text(fn, source)
+    if fn.type == "member_expression":
+        prop = fn.child_by_field_name("property")
+        if prop is not None:  # pragma: no branch - member_expression always has a property
+            return _node_text(prop, source)
+    return None
+
+
+def _classify_anon_function(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, str]]:
+    """Classify an anonymous arrow / function-expression / generator node.
+
+    WI-zavad anonymous-callback function-node slice (emission-parity F2,
+    Option 1 — documented-idiom scope). Returns ``(category, name)``:
+
+    * ``("call_arg", "_cb_<callee>")`` — the function is passed as an argument
+      to a call (``arr.forEach(x => {})``, ``el.addEventListener('x', cb)``).
+    * ``("iife", "_iife")`` — an immediately-invoked function expression
+      ``(function () {})()`` / ``(() => {})()``.
+
+    Returns ``None`` for any other position — variable-bound (extracted by the
+    ``lexical_declaration`` path), object property, or return / ternary /
+    template-substitution position — which is out of scope for this slice (those
+    have no call-site anchor for a companion incoming edge, so extracting them
+    would inflate dead-code false-positives; an explicitly-deferred follow-up).
+    """
+    parent = node.parent
+    if parent is None:  # pragma: no cover - defensive: root is always 'program'
+        return None
+    # IIFE: the function sits inside a parenthesized_expression that is itself
+    # the *callee* (the ``function`` field) of a call_expression. A bare
+    # parenthesized function that is NOT invoked (``const x = (() => 1)``) has a
+    # parenthesized_expression parent but no invoking call_expression, so it is
+    # correctly skipped.
+    if parent.type == "parenthesized_expression":
+        grandparent = parent.parent
+        if grandparent is not None and grandparent.type == "call_expression":
+            callee = grandparent.child_by_field_name("function")
+            if callee is not None and callee.id == parent.id:
+                return ("iife", "_iife")
+        return None
+    # Call-argument callback: the function is a direct child of a call's
+    # ``arguments`` list. Both ``foo(cb)`` (call_expression) and the canonical
+    # ``new Promise((res, rej) => {})`` / ``new Observable(cb)`` constructor-
+    # executor form (new_expression) qualify — the executor IS the most common
+    # anonymous callback.
+    if parent.type == "arguments":
+        call = parent.parent
+        if call is not None and call.type in ("call_expression", "new_expression"):
+            callee_name = _callee_last_name(call, source)
+            return (
+                "call_arg",
+                f"_cb_{callee_name}" if callee_name else "_cb_anonymous",
+            )
+    return None
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -3625,6 +3702,11 @@ def _extract_symbols(
                             cyclomatic_complexity=compute_cyclomatic_complexity(value_node, lang),
                         )
                         symbols.append(symbol)
+                        # WI-zavad anon-callback slice: this arrow/function-
+                        # expression is already extracted (named after its
+                        # variable), so mark it processed to keep the bare
+                        # anonymous-callback branch below from re-emitting it.
+                        processed_handlers.add(id(value_node))
 
         # Class declarations (including abstract classes)
         elif node.type in ("class_declaration", "abstract_class_declaration"):
@@ -3872,6 +3954,67 @@ def _extract_symbols(
                         )
                         symbols.append(symbol)
                     break  # Only handle one function_declaration per export
+
+        # WI-zavad anonymous-callback function-node slice (emission-parity F2,
+        # Option 1 — documented-idiom scope): anonymous arrow / function-
+        # expression / generator callbacks passed as call arguments, and IIFEs,
+        # emit function symbols so body-calls attribute to them (not the file
+        # pseudo-node) and linkers anchor on a real call-site symbol (the
+        # F159.A2-c WS-linker file-anchor facet). Route-handler and variable-
+        # bound callbacks are already extracted (and added to
+        # ``processed_handlers``), so the skip at the top of this loop prevents
+        # double-emission. ``_classify_anon_function`` returns ``None`` for
+        # return / ternary / template-substitution arrows (deferred follow-up).
+        elif node.type in (
+            "arrow_function", "function_expression", "generator_function",
+        ):
+            classification = _classify_anon_function(node, source)
+            if classification is not None:
+                _category, anon_name = classification
+                span = Span(
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                signature = _extract_jsts_signature(node, source)
+                norm_sig = normalize_jsts_signature(signature)
+                qualified_name = _make_jsts_qualified_name(
+                    _get_jsts_class_ancestors(node, source), anon_name, lang,
+                )
+                stable_id = make_typed_stable_id(
+                    "function", norm_sig,
+                    name=anon_name,
+                    qualified_name=qualified_name,
+                    file_stable_id=file_stable_id,
+                ) if norm_sig else None
+                symbols.append(Symbol(
+                    id=_make_symbol_id(
+                        str(file_path), span.start_line, span.end_line,
+                        # Fold start_col into the id name-slot so two same-callee
+                        # callbacks on ONE line (``p.then(a => a, e => e)``, two
+                        # ``_iife``s) get distinct ids; Symbol.name stays the
+                        # clean display name. The id round-trip validator only
+                        # requires the name-slot be non-empty + colon-free.
+                        f"{anon_name}@{span.start_col}", "function", lang,
+                    ),
+                    name=anon_name,
+                    kind="function",
+                    language=lang,
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    stable_id=stable_id,
+                    signature=signature,
+                    docstring=extract_preceding_doc_comment(node, source, lang),
+                    shape_id=_jsts_analyzer.compute_shape_id(node),
+                    lines_of_code=span.end_line - span.start_line + 1,
+                    qualified_name=qualified_name,
+                    cyclomatic_complexity=compute_cyclomatic_complexity(node, lang),
+                    meta={"anonymous": True},
+                ))
+                processed_handlers.add(id(node))
 
     # WI-nimug / WI-zimum Phase 2b: mark symbols as is_exported=True when
     # their defining declaration sits under a top-level export_statement.
@@ -4146,6 +4289,60 @@ def _get_enclosing_function(
     return None  # pragma: no cover
 
 
+def _emit_anon_callback_reference_edges(
+    call_node: "tree_sitter.Node",
+    args_node: Optional["tree_sitter.Node"],
+    current_function: Optional[Symbol],
+    symbol_by_position: Optional[dict[tuple[str, int, int], Symbol]],
+    file_path: Path,
+    line_offset: int,
+    run: AnalysisRun,
+    edges: list[Edge],
+) -> None:
+    """Emit a companion ``references`` edge from *current_function* to each
+    inline anonymous-callback argument of *call_node* (WI-zavad anon-callback
+    slice) so the new callback symbols are not dead-code false-positives.
+
+    The bare-identifier callback-reference path covers only *named* callbacks;
+    inline anonymous ones (``foo(() => {})``, ``new Promise(cb)``) need this.
+    Gated on ``meta.anonymous`` so it fires ONLY for the symbols this slice
+    extracts — never for a route-handler or variable-bound arrow that happens
+    to occupy the same source position (those keep their existing edges; this
+    avoids minting a spurious ``file -> route_handler`` reference that would
+    shift in-degree/centrality for every Express inline route handler).
+    """
+    if (
+        args_node is not None
+        and symbol_by_position is not None
+        and current_function is not None
+    ):
+        for arg in args_node.children:
+            if arg.type not in (
+                "arrow_function", "function_expression", "generator_function",
+            ):
+                continue
+            cb_sym = symbol_by_position.get((
+                str(file_path),
+                arg.start_point[0] + 1 + line_offset,
+                arg.start_point[1],
+            ))
+            if (
+                cb_sym is not None
+                and (cb_sym.meta or {}).get("anonymous") is True
+                and cb_sym.id != current_function.id
+            ):
+                edges.append(Edge.create(
+                    src=current_function.id,
+                    dst=cb_sym.id,
+                    edge_type="references",
+                    line=call_node.start_point[0] + 1 + line_offset,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="callback_argument_reference",
+                    confidence=0.75,
+                ))
+
+
 def _extract_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -4247,6 +4444,45 @@ def _extract_edges(
                     func_node = child
                 elif child.type == "arguments":
                     args_node = child
+
+            # WI-zavad anon-callback slice: IIFE companion edge. When a call's
+            # callee is a parenthesized anonymous function ``(function(){})()``,
+            # emit a ``calls`` edge from the enclosing scope to the IIFE symbol
+            # (it runs immediately at load) so the new symbol is not a dead-code
+            # false-positive and its invocation is visible in the graph.
+            iife_callee = node.child_by_field_name("function")
+            if (
+                iife_callee is not None
+                and iife_callee.type == "parenthesized_expression"
+                and symbol_by_position is not None
+            ):
+                for inner in iife_callee.children:
+                    if inner.type in (
+                        "arrow_function", "function_expression",
+                        "generator_function",
+                    ):
+                        iife_sym = symbol_by_position.get((
+                            str(file_path),
+                            inner.start_point[0] + 1 + line_offset,
+                            inner.start_point[1],
+                        ))
+                        if iife_sym is not None and (iife_sym.meta or {}).get("anonymous") is True:
+                            enclosing = _get_enclosing_function(
+                                node, source, file_path, global_symbols,
+                                symbol_by_position, line_offset,
+                            ) or module_symbol
+                            if enclosing is not None:
+                                edges.append(Edge.create(
+                                    src=enclosing.id,
+                                    dst=iife_sym.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1 + line_offset,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_call_direct",
+                                    confidence=0.95,
+                                ))
+                        break
 
             # Require calls
             if func_node and func_node.type == "identifier":
@@ -4717,6 +4953,12 @@ def _extract_edges(
                                 evidence_type="callback_argument_reference",
                                 confidence=0.75,
                             ))
+                    # WI-zavad anon-callback slice: companion references edge for
+                    # inline anonymous callbacks (see helper).
+                    _emit_anon_callback_reference_edges(
+                        node, args_node, current_function, symbol_by_position,
+                        file_path, line_offset, run, edges,
+                    )
 
             # Middleware chain edges: for Express-style route registrations
             # with multiple middleware/handler arguments, create edges between
@@ -4822,6 +5064,14 @@ def _extract_edges(
                     confidence=0.95 * lookup_confidence,
                 )
                 edges.append(edge)
+
+            # WI-zavad anon-callback slice: companion references edge for an
+            # inline anonymous callback passed to a constructor — the canonical
+            # ``new Promise((res, rej) => {})`` / ``new Observable(cb)`` form.
+            _emit_anon_callback_reference_edges(
+                node, node.child_by_field_name("arguments"), current_function,
+                symbol_by_position, file_path, line_offset, run, edges,
+            )
 
             # Track variable type for type inference
             # Check if this new_expression is part of a variable assignment
