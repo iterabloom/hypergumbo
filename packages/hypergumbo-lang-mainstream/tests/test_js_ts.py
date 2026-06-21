@@ -6322,8 +6322,14 @@ class UserRepository extends Repository<User> {
         assert "UserRepository" in edge.src
         assert "Repository" in edge.dst
 
-    def test_no_extends_edge_for_external_class(self, tmp_path: Path) -> None:
-        """No extends edge created when base class is external (not in repo)."""
+    def test_external_base_class_emits_unresolved_extends_edge(
+        self, tmp_path: Path
+    ) -> None:
+        """External base classes now emit an UNRESOLVED extends edge (F4/A2).
+
+        Previously the extractor dropped external bases entirely, orphaning the
+        class in the inheritance graph. The edge is unresolved-external (its dst
+        is a ``:unresolved`` placeholder, not a resolved in-repo symbol)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "component.tsx").write_text("""
@@ -6343,9 +6349,14 @@ class MyComponent extends React.Component {
         assert my_class is not None
         assert "base_classes" in (my_class.meta or {})
 
-        # But no extends edge since React.Component is external
+        # External base now yields exactly one UNRESOLVED extends edge (not a
+        # resolved in-repo target, and no longer dropped).
         extends_edges = [e for e in result.edges if e.edge_type == "extends"]
-        assert len(extends_edges) == 0
+        assert len(extends_edges) == 1, [(e.dst, e.is_resolved) for e in extends_edges]
+        edge = extends_edges[0]
+        assert not edge.is_resolved
+        assert ":unresolved" in edge.dst
+        assert "Component" in edge.dst
 
     def test_extends_prefers_imported_class_over_name_collision(
         self, tmp_path: Path
@@ -10087,3 +10098,285 @@ class TestWizavadGeneratorFnExprEmission:
         ]
         # named generator handler keeps its declared name
         assert any(s.name == "h" for s in routes), [s.name for s in routes]
+
+
+class TestJsTsUnresolvedExternalInheritance:
+    """Tests for the unresolved-external extends/implements fallback (F4 / A2).
+
+    Before this fix the JS/TS inheritance-edge extractor emitted edges only for
+    bases that resolved intra-repo; external/library bases (``extends
+    LitElement``, ``implements OnInit``) were dropped entirely, leaving the
+    class an inheritance-graph orphan indistinguishable from a base-less class.
+
+    The fallback mirrors the unresolved-CALL convention (WI-banaf/WI-vurop): an
+    edge to ``{lang}:{module_hint}:0-0:{base}:unresolved`` with ``is_resolved=
+    False`` and a structured ``dst_ref`` when the import module is known. The
+    edge type is precise — ``extends`` for an external class base,
+    ``implements`` for an external interface base (Angular's
+    ``implements OnInit`` is a common external-interface case that an
+    extends-default would mislabel).
+    """
+
+    @pytest.mark.parametrize("ext", ["ts", "js"])
+    def test_external_class_base_emits_unresolved_extends(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "import { LitElement } from 'lit';\n"
+            "export class MyEl extends LitElement {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ext_edges = [
+            e for e in result.edges
+            if e.edge_type == "extends" and "LitElement" in e.dst
+        ]
+        assert ext_edges, [
+            (e.edge_type, e.dst) for e in result.edges
+            if e.edge_type in ("extends", "implements")
+        ]
+        edge = ext_edges[0]
+        assert not edge.is_resolved
+        assert ":unresolved" in edge.dst
+        # module hint is the import module (second colon segment)
+        assert edge.dst.split(":")[1] == "lit", edge.dst
+        assert edge.dst_ref is not None
+        assert edge.dst_ref.module_path == "lit"
+        assert edge.dst_ref.name == "LitElement"
+
+    def test_external_interface_base_emits_unresolved_implements(
+        self, tmp_path: Path
+    ) -> None:
+        """An external interface base (Angular ``implements OnInit``) emits an
+        ``implements`` edge, NOT a mislabeled ``extends``."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.ts").write_text(
+            "import { OnInit } from '@angular/core';\n"
+            "export class Comp implements OnInit {\n"
+            "  ngOnInit() {}\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        impl = [
+            e for e in result.edges
+            if e.edge_type == "implements" and "OnInit" in e.dst
+        ]
+        assert impl, [(e.edge_type, e.dst) for e in result.edges
+                      if e.edge_type in ("extends", "implements")]
+        edge = impl[0]
+        assert not edge.is_resolved
+        assert edge.dst.split(":")[1] == "@angular/core", edge.dst
+        # must NOT be mislabeled as extends
+        assert not any(
+            e.edge_type == "extends" and "OnInit" in e.dst for e in result.edges
+        ), [(e.edge_type, e.dst) for e in result.edges]
+
+    def test_mixed_external_extends_and_implements(self, tmp_path: Path) -> None:
+        """``extends LitElement implements OnInit`` yields one external extends
+        (LitElement) and one external implements (OnInit), each correctly typed
+        and carrying its own per-base module hint."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.ts").write_text(
+            "import { LitElement } from 'lit';\n"
+            "import { OnInit } from '@angular/core';\n"
+            "export class Comp extends LitElement implements OnInit {\n"
+            "  ngOnInit() {}\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        # include the module-hint segment so the assertion fails if per-base
+        # module resolution regresses (not just the type/name)
+        typed = {
+            (e.edge_type, e.dst.split(":")[1], e.dst.split(":")[3])
+            for e in result.edges
+            if e.edge_type in ("extends", "implements") and not e.is_resolved
+        }
+        assert ("extends", "lit", "LitElement") in typed, typed
+        assert ("implements", "@angular/core", "OnInit") in typed, typed
+
+    @pytest.mark.parametrize("ext", ["ts", "js"])
+    def test_aliased_local_base_resolves_not_external(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """An aliased import of a LOCAL class (``import { Base as B }``) must
+        resolve to the real in-repo symbol via its canonical name, NOT be
+        mislabeled as an unresolved-external base."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"base.{ext}").write_text("export class Base {}\n")
+        (tmp_path / f"app.{ext}").write_text(
+            "import { Base as B } from './base';\n"
+            "export class C extends B {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 1, [
+            (e.dst, e.is_resolved) for e in extends_edges
+        ]
+        edge = extends_edges[0]
+        assert edge.is_resolved, edge.dst
+        assert ":unresolved" not in edge.dst
+        assert "Base" in edge.dst
+
+    def test_aliased_local_interface_resolves_not_external(
+        self, tmp_path: Path
+    ) -> None:
+        """An aliased import of a LOCAL interface (``import { IBase as IB }`` +
+        ``implements IB``) re-resolves to the in-repo interface via its canonical
+        name, emitting a resolved ``implements`` edge (not an external one)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "iface.ts").write_text("export interface IBase { x: number; }\n")
+        (tmp_path / "app.ts").write_text(
+            "import { IBase as IB } from './iface';\n"
+            "export class C implements IB { x = 1; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        impl = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl) == 1, [(e.dst, e.is_resolved) for e in impl]
+        edge = impl[0]
+        assert edge.is_resolved, edge.dst
+        assert ":unresolved" not in edge.dst
+        assert "IBase" in edge.dst
+
+    def test_aliased_external_base_uses_canonical_name_and_module(
+        self, tmp_path: Path
+    ) -> None:
+        """An aliased import of an EXTERNAL class (``import { LitElement as LE }``)
+        emits an unresolved edge under the canonical export name + real module."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.ts").write_text(
+            "import { LitElement as LE } from 'lit';\n"
+            "export class C extends LE {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ext_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert len(ext_edges) == 1, [(e.dst, e.is_resolved) for e in ext_edges]
+        edge = ext_edges[0]
+        assert not edge.is_resolved
+        assert edge.dst.split(":")[1] == "lit", edge.dst
+        assert edge.dst.split(":")[3] == "LitElement", edge.dst  # canonical, not LE
+        assert edge.dst_ref is not None and edge.dst_ref.name == "LitElement"
+
+    def test_default_import_base_recovers_module_hint(self, tmp_path: Path) -> None:
+        """A default-imported external base (``import Component from 'preact'``)
+        recovers its module hint from namespace_imports (not just named_imports)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.tsx").write_text(
+            "import Component from 'preact';\n"
+            "export class C extends Component {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ext_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert ext_edges, [(e.edge_type, e.dst) for e in result.edges]
+        edge = ext_edges[0]
+        assert edge.dst.split(":")[1] == "preact", edge.dst
+        assert edge.dst_ref is not None and edge.dst_ref.module_path == "preact"
+
+    def test_namespace_qualified_base_recovers_module_hint(
+        self, tmp_path: Path
+    ) -> None:
+        """A namespace-qualified base (``import * as React`` + ``extends
+        React.Component``) recovers the module hint from the qualifier and names
+        the member."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.tsx").write_text(
+            "import * as React from 'react';\n"
+            "export class C extends React.Component {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ext_edges = [e for e in result.edges if e.edge_type == "extends"]
+        assert ext_edges, [(e.edge_type, e.dst) for e in result.edges]
+        edge = ext_edges[0]
+        assert edge.dst.split(":")[1] == "react", edge.dst
+        assert edge.dst.split(":")[3] == "Component", edge.dst
+        assert edge.dst_ref is not None and edge.dst_ref.module_path == "react"
+
+    @pytest.mark.parametrize("ext", ["ts", "js"])
+    def test_relative_import_unresolved_base_not_mislabeled_external(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A base imported from a RELATIVE path that fails to resolve to a symbol
+        is intra-repo, not a library — it must NOT emit a misleading external
+        edge (preserves the conservative drop rather than mislabeling)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # './types' has no extractable class symbol (type-only re-export shape)
+        (tmp_path / f"types.{ext}").write_text("export const x = 1;\n")
+        (tmp_path / f"app.{ext}").write_text(
+            "import { Unextracted } from './types';\n"
+            "export class C extends Unextracted {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        bad = [
+            e for e in result.edges
+            if e.edge_type == "extends" and "Unextracted" in e.dst
+        ]
+        assert not bad, [(e.dst, e.is_resolved) for e in bad]
+
+    def test_url_and_deno_module_hint_no_colon_corruption(self) -> None:
+        """``_normalize_import_module_hint`` strips URL/Deno specifier schemes and
+        sanitizes residual colons so the module hint never corrupts the
+        colon-delimited symbol-id grammar."""
+        from hypergumbo_lang_mainstream.js_ts import _normalize_import_module_hint
+
+        assert ":" not in _normalize_import_module_hint("npm:lit@3")
+        assert ":" not in _normalize_import_module_hint("jsr:@std/foo")
+        assert ":" not in _normalize_import_module_hint("https://cdn.skypack.dev/lit")
+        assert ":" not in _normalize_import_module_hint("https://host:8080/pkg")
+        # existing behavior preserved
+        assert _normalize_import_module_hint("node:fs") == "fs"
+        assert _normalize_import_module_hint("@scope/pkg") == "@scope/pkg"
+
+    @pytest.mark.parametrize("ext", ["ts", "js"])
+    def test_intra_repo_base_still_resolves_no_unresolved(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """An intra-repo base still resolves to a real symbol (no regression),
+        and does NOT additionally emit an unresolved edge for it."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"base.{ext}").write_text("export class LocalBase {}\n")
+        (tmp_path / f"app.{ext}").write_text(
+            "import { LocalBase } from './base';\n"
+            "export class Local extends LocalBase {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        local_extends = [
+            e for e in result.edges
+            if e.edge_type == "extends" and "LocalBase" in e.dst
+        ]
+        assert len(local_extends) == 1, [
+            (e.dst, e.is_resolved) for e in local_extends
+        ]
+        assert local_extends[0].is_resolved
+        assert ":unresolved" not in local_extends[0].dst
+
+    @pytest.mark.parametrize("ext", ["ts", "js"])
+    def test_external_base_without_import_uses_external_hint(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A non-imported external/global base (``extends Error``) emits an
+        unresolved extends edge with the ``external`` module sentinel and no
+        structured ``dst_ref`` (the ADR-0037 unidentified-reference cell)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "export class MyError extends SomeGlobalBase {}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ext_edges = [
+            e for e in result.edges
+            if e.edge_type == "extends" and "SomeGlobalBase" in e.dst
+        ]
+        assert ext_edges, [(e.edge_type, e.dst) for e in result.edges]
+        edge = ext_edges[0]
+        assert not edge.is_resolved
+        assert edge.dst.split(":")[1] == "external", edge.dst
+        assert edge.dst_ref is None

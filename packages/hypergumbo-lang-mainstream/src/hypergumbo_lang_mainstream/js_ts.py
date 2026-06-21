@@ -362,18 +362,30 @@ def _normalize_import_module_hint(module: str) -> str:
     becomes the bare module name expected by the I/O catalog
     (``fs``, ``child_process``, ``axios``).
 
+    URL imports (``https://cdn/x``) and Deno specifiers (``npm:lit``,
+    ``jsr:@std/foo``) carry their own ``:`` which would inject extra segments
+    into the colon-delimited symbol ID, so their scheme is stripped and any
+    residual ``:`` (e.g. a URL port) is sanitised to ``_``.
+
     Examples:
         node:fs           -> fs
         node:child_process -> child_process
+        npm:lit@3         -> lit@3
+        jsr:@std/foo      -> @std/foo
+        https://cdn/x     -> cdn/x
         ./utils           -> utils
         ../helpers/git    -> helpers/git
         @scope/pkg        -> @scope/pkg (unchanged)
     """
-    if module.startswith("node:"):
-        return module[5:]
+    for prefix in ("https://", "http://", "node:", "npm:", "jsr:"):
+        if module.startswith(prefix):
+            module = module[len(prefix):]
+            break
     while module.startswith("./") or module.startswith("../"):
         module = module[2:] if module.startswith("./") else module[3:]
-    return module
+    # Any residual ``:`` (URL port, deep deno specifier) would break the
+    # colon-delimited symbol-id grammar (lang:module:span:name:kind).
+    return module.replace(":", "_")
 
 
 def _require_module_string(
@@ -2484,6 +2496,33 @@ def _extract_inheritance_edges(
                 interfaces_by_name[sym.name] = []
             interfaces_by_name[sym.name].append(sym)
 
+    # F4/A2 inputs for the unresolved-external fallback:
+    # (1) per-(file, class) ``implements``-clause base names — gives an unresolved
+    #     external base the correct edge type (``implements`` vs ``extends``);
+    # (2) per-file import maps — give the external base a real module hint
+    #     (``LitElement`` -> ``lit``) and let an *aliased* import be re-resolved
+    #     to its canonical name before being declared external.
+    implements_by_class: dict[tuple[str, str], set[str]] = {}
+    named_imports_by_path: dict[str, dict[str, str]] = {}
+    namespace_imports_by_path: dict[str, dict[str, str]] = {}
+    named_import_originals_by_path: dict[str, dict[str, str]] = {}
+    for pf in parsed_files:
+        pf_path = str(pf.path)
+        named_imports_by_path[pf_path] = pf.named_imports or {}
+        namespace_imports_by_path[pf_path] = pf.namespace_imports or {}
+        named_import_originals_by_path[pf_path] = pf.named_import_originals or {}
+        for node in iter_tree(pf.tree.root_node):
+            if node.type in ("class_declaration", "abstract_class_declaration"):
+                cname = _find_name_in_children(node, pf.source)
+                if not cname:  # pragma: no cover - class_declaration always names
+                    continue
+                impls = _extract_implements_names(node, pf.source)
+                if impls:
+                    # normalise to the same form the resolution loop uses
+                    implements_by_class.setdefault((pf_path, cname), set()).update(
+                        n.split("<")[0].split(".")[-1] for n in impls
+                    )
+
     for sym in symbols:
         if sym.kind != "class":
             continue
@@ -2492,19 +2531,24 @@ def _extract_inheritance_edges(
         if not base_classes:
             continue
 
+        sym_path = sym.path or ""
         for base_class_name in base_classes:
             # Strip generics from base class name (e.g., "Repository<User>" -> "Repository")
-            base_name = base_class_name.split("<")[0]
-            # Handle qualified names like "React.Component" -> use just "Component"
-            if "." in base_name:
-                base_name = base_name.split(".")[-1]
+            de_generic = base_class_name.split("<")[0]
+            # Qualified base (``React.Component``): keep the qualifier (``React``)
+            # to recover its namespace-import module; resolve on the member name.
+            qualifier = de_generic.split(".")[0] if "." in de_generic else None
+            base_name = de_generic.split(".")[-1] if "." in de_generic else de_generic
 
-            # Try class first, then interface, using disambiguation
+            # Resolve against project classes and interfaces (disambiguated).
             base_sym = _resolve_base_class_js(
                 base_name, sym, classes_by_name, parsed_files
             )
+            iface_sym = _resolve_base_class_js(
+                base_name, sym, interfaces_by_name, parsed_files
+            )
             if base_sym is not None and base_sym.id != sym.id:
-                edge = Edge.create(
+                edges.append(Edge.create(
                     src=sym.id,
                     dst=base_sym.id,
                     edge_type="extends",
@@ -2513,25 +2557,96 @@ def _extract_inheritance_edges(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_extends",
-                )
-                edges.append(edge)
-            else:
-                # Check interfaces
-                iface_sym = _resolve_base_class_js(
-                    base_name, sym, interfaces_by_name, parsed_files
-                )
-                if iface_sym is not None and iface_sym.id != sym.id:
-                    edge = Edge.create(
-                        src=sym.id,
-                        dst=iface_sym.id,
-                        edge_type="implements",
-                        line=sym.span.start_line if sym.span else 0,
-                        confidence=0.95,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        evidence_type="ast_implements",
+                ))
+            elif iface_sym is not None and iface_sym.id != sym.id:
+                edges.append(Edge.create(
+                    src=sym.id,
+                    dst=iface_sym.id,
+                    edge_type="implements",
+                    line=sym.span.start_line if sym.span else 0,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_implements",
+                ))
+            elif base_sym is None and iface_sym is None:
+                # F4/A2: the base resolves to neither a project class nor a
+                # project interface. Before declaring it external, re-resolve an
+                # *aliased* import (``import { Base as B }``) on its canonical
+                # name — otherwise a local class imported under an alias would be
+                # mislabeled as an external base.
+                canonical = named_import_originals_by_path.get(
+                    sym_path, {}
+                ).get(base_name, base_name)
+                if canonical != base_name:
+                    rb = _resolve_base_class_js(
+                        canonical, sym, classes_by_name, parsed_files
                     )
-                    edges.append(edge)
+                    ri = _resolve_base_class_js(
+                        canonical, sym, interfaces_by_name, parsed_files
+                    )
+                    if rb is not None and rb.id != sym.id:
+                        edges.append(Edge.create(
+                            src=sym.id, dst=rb.id, edge_type="extends",
+                            line=sym.span.start_line if sym.span else 0,
+                            confidence=0.95, origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_extends",
+                        ))
+                        continue
+                    if ri is not None and ri.id != sym.id:
+                        edges.append(Edge.create(
+                            src=sym.id, dst=ri.id, edge_type="implements",
+                            line=sym.span.start_line if sym.span else 0,
+                            confidence=0.95, origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_implements",
+                        ))
+                        continue
+
+                # Module hint: named import of the member, else a default/
+                # namespace import of the member, else the namespace qualifier
+                # (``React`` in ``React.Component``).
+                ni = named_imports_by_path.get(sym_path, {})
+                nsi = namespace_imports_by_path.get(sym_path, {})
+                raw_module = (
+                    ni.get(base_name)
+                    or nsi.get(base_name)
+                    or (nsi.get(qualifier) if qualifier else None)
+                )
+                # A base imported from a RELATIVE path is intra-repo (a local
+                # file whose symbol was not extracted), NOT a library — drop it
+                # rather than mislabel it as external.
+                if raw_module and (
+                    raw_module.startswith("./") or raw_module.startswith("../")
+                ):
+                    continue
+
+                is_impl = base_name in implements_by_class.get(
+                    (sym_path, sym.name), set()
+                )
+                edge_type = "implements" if is_impl else "extends"
+                lang = sym.language
+                if raw_module:
+                    module_hint = _normalize_import_module_hint(raw_module)
+                    dst_ref: ExternalRef | None = ExternalRef(
+                        lang=lang, module_path=module_hint, name=canonical,
+                    )
+                else:
+                    module_hint = "external"
+                    dst_ref = None
+                edges.append(Edge.create(
+                    src=sym.id,
+                    dst=f"{lang}:{module_hint}:0-0:{canonical}:unresolved",
+                    edge_type=edge_type,
+                    line=sym.span.start_line if sym.span else 0,
+                    confidence=0.5,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type=f"ast_{edge_type}",
+                    is_resolved=False,
+                    dst_ref=dst_ref,
+                ))
 
     return edges
 
@@ -3135,6 +3250,32 @@ def _extract_base_classes(
                     base_classes.append(_node_text(heritage_child, source))
 
     return base_classes
+
+
+def _extract_implements_names(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Return the ``implements`` clause base names of a class node.
+
+    ``_extract_base_classes`` flattens ``extends`` and ``implements`` bases into
+    one list, which is fine for the resolved path (the target Symbol's kind
+    disambiguates: class -> extends, interface -> implements). The
+    unresolved-external fallback (F4) has no target kind, so it needs the clause
+    origin to label the edge correctly — an external ``implements OnInit``
+    (Angular) must not be mislabeled ``extends``. JavaScript has no
+    ``implements`` clause, so this returns ``[]`` for JS classes.
+    """
+    names: list[str] = []
+    for child in node.children:
+        if child.type == "class_heritage":
+            for heritage_child in child.children:
+                if heritage_child.type == "implements_clause":
+                    for impl_child in heritage_child.children:
+                        if impl_child.type in (
+                            "identifier", "type_identifier", "generic_type",
+                        ):
+                            names.append(_node_text(impl_child, source))
+    return names
 
 
 def _extract_symbols(
