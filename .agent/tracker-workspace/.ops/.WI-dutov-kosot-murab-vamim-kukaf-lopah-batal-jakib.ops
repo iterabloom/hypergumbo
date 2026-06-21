@@ -18,3 +18,20 @@
     pr_ref:  # 96e9
     description: "**Defect.** The TypeScript analyzer emits ZERO `extends` edges; production class inheritance (e.g. `class X extends LitElement`) is dropped.\n\n**Mechanic.** js_ts.py HAS an `_extract_inheritance_edges` path (js_ts.py:2307) that emits `extends`/`implements` edges from `sym.meta[\"base_classes\"]` (js_ts.py:2346-2387). But on the substrate, all 160 `extends` edges are Python-origin and ZERO are TypeScript — so for real TS classes the `extends` clause never produces an edge (either `base_classes` is not populated for TS, or the edges do not survive to output). The concrete miss: a production `extends LitElement` inheritance is absent from the graph.\n\n**Scope.** TypeScript class-inheritance edges: 0 emitted (vs the analyzer documenting extends/implements at js_ts.py:11,28-29).\n\n**Expectation.** TS classes with an `extends`/`implements` clause produce `extends`/`implements` edges, like Python classes do.\n\n**Consequence.** Any consumer using `extends` to compute class hierarchy / type-aware dispatch / impact on TS code sees TS classes as inheritance-rootless; LitElement-derived components are disconnected from their base.\n\n**Unifying fix.** Emit TS class-inheritance (`extends`) edges in the TS analyzer (populate `base_classes` for TS classes and/or repair the inheritance-edge path so TS reaches it).\n\n**Cross-refs.** Distinct from WI-rugum (Scala/Groovy extends), WI-vogim (Ruby base_classes), WI-moliz (extends-vs-inherits vocabulary), and the deleted INV-jodak-galos (extends name-collision resolution).\n\nMember: F183.A2. Found via dogfooding tranche 10. Severity 4."  # 96e9
     fields: {}  # 96e9
+- op: update  # 57f6
+  at: '2026-06-21T08:45:38Z'  # 57f6
+  by: agent  # 57f6
+  actor: jgstern_agent  # 57f6
+  clock: 2  # 57f6
+  nonce: 57f6  # 57f6
+  set:  # 57f6
+    status: done  # 57f6
+  add:  # 57f6
+    tags: [awaits_bakeoff_validation]  # 57f6
+- op: discuss  # e50a
+  at: '2026-06-21T08:45:38Z'  # e50a
+  by: agent  # e50a
+  actor: jgstern_agent  # e50a
+  clock: 3  # e50a
+  nonce: e50a  # e50a
+  message: "Fixed in PR #4255 (origin/dev 1dd2d3ce2d), emission-parity F4 / Approach A2.\n\nBEHAVIORAL EVIDENCE (full-pipeline re-probe of the filed repro): a TS file with 'import { LitElement } from \"lit\"; export class MyEl extends LitElement {}' previously emitted ZERO extends edges; it now emits 'extends typescript:lit:0-0:LitElement:unresolved' (is_resolved=False, dst_ref=ExternalRef(lit, LitElement)). 'implements OnInit' (Angular, external interface) emits a correctly-typed 'implements' edge (not mislabeled extends). Intra-repo bases still resolve to real symbols; the core inheritance-linker dedups so no duplicate edges (verified end-to-end).\n\nMECHANISM: when a class base resolves to neither a project class nor interface, _extract_inheritance_edges mints an unresolved-external edge mirroring the unresolved-CALL convention. Edge type from the implements-clause origin (_extract_implements_names); module hint from named_imports -> namespace_imports -> dotted-qualifier; aliased imports re-resolved on canonical name (local alias no longer mislabeled external); relative-imported-but-unextracted bases dropped (not mislabeled); _normalize_import_module_hint hardened against URL/Deno colon corruption. An adversarial review workflow caught the aliased-local correctness bug + the default/namespace module-hint gaps pre-merge.\n\nawaits_bakeoff_validation: this adds inheritance edges across the JS/TS corpus (affects type-hierarchy linker / centrality / framework detection via base classes); a DEEP cycle should confirm improved inheritance-graph completeness without spurious edges. SCOPE: JS/TS only; py/kotlin/ruby + core-linker chokepoint + TS interface-extends-interface tracked separately (WI-jubag + new sibling)."  # e50a

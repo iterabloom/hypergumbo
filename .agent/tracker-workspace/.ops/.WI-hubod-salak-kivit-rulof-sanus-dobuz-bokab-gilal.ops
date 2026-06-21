@@ -19,3 +19,47 @@
     pr_ref:  # 69ba
     description: "All merge friction in the 2026-06-20 session traced to one root cause: Codeberg's recurring 'database representation out of synchronization' desync breaks AGit's proc-receive hook (which does DB writes to create the PR on a refs/for/dev push), producing 504s, 'Internal Server Error / fail to run proc-receive hook', phantom/closed PRs, and 405 merge-desyncs. A PLAIN branch push (refs/heads/<branch>, post-receive only) is resilient AND its post-receive recomputes the DB representation, clearing the desync (the banner's own 'push a commit' remedy). Empirically: after one plain branch push, the subsequent AGit push + merge worked and the banner cleared. PROPOSAL: when auto-pr's AGit push returns a proc-receive Internal Server Error (or repeated 504s), fall back to (1) plain 'git push origin HEAD:refs/heads/<branch>', then (2) create the PR via the Forgejo API (POST /repos/.../pulls) using the approved forgejo-api.sh lib, then (3) proceed to the normal CI-poll + merge. This makes auto-pr desync-resilient instead of routing every merge through the one path the desync breaks. GOVERNANCE: auto-pr + forgejo-api.sh are governance files; needs human approval before implementation. See agent_notes + this session's transcript for the empirical evidence."  # 69ba
     fields: {}  # 69ba
+- op: update  # 8bd2
+  at: '2026-06-20T22:11:40Z'  # 8bd2
+  by: human  # 8bd2
+  actor: jgstern  # 8bd2
+  clock: 2  # 8bd2
+  nonce: 8bd2  # 8bd2
+  set:  # 8bd2
+    status: todo_soft  # 8bd2
+- op: discuss  # 3694
+  at: '2026-06-20T22:12:21Z'  # 3694
+  by: human  # 3694
+  actor: jgstern  # 3694
+  clock: 3  # 3694
+  nonce: '3694'  # 3694
+  message: "I approve auto-pr without --gov"  # 3694
+- op: discuss  # d14b
+  at: '2026-06-20T22:12:42Z'  # d14b
+  by: human  # d14b
+  actor: jgstern  # d14b
+  clock: 4  # d14b
+  nonce: d14b  # d14b
+  message: "I have flipped the status to todo_soft"  # d14b
+- op: update  # 337b
+  at: '2026-06-21T01:51:52Z'  # 337b
+  by: agent  # 337b
+  actor: jgstern_agent  # 337b
+  clock: 5  # 337b
+  nonce: 337b  # 337b
+  set:  # 337b
+    status: done  # 337b
+- op: discuss  # 8263
+  at: '2026-06-21T01:51:52Z'  # 8263
+  by: agent  # 8263
+  actor: jgstern_agent  # 8263
+  clock: 6  # 8263
+  nonce: '8263'  # 8263
+  message: "Done — merged as PR #4251 (origin/dev a98bb7a6af). Implemented BOTH desync recoveries (human-approved 'auto-pr without --gov', scope 'both push + merge'): (1) do_pr AGit-push fallback -> plain non-force branch push + API create_pr (new in forgejo-api.sh), reusing any partial-AGit PR (+ re-check after a non-2xx create_pr to avoid a duplicate vPR) before queueing a vPR; (2) do_merge resync-retry -> on a final-attempt desync-signature failure (405/000/5xx/proc-receive/try-again), one plain branch push to resync the DB + one merge retry, verified via EITHER the PR record OR git ground truth (_pr_landed_in_base / git merge-base --is-ancestor). BEHAVIORAL EVIDENCE: 22 production-path tests in tests/test_autopr_desync_fallback.py exercise the real bash funcs via 'source forgejo-api.sh' + subprocess auto-pr runs — create_pr (seam + mocked-api payload/number extraction + failure), _merge_failure_is_desync matrix (405/000/body=desync; 200/422=not), _attempt_desync_resync_push seam, do_merge resync recover-via-git-when-PR-flag-lags / give-up-when-not-landed / no-resync-on-422, and the full auto-pr fallback flow (create-PR-no-vPR vs branch-push-fail->vPR); 41 existing auto-pr/merge-pr tests still green. Adversarially reviewed (4-dimension review workflow + per-finding verify): 8 real findings; the HIGH (resync-retry originally verified via the lagging PR 'merged' flag, which would MISS the FF-landed 'reports-failure-but-succeeds' case it targets — the #4247 scenario) was fixed before merge via the _pr_landed_in_base git-ancestor check. Dogfood: PR #4251 itself merged via the new do_merge FF path (clean, no desync this run). Branch pushes are non-force and never target a protected branch. Note: flush_queue's AGit push was left without the fallback (do_pr-only scope); a follow-up could extend it."  # 8263
+- op: discuss  # 86f1
+  at: '2026-06-21T01:52:22Z'  # 86f1
+  by: agent  # 86f1
+  actor: jgstern_agent  # 86f1
+  clock: 7  # 86f1
+  nonce: 86f1  # 86f1
+  message: "Done — merged as PR #4251 (origin/dev a98bb7a6af). Implemented BOTH desync recoveries per your approval ('auto-pr without --gov', scope 'both push + merge'): (1) do_pr AGit-push fallback -> plain non-force branch push + API create_pr (new in forgejo-api.sh), reusing any partial-AGit PR (+ re-check after a non-2xx create_pr to avoid a duplicate vPR) before queueing a vPR; (2) do_merge resync-retry -> on a final-attempt desync-signature failure (405/000/5xx/proc-receive/try-again), one plain branch push to resync the DB + one merge retry, verified via EITHER the PR record OR git ground truth (_pr_landed_in_base / git merge-base --is-ancestor). BEHAVIORAL EVIDENCE: 22 production-path tests in tests/test_autopr_desync_fallback.py run the real bash funcs (source forgejo-api.sh + subprocess auto-pr) — create_pr, _merge_failure_is_desync matrix, _attempt_desync_resync_push, do_merge resync recover-via-git/give-up/no-resync-on-422, and the full fallback flow (create-PR-no-vPR vs branch-push-fail->vPR); 41 existing auto-pr/merge-pr tests still green. Adversarial review (4-dim workflow + per-finding verify) found 8 real issues; the HIGH (resync-retry first verified via the LAGGING PR 'merged' flag, which would MISS the FF-landed 'reports-failure-but-succeeds' #4247 case it targets) was fixed pre-merge via _pr_landed_in_base. The audit-gate red on the first push was a transient pip-audit/forge flake (you re-ran CI -> green; not a real CVE, no ci.yml change needed). Dogfood: #4251 merged via the new do_merge FF path. Follow-up noted: flush_queue's AGit push was left without the fallback (do_pr-only scope)."  # 86f1
