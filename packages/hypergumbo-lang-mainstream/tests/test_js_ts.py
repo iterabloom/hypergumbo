@@ -9756,3 +9756,334 @@ class TestWizavadGlobalIoEmission:
             not e.is_resolved and e.dst.split(":")[1] == "fetch" and ":fetch:" in e.dst
             for e in calls
         ), calls
+
+
+class TestWizavadGeneratorFnExprEmission:
+    """WI-zavad / emission-parity F2 (named function-node slice): generator
+    functions and const-bound *function expressions* emit function symbols at
+    parity with ordinary function declarations and const-bound arrow functions.
+
+    Two NAMED extraction holes (symmetric across JS and TS — distinct from
+    INV-golap's signature asymmetry, which only affected route handlers):
+
+    1. ``function* gen() {}`` parses as ``generator_function_declaration``
+       (declaration) / ``generator_function`` (expression), neither of which the
+       symbol-extraction branches matched — so generators emitted ZERO function
+       symbols (invisible to call graph / centrality / dead-code / CC / LOC /
+       signature).
+    2. ``const f = function () {}`` binds a ``function_expression`` (or
+       ``generator_function``) to a variable, but the ``lexical_declaration``
+       emit path only matched ``arrow_function`` values — so const-bound
+       function expressions emitted zero symbols.
+
+    These are the named counterpart of the still-deferred anonymous-callback
+    function-NODE slice (same HIGH-blast-radius class: adds function symbols
+    corpus-wide, shifting symbol/centrality/dead-code counts). Fixing emission
+    also requires call-attribution parity (``_get_enclosing_function`` must
+    recognise generator bodies) so calls inside a generator attribute to the
+    generator symbol rather than dangling on the file pseudo-node.
+    """
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_generator_declaration_emits_function_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function* genDecl() { yield 1; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "genDecl" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_const_function_expression_emits_function_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "const fnExpr = function () { return 3; };\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "fnExpr" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_const_named_function_expression_named_after_variable(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A named function expression bound to a variable takes the *variable*
+        name (parity with ``const x = () => {}`` arrow naming), not the inner
+        function name."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "const outer = function inner() { return 4; };\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "outer" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_const_generator_expression_emits_function_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "const genExpr = function* () { yield 5; };\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "genExpr" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_const_async_function_expression_emits_function_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "const asyncFn = async function () { return 6; };\n"
+        )
+        result = analyze_javascript(tmp_path)
+        names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "asyncFn" in names, names
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_exported_generator_declaration_emits_function_symbol(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "export function* expGen() { yield 9; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        names = {s.name for s in funcs}
+        assert "expGen" in names, names
+        # exported generator is exactly one symbol (no double-emit between the
+        # direct branch and the export_statement branch)
+        assert sum(1 for s in funcs if s.name == "expGen") == 1, funcs
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_generator_symbol_carries_signature(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function* gen(a, b) { yield a; yield b; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        gen = next(
+            s for s in result.symbols if s.kind == "function" and s.name == "gen"
+        )
+        assert gen.signature is not None, "generator signature should populate"
+        assert "a" in gen.signature and "b" in gen.signature, gen.signature
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_call_inside_generator_attributed_to_generator(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A call in a generator body must attribute to the generator symbol
+        (its ``src``), not dangle on the file pseudo-node — call-graph parity."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function helper() { return 1; }\n"
+            "function* gen() { helper(); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        gen = next(
+            s for s in result.symbols if s.kind == "function" and s.name == "gen"
+        )
+        calls = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "helper" in e.dst
+        ]
+        assert calls, [e.dst for e in result.edges if e.edge_type == "calls"]
+        assert any(e.src == gen.id for e in calls), (
+            gen.id, [e.src for e in calls]
+        )
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_call_inside_const_function_expression_attributed(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function helper() { return 1; }\n"
+            "const runner = function () { helper(); };\n"
+        )
+        result = analyze_javascript(tmp_path)
+        runner = next(
+            s for s in result.symbols if s.kind == "function" and s.name == "runner"
+        )
+        calls = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "helper" in e.dst
+        ]
+        assert calls, [e.dst for e in result.edges if e.edge_type == "calls"]
+        assert any(e.src == runner.id for e in calls), (
+            runner.id, [e.src for e in calls]
+        )
+
+    def test_js_and_ts_emit_same_function_names(self, tmp_path: Path) -> None:
+        """Symmetry: the same construct set yields the same function-symbol
+        names for .js and .ts (the gaps were identical across both)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        src = (
+            "function regular() { return 1; }\n"
+            "function* genDecl() { yield 1; }\n"
+            "const arrowVar = () => 2;\n"
+            "const fnExpr = function () { return 3; };\n"
+            "const genExpr = function* () { yield 5; };\n"
+        )
+        js_dir = tmp_path / "js"
+        ts_dir = tmp_path / "ts"
+        js_dir.mkdir()
+        ts_dir.mkdir()
+        (js_dir / "a.js").write_text(src)
+        (ts_dir / "a.ts").write_text(src)
+        js_names = {
+            s.name for s in analyze_javascript(js_dir).symbols
+            if s.kind == "function"
+        }
+        ts_names = {
+            s.name for s in analyze_javascript(ts_dir).symbols
+            if s.kind == "function"
+        }
+        expected = {"regular", "genDecl", "arrowVar", "fnExpr", "genExpr"}
+        assert expected <= js_names, js_names
+        assert js_names == ts_names, (js_names, ts_names)
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_generator_param_shadows_global_no_false_call(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """A generator param shadowing a global function name must NOT emit a
+        false call edge to the global (``_is_shadowed_by_param`` must recognise
+        generator scopes). Before the fix, ``cb`` inside the generator was not
+        seen as a param, so ``cb()`` falsely resolved to the global ``cb``."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "function cb() { return 99; }\n"
+            "function* gen(cb) { cb(); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        gen = next(
+            s for s in result.symbols if s.kind == "function" and s.name == "gen"
+        )
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == gen.id and "cb" in e.dst
+        ]
+        assert not false_edges, [e.dst for e in false_edges]
+
+    def test_generator_typed_param_method_resolves(self, tmp_path: Path) -> None:
+        """TS: a method call on a typed generator param resolves to the *correct*
+        class method via param-type inference (the ``_extract_param_types`` gate
+        must include generator declarations).
+
+        A second class ``Other`` with a same-named ``send`` is declared BEFORE
+        ``Client`` so a weaker name-only fallback would mis-resolve to
+        ``Other.send``: the test therefore requires the typed-param gate to
+        actually fire (resolve to ``Client.send`` AND attribute to ``gen``),
+        rather than passing on the single-method name-disambiguation coincidence
+        that made an earlier version of this test vacuous."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.ts").write_text(
+            "class Other { send() { return 2; } }\n"
+            "class Client { send() { return 1; } }\n"
+            "function* gen(c: Client) { c.send(); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        gen = next(
+            s for s in result.symbols if s.kind == "function" and s.name == "gen"
+        )
+        send_calls = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.is_resolved and "send" in e.dst
+        ]
+        assert send_calls, [
+            (e.is_resolved, e.dst) for e in result.edges if e.edge_type == "calls"
+        ]
+        # typed-param inference picks Client.send (NOT Other.send) and attributes
+        # the call to the generator symbol
+        assert any(
+            "Client.send" in e.dst and e.src == gen.id for e in send_calls
+        ), [(e.src == gen.id, e.dst) for e in send_calls]
+        assert not any("Other.send" in e.dst for e in send_calls), [
+            e.dst for e in send_calls
+        ]
+
+    @pytest.mark.parametrize("ext", ["js", "ts"])
+    def test_exported_generator_is_marked_exported(
+        self, tmp_path: Path, ext: str
+    ) -> None:
+        """``export function* g(){}`` must set ``is_exported=True`` at parity with
+        ``export function f(){}`` (the export-name collection must include the
+        generator declaration node). A non-exported generator stays False."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / f"a.{ext}").write_text(
+            "export function* expGen() { yield 1; }\n"
+            "export function plainExp() { return 1; }\n"
+            "function* localGen() { yield 2; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.kind == "function"}
+        assert by_name["expGen"].is_exported is True, by_name["expGen"]
+        # parity control + non-exported generator stays False
+        assert by_name["plainExp"].is_exported is True
+        assert by_name["localGen"].is_exported is False, by_name["localGen"]
+
+    def test_exported_generator_emits_library_export_context(
+        self, tmp_path: Path
+    ) -> None:
+        """A generator exported from an index/library entry point surfaces a
+        ``library_export`` UsageContext like a plain exported function, so it is
+        visible to library-export pattern matching / entrypoint surfacing."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "index.ts").write_text(
+            "export function* genExport() { yield 1; }\n"
+            "export function plainExport() { return 1; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        exported = {
+            (c.metadata or {}).get("export_name")
+            for c in result.usage_contexts
+            if c.kind == "library_export"
+        }
+        assert "genExport" in exported, exported
+        assert "plainExport" in exported, exported  # parity control
+
+    def test_inline_generator_route_handler_emitted(self, tmp_path: Path) -> None:
+        """An inline generator route handler (Koa-v1 idiom) emits a route symbol
+        retaining its declared name, instead of being silently dropped."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "a.js").write_text(
+            "const app = require('express')();\n"
+            "app.get('/gen', function* h(req, res) { yield 1; });\n"
+        )
+        result = analyze_javascript(tmp_path)
+        routes = [
+            s for s in result.symbols
+            if s.kind == "function" and (s.meta or {}).get("route_path") == "/gen"
+        ]
+        assert routes, [
+            (s.name, (s.meta or {}).get("route_path"))
+            for s in result.symbols if s.kind == "function"
+        ]
+        # named generator handler keeps its declared name
+        assert any(s.name == "h" for s in routes), [s.name for s in routes]

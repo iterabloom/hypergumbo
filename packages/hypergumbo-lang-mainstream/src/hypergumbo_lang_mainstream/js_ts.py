@@ -814,10 +814,17 @@ def _extract_jsts_signature(
             # Single parameter without parens: x => x
             params_node = _find_child_by_field(node, "parameter")
         return_type_node = _find_child_by_field(node, "return_type")
-    elif node.type in ("method_definition", "function", "function_expression"):
+    elif node.type in (
+        "method_definition", "function", "function_expression",
+        "generator_function_declaration", "generator_function",
+    ):
         # ``function`` / ``function_expression`` cover both anonymous and named
         # function expressions used as values — e.g. Express route handlers
         # ``app.get('/x', function h(req, res) {})`` (INV-golap route-handler gap).
+        # ``generator_function_declaration`` (``function* g() {}``) and
+        # ``generator_function`` (``const g = function*() {}``) reach signature
+        # parity via the same ``parameters``/``return_type`` fields (WI-zavad
+        # named function-node slice).
         params_node = _find_child_by_field(node, "parameters")
         return_type_node = _find_child_by_field(node, "return_type")
     else:
@@ -926,7 +933,13 @@ def _extract_param_types(
 
     # Find parameters node - structure varies by function type
     params_node = None
-    if node.type == "function_declaration":
+    if node.type in (
+        "function_declaration",
+        "generator_function_declaration",
+        "generator_function",
+    ):
+        # WI-zavad: typed params of generators feed method-call resolution in
+        # the generator body (parity with ``function_declaration``).
         params_node = _find_child_by_field(node, "parameters")
     elif node.type == "arrow_function":
         params_node = _find_child_by_field(node, "parameters")
@@ -1516,7 +1529,10 @@ def _find_route_handler_in_call(
 
             # Check for inline function handlers first (anywhere in args)
             for arg in args:
-                if arg.type == "function_expression" or arg.type == "function":
+                # ``generator_function`` covers Koa-v1-style generator handlers
+                # (``app.use(function*(){})``) — WI-zavad parity so an inline
+                # generator route handler is not silently dropped.
+                if arg.type in ("function_expression", "function", "generator_function"):
                     return arg, None, False
                 if arg.type == "arrow_function":
                     return arg, None, False
@@ -1948,7 +1964,7 @@ def _extract_nextjs_usage_contexts(
         for child in node.children:
             if child.type == "default":
                 is_default = True
-            elif child.type == "function_declaration":
+            elif child.type in ("function_declaration", "generator_function_declaration"):
                 name = _find_name_in_children(child, source)
                 if name:  # pragma: no branch — function_declaration always has a name
                     export_name = name
@@ -2063,7 +2079,9 @@ def _extract_library_export_contexts(
         for child in node.children:
             if child.type == "default":
                 is_default = True
-            elif child.type == "function_declaration":
+            elif child.type in ("function_declaration", "generator_function_declaration"):
+                # WI-zavad: ``export function* g(){}`` is a public library export
+                # like ``export function f(){}`` — surface its UsageContext too.
                 name = _find_name_in_children(child, source)
                 if name:
                     export_names.append(name)
@@ -3242,7 +3260,11 @@ def _extract_symbols(
                     else:
                         # Inline handler: router.get('/path', (req, res) => {})
                         name = None
-                        if handler_node.type == "function_expression" or handler_node.type == "function":
+                        if handler_node.type in (
+                            "function_expression", "function", "generator_function",
+                        ):
+                            # named generator handler ``function* h(){}`` keeps
+                            # its declared name (WI-zavad parity)
                             name = _find_name_in_children(handler_node, source)
                         if not name:
                             clean_path = route_path.replace("/", "_").replace(":", "").replace("{", "").replace("}", "") if route_path else ""
@@ -3339,8 +3361,11 @@ def _extract_symbols(
                     lines_of_code=span.end_line - span.start_line + 1,
                 ))
 
-        # Function declarations (skip if inside an export_statement - handled below)
-        if node.type == "function_declaration":
+        # Function declarations, incl. generators ``function* g() {}`` (WI-zavad
+        # named function-node slice — ``generator_function_declaration`` was
+        # never matched, so generators emitted zero function symbols).
+        # (skip if inside an export_statement - handled below)
+        if node.type in ("function_declaration", "generator_function_declaration"):
             # Check if parent is export_statement - if so, skip (handled in export_statement case)
             if node.parent and node.parent.type == "export_statement":
                 continue
@@ -3395,14 +3420,25 @@ def _extract_symbols(
                     for grandchild in child.children:
                         if grandchild.type == "identifier":
                             name_node = grandchild
-                        elif grandchild.type == "arrow_function":
+                        elif grandchild.type in (
+                            "arrow_function", "function_expression",
+                            "generator_function",
+                        ):
+                            # WI-zavad named function-node slice: ``const f =
+                            # function () {}`` (function_expression) and
+                            # ``const g = function* () {}`` (generator_function)
+                            # reach parity with the existing arrow-function path.
                             value_node = grandchild
                         elif grandchild.type == "call_expression":
                             # Pattern: const handler = catchAsync(async (req, res) => {})
                             for call_child in grandchild.children:
                                 if call_child.type == "arguments":
                                     for arg in call_child.children:
-                                        if arg.type == "arrow_function":
+                                        if arg.type in (
+                                            "arrow_function",
+                                            "function_expression",
+                                            "generator_function",
+                                        ):
                                             value_node = arg
                                             break
                                     if value_node:
@@ -3648,9 +3684,11 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Export default function - extract the function symbol
+        # (incl. ``export function* g() {}`` — WI-zavad: the direct branch
+        # above skips export children, so generators must be matched here too)
         elif node.type == "export_statement":
             for child in node.children:
-                if child.type == "function_declaration":
+                if child.type in ("function_declaration", "generator_function_declaration"):
                     name = _find_name_in_children(child, source)
                     if name:
                         span = Span(
@@ -3741,7 +3779,12 @@ def _extract_export_names_from_statement(
     """Populate *out* with the identifier names exported by *node*."""
     for child in node.children:
         ctype = child.type
-        if ctype in ("function_declaration", "class_declaration"):
+        if ctype in (
+            "function_declaration", "class_declaration",
+            "generator_function_declaration",
+        ):
+            # WI-zavad: ``export function* g(){}`` must mark its symbol
+            # is_exported=True like ``export function f(){}`` does.
             name = _find_name_in_children(child, source)
             if name:
                 out.add(name)
@@ -3831,6 +3874,9 @@ def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) ->
             "function_declaration",
             "function_expression",
             "method_definition",
+            # WI-zavad: generator declaration/expression scopes also bind params
+            "generator_function_declaration",
+            "generator_function",
         ):
             for child in current.children:
                 if child.type == "formal_parameters":
@@ -3852,7 +3898,7 @@ def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) ->
             # declarations (top-level), stop — these are analysis units.
             # For closures (arrow_function, function_expression), continue
             # walking up since JS lexical scoping makes outer params visible.
-            if current.type == "function_declaration":
+            if current.type in ("function_declaration", "generator_function_declaration"):
                 return False
             # else: keep walking up through closure scopes
         current = current.parent
@@ -3883,7 +3929,10 @@ def _get_enclosing_function(
     file_path_str = str(file_path)
     current = node.parent
     while current is not None:
-        if current.type == "function_declaration":
+        # ``generator_function_declaration`` (``function* g() {}``) is a named
+        # top-level analysis unit like ``function_declaration`` — a call in its
+        # body attributes to the generator symbol (WI-zavad call-graph parity).
+        if current.type in ("function_declaration", "generator_function_declaration"):
             # Position-based lookup handles duplicate names across files
             if symbol_by_position:
                 pos_key = (file_path_str, current.start_point[0] + 1 + line_offset, current.start_point[1])
@@ -3917,9 +3966,12 @@ def _get_enclosing_function(
                             return sym
             return None  # pragma: no cover
 
-        # Arrow functions - try variable assignment first, then position lookup
-        if current.type == "arrow_function":
-            # First, try to find a variable_declarator parent (assigned arrow fn)
+        # Arrow functions and const-bound function expressions / generator
+        # expressions - try variable assignment first, then position lookup.
+        # (WI-zavad: ``const f = function () {}`` / ``function* () {}`` attribute
+        # their body calls to the variable-named symbol, like arrow functions.)
+        if current.type in ("arrow_function", "function_expression", "generator_function"):
+            # First, try to find a variable_declarator parent (assigned fn)
             parent = current.parent
             while parent is not None:
                 if parent.type == "variable_declarator":
@@ -4033,7 +4085,11 @@ def _extract_edges(
                     break
 
         # Function/method declarations - extract parameter types for type inference
-        elif node.type in ("function_declaration", "method_definition", "arrow_function"):
+        # (incl. generator declarations/expressions — WI-zavad parity)
+        elif node.type in (
+            "function_declaration", "method_definition", "arrow_function",
+            "generator_function_declaration", "generator_function",
+        ):
             param_types = _extract_param_types(node, source)
             # Add parameter types to var_types for method call resolution
             for param_name, param_type in param_types.items():
