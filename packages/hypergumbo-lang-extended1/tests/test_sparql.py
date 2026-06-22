@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 from hypergumbo_lang_extended1 import sparql as sparql_module
 from hypergumbo_lang_extended1.sparql import (
     analyze_sparql,
@@ -250,9 +251,15 @@ SELECT * WHERE { ?s ?p ?o }
         result = analyze_sparql(tmp_path)
         prefix = next((s for s in result.symbols if s.kind == "prefix"), None)
         assert prefix is not None
-        assert prefix.id == prefix.stable_id
+        # INV-hunup: id stays the raw composite; stable_id is canonical sha256.
+        assert prefix.id != prefix.stable_id
         assert "sparql:" in prefix.id
         assert "test.sparql" in prefix.id
+        assert _CANONICAL_STABLE_ID_PATTERN.match(prefix.stable_id)
+        # Every emitted symbol carries a canonical stable_id (prefix/base/query).
+        assert result.symbols
+        for s in result.symbols:
+            assert _CANONICAL_STABLE_ID_PATTERN.match(s.stable_id), (s.kind, s.stable_id)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_sparql_file(tmp_path, "test.sparql", """

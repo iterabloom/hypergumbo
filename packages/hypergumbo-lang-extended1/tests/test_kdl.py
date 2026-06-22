@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
 from hypergumbo_lang_extended1 import kdl as kdl_module
 from hypergumbo_lang_extended1.kdl import (
     analyze_kdl,
@@ -195,8 +196,14 @@ class TestAnalyzeKdl:
         result = analyze_kdl(tmp_path)
         node = next((s for s in result.symbols if s.kind == "node"), None)
         assert node is not None
-        assert node.id == node.stable_id
+        # INV-hunup: id stays the raw composite; stable_id is canonical sha256.
+        assert node.id != node.stable_id
         assert "kdl:" in node.id
+        assert _CANONICAL_STABLE_ID_PATTERN.match(node.stable_id)
+        # Every emitted symbol carries a canonical stable_id.
+        assert result.symbols
+        for s in result.symbols:
+            assert _CANONICAL_STABLE_ID_PATTERN.match(s.stable_id), (s.kind, s.stable_id)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_kdl_file(tmp_path, "config.kdl", "node")

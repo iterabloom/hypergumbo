@@ -220,7 +220,13 @@ def _create_client_symbol(call: GraphQLClientCall, root: Path) -> Symbol:
         language=None,
         discovery_language=call.language,
         protocol_origin="graphql",
-        stable_id=call.operation_name,
+        # INV-hunup / ADR-0035 §1: Class-B stand-in. Emit None so the
+        # post-linker populate_synthetic_class_b_identity chokepoint stamps a
+        # canonical injective stable_id keyed on (protocol_origin, kind, path,
+        # name, occurrence). Self-stamping call.operation_name was non-canonical
+        # AND collision-prone (operation names repeat across files). The
+        # operation name is preserved in meta["operation_name"].
+        stable_id=None,
         meta={
             "operation_type": call.operation_type,
             "operation_name": call.operation_name,

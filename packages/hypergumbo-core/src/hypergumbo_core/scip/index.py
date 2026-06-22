@@ -58,7 +58,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from ..analyze.base import make_symbol_id
+from ..analyze.base import _short_sha256, make_symbol_id
 from ..ir import Span, Symbol
 from ._generated import scip_pb2
 from .descriptor import DescriptorKind, parse_scip_symbol
@@ -200,7 +200,11 @@ def scip_index_to_symbols(index: scip_pb2.Index) -> List[Symbol]:
                     path=doc.relative_path,
                     span=span,
                     origin="scip",
-                    stable_id=sym_info.symbol,
+                    # INV-hunup: canonical sha256 stable_id. The SCIP moniker
+                    # (sym_info.symbol) is a globally-stable identity, so hashing
+                    # it yields a stable canonical id; the raw moniker is
+                    # preserved in meta["scip_symbol"] (_build_meta).
+                    stable_id=_short_sha256(sym_info.symbol),
                     meta=_build_meta(sym_info),
                 )
             )

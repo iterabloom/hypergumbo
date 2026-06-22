@@ -38,6 +38,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_doc_stable_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -172,7 +173,7 @@ def _extract_kdl_node(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id("kdl", str(rel_path), kind, node_name, span.start_line, span.end_line),
         name=node_name,
         kind=kind,
         language="kdl",

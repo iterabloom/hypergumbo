@@ -43,6 +43,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    make_doc_stable_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -123,7 +124,7 @@ def _extract_prefix(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id("sparql", str(rel_path), "prefix", prefix_name, span.start_line, span.end_line),
         name=prefix_name,
         kind="prefix",
         language="sparql",
@@ -161,7 +162,7 @@ def _extract_base(
 
     return Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id("sparql", str(rel_path), "base", "BASE", span.start_line, span.end_line),
         name="BASE",
         kind="base",
         language="sparql",
@@ -264,7 +265,7 @@ def _extract_query(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id("sparql", str(rel_path), "query", query_name, span.start_line, span.end_line),
         name=query_name,
         kind="query",
         language="sparql",
