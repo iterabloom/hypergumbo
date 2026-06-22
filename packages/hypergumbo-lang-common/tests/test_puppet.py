@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Puppet manifest analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -223,8 +224,59 @@ node 'server' {
         result = analyze_puppet(tmp_path)
         cls = next((s for s in result.symbols if s.kind == "class"), None)
         assert cls is not None
-        assert cls.id == cls.stable_id
+        # id keeps the raw composite (node id / edge endpoint); stable_id is
+        # now the canonical sha256 form, so the two diverge.
         assert "puppet:" in cls.id
+        assert cls.stable_id != cls.id
+        assert cls.stable_id.startswith("sha256:")
+
+    def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
+        # Reuse the complete-manifest fixture, which a passing test
+        # (test_complete_manifest) already exercises to yield class,
+        # defined_type, multiple resources, and a node symbol.
+        make_puppet_file(tmp_path, "init.pp", """class nginx (
+  String $server_name = 'localhost',
+  Integer $port = 80,
+) {
+  package { 'nginx':
+    ensure => installed,
+  }
+
+  service { 'nginx':
+    ensure => running,
+    enable => true,
+    require => Package['nginx'],
+  }
+
+  file { '/etc/nginx/nginx.conf':
+    ensure  => file,
+    notify  => Service['nginx'],
+  }
+}
+
+define nginx::vhost (
+  String $server_name,
+) {
+  file { "/etc/nginx/sites-enabled/${name}":
+    ensure => file,
+    notify => Service['nginx'],
+  }
+}
+
+node 'webserver.example.com' {
+  include nginx
+  nginx::vhost { 'mysite':
+    server_name => 'mysite.example.com',
+  }
+}""")
+        result = analyze_puppet(tmp_path)
+        assert not result.skipped
+        assert len(result.symbols) >= 1
+        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        for sym in result.symbols:
+            assert canonical.match(sym.stable_id), (
+                f"non-canonical stable_id for {sym.kind} {sym.name}: {sym.stable_id}"
+            )
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_puppet_file(tmp_path, "init.pp", "class nginx {}")

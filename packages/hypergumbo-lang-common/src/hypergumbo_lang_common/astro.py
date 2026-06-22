@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_doc_stable_id,
     make_file_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -248,7 +249,10 @@ class _AstroFileExtractor:
 
                 symbol = Symbol(
                     id=symbol_id,
-                    stable_id=symbol_id,
+                    stable_id=make_doc_stable_id(
+                        "astro", str(rel_path), "variable", var_name,
+                        span.start_line, span.end_line,
+                    ),
                     name=var_name,
                     kind="variable",
                     language="astro",
@@ -348,7 +352,11 @@ class _AstroFileExtractor:
 
                 directive_symbol = Symbol(
                     id=directive_id,
-                    stable_id=directive_id,
+                    stable_id=make_doc_stable_id(
+                        "astro", str(rel_path), "directive",
+                        f"{tag_name}:{client_directive}",
+                        directive_span.start_line, directive_span.end_line,
+                    ),
                     name=client_directive,
                     kind="directive",
                     language="astro",
@@ -388,7 +396,10 @@ class _AstroFileExtractor:
 
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                stable_id=make_doc_stable_id(
+                    "astro", str(rel_path), "slot", slot_name,
+                    span.start_line, span.end_line,
+                ),
                 name=slot_name,
                 kind="slot",
                 language="astro",

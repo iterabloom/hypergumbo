@@ -49,6 +49,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_doc_stable_id,
     make_file_id,
     populate_docstrings_from_tree,
 )
@@ -363,7 +364,10 @@ class VueAnalyzer(TreeSitterAnalyzer):
 
                     symbol = Symbol(
                         id=symbol_id,
-                        stable_id=symbol_id,
+                        stable_id=make_doc_stable_id(
+                            "vue", str(rel_path), "prop", prop_name,
+                            span.start_line, span.end_line,
+                        ),
                         name=prop_name,
                         kind="prop",
                         language="vue",
@@ -421,7 +425,10 @@ class VueAnalyzer(TreeSitterAnalyzer):
 
                         symbol = Symbol(
                             id=symbol_id,
-                            stable_id=symbol_id,
+                            stable_id=make_doc_stable_id(
+                                "vue", str(rel_path), "prop", prop_name,
+                                span.start_line, span.end_line,
+                            ),
                             name=prop_name,
                             kind="prop",
                             language="vue",
@@ -597,7 +604,10 @@ class VueAnalyzer(TreeSitterAnalyzer):
 
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                stable_id=make_doc_stable_id(
+                    "vue", str(rel_path), "directive", f"{tag_name}:{directive}",
+                    span.start_line, span.end_line,
+                ),
                 name=directive,
                 kind="directive",
                 language="vue",
@@ -634,7 +644,10 @@ class VueAnalyzer(TreeSitterAnalyzer):
 
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                stable_id=make_doc_stable_id(
+                    "vue", str(rel_path), "slot", slot_name,
+                    span.start_line, span.end_line,
+                ),
                 name=slot_name,
                 kind="slot",
                 language="vue",
@@ -687,7 +700,10 @@ class VueAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=make_doc_stable_id(
+                "vue", str(rel_path), "style_block", "style",
+                span.start_line, span.end_line,
+            ),
             name="style",
             kind="style_block",
             language="vue",

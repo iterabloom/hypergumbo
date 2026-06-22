@@ -41,6 +41,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_doc_stable_id,
     make_file_id,
     populate_docstrings_from_tree,
 )
@@ -186,7 +187,10 @@ def _extract_variable(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "scss", str(rel_path), "variable", var_name,
+            span.start_line, span.end_line,
+        ),
         name=var_name,
         kind="variable",
         language="scss",
@@ -238,7 +242,10 @@ def _extract_mixin(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "scss", str(rel_path), "mixin", mixin_name,
+            span.start_line, span.end_line,
+        ),
         name=mixin_name,
         kind="mixin",
         language="scss",
@@ -289,7 +296,10 @@ def _extract_function(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "scss", str(rel_path), "function", func_name,
+            span.start_line, span.end_line,
+        ),
         name=func_name,
         kind="function",
         language="scss",
@@ -338,7 +348,10 @@ def _extract_rule_set(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "scss", str(rel_path), "rule_set", selector[:30],
+            span.start_line, span.end_line,
+        ),
         name=selector,
         kind="rule_set",
         language="scss",

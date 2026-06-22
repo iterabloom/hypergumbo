@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_file_id, populate_docstrings_from_tree
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_doc_stable_id, make_file_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -177,7 +177,9 @@ class _PuppetExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=make_doc_stable_id(
+                "puppet", str(rel_path), "class", class_name, span.start_line, span.end_line
+            ),
             name=class_name,
             kind="class",
             language="puppet",
@@ -224,7 +226,9 @@ class _PuppetExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=make_doc_stable_id(
+                "puppet", str(rel_path), "defined_type", type_name, span.start_line, span.end_line
+            ),
             name=type_name,
             kind="defined_type",
             language="puppet",
@@ -293,7 +297,9 @@ class _PuppetExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=make_doc_stable_id(
+                "puppet", str(rel_path), "resource", name, span.start_line, span.end_line
+            ),
             name=name,
             kind="resource",
             language="puppet",
@@ -374,7 +380,9 @@ class _PuppetExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=make_doc_stable_id(
+                "puppet", str(rel_path), "node", node_name, span.start_line, span.end_line
+            ),
             name=node_name,
             kind="node",
             language="puppet",

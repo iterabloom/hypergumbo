@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Pony language analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -295,9 +296,11 @@ actor Main
         result = analyze_pony(tmp_path)
         actor = next((s for s in result.symbols if s.kind == "actor"), None)
         assert actor is not None
-        assert actor.id == actor.stable_id
+        # Symbol.id remains the raw composite (edge endpoint / node id);
+        # stable_id is now the canonical sha256 form (id-format:F2 4a).
         assert "pony:" in actor.id
         assert "test.pony" in actor.id
+        assert re.match(r"^sha256:[0-9a-f]{16}$", actor.stable_id)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_pony_file(tmp_path, "test.pony", """
@@ -453,6 +456,47 @@ class Main
         ]
         assert len(resolved_edges) == 1
         assert resolved_edges[0].confidence == 1.0
+
+    def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
+        """Every symbol's stable_id is the canonical sha256 form (WI-rijup).
+
+        Reuses the multi-construct fixture so the assertion covers actors,
+        classes, interfaces, traits, primitives, constructors, methods, and
+        fields in one pass.
+        """
+        make_pony_file(tmp_path, "test.pony", """
+interface Countable
+  fun count(): USize
+
+trait Nameable
+  fun name(): String
+
+class Counter is Countable
+  var value: USize = 0
+
+  new create() =>
+    None
+
+  fun count(): USize =>
+    value
+
+  fun ref increment() =>
+    value = value + 1
+
+primitive Defaults
+  fun default_count(): USize => 0
+
+actor Main
+  new create(env: Env) =>
+    let c = Counter.create()
+    c.increment()
+""")
+        result = analyze_pony(tmp_path)
+        assert not result.skipped
+        assert len(result.symbols) >= 1
+        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        for sym in result.symbols:
+            assert canonical.match(sym.stable_id), (sym.kind, sym.name, sym.stable_id)
 
 
 class TestPonyCyclomaticComplexity:

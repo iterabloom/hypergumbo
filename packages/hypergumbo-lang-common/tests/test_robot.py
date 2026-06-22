@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Robot Framework analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -258,9 +259,54 @@ My Test Keyword
         result = analyze_robot(tmp_path)
         keyword = next((s for s in result.symbols if s.kind == "keyword"), None)
         assert keyword is not None
-        assert keyword.id == keyword.stable_id
+        # The raw composite remains the node id / edge endpoint.
         assert "robot:" in keyword.id
         assert "test.robot" in keyword.id
+        # stable_id is now the canonical sha256 form, distinct from the raw id.
+        assert keyword.stable_id != keyword.id
+        assert re.match(r"^sha256:[0-9a-f]{16}$", keyword.stable_id)
+
+    def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
+        # Reuse the complete-file fixture, which yields one symbol of every kind
+        # (library, resource, variable x2, keyword x2, test) so the assertion is
+        # exercised across all five migrated Symbol(...) construction sites.
+        make_robot_file(tmp_path, "complete.robot", """
+*** Settings ***
+Library    SeleniumLibrary
+Resource   common.robot
+
+*** Variables ***
+${BASE_URL}    https://example.com
+${BROWSER}     chrome
+
+*** Keywords ***
+Open Login Page
+    [Documentation]    Opens the login page
+    [Tags]    setup
+    Open Browser    ${BASE_URL}/login    ${BROWSER}
+
+Enter Credentials
+    [Arguments]    ${user}    ${pass}
+    Input Text    id=username    ${user}
+    Input Text    id=password    ${pass}
+
+*** Test Cases ***
+Valid Login
+    [Documentation]    Test valid login flow
+    [Tags]    smoke    login
+    Open Login Page
+    Enter Credentials    admin    secret
+    Click Button    id=submit
+""")
+        result = analyze_robot(tmp_path)
+        assert not result.skipped
+        assert len(result.symbols) >= 1  # non-vacuous
+        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        for symbol in result.symbols:
+            assert canonical.match(symbol.stable_id), (
+                f"{symbol.kind} {symbol.name!r} has non-canonical "
+                f"stable_id={symbol.stable_id!r}"
+            )
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_robot_file(tmp_path, "test.robot", """

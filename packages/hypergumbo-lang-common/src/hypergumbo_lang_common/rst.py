@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, populate_docstrings_from_tree
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_doc_stable_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -196,7 +196,17 @@ class _RSTExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            # id-format:F2 4a: canonical sha256 stable_id (was the non-canonical
+            # composite Symbol.id). kind+span folded in so repeated names stay
+            # distinct. Symbol.id (the node id / edge endpoint) is unchanged.
+            stable_id=make_doc_stable_id(
+                "rst",
+                str(rel_path),
+                "section",
+                f"section_{self._section_counter}",
+                span.start_line,
+                span.end_line,
+            ),
             name=title_text,
             kind="section",
             language="rst",
@@ -258,7 +268,17 @@ class _RSTExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            # id-format:F2 4a: canonical sha256 stable_id (was the non-canonical
+            # composite Symbol.id). kind+span folded in so repeated names stay
+            # distinct. Symbol.id (the node id / edge endpoint) is unchanged.
+            stable_id=make_doc_stable_id(
+                "rst",
+                str(rel_path),
+                "directive",
+                f"directive_{self._directive_counter}",
+                span.start_line,
+                span.end_line,
+            ),
             name=name,
             kind="directive",
             language="rst",
@@ -343,7 +363,17 @@ class _RSTExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            # id-format:F2 4a: canonical sha256 stable_id (was the non-canonical
+            # composite Symbol.id). kind+span folded in so repeated names stay
+            # distinct. Symbol.id (the node id / edge endpoint) is unchanged.
+            stable_id=make_doc_stable_id(
+                "rst",
+                str(rel_path),
+                "target",
+                target_name,
+                span.start_line,
+                span.end_line,
+            ),
             name=target_name,
             kind="target",
             language="rst",

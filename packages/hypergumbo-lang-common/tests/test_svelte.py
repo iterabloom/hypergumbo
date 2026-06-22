@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the Svelte component analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -226,9 +227,47 @@ class TestAnalyzeSvelte:
         result = analyze_svelte(tmp_path)
         slot = next((s for s in result.symbols if s.kind == "slot"), None)
         assert slot is not None
-        assert slot.id == slot.stable_id
+        # The raw composite stays on Symbol.id (node id / edge endpoint),
+        # while stable_id is now the canonical sha256 form (WI-rijup).
         assert "svelte:" in slot.id
         assert "App.svelte" in slot.id
+        assert re.match(r"^sha256:[0-9a-f]{16}$", slot.stable_id)
+
+    def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
+        """Every emitted Symbol carries a canonical sha256 stable_id (WI-rijup)."""
+        # Reuse the complete-component fixture (test_complete_component) which
+        # yields slot + block + event symbols (>= 1).
+        make_svelte_file(tmp_path, "App.svelte", """<script>
+  import Header from './Header.svelte';
+  import Footer from './Footer.svelte';
+
+  let count = 0;
+  let items = [1, 2, 3];
+</script>
+
+<Header title="My App" />
+
+<main>
+  <slot />
+
+  {#if count > 0}
+    <p>Count: {count}</p>
+  {/if}
+
+  {#each items as item}
+    <li on:click={handleClick}>{item}</li>
+  {/each}
+</main>
+
+<Footer />
+""")
+        result = analyze_svelte(tmp_path)
+        assert len(result.symbols) >= 1
+        canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
+        for symbol in result.symbols:
+            assert canonical.match(symbol.stable_id), (
+                f"{symbol.kind} {symbol.name} has non-canonical stable_id: {symbol.stable_id}"
+            )
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "App.svelte", "<slot />")

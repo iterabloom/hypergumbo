@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the SCSS stylesheet analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -343,8 +344,56 @@ $spacing: 16px;
         result = analyze_scss(tmp_path)
         var = next((s for s in result.symbols if s.kind == "variable"), None)
         assert var is not None
-        assert var.id == var.stable_id
+        # WI-rijup: stable_id is now the canonical sha256 form, distinct
+        # from the raw composite Symbol.id.
         assert "scss:" in var.id
+        assert var.stable_id != var.id
+        assert re.match(r"^sha256:[0-9a-f]{16}$", var.stable_id)
+
+    def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
+        """WI-rijup: every emitted symbol carries a canonical sha256 stable_id."""
+        # Reuse the complete-stylesheet fixture, which yields variables,
+        # mixins, functions, and rule sets (>=9 symbols).
+        make_scss_file(tmp_path, "styles.scss", """$primary-color: #3498db;
+$spacing: 16px;
+$font-size: 14px;
+
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin button($bg-color) {
+  background-color: $bg-color;
+  padding: $spacing;
+}
+
+@function rem($pixels) {
+  @return $pixels / 16 * 1rem;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header {
+  @include flex-center;
+  height: 60px;
+}
+
+.button {
+  @include button($primary-color);
+  font-size: rem(14);
+}
+""")
+        result = analyze_scss(tmp_path)
+        assert not result.skipped
+        assert len(result.symbols) >= 1
+        pattern = re.compile(r"^sha256:[0-9a-f]{16}$")
+        for sym in result.symbols:
+            assert pattern.match(sym.stable_id), (sym.kind, sym.name, sym.stable_id)
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_scss_file(tmp_path, "styles.scss", "$color: red;")

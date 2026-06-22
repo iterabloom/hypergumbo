@@ -43,6 +43,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_doc_stable_id,
     make_file_id,
     populate_docstrings_from_tree,
 )
@@ -289,7 +290,10 @@ def _process_tag(
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=make_doc_stable_id(
+                "svelte", str(rel_path), "slot", slot_name,
+                span.start_line, span.end_line,
+            ),
             name=slot_name,
             kind="slot",
             language="svelte",
@@ -314,7 +318,10 @@ def _process_tag(
 
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                stable_id=make_doc_stable_id(
+                    "svelte", str(rel_path), "event", f"{tag_name}:{event}",
+                    span.start_line, span.end_line,
+                ),
                 name=event,
                 kind="event",
                 language="svelte",
@@ -364,7 +371,10 @@ def _extract_control_block(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "svelte", str(rel_path), "block", f"{block_type}:{expression[:20]}",
+            span.start_line, span.end_line,
+        ),
         name=f"#{block_type}",
         kind="block",
         language="svelte",

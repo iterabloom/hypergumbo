@@ -49,6 +49,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_doc_stable_id,
     make_file_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -131,7 +132,10 @@ def _create_block_symbol(
 
     return Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "twig", str(rel_path), "block", block_name,
+            span.start_line, span.end_line,
+        ),
         name=block_name,
         kind="block",
         language="twig",
@@ -190,7 +194,10 @@ def _create_macro_symbol(
 
     return Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "twig", str(rel_path), "macro", macro_name,
+            span.start_line, span.end_line,
+        ),
         name=macro_name,
         kind="macro",
         language="twig",
@@ -303,7 +310,10 @@ def _extract_for_statement(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "twig", str(rel_path), "for_loop", name,
+            span.start_line, span.end_line,
+        ),
         name=name,
         kind="for_loop",
         language="twig",
@@ -341,7 +351,10 @@ def _extract_if_statement(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "twig", str(rel_path), "conditional", name,
+            span.start_line, span.end_line,
+        ),
         name=name,
         kind="conditional",
         language="twig",
@@ -410,7 +423,10 @@ def _extract_function_call(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "twig", str(rel_path), "function_call", func_name,
+            span.start_line, span.end_line,
+        ),
         name=func_name,
         kind="call_site",
         language="twig",

@@ -48,6 +48,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_doc_stable_id,
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -245,7 +246,10 @@ class _RobotExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=make_doc_stable_id(
+                "robot", str(rel_path), "keyword", name,
+                span.start_line, span.end_line,
+            ),
             name=name,
             kind="keyword",
             language="robot",
@@ -309,7 +313,10 @@ class _RobotExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=make_doc_stable_id(
+                "robot", str(rel_path), "test_case", name,
+                span.start_line, span.end_line,
+            ),
             name=name,
             kind="test",
             language="robot",
@@ -352,7 +359,10 @@ class _RobotExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=make_doc_stable_id(
+                "robot", str(rel_path), "variable", var_name,
+                span.start_line, span.end_line,
+            ),
             name=f"${{{var_name}}}",  # Include ${} for clarity
             kind="variable",
             language="robot",
@@ -393,7 +403,10 @@ class _RobotExtractor:
             )
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                stable_id=make_doc_stable_id(
+                    "robot", str(rel_path), "library", setting_value,
+                    span.start_line, span.end_line,
+                ),
                 name=setting_value,
                 kind="library",
                 language="robot",
@@ -415,7 +428,10 @@ class _RobotExtractor:
             )
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=symbol_id,
+                stable_id=make_doc_stable_id(
+                    "robot", str(rel_path), "resource", setting_value,
+                    span.start_line, span.end_line,
+                ),
                 name=setting_value,
                 kind="resource",
                 language="robot",

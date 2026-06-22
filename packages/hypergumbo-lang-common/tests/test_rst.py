@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the reStructuredText analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -243,9 +244,60 @@ Title
         result = analyze_rst(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        assert section.id == section.stable_id
+        # Symbol.id retains the raw composite (node id / edge endpoint); only
+        # stable_id was migrated to the canonical sha256 form (WI-rijup).
         assert "rst:" in section.id
         assert "test.rst" in section.id
+        assert section.stable_id != section.id
+        assert re.compile(r"^sha256:[0-9a-f]{16}$").match(section.stable_id)
+
+    def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
+        """Every emitted symbol carries a canonical sha256 stable_id."""
+        make_rst_file(tmp_path, "example.rst", """
+.. _main-page:
+
+================
+Document Title
+================
+
+Introduction
+============
+
+Welcome to the documentation.
+
+.. note::
+   This is important.
+
+API Reference
+=============
+
+.. function:: create_widget(name, color=None)
+
+   Create a new widget.
+
+.. class:: Widget
+
+   A widget class.
+
+See Also
+--------
+
+See :ref:`other-section` and :doc:`other-page`.
+
+.. toctree::
+   :maxdepth: 2
+
+   getting-started
+   api-reference
+""")
+        result = analyze_rst(tmp_path)
+        assert len(result.symbols) >= 1
+        pattern = re.compile(r"^sha256:[0-9a-f]{16}$")
+        for symbol in result.symbols:
+            assert pattern.match(symbol.stable_id), (
+                f"{symbol.kind} {symbol.name!r} has non-canonical "
+                f"stable_id {symbol.stable_id!r}"
+            )
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_rst_file(tmp_path, "test.rst", """

@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_doc_stable_id,
     make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -140,7 +141,10 @@ def _extract_constructor(
 
     return Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "pony", str(rel_path), "constructor", full_name,
+            span.start_line, span.end_line,
+        ),
         name=full_name,
         kind="constructor",
         language="pony",
@@ -195,7 +199,10 @@ def _extract_method(
 
     return Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "pony", str(rel_path), "method", full_name,
+            span.start_line, span.end_line,
+        ),
         name=full_name,
         kind="method",
         language="pony",
@@ -241,7 +248,10 @@ def _extract_field(
 
     return Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "pony", str(rel_path), "field", full_name,
+            span.start_line, span.end_line,
+        ),
         name=full_name,
         kind="field",
         language="pony",
@@ -324,7 +334,10 @@ def _extract_type_definition(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        stable_id=make_doc_stable_id(
+            "pony", str(rel_path), type_kind, name,
+            span.start_line, span.end_line,
+        ),
         name=name,
         kind=type_kind,
         language="pony",
