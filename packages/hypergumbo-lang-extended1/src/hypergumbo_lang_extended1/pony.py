@@ -48,7 +48,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
-    make_doc_stable_id,
+    make_doc_symbol_ids,
     make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -94,11 +94,6 @@ def _get_node_text(node: "tree_sitter.Node") -> str:
     return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
-def _make_symbol_id(path: str, name: str, kind: str) -> str:
-    """Create a stable symbol ID."""
-    return f"pony:{path}:{kind}:{name}"
-
-
 def _extract_parameters(node: "tree_sitter.Node") -> list[str]:
     """Extract parameter names from a parameters node."""
     params: list[str] = []
@@ -128,7 +123,6 @@ def _extract_constructor(
         return None  # pragma: no cover
 
     full_name = f"{current_type}.{name}" if current_type else name
-    symbol_id = _make_symbol_id(rel_path, full_name, "constructor")
 
     span = Span(
         start_line=node.start_point[0] + 1,
@@ -137,14 +131,18 @@ def _extract_constructor(
         end_col=node.end_point[1],
     )
 
+    # node.id and stable_id are minted together by make_doc_symbol_ids;
+    # node.id now carries start_line (INV-dulah).
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "pony", str(rel_path), "constructor", full_name,
+        span.start_line, span.end_line,
+    )
+
     signature = f"new {name}({', '.join(params)})"
 
     return Symbol(
         id=symbol_id,
-        stable_id=make_doc_stable_id(
-            "pony", str(rel_path), "constructor", full_name,
-            span.start_line, span.end_line,
-        ),
+        stable_id=stable_id,
         name=full_name,
         kind="constructor",
         language="pony",
@@ -181,13 +179,19 @@ def _extract_method(
         return None  # pragma: no cover
 
     full_name = f"{current_type}.{name}" if current_type else name
-    symbol_id = _make_symbol_id(rel_path, full_name, "method")
 
     span = Span(
         start_line=node.start_point[0] + 1,
         start_col=node.start_point[1],
         end_line=node.end_point[0] + 1,
         end_col=node.end_point[1],
+    )
+
+    # node.id and stable_id are minted together by make_doc_symbol_ids;
+    # node.id now carries start_line (INV-dulah).
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "pony", str(rel_path), "method", full_name,
+        span.start_line, span.end_line,
     )
 
     cap_str = f" {capability}" if capability else ""
@@ -199,10 +203,7 @@ def _extract_method(
 
     return Symbol(
         id=symbol_id,
-        stable_id=make_doc_stable_id(
-            "pony", str(rel_path), "method", full_name,
-            span.start_line, span.end_line,
-        ),
+        stable_id=stable_id,
         name=full_name,
         kind="method",
         language="pony",
@@ -237,7 +238,6 @@ def _extract_field(
         return None
 
     full_name = f"{current_type}.{name}" if current_type else name
-    symbol_id = _make_symbol_id(rel_path, full_name, "field")
 
     span = Span(
         start_line=node.start_point[0] + 1,
@@ -246,12 +246,16 @@ def _extract_field(
         end_col=node.end_point[1],
     )
 
+    # node.id and stable_id are minted together by make_doc_symbol_ids;
+    # node.id now carries start_line (INV-dulah).
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "pony", str(rel_path), "field", full_name,
+        span.start_line, span.end_line,
+    )
+
     return Symbol(
         id=symbol_id,
-        stable_id=make_doc_stable_id(
-            "pony", str(rel_path), "field", full_name,
-            span.start_line, span.end_line,
-        ),
+        stable_id=stable_id,
         name=full_name,
         kind="field",
         language="pony",
@@ -303,13 +307,18 @@ def _extract_type_definition(
     if not name:
         return  # pragma: no cover
 
-    symbol_id = _make_symbol_id(rel_path, name, type_kind)
-
     span = Span(
         start_line=node.start_point[0] + 1,
         start_col=node.start_point[1],
         end_line=node.end_point[0] + 1,
         end_col=node.end_point[1],
+    )
+
+    # node.id and stable_id are minted together by make_doc_symbol_ids;
+    # node.id now carries start_line (INV-dulah).
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "pony", str(rel_path), type_kind, name,
+        span.start_line, span.end_line,
     )
 
     # Count members
@@ -334,10 +343,7 @@ def _extract_type_definition(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=make_doc_stable_id(
-            "pony", str(rel_path), type_kind, name,
-            span.start_line, span.end_line,
-        ),
+        stable_id=stable_id,
         name=name,
         kind=type_kind,
         language="pony",

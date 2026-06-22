@@ -196,9 +196,12 @@ class TestAnalyzeKdl:
         result = analyze_kdl(tmp_path)
         node = next((s for s in result.symbols if s.kind == "node"), None)
         assert node is not None
-        # INV-hunup: id stays the raw composite; stable_id is canonical sha256.
+        # INV-dulah: node.id and stable_id are minted together by
+        # make_doc_symbol_ids; node.id is "kdl:{path}:{kind}:{start_line}:{name}".
+        # Pin the 5-slot shape (numeric start_line in slot 4).
         assert node.id != node.stable_id
-        assert "kdl:" in node.id
+        _slots = node.id.split(":", 4)
+        assert len(_slots) == 5 and _slots[0] == "kdl" and _slots[3].isdigit(), node.id
         assert _CANONICAL_STABLE_ID_PATTERN.match(node.stable_id)
         # Every emitted symbol carries a canonical stable_id.
         assert result.symbols

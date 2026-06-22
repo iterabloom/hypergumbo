@@ -43,7 +43,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
-    make_doc_stable_id,
+    make_doc_symbol_ids,
     make_file_id,
     populate_docstrings_from_tree,
 )
@@ -64,11 +64,6 @@ def find_svelte_files(repo_root: Path) -> list[Path]:
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8", errors="replace") if node.text else ""
-
-
-def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
-    """Create a stable symbol ID."""
-    return f"svelte:{path}:{kind}:{line}:{name}"
 
 
 # Built-in HTML elements should not be treated as components
@@ -280,20 +275,23 @@ def _process_tag(
                 if attr_name == "name" and attr_value:
                     slot_name = attr_value
 
-        symbol_id = _make_symbol_id(rel_path, slot_name, "slot", line)
         span = Span(
             start_line=line,
             start_col=node.start_point[1],
             end_line=node.end_point[0] + 1,
             end_col=node.end_point[1],
         )
+        # node.id and stable_id are now minted together from one arg set by
+        # make_doc_symbol_ids so they can never drift (INV-dulah). node.id is
+        # byte-identical to the old composite (zero-change migration).
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "svelte", str(rel_path), "slot", slot_name,
+            span.start_line, span.end_line,
+        )
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=make_doc_stable_id(
-                "svelte", str(rel_path), "slot", slot_name,
-                span.start_line, span.end_line,
-            ),
+            stable_id=stable_id,
             name=slot_name,
             kind="slot",
             language="svelte",
@@ -308,20 +306,23 @@ def _process_tag(
     # Record event handlers
     if events:
         for event in events:
-            symbol_id = _make_symbol_id(rel_path, f"{tag_name}:{event}", "event", line)
             span = Span(
                 start_line=line,
                 start_col=node.start_point[1],
                 end_line=node.end_point[0] + 1,
                 end_col=node.end_point[1],
             )
+            # node.id and stable_id are now minted together from one arg set by
+            # make_doc_symbol_ids so they can never drift (INV-dulah). node.id is
+            # byte-identical to the old composite (zero-change migration).
+            symbol_id, stable_id = make_doc_symbol_ids(
+                "svelte", str(rel_path), "event", f"{tag_name}:{event}",
+                span.start_line, span.end_line,
+            )
 
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=make_doc_stable_id(
-                    "svelte", str(rel_path), "event", f"{tag_name}:{event}",
-                    span.start_line, span.end_line,
-                ),
+                stable_id=stable_id,
                 name=event,
                 kind="event",
                 language="svelte",
@@ -355,12 +356,18 @@ def _extract_control_block(
                     break
             break
 
-    symbol_id = _make_symbol_id(rel_path, f"{block_type}:{expression[:20]}", "block", line)
     span = Span(
         start_line=line,
         start_col=node.start_point[1],
         end_line=node.end_point[0] + 1,
         end_col=node.end_point[1],
+    )
+    # node.id and stable_id are now minted together from one arg set by
+    # make_doc_symbol_ids so they can never drift (INV-dulah). node.id is
+    # byte-identical to the old composite (zero-change migration).
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "svelte", str(rel_path), "block", f"{block_type}:{expression[:20]}",
+        span.start_line, span.end_line,
     )
 
     # Count nested elements
@@ -371,10 +378,7 @@ def _extract_control_block(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=make_doc_stable_id(
-            "svelte", str(rel_path), "block", f"{block_type}:{expression[:20]}",
-            span.start_line, span.end_line,
-        ),
+        stable_id=stable_id,
         name=f"#{block_type}",
         kind="block",
         language="svelte",

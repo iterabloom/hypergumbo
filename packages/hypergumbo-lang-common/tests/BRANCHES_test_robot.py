@@ -14,7 +14,6 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_common.robot import (
-    _make_symbol_id,
     analyze_robot,
     find_robot_files,
 )
@@ -25,14 +24,10 @@ def make_robot_file(tmp_path: Path, name: str, content: str) -> None:
     (tmp_path / name).write_text(content)
 
 
-class TestRobotHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        from pathlib import Path
-        symbol_id = _make_symbol_id(Path("tests/login.robot"), "Login User", "keyword")
-        assert symbol_id == "robot:tests/login.robot:keyword:Login User"
+# The per-analyzer ``_make_symbol_id`` builder was folded into the shared
+# ``make_doc_symbol_ids`` helper (tested in hypergumbo-core test_base.py), so the
+# former ``test_make_symbol_id_format`` and its enclosing helper-functions class
+# were retired here.
 
 
 class TestKeywordExtraction:

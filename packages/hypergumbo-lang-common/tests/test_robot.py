@@ -259,10 +259,16 @@ My Test Keyword
         result = analyze_robot(tmp_path)
         keyword = next((s for s in result.symbols if s.kind == "keyword"), None)
         assert keyword is not None
-        # The raw composite remains the node id / edge endpoint.
+        # node.id and stable_id are minted together by make_doc_symbol_ids
+        # (INV-dulah). node.id now carries a numeric start_line segment between
+        # kind and name (shape "robot:<path>:<kind>:<line>:<name>"), which locks
+        # the same-name-sibling collision fix.
         assert "robot:" in keyword.id
         assert "test.robot" in keyword.id
-        # stable_id is now the canonical sha256 form, distinct from the raw id.
+        assert re.match(
+            r"^robot:[^:]*test\.robot:keyword:\d+:My Test Keyword$", keyword.id
+        ), keyword.id
+        # stable_id is the canonical sha256 form, distinct from the raw id.
         assert keyword.stable_id != keyword.id
         assert re.match(r"^sha256:[0-9a-f]{16}$", keyword.stable_id)
 

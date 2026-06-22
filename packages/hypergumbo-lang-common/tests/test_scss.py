@@ -344,9 +344,12 @@ $spacing: 16px;
         result = analyze_scss(tmp_path)
         var = next((s for s in result.symbols if s.kind == "variable"), None)
         assert var is not None
-        # WI-rijup: stable_id is now the canonical sha256 form, distinct
-        # from the raw composite Symbol.id.
-        assert "scss:" in var.id
+        # INV-dulah: node.id and stable_id are minted together by
+        # make_doc_symbol_ids; node.id is "scss:{path}:{kind}:{start_line}:{name}".
+        # Pin the 5-slot shape (numeric start_line in slot 4) so a slot reorder
+        # or a dropped line segment regresses loudly.
+        _slots = var.id.split(":", 4)
+        assert len(_slots) == 5 and _slots[0] == "scss" and _slots[3].isdigit(), var.id
         assert var.stable_id != var.id
         assert re.match(r"^sha256:[0-9a-f]{16}$", var.stable_id)
 

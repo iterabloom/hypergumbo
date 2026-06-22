@@ -296,10 +296,16 @@ actor Main
         result = analyze_pony(tmp_path)
         actor = next((s for s in result.symbols if s.kind == "actor"), None)
         assert actor is not None
-        # Symbol.id remains the raw composite (edge endpoint / node id);
-        # stable_id is now the canonical sha256 form (id-format:F2 4a).
+        # node.id and stable_id are minted together by make_doc_symbol_ids;
+        # node.id now carries a start_line segment (INV-dulah), which locks the
+        # same-name-sibling collision fix. stable_id stays the canonical sha256
+        # form (id-format:F2 4a).
         assert "pony:" in actor.id
         assert "test.pony" in actor.id
+        # node.id shape: pony:<path>:<kind>:<start_line>:<name...>
+        assert re.match(
+            r"^pony:.*test\.pony:actor:\d+:Main$", actor.id
+        ), actor.id
         assert re.match(r"^sha256:[0-9a-f]{16}$", actor.stable_id)
 
     def test_span_info(self, tmp_path: Path) -> None:

@@ -207,9 +207,11 @@ Hello, {{ user.name }}!
         result = analyze_twig(tmp_path)
         block = next((s for s in result.symbols if s.kind == "block"), None)
         assert block is not None
-        # id retains the raw composite (node id / edge endpoint); stable_id is
-        # the canonical sha256 form (WI-rijup).
-        assert "twig:" in block.id
+        # INV-dulah: node.id and stable_id are minted together by
+        # make_doc_symbol_ids; node.id is "twig:{path}:{kind}:{start_line}:{name}".
+        # Pin the 5-slot shape (numeric start_line in slot 4).
+        _slots = block.id.split(":", 4)
+        assert len(_slots) == 5 and _slots[0] == "twig" and _slots[3].isdigit(), block.id
         assert block.stable_id.startswith("sha256:")
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:

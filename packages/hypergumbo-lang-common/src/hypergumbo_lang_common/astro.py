@@ -48,7 +48,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
-    make_doc_stable_id,
+    make_doc_symbol_ids,
     make_file_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -70,11 +70,6 @@ def find_astro_files(repo_root: Path) -> list[Path]:
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8", errors="replace") if node.text else ""
-
-
-def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
-    """Create a stable symbol ID."""
-    return f"astro:{path}:{kind}:{line}:{name}"
 
 
 # Built-in HTML elements should not be treated as components
@@ -239,7 +234,6 @@ class _AstroFileExtractor:
                 var_name = match.group(1)
                 line_num = base_line + line_offset
 
-                symbol_id = _make_symbol_id(rel_path, var_name, "variable", line_num)
                 span = Span(
                     start_line=line_num,
                     start_col=match.start(),
@@ -247,12 +241,17 @@ class _AstroFileExtractor:
                     end_col=match.end(),
                 )
 
+                # INV-dulah: node.id (byte-identical, zero-change) and the
+                # canonical stable_id are now minted together from one arg set
+                # by make_doc_symbol_ids, so they can never drift.
+                symbol_id, stable_id = make_doc_symbol_ids(
+                    "astro", str(rel_path), "variable", var_name,
+                    span.start_line, span.end_line,
+                )
+
                 symbol = Symbol(
                     id=symbol_id,
-                    stable_id=make_doc_stable_id(
-                        "astro", str(rel_path), "variable", var_name,
-                        span.start_line, span.end_line,
-                    ),
+                    stable_id=stable_id,
                     name=var_name,
                     kind="variable",
                     language="astro",
@@ -340,9 +339,6 @@ class _AstroFileExtractor:
 
             # Create symbol for client directive if present
             if client_directive:
-                directive_id = _make_symbol_id(
-                    rel_path, f"{tag_name}:{client_directive}", "directive", line
-                )
                 directive_span = Span(
                     start_line=line,
                     start_col=node.start_point[1],
@@ -350,13 +346,18 @@ class _AstroFileExtractor:
                     end_col=node.end_point[1],
                 )
 
+                # INV-dulah: node.id (byte-identical, zero-change) and the
+                # canonical stable_id are now minted together from one arg set
+                # by make_doc_symbol_ids, so they can never drift.
+                directive_id, directive_stable_id = make_doc_symbol_ids(
+                    "astro", str(rel_path), "directive",
+                    f"{tag_name}:{client_directive}",
+                    directive_span.start_line, directive_span.end_line,
+                )
+
                 directive_symbol = Symbol(
                     id=directive_id,
-                    stable_id=make_doc_stable_id(
-                        "astro", str(rel_path), "directive",
-                        f"{tag_name}:{client_directive}",
-                        directive_span.start_line, directive_span.end_line,
-                    ),
+                    stable_id=directive_stable_id,
                     name=client_directive,
                     kind="directive",
                     language="astro",
@@ -384,7 +385,6 @@ class _AstroFileExtractor:
                     if attr_name == "name" and attr_value:
                         slot_name = attr_value
 
-            symbol_id = _make_symbol_id(rel_path, slot_name, "slot", line)
             span = Span(
                 start_line=line,
                 start_col=node.start_point[1],
@@ -394,12 +394,17 @@ class _AstroFileExtractor:
 
             slot_sig = '<slot name="' + slot_name + '">' if slot_name != "default" else "<slot>"
 
+            # INV-dulah: node.id (byte-identical, zero-change) and the
+            # canonical stable_id are now minted together from one arg set
+            # by make_doc_symbol_ids, so they can never drift.
+            symbol_id, stable_id = make_doc_symbol_ids(
+                "astro", str(rel_path), "slot", slot_name,
+                span.start_line, span.end_line,
+            )
+
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=make_doc_stable_id(
-                    "astro", str(rel_path), "slot", slot_name,
-                    span.start_line, span.end_line,
-                ),
+                stable_id=stable_id,
                 name=slot_name,
                 kind="slot",
                 language="astro",

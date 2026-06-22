@@ -18,7 +18,6 @@ The JS/TS tree-sitter analyzer handles <script> sections with full precision.
 from pathlib import Path
 
 from hypergumbo_lang_common.vue import (
-    _make_symbol_id,
     analyze_vue,
     find_vue_files,
 )
@@ -29,14 +28,10 @@ def make_vue_file(tmp_path: Path, name: str, content: str) -> None:
     (tmp_path / name).write_text(content)
 
 
-class TestVueHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        from pathlib import Path
-        symbol_id = _make_symbol_id(Path("src/App.vue"), "Button", "component_ref", 10)
-        assert symbol_id == "vue:src/App.vue:component_ref:10:Button"
+# The per-analyzer _make_symbol_id builder was folded into the shared
+# make_doc_symbol_ids helper (tested in hypergumbo-core test_base.py), so the
+# former test_make_symbol_id_format / TestVueHelperFunctions branch coverage
+# lives there now.
 
 
 class TestComponentRefExtraction:

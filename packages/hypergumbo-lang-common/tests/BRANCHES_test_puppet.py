@@ -15,7 +15,6 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_common.puppet import (
-    _make_symbol_id,
     analyze_puppet,
     find_puppet_files,
 )
@@ -26,14 +25,9 @@ def make_puppet_file(tmp_path: Path, name: str, content: str) -> None:
     (tmp_path / name).write_text(content)
 
 
-class TestPuppetHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        from pathlib import Path
-        symbol_id = _make_symbol_id(Path("manifests/init.pp"), "myclass", "class", 1)
-        assert symbol_id == "puppet:manifests/init.pp:class:1:myclass"
+# The per-analyzer _make_symbol_id builder was folded into the shared
+# make_doc_symbol_ids helper (tested in hypergumbo-core test_base.py), so the
+# former test_make_symbol_id_format format test was retired here.
 
 
 class TestClassExtraction:

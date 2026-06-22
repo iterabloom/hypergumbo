@@ -227,10 +227,12 @@ class TestAnalyzeSvelte:
         result = analyze_svelte(tmp_path)
         slot = next((s for s in result.symbols if s.kind == "slot"), None)
         assert slot is not None
-        # The raw composite stays on Symbol.id (node id / edge endpoint),
-        # while stable_id is now the canonical sha256 form (WI-rijup).
-        assert "svelte:" in slot.id
-        assert "App.svelte" in slot.id
+        # INV-dulah: node.id and stable_id are minted together by
+        # make_doc_symbol_ids; node.id is "svelte:{path}:{kind}:{start_line}:{name}".
+        # Pin the 5-slot shape (numeric start_line in slot 4).
+        _slots = slot.id.split(":", 4)
+        assert len(_slots) == 5 and _slots[0] == "svelte" and _slots[3].isdigit(), slot.id
+        assert _slots[1] == "App.svelte"
         assert re.match(r"^sha256:[0-9a-f]{16}$", slot.stable_id)
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:

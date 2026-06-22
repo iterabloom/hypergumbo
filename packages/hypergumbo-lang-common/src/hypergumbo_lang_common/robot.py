@@ -48,7 +48,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
-    make_doc_stable_id,
+    make_doc_symbol_ids,
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -71,11 +71,6 @@ def find_robot_files(repo_root: Path) -> list[Path]:
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8", errors="replace") if node.text else ""
-
-
-def _make_symbol_id(path: Path, name: str, kind: str) -> str:
-    """Create a stable symbol ID."""
-    return f"robot:{path}:{kind}:{name}"
 
 
 class _RobotExtractor:
@@ -223,7 +218,6 @@ class _RobotExtractor:
             return  # pragma: no cover
 
         rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, name, "keyword")
 
         # Build signature
         if arguments:
@@ -238,6 +232,14 @@ class _RobotExtractor:
             end_col=node.end_point[1],
         )
 
+        # INV-dulah: node.id and canonical stable_id minted together from one arg
+        # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
+        # start_line here (was line-less), disambiguating same-name siblings.
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "robot", rel_path, "keyword", name,
+            span.start_line, span.end_line,
+        )
+
         meta: dict = {"arguments": arguments}
         if documentation:
             meta["documentation"] = documentation
@@ -246,10 +248,7 @@ class _RobotExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=make_doc_stable_id(
-                "robot", str(rel_path), "keyword", name,
-                span.start_line, span.end_line,
-            ),
+            stable_id=stable_id,
             name=name,
             kind="keyword",
             language="robot",
@@ -296,13 +295,20 @@ class _RobotExtractor:
             return  # pragma: no cover
 
         rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, name, "test_case")
 
         span = Span(
             start_line=node.start_point[0] + 1,
             start_col=node.start_point[1],
             end_line=node.end_point[0] + 1,
             end_col=node.end_point[1],
+        )
+
+        # INV-dulah: node.id and canonical stable_id minted together from one arg
+        # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
+        # start_line here (was line-less), disambiguating same-name siblings.
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "robot", rel_path, "test_case", name,
+            span.start_line, span.end_line,
         )
 
         meta: dict = {"test_dialect": "robot"}
@@ -313,10 +319,7 @@ class _RobotExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=make_doc_stable_id(
-                "robot", str(rel_path), "test_case", name,
-                span.start_line, span.end_line,
-            ),
+            stable_id=stable_id,
             name=name,
             kind="test",
             language="robot",
@@ -348,7 +351,6 @@ class _RobotExtractor:
             return  # pragma: no cover
 
         rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, var_name, "variable")
 
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -357,12 +359,17 @@ class _RobotExtractor:
             end_col=node.end_point[1],
         )
 
+        # INV-dulah: node.id and canonical stable_id minted together from one arg
+        # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
+        # start_line here (was line-less), disambiguating same-name siblings.
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "robot", rel_path, "variable", var_name,
+            span.start_line, span.end_line,
+        )
+
         symbol = Symbol(
             id=symbol_id,
-            stable_id=make_doc_stable_id(
-                "robot", str(rel_path), "variable", var_name,
-                span.start_line, span.end_line,
-            ),
+            stable_id=stable_id,
             name=f"${{{var_name}}}",  # Include ${} for clarity
             kind="variable",
             language="robot",
@@ -394,19 +401,22 @@ class _RobotExtractor:
         rel_path = path.relative_to(self.repo_root)
 
         if setting_name == "Library":
-            symbol_id = _make_symbol_id(rel_path, setting_value, "library")
             span = Span(
                 start_line=node.start_point[0] + 1,
                 start_col=node.start_point[1],
                 end_line=node.end_point[0] + 1,
                 end_col=node.end_point[1],
             )
+            # INV-dulah: node.id and canonical stable_id minted together from one
+            # arg set (make_doc_symbol_ids) so they can never drift. node.id GAINS
+            # the start_line here (was line-less), disambiguating same-name siblings.
+            symbol_id, stable_id = make_doc_symbol_ids(
+                "robot", rel_path, "library", setting_value,
+                span.start_line, span.end_line,
+            )
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=make_doc_stable_id(
-                    "robot", str(rel_path), "library", setting_value,
-                    span.start_line, span.end_line,
-                ),
+                stable_id=stable_id,
                 name=setting_value,
                 kind="library",
                 language="robot",
@@ -419,19 +429,22 @@ class _RobotExtractor:
             self._symbols.append(symbol)
 
         elif setting_name == "Resource":
-            symbol_id = _make_symbol_id(rel_path, setting_value, "resource")
             span = Span(
                 start_line=node.start_point[0] + 1,
                 start_col=node.start_point[1],
                 end_line=node.end_point[0] + 1,
                 end_col=node.end_point[1],
             )
+            # INV-dulah: node.id and canonical stable_id minted together from one
+            # arg set (make_doc_symbol_ids) so they can never drift. node.id GAINS
+            # the start_line here (was line-less), disambiguating same-name siblings.
+            symbol_id, stable_id = make_doc_symbol_ids(
+                "robot", rel_path, "resource", setting_value,
+                span.start_line, span.end_line,
+            )
             symbol = Symbol(
                 id=symbol_id,
-                stable_id=make_doc_stable_id(
-                    "robot", str(rel_path), "resource", setting_value,
-                    span.start_line, span.end_line,
-                ),
+                stable_id=stable_id,
                 name=setting_value,
                 kind="resource",
                 language="robot",

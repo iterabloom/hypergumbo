@@ -38,7 +38,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
-    make_doc_stable_id,
+    make_doc_symbol_ids,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -65,11 +65,6 @@ def is_kdl_tree_sitter_available() -> bool:
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8", errors="replace") if node.text else ""
-
-
-def _make_symbol_id(path: str, name: str, kind: str, line: int) -> str:
-    """Create a stable symbol ID."""
-    return f"kdl:{path}:{kind}:{line}:{name}"
 
 
 def _extract_value(node: "tree_sitter.Node") -> str:
@@ -147,12 +142,16 @@ def _extract_kdl_node(
     # Determine kind based on structure
     kind = "section" if has_children else "node"
 
-    symbol_id = _make_symbol_id(rel_path, node_name, kind, line)
     span = Span(
         start_line=line,
         start_col=node.start_point[1],
         end_line=node.end_point[0] + 1,
         end_col=node.end_point[1],
+    )
+    # Both ids are minted together by make_doc_symbol_ids (INV-dulah);
+    # node.id stays byte-identical (the doc-family composite shape).
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "kdl", str(rel_path), kind, node_name, span.start_line, span.end_line,
     )
 
     # Build signature
@@ -173,7 +172,7 @@ def _extract_kdl_node(
 
     symbol = Symbol(
         id=symbol_id,
-        stable_id=make_doc_stable_id("kdl", str(rel_path), kind, node_name, span.start_line, span.end_line),
+        stable_id=stable_id,
         name=node_name,
         kind=kind,
         language="kdl",

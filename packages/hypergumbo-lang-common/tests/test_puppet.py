@@ -224,9 +224,11 @@ node 'server' {
         result = analyze_puppet(tmp_path)
         cls = next((s for s in result.symbols if s.kind == "class"), None)
         assert cls is not None
-        # id keeps the raw composite (node id / edge endpoint); stable_id is
-        # now the canonical sha256 form, so the two diverge.
-        assert "puppet:" in cls.id
+        # INV-dulah: node.id and stable_id are minted together by
+        # make_doc_symbol_ids; node.id is "puppet:{path}:{kind}:{start_line}:{name}".
+        # Pin the 5-slot shape (numeric start_line in slot 4).
+        _slots = cls.id.split(":", 4)
+        assert len(_slots) == 5 and _slots[0] == "puppet" and _slots[3].isdigit(), cls.id
         assert cls.stable_id != cls.id
         assert cls.stable_id.startswith("sha256:")
 

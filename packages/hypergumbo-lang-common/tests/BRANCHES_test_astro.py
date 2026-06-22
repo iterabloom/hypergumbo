@@ -14,7 +14,6 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_common.astro import (
-    _make_symbol_id,
     analyze_astro,
     find_astro_files,
 )
@@ -25,16 +24,9 @@ def make_astro_file(tmp_path: Path, name: str, content: str) -> None:
     (tmp_path / name).write_text(content)
 
 
-class TestAstroHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_symbol_id_format(self, tmp_path: Path) -> None:
-        """Test symbol ID format."""
-        path = tmp_path / "Component.astro"
-        symbol_id = _make_symbol_id(path, "Button", "component_ref", 10)
-        assert "astro:" in symbol_id
-        assert "Button" in symbol_id
-        assert "component_ref" in symbol_id
+# The per-analyzer symbol-id builder was folded into the shared
+# make_doc_symbol_ids helper in hypergumbo_core.analyze.base (tested in the
+# hypergumbo-core test_base.py); its former local format test lived here.
 
 
 class TestFrontmatterImports:

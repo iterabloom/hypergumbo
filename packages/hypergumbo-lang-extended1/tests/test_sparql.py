@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the SPARQL query analyzer."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -255,6 +256,12 @@ SELECT * WHERE { ?s ?p ?o }
         assert prefix.id != prefix.stable_id
         assert "sparql:" in prefix.id
         assert "test.sparql" in prefix.id
+        # INV-dulah: node.id now carries a numeric start_line segment between
+        # the kind and the name (sparql:<path>:<kind>:<line>:<name>), so
+        # same-name siblings on different lines no longer collide.
+        assert re.match(
+            r"^sparql:test\.sparql:prefix:\d+:foaf$", prefix.id
+        ), prefix.id
         assert _CANONICAL_STABLE_ID_PATTERN.match(prefix.stable_id)
         # Every emitted symbol carries a canonical stable_id (prefix/base/query).
         assert result.symbols
