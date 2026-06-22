@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_doc_stable_id, populate_docstrings_from_tree
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_doc_symbol_ids, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -60,11 +60,6 @@ def find_rst_files(repo_root: Path) -> list[Path]:
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8", errors="replace") if node.text else ""
-
-
-def _make_symbol_id(path: Path, name: str, kind: str) -> str:
-    """Create a stable symbol ID."""
-    return f"rst:{path}:{kind}:{name}"
 
 
 # Documentation directives that define API elements
@@ -185,8 +180,6 @@ class _RSTExtractor:
 
         self._section_counter += 1
         rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, f"section_{self._section_counter}", "section")
-
         span = Span(
             start_line=node.start_point[0] + 1,
             start_col=node.start_point[1],
@@ -194,19 +187,17 @@ class _RSTExtractor:
             end_col=node.end_point[1],
         )
 
+        # INV-dulah: node.id and canonical stable_id minted together from one arg
+        # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
+        # start_line here (was line-less), disambiguating same-name siblings.
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "rst", rel_path, "section",
+            f"section_{self._section_counter}", span.start_line, span.end_line,
+        )
+
         symbol = Symbol(
             id=symbol_id,
-            # id-format:F2 4a: canonical sha256 stable_id (was the non-canonical
-            # composite Symbol.id). kind+span folded in so repeated names stay
-            # distinct. Symbol.id (the node id / edge endpoint) is unchanged.
-            stable_id=make_doc_stable_id(
-                "rst",
-                str(rel_path),
-                "section",
-                f"section_{self._section_counter}",
-                span.start_line,
-                span.end_line,
-            ),
+            stable_id=stable_id,
             name=title_text,
             kind="section",
             language="rst",
@@ -242,15 +233,18 @@ class _RSTExtractor:
 
         self._directive_counter += 1
         rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(
-            rel_path, f"directive_{self._directive_counter}", "directive"
-        )
-
         span = Span(
             start_line=node.start_point[0] + 1,
             start_col=node.start_point[1],
             end_line=node.end_point[0] + 1,
             end_col=node.end_point[1],
+        )
+
+        # INV-dulah: node.id + canonical stable_id minted together (gains
+        # start_line, was line-less).
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "rst", rel_path, "directive",
+            f"directive_{self._directive_counter}", span.start_line, span.end_line,
         )
 
         # Determine directive category
@@ -268,17 +262,7 @@ class _RSTExtractor:
 
         symbol = Symbol(
             id=symbol_id,
-            # id-format:F2 4a: canonical sha256 stable_id (was the non-canonical
-            # composite Symbol.id). kind+span folded in so repeated names stay
-            # distinct. Symbol.id (the node id / edge endpoint) is unchanged.
-            stable_id=make_doc_stable_id(
-                "rst",
-                str(rel_path),
-                "directive",
-                f"directive_{self._directive_counter}",
-                span.start_line,
-                span.end_line,
-            ),
+            stable_id=stable_id,
             name=name,
             kind="directive",
             language="rst",
@@ -352,8 +336,6 @@ class _RSTExtractor:
             return  # pragma: no cover
 
         rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, target_name, "target")
-
         span = Span(
             start_line=node.start_point[0] + 1,
             start_col=node.start_point[1],
@@ -361,19 +343,16 @@ class _RSTExtractor:
             end_col=node.end_point[1],
         )
 
+        # INV-dulah: node.id + canonical stable_id minted together (gains
+        # start_line, was line-less).
+        symbol_id, stable_id = make_doc_symbol_ids(
+            "rst", rel_path, "target", target_name,
+            span.start_line, span.end_line,
+        )
+
         symbol = Symbol(
             id=symbol_id,
-            # id-format:F2 4a: canonical sha256 stable_id (was the non-canonical
-            # composite Symbol.id). kind+span folded in so repeated names stay
-            # distinct. Symbol.id (the node id / edge endpoint) is unchanged.
-            stable_id=make_doc_stable_id(
-                "rst",
-                str(rel_path),
-                "target",
-                target_name,
-                span.start_line,
-                span.end_line,
-            ),
+            stable_id=stable_id,
             name=target_name,
             kind="target",
             language="rst",

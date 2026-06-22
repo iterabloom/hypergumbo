@@ -744,6 +744,48 @@ def make_doc_stable_id(
     )
 
 
+def make_doc_symbol_ids(
+    language: str, path: str, kind: str, name: str, start_line: int, end_line: int
+) -> tuple[str, str]:
+    """Mint the ``(node.id, stable_id)`` PAIR for a doc/markup/template Symbol
+    together, from one argument set (INV-dulah).
+
+    The doc/markup/template analyzer family (rst/scss/vue/svelte/puppet/robot/
+    astro/twig/pony/sparql/kdl) each carried a near-duplicate local
+    ``_make_symbol_id`` that built the raw composite ``Symbol.id``, then SEPARATELY
+    called :func:`make_doc_stable_id` for the canonical ``stable_id``. Holding the
+    two identities in two places is exactly the drift that let WI-rijup ship
+    ``stable_id == raw id`` for nine of them. Minting both here, from the same
+    ``(language, path, kind, name, start_line, end_line)`` tuple, makes that
+    divergence unrepresentable, and dedups the eleven copies onto one definition.
+
+    ``node.id`` shape: ``"{language}:{path}:{kind}:{start_line}:{name}"`` — the
+    historical doc-family shape the six line-bearing adopters
+    (scss/vue/svelte/puppet/astro/twig, plus kdl) already emit, so they migrate
+    byte-for-byte. This is deliberately NOT the documented ADR-0036 node.id
+    grammar (``lang:path:span:name:kind`` — span third, kind last): full grammar
+    conformance for the doc family would re-key every node and is a separate,
+    larger decision (the markdown/gitignore analyzers, which already use the
+    span-third/kind-last shape, are NOT folded onto this helper for that reason).
+    The line-less adopters (rst/robot/pony/sparql) GAIN the ``start_line`` segment
+    here, which both moves their id TOWARD the grammar and resolves their latent
+    same-name-sibling id collision (two ``section`` nodes of the same name in one
+    file previously shared an id).
+
+    ``stable_id`` is the canonical ``sha256:<16hex>`` from
+    :func:`make_doc_stable_id` — unchanged for every adopter (they already called
+    it with these same args).
+
+    ``path`` is coerced with ``str()`` so callers may pass ``str`` or
+    ``pathlib.Path`` (the family is split between the two); on POSIX the f-string
+    interpolation the analyzers previously used produced the identical string.
+    """
+    spath = str(path)
+    symbol_id = f"{language}:{spath}:{kind}:{start_line}:{name}"
+    stable_id = make_doc_stable_id(language, spath, kind, name, start_line, end_line)
+    return symbol_id, stable_id
+
+
 def make_project_stable_id(name: str) -> str:
     """INV-sotiv: stable identity for ``kind="project"`` Symbols.
 

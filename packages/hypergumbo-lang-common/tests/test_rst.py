@@ -244,10 +244,11 @@ Title
         result = analyze_rst(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        # Symbol.id retains the raw composite (node id / edge endpoint); only
-        # stable_id was migrated to the canonical sha256 form (WI-rijup).
-        assert "rst:" in section.id
-        assert "test.rst" in section.id
+        # INV-dulah: node.id and stable_id are now minted together by
+        # make_doc_symbol_ids. node.id GAINED a start_line segment (was the
+        # line-less "rst:path:kind:name"), so same-name sections no longer
+        # collide on id. Shape: "rst:<path>:section:<start_line>:section_<n>".
+        assert re.match(r"^rst:test\.rst:section:\d+:section_\d+$", section.id), section.id
         assert section.stable_id != section.id
         assert re.compile(r"^sha256:[0-9a-f]{16}$").match(section.stable_id)
 

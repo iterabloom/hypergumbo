@@ -24,6 +24,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     iter_tree_with_context,
     make_doc_stable_id,
+    make_doc_symbol_ids,
     make_entry_stable_id,
     make_file_id,
     make_protocol_stable_id,
@@ -2492,3 +2493,43 @@ class TestMakeDocStableId:
     def test_deterministic(self) -> None:
         assert make_doc_stable_id("markdown", "R.md", "section", "X", 1, 2) == \
             make_doc_stable_id("markdown", "R.md", "section", "X", 1, 2)
+
+
+class TestMakeDocSymbolIds:
+    """make_doc_symbol_ids (INV-dulah): mints the (node.id, stable_id) PAIR for a
+    doc/markup/template Symbol from one argument set, so the two can never drift
+    (the WI-rijup bug class, where nine analyzers shipped stable_id == raw id)."""
+
+    def test_returns_id_and_stable_id_pair(self) -> None:
+        result = make_doc_symbol_ids("scss", "styles/main.scss", "variable", "$c", 1, 1)
+        assert isinstance(result, tuple) and len(result) == 2
+
+    def test_node_id_format(self) -> None:
+        # node.id is the doc-family historical shape
+        # f"{language}:{path}:{kind}:{start_line}:{name}" (NOT the ADR-0036
+        # lang:path:span:name:kind grammar — see the function docstring). This
+        # exact string is what the six line-bearing analyzers already emit.
+        node_id, _ = make_doc_symbol_ids("scss", "styles/main.scss", "variable", "$primary-color", 1, 1)
+        assert node_id == "scss:styles/main.scss:variable:1:$primary-color"
+
+    def test_stable_id_is_canonical_and_matches_factory(self) -> None:
+        import re
+        node_id, stable_id = make_doc_symbol_ids("vue", "src/App.vue", "prop", "title", 10, 12)
+        assert re.match(r"^sha256:[0-9a-f]{16}$", stable_id), stable_id
+        assert stable_id == make_doc_stable_id("vue", "src/App.vue", "prop", "title", 10, 12)
+        assert node_id != stable_id
+
+    def test_path_coerced_so_str_and_path_agree(self) -> None:
+        from pathlib import Path
+        str_ids = make_doc_symbol_ids("rst", "docs/index.rst", "section", "Intro", 3, 9)
+        path_ids = make_doc_symbol_ids("rst", Path("docs/index.rst"), "section", "Intro", 3, 9)
+        assert str_ids == path_ids
+
+    def test_start_line_disambiguates_same_name_siblings(self) -> None:
+        # The reason the line-less adopters (rst/robot/pony/sparql) GAIN the
+        # start_line segment: two same-name same-kind nodes in one file used to
+        # collapse to one node.id; the line now separates them (in BOTH halves).
+        a_id, a_sid = make_doc_symbol_ids("rst", "d.rst", "section", "Overview", 5, 6)
+        b_id, b_sid = make_doc_symbol_ids("rst", "d.rst", "section", "Overview", 40, 41)
+        assert a_id != b_id
+        assert a_sid != b_sid
