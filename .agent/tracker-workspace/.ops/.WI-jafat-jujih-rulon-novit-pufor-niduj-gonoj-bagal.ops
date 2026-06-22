@@ -64,3 +64,19 @@
   clock: 7  # b649
   nonce: b649  # b649
   message: "Reader-half (T0) fixed in PR #231 (merge 688ab9ae8d). CHANGE A: methods registered in the node-id-keyed func_symbol_by_node_id so the calls-edge src resolves to the correct enclosing method, never the bare-name survivor; CHANGE B: paired inner_scope guard. Behavioral evidence (live before/after on analyze_python(packages/hypergumbo-core/src), matched via git-stash of py.py): out_of_span_src calls 65->0, instantiates 10->0, references 6->0; and 0/24152 funcdefs reach the bare-name fallback post-fix. Canonical two-class repro (Alpha.to_dict/Beta.to_dict each calling a distinct helper) now emits each method its own in-span call with the overwritten sibling regaining its edge (was: both pinned to Beta.to_dict, one out-of-span, Alpha 0 outgoing) -- pinned by test_call_ownership_scope_aware.py. The original io_boundary.py BoundaryMap.to_dict-vs-IoChain.to_dict out-of-span case is among the resolved core edges. Identity-neutral (T0) pinned by test_identity_neutrality_call_resolution.py golden gate. Producer-half (WI-gitun stable_id hash) stays T1/v6. self.method() DST (WI-kutal) and framework route/view (WI-hahud) are distinct residuals, filed. Tagged awaits_bakeoff_validation: resolution-improving per decision #8."  # b649
+- op: update  # 68e6
+  at: '2026-06-22T01:46:15Z'  # 68e6
+  by: agent  # 68e6
+  actor: jgstern_agent  # 68e6
+  clock: 8  # 68e6
+  nonce: '68e6'  # 68e6
+  set: {}  # 68e6
+  remove:  # 68e6
+    tags: [awaits_bakeoff_validation]  # 68e6
+- op: discuss  # 86fb
+  at: '2026-06-22T01:46:15Z'  # 86fb
+  by: agent  # 86fb
+  actor: jgstern_agent  # 86fb
+  clock: 9  # 86fb
+  nonce: 86fb  # 86fb
+  message: "Drain audit: D-stale. Claim (calls-edge misattribution to wrong same-base-name sibling; out_of_span_src 65->0) validated 2026-06-14 with live before/after metrics (calls 65->0, instantiates 10->0, references 6->0) + test_call_ownership_scope_aware.py pin; PR #231 (688ab9ae8d). Stripping stale tag."  # 86fb

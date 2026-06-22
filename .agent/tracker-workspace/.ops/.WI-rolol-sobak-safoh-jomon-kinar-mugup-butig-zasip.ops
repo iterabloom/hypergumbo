@@ -53,3 +53,19 @@
   clock: 5  # eca4
   nonce: eca4  # eca4
   message: "Both sub-tasks closed: Sub-task A (ClaimVerdict.inconclusive) landed in Phase 3 PR4 (commit 020615f524). Sub-task B (writer-contract test for AnalysisRun) landed structurally in Phase 3 PR2 (writer-contract validator class scaffolding) with the per-member tail closed in Phase 6 PR2 (commit 98533c0fff). The structural-fix trial methodology validated here: validator-class infrastructure is now the enforcement substrate for all future cleanup of this shape."  # eca4
+- op: update  # 613a
+  at: '2026-06-22T01:46:15Z'  # 613a
+  by: agent  # 613a
+  actor: jgstern_agent  # 613a
+  clock: 6  # 613a
+  nonce: 613a  # 613a
+  set: {}  # 613a
+  remove:  # 613a
+    tags: [awaits_bakeoff_validation]  # 613a
+- op: discuss  # 74f0
+  at: '2026-06-22T01:46:15Z'  # 74f0
+  by: agent  # 74f0
+  actor: jgstern_agent  # 74f0
+  clock: 7  # 74f0
+  nonce: 74f0  # 74f0
+  message: "Drain audit: D-stale. Structural-fix trial (ClaimVerdict.inconclusive + AnalysisRun writer-contract test) shipped & closed: sub-task A in Phase-3 PR4 (020615f524), sub-task B in Phase-3 PR2 / Phase-6 PR2 (98533c0fff); 2026-06-01 closure recorded. No outstanding cohort metric. Stripping stale tag."  # 74f0
