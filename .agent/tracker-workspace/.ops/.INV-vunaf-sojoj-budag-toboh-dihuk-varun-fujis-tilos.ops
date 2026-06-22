@@ -59,3 +59,19 @@
     tags: [dogfood]  # 3f4c
   remove:  # 3f4c
     tags: [dogfooding]  # 3f4c
+- op: update  # 162f
+  at: '2026-06-22T01:47:08Z'  # 162f
+  by: agent  # 162f
+  actor: jgstern_agent  # 162f
+  clock: 6  # 162f
+  nonce: 162f  # 162f
+  set: {}  # 162f
+  remove:  # 162f
+    tags: [awaits_bakeoff_validation]  # 162f
+- op: discuss  # 897d
+  at: '2026-06-22T01:47:08Z'  # 897d
+  by: agent  # 897d
+  actor: jgstern_agent  # 897d
+  clock: 7  # 897d
+  nonce: 897d  # 897d
+  message: "Drain audit: D-stale. Claim (manifest-substring framework FPs across 16/18 detectors) validated via self-analysis dogfooding 2026-05-23: profile.frameworks 5->2 (pytorch + transformers FPs eliminated); PR #3877. Status satisfied. Stripping stale tag."  # 897d
