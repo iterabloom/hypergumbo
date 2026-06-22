@@ -88,6 +88,7 @@ from hypergumbo_core.analyze.base import (
     make_file_stable_id,
     make_route_stable_id,
     make_typed_stable_id,
+    make_variable_stable_id,
     node_text as _node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -3195,13 +3196,33 @@ def _extract_field_modifiers(node: "tree_sitter.Node", source: bytes) -> list[st
 
 
 def _extract_field_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Return a class field's type-annotation text without the leading ``: ``
-    (e.g. ``"string[]"``), or None when the field is untyped (every JS field and
-    untyped TS fields)."""
+    """Return the type-annotation text (without the leading ``: ``, e.g.
+    ``"string[]"``) of a class field (``public_field_definition``) or a variable
+    declarator (``const x: T``), or None when untyped (every JS binding and
+    untyped TS bindings). The annotation is a direct ``type_annotation`` child in
+    both shapes."""
     for child in node.children:
         if child.type == "type_annotation":
             return _node_text(child, source).lstrip(": ").strip() or None
     return None
+
+
+def _is_module_level_declaration(node: "tree_sitter.Node") -> bool:
+    """True when a ``lexical_declaration`` / ``variable_declaration`` sits at
+    module (program) scope — directly under ``program``, or under a top-level
+    ``export_statement`` (``export const X = ...``). Mirrors the Python
+    analyzer's module-level-only variable contract (WI-jusus F5): function-body
+    locals and block-scoped bindings are deliberately excluded to bound the
+    blast radius to module constants / module state."""
+    parent = node.parent
+    if parent is None:  # pragma: no cover - declarations always have a parent
+        return False
+    if parent.type == "program":
+        return True
+    if parent.type == "export_statement":
+        grandparent = parent.parent
+        return grandparent is not None and grandparent.type == "program"
+    return False
 
 
 def _unwrap_paren_extends(
@@ -3746,6 +3767,47 @@ def _extract_symbols(
                         # variable), so mark it processed to keep the bare
                         # anonymous-callback branch below from re-emitting it.
                         processed_handlers.add(id(value_node))
+                    elif _is_module_level_declaration(node):
+                        # WI-jusus F5 slice 2: a module-level value declaration
+                        # (const/let/var X = ...; or a bare `let s;`) that is NOT
+                        # a function emits a kind='variable' symbol so module
+                        # constants / module state are visible to search,
+                        # centrality, and io-boundaries. Use the declarator's
+                        # `name` FIELD (not the loop's name_node, which catches a
+                        # destructuring RHS identifier): only a simple identifier
+                        # name is emitted — object/array destructuring patterns
+                        # are a follow-up. Function-valued declarations are
+                        # handled by the branch above (value_node set), so they
+                        # never reach here.
+                        var_name_node = child.child_by_field_name("name")
+                        if var_name_node is not None and var_name_node.type == "identifier":
+                            var_name = _node_text(var_name_node, source)
+                            vspan = Span(
+                                start_line=child.start_point[0] + 1 + line_offset,
+                                end_line=child.end_point[0] + 1 + line_offset,
+                                start_col=child.start_point[1],
+                                end_col=child.end_point[1],
+                            )
+                            symbols.append(Symbol(
+                                id=_make_symbol_id(str(file_path), vspan.start_line, vspan.end_line, var_name, "variable", lang),
+                                name=var_name,
+                                kind="variable",
+                                language=lang,
+                                path=str(file_path),
+                                span=vspan,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                # INV-sotiv variable identity: name-scoped to the
+                                # declaring file (repo-relative for location
+                                # independence, WI-bokab). const/let cannot
+                                # redeclare at module scope; a rare `var`
+                                # redeclaration is split by the within-file
+                                # collision post-pass (ADR-0035).
+                                stable_id=make_variable_stable_id(lang, normalize_path(file_name), var_name),
+                                signature=_extract_field_type(child, source),
+                                is_exported=node.parent is not None and node.parent.type == "export_statement",
+                                lines_of_code=vspan.end_line - vspan.start_line + 1,
+                            ))
 
         # Class declarations (including abstract classes)
         elif node.type in ("class_declaration", "abstract_class_declaration"):
