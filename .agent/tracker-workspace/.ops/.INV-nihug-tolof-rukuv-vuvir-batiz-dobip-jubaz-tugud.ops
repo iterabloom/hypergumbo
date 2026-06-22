@@ -124,3 +124,19 @@
   clock: 13  # c2d6
   nonce: c2d6  # c2d6
   message: "[Wave-0 pending-validation sweep] Re-verified and downgraded pending_validation -> violated: AnalysisRun.skipped_passes has no producer code path (architecturally orphaned, declared-fields-never-populated family). Now correctly tracked as an open defect for the Wave-2 run-lifecycle / declared-fields-population work rather than masquerading as awaiting-validation."  # c2d6
+- op: update  # 6e5c
+  at: '2026-06-22T01:48:39Z'  # 6e5c
+  by: agent  # 6e5c
+  actor: jgstern_agent  # 6e5c
+  clock: 14  # 6e5c
+  nonce: 6e5c  # 6e5c
+  set: {}  # 6e5c
+  remove:  # 6e5c
+    tags: [awaits_bakeoff_validation]  # 6e5c
+- op: discuss  # 50e7
+  at: '2026-06-22T01:48:39Z'  # 50e7
+  by: agent  # 50e7
+  actor: jgstern_agent  # 50e7
+  clock: 15  # 50e7
+  nonce: '50e7'  # 50e7
+  message: "Drain audit: E-misapplied. No quantitative bakeoff-improvement claim -- AnalysisRun.skipped_passes is declared (ir.py:204) but never populated by any code path (empty across 84 runs); a writer-contract wiring gap, not a cohort-measurable improvement. Correctly re-verified violated 2026-06-11. Tracked by violated status; stripping misapplied tag."  # 50e7

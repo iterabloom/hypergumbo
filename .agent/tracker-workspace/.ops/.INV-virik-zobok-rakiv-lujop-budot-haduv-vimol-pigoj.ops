@@ -207,3 +207,19 @@
   clock: 24  # 2699
   nonce: '2699'  # 2699
   message: "RELATED_BUT_DISTINCT to INV-nuzas: virik symptom-1 (classification_failures/ambiguous_paths empty) is the unwritten provenance channel for nuzas's tier mis-classification; distinct fixes. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 2699
+- op: update  # 2951
+  at: '2026-06-22T01:48:39Z'  # 2951
+  by: agent  # 2951
+  actor: jgstern_agent  # 2951
+  clock: 25  # 2951
+  nonce: '2951'  # 2951
+  set: {}  # 2951
+  remove:  # 2951
+    tags: [awaits_bakeoff_validation]  # 2951
+- op: discuss  # 142c
+  at: '2026-06-22T01:48:39Z'  # 142c
+  by: agent  # 142c
+  actor: jgstern_agent  # 142c
+  clock: 26  # 142c
+  nonce: 142c  # 142c
+  message: "Drain audit: E-misapplied. No quantitative bakeoff-improvement claim -- this is a writer-contract wiring gap (reserved provenance fields / evidence_spans / from_dict declared but never populated; 0/110533 edges). A violation measurement, not a metric-movement claim a cohort can confirm. Tracked by violated status; stripping misapplied tag."  # 142c

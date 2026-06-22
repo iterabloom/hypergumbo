@@ -168,3 +168,19 @@
   clock: 19  # 0dc5
   nonce: 0dc5  # 0dc5
   message: "[Wave-0 pending-validation sweep] tracker: update INV-numat-judoj-dogal-misuj-divuf-kajus-buban-dihuj --status pending_validation\n\nRationale: The structural axis-conformance validator (catalog-membership enforcement) IS present and active in runtime pipeline. However, INV-numat's ROOT PROBLEM is vocabulary-mixing (values mixing multiple semantic axes within a single field), which requires STRUCTURAL fixes (field splitting, renaming, sibling relationships per ADR-0031/ADR-0032), not just catalog enforcement.\n\nRecent investigation passes (F24.7 evidence_type, F27.4 entrypoint.kind, F30.4 entrypoint.kind↔concepts, F31.5 text/claim_text, F34.B2 symbol_ref, F35.C2/F35.C3 feature/EP ratio, F36.D1 kind flag-gating) document AXIS-MIXING vocabulary issues that persist despite catalog completeness. These are not axis-conformance violations (values ARE in catalogs) but structural design gaps.\n\nPositive evidence the FIX exists (per strategy):\n- spec_validator.py:217-285: Checks Symbol.kind, Symbol.language, Symbol.discovery_language, Symbol.protocol_origin, Symbol.origin, Edge.edge_type, Edge.evidence_type, Edge.evidence_lang, Edge.origin against their axis catalogs\n- cli.py:8364-8366: Validator integrated end-of-pipeline, violations collected into artifact validation_report, emitted to stderr\n- test_spec_validator_smoke.py: 13 comprehensive unit tests for axis-conformance; Phase 3 PR1 self-analysis reported 0 violations\n\nValidation gap: Recent passes (F24-F36, most from June 2) surface VOCABULARY-MIXING findings that suggest a bakeoff cohort run is needed to confirm (1) zero catalog-conformance violations still hold with recent linker/producer changes, and (2) no NEW unmapped values have been emitted by recent code paths. Strategy calls for bakeoff validation; no pure-code evidence can rule out new edge/evidence producers that emit unmapped values."  # 0dc5
+- op: update  # 4222
+  at: '2026-06-22T01:48:05Z'  # 4222
+  by: agent  # 4222
+  actor: jgstern_agent  # 4222
+  clock: 20  # 4222
+  nonce: '4222'  # 4222
+  set: {}  # 4222
+  remove:  # 4222
+    tags: [awaits_bakeoff_validation]  # 4222
+- op: discuss  # a817
+  at: '2026-06-22T01:48:05Z'  # a817
+  by: agent  # a817
+  actor: jgstern_agent  # a817
+  clock: 21  # a817
+  nonce: a817  # a817
+  message: "Drain audit: E-misapplied. No quantitative bakeoff-improvement claim -- this is a structural vocabulary-axis-mixing item (ADR-0031/0032 field-split work). The 'bakeoff validation' the discussion references is next-step methodology to rule out unmapped values, not a metric movement a cohort can confirm. Tracked by its own status; stripping misapplied tag."  # a817

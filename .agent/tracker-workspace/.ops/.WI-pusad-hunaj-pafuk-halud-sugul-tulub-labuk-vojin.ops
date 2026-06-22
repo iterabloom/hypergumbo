@@ -62,3 +62,19 @@
   clock: 6  # 1455
   nonce: '1455'  # 1455
   message: "Merged via PR #3917 as commit 4449696014. Mechanism B (compound-import-required gate) plus a cross-ecosystem FP guard discovered during bakeoff. _module_match_kind returns exact/prefix/None; _has_prod_import_match gains require_prefix_arm + allowed_langs kwargs. Bakeoff (7 cases, all positive): react-exact no-promote (WI-rofiz preserved), react-compound promoted, django-no-manifest promoted, flask-no-manifest promoted, flask-restful detected, real django source promoted, hypergumbo self-analysis zero FPs. Cross-ecosystem leak discovered (Python http.client → Julia 'http' framework FP) and fixed in-flight with per-module language gate mirroring the demote phase's existing fw_langs short-circuit. materialize_route_symbols gains comma-split for method lists (surfaced by starlette.yaml loading once WI-pusad's bare arm promoted starlette). 15 new tests in test_profile.py + 2 in test_framework_patterns.py. INV-rahib streak holds at 9-of-9."  # 1455
+- op: update  # 6478
+  at: '2026-06-22T01:48:04Z'  # 6478
+  by: agent  # 6478
+  actor: jgstern_agent  # 6478
+  clock: 7  # 6478
+  nonce: '6478'  # 6478
+  set: {}  # 6478
+  remove:  # 6478
+    tags: [awaits_bakeoff_validation]  # 6478
+- op: discuss  # d9a2
+  at: '2026-06-22T01:48:04Z'  # d9a2
+  by: agent  # d9a2
+  actor: jgstern_agent  # d9a2
+  clock: 8  # d9a2
+  nonce: d9a2  # d9a2
+  message: "Drain audit: D-stale. Bare-name framework promote (django/flask/rails compound-import gate; WI-rofiz exact-match regression prevented) validated 2026-05-26 with 7 positive cases + zero self-analysis FPs; PR #3917. Stripping stale tag."  # d9a2

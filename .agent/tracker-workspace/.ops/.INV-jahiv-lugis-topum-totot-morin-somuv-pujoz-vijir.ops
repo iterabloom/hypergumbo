@@ -62,3 +62,19 @@
   clock: 6  # d425
   nonce: d425  # d425
   message: "emission-parity:F1 / G2 gate landed (PR #4202): tests/test_emission_parity_matrix.py is the standing per-(language, field/edge-type) parity enforcement this META called for — the missing audit gate named in root_cause. It LOCKS current emission with strict-xfail ratchets on the documented holes (python qualified_name=WI-fagab, java imports=INV-gojit, non-python entrypoint concepts=WI-tosul) so parity cannot regress silently; each Wave-3 emitter fix XPASS-trips the gate. STATUS STAYS VIOLATED: reading live emission the gate ratifies the invariant is currently violated in those cells — it operationalizes/ratchets the META, it does not satisfy it. Open children INV-golap/INV-loguk/INV-gilok + WI-fagab/WI-bujot/INV-gojit remain."  # d425
+- op: update  # f504
+  at: '2026-06-22T01:48:06Z'  # f504
+  by: agent  # f504
+  actor: jgstern_agent  # f504
+  clock: 7  # f504
+  nonce: f504  # f504
+  set: {}  # f504
+  remove:  # f504
+    tags: [awaits_bakeoff_validation]  # f504
+- op: discuss  # 56bf
+  at: '2026-06-22T01:48:06Z'  # 56bf
+  by: agent  # 56bf
+  actor: jgstern_agent  # 56bf
+  clock: 8  # 56bf
+  nonce: 56bf  # 56bf
+  message: "Drain audit: E-misapplied. META analyzer-parity item; PR #4202 implemented the parity audit GATE (test_emission_parity_matrix.py), not a metric-moving fix. No quantitative bakeoff claim; underlying violations tracked by open children (INV-golap/loguk/gilok etc.) and violated status. Stripping misapplied tag."  # 56bf

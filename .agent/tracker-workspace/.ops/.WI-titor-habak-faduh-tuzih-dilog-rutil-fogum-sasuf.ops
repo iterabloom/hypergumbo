@@ -109,3 +109,19 @@
   clock: 12  # 033e
   nonce: 033e  # 033e
   message: "Rust slice shipped via PR #3911 (commit ccba033e3780). C++ and Scala portions split into sibling WIs under INV-dihos: WI-zimat-rafur-kiluh-kajof-bavud-soniz-vokud-mozim (C++) and WI-hijot-sosak-tupim-nanol-dubuv-kokiv-gahag-gubub (Scala) — both `todo_soft` P4 `someday`, both `isbefore WI-hudam` to preserve the INV-dihos Phase 3 → Phase 4 chain. Per the WI's own splitting hint, this avoided shipping ~600-LOC of bootstrap across three analyzers in one PR. The Rust slice establishes the substrate pattern: file-scoped `_extract_var_types_rust` (params + let-bindings + chained-call registry consumption), Pass-1 method_return_types population, base.py §4c cross-file aggregation into self._method_return_type_registry, Strategy 1.8 typed-variable resolution between self-field (1.5) and short-name fallback (2). 28 new tests in test_rust.py + 4 in test_tree_sitter_analyzer.py, 100% coverage on rust.py (871 stmts) and base.py (745 stmts). `awaits_bakeoff_validation` retained — BROAD cohort: alertmanager, penumbra, candle."  # 033e
+- op: update  # 3e8a
+  at: '2026-06-22T01:48:38Z'  # 3e8a
+  by: agent  # 3e8a
+  actor: jgstern_agent  # 3e8a
+  clock: 13  # 3e8a
+  nonce: 3e8a  # 3e8a
+  set: {}  # 3e8a
+  remove:  # 3e8a
+    tags: [awaits_bakeoff_validation]  # 3e8a
+- op: discuss  # 1e18
+  at: '2026-06-22T01:48:38Z'  # 1e18
+  by: agent  # 1e18
+  actor: jgstern_agent  # 1e18
+  clock: 14  # 1e18
+  nonce: '1e18'  # 1e18
+  message: "Drain audit: E-misapplied. Return-Type Registry feature (var_types + signatures for Rust/C++/Scala); infrastructure shipped with regression tests but no quantitative bakeoff-improvement claim. PR #3911 (ccba033e3780). Stripping misapplied tag."  # 1e18

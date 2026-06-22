@@ -50,3 +50,19 @@
   clock: 5  # 218e
   nonce: 218e  # 218e
   message: "Merged as PR #3906, dev SHA 1dd5ac8e48. First-try CI pass, no gremlin. Single-emit refactor: Case 1 / Case 3 / Case 3.5 paths stash hints (pr4_enclosing_class_hint / pr4_receiver_type_hint / pr4_inherited_field_receiver) and all three threaded into the single final make_unresolved_edge call at java.py:~1722, eliminating PR-3's double-emit on bare/this inherited calls while preserving static_imports/wildcard_imports/dst_ref. Caught the design weakness of a simpler one-line edge_added=True fix via polyglot-call-site-coverage test on import-static singletonList. 6 new TestJavaSite2Site3UnresolvedHints tests, all 10 polyglot cases still pass. Java analyzer 100% coverage on 885 statements. Tag awaits_bakeoff_validation attached BEFORE auto-pr. Bakeoff signal: Java unresolved-edge count decreases by ~count of ast_call_inherited resolved edges (one redundant unresolved removed per bare/this inherited site); no decrease in is_resolved=True count. Unblocks WI-puvil (PR-5 Java Sites 2+3 lift)."  # 218e
+- op: update  # d509
+  at: '2026-06-22T01:48:38Z'  # d509
+  by: agent  # d509
+  actor: jgstern_agent  # d509
+  clock: 6  # d509
+  nonce: d509  # d509
+  set: {}  # d509
+  remove:  # d509
+    tags: [awaits_bakeoff_validation]  # d509
+- op: discuss  # e883
+  at: '2026-06-22T01:48:38Z'  # e883
+  by: agent  # e883
+  actor: jgstern_agent  # e883
+  clock: 7  # e883
+  nonce: e883  # e883
+  message: "Drain audit: E-misapplied. PR #3906 is pure analyzer-side meta enrichment, 'Behavior change: none', unconsumed by any linker at merge. The quantitative effectiveness claim belongs on the consuming linker work (PR-5 / WI-puvil), not here. Stripping misapplied tag."  # e883
