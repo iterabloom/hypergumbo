@@ -3165,6 +3165,45 @@ def _extract_decorators(
     return decorators
 
 
+def _find_field_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Return a class field's declared name — its direct ``property_identifier``
+    or ``private_property_identifier`` (JS ``#x``) child — or None for a computed
+    field name (``[Symbol.iterator]``), which has no stable string identity.
+
+    Reads only the field's own name slot, NOT the decorator child (which carries
+    its own identifier, e.g. ``property`` in ``@property() count``).
+    """
+    for child in node.children:
+        if child.type in ("property_identifier", "private_property_identifier"):
+            return _node_text(child, source)
+    return None
+
+
+def _extract_field_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Collect a class field's modifiers: the keyword nodes ``static`` /
+    ``readonly`` / ``abstract`` / ``declare`` / ``override`` plus the
+    accessibility modifier (``public`` / ``private`` / ``protected``, whose value
+    is the node's text). Mirrors the public-API ``modifiers`` set py.py populates
+    for variables (WI-zimum)."""
+    mods: list[str] = []
+    for child in node.children:
+        if child.type in ("static", "readonly", "abstract", "declare", "override"):
+            mods.append(child.type)
+        elif child.type == "accessibility_modifier":
+            mods.append(_node_text(child, source))
+    return mods
+
+
+def _extract_field_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Return a class field's type-annotation text without the leading ``: ``
+    (e.g. ``"string[]"``), or None when the field is untyped (every JS field and
+    untyped TS fields)."""
+    for child in node.children:
+        if child.type == "type_annotation":
+            return _node_text(child, source).lstrip(": ").strip() or None
+    return None
+
+
 def _unwrap_paren_extends(
     paren_node: "tree_sitter.Node", source: bytes,
 ) -> str:
@@ -3903,6 +3942,63 @@ def _extract_symbols(
                         _get_jsts_class_ancestors(node, source), name, lang,
                     ),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, lang),
+                )
+                symbols.append(symbol)
+
+        # WI-jusus (emission-parity F5): class FIELD symbols. Class fields parse
+        # as public_field_definition (TS) / field_definition (JS); before this
+        # they emitted no symbol, so module/class state had no anchor and field
+        # decorators (lit @property/@state) had nothing to attach a decorated_by
+        # edge to. Mirrors the method_definition branch (fields are class members
+        # too): class-scoped identity via qualified_name, modifiers, and a
+        # type-annotation signature. Decorators flow into _extract_decorator_edges
+        # through meta["decorators"], exactly like classes/methods.
+        elif node.type in ("public_field_definition", "field_definition"):
+            name = _find_field_name(node, source)
+            if name:
+                span = Span(
+                    start_line=node.start_point[0] + 1 + line_offset,
+                    end_line=node.end_point[0] + 1 + line_offset,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                )
+                current_class_name = _get_class_context(node, source)
+                full_name = f"{current_class_name}.{name}" if current_class_name else name
+
+                meta_f: dict[str, object] | None = None
+                decorators = _extract_decorators(node, source)
+                if decorators:
+                    meta_f = {"decorators": decorators}
+
+                field_type = _extract_field_type(node, source)
+                qualified_name = _make_jsts_qualified_name(
+                    _get_jsts_class_ancestors(node, source), name, lang,
+                )
+                # Class-scoped canonical identity: name + qualified_name +
+                # file fold make same-named fields in different classes/files
+                # distinct even when both are untyped (empty signature slot).
+                stable_id = make_typed_stable_id(
+                    "field", field_type or "",
+                    name=name,
+                    qualified_name=qualified_name,
+                    file_stable_id=file_stable_id,
+                )
+
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "field", lang),
+                    name=full_name,
+                    kind="field",
+                    language=lang,
+                    path=str(file_path),
+                    span=span,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    stable_id=stable_id,
+                    meta=meta_f,
+                    signature=field_type,
+                    modifiers=_extract_field_modifiers(node, source),
+                    qualified_name=qualified_name,
+                    lines_of_code=span.end_line - span.start_line + 1,
                 )
                 symbols.append(symbol)
 
