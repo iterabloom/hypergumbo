@@ -98,3 +98,19 @@
   clock: 11  # d265
   nonce: d265  # d265
   message: "DONE & merged (selfh/dev faeaee15f4). All three populations resolved. (a) Python test-method null: was a v1 snippet-parse bug (column-0 heredoc -> IndentationError -> None), already fixed by the v2 context-aware rewrite (regression test test_fingerprint.py exists). (c) WGSL bare-hex: WGSL's own 3 sites already set fingerprint=None (central pass owns it) — BUT recon+verification found the SAME bare-hex leak still live in ~10 sibling analyzers (cuda/fortran/glsl/graphql/nix/r_lang/verilog/vhdl/dockerfile/make, ~30 sites) surviving via the line-531 precedence guard. FIX (this PR): stamp_symbol_fingerprints now NORMALIZES — preserves an existing fingerprint only if canonical (hgfp2:) or an identity-hash on a language=None Class-B synthetic; a non-canonical fingerprint on a real source node (language!=None) is recomputed canonically, so bare hex never reaches the output + future copy-paste is self-healed. (b) external_symbol null: spec carveout — tightened docs/hypergumbo-spec.md to name synthetic boundary/external_symbol (span 0-0, no source) as a legitimate null + document the single-producer rule + the Class-B identity-hash SECOND shape (so 'no analyzer-internal serializations leak' is met by enforcement). BEHAVIORAL EVIDENCE: 4 unit tests in test_fingerprint.py pin the guard both directions (normalize source-leak->hgfp2:; preserve hgfp2:; preserve Class-B language=None bare-hex; clear leak when unfingerprintable->None); core 100% in isolation (check-package-coverage core). CHURN-FREE: fingerprint is not in any id/stable_id/shape_id/node-id. awaits_bakeoff_validation: the ~30-site output flip (bare-hex->hgfp2:) + 0-bare-hex on a multi-language corpus is the quantitative claim; full-corpus re-measurement pending. FOLLOW-UP filed: delete the now-overwritten producer-side bare-hex computation from the 10 analyzers (hygiene)."  # d265
+- op: update  # e8af
+  at: '2026-06-22T02:23:36Z'  # e8af
+  by: agent  # e8af
+  actor: jgstern_agent  # e8af
+  clock: 12  # e8af
+  nonce: e8af  # e8af
+  set: {}  # e8af
+  remove:  # e8af
+    tags: [awaits_bakeoff_validation]  # e8af
+- op: discuss  # b477
+  at: '2026-06-22T02:23:36Z'  # b477
+  by: agent  # b477
+  actor: jgstern_agent  # b477
+  clock: 13  # b477
+  nonce: b477  # b477
+  message: "Validated MOVED via DEEP cohort deep-20260621-215349/cohort-002/iter-001. 0 bare-hex fingerprints on language-bearing nodes across ALL 4 repos (apollo/jedis/pretix/chatwoot): every language!=None node carries the canonical hgfp\\d+: scheme per the spec_validator.py:178 contract. The residual bare-hex fingerprints (268/420/516/920) are exclusively on language==None linker-synthetic/external nodes, which are contract-exempt."  # b477

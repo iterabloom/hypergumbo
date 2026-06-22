@@ -77,3 +77,25 @@
   clock: 7  # 6652
   nonce: '6652'  # 6652
   message: "[Wave-0 pending-validation sweep] tracker: keep-pending INV-hunup\n\nFix is complete and present in code:\n- spec_validator.py:1262 defines _CANONICAL_STABLE_ID_PATTERN regex enforcing sha256:[0-9a-f]{16}\n- spec_validator.py:1287-1323 implements _check_stable_id_format validator with 5-category classification\n- spec_validator.py:148 calls validator in validate_ir pipeline\n- cli.py:8364 integrates validator into behavior_map artifact\n- analyze/base.py:564-658 all factories (make_file/module/dependency/variable/export/project/interface/type/protocol_stable_id) use _short_sha256 helper\n- All 4 linkers (database_query, message_queue, event_sourcing, graphql_resolver) migrated to make_protocol_stable_id\n- All 72 spec_validator tests pass (including 8 stable_id format tests)\n\nReady for bakeoff validation on diverse repos to confirm no regressions.\nRoot cause fully addressed per Phase 6 PR1 (commit dbaacdbb84).\n"  # 6652
+- op: update  # 76ae
+  at: '2026-06-22T02:24:12Z'  # 76ae
+  by: agent  # 76ae
+  actor: jgstern_agent  # 76ae
+  clock: 8  # 76ae
+  nonce: 76ae  # 76ae
+  set:  # 76ae
+    status: violated  # 76ae
+- op: discuss  # ef3e
+  at: '2026-06-22T02:24:12Z'  # ef3e
+  by: agent  # ef3e
+  actor: jgstern_agent  # ef3e
+  clock: 9  # ef3e
+  nonce: ef3e  # ef3e
+  message: "DEEP cohort deep-20260621-215349/cohort-002/iter-001 verdict: NO_MOVE. Canonical stable_id sha256:[0-9a-f]{16} is NOT enforced on rst/vue/scss analyzer nodes: pretix 1223 nonconforming (rst 821 directive/target, vue 284 prop/slot, scss 118 mixin); chatwoot 12664 (vue 12661 directive/prop/slot/style_block, scss 3). The 'reduce violations to 0' claim holds only on core analyzers (apollo TS 1 edge-case 'test', jedis Java 0). Self-analysis showed 0 because hypergumbo's own repo has no rst/vue/scss nodes. Downgraded pending_validation -> violated (positive evidence). awaits_bakeoff_validation tag RETAINED per no_move lifecycle (re-validate after the regression fix ships)."  # ef3e
+- op: discuss  # 872a
+  at: '2026-06-22T02:24:15Z'  # 872a
+  by: agent  # 872a
+  actor: jgstern_agent  # 872a
+  clock: 10  # 872a
+  nonce: 872a  # 872a
+  message: "Regression sub-item filed: WI-rijup-pomag-nakan-hohar-fapoj-dobiz-kizok-gaboz (rst/vue/scss stable_id non-canonicalization). See DEEP cohort deep-20260621-215349/cohort-002/iter-001. Parent stays tagged for re-validation after the regression fix ships."  # 872a

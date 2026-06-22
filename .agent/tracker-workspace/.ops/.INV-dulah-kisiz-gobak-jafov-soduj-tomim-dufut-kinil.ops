@@ -113,3 +113,19 @@
   clock: 12  # 30c5
   nonce: 30c5  # 30c5
   message: "id-format:F3 round-trip canary landed (PR #227, dev 05b8fd9cc9). The ADR-0036 Ruling-2 round-trip validator (_check_id_roundtrip in spec_validator.py, wired into validate_ir) now SURFACES and MEASURES the node.id kind-slot escapes at advisory (warning) severity: kind-slot not in the symbol-kind registry, and kind-slot != Symbol.kind. Behavioral evidence on merged dev: the tsconfig node (id kind-slot 'tsconfig', Symbol.kind 'file' — invisible to axis_conformance) and the external_symbol cohort (id 'go:fmt:0-0:Println:unresolved') both fire; the schema-coverage-corpus ratchet pins +11 such warnings. INV-dulah STAYS violated: the canary measures the cohort, but the producer folds that drain it to zero are id-changing (T1) and ride the v6 bump — WI-pubiv (external_symbol), WI-kugaj (route/event role), and the tsconfig fold (audit-findings 0005). Closes on the validated zero-violation cohort run after those folds, at which point the advisory checks promote to error (gating item WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak). Deferred F3 sub-checks: Ruling-3 sentinel enumeration (WI-dipim..., T0) and Ruling-1 producer name sanitization (WI-sikar..., T1)."  # 30c5
+- op: update  # 1abb
+  at: '2026-06-22T02:52:55Z'  # 1abb
+  by: agent  # 1abb
+  actor: jgstern_agent  # 1abb
+  clock: 13  # 1abb
+  nonce: 1abb  # 1abb
+  set: {}  # 1abb
+  remove:  # 1abb
+    tags: [awaits_bakeoff_validation]  # 1abb
+- op: discuss  # 78b8
+  at: '2026-06-22T02:52:56Z'  # 78b8
+  by: agent  # 78b8
+  actor: jgstern_agent  # 78b8
+  clock: 14  # 78b8
+  nonce: 78b8  # 78b8
+  message: "Drain audit (deep-20260621-215349), human-authorized strip. no_move/violated: validation history shows node.id format violations persist post-fix across the four documented mechanisms (escaping/namespacing/wrong-value-in-slot/external_symbol). Deterministic structural defect, NOT cohort-re-runnable. Stripping awaits_bakeoff_validation; violated status remains the live signal. Re-tag only on a future fix with a fresh quantitative claim."  # 78b8

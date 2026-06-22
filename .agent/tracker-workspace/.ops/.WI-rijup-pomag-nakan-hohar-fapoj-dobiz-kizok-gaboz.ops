@@ -1,0 +1,34 @@
+- op: create  # 8829
+  at: '2026-06-22T02:24:12Z'  # 8829
+  by: agent  # 8829
+  actor: jgstern_agent  # 8829
+  clock: 1  # 8829
+  nonce: '8829'  # 8829
+  data:  # 8829
+    kind: work_item  # 8829
+    title: "rst/vue/scss analyzers emit raw-format stable_id (not sha256:16hex) - INV-hunup no_move on cohort-002"  # 8829
+    status: todo_soft  # 8829
+    priority: 2  # 8829
+    parent: INV-hunup-bumig-jogub-domih-fufuz-hovip-likoj-jasug  # 8829
+    tags: []  # 8829
+    isbefore: []  # 8829
+    duplicate_of: []  # 8829
+    not_duplicate_of: []  # 8829
+    pr_ref:  # 8829
+    description: "DEEP cohort deep-20260621-215349/cohort-002/iter-001 verdicted INV-hunup NO_MOVE: 13887 nodes carry non-canonical stable_id (pretix 1223, chatwoot 12664), concentrated in rst (directive/target), vue (prop/slot/style_block/directive), scss (mixin) analyzer node kinds. The stable_id canonicalization / spec_validator enforcement that holds for core analyzers (python/java/ts) was never applied to these doc/style/template analyzers. Investigate per the structural-fix protocol: name the violated invariant (stable_id == sha256:16hex for all nodes), check the rst/vue/scss analyzer emit sites for where stable_id is set to the raw node-id form, and apply the canonical sha256 hashing uniformly. NOT awaits_bakeoff_validation tagged (regression earns the tag only when its own fix ships a fresh claim)."  # 8829
+    fields: {}  # 8829
+- op: update  # 7f91
+  at: '2026-06-22T04:45:54Z'  # 7f91
+  by: agent  # 7f91
+  actor: jgstern_agent  # 7f91
+  clock: 2  # 7f91
+  nonce: 7f91  # 7f91
+  set:  # 7f91
+    status: done  # 7f91
+- op: discuss  # 3df4
+  at: '2026-06-22T04:45:54Z'  # 3df4
+  by: agent  # 3df4
+  actor: jgstern_agent  # 3df4
+  clock: 3  # 3df4
+  nonce: 3df4  # 3df4
+  message: "Fixed in PR #4263 (merged origin/dev e354900c5a). Root cause confirmed and resolved STRUCTURALLY across the whole family: 9 doc/markup/template analyzers (rst/scss/vue/svelte/puppet/robot/astro/twig/pony) reused their raw composite Symbol.id as stable_id; all now route through the shared make_doc_stable_id factory. BEHAVIORAL EVIDENCE: live rst repro went 3 non-canonical -> 0 (id stays raw 'rst:index.rst:section:section_1', stable_id now 'sha256:066b2a4572c9251f'); full suite 3583 passed at 100% coverage on changed files; per-analyzer canonical-stable_id assertion tests added; pre-existing id==stable_id tests updated to assert the now-correct divergence. Scope expansion: the original cohort surfaced only rst/vue/scss (pretix 1223 + chatwoot 12664 nonconforming); the root-cause grep found exactly these 9 producers (markdown/gitignore were already canonical)."  # 3df4

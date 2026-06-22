@@ -43,3 +43,19 @@
   clock: 4  # 9cb4
   nonce: 9cb4  # 9cb4
   message: "PR #3904 merged at 5076811123 (+50210b22e4 empty re-trigger + 9612d0b8b4 baseline bump for ast_includes). 9954/9954 tests pass; 100% coverage on changed sources (1110 stmts incl. new linkers/inherited_calls.py at 81 stmts). New evidence_type ast_includes registered. Ruby Pass 1 now extracts included_modules; inheritance.py emits new includes edges; new Tier-2 Infrastructure linker inherited_calls.py walks ancestor chains (Ruby/Groovy via _walk_insertion_order, priority=18, always-active) consuming the make_unresolved_edge enclosing_class hint added in PR-1. Ruby _find_inherited_initialize deleted; 4 integration tests migrated to pipeline mode via new _run_inherited_calls_pipeline helper. CI failure recovery: empty re-trigger commit after Codeberg HTTP 504 outage during actions/checkout; second CI cycle hit schema-coverage gate (warning mode) on new ast_includes — baseline bumped per the WI-luzuh foundation-phase escape hatch. ADR-0029 documents contract + per-language MRO table + 5-PR campaign sequence. Tag awaits_bakeoff_validation already attached. Closes WI-puluf via the substrate. Unblocks WI-dukog (PR-3 Java Site 1)."  # 9cb4
+- op: update  # 03a1
+  at: '2026-06-22T02:23:37Z'  # 03a1
+  by: agent  # 03a1
+  actor: jgstern_agent  # 03a1
+  clock: 5  # 03a1
+  nonce: 03a1  # 03a1
+  set: {}  # 03a1
+  remove:  # 03a1
+    tags: [awaits_bakeoff_validation]  # 03a1
+- op: discuss  # 2836
+  at: '2026-06-22T02:23:37Z'  # 2836
+  by: agent  # 2836
+  actor: jgstern_agent  # 2836
+  clock: 6  # 2836
+  nonce: '2836'  # 2836
+  message: "Validated MOVED via DEEP cohort deep-20260621-215349/cohort-002/iter-001. Cross-language inherited_calls substrate active: jedis (Java) 11455 ast_call_inherited*; chatwoot (Ruby) 218 includes edges + 16 ast_call_inherited; pretix (Python) 116 includes. Ground-truth: ContactIdentifyAction includes UrlHelper; AccountBuilder#validate_user -> CustomExceptions::Base#initialize (Ruby mixin + inherited dispatch). Java edge set on spring-petclinic not re-checked (not in pool)."  # 2836

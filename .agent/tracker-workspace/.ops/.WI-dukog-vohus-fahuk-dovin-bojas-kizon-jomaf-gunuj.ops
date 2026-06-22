@@ -57,3 +57,19 @@
   clock: 6  # 4fc9
   nonce: 4fc9  # 4fc9
   message: "PR-4 (WI-sivuk, PR #3906 / 1dd5ac8e48) discovered and repaired a PR-3 double-emit regression. Case 1's else block at java.py:1459-1464 called make_unresolved_edge directly but neglected to set edge_added=True, so the final fallback emit at java.py:~1647 fired a second unresolved edge per bare/this inherited-call site (one with enclosing_class hint, one without). PR-3 tests didn't catch this because they filtered is_resolved=True. PR-4 repair is structural rather than a one-line edge_added=True flag: Case 1's else now only stashes the hint into pr4_enclosing_class_hint and defers to the single final emit, preserving the static_imports/wildcard_imports/dst_ref computation that the polyglot-call-site test on import-static singletonList depended on. Acknowledged as PR-3 hangover, no separate hotfix needed."  # 4fc9
+- op: update  # 35ab
+  at: '2026-06-22T02:23:36Z'  # 35ab
+  by: agent  # 35ab
+  actor: jgstern_agent  # 35ab
+  clock: 7  # 35ab
+  nonce: 35ab  # 35ab
+  set: {}  # 35ab
+  remove:  # 35ab
+    tags: [awaits_bakeoff_validation]  # 35ab
+- op: discuss  # fabd
+  at: '2026-06-22T02:23:36Z'  # fabd
+  by: agent  # fabd
+  actor: jgstern_agent  # fabd
+  clock: 8  # fabd
+  nonce: fabd  # fabd
+  message: "Validated MOVED via DEEP cohort deep-20260621-215349/cohort-002/iter-001. jedis (Java): 527 ast_call_inherited (Site-1 bare/this) edges, is_resolved=True; chatwoot (Ruby): 16. Ground-truth: AbstractPipeline.publish -> PipeliningBase.appendCommand (inherited). NOTE: spring-petclinic-specific +/-1 count not re-checked (petclinic not in pool); jedis is the substitute Java target -- the Site-1 linker demonstrably fires and resolves to real inherited methods."  # fabd

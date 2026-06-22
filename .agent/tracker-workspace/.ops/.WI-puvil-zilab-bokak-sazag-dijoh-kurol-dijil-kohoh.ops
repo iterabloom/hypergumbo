@@ -49,3 +49,19 @@
   clock: 5  # 3bf9
   nonce: 3bf9  # 3bf9
   message: "Merged as PR #3908, dev SHA f447952fc9. First-try CI pass, no gremlin. Two new linker resolvers (_resolve_site2 + _resolve_site3) consume PR-4 meta + new analyzer-side class.meta['fields'] channel. Site 2 three-step resolution: direct method on type → MRO walk (forward improvement) → fallback to type symbol. Site 3 walks enclosing class's parents via inheritance edges, reads parent.meta['fields'] for receiver name, looks up method on field's type. Dispatch by hint specificity in _try_resolve helper (Site 3 > Site 2 > Site 1). Net deletion ~95 LOC from Java analyzer; net addition ~200 LOC of centralized linker logic. Side-effect-only resolver lookup preserved in Case 3 to keep the return-type-inference cascade chaining var_types across factory patterns. 13 new TestSite2/3 tests + 3 helper-walk tests; 9 existing Java tests migrated to pipeline-mode. ADR-0029 type_hierarchy priority corrected to 60 (was 20). 100% coverage on linker (199 stmts) and Java analyzer (866 stmts). Tag awaits_bakeoff_validation attached BEFORE auto-pr."  # 3bf9
+- op: update  # 6b95
+  at: '2026-06-22T02:23:37Z'  # 6b95
+  by: agent  # 6b95
+  actor: jgstern_agent  # 6b95
+  clock: 6  # 6b95
+  nonce: 6b95  # 6b95
+  set: {}  # 6b95
+  remove:  # 6b95
+    tags: [awaits_bakeoff_validation]  # 6b95
+- op: discuss  # 69e0
+  at: '2026-06-22T02:23:37Z'  # 69e0
+  by: agent  # 69e0
+  actor: jgstern_agent  # 69e0
+  clock: 7  # 69e0
+  nonce: '69e0'  # 69e0
+  message: "Validated MOVED via DEEP cohort deep-20260621-215349/cohort-002/iter-001. jedis (Java): 10928 ast_call_inherited_method/_field (Sites 2+3) edges, is_resolved=True. Ground-truth: ClusterPipeline.spublish -> CommandObjects.spublish, ClusterCommandObjects.commandArguments -> CommandArguments.setKeyArgumentPreProcessor -- real inherited method/field dispatch. NOTE: spring-petclinic/spring-boot-specific counts not re-checked (not in pool); jedis substitute confirms the Sites-2+3 linker fires at scale."  # 69e0

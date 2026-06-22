@@ -107,3 +107,19 @@
   clock: 12  # 6bec
   nonce: 6bec  # 6bec
   message: "Merged as PR #3925. Python intra-file constant-read resolution emits references edges with evidence_type=ast_name_read. Expected ~1,301 orphan variable Symbols → near zero on self-analysis."  # 6bec
+- op: update  # fbf6
+  at: '2026-06-22T02:24:11Z'  # fbf6
+  by: agent  # fbf6
+  actor: jgstern_agent  # fbf6
+  clock: 13  # fbf6
+  nonce: fbf6  # fbf6
+  set: {}  # fbf6
+  remove:  # fbf6
+    tags: [awaits_bakeoff_validation]  # fbf6
+- op: discuss  # 29df
+  at: '2026-06-22T02:24:12Z'  # 29df
+  by: agent  # 29df
+  actor: jgstern_agent  # 29df
+  clock: 14  # 29df
+  nonce: 29df  # 29df
+  message: "Validated MOVED via DEEP cohort deep-20260621-215349/cohort-002/iter-001. pretix (Python): 922 references->module-variable edges; 545/944 (58%) of Python variables non-orphan vs ~100% orphan without the feature. Ground-truth: _base_settings.py:132 references ALL_LANGUAGES (def :86), setup.py->cmdclass, conf.py->extensions -- real intra-file module-constant reads. NOTE: the original ~95%-reduction / ~5000-edge magnitude was a hypergumbo self-analysis figure, not re-measured on pretix; the feature is demonstrably active on a real Python repo."  # 29df
