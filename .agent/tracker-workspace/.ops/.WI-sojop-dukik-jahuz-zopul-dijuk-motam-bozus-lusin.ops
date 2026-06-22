@@ -1,0 +1,34 @@
+- op: create  # 970c
+  at: '2026-06-22T06:10:40Z'  # 970c
+  by: agent  # 970c
+  actor: jgstern_agent  # 970c
+  clock: 1  # 970c
+  nonce: 970c  # 970c
+  data:  # 970c
+    kind: work_item  # 970c
+    title: "Canonical stable_id for the 4 remaining non-canonical producers: sparql, kdl, graphql-linker, scip (INV-hunup closure)"  # 970c
+    status: todo_hard  # 970c
+    priority: 2  # 970c
+    parent: INV-hunup-bumig-jogub-domih-fufuz-hovip-likoj-jasug  # 970c
+    tags: []  # 970c
+    isbefore: []  # 970c
+    duplicate_of: []  # 970c
+    not_duplicate_of: []  # 970c
+    pr_ref:  # 970c
+    description: "iter-002 validation of INV-hunup found 4 non-canonical stable_id producers beyond WI-rijup's 9 doc analyzers; close them all hash-to-canonical (investigation wf_c26241d9-384 confirmed: stable_id is a foreign key with a HARD per-file uniqueness check, unlike fingerprint; 18+/20 producers already hash; the make_synthetic_symbol_identity chokepoint already exists for this case). FIX per producer: (1) sparql.py (3 sites) + (2) kdl.py -- stable_id=symbol_id over a raw composite; migrate to make_doc_stable_id (the WI-rijup fix; first-party doc analyzers, missed by WI-rijup's grep). (3) graphql-linker linkers/graphql.py:223 -- stable_id=call.operation_name on a Class-B protocol_origin=graphql synthetic node; route through the existing make_synthetic_symbol_identity chokepoint (emit stable_id=None to let populate_synthetic_class_b_identity stamp it, or call it directly). This ALSO fixes a latent collision bug: bare operation_name repeats across files -> stable_id collisions, exactly the 'wrong, colliding value' the chokepoint docstring warns about. (4) scip/index.py:203 -- stable_id=sym_info.symbol (real-language node, already has a canonical id via make_symbol_id); hash the SCIP moniker to sha256:16hex (the moniker stays in meta[scip_symbol]). Leaves INV-hunup universal (no language=None exemption -- scip is NOT language=None). After merge: re-validate via iter-003 to confirm 0 nonconforming across the cohort, then INV-hunup -> satisfied."  # 970c
+    fields: {}  # 970c
+- op: update  # 27a9
+  at: '2026-06-22T07:03:06Z'  # 27a9
+  by: agent  # 27a9
+  actor: jgstern_agent  # 27a9
+  clock: 2  # 27a9
+  nonce: 27a9  # 27a9
+  set:  # 27a9
+    status: done  # 27a9
+- op: discuss  # f70f
+  at: '2026-06-22T07:03:06Z'  # f70f
+  by: agent  # f70f
+  actor: jgstern_agent  # f70f
+  clock: 3  # f70f
+  nonce: f70f  # f70f
+  message: "Fixed in PR #4265 (merged origin/dev 416ee26a70). All 4 residual non-canonical stable_id producers canonicalized hash-to-canonical: sparql (3 sites) + kdl -> make_doc_stable_id; graphql client linker -> stable_id=None (populate_synthetic_class_b_identity stamps canonical injective id, fixing the latent operation_name collision); scip -> _short_sha256(moniker) (moniker preserved in meta[scip_symbol]). BEHAVIORAL EVIDENCE: 3942 tests pass, 100% coverage on changed files; per-producer canonical-stable_id assertions added (incl. graphql no-collision test: two same-name ops in different files now get distinct stable_ids); 3 old id==stable_id test pins updated. Symbol.id unchanged. Investigation wf_c26241d9-384 settled hash-to-canonical over exempt (stable_id is a foreign key w/ HARD uniqueness check; scip has a real language)."  # f70f

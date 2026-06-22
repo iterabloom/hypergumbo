@@ -129,3 +129,10 @@
   clock: 14  # 78b8
   nonce: 78b8  # 78b8
   message: "Drain audit (deep-20260621-215349), human-authorized strip. no_move/violated: validation history shows node.id format violations persist post-fix across the four documented mechanisms (escaping/namespacing/wrong-value-in-slot/external_symbol). Deterministic structural defect, NOT cohort-re-runnable. Stripping awaits_bakeoff_validation; violated status remains the live signal. Re-tag only on a future fix with a fresh quantitative claim."  # 78b8
+- op: discuss  # 6001
+  at: '2026-06-22T04:47:28Z'  # 6001
+  by: agent  # 6001
+  actor: jgstern_agent  # 6001
+  clock: 15  # 6001
+  nonce: '6001'  # 6001
+  message: "SCOPE ADDITION (human-directed, post-PR #4263): fold in the doc/markup/template-analyzer node-id DRY refactor here, because it changes node.id format (this invariant's axis). Context: WI-rijup canonicalized *stable_id* across 9 analyzers (rst/scss/vue/svelte/puppet/robot/astro/twig/pony) but deliberately left node.id and the 9 near-duplicate per-analyzer _make_symbol_id raw-id builders untouched (stable_id-scoped PR). The follow-up: (1) add a shared make_doc_symbol_ids(language, path, kind, name, start_line, end_line) -> (id, stable_id) helper in analyze/base.py that mints BOTH ids together so they can never drift again (the exact bug class WI-rijup fixed -- stable_id was set to the raw id); (2) dedup the 9 _make_symbol_id copies through it; (3) the 6 line-bearing analyzers (scss/vue/svelte/puppet/astro/twig) adopt it with ZERO node.id change (their id is already lang:path:kind:line:name, == helper output when line==span.start_line -- verify per site); (4) the 3 line-LESS analyzers (rst/robot/pony) currently emit lang:path:kind:name (no line) -- unifying them ADDS the line to node.id, which both conforms toward the documented id grammar (INV-dulah) AND fixes their latent same-name-sibling node.id collision. 'We'll get to it when we get to it.'"  # 6001
