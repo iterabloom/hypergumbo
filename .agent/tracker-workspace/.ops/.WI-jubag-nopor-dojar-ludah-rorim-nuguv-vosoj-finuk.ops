@@ -40,3 +40,10 @@
   clock: 4  # 27e1
   nonce: '27e1'  # 27e1
   message: "root-cause family member (a2) (connections-sweep 2026-06-08T1900Z)"  # 27e1
+- op: discuss  # 75c4
+  at: '2026-06-21T08:50:08Z'  # 75c4
+  by: agent  # 75c4
+  actor: jgstern_agent  # 75c4
+  clock: 5  # 75c4
+  nonce: 75c4  # 75c4
+  message: "PROGRESS (PR #4255, emission-parity F4 / A2): the JS/TS EXTENDS + IMPLEMENTS half of this item is done — external/library class bases (extends LitElement, implements OnInit) now emit unresolved-external edges instead of being dropped (see WI-dutov, closed). Import-aware module hints, precise extends-vs-implements, aliased-import re-resolution, relative-import skip, URL/Deno id-grammar hardening.\n\nREMAINING SCOPE of this (broad) item, all confirmed by an adversarial review of the A2 change:\n1. The IDENTICAL external-base drop in the Python (py.py:2126-2141 per strategy doc), Kotlin, and Ruby analyzers' _extract_inheritance_edges — same pattern, not yet fixed.\n2. The framework-agnostic core inheritance-linker (hypergumbo_core/linkers/inheritance.py::_create_inheritance_edges) ALSO drops external bases ('if base not found (external) -> no edge') for ALL languages — the chokepoint. The structurally-correct end state (strategy doc §107 'chokepoint, not per-analyzer sweeps') is Approach C: analyzers carry import-module + clause-kind into base_classes meta, and the core linker emits precise import-aware unresolved edges for every OO language. A2 (js_ts-scoped) was chosen first for highest value + import-awareness; C remains the eventual structural target.\n3. The INSTANTIATES half ('new ExternalClass()' external constructors) — strategy doc notes py.py:3600-3647 emits a demoted 'calls' edge (mistype). Not addressed by A2.\n\nAlso a NEW distinct sibling filed: TS interface-extends-interface is dropped entirely (external AND intra-repo) because _extract_inheritance_edges only processes sym.kind=='class' and interface symbols carry no base_classes meta."  # 75c4

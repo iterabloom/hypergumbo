@@ -96,3 +96,34 @@
   clock: 11  # b0a8
   nonce: b0a8  # b0a8
   message: "Named function-node slice MERGED: PR #4254 (origin/dev a01cf2579c). Generators and const-bound function expressions now emit function symbols at parity with ordinary declarations/arrows — closing the two NAMED extraction holes from the 2026-06-20 scope-expansion note.\n\nBEHAVIORAL EVIDENCE (analyzer re-probe, symmetric JS+TS):\n- 'function* g(){}' (generator_function_declaration) + 'const f = function(){}' / 'function*(){}' (function_expression / generator_function) previously emitted ZERO function symbols; now emit, incl. async-generator decl ('async function* g(){}'), async/named function expressions, and 'export function* g(){}'. Generator symbols now carry signatures (was None).\n- Call-graph parity: a call inside a generator/function-expression body attributes to that symbol (src==gen.id), not the file pseudo-node (_get_enclosing_function); a generator param shadowing a global no longer emits a false call edge (_is_shadowed_by_param); typed generator params feed in-body method resolution (_extract_param_types).\n- 8 emission loci touched; 412 js_ts tests pass; js_ts.py 100% cov; full suite green (19366 passed earlier; 3554 targeted at merge).\n\nADVERSARIAL REVIEW (workflow, 12 confirmed / 6 rejected) caught four MORE generator-parity loci, all fixed in the same PR: (a) exported generators now set is_exported=True (export-name collection missed generator_function_declaration); (b) exported generators surface a library_export UsageContext from index files; (c) inline generator route handlers (Koa-v1 idiom) emit a route symbol keeping the declared name instead of silently dropping; and it (d) HARDENED a vacuous typed-param test that passed pre-fix via single-method name-fallback (now two-class disambiguation + src attribution).\n\nSTATUS STAYS todo_hard. REMAINING (the sole open WI-zavad slice): anonymous-callback function-NODE extraction (the F159.A2-c WS-linker file-anchor facet) — general top-level/callback anonymous functions (addEventListener callbacks, IIFEs) still produce no function nodes. Same HIGH-blast-radius class (adds anonymous function symbols corpus-wide), so awaits_bakeoff_validation stays."  # b0a8
+- op: update  # 8486
+  at: '2026-06-21T21:16:49Z'  # 8486
+  by: agent  # 8486
+  actor: jgstern_agent  # 8486
+  clock: 12  # 8486
+  nonce: '8486'  # 8486
+  set:  # 8486
+    status: done  # 8486
+- op: discuss  # 7d51
+  at: '2026-06-21T21:16:49Z'  # 7d51
+  by: agent  # 7d51
+  actor: jgstern_agent  # 7d51
+  clock: 13  # 7d51
+  nonce: 7d51  # 7d51
+  message: "Final slice MERGED: PR #4258 (origin/dev 99e86cb0e3, server-side verified). The sole remaining WI-zavad slice — anonymous-callback function-NODE extraction (the F159.A2-c WS-linker file-anchor facet) — is done; WI-zavad (P0) is CLOSED.\n\nBEHAVIORAL EVIDENCE (live re-probe of the item's OWN frozen-substrate reproduction — a service-worker.js built entirely from top-level addEventListener callbacks + an IIFE): now emits 3 function-node symbols (_cb_addEventListener x2, _iife) where it previously emitted ZERO (only the file pseudo-node). Each callback's body I/O call attributes to the CALLBACK symbol, not the file: caches.open -> _cb_addEventListener; fetch -> _cb_addEventListener; fs.readFileSync -> _iife. Each callback has an incoming companion edge (in-degree 1) so it is not a dead-code false-positive. Production-path test: TestWizavadAnonCallbackFunctionNode (incl. test_service_worker_idiom_emits_callback_symbols_js), ~28 tests, js_ts.py 100% cov, suite green (3616 affected passed).\n\nMECHANISM: anonymous arrow/function-expression/generator passed as a call argument (incl. new Promise/new X constructor executors) -> _cb_<callee>; IIFE -> _iife; both carry signature/CC/LOC/shape_id/typed stable_id/meta.anonymous. Body-calls attribute via the existing _get_enclosing_function position lookup; companion incoming edge (references/callback_argument_reference for call-arg gated on meta.anonymous; calls/ast_call_direct for IIFE) prevents dead-code FP; id folds start_col so same-line same-callee callbacks stay distinct.\n\nSCOPE (Option 1, human-chosen): call-arg callbacks + IIFEs only. Return/ternary/template-substitution anonymous arrows are explicitly deferred (filed WI-piror, P3 todo_soft) — no I/O, no call-site anchor, out of this P0's harm.\n\nADVERSARIAL REVIEW (5 confirmed / 3 rejected) drove four pre-merge fixes: new_expression (new Promise) extraction; route-handler spurious-edge gate (meta.anonymous); same-line id-collision (start_col fold); two test-validity fixes (catchAsync double-emission guard + exclusion-test positive controls).\n\nSTAYS tagged awaits_bakeoff_validation (HIGH blast radius: adds anonymous function symbols corpus-wide, shifting symbol/centrality/dead-code counts)."  # 7d51
+- op: update  # e7a6
+  at: '2026-06-22T01:44:58Z'  # e7a6
+  by: agent  # e7a6
+  actor: jgstern_agent  # e7a6
+  clock: 14  # e7a6
+  nonce: e7a6  # e7a6
+  set: {}  # e7a6
+  remove:  # e7a6
+    tags: [awaits_bakeoff_validation]  # e7a6
+- op: discuss  # e5c3
+  at: '2026-06-22T01:44:58Z'  # e5c3
+  by: agent  # e5c3
+  actor: jgstern_agent  # e5c3
+  clock: 15  # e5c3
+  nonce: e5c3  # e5c3
+  message: "Drain audit (DEEP-cohort validation session): D-stale. Quantitative claim (JS function-node/body-call/io edges 0->positive) already validated by live behavioral re-probes in discussion (2026-06-19/06-21: 0->2, 0->2, 0->3 deltas; service-worker repro 0->3 function nodes); merged across 8f11136fb9/da95f235e0/a01cf2579c/99e86cb0e3, no revert. Validation pre-exists the tag; stripping stale tag."  # e5c3

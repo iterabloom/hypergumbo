@@ -1,0 +1,20 @@
+- op: create  # def3
+  at: '2026-06-21T08:50:39Z'  # def3
+  by: agent  # def3
+  actor: jgstern_agent  # def3
+  clock: 1  # def3
+  nonce: def3  # def3
+  data:  # def3
+    kind: work_item  # def3
+    title: "TS interface-extends-interface emits ZERO inheritance edges (external AND intra-repo)"  # def3
+    status: todo_hard  # def3
+    priority: 2  # def3
+    parent:  # def3
+    tags:  # def3
+    - analysis_quality  # def3
+    isbefore: []  # def3
+    duplicate_of: []  # def3
+    not_duplicate_of: []  # def3
+    pr_ref:  # def3
+    description: "Surfaced by an adversarial review of PR #4255 (emission-parity F4 / A2; cross-ref WI-dutov done, WI-jubag).\n\njs_ts.py _extract_inheritance_edges processes only sym.kind=='class' (early 'if sym.kind != \"class\": continue'), and interface symbols are created WITHOUT any base_classes meta (only class_declaration/abstract_class_declaration call _extract_base_classes). Consequently 'interface Child extends Base' produces ZERO inheritance edges whether Base is external or intra-repo.\n\nREPRO (analyzer): 'export interface Base {} ; export interface Child extends Base {}' -> no extends/implements edges; 'import { Observer } from \"rxjs\"; export interface MyObs extends Observer {}' -> no edges (should be 'extends typescript:rxjs:0-0:Observer:unresolved').\n\nCross-language consumer expectation is established: the Java analyzer already extracts interface-extends (java.py ~811) and emits through the shared core inheritance-linker (which accepts kind=='interface').\n\nMINIMAL FIX: (1) extract interface bases into base_classes meta on interface symbols (handle the interface_declaration extends_type_clause, analogous to Java's extends_interfaces). Once interface symbols carry base_classes meta, the shared core inheritance.py linker emits intra-repo edges for free (it already accepts kind=='interface'). (2) the external-orphan case additionally needs js_ts's own A2-style external fallback to cover interfaces (currently gated by kind!='class'). NOTE: TS interfaces use 'extends' (not 'implements') for both class and interface bases, so the extracted bases are extends-bases."  # def3
+    fields: {}  # def3

@@ -26,3 +26,10 @@
   clock: 2  # 0097
   nonce: '0097'  # 0097
   message: "fya I cleared some of the hypergumbo cache"  # 0097
+- op: discuss  # b3a0
+  at: '2026-06-21T08:51:47Z'  # b3a0
+  by: agent  # b3a0
+  actor: jgstern_agent  # b3a0
+  clock: 3  # b3a0
+  nonce: b3a0  # b3a0
+  message: "Recurrence (2026-06-21): the 'slice command failed / Input file not found: None' fallback reproduced during 'pytest' (full smart-test) manifest generation this session — slice_exit_code=1 after ~347s, tripping the full-suite manifest fallback. So clearing the hypergumbo cache (your 2026-06-18 note) did NOT resolve it; the forward-slice failure persists. Other 'pytest' runs in the same session DID get a clean targeted slice, so it remains intermittent. Fallback is graceful (full-suite manifest, suite green), so it didn't block work — recording as fresh evidence the root cause (cli.py _get_or_run_analysis slice --files path) is still live post-cache-clear."  # b3a0
