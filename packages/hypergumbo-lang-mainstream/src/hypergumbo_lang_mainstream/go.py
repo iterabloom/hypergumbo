@@ -1372,9 +1372,19 @@ def _extract_symbols_from_file(
 
         # var declarations: interface assertions AND package-level aliases
         elif node.type == "var_declaration":
+            # Only package (file) scope vars are module variables. The all-node
+            # walk also reaches `var x = ...` inside function/block bodies
+            # (parent `statement_list`); those are LOCALS, not module variables,
+            # and must not be emitted (INV-sidab). Interface-assertion detection
+            # still runs for every var_spec regardless of scope.
+            is_package_level = (
+                node.parent is not None and node.parent.type == "source_file"
+            )
             for child in node.children:
                 if child.type == "var_spec":
                     _detect_interface_assertion(child, source, impl_assertions)
+                    if not is_package_level:
+                        continue
 
                     # Extract package-level var aliases as symbols.
                     # Pattern: var Name = expr (has initializer, not blank _)

@@ -553,6 +553,31 @@ var name string
             f"Expected no variable symbols for uninitialized vars, got {[s.name for s in var_syms]}"
         )
 
+    def test_skips_function_local_var(self, tmp_path: Path) -> None:
+        """INV-sidab: an initialized function-local ``var x = ...`` must NOT
+        emit a module variable — only package (file) scope vars are module
+        variables. Before the fix, the all-node tree walk reached
+        ``var_declaration`` nodes inside function bodies (parent
+        ``statement_list``) and emitted them as ``kind="variable"``."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+var PkgLevel = compute()
+
+func work() int {
+    var localVar = helper()
+    return localVar
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        var_names = {s.name for s in result.symbols if s.kind == "variable"}
+        assert "PkgLevel" in var_names, var_names
+        assert "localVar" not in var_names, var_names
+
 
 class TestGoHelperFunctions:
     """Tests for helper function edge cases."""
