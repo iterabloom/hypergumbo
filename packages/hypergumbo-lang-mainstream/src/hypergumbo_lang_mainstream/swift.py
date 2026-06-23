@@ -231,6 +231,17 @@ def _extract_subscript_signature(
     return sig
 
 
+# Node types whose DIRECT ``property_declaration`` children are stored properties
+# of a type body (struct/class/actor/extension -> ``class_body``; enum ->
+# ``enum_class_body``). A binding whose direct parent is anything else — most
+# importantly ``statements`` (a method/init/closure body) — is a LOCAL, not a
+# field. Keying field-eligibility off this direct parent (rather than merely
+# "has some enclosing type") is what distinguishes a stored property from a
+# method-local ``let``/``var``, which also parses as ``property_declaration`` and
+# also has an enclosing type (INV-lanaz).
+_STORED_PROPERTY_BODY_TYPES = frozenset({"class_body", "enum_class_body"})
+
+
 def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Walk up the tree to find the enclosing class/struct/enum/protocol name."""
     current = node.parent
@@ -679,15 +690,25 @@ def _extract_symbols_from_file(
         # A non-computed property_declaration (no computed_property child; those
         # matched the branch above as kind="property") is either a STORED
         # property of a type body -> kind="field", or a top-level let/var ->
-        # kind="variable". Swift uses one property_declaration node for both; the
-        # enclosing scope discriminates. Function-/closure-local bindings (parent
-        # is `statements`, not `source_file`, and no enclosing type) are skipped
+        # kind="variable". Swift reuses one property_declaration node for both AND
+        # for method-/init-/closure-local bindings; the DIRECT parent
+        # discriminates. A stored property's parent is a type body
+        # (class_body/enum_class_body); a top-level binding's parent is
+        # source_file; a local binding's parent is `statements`. We must gate on
+        # the direct parent — NOT merely on `_get_enclosing_type` being truthy,
+        # because a local inside a *method* also has an enclosing type and would
+        # otherwise leak in as a field (INV-lanaz). Locals are skipped
         # (module-level-only contract).
         elif node.type == "property_declaration":
             pat = find_child_by_type(node, "pattern")
             id_node = find_child_by_type(pat, "simple_identifier") if pat else None
-            enclosing_type = _get_enclosing_type(node, source)
-            is_top_level = node.parent is not None and node.parent.type == "source_file"
+            parent_type = node.parent.type if node.parent is not None else ""
+            is_top_level = parent_type == "source_file"
+            enclosing_type = (
+                _get_enclosing_type(node, source)
+                if parent_type in _STORED_PROPERTY_BODY_TYPES
+                else None
+            )
             if id_node is not None and (enclosing_type or is_top_level):
                 prop_name = node_text(id_node, source)
                 if enclosing_type:

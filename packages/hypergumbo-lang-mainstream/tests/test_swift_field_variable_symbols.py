@@ -112,3 +112,90 @@ func run() -> Int {
 """)
         result = analyze_swift(tmp_path)
         assert not any(v.name == "local" for v in _vars(result))
+
+
+class TestSwiftMethodLocalExclusion:
+    """INV-lanaz regression: a function-local ``let``/``var`` inside a *method*
+    of a type parses as a ``property_declaration`` and (unlike a top-level
+    function's local) DOES have an enclosing type, so the original
+    ``_get_enclosing_type``-only gate misclassified it as ``kind="field"``.
+
+    Ground truth: on SwiftyJSON, 383 of 407 emitted swift "fields" were XCTest
+    method-body locals. A stored property is a field ONLY when it is a DIRECT
+    member of the type body (parent ``class_body``/``enum_class_body``); a
+    binding nested in a method/init/closure body (parent ``statements``) is a
+    local and must be excluded.
+    """
+
+    def test_method_local_let_not_emitted_as_field(self, tmp_path: Path) -> None:
+        _write(tmp_path, """
+class ArrayTests {
+    let stored = 1
+    func testGetter() {
+        let local = [1, 2, 3]
+        var localVar = 0
+        localVar += 1
+        print(local, localVar)
+    }
+}
+""")
+        result = analyze_swift(tmp_path)
+        fnames = {f.name for f in _fields(result)}
+        assert "ArrayTests.stored" in fnames, fnames
+        assert "ArrayTests.local" not in fnames, fnames
+        assert "ArrayTests.localVar" not in fnames, fnames
+        # and they must not leak in as top-level variables either
+        vnames = {v.name for v in _vars(result)}
+        assert "local" not in vnames and "localVar" not in vnames, vnames
+
+    def test_init_local_not_emitted_as_field(self, tmp_path: Path) -> None:
+        _write(tmp_path, """
+struct S {
+    let kept = 1
+    init() {
+        let tmp = 2
+        print(tmp)
+    }
+}
+""")
+        result = analyze_swift(tmp_path)
+        fnames = {f.name for f in _fields(result)}
+        assert "S.kept" in fnames, fnames
+        assert "S.tmp" not in fnames, fnames
+
+    def test_closure_local_not_emitted_as_field(self, tmp_path: Path) -> None:
+        _write(tmp_path, """
+class C {
+    let kept = 1
+    func work() -> Int {
+        let f = { () -> Int in
+            let closureLocal = 6
+            return closureLocal
+        }
+        return f()
+    }
+}
+""")
+        result = analyze_swift(tmp_path)
+        fnames = {f.name for f in _fields(result)}
+        assert "C.kept" in fnames, fnames
+        assert "C.closureLocal" not in fnames and "C.f" not in fnames, fnames
+
+    def test_stored_property_kept_when_type_has_method_locals(self, tmp_path: Path) -> None:
+        # Mirrors the SwiftyJSON failure: stored props kept; method-body locals
+        # and computed properties dropped from the field set.
+        _write(tmp_path, """
+struct JSON {
+    var rawArray: [Any] = []
+    var string: String? { return nil }
+    func describe() -> String {
+        let buffer = "x"
+        return buffer
+    }
+}
+""")
+        result = analyze_swift(tmp_path)
+        fnames = {f.name for f in _fields(result)}
+        assert "JSON.rawArray" in fnames, fnames
+        assert "JSON.buffer" not in fnames, fnames
+        assert "JSON.string" not in fnames, fnames  # computed -> property, not field
