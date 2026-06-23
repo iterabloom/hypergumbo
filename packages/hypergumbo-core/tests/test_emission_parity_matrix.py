@@ -45,13 +45,12 @@ What the gate establishes about its eight named tracker items:
 * A previously-unfiled parity gap is surfaced and locked: the Java analyzer
   emits no `imports` edge while every other language does.
 * `WI-jusus` (emission-parity F5) adds the `emits_variable` / `emits_field`
-  kind-emission columns. The JS/TS analyzer emits both (slices 1+2 — class
-  fields + module variables); every analyzer with module-level variables
-  (python/js/ts/go/rust/swift) emits them (all `emits_variable` cells are hard
-  locks); Java, Go, C#, Rust, and Swift emit class/struct fields. The only
-  remaining F5 hole is python's class-attribute field emission, a strict-xfail a
-  Wave-3 emitter fix strips. `emits_variable` is not parametrized for Java/C# (no
-  module-level variables — see `COLUMN_APPLICABILITY`).
+  kind-emission columns, now FULLY CLOSED (every applicable cell is a hard lock).
+  Every analyzer with module-level variables (python/js/ts/go/rust/swift) emits
+  them, and js/ts/java/go/csharp/rust/swift/python all emit class/struct fields —
+  the eight per-language slices that ratcheted the holes away. `emits_variable`
+  is not parametrized for Java/C# (no module-level variables — see
+  `COLUMN_APPLICABILITY`).
 """
 from __future__ import annotations
 
@@ -154,20 +153,14 @@ _WI_TOSUL = (
     "Per-language entrypoint-concept emission is the Wave-3 fix that strips "
     "this xfail."
 )
-_F5_FIELD_HOLE = (
-    "WI-jusus (emission-parity F5): the {lang} analyzer emits no kind='field' "
-    "Symbol for the class/struct field present in the fixture — measured "
-    "2026-06-22. JS/TS (slices 1+2), Java, Go, C#, Rust, and Swift emit field "
-    "symbols; this is the documented hole the Wave-3 {lang} field-emission fix "
-    "strips."
-)
 KNOWN_HOLES: dict[tuple[str, str], str] = {
-    # WI-jusus emission-parity F5. All `emits_variable` cells are now HARD LOCKS:
-    # every analyzer with module-level variables (python/js/ts/go/rust/swift)
-    # emits them; java/csharp have none (not parametrized). The only remaining
-    # F5 hole is python's class-attribute field emission (its slice strips it).
-    **{(lang, "emits_field"): _F5_FIELD_HOLE.format(lang=lang)
-       for lang in ("python",)},
+    # WI-jusus emission-parity F5 is FULLY CLOSED: `emits_variable` and
+    # `emits_field` are hard locks for every applicable (language, kind) cell.
+    # Every analyzer emits variable + field symbols where the construct exists
+    # (js/ts/python/go/rust/swift module variables; js/ts/java/go/csharp/rust/
+    # swift/python class-or-struct fields); java/csharp have no module-level
+    # variables (not parametrized). No F5 holes remain — see git history for the
+    # eight per-language slices that ratcheted them away.
     # ('python','qualified_name') was a strict-xfail hole; WI-fagab populated
     # Symbol.qualified_name on py.py function/method/class symbols, so the cell
     # is now a hard lock ("every emission fix strips an xfail").

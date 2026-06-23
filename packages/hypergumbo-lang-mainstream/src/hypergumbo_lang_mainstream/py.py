@@ -2342,6 +2342,60 @@ def _extract_file_analysis(
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
 
+            # WI-jusus (emission-parity F5): emit kind="field" Symbols for CLASS
+            # ATTRIBUTES — class-body Assign / AnnAssign with Name targets (incl.
+            # dataclass fields `x: int` and bare annotations). Instance
+            # attributes (`self.x = ...` inside methods) are NOT class-body
+            # statements and are out of scope. Identity is class-scoped via the
+            # class's file-anchored stable_id (the assemble_stable_id container
+            # slot), so same-named fields in different classes/files are distinct.
+            for member in node.body:
+                attr_names: list[str] = []
+                attr_annotation: "ast.expr | None" = None
+                if isinstance(member, ast.Assign):
+                    for t in member.targets:
+                        if isinstance(t, ast.Name):
+                            attr_names.append(t.id)
+                elif isinstance(member, ast.AnnAssign) and isinstance(member.target, ast.Name):
+                    attr_names.append(member.target.id)
+                    attr_annotation = member.annotation
+                else:
+                    continue
+                attr_start = member.lineno
+                attr_end = member.end_lineno or attr_start
+                attr_sig = (
+                    _format_annotation(attr_annotation)
+                    if attr_annotation is not None else None
+                )
+                for attr in attr_names:
+                    attr_full = f"{class_name}.{attr}"
+                    attr_qualified = f"{class_scoped_name}.{attr}"
+                    field_sym = Symbol(
+                        id=_make_symbol_id(str(py_file), attr_start, attr_end, attr_full, "field"),
+                        name=attr_full,
+                        kind="field",
+                        language="python",
+                        path=str(py_file),
+                        span=Span(
+                            start_line=attr_start,
+                            end_line=attr_end,
+                            start_col=member.col_offset,
+                            end_col=member.end_col_offset or 0,
+                        ),
+                        origin="",
+                        origin_run_id="",
+                        stable_id=assemble_stable_id(
+                            "field", 0, "", "",
+                            symbol.stable_id or "", attr, attr_qualified, 0,
+                        ),
+                        signature=attr_sig,
+                        modifiers=_python_visibility_modifiers(attr),
+                        is_exported=not attr.startswith("_"),
+                        qualified_name=attr_qualified,
+                    )
+                    symbols.append(field_sym)
+                    symbol_by_name[attr_full] = field_sym
+
             # Extract methods inside the class
             for item in node.body:
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
