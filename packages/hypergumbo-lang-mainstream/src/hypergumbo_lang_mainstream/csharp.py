@@ -991,12 +991,25 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
-        # Field declarations — populate class_field_types for chained resolution
+        # Field declarations — WI-jusus (emission-parity F5): emit a kind="field"
+        # Symbol per declarator AND populate class_field_types for chained-call
+        # resolution. C# field attributes ([Inject] DI, EF [Column]/[Key] ORM)
+        # live in attribute_list and flow through meta["annotations"] into
+        # _extract_attribute_edges as decorated_by edges (anchored on the field).
+        # Properties are a separate property_declaration -> kind="property".
         elif node.type == "field_declaration":
             enclosing = _get_enclosing_class(node, source)
             if enclosing:
                 var_decl = find_child_by_type(node, "variable_declaration")
                 if var_decl:
+                    # Full declared type (signature): the first child of the
+                    # variable_declaration (identifier / predefined_type /
+                    # generic_name / qualified_name / array_type, ...).
+                    type_node = var_decl.children[0] if var_decl.children else None
+                    field_type = (
+                        node_text(type_node, source) if type_node is not None else None
+                    )
+                    # Bare user type NAME (for class_field_types chained resolution).
                     type_name = None
                     type_id = find_child_by_type(var_decl, "identifier")
                     if type_id:
@@ -1007,11 +1020,55 @@ def _extract_symbols_from_file(
                             gen_id = find_child_by_type(gen_name, "identifier")
                             if gen_id:
                                 type_name = node_text(gen_id, source)
-                    var_declarator = find_child_by_type(var_decl, "variable_declarator")
-                    if type_name and var_declarator:
+                    modifiers = _extract_modifiers(node)
+                    annotations = _extract_annotations(node, source)
+                    ns_name = _get_csharp_enclosing_namespace(node, source)
+                    cls_ancestors = _get_csharp_class_ancestors(node, source)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    for var_declarator in var_decl.children:
+                        if var_declarator.type != "variable_declarator":
+                            continue
                         name_node = find_child_by_type(var_declarator, "identifier")
-                        if name_node:
-                            field_name = node_text(name_node, source)
+                        if name_node is None:
+                            continue  # pragma: no cover - a declarator always names a field
+                        field_name = node_text(name_node, source)
+                        full_name = f"{enclosing}.{field_name}"
+                        qualified = _make_csharp_qualified_name(
+                            ns_name, cls_ancestors, field_name,
+                        )
+                        f_sym = Symbol(
+                            id=make_symbol_id("csharp", str(file_path), start_line, end_line, full_name, "field"),
+                            name=full_name,
+                            kind="field",
+                            language="csharp",
+                            path=str(file_path),
+                            span=Span(
+                                start_line=start_line,
+                                end_line=end_line,
+                                start_col=node.start_point[1],
+                                end_col=node.end_point[1],
+                            ),
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            meta={"annotations": annotations} if annotations else None,
+                            stable_id=make_typed_stable_id(
+                                "field", field_type or "",
+                                visibility_from_modifiers(modifiers),
+                                name=field_name, qualified_name=full_name,
+                                file_stable_id=file_stable_id,
+                            ),
+                            signature=field_type,
+                            modifiers=modifiers,
+                            lines_of_code=end_line - start_line + 1,
+                            is_exported="public" in modifiers,
+                            qualified_name=qualified,
+                        )
+                        analysis.symbols.append(f_sym)
+                        analysis.node_for_symbol[f_sym.id] = node
+                        analysis.symbol_by_name[field_name] = f_sym
+                        analysis.symbol_by_name[full_name] = f_sym
+                        if type_name:
                             if enclosing not in analysis.class_field_types:
                                 analysis.class_field_types[enclosing] = {}
                             analysis.class_field_types[enclosing][field_name] = type_name
