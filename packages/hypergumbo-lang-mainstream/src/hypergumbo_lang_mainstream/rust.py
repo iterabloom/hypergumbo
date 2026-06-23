@@ -882,6 +882,23 @@ def _extract_struct_field_types(
     return result
 
 
+def _is_rust_module_level_const(node: "tree_sitter.Node") -> bool:
+    """True when a ``const_item`` / ``static_item`` is a MODULE-level value
+    binding — directly at file scope (``source_file``) or inside a ``mod`` block
+    (``declaration_list`` of a ``mod_item``). Excludes function-body locals
+    (parent ``block``) and impl-/trait-associated consts (``declaration_list`` of
+    an ``impl_item`` / ``trait_item``), mirroring the module-level-only contract
+    of the other variable emitters (WI-jusus F5)."""
+    parent = node.parent
+    if parent is None:  # pragma: no cover - items always have a parent
+        return False
+    if parent.type == "source_file":
+        return True
+    if parent.type == "declaration_list" and parent.parent is not None:
+        return parent.parent.type == "mod_item"
+    return False
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -1042,6 +1059,101 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[struct_name] = symbol
+
+                # WI-jusus (emission-parity F5): emit a kind="field" Symbol per
+                # NAMED struct field. Tuple structs (`struct W(i32)`) have no
+                # field_declaration_list (positional fields) -> no field symbols.
+                body = find_child_by_type(node, "field_declaration_list")
+                for fdecl in body.children if body else ():
+                    if fdecl.type != "field_declaration":
+                        continue
+                    fname_node = fdecl.child_by_field_name("name")
+                    if fname_node is None:
+                        continue  # pragma: no cover - a named field always has a name
+                    ftype_node = fdecl.child_by_field_name("type")
+                    fname = node_text(fname_node, source)
+                    ftype = node_text(ftype_node, source) if ftype_node is not None else None
+                    f_modifiers = _extract_modifiers_rust(fdecl, source)
+                    # Rust member names use ``::`` (like impl methods,
+                    # ``MyStruct::method``); the id name-segment collapses
+                    # ``::``->``.`` (canonical ids forbid ``:`` in the name slot).
+                    f_full = f"{struct_name}::{fname}"
+                    f_start = fdecl.start_point[0] + 1
+                    f_end = fdecl.end_point[0] + 1
+                    f_qualified = _make_rust_qualified_name(mod_path, struct_name, fname)
+                    f_sym = Symbol(
+                        id=make_symbol_id("rust", str(file_path), f_start, f_end, f_full.replace("::", "."), "field"),
+                        name=f_full,
+                        kind="field",
+                        language="rust",
+                        path=str(file_path),
+                        span=Span(
+                            start_line=f_start,
+                            end_line=f_end,
+                            start_col=fdecl.start_point[1],
+                            end_col=fdecl.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                        modifiers=f_modifiers,
+                        signature=ftype,
+                        stable_id=make_typed_stable_id(
+                            "field", ftype or "",
+                            visibility_from_modifiers(f_modifiers),
+                            name=fname, qualified_name=f_full,
+                            file_stable_id=file_stable_id,
+                        ),
+                        lines_of_code=f_end - f_start + 1,
+                        is_exported="pub" in f_modifiers,
+                        qualified_name=f_qualified,
+                    )
+                    analysis.symbols.append(f_sym)
+                    analysis.node_for_symbol[f_sym.id] = node
+                    analysis.symbol_by_name[f_full] = f_sym
+
+        # Module-level const / static — WI-jusus (emission-parity F5): a
+        # kind="variable" Symbol for each top-level or mod-level value binding.
+        # Function-body locals and impl-/trait-associated consts are excluded
+        # (see _is_rust_module_level_const).
+        elif node.type in ("const_item", "static_item") and _is_rust_module_level_const(node):
+            name_node = _find_child_by_field(node, "name")
+            if name_node:
+                var_name = node_text(name_node, source)
+                type_node = _find_child_by_field(node, "type")
+                var_type = node_text(type_node, source) if type_node is not None else None
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                v_modifiers = _extract_modifiers_rust(node, source)
+                mod_path = _get_rust_mod_path(node, source)
+                v_qualified = _make_rust_qualified_name(mod_path, None, var_name)
+                v_sym = Symbol(
+                    id=make_symbol_id("rust", str(file_path), start_line, end_line, var_name, "variable"),
+                    name=var_name,
+                    kind="variable",
+                    language="rust",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    modifiers=v_modifiers,
+                    signature=var_type,
+                    stable_id=make_typed_stable_id(
+                        "variable", var_type or "",
+                        visibility_from_modifiers(v_modifiers),
+                        name=var_name, qualified_name=v_qualified,
+                        file_stable_id=file_stable_id,
+                    ),
+                    lines_of_code=end_line - start_line + 1,
+                    is_exported="pub" in v_modifiers,
+                    qualified_name=v_qualified,
+                )
+                analysis.symbols.append(v_sym)
+                analysis.symbol_by_name[var_name] = v_sym
 
         # Enum declaration
         elif node.type == "enum_item":
