@@ -33,11 +33,22 @@ for that language:
 | A class with a method (nested name) | `qualified_name` |
 | A language-appropriate **export** of the public surface | `is_exported` |
 | An entrypoint idiom (`__main__` guard / `main()` / top-level run) | `entrypoint_concept` |
+| A module/package-level **variable** (where the language has one) | `emits_variable` |
+| A **class/struct field** (a value member of a type) | `emits_field` |
 
 Per-language shape differs under the same construct: Java/C# have no top-level
 functions, so their `process`/`helper` are static methods inside a class; C#
 emits the raw `<summary>...</summary>` XML-doc form as the `docstring` value
 (not a stripped summary — that is the analyzer's current behaviour, not a bug).
+
+`emits_variable` / `emits_field` (WI-jusus, emission-parity F5) are the
+value-binding kind-emission cells. Two per-language shape notes: **(1)** Java and
+C# have **no module/package-level variables** — every value binding is a class
+member — so `emits_variable` is *not applicable* there and is not a matrix cell
+(`COLUMN_APPLICABILITY` in the test); their value-binding parity is measured by
+`emits_field` alone. **(2)** Go's module variable uses `var MaxItems = 5` (the
+form the analyzer emits — a package `const` is not emitted as a `variable`); Rust
+adds a separate `Config` struct for the field because `Service` is a unit struct.
 
 The branchy function is named `process` in every fixture and has exactly three
 `if` statements, so an analyzer that computes McCabe complexity reports `4` and

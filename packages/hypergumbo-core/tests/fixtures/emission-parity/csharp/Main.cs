@@ -5,6 +5,8 @@ using System.Collections.Generic;
 
 public class Service
 {
+    private int count = 0;
+
     /// <summary>Return a derived string.</summary>
     static string Helper(int value)
     {

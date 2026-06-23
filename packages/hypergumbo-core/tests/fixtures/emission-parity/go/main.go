@@ -4,6 +4,9 @@ package main
 
 import "fmt"
 
+// MaxItems caps the number of items processed.
+var MaxItems = 5
+
 func helper(value int) string {
 	return fmt.Sprintf("%d", value)
 }
@@ -17,14 +20,16 @@ func Process(items []int, flag bool) string {
 	if len(items) > 0 {
 		total += len(items)
 	}
-	if total > 5 {
-		total = 5
+	if total > MaxItems {
+		total = MaxItems
 	}
 	return helper(total)
 }
 
 // Service is a small service.
-type Service struct{}
+type Service struct {
+	count int
+}
 
 // Run runs the service.
 func (s Service) Run() string {

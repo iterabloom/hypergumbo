@@ -2,6 +2,9 @@
 // See tests/fixtures/emission-parity/README.md.
 use std::cmp::min;
 
+/// Module-level value binding (variable kind).
+const MAX_ITEMS: i32 = 5;
+
 fn helper(value: i32) -> String {
     format!("{}", value)
 }
@@ -15,10 +18,15 @@ pub fn process(items: &[i32], flag: bool) -> String {
     if !items.is_empty() {
         total += items.len() as i32;
     }
-    if total > 5 {
-        total = min(total, 5);
+    if total > MAX_ITEMS {
+        total = min(total, MAX_ITEMS);
     }
     helper(total)
+}
+
+/// Config holds a value member (field kind).
+pub struct Config {
+    pub max: i32,
 }
 
 /// Service is a small service.

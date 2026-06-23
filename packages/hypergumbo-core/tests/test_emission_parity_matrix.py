@@ -44,6 +44,12 @@ What the gate establishes about its eight named tracker items:
   emitted only by Python) are the documented holes, locked as strict xfails.
 * A previously-unfiled parity gap is surfaced and locked: the Java analyzer
   emits no `imports` edge while every other language does.
+* `WI-jusus` (emission-parity F5) adds the `emits_variable` / `emits_field`
+  kind-emission columns. The JS/TS analyzer emits both (slices 1+2 — class
+  fields + module variables); python and go emit the module variable; every
+  other (language, kind) cell is a measured, strict-xfail hole a per-language
+  Wave-3 emitter fix strips. `emits_variable` is not parametrized for Java/C#
+  (no module-level variables — see `COLUMN_APPLICABILITY`).
 """
 from __future__ import annotations
 
@@ -116,6 +122,24 @@ COLUMNS: dict[str, Callable[[AnalysisResult], bool]] = {
         any((s.meta or {}).get("concepts") for s in res.symbols)
         or bool(res.usage_contexts)
     ),
+    # WI-jusus (emission-parity F5): the analyzer emits a kind='variable' Symbol
+    # for the module/package-level value binding present in every fixture.
+    "emits_variable": lambda res: any(s.kind == "variable" for s in res.symbols),
+    # WI-jusus (emission-parity F5): the analyzer emits a kind='field' Symbol
+    # for the class/struct field present in every fixture.
+    "emits_field": lambda res: any(s.kind == "field" for s in res.symbols),
+}
+
+# Columns not applicable to every language. The injected-fixture design assumes
+# a construct is universal, but module-level variables genuinely DO NOT EXIST in
+# class-only languages (Java, C#) — every value binding there is a class member
+# (measured by `emits_field`). An inapplicable cell is not parametrized at all:
+# neither a hard lock nor an xfail hole, so the gate never asserts a construct
+# the language cannot express.
+COLUMN_APPLICABILITY: dict[str, set[str]] = {
+    "emits_variable": {
+        "python", "javascript", "typescript", "go", "rust", "swift",
+    },
 }
 
 # (fixture_language, column) -> xfail reason. Measured 2026-06-11. Each is a
@@ -128,7 +152,28 @@ _WI_TOSUL = (
     "Per-language entrypoint-concept emission is the Wave-3 fix that strips "
     "this xfail."
 )
+_F5_VAR_HOLE = (
+    "WI-jusus (emission-parity F5): the {lang} analyzer emits no kind='variable' "
+    "Symbol for the module-level value binding present in the fixture (rust "
+    "`const`/`static`, swift top-level `let`/`var`) — measured 2026-06-22. "
+    "python / go / javascript / typescript already emit theirs; this is the "
+    "documented hole the Wave-3 {lang} variable-emission fix strips."
+)
+_F5_FIELD_HOLE = (
+    "WI-jusus (emission-parity F5): the {lang} analyzer emits no kind='field' "
+    "Symbol for the class/struct field present in the fixture — measured "
+    "2026-06-22. Only the JS/TS analyzer emits field symbols today (slice 1); "
+    "this is the documented hole the Wave-3 {lang} field-emission fix strips."
+)
 KNOWN_HOLES: dict[tuple[str, str], str] = {
+    # WI-jusus emission-parity F5 variable/field-kind holes (measured 2026-06-22
+    # on the augmented fixtures, each carrying a module-level variable [where the
+    # language has them] + a class/struct field). JS/TS emit both (slices 1+2);
+    # python emits the module variable; go emits the package `var`.
+    **{(lang, "emits_variable"): _F5_VAR_HOLE.format(lang=lang)
+       for lang in ("rust", "swift")},
+    **{(lang, "emits_field"): _F5_FIELD_HOLE.format(lang=lang)
+       for lang in ("python", "go", "java", "csharp", "rust", "swift")},
     # ('python','qualified_name') was a strict-xfail hole; WI-fagab populated
     # Symbol.qualified_name on py.py function/method/class symbols, so the cell
     # is now a hard lock ("every emission fix strips an xfail").
@@ -183,6 +228,11 @@ def _matrix_params() -> list:
     params = []
     for fix_lang in sorted(FIXTURE_ANALYZER):
         for col in COLUMNS:
+            applicable = COLUMN_APPLICABILITY.get(col)
+            if applicable is not None and fix_lang not in applicable:
+                # construct does not exist in this language (e.g. module-level
+                # variables in Java/C#); not a cell at all.
+                continue
             key = (fix_lang, col)
             marks = (
                 (pytest.mark.xfail(reason=KNOWN_HOLES[key], strict=True),)
