@@ -1139,6 +1139,70 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
+        # Class / interface / enum FIELD declarations — WI-jusus (emission-parity
+        # F5). A field_declaration declares one or more fields (`int a, b;`);
+        # interface constants parse as a distinct `constant_declaration` node of
+        # the same shape (implicitly public static final). Emit a kind="field"
+        # Symbol per declarator, mirroring the method branch. Field annotations
+        # (Spring @Autowired/@Inject DI, JPA @Column ORM) live in the `modifiers`
+        # child and flow through meta["decorators"] into _extract_annotation_edges
+        # as decorated_by edges (anchored on the field).
+        elif node.type in ("field_declaration", "constant_declaration"):
+            ancestors = _get_class_ancestors(node, source)
+            if ancestors:
+                modifiers = _extract_modifiers(node, source)
+                decorators = _extract_annotations(node, source)
+                type_node = node.child_by_field_name("type")
+                field_type = _node_text(type_node, source) if type_node is not None else None
+                for declarator in node.children:
+                    if declarator.type != "variable_declarator":
+                        continue
+                    name_node = declarator.child_by_field_name("name")
+                    if name_node is None:
+                        continue  # pragma: no cover - a declarator always names a field
+                    fname = _node_text(name_node, source)
+                    full_name = f"{'.'.join(ancestors)}.{fname}"
+                    span = Span(
+                        start_line=declarator.start_point[0] + 1,
+                        end_line=declarator.end_point[0] + 1,
+                        start_col=declarator.start_point[1],
+                        end_col=declarator.end_point[1],
+                    )
+                    qualified_name = _make_java_qualified_name(
+                        package_name, ancestors, fname
+                    )
+                    # Class-scoped canonical identity (name + qualified_name +
+                    # file fold): same-named fields in different classes/files
+                    # stay distinct even when the type slot is empty.
+                    stable_id = make_typed_stable_id(
+                        "field", field_type or "",
+                        visibility_from_modifiers(modifiers),
+                        name=fname,
+                        qualified_name=qualified_name,
+                        file_stable_id=file_stable_id,
+                    )
+                    symbols.append(Symbol(
+                        id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "field"),
+                        name=full_name,
+                        kind="field",
+                        language="java",
+                        path=str(file_path),
+                        span=span,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        # fresh dict + list copy per declarator: `@Foo int a, b;`
+                        # must not alias one decorators list across both fields.
+                        meta={"decorators": list(decorators)} if decorators else None,
+                        stable_id=stable_id,
+                        signature=field_type,
+                        modifiers=modifiers,
+                        # interface constants are implicitly public static final;
+                        # class/enum fields export only with an explicit `public`.
+                        is_exported=("public" in modifiers) or node.type == "constant_declaration",
+                        qualified_name=qualified_name,
+                        lines_of_code=span.end_line - span.start_line + 1,
+                    ))
+
     return symbols
 
 

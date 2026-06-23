@@ -46,10 +46,11 @@ What the gate establishes about its eight named tracker items:
   emits no `imports` edge while every other language does.
 * `WI-jusus` (emission-parity F5) adds the `emits_variable` / `emits_field`
   kind-emission columns. The JS/TS analyzer emits both (slices 1+2 — class
-  fields + module variables); python and go emit the module variable; every
-  other (language, kind) cell is a measured, strict-xfail hole a per-language
-  Wave-3 emitter fix strips. `emits_variable` is not parametrized for Java/C#
-  (no module-level variables — see `COLUMN_APPLICABILITY`).
+  fields + module variables); python and go emit the module variable; Java
+  emits class fields (its field-emission slice); every remaining (language,
+  kind) cell is a measured, strict-xfail hole a per-language Wave-3 emitter fix
+  strips. `emits_variable` is not parametrized for Java/C# (no module-level
+  variables — see `COLUMN_APPLICABILITY`).
 """
 from __future__ import annotations
 
@@ -162,8 +163,8 @@ _F5_VAR_HOLE = (
 _F5_FIELD_HOLE = (
     "WI-jusus (emission-parity F5): the {lang} analyzer emits no kind='field' "
     "Symbol for the class/struct field present in the fixture — measured "
-    "2026-06-22. Only the JS/TS analyzer emits field symbols today (slice 1); "
-    "this is the documented hole the Wave-3 {lang} field-emission fix strips."
+    "2026-06-22. JS/TS (slices 1+2) and Java emit field symbols; this is the "
+    "documented hole the Wave-3 {lang} field-emission fix strips."
 )
 KNOWN_HOLES: dict[tuple[str, str], str] = {
     # WI-jusus emission-parity F5 variable/field-kind holes (measured 2026-06-22
@@ -173,7 +174,7 @@ KNOWN_HOLES: dict[tuple[str, str], str] = {
     **{(lang, "emits_variable"): _F5_VAR_HOLE.format(lang=lang)
        for lang in ("rust", "swift")},
     **{(lang, "emits_field"): _F5_FIELD_HOLE.format(lang=lang)
-       for lang in ("python", "go", "java", "csharp", "rust", "swift")},
+       for lang in ("python", "go", "csharp", "rust", "swift")},
     # ('python','qualified_name') was a strict-xfail hole; WI-fagab populated
     # Symbol.qualified_name on py.py function/method/class symbols, so the cell
     # is now a hard lock ("every emission fix strips an xfail").
