@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **288** Python modules (132 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 62 core, 4 CLI, 33 tracker)
-- **33142** symbols (functions, classes, methods)
-- **108646** edges by type:
-  - calls: 60800
-  - contains: 22551
-  - imports: 10736
-  - instantiates: 8208
-  - references: 3848
-  - module_attr_ref: 1177
-  - other: 1326
+- **35096** symbols (functions, classes, methods)
+- **108991** edges by type:
+  - calls: 61021
+  - contains: 22634
+  - imports: 10766
+  - instantiates: 8209
+  - references: 3849
+  - module_attr_ref: 1180
+  - other: 1332
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 33142 Symbols + 108646 Edges + UsageContexts           │
+│  Output: 35096 Symbols + 108991 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -277,12 +277,12 @@ These symbols have the highest bidirectional centrality
 | `load_framework_patterns` | function | 1733.7 | framework_patterns.py |
 | `Edge.create` | method | 1588.5 | ir.py |
 | `main` | function | 1558.0 | cli.py |
-| `Path` | external_symbol | 1471.0 | <external> |
+| `Path` | external_symbol | 1474.0 | <external> |
 | `clear_pattern_cache` | function | 1334.7 | framework_patterns.py |
-| `append` | external_symbol | 1212.0 | <external> |
+| `append` | external_symbol | 1213.0 | <external> |
 | `find_files` | function | 1120.8 | discovery.py |
 | `TreeSitterAnalyzer` | class | 961.9 | base.py |
-| `get` | external_symbol | 938.0 | <external> |
+| `get` | external_symbol | 943.0 | <external> |
 
 ## Pattern System
 
@@ -831,7 +831,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 89bd38477093
+  commit: 1013753a7b59
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
