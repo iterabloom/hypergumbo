@@ -1311,6 +1311,65 @@ def _extract_symbols_from_file(
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[type_name] = symbol
 
+                        # WI-jusus (emission-parity F5): emit a kind="field"
+                        # Symbol per NAMED struct field. Embeddings carry no
+                        # field name (captured above as base_classes), so they
+                        # produce no field symbol. One field_declaration may name
+                        # several fields (`a, b int`) — emit one Symbol per name.
+                        if kind == "struct":
+                            field_list = find_child_by_type(
+                                type_node, "field_declaration_list",
+                            )
+                            for field in field_list.children if field_list else ():
+                                if field.type != "field_declaration":
+                                    continue
+                                ftype_node = find_child_by_field(field, "type")
+                                ftype = (
+                                    node_text(ftype_node, source)
+                                    if ftype_node is not None else None
+                                )
+                                f_start = field.start_point[0] + 1
+                                f_end = field.end_point[0] + 1
+                                for nn in field.children:
+                                    if nn.type != "field_identifier":
+                                        continue
+                                    fname = node_text(nn, source)
+                                    fqn = f"{type_name}.{fname}"
+                                    f_qualified = _make_go_qualified_name(
+                                        package_name, type_name, fname,
+                                    )
+                                    f_sym = Symbol(
+                                        id=make_symbol_id(
+                                            "go", str(file_path),
+                                            f_start, f_end, fqn, "field",
+                                        ),
+                                        name=fqn,
+                                        kind="field",
+                                        language="go",
+                                        path=str(file_path),
+                                        span=Span(
+                                            start_line=f_start,
+                                            end_line=f_end,
+                                            start_col=field.start_point[1],
+                                            end_col=field.end_point[1],
+                                        ),
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        modifiers=_go_visibility_modifiers(fname),
+                                        signature=ftype,
+                                        stable_id=make_typed_stable_id(
+                                            "field", ftype or "",
+                                            name=fname,
+                                            qualified_name=f_qualified,
+                                            file_stable_id=file_stable_id,
+                                        ),
+                                        lines_of_code=f_end - f_start + 1,
+                                        is_exported=bool(fname) and fname[0].isupper(),
+                                        qualified_name=f_qualified,
+                                    )
+                                    analysis.symbols.append(f_sym)
+                                    analysis.symbol_by_name[fqn] = f_sym
+
         # var declarations: interface assertions AND package-level aliases
         elif node.type == "var_declaration":
             for child in node.children:
