@@ -675,6 +675,76 @@ def _extract_symbols_from_file(
                     analysis.node_for_symbol[symbol.id] = node
                     analysis.symbol_by_name[full_name] = symbol
 
+        # WI-jusus (emission-parity F5): STORED properties / top-level bindings.
+        # A non-computed property_declaration (no computed_property child; those
+        # matched the branch above as kind="property") is either a STORED
+        # property of a type body -> kind="field", or a top-level let/var ->
+        # kind="variable". Swift uses one property_declaration node for both; the
+        # enclosing scope discriminates. Function-/closure-local bindings (parent
+        # is `statements`, not `source_file`, and no enclosing type) are skipped
+        # (module-level-only contract).
+        elif node.type == "property_declaration":
+            pat = find_child_by_type(node, "pattern")
+            id_node = find_child_by_type(pat, "simple_identifier") if pat else None
+            enclosing_type = _get_enclosing_type(node, source)
+            is_top_level = node.parent is not None and node.parent.type == "source_file"
+            if id_node is not None and (enclosing_type or is_top_level):
+                prop_name = node_text(id_node, source)
+                if enclosing_type:
+                    kind = "field"
+                    full_name = f"{enclosing_type}.{prop_name}"
+                else:
+                    kind = "variable"
+                    full_name = prop_name
+
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                modifiers = _extract_modifiers_swift(node)
+
+                # Declared type from type_annotation (None for inferred `let x = 5`).
+                type_ann = find_child_by_type(node, "type_annotation")
+                prop_type = None
+                if type_ann:
+                    for tc in type_ann.children:
+                        if tc.type in (
+                            "user_type", "array_type", "dictionary_type",
+                            "optional_type", "tuple_type", "function_type",
+                        ):
+                            prop_type = node_text(tc, source)
+                            break
+
+                type_ancestors = _get_swift_type_ancestors(node, source)
+                qualified = _make_swift_qualified_name(type_ancestors, prop_name)
+                sym = Symbol(
+                    id=make_symbol_id("swift", str(file_path), start_line, end_line, full_name, kind),
+                    name=full_name,
+                    kind=kind,
+                    language="swift",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    signature=prop_type,
+                    modifiers=modifiers,
+                    stable_id=make_typed_stable_id(
+                        kind, prop_type or "",
+                        visibility_from_modifiers(modifiers),
+                        name=prop_name, qualified_name=qualified,
+                        file_stable_id=file_stable_id,
+                    ),
+                    lines_of_code=end_line - start_line + 1,
+                    is_exported=any(m in modifiers for m in ("public", "open")),
+                    qualified_name=qualified,
+                )
+                analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
+                analysis.symbol_by_name[full_name] = sym
+
         # Subscript declaration
         elif node.type == "subscript_declaration":
             sub_label = _subscript_name(node, source)
