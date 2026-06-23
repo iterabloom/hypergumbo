@@ -1,0 +1,21 @@
+- op: create  # afdd
+  at: '2026-06-23T18:17:42Z'  # afdd
+  by: agent  # afdd
+  actor: jgstern_agent  # afdd
+  clock: 1  # afdd
+  nonce: afdd  # afdd
+  data:  # afdd
+    kind: invariant  # afdd
+    title: "C# expression-bodied properties not emitted as property symbols"  # afdd
+    status: violated  # afdd
+    priority: 3  # afdd
+    parent:  # afdd
+    tags: []  # afdd
+    isbefore: []  # afdd
+    duplicate_of: []  # afdd
+    not_duplicate_of: []  # afdd
+    pr_ref:  # afdd
+    description: "C# expression-bodied get-only properties (`public int X => expr;`) are not detected/emitted as kind=\"property\" symbols.\n\nBehavioral evidence (DEEP cohort deep-20260623-134237/cohort-001/iter-001, sherpa-csharp): WaveHeader.cs:159 `public int SampleRate => _header.SampleRate;` and :161 `public float[] Samples => _samples;` produce no property node; the whole cohort has 0 csharp property nodes despite real expression-bodied properties in the source.\n\nScope: NOT a regression of WI-jusus F5 (which added field/variable emission, not property emission). C# FIELD emission is correct (adversarial audit 11/11 field samples correct). This is a C# property-emission coverage gap -- whether regular `{ get; set; }` auto-properties emit on richer C# repos is also unverified (sherpa-onnx examples are thin). Low priority; distinct from the field/variable F5 work.\n\nFix shape: extend the C# analyzer's property detection to cover arrow/expression-bodied member declarations (`=> expr`) in addition to accessor-list properties. Discovered by adversarial ground-truth audit (workflow f5-groundtruth-audit; csharp PARTIAL). Lab notebook: notebookjournal_06232026_1411.md."  # afdd
+    fields:  # afdd
+      statement: "C# expression-bodied properties (member => expr) must emit a kind=property symbol."  # afdd
+      root_cause: "C# analyzer property detection only handles accessor-list properties, not arrow/expression-bodied member declarations, so they emit no property node."  # afdd

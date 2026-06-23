@@ -77,3 +77,26 @@
   clock: 9  # 1475
   nonce: '1475'  # 1475
   message: "F5 Swift slice merged dev 2c821f17ad — second DOUBLE strip. swift.py now emits kind='field' for stored properties inside a type body and kind='variable' for top-level let/var (both are bare property_declaration; the enclosing type discriminates via _get_enclosing_type, top-level via parent==source_file; fn-/closure-locals excluded). Computed properties stay kind='property'. Canonical make_typed_stable_id, type annotation as signature, public/open->is_exported. Strips (swift, emits_field) AND (swift, emits_variable) -> hard locks (86 passed / 9 xfailed). Swift was the LAST emits_variable hole, so EVERY emits_variable cell in the gate is now a hard lock.\n\nGATE STATUS: only ONE F5 hole remains — (python, emits_field) = python class-attribute field emission (python already emits module-level variables). Doing it next CLOSES the F5 cross-language gate entirely (every cell a hard lock). Done so far: JS/TS (both), Java/Go/C# (field), Rust/Swift (field+variable)."  # 1475
+- op: discuss  # 5968
+  at: '2026-06-23T09:40:34Z'  # 5968
+  by: agent  # 5968
+  actor: jgstern_agent  # 5968
+  clock: 10  # 5968
+  nonce: '5968'  # 5968
+  message: "F5 EMISSION-PARITY GATE FULLY CLOSED. Python class-attribute field slice merged dev 7752490cc4 (PR #4280) — the LAST strip. py.py now emits kind='field' for class-body Assign/AnnAssign (incl. dataclass fields x: int; instance attrs self.x excluded), class-scoped via assemble_stable_id. Self-analysis confirms it on hypergumbo's own substrate: ARCHITECTURE.md symbol count 33142 -> 35096 (+1954 class-field nodes), no baseline regressions. verify-generated had aged out (recorded SHA 89bd384770 fell out of the last-15 window after the session's slices) — recovered by regenerating ARCHITECTURE.md as a separate commit + AGit update push + merge-pr (NOT auto-pr, per the amend-orphan gotcha).\n\nThe emission-parity matrix (test_emission_parity_matrix.py) now has ZERO F5 holes: every emits_variable / emits_field cell is a hard lock. Eight per-language slices ratcheted the gate closed: JS/TS (fields + module vars, slices 1+2), Java (field + annotations), Go (struct field), C# (field + attributes), Rust (struct field + const/static, double strip), Swift (stored property + top-level let/var, double strip), Python (class attributes). 8 of the original strict-xfail holes were stripped; the 8 remaining matrix xfails are unrelated (java edge_imports INV-gojit + 7 entrypoint_concept WI-tosul).\n\nREMAINING WI-jusus scope (item stays todo_hard): the gate covers the 8 mainstream FIXTURE_ANALYZER languages. The long tail of OTHER analyzers (lang-common: kotlin/scala/dart/haskell/ocaml/...; lang-extended1: many) is not gated and may still not emit field/variable symbols — a future sweep, ideally gated by extending FIXTURE_ANALYZER. awaits_bakeoff_validation stays (all 8 slices are blast-radius emission changes pending DEEP cohort validation)."  # 5968
+- op: discuss  # f1f6
+  at: '2026-06-23T18:19:06Z'  # f1f6
+  by: agent  # f1f6
+  actor: jgstern_agent  # f1f6
+  clock: 11  # f1f6
+  nonce: f1f6  # f1f6
+  message: "F5 DEEP bakeoff validation COMPLETE (deep-20260623-134237/cohort-001/iter-001; 8-repo cohort express/apollo-server/caddy/spring-petclinic/zoxide/SwiftyJSON/pretix/sherpa-csharp). Deterministic matrix: all 8 langs emit field, 6 emit variable, all canonical stable_id, 0 per-file collisions, 0 incomplete; Java decorator bonus 48 decorated_by edges on fields. Adversarial ground-truth audit (8 skeptics vs real source): python/javascript/typescript/java/rust CONFIRMED right-reason (12/12 each; instance-attrs/object-literals/locals correctly excluded). swift REFUTED -> regression INV-lanaz (383 of 407 SwiftyJSON fields are method-local let/var; scope-conflation in the F5 swift slice). go PARTIAL -> pre-existing INV-sidab (function-local var leaks as module variable). csharp PARTIAL -> INV-dakit (expression-bodied properties not emitted; out of F5 field/variable scope; C# field emission itself correct 11/11). Stripping awaits_bakeoff_validation: validation performed; 5 moved langs validated right-reason, 3 defects tracked as discrete INVs. WI-jusus stays todo_hard for the non-gated analyzer tail plus INV-lanaz (swift fix = next actionable). Lab notebook notebookjournal_06232026_1411.md; repro /tmp/f5_verify.py and /tmp/f5_samples and workflow f5-groundtruth-audit."  # f1f6
+- op: update  # ee6d
+  at: '2026-06-23T18:19:06Z'  # ee6d
+  by: agent  # ee6d
+  actor: jgstern_agent  # ee6d
+  clock: 12  # ee6d
+  nonce: ee6d  # ee6d
+  set: {}  # ee6d
+  remove:  # ee6d
+    tags: [awaits_bakeoff_validation]  # ee6d
