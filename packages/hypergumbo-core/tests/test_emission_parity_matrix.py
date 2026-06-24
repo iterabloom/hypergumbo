@@ -32,6 +32,9 @@ Design (see `tests/fixtures/emission-parity/README.md` for the rationale):
   that closes the gap makes the cell XPASS, which (under `strict`) fails the
   suite and forces the maintainer to flip it to a hard lock — ratcheting the
   matrix monotonically toward full parity. Every emission fix strips an xfail.
+  The ratchet has now reached **full parity**: `KNOWN_HOLES` is empty — every
+  parametrized cell is a hard lock (see the per-item notes below for the
+  emission fixes and the one reclassification that got us here).
 
 What the gate establishes about its eight named tracker items:
 
@@ -40,10 +43,21 @@ What the gate establishes about its eight named tracker items:
   computes complexity 4, so `complexity_nontrivial` is a hard lock for all.
 * `WI-rubip`'s ambiguity is **resolved** by the injected-fixture design:
   `edge_calls` / `edge_imports` cells are now falsifiable.
-* `WI-tosul` (entrypoint concepts emitted only by Python) is the remaining
-  documented hole, locked as a strict xfail across the seven non-Python
-  fixtures. (`WI-fagab` — Python `qualified_name` — is closed and now a hard
-  lock.)
+* `WI-tosul`'s `entrypoint_concept` framing was **corrected, not stripped by an
+  emitter fix** (2026-06-24). The seven non-Python "holes" were a *measurement
+  artifact*: this gate runs analyzers in isolation, but entrypoint detection is
+  a PIPELINE concern. Entrypoints are produced downstream by four mechanisms no
+  isolated analyzer can show — always-on `main-functions.yaml` (`main_function`
+  for go/java/rust/csharp/python/...), graph-structural `script_module`
+  detection (js/ts top-level code), the connectivity-based fallback (swift), and
+  Python's inline `main_guard`. All eight languages already yield entrypoints in
+  production (empirically verified). So `entrypoint_concept` is now applicable
+  only to `python` here — its sole analyzer-level entrypoint concept — and the
+  real cross-language invariant (every language yields an entrypoint end-to-end)
+  is locked by the sibling pipeline gate `test_entrypoint_parity.py`. The
+  dead-code-maybe "Python monoculture" WI-tosul tracks is a separate *coverage*
+  problem (per-language framework/route detection), not entrypoint-existence.
+  (`WI-fagab` — Python `qualified_name` — is closed and now a hard lock.)
 * The Java `edge_imports` parity gap this gate first surfaced — Java alone
   emitted no `imports` edge — is **closed** (INV-gojit): the Java analyzer
   now emits one `imports` edge per import declaration, so the cell is a hard
@@ -136,49 +150,50 @@ COLUMNS: dict[str, Callable[[AnalysisResult], bool]] = {
 }
 
 # Columns not applicable to every language. The injected-fixture design assumes
-# a construct is universal, but module-level variables genuinely DO NOT EXIST in
-# class-only languages (Java, C#) — every value binding there is a class member
-# (measured by `emits_field`). An inapplicable cell is not parametrized at all:
-# neither a hard lock nor an xfail hole, so the gate never asserts a construct
-# the language cannot express.
+# a construct is universal, but a cell is excluded when the property is not an
+# *analyzer-emission* property for that language — so an empty cell never reads
+# as a false analyzer gap. Two reasons appear here:
+#
+#   * Construct genuinely absent: module-level variables DO NOT EXIST in
+#     class-only languages (Java, C#) — every value binding is a class member
+#     (measured by `emits_field`).
+#
+#   * Property assigned at a different layer: `entrypoint_concept` is a PIPELINE
+#     property, not an analyzer-emission one. Entrypoints are produced
+#     downstream by mechanisms no isolated analyzer can show — the always-on
+#     `main-functions.yaml` convention (`main_function` for go/java/rust/csharp/
+#     python/...), graph-structural `script_module` detection (js/ts top-level
+#     code, no inbound imports), and the connectivity-based fallback (swift).
+#     Only Python carries an *analyzer-level* entrypoint concept (`main_guard`,
+#     stamped inline by py.py on the file Symbol for the `if __name__ ==
+#     "__main__"` idiom), so `entrypoint_concept` is applicable only to python
+#     in THIS analyzer-emission matrix. The real cross-language property — that
+#     the full pipeline yields an entrypoint for every language — is verified
+#     and locked end-to-end by the sibling gate `test_entrypoint_parity.py`.
+#     (WI-tosul correction, 2026-06-24: the seven non-Python "holes" were a
+#     measurement artifact of analyzer isolation, not a real emission gap —
+#     every language already yields entrypoints in production.)
 COLUMN_APPLICABILITY: dict[str, set[str]] = {
     "emits_variable": {
         "python", "javascript", "typescript", "go", "rust", "swift",
     },
+    "entrypoint_concept": {"python"},
 }
 
-# (fixture_language, column) -> xfail reason. Measured 2026-06-11. Each is a
-# documented analyzer-emission HOLE the gate LOCKS via strict xfail; a Wave-3
-# emitter fix XPASS-trips it and forces a flip to a hard lock.
-_WI_TOSUL = (
-    "WI-tosul: only the Python analyzer emits entrypoint concepts "
-    "(Symbol.meta['concepts'] / usage_contexts) during analysis; this is the "
-    "single upstream cause of the dead-code-maybe Python monoculture. "
-    "Per-language entrypoint-concept emission is the Wave-3 fix that strips "
-    "this xfail."
-)
-KNOWN_HOLES: dict[tuple[str, str], str] = {
-    # WI-jusus emission-parity F5 is FULLY CLOSED: `emits_variable` and
-    # `emits_field` are hard locks for every applicable (language, kind) cell.
-    # Every analyzer emits variable + field symbols where the construct exists
-    # (js/ts/python/go/rust/swift module variables; js/ts/java/go/csharp/rust/
-    # swift/python class-or-struct fields); java/csharp have no module-level
-    # variables (not parametrized). No F5 holes remain — see git history for the
-    # eight per-language slices that ratcheted them away.
-    # ('python','qualified_name') was a strict-xfail hole; WI-fagab populated
-    # Symbol.qualified_name on py.py function/method/class symbols, so the cell
-    # is now a hard lock ("every emission fix strips an xfail").
-    # ('java','edge_imports') was a strict-xfail hole; INV-gojit wired
-    # java.py `_extract_import_edges` to emit one `imports` edge per import
-    # declaration (regular / static / wildcard), so the cell is now a hard
-    # lock — the last imports-emission holdout among mainstream analyzers.
-    **{
-        (lang, "entrypoint_concept"): _WI_TOSUL
-        for lang in (
-            "javascript", "typescript", "go", "java", "rust", "csharp", "swift",
-        )
-    },
-}
+# (fixture_language, column) -> xfail reason. The ratchet has reached full
+# parity: every parametrized cell is now a hard lock, so KNOWN_HOLES is empty.
+# Cells that USED to be holes, for the record:
+#   * WI-jusus emission-parity F5 (`emits_variable` / `emits_field`): closed by
+#     eight per-language slices; every applicable cell is a hard lock.
+#   * ('python','qualified_name'): WI-fagab populated Symbol.qualified_name on
+#     py.py function/method/class symbols — now a hard lock.
+#   * ('java','edge_imports'): INV-gojit wired java.py `_extract_import_edges`
+#     to emit one `imports` edge per import declaration — now a hard lock.
+#   * (7x 'entrypoint_concept'): NOT closed by an emitter fix but RECLASSIFIED
+#     (WI-tosul correction) — entrypoint detection is a pipeline property, so
+#     these cells are no longer parametrized (see COLUMN_APPLICABILITY) and the
+#     real invariant moved to `test_entrypoint_parity.py`.
+KNOWN_HOLES: dict[tuple[str, str], str] = {}
 
 
 @pytest.fixture(scope="module")
