@@ -3153,8 +3153,14 @@ def refine_frameworks(
     Only applies in AUTO mode — explicit/all/none modes are returned
     unchanged because the user specified the frameworks intentionally.
 
-    For languages that don't emit import edges (e.g., Java), frameworks
-    are kept as confirmed to avoid false negatives.
+    For languages whose analyzer emits no ``imports`` edges, frameworks
+    are kept as confirmed to avoid false negatives (the ``fw_langs &
+    import_edge_langs`` guard in the demote loop). Java *does* now emit
+    import edges (INV-gojit), so Java/Kotlin frameworks participate in
+    the prod-vs-dev demotion like every other import-emitting language —
+    their import-module patterns are matched against the full Java import
+    specifier (``import org.springframework.boot.X`` prefix-matches the
+    ``org.springframework.boot`` pattern).
 
     Args:
         profile: The repo profile with candidate frameworks from manifest

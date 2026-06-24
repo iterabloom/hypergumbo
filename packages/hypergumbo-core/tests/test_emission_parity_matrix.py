@@ -40,10 +40,14 @@ What the gate establishes about its eight named tracker items:
   computes complexity 4, so `complexity_nontrivial` is a hard lock for all.
 * `WI-rubip`'s ambiguity is **resolved** by the injected-fixture design:
   `edge_calls` / `edge_imports` cells are now falsifiable.
-* `WI-fagab` (Python `qualified_name`) and `WI-tosul` (entrypoint concepts
-  emitted only by Python) are the documented holes, locked as strict xfails.
-* A previously-unfiled parity gap is surfaced and locked: the Java analyzer
-  emits no `imports` edge while every other language does.
+* `WI-tosul` (entrypoint concepts emitted only by Python) is the remaining
+  documented hole, locked as a strict xfail across the seven non-Python
+  fixtures. (`WI-fagab` — Python `qualified_name` — is closed and now a hard
+  lock.)
+* The Java `edge_imports` parity gap this gate first surfaced — Java alone
+  emitted no `imports` edge — is **closed** (INV-gojit): the Java analyzer
+  now emits one `imports` edge per import declaration, so the cell is a hard
+  lock like every other language's.
 * `WI-jusus` (emission-parity F5) adds the `emits_variable` / `emits_field`
   kind-emission columns, now FULLY CLOSED (every applicable cell is a hard lock).
   Every analyzer with module-level variables (python/js/ts/go/rust/swift) emits
@@ -164,14 +168,10 @@ KNOWN_HOLES: dict[tuple[str, str], str] = {
     # ('python','qualified_name') was a strict-xfail hole; WI-fagab populated
     # Symbol.qualified_name on py.py function/method/class symbols, so the cell
     # is now a hard lock ("every emission fix strips an xfail").
-    ("java", "edge_imports"): (
-        "INV-gojit: Java analyzer emits no `imports` edge for ANY `import` "
-        "declaration — verified general, not stdlib-specific: zero imports "
-        "edges on both a stdlib `import java.util.List` and a non-stdlib "
-        "`import com.example.helper.Formatter` (only `calls` edges produced). "
-        "Every other mainstream analyzer emits >=1 imports edge on this "
-        "fixture; C# emits 2 for `using System`. Surfaced by this gate."
-    ),
+    # ('java','edge_imports') was a strict-xfail hole; INV-gojit wired
+    # java.py `_extract_import_edges` to emit one `imports` edge per import
+    # declaration (regular / static / wildcard), so the cell is now a hard
+    # lock — the last imports-emission holdout among mainstream analyzers.
     **{
         (lang, "entrypoint_concept"): _WI_TOSUL
         for lang in (
