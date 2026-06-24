@@ -1,0 +1,21 @@
+- op: create  # 89b5
+  at: '2026-06-24T09:25:47Z'  # 89b5
+  by: agent  # 89b5
+  actor: jgstern_agent  # 89b5
+  clock: 1  # 89b5
+  nonce: 89b5  # 89b5
+  data:  # 89b5
+    kind: work_item  # 89b5
+    title: "Swift main.swift / @main top-level code not detected as a structural entrypoint (only connectivity fallback)"  # 89b5
+    status: todo_soft  # 89b5
+    priority: 3  # 89b5
+    parent:  # 89b5
+    tags:  # 89b5
+    - analysis_quality  # 89b5
+    - dead_code  # 89b5
+    isbefore: []  # 89b5
+    duplicate_of: []  # 89b5
+    not_duplicate_of: []  # 89b5
+    pr_ref:  # 89b5
+    description: "Swift main.swift top-level code is THE program entry point, but hypergumbo detects it only via the connectivity_based fallback (graph centrality), not a structural rule. A structural detector — file named main.swift carrying top-level executable code, or an @main-attributed type — should emit a main_function / script_module-equivalent entrypoint concept. Surfaced during the WI-tosul investigation (2026-06-24): on the emission-parity swift fixture (main.swift with a top-level Service().run()), run_behavior_map yields only connectivity_based entrypoints. The pipeline gate test_entrypoint_parity.py deliberately locks swift at >=1 entrypoint of ANY kind so this improvement will not falsely break it. Right-reason refinement (detection works today, but for the wrong reason). See lab notebook notebookjournal_06242026_0440.md and the entrypoint-parity-gate branch."  # 89b5
+    fields: {}  # 89b5

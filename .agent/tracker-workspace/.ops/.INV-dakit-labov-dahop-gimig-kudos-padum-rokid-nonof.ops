@@ -19,3 +19,10 @@
     fields:  # afdd
       statement: "C# expression-bodied properties (member => expr) must emit a kind=property symbol."  # afdd
       root_cause: "C# analyzer property detection only handles accessor-list properties, not arrow/expression-bodied member declarations, so they emit no property node."  # afdd
+- op: discuss  # 42c6
+  at: '2026-06-24T01:31:54Z'  # 42c6
+  by: agent  # 42c6
+  actor: jgstern_agent  # 42c6
+  clock: 2  # 42c6
+  nonce: 42c6  # 42c6
+  message: "Deferred (human decision, 2026-06-23). Distinct from the F5 field/variable emission work (this is C# PROPERTY emission), lower priority (P3), and not a regression. Unblock condition: a richer C# application repo than the sherpa-onnx dotnet-examples (which are thin ONNX example programs) to validate property emission against — the cohort could only confirm the field side. Stays violated (live gap); fix shape recorded above (extend C# property detection to arrow/expression-bodied member declarations)."  # 42c6

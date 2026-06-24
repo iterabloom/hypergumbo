@@ -19,3 +19,18 @@
     fields:  # 8802
       statement: "An emitted go variable symbol must be a package (file) scope var, never a function-local var."  # 8802
       root_cause: "go var_declaration emission does not restrict to package/file scope; function-local var declarations are emitted as module variables."  # 8802
+- op: update  # 7a11
+  at: '2026-06-23T21:53:03Z'  # 7a11
+  by: agent  # 7a11
+  actor: jgstern_agent  # 7a11
+  clock: 2  # 7a11
+  nonce: 7a11  # 7a11
+  set:  # 7a11
+    status: satisfied  # 7a11
+- op: discuss  # ba14
+  at: '2026-06-23T21:53:04Z'  # ba14
+  by: agent  # ba14
+  actor: jgstern_agent  # ba14
+  clock: 3  # ba14
+  nonce: ba14  # ba14
+  message: "Fixed in PR #4284 (merged origin/dev=e6b5efd710). Behavioral evidence (closure-evidence discipline): re-ran the filed repro on the merged fix. caddy go variable 98->89; the audited leak (function-local var handler in modules/caddyhttp/tracing/module_test.go) is GONE. Right-reason verified two ways: (1) deterministic dropped-set = all 9 dropped are genuine function/block-locals (var body io.Reader = resp.Body at healthchecks.go:520, var ptr any = rawCfg at admin.go:1193, test-body handler/next/w/unhealthy), 0 package-level vars dropped; (2) adversarial ground-truth audit of 15 sampled remaining go variables -> 15/15 confirmed package-scope (incl grouped var blocks), 0 misclassified. Root-cause fix: variable emission gated on the var_declaration direct parent being source_file (package/file scope); function/block-local var (parent statement_list) skipped. Interface-assertion detection still runs for every var_spec regardless of scope (unchanged). Production-path regression test TestGoVarAliasExtraction::test_skips_function_local_var (red->green); 4840 passed, 100% coverage; go emission-parity hard locks green. Same scope-conflation class as INV-lanaz."  # ba14

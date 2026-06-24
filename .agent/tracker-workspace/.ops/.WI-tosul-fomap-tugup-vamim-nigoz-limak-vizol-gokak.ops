@@ -38,3 +38,10 @@
   clock: 3  # 8db0
   nonce: 8db0  # 8db0
   message: "emission-parity:F1 / G2 gate (PR #4202) adds the entrypoint_concept row: only the Python analyzer emits entrypoint concepts (Symbol.meta concepts list / usage_contexts); js/ts/go/java/rust/csharp/swift all emit zero — locked as strict-xfail (the js/ts fixtures carry a top-level entrypoint idiom so the cell is falsifiable, not construct-absent). This is the upstream cause of the dead-code-maybe Python monoculture. The Wave-3 per-language EP-concept emission fix will XPASS-trip these 7 cells. Stays todo_hard."  # 8db0
+- op: discuss  # 9ef5
+  at: '2026-06-24T09:24:33Z'  # 9ef5
+  by: agent  # 9ef5
+  actor: jgstern_agent  # 9ef5
+  clock: 4  # 9ef5
+  nonce: 9ef5  # 9ef5
+  message: "Investigation (2026-06-24, lab notebook notebookjournal_06242026_0440.md) found the entrypoint_concept matrix-xfail framing was a MEASUREMENT ARTIFACT, not a real gap. The emission-parity matrix runs analyzers in isolation, but entrypoint detection is a PIPELINE concern: all 8 emission-parity fixtures already yield entrypoints in the full pipeline via four mechanisms (always-on main-functions.yaml -> main_function for go/java/rust/csharp/python; graph-structural script_module for js/ts; connectivity_based fallback for swift; python inline main_guard). Verified empirically via run_behavior_map on every fixture. Emitting entrypoint concepts inline per-analyzer would be redundant gate-gaming (duplicates the centralized convention layer; enrich_symbols would clobber it). Corrected the gate instead: restricted entrypoint_concept matrix applicability to python (its sole analyzer-level entrypoint concept), KNOWN_HOLES now empty (matrix at full parity), and added a pipeline-level gate test_entrypoint_parity.py locking the real cross-language invariant. Landing via branch jgstern-agent/refactor/entrypoint-parity-gate (merge pending Codeberg remote recovery; queued as vPR). WI-tosul STAYS OPEN, re-scoped to its actual substance: the dead-code-maybe Python monoculture is a COVERAGE problem (per-language framework/route detection breadth), distinct from entrypoint-existence."  # 9ef5

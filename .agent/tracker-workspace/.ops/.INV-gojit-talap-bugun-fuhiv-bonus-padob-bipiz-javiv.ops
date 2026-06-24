@@ -21,3 +21,18 @@
     fields:  # 8b4e
       statement: "The Java analyzer must emit an imports edge for each import declaration, at parity with every other mainstream analyzer; it currently emits zero. Verified on both a stdlib (import java.util.List) and a non-stdlib (import com.example.helper.Formatter) import — only calls edges are produced. C# emits 2 imports edges for using System, proving stdlib imports are edge-worthy in a sibling analyzer."  # 8b4e
       root_cause: "The Java analyzer extracts call edges but never emits an imports edge for import declarations (java.py import handling produces no Edge of type=imports). Every other mainstream analyzer (python/javascript/typescript/go/rust/csharp/swift) emits >=1 imports edge on the same uniform fixture."  # 8b4e
+- op: update  # f90c
+  at: '2026-06-24T06:23:30Z'  # f90c
+  by: agent  # f90c
+  actor: jgstern_agent  # f90c
+  clock: 2  # f90c
+  nonce: f90c  # f90c
+  set:  # f90c
+    status: satisfied  # f90c
+- op: discuss  # a8ca
+  at: '2026-06-24T06:23:30Z'  # a8ca
+  by: agent  # a8ca
+  actor: jgstern_agent  # a8ca
+  clock: 3  # a8ca
+  nonce: a8ca  # a8ca
+  message: "Closed by PR #4286. Java analyzer now emits one imports edge per import declaration. Behavioral evidence: (1) Filed repro reproduced as TDD test TestJavaImportEdges.test_regular_and_stdlib_imports_emit_edges — a file with import java.util.List and import com.example.helper.Formatter previously emitted 0 imports edges (only calls); now emits both. (2) Ground-truth on spring-petclinic (47 files): 427 imports edges == 427 distinct source import specifiers, 0 missing, 0 spurious. (3) Emission-parity matrix cell (java, edge_imports) is now a passing hard lock (strict-xfail stripped). Static and wildcard imports covered; full import path in the module slot (parity with Go/C#) keeps spring-boot confirmed in refine_frameworks."  # a8ca
