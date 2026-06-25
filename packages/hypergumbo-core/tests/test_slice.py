@@ -804,6 +804,39 @@ class TestSliceQuery:
         d = query.to_dict()
         assert d["hub_threshold"] == 50
 
+    def test_query_to_dict_includes_min_confidence_when_nonzero(self) -> None:
+        """INV-rakot: a non-zero min_confidence is echoed in feature.query."""
+        query = SliceQuery(entrypoint="bar", min_confidence=0.5)
+        d = query.to_dict()
+        assert d["min_confidence"] == 0.5
+
+    def test_query_to_dict_omits_min_confidence_at_default(self) -> None:
+        """min_confidence is omitted at the 0.0 default (did not influence the
+        slice) — keeps the feature_id stable for confidence-unfiltered slices."""
+        query = SliceQuery(entrypoint="bar")
+        d = query.to_dict()
+        assert "min_confidence" not in d
+
+    def test_query_to_dict_echoes_all_influential_params_invrakot(self) -> None:
+        """INV-rakot round-trip guard: every CLI-influential param set to a
+        non-default value must appear in the feature.query echo, so the slice
+        is reproducible from its JSON alone. This catches the drift class where
+        a newly-added flag is forgotten in to_dict()."""
+        query = SliceQuery(
+            entrypoint="e", max_hops=4, max_files=7, min_confidence=0.5,
+            exclude_tests=True, exclude_utility=True, method="bfs", reverse=True,
+            max_tier=2, language="python", hub_threshold=3, exclude_imports=True,
+            dataflow=True,
+        )
+        d = query.to_dict()
+        for key in (
+            "method", "entrypoint", "hops", "max_files", "min_confidence",
+            "exclude_tests", "exclude_utility", "reverse", "max_tier",
+            "language", "hub_threshold", "exclude_imports", "pass_through_kinds",
+            "dataflow",
+        ):
+            assert key in d, f"{key} missing from feature.query echo (INV-rakot)"
+
 
 class TestIsTestFile:
     """Tests for test file detection patterns."""

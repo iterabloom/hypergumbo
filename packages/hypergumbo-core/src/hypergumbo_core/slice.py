@@ -223,6 +223,12 @@ class SliceQuery:
             "exclude_utility": self.exclude_utility,
             "reverse": self.reverse,
         }
+        if self.min_confidence:
+            # INV-rakot: echo the confidence threshold so the slice is
+            # reproducible from its JSON. Omitted at the 0.0 default (no
+            # filtering, so it did not influence the slice) — consistent with
+            # the other conditional echoes and stable for the feature_id hash.
+            result["min_confidence"] = self.min_confidence
         if self.max_tier is not None:
             result["max_tier"] = self.max_tier
         if self.language is not None:
