@@ -59,3 +59,25 @@
   clock: 5  # 7a67
   nonce: 7a67  # 7a67
   message: "Scoped + verified: partially reproduces (single-occurrence edge.types). Root cause: edge_types.py:141-144 'inherits' (1 emission) is synonymous with 'extends' (147); html.py:158 'script_src' (1); 'overrides' (1). edge.type is the ADR-0023 heavyweight registry axis — folding values needs ADR work. DECISION NEEDED: (1) inheritance consolidation strategy (extends vs inherits vs implements — overlaps WI-moliz; ADR-0023 doesn't name a canonical); (2) script_src migration to references+meta['construct'] timing; (3) overrides disposition. Awaiting your consolidation-vocabulary call."  # 7a67
+- op: discuss  # bfdd
+  at: '2026-06-25T17:05:16Z'  # bfdd
+  by: agent  # bfdd
+  actor: jgstern_agent  # bfdd
+  clock: 6  # bfdd
+  nonce: bfdd  # bfdd
+  message: "HUMAN RULING (2026-06-25 interview): the 'three vestigial singletons' premise is a CORPUS ARTIFACT, not vestigial-ness (producer audit). (1) **inherits → KEEP**: registered AXIS_RELATIONSHIP, ADR-0023-protected 'distinct construct', emitted by solidity (`is`) + bitbake (`inherit`), CONSUMED by cli.py:5662's {extends,inherits,implements} inheritance grouping; the single corpus occurrence reflects the Python-heavy dogfood corpus having ~no Solidity/BitBake, NOT deadness. No fold. (2) **overrides → KEEP**: registered AXIS_RELATIONSHIP, emitted by solidity's `override`; same corpus story. ALSO add `overrides` to ADR-0023's prose 'NOT subject to deprecation' list for clarity (registered-relationship but unnamed there). (3) **script_src → MIGRATE** (the one real fix; a known migration, not a fold): it's on AXIS_ENDPOINT_SHAPE (a construct, not a relationship) and ADR-0023:541 already lists it a migration candidate. html.py emits edge_type='references' + meta['construct']='script_src' per ADR-0023's endpoint-shape->relationship+meta pattern. Cross-language CONSISTENCY of extends/inherits/implements stays WI-moliz's concern. Decision-gate cleared."  # bfdd
+- op: update  # 31e8
+  at: '2026-06-25T18:41:26Z'  # 31e8
+  by: agent  # 31e8
+  actor: jgstern_agent  # 31e8
+  clock: 7  # 31e8
+  nonce: '31e8'  # 31e8
+  set:  # 31e8
+    status: satisfied  # 31e8
+- op: discuss  # 5b06
+  at: '2026-06-25T18:41:26Z'  # 5b06
+  by: agent  # 5b06
+  actor: jgstern_agent  # 5b06
+  clock: 8  # 5b06
+  nonce: 5b06  # 5b06
+  message: "Implemented in commit 730a297975 (origin/dev) per the 2026-06-25 human ruling. (1) inherits + overrides KEPT (corpus-artifact, not vestigial — Solidity/BitBake producers under-represented in the Python-heavy dogfood corpus); overrides ADDED to ADR-0023's prose not-deprecate list. (2) script_src MIGRATED: html.py now emits edge_type='references' + meta['construct']='script_src' (new registered construct meta key, replacing the framework_dispatch='html_script_src' misuse — no consumer). script_src stays registered-as-deprecated per the endpoint-shape convention (cf. http_calls/grpc_calls). Behavioral evidence — production-path tests: test_html_analysis.py + BRANCHES_test_html.py now assert the script edge is type='references' with meta['construct']=='script_src' (was edge_type 'script_src'). 100% coverage; full affected suite 10831 passed. Cross-language extends/inherits/implements consistency remains WI-moliz."  # 5b06

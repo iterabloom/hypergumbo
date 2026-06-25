@@ -89,3 +89,18 @@
   clock: 9  # 9a90
   nonce: 9a90  # 9a90
   message: "HUMAN RULING (2026-06-25 interview): split file-locality out of call_construct into a NEW registered edge.meta key **call_locality** (NOT a typed Edge field), bounded-enum values same_file/cross_file, declared per ADR-0024 (lightweight axis). Implementation: bash.py:459 + objc.py:599 stop writing 'cross_file' into meta['call_construct'] and instead set meta['call_locality']='cross_file' (and 'same_file' on the same-file branch where applicable). Confirms the decision-register through-line (one axis per field) + the D1b/D6a meta-key precedent. Decision-gate CLEARED — now implementable; remains violated until the fix lands."  # 9a90
+- op: update  # 998c
+  at: '2026-06-25T17:53:48Z'  # 998c
+  by: agent  # 998c
+  actor: jgstern_agent  # 998c
+  clock: 10  # 998c
+  nonce: 998c  # 998c
+  set:  # 998c
+    status: satisfied  # 998c
+- op: discuss  # fbd7
+  at: '2026-06-25T17:53:48Z'  # fbd7
+  by: agent  # fbd7
+  actor: jgstern_agent  # fbd7
+  clock: 11  # fbd7
+  nonce: fbd7  # fbd7
+  message: "Implemented in commit 0a3fbb77cf (origin/dev) per the 2026-06-25 human ruling. File-locality split out of call_construct into a new registered edge.meta key call_locality (axis_meta_keys.py, AXIS_EDGE_META, ADR-0024). bash.py + objc.py now write meta={'call_locality':'cross_file'} on cross-file calls and no longer write call_construct there (it only ever held the locality misuse — no construct value lost). Sparse per convention: cross_file stamped on boundary-crossing calls; absent = same-file. Behavioral evidence — production-path tests: test_bash.py::test_extracts_cross_file_call_edges and test_objc.py::test_extracts_cross_file_call_edges now assert the cross-file edge carries meta['call_locality']=='cross_file' AND 'call_construct' not in meta. 100% coverage; full affected suite 10831 passed."  # fbd7
