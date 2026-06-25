@@ -52,3 +52,10 @@
     tags: [dogfood]  # 4ba6
   remove:  # 4ba6
     tags: [dogfooding]  # 4ba6
+- op: discuss  # 7a67
+  at: '2026-06-25T08:40:22Z'  # 7a67
+  by: agent  # 7a67
+  actor: jgstern_agent  # 7a67
+  clock: 5  # 7a67
+  nonce: 7a67  # 7a67
+  message: "Scoped + verified: partially reproduces (single-occurrence edge.types). Root cause: edge_types.py:141-144 'inherits' (1 emission) is synonymous with 'extends' (147); html.py:158 'script_src' (1); 'overrides' (1). edge.type is the ADR-0023 heavyweight registry axis — folding values needs ADR work. DECISION NEEDED: (1) inheritance consolidation strategy (extends vs inherits vs implements — overlaps WI-moliz; ADR-0023 doesn't name a canonical); (2) script_src migration to references+meta['construct'] timing; (3) overrides disposition. Awaiting your consolidation-vocabulary call."  # 7a67

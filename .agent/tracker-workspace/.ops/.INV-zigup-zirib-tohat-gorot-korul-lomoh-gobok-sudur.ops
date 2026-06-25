@@ -77,3 +77,10 @@
     tags: [dogfood]  # 7a86
   remove:  # 7a86
     tags: [dogfooding]  # 7a86
+- op: discuss  # ad77
+  at: '2026-06-25T08:40:23Z'  # ad77
+  by: agent  # ad77
+  actor: jgstern_agent  # ad77
+  clock: 8  # ad77
+  nonce: ad77  # ad77
+  message: "Scoped + verified: reproduces. Root cause: dependency.py:158-169 + html.py:155-166 emit cross-language edges without meta.cross_language; websocket/http compute it but synthetic dst nodes have language=None making it unverifiable; field is both under- and over-populated. DECISION NEEDED (architecture): (a) DELETE meta.cross_language and derive at query time from src/dst node languages (one source of truth), or (b) centralize via a post-linker stamping pass (backward-compat, more complexity) — plus the language=None synthetic-node question (ADR-0031). Awaiting your delete-vs-centralize call."  # ad77

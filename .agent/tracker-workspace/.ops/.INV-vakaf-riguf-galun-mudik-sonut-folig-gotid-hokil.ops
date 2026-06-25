@@ -75,3 +75,17 @@
   clock: 7  # 75e6
   nonce: '75e6'  # 75e6
   message: "RELATED_BUT_DISTINCT to INV-lajov: call_construct axis-mixing (vakaf) vs construct/call_construct name-collision between two disjoint fields (lajov); distinct fixes. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 75e6
+- op: discuss  # bc6e
+  at: '2026-06-25T08:40:22Z'  # bc6e
+  by: agent  # bc6e
+  actor: jgstern_agent  # bc6e
+  clock: 8  # bc6e
+  nonce: bc6e  # bc6e
+  message: "Scoped + verified (read-only workflow, dev HEAD): reproduces. Root cause: bash.py:459 + objc.py:599 set meta['call_construct']='cross_file' when a call crosses a file boundary — but call_construct should encode only the AST construct type, not file-locality (a separate axis). Fix shape: move 'cross_file' to a new bounded-enum meta field (same_file/cross_file). DECISION NEEDED (why not auto-fixed): the new axis's NAME (call_locality / locality / call_scope) and whether it's a registered AXIS_EDGE_META key vs a typed Edge field — ADR-0024 axis-declaration discipline requires explicit declaration BEFORE adding. Awaiting your axis-naming/declaration call."  # bc6e
+- op: discuss  # 9a90
+  at: '2026-06-25T15:09:08Z'  # 9a90
+  by: agent  # 9a90
+  actor: jgstern_agent  # 9a90
+  clock: 9  # 9a90
+  nonce: 9a90  # 9a90
+  message: "HUMAN RULING (2026-06-25 interview): split file-locality out of call_construct into a NEW registered edge.meta key **call_locality** (NOT a typed Edge field), bounded-enum values same_file/cross_file, declared per ADR-0024 (lightweight axis). Implementation: bash.py:459 + objc.py:599 stop writing 'cross_file' into meta['call_construct'] and instead set meta['call_locality']='cross_file' (and 'same_file' on the same-file branch where applicable). Confirms the decision-register through-line (one axis per field) + the D1b/D6a meta-key precedent. Decision-gate CLEARED — now implementable; remains violated until the fix lands."  # 9a90

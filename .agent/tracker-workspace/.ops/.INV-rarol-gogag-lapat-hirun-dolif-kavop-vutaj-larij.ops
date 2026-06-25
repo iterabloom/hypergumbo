@@ -51,3 +51,10 @@
   clock: 5  # 1028
   nonce: '1028'  # 1028
   message: "[+ tranch_04: WI-dazob — related (card 020/F68.A3): explain ALSO silently degrades on stripped/renamed substrate fields (drops Supply-chain line, prints unknown edge type verbatim, no field-presence/unknown-type guard) and lacks a registry-backed friendly edge-type label table (F80.A1) — a distinct explain-renderer defect from this heading-partition breach.]"  # 1028
+- op: discuss  # a18f
+  at: '2026-06-25T08:40:22Z'  # a18f
+  by: agent  # a18f
+  actor: jgstern_agent  # a18f
+  clock: 6  # a18f
+  nonce: a18f  # a18f
+  message: "Scoped + verified: reproduces. Two issues in cli.py explain: (1) _print_edge_provenance (~1948-1955) returns early when derived_from is empty — and only linker-produced edges populate derived_from, so analyzer edges show nothing for --provenance; (2) section-header semantics. DECISION NEEDED: for (1) add-a-notice vs extend-derived_from-to-all-edges (structural) vs doc-update; for (2) partition-by-edge-type (verbose) vs rename to Incoming/Outgoing. Awaiting your contract-shape call."  # a18f

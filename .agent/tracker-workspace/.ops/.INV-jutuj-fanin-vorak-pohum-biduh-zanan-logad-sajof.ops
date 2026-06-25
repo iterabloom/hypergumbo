@@ -77,3 +77,18 @@
     tags: [dogfood]  # 1843
   remove:  # 1843
     tags: [dogfooding]  # 1843
+- op: update  # ad34
+  at: '2026-06-25T10:50:09Z'  # ad34
+  by: agent  # ad34
+  actor: jgstern_agent  # ad34
+  clock: 8  # ad34
+  nonce: ad34  # ad34
+  set:  # ad34
+    status: satisfied  # ad34
+- op: discuss  # 7dde
+  at: '2026-06-25T10:50:09Z'  # 7dde
+  by: agent  # 7dde
+  actor: jgstern_agent  # 7dde
+  clock: 9  # 7dde
+  nonce: 7dde  # 7dde
+  message: "Fixed in commit ff1ae12390 (origin/dev). Behavioral evidence — main()-level repro: 'routes --path <repo> --format json' now returns rc 0 with parseable JSON {schema_version, view:'routes', routes:[{route_path:'/x',...}]} on stdout (was: text-only, no --format flag → no machine-readable output). Implemented --format {text,json} on the routes subparser + a JSON branch in cmd_routes using a shared _route_json_record helper (mirrors the text renderer's extraction for both concept-enriched and kind='route'/framework_role symbols); summary goes to stderr so stdout stays pure JSON; empty result emits {'routes':[]} not the 'No API routes found' text. Production-path tests: test_cli_routes.py::{test_cmd_routes_format_json_emits_records, test_cmd_routes_format_json_empty_is_valid_json}. CLI flag matrix regenerated. 100% coverage. NOTE: parity gap is now closed for routes; the broader WI-gogif umbrella (format-flag consistency across the remaining ~text-only subcommands) is separate."  # 7dde
