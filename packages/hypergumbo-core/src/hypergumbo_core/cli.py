@@ -2002,6 +2002,64 @@ def _estimate_tokens(text: str) -> int:
     return _shared_estimate_tokens(text)
 
 
+# INV-rarol: explain sections partition by edge TYPE, not just direction, so a
+# section's label matches the edge semantics of its entries (a "Called by"
+# count must mean callers, not callers+containers+instantiators summed). Maps
+# edge_type -> (incoming label, outgoing label). Unmapped types fall back to a
+# direction-qualified canonical-name label.
+_EXPLAIN_EDGE_LABELS: Dict[str, tuple] = {
+    "calls": ("Called by", "Calls"),
+    "contains": ("Contained by", "Contains"),
+    "instantiates": ("Instantiated by", "Instantiates"),
+    "references": ("Referenced by", "References"),
+    "module_attr_ref": ("Attr-referenced by", "Attr-references"),
+    "extends": ("Extended by", "Extends"),
+    "implements": ("Implemented by", "Implements"),
+    "inherits": ("Inherited by", "Inherits"),
+    "overrides": ("Overridden by", "Overrides"),
+    "imports": ("Imported by", "Imports"),
+    "decorated_by": ("Decorated by", "Decorates"),
+    "dispatches_to": ("Dispatched-to by", "Dispatches to"),
+    "uses": ("Used by", "Uses"),
+}
+
+
+def _render_explain_edge_sections(
+    items: list,
+    direction: str,
+    default_label: str,
+    show_provenance: bool,
+    nodes_by_id: Dict[str, Dict[str, Any]],
+) -> None:
+    """Print explain edge sections grouped by edge type (INV-rarol).
+
+    ``items`` are the caller/callee tuples
+    ``(in_degree, name, path, line, id, node, edge_type, edge_dict)``.
+    ``direction`` is ``"in"`` (incoming) or ``"out"`` (outgoing). Each section
+    header names the actual relationship (``Called by`` counts only ``calls``;
+    ``Instantiated by`` lists ``instantiates``), so the count matches the
+    entries' semantics instead of summing mixed edge types under one direction
+    label. Types are rendered in a stable (alphabetical) order.
+    """
+    if not items:
+        print(f"  {default_label}: (none)")
+        return
+    by_type: Dict[str, list] = {}
+    for it in items:
+        by_type.setdefault(it[6] or "", []).append(it)
+    for etype in sorted(by_type):
+        group = by_type[etype]
+        inc_label, out_label = _EXPLAIN_EDGE_LABELS.get(
+            etype, (f"Incoming '{etype}'", f"Outgoing '{etype}'")
+        )
+        label = inc_label if direction == "in" else out_label
+        print(f"  {label} ({len(group)}):")
+        for item in group:
+            print(f"    - {item[1]} ({item[2]}:{item[3]})")
+            if show_provenance:
+                _print_edge_provenance(item[7], nodes_by_id)
+
+
 def _print_edge_provenance(
     edge_dict: Dict[str, Any],
     nodes_by_id: Dict[str, Dict[str, Any]],
@@ -2009,6 +2067,13 @@ def _print_edge_provenance(
     """Print derivation chain details for an edge (--provenance mode)."""
     derived_from = edge_dict.get("derived_from")
     if not derived_from:
+        # INV-rarol: --provenance must have a VISIBLE effect even on edges with
+        # no derivation chain (previously this returned silently, making
+        # `explain --provenance` byte-identical to the no-flag form for the
+        # analyzer-produced edges that dominate most symbols). derived_from is
+        # recorded only on linker-inferred edges; say so. Extending it to every
+        # edge is the deferred structural half (declared-fields:F5).
+        print("      (no derivation chain — analyzer-produced edge)")
         return
     resolved = []
     for sym_id in derived_from:
@@ -2302,29 +2367,14 @@ def cmd_explain(args: argparse.Namespace) -> int:
         # WI-dubum: print both summaries before any source dumps so the
         # call-graph signal isn't buried beneath hundreds of lines of
         # source code.
-        # Display callers summary
+        # Display incoming/outgoing summaries, partitioned by edge type so each
+        # section label matches its entries' relationship (INV-rarol).
         print()
-        if callers:
-            print(f"  Called by ({len(callers)}):")
-            for _, caller_name, caller_path, caller_line, _, _, edge_type, edge_dict in callers:
-                edge_annotation = f" [{edge_type}]" if edge_type else ""
-                print(f"    - {caller_name} ({caller_path}:{caller_line}){edge_annotation}")
-                if show_provenance:
-                    _print_edge_provenance(edge_dict, nodes_by_id)
-        else:
-            print("  Called by: (none)")
-
-        # Display callees summary
+        _render_explain_edge_sections(
+            callers, "in", "Called by", show_provenance, nodes_by_id)
         print()
-        if callees:
-            print(f"  Calls ({len(callees)}):")
-            for _, callee_name, callee_path, callee_line, _, _, edge_type, edge_dict in callees:
-                edge_annotation = f" [{edge_type}]" if edge_type else ""
-                print(f"    - {callee_name} ({callee_path}:{callee_line}){edge_annotation}")
-                if show_provenance:
-                    _print_edge_provenance(edge_dict, nodes_by_id)
-        else:
-            print("  Calls: (none)")
+        _render_explain_edge_sections(
+            callees, "out", "Calls", show_provenance, nodes_by_id)
 
         # Now print all source dumps (queried symbol → callers → callees)
         # after both summaries.

@@ -2017,7 +2017,9 @@ def test_cmd_explain_shows_edge_type_in_callers(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_shows_edge_type_in_callees(tmp_path: Path, capsys) -> None:
-    """Callee lines show the edge type."""
+    """Callee edge type is surfaced — now via the per-type section header
+    ("Calls" groups calls edges) rather than a per-entry [calls] annotation
+    (INV-rarol)."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -2062,8 +2064,9 @@ def test_cmd_explain_shows_edge_type_in_callees(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    # Callee line should mention the edge type
-    assert "calls" in out
+    # The edge type is conveyed by the per-type section header.
+    assert "Calls (1)" in out
+    assert "helper" in out
 
 
 def test_cmd_explain_provenance_on_callees(tmp_path: Path, capsys) -> None:
@@ -2244,7 +2247,9 @@ def test_cmd_explain_provenance_off_by_default(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_provenance_no_derived_from(tmp_path: Path, capsys) -> None:
-    """--provenance gracefully handles edges without derived_from."""
+    """INV-rarol: --provenance has a VISIBLE effect even on edges without a
+    derivation chain — it prints a marker instead of being byte-identical to
+    the no-flag form."""
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -2289,8 +2294,68 @@ def test_cmd_explain_provenance_no_derived_from(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    # Should not crash; no derived_from line shown for edges without it
+    # No "Derived from:" line (that's only for edges that carry a chain)...
     assert "Derived from:" not in out
+    # ...but --provenance is no longer invisible: it marks the chainless edge.
+    assert "(no derivation chain" in out
+
+
+def test_cmd_explain_sections_partition_by_edge_type(tmp_path: Path, capsys) -> None:
+    """INV-rarol: explain sections partition by edge TYPE, so a section's count
+    matches its entries' relationship — 'Called by (N)' means callers (calls
+    edges) only, NOT callers+instantiators+containers summed. Unmapped edge
+    types fall back to a direction-qualified canonical-name label."""
+    span = "python:s.py:1-9:Span:class"
+
+    def node(nid: str, name: str, kind: str = "function") -> dict:
+        return {
+            "id": nid, "name": name, "kind": kind, "language": "python",
+            "path": "s.py",
+            "span": {"start_line": 1, "end_line": 2, "start_col": 0, "end_col": 0},
+        }
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            node(span, "Span", "class"),
+            node("python:s.py:20:caller:function", "caller"),
+            node("python:s.py:30:maker:function", "maker"),
+            node("python:s.py:1:mod:file", "mod", "file"),
+            node("python:s.py:40:dep:function", "dep"),
+            node("python:s.py:50:m:method", "m", "method"),
+            node("python:s.py:60:callee:function", "callee"),
+        ],
+        "edges": [
+            # Four DIFFERENT incoming relationships to Span:
+            {"id": "e1", "src": "python:s.py:20:caller:function", "dst": span, "type": "calls", "line": 1, "confidence": 0.9},
+            {"id": "e2", "src": "python:s.py:30:maker:function", "dst": span, "type": "instantiates", "line": 1, "confidence": 0.9},
+            {"id": "e3", "src": "python:s.py:1:mod:file", "dst": span, "type": "contains", "line": 1, "confidence": 0.9},
+            {"id": "e4", "src": "python:s.py:40:dep:function", "dst": span, "type": "depends_on", "line": 1, "confidence": 0.9},
+            # Two different outgoing relationships from Span:
+            {"id": "e5", "src": span, "dst": "python:s.py:50:m:method", "type": "contains", "line": 1, "confidence": 0.9},
+            {"id": "e6", "src": span, "dst": "python:s.py:60:callee:function", "type": "calls", "line": 1, "confidence": 0.9},
+        ],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.symbol = "Span"
+    args.path = str(tmp_path)
+    args.input = None
+    args.provenance = False
+    args.exclude_tests = False
+
+    assert cmd_explain(args) == 0
+    out, _ = capsys.readouterr()
+    # Incoming: one labeled section per type; counts NOT conflated.
+    assert "Called by (1)" in out          # only the calls edge
+    assert "Instantiated by (1)" in out
+    assert "Contained by (1)" in out
+    assert "Incoming 'depends_on' (1)" in out   # fallback label, unmapped type
+    assert "Called by (4)" not in out      # the old conflated count is gone
+    # Outgoing: per type.
+    assert "Calls (1)" in out
+    assert "Contains (1)" in out
 
 
 def test_cmd_explain_provenance_unresolved_derived_from(tmp_path: Path, capsys) -> None:
