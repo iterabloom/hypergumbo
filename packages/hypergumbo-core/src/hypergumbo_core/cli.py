@@ -1709,6 +1709,42 @@ def _count_related_endpoint_kinds(
     return [(k, c) for k in _RELATED_ENDPOINT_KINDS if (c := counts[k]) > 0]
 
 
+def _route_json_record(route: dict) -> dict:
+    """Build a structured route record for ``routes --format json`` (INV-jutuj).
+
+    Mirrors the field-extraction the text renderer does (kind="route" symbols
+    carry authoritative ``meta.route_path``/``http_method``; concept-enriched
+    symbols carry them under ``meta.concepts[].path``/``method``), so the JSON
+    and text views agree on what each route is.
+    """
+    meta = route.get("meta") or {}
+    route_path = None
+    method = None
+    controller_action = None
+    if meta.get("framework_role") == "route":
+        route_path = meta.get("route_path")
+        method = meta.get("http_method")
+    if route_path is None:
+        for concept in meta.get("concepts", []) or []:
+            if isinstance(concept, dict) and concept.get("concept") == "route":
+                route_path = concept.get("path")
+                method = concept.get("method")
+                controller_action = concept.get("controller_action")
+                break
+    if controller_action is None:
+        controller_action = meta.get("controller_action")
+    return {
+        "id": route.get("id", ""),
+        "name": route.get("name", ""),
+        "path": route.get("path", ""),
+        "language": route.get("language"),
+        "span": route.get("span", {}),
+        "method": (method or "").upper(),
+        "route_path": route_path,
+        "controller_action": controller_action,
+    }
+
+
 def cmd_routes(args: argparse.Namespace) -> int:
     """Display API routes/endpoints from the behavior map."""
     repo_root = Path(args.path).resolve()
@@ -1794,6 +1830,24 @@ def cmd_routes(args: argparse.Namespace) -> int:
             seen_route_keys.add(key)
         deduped_routes.append(node)
     routes = deduped_routes
+
+    # INV-jutuj: JSON output (parity with test-coverage / dead-code-maybe).
+    # Handles empty and non-empty uniformly; the run summary goes to stderr so
+    # stdout stays pure JSON.
+    if getattr(args, "format", "text") == "json":
+        output = {
+            "schema_version": "0.1.0",
+            "view": "routes",
+            "routes": [_route_json_record(r) for r in routes],
+        }
+        print(json.dumps(output, indent=2))
+        cached_set = {input_path} if was_cached else set()
+        artifacts = (generated_files + [input_path]) if not was_cached else [input_path]
+        _print_output_summary(
+            "routes", artifacts=artifacts, stdout_output=True,
+            file=sys.stderr, cached_artifacts=cached_set,
+        )
+        return 0
 
     if not routes:
         print("No API routes found in the behavior map.")
@@ -6532,6 +6586,13 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         action="store_true",
         dest="exclude_tests",
         help="(deprecated; excluded by default) Exclude routes from test files",
+    )
+    p_routes.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text). JSON goes to stdout; the run "
+             "summary goes to stderr so stdout stays machine-parseable.",
     )
     p_routes.set_defaults(func=cmd_routes)
 
