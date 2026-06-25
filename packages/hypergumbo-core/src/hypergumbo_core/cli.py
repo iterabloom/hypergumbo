@@ -4764,8 +4764,29 @@ def cmd_config(args: argparse.Namespace) -> int:
     """
     import yaml as _yaml
 
+    from .catalog import all_known_languages
+
     lang = args.language.lower()
     fmt = args.format
+
+    # INV-gufod: `config <X>` reads per-language config, so X must be a known
+    # LANGUAGE — not a framework/linker name or a typo. Previously any string
+    # was accepted, silently returning all-null sections with only a stderr
+    # warning (exit 0), indistinguishable to a script from a real empty config
+    # (e.g. `config airflow-framework-dispatch-linker` looked like success).
+    # A real language that simply has no config yaml is still valid (it hits
+    # the `not found_any` warning below at exit 0); only non-languages error.
+    known_languages = all_known_languages()
+    if lang not in known_languages:
+        import difflib
+        close = difflib.get_close_matches(lang, sorted(known_languages), n=3, cutoff=0.5)
+        print(
+            f"hypergumbo config: error: '{args.language}' is not a known language.",
+            file=sys.stderr,
+        )
+        if close:
+            print(f"  Did you mean: {', '.join(close)}?", file=sys.stderr)
+        return 2
 
     # Locate config directories relative to this package
     pkg_root = Path(__file__).parent

@@ -46,10 +46,57 @@ class TestCmdConfig:
         assert "io_primitives" in data
         assert data["io_primitives"] is not None
 
-    def test_unknown_language_returns_empty(self) -> None:
-        """Config for an unknown language returns empty sections with warning."""
+    def test_non_language_name_rejected(self) -> None:
+        """INV-gufod: a non-language name (not in the language catalog) is
+        rejected with exit 2 and an error — not silently accepted as an
+        all-null config at exit 0."""
         args = FakeArgs()
-        args.language = "brainfuck"
+        args.language = "brainfuck"  # not a known language
+        args.format = "json"
+
+        buf = StringIO()
+        err_buf = StringIO()
+        with patch("sys.stdout", buf), patch("sys.stderr", err_buf):
+            result = cmd_config(args)
+
+        assert result == 2
+        assert buf.getvalue() == ""  # no JSON emitted on rejection
+        assert "not a known language" in err_buf.getvalue().lower()
+
+    def test_framework_linker_name_rejected(self) -> None:
+        """INV-gufod: a framework/linker name (the original repro) is rejected,
+        not treated as a language."""
+        args = FakeArgs()
+        args.language = "airflow-framework-dispatch-linker"
+        args.format = "json"
+
+        err_buf = StringIO()
+        with patch("sys.stdout", StringIO()), patch("sys.stderr", err_buf):
+            result = cmd_config(args)
+
+        assert result == 2
+        assert "not a known language" in err_buf.getvalue().lower()
+
+    def test_did_you_mean_suggestion_for_near_miss(self) -> None:
+        """INV-gufod: a near-miss typo of a real language gets a 'Did you mean'
+        suggestion (exercises the difflib branch)."""
+        args = FakeArgs()
+        args.language = "pythonn"  # typo of python
+        args.format = "json"
+
+        err_buf = StringIO()
+        with patch("sys.stdout", StringIO()), patch("sys.stderr", err_buf):
+            result = cmd_config(args)
+
+        assert result == 2
+        err = err_buf.getvalue().lower()
+        assert "did you mean" in err and "python" in err
+
+    def test_known_language_without_config_warns(self) -> None:
+        """A real language with no config yaml is still VALID (exit 0): it
+        returns all-null sections with a warning. Only non-languages error."""
+        args = FakeArgs()
+        args.language = "agda"  # a known language with no config yaml
         args.format = "json"
 
         buf = StringIO()
@@ -59,10 +106,8 @@ class TestCmdConfig:
 
         assert result == 0
         data = json.loads(buf.getvalue())
-        # All sections should be None (no config found)
         assert data["dataflow_patterns"] is None
         assert data["io_primitives"] is None
-        # Warning emitted to stderr
         assert "no configuration" in err_buf.getvalue().lower()
 
     def test_text_format(self) -> None:
