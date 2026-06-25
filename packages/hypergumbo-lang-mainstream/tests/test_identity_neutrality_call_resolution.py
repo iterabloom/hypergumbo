@@ -75,6 +75,11 @@ GOLDEN_STABLE_IDS = frozenset({
     "sha256:c6933702c1cec3b9",  # Alpha.to_dict
     "sha256:fb9b04fa5f748655",  # Beta
     "sha256:fc784ee2fa5561fb",  # Beta.to_dict
+    # WI-dagif (file-anchor:F1, node-bearing slice): models.py has content nodes
+    # but no imports/calls, so it now gets a synthesized kind="file" anchor. The
+    # six symbol identities above are UNCHANGED (proven purely additive) — this
+    # is the only new node, so the neutrality invariant still holds.
+    "sha256:dc483d5fde1117c1",  # models.py file anchor
 })
 GOLDEN_IDS = frozenset({
     "python:models.py:1-3:Alpha:class",
@@ -83,13 +88,17 @@ GOLDEN_IDS = frozenset({
     "python:models.py:6-7:Beta.to_dict:method",
     "python:models.py:9-10:helper_a:function",
     "python:models.py:12-13:helper_b:function",
+    "python:models.py:1-1:file:file",  # WI-dagif file anchor
 })
 # shape_id is structural, so same-shape symbols share it: two classes, two
-# methods, two functions collapse to three distinct shape_ids.
+# methods, two functions collapse to three distinct shape_ids. The WI-dagif
+# file anchor is synthesized without a shape_id (None), at parity with the
+# WI-ramuv dangling-edge file synthesizer.
 GOLDEN_SHAPE_IDS = frozenset({
     "sha256:74fe678ff5ffc768",  # both classes
     "sha256:c58a7ab960984f1c",  # both methods
     "sha256:c891ef58de2d7715",  # both functions
+    None,  # WI-dagif file anchor (synthesized; no shape_id)
 })
 
 

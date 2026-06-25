@@ -78,8 +78,12 @@ def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
     assert result == 0
 
     data = json.loads((tmp_path / "results.json").read_text())
-    # Should have JavaScript symbols
-    js_nodes = [n for n in data["nodes"] if n["language"] == "javascript"]
+    # Should have JavaScript symbols (excluding the WI-dagif file anchor that
+    # app.js, a node-bearing path, now also gets).
+    js_nodes = [
+        n for n in data["nodes"]
+        if n["language"] == "javascript" and n["kind"] != "file"
+    ]
     assert len(js_nodes) == 1
     assert js_nodes[0]["name"] == "foo"
 

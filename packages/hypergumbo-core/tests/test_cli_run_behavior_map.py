@@ -492,10 +492,13 @@ def test_run_behavior_map_tolerates_unreadable_file_end_to_end(
         tmp_path, out_path, include_sketch_precomputed=False,
     )
 
-    # Output is valid JSON and the readable file was analyzed.
+    # Output is valid JSON and the readable file was analyzed (the readable
+    # good.py, a node-bearing path, also gets a WI-dagif file anchor — filter it
+    # out to assert on the content node).
     data = json.loads(real_read_text(out_path))
-    assert len(data["nodes"]) == 1
-    assert data["nodes"][0]["name"] == "works"
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    assert content[0]["name"] == "works"
 
     # The fingerprint was still computed and stamped despite the unreadable
     # file (proves the fail-open guard reached the non-git fingerprint walk).

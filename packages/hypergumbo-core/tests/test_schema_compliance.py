@@ -40,15 +40,16 @@ def test_nodes_have_origin_fields(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    assert len(data["nodes"]) == 1
-    node = data["nodes"][0]
-
-    # Origin fields per spec
-    assert "origin" in node
-    assert "origin_run_id" in node
-    # stable_id and shape_id must be present (can be null)
-    assert "stable_id" in node
-    assert "shape_id" in node
+    # app.py (no imports) yields its function node plus a WI-dagif file anchor;
+    # the provenance fields must be present on EVERY node, anchors included.
+    assert len(data["nodes"]) == 2
+    for node in data["nodes"]:
+        # Origin fields per spec
+        assert "origin" in node
+        assert "origin_run_id" in node
+        # stable_id and shape_id must be present (can be null)
+        assert "stable_id" in node
+        assert "shape_id" in node
 
 
 def test_nodes_have_span_with_columns(tmp_path: Path) -> None:

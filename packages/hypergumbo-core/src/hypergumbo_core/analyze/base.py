@@ -323,6 +323,29 @@ def make_file_id(lang: str, path: str) -> str:
 _FILE_ID_SUFFIX = ":1-1:file:file"
 
 
+def _read_file_end_line(repo_root: "Path", rel_path: str) -> int:
+    """Line count (>=1) of ``repo_root/rel_path`` when readable, else 1.
+
+    Shared by the two file-anchor synthesizers (the dangling-edge pass and the
+    node-bearing-path pass) to stamp a real ``span.end_line`` on each synthesized
+    file Symbol (INV-vaguj). The real span is load-bearing: the containment
+    linker's span-based pass roots a file's top-level members at the file node by
+    span containment, so a 1-1 span would leave the file an orphan. Unreadable
+    files keep the schema-valid sentinel ``1`` (the INV-piroh schema gate forbids
+    the negative sentinel).
+    """
+    try:
+        file_text = (repo_root / rel_path).read_text(
+            encoding="utf-8", errors="ignore",
+        )
+    except (OSError, ValueError):
+        return 1
+    line_count = file_text.count("\n")
+    if file_text and not file_text.endswith("\n"):
+        line_count += 1
+    return line_count if line_count >= 1 else 1
+
+
 def synthesize_file_symbols_for_dangling_edges(
     symbols: list[Symbol],
     edges: list[Edge],
@@ -420,17 +443,7 @@ def synthesize_file_symbols_for_dangling_edges(
                     path = normed[len(root_prefix):]
                 # INV-vaguj: stamp the file's real line count when we can
                 # read it; otherwise keep the schema-valid sentinel of 1.
-                try:
-                    file_text = (repo_root / path).read_text(
-                        encoding="utf-8", errors="ignore",
-                    )
-                    line_count = file_text.count("\n")
-                    if file_text and not file_text.endswith("\n"):
-                        line_count += 1
-                    if line_count >= 1:
-                        end_line = line_count
-                except (OSError, ValueError):
-                    pass
+                end_line = _read_file_end_line(repo_root, path)
 
             synthesized[endpoint] = Symbol(
                 id=endpoint,
@@ -450,6 +463,86 @@ def synthesize_file_symbols_for_dangling_edges(
             )
 
     return list(synthesized.values())
+
+
+def synthesize_file_anchors_for_node_bearing_paths(
+    symbols: list[Symbol],
+    repo_root: "Optional[Path]" = None,
+    origin_run_id: str = "",
+) -> list[Symbol]:
+    """Synthesize a ``kind="file"`` anchor for every path that has content
+    nodes but no file anchor (WI-dagif; file-anchor:F1, node-bearing slice).
+
+    Sibling of :func:`synthesize_file_symbols_for_dangling_edges`: that pass is
+    keyed on dangling ``make_file_id`` EDGE endpoints (WI-ramuv); this one is
+    keyed on NODE-BEARING PATHS whose ``make_file_id`` has no producer-side
+    ``kind="file"`` Symbol *and* no dangling edge to trigger the other pass —
+    e.g. a Java/C#/Rust file with only a class + fields and no imports/calls, or
+    a generated module. Without it those paths have a rootless ``contains`` tree
+    (content nodes with no file root), so ``slice`` cannot expand "this file's
+    symbols" and the file universe is split (WI-rajod).
+
+    Run AFTER the dangling-edge pass so its anchors count as already-present.
+    Each anchor carries a real ``span.end_line`` (the file's line count) so the
+    containment linker's span-based pass roots the file's top-level members at it
+    — no separate ``contains``-edge emission is needed here.
+
+    SAFETY — why this is landable independently of file-anchor:F4 (the centrality
+    surface split): these paths already carry content nodes, so they are already
+    in the Additional-Files exclusion set (``source_paths`` in cli.py) and minting
+    their anchors cannot empty that surface. The nodeless cohort (yaml/markdown/
+    config files with zero nodes) is deliberately NOT anchored here — that is the
+    full F1+F4 co-release, gated on the WI-rajod-invariant human decision.
+
+    Args:
+        symbols: All Symbols collected from analyzers + the dangling-edge pass.
+        repo_root: Repository root; when provided, paths normalize to
+            repo-relative and ``span.end_line`` reflects each file's line count.
+        origin_run_id: Execution id of the orchestrator file-synthesis
+            ``AnalysisRun`` (shared with the dangling-edge pass).
+
+    Returns:
+        One new ``kind="file"`` Symbol per node-bearing path that lacked one.
+    """
+    root_prefix: Optional[str] = None
+    if repo_root is not None:
+        root_prefix = str(repo_root).replace("\\", "/").rstrip("/") + "/"
+
+    def _rel(p: str) -> str:
+        if root_prefix is not None:
+            normed = p.replace("\\", "/")
+            if normed.startswith(root_prefix):
+                return normed[len(root_prefix):]
+        return p
+
+    anchored: set[str] = {
+        _rel(s.path) for s in symbols if s.kind == "file" and s.path
+    }
+    # path -> representative language (first content node wins; deterministic in
+    # input order). A path with no language is skipped — make_file_id needs one.
+    needs_anchor: dict[str, str] = {}
+    for sym in symbols:
+        if sym.kind == "file" or not sym.path or not sym.language:
+            continue
+        rel = _rel(sym.path)
+        if rel in anchored or rel in needs_anchor:
+            continue
+        needs_anchor[rel] = sym.language
+
+    synthesized: list[Symbol] = []
+    for rel, language in needs_anchor.items():
+        end_line = _read_file_end_line(repo_root, rel) if repo_root is not None else 1
+        synthesized.append(Symbol(
+            id=make_file_id(language, rel),
+            name=rel,
+            kind="file",
+            language=language,
+            path=rel,
+            span=Span(start_line=1, start_col=0, end_line=end_line, end_col=0),
+            origin="orchestrator_file_symbol_synthesis",
+            origin_run_id=origin_run_id,
+        ))
+    return synthesized
 
 
 def make_unresolved_edge(

@@ -28,9 +28,10 @@ def test_run_detects_python_function(tmp_path: Path) -> None:
     # Load results
     data = json.loads(out_path.read_text())
 
-    # Expect a node in the output
-    assert len(data["nodes"]) == 1
-    node = data["nodes"][0]
+    # Expect the content node (WI-dagif file anchor filtered out)
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    node = content[0]
     assert node["name"] == "greet"
     assert node["kind"] == "function"
     assert node["language"] == "python"
@@ -53,8 +54,9 @@ def test_run_skips_syntax_error_files(tmp_path: Path) -> None:
 
     # Should still find the good function
     data = json.loads(out_path.read_text())
-    assert len(data["nodes"]) == 1
-    assert data["nodes"][0]["name"] == "works"
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    assert content[0]["name"] == "works"
 
     # INV-buhur: the dropped file MUST be recorded in limits.failed_files so
     # consumers can detect partially-analyzed repos.
@@ -81,8 +83,9 @@ def test_run_skips_unicode_error_files(tmp_path: Path) -> None:
 
     # Should still find the good function
     data = json.loads(out_path.read_text())
-    assert len(data["nodes"]) == 1
-    assert data["nodes"][0]["name"] == "works"
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    assert content[0]["name"] == "works"
 
     # INV-buhur: the dropped UTF-8 file MUST be recorded in failed_files.
     failed = data["limits"]["failed_files"]
@@ -132,8 +135,9 @@ def test_run_skips_unreadable_permission_error_file(
 
     # The readable file is still analyzed; the run did not abort.
     data = json.loads(out_path.read_text())
-    assert len(data["nodes"]) == 1
-    assert data["nodes"][0]["name"] == "works"
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    assert content[0]["name"] == "works"
 
     # §17: the unreadable file is recorded in limits.failed_files with the
     # PermissionError reason so consumers can detect the partial analysis.
@@ -159,9 +163,10 @@ def test_run_analyzes_bom_prefixed_python_file(tmp_path: Path) -> None:
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
 
     data = json.loads(out_path.read_text())
-    assert len(data["nodes"]) == 1
-    assert data["nodes"][0]["name"] == "boom"
-    assert data["nodes"][0]["kind"] == "function"
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    assert content[0]["name"] == "boom"
+    assert content[0]["kind"] == "function"
     # And the file must not be recorded as failed.
     assert data["limits"]["failed_files"] == []
 
@@ -179,9 +184,10 @@ def test_run_detects_python_class(tmp_path: Path) -> None:
     # Load results
     data = json.loads(out_path.read_text())
 
-    # Expect a class node in the output
-    assert len(data["nodes"]) == 1
-    node = data["nodes"][0]
+    # Expect a class node in the output (WI-dagif file anchor filtered out)
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 1
+    node = content[0]
     assert node["name"] == "User"
     assert node["kind"] == "class"
     assert node["language"] == "python"
@@ -207,12 +213,16 @@ def test_run_detects_call_edges(tmp_path: Path) -> None:
     # Load results
     data = json.loads(out_path.read_text())
 
-    # Should have two function nodes
-    assert len(data["nodes"]) == 2
+    # Should have two function nodes (WI-dagif file anchor filtered out)
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 2
 
-    # Should have one edge showing main calls helper
-    assert len(data["edges"]) == 1
-    edge = data["edges"][0]
+    # Should have one calls edge showing main calls helper. (The containment
+    # linker also roots top-level members at the file anchor, so filter to
+    # `calls` rather than asserting the total edge count.)
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    assert len(call_edges) == 1
+    edge = call_edges[0]
     assert edge["type"] == "calls"
     assert "main" in edge["src"]
     assert "helper" in edge["dst"]
@@ -846,8 +856,9 @@ def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    # Should have a class and two methods
-    assert len(data["nodes"]) == 3
+    # Should have a class and two methods (WI-dagif file anchor filtered out)
+    content = [n for n in data["nodes"] if n["kind"] != "file"]
+    assert len(content) == 3
 
     # Should detect run -> helper via self.helper()
     call_edges = [e for e in data["edges"] if e["type"] == "calls"]

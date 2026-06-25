@@ -25,7 +25,11 @@ from ..ir import (
 )
 from ..limits import Limits
 from ..paths import normalize_path
-from .base import populate_kind_stable_ids, synthesize_file_symbols_for_dangling_edges
+from .base import (
+    populate_kind_stable_ids,
+    synthesize_file_anchors_for_node_bearing_paths,
+    synthesize_file_symbols_for_dangling_edges,
+)
 from .registry import (
     RegisteredAnalyzer,
     clear_registry,
@@ -349,10 +353,26 @@ def run_all_analyzers(
     )
     if _synth_file_symbols:
         all_symbols.extend(_synth_file_symbols)
+    # WI-dagif (file-anchor:F1, node-bearing slice): after the dangling-edge
+    # pass, mint a file anchor for every path that has content nodes but still
+    # no file anchor, so the contains tree has a reachable file root (the
+    # containment linker's span-based pass then roots top-level members at it).
+    # Runs after the dangling pass so its anchors count as already-present, and
+    # shares the one synthesis AnalysisRun. Safe without file-anchor:F4 — these
+    # paths already carry content nodes, so they are already in source_paths and
+    # cannot empty the Additional-Files surface.
+    _synth_node_anchors = synthesize_file_anchors_for_node_bearing_paths(
+        all_symbols, repo_root=repo_root,
+        origin_run_id=_file_synth_run.execution_id,
+    )
+    if _synth_node_anchors:
+        all_symbols.extend(_synth_node_anchors)
+    _total_file_synth = len(_synth_file_symbols) + len(_synth_node_anchors)
+    if _total_file_synth:
         # INV-gizik: this synthesis pass bypasses both analyzer + linker
         # chokepoints; stamp its duration + node count (it emits only Symbols).
         _file_synth_run.duration_ms = int((time.perf_counter() - _file_synth_t0) * 1000)
-        _file_synth_run.nodes_emitted = len(_synth_file_symbols)
+        _file_synth_run.nodes_emitted = _total_file_synth
         analysis_runs.append(_file_synth_run.to_dict())
 
     # Normalize paths: some analyzers produce absolute paths instead of

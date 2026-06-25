@@ -730,3 +730,35 @@ def test_synthesis_runs_absent_when_no_synthetic_nodes(tmp_path):
     passes = {r.get("pass") for r in data["analysis_runs"]}
     assert "orchestrator_file_symbol_synthesis" not in passes
     assert "boundary_external_symbol_synthesis" not in passes
+
+
+def test_node_bearing_path_gets_file_anchor_wi_dagif(tmp_path):
+    """WI-dagif (file-anchor:F1, node-bearing slice): a file with content nodes
+    but no imports/calls (hence no make_file_id edge) still gets a kind="file"
+    anchor at the orchestrator chokepoint, and the containment linker's
+    span-based pass roots its top-level members at it (rootful contains tree)."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    # Class-only Java file: class + fields, NO imports/calls -> no make_file_id
+    # edge endpoint -> the dangling-edge synthesizer alone would not anchor it.
+    (repo_root / "Data.java").write_text(
+        "public class Data {\n    int x;\n    String name;\n}\n"
+    )
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+    nodes = data["nodes"]
+
+    # The node-bearing path now carries exactly one file anchor.
+    anchors = [n for n in nodes if n.get("kind") == "file" and n["path"] == "Data.java"]
+    assert len(anchors) == 1, f"expected one file anchor for Data.java, got {anchors}"
+    anchor_id = anchors[0]["id"]
+
+    # Closure (scoped to the real source path): the class node's path has a
+    # file anchor — i.e. the contains tree is no longer rootless.
+    cls = next(n for n in nodes if n.get("kind") == "class" and n["path"] == "Data.java")
+    contains = {(e["src"], e["dst"]) for e in data["edges"] if e["type"] == "contains"}
+    assert (anchor_id, cls["id"]) in contains, (
+        "file anchor does not contain its top-level class — the containment "
+        "linker's span-based pass should root members at the synthesized anchor"
+    )

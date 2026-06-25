@@ -42,6 +42,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     split_params_top_level,
     strip_fqn_prefix,
+    synthesize_file_anchors_for_node_bearing_paths,
     synthesize_file_symbols_for_dangling_edges,
     visibility_from_modifiers,
     widen_route_stable_ids,
@@ -2533,3 +2534,92 @@ class TestMakeDocSymbolIds:
         b_id, b_sid = make_doc_symbol_ids("rst", "d.rst", "section", "Overview", 40, 41)
         assert a_id != b_id
         assert a_sid != b_sid
+
+
+class TestSynthesizeFileAnchorsForNodeBearingPaths:
+    """WI-dagif (file-anchor:F1, node-bearing slice): every path that has
+    content nodes but no file anchor gets exactly one synthesized."""
+
+    @staticmethod
+    def _content(path, kind="class", language="java", name="Data", sid=None):
+        return Symbol(
+            id=sid or f"{language}:{path}:1-3:{name}:{kind}",
+            name=name, kind=kind, language=language, path=path,
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test", origin_run_id="test",
+        )
+
+    def test_mints_anchor_for_node_bearing_path(self) -> None:
+        new = synthesize_file_anchors_for_node_bearing_paths([self._content("Data.java")])
+        assert len(new) == 1
+        anchor = new[0]
+        assert anchor.kind == "file"
+        assert anchor.path == "Data.java"
+        assert anchor.language == "java"
+        assert anchor.id == make_file_id("java", "Data.java")
+        assert anchor.span.end_line == 1  # repo_root None -> sentinel
+        assert anchor.origin == ["orchestrator_file_symbol_synthesis"]
+
+    def test_no_double_anchor_when_file_symbol_exists(self) -> None:
+        content = self._content("Data.java")
+        existing = Symbol(
+            id=make_file_id("java", "Data.java"), name="Data.java", kind="file",
+            language="java", path="Data.java",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="x", origin_run_id="x",
+        )
+        assert synthesize_file_anchors_for_node_bearing_paths([content, existing]) == []
+
+    def test_one_anchor_per_path_for_multiple_content_nodes(self) -> None:
+        a = self._content("Data.java", kind="class", name="Data", sid="java:Data.java:1:Data:class")
+        b = self._content("Data.java", kind="field", name="x", sid="java:Data.java:2:x:field")
+        new = synthesize_file_anchors_for_node_bearing_paths([a, b])
+        assert len(new) == 1 and new[0].path == "Data.java"
+
+    def test_skips_symbol_without_path(self) -> None:
+        assert synthesize_file_anchors_for_node_bearing_paths([self._content("", name="o")]) == []
+
+    def test_skips_symbol_without_language(self) -> None:
+        s = Symbol(
+            id="x:Z.q:1:z:class", name="z", kind="class", language=None,
+            path="Z.q", span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="t", origin_run_id="t",
+        )
+        assert synthesize_file_anchors_for_node_bearing_paths([s]) == []
+
+    def test_stamps_origin_run_id(self) -> None:
+        new = synthesize_file_anchors_for_node_bearing_paths(
+            [self._content("Data.java")], origin_run_id="uuid:run")
+        assert new[0].origin_run_id == "uuid:run"
+
+    def test_real_end_line_and_repo_relative_path(self, tmp_path) -> None:
+        (tmp_path / "Data.java").write_text("line1\nline2\nline3\n")
+        sym = self._content(str(tmp_path / "Data.java"))  # absolute path
+        new = synthesize_file_anchors_for_node_bearing_paths([sym], repo_root=tmp_path)
+        assert len(new) == 1
+        assert new[0].path == "Data.java"   # normalized to repo-relative
+        assert new[0].span.end_line == 3    # real line count
+
+    def test_end_line_no_trailing_newline(self, tmp_path) -> None:
+        (tmp_path / "A.java").write_text("a\nb")  # 2 lines, no trailing newline
+        sym = self._content(str(tmp_path / "A.java"), name="A")
+        new = synthesize_file_anchors_for_node_bearing_paths([sym], repo_root=tmp_path)
+        assert new[0].span.end_line == 2
+
+    def test_end_line_unreadable_file(self, tmp_path) -> None:
+        sym = self._content(str(tmp_path / "Missing.java"), name="Missing")
+        new = synthesize_file_anchors_for_node_bearing_paths([sym], repo_root=tmp_path)
+        assert new[0].span.end_line == 1  # absent file -> sentinel
+
+    def test_end_line_empty_file(self, tmp_path) -> None:
+        (tmp_path / "Empty.java").write_text("")
+        sym = self._content(str(tmp_path / "Empty.java"), name="Empty")
+        new = synthesize_file_anchors_for_node_bearing_paths([sym], repo_root=tmp_path)
+        assert new[0].span.end_line == 1  # empty file -> sentinel
+
+    def test_path_not_under_repo_root_unchanged(self, tmp_path) -> None:
+        # already-relative content path with repo_root set -> _rel no-op branch
+        new = synthesize_file_anchors_for_node_bearing_paths(
+            [self._content("rel/Data.java")], repo_root=tmp_path)
+        assert new[0].path == "rel/Data.java"
+        assert new[0].span.end_line == 1  # unreadable under repo_root
