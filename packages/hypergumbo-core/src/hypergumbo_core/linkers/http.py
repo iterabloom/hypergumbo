@@ -1512,7 +1512,6 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 "protocol": "http",
                 "http_method": call.method,
                 "url_path": call_path,
-                "cross_language": is_cross_language,
                 "url_type": call.url_type,
                 "detection_pattern": "http_url",
             }

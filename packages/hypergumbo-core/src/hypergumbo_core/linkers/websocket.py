@@ -888,11 +888,11 @@ def link_websocket(
     # no cross-language pairing logic at all — only within-language
     # send/receive and file→endpoint references. Patterns (1) and (2) are
     # fixed above. This block fixes (3) by emitting a ``calls`` edge with
-    # ``meta["protocol"]="ws"`` and ``meta["cross_language"]=True`` from
-    # each client endpoint to each server endpoint that shares a path
-    # string, following the HTTP linker convention (http.py:1511-1528) so
-    # downstream consumers can treat WS and HTTP cross-language edges
-    # uniformly.
+    # ``meta["protocol"]="ws"`` from each client endpoint to each server
+    # endpoint that shares a path string, following the HTTP linker
+    # convention. The pairing crosses language boundaries; cross-language-ness
+    # itself is NOT stamped on the edge — it is derivable from the endpoint
+    # node languages (INV-zigup: derive, don't store).
     _CLIENT_PATTERN_TYPES = frozenset({"native", "socketio", "ws"})
     _SERVER_PATTERN_TYPES = frozenset({"fastapi", "starlette", "django_channels"})
 
@@ -930,7 +930,6 @@ def link_websocket(
                     meta={
                         "protocol": "ws",
                         "url_path": path_str,
-                        "cross_language": client_lang != server_lang,
                         "client_framework": _PATTERN_TYPE_TO_FRAMEWORK[
                             client_ep.pattern_type
                         ],

@@ -399,7 +399,6 @@ class TestEventSourcingLinker:
         result = link_events(tmp_path)
 
         assert len(result.edges) == 1
-        assert result.edges[0].meta["cross_language"] is True
 
     def test_multiple_subscribers_same_event(self, tmp_path: Path):
         """Multiple subscribers for the same event create multiple edges."""

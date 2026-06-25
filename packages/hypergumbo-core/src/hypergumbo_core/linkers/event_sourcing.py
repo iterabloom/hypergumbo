@@ -769,9 +769,6 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                 # emitted by Class-B linker producers; fall back to language
                 # for real-source declarations and for Symbols that haven't
                 # migrated yet (double-write absorbs the Phase 1 window).
-                _pub_lang = pub_symbol.discovery_language or pub_symbol.language
-                _sub_lang = sub_symbol.discovery_language or sub_symbol.language
-                is_cross_language = _pub_lang != _sub_lang
                 is_variable_event = (
                     publisher.event_type == "variable"
                     or sub_pattern.event_type == "variable"
@@ -805,7 +802,6 @@ def link_events(root: Path) -> EventSourcingLinkResult:
                         "event_name": publisher.event_name,
                         "publisher_framework": publisher.framework,
                         "subscriber_framework": sub_pattern.framework,
-                        "cross_language": is_cross_language,
                         "publisher_event_type": publisher.event_type,
                         "subscriber_event_type": sub_pattern.event_type,
                         "detection_pattern": "event_name",

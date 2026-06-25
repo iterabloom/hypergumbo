@@ -452,7 +452,6 @@ class TestGraphQLResolverLinker:
         result = link_graphql_resolvers(tmp_path, schema_symbols)
 
         assert len(result.edges) >= 1
-        assert result.edges[0].meta["cross_language"] is True
 
     def test_no_edges_without_schema(self, tmp_path: Path):
         """No schema edges created without matching schema symbols."""

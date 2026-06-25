@@ -1455,8 +1455,9 @@ class TestWiZolotCrossLanguageBridge:
        pairings. No client↔server cross-language edge was ever emitted.
 
     Fix: extend client regex to accept template strings, add Starlette
-    pattern, emit ``calls`` + ``meta["protocol"]="ws"`` + ``cross_language``
-    bridge edge when client+server endpoints share a path string.
+    pattern, emit a ``calls`` + ``meta["protocol"]="ws"`` bridge edge when
+    client+server endpoints share a path string. (Cross-language-ness is
+    derivable from the endpoint node languages, not stamped — INV-zigup.)
     """
 
     def test_native_websocket_template_string_extracts_trailing_path(self, tmp_path: Path) -> None:
@@ -1539,7 +1540,6 @@ class TestWiZolotCrossLanguageBridge:
         ]
         assert len(bridge_edges) == 1
         edge = bridge_edges[0]
-        assert (edge.meta or {}).get("cross_language") is True
         assert (edge.meta or {}).get("url_path") == "/ws"
         # src is the TS client file; dst is the Python endpoint symbol.
         assert edge.src == _make_file_id("typescript", "ws-client.ts")
@@ -1698,7 +1698,6 @@ class TestWiZolotCrossLanguageBridge:
         ]
         assert len(bridge_edges) == 1
         edge = bridge_edges[0]
-        assert (edge.meta or {}).get("cross_language") is True
         assert (edge.meta or {}).get("url_path") == "/ws"
         assert (edge.meta or {}).get("server_framework") == "starlette"
 
@@ -1718,4 +1717,3 @@ class TestWiZolotCrossLanguageBridge:
             if e.edge_type == "calls" and (e.meta or {}).get("protocol") == "ws"
         ]
         assert len(bridge_edges) == 1
-        assert (bridge_edges[0].meta or {}).get("cross_language") is True

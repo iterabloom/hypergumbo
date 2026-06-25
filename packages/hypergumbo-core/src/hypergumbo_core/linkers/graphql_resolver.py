@@ -518,10 +518,6 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
             # by Class-B linker producers; fall back to language for real-source
             # declarations and for Symbols that haven't migrated yet (double-
             # write absorbs the Phase 1 window).
-            _r_lang = resolver_symbol.discovery_language or resolver_symbol.language
-            _s_lang = schema_sym.discovery_language or schema_sym.language
-            is_cross_language = _r_lang != _s_lang
-
             # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
             edge = Edge.create(
                 src=resolver_symbol.id,
@@ -537,7 +533,6 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
             edge.meta = {
                 "type_name": pattern.type_name,
                 "field_name": pattern.field_name,
-                "cross_language": is_cross_language,
                 "framework_dispatch": "graphql_resolver_field",
             }
             edges.append(edge)
@@ -547,10 +542,6 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
         if type_key in type_lookup:
             type_sym = type_lookup[type_key]
             # ADR-0031: see comment at the schema-field comparison above.
-            _r_lang = resolver_symbol.discovery_language or resolver_symbol.language
-            _t_lang = type_sym.discovery_language or type_sym.language
-            is_cross_language = _r_lang != _t_lang
-
             # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch leak.
             edge = Edge.create(
                 src=resolver_symbol.id,
@@ -566,7 +557,6 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
             edge.meta = {
                 "type_name": pattern.type_name,
                 "field_name": pattern.field_name,
-                "cross_language": is_cross_language,
                 "framework_dispatch": "graphql_resolver_type",
             }
             edges.append(edge)

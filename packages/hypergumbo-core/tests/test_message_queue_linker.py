@@ -528,7 +528,6 @@ class TestVariableTopicPatterns:
         assert len(result.edges) == 1
         # Variable + cross-language: 0.65 - 0.1 = 0.55
         assert result.edges[0].confidence == 0.55
-        assert result.edges[0].meta["cross_language"] is True
         assert result.edges[0].meta["topic_type"] == "variable"
 
     def test_symbol_has_topic_type_metadata(self, tmp_path: Path):
@@ -635,7 +634,6 @@ class TestMessageQueueLinker:
 
         assert len(result.symbols) == 2
         assert len(result.edges) == 1
-        assert result.edges[0].meta["cross_language"] is True
         assert result.edges[0].confidence == 0.8  # Cross-language confidence
 
     def test_no_edges_for_unmatched_topics(self, tmp_path: Path):

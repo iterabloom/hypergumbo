@@ -681,7 +681,6 @@ class TestLinkHttp:
         result = link_http(tmp_path, [route_symbol])
 
         assert len(result.edges) == 1
-        assert result.edges[0].meta["cross_language"] is True
 
     def test_creates_client_symbols(self, tmp_path):
         # Create a JS file with fetch call
@@ -1157,7 +1156,6 @@ class TestConceptMetadataSupport:
         edge = result.edges[0]
         assert edge.dst == route_symbol.id
         assert edge.meta["http_method"] == "GET"
-        assert edge.meta["cross_language"] is True  # JS client -> Ruby route
 
     def test_get_route_info_direct_metadata_fallback(self):
         """_get_route_info_from_concept falls back to direct meta fields."""
@@ -1383,7 +1381,6 @@ class TestGoHttpLinking:
         assert result.edges[0].edge_type == "calls"
         assert result.edges[0].meta["protocol"] == "http"
         assert result.edges[0].dst == route_symbol.id
-        assert result.edges[0].meta["cross_language"] is True
 
 
 class TestScanRubyFile:
@@ -1790,7 +1787,6 @@ class TestRubyHttpLinking:
         assert result.edges[0].edge_type == "calls"
         assert result.edges[0].meta["protocol"] == "http"
         assert result.edges[0].dst == route_symbol.id
-        assert result.edges[0].meta["cross_language"] is True
 
     def test_links_ruby_httparty_to_js_route(self, tmp_path):
         """Ruby HTTParty calls link to JS route symbols (cross-language)."""
@@ -1812,7 +1808,6 @@ class TestRubyHttpLinking:
         result = link_http(tmp_path, [route_symbol])
 
         assert len(result.edges) == 1
-        assert result.edges[0].meta["cross_language"] is True
         assert result.edges[0].confidence == 0.8
 
 
@@ -1845,7 +1840,6 @@ class TestJavaHttpLinking:
         assert result.edges[0].edge_type == "calls"
         assert result.edges[0].meta["protocol"] == "http"
         assert result.edges[0].dst == route_symbol.id
-        assert result.edges[0].meta["cross_language"] is True
 
     def test_links_java_retrofit_to_route(self, tmp_path):
         """Java Retrofit annotation calls link to route symbols."""
@@ -1872,7 +1866,6 @@ class TestJavaHttpLinking:
         result = link_http(tmp_path, [route_symbol])
 
         assert len(result.edges) == 1
-        assert result.edges[0].meta["cross_language"] is True
 
 
 class TestFindSourceFiles:

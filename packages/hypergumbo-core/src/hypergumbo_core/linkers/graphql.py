@@ -288,7 +288,6 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
             op_key = call.operation_name.lower()
             if op_key in operation_map:
                 schema_sym = operation_map[op_key]
-                is_cross_language = client_symbol.language != schema_sym.language
 
                 # ADR-0023 §6 Phase 3 (WI-vumum-juvil): GraphQL is a
                 # wire protocol, not a relationship. The fold target is
@@ -310,7 +309,6 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
                     "protocol": "graphql",
                     "operation_type": call.operation_type,
                     "operation_name": call.operation_name,
-                    "cross_language": is_cross_language,
                     "framework_dispatch": "graphql_operation",
                 }
                 edges.append(edge)

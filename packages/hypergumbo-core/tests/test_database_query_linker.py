@@ -497,7 +497,6 @@ class TestDatabaseQueryLinker:
         result = link_database_queries(tmp_path, table_symbols)
 
         assert len(result.edges) == 1
-        assert result.edges[0].meta["cross_language"] is True
 
     def test_no_edges_without_matching_tables(self, tmp_path: Path):
         """No edges created when table names don't match."""
