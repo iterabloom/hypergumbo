@@ -3411,10 +3411,14 @@ def cmd_remove_extras(args: argparse.Namespace) -> int:
 _SYMBOLS_DEFAULT_SYMBOL_WIDTH = 60
 _SYMBOLS_DEFAULT_FILE_WIDTH = 80
 _SYMBOLS_MAX_COL_WIDTH = 1000
-# Reserved console width for the four inner narrow columns (Kind / In /
-# Out / Deg) plus Rich's per-column padding. Empirical: a normal
-# `cmd_symbols` row needs ~30 chars beyond Symbol + File.
-_SYMBOLS_INNER_COLUMNS_OVERHEAD = 30
+# Rich's per-column padding (default (0, 1) => 2 chars * 6 columns) plus a
+# small safety margin, added to the DATA-DRIVEN content widths of the four
+# inner columns (Kind / In / Out / Deg) to force the console wide enough that
+# none is squeezed. A fixed overhead instead (the old approach) under-budgeted
+# the numeric columns once In/Deg hit 4 digits, so Rich proportionally squeezed
+# Deg into "10…" — destroying the rank the `symbols` command exists to surface
+# (INV-ripoh; the pass-31 face extended the same truncation to the In column).
+_SYMBOLS_COLUMN_PADDING = 14
 
 
 def _symbols_column_config(
@@ -3615,7 +3619,19 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     # the correct trade-off when the user has explicitly asked for wide
     # columns.
     detected_width = shutil.get_terminal_size(fallback=(120, 24)).columns
-    required_width = symbol_width + file_width + _SYMBOLS_INNER_COLUMNS_OVERHEAD
+    # Data-driven widths for the four inner columns: each must be at least as
+    # wide as its widest cell (or its header), so the required console width
+    # reflects the actual values and Rich never squeezes a numeric column into
+    # an ellipsis (INV-ripoh). Header labels floor the numeric widths.
+    kind_width = max((len(r[1]) for r in display_rows), default=4)
+    in_width = max([len("In")] + [len(str(r[2])) for r in display_rows])
+    out_width = max([len("Out")] + [len(str(r[3])) for r in display_rows])
+    deg_width = max([len("Deg")] + [len(str(r[4])) for r in display_rows])
+    required_width = (
+        symbol_width + file_width
+        + kind_width + in_width + out_width + deg_width
+        + _SYMBOLS_COLUMN_PADDING
+    )
     console = Console(width=max(detected_width, required_width))
     table = Table(show_header=True, header_style="bold", box=None)
 
@@ -3623,11 +3639,13 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         "Symbol", style="cyan",
         width=symbol_width, no_wrap=no_wrap_flag, overflow=overflow,
     )
-    kind_width = max((len(r[1]) for r in display_rows), default=4)
     table.add_column("Kind", style="green", min_width=kind_width, no_wrap=True)
-    table.add_column("In", justify="right", style="yellow")
-    table.add_column("Out", justify="right", style="yellow")
-    table.add_column("Deg", justify="right", style="bold yellow")
+    table.add_column("In", justify="right", style="yellow",
+                     min_width=in_width, no_wrap=True)
+    table.add_column("Out", justify="right", style="yellow",
+                     min_width=out_width, no_wrap=True)
+    table.add_column("Deg", justify="right", style="bold yellow",
+                     min_width=deg_width, no_wrap=True)
     table.add_column(
         "File", style="dim",
         width=file_width, no_wrap=no_wrap_flag, overflow=overflow,

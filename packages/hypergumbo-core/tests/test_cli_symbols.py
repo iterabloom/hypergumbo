@@ -135,6 +135,70 @@ def test_cmd_symbols_kind_column_not_truncated(tmp_path: Path, capsys) -> None:
     assert "functi…" not in out
 
 
+def test_cmd_symbols_numeric_columns_not_truncated(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    """INV-ripoh: the In/Out/Deg columns must render full multi-digit values
+    (no ellipsis) on a default ~120-col terminal. A connectivity hub with a
+    4-digit in-degree previously rendered Deg as '10…', destroying the rank."""
+    import os
+    import hypergumbo_core.cli as cli_mod
+
+    # Force the default-terminal path deterministically (no tty in tests).
+    monkeypatch.setattr(
+        cli_mod.shutil, "get_terminal_size",
+        lambda *a, **k: os.terminal_size((120, 24)),
+    )
+
+    hub = "python:src/hub.py:1-9:Hub:function"
+    src = "python:src/src.py:1-9:Src:function"
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": hub, "name": "Hub", "kind": "function", "language": "python",
+                "path": "src/hub.py",
+                "span": {"start_line": 1, "end_line": 9, "start_col": 0, "end_col": 0},
+            },
+            {
+                "id": src, "name": "Src", "kind": "function", "language": "python",
+                "path": "src/src.py",
+                "span": {"start_line": 1, "end_line": 9, "start_col": 0, "end_col": 0},
+            },
+        ],
+        # 1000 distinct edges Src -> Hub => Hub in-degree 1000 (4 digits),
+        # Src out-degree 1000, both Deg=1000.
+        "edges": [
+            {
+                "id": f"edge:{i}", "src": src, "dst": hub, "type": "calls",
+                "line": 1, "confidence": 0.9,
+            }
+            for i in range(1000)
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+
+    result = cmd_symbols(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # The full 4-digit value must render (not "10…").
+    assert "1000" in out, "full 4-digit degree value must render"
+    # No column may be ellipsis-truncated (Symbol/File names here are short).
+    assert "…" not in out, "numeric columns must not be ellipsis-truncated"
+
+
 def test_cmd_symbols_sorts_by_individual_degree(tmp_path: Path, capsys) -> None:
     """Symbols are sorted by bidirectional centrality, not file total.
 
