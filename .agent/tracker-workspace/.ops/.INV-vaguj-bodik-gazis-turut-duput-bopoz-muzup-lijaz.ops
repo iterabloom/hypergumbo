@@ -121,3 +121,10 @@
     tags: [dogfood]  # b477
   remove:  # b477
     tags: [dogfooding]  # b477
+- op: discuss  # ab33
+  at: '2026-06-25T05:34:54Z'  # ab33
+  by: agent  # ab33
+  actor: jgstern_agent  # ab33
+  clock: 14  # ab33
+  nonce: ab33  # ab33
+  message: "Sibling finding (related-but-distinct; surfaced 2026-06-25 during the file-anchor:F1+F4 work, commit 037a3730de). The html analyzer (packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/html.py:119,135) stamps the ABSOLUTE filesystem path into its file-kind Symbol's 'path' field and builds the node id from it (file_id=_make_file_id(str(html_file)); path=str(html_file)) — inconsistent with the same function's relative use at line 109. DISTINCT from this invariant in two ways: (1) it's the 'path'/'id' fields, not 'name' (html sets name=html_file.name (bare) and span=real total_lines, which already SATISFY INV-vaguj's name+span requirements); (2) unlike the synthesizer's 'name' (which stays absolute in output), html's 'path' IS normalized to relative downstream, so the FINAL output is correct — the absolute form is transient. Severity is therefore lower (no output defect; a latent internal inconsistency + likely source of the pre-existing 'id_format validation violation' warning on html files, cf WI-bovoh/INV-dulah). It tripped the file-anchor:F1 minter's path dedup (an absolute existing path vs a relative candidate key), now fixed structurally: synthesize_file_anchors_for_paths normalizes existing paths to repo-relative before dedup, robust to ANY analyzer emitting absolute paths. Flagging here for the human to decide fold-vs-split; no new item filed to avoid fragmentation."  # ab33

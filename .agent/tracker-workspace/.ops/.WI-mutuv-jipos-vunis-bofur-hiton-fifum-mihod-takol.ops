@@ -31,3 +31,10 @@
     tags: [dogfood]  # 9ca7
   remove:  # 9ca7
     tags: [dogfooding]  # 9ca7
+- op: discuss  # 24a5
+  at: '2026-06-25T05:31:28Z'  # 24a5
+  by: agent  # 24a5
+  actor: jgstern_agent  # 24a5
+  clock: 3  # 24a5
+  nonce: 24a5  # 24a5
+  message: "NOT addressed by the file-anchor:F1+F4 co-release (commit 037a3730de), despite the WI-rajod implementation spec's aspirational 'Closes WI-mutuv' line. This is a distinct bug in the supply_chain_summary metrics-AGGREGATION step (scs.<tier>.files counts paths from ALL tier nodes incl. external_symbol nodes with '<external>' sentinel paths -> phantom counts), which F1+F4 did not touch. F1 added file-kind anchors for config/doc files but did not change how scs.<tier>.files is computed. Remains todo_hard: the fix is still to filter the counted nodes to kind=='file' at the metrics-aggregation step."  # 24a5

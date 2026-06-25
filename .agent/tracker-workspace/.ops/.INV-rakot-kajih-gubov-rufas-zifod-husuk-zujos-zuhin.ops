@@ -87,3 +87,18 @@
     tags: [dogfood]  # 90c0
   remove:  # 90c0
     tags: [dogfooding]  # 90c0
+- op: update  # 2971
+  at: '2026-06-25T07:57:09Z'  # 2971
+  by: agent  # 2971
+  actor: jgstern_agent  # 2971
+  clock: 9  # 2971
+  nonce: '2971'  # 2971
+  set:  # 2971
+    status: satisfied  # 2971
+- op: discuss  # e3b0
+  at: '2026-06-25T07:57:09Z'  # e3b0
+  by: agent  # e3b0
+  actor: jgstern_agent  # e3b0
+  clock: 10  # e3b0
+  nonce: e3b0  # e3b0
+  message: "Fixed in commit a6a9c4aa00 (origin/dev). Behavioral evidence — live repro: SliceQuery(entrypoint='e', min_confidence=0.5).to_dict() now contains 'min_confidence': 0.5 (was absent — the field a consumer needs to reproduce a confidence-filtered slice from JSON alone). Omitted at the 0.0 default (no filtering → did not influence the slice; also keeps the feature_id hash stable for unfiltered slices). min_confidence was the LAST of the 5 originally-missing params (max_tier/language/hub_threshold/exclude_imports were backfilled earlier). Added a round-trip GUARD test (test_slice.py::test_query_to_dict_echoes_all_influential_params_invrakot) asserting every CLI-influential param set non-default appears in the echo — closes the drift class (flag added without updating to_dict) the root_cause named. Production-path tests: test_query_to_dict_includes_min_confidence_when_nonzero + _omits_min_confidence_at_default. 100% coverage. NOTE: the separate silent-acceptance findings bundled in the description (slice --max-files/--max-hops/--hub-threshold/--min-confidence accepting 0/negatives) are NOT addressed here — they are the INV-rakot-adjacent input-validation faces under the INV-fabov umbrella (reusable _positive_result_limit factory from INV-toniv applies); this closure is scoped to the feature.query reproducibility invariant only."  # e3b0
