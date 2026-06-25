@@ -1609,8 +1609,14 @@ def cmd_search(args: argparse.Namespace) -> int:
                 continue
             matches.append(node)
 
-    # Apply limit
-    if args.limit and len(matches) > args.limit:
+    # Apply limit. INV-toniv: report the TOTAL match count, not the
+    # post-truncation count (the header was reading len(matches) AFTER the
+    # slice, so it always showed min(total, limit) and hid the real total).
+    # The argparse type factory rejects limit < 1; the bool() guard keeps a
+    # caller-supplied None/0 (e.g. tests) meaning "no limit".
+    total = len(matches)
+    truncated = bool(args.limit) and total > args.limit
+    if truncated:
         matches = matches[: args.limit]
 
     # Output results
@@ -1618,7 +1624,13 @@ def cmd_search(args: argparse.Namespace) -> int:
         print(f"No symbols found matching '{args.pattern}'")
         return 0
 
-    print(f"Found {len(matches)} symbol(s) matching '{args.pattern}':\n")
+    if truncated:
+        print(
+            f"Found {total} symbol(s) matching '{args.pattern}' "
+            f"(showing {args.limit}):\n"
+        )
+    else:
+        print(f"Found {total} symbol(s) matching '{args.pattern}':\n")
     for node in matches:
         name = _format_symbol_display_name(node, node.get("id", ""))
         kind = node.get("kind", "")
@@ -5775,6 +5787,27 @@ def _positive_token_budget(raw: str) -> int:
     return value
 
 
+def _positive_result_limit(raw: str) -> int:
+    """argparse type for a result-count ``--limit``: require a positive integer.
+
+    INV-toniv: ``search --limit -5`` was silently interpreted as Python
+    tail-drop slicing (``matches[:-5]``), and ``--limit 0`` fell through the
+    falsy guard and was treated as "no limit". Both are configuration errors —
+    a result limit must be >= 1 — and should fail fast with a clear message.
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(
+            f"--limit must be a positive integer, got {raw!r}"
+        ) from exc
+    if value <= 0:
+        raise argparse.ArgumentTypeError(
+            f"--limit must be a positive integer, got {value}"
+        )
+    return value
+
+
 def _add_path_argument(parser: argparse.ArgumentParser) -> None:
     """Standard repo-path argument shared by all subcommands (WI-munuv).
 
@@ -6439,9 +6472,10 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     )
     p_search.add_argument(
         "--limit",
-        type=int,
+        type=_positive_result_limit,
         default=20,
-        help="Maximum number of results to show (default: 20)",
+        help="Maximum number of results to show; must be a positive integer "
+             "(default: 20). The header always reports the total match count.",
     )
     p_search.set_defaults(func=cmd_search)
 

@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the hypergumbo search command."""
+import argparse
 import json
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.schema import SCHEMA_VERSION
-from hypergumbo_core.cli import cmd_search, main
+from hypergumbo_core.cli import cmd_search, main, _positive_result_limit
 
 
 class FakeArgs:
@@ -385,6 +388,101 @@ def test_cmd_search_respects_limit(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     # Should show only 3 results
     assert out.count("function") <= 3
+
+
+def test_cmd_search_header_reports_total_not_post_limit(
+    tmp_path: Path, capsys
+) -> None:
+    """INV-toniv: the header reports the TOTAL number of matches, not the
+    post-limit count, and discloses how many are shown when truncated."""
+    nodes = [
+        {
+            "id": f"python:src/f{i}.py:1-5:func{i}:function",
+            "name": f"func{i}", "kind": "function", "language": "python",
+            "path": f"src/f{i}.py",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+        }
+        for i in range(10)
+    ]
+    behavior_map = {"schema_version": SCHEMA_VERSION, "nodes": nodes, "edges": []}
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.pattern = "func"
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 3
+
+    assert cmd_search(args) == 0
+    out, _ = capsys.readouterr()
+    assert "Found 10 symbol(s)" in out, "header must report the total (10), not 3"
+    assert "showing 3" in out, "truncation must be disclosed"
+
+
+def test_cmd_search_header_no_showing_qualifier_when_under_limit(
+    tmp_path: Path, capsys
+) -> None:
+    """When matches <= limit the header omits the '(showing …)' qualifier."""
+    nodes = [
+        {
+            "id": f"python:src/f{i}.py:1-5:func{i}:function",
+            "name": f"func{i}", "kind": "function", "language": "python",
+            "path": f"src/f{i}.py",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+        }
+        for i in range(2)
+    ]
+    behavior_map = {"schema_version": SCHEMA_VERSION, "nodes": nodes, "edges": []}
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.pattern = "func"
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 20
+
+    assert cmd_search(args) == 0
+    out, _ = capsys.readouterr()
+    assert "Found 2 symbol(s) matching 'func':" in out
+    assert "showing" not in out
+
+
+def test_positive_result_limit_type_factory() -> None:
+    """INV-toniv: --limit type factory accepts positives, rejects <=0 and junk."""
+    assert _positive_result_limit("5") == 5
+    assert _positive_result_limit("1") == 1
+    for bad in ("0", "-1", "-5"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _positive_result_limit(bad)
+    with pytest.raises(argparse.ArgumentTypeError):
+        _positive_result_limit("abc")
+
+
+def test_main_search_negative_limit_rejected(tmp_path: Path, capsys) -> None:
+    """INV-toniv: a negative --limit is rejected at the CLI (exit 2), not
+    silently interpreted as Python tail-drop slicing."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-5:test:function", "name": "test",
+                "kind": "function", "language": "python", "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    with pytest.raises(SystemExit) as exc:
+        main(["search", "test", "--path", str(tmp_path), "--limit", "-5"])
+    assert exc.value.code == 2
+    _, err = capsys.readouterr()
+    assert "limit" in err.lower()
 
 
 def test_main_with_search(tmp_path: Path, capsys) -> None:
