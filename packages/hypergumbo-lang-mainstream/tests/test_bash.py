@@ -297,6 +297,13 @@ function run() {
         cross_file_edges = [e for e in call_edges if e.confidence == 0.80]
         assert len(cross_file_edges) >= 1
 
+        # INV-vakaf: file-locality lives on its own meta key call_locality
+        # ('cross_file'), NOT smuggled through call_construct (the syntactic
+        # call-shape axis).
+        xf = cross_file_edges[0]
+        assert (xf.meta or {}).get("call_locality") == "cross_file"
+        assert "call_construct" not in (xf.meta or {})
+
 class TestBashSymbolProperties:
     """Tests for symbol property correctness."""
 

@@ -596,7 +596,7 @@ def _extract_edges_from_file(
                             confidence=0.75 * lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            meta={"call_construct": "cross_file"},
+                            meta={"call_locality": "cross_file"},
                         ))
                     else:
                         # WI-nigah Tier 2: if the receiver looks like an

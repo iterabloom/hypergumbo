@@ -456,7 +456,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                             confidence=0.80 * lookup_result.confidence,
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
-                                            meta={"call_construct": "cross_file"},
+                                            meta={"call_locality": "cross_file"},
                                         ))
 
         return edges

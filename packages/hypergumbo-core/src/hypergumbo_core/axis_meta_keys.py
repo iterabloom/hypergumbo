@@ -124,6 +124,16 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "``ast_call`` apex (e.g. 'method', 'function', "
                 "'pipe', 'application'). Fold residue per "
                 "audit-findings 0012 / WI-nibis Wave 4."),
+    MetaKeySpec("call_locality", AXIS_EDGE_META,
+                "File-locality of a call edge — whether caller and "
+                "callee live in the same source file ('same_file') or "
+                "different files ('cross_file'). A SEPARATE axis from "
+                "``call_construct`` (which names the syntactic call "
+                "shape): INV-vakaf split this out after bash/objc were "
+                "found smuggling 'cross_file' through ``call_construct``. "
+                "Sparse by convention: set to 'cross_file' on "
+                "boundary-crossing calls; ABSENT means same-file (the "
+                "common case)."),
     MetaKeySpec("call_kind", AXIS_EDGE_META,
                 "Specialized call type for Cluster E sub-case (a) "
                 "reclassifications (e.g. 'abi', 'subprocess', "

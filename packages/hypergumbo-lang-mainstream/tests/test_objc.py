@@ -325,6 +325,12 @@ class TestObjCCallEdges:
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 
+        # INV-vakaf: the cross-file resolved call carries file-locality on its
+        # own meta key call_locality ('cross_file'), NOT on call_construct.
+        xf = [e for e in call_edges if (e.meta or {}).get("call_locality") == "cross_file"]
+        assert len(xf) >= 1
+        assert "call_construct" not in (xf[0].meta or {})
+
 class TestObjCSymbolProperties:
     """Tests for symbol property correctness."""
 
