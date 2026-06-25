@@ -63,3 +63,10 @@
     tags: [dogfood]  # 94bb
   remove:  # 94bb
     tags: [dogfooding]  # 94bb
+- op: discuss  # 9c09
+  at: '2026-06-24T20:05:18Z'  # 9c09
+  by: agent  # 9c09
+  actor: jgstern_agent  # 9c09
+  clock: 6  # 9c09
+  nonce: 9c09  # 9c09
+  message: "Re-verified 2026-06-24 (Option-B spirit audit): sketch_precomputed.vocabulary is PRODUCED (cli.py:8226) but read by ZERO consumers -- no reader anywhere; compact.py strips sketch_precomputed entirely. The fundamental-correctness plan resolves vocabulary by DELETION, not lemmatization: correctness_strategy_06102026.md:194 (sketch-cache:F1) = \"vocabulary field deleted after no-consumer re-verification.\" So the lemmatization/stop-list improvement this item describes is likely MOOT -- the planned resolution is to REMOVE the field as part of the Wave-4 typed SketchPrecomputed contract. At fix time: confirm no-consumer, then delete rather than improve."  # 9c09

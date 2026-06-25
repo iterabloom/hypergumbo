@@ -92,3 +92,10 @@
   clock: 9  # 3a8c
   nonce: 3a8c  # 3a8c
   message: "root-cause family cross-link (g2); keeps existing parent (connections-sweep 2026-06-08T1900Z)"  # 3a8c
+- op: discuss  # 3a57
+  at: '2026-06-24T20:06:40Z'  # 3a57
+  by: agent  # 3a57
+  actor: jgstern_agent  # 3a57
+  clock: 10  # 3a57
+  nonce: 3a57  # 3a57
+  message: "Cross-ref 2026-06-24: INV-gojit (merged) added Java imports-edge emission (java.py _extract_import_edges) that uses TWO of the four fragmented import evidence_type names -- import_declaration (regular + wildcard imports) and import_static (static imports). So Java is now an additional producer to update when the import evidence_type vocabulary is consolidated (alongside the python ast_import and the import_statement producers). Semantic note for the consolidation call: import_static is arguably a DISTINCT inference pathway (static-member import) vs the generic import_declaration -- decide keep-separate vs fold when harmonizing."  # 3a57
