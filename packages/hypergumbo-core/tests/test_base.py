@@ -43,6 +43,7 @@ from hypergumbo_core.analyze.base import (
     split_params_top_level,
     strip_fqn_prefix,
     synthesize_file_anchors_for_node_bearing_paths,
+    synthesize_file_anchors_for_paths,
     synthesize_file_symbols_for_dangling_edges,
     visibility_from_modifiers,
     widen_route_stable_ids,
@@ -2623,3 +2624,101 @@ class TestSynthesizeFileAnchorsForNodeBearingPaths:
             [self._content("rel/Data.java")], repo_root=tmp_path)
         assert new[0].path == "rel/Data.java"
         assert new[0].span.end_line == 1  # unreadable under repo_root
+
+
+class TestSynthesizeFileAnchorsForPaths:
+    """file-anchor:F1 (additional-file-candidate cohort): the generic
+    path-keyed minter mints one ``kind="file"`` anchor per (path, language)
+    whose path has no existing Symbol."""
+
+    @staticmethod
+    def _content(path, kind="class", language="java", name="Data", sid=None):
+        return Symbol(
+            id=sid or f"{language}:{path}:1-3:{name}:{kind}",
+            name=name, kind=kind, language=language, path=path,
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="test", origin_run_id="test",
+        )
+
+    def test_mints_anchor_per_path(self) -> None:
+        new = synthesize_file_anchors_for_paths(
+            [], {"README.md": "markdown", "config.yaml": "yaml"})
+        assert {a.path for a in new} == {"README.md", "config.yaml"}
+        by_path = {a.path: a for a in new}
+        assert by_path["README.md"].kind == "file"
+        assert by_path["README.md"].language == "markdown"
+        assert by_path["README.md"].id == make_file_id("markdown", "README.md")
+        assert by_path["README.md"].span.end_line == 1  # repo_root None -> sentinel
+        assert by_path["README.md"].origin == ["orchestrator_file_symbol_synthesis"]
+
+    def test_dedups_against_existing_path(self) -> None:
+        existing = self._content("config.yaml", kind="file", language="yaml",
+                                 name="config.yaml")
+        new = synthesize_file_anchors_for_paths(
+            [existing], {"config.yaml": "yaml", "README.md": "markdown"})
+        assert [a.path for a in new] == ["README.md"]
+
+    def test_dedups_against_content_node_path(self) -> None:
+        # A path bearing a non-file content node is already covered -> no anchor.
+        content = self._content("settings.py", kind="class", language="python")
+        new = synthesize_file_anchors_for_paths(
+            [content], {"settings.py": "python"})
+        assert new == []
+
+    def test_empty_mapping_yields_nothing(self) -> None:
+        assert synthesize_file_anchors_for_paths([self._content("Data.java")], {}) == []
+
+    def test_stamps_origin_run_id(self) -> None:
+        new = synthesize_file_anchors_for_paths(
+            [], {"README.md": "markdown"}, origin_run_id="uuid:run")
+        assert new[0].origin_run_id == "uuid:run"
+
+    def test_real_end_line_from_repo_root(self, tmp_path) -> None:
+        (tmp_path / "README.md").write_text("# Title\n\nbody\n")
+        new = synthesize_file_anchors_for_paths(
+            [], {"README.md": "markdown"}, repo_root=tmp_path)
+        assert new[0].span.end_line == 3  # real line count
+
+    def test_unreadable_file_end_line_sentinel(self, tmp_path) -> None:
+        new = synthesize_file_anchors_for_paths(
+            [], {"Missing.md": "markdown"}, repo_root=tmp_path)
+        assert new[0].span.end_line == 1  # absent file -> sentinel
+
+    def test_pathless_existing_symbol_ignored_in_dedup(self) -> None:
+        # A symbol with no path must not break the dedup scan.
+        pathless = Symbol(
+            id="py:x:1:z:class", name="z", kind="class", language="python",
+            path="", span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="t", origin_run_id="t",
+        )
+        new = synthesize_file_anchors_for_paths([pathless], {"README.md": "markdown"})
+        assert [a.path for a in new] == ["README.md"]
+
+    def test_dedups_against_absolute_existing_path(self, tmp_path) -> None:
+        # An analyzer (e.g. html) may emit a file Symbol with an ABSOLUTE path
+        # not yet normalized; the relative candidate key must still dedup against
+        # it (else we mint a duplicate file anchor).
+        abs_existing = Symbol(
+            id="html:abs:1-1:file:file",
+            name="index.html", kind="file", language="html",
+            path=str(tmp_path / "index.html"),
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="html", origin_run_id="x",
+        )
+        new = synthesize_file_anchors_for_paths(
+            [abs_existing], {"index.html": "html"}, repo_root=tmp_path)
+        assert new == []
+
+    def test_absolute_path_outside_repo_kept_distinct(self, tmp_path) -> None:
+        # An absolute existing path NOT under repo_root stays as-is, so it does
+        # not spuriously dedup a same-named repo-relative candidate.
+        outside = Symbol(
+            id="html:out:1-1:file:file",
+            name="index.html", kind="file", language="html",
+            path="/elsewhere/index.html",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="html", origin_run_id="x",
+        )
+        new = synthesize_file_anchors_for_paths(
+            [outside], {"index.html": "html"}, repo_root=tmp_path)
+        assert [a.path for a in new] == ["index.html"]

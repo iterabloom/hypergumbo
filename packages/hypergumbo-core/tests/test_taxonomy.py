@@ -467,3 +467,76 @@ class TestIsAdditionalFileCandidate:
         f = tmp_path / "package.json"
         f.write_text("{}")
         assert is_additional_file_candidate(f) is True
+
+
+class TestAdditionalFileCandidates:
+    """Tests for additional_file_candidates (file-anchor:F1+F4 shared selector)."""
+
+    @staticmethod
+    def _mk(tmp_path: Path, *rels: str) -> "list[Path]":
+        files = []
+        for rel in rels:
+            f = tmp_path / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("x\ny\n")
+            files.append(f)
+        return files
+
+    def test_accepts_config_and_doc(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taxonomy import additional_file_candidates
+
+        files = self._mk(tmp_path, "config.yaml", "docs/guide.md")
+        got = additional_file_candidates(tmp_path, files, set(), [])
+        assert {str(p.relative_to(tmp_path)) for p in got} == {
+            "config.yaml", "docs/guide.md"}
+
+    def test_skips_content_source_paths(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taxonomy import additional_file_candidates
+
+        files = self._mk(tmp_path, "config.yaml", "docs/guide.md")
+        got = additional_file_candidates(tmp_path, files, {"config.yaml"}, [])
+        assert {str(p.relative_to(tmp_path)) for p in got} == {"docs/guide.md"}
+
+    def test_skips_hidden(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taxonomy import additional_file_candidates
+
+        files = self._mk(tmp_path, ".secret.yaml", ".hidden/inner.yaml")
+        assert additional_file_candidates(tmp_path, files, set(), []) == []
+
+    def test_skips_non_candidates(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taxonomy import additional_file_candidates
+
+        files = self._mk(tmp_path, "main.py", "prices_data.json")
+        assert additional_file_candidates(tmp_path, files, set(), []) == []
+
+    def test_skips_excluded_by_name(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taxonomy import additional_file_candidates
+
+        files = self._mk(tmp_path, "config.yaml", "docs/guide.md")
+        got = additional_file_candidates(tmp_path, files, set(), ["config.yaml"])
+        assert {str(p.relative_to(tmp_path)) for p in got} == {"docs/guide.md"}
+
+    def test_skips_excluded_by_path_part(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taxonomy import additional_file_candidates
+
+        files = self._mk(tmp_path, "config.yaml", "vendor/lib.yaml")
+        got = additional_file_candidates(tmp_path, files, set(), ["vendor"])
+        assert {str(p.relative_to(tmp_path)) for p in got} == {"config.yaml"}
+
+    def test_returns_absolute_paths(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taxonomy import additional_file_candidates
+
+        files = self._mk(tmp_path, "config.yaml")
+        got = additional_file_candidates(tmp_path, files, set(), [])
+        assert got == [tmp_path / "config.yaml"]
+        assert got[0].is_absolute()
+
+    def test_skips_broken_symlink(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taxonomy import additional_file_candidates
+
+        good = tmp_path / "config.yaml"
+        good.write_text("x: 1\n")
+        broken = tmp_path / "broken.yaml"
+        broken.symlink_to(tmp_path / "nonexistent.yaml")  # target absent
+        got = additional_file_candidates(tmp_path, [good, broken], set(), [])
+        assert {str(p.relative_to(tmp_path)) for p in got} == {"config.yaml"}

@@ -293,14 +293,19 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     }
                 }
             },
-            # INV-piroh sub-issue (b): three top-level keys the CLI
-            # produces but the schema didn't declare. All three are part
-            # of hypergumbo's documented output contract:
+            # INV-piroh sub-issue (b): three top-level keys the CLI produces
+            # but the schema didn't declare. Two are part of hypergumbo's
+            # documented output contract:
             #   - entrypoints: per-language entrypoint detection results.
             #   - usage_contexts: per ADR-3ccc usage_context_patterns.
-            #   - sketch_precomputed: payload computed during run for
-            #     reuse by the sketch step; included by default for
-            #     downstream tooling.
+            # The third is INTERNAL (WI-rajod reconcile, 2026-06-24): per
+            # spec.md it is an internal cache artifact — "not part of the public
+            # schema; consumers should not depend on its presence". It is
+            # documented here (with x-internal: true) only so the schema honestly
+            # reflects what is emitted; it is NOT a stability contract and may
+            # change shape between versions:
+            #   - sketch_precomputed: payload pre-computed during `run` for reuse
+            #     by the `sketch` step (avoids re-loading the embedding model).
             "entrypoints": {
                 "type": "array",
                 "items": {"$ref": "#/$defs/Entrypoint"},
@@ -440,15 +445,19 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
             },
             "sketch_precomputed": {
                 "type": "object",
+                "x-internal": True,
                 "description": (
-                    "Precomputed sketch payload (vocabulary, centrality, "
-                    "readme description, config info). Optional; omitted "
-                    "when --no-sketch-precomputed. Each sub-field is "
-                    "nullable because small repos may not surface a "
-                    "README, license, or any centrality signal."
+                    "INTERNAL cache artifact (NOT a stability contract; "
+                    "consumers should not depend on its presence or shape — "
+                    "spec.md). Pre-computed sketch payload (vocabulary, "
+                    "additional-file centrality, readme description, config "
+                    "info) reused by the `sketch` step. Optional; omitted when "
+                    "--no-sketch-precomputed. Each sub-field is nullable "
+                    "because small repos may not surface a README, license, or "
+                    "any centrality signal."
                 ),
                 "properties": {
-                    "centrality_scores": {
+                    "additional_file_centrality_scores": {
                         "oneOf": [
                             {
                                 "type": "object",
@@ -456,7 +465,14 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             },
                             {"type": "null"}
                         ],
-                        "description": "File-path → centrality score"
+                        "description": (
+                            "Non-source-file-path → symbol-mention centrality "
+                            "score, for ranking the sketch's Additional Files "
+                            "section. Keys are config/doc files only (NOT "
+                            "whole-graph symbol centrality — that is the "
+                            "`symbols` command). file-anchor:F1 guarantees every "
+                            "key is also a kind=file node path (WI-rajod)."
+                        )
                     },
                     "config_info": {
                         "oneOf": [{"type": "string"}, {"type": "null"}],

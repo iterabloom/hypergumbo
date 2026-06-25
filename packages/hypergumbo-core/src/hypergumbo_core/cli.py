@@ -8231,59 +8231,34 @@ def run_behavior_map(
         except Exception:  # pragma: no cover - graceful degradation
             sketch_precomputed["readme_description"] = None
 
-        # Pre-compute centrality scores for Additional Files section
-        # This avoids expensive ripgrep/regex operations during sketch generation
-        from fnmatch import fnmatch
+        # Pre-compute the Additional-Files centrality scores
+        # (`additional_file_centrality_scores`): the symbol-mention centrality of
+        # the NON-SOURCE config/doc files surfaced in the sketch's Additional
+        # Files section. Pre-computing here avoids expensive ripgrep/regex work
+        # during sketch generation.
+        #
+        # file-anchor:F4 — `content_source_paths` excludes file-kind anchors
+        # (only CONTENT nodes count as "source"), so the file-anchor:F1 candidate
+        # anchors (minted for these same files at the orchestrator chokepoint)
+        # are NOT re-subtracted from the candidate set. That keeps the surface
+        # populated AND makes every centrality key a real node path (the WI-rajod
+        # subset invariant; `additional_file_candidates` is the shared selector
+        # both sites use).
         from .discovery import DEFAULT_EXCLUDES
         from .sketch import ADDITIONAL_FILES_EXCLUDES
-        from .taxonomy import is_additional_file_candidate
+        from .taxonomy import additional_file_candidates
 
-        # Extract source file paths from analyzed symbols
-        source_paths: set[str] = set()
-        for sym in all_symbols:
-            if sym.path:
-                source_paths.add(sym.path)
-
-        # Collect candidate non-source files (same logic as _format_additional_files)
-        all_excludes = list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES
-        candidate_files: list[Path] = []
-
+        content_source_paths: set[str] = {
+            sym.path for sym in all_symbols if sym.path and sym.kind != "file"
+        }
         if file_index is not None:
             _all_repo_files = file_index.all_files()
         else:  # pragma: no cover - file_index always set in run_behavior_map
             _all_repo_files = [f for f in repo_root.rglob("*") if f.is_file()]
-        for f in _all_repo_files:
-            rel_path = f.relative_to(repo_root)
-            rel_str = str(rel_path)
-
-            # Skip source files
-            if rel_str in source_paths:
-                continue
-
-            # Skip hidden files/directories
-            if any(p.startswith(".") for p in rel_path.parts):
-                continue  # pragma: no cover - tested in _format_additional_files
-
-            # Role-based filtering (ADR-0004 Phase 4)
-            if not is_additional_file_candidate(f):
-                continue
-
-            # Pattern-based filtering for boilerplate (same logic as _format_additional_files)
-            is_excluded = False
-            for pattern in all_excludes:
-                if fnmatch(f.name, pattern):
-                    is_excluded = True  # pragma: no cover - tested in sketch tests
-                    break  # pragma: no cover
-                for part in rel_path.parts:
-                    if fnmatch(part, pattern):
-                        is_excluded = True  # pragma: no cover - tested in sketch tests
-                        break  # pragma: no cover
-                if is_excluded:  # pragma: no cover
-                    break
-            if is_excluded:
-                continue  # pragma: no cover
-
-            candidate_files.append(f)
+        candidate_files = additional_file_candidates(
+            repo_root, _all_repo_files, content_source_paths,
+            list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES,
+        )
 
         # Compute centrality scores for all candidates
         if candidate_files and all_symbols:
@@ -8296,12 +8271,12 @@ def run_behavior_map(
                 max_file_size=100 * 1024,
             )
             # Store as relative path strings for JSON serialization
-            sketch_precomputed["centrality_scores"] = {
+            sketch_precomputed["additional_file_centrality_scores"] = {
                 str(f.relative_to(repo_root)): score
                 for f, score in centrality_result.normalized_scores.items()
             }
         else:  # pragma: no cover - defensive: no candidates or no symbols
-            sketch_precomputed["centrality_scores"] = {}
+            sketch_precomputed["additional_file_centrality_scores"] = {}
 
         behavior_map["sketch_precomputed"] = sketch_precomputed
 

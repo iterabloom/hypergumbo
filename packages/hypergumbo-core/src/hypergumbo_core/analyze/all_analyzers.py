@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from ..discovery import set_global_on_file_skipped
+from ..discovery import DEFAULT_EXCLUDES, get_file_index, set_global_on_file_skipped
 from ..ir import (
     AnalysisRun, Edge, PASS_VERSION, Symbol, UsageContext,
     _default_config_fingerprint, compute_config_fingerprint,
@@ -28,6 +28,7 @@ from ..paths import normalize_path
 from .base import (
     populate_kind_stable_ids,
     synthesize_file_anchors_for_node_bearing_paths,
+    synthesize_file_anchors_for_paths,
     synthesize_file_symbols_for_dangling_edges,
 )
 from .registry import (
@@ -367,7 +368,37 @@ def run_all_analyzers(
     )
     if _synth_node_anchors:
         all_symbols.extend(_synth_node_anchors)
-    _total_file_synth = len(_synth_file_symbols) + len(_synth_node_anchors)
+    # file-anchor:F1 (additional-file-candidate cohort) + F4 co-release: anchor
+    # every Additional-Files candidate (config/doc file) that still lacks a node
+    # so the `additional_file_centrality_scores` keys are real node paths (the
+    # WI-rajod subset invariant). Co-released with F4 — cli.py computes
+    # source_paths as CONTENT-only, so these bare leaf anchors are NOT
+    # re-subtracted from the Additional-Files surface. Selection (candidate
+    # filter + language) lives here because base.py cannot import taxonomy/
+    # discovery/sketch without a cycle; minting stays in base.
+    _synth_candidate_anchors: list[Symbol] = []
+    _af_file_index = get_file_index()
+    if _af_file_index is not None:
+        from ..sketch import ADDITIONAL_FILES_EXCLUDES
+        from ..taxonomy import additional_file_candidates, get_language
+        _content_paths = {s.path for s in all_symbols if s.kind != "file" and s.path}
+        _af_excludes = list(DEFAULT_EXCLUDES) + ADDITIONAL_FILES_EXCLUDES
+        _af_path_lang = {
+            str(_c.relative_to(repo_root)): get_language(_c)
+            for _c in additional_file_candidates(
+                repo_root, _af_file_index.all_files(), _content_paths, _af_excludes,
+            )
+        }
+        _synth_candidate_anchors = synthesize_file_anchors_for_paths(
+            all_symbols, _af_path_lang, repo_root=repo_root,
+            origin_run_id=_file_synth_run.execution_id,
+        )
+        if _synth_candidate_anchors:
+            all_symbols.extend(_synth_candidate_anchors)
+    _total_file_synth = (
+        len(_synth_file_symbols) + len(_synth_node_anchors)
+        + len(_synth_candidate_anchors)
+    )
     if _total_file_synth:
         # INV-gizik: this synthesis pass bypasses both analyzer + linker
         # chokepoints; stamp its duration + node count (it emits only Symbols).

@@ -6457,9 +6457,9 @@ def generate_sketch(
         if (
             cached_results is not None
             and "sketch_precomputed" in cached_results
-            and cached_results["sketch_precomputed"].get("centrality_scores") is not None
+            and cached_results["sketch_precomputed"].get("additional_file_centrality_scores") is not None
         ):
-            cached_centrality = cached_results["sketch_precomputed"].get("centrality_scores")
+            cached_centrality = cached_results["sketch_precomputed"].get("additional_file_centrality_scores")
 
         additional_files_section, additional_files_selected, additional_centrality = _format_additional_files(
             repo_root,
@@ -6607,11 +6607,11 @@ def generate_sketch(
             if (
                 cached_results is not None
                 and "sketch_precomputed" in cached_results
-                and cached_results["sketch_precomputed"].get("centrality_scores")
+                and cached_results["sketch_precomputed"].get("additional_file_centrality_scores")
                 is not None
             ):
                 cached_centrality = cached_results["sketch_precomputed"].get(
-                    "centrality_scores"
+                    "additional_file_centrality_scores"
                 )
 
             # Render content for the already-selected additional files

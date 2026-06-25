@@ -762,3 +762,45 @@ def test_node_bearing_path_gets_file_anchor_wi_dagif(tmp_path):
         "file anchor does not contain its top-level class — the containment "
         "linker's span-based pass should root members at the synthesized anchor"
     )
+
+
+def test_additional_file_candidate_anchored_and_subset_invariant_f1_f4(tmp_path):
+    """file-anchor:F1+F4: every Additional-File candidate (config/doc) gets a
+    kind="file" anchor even with NO content nodes (F1), and every
+    additional_file_centrality_scores key is a real file-anchor node path —
+    the WI-rajod subset invariant (F4)."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    # `helper` is called twice -> in_degree 2 -> qualifies for mention centrality;
+    # README mentions it, so the Additional-Files surface scores non-empty.
+    (repo_root / "app.py").write_text(
+        "def helper():\n    return 1\n\n"
+        "def a():\n    return helper()\n\n"
+        "def b():\n    return helper()\n"
+    )
+    (repo_root / "README.md").write_text(
+        "# App\n\nThe `helper` function is the core utility.\n"
+    )
+    (repo_root / "config.yaml").write_text("name: app\nversion: 1\n")
+    out_path = tmp_path / "hypergumbo.results.json"
+    run_behavior_map(
+        repo_root=repo_root, out_path=out_path, include_sketch_precomputed=True
+    )
+    data = json.loads(out_path.read_text())
+    nodes = data["nodes"]
+
+    file_paths = {n["path"] for n in nodes if n.get("kind") == "file"}
+    # F1: config/doc candidates are anchored even though they carry no content nodes.
+    assert "README.md" in file_paths
+    assert "config.yaml" in file_paths
+
+    # F4 + WI-rajod subset invariant: the producer ran (non-empty surface) and
+    # every centrality key is a real file-anchor node path.
+    scores = data["sketch_precomputed"]["additional_file_centrality_scores"]
+    assert "README.md" in scores, (
+        f"expected README.md in the additional-file centrality surface, got {scores}"
+    )
+    assert set(scores) <= file_paths, (
+        f"centrality keys not subset of file-anchor node paths: "
+        f"{set(scores) - file_paths}"
+    )

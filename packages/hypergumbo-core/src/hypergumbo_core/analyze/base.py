@@ -545,6 +545,67 @@ def synthesize_file_anchors_for_node_bearing_paths(
     return synthesized
 
 
+def synthesize_file_anchors_for_paths(
+    symbols: list[Symbol],
+    path_to_language: "dict[str, str]",
+    repo_root: "Optional[Path]" = None,
+    origin_run_id: str = "",
+) -> list[Symbol]:
+    """Mint a ``kind="file"`` anchor for each ``(rel_path, language)`` whose path
+    has no existing Symbol (file-anchor:F1, additional-file-candidate cohort).
+
+    Generic path-keyed minter: the caller (``all_analyzers``) selects the
+    candidates via :func:`taxonomy.additional_file_candidates` + ``get_language``
+    — selection lives in the caller because ``base`` cannot import the taxonomy/
+    discovery/sketch modules that define the candidate filter and its exclude
+    lists without a cycle. Minting (the canonical id/span/origin shape, shared
+    with the dangling-edge and node-bearing synthesizers) stays here. These
+    anchors are leaf nodes (their files — config/docs — carry no content nodes
+    to contain), so no containment-linker rooting is needed.
+
+    Args:
+        symbols: All Symbols so far (only their ``path`` set is read, for dedup).
+        path_to_language: Repo-relative path -> resolved language. Every language
+            must be non-``None`` (the candidate filter requires a resolvable one).
+        repo_root: Repo root; when provided, ``span.end_line`` reflects the
+            file's line count.
+        origin_run_id: Execution id of the shared file-synthesis ``AnalysisRun``.
+
+    Returns:
+        One new ``kind="file"`` Symbol per path that lacked one.
+    """
+    # Dedup against already-emitted paths, normalized to repo-relative. Some
+    # analyzers (e.g. html) emit file Symbols with ABSOLUTE paths that the
+    # pipeline only normalizes downstream (after this chokepoint). The candidate
+    # keys here are repo-relative, so an absolute existing path would not match
+    # and we would mint a duplicate anchor (the html double-file-node regression).
+    existing: set[str] = set()
+    for s in symbols:
+        if not s.path:
+            continue
+        sp = s.path
+        _p = Path(sp)
+        if repo_root is not None and _p.is_absolute() and _p.is_relative_to(repo_root):
+            sp = str(_p.relative_to(repo_root))
+        existing.add(sp)
+    synthesized: list[Symbol] = []
+    for rel, language in path_to_language.items():
+        if rel in existing:
+            continue
+        end_line = _read_file_end_line(repo_root, rel) if repo_root is not None else 1
+        synthesized.append(Symbol(
+            id=make_file_id(language, rel),
+            name=rel,
+            kind="file",
+            language=language,
+            path=rel,
+            span=Span(start_line=1, start_col=0, end_line=end_line, end_col=0),
+            origin="orchestrator_file_symbol_synthesis",
+            origin_run_id=origin_run_id,
+        ))
+    return synthesized
+
+
 def make_unresolved_edge(
     lang: str,
     src_id: str,
