@@ -808,8 +808,11 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         shutil.rmtree(_legacy_compare_dir, ignore_errors=True)
 
     # Generate 4x and 16x budget sketches for comparison table
-    # Using 4x/16x (instead of 2x) reveals when large files start fitting
-    if max_tokens and stats is not None:
+    # Using 4x/16x (instead of 2x) reveals when large files start fitting.
+    # WI-fufop: --no-comparison-sketches opts out (batch/scripted single-budget
+    # runs don't want the 3x generation cost or the representativeness table).
+    no_comparison_sketches = getattr(args, "no_comparison_sketches", False)
+    if max_tokens and stats is not None and not no_comparison_sketches:
         budget_4x = max_tokens * 4
         budget_16x = max_tokens * 16
 
@@ -6035,6 +6038,13 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         action="store_true",
         dest="no_secret_scan",
         help="Skip secret scanning (not recommended)",
+    )
+    p_sketch.add_argument(
+        "--no-comparison-sketches",
+        action="store_true",
+        dest="no_comparison_sketches",
+        help="Skip the 4x/16x comparison sketches and the representativeness "
+             "table (faster; useful for batch/scripted single-budget runs)",
     )
     p_sketch.add_argument(
         "--locale",

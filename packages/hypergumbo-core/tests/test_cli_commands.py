@@ -2512,6 +2512,44 @@ def test_cmd_sketch_config_extraction_modes(tmp_path: Path, capsys) -> None:
     assert "test" in out  # Should include package name
 
 
+def test_cmd_sketch_generates_comparison_table_by_default(tmp_path: Path, capsys) -> None:
+    """By default the sketch command shows the representativeness comparison table."""
+    (tmp_path / "package.json").write_text('{"name": "defpkg", "version": "1.0.0"}')
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 1000
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+
+    result = cmd_sketch(args)
+    assert result == 0
+    out, err = capsys.readouterr()
+    assert "How Representative Is This Sketch?" in (out + err)
+
+
+def test_cmd_sketch_no_comparison_sketches_flag_skips_table(tmp_path: Path, capsys) -> None:
+    """WI-fufop: --no-comparison-sketches skips the 4x/16x comparison sketches
+    and the representativeness table (for batch/scripted single-budget runs)."""
+    (tmp_path / "package.json").write_text('{"name": "batchpkg", "version": "1.0.0"}')
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.tokens = 1000
+    args.exclude_tests = False
+    args.first_party_priority = True
+    args.extra_excludes = []
+    args.config_extraction_mode = "heuristic"
+    args.no_comparison_sketches = True
+
+    result = cmd_sketch(args)
+    assert result == 0
+    out, err = capsys.readouterr()
+    both = out + err
+    assert "How Representative Is This Sketch?" not in both
+    assert "comparison sketches" not in both
+
+
 def test_main_sketch_config_extraction_flag(tmp_path: Path) -> None:
     """Test sketch command with --config-extraction flag via main()."""
     (tmp_path / "package.json").write_text('{"name": "cli-test", "version": "2.0.0"}')

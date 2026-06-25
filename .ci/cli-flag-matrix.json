@@ -170,6 +170,7 @@
     "--locale",
     "--max-chunk-chars",
     "--max-config-files",
+    "--no-comparison-sketches",
     "--no-first-party-priority",
     "--no-language-proportional",
     "--no-progress",
