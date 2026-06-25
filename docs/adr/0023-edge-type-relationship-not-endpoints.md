@@ -294,9 +294,14 @@ names a distinct syntactic construct or semantic action that is not
 derivable from endpoints alone:
 
 `calls`, `imports`, `references`, `contains`, `instantiates`, `inherits`,
-`implements`, `decorated_by`, `extends`, `module_attr_ref`,
+`implements`, `overrides`, `decorated_by`, `extends`, `module_attr_ref`,
 `includes`, `defines_target`, `data_flows_to` (ADR-0015), and the
 access-mode-annotated edges introduced by ADR-0015.
+
+(`overrides` added 2026-06-25 per INV-vavat: a method-override is a
+distinct relationship from `extends`/`implements` (type-level) — it was
+mis-flagged as a "vestigial singleton" only because the dogfood corpus
+under-represents Solidity, its primary producer.)
 
 Notably `module_attr_ref` survives because `imported_module.X` is a
 syntactically different construct from a bare-name `X` reference, and the

@@ -152,16 +152,21 @@ def analyze_html(
             # The dst is a reference ID (the script may not exist in our analysis)
             script_ref_id = f"javascript:{script_src}:0-0:ref:script"
 
+            # INV-vavat / ADR-0023: ``<script src>`` is a *reference*
+            # relationship; the script_src specificity is a CONSTRUCT, not a
+            # relationship, so it rides in meta. (Previously edge_type was the
+            # endpoint-shape value "script_src" with the construct mis-filed
+            # under framework_dispatch="html_script_src".)
             edge = Edge.create(
                 src=file_id,
                 dst=script_ref_id,
-                edge_type="script_src",
+                edge_type="references",
                 line=line_num,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_import",
                 confidence=0.95,  # High confidence for static HTML
-                meta={"framework_dispatch": "html_script_src"},
+                meta={"construct": "script_src"},
             )
             edges.append(edge)
 
