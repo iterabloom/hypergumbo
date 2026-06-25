@@ -109,6 +109,14 @@ def _relativize_ir_paths(
     ``path:start_line:context_name:position``; because ``path`` is part of the preimage we
     recompute the id from the relativized path so the hash is stable across machines.
 
+    String values in ``Symbol.meta`` that embed a full symbol ID are relativized the same
+    way (dispatch:F1 / INV-pohik symptom 2). The canonical case is a route symbol's
+    ``handler_ref``: the route_handler linker runs *after* this pass and resolves the
+    direct case by ID against the relativized id index, so an un-relativized ``handler_ref``
+    misses every lookup and the route → handler ``dispatches_to`` edge never lands, leaving
+    the route's feature slice empty. Short-name refs (Express ``handler_ref``, ``view_name``)
+    and non-string meta values never carry the prefix and are left untouched.
+
     Runs once at Phase B (``cli``) and again as finalize sub-step 1 — the second call is an
     idempotent backstop catching any absolute path minted after Phase B (e.g. by a linker
     or boundary synthesis); on already-relative paths it is a no-op.
@@ -119,6 +127,10 @@ def _relativize_ir_paths(
             sym.id = sym.id.replace(prefix, "")
         if sym.path and prefix in sym.path:
             sym.path = sym.path.replace(prefix, "")
+        if sym.meta:
+            for key, value in list(sym.meta.items()):
+                if isinstance(value, str) and prefix in value:
+                    sym.meta[key] = value.replace(prefix, "")
     for edge in edges:
         if prefix in edge.src:
             edge.src = edge.src.replace(prefix, "")

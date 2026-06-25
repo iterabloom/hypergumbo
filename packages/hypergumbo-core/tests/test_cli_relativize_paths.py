@@ -118,5 +118,68 @@ class TestRelativizeIRPaths:
         assert uc.path == "/other/repo/urls.py"
         assert uc.id == saved_id
 
+    def test_symbol_meta_full_id_value_becomes_relative(self) -> None:
+        """dispatch:F1 — a route symbol's ``handler_ref`` meta value holds a full
+        symbol ID carrying the absolute repo_root prefix; the route_handler linker
+        resolves it by ID against the *relativized* id index, so it must be
+        relativized here too. Otherwise every direct route→handler lookup misses
+        and the route's feature slice comes back empty (INV-pohik symptom 2)."""
+        repo = Path("/repo/root")
+        s = _sym(
+            id="python:/repo/root/app/urls.py:5-5:POST /items:route",
+            path="/repo/root/app/urls.py",
+        )
+        s.meta = {
+            "framework_role": "route",
+            "handler_ref": "python:/repo/root/app/views.py:10-20:create_item:function",
+        }
+        _relativize_ir_paths(repo, [s], [], [])
+        assert s.meta["handler_ref"] == "python:app/views.py:10-20:create_item:function"
+        assert s.meta["framework_role"] == "route"
+
+    def test_symbol_meta_short_name_and_non_string_values_untouched(self) -> None:
+        """The prefix guard leaves Express-style short-name ``handler_ref`` values
+        and non-string meta values alone — neither carries the absolute prefix."""
+        repo = Path("/repo/root")
+        s = _sym(
+            id="python:/repo/root/app/urls.py:5-5:GET /u:route",
+            path="/repo/root/app/urls.py",
+        )
+        s.meta = {"handler_ref": "userController.list", "loader_count": 3}
+        _relativize_ir_paths(repo, [s], [], [])
+        assert s.meta["handler_ref"] == "userController.list"
+        assert s.meta["loader_count"] == 3
+
+    def test_route_handler_edge_lands_after_meta_relativization(self) -> None:
+        """dispatch:F1 end-to-end (INV-pohik symptom 2): relativizing the route's
+        absolute ``handler_ref`` lets the route_handler linker resolve the handler
+        by ID and emit the ``dispatches_to`` edge. Without the meta rewrite the
+        by-ID lookup misses and the route feature graph is empty."""
+        from hypergumbo_core.linkers.route_handler import link_routes_to_handlers
+
+        repo = Path("/repo/root")
+        handler = _sym(
+            id="python:/repo/root/app/views.py:10-20:create_item:function",
+            path="/repo/root/app/views.py",
+        )
+        route = _sym(
+            id="python:/repo/root/app/urls.py:5-5:POST_items:route",
+            path="/repo/root/app/urls.py",
+        )
+        route.meta = {
+            "framework_role": "route",
+            "handler_ref": "python:/repo/root/app/views.py:10-20:create_item:function",
+        }
+        _relativize_ir_paths(repo, [handler, route], [], [])
+        result = link_routes_to_handlers([handler, route], [])
+        edges = [
+            e
+            for e in result.edges
+            if e.src == route.id
+            and e.dst == handler.id
+            and e.edge_type == "dispatches_to"
+        ]
+        assert len(edges) == 1
+
     def test_empty_inputs_do_nothing(self) -> None:
         _relativize_ir_paths(Path("/repo/root"), [], [], [])
