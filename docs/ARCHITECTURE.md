@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **288** Python modules (132 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 62 core, 4 CLI, 33 tracker)
-- **35345** symbols (functions, classes, methods)
-- **109277** edges by type:
-  - calls: 61197
-  - contains: 22689
-  - imports: 10787
-  - instantiates: 8236
-  - references: 3854
-  - module_attr_ref: 1182
-  - other: 1332
+- **35399** symbols (functions, classes, methods)
+- **117256** edges by type:
+  - calls: 61338
+  - contains: 30471
+  - imports: 10793
+  - instantiates: 8246
+  - references: 3857
+  - module_attr_ref: 1199
+  - other: 1352
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 35345 Symbols + 109277 Edges + UsageContexts           │
+│  Output: 35399 Symbols + 117256 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -270,19 +270,19 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 5510.9 | ir.py |
 | `Span` | class | 4344.1 | ir.py |
-| `write_text` | external_symbol | 3229.0 | <external> |
-| `run_behavior_map` | function | 3217.0 | cli.py |
-| `LinkerContext` | class | 2171.0 | registry.py |
+| `write_text` | external_symbol | 3245.0 | <external> |
+| `run_behavior_map` | function | 3222.3 | cli.py |
+| `LinkerContext` | class | 2183.3 | registry.py |
 | `TrackerApp` | class | 1934.9 | tui.py |
-| `load_framework_patterns` | function | 1733.7 | framework_patterns.py |
-| `Edge.create` | method | 1591.3 | ir.py |
-| `main` | function | 1558.0 | cli.py |
-| `Path` | external_symbol | 1477.0 | <external> |
-| `clear_pattern_cache` | function | 1334.7 | framework_patterns.py |
-| `append` | external_symbol | 1218.0 | <external> |
-| `find_files` | function | 1120.8 | discovery.py |
+| `load_framework_patterns` | function | 1736.8 | framework_patterns.py |
+| `Edge.create` | method | 1594.1 | ir.py |
+| `main` | function | 1563.1 | cli.py |
+| `Path` | external_symbol | 1485.0 | <external> |
+| `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
+| `append` | external_symbol | 1221.0 | <external> |
+| `find_files` | function | 1124.5 | discovery.py |
 | `TreeSitterAnalyzer` | class | 961.9 | base.py |
-| `get` | external_symbol | 946.0 | <external> |
+| `get` | external_symbol | 956.0 | <external> |
 
 ## Pattern System
 
@@ -831,7 +831,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: ff676ca0c8cb
+  commit: add138c6ee15
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
