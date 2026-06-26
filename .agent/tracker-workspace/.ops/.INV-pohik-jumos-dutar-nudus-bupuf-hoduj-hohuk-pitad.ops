@@ -93,3 +93,24 @@
   clock: 10  # ec63
   nonce: ec63  # ec63
   message: "2026-06-10 design-interview ruling (decision recorded, no ADR): the dead-code-maybe headline moves to --seeds all with labeled disclosure buckets, which shrinks the downstream false-positive surface this invariant feeds — but it does not fix dispatch-primitive traversal itself. Stays violated until the call-graph traversal gap is closed; the default change only reduces symptom exposure."  # ec63
+- op: discuss  # 171d
+  at: '2026-06-25T23:55:15Z'  # 171d
+  by: agent  # 171d
+  actor: jgstern_agent  # 171d
+  clock: 11  # 171d
+  nonce: 171d  # 171d
+  message: "dispatch:F1 landed (PR merged as 487a31d4e3). Symptom 2 (route->handler edge stranded in metadata; :route feature graphs empty) is CLOSED with behavioral evidence: _relativize_ir_paths now relativizes Symbol.meta string values (route handler_ref was the only meta key holding an absolute repo-root prefix). Whole-repo self-analysis: route->handler dispatches_to edges 0->8; empty :route feature graphs 7/8->0/8 (each now 5-21 edges). Root cause was pipeline-shaped: handler_ref minted absolute, the relativize pass skipped meta, so the route_handler linker's by-id lookup (symbol_by_id keyed on relativized ids) missed and the dispatches_to edge never landed. The route_handler direct/express classifier was ALREADY present (strategy doc's 'must add 614-619' premise was stale). INV-pohik STAYS violated: symptom 1 (dead-code-maybe ~88.9% default FP) is dispatch:F2 (symptom-exposure), symptom 3 (closure-factory decorators, descriptor protocol) is dispatch:F8 which also carries the umbrella closure gate (per-family property test; 16/16 route features non-empty [F1 now satisfies the route half]; default-seed FP<=40% [needs F2]). F1 is one of the two structural fixes in resolves_ids; F8 (the other) is gated on F2."  # 171d
+- op: discuss  # 225d
+  at: '2026-06-26T01:38:29Z'  # 225d
+  by: agent  # 225d
+  actor: jgstern_agent  # 225d
+  clock: 12  # 225d
+  nonce: 225d  # 225d
+  message: "dispatch:F4 landed (PR merged as 25116a3606). Not in INV-pohik resolves_ids (only F1/F8 are) — F4 is the de-orphan adjacent fix: added function/variable to the containment linker's CONTAINABLE_KINDS so file anchors root their top-level members. Whole-repo self-analysis: ~8.8k new file->member contains edges (7062 function, 1758 variable); orphan functions 93->14, variables 130->0. Improves slice 'this file's symbols' expansion. Dead-code FP rate unaffected (BFS uses calls/dispatches_to/wraps, not contains). Surfaced + filed WI-logon (pre-existing: nodeless file anchors breach the env-gated orphan file/ratio ceilings). Remaining for INV-pohik: F2 (symptom 1, seeds default) and F8 (symptom 3 closure-factory/descriptor + the umbrella closure gate)."  # 225d
+- op: discuss  # 7e80
+  at: '2026-06-26T02:37:46Z'  # 7e80
+  by: agent  # 7e80
+  actor: jgstern_agent  # 7e80
+  clock: 13  # 7e80
+  nonce: '7e80'  # 7e80
+  message: "dispatch:F2 landed (08e458c2c6). Symptom 1's EXPOSURE (the ~89% dead-code-maybe default headline) is retired: default now --seeds production (entrypoints+exports), with entrypoint_only_dead + test_only_reachable disclosure buckets and a warn. NOT in INV-pohik resolves_ids (F2 is symptom-exposure, not traversal). INV-pohik stays violated; remaining = F8 (symptom 3 closure-factory/descriptor dispatch traversal + the umbrella closure gate: per-family property test, 16/16 route features non-empty [F1 done], default-seed FP<=40% [now measured against F2's production default]). F8 is now UNBLOCKED (needed F1+F2, both merged)."  # 7e80

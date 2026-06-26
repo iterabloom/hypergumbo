@@ -51,3 +51,27 @@
   clock: 5  # c609
   nonce: c609  # c609
   message: "2026-06-10 design-interview ruling (decision recorded, no ADR): the dead-code-maybe default becomes --seeds all (entrypoints+exports) for the headline claim, with labeled disclosure buckets; the entrypoint-only view survives as a labeled cohort, not the default. That directly retires the 89.6%-of-production-functions headline exposure. Waits on the default-switch implementation."  # c609
+- op: update  # 53af
+  at: '2026-06-26T02:37:45Z'  # 53af
+  by: agent  # 53af
+  actor: jgstern_agent  # 53af
+  clock: 6  # 53af
+  nonce: 53af  # 53af
+  set:  # 53af
+    status: done  # 53af
+- op: discuss  # 7871
+  at: '2026-06-26T02:37:45Z'  # 7871
+  by: agent  # 7871
+  actor: jgstern_agent  # 7871
+  clock: 7  # 7871
+  nonce: '7871'  # 7871
+  message: "Fixed by dispatch:F2 (PR merged as 08e458c2c6). The default flips from --seeds entrypoints to --seeds production (entrypoints + exported public API) AND a stderr note fires on the defaulted path. Behavioral evidence (production-path tests in test_cli_dead_code.py): test_default_is_production_with_buckets_and_warn asserts summary.seeds_mode=='production', seeds_defaulted True, and 'defaulting to --seeds production' on stderr; on the F2 fixture the production default flags {tested_fn, truly_dead} while the strict entrypoint-only cohort would flag 4 (disclosed as entrypoint_only_dead). On self-analysis the default moves ~89% -> ~52%. The strict entrypoint-only view survives as an explicit --seeds entrypoints (unchanged) and as the entrypoint_only_dead disclosure bucket."  # 7871
+- op: update  # 29ab
+  at: '2026-06-26T02:37:45Z'  # 29ab
+  by: agent  # 29ab
+  actor: jgstern_agent  # 29ab
+  clock: 8  # 29ab
+  nonce: 29ab  # 29ab
+  set: {}  # 29ab
+  add:  # 29ab
+    tags: [awaits_bakeoff_validation]  # 29ab

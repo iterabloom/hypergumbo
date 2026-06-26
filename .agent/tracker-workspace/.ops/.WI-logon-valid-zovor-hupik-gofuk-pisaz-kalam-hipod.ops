@@ -1,0 +1,20 @@
+- op: create  # e188
+  at: '2026-06-26T00:15:12Z'  # e188
+  by: agent  # e188
+  actor: jgstern_agent  # e188
+  clock: 1  # e188
+  nonce: e188  # e188
+  data:  # e188
+    kind: work_item  # e188
+    title: "Orphan-node ratchet breached by file-anchor work: file orphans ~305 (ceiling 20), overall ratio ~6.3% (ceiling 2.5%)"  # e188
+    status: todo_hard  # e188
+    priority: 2  # e188
+    parent:  # e188
+    tags:  # e188
+    - analysis_quality  # e188
+    isbefore: []  # e188
+    duplicate_of: []  # e188
+    not_duplicate_of: []  # e188
+    pr_ref:  # e188
+    description: "The env-gated orphan ratchet (test_orphan_node_audit.py::test_orphan_baseline_ratchet, run via HYPERGUMBO_RUN_SELF_ANALYSIS=1) fails on current self-analysis: file-kind orphans ~305 vs ceiling 20, and overall orphan ratio ~6.3% (2387/38163) vs ceiling 2.5%. Root cause: the file-anchor work (WI-dagif/WI-rajod, file-anchor:F1+F4) mints a kind=file anchor per discovered path; the nodeless config/doc cohort (README.md, yaml, package.json with no analyzable symbols) legitimately has zero edges, so each anchor becomes an orphan. Because the ratchet test is env-gated (not in CI's smart-test path), this went undetected. NEEDS DECISION between two resolutions: (a) nodeless file anchors are LEGITIMATE orphans (the module docstring already names external_symbol boundary nodes / never-imported dependencies / project metadata as legitimate) -> exempt kind=file from the orphan count and/or raise the file ceiling + ratio to the new file-anchor reality; or (b) the anchors should carry an edge (e.g. a project->file or file self-anchor marker) -> add it. Discovered during dispatch:F4 (2026-06-25), which de-orphaned top-level function/variable members (function 93->14, variable 130->0; ~8.8k new file->member contains edges) and ratcheted function 240->30 / variable 120->15, but deliberately left the file/ratio ceilings for this item."  # e188
+    fields: {}  # e188

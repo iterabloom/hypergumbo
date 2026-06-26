@@ -39,3 +39,18 @@
   clock: 4  # 9c1b
   nonce: 9c1b  # 9c1b
   message: "2026-06-10 design-interview ruling (decision recorded, no ADR): dead-code-maybe output gains labeled disclosure buckets, including an explicit test-only-reachable bucket, so the dead-code vs test-coverage contradiction becomes disclosed rather than silent. Waits on the bucket implementation alongside the --seeds all default switch."  # 9c1b
+- op: update  # c9d5
+  at: '2026-06-26T02:37:45Z'  # c9d5
+  by: agent  # c9d5
+  actor: jgstern_agent  # c9d5
+  clock: 5  # c9d5
+  nonce: c9d5  # c9d5
+  set:  # c9d5
+    status: done  # c9d5
+- op: discuss  # d746
+  at: '2026-06-26T02:37:45Z'  # d746
+  by: agent  # d746
+  actor: jgstern_agent  # d746
+  clock: 6  # d746
+  nonce: d746  # d746
+  message: "Fixed by dispatch:F2 (08e458c2c6). The dead-code-vs-test-coverage contradiction on test-only-reachable functions is now DISCLOSED, not silently absorbed: the production-default summary carries a test_only_reachable bucket = production functions dead under the default seeds yet reachable once test code is seeded. Behavioral evidence: test_default_is_production_with_buckets_and_warn asserts summary.test_only_reachable==1 on the F2 fixture (a production fn called only by a test function); test_explicit_entrypoints_has_null_buckets asserts the bucket is null under explicit non-default modes. Shares the single seed-cohort implementation with WI-lirob (not a second copy)."  # d746
