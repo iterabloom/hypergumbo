@@ -2984,6 +2984,106 @@ def _extract_edges(
 
         _walk(body_nodes)
 
+    def _emit_closure_factory_dispatch(
+        func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+        caller_symbol: Symbol,
+        inner_scope: dict[str, Symbol] | None,
+    ) -> None:
+        """Emit a ``dispatches_to`` edge for a returned directly-nested closure.
+
+        A *closure factory* is a function ``F`` whose body contains
+        ``return <bare-name>`` where ``<bare-name>`` resolves to one of F's own
+        directly-nested ``FunctionDef`` / ``AsyncFunctionDef`` definitions (the
+        canonical ``register_analyzer``-style decorator factory:
+        ``def register(...): def decorator(func): ...; return decorator``).
+
+        The returned inner closure is reachable whenever ``F`` is reached at its
+        own call / decoration sites, but the reachability BFS in
+        ``cli._REACHABILITY_EDGE_TYPES`` only traverses
+        ``{calls, dispatches_to, wraps}``. Without this edge the nested closure
+        has zero reachability in-edges and ``dead-code-maybe`` falsely flags it
+        dead. We emit ``F -> nested`` of type ``dispatches_to`` with
+        ``meta["dispatch_kind"] == "closure_factory"`` so the closure inherits
+        F's reachability (dispatch:F8 PR-A).
+
+        Scope is narrow on purpose to avoid edge proliferation:
+
+        * Only a *bare* ``ast.Name`` return target counts. A returned call
+          (``return f()``), attribute (``return self.x``), parameter, or
+          non-nested name emits NO edge — those are not "this function returns
+          its own inner closure".
+        * Resolution is keyed on ``inner_scope`` (``nested_by_parent_id`` for
+          F's symbol id), so it can ONLY match F's directly-nested defs. A
+          sibling top-level function of the same name is never matched because
+          it lives in ``local_symbols``, not ``inner_scope``.
+        * Returns are collected from F's direct body plus the bodies of simple
+          ``if`` / ``try`` blocks nested directly inside it (the common
+          early-return / try-fallthrough factory shapes), but NOT from nested
+          function / class scopes (whose returns belong to a different ``F``).
+
+        Per-target de-duplication is handled by ``Edge.edge_key`` (which keys on
+        ``(src, dst, type)`` and excludes the line), so two return statements
+        pointing at the same nested closure collapse to one logical edge
+        downstream; we still avoid emitting duplicate ``Edge`` objects here by
+        tracking the nested symbol ids already linked.
+        """
+        if not inner_scope:
+            return
+        scope_boundary = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+        def _direct_returns(nodes: list[ast.AST]) -> list[ast.Return]:
+            """Collect ``Return`` nodes in F's own scope (descending if/try only)."""
+            found: list[ast.Return] = []
+            for node in nodes:
+                if isinstance(node, ast.Return):
+                    found.append(node)
+                elif isinstance(node, (ast.If, ast.Try)):
+                    # Descend into the control-flow block's own statement lists
+                    # (body / orelse / handlers / finalbody) — these returns are
+                    # still F's. ``ast.iter_child_nodes`` would also surface the
+                    # condition expression, which never contains a top-level
+                    # Return, so the scope_boundary guard below is sufficient.
+                    for child in ast.iter_child_nodes(node):
+                        if not isinstance(child, scope_boundary):
+                            found.extend(_direct_returns([child]))
+            return found
+
+        linked: set[str] = set()
+        for ret in _direct_returns(list(func_node.body)):
+            value = ret.value
+            if not isinstance(value, ast.Name):
+                continue
+            # ``inner_scope`` (``nested_by_parent_id[F]``) is populated only
+            # from ``func_symbol_by_node_id`` values that are NOT methods (the
+            # construction at ~py.py:2784 skips ``kind == "method"`` as a
+            # value), so every entry is a ``kind == "function"`` nested def. We
+            # therefore only need the presence check — a returned name that is
+            # not a nested def (parameter, import, sibling top-level function,
+            # attribute, call) is absent from ``inner_scope`` and yields None.
+            nested = inner_scope.get(value.id)
+            if nested is None:
+                continue
+            if nested.id in linked:
+                continue
+            linked.add(nested.id)
+            edges.append(Edge.create(
+                src=caller_symbol.id,
+                dst=nested.id,
+                edge_type="dispatches_to",
+                line=ret.lineno,
+                confidence=0.9,
+                # The return is a bare function *reference* (not a call); the
+                # dispatch SHAPE rides on ``meta['dispatch_kind']`` per the
+                # axis-registry division of labor (evidence_type = inference
+                # pathway; dispatch_kind = dispatch shape). Reusing the
+                # registered ``function_reference`` evidence type avoids minting
+                # a one-producer heavyweight ADR-0028 axis value.
+                evidence_type="function_reference",
+                origin=PASS_ID,
+                origin_run_id=run_id,
+                meta={"dispatch_kind": "closure_factory"},
+            ))
+
     def _emit_module_attr_refs(
         block_nodes: list[ast.AST],
         caller_symbol: Symbol,
@@ -3427,6 +3527,7 @@ def _extract_edges(
                 # INV-mofav: each function's inner_scope contains its nested
                 # function helpers, keyed by short name.
                 inner_scope = nested_by_parent_id.get(caller_symbol.id)
+                _emit_closure_factory_dispatch(node, caller_symbol, inner_scope)
                 _emit_module_attr_refs(node.body, caller_symbol)
                 process_code_block(node.body, caller_symbol, param_types, inner_scope=inner_scope)
                 _emit_variable_refs(
