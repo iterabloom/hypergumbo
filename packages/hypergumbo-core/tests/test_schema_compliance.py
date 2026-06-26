@@ -87,18 +87,19 @@ def test_edges_have_required_fields(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    assert len(data["edges"]) == 1
-    edge = data["edges"][0]
-
-    # Required edge fields per spec
-    assert "id" in edge
-    assert "confidence" in edge
-    assert "origin" in edge
-    assert "origin_run_id" in edge
-    # src/dst instead of source/target per spec
-    assert "src" in edge
-    assert "dst" in edge
-    assert "type" in edge  # spec uses "type" not "kind"
+    # helper()->main call edge plus two file->function contains edges from the
+    # file anchor (dispatch:F4 added function to CONTAINABLE_KINDS).
+    assert len(data["edges"]) == 3
+    for edge in data["edges"]:
+        # Required edge fields per spec
+        assert "id" in edge
+        assert "confidence" in edge
+        assert "origin" in edge
+        assert "origin_run_id" in edge
+        # src/dst instead of source/target per spec
+        assert "src" in edge
+        assert "dst" in edge
+        assert "type" in edge  # spec uses "type" not "kind"
 
 
 def test_edges_have_meta_with_evidence(tmp_path: Path) -> None:

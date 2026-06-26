@@ -738,6 +738,98 @@ class TestSpanBasedContainment:
         assert contains[0].src == mod.id
         assert contains[0].dst == method.id
 
+    def test_span_containment_file_contains_function(self) -> None:
+        """dispatch:F4 — a file anchor contains a top-level function via span.
+
+        A top-level ``def`` carries a bare name, so only Phase-2 span_overlap
+        can root it at its enclosing ``kind="file"`` anchor. Before F4,
+        ``function`` was excluded from CONTAINABLE_KINDS so this edge never
+        landed and the function was a contains-tree orphan."""
+        f = _sym(
+            "python:app/util.py:1-50:app/util.py:file",
+            "app/util.py", "file", path="app/util.py", start=1, end=50,
+        )
+        func = _sym(
+            "python:app/util.py:5-10:helper:function",
+            "helper", "function", path="app/util.py", start=5, end=10,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[f, func], edges=[],
+        )
+        result = link_containment(ctx)
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == f.id
+        assert contains[0].dst == func.id
+        assert contains[0].evidence_type == "span_overlap"
+
+    def test_span_containment_file_contains_variable(self) -> None:
+        """dispatch:F4 — a file anchor contains a module-level variable via span."""
+        f = _sym(
+            "python:app/conf.py:1-20:app/conf.py:file",
+            "app/conf.py", "file", path="app/conf.py", start=1, end=20,
+        )
+        var = _sym(
+            "python:app/conf.py:3-3:CONFIG:variable",
+            "CONFIG", "variable", path="app/conf.py", start=3, end=3,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[f, var], edges=[],
+        )
+        result = link_containment(ctx)
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == f.id
+        assert contains[0].dst == var.id
+        assert contains[0].evidence_type == "span_overlap"
+
+    def test_dotted_function_name_no_spurious_edge_without_container(self) -> None:
+        """dispatch:F4 guard — a dotted function name (JS route-handler idiom)
+        produces NO contains edge when no same-file container of the parent name
+        exists. Phase 1 extracts parent ``userController`` and finds nothing;
+        Phase 2 is skipped because the name has a separator. The result is a
+        missed de-orphan, never a spurious edge."""
+        handler = _sym(
+            "javascript:routes.js:5-9:userController.createUser:function",
+            "userController.createUser", "function",
+            language="javascript", path="routes.js", start=5, end=9,
+        )
+        f = _sym(
+            "javascript:routes.js:1-30:routes.js:file",
+            "routes.js", "file", language="javascript", path="routes.js",
+            start=1, end=30,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[handler, f], edges=[],
+        )
+        result = link_containment(ctx)
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert contains == []
+
+    def test_dotted_function_name_contained_by_same_file_class(self) -> None:
+        """dispatch:F4 accepted behavior — when a dotted function name DOES name
+        a real same-file container, Phase 1 emits a naming_convention edge. The
+        dotted name genuinely qualifies the container, so this is correct."""
+        cls = _sym(
+            "javascript:ctrl.js:1-30:userController:class",
+            "userController", "class", language="javascript", path="ctrl.js",
+            start=1, end=30,
+        )
+        method = _sym(
+            "javascript:ctrl.js:5-9:userController.createUser:function",
+            "userController.createUser", "function",
+            language="javascript", path="ctrl.js", start=5, end=9,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[cls, method], edges=[],
+        )
+        result = link_containment(ctx)
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == cls.id
+        assert contains[0].dst == method.id
+        assert contains[0].evidence_type == "naming_convention"
+
     def test_span_containment_prefers_tightest_container(self) -> None:
         """When nested containers both enclose a symbol, pick the tightest one."""
         outer = _sym(

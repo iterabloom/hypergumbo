@@ -80,7 +80,23 @@ PASS_ID = make_pass_id("containment-linker")
 # synthetic-node names lack class-qualifier separators, so the
 # parent-extraction step in :func:`link_containment` skips them
 # before kind matters).
-CONTAINABLE_KINDS = frozenset({"method", "getter", "setter", "message"})
+#
+# dispatch:F4 (INV-pohik de-orphan): ``function`` and ``variable`` are
+# graph-structural members of their enclosing file/module. They are reached
+# almost entirely through Phase-2 span_overlap — a top-level ``def`` or module
+# ``var`` carries a bare name, so Phase-1 naming-convention cannot match it —
+# attaching them to the ``kind="file"`` anchor that encloses their span
+# (file-anchor:F1) so the file's ``contains`` tree is rooted at its top-level
+# members and ``slice`` can expand "this file's symbols". A *dotted* function
+# name (e.g. the JS ``userController.createUser`` route-handler idiom) can still
+# match a same-file container via Phase 1 — that is accepted: the dotted name
+# genuinely qualifies a real container when one exists in the file, and no edge
+# is emitted when none does. The dead-code reachability BFS does NOT traverse
+# ``contains`` (it follows calls/dispatches_to/wraps), so this de-orphaning
+# does not move the dead-code-maybe false-positive rate.
+CONTAINABLE_KINDS = frozenset(
+    {"method", "getter", "setter", "message", "function", "variable"}
+)
 
 # Symbol kinds that can "contain" other symbols.
 # Includes struct/trait/enum for Rust (and Go/C/Zig structs),

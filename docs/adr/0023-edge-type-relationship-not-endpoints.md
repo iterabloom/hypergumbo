@@ -369,8 +369,9 @@ The shipped implementation lives in
 [`hypergumbo_core.runtime_coherence`](../../packages/hypergumbo-core/src/hypergumbo_core/runtime_coherence.py)
 with a thin CLI at
 [`scripts/check-edge-type-runtime-coherence`](../../scripts/check-edge-type-runtime-coherence)
-and an empty allow-list at
-[`docs/edge-type-runtime-allowlist.yaml`](../edge-type-runtime-allowlist.yaml).
+and the allow-list at
+[`docs/edge-type-runtime-allowlist.yaml`](../edge-type-runtime-allowlist.yaml)
+(one amendment so far — file-anchor containment variance, recorded below).
 The deployment posture is warn-only — the CLI exits 1 on un-allow-listed
 offenders for human invocation during Phase 2/3 migration, but is
 not (yet) wired into pre-commit / CI; Phase 4's expectation is that
@@ -382,6 +383,21 @@ a top-level Symbol field today (it lives in `meta.concepts[*].framework`,
 a list awkward to use as a partition key), and a coarser key still
 catches every leak the finer key would. Expand to six fields if a
 top-level `Symbol.framework` registry lands.
+
+**Allow-list amendment — file-anchor containment variance (dispatch:F4,
+2026-06-25).** `file-anchor:F1` mints a `kind="file"` anchor per discovered
+path; `dispatch:F4` (INV-pohik de-orphan) adds `function`/`variable` to the
+containment linker's `CONTAINABLE_KINDS`, so a file anchor now `contains` its
+top-level members. The file *pseudo-node* also names those same members through
+other, genuinely-distinct relationships — module-scope `calls` and `references`,
+`imports`, and TS/JS `module_exports` — so the
+`(file, <lang>, function|variable, <lang>)` partition legitimately carries
+`contains` alongside them. `contains` is a relationship ("the file encloses this
+member"), not a leaked endpoint property, so the variance is admitted to the
+allow-list (five entries: python function/variable, bash function, typescript
+function, javascript function) rather than folded. This is the first non-empty
+state of the allow-list; the superset check still flags any *third*,
+genuinely-anomalous edge type that later appears in one of these partitions.
 
 **3. Cadence — landed.** Static and runtime checks catch known
 offender shapes; the fundamental-concept audit playbook

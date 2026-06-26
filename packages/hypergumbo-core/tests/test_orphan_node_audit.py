@@ -147,10 +147,21 @@ def use_calculator():
 # Baselines from 2026-05-27 self-analysis triage (WI-hahor).
 # Each ceiling is the observed count + 10% headroom, rounded up.
 # Ratchet down as root causes are fixed.
+#
+# dispatch:F4 (2026-06-25): adding function/variable to CONTAINABLE_KINDS rooted
+# top-level members at their file anchor (~8.8k new file->member contains edges),
+# de-orphaning them. Self-analysis dropped function orphans 93->14 and variable
+# orphans 130->0, so those ceilings ratchet down (240->30, 120->15).
+# NOTE (pre-existing, NOT dispatch:F4): the `file` ceiling and ORPHAN_RATIO_CEILING
+# are currently breached on self-analysis (file ~305 vs 20; ratio ~6.3% vs 2.5%)
+# because the file-anchor work (WI-dagif/WI-rajod) mints a kind="file" anchor per
+# discovered path and the nodeless config/doc cohort legitimately has no edges.
+# That breach is tracked under WI-logon (needs an exempt-or-add decision); F4
+# deliberately does not adjust the file ceiling or the ratio.
 ORPHAN_CEILINGS: dict[str, int] = {
-    "function": 240,
+    "function": 30,
     "call_site": 125,
-    "variable": 120,
+    "variable": 15,
     "external_symbol": 120,
     "dependency": 75,
     "export": 25,

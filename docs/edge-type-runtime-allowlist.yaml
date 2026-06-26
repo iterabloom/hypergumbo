@@ -26,4 +26,61 @@
 #   rationale: <string>            # what makes the variance legitimate
 #   adr_reference: <string>        # ADR amendment that admitted this entry
 
-allowlist: []
+#   - File-anchor containment variance (dispatch:F4, 2026-06-25).
+#     file-anchor:F1 mints a kind="file" anchor per path; dispatch:F4 adds
+#     function/variable to the containment linker's CONTAINABLE_KINDS so a file
+#     anchor `contains` its top-level members. The file pseudo-node ALSO names
+#     those same members through other, genuinely-distinct relationships —
+#     module-scope `calls`, `references`, `imports`, and TS/JS `module_exports`
+#     — so the (file, <lang>, function|variable, <lang>) partition legitimately
+#     carries `contains` alongside them. These are distinct relationships, not a
+#     leaked endpoint property, so per ADR-0023 §3 they are admitted here rather
+#     than folded. See ADR-0023 §3 "Allow-list amendment — file-anchor
+#     containment variance".
+allowlist:
+  - src_kind: file
+    src_language: python
+    dst_kind: function
+    dst_language: python
+    permitted_edge_types: [calls, contains, imports, references]
+    rationale: >-
+      A Python file anchor (file-anchor:F1) contains its top-level functions
+      (dispatch:F4) while the file pseudo-node also calls / references / imports
+      them from module scope — distinct relationships sharing one endpoint shape.
+    adr_reference: "ADR-0023 §3 amendment (dispatch:F4, 2026-06-25)"
+  - src_kind: file
+    src_language: python
+    dst_kind: variable
+    dst_language: python
+    permitted_edge_types: [contains, imports, references]
+    rationale: >-
+      A Python file anchor contains its module-level variables (dispatch:F4)
+      while also referencing / importing them from module scope.
+    adr_reference: "ADR-0023 §3 amendment (dispatch:F4, 2026-06-25)"
+  - src_kind: file
+    src_language: bash
+    dst_kind: function
+    dst_language: bash
+    permitted_edge_types: [calls, contains]
+    rationale: >-
+      A bash file anchor contains its top-level functions (dispatch:F4) while
+      the file pseudo-node also calls them from script scope.
+    adr_reference: "ADR-0023 §3 amendment (dispatch:F4, 2026-06-25)"
+  - src_kind: file
+    src_language: typescript
+    dst_kind: function
+    dst_language: typescript
+    permitted_edge_types: [calls, contains, module_exports]
+    rationale: >-
+      A TypeScript file anchor contains its top-level functions (dispatch:F4)
+      while the file pseudo-node also calls and re-exports (module_exports) them.
+    adr_reference: "ADR-0023 §3 amendment (dispatch:F4, 2026-06-25)"
+  - src_kind: file
+    src_language: javascript
+    dst_kind: function
+    dst_language: javascript
+    permitted_edge_types: [contains, references]
+    rationale: >-
+      A JavaScript file anchor contains its top-level functions (dispatch:F4)
+      while the file pseudo-node also references them from module scope.
+    adr_reference: "ADR-0023 §3 amendment (dispatch:F4, 2026-06-25)"
