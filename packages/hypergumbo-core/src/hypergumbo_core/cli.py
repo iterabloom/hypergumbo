@@ -5470,20 +5470,79 @@ def _compute_cross_language_hits(
     return hits
 
 
+def production_callables(
+    nodes: list[dict],
+) -> tuple[dict[str, dict], set[str], set[str]]:
+    """Classify function/method symbols for dead-code analysis (docs-prose:F4).
+
+    Returns ``(production_symbols, test_symbols, exported_symbols)``:
+
+    - ``production_symbols`` — non-test function/method nodes keyed by id (the
+      dead-code candidate universe; ``dead = production_callables - reachable``).
+    - ``test_symbols`` — function/method nodes under a test path.
+    - ``exported_symbols`` — production symbols with ``supply_chain.is_exported``
+      (public API, reachable by external callers outside the analysis scope —
+      WI-zimum).
+
+    Extracted from the inline classification ``cmd_dead_code_maybe`` used to
+    build so the seed-cohort math has a single named source of truth.
+    """
+    production_symbols: dict[str, dict] = {}
+    test_symbols: set[str] = set()
+    exported_symbols: set[str] = set()
+    for node in nodes:
+        kind = node.get("kind", "")
+        if kind not in ("function", "method"):
+            continue
+        path = node.get("path", "")
+        if _is_test_path(path):
+            test_symbols.add(node["id"])
+        else:
+            production_symbols[node["id"]] = node
+            sc = node.get("supply_chain") or {}
+            if sc.get("is_exported"):
+                exported_symbols.add(node["id"])
+    return production_symbols, test_symbols, exported_symbols
+
+
+def _bfs_reachable(
+    seed_ids: set[str], call_graph: dict[str, list[str]],
+) -> set[str]:
+    """Return all symbol ids reachable from *seed_ids* over *call_graph*."""
+    reachable: set[str] = set()
+    queue = list(seed_ids)
+    visited: set[str] = set(seed_ids)
+    while queue:
+        current = queue.pop()
+        reachable.add(current)
+        for neighbor in call_graph.get(current, []):
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append(neighbor)
+    return reachable
+
+
 def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
-    """Find potentially dead code: production callables unreachable from entrypoints.
+    """Find potentially dead code: production callables unreachable from seeds.
 
     Computes: dead = production_callables - reachable_from(seed_set)
 
-    The seed set is configurable via ``--seeds``:
-    - ``entrypoints``: CLI mains, HTTP routes, framework hooks (default)
-    - ``tests``: test functions only
-    - ``exports``: symbols with ``is_exported=True`` (public API, WI-zimum)
-    - ``all``: entrypoints + tests + exports
+    The seed set is selected via ``--seeds`` (default ``production``):
+    - ``production``: entrypoints + exported public API (the default headline
+      view — dispatch:F2 / 2026-06-10 ruling).
+    - ``entrypoints``: CLI mains, HTTP routes, framework hooks only (the strict
+      entry-only cohort; surfaced as a disclosure bucket under the default).
+    - ``tests``: test functions only.
+    - ``exports``: symbols with ``is_exported=True`` (public API, WI-zimum).
+    - ``all``: entrypoints + tests + exports.
 
-    Uses BFS over call edges from seed symbols.  Functions not visited
-    are flagged as potentially dead.  Results are ranked by lines of code
-    (larger unreachable functions first).
+    ``view_func`` framework-dispatch handlers (WI-vuton) seed every mode. Uses
+    BFS over call/dispatches_to/wraps edges; unvisited production callables are
+    flagged, ranked by cross-language-hit/shape/FFI signal then LOC. Under the
+    default ``production`` view the summary discloses two cohorts the headline
+    folds away: ``entrypoint_only_dead`` (the strict ~89%-dead view) and
+    ``test_only_reachable`` (functions reachable only once tests are seeded —
+    the WI-jufih dead-code-vs-coverage contradiction).
     """
     repo_root = Path(args.path).resolve()
 
@@ -5499,36 +5558,28 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     behavior_map = load_behavior_map(input_path)
     nodes = behavior_map.get("nodes", [])
     edges = behavior_map.get("edges", [])
-    # Identify production callable symbols (exclude test files)
-    production_symbols: dict[str, dict] = {}
-    test_symbols: set[str] = set()
-    exported_symbols: set[str] = set()
-    for node in nodes:
-        path = node.get("path", "")
-        kind = node.get("kind", "")
-        if kind not in ("function", "method"):
-            continue
-        if _is_test_path(path):
-            test_symbols.add(node["id"])
-        else:
-            production_symbols[node["id"]] = node
-            # WI-zimum: is_exported is stored under supply_chain in the
-            # behavior map. A production symbol with is_exported=True is
-            # part of the public API and should be unconditionally
-            # reachable (external callers are outside the analysis scope).
-            sc = node.get("supply_chain") or {}
-            if sc.get("is_exported"):
-                exported_symbols.add(node["id"])
+    # Identify production callable symbols (exclude test files); docs-prose:F4.
+    production_symbols, test_symbols, exported_symbols = production_callables(nodes)
 
     if not production_symbols:
         print("No production functions found to analyze.", file=sys.stderr)
         return 0
 
-    # Build seed set based on --seeds flag
-    seed_ids: set[str] = set()
-    seeds_mode = getattr(args, "seeds", "entrypoints")
+    # dispatch:F2 — resolve the seed mode. The default is ``production``
+    # (entrypoints + exported public API), the 2026-06-10 ruling's headline
+    # view: it retires the ~89%-dead entrypoint-only false-positive headline
+    # while keeping the strict entrypoint-only view and test-only reachability
+    # as labeled disclosure buckets (see the summary). ``--seeds`` defaults to
+    # None at the argparse layer so an *omitted* flag (warn-worthy) is
+    # distinguishable from an explicit ``--seeds entrypoints``.
+    seeds_arg = getattr(args, "seeds", None)
+    seeds_defaulted = seeds_arg is None
+    seeds_mode = "production" if seeds_defaulted else seeds_arg
 
-    if seeds_mode in ("entrypoints", "all"):
+    # Component seed sets, composed per mode below. Computed once so the
+    # disclosure buckets can re-BFS from alternate cohorts cheaply.
+    entrypoint_seed_ids: set[str] = set()
+    if seeds_mode in ("production", "entrypoints", "all"):
         from .entrypoints import detect_entrypoints
         from .ir import LEGACY_DESERIALIZED_SENTINEL, Symbol, Edge, Span, _normalize_origin
 
@@ -5570,17 +5621,9 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             ))
 
         min_conf = getattr(args, "min_confidence", 0.0)
-        entrypoints = detect_entrypoints(ir_nodes, ir_edges)
-        for ep in entrypoints:
+        for ep in detect_entrypoints(ir_nodes, ir_edges):
             if ep.confidence >= min_conf:
-                seed_ids.add(ep.symbol_id)
-
-    if seeds_mode in ("tests", "all"):
-        seed_ids.update(test_symbols)
-
-    # WI-zimum: exported symbols (public API) as seeds.
-    if seeds_mode in ("exports", "all"):
-        seed_ids.update(exported_symbols)
+                entrypoint_seed_ids.add(ep.symbol_id)
 
     # WI-vuton heuristic 2: usage_contexts cross-reference. A symbol that
     # appears as a callable-position (``view_func``) in a usage_context
@@ -5591,7 +5634,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # hypergumbo self-analysis. Only ``view_func`` (and other future
     # callable-position kinds) seed the BFS — pure name references
     # (``arg_value``) do not represent dispatch sites and should NOT
-    # produce reachability claims.
+    # produce reachability claims. Seeded in every mode.
     _CALLABLE_POSITIONS = frozenset({"view_func"})
     view_func_seed_ids: set[str] = set()
     for uc in behavior_map.get("usage_contexts", []) or []:
@@ -5600,7 +5643,15 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         ref = uc.get("symbol_ref")
         if ref and ref in production_symbols:
             view_func_seed_ids.add(ref)
-    seed_ids.update(view_func_seed_ids)
+
+    # Compose the active seed set for the resolved mode.
+    seed_ids: set[str] = set(view_func_seed_ids)
+    if seeds_mode in ("production", "entrypoints", "all"):
+        seed_ids |= entrypoint_seed_ids
+    if seeds_mode in ("production", "exports", "all"):
+        seed_ids |= exported_symbols
+    if seeds_mode in ("tests", "all"):
+        seed_ids |= test_symbols
 
     # BFS from seeds through call-flow edges.
     # calls:          direct function/method calls (post-Phase-3, also covers
@@ -5618,16 +5669,26 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             if src and dst:
                 call_graph.setdefault(src, []).append(dst)
 
-    reachable: set[str] = set()
-    queue = list(seed_ids)
-    visited: set[str] = set(seed_ids)
-    while queue:
-        current = queue.pop()
-        reachable.add(current)
-        for neighbor in call_graph.get(current, []):
-            if neighbor not in visited:
-                visited.add(neighbor)
-                queue.append(neighbor)
+    reachable = _bfs_reachable(seed_ids, call_graph)
+
+    # dispatch:F2 disclosure buckets (computed for the production headline
+    # view). ``entrypoint_only_dead`` re-exposes the strict ~89%-dead cohort
+    # the default used to print; ``test_only_reachable`` names production
+    # functions dead under the production seeds yet reachable once test code is
+    # also seeded — the WI-jufih dead-code-vs-coverage contradiction, disclosed
+    # rather than silently absorbed.
+    production_keys = set(production_symbols)
+    entrypoint_only_dead: int | None = None
+    test_only_reachable: int | None = None
+    if seeds_mode == "production":
+        reachable_entrypoint_only = _bfs_reachable(
+            entrypoint_seed_ids | view_func_seed_ids, call_graph,
+        )
+        entrypoint_only_dead = len(production_keys - reachable_entrypoint_only)
+        reachable_with_tests = _bfs_reachable(seed_ids | test_symbols, call_graph)
+        test_only_reachable = len(
+            (reachable_with_tests - reachable) & production_keys,
+        )
 
     # Dead candidates = production symbols NOT reachable
     dead_candidates = []
@@ -5832,6 +5893,16 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     total_dead = len(dead_candidates)
     total_entrypoints = len(seed_ids)
 
+    if seeds_defaulted:
+        print(
+            "note: defaulting to --seeds production (entrypoints + exported "
+            "public API; dispatch:F2). Use --seeds entrypoints for the strict "
+            "entry-only view or --seeds all to also seed tests; the summary's "
+            "entrypoint_only_dead / test_only_reachable buckets disclose both "
+            "cohorts the default folds away.",
+            file=sys.stderr,
+        )
+
     if args.format == "json":
         output = {
             "summary": {
@@ -5840,7 +5911,14 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 "dead_candidates": total_dead,
                 "seed_count": total_entrypoints,
                 "seeds_mode": seeds_mode,
+                "seeds_defaulted": seeds_defaulted,
                 "dead_percent": round(total_dead / max(total_production, 1) * 100, 1),
+                # dispatch:F2 disclosure buckets (non-null only in the
+                # production headline view): the strict entrypoint-only dead
+                # count, and production functions reachable only once tests are
+                # seeded (WI-jufih). null under explicit non-default modes.
+                "entrypoint_only_dead": entrypoint_only_dead,
+                "test_only_reachable": test_only_reachable,
                 # WI-vuton: how many symbols entered the reachable set via
                 # framework-dispatch usage_contexts (view_func position) and
                 # how many methods were demoted from dead via inheritance-
@@ -5875,6 +5953,10 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         print(f"Reachable:            {total_reachable}")
         print(f"Potentially dead:     {total_dead} "
               f"({total_dead / max(total_production, 1) * 100:.1f}%)")
+        if seeds_mode == "production":
+            # dispatch:F2 disclosure buckets.
+            print(f"  entrypoint-only view would flag: {entrypoint_only_dead}")
+            print(f"  reachable only from tests:       {test_only_reachable}")
         print()
 
         if dead_candidates:
@@ -7061,11 +7143,14 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         help="Output format (default: text)",
     )
     p_dead_code.add_argument(
-        "--seeds", choices=["entrypoints", "tests", "exports", "all"],
-        default="entrypoints",
-        help="Seed set for reachability analysis (default: entrypoints). "
-             "'exports' uses symbols with is_exported=True (public API). "
-             "'all' combines entrypoints, tests, and exports.",
+        "--seeds", choices=["production", "entrypoints", "tests", "exports", "all"],
+        default=None,
+        help="Seed set for reachability analysis (default: production = "
+             "entrypoints + exported public API; dispatch:F2). 'entrypoints' is "
+             "the strict entry-only view (also disclosed as a bucket under the "
+             "default). 'exports' uses symbols with is_exported=True. 'all' "
+             "combines entrypoints, tests, and exports. Omitting the flag prints "
+             "a note and the entrypoint-only / test-only-reachable buckets.",
     )
     p_dead_code.add_argument(
         "--min-confidence", type=float, default=0.0,

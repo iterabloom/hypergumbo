@@ -1672,3 +1672,153 @@ class TestWiVutonDispatchInheritedDemotion:
         # free top-level helper() must NOT be demoted just because
         # Base.helper (a method) is reachable.
         assert "helper" in dead_names
+
+
+def _run_dead_code_f2(
+    tmp_path: Path, behavior_map: dict, seeds, fmt: str = "json",
+):
+    """Run cmd_dead_code_maybe capturing stdout AND stderr.
+
+    ``seeds=None`` exercises the omitted-flag (defaulted) path. Returns
+    ``(rc, stdout, stderr)``.
+    """
+    import argparse
+    import io
+    import sys
+
+    bm_path = tmp_path / "hg.json"
+    bm_path.write_text(json.dumps(behavior_map))
+    args = argparse.Namespace(
+        path=str(tmp_path), input=str(bm_path), format=fmt,
+        seeds=seeds, min_confidence=0.0,
+    )
+    out, err = io.StringIO(), io.StringIO()
+    old_out, old_err = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = out, err
+    try:
+        rc = cmd_dead_code_maybe(args)
+    finally:
+        sys.stdout, sys.stderr = old_out, old_err
+    return rc, out.getvalue(), err.getvalue()
+
+
+def _f2_behavior_map() -> dict:
+    """Fixture exercising the dispatch:F2 seed cohorts.
+
+    - ``api`` is a route entrypoint; ``helper`` is reachable from it.
+    - ``public_api`` is an export (reachable under the production default via
+      the exports seed, but dead under the entrypoint-only cohort);
+      ``export_callee`` is reachable from it.
+    - ``tested_fn`` is reachable only from a test function (test-only-reachable).
+    - ``truly_dead`` is dead in every cohort.
+    """
+    return {
+        "schema_version": "0.2.3",
+        "nodes": [
+            {"id": "py:app.py:1-5:GET /api:route", "name": "api", "kind": "function",
+             "language": "python", "path": "app.py", "span": {"start_line": 1, "end_line": 5},
+             "meta": {"route_path": "/api", "http_method": "GET", "framework_role": "route"}},
+            {"id": "py:app.py:7-10:helper:function", "name": "helper", "kind": "function",
+             "language": "python", "path": "app.py", "span": {"start_line": 7, "end_line": 10}},
+            {"id": "py:lib.py:1-5:public_api:function", "name": "public_api", "kind": "function",
+             "language": "python", "path": "lib.py", "span": {"start_line": 1, "end_line": 5},
+             "supply_chain": {"is_exported": True}},
+            {"id": "py:lib.py:7-10:export_callee:function", "name": "export_callee", "kind": "function",
+             "language": "python", "path": "lib.py", "span": {"start_line": 7, "end_line": 10}},
+            {"id": "py:svc.py:1-5:tested_fn:function", "name": "tested_fn", "kind": "function",
+             "language": "python", "path": "svc.py", "span": {"start_line": 1, "end_line": 5}},
+            {"id": "py:tests/test_svc.py:1-5:test_it:function", "name": "test_it", "kind": "function",
+             "language": "python", "path": "tests/test_svc.py", "span": {"start_line": 1, "end_line": 5}},
+            {"id": "py:svc.py:7-10:truly_dead:function", "name": "truly_dead", "kind": "function",
+             "language": "python", "path": "svc.py", "span": {"start_line": 7, "end_line": 10}},
+        ],
+        "edges": [
+            {"type": "calls", "src": "py:app.py:1-5:GET /api:route",
+             "dst": "py:app.py:7-10:helper:function"},
+            {"type": "calls", "src": "py:lib.py:1-5:public_api:function",
+             "dst": "py:lib.py:7-10:export_callee:function"},
+            {"type": "calls", "src": "py:tests/test_svc.py:1-5:test_it:function",
+             "dst": "py:svc.py:1-5:tested_fn:function"},
+        ],
+    }
+
+
+class TestDispatchF2SeedsDefault:
+    """dispatch:F2 — default seed mode is ``production`` (entrypoints + exports)
+    with disclosure buckets; the 2026-06-10 ruling. Retires the entrypoint-only
+    ~89%-dead headline while keeping the strict view + test-only reachability
+    as labeled cohorts (WI-lirob / WI-jufih)."""
+
+    def test_default_is_production_with_buckets_and_warn(self, tmp_path: Path) -> None:
+        rc, out, err = _run_dead_code_f2(tmp_path, _f2_behavior_map(), seeds=None)
+        assert rc == 0
+        assert "defaulting to --seeds production" in err
+        s = json.loads(out)["summary"]
+        assert s["seeds_mode"] == "production"
+        assert s["seeds_defaulted"] is True
+        dead = {d["name"] for d in json.loads(out)["dead_candidates"]}
+        # exports rescue public_api and its callee; only the genuinely
+        # unreachable + the test-only-reachable remain dead under production.
+        assert dead == {"tested_fn", "truly_dead"}
+        # disclosure buckets: the strict entrypoint-only view flags more, and
+        # tested_fn is reachable only once tests are seeded.
+        assert s["entrypoint_only_dead"] == 4
+        assert s["test_only_reachable"] == 1
+
+    def test_explicit_production_buckets_no_warn(self, tmp_path: Path) -> None:
+        rc, out, err = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="production",
+        )
+        assert rc == 0
+        assert "defaulting to" not in err  # explicit mode → no default note
+        s = json.loads(out)["summary"]
+        assert s["seeds_defaulted"] is False
+        assert s["entrypoint_only_dead"] == 4
+        assert s["test_only_reachable"] == 1
+
+    def test_explicit_entrypoints_has_null_buckets(self, tmp_path: Path) -> None:
+        rc, out, err = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="entrypoints",
+        )
+        assert rc == 0
+        s = json.loads(out)["summary"]
+        assert s["seeds_mode"] == "entrypoints"
+        # buckets are a production-view property; null under explicit modes.
+        assert s["entrypoint_only_dead"] is None
+        assert s["test_only_reachable"] is None
+
+    def test_production_text_output_shows_buckets(self, tmp_path: Path) -> None:
+        rc, out, err = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="production", fmt="text",
+        )
+        assert rc == 0
+        assert "entrypoint-only view would flag: 4" in out
+        assert "reachable only from tests:       1" in out
+
+
+def test_production_callables_classifies() -> None:
+    """production_callables splits function/method nodes into production / test /
+    exported, skipping non-callable kinds (docs-prose:F4)."""
+    from hypergumbo_core.cli import production_callables
+
+    nodes = [
+        {"id": "p1", "kind": "function", "path": "app.py",
+         "supply_chain": {"is_exported": True}},
+        {"id": "p2", "kind": "method", "path": "app.py"},
+        {"id": "t1", "kind": "function", "path": "tests/test_x.py"},
+        {"id": "c1", "kind": "class", "path": "app.py"},  # non-callable → skipped
+    ]
+    prod, test, exported = production_callables(nodes)
+    assert set(prod) == {"p1", "p2"}
+    assert test == {"t1"}
+    assert exported == {"p1"}
+
+
+def test_bfs_reachable_traverses_and_skips_visited() -> None:
+    """_bfs_reachable returns the transitive closure and skips already-visited
+    neighbors (diamond graph)."""
+    from hypergumbo_core.cli import _bfs_reachable
+
+    assert _bfs_reachable(set(), {"a": ["b"]}) == set()
+    # diamond: c is reachable from both a and b → second visit is skipped.
+    assert _bfs_reachable({"a"}, {"a": ["b", "c"], "b": ["c"]}) == {"a", "b", "c"}
