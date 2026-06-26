@@ -62,7 +62,7 @@ import re
 import time
 from pathlib import Path
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
@@ -146,7 +146,7 @@ def _find_handler_assignments(
 
 def _find_go_files(repo_root: Path):
     """Yield all ``.go`` files under the repo, respecting default excludes."""
-    yield from find_files(
+    yield from find_non_test_files(
         repo_root,
         patterns=["*.go"],
     )

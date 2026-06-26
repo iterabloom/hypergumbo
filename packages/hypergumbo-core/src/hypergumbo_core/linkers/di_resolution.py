@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -247,7 +247,7 @@ def _scan_spi_files(root: Path) -> list[DIBinding]:
     spi_dir = root / "META-INF" / "services"
     if not spi_dir.is_dir():
         # Also check src/main/resources/ (Maven layout)
-        for candidate in find_files(root, ["META-INF/services/*"]):
+        for candidate in find_non_test_files(root, ["META-INF/services/*"]):
             iface_fqn = candidate.name
             iface_short = iface_fqn.rsplit(".", 1)[-1]
             try:
@@ -365,7 +365,7 @@ def extract_bindings_from_source(root: Path) -> list[DIBinding]:
     bindings: list[DIBinding] = []
 
     # Scan source files
-    for file_path in find_files(root, _SOURCE_GLOBS):
+    for file_path in find_non_test_files(root, _SOURCE_GLOBS):
         ext = file_path.suffix.lower()
         patterns = _PATTERNS_BY_EXT.get(ext, [])
         reversed_patterns = _REVERSED_PATTERNS_BY_EXT.get(ext, [])

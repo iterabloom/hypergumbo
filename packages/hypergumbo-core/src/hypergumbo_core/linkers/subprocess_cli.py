@@ -301,7 +301,14 @@ def _scan_python_file(file_path: Path, content: str) -> list[SubprocessCall]:
 
 
 def _find_python_files(root: Path) -> Iterator[Path]:
-    """Find Python files that might contain subprocess calls."""
+    """Find Python files that might contain subprocess calls.
+
+    Deliberately does NOT use the linker-evidence-gating:F1 test-file gate:
+    unlike the pattern-string linkers (message-queue topics, SQL literals),
+    a ``subprocess.run([...])`` call in an integration test is a *real* CLI
+    invocation, and detecting test-suite invocations of the project's own CLI
+    is this linker's intended behavior (see test_subprocess_linker).
+    """
     for path in find_files(root, ["**/*.py"]):
         yield path
 

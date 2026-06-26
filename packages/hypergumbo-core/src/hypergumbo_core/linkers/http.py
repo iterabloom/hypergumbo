@@ -93,7 +93,7 @@ from typing import Iterator
 from urllib.parse import urlparse
 
 from ..analyze.base import make_site_stable_id, make_symbol_id
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..url_folding import (
     fold_array_join,
@@ -633,7 +633,7 @@ def _find_source_files(root: Path) -> Iterator[Path]:
         "**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx",
         "**/*.go", "**/*.rb", "**/*.java", "**/*.elm",
     ]
-    for path in find_files(root, patterns):
+    for path in find_non_test_files(root, patterns):
         if path.stem.endswith(".min"):
             continue
         yield path

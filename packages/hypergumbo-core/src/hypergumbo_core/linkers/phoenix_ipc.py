@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import language_from_path
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
@@ -206,7 +206,7 @@ def detect_phoenix_patterns(source: bytes, language: str) -> list[dict]:
 
 def _find_elixir_files(repo_root: Path) -> Iterator[Path]:
     """Find all Elixir files in the repository."""
-    yield from find_files(repo_root, ["*.ex", "*.exs"])
+    yield from find_non_test_files(repo_root, ["*.ex", "*.exs"])
 
 
 def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:

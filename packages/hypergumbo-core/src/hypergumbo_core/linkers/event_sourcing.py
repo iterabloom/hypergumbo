@@ -60,9 +60,8 @@ from pathlib import Path
 from typing import Iterator
 
 from ..analyze.base import make_protocol_stable_id
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ..paths import is_test_file
 from ._text_filters import js_ts_language_from_path
 from .registry import LinkerContext, LinkerResult, register_linker
 from ._text_filters import read_masked_source
@@ -283,10 +282,8 @@ def _find_source_files(root: Path) -> Iterator[Path]:
     of orphan ``event_publisher`` nodes from test assertions.
     """
     patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java", "**/*.go"]
-    for path in find_files(root, patterns):
+    for path in find_non_test_files(root, patterns):
         if path.stem.endswith(".min"):
-            continue
-        if is_test_file(str(path)):
             continue
         yield path
 

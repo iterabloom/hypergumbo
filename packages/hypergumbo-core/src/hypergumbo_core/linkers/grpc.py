@@ -63,7 +63,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..discovery import find_files
+from ..discovery import find_files, find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._transitive_bases import (
     build_inheritance_index,
@@ -190,7 +190,7 @@ TS_CLIENT_PATTERN = re.compile(
 def _find_grpc_files(root: Path) -> Iterator[Path]:
     """Find files that might contain gRPC patterns."""
     patterns = ["**/*.proto", "**/*.py", "**/*.go", "**/*.java", "**/*.ts", "**/*.js"]
-    for path in find_files(root, patterns):
+    for path in find_non_test_files(root, patterns):
         yield path
 
 

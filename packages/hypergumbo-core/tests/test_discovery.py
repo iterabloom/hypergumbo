@@ -7,6 +7,7 @@ from hypergumbo_core.discovery import (
     classify_dot_d_file,
     classify_dot_m_file,
     find_files,
+    find_non_test_files,
     is_excluded,
 )
 
@@ -1129,3 +1130,31 @@ class TestFileIndexFindFilesIntegration:
             assert get_file_index() is sentinel
         finally:
             set_file_index(None)
+
+
+class TestFindNonTestFiles:
+    """linker-evidence-gating:F1 — the shared test-file scan gate that the
+    content-scanning linkers consume so a framework-pattern string literal in a
+    TEST file cannot synthesize a phantom production edge (WI-nitob, WI-rilin)."""
+
+    def test_excludes_test_files_keeps_production(self, tmp_path: Path) -> None:
+        (tmp_path / "service.py").write_text("x = 1\n")
+        (tmp_path / "test_service.py").write_text("x = 1\n")  # test_ prefix
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "helpers.py").write_text("x = 1\n")  # tests/ dir
+        names = {p.name for p in find_non_test_files(tmp_path, ["**/*.py"])}
+        assert "service.py" in names
+        assert "test_service.py" not in names
+        assert "helpers.py" not in names
+
+    def test_forwards_find_files_kwargs(self, tmp_path: Path) -> None:
+        # The wrapper forwards every find_files argument verbatim; exercise the
+        # excludes pass-through (a production file under a custom-excluded dir).
+        (tmp_path / "keep.py").write_text("x = 1\n")
+        (tmp_path / "vendor").mkdir()
+        (tmp_path / "vendor" / "dep.py").write_text("x = 1\n")
+        names = {
+            p.name
+            for p in find_non_test_files(tmp_path, ["**/*.py"], excludes=["vendor"])
+        }
+        assert names == {"keep.py"}

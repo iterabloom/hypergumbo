@@ -27,6 +27,8 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Callable, Iterator
 
+from .paths import is_test_file
+
 # Global file size limit. Set via set_max_file_bytes() before running
 # analyzers; find_files() reads this when no explicit max_file_bytes
 # is passed. Reset to None after use.
@@ -974,3 +976,49 @@ def find_files(
                     continue
             yield path
             count += 1
+
+
+def find_non_test_files(
+    repo_root: Path,
+    patterns: list[str],
+    excludes: list[str] | None = None,
+    max_files: int | None = None,
+    max_file_bytes: int | None = None,
+    on_file_skipped: Callable[[Path, int, str], None] | None = None,
+) -> Iterator[Path]:
+    """:func:`find_files`, minus test files (linker-evidence-gating:F1).
+
+    Tier-2 content-scanning linkers (message-queue, database-query, http,
+    graphql, grpc, websocket, …) regex-match framework patterns in file
+    *content* and synthesize Symbols/Edges from the matches. A matching string
+    literal sitting in a TEST file — a fixture, an assertion, an example in a
+    regression test — would otherwise yield a phantom *production* edge:
+    WI-nitob (the message-queue linker synthesized 103 ``event_publishes`` from
+    MQ pattern strings in test-file bodies, cross-linking 26 unrelated test
+    files by topic) and WI-rilin (the database-query linker emitted phantom
+    cross-package table ``references`` sourced entirely from its own test
+    files) are two filed P1 instances of the same class.
+
+    This wrapper drops test-classified paths at the single discovery
+    chokepoint via the canonical :func:`hypergumbo_core.paths.is_test_file`,
+    so every linker that self-scans the filesystem gates on test status in ONE
+    place — instead of each linker carrying (or omitting) its own private
+    copy. Swapping a linker's ``find_files`` call for this one is therefore a
+    no-new-branch change: the skip decision lives here, exercised by this
+    module's own tests. Linkers that genuinely need to read test files (none
+    today) should keep calling :func:`find_files` directly.
+
+    The signature mirrors :func:`find_files` exactly and forwards every
+    argument; only test-classified paths are additionally withheld.
+    """
+    for path in find_files(
+        repo_root,
+        patterns,
+        excludes=excludes,
+        max_files=max_files,
+        max_file_bytes=max_file_bytes,
+        on_file_skipped=on_file_skipped,
+    ):
+        if is_test_file(str(path)):
+            continue
+        yield path

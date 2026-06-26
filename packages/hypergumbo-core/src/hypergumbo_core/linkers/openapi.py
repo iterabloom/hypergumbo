@@ -51,7 +51,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._concept_utils import get_concept, has_concept
 from ._text_filters import language_from_path
@@ -154,7 +154,7 @@ def _find_openapi_files(root: Path) -> Iterator[Path]:
     """Find OpenAPI spec files in the repository."""
     # First, try specific filenames
     for pattern in OPENAPI_FILE_PATTERNS:
-        for file_path in find_files(root, [pattern]):
+        for file_path in find_non_test_files(root, [pattern]):
             if file_path.suffix.lower() in (".yaml", ".yml", ".json"):
                 yield file_path
 

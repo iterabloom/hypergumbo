@@ -761,3 +761,49 @@ class TestInvZuhubConformance:
         edge = result.edges[0]
         assert edge.confidence == 0.5
         assert edge.meta.get("disambiguation_fallback") is True
+
+
+class TestTestFileGating:
+    """linker-evidence-gating:F1 / WI-rilin: SQL query string literals in TEST
+    files must not synthesize call_site symbols or phantom table ``references``
+    edges (the linker emitted 17 phantom refs sourced entirely from test
+    files). The gate drains the test-sourced face; cross-package scoping is a
+    separate residual on WI-rilin."""
+
+    def _users_table(self) -> Symbol:
+        return Symbol(
+            id="sql:schema.sql:1-5:users:table",
+            name="users",
+            kind="table",
+            path="schema.sql",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            language="sql",
+        )
+
+    def test_sql_in_test_file_emits_nothing(self, tmp_path: Path):
+        # SQL literal in a test_*-named file and one under a tests/ directory.
+        (tmp_path / "test_orders.py").write_text(dedent('''
+            cursor.execute("SELECT * FROM users")
+        '''))
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "fixtures_data.py").write_text(dedent('''
+            cursor.execute("INSERT INTO users (id) VALUES (1)")
+        '''))
+
+        result = link_database_queries(tmp_path, [self._users_table()])
+
+        assert result.symbols == []
+        assert result.edges == []
+
+    def test_sql_in_production_file_still_links(self, tmp_path: Path):
+        # Control: the identical query in a production-named file DOES link.
+        (tmp_path / "app.py").write_text(dedent('''
+            cursor.execute("SELECT * FROM users")
+        '''))
+
+        result = link_database_queries(tmp_path, [self._users_table()])
+
+        assert len(result.symbols) == 1
+        assert len(result.edges) == 1
+        assert result.edges[0].meta["table_name"] == "users"

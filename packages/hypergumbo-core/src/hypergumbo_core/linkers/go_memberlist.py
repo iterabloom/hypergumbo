@@ -47,7 +47,7 @@ import re
 import time
 from pathlib import Path
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
@@ -102,7 +102,7 @@ def _collect_memberlist_files(
 ) -> dict[Path, bytes]:
     """Return a {file_path: source_bytes} map for .go files importing memberlist."""
     result: dict[Path, bytes] = {}
-    for p in find_files(repo_root, patterns=["*.go"]):
+    for p in find_non_test_files(repo_root, patterns=["*.go"]):
         try:
             data = p.read_bytes()
         except (OSError, IOError):  # pragma: no cover

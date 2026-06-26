@@ -769,3 +769,54 @@ class TestMessageQueueLinkerRegistry:
         assert result.symbols[0].kind == "function"
         assert (result.symbols[0].meta or {}).get("framework_role") == "mq_publisher"
         assert result.run is not None
+
+
+class TestTestFileGating:
+    """linker-evidence-gating:F1 / WI-nitob: MQ pattern string literals living
+    in TEST files must not synthesize publisher/subscriber symbols or phantom
+    ``event_publishes`` edges. The linker previously scanned its own test
+    fixtures and cross-linked 103 phantom edges across unrelated test files."""
+
+    def test_mq_patterns_in_test_files_emit_nothing(self, tmp_path: Path):
+        # The WI-nitob shape: a producer pattern in a test_*-named file and a
+        # matching subscriber under a tests/ directory.
+        producer = tmp_path / "test_producer.py"
+        producer.write_text(dedent('''
+            from confluent_kafka import Producer
+            TOPIC = "orders"
+            producer.produce(TOPIC, value='order')
+        '''))
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        consumer = tests_dir / "consumer_checks.py"
+        consumer.write_text(dedent('''
+            from kafka import KafkaConsumer
+            TOPIC = "orders"
+            consumer.subscribe([TOPIC])
+        '''))
+
+        result = link_message_queues(tmp_path)
+
+        assert result.symbols == []
+        assert result.edges == []
+
+    def test_mq_patterns_in_production_files_still_link(self, tmp_path: Path):
+        # Control: the IDENTICAL patterns in production-named files DO link,
+        # proving the gate is test-scoped, not a blanket disable.
+        producer = tmp_path / "producer.py"
+        producer.write_text(dedent('''
+            from confluent_kafka import Producer
+            TOPIC = "orders"
+            producer.produce(TOPIC, value='order')
+        '''))
+        consumer = tmp_path / "consumer.py"
+        consumer.write_text(dedent('''
+            from kafka import KafkaConsumer
+            TOPIC = "orders"
+            consumer.subscribe([TOPIC])
+        '''))
+
+        result = link_message_queues(tmp_path)
+
+        assert len(result.symbols) == 2
+        assert len(result.edges) == 1

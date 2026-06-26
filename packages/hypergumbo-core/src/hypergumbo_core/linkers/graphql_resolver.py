@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..analyze.base import make_protocol_stable_id, make_symbol_id
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
@@ -175,7 +175,7 @@ _EXPLICIT_FIELD_NAME_RE = re.compile(r"^\s*['\"](\w+)['\"]")
 def _find_source_files(root: Path) -> Iterator[Path]:
     """Find files that might contain resolver implementations."""
     patterns = ["**/*.py", "**/*.js", "**/*.ts"]
-    for path in find_files(root, patterns):
+    for path in find_non_test_files(root, patterns):
         yield path
 
 

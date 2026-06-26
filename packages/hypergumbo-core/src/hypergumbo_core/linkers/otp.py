@@ -48,7 +48,7 @@ import time
 from pathlib import Path
 from typing import Iterator
 
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
@@ -181,12 +181,12 @@ def detect_erlang_otp_call_sites(source: bytes) -> list[dict]:
 
 def _find_elixir_files(repo_root: Path) -> Iterator[Path]:
     """Find all Elixir files in the repository."""
-    yield from find_files(repo_root, ["*.ex", "*.exs"])
+    yield from find_non_test_files(repo_root, ["*.ex", "*.exs"])
 
 
 def _find_erlang_files(repo_root: Path) -> Iterator[Path]:
     """Find all Erlang files in the repository."""
-    yield from find_files(repo_root, ["*.erl"])
+    yield from find_non_test_files(repo_root, ["*.erl"])
 
 
 def _build_erlang_handler_index(

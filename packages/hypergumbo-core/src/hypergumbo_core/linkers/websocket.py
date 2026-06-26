@@ -71,7 +71,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..analyze.base import make_file_id, make_file_stable_id, make_symbol_id
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 from ._text_filters import language_from_path, read_masked_source
@@ -272,12 +272,12 @@ DJANGO_CHANNELS_ROUTE = re.compile(
 
 def find_js_ts_files(repo_root: Path) -> Iterator[Path]:
     """Yield all JS/TS files in the repository."""
-    yield from find_files(repo_root, ["*.js", "*.jsx", "*.ts", "*.tsx", "*.vue", "*.svelte"])
+    yield from find_non_test_files(repo_root, ["*.js", "*.jsx", "*.ts", "*.tsx", "*.vue", "*.svelte"])
 
 
 def find_python_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Python files in the repository."""
-    yield from find_files(repo_root, ["*.py"])
+    yield from find_non_test_files(repo_root, ["*.py"])
 
 
 def _make_symbol_id(

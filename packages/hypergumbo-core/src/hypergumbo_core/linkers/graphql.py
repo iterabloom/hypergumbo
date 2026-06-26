@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..analyze.base import make_symbol_id
-from ..discovery import find_files
+from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, LinkerRequirement, register_linker
 from ._text_filters import read_masked_source
@@ -140,7 +140,7 @@ def _extract_operation_name(query: str) -> tuple[str | None, str | None]:
 def _find_source_files(root: Path) -> Iterator[Path]:
     """Find files that might contain GraphQL client calls."""
     patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx"]
-    for path in find_files(root, patterns):
+    for path in find_non_test_files(root, patterns):
         yield path
 
 
