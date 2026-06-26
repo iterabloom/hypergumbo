@@ -121,6 +121,35 @@ def _extract_pep621_distribution_names(data: dict) -> set[str]:
     return out
 
 
+def _extract_distribution_name(data: dict) -> str | None:
+    """Read a package's OWN distribution name from its ``pyproject.toml``.
+
+    PEP 621 ``[project].name`` is preferred; Poetry ``[tool.poetry].name``
+    is the fallback. Returns ``None`` when neither is a non-empty string.
+
+    Used for workspace-member subtraction (supply-verdict F3 / INV-nuzas,
+    ADR-0041 D8a). In a monorepo, a sibling package that another package
+    declares as a dependency is first-party workspace source, not a
+    third-party direct dependency. Collecting each package's own name lets
+    :func:`parse_python_dependencies` remove the sibling from the tier-2
+    "direct dependency" set instead of mislabelling in-repo code as an
+    external dependency (the "tier-2 direct dependency lie", leverage #27).
+    """
+    project = data.get("project")
+    if isinstance(project, dict):
+        name = project.get("name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    tool = data.get("tool")
+    if isinstance(tool, dict):
+        poetry = tool.get("poetry")
+        if isinstance(poetry, dict):
+            name = poetry.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+    return None
+
+
 def _extract_poetry_distribution_names(data: dict) -> set[str]:
     """Read ``[tool.poetry.dependencies]``. The ``python`` key is the
     interpreter constraint, not a library — skip it.
@@ -255,17 +284,32 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
         return DependencyManifest(entries=entries)
 
     dist_names: set[str] = set()
+    workspace_dist_names: set[str] = set()
     for pyproject in pyproject_files:
         data = _load_pyproject(pyproject)
         if not isinstance(data, dict):
             continue
         dist_names |= _extract_pep621_distribution_names(data)
         dist_names |= _extract_poetry_distribution_names(data)
+        own_name = _extract_distribution_name(data)
+        if own_name:
+            workspace_dist_names.add(own_name)
 
     import_names = _resolve_import_names(dist_names)
 
     stdlib_names = getattr(sys, "stdlib_module_names", frozenset())
     import_names = {n for n in import_names if n not in stdlib_names}
+
+    # Workspace-member subtraction (supply-verdict F3 / INV-nuzas, ADR-0041
+    # D8a). A monorepo sibling that another package declares as a dependency is
+    # first-party workspace source, not a third-party direct dependency.
+    # Resolve each package's own distribution name through the same
+    # dist→import path and remove it, so the boundary classifier does not stamp
+    # in-repo packages (``hypergumbo_core`` et al.) as external tier-2 "direct
+    # dependency" nodes. Applied AFTER the stdlib carve-out so the final
+    # resolved import-name set is filtered.
+    workspace_import_names = _resolve_import_names(workspace_dist_names)
+    import_names -= workspace_import_names
 
     for name in import_names:
         entries[name] = {"direct": True}
