@@ -54,6 +54,7 @@
     "-h"
   ],
   "dead-code-maybe": [
+    "--cross-lang-threshold",
     "--exclude-annotated",
     "--exclude-exports",
     "--format",

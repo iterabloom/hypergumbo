@@ -1822,3 +1822,82 @@ def test_bfs_reachable_traverses_and_skips_visited() -> None:
     assert _bfs_reachable(set(), {"a": ["b"]}) == set()
     # diamond: c is reachable from both a and b → second visit is skipped.
     assert _bfs_reachable({"a"}, {"a": ["b", "c"], "b": ["c"]}) == {"a", "b", "c"}
+
+
+def _run_dead_code_clh(tmp_path: Path, nodes: list, edges: list, threshold):
+    """Run cmd_dead_code_maybe (entrypoints seeds) with an optional
+    ``cross_lang_threshold`` (None → omit, exercising the getattr default)."""
+    import argparse
+    import io
+    import sys
+
+    bm_path = tmp_path / "hg.json"
+    bm_path.write_text(json.dumps(
+        {"schema_version": "0.2.3", "nodes": nodes, "edges": edges},
+    ))
+    kwargs = {
+        "path": str(tmp_path), "input": str(bm_path), "format": "json",
+        "seeds": "entrypoints", "min_confidence": 0.0,
+    }
+    if threshold is not None:
+        kwargs["cross_lang_threshold"] = threshold
+    args = argparse.Namespace(**kwargs)
+    out = io.StringIO()
+    old = sys.stdout
+    sys.stdout = out
+    try:
+        rc = cmd_dead_code_maybe(args)
+    finally:
+        sys.stdout = old
+    assert rc == 0
+    return json.loads(out.getvalue())
+
+
+def _clh_fixture(tmp_path: Path):
+    """A Go function whose name appears as a string in a Python file (CLH=1),
+    plus a route entrypoint. ProcessPayment has no edges → dead candidate."""
+    go_dir = tmp_path / "pkg"
+    go_dir.mkdir()
+    (go_dir / "handler.go").write_text("package pkg\nfunc ProcessPayment() {}\n")
+    (tmp_path / "app.py").write_text(
+        'import requests\nrequests.post("/api/ProcessPayment")\n',
+    )
+    nodes = [
+        {"id": "go:pkg/handler.go:2-2:ProcessPayment:function", "name": "ProcessPayment",
+         "kind": "function", "language": "go", "path": "pkg/handler.go",
+         "span": {"start_line": 2, "end_line": 2}},
+        {"id": "py:app.py:1-2:main:function", "name": "main", "kind": "function",
+         "language": "python", "path": "app.py", "span": {"start_line": 1, "end_line": 2},
+         "meta": {"is_main": True, "framework_role": "route"}},
+    ]
+    return nodes, []
+
+
+class TestDispatchF7CrossLanguageDemoter:
+    """dispatch:F7 (WI-gavub): cross_language_hits is consumed as a false-positive
+    DEMOTER. A candidate whose name appears in >= cross_lang_threshold
+    other-language files is near-certainly reached via a cross-language path
+    (framework dispatch, HTTP route, RPC, FFI) — excluded from the dead set."""
+
+    def test_demoter_excludes_at_threshold_1(self, tmp_path: Path) -> None:
+        nodes, edges = _clh_fixture(tmp_path)
+        out = _run_dead_code_clh(tmp_path, nodes, edges, threshold=1)
+        dead = {d["name"] for d in out["dead_candidates"]}
+        assert "ProcessPayment" not in dead
+        assert out["summary"]["demoted_cross_language"] == 1
+
+    def test_demoter_disabled_at_zero_keeps_candidate(self, tmp_path: Path) -> None:
+        nodes, edges = _clh_fixture(tmp_path)
+        out = _run_dead_code_clh(tmp_path, nodes, edges, threshold=0)
+        dead = {d["name"] for d in out["dead_candidates"]}
+        assert "ProcessPayment" in dead
+        assert out["summary"]["demoted_cross_language"] == 0
+
+    def test_default_threshold_keeps_low_clh(self, tmp_path: Path) -> None:
+        # CLH=1 is below the default threshold (3) → not demoted (some genuine
+        # dead code has a single coincidental cross-language hit).
+        nodes, edges = _clh_fixture(tmp_path)
+        out = _run_dead_code_clh(tmp_path, nodes, edges, threshold=None)
+        dead = {d["name"] for d in out["dead_candidates"]}
+        assert "ProcessPayment" in dead
+        assert out["summary"]["demoted_cross_language"] == 0

@@ -5855,6 +5855,29 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             dead_candidates, repo_root,
         )
 
+    # dispatch:F7 (WI-gavub): consume cross_language_hits as a false-positive
+    # DEMOTER, not merely a rank signal. A candidate whose name appears as a
+    # string in >= ``--cross-lang-threshold`` other-language files is
+    # near-certainly reached via a cross-language path the static call graph
+    # misses (framework dispatch like Lit's ``*.render``, an HTTP route, an RPC
+    # method, an FFI name) — i.e. NOT dead. The threshold stays > 1 so a single
+    # coincidental hit does not exclude (some genuine dead code has low CLH); a
+    # threshold <= 0 disables the demoter. Mirrors the dispatch_inherited_ids
+    # demoter above (a hard exclusion: no per-candidate dead-confidence score
+    # exists to demote proportionally yet).
+    cross_lang_threshold = getattr(args, "cross_lang_threshold", 3)
+    cross_lang_demoted_ids: set[str] = set()
+    if cross_lang_threshold > 0:
+        cross_lang_demoted_ids = {
+            n["id"] for n in dead_candidates
+            if cross_lang_hits.get(n["id"], 0) >= cross_lang_threshold
+        }
+        if cross_lang_demoted_ids:
+            dead_candidates = [
+                n for n in dead_candidates
+                if n["id"] not in cross_lang_demoted_ids
+            ]
+
     # Path/name shape boost: candidates in cross-language directories
     # (api/, rpc/, proto/, ffi/, native/, bindings/, bridge/) or with
     # cross-language naming conventions (handler, _request, _response,
@@ -5926,6 +5949,10 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 # corrections so consumers can audit them.
                 "demoted_view_func": len(view_func_seed_ids),
                 "demoted_dispatch_inherited": len(dispatch_inherited_ids),
+                # dispatch:F7 (WI-gavub): candidates excluded because their name
+                # appears in >= cross_lang_threshold other-language files
+                # (cross-language dispatch / missing-edge false positives).
+                "demoted_cross_language": len(cross_lang_demoted_ids),
             },
             "dead_candidates": [
                 {
@@ -7165,6 +7192,13 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "--exclude-exports", action="store_true", default=False,
         help="WI-zafab filter 3: exclude candidates whose is_exported=True "
              "(public API — reachable by external callers outside the analysis scope)",
+    )
+    p_dead_code.add_argument(
+        "--cross-lang-threshold", type=int, default=3,
+        help="dispatch:F7 (WI-gavub): demote (exclude) candidates whose name "
+             "appears in >= N other-language files — near-certain cross-language "
+             "dispatch / missing-edge false positives (default: 3). Set <= 0 to "
+             "disable the demoter.",
     )
     p_dead_code.set_defaults(func=cmd_dead_code_maybe)
 
