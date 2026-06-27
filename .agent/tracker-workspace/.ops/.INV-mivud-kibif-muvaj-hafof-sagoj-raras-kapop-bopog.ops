@@ -22,3 +22,10 @@
     fields:  # e58a
       statement: "io_primitives/<lang>.yaml ambiguous_names must list every short name that is a catalog primitive method AND collides with a common non-IO builtin/method, so an unresolved bare call to that name is not falsely classified by either consumer (io-boundaries chain matcher or taint propagation)."  # e58a
       root_cause: "python ambiguous_names omits 'copy' (and likely peers), so 'python:external:0-0:copy:unresolved' edges falsely match the shutil.copy host_fs sink. The WI-razol matcher fix only suppresses names that ARE flagged ambiguous; completeness of the list is a separate catalog-data gap shared by both consumers."  # e58a
+- op: discuss  # f5e1
+  at: '2026-06-27T06:30:51Z'  # f5e1
+  by: agent  # f5e1
+  actor: jgstern_agent  # f5e1
+  clock: 2  # f5e1
+  nonce: f5e1  # f5e1
+  message: "io-boundary:F3 (PR #4324, dev c261dde7ab) does NOT close this. The kind-aware gate keys on IoPrimitive.kind; 'copy' is FUNCTION-kind (shutil.copy under functions:), so lookup_with_module('copy', None) still returns shutil.copy on a bare function-form call — the gate only suppresses 'copy' when the edge is an explicit method call (call_construct=method, i.e. x.copy()). So a bare external:copy edge that is a genuine method call on an untyped receiver is now suppressed, but a function-form bare copy() still matches. If the filed INV-mivud repro is method-form, F3 fixes it; if function-form, it persists and needs receiver typing (WI-fuvuj-class) or a module hint. Re-verify the filed repro's call_construct to decide; ambiguous_names remains the fallback. Status unchanged."  # f5e1

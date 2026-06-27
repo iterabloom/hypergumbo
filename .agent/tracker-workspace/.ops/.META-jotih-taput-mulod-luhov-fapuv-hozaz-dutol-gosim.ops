@@ -20,3 +20,10 @@
     description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: WI-bosab, WI-popok, WI-nitob. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # 395e
     fields:  # 395e
       statement: "Framework-pattern matcher, entrypoint detector, and message-queue linker must gate on Symbol.supply_chain.is_test_file rather than re-deriving test status from filename heuristics or ignoring it."  # 395e
+- op: discuss  # 29b5
+  at: '2026-06-27T02:28:57Z'  # 29b5
+  by: agent  # 29b5
+  actor: jgstern_agent  # 29b5
+  clock: 2  # 29b5
+  nonce: 29b5  # 29b5
+  message: "supply-verdict:F1 landed (PR #4321, dev d496cec38e): the four framework-dispatch consumers (middleware_chain, router_routes, controller_routes, decorator_dispatch) now consume the canonical paths.is_test_file instead of four narrower divergent private _is_test_path copies. This advances the family (consumers no longer re-derive a coarser/incomplete test verdict for those four) but does NOT close it — remaining consumers that still ignore/re-derive the canonical is_test_file verdict: WI-bosab (framework-pattern matcher engine, no is_test_file gate), WI-popok (entrypoint detector re-derives from filename heuristic), and taint.py:match_sink (the third consumer per the INV-maluk reopen). Strict superset fold: _test.rb/_test.exs still caught via canonical's generic '_test.' check; broadened to spec_/.test./mock_/fake_/wider test dirs. Behavioral test: test_excludes_canonical_test_vocabulary_handlers (a _spec.py + mock_* handler now excluded)."  # 29b5

@@ -1,0 +1,21 @@
+- op: create  # 7d8b
+  at: '2026-06-27T03:56:25Z'  # 7d8b
+  by: agent  # 7d8b
+  actor: jgstern_agent  # 7d8b
+  clock: 1  # 7d8b
+  nonce: 7d8b  # 7d8b
+  data:  # 7d8b
+    kind: work_item  # 7d8b
+    title: "Expand EXTERNAL_CONSTRUCTOR_TYPES to more stdlib I/O constructors (WI-fuvuj scope-expansion)"  # 7d8b
+    status: todo_soft  # 7d8b
+    priority: 3  # 7d8b
+    parent:  # 7d8b
+    tags:  # 7d8b
+    - io_boundary  # 7d8b
+    - python  # 7d8b
+    isbefore: []  # 7d8b
+    duplicate_of: []  # 7d8b
+    not_duplicate_of: []  # 7d8b
+    pr_ref:  # 7d8b
+    description: "WI-fuvuj (PR #4322) added receiver-type inference for open()->file and socket.socket()->socket via py.py EXTERNAL_CONSTRUCTOR_TYPES + a synthetic 'file' catalog module. The map is the extension point; this item expands it to other stdlib constructor-returning I/O types so their method calls classify into the right boundary instead of external_potential: sqlite3.connect()->Connection (db_query), http.client.HTTPConnection/HTTPSConnection (net), tempfile.NamedTemporaryFile/TemporaryFile (fs), subprocess.Popen (subprocess pipes), urllib.request.urlopen result, etc. Each is an additive EXTERNAL_CONSTRUCTOR_TYPES entry + (where missing) a catalog module entry + tests. Also consider aliased constructors (from socket import socket as x) and binary/text-mode precision (open mode -> io.BufferedReader vs io.TextIOWrapper), both deferred from WI-fuvuj. Mechanism is proven; this is pure breadth."  # 7d8b
+    fields: {}  # 7d8b
