@@ -7662,21 +7662,59 @@ def _classify_symbols(
                 )
 
 
+def _make_ecosystem_classifier() -> Callable[[str, str], Optional[str]]:
+    """Build the ADR-0041 §3 ecosystem classifier for boundary nodes.
+
+    Returns a callable ``(language, module) -> 'stdlib' | 'third_party' | None``
+    backed by the single-source language stdlib catalog
+    (``io_boundary.load_catalog`` / ``IoBoundaryCatalog.is_stdlib_module`` — the
+    same catalog the io-boundary closed-world gates consume, per ADR-0041 §3's
+    single-source constraint). Returns ``None`` when the language has no
+    enumerated stdlib, so an unmatched module is never mislabelled
+    ``third_party`` on a language whose stdlib set we don't know. Catalogs are
+    loaded lazily and cached per language.
+    """
+    from .io_boundary import load_catalog
+    cache: Dict[str, Any] = {}
+
+    def classify(language: str, module: str) -> Optional[str]:
+        if language not in cache:
+            cat = load_catalog(language)
+            # Usable only when the catalog enumerates the stdlib; otherwise
+            # "not in set" is indistinguishable from "stdlib set unknown".
+            cache[language] = (
+                cat if (cat.stdlib_modules or cat.stdlib_prefixes) else None
+            )
+        cat = cache[language]
+        if cat is None:
+            return None
+        return "stdlib" if cat.is_stdlib_module(module) else "third_party"
+
+    return classify
+
+
 def _compute_supply_chain_summary(
     symbols: list[Symbol], derived_paths: list[str]
 ) -> Dict[str, Any]:
     """Compute supply chain summary from classified symbols.
 
-    Returns a dict with counts per tier plus derived_skipped info.
+    Returns a dict with counts per tier plus derived_skipped info. Tier-3
+    (external_dep) carries an ``ecosystem`` sub-bucket counting symbols by the
+    ADR-0041 §3 ``ecosystem`` provenance class (stdlib / third_party / unknown).
     """
     # Count unique files and symbols per tier
     tier_files: Dict[int, set] = {1: set(), 2: set(), 3: set(), 4: set()}
     tier_symbols: Dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0}
+    # ADR-0041 §3: sub-bucket tier-3 externals by ecosystem provenance class.
+    ecosystem_counts: Dict[str, int] = {}
 
     for symbol in symbols:
         tier = symbol.supply_chain_tier
         tier_files[tier].add(symbol.path)
         tier_symbols[tier] += 1
+        if tier == 3:
+            eco = (symbol.meta or {}).get("ecosystem") or "unknown"
+            ecosystem_counts[eco] = ecosystem_counts.get(eco, 0) + 1
 
     tier_names = {1: "first_party", 2: "internal_dep", 3: "external_dep"}
 
@@ -7686,6 +7724,9 @@ def _compute_supply_chain_summary(
             "files": len(tier_files[tier]),
             "symbols": tier_symbols[tier],
         }
+    # Attach the ecosystem breakdown to the external_dep tier (sorted for
+    # deterministic output).
+    summary["external_dep"]["ecosystem"] = dict(sorted(ecosystem_counts.items()))
 
     # Cap derived_skipped paths at 10
     summary["derived_skipped"] = {
@@ -8412,6 +8453,7 @@ def run_behavior_map(
     boundary, id_remap = create_boundary_nodes(
         all_symbols, all_edges, dependency_manifest=dependency_manifest,
         origin_run_id=_boundary_run.execution_id,
+        ecosystem_classifier=_make_ecosystem_classifier(),
     )
     if boundary:
         all_symbols.extend(boundary)

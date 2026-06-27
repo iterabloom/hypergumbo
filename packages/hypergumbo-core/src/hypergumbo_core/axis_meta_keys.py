@@ -301,6 +301,21 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "``ir._canonical_external_id`` for unresolved-but-"
                 "referenced names. Read by ``is_external_boundary`` "
                 "helper."),
+    MetaKeySpec("ecosystem", AXIS_SYMBOL_META,
+                "Provenance class of an external dependency's "
+                "distribution channel (ADR-0041 §3): 'stdlib' (shipped "
+                "with the language runtime) vs 'third_party' (fetched "
+                "from a package registry). Stamped on tier-3 boundary "
+                "Symbols by ``ir.create_boundary_nodes`` from the "
+                "single-source language stdlib catalog "
+                "(``io_boundary.IoBoundaryCatalog.is_stdlib_module``); "
+                "absent when the language has no enumerated stdlib. A "
+                "SEPARATE axis from supply-chain ``tier`` (distance), "
+                "``directness`` (declaration relationship), and — "
+                "crucially — from ``package_ecosystem`` (which names the "
+                "package-MANAGER registry, e.g. 'npm'/'composer', of "
+                "package-shaped Symbols; this key names provenance "
+                "CLASS, a different question)."),
     MetaKeySpec("directness", AXIS_SYMBOL_META,
                 "Declaration relationship between the project's "
                 "manifests and an external dependency (ADR-0041 §2): "

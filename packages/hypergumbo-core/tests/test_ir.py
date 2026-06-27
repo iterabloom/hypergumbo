@@ -1809,6 +1809,54 @@ class TestCreateBoundaryNodes:
         assert result[0].supply_chain_tier == 3
         assert (result[0].meta or {}).get("directness") == "undeclared"
 
+    def test_ecosystem_classifier_stamps_stdlib_and_third_party(self):
+        """ADR-0041 §3: an ecosystem_classifier stamps meta.ecosystem
+        (stdlib vs third_party) on tier-3 boundary nodes."""
+        s1 = self._make_symbol("python:app.py:1-1:main:function")
+        e_os = Edge.create(
+            src=s1.id, dst="python:os:0-0:getcwd:unresolved",
+            edge_type="calls", line=2, origin="test", origin_run_id="test",
+        )
+        e_req = Edge.create(
+            src=s1.id, dst="python:requests:0-0:get:unresolved",
+            edge_type="calls", line=3, origin="test", origin_run_id="test",
+        )
+
+        def classifier(language: str, module: str):
+            assert language == "python"
+            return "stdlib" if module == "os" else "third_party"
+
+        result, _ = create_boundary_nodes(
+            [s1], [e_os, e_req], ecosystem_classifier=classifier
+        )
+        eco = {r.name: (r.meta or {}).get("ecosystem") for r in result}
+        assert eco == {"getcwd": "stdlib", "get": "third_party"}
+
+    def test_ecosystem_absent_without_classifier(self):
+        """No ecosystem_classifier → no ecosystem meta key (back-compat)."""
+        s1 = self._make_symbol("python:app.py:1-1:main:function")
+        e = Edge.create(
+            src=s1.id, dst="python:os:0-0:getcwd:unresolved",
+            edge_type="calls", line=2, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes([s1], [e])
+        assert len(result) == 1
+        assert "ecosystem" not in (result[0].meta or {})
+
+    def test_ecosystem_absent_when_classifier_returns_none(self):
+        """Classifier returning None (no enumerated stdlib for the language)
+        → no ecosystem meta key."""
+        s1 = self._make_symbol("python:app.py:1-1:main:function")
+        e = Edge.create(
+            src=s1.id, dst="python:os:0-0:getcwd:unresolved",
+            edge_type="calls", line=2, origin="test", origin_run_id="test",
+        )
+        result, _ = create_boundary_nodes(
+            [s1], [e], ecosystem_classifier=lambda language, module: None
+        )
+        assert len(result) == 1
+        assert "ecosystem" not in (result[0].meta or {})
+
 
 class TestApplyExternalIdRemap:
     """Tests for apply_external_id_remap (WI-fozoh).

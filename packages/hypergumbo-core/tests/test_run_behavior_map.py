@@ -184,6 +184,60 @@ def test_run_behavior_map_includes_supply_chain_summary(tmp_path):
     assert isinstance(summary["derived_skipped"]["paths"], list)
 
 
+def test_make_ecosystem_classifier_stdlib_third_party_and_unknown():
+    """ADR-0041 §3: the ecosystem classifier maps stdlib/third_party from the
+    single-source io_boundary catalog, and returns None for languages with no
+    enumerated stdlib."""
+    from hypergumbo_core.cli import _make_ecosystem_classifier
+
+    classify = _make_ecosystem_classifier()
+    # Python has an enumerated stdlib catalog (python.yaml stdlib_modules).
+    assert classify("python", "os") == "stdlib"
+    assert classify("python", "json") == "stdlib"
+    assert classify("python", "requests") == "third_party"
+    # A language with no catalog / no enumerated stdlib → None (cannot tell).
+    assert classify("no_such_language_xyz", "whatever") is None
+
+
+def test_run_behavior_map_stamps_ecosystem_on_boundary_nodes(tmp_path):
+    """ADR-0041 §3 end-to-end: stdlib imports stamp ecosystem=stdlib, declared
+    third-party imports stamp ecosystem=third_party, and supply_chain_summary
+    sub-buckets tier-3 externals by ecosystem."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\ndependencies = ["requests>=2"]\n'
+    )
+    (repo_root / "main.py").write_text(
+        "import os\n"
+        "import requests\n"
+        "\n"
+        "def run():\n"
+        "    os.getcwd()\n"
+        "    requests.get('x')\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=repo_root, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    def eco_for(modtoken):
+        nodes = [
+            n for n in data["nodes"]
+            if n.get("kind") == "external_symbol" and modtoken in (n.get("id") or "")
+        ]
+        return {(n.get("meta") or {}).get("ecosystem") for n in nodes}, len(nodes)
+
+    os_eco, os_n = eco_for(":os:")
+    req_eco, req_n = eco_for(":requests:")
+    assert os_n >= 1 and os_eco == {"stdlib"}, f"os should be stdlib; got {os_eco}"
+    assert req_n >= 1 and req_eco == {"third_party"}, f"requests should be third_party; got {req_eco}"
+
+    # supply_chain_summary tier-3 ecosystem sub-bucket present and counted.
+    eco_summary = data["supply_chain_summary"]["external_dep"]["ecosystem"]
+    assert eco_summary.get("stdlib", 0) >= 1
+    assert eco_summary.get("third_party", 0) >= 1
+
+
 def test_run_behavior_map_compact_mode(tmp_path):
     """Compact mode produces coverage-based output with summaries."""
     repo_root = tmp_path / "repo"

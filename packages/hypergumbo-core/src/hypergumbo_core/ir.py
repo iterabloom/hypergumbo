@@ -1205,6 +1205,7 @@ def create_boundary_nodes(
     edges: List[Edge],
     dependency_manifest: Any = None,
     origin_run_id: str = "",
+    ecosystem_classifier: "Optional[Callable[[str, str], Optional[str]]]" = None,
 ) -> tuple[List[Symbol], Dict[str, str]]:
     """Create boundary nodes for dangling edge endpoints, with cross-run identity.
 
@@ -1335,6 +1336,15 @@ def create_boundary_nodes(
         boundary_meta: dict = {"external_boundary": True}
         if directness is not None:
             boundary_meta["directness"] = directness
+
+        # ADR-0041 §3: provenance class (stdlib vs third_party) of this
+        # tier-3 external, from the single-source language stdlib catalog.
+        # Absent when the language has no enumerated stdlib (classifier
+        # returns None) — orthogonal to directness (declaration relationship).
+        if ecosystem_classifier is not None:
+            ecosystem = ecosystem_classifier(language, key_path)
+            if ecosystem is not None:
+                boundary_meta["ecosystem"] = ecosystem
 
         sym = Symbol(
             id=canonical_id,

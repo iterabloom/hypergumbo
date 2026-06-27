@@ -968,7 +968,7 @@ When the headline `total_files` is computed without a profile (e.g., by callers 
 
 ### supply_chain_summary — classification overview
 
-Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`.
+Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`. The `external_dep` tier carries an `ecosystem` sub-object counting tier-3 symbols by provenance class (`stdlib` / `third_party` / `unknown`), per the ADR-0041 §3 ecosystem axis.
 
 ### limits — explicit gaps
 
@@ -1439,7 +1439,7 @@ This ensures first-party symbols appear first even when third-party utilities ha
 
 **What supply chain classification does NOT do:**
 
-1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment. 🟩 **Boundary-node directness:** Boundary nodes (unresolved external references) are **all** tier 3 (external) — declaration status no longer influences tier (ADR-0041 §1). When dependency-manifest data is available, the declaration relationship is recorded on the `directness` meta key instead: `direct` (declared in a project manifest), `transitive` (in the manifest but not declared direct), or `undeclared` (imported but declared nowhere — also where stdlib lands). Supported manifests: Go (`go.mod` — direct vs indirect), Java/Kotlin (`build.gradle`, `build.gradle.kts`, `pom.xml` — groupId-based prefix matching), Python (`pyproject.toml`). The language-agnostic `DependencyManifest` infrastructure supports future extension to npm and Cargo manifests.
+1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment. 🟩 **Boundary-node directness:** Boundary nodes (unresolved external references) are **all** tier 3 (external) — declaration status no longer influences tier (ADR-0041 §1). When dependency-manifest data is available, the declaration relationship is recorded on the `directness` meta key instead: `direct` (declared in a project manifest), `transitive` (in the manifest but not declared direct), or `undeclared` (imported but declared nowhere — also where stdlib lands). Supported manifests: Go (`go.mod` — direct vs indirect), Java/Kotlin (`build.gradle`, `build.gradle.kts`, `pom.xml` — groupId-based prefix matching), Python (`pyproject.toml`). The language-agnostic `DependencyManifest` infrastructure supports future extension to npm and Cargo manifests. 🟩 **Boundary-node ecosystem (ADR-0041 §3):** orthogonally, each tier-3 boundary node is also stamped with an `ecosystem` meta key (`stdlib` vs `third_party`) when the language has an enumerated stdlib catalog — sourced from the single-source `io_boundary` stdlib catalog (the same one the io-boundary closed-world gates use), so a vuln in a `third_party` dependency (pin/update the package) is distinguishable from a `stdlib` one (upgrade the runtime).
 
 2. **Detect vendored copies**: If you copy `lodash.js` into `src/utils/lodash.js`, it's classified as tier 1 (first-party).
 
