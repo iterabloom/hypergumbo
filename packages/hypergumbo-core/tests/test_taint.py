@@ -272,7 +272,12 @@ class TestTaintCatalogMatching:
             sink_paths=[fs_sink_yaml],
             sanitizer_paths=[],
         )
-        match = catalog.match_sink("python", "write_text")
+        # io-boundary:F3 — write_text is a method-kind sink, so a bare match
+        # with no module context is suppressed (INV-tapat); the receiver
+        # module disambiguates it.
+        assert catalog.match_sink("python", "write_text") is None
+        match = catalog.match_sink(
+            "python", "write_text", module_hint="pathlib.Path")
         assert match is not None
         assert match.zone == "host_fs"
 
@@ -325,8 +330,11 @@ class TestStructuralTaintPropagation:
                        "py:external:0-0:Fernet.decrypt:unresolved"),
             _make_edge("py:a.py:1-5:source_func:function",
                        "py:a.py:10-15:sink_func:function"),
+            # io-boundary:F3 — write_text is a method-kind sink, so the edge
+            # carries its receiver module (pathlib.Path); a bare unresolved
+            # method call would now be suppressed (INV-tapat).
             _make_edge("py:a.py:10-15:sink_func:function",
-                       "py:external:0-0:write_text:unresolved"),
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
         ]
         sources = [TaintSource(
             taint_label="plaintext", module="cryptography.fernet",
@@ -385,13 +393,14 @@ class TestStructuralTaintPropagation:
                        "py:a.py:10-15:encrypt_path:function"),
             _make_edge("py:a.py:10-15:encrypt_path:function",
                        "py:external:0-0:Fernet.encrypt:unresolved"),
+            # io-boundary:F3 — method-kind write_text carries its receiver.
             _make_edge("py:a.py:10-15:encrypt_path:function",
-                       "py:external:0-0:write_text:unresolved"),
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
             # Unsanitized path
             _make_edge("py:a.py:1-5:handler:function",
                        "py:a.py:20-25:direct_path:function"),
             _make_edge("py:a.py:20-25:direct_path:function",
-                       "py:external:0-0:write_text:unresolved"),
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
         ]
         sources = [TaintSource(
             taint_label="plaintext", module="cryptography.fernet",
@@ -440,8 +449,9 @@ class TestStructuralTaintPropagation:
         edges = [
             _make_edge("py:a.py:1-5:func:function",
                        "py:external:0-0:Fernet.decrypt:unresolved"),
+            # io-boundary:F3 — method-kind write_text carries its receiver.
             _make_edge("py:a.py:1-5:func:function",
-                       "py:external:0-0:write_text:unresolved"),
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
         ]
         sources = [TaintSource(
             taint_label="plaintext", module="cryptography.fernet",
@@ -463,8 +473,9 @@ class TestStructuralTaintPropagation:
                        "py:external:0-0:Fernet.decrypt:unresolved"),
             _make_edge("py:a.py:1-5:caller:function",
                        "py:a.py:10-15:middle:function"),
+            # io-boundary:F3 — method-kind write_text carries its receiver.
             _make_edge("py:a.py:10-15:middle:function",
-                       "py:external:0-0:write_text:unresolved"),
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
         ]
         sources = [TaintSource(
             taint_label="plaintext", module="cryptography.fernet",
@@ -789,8 +800,9 @@ class TestEdgeCases:
                        "py:a.py:10-15:func_b:function"),
             _make_edge("py:a.py:10-15:func_b:function",
                        "py:a.py:1-5:func_a:function"),  # cycle
+            # io-boundary:F3 — method-kind write_text carries its receiver.
             _make_edge("py:a.py:10-15:func_b:function",
-                       "py:external:0-0:write_text:unresolved"),
+                       "py:pathlib.Path:0-0:write_text:unresolved"),
         ]
         sources = [TaintSource(
             taint_label="plaintext", module="cryptography.fernet",
@@ -852,12 +864,17 @@ class TestEdgeCases:
         assert len(findings) == 0
 
     def test_propagation_matches_sink_by_short_name(self) -> None:
-        """Sink with compound name (e.g., Path.write_text) matches short name."""
+        """Sink with compound name (e.g., Path.write_text) matches short name.
+
+        io-boundary:F3 — the method-kind sink needs a receiver module, so the
+        edge carries the ``pathlib`` hint; the bare-method-name index still
+        keys ``Path.write_text`` under ``write_text``.
+        """
         edges = [
             _make_edge("py:a.py:1-5:func:function",
                        "py:external:0-0:Fernet.decrypt:unresolved"),
             _make_edge("py:a.py:1-5:func:function",
-                       "py:external:0-0:write_text:unresolved"),
+                       "py:pathlib:0-0:write_text:unresolved"),
         ]
         sources = [TaintSource(
             taint_label="plaintext", module="cryptography.fernet",
@@ -1050,7 +1067,12 @@ class TestPropagateTaintDdg:
         assert "mid" in findings[0].path
 
     def test_dotted_source_and_sink_names(self) -> None:
-        """Source/sink with dotted names should match by bare method name."""
+        """Source/sink with dotted names should match by bare method name.
+
+        io-boundary:F3 — both are method-kind, so the edges carry the receiver
+        module (crypto.fernet / net.ws); a bare unresolved method call with no
+        module context would be suppressed (INV-tapat).
+        """
         sources = [TaintSource(
             taint_label="plaintext", module="crypto.fernet",
             name="Fernet.decrypt", kind="method",
@@ -1064,8 +1086,8 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:crypto.fernet:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:net.ws:0-0:send:unresolved", "type": "calls"},
         ]
         findings = propagate_taint_ddg(ddg, call_edges, sources, sinks, [])
         assert len(findings) == 1
@@ -2128,8 +2150,23 @@ class TestMatchSinkModuleAndAmbiguous:
             "python", "replace", module_hint="pathlib.Path",
         ) == sink
 
-    def test_non_ambiguous_name_no_hint_returns_first(self) -> None:
+    def test_method_kind_non_ambiguous_name_no_hint_suppressed(self) -> None:
+        # io-boundary:F3 — a method-kind sink with no module context is now
+        # suppressed even when the short name is NOT in ambiguous_names (the
+        # WI-razol ambiguous_names band-aid is upgraded to a structural
+        # kind-aware gate: no receiver evidence → no method-kind match). With
+        # the receiver module it still matches.
         sink = self._sink("network", "urllib.request", "urlopen")
+        cat = self._catalog([sink], ambiguous={"replace"})
+        assert cat.match_sink("python", "urlopen") is None
+        assert cat.match_sink(
+            "python", "urlopen", module_hint="urllib.request") == sink
+
+    def test_function_kind_non_ambiguous_name_no_hint_returns_sink(self) -> None:
+        # F3 still allows a bare FREE-FUNCTION call (function-kind) to match.
+        sink = TaintSink(zone="network", trust_level="untrusted",
+                         module="urllib.request", name="urlopen",
+                         kind="function")
         cat = self._catalog([sink], ambiguous={"replace"})
         assert cat.match_sink("python", "urlopen") == sink
 
@@ -2233,10 +2270,14 @@ class TestPropagationAmbiguousAndModule:
 
     def test_structural_ambiguous_external_suppressed(self) -> None:
         edges = self._edges_to_sink("py:external:0-0:replace:unresolved")
-        # default (no ambiguous set) preserves the legacy name-only match...
-        assert len(propagate_taint_structural(
-            edges, [self._SOURCE], [self._PATH_REPLACE], [])) == 1
-        # ...ambiguous_names suppresses the false host_fs flow.
+        # io-boundary:F3 — _PATH_REPLACE is a method-kind sink, so a bare
+        # `replace` with no module context is now suppressed by the kind-aware
+        # gate WITHOUT needing `replace` in ambiguous_names (the WI-razol
+        # band-aid is now a structural property: no receiver verification →
+        # no method-kind match). Both the empty-set and the ambiguous-set
+        # call suppress the false host_fs flow.
+        assert propagate_taint_structural(
+            edges, [self._SOURCE], [self._PATH_REPLACE], []) == []
         assert propagate_taint_structural(
             edges, [self._SOURCE], [self._PATH_REPLACE], [],
             ambiguous_names=frozenset({"replace"})) == []
@@ -2265,17 +2306,23 @@ class TestPropagationAmbiguousAndModule:
         assert findings[0].sink_zone == "network"
 
     def test_ddg_ambiguous_external_suppressed(self) -> None:
+        # io-boundary:F3 — same kind-aware suppression on the DDG path (the
+        # WI-razol PR2 lesson: fix BOTH structural and ddg loops). A bare
+        # method-kind `replace` is suppressed with or without ambiguous_names.
         edges = self._edges_to_sink("py:external:0-0:replace:unresolved")
-        assert len(propagate_taint_ddg(
+        assert propagate_taint_ddg(
             _DUMMY_DDG, edges, [self._SOURCE], [self._PATH_REPLACE],
-            [])) == 1
+            []) == []
         assert propagate_taint_ddg(
             _DUMMY_DDG, edges, [self._SOURCE], [self._PATH_REPLACE], [],
             ambiguous_names=frozenset({"replace"})) == []
 
     def test_source_ambiguous_external_suppressed(self) -> None:
-        # Symmetric source-side fix: an ambiguous source short name with no
-        # module must not seed taint.
+        # Symmetric source-side fix: a method-kind source short name with no
+        # module must not seed taint. io-boundary:F3 — the source `get`
+        # (method-kind) is suppressed by the kind-aware gate even without
+        # `get` in ambiguous_names. (The sink `write_text` is also method-kind,
+        # so no flow exists either way; this asserts the source side.)
         edges = [
             _make_edge("py:a.py:1-5:caller:function",
                        "py:external:0-0:get:unresolved"),
@@ -2288,10 +2335,69 @@ class TestPropagationAmbiguousAndModule:
         sink = TaintSink(zone="host_fs", trust_level="untrusted",
                          module="pathlib.Path", name="write_text",
                          kind="method")
-        assert len(propagate_taint_structural(edges, [amb_source], [sink], [])) == 1
+        assert propagate_taint_structural(edges, [amb_source], [sink], []) == []
         assert propagate_taint_structural(
             edges, [amb_source], [sink], [],
             ambiguous_names=frozenset({"get"})) == []
+
+
+class TestPropagationKindAwareGate:
+    """io-boundary:F3 — the taint propagation passes thread ``call_construct``
+    from the raw edge ``meta`` through to the shared kind-aware gate
+    (INV-tapat / INV-maluk). Mirrors io_boundary.lookup_with_module so taint
+    agrees with io-boundaries on the no-receiver-evidence case. Both the
+    structural AND the ddg loops must be fixed (the WI-razol PR2 lesson)."""
+
+    _SOURCE = TaintSource(taint_label="plaintext", module="cryptography.fernet",
+                          name="Fernet.decrypt", kind="function")
+    # A FUNCTION-kind sink whose distinctive name would match a bare free
+    # function — used to prove the explicit-method-construct early return
+    # suppresses even a function-kind hit (untyped receiver, unknown type).
+    _FUNC_SINK = TaintSink(zone="host_fs", trust_level="untrusted",
+                           module="shutil", name="rmtree", kind="function")
+
+    def _edges(self, sink_dst: str, sink_meta: dict | None = None) -> list:
+        sink_edge = {"src": "py:a.py:10-15:sink_func:function", "dst": sink_dst,
+                     "type": "calls"}
+        if sink_meta is not None:
+            sink_edge["meta"] = sink_meta
+        return [
+            {"src": "py:a.py:1-5:source_func:function",
+             "dst": "py:external:0-0:Fernet.decrypt:unresolved", "type": "calls"},
+            {"src": "py:a.py:1-5:source_func:function",
+             "dst": "py:a.py:10-15:sink_func:function", "type": "calls"},
+            sink_edge,
+        ]
+
+    def test_structural_function_kind_bare_matches(self) -> None:
+        """A bare free-function sink (function-kind) matches with no meta."""
+        edges = self._edges("py:external:0-0:rmtree:unresolved")
+        findings = propagate_taint_structural(
+            edges, [self._SOURCE], [self._FUNC_SINK], [])
+        assert len(findings) == 1
+
+    def test_structural_explicit_method_construct_suppresses_func_kind(
+        self,
+    ) -> None:
+        """call_construct="method" in the edge meta suppresses even a
+        function-kind sink — an untyped method call has an unknown receiver."""
+        edges = self._edges("py:external:0-0:rmtree:unresolved",
+                            sink_meta={"call_construct": "method"})
+        assert propagate_taint_structural(
+            edges, [self._SOURCE], [self._FUNC_SINK], []) == []
+
+    def test_ddg_function_kind_bare_matches(self) -> None:
+        edges = self._edges("py:external:0-0:rmtree:unresolved")
+        findings = propagate_taint_ddg(
+            _DUMMY_DDG, edges, [self._SOURCE], [self._FUNC_SINK], [])
+        assert len(findings) == 1
+
+    def test_ddg_explicit_method_construct_suppresses_func_kind(self) -> None:
+        """Parity: the ddg loop also threads call_construct from edge meta."""
+        edges = self._edges("py:external:0-0:rmtree:unresolved",
+                            sink_meta={"call_construct": "method"})
+        assert propagate_taint_ddg(
+            _DUMMY_DDG, edges, [self._SOURCE], [self._FUNC_SINK], []) == []
 
 
 class TestClaimsVsCliExtraLayers:

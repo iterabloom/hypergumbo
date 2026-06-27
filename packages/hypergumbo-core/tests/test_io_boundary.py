@@ -1729,6 +1729,130 @@ class TestTagIoBoundaries:
         assert edge.meta is None
 
 
+class TestKindAwareNoModuleGate:
+    """io-boundary:F3 — the no-module-context fallback is kind-aware
+    (INV-tapat / INV-maluk).
+
+    With no usable module hint and no receiver evidence:
+
+    * a method-kind primitive needs a receiver/module it does not have here,
+      so it never matches (closing INV-tapat: no receiver verification, and
+      INV-maluk: ``str.replace`` matching ``pathlib.Path.replace``);
+    * a free-function call may still match a function-kind primitive;
+    * an explicit ``call_construct="method"`` is rejected outright (an untyped
+      method call, even one whose short name happens to be a function-kind
+      primitive, has an unknown receiver).
+    """
+
+    # --- the unit triad ---
+
+    def test_function_bare_matches(self) -> None:
+        """A bare free-function call matches a function-kind primitive."""
+        catalog = load_catalog("python")
+        hit = catalog.lookup_with_module("listdir", None)
+        assert hit is not None
+        assert hit.kind == "function"
+        assert hit.qualified_name == "os.listdir"
+
+    def test_method_bare_suppressed(self) -> None:
+        """A bare method-kind primitive is suppressed with no module context.
+
+        ``write_text`` is ``pathlib.Path.write_text`` (method-kind only); with
+        no receiver evidence it must not match. (``read_text`` is unsuitable
+        here — it ALSO has a function-kind ``importlib.resources.read_text``
+        entry, which a bare free-function call legitimately matches.)
+        """
+        catalog = load_catalog("python")
+        assert catalog.lookup_with_module("write_text", None) is None
+
+    def test_method_construct_suppressed(self) -> None:
+        """An explicit method call construct is rejected outright.
+
+        ``replace`` collides with ``str.replace`` / ``pathlib.Path.replace``;
+        an untyped ``x.replace(...)`` (call_construct="method") must not match.
+        """
+        catalog = load_catalog("python")
+        assert catalog.lookup_with_module(
+            "replace", None, call_construct="method") is None
+
+    def test_method_with_module_matches(self) -> None:
+        """With a receiver module the method-kind primitive matches (the
+        module-filter branch runs before the gate)."""
+        catalog = load_catalog("python")
+        hit = catalog.lookup_with_module("read_text", "pathlib")
+        assert hit is not None
+        assert hit.qualified_name == "pathlib.Path.read_text"
+
+    def test_replace_with_module_matches(self) -> None:
+        """``replace`` with a pathlib module hint resolves to Path.replace."""
+        catalog = load_catalog("python")
+        hit = catalog.lookup_with_module("replace", "pathlib.Path")
+        assert hit is not None
+        assert hit.qualified_name == "pathlib.Path.replace"
+
+    def test_function_construct_with_method_kind_hit_suppressed(self) -> None:
+        """call_construct="function" still cannot promote a method-kind hit:
+        ``write_text`` has only a method-kind entry, so it stays suppressed."""
+        catalog = load_catalog("python")
+        assert catalog.lookup_with_module(
+            "write_text", None, call_construct="function") is None
+
+    # --- cross-language invariant ---
+
+    def test_no_method_kind_matches_bare_method_call(self) -> None:
+        """Cross-language invariant: for EVERY catalog, no method-kind
+        primitive is returned by a bare call carrying call_construct="method".
+
+        This is the load-bearing INV-tapat/INV-maluk property — it must hold
+        for all 14 language catalogs, not just python (an invariant, not a
+        golden snapshot).
+        """
+        from pathlib import Path as _Path
+
+        from hypergumbo_core import io_boundary as _iob
+
+        catalog_dir = _Path(_iob.__file__).parent / "io_primitives"
+        languages = sorted(p.stem for p in catalog_dir.glob("*.yaml"))
+        assert languages, "no io_primitives catalogs found"
+        offenders: list[str] = []
+        for lang in languages:
+            catalog = load_catalog(lang)
+            for prim in catalog.primitives:
+                if prim.kind != "method":
+                    continue
+                got = catalog.lookup_with_module(
+                    prim.name, None, call_construct="method")
+                if got is not None:
+                    offenders.append(
+                        f"{lang}: {prim.qualified_name} (matched {got.qualified_name})")
+        assert not offenders, (
+            "method-kind primitives must not match a bare method call with no "
+            "module context (INV-tapat/INV-maluk):\n" + "\n".join(offenders))
+
+    def test_no_method_kind_matches_bare_no_construct(self) -> None:
+        """Companion invariant: even with NO call_construct (analyzers like
+        scala/swift/kotlin that emit unresolved edges without a construct), a
+        bare method-kind primitive with no module context is suppressed — the
+        ``non_method`` filter, not just the explicit-method early return."""
+        from pathlib import Path as _Path
+
+        from hypergumbo_core import io_boundary as _iob
+
+        catalog_dir = _Path(_iob.__file__).parent / "io_primitives"
+        languages = sorted(p.stem for p in catalog_dir.glob("*.yaml"))
+        for lang in languages:
+            catalog = load_catalog(lang)
+            for prim in catalog.primitives:
+                if prim.kind != "method":
+                    continue
+                # A name shared with a function-kind primitive may still match
+                # (the function variant); only assert no method-kind result.
+                got = catalog.lookup_with_module(prim.name, None)
+                assert got is None or got.kind != "method", (
+                    f"{lang}: bare method-kind {prim.qualified_name} matched "
+                    f"{got.qualified_name} with no module context")
+
+
 class TestModuleQualifiedMatching:
     """Tests for module-qualified IO boundary matching.
 
@@ -3262,15 +3386,26 @@ class TestAmbiguousNameFiltering:
         assert count == 0, "Generic 'exec' should not match Runtime.exec for unresolved externals"
 
     def test_scala_specific_names_still_match(self) -> None:
-        """Distinctive I/O names should still match even for unresolved externals."""
+        """io-boundary:F3 — ``readAllBytes`` is ``java.nio.file.Files``'s
+        method-kind static method (inherited via the java parent catalog). A
+        BARE unresolved call with no module context is now suppressed
+        (INV-tapat: no receiver verification); in a real repo the java analyzer
+        emits ``Files.readAllBytes`` with the ``java.nio.file.Files`` module
+        hint (receiver in imports), so the WITH-module form still matches."""
         catalog = load_catalog("scala")
-        # readAllBytes is specific enough to not be ambiguous
-        edge = self._make_edge(
+        bare = self._make_edge(
             src="scala:IO.scala:10:readFile:method",
             dst="scala:external:0-0:readAllBytes:unresolved",
         )
-        count = tag_io_boundaries([edge], {"scala": catalog})
-        assert count == 1, "Specific name 'readAllBytes' should still match for unresolved externals"
+        assert tag_io_boundaries([bare], {"scala": catalog}) == 0
+        assert bare.meta is None
+        # With the receiver module the method-kind primitive still matches.
+        hinted = self._make_edge(
+            src="scala:IO.scala:10:readFile:method",
+            dst="scala:java.nio.file.Files:0-0:readAllBytes:unresolved",
+        )
+        assert tag_io_boundaries([hinted], {"scala": catalog}) == 1, (
+            "module-hinted Files.readAllBytes must still match under F3")
 
     def test_scala_resolved_call_with_module_still_matches(self) -> None:
         """Resolved calls with proper module context should still match even for ambiguous names."""
@@ -4201,10 +4336,16 @@ class TestSwiftCatalog:
         assert hit.boundary == "ipc_recv"
 
     def test_swift_distinctive_names_match_unresolved(self) -> None:
-        """Distinctive I/O names should match even for unresolved externals."""
+        """io-boundary:F3 — a bare method-kind name with no module context is
+        no longer matched (INV-tapat: no receiver verification). ``fileExists``
+        is a ``FileManager`` instance method (method-kind); without a receiver
+        module it is suppressed, but with the module hint it still matches."""
         catalog = load_catalog("swift")
-        # fileExists is specific to FileManager — should match
-        hit = catalog.lookup_with_module("fileExists", module_hint="external")
+        # No module context — method-kind fileExists is suppressed under F3.
+        assert catalog.lookup_with_module(
+            "fileExists", module_hint="external") is None
+        # With the receiver module it still matches.
+        hit = catalog.lookup_with_module("fileExists", module_hint="FileManager")
         assert hit is not None
         assert hit.boundary == "fs_read"
 
@@ -4228,10 +4369,15 @@ class TestSwiftCatalog:
             meta: Optional[Dict[str, Any]] = None
 
         catalog = load_catalog("swift")
+        # io-boundary:F3 — a bare method-kind call with no module context has no
+        # receiver evidence, so it is no longer tagged (INV-tapat). The method-
+        # kind URLSession.dataTask / FileManager.fileExists primitives must
+        # carry their receiver module to be tagged; Swift.print is a top-level
+        # function (function-kind) and still tags bare.
         edges = [
             MockEdge(
                 src="swift:Sources/App/Network.swift:10:fetch:method",
-                dst="swift:external:0-0:dataTask:unresolved",
+                dst="swift:URLSession:0-0:dataTask:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/Util.swift:5:log:method",
@@ -4239,12 +4385,17 @@ class TestSwiftCatalog:
             ),
             MockEdge(
                 src="swift:Sources/App/IO.swift:20:check:method",
-                dst="swift:external:0-0:fileExists:unresolved",
+                dst="swift:FileManager:0-0:fileExists:unresolved",
             ),
             # Generic 'write' should NOT be tagged (ambiguous)
             MockEdge(
                 src="swift:Sources/App/Writer.swift:15:save:method",
                 dst="swift:external:0-0:write:unresolved",
+            ),
+            # F3: a bare method-kind call with no module context is suppressed.
+            MockEdge(
+                src="swift:Sources/App/IO.swift:30:peek:method",
+                dst="swift:external:0-0:fileExists:unresolved",
             ),
         ]
         count = tag_io_boundaries(edges, {"swift": catalog})
@@ -4253,6 +4404,8 @@ class TestSwiftCatalog:
         assert edges[1].meta["io_boundary"] == "logging"
         assert edges[2].meta["io_boundary"] == "fs_read"
         assert edges[3].meta is None  # 'write' should not be tagged
+        # F3: bare method-kind fileExists with no receiver module is suppressed.
+        assert edges[4].meta is None
 
     def test_swift_has_swiftnio_server_primitives(self) -> None:
         """Swift catalog covers SwiftNIO server infrastructure."""
@@ -4311,26 +4464,30 @@ class TestSwiftCatalog:
             meta: Optional[Dict[str, Any]] = None
 
         catalog = load_catalog("swift")
+        # io-boundary:F3 — these are method-kind catalog entries, so the edge
+        # must carry the receiver module (no-receiver-evidence bare calls are
+        # now suppressed under INV-tapat). The module hints below are the
+        # PascalCase type names the receiver-type inference would supply.
         edges = [
             MockEdge(
                 src="swift:Sources/App/Server.swift:10:setup:method",
-                dst="swift:external:0-0:MultiThreadedEventLoopGroup:unresolved",
+                dst="swift:EventLoopGroup:0-0:MultiThreadedEventLoopGroup:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/Server.swift:15:teardown:method",
-                dst="swift:external:0-0:syncShutdownGracefully:unresolved",
+                dst="swift:EventLoopGroup:0-0:syncShutdownGracefully:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/WS.swift:20:handle:method",
-                dst="swift:external:0-0:onText:unresolved",
+                dst="swift:WebSocket:0-0:onText:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/TLS.swift:5:configure:method",
-                dst="swift:external:0-0:NIOSSLContext:unresolved",
+                dst="swift:NIOSSL:0-0:NIOSSLContext:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/Client.swift:8:fetch:method",
-                dst="swift:external:0-0:HTTPClientRequest:unresolved",
+                dst="swift:AsyncHTTPClient:0-0:HTTPClientRequest:unresolved",
             ),
         ]
         count = tag_io_boundaries(edges, {"swift": catalog})

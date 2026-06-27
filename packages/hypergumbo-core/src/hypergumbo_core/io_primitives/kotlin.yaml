@@ -150,5 +150,10 @@ fs_write:
 # ---------------------------------------------------------------------------
 logging:
   - module: kotlin.io.ConsoleKt
-    methods: [println, print]
-    notes: "kotlin.io top-level println/print (compiler emits ConsoleKt receiver)"
+    functions: [println, print]
+    notes: "kotlin.io top-level println/print — bare top-level functions at the
+      source/AST level (no receiver); the analyzer emits them as function-kind
+      calls, so they are catalogued as functions: not methods: (the JVM
+      compiler synthesizes a ConsoleKt receiver in bytecode, but our AST-level
+      call construct is a function call). io-boundary:F3 would otherwise
+      suppress a bare println(x) as an unverifiable method receiver."

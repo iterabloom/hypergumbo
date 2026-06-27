@@ -262,9 +262,12 @@ def test_verify_claims_taint_flow_violated(tmp_path: Path, capsys) -> None:
             {"src": "python:app.py:1-10:handler:function",
              "dst": "python:external:0-0:Fernet.decrypt:unresolved",
              "type": "calls", "confidence": 0.9},
-            # handler calls write_text (taint sink - host_fs)
+            # handler calls Path.write_text (taint sink - host_fs).
+            # io-boundary:F3 — write_text is method-kind, so the edge carries
+            # its receiver module (pathlib.Path); a bare unresolved method
+            # call would be suppressed (INV-tapat).
             {"src": "python:app.py:1-10:handler:function",
-             "dst": "python:external:0-0:write_text:unresolved",
+             "dst": "python:pathlib.Path:0-0:write_text:unresolved",
              "type": "calls", "confidence": 0.9},
         ],
     )
@@ -326,9 +329,11 @@ def test_verify_claims_taint_flow_confirmed(tmp_path: Path, capsys) -> None:
             {"src": "python:app.py:20-30:store:function",
              "dst": "python:external:0-0:Fernet.encrypt:unresolved",
              "type": "calls", "confidence": 0.9},
-            # store calls write_text (taint sink)
+            # store calls Path.write_text (taint sink). io-boundary:F3 — the
+            # method-kind sink carries its receiver module so the (sanitized)
+            # flow is still detected and reported confirmed-safe.
             {"src": "python:app.py:20-30:store:function",
-             "dst": "python:external:0-0:write_text:unresolved",
+             "dst": "python:pathlib.Path:0-0:write_text:unresolved",
              "type": "calls", "confidence": 0.9},
         ],
     )

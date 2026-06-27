@@ -318,6 +318,44 @@ def is_high_risk(primitive_name: str) -> bool:
     return primitive_name in HIGH_RISK_PRIMITIVES
 
 
+def gate_named_entry(hits, name, module_hint, ambiguous_names,
+                     *, call_construct=None):
+    """Kind-aware no-module-context fallback (io-boundary:F3, INV-tapat/INV-maluk).
+
+    The single shared decision for the *no usable module hint* case across all
+    three catalog consumers — :meth:`IoBoundaryCatalog.lookup_with_module`
+    (io-boundaries) and taint.py's ``_lookup_named_entry`` (taint match + the
+    production propagation path). Duck-typed over ``IoPrimitive`` /
+    ``TaintSink`` / ``TaintSource``: each ``hit`` exposes ``.module`` /
+    ``.name`` / ``.kind``.
+
+    This is reached only when there is no usable module hint (``module_hint``
+    is ``None`` or ``"external"``); callers handle the qualified-name and
+    module-filter branches *before* delegating here. With no receiver/module
+    evidence:
+
+    * an untyped *method* call (``call_construct == "method"``) cannot be
+      verified against the catalogued receiver type, so it never matches — this
+      is what closes INV-tapat (no receiver verification) and INV-maluk
+      (``str.replace`` matching ``pathlib.Path.replace``);
+    * a free-function call may still match, but only a *function*-kind hit —
+      a method-kind primitive needs a module hint it does not have here, so
+      method-kind hits are filtered out;
+    * the ``ambiguous_names`` short-name set is retained as the meta-absent /
+      non-Python safety net (the gate is additive — it does not replace it).
+
+    See ``io_boundary_f3_impl_design_06272026.md``.
+    """
+    if call_construct == "method":
+        return None
+    non_method = [h for h in hits if h.kind != "method"]
+    if not non_method:
+        return None
+    if ambiguous_names and name in ambiguous_names:
+        return None
+    return non_method[0]
+
+
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
@@ -463,6 +501,7 @@ class IoBoundaryCatalog:
 
     def lookup_with_module(
         self, name: str, module_hint: str | None = None,
+        *, call_construct: str | None = None,
     ) -> Optional[IoPrimitive]:
         """Look up a primitive with optional module context for disambiguation.
 
@@ -471,9 +510,15 @@ class IoBoundaryCatalog:
         in the hint (or vice versa).  This prevents false positives like
         ``crypto/rand.Read`` matching ``net.Conn.Read``.
 
-        Falls back to unfiltered short-name matching when:
+        Falls back to the kind-aware no-module-context gate
+        (:func:`gate_named_entry`, io-boundary:F3) when:
         - ``module_hint`` is None or ``"external"`` (no module info available)
         - No filtered match is found (defensive fallback)
+
+        ``call_construct`` (when threaded from the edge's ``meta``) lets the
+        no-module gate reject untyped *method* calls outright — a bare
+        ``something.replace(...)`` cannot be verified against the catalogued
+        receiver type (INV-tapat/INV-maluk).
         """
         # Qualified-name match always wins (exact)
         hit = self._by_qualified.get(name)
@@ -496,10 +541,13 @@ class IoBoundaryCatalog:
             # primitive (e.g., crypto/rand.Read is not net.Conn.Read)
             return None
 
-        # No module context — fall back to first match unless ambiguous
-        if self.ambiguous_names and name in self.ambiguous_names:
-            return None
-        return hits[0]
+        # No module context — kind-aware gate (io-boundary:F3): an untyped
+        # method call has no receiver evidence here, so a method-kind primitive
+        # must not match; a free-function call may match a function-kind hit.
+        return gate_named_entry(
+            hits, name, module_hint, self.ambiguous_names,
+            call_construct=call_construct,
+        )
 
     def is_stdlib_module(self, module: str) -> bool:
         """Return True when ``module`` is a recognised stdlib module.
@@ -1543,7 +1591,12 @@ def tag_io_boundaries(
         if catalog is None:
             continue
 
-        match = catalog.lookup_with_module(callee, adjusted_hint)
+        # io-boundary:F3 — thread the edge's call construct so the no-module
+        # gate can reject untyped method calls (no receiver evidence).
+        cc = (getattr(edge, "meta", None) or {}).get("call_construct")
+        match = catalog.lookup_with_module(
+            callee, adjusted_hint, call_construct=cc,
+        )
         if match is None:
             continue
 

@@ -207,12 +207,14 @@ def _lookup_named_entry(
     callee_name: str,
     module_hint: str | None,
     ambiguous_names: frozenset[str],
+    call_construct: str | None = None,
 ):
     """Pick the matching catalog entry from ``hits``, mirroring
     :meth:`io_boundary.IoBoundaryCatalog.lookup_with_module` (WI-razol).
 
     ``hits`` is the index bucket for ``callee_name`` (entries registered under
-    that short OR qualified name); each entry exposes a ``module`` attribute.
+    that short OR qualified name); each entry exposes ``module`` / ``name`` /
+    ``kind`` attributes.
 
     * No hits → ``None``.
     * With a usable module hint, filter to entries whose ``module`` matches
@@ -220,13 +222,19 @@ def _lookup_named_entry(
       if none match, return ``None`` — a present-but-mismatched module means
       this is not the catalogued primitive (e.g. ``sys.stdout.write`` is not
       ``asyncio.StreamWriter.write``; F156.A1).
-    * With no usable module hint, an ``ambiguous_names`` short name returns
-      ``None`` (e.g. ``str.replace`` must not match ``Path.replace``; the
-      5541-FP cascade); otherwise the first hit.
+    * With no usable module hint, delegate to the shared kind-aware gate
+      (:func:`io_boundary.gate_named_entry`, io-boundary:F3): an untyped
+      method call (``call_construct == "method"``) has no receiver evidence
+      and never matches (INV-tapat/INV-maluk — ``str.replace`` must not match
+      ``Path.replace``), a free-function call may match only a function-kind
+      hit, and the ``ambiguous_names`` short-name set is retained as the
+      meta-absent / non-Python safety net.
 
-    A qualified ``callee_name`` (e.g. ``"os.replace"``) is not in
-    ``ambiguous_names`` (those list short names only), so an exact qualified
-    match wins regardless of ambiguity.
+    A qualified ``callee_name`` (e.g. ``"os.replace"`` /
+    ``"pathlib.Path.write_text"``) carries its own receiver evidence (the full
+    module path), so an exact ``qualified_name`` match wins regardless of
+    ambiguity OR kind — mirroring :meth:`lookup_with_module`'s qualified-name-
+    first branch, which runs before its kind-aware gate (io-boundary:F3).
     """
     if not hits:
         return None
@@ -236,9 +244,17 @@ def _lookup_named_entry(
             if _module_matches(h.module, module_hint):
                 return h
         return None
-    if callee_name in ambiguous_names:
-        return None
-    return hits[0]
+    # Exact qualified-name match carries its own receiver evidence — allow it
+    # before the kind-aware no-module gate (parity with lookup_with_module's
+    # qualified-name-first branch).
+    for h in hits:
+        if h.qualified_name == callee_name:
+            return h
+    from .io_boundary import gate_named_entry
+    return gate_named_entry(
+        hits, callee_name, module_hint, ambiguous_names,
+        call_construct=call_construct,
+    )
 
 
 def _build_callee_index(entries: list) -> dict[str, list]:
@@ -263,6 +279,7 @@ def _match_propagation_entry(
     index: dict[str, list],
     edge_dst: str,
     ambiguous_names: frozenset[str],
+    call_construct: str | None = None,
 ):
     """Match an edge's callee against a propagation source/sink ``index``.
 
@@ -273,7 +290,10 @@ def _match_propagation_entry(
     ``hypergumbo_core.cli`` against the edge's ``cli.py`` path). An *unresolved*
     (``:unresolved``) edge is the short-name-collision risk surface, so it goes
     through :func:`_lookup_named_entry`: a bare ambiguous callee with no module
-    hint, or a module-mismatched hint, is not falsely matched (WI-razol).
+    hint, or a module-mismatched hint, is not falsely matched (WI-razol), and
+    an untyped *method* call (``call_construct``, threaded from the edge's
+    ``meta``) never matches a method-kind sink/source (io-boundary:F3,
+    INV-tapat/INV-maluk).
     """
     callee_name = _extract_callee_name(edge_dst)
     hits = index.get(callee_name)
@@ -285,6 +305,7 @@ def _match_propagation_entry(
         return hits[0]
     return _lookup_named_entry(
         hits, callee_name, _extract_callee_module(edge_dst), ambiguous_names,
+        call_construct=call_construct,
     )
 
 
@@ -374,6 +395,7 @@ class TaintCatalog:
         language: str,
         callee_name: str,
         module_hint: str | None = None,
+        call_construct: str | None = None,
     ) -> Optional[TaintSource]:
         """Match a callee name against taint sources for a language.
 
@@ -381,11 +403,14 @@ class TaintCatalog:
         :func:`_lookup_named_entry` (WI-razol): a module hint that matches
         nothing yields ``None`` rather than the first source, and an ambiguous
         short name with no hint yields ``None`` rather than a false match.
+        ``call_construct`` (io-boundary:F3) lets a bare untyped method call be
+        rejected without the name needing to be in ``ambiguous_names``.
         """
         idx = self._source_by_name.get(language, {})
         return _lookup_named_entry(
             idx.get(callee_name), callee_name, module_hint,
             self._ambiguous_names.get(language, frozenset()),
+            call_construct=call_construct,
         )
 
     def match_sink(
@@ -393,6 +418,7 @@ class TaintCatalog:
         language: str,
         callee_name: str,
         module_hint: str | None = None,
+        call_construct: str | None = None,
     ) -> Optional[TaintSink]:
         """Match a callee name against taint sinks for a language.
 
@@ -400,11 +426,14 @@ class TaintCatalog:
         :func:`_lookup_named_entry` (WI-razol): ``str.replace`` no longer
         matches ``Path.replace`` (the 5541-FP cascade) and ``sys.stdout.write``
         no longer matches ``asyncio.StreamWriter.write`` net_send (F156.A1).
+        ``call_construct`` (io-boundary:F3) lets a bare untyped method call be
+        rejected without the name needing to be in ``ambiguous_names``.
         """
         idx = self._sink_by_name.get(language, {})
         return _lookup_named_entry(
             idx.get(callee_name), callee_name, module_hint,
             self._ambiguous_names.get(language, frozenset()),
+            call_construct=call_construct,
         )
 
     def match_sanitizer(
@@ -1205,6 +1234,7 @@ def propagate_taint_structural(
             continue
         matched = _match_propagation_entry(
             source_by_callee, edge["dst"], ambiguous_names,
+            call_construct=edge.get("meta", {}).get("call_construct"),
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -1218,6 +1248,7 @@ def propagate_taint_structural(
             continue
         matched = _match_propagation_entry(
             sink_by_callee, edge["dst"], ambiguous_names,
+            call_construct=edge.get("meta", {}).get("call_construct"),
         )
         if matched:
             sink_callers[edge["src"]] = (edge["dst"], matched)
@@ -1427,6 +1458,7 @@ def propagate_taint_ddg(
             continue
         matched = _match_propagation_entry(
             source_by_callee, edge["dst"], ambiguous_names,
+            call_construct=edge.get("meta", {}).get("call_construct"),
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -1439,6 +1471,7 @@ def propagate_taint_ddg(
             continue
         matched = _match_propagation_entry(
             sink_by_callee, edge["dst"], ambiguous_names,
+            call_construct=edge.get("meta", {}).get("call_construct"),
         )
         if matched:
             sink_callers[edge["src"]] = (edge["dst"], matched)
