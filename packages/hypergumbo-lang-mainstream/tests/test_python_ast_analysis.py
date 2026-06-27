@@ -350,6 +350,139 @@ def test_run_detects_module_import_edges(tmp_path: Path) -> None:
     assert "os" in import_edge["dst"]
 
 
+def _build_nuzas_monorepo(root: Path) -> None:
+    """supply:F4 fixture — a two-package monorepo where ``apipkg`` imports the
+    sibling ``authpkg`` via the bare module name (src-layout, workspace siblings).
+
+    Mirrors the hypergumbo monorepo shape that INV-nuzas was filed against:
+    ``packages/<pkg>/src/<import_name>/``.
+    """
+    auth = root / "packages" / "auth" / "src" / "authpkg"
+    api = root / "packages" / "api" / "src" / "apipkg"
+    auth.mkdir(parents=True)
+    api.mkdir(parents=True)
+    (root / "packages" / "auth" / "pyproject.toml").write_text(
+        '[project]\nname = "authpkg"\nversion = "0.1.0"\n'
+    )
+    (root / "packages" / "api" / "pyproject.toml").write_text(
+        '[project]\nname = "apipkg"\nversion = "0.1.0"\ndependencies = ["authpkg"]\n'
+    )
+    (auth / "__init__.py").write_text("from .models import User\n")
+    (auth / "models.py").write_text("class User:\n    pass\n")
+    (auth / "helpers.py").write_text("def hash_pw(p):\n    return p\n")
+
+
+def test_run_import_submodule_resolves_to_in_tree_file_node(tmp_path: Path) -> None:
+    """supply:F4 / INV-nuzas Gap A: a bare ``import authpkg.helpers`` of an
+    in-tree workspace-sibling module must resolve to the real first-party file
+    node, not collapse to an ``external_symbol`` boundary node.
+
+    Before F4, ``ast.Import`` did no symbol lookup at all — every ``import X``
+    dst was an unconditional ExternalRef, so workspace siblings became phantom
+    tier-3 externals with ``path='<external>'``.
+    """
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "h.py").write_text(
+        "import authpkg.helpers\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+    helpers_imports = [e for e in import_edges if e["src"].endswith("apipkg/h.py:1-1:file:file")]
+    assert len(helpers_imports) == 1, f"expected one import edge, got {helpers_imports}"
+    edge = helpers_imports[0]
+    assert edge["dst"] == "python:packages/auth/src/authpkg/helpers.py:1-1:file:file", (
+        f"import authpkg.helpers must resolve to the in-tree file node, got {edge['dst']}"
+    )
+    assert edge["is_resolved"] is True
+    assert edge.get("dst_ref") is None
+    # No phantom external twin for the workspace sibling.
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    assert not any("authpkg" in i for i in ext_ids), (
+        f"workspace sibling must not appear as an external_symbol, got {ext_ids}"
+    )
+
+
+def test_run_from_import_submodule_resolves_to_in_tree_file_node(tmp_path: Path) -> None:
+    """supply:F4 / INV-nuzas Gap B: ``from authpkg import helpers`` where
+    ``helpers`` is a SUBMODULE (not a symbol re-exported from ``__init__``) must
+    resolve to the submodule's file node.
+
+    Before F4 the symbol lookup for ``helpers`` in ``authpkg`` failed and the
+    edge dangled to ``python:authpkg:0-0:helpers:unresolved`` → external.
+    """
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "h.py").write_text(
+        "from authpkg import helpers\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+    sub = [e for e in import_edges if e["src"].endswith("apipkg/h.py:1-1:file:file")]
+    assert len(sub) == 1, f"expected one import edge, got {sub}"
+    assert sub[0]["dst"] == "python:packages/auth/src/authpkg/helpers.py:1-1:file:file", (
+        f"from authpkg import helpers must resolve to the submodule file node, got {sub[0]['dst']}"
+    )
+    assert sub[0]["is_resolved"] is True
+
+
+def test_run_workspace_sibling_import_is_first_party_not_external(
+    tmp_path: Path,
+) -> None:
+    """supply:F4 / INV-nuzas behavioral closure: workspace-sibling imports tier
+    as first_party (their resolved file nodes) and genuine third-party imports
+    (``os``) still tier as external. No ``external_symbol`` node carries an
+    in-tree package prefix.
+    """
+    _build_nuzas_monorepo(tmp_path)
+    (tmp_path / "packages" / "api" / "src" / "apipkg" / "h.py").write_text(
+        "import os\n"
+        "import authpkg.helpers\n"
+        "from authpkg import helpers\n"
+        "from authpkg import User\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    nodes_by_id = {n["id"]: n for n in data["nodes"]}
+    # The resolved authpkg.helpers file node is first_party.
+    helpers_node = nodes_by_id.get("python:packages/auth/src/authpkg/helpers.py:1-1:file:file")
+    assert helpers_node is not None
+    assert helpers_node["supply_chain"]["tier_name"] == "first_party"
+
+    ext_ids = [n["id"] for n in data["nodes"] if n["kind"] == "external_symbol"]
+    # os stays external; no in-tree prefix leaks into the external set.
+    assert any("os" in i for i in ext_ids), f"third-party os should stay external: {ext_ids}"
+    assert not any("authpkg" in i for i in ext_ids), (
+        f"no workspace prefix may appear as external_symbol: {ext_ids}"
+    )
+
+
+def test_run_namespace_package_bare_import_stays_external(tmp_path: Path) -> None:
+    """supply:F4 documented scope-out: a PEP-420 namespace package (no
+    ``__init__.py``) bare ``import nspkg`` has no file anchor for the package
+    name, so it stays external. (A submodule ``import nspkg.mod`` of a real file
+    would still resolve — not exercised here.)
+    """
+    pkg = tmp_path / "src" / "nspkg"
+    pkg.mkdir(parents=True)
+    # No __init__.py -> namespace package; mod.py exists but we import the pkg name.
+    (pkg / "mod.py").write_text("X = 1\n")
+    (tmp_path / "main.py").write_text("import nspkg\n")
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+    import_edges = [e for e in data["edges"] if e["type"] == "imports"]
+    nspkg_edges = [e for e in import_edges if e["dst_ref"] and e["dst_ref"]["module_path"] == "nspkg"]
+    assert len(nspkg_edges) == 1, f"bare namespace import should stay external: {import_edges}"
+    assert nspkg_edges[0]["is_resolved"] is False
+
+
 def test_run_detects_module_attr_ref_edges_for_env_read(tmp_path: Path) -> None:
     """WI-guhok: attribute-style reads of imported modules emit module_attr_ref edges.
 

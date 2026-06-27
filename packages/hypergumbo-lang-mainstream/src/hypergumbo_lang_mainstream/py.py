@@ -1912,6 +1912,7 @@ def _extract_import_edges(
     global_symbols: dict[tuple[str, str], Symbol],
     resolver: "SymbolResolver | None" = None,
     *,
+    module_to_file_id: dict[str, str],
     run_id: str,
 ) -> list[Edge]:
     """Extract import edges from AST.
@@ -1920,12 +1921,21 @@ def _extract_import_edges(
     For 'from X import Y', links to the resolved symbol if known, else to module.
     For 'import X', links to the module.
 
+    supply:F4 (INV-nuzas): when an import names an in-tree MODULE rather than a
+    resolvable symbol, the edge dst is the module's first-party file-anchor node
+    (looked up in ``module_to_file_id``) instead of a dangling ExternalRef that
+    would collapse to a phantom ``external_symbol`` boundary node. Genuine
+    third-party modules are absent from the map, so they keep their ExternalRef.
+
     Args:
         tree: The parsed AST
         file_path: Path to the importing file
         importing_module: The fully qualified name of the importing module
         global_symbols: Map of (module, name) -> Symbol for cross-file resolution
         resolver: Optional SymbolResolver for efficient cross-file lookups
+        module_to_file_id: Map of in-tree dotted module name -> file-anchor id
+            (package names included for ``__init__.py``); empty when the repo has
+            no analyzable in-tree modules.
 
     Returns list of import edges.
     """
@@ -1948,6 +1958,19 @@ def _extract_import_edges(
                     if symbol:
                         dst_id = symbol.id
                         # Internal target — Symbol ID is the canonical id; no ExternalRef.
+                        dst_ref = None
+                    elif (
+                        in_repo_fid := (
+                            # supply:F4 — `from PKG import SUBMOD` where SUBMOD is
+                            # an in-tree submodule (not a symbol), or `from MOD
+                            # import X` where MOD is in-tree but X was not pinned
+                            # as a symbol. Resolve to the in-tree file node so the
+                            # edge does not dangle to a phantom external twin.
+                            module_to_file_id.get(f"{resolved_module}.{alias.name}")
+                            or module_to_file_id.get(resolved_module)
+                        )
+                    ) is not None:
+                        dst_id = in_repo_fid
                         dst_ref = None
                     else:
                         # External symbol - create a reference ID
@@ -1974,7 +1997,21 @@ def _extract_import_edges(
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 module_name = alias.name
-                dst_id = _make_module_id(module_name)
+                # supply:F4 — `import pkg.sub.mod` of an in-tree module resolves
+                # to its first-party file-anchor node; otherwise it stays an
+                # external module reference.
+                in_repo_fid = module_to_file_id.get(module_name)
+                import_dst_ref: ExternalRef | None
+                if in_repo_fid is not None:
+                    dst_id = in_repo_fid
+                    import_dst_ref = None
+                else:
+                    dst_id = _make_module_id(module_name)
+                    import_dst_ref = ExternalRef(
+                        lang="python",
+                        module_path=module_name,
+                        name=module_name,
+                    )
                 edges.append(Edge.create(
                     src=file_id,
                     dst=dst_id,
@@ -1982,11 +2019,7 @@ def _extract_import_edges(
                     line=node.lineno,
                     evidence_type="ast_import",
                     confidence=0.95,
-                    dst_ref=ExternalRef(
-                        lang="python",
-                        module_path=module_name,
-                        name=module_name,
-                    ),
+                    dst_ref=import_dst_ref,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
@@ -4123,6 +4156,22 @@ def analyze_python(
                 if "re_exported" not in source_symbol.modifiers:
                     source_symbol.modifiers.append("re_exported")
 
+    # supply:F4 (INV-nuzas) — map every in-tree dotted module name to its
+    # first-party file-anchor id, so imports of workspace-sibling modules resolve
+    # to real in-repo nodes instead of dangling to phantom external_symbol
+    # boundary nodes. Built from the absolute py_file paths (the same form
+    # _make_file_id uses for the import-edge SOURCE); the orchestrator
+    # relativizes every id uniformly afterward, so dst and src stay consistent.
+    module_to_file_id: dict[str, str] = {}
+    for py_file in file_analyses:
+        module_name = _module_name_from_path(py_file, repo_root, source_roots)
+        file_id = _make_file_id(str(py_file))
+        module_to_file_id[module_name] = file_id
+        if py_file.name == "__init__.py":
+            # A package is importable by its package name (module sans .__init__).
+            package_name = module_name.rsplit(".__init__", 1)[0]
+            module_to_file_id[package_name] = file_id
+
     # Create resolver for efficient lookups in Pass 2 (with cached indexes)
     from hypergumbo_core.symbol_resolution import SymbolResolver
     resolver = SymbolResolver(global_symbols)
@@ -4177,6 +4226,7 @@ def analyze_python(
         # Extract import edges
         import_edges = _extract_import_edges(
             analysis.tree, str(py_file), module_name, global_symbols, resolver,
+            module_to_file_id=module_to_file_id,
             run_id=run.execution_id,
         )
         all_edges.extend(import_edges)
