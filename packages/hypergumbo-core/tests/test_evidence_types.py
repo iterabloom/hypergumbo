@@ -140,6 +140,14 @@ def test_find_evidence_type_unknown_returns_none():
     assert find_evidence_type("not-a-real-evidence-type") is None
 
 
+def test_ast_call_method_folded_to_ast_call_apex():
+    """vocab:F1 / WI-nibis (audit-findings 0012 Cluster 28D): the parked peer
+    ``ast_call_method`` folds to the ``ast_call`` apex + ``meta['call_construct']``;
+    it is no longer a registry member."""
+    assert find_evidence_type("ast_call_method") is None
+    assert find_evidence_type("ast_call") is not None
+
+
 def test_evidence_type_spec_is_dataclass():
     assert dataclasses.is_dataclass(EvidenceTypeSpec)
 

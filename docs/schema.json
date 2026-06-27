@@ -1209,7 +1209,6 @@
                 "ctypes_call": "pending_classification",
                 "alias_resolution": "pending_classification",
                 "import_resolution": "pending_classification",
-                "ast_call_method": "pending_classification",
                 "ipc_channel_match": "pending_classification",
                 "topic_match": "pending_classification",
                 "ctypes_stdlib_call": "pending_classification",

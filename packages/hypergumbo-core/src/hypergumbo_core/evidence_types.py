@@ -389,11 +389,6 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
                      "JS module-resolution pathway via direct import "
                      "(linkers/js_module.py). Pending cluster-A audit "
                      "(could promote to AXIS_INFERENCE_PATHWAY canonical)."),
-    EvidenceTypeSpec("ast_call_method", AXIS_PENDING,
-                     "Python AST method-call inference (py.py). At-risk "
-                     "Cluster D peer of `ast_call_direct`: fold candidate "
-                     "to `ast_call_direct` + `meta['call_construct']='method'`. "
-                     "Pending cluster-D audit."),
 
     # ----------------------------------------------------------------
     # WI-nubuv ext B + IfExp-classifier discoveries — leak shapes that

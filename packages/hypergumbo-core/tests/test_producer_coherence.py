@@ -45,6 +45,15 @@ def test_no_strict_producer_violations_for_evidence_type():
     )
 
 
+def test_ast_call_method_not_emitted_after_cluster_d_fold():
+    """WI-nibis substrate-wide negative close-check: no producer still emits
+    the folded-out ``ast_call_method`` evidence type. The py.py:3811 default
+    leak is folded to ``ast_call`` + ``meta['call_construct']='method'`` per
+    audit-findings 0012 (Cluster 28D apex/peer collapse)."""
+    emitted = find_emitted_evidence_types(REPO_ROOT)
+    assert "ast_call_method" not in emitted
+
+
 def test_no_strict_producer_violations_for_symbol_kind():
     result = find_symbol_kind_producer_violations(REPO_ROOT)
     assert not result.strict_violations, (

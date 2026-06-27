@@ -3786,6 +3786,7 @@ def _process_call(
     callee_symbol = None
     is_instantiation = False
     evidence_type = "ast_call_direct"
+    call_meta: dict[str, str] | None = None
 
     # Case 1: Simple name calls - helper() or ClassName()
     if isinstance(func, ast.Name):
@@ -3808,7 +3809,11 @@ def _process_call(
     # Case 2: Attribute calls - self.method(), module.ClassName(), variable.method()
     elif isinstance(func, ast.Attribute):
         attr_name = func.attr
-        evidence_type = "ast_call_method"
+        # Cluster 28D (audit-findings 0012): a method call folds to the
+        # ``ast_call`` apex + ``meta['call_construct']='method'`` (WI-nibis),
+        # not the parked peer ``ast_call_method``.
+        evidence_type = "ast_call"
+        call_meta = {"call_construct": "method"}
 
         if isinstance(func.value, ast.Name):
             receiver_name = func.value.id
@@ -3900,6 +3905,7 @@ def _process_call(
                 edge_type="calls",
                 line=call_node.lineno,
                 evidence_type=evidence_type,
+                meta=call_meta,
                 origin=PASS_ID,
                 origin_run_id=run_id,
             ))

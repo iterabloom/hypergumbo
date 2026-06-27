@@ -427,7 +427,6 @@ Values that name the inference pathway by which the analyzer concluded this edge
 Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.md`. Each cluster's audit decides between fold-to-Cluster-A vs separate-axis declaration vs producer-side drop.
 
 - **`alias_resolution`** — JS module-resolution pathway via path alias (linkers/js_module.py). Pending cluster-A audit (could promote to AXIS_INFERENCE_PATHWAY canonical).
-- **`ast_call_method`** — Python AST method-call inference (py.py). At-risk Cluster D peer of `ast_call_direct`: fold candidate to `ast_call_direct` + `meta['call_construct']='method'`. Pending cluster-D audit.
 - **`ast_call_namespace`** — JS/TS namespace-import call inference (hypergumbo-lang-mainstream/js_ts.py:3858; ``import * as obj; obj.method()``). Sibling of the canonical `ast_call_direct` / `ast_new` peers; emitted from the inline ternary ``'ast_new' if is_class else 'ast_call_namespace'``. At-risk Cluster D call-construct: fold candidate to `ast_call_direct` + `meta['call_construct']='namespace'`. Pending cluster-D audit.
 - **`cffi_call`** — Python cffi FFI call (linkers/pyffi.py). At-risk Cluster C: fold candidate to canonical inference + `meta['ffi_mechanism']='cffi'`. Pending cluster-C audit.
 - **`cffi_stdlib_call`** — Python cffi FFI call against the stdlib variant (linkers/pyffi.py; same dict-subscript-target leak shape as `ctypes_stdlib_call`). At-risk Cluster C peer: fold candidate to `cffi_call` + `meta['ffi_scope']='stdlib'`. Pending cluster-C audit.

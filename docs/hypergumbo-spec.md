@@ -846,7 +846,6 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 
 * `ast_call` — Call resolved from AST surface form (canonical for what was previously `ast_call_direct` / `ast_call_method` / `ast_getattr_call`; the syntactic shape moves into `meta["call_construct"]`)
 * `ast_call_direct` — Direct function call in AST (retained for back-compat where the call_construct is unambiguous)
-* `ast_call_method` — Method call with receiver (retained for back-compat; canonical fold target is `ast_call_direct` + `meta["call_construct"]="method"`)
 * `import_static` — Static import statement
 * `import_dynamic` — Dynamic import (importlib, require with variable)
 * `script_src` — HTML script tag src attribute

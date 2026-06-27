@@ -211,7 +211,6 @@
     "ast_call_inherited",
     "ast_call_inherited_field",
     "ast_call_inherited_method",
-    "ast_call_method",
     "ast_call_namespace",
     "ast_call_static",
     "ast_call_this",

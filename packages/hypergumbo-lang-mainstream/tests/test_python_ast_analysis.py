@@ -1000,6 +1000,34 @@ def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
     assert "helper" in call_edges[0]["dst"]
 
 
+def test_resolved_method_call_uses_ast_call_apex_with_call_construct_meta(
+    tmp_path: Path,
+) -> None:
+    """vocab:F1 / WI-nibis: a RESOLVED method call folds to the ``ast_call``
+    apex + ``meta['call_construct']='method'`` (Cluster 28D, audit-findings
+    0012), not the parked peer ``ast_call_method`` (the py.py:3811 default
+    leak that survived the original 0012 fold)."""
+    py_file = tmp_path / "service.py"
+    py_file.write_text(
+        "class Service:\n"
+        "    def helper(self):\n"
+        "        pass\n"
+        "\n"
+        "    def run(self):\n"
+        "        self.helper()\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    assert len(call_edges) == 1
+    edge = call_edges[0]
+    assert edge["meta"]["evidence_type"] == "ast_call"
+    assert edge["meta"]["call_construct"] == "method"
+
+
 def test_run_detects_class_instantiation(tmp_path: Path) -> None:
     """Running analysis should detect ClassName() instantiation as edges."""
     py_file = tmp_path / "app.py"
