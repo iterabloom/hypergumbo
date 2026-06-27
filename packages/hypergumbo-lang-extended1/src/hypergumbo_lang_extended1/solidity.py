@@ -414,6 +414,12 @@ def _extract_edges_from_tree(
                                         edge_type="inherits",
                                         line=child.start_point[0] + 1,
                                         confidence=0.95,
+                                        # vocab:F2 (WI-lojug): AST-derived from the
+                                        # `is` (inheritance_specifier) clause — not a
+                                        # call. Without this, the Edge.create default
+                                        # 'ast_call_direct' would mislabel a contract
+                                        # inheritance as a direct function call.
+                                        evidence_type="ast_extends",
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                     )
@@ -552,6 +558,10 @@ def _extract_edges_from_tree(
                         edge_type="references",
                         line=node.start_point[0] + 1,
                         confidence=0.95,
+                        # vocab:F2 (WI-lojug): a name-resolved reference to the
+                        # event symbol, not a direct call — avoid the
+                        # 'ast_call_direct' default on this non-call edge.
+                        evidence_type="reference",
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         meta={"construct": "event_emit"},
@@ -602,6 +612,10 @@ def _extract_edges_from_tree(
                         edge_type="overrides",
                         line=child_sym.span.start_line,
                         confidence=0.85,
+                        # vocab:F2 (WI-lojug): resolved by name-matching child
+                        # functions against the inheritance hierarchy, not from a
+                        # direct call — avoid the 'ast_call_direct' default.
+                        evidence_type="type_hierarchy",
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     )

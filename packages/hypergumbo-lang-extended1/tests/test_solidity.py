@@ -554,6 +554,13 @@ contract Token is Base {
 
         inherit_edges = [e for e in result.edges if e.edge_type == "inherits"]
         assert len(inherit_edges) >= 1
+        # vocab:F2 (WI-lojug): inherits is AST-derived from the `is`
+        # (inheritance_specifier) clause, NOT a direct call — evidence_type
+        # must be ast_extends, not the call-specific ast_call_direct default.
+        assert all(e.evidence_type == "ast_extends" for e in inherit_edges), (
+            f"inherits edges must carry ast_extends evidence; "
+            f"got {[e.evidence_type for e in inherit_edges]}"
+        )
         # Token inherits from Base
         token = next(s for s in result.symbols if s.name == "Token" and s.kind == "contract")
         base = next(s for s in result.symbols if s.name == "Base" and s.kind == "contract")
@@ -718,6 +725,13 @@ contract Token {
 
         emit_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(emit_edges) >= 1, "Expected at least one 'emits' edge"
+        # vocab:F2 (WI-lojug): an `emit Event(...)` is a name-resolved reference
+        # to the event symbol, not a direct call — evidence_type must be
+        # reference, not the call-specific ast_call_direct default.
+        assert all(e.evidence_type == "reference" for e in emit_edges), (
+            f"event-emit references edges must carry reference evidence; "
+            f"got {[e.evidence_type for e in emit_edges]}"
+        )
 
         transfer_func = next(s for s in result.symbols if "transfer" in s.name and s.kind == "function")
         transfer_event = next(s for s in result.symbols if "Transfer" in s.name and s.kind == "event")
@@ -973,6 +987,13 @@ contract Token is ERC165 {
 
         override_edges = [e for e in result.edges if e.edge_type == "overrides"]
         assert len(override_edges) >= 1, f"Expected override edges, found {len(override_edges)}"
+        # vocab:F2 (WI-lojug): override edges are resolved by name-matching child
+        # functions against the inheritance hierarchy, not from a direct call —
+        # evidence_type must be type_hierarchy, not the ast_call_direct default.
+        assert all(e.evidence_type == "type_hierarchy" for e in override_edges), (
+            f"override edges must carry type_hierarchy evidence; "
+            f"got {[e.evidence_type for e in override_edges]}"
+        )
 
         # Token.supportsInterface overrides ERC165.supportsInterface
         token_fn = next(
