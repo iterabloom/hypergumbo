@@ -114,3 +114,25 @@
   clock: 13  # 7e80
   nonce: '7e80'  # 7e80
   message: "dispatch:F2 landed (08e458c2c6). Symptom 1's EXPOSURE (the ~89% dead-code-maybe default headline) is retired: default now --seeds production (entrypoints+exports), with entrypoint_only_dead + test_only_reachable disclosure buckets and a warn. NOT in INV-pohik resolves_ids (F2 is symptom-exposure, not traversal). INV-pohik stays violated; remaining = F8 (symptom 3 closure-factory/descriptor dispatch traversal + the umbrella closure gate: per-family property test, 16/16 route features non-empty [F1 done], default-seed FP<=40% [now measured against F2's production default]). F8 is now UNBLOCKED (needed F1+F2, both merged)."  # 7e80
+- op: discuss  # 0cda
+  at: '2026-06-26T08:24:15Z'  # 0cda
+  by: agent  # 0cda
+  actor: jgstern_agent  # 0cda
+  clock: 14  # 0cda
+  nonce: 0cda  # 0cda
+  message: "dispatch:F8 PR-A landed (PR #4312, merged manually by human after a Codeberg DB-desync blocked auto-merge; on dev as add138c6ee + ARCH-regen 4f764bdae1). Symptom 3's CLOSURE-FACTORY leg is now traversed: the Python analyzer emits a dispatches_to edge factory->returned-nested-closure (meta dispatch_kind=closure_factory) so the closure inherits the factory's reachability. Behavioral evidence (analyze/ scope): register_analyzer.decorator reachability in-edges 0->1; 3 closure_factory edges (register_analyzer->decorator, make_file_finder->finder, as_registered_analyzer->analyze_fn). INV-pohik STAYS violated — remaining for closure (dispatch:F8 PR-B): (1) descriptor-protocol leg (property/staticmethod-like attribute dispatch — NO self-repro, 0 descriptor dunders in the corpus, so synthetic-fixture coverage + a scope decision), and (2) the umbrella CLOSURE GATE property test (per-dispatch-family reachability + 16/16 route features non-empty [F1 done] + default-seed FP<=40% [F2's production default]). Plan: ~/hypergumbo_lab_notebook/dispatch_f8_plan_06252026.md."  # 0cda
+- op: update  # 5e5c
+  at: '2026-06-26T18:36:41Z'  # 5e5c
+  by: agent  # 5e5c
+  actor: jgstern_agent  # 5e5c
+  clock: 15  # 5e5c
+  nonce: 5e5c  # 5e5c
+  set:  # 5e5c
+    status: satisfied  # 5e5c
+- op: discuss  # 7578
+  at: '2026-06-26T18:36:41Z'  # 7578
+  by: agent  # 7578
+  actor: jgstern_agent  # 7578
+  clock: 16  # 7578
+  nonce: '7578'  # 7578
+  message: "SATISFIED via the dispatch F-series (all merged to dev) + the closure gate (PR-B, 28175b9402). Behavioral evidence per family (the invariant's three named dispatch families):\n(1) route->handler [F1, 487a31d4e3]: route symbols emit a traversable dispatches_to edge to their handler. Live self-run: 8/8 routes dispatch (0 routes without a dispatch edge); the 7/8 empty :route feature graphs -> 0/8.\n(2) closure-factory [F8 PR-A, on dev as 4f764bdae1]: a function returning its own directly-nested closure emits dispatches_to factory->closure (meta dispatch_kind=closure_factory). Live self-run: 13 closure_factory edges; register_analyzer.decorator reachability in-edges 0->1.\n(3) descriptor-protocol: DOCUMENTED-VACUOUS (NOT a behavioral descriptor fix — stated explicitly per closure-evidence discipline). 0 descriptor dunders in the corpus, and @property/@staticmethod methods are dead at a rate comparable to plain methods (60% vs 53%), so the apparent 'descriptor dispatch' deadness is the GENERAL short-name method-call-resolution gap, NOT a distinct descriptor traversal gap. The original symptom-3 descriptor leg was a mis-attribution; the real residual gap is filed as WI-noham (distinct from INV-pohik's three families; overlaps the blocked py.py scope-stack rewrite + dispatch:F3).\nUSABILITY CLAUSE: dead-code-maybe's default is no longer a near-100%-FP noise source — F2 [08e458c2c6] flipped the default from --seeds entrypoints (89.6% on self) to --seeds production (entrypoints+exports) with entrypoint_only_dead/test_only_reachable disclosure buckets; F7 [39cc8e6c3d] added the cross-language-hits FP demoter. (The deflated-headline quantitative claim is bakeoff-tracked on WI-lirob, awaits_bakeoff_validation.)\nREGRESSION GUARD: packages/hypergumbo-core/tests/test_dispatch_closure_gate.py (PR-B) — 5 passed (route reachability, closure reachability, reachability-edge-set drift guard, decorator-transparency, descriptor-dunder trip-wire) + an env-gated self-ratchet (validated offline: 8/8 routes dispatch, 13 closure_factory edges, dead-rate 79.4% < 90%). Subsumed INV-lidot/INV-pavos/INV-tudum remain deleted."  # 7578

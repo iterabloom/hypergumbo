@@ -48,3 +48,18 @@
   clock: 5  # 5d3e
   nonce: 5d3e  # 5d3e
   message: "root-cause family member (g1) (connections-sweep 2026-06-08T1900Z)"  # 5d3e
+- op: update  # 1408
+  at: '2026-06-27T00:17:16Z'  # 1408
+  by: agent  # 1408
+  actor: jgstern_agent  # 1408
+  clock: 6  # 1408
+  nonce: '1408'  # 1408
+  set:  # 1408
+    status: done  # 1408
+- op: discuss  # 1d25
+  at: '2026-06-27T00:17:16Z'  # 1d25
+  by: agent  # 1d25
+  actor: jgstern_agent  # 1d25
+  clock: 7  # 1d25
+  nonce: 1d25  # 1d25
+  message: "Fixed in PR #4317 (dev af0b573ea1, linker-evidence-gating:F1). The message-queue linker now scans via the shared discovery.find_non_test_files gate (paths.is_test_file) instead of find_files, so MQ pattern string literals in test files no longer synthesize publisher/subscriber symbols or phantom event_publishes edges.\n\nBehavioral evidence (re-ran the filed repro shape): self-analysis on the hypergumbo repo with the gated code — link_message_queues(repo_root) now yields event_publishes edges 103 -> 0 and publisher/subscriber symbols -> 0 (the filed repro was 103 event_publishes / 26 cross-file, all test-sourced). Scan chokepoint excludes 594 of 922 candidate files (the test cohort). Production-path test TestTestFileGating in test_message_queue_linker.py asserts MQ patterns in a test_*-named file + a tests/-dir file emit zero symbols/edges, while the identical patterns in production-named files still link (2 symbols, 1 edge). Part of the leverage-#16 shared-gate class fix (15 content-scanning linkers wired to one chokepoint)."  # 1d25
