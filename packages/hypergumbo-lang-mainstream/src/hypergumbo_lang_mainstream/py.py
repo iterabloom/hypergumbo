@@ -407,6 +407,19 @@ def _lookup_symbol_by_module(
     return lookup_symbol(global_symbols, module_name, symbol_name)
 
 
+# WI-fuvuj: stdlib I/O constructors whose return value's type we can infer
+# from the constructor name alone. Key = the qualified constructor name
+# (bare for builtins like ``open``; ``module.attr`` for module constructors
+# like ``socket.socket``). Value = the catalog module string the inferred
+# receiver's method-call dst will carry, so io-boundary's module-filter path
+# disambiguates ``f.read()`` / ``s.send()`` into the right boundary bucket
+# instead of the undifferentiated ``external_potential`` bucket.
+#
+# The file-object value MUST be exactly ``"file"`` — it is coordinated with
+# the synthetic ``file`` module in the python.yaml catalog (fs_read read/
+# readline/readlines, fs_write write/writelines).
+EXTERNAL_CONSTRUCTOR_TYPES = {"open": "file", "socket.socket": "socket.socket"}
+
 # Django URL pattern functions (call-based routing)
 # These emit UsageContext records for YAML pattern matching (v1.1.x)
 DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
@@ -3133,11 +3146,33 @@ def _extract_edges(
                 ))
 
     # Helper to extract edges from a code block (function body, module level, etc.)
+    def _external_constructor_module(call: ast.Call) -> str | None:
+        """WI-fuvuj: if ``call`` is a recognized I/O constructor, return the
+        catalog module string for the object it constructs; else ``None``.
+
+        - ``func`` is ``ast.Name`` (e.g. ``open``) → bare constructor name.
+        - ``func`` is ``ast.Attribute`` with an ``ast.Name`` base that is a
+          known module import (e.g. ``socket.socket``) → ``module.attr``.
+        """
+        func = call.func
+        if isinstance(func, ast.Name):
+            name = func.id
+        elif (
+            isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Name)
+            and func.value.id in module_imports
+        ):
+            name = f"{module_imports[func.value.id]}.{func.attr}"
+        else:
+            return None
+        return EXTERNAL_CONSTRUCTOR_TYPES.get(name)
+
     def process_code_block(
         block_nodes: list[ast.AST],
         caller_symbol: Symbol,
         var_types: dict[str, Symbol] | None = None,
         inner_scope: dict[str, Symbol] | None = None,
+        external_var_types: dict[str, str] | None = None,
     ) -> None:
         """Process AST nodes within a code block, tracking variable types.
 
@@ -3145,9 +3180,18 @@ def _extract_edges(
         names defined as nested functions of ``caller_symbol``. Resolution
         consults ``inner_scope`` before ``local_symbols`` so bare-name calls
         to inner helpers don't fall through to a same-named top-level Symbol.
+
+        ``external_var_types`` (WI-fuvuj) maps a local variable name to the
+        catalog module string of the I/O object it was assigned from a known
+        constructor (``f = open(p)`` → ``{"f": "file"}``). It parallels
+        ``var_types`` (which tracks in-repo class types) and lets
+        ``_process_call`` emit a module-qualified unresolved dst for method
+        calls on those variables.
         """
         if var_types is None:
             var_types = {}
+        if external_var_types is None:
+            external_var_types = {}
 
         for node in block_nodes:
             # Track variable assignments for type inference
@@ -3176,10 +3220,34 @@ def _extract_edges(
                                 )
                                 if ret_class:
                                     var_types[target.id] = ret_class
+                        elif assigned_class is None:
+                            # WI-fuvuj: in-repo resolution found no class. If
+                            # the RHS is a known I/O constructor (open(...),
+                            # socket.socket()), record the inferred receiver
+                            # type so method calls on this variable emit a
+                            # module-qualified unresolved dst.
+                            ext_module = _external_constructor_module(node.value)
+                            if ext_module is not None:
+                                external_var_types[target.id] = ext_module
 
             # Function reference in assignment RHS: callback = my_func
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
                 _emit_function_ref(node.value, caller_symbol, inner_scope=inner_scope)
+
+            # WI-fuvuj: ``with open(p) as f:`` / ``with socket.socket() as s:``
+            # — the dominant I/O constructor idiom. Type the bound name from
+            # the context-manager constructor so method calls inside the body
+            # emit a module-qualified unresolved dst. The body is still
+            # recursed below (the generic ast.iter_child_nodes traversal).
+            if isinstance(node, (ast.With, ast.AsyncWith)):
+                for item in node.items:
+                    if (
+                        isinstance(item.optional_vars, ast.Name)
+                        and isinstance(item.context_expr, ast.Call)
+                    ):
+                        ext_module = _external_constructor_module(item.context_expr)
+                        if ext_module is not None:
+                            external_var_types[item.optional_vars.id] = ext_module
 
             # Process calls
             if isinstance(node, ast.Call):
@@ -3189,6 +3257,7 @@ def _extract_edges(
                     sym_by_path_name=_sym_by_path_name,
                     run_id=run_id,
                     inner_scope=inner_scope,
+                    external_var_types=external_var_types,
                 )
                 # Function references in call arguments: map(transform, items)
                 for arg in node.args:
@@ -3214,7 +3283,11 @@ def _extract_edges(
             # those get their own caller_symbol in the outer FunctionDef loop).
             for child in ast.iter_child_nodes(node):
                 if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    process_code_block([child], caller_symbol, var_types, inner_scope=inner_scope)
+                    process_code_block(
+                        [child], caller_symbol, var_types,
+                        inner_scope=inner_scope,
+                        external_var_types=external_var_types,
+                    )
 
     def _extract_param_types(
         func_node: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -3652,6 +3725,7 @@ def _process_call(
     *,
     run_id: str,
     inner_scope: dict[str, Symbol] | None = None,
+    external_var_types: dict[str, str] | None = None,
 ) -> None:
     """Process a single call expression and emit appropriate edges.
 
@@ -3665,7 +3739,16 @@ def _process_call(
     ``inner_scope`` is the enclosing-function scope (INV-mofav): bare-name
     calls to nested functions resolve through it before falling through to
     ``local_symbols``.
+
+    ``external_var_types`` (WI-fuvuj) maps a local variable name to the
+    catalog module string of the I/O object it was constructed from
+    (``f = open(p)`` → ``{"f": "file"}``). When a bare ``receiver.method()``
+    call's receiver is in this map, the unresolved-edge emit uses a
+    module-qualified dst (carrying the inferred module in both the dst id's
+    module slot and a structured ``dst_ref``) so io-boundary can classify it.
     """
+    if external_var_types is None:  # pragma: no cover - defensive default
+        external_var_types = {}
     func = call_node.func
     callee_symbol = None
     is_instantiation = False
@@ -3831,6 +3914,34 @@ def _process_call(
                         lang="python",
                         module_path=module_name,
                         name=f"{original_name}.{attr_name}",
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                ))
+            # WI-fuvuj: local_var.method() where the receiver was typed by a
+            # known I/O constructor (``f = open(p)`` / ``s = socket.socket()``,
+            # incl. the ``with ... as`` form). Emit a MODULE-QUALIFIED dst so
+            # io-boundary's catalog can disambiguate the method (e.g. file
+            # .read() → fs_read, socket.socket.send() → net_send) via the
+            # module-filter path — bypassing the ambiguous_names suppression
+            # that protects UNtyped receivers. The module is carried in BOTH
+            # the dst id's module slot AND the dst_ref because the io-boundary
+            # CLI consumer drops dst_ref on serialize/reload and falls back to
+            # parsing the dst id.
+            elif receiver_name in external_var_types:
+                ext_module = external_var_types[receiver_name]
+                dst_id = f"python:{ext_module}:0-0:{attr_name}:unresolved"
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=dst_id,
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="ast_call",
+                    is_resolved=False,
+                    confidence=0.50,
+                    meta={"call_construct": "method", "resolution_quality": "type_inferred"},
+                    dst_ref=ExternalRef(
+                        lang="python", module_path=ext_module, name=attr_name
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,

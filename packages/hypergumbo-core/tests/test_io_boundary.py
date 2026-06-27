@@ -82,6 +82,41 @@ class TestLoadCatalog:
         names = {p.qualified_name for p in net_sends}
         assert "socket.socket.send" in names
 
+    def test_python_synthetic_file_module_classifies_read_write(self) -> None:
+        # WI-fuvuj: ``open(...)`` returns a file object whose .read()/.write()
+        # methods carry the synthetic module ``file`` after receiver-type
+        # inference in py.py. The catalog must classify them so the
+        # module-filter path in lookup_with_module bypasses ambiguous_names
+        # suppression for typed receivers.
+        catalog = load_catalog("python")
+        read_hit = catalog.lookup_with_module("read", "file")
+        assert read_hit is not None
+        assert read_hit.boundary == "fs_read"
+        write_hit = catalog.lookup_with_module("write", "file")
+        assert write_hit is not None
+        assert write_hit.boundary == "fs_write"
+
+    def test_python_untyped_file_methods_stay_suppressed(self) -> None:
+        # WI-fuvuj regression guard: an UNtyped receiver carries the
+        # module hint ``external`` (no dst_ref). lookup_with_module falls
+        # back to ambiguous_names suppression, so read/write stay None —
+        # the synthetic ``file`` module must NOT leak into the external path.
+        catalog = load_catalog("python")
+        assert catalog.lookup_with_module("read", "external") is None
+        assert catalog.lookup_with_module("write", "external") is None
+
+    def test_python_socket_socket_send_recv_pin(self) -> None:
+        # WI-fuvuj pin: socket.socket entries already existed; the receiver-
+        # type inference produces the ``socket.socket`` module hint for
+        # ``s.send()``/``s.recv()``. Pin the boundary classification.
+        catalog = load_catalog("python")
+        send_hit = catalog.lookup_with_module("send", "socket.socket")
+        assert send_hit is not None
+        assert send_hit.boundary == "net_send"
+        recv_hit = catalog.lookup_with_module("recv", "socket.socket")
+        assert recv_hit is not None
+        assert recv_hit.boundary == "net_recv"
+
     def test_python_catalog_stdio_is_logging_not_ipc_send(self) -> None:
         # WI-tolif: 2026-04-23 self-audit found that 70 of hypergumbo's 77
         # ipc_send chains were just sys.stderr writes (cli.py progress

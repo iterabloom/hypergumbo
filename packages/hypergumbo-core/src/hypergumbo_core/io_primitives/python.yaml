@@ -87,6 +87,13 @@ fs_read:
     notes: "io.open is the same as builtins.open"
   - module: fileinput
     functions: [input, FileInput]
+  - module: file
+    methods: [read, readline, readlines]
+    notes: |
+      WI-fuvuj: synthetic module for the file object returned by open().
+      Receiver-type inference in py.py types `f = open(p)` as the `file`
+      module so f.read()/f.readline()/f.readlines() classify here via the
+      module-filter path (untyped receivers stay suppressed by ambiguous_names).
 
 fs_write:
   - module: builtins
@@ -108,6 +115,13 @@ fs_write:
   - module: csv
     functions: [writer]
     notes: "csv.writer wraps a file object for writing"
+  - module: file
+    methods: [write, writelines]
+    notes: |
+      WI-fuvuj: synthetic module for the file object returned by open().
+      Receiver-type inference in py.py types `f = open(p)` as the `file`
+      module so f.write()/f.writelines() classify here via the module-filter
+      path (untyped receivers stay suppressed by ambiguous_names).
 
 net_send:
   - module: socket.socket

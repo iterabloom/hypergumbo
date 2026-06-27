@@ -6697,3 +6697,201 @@ class TestWiFagabQualifiedNameField:
         )
         assert cls.qualified_name == "Greeter"
         assert cls.name == cls.qualified_name
+
+
+class TestExternalConstructorReceiverTypeInference:
+    """WI-fuvuj: infer the receiver type of method calls on local variables
+    typed by a known I/O constructor (``open`` / ``socket.socket``), so
+    io-boundary's catalog can disambiguate ``f.read()`` / ``s.send()`` into
+    the right boundary bucket instead of the undifferentiated
+    ``external_potential`` bucket.
+
+    The fix emits a MODULE-QUALIFIED dst (``python:{module}:0-0:{name}:
+    unresolved``) plus a structured ``dst_ref`` so both the dst_ref path and
+    the dst-id-parse fallback (the io-boundaries CLI drops dst_ref on
+    serialize/reload) satisfy the module-filter match.
+    """
+
+    def _calls_edge(self, result, dst_substr: str):
+        """Return the single calls edge whose dst contains ``dst_substr``."""
+        matches = [
+            e for e in result.edges
+            if e.edge_type == "calls" and dst_substr in e.dst
+        ]
+        assert len(matches) == 1, (
+            f"expected exactly 1 calls edge containing {dst_substr!r}; "
+            f"got {[e.dst for e in matches]}"
+        )
+        return matches[0]
+
+    def test_socket_socket_send_is_module_qualified(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import ExternalRef
+
+        (tmp_path / "m.py").write_text(
+            "import socket\n"
+            "def run():\n"
+            "    s = socket.socket()\n"
+            '    s.send(b"x")\n'
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "send:unresolved")
+        assert edge.dst == "python:socket.socket:0-0:send:unresolved"
+        assert isinstance(edge.dst_ref, ExternalRef)
+        assert edge.dst_ref.module_path == "socket.socket"
+        assert edge.dst_ref.name == "send"
+        assert edge.dst_ref.lang == "python"
+
+    def test_open_read_is_module_qualified(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import ExternalRef
+
+        (tmp_path / "m.py").write_text(
+            "def run():\n"
+            '    fh = open("p")\n'
+            "    fh.read()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "read:unresolved")
+        assert edge.dst == "python:file:0-0:read:unresolved"
+        assert isinstance(edge.dst_ref, ExternalRef)
+        assert edge.dst_ref.module_path == "file"
+        assert edge.dst_ref.name == "read"
+
+    def test_with_open_write_is_module_qualified(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ir import ExternalRef
+
+        (tmp_path / "m.py").write_text(
+            "def run():\n"
+            '    with open("p") as fh:\n'
+            '        fh.write("x")\n'
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "write:unresolved")
+        assert edge.dst == "python:file:0-0:write:unresolved"
+        assert isinstance(edge.dst_ref, ExternalRef)
+        assert edge.dst_ref.module_path == "file"
+        assert edge.dst_ref.name == "write"
+
+    def test_with_socket_socket_send_is_module_qualified(
+        self, tmp_path: Path
+    ) -> None:
+        from hypergumbo_core.ir import ExternalRef
+
+        (tmp_path / "m.py").write_text(
+            "import socket\n"
+            "def run():\n"
+            "    with socket.socket() as s:\n"
+            '        s.send(b"x")\n'
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "send:unresolved")
+        assert edge.dst == "python:socket.socket:0-0:send:unresolved"
+        assert isinstance(edge.dst_ref, ExternalRef)
+        assert edge.dst_ref.module_path == "socket.socket"
+
+    def test_unrecognized_receiver_stays_external_without_dst_ref(
+        self, tmp_path: Path
+    ) -> None:
+        """NEGATIVE: a method call on a variable not typed by a recognized
+        constructor must keep the old ``external`` dst with NO dst_ref."""
+        (tmp_path / "m.py").write_text(
+            "def run(x):\n"
+            "    x.frobnicate()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "frobnicate:unresolved")
+        assert edge.dst == "python:external:0-0:frobnicate:unresolved"
+        assert edge.dst_ref is None
+        assert edge.confidence == 0.40
+
+    def test_assignment_from_unrecognized_call_stays_external(
+        self, tmp_path: Path
+    ) -> None:
+        """The EXTERNAL_CONSTRUCTOR_TYPES fall-through: a Call RHS whose
+        constructor name is not a recognized I/O constructor does not type
+        the variable, so its method calls stay ``external``."""
+        (tmp_path / "m.py").write_text(
+            "def run():\n"
+            "    obj = make_thing()\n"
+            "    obj.frobnicate()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "frobnicate:unresolved")
+        assert edge.dst == "python:external:0-0:frobnicate:unresolved"
+        assert edge.dst_ref is None
+
+    def test_with_non_call_context_expr_does_not_type_var(
+        self, tmp_path: Path
+    ) -> None:
+        """ast.With guard: an ``optional_vars`` Name whose ``context_expr``
+        is NOT a Call (e.g. a bare name context manager) does not get typed."""
+        (tmp_path / "m.py").write_text(
+            "def run(cm):\n"
+            "    with cm as fh:\n"
+            "        fh.read()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "read:unresolved")
+        assert edge.dst == "python:external:0-0:read:unresolved"
+        assert edge.dst_ref is None
+
+    def test_with_unrecognized_call_context_expr_does_not_type_var(
+        self, tmp_path: Path
+    ) -> None:
+        """ast.With guard: a Call context_expr that is not a recognized
+        constructor (e.g. a user context manager) does not get typed, but
+        the body is still traversed."""
+        (tmp_path / "m.py").write_text(
+            "def run():\n"
+            "    with make_cm() as fh:\n"
+            "        fh.read()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "read:unresolved")
+        assert edge.dst == "python:external:0-0:read:unresolved"
+        assert edge.dst_ref is None
+
+    def test_with_non_name_optional_vars_does_not_crash(
+        self, tmp_path: Path
+    ) -> None:
+        """ast.With guard: ``with open(p) as (a, b):`` has a Tuple
+        ``optional_vars`` (not a Name); it must not be typed and must not
+        crash. The body is still traversed."""
+        (tmp_path / "m.py").write_text(
+            "def run():\n"
+            '    with open("p") as (a, b):\n'
+            "        a.read()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "read:unresolved")
+        assert edge.dst == "python:external:0-0:read:unresolved"
+        assert edge.dst_ref is None
+
+    def test_with_no_optional_vars_does_not_crash(self, tmp_path: Path) -> None:
+        """ast.With guard: ``with open(p):`` (no ``as``) has
+        ``optional_vars is None``; it must not crash and the body is still
+        traversed."""
+        (tmp_path / "m.py").write_text(
+            "def run(other):\n"
+            '    with open("p"):\n'
+            "        other.read()\n"
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "read:unresolved")
+        assert edge.dst == "python:external:0-0:read:unresolved"
+        assert edge.dst_ref is None
+
+    def test_module_constructor_unknown_module_falls_through(
+        self, tmp_path: Path
+    ) -> None:
+        """The ast.Attribute constructor resolution requires the root Name to
+        be a known module import. ``foo.socket()`` where ``foo`` is not
+        imported must not type the variable."""
+        (tmp_path / "m.py").write_text(
+            "def run(foo):\n"
+            "    s = foo.socket()\n"
+            '    s.send(b"x")\n'
+        )
+        result = extract_nodes(tmp_path / "m.py")
+        edge = self._calls_edge(result, "send:unresolved")
+        assert edge.dst == "python:external:0-0:send:unresolved"
+        assert edge.dst_ref is None
