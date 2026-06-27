@@ -1275,8 +1275,9 @@ class TestRunAllAnalyzersDependencyManifest:
             _, _, _, _, _, _, merged = facade_run_all(Path("/test"))
 
         assert merged is not None
-        from hypergumbo_core.supply_chain import Tier
-        assert merged.classify_import("github.com/foo/bar") == Tier.INTERNAL_DEP
+        # ADR-0041 §1/§2 (supply:F5): the merged manifest's discriminating
+        # output is the directness stamp (tier is uniformly external).
+        assert merged.classify_directness("github.com/foo/bar") == "direct"
 
     def test_no_manifest_returns_none(self) -> None:
         """Returns None when no analyzers provide manifests."""

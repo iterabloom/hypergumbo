@@ -1623,24 +1623,16 @@ class TestCreateBoundaryNodes:
         # The click dst is non-file kind: canonical id == original, no remap.
         assert "python:click:0-0:click:unresolved" not in remap
 
-    def test_tier_min_selection_picks_tier2_when_any_member_matches(self):
-        """WI-fozoh: tier-min selection — if any member of the collapsed
-        group classifies as tier-2, the canonical node is tier-2.
+    def test_direct_dep_is_tier3_with_directness_direct(self):
+        """ADR-0041 §1/§2: a declared (direct) third-party boundary node is
+        tier 3 — supply-chain distance only — and carries the declaration
+        relationship on the ``directness`` meta stamp instead of tier 2.
 
-        Two file pseudo-IDs collapse, with different per-reference path
-        slots. The manifest classifies neither file path (because they
-        ARE filesystem paths, not module names), but for the file-id
-        collapse case the path slot is uninformative anyway. This test
-        therefore exercises a scenario where the collapsed group
-        receives a path slot that DOES match the manifest — uses Go
-        package-style ids where the path slot is the import path.
+        (Supersedes WI-fozoh's tier-min-picks-tier-2 behavior; stable_id /
+        display_label are still populated regardless of manifest match.)
         """
         from hypergumbo_core.supply_chain import DependencyManifest
 
-        # Two go package boundary ids with the SAME path (same external).
-        # They have full identity preservation (kind="package"); manifest
-        # match works on the path slot. No collapse here, just stable_id
-        # identity verification.
         s1 = self._make_symbol("go:main.go:1-1:main:function")
         e = Edge.create(
             src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
@@ -1653,32 +1645,15 @@ class TestCreateBoundaryNodes:
         })
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        assert result[0].supply_chain_tier == 2
+        assert result[0].supply_chain_tier == 3
+        assert result[0].supply_chain_reason == "unresolved external reference"
+        assert (result[0].meta or {}).get("directness") == "direct"
         # stable_id is populated regardless of manifest match (WI-fozoh).
         assert result[0].stable_id is not None
         assert result[0].display_label is not None
 
-    def test_manifest_classifies_direct_dep_as_tier2(self):
-        """Boundary nodes for direct deps get tier 2 when manifest provided."""
-        from hypergumbo_core.supply_chain import DependencyManifest
-
-        s1 = self._make_symbol("go:main.go:1-1:main:function")
-        e = Edge.create(
-            src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
-            edge_type="imports", line=3,
-
-            origin="test", origin_run_id="test",
-        )
-        manifest = DependencyManifest(entries={
-            "github.com/go-kit/log": {"direct": True},
-        })
-        result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
-        assert len(result) == 1
-        assert result[0].supply_chain_tier == 2
-        assert "direct dependency" in result[0].supply_chain_reason
-
-    def test_manifest_classifies_indirect_dep_as_tier3(self):
-        """Boundary nodes for indirect deps remain tier 3."""
+    def test_manifest_classifies_indirect_dep_directness_transitive(self):
+        """Indirect (transitive) deps are tier 3 with directness 'transitive'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("go:main.go:1-1:main:function")
@@ -1694,9 +1669,10 @@ class TestCreateBoundaryNodes:
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "transitive"
 
-    def test_manifest_classifies_go_stdlib_as_tier3(self):
-        """Go stdlib boundary nodes remain tier 3 with manifest."""
+    def test_manifest_classifies_go_stdlib_directness_undeclared(self):
+        """Go stdlib boundary nodes are tier 3, directness 'undeclared'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("go:main.go:1-1:main:function")
@@ -1712,9 +1688,11 @@ class TestCreateBoundaryNodes:
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "undeclared"
 
     def test_no_manifest_backward_compat(self):
-        """Without manifest, all boundary nodes get tier 3 (existing behavior)."""
+        """Without a manifest, boundary nodes are tier 3 with NO directness
+        stamp (directness is unknowable absent manifest context)."""
         s1 = self._make_symbol("go:main.go:1-1:main:function")
         e = Edge.create(
             src=s1.id, dst="go:github.com/go-kit/log:0-0:package:package",
@@ -1725,9 +1703,10 @@ class TestCreateBoundaryNodes:
         result, _ = create_boundary_nodes([s1], [e])
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
+        assert "directness" not in (result[0].meta or {})
 
     def test_manifest_subpackage_prefix_match(self):
-        """Import of subpackage matches module path prefix in manifest."""
+        """Subpackage of a direct dep inherits directness 'direct', tier 3."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("go:main.go:1-1:main:function")
@@ -1743,12 +1722,14 @@ class TestCreateBoundaryNodes:
         })
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        assert result[0].supply_chain_tier == 2
+        assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "direct"
 
     def test_manifest_non_go_language_unaffected(self):
-        """Languages without manifest support stay tier 3 (the lua language
-        has no manifest parser; even if a passed manifest happened to
-        match by string prefix, classification should fall through).
+        """Languages without manifest support stay tier 3 with NO directness
+        stamp (the lua language has no manifest parser; even if a passed
+        manifest happened to match by string prefix, directness should not
+        be stamped for a non-allow-listed language).
         """
         from hypergumbo_core.supply_chain import DependencyManifest
 
@@ -1764,11 +1745,12 @@ class TestCreateBoundaryNodes:
         })
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        # lua not in the allow-list: manifest doesn't apply, stays tier 3
+        # lua not in the allow-list: directness not stamped, stays tier 3
         assert result[0].supply_chain_tier == 3
+        assert "directness" not in (result[0].meta or {})
 
-    def test_manifest_classifies_java_direct_dep_as_tier2(self):
-        """Java boundary nodes classified as tier 2 with manifest."""
+    def test_manifest_classifies_java_direct_dep_directness_direct(self):
+        """Java direct-dep boundary nodes are tier 3 with directness 'direct'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("java:App.java:1-1:main:function")
@@ -1784,11 +1766,11 @@ class TestCreateBoundaryNodes:
         })
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        assert result[0].supply_chain_tier == 2
-        assert "direct dependency" in result[0].supply_chain_reason
+        assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "direct"
 
-    def test_manifest_classifies_kotlin_direct_dep_as_tier2(self):
-        """Kotlin boundary nodes classified as tier 2 with manifest."""
+    def test_manifest_classifies_kotlin_direct_dep_directness_direct(self):
+        """Kotlin direct-dep boundary nodes are tier 3 with directness 'direct'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("kotlin:App.kt:1-1:main:function")
@@ -1804,10 +1786,11 @@ class TestCreateBoundaryNodes:
         })
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
-        assert result[0].supply_chain_tier == 2
+        assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "direct"
 
-    def test_manifest_java_unknown_import_stays_tier3(self):
-        """Java import not in manifest stays tier 3."""
+    def test_manifest_java_unknown_import_directness_undeclared(self):
+        """Java import not in manifest is tier 3 with directness 'undeclared'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         s1 = self._make_symbol("java:App.java:1-1:main:function")
@@ -1824,6 +1807,7 @@ class TestCreateBoundaryNodes:
         result, _ = create_boundary_nodes([s1], [e], dependency_manifest=manifest)
         assert len(result) == 1
         assert result[0].supply_chain_tier == 3
+        assert (result[0].meta or {}).get("directness") == "undeclared"
 
 
 class TestApplyExternalIdRemap:

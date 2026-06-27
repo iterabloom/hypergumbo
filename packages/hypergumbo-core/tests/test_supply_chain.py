@@ -2426,70 +2426,90 @@ class TestIsGeneratedFileAxis:
 
 
 class TestDependencyManifest:
-    """Tests for DependencyManifest (WI-vovuk)."""
+    """Tests for DependencyManifest (WI-vovuk).
+
+    ADR-0041 §1/§2 (supply:F5): ``classify_import`` now returns
+    ``Tier.EXTERNAL_DEP`` for ALL third-party imports — tier names supply-chain
+    distance and nothing else, so a declared (direct) third-party package is no
+    longer promoted to tier 2. The direct/transitive/undeclared declaration
+    relationship moved to ``classify_directness`` (stamped as the ``directness``
+    meta key). Tier 2 (``internal_dep``) is reserved for workspace/org-internal
+    packages, assigned by file classification, not by the manifest classifier.
+    """
 
     def test_classify_direct_dep(self) -> None:
-        """Direct dependency → tier 2 (INTERNAL_DEP)."""
+        """ADR-0041 §1: direct third-party dep is tier 3 (not tier 2)."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
             "github.com/go-kit/log": {"direct": True},
         })
-        assert manifest.classify_import("github.com/go-kit/log") == Tier.INTERNAL_DEP
+        assert manifest.classify_import("github.com/go-kit/log") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("github.com/go-kit/log") == "direct"
 
     def test_classify_indirect_dep(self) -> None:
-        """Indirect dependency → tier 3 (EXTERNAL_DEP)."""
+        """Indirect (transitive) dependency → tier 3, directness 'transitive'."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
             "github.com/beorn7/perp": {"direct": False},
         })
         assert manifest.classify_import("github.com/beorn7/perp") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("github.com/beorn7/perp") == "transitive"
 
     def test_classify_prefix_matching(self) -> None:
-        """Import subpackage matches module path prefix."""
+        """Import subpackage matches module path prefix (directness inherited)."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
             "github.com/go-kit/log": {"direct": True},
         })
-        # Subpackage of a direct dep
-        assert manifest.classify_import("github.com/go-kit/log/level") == Tier.INTERNAL_DEP
+        # Subpackage of a direct dep — tier 3, directness 'direct'.
+        assert manifest.classify_import("github.com/go-kit/log/level") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("github.com/go-kit/log/level") == "direct"
 
     def test_classify_go_stdlib(self) -> None:
-        """Go stdlib (no dots in first segment) → tier 3."""
+        """Go stdlib (no dots in first segment) → tier 3, declared nowhere."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={})
         assert manifest.classify_import("encoding/json") == Tier.EXTERNAL_DEP
         assert manifest.classify_import("fmt") == Tier.EXTERNAL_DEP
         assert manifest.classify_import("net/http") == Tier.EXTERNAL_DEP
+        # Stdlib is declared in no manifest → directness 'undeclared'. The
+        # stdlib-vs-third_party distinction is the separate `ecosystem` axis
+        # (ADR-0041 §3 / supply:F6), not directness.
+        assert manifest.classify_directness("encoding/json") == "undeclared"
 
     def test_classify_unknown_external(self) -> None:
-        """Unknown external (has dots, not in manifest) → tier 3."""
+        """Unknown external (has dots, not in manifest) → tier 3, undeclared."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
             "github.com/foo/bar": {"direct": True},
         })
         assert manifest.classify_import("github.com/other/pkg") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("github.com/other/pkg") == "undeclared"
 
     def test_classify_empty_import(self) -> None:
-        """Empty import path → tier 3."""
+        """Empty import path → tier 3, undeclared."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={})
         assert manifest.classify_import("") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("") == "undeclared"
 
     def test_merge_manifests(self) -> None:
-        """Merging manifests combines entries."""
+        """Merging manifests combines entries (directness preserved per entry)."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         m1 = DependencyManifest(entries={"github.com/a/pkg": {"direct": True}})
         m2 = DependencyManifest(entries={"github.com/b/pkg": {"direct": False}})
         merged = DependencyManifest.merge([m1, m2])
-        assert merged.classify_import("github.com/a/pkg") == Tier.INTERNAL_DEP
+        assert merged.classify_import("github.com/a/pkg") == Tier.EXTERNAL_DEP
         assert merged.classify_import("github.com/b/pkg") == Tier.EXTERNAL_DEP
+        assert merged.classify_directness("github.com/a/pkg") == "direct"
+        assert merged.classify_directness("github.com/b/pkg") == "transitive"
 
     def test_merge_empty_list(self) -> None:
         """Merging empty list returns empty manifest."""
@@ -2507,7 +2527,10 @@ class TestDependencyManifest:
         })
         assert manifest.classify_import(
             "github.com/alecthomas/kingpin/v2/cmd"
-        ) == Tier.INTERNAL_DEP
+        ) == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness(
+            "github.com/alecthomas/kingpin/v2/cmd"
+        ) == "direct"
 
     def test_classify_java_direct_dep(self) -> None:
         """Java/Maven groupId as manifest entry, dot-separated prefix match."""
@@ -2518,10 +2541,13 @@ class TestDependencyManifest:
         })
         assert manifest.classify_import(
             "com.fasterxml.jackson.core.JsonParser"
-        ) == Tier.INTERNAL_DEP
+        ) == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness(
+            "com.fasterxml.jackson.core.JsonParser"
+        ) == "direct"
 
     def test_classify_java_subpackage_prefix(self) -> None:
-        """Dot-separated subpackage matches groupId prefix."""
+        """Dot-separated subpackage matches groupId prefix (directness 'direct')."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
@@ -2529,7 +2555,10 @@ class TestDependencyManifest:
         })
         assert manifest.classify_import(
             "org.apache.kafka.clients.producer.KafkaProducer"
-        ) == Tier.INTERNAL_DEP
+        ) == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness(
+            "org.apache.kafka.clients.producer.KafkaProducer"
+        ) == "direct"
 
     def test_classify_java_unknown_import(self) -> None:
         """Java import not in manifest → EXTERNAL_DEP."""
@@ -2551,13 +2580,14 @@ class TestDependencyManifest:
         assert manifest.classify_import("javax.servlet.http.HttpServlet") == Tier.EXTERNAL_DEP
 
     def test_classify_dot_separated_exact_match(self) -> None:
-        """Exact match on dot-separated entry works."""
+        """Exact match on dot-separated entry works (directness 'direct')."""
         from hypergumbo_core.supply_chain import DependencyManifest
 
         manifest = DependencyManifest(entries={
             "junit": {"direct": True},
         })
-        assert manifest.classify_import("junit") == Tier.INTERNAL_DEP
+        assert manifest.classify_import("junit") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("junit") == "direct"
 
 
 class TestIsExampleFileAxis:

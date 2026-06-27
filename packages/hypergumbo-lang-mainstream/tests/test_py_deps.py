@@ -215,11 +215,15 @@ class TestParsePythonDependencies:
         assert manifest.entries == {}
 
 
-class TestPyprojectClassifiesAsTier2:
-    """End-to-end: a Python boundary node referencing a pyproject-declared
-    dep is classified as tier 2 (direct dependency)."""
+class TestPyprojectClassifiesDirectness:
+    """End-to-end: a Python boundary node referencing a pyproject-declared dep
+    is tier 3 (external — distance only) and carries directness 'direct'.
 
-    def test_direct_dep_classified_tier2(self, tmp_path: Path) -> None:
+    ADR-0041 §1/§2 (supply:F5): declared third-party deps no longer get tier 2;
+    the declaration relationship moves to the `directness` meta stamp.
+    """
+
+    def test_direct_dep_is_tier3_with_directness_direct(self, tmp_path: Path) -> None:
         (tmp_path / "pyproject.toml").write_text(
             "[project]\n"
             'name = "demo"\n'
@@ -246,9 +250,15 @@ class TestPyprojectClassifiesAsTier2:
             and "click" in (n.get("id") or "")
         ]
         assert len(click_externals) >= 1
+        # All third-party boundary nodes are tier 3 (distance only).
         sc_tiers = {(n.get("supply_chain") or {}).get("tier") for n in click_externals}
-        assert 2 in sc_tiers, (
-            f"Expected at least one tier-2 click boundary node; saw tiers={sc_tiers}"
+        assert sc_tiers == {3}, (
+            f"Expected click boundary nodes all tier 3; saw tiers={sc_tiers}"
+        )
+        # The direct-dependency relationship is recorded on `directness`.
+        directness = {(n.get("meta") or {}).get("directness") for n in click_externals}
+        assert directness == {"direct"}, (
+            f"Expected directness 'direct' on declared click dep; saw {directness}"
         )
 
     def test_unknown_import_stays_tier3(self, tmp_path: Path) -> None:

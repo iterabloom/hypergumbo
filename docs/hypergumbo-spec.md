@@ -1269,10 +1269,25 @@ Code is classified into four tiers based on its relationship to the project:
 
 | Tier | Name | Description | Examples | Status |
 |------|------|-------------|----------|--------|
-| 1 | `first_party` | Project's own source code | `src/`, `lib/`, `app/` | 🟩 |
-| 2 | `internal_dep` | Internal libraries, monorepo packages | Workspace packages, local forks | 🟩 |
-| 3 | `external_dep` | Third-party dependencies (readable form) | `node_modules/lodash/`, `vendor/` | 🟩 |
+| 1 | `first_party` | Project's own source code (including its tests) | `src/`, `lib/`, `app/` | 🟩 |
+| 2 | `internal_dep` | Workspace / org-internal packages **only** | Monorepo siblings, local forks | 🟩 |
+| 3 | `external_dep` | **All** third-party code — direct, transitive, undeclared, and stdlib alike | `node_modules/lodash/`, `vendor/`, declared PyPI deps, `os`/`json` | 🟩 |
 | 4 | `derived` | Build artifacts, transpiled/bundled output | `dist/`, `*.min.js`, source-mapped files | 🟩 |
+
+**Tier names supply-chain distance and nothing else (ADR-0041 §1).** A *declared*
+(direct) third-party package is **not** promoted to tier 2 — distance, not
+declaration status, is what `tier` records, and a declared PyPI package is no
+closer to the project than an undeclared one. The direct/transitive/undeclared
+*declaration relationship* lives on the registered `directness` meta key
+(`direct` / `transitive` / `undeclared`); the stdlib-vs-third_party *provenance*
+distinction lives on the registered `ecosystem` axis (ADR-0041 §3). Both are
+stamped once, at classification time, on boundary/dependency nodes.
+
+(Scope note: ADR-0041 §1 retired the *manifest* direct-dependency → tier-2
+mapping. File classification independently still routes some in-repo non-source
+*role* files — examples, documentation bundles, config-declared internal roots —
+to tier 2; aligning those with the distance-only axiom is a separate follow-up
+outside ADR-0041 §1's manifest-mapping scope.)
 
 **Default behavior:**
 - Tiers 1-3: Analyzed, with tier used for ranking/filtering
@@ -1424,7 +1439,7 @@ This ensures first-party symbols appear first even when third-party utilities ha
 
 **What supply chain classification does NOT do:**
 
-1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment. 🟩 **Exception:** Boundary nodes (unresolved external references) are classified using dependency manifest data when available: direct dependencies get tier 2, indirect/unknown get tier 3. Supported manifests: Go (`go.mod` — direct vs indirect), Java/Kotlin (`build.gradle`, `build.gradle.kts`, `pom.xml` — groupId-based prefix matching against import paths). The language-agnostic `DependencyManifest` infrastructure supports future extension to npm, Cargo, and pip manifests.
+1. **Resolve transitive dependencies**: Classification is based on file location, not the full dependency graph. A file in `node_modules/a/` that imports from `node_modules/b/` doesn't affect tier assignment. 🟩 **Boundary-node directness:** Boundary nodes (unresolved external references) are **all** tier 3 (external) — declaration status no longer influences tier (ADR-0041 §1). When dependency-manifest data is available, the declaration relationship is recorded on the `directness` meta key instead: `direct` (declared in a project manifest), `transitive` (in the manifest but not declared direct), or `undeclared` (imported but declared nowhere — also where stdlib lands). Supported manifests: Go (`go.mod` — direct vs indirect), Java/Kotlin (`build.gradle`, `build.gradle.kts`, `pom.xml` — groupId-based prefix matching), Python (`pyproject.toml`). The language-agnostic `DependencyManifest` infrastructure supports future extension to npm and Cargo manifests.
 
 2. **Detect vendored copies**: If you copy `lodash.js` into `src/utils/lodash.js`, it's classified as tier 1 (first-party).
 

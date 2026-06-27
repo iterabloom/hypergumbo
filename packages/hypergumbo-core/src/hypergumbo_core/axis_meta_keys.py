@@ -301,6 +301,20 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "``ir._canonical_external_id`` for unresolved-but-"
                 "referenced names. Read by ``is_external_boundary`` "
                 "helper."),
+    MetaKeySpec("directness", AXIS_SYMBOL_META,
+                "Declaration relationship between the project's "
+                "manifests and an external dependency (ADR-0041 §2): "
+                "'direct' (declared in a project manifest), "
+                "'transitive' (in the manifest but not declared "
+                "direct), or 'undeclared' (imported but declared "
+                "nowhere — a phantom dependency, and the bucket stdlib "
+                "falls into). Stamped once at classification time on "
+                "boundary/dependency Symbols by "
+                "``ir.create_boundary_nodes`` via "
+                "``DependencyManifest.classify_directness``. A SEPARATE "
+                "axis from supply-chain ``tier`` (distance) and from "
+                "the ``ecosystem`` provenance axis (stdlib vs "
+                "third_party, ADR-0041 §3)."),
     # ------------------------------------------------------------------
     # Symbol.meta — declaration-shape annotations.
     # ------------------------------------------------------------------

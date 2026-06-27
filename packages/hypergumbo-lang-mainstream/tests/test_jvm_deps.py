@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo_core.supply_chain import DependencyManifest, Tier
+from hypergumbo_core.supply_chain import DependencyManifest
 
 
 class TestParseGradleDependencies:
@@ -28,7 +28,7 @@ class TestParseGradleDependencies:
             "}\n"
         )
         manifest = parse_gradle_dependencies(tmp_path)
-        assert manifest.classify_import("com.fasterxml.jackson.core") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("com.fasterxml.jackson.core") == "direct"
 
     def test_groovy_api(self, tmp_path: Path) -> None:
         """Groovy DSL: api 'group:artifact:version' is a direct dep."""
@@ -40,7 +40,7 @@ class TestParseGradleDependencies:
             "}\n"
         )
         manifest = parse_gradle_dependencies(tmp_path)
-        assert manifest.classify_import("org.apache.kafka.clients") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("org.apache.kafka.clients") == "direct"
 
     def test_kotlin_dsl_implementation(self, tmp_path: Path) -> None:
         """Kotlin DSL: implementation("group:artifact:version")."""
@@ -52,7 +52,7 @@ class TestParseGradleDependencies:
             "}\n"
         )
         manifest = parse_gradle_dependencies(tmp_path)
-        assert manifest.classify_import("io.ktor") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("io.ktor") == "direct"
 
     def test_test_dependency_is_direct(self, tmp_path: Path) -> None:
         """testImplementation is still a direct dep (the project declares it)."""
@@ -64,7 +64,7 @@ class TestParseGradleDependencies:
             "}\n"
         )
         manifest = parse_gradle_dependencies(tmp_path)
-        assert manifest.classify_import("junit") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("junit") == "direct"
 
     def test_compile_only_is_direct(self, tmp_path: Path) -> None:
         """compileOnly is a direct dep."""
@@ -76,7 +76,7 @@ class TestParseGradleDependencies:
             "}\n"
         )
         manifest = parse_gradle_dependencies(tmp_path)
-        assert manifest.classify_import("javax.servlet") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("javax.servlet") == "direct"
 
     def test_multiple_dependencies(self, tmp_path: Path) -> None:
         """Multiple deps in one block."""
@@ -90,9 +90,9 @@ class TestParseGradleDependencies:
             "}\n"
         )
         manifest = parse_gradle_dependencies(tmp_path)
-        assert manifest.classify_import("com.google.guava") == Tier.INTERNAL_DEP
-        assert manifest.classify_import("io.netty") == Tier.INTERNAL_DEP
-        assert manifest.classify_import("org.mockito") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("com.google.guava") == "direct"
+        assert manifest.classify_directness("io.netty") == "direct"
+        assert manifest.classify_directness("org.mockito") == "direct"
 
     def test_no_build_gradle(self, tmp_path: Path) -> None:
         """Missing build.gradle returns empty manifest."""
@@ -113,7 +113,7 @@ class TestParseGradleDependencies:
             "}\n"
         )
         manifest = parse_gradle_dependencies(tmp_path)
-        assert manifest.classify_import("org.slf4j") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("org.slf4j") == "direct"
 
     def test_version_catalog_libs(self, tmp_path: Path) -> None:
         """Version catalog refs (libs.foo.bar) are ignored (no group info)."""
@@ -137,7 +137,7 @@ class TestParseGradleDependencies:
             "}\n"
         )
         manifest = parse_gradle_dependencies(tmp_path)
-        assert manifest.classify_import("org.apache.commons") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("org.apache.commons") == "direct"
 
     def test_dependency_without_version(self, tmp_path: Path) -> None:
         """Dependencies with platform BOM (no version) still parsed."""
@@ -149,7 +149,7 @@ class TestParseGradleDependencies:
             "}\n"
         )
         manifest = parse_gradle_dependencies(tmp_path)
-        assert manifest.classify_import("org.springframework.boot") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("org.springframework.boot") == "direct"
 
     def test_unreadable_build_gradle(self, tmp_path: Path) -> None:
         """OSError reading build.gradle returns empty manifest."""
@@ -191,7 +191,7 @@ class TestParseMavenDependencies:
             "</project>\n"
         )
         manifest = parse_maven_dependencies(tmp_path)
-        assert manifest.classify_import("com.fasterxml.jackson.core") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("com.fasterxml.jackson.core") == "direct"
 
     def test_test_scope_is_direct(self, tmp_path: Path) -> None:
         """Test-scoped Maven deps are still direct (project declares them)."""
@@ -210,7 +210,7 @@ class TestParseMavenDependencies:
             "</project>\n"
         )
         manifest = parse_maven_dependencies(tmp_path)
-        assert manifest.classify_import("junit") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("junit") == "direct"
 
     def test_with_maven_namespace(self, tmp_path: Path) -> None:
         """pom.xml with Maven namespace (common in real projects)."""
@@ -229,7 +229,7 @@ class TestParseMavenDependencies:
             "</project>\n"
         )
         manifest = parse_maven_dependencies(tmp_path)
-        assert manifest.classify_import("org.apache.kafka") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("org.apache.kafka") == "direct"
 
     def test_multiple_dependencies(self, tmp_path: Path) -> None:
         """Multiple Maven deps."""
@@ -250,8 +250,8 @@ class TestParseMavenDependencies:
             "</project>\n"
         )
         manifest = parse_maven_dependencies(tmp_path)
-        assert manifest.classify_import("org.slf4j") == Tier.INTERNAL_DEP
-        assert manifest.classify_import("com.google.guava") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("org.slf4j") == "direct"
+        assert manifest.classify_directness("com.google.guava") == "direct"
 
     def test_no_pom_xml(self, tmp_path: Path) -> None:
         """Missing pom.xml returns empty manifest."""
@@ -277,7 +277,7 @@ class TestParseMavenDependencies:
             "</project>\n"
         )
         manifest = parse_maven_dependencies(tmp_path)
-        assert manifest.classify_import("org.springframework") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("org.springframework") == "direct"
 
     def test_malformed_pom_returns_empty(self, tmp_path: Path) -> None:
         """Malformed pom.xml returns empty manifest."""
@@ -304,7 +304,7 @@ class TestParseMavenDependencies:
             "</project>\n"
         )
         manifest = parse_maven_dependencies(tmp_path)
-        assert manifest.classify_import("io.netty") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("io.netty") == "direct"
 
 
 class TestParseJvmDependencies:
@@ -320,7 +320,7 @@ class TestParseJvmDependencies:
             "}\n"
         )
         manifest = parse_jvm_dependencies(tmp_path)
-        assert manifest.classify_import("com.squareup.okhttp3") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("com.squareup.okhttp3") == "direct"
 
     def test_maven_only(self, tmp_path: Path) -> None:
         """Maven project without Gradle."""
@@ -337,7 +337,7 @@ class TestParseJvmDependencies:
             "</project>\n"
         )
         manifest = parse_jvm_dependencies(tmp_path)
-        assert manifest.classify_import("org.apache.commons") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("org.apache.commons") == "direct"
 
     def test_both_merged(self, tmp_path: Path) -> None:
         """Project with both Gradle and Maven (Gradle + parent pom)."""
@@ -359,8 +359,8 @@ class TestParseJvmDependencies:
             "</project>\n"
         )
         manifest = parse_jvm_dependencies(tmp_path)
-        assert manifest.classify_import("io.ktor") == Tier.INTERNAL_DEP
-        assert manifest.classify_import("org.slf4j") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("io.ktor") == "direct"
+        assert manifest.classify_directness("org.slf4j") == "direct"
 
     def test_empty_project(self, tmp_path: Path) -> None:
         """No build files returns empty manifest."""
@@ -369,8 +369,13 @@ class TestParseJvmDependencies:
         manifest = parse_jvm_dependencies(tmp_path)
         assert manifest.entries == {}
 
-    def test_unknown_import_is_external(self, tmp_path: Path) -> None:
-        """Import not matching any declared dep → EXTERNAL_DEP."""
+    def test_unknown_import_is_undeclared(self, tmp_path: Path) -> None:
+        """Import not matching any declared dep → directness 'undeclared'.
+
+        ADR-0041 §1/§2 (supply:F5): every external import is tier 3, so the
+        manifest's discriminating output is now the directness stamp — an
+        import declared in no manifest entry is 'undeclared'.
+        """
         from hypergumbo_lang_mainstream.jvm_deps import parse_jvm_dependencies
 
         (tmp_path / "build.gradle").write_text(
@@ -379,7 +384,7 @@ class TestParseJvmDependencies:
             "}\n"
         )
         manifest = parse_jvm_dependencies(tmp_path)
-        assert manifest.classify_import("org.unknown.pkg") == Tier.EXTERNAL_DEP
+        assert manifest.classify_directness("org.unknown.pkg") == "undeclared"
 
 
 class TestSkipTestFixtureSubdirs:
@@ -431,4 +436,4 @@ class TestSkipTestFixtureSubdirs:
             "}\n"
         )
         manifest = parse_gradle_dependencies(tmp_path)
-        assert manifest.classify_import("org.slf4j") == Tier.INTERNAL_DEP
+        assert manifest.classify_directness("org.slf4j") == "direct"

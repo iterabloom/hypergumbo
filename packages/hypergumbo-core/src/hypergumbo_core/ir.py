@@ -1318,30 +1318,23 @@ def create_boundary_nodes(
     for (language, key_path, name, kind), members in sorted(groups.items()):
         canonical_id = _canonical_external_id(language, key_path, name, kind)
 
-        # Tier-min selection: if ANY referring site classifies as tier-2
-        # via the manifest, the canonical node is tier-2.
-        best_tier = 3
-        best_reason = "unresolved external reference"
+        # ADR-0041 §1/§2 (supply:F5): tier names supply-chain distance only, so
+        # every boundary node is tier 3 (external) — the old tier-min relabel that
+        # promoted manifest-declared direct deps to tier 2 (and its "direct
+        # dependency (...)" reason strings) is retired. The direct/transitive/
+        # undeclared declaration relationship the classifier still knows is
+        # re-emitted as the `directness` meta stamp, stamped once here (the
+        # single classification chokepoint for boundary nodes).
+        directness: str | None = None
         if (
             dependency_manifest is not None
             and language in ("go", "java", "kotlin", "python")
         ):
-            for member_id in members:
-                _, member_path, _, _ = _parse_dangling_id(member_id)
-                if not member_path or member_path == "<unknown>":
-                    continue  # pragma: no cover  # defensive — generated ids all have 5 parts
-                manifest_tier = dependency_manifest.classify_import(member_path)
-                if manifest_tier.value < best_tier:
-                    best_tier = manifest_tier.value
-                    if best_tier == 2:
-                        if language == "go":
-                            best_reason = "direct dependency (go.mod)"
-                        elif language == "python":
-                            best_reason = "direct dependency (pyproject.toml)"
-                        else:
-                            best_reason = "direct dependency (build manifest)"
-                    if best_tier == 1:  # pragma: no cover - manifests don't return tier-1
-                        break
+            directness = dependency_manifest.classify_directness(key_path)
+
+        boundary_meta: dict = {"external_boundary": True}
+        if directness is not None:
+            boundary_meta["directness"] = directness
 
         sym = Symbol(
             id=canonical_id,
@@ -1352,9 +1345,9 @@ def create_boundary_nodes(
             language=language,
             path="<external>",
             span=zero_span,
-            meta={"external_boundary": True},
-            supply_chain_tier=best_tier,
-            supply_chain_reason=best_reason,
+            meta=boundary_meta,
+            supply_chain_tier=3,
+            supply_chain_reason="unresolved external reference",
             # synthetic:F1 (WI-sijut/WI-mosil): boundary nodes previously shipped
             # origin=[] / origin_run_id='' (zero provenance). Stamp the synthesis
             # mechanism as origin and the orchestrator-emitted AnalysisRun's

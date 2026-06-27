@@ -65,39 +65,53 @@ class DependencyManifest:
     synthetic boundary nodes that represent unresolved external references.
 
     Entries map module path strings to dicts with at least a ``direct`` bool key.
-    Direct dependencies get tier 2 (INTERNAL_DEP) because they are explicit
-    project dependencies the developer chose; indirect and stdlib get tier 3.
+
+    ADR-0041 §1/§2 (supply:F5): the manifest no longer influences *tier*. Tier
+    names supply-chain distance only, so every third-party import is tier 3
+    (``classify_import`` is now constant ``EXTERNAL_DEP``). The direct/transitive
+    declaration relationship the old mapping burned into tier 2 is exposed by
+    ``classify_directness`` and recorded on the ``directness`` meta key instead.
+    Tier 2 (``internal_dep``) is reserved for workspace/org-internal packages,
+    assigned by file classification — never by this manifest classifier.
     """
 
     entries: dict[str, dict] = field(default_factory=dict)
 
     def classify_import(self, import_path: str) -> "Tier":
-        """Classify an import path using this manifest.
+        """Classify the supply-chain *tier* of an external import path.
 
-        Matching uses longest-prefix-first: ``github.com/foo/bar/pkg``
-        matches entry ``github.com/foo/bar``.  Go stdlib paths (no dots
-        in the first path segment, e.g., ``encoding/json``, ``fmt``)
-        always return EXTERNAL_DEP regardless of manifest contents.
+        ADR-0041 §1: tier names supply-chain distance and nothing else, so
+        every third-party / external import — direct, transitive, stdlib, or
+        unknown alike — is :data:`Tier.EXTERNAL_DEP` (3). Boundary nodes are
+        external by construction; first-party (tier 1) and workspace-internal
+        (tier 2) code is assigned by file classification, not here.
+
+        The direct/transitive/undeclared *declaration relationship* this method
+        used to fold into tier 2 now lives on :meth:`classify_directness`.
 
         Returns:
-            Tier.INTERNAL_DEP (2) for direct dependencies,
-            Tier.EXTERNAL_DEP (3) for indirect, stdlib, or unknown.
+            Tier.EXTERNAL_DEP (3), always.
         """
-        if not import_path:
-            return Tier.EXTERNAL_DEP
+        return Tier.EXTERNAL_DEP
 
-        # Go stdlib detection: first path segment has no dots AND path
-        # contains a slash (Go convention). Single-segment dotless paths
-        # like "junit" or "javax" are valid Java/Kotlin groupIds that
-        # should fall through to prefix matching.
-        if "/" in import_path:
-            first_segment = import_path.split("/")[0]
-            if "." not in first_segment:
-                return Tier.EXTERNAL_DEP
+    def classify_directness(self, import_path: str) -> str:
+        """Classify the declaration relationship of an external import (ADR-0041 §2).
 
-        # Longest-prefix match against manifest entries.
-        # Supports both slash-separated (Go: github.com/foo/bar) and
-        # dot-separated (Java/Kotlin: com.fasterxml.jackson.core) paths.
+        Records how the project's manifests relate to an external dependency:
+
+        * ``"direct"`` — declared in a project manifest (longest-prefix match
+          carries ``direct: True``);
+        * ``"transitive"`` — present in the manifest but not declared direct
+          (pulled in by another dependency);
+        * ``"undeclared"`` — imported but declared in no manifest (a phantom
+          dependency; also the bucket the language runtime's stdlib falls into,
+          since stdlib is declared nowhere — the stdlib-vs-third_party split is
+          the separate ``ecosystem`` axis, ADR-0041 §3).
+
+        Matching mirrors the old tier classifier's longest-prefix logic across
+        slash-separated (Go: ``github.com/foo/bar``) and dot-separated
+        (Java/Kotlin: ``com.fasterxml.jackson.core``) module paths.
+        """
         best_match = ""
         for module_path in self.entries:
             if (
@@ -108,10 +122,9 @@ class DependencyManifest:
                 if len(module_path) > len(best_match):
                     best_match = module_path
 
-        if best_match and self.entries[best_match].get("direct", False):
-            return Tier.INTERNAL_DEP
-
-        return Tier.EXTERNAL_DEP
+        if not best_match:
+            return "undeclared"
+        return "direct" if self.entries[best_match].get("direct", False) else "transitive"
 
     @classmethod
     def merge(cls, manifests: list["DependencyManifest"]) -> "DependencyManifest":
