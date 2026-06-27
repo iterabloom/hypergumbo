@@ -10,14 +10,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers.decorator_dispatch import (
     DISPATCH_DECORATOR_PATTERNS,
     _find_decorated_symbols,
     _find_dispatch_sites,
-    _is_test_path,
     link_decorator_dispatch,
 )
 from hypergumbo_core.linkers.registry import LinkerContext
@@ -141,34 +138,6 @@ class TestFindDispatchSites:
         assert "core/analyze/all_analyzers.py" in paths
 
 
-class TestIsTestPath:
-    """Test _is_test_path detection."""
-
-    @pytest.mark.parametrize(
-        "path",
-        [
-            "tests/test_foo.py",
-            "packages/core/tests/test_registry.py",
-            "test_something.py",
-            "src/testing/helpers.py",
-            "foo/bar_test.py",
-        ],
-    )
-    def test_detects_test_paths(self, path: str) -> None:
-        assert _is_test_path(path) is True
-
-    @pytest.mark.parametrize(
-        "path",
-        [
-            "src/registry.py",
-            "packages/lang/go.py",
-            "core/analyze/all_analyzers.py",
-        ],
-    )
-    def test_rejects_non_test_paths(self, path: str) -> None:
-        assert _is_test_path(path) is False
-
-
 class TestLinkDecoratorDispatch:
     """Test the full linker integration."""
 
@@ -282,6 +251,41 @@ class TestLinkDecoratorDispatch:
         ctx = LinkerContext(
             repo_root=Path("/repo"),
             symbols=[dispatch_site, prod_handler, test_handler],
+            edges=[],
+        )
+        result = link_decorator_dispatch(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == prod_handler.id
+
+    def test_excludes_canonical_test_vocabulary_handlers(self) -> None:
+        """supply:F1 fold — the canonical paths.is_test_file vocabulary now
+        gates handlers the old narrow per-linker _is_test_path copy missed
+        (it only knew test_/_test.py + a few test dirs). A test-suite stub in a
+        ``_spec.py`` or ``mock_*`` file is now excluded too.
+        """
+        dispatch_site = _sym("run_all_analyzers", path="core/registry.py")
+        prod_handler = _sym(
+            "analyze_go",
+            path="lang/go.py",
+            decorators=[{"name": "register_analyzer", "args": ["go"], "kwargs": {}}],
+        )
+        # "_spec." — canonical-only (old copy would have kept this edge).
+        spec_handler = _sym(
+            "analyze_spec",
+            path="lang/registry_spec.py",
+            decorators=[{"name": "register_analyzer", "args": ["spec"], "kwargs": {}}],
+        )
+        # "mock_" prefix — also canonical-only.
+        mock_handler = _sym(
+            "analyze_mock",
+            path="lang/mock_registry.py",
+            decorators=[{"name": "register_analyzer", "args": ["mock"], "kwargs": {}}],
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/repo"),
+            symbols=[dispatch_site, prod_handler, spec_handler, mock_handler],
             edges=[],
         )
         result = link_decorator_dispatch(ctx)

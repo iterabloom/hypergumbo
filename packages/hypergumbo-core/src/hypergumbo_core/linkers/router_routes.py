@@ -109,6 +109,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
+from ..paths import is_test_file
 from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker
 
@@ -118,20 +119,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PASS_ID = make_pass_id("router-routes-linker")
-
-_TEST_PATH_SEGMENTS = frozenset({"tests", "test", "testing", "conftest", "__tests__"})
-
-
-def _is_test_path(path: str) -> bool:
-    parts = path.replace("\\", "/").split("/")
-    basename = parts[-1] if parts else ""
-    return (
-        any(p in _TEST_PATH_SEGMENTS for p in parts)
-        or basename.startswith("test_")
-        or basename.endswith("_test.py")
-        or basename.endswith("_test.rb")
-        or basename.endswith("_test.exs")
-    )
 
 
 def _encloses(container_span, member_span) -> bool:
@@ -166,7 +153,7 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
     for sym in ctx.symbols:
         if sym.span is None:
             continue
-        if _is_test_path(sym.path):
+        if is_test_file(sym.path):
             continue
         if has_concept(sym, "router"):
             routers_by_file.setdefault(sym.path, []).append(sym)

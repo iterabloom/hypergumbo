@@ -44,6 +44,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
+from ..paths import is_test_file
 from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker
 
@@ -53,20 +54,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PASS_ID = make_pass_id("middleware-chain-linker")
-
-# Path segments that indicate test files
-_TEST_PATH_SEGMENTS = frozenset({"tests", "test", "testing", "conftest", "__tests__"})
-
-
-def _is_test_path(path: str) -> bool:
-    """Check if a path belongs to a test file."""
-    parts = path.replace("\\", "/").split("/")
-    basename = parts[-1] if parts else ""
-    return (
-        any(p in _TEST_PATH_SEGMENTS for p in parts)
-        or basename.startswith("test_")
-        or basename.endswith("_test.py")
-    )
 
 
 @register_linker(
@@ -92,7 +79,7 @@ def link_middleware_chain(ctx: LinkerContext) -> LinkerResult:
             continue
         if sym.span is None:
             continue
-        if _is_test_path(sym.path):
+        if is_test_file(sym.path):
             continue
         middleware_by_file.setdefault(sym.path, []).append(sym)
 
