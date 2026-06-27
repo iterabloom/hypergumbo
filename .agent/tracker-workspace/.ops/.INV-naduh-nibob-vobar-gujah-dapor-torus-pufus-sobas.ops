@@ -1,0 +1,23 @@
+- op: create  # 2f37
+  at: '2026-06-27T09:49:12Z'  # 2f37
+  by: agent  # 2f37
+  actor: jgstern_agent  # 2f37
+  clock: 1  # 2f37
+  nonce: 2f37  # 2f37
+  data:  # 2f37
+    kind: invariant  # 2f37
+    title: "File classification routes in-repo example/doc/config role files to tier 2, violating ADR-0041 §1 (tier = supply-chain distance only)"  # 2f37
+    status: violated  # 2f37
+    priority: 3  # 2f37
+    parent:  # 2f37
+    tags:  # 2f37
+    - supply_chain  # 2f37
+    - classification  # 2f37
+    isbefore: []  # 2f37
+    duplicate_of: []  # 2f37
+    not_duplicate_of: []  # 2f37
+    pr_ref:  # 2f37
+    description: "Structural scope-expansion from supply-verdict:F5 (ADR-0041 §1/§2). NOT a regression of F5 — pre-existing behavior. Fix options (decision needed): (a) route examples/docs/fuzz to tier 1 with role flags only, reserving tier 2 strictly for org-internal packages per ADR-0041 §1; (b) amend ADR-0041 §1 to admit in-repo non-source role files at tier 2 (axis re-widening, likely rejected per the single-axis through-line). Behavioral self-corpus evidence (a repo with examples/) required to close. The spec §14 scope-note added in F5 documents this as the open follow-up. Cross-ref INV-tisid (satisfied; its 'tier 2 reserved for examples/fuzz' clause is the OLD definition superseded by ADR-0041 §1)."  # 2f37
+    fields:  # 2f37
+      statement: "The supply-chain tier names supply-chain DISTANCE and nothing else (ADR-0041 §1); tier 2 (internal_dep) is reserved for workspace/org-internal dependency packages ONLY (monorepo siblings, local forks). In-repo non-source ROLE files (examples, documentation bundles, notebooks, fuzz/bench harnesses) are the project's own code and must classify as tier 1 (first_party) with role flags (is_example/is_test/etc.), NOT tier 2."  # 2f37
+      root_cause: "FileClassification in supply_chain.py independently assigns Tier.INTERNAL_DEP (tier 2) to role files outside the distance axiom: ~615 EXAMPLE_PATTERNS (examples/demos/samples/tutorials) is_example=True; ~621 DOCUMENTATION_PATTERNS; ~697 notebook .ipynb; ~702 fuzz/bench. (~628 config internal_package_roots is arguably org-internal/conformant.) cli.py ~8267 also promotes derived routes to tier 2 ('route promoted from derived'). supply-verdict:F5 (dev 36e37afb69) retired only the *manifest* direct-dep → tier-2 mapping (ADR-0041 explicitly scoped its supersession there); these FileClassification/route-promotion tier-2 assigners are the residual the §1 axiom newly flags. Latent on the hypergumbo self-corpus (0 tier-2 nodes — no example/doc files classified this way), so severity-low until a repo with examples/ exercises it."  # 2f37

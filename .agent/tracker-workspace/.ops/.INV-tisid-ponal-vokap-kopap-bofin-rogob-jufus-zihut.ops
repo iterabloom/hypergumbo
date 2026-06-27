@@ -117,3 +117,20 @@
   clock: 13  # 7fd7
   nonce: 7fd7  # 7fd7
   message: "[Wave-0 hygiene re-verify] INV-tisid code fix is complete and verified. Both workspace and non-workspace test-directory branches now correctly return Tier.FIRST_PARTY with is_test=True. Regression tests (Cargo workspace + drown-out comparator) pass.\n\nHowever, spec documentation residue remains (held by WI-golov): hypergumbo-spec.md:1293 still names tier 2 as \"Internal libraries, monorepo packages\" without clarifying that tests are tier 1; spec:1401 lists test directory patterns but doesn't note they route to tier 1 post-fix. Per tracker discussion 2026-06-11T04:25:53Z, spec §14 rewrite is ordered as part of ADR-0041 (merged PR #4181) which narrowed tier 2 to \"workspace-internal only\" with new directness meta-axis. Recommend downgrading to WI-golov (doc-only tracker item, status todo_hard) — the invariant-violation in code is resolved; documentation drift is a separate concern tracked separately."  # 7fd7
+- op: update  # 898f
+  at: '2026-06-27T09:47:44Z'  # 898f
+  by: agent  # 898f
+  actor: jgstern_agent  # 898f
+  clock: 14  # 898f
+  nonce: 898f  # 898f
+  set:  # 898f
+    status: satisfied  # 898f
+  add:  # 898f
+    tags: [awaits_bakeoff_validation]  # 898f
+- op: discuss  # bf01
+  at: '2026-06-27T09:47:44Z'  # bf01
+  by: agent  # bf01
+  actor: jgstern_agent  # bf01
+  clock: 15  # bf01
+  nonce: bf01  # bf01
+  message: "Satisfied at dev 36e37afb69 (supply-verdict:F5 §14 rewrite + the earlier code fix). Behavioral evidence (hypergumbo self-analysis, hypergumbo run .):\n\n- Test-pathed file nodes (path matches /tests/test_): 22,583 nodes, ALL tier_name=first_party (tier 1). The 460-test-paths / 24,180-test-Symbols-in-internal_dep symptom is fully gone — the classifier returns FIRST_PARTY for test files, the invariant's core requirement.\n- internal_dep (tier 2) nodes after F5: 0 of ANY kind (was: 509 paths incl. 460 test paths). No test file leaks to tier 2.\n\nThe code half (test dirs in workspace package roots route to tier 1, not tier 2) landed earlier (WI-pugas-adjacent; confirmed live above). The spec §14 documentation residue this item was held open on — the tier-2 row still naming 'Internal libraries, monorepo packages' and #3 listing test dirs under tier 2 — was rewritten by supply:F5 / ADR-0041 §4: tier-1 row now reads 'including its tests', tier-2 row 'Workspace/org-internal packages only', and the boundary-classification note documents directness. Production-path tests: test_supply_chain.py FileClassification suite asserts tier 1 / is_test for test paths.\n\nNOTE on the superseded clause: this item's statement said 'Tier.INTERNAL_DEP is reserved for in-repo non-test code: ... examples, fuzz harnesses ...'. ADR-0041 §1 (newer) narrows tier 2 further to workspace/org-internal packages ONLY — examples/fuzz are NOT tier 2 under the distance-only axiom. FileClassification still routes in-repo example/doc/config-internal role files to tier 2; that residual is filed separately (axiom-conformance follow-up), and does not affect this item's core test→tier-1 invariant, which holds. Tagged awaits_bakeoff_validation for the ADR-0041 ranking-shift effect."  # bf01
