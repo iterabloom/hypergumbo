@@ -1028,69 +1028,85 @@ class TestSliceEdgeCases:
         assert len(result.edge_ids) == 0
         assert result.entry_nodes == []
 
-    def test_slice_includes_file_level_imports(self) -> None:
-        """Slice from function should include import edges from the containing file.
-
-        Import edges source from file nodes (e.g., python:path:1-1:file:file),
-        not function nodes. When slicing from a function, we should include
-        the import edges from that function's file.
-        """
-        # Create a function node in main.py
-        func = make_symbol("main", path="src/main.py")
-
-        # Create the file node for main.py (this is what import edges source from)
+    def _make_file_and_os_import(self, path: str):
+        """Helper: a file node for ``path`` plus an os-import edge sourced from it."""
         file_node = Symbol(
-            id="python:src/main.py:1-1:file:file",
-            name="file",
-            kind="file",
-            language="python",
-            path="src/main.py",
+            id="python:" + path + ":1-1:file:file",
+            name="file", kind="file", language="python", path=path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin="python",
-            origin_run_id="uuid:test",
+            origin="python", origin_run_id="uuid:test",
         )
-
-        # Create a module node (the import target)
         module_node = Symbol(
             id="python:os:0-0:module:module",
-            name="module",
-            kind="module",
-            language="python",
-            path="os",
+            name="module", kind="module", language="python", path="os",
             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
-            origin="python",
-            origin_run_id="uuid:test",
+            origin="python", origin_run_id="uuid:test",
         )
-
-        # Create an import edge from file node to module
-        import_edge = Edge.create(
-            src=file_node.id,
-            dst=module_node.id,
-            edge_type="imports",
-            line=1,
-            evidence_type="ast_import",
-            confidence=0.95,
-
-            origin="test", origin_run_id="test",
+        file_import = Edge.create(
+            src=file_node.id, dst=module_node.id, edge_type="imports", line=1,
+            evidence_type="ast_import", origin="test", origin_run_id="test",
         )
+        return file_node, module_node, file_import
 
-        nodes = [func, file_node, module_node]
-        edges = [import_edge]
+    def test_function_entry_excludes_containing_file_imports(self) -> None:
+        """INV-tarol: a FUNCTION-entry slice must NOT absorb its containing
+        file's import edges (src=file-node). Those edges are not reachable from
+        the function and would break subgraph closure; the function's OWN edges
+        are still captured.
+        """
+        func = make_symbol("main", path="src/main.py")
+        callee = make_symbol("helper", path="src/main.py")
+        file_node, module_node, file_import = self._make_file_and_os_import("src/main.py")
+        call_edge = make_edge(func, callee, "calls")
+        nodes = [func, callee, file_node, module_node]
+        edges = [call_edge, file_import]
 
-        # Slice from the function, not the file
-        query = SliceQuery(entrypoint="main", max_hops=3)
-        result = slice_graph(nodes, edges, query)
+        result = slice_graph(nodes, edges, SliceQuery(entrypoint="main", max_hops=3))
 
-        # The function should be included
+        # The function's own edge is captured...
         assert func.id in result.node_ids
+        assert call_edge.id in result.edge_ids
+        # ...but the containing file's import edge is NOT.
+        assert file_import.id not in result.edge_ids, (
+            "A function-entry slice must not include its containing file's imports"
+        )
+        # Subgraph closure: every emitted edge's endpoints are in the node set.
+        for eid in result.edge_ids:
+            edge = next(e for e in edges if e.id == eid)
+            assert edge.src in result.node_ids and edge.dst in result.node_ids
 
-        # The import edge from the file should also be included
-        assert import_edge.id in result.edge_ids, (
-            "Import edges from the containing file should be included in the slice"
+    def test_function_entry_max_hops_0_not_reduced_to_file_imports(self) -> None:
+        """INV-tarol repro: at --max-hops 0 a function-entry slice must not be
+        reduced to ONLY its containing file's imports (the original symptom).
+        """
+        func = make_symbol("main", path="src/main.py")
+        file_node, module_node, file_import = self._make_file_and_os_import("src/main.py")
+        result = slice_graph(
+            [func, file_node, module_node], [file_import],
+            SliceQuery(entrypoint="main", max_hops=0),
+        )
+        assert file_import.id not in result.edge_ids
+
+    def test_container_entry_includes_file_level_imports(self) -> None:
+        """The preserved half of the INV-tarol contract: a CONTAINER/FILE-entry
+        slice DOES include that file's import edges (the container's file IS the
+        slice scope).
+        """
+        cls = make_symbol("Service", path="src/app.py", kind="class")
+        file_node, module_node, file_import = self._make_file_and_os_import("src/app.py")
+        result = slice_graph(
+            [cls, file_node, module_node], [file_import],
+            SliceQuery(entrypoint="Service", max_hops=3),
+        )
+        assert cls.id in result.node_ids
+        assert file_import.id in result.edge_ids, (
+            "A container/file-entry slice should include its file's imports"
         )
 
-    def test_slice_includes_imports_from_multiple_files(self) -> None:
-        """Slice should include import edges from all visited files."""
+    def test_function_slice_excludes_multifile_file_imports(self) -> None:
+        """INV-tarol (multi-file): a function-entry slice traverses the
+        cross-file call but does NOT pull in the file-level imports of the
+        files it visits (none of those file nodes are in scope)."""
         # main.py: main() calls helper()
         main_func = make_symbol("main", path="src/main.py")
         main_file = Symbol(
@@ -1168,13 +1184,15 @@ class TestSliceEdgeCases:
         query = SliceQuery(entrypoint="main", max_hops=3)
         result = slice_graph(nodes, edges, query)
 
-        # Both function nodes should be visited
+        # Both function nodes should be visited (cross-file call traversal)
         assert main_func.id in result.node_ids
         assert helper_func.id in result.node_ids
+        assert call_edge.id in result.edge_ids
 
-        # Import edges from both files should be included
-        assert import_os.id in result.edge_ids, "Import from main.py should be included"
-        assert import_json.id in result.edge_ids, "Import from utils.py should be included"
+        # INV-tarol: the file-level imports of the visited files are NOT
+        # included in a function-entry slice.
+        assert import_os.id not in result.edge_ids, "main.py file-import must be excluded"
+        assert import_json.id not in result.edge_ids, "utils.py file-import must be excluded"
 
 
 class TestReverseSlice:

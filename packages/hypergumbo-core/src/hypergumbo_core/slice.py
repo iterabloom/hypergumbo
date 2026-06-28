@@ -552,8 +552,14 @@ def slice_graph(
         node_depths[entry.id] = 0
         node_tiers[entry.id] = getattr(entry, 'supply_chain_tier', 1)
         files_seen.add(entry.path)
-        # Add import edges from this file (forward only, unless imports excluded)
-        if not query.reverse and not query.exclude_imports:
+        # Add import edges from this file (forward only, unless imports
+        # excluded) -- INV-tarol: ONLY when the entry is a container/file
+        # kind. A function-entry slice must not absorb its containing file's
+        # imports: those edges (src=file-node) are not reachable from the
+        # function, pollute the slice with above-scope content, and break
+        # subgraph closure (the file-node is not in the slice's node set).
+        if (not query.reverse and not query.exclude_imports
+                and entry.kind in _CONTAINER_KINDS):
             add_file_imports(entry.path)
 
     # Class expansion: when entry nodes include container types (class,
@@ -757,8 +763,11 @@ def slice_graph(
                 if not terminal:
                     queue.append((next_node.id, hop + 1))
                     # Add import edges from the visited file (forward only,
-                    # unless imports excluded)
-                    if not query.reverse and not query.exclude_imports:
+                    # unless imports excluded) -- INV-tarol: only when the
+                    # reached node is a container/file kind, not a function
+                    # (same scope-closure rationale as the entry-init seed).
+                    if (not query.reverse and not query.exclude_imports
+                            and next_node.kind in _CONTAINER_KINDS):
                         add_file_imports(next_node.path)
 
     # Filter pass-through synthetic nodes: they were traversed during BFS
