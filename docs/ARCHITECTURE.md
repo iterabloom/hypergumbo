@@ -14,15 +14,15 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **288** Python modules (132 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 62 core, 4 CLI, 33 tracker)
-- **35150** symbols (functions, classes, methods)
-- **117350** edges by type:
-  - calls: 61498
-  - contains: 30547
-  - imports: 10771
-  - instantiates: 8251
-  - references: 3835
-  - module_attr_ref: 1205
+- **289** Python modules (132 analyzers, 57 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 29, Infrastructure 7; 63 core, 4 CLI, 33 tracker)
+- **35222** symbols (functions, classes, methods)
+- **117567** edges by type:
+  - calls: 61616
+  - contains: 30613
+  - imports: 10787
+  - instantiates: 8261
+  - references: 3841
+  - module_attr_ref: 1206
   - other: 1243
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 35150 Symbols + 117350 Edges + UsageContexts           │
+│  Output: 35222 Symbols + 117567 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -268,20 +268,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 5519.3 | ir.py |
-| `Span` | class | 4350.4 | ir.py |
+| `Symbol` | class | 5522.1 | ir.py |
+| `Span` | class | 4352.5 | ir.py |
 | `run_behavior_map` | function | 3278.3 | cli.py |
 | `write_text` | external_symbol | 3248.0 | <external> |
 | `LinkerContext` | class | 2186.4 | registry.py |
 | `TrackerApp` | class | 1934.9 | tui.py |
 | `load_framework_patterns` | function | 1736.8 | framework_patterns.py |
-| `Edge.create` | method | 1599.7 | ir.py |
+| `Edge.create` | method | 1705.7 | ir.py |
 | `main` | function | 1563.1 | cli.py |
 | `Path` | external_symbol | 1490.0 | <external> |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
-| `append` | external_symbol | 1223.0 | <external> |
+| `append` | external_symbol | 1224.0 | <external> |
 | `find_files` | function | 1004.4 | discovery.py |
-| `get` | external_symbol | 967.0 | <external> |
+| `get` | external_symbol | 973.0 | <external> |
 | `TreeSitterAnalyzer` | class | 961.9 | base.py |
 
 ## Pattern System
@@ -535,6 +535,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes (registry-derived).
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
+- **`hypergumbo_core.confidence`**: Evidence -> confidence derivation (the ADR-0039 detection-reliabili...
 - **`hypergumbo_core.dataflow`**: YAML-driven dataflow classification for edges (ADR-0015).
 - **`hypergumbo_core.datamodels`**: Data model detection for code analysis.
 - **`hypergumbo_core.discovery`**: File discovery with exclude patterns, locale handling, and extensio...
@@ -831,7 +832,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 1412ba3db8ee
+  commit: fb9d037b4ccf
   hypergumbo: 6.1.0
   python: 3.12.3
 -->
