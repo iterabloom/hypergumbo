@@ -1969,6 +1969,58 @@ class TestAnnotateDataflowAst:
         assert result[0].meta is not None
         assert result[0].meta["access_mode"] == "write"
 
+    def test_name_read_reference_on_assignment_gets_read(self) -> None:
+        """INV-kudug: a bare-name read (ast_name_read) on an assignment line is
+        the RHS value being read, not a write — even though the line is an
+        ast.Assign (line-mode 'write')."""
+        import ast
+        tree = ast.parse("x = y")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:1:y:variable",
+            edge_type="references",
+            line=1,
+            evidence_type="ast_name_read",
+            origin="test", origin_run_id="test",
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "read"
+
+    def test_module_attr_ref_on_assignment_gets_read(self) -> None:
+        """INV-kudug: a module-attribute dereference (module_attribute_reference)
+        on an assignment line is a read of the imported attribute."""
+        import ast
+        tree = ast.parse("x = os.environ")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:os:0-0:os.environ:attribute",
+            edge_type="module_attr_ref",
+            line=1,
+            evidence_type="module_attribute_reference",
+            origin="test", origin_run_id="test",
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "read"
+
+    def test_function_reference_on_assignment_gets_read(self) -> None:
+        """INV-kudug: a function reference (function_reference) on an assignment
+        line is a read (the function object is referenced, not written)."""
+        import ast
+        tree = ast.parse("x = handler")
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst="py:a.py:9:handler:function",
+            edge_type="references",
+            line=1,
+            evidence_type="function_reference",
+            origin="test", origin_run_id="test",
+        )
+        result = annotate_dataflow_ast([edge], tree)
+        assert result[0].meta is not None
+        assert result[0].meta["access_mode"] == "read"
+
     def test_call_on_augmented_assignment_gets_read(self) -> None:
         """Call edge on augmented assignment line gets read."""
         import ast

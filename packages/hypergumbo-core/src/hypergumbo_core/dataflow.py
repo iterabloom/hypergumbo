@@ -478,6 +478,20 @@ def scan_library_patterns(
     return sites
 
 
+# INV-kudug: evidence types that, by their own definition, denote a READ of
+# the destination — a bare-name variable read, a function-object reference, or
+# a dereference of an imported module's attribute. An edge carrying one of
+# these is a read even when it lands on an assignment / for / with line (it is
+# the value being read — the RHS — not the target being bound), so its
+# access_mode must be derived from the evidence type rather than from the
+# line's statement kind.
+_READ_EVIDENCE_TYPES: frozenset[str] = frozenset({
+    "ast_name_read",
+    "function_reference",
+    "module_attribute_reference",
+})
+
+
 def annotate_dataflow_ast(
     edges: List["Edge"],
     tree: Any,
@@ -552,16 +566,26 @@ def annotate_dataflow_ast(
     for edge in edges:
         if edge.meta is not None and "access_mode" in edge.meta:
             continue
-        mode = line_modes.get(edge.line)
-        if mode is not None:
-            # Call edges on assignment/augmented-assignment lines are reads:
-            # the call produces a value consumed by the assignment (RHS).
-            # Even in `foo().bar = x`, the call reads the object.
-            if mode in ("write", "mutate") and edge.edge_type == "calls":
-                mode = "read"
-        elif library_modes_by_line:
-            # AST walk left this edge unclassified — try library_patterns.
-            mode = library_modes_by_line.get(edge.line)
+        if edge.evidence_type in _READ_EVIDENCE_TYPES:
+            # INV-kudug: a read-evidence edge (bare-name read, function
+            # reference, module-attribute dereference) is a READ even when it
+            # sits on an assignment / for / with line — it is the RHS value
+            # being read, not the target being bound. Derive 'read' from the
+            # evidence type; the line-statement heuristic below only knows the
+            # statement kind (this generalises the calls-on-write-line
+            # downgrade just below to all read-evidence edge types).
+            mode = "read"
+        else:
+            mode = line_modes.get(edge.line)
+            if mode is not None:
+                # Call edges on assignment/augmented-assignment lines are
+                # reads: the call produces a value consumed by the assignment
+                # (RHS). Even in `foo().bar = x`, the call reads the object.
+                if mode in ("write", "mutate") and edge.edge_type == "calls":
+                    mode = "read"
+            elif library_modes_by_line:
+                # AST walk left this edge unclassified — try library_patterns.
+                mode = library_modes_by_line.get(edge.line)
         if mode is not None:
             if edge.meta is None:
                 edge.meta = {}
