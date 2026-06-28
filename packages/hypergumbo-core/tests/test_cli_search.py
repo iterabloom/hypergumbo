@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.schema import SCHEMA_VERSION
-from hypergumbo_core.cli import cmd_search, main, _positive_result_limit
+from hypergumbo_core.cli import (
+    cmd_search,
+    main,
+    _positive_result_limit,
+    _reject_unknown_choice,
+)
 
 
 class FakeArgs:
@@ -547,3 +552,72 @@ def test_cmd_search_prints_output_summary(tmp_path: Path, capsys) -> None:
     # With auto-discovery, uses cached results
     assert "[hypergumbo search] Using 1 cached" in out
     assert "Output: stdout" in out
+
+
+# --- WI-furop: CLI filter-value validation (INV-fabov family) ---
+
+
+def test_reject_unknown_choice_accepts_valid() -> None:
+    """A value in the enumerable set returns None (no error)."""
+    valid = frozenset({"python", "java"})
+    assert _reject_unknown_choice(
+        "python", valid, subcommand="search", noun="language"
+    ) is None
+
+
+def test_reject_unknown_choice_rejects_with_suggestion(capsys) -> None:
+    """A near-miss is rejected (rc=2) with a did-you-mean suggestion."""
+    valid = frozenset({"python", "java"})
+    rc = _reject_unknown_choice(
+        "pythn", valid, subcommand="search", noun="language"
+    )
+    assert rc == 2
+    _, err = capsys.readouterr()
+    assert "is not a known language" in err
+    assert "Did you mean: python" in err
+
+
+def test_reject_unknown_choice_rejects_without_suggestion(capsys) -> None:
+    """A value with no close match is rejected (rc=2), no suggestion line."""
+    valid = frozenset({"python", "java"})
+    rc = _reject_unknown_choice(
+        "zzzzzzzz", valid, subcommand="search", noun="language"
+    )
+    assert rc == 2
+    _, err = capsys.readouterr()
+    assert "is not a known language" in err
+    assert "Did you mean" not in err
+
+
+def test_cmd_search_rejects_unknown_language(tmp_path: Path, capsys) -> None:
+    """WI-furop: --language with a non-language errors (exit 2), not silent."""
+    args = FakeArgs()
+    args.pattern = "main"
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = "klingon"
+    args.limit = 20
+
+    result = cmd_search(args)
+
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "is not a known language" in err
+
+
+def test_cmd_search_rejects_unknown_kind(tmp_path: Path, capsys) -> None:
+    """WI-furop: --kind with an unregistered kind errors (exit 2)."""
+    args = FakeArgs()
+    args.pattern = "main"
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = "nonexistent_kind"
+    args.language = None
+    args.limit = 20
+
+    result = cmd_search(args)
+
+    assert result == 2
+    _, err = capsys.readouterr()
+    assert "is not a known symbol kind" in err

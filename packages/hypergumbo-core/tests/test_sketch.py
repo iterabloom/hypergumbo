@@ -2,6 +2,7 @@
 """Tests for the sketch module (token-budgeted Markdown output)."""
 import importlib.util
 import os
+from types import SimpleNamespace
 from typing import ClassVar
 from pathlib import Path
 
@@ -44,6 +45,7 @@ from hypergumbo_core.profile import detect_profile
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import Entrypoint, EntrypointKind
 from hypergumbo_core.datamodels import DataModel, DataModelKind
+from hypergumbo_core.cli import cmd_sketch, _validate_require_sections
 
 
 def _has_sentence_transformers() -> bool:
@@ -7706,6 +7708,50 @@ class TestRequireSections:
         (tmp_path / "main.py").write_text("x = 1\n")
         sketch = generate_sketch(tmp_path, max_tokens=500, require_sections=None)
         assert "## Overview" in sketch
+
+
+class TestRequireSectionCliValidation:
+    """WI-furop: `sketch --require-section` rejects unknown section names
+    (INV-fabov family) instead of silently accepting them.
+    """
+
+    def test_validate_require_sections_accepts_valid(self) -> None:
+        """All-valid section names return None (no error)."""
+        assert _validate_require_sections(
+            ["Key Symbols", "Entry Points"]
+        ) is None
+
+    def test_validate_require_sections_accepts_empty(self) -> None:
+        """Empty list / None are no-ops (return None)."""
+        assert _validate_require_sections([]) is None
+        assert _validate_require_sections(None) is None
+
+    def test_validate_require_sections_rejects_unknown(self, capsys) -> None:
+        """An unknown section name is rejected (rc=2)."""
+        rc = _validate_require_sections(["NONEXISTENT"])
+        assert rc == 2
+        _, err = capsys.readouterr()
+        assert "is not a known section" in err
+
+    def test_validate_require_sections_suggests_close_match(self, capsys) -> None:
+        """A near-miss (lowercase) gets a did-you-mean suggestion."""
+        rc = _validate_require_sections(["key symbols"])
+        assert rc == 2
+        _, err = capsys.readouterr()
+        assert "Did you mean: Key Symbols" in err
+
+    def test_cmd_sketch_rejects_unknown_require_section(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """The sketch CLI rejects an invalid --require-section before analysis."""
+        (tmp_path / "main.py").write_text("x = 1\n")
+        args = SimpleNamespace(
+            path=str(tmp_path), require_sections=["NONEXISTENT"]
+        )
+        result = cmd_sketch(args)
+        assert result == 2
+        _, err = capsys.readouterr()
+        assert "is not a known section" in err
 
 
 class TestSketchWithSource:

@@ -252,6 +252,23 @@ def display_representativeness_table(
         console.print(table)
 
 
+# Canonical vocabulary of sketch section names (WI-furop / INV-fabov). The
+# single source of truth for what `--require-section` accepts and what the
+# `_has_required_analysis_section` gate below checks against -- the names were
+# previously duplicated across the CLI help text, this module's docstring, and
+# the gate set, so a typo in one drifted silently from the others. The renderer
+# compares section names by exact (case-sensitive) string, so this set is too.
+VALID_SKETCH_SECTIONS: frozenset[str] = frozenset({
+    "Entry Points",
+    "Data Models",
+    "Source Files",
+    "Key Symbols",
+    "Additional Files",
+    "Source Files Content",
+    "Additional Files Content",
+})
+
+
 # Boilerplate patterns to exclude from Additional Files section (ADR-0004 Phase 4)
 # Binary files are now filtered by is_additional_file_candidate() which excludes
 # files without CONFIG or DOCUMENTATION role. This list catches low-value boilerplate
@@ -6109,11 +6126,7 @@ def generate_sketch(
     # passed ``require_sections``, run analysis regardless of remaining
     # budget so any required symbol-based section (Entry Points, Key
     # Symbols, Data Models) has data to render.
-    _has_required_analysis_section = bool(_required & {
-        "Entry Points", "Data Models", "Key Symbols", "Source Files",
-        "Additional Files", "Source Files Content",
-        "Additional Files Content",
-    })
+    _has_required_analysis_section = bool(_required & VALID_SKETCH_SECTIONS)
     using_cached_analysis = (
         cached_results is not None
         and "nodes" in cached_results

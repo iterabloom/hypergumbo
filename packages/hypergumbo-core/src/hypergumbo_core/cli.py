@@ -617,6 +617,54 @@ def _generate_sketch_filename(
     return ".".join(parts) + ".md"
 
 
+def _reject_unknown_choice(
+    value: str,
+    valid: "frozenset[str]",
+    *,
+    subcommand: str,
+    noun: str,
+) -> int | None:
+    """Reject a CLI filter value not in an enumerable set (INV-fabov family).
+
+    Returns ``None`` when ``value`` is a member of ``valid``; otherwise prints
+    a clear error plus a difflib did-you-mean suggestion to stderr and returns
+    exit code 2. This is the shared embodiment of the INV-fabov fix-class
+    (silent acceptance of invalid filter values) — it mirrors the inline
+    ``config <language>`` validation (INV-gufod) so every "unknown <noun>"
+    rejection reads identically.
+    """
+    if value in valid:
+        return None
+    import difflib
+    close = difflib.get_close_matches(value, sorted(valid), n=3, cutoff=0.5)
+    print(
+        f"hypergumbo {subcommand}: error: '{value}' is not a known {noun}.",
+        file=sys.stderr,
+    )
+    if close:
+        print(f"  Did you mean: {', '.join(close)}?", file=sys.stderr)
+    return 2
+
+
+def _validate_require_sections(require_sections: "list[str] | None") -> int | None:
+    """Validate ``sketch --require-section`` names (WI-furop / INV-fabov).
+
+    Each value must name a real sketch section; a typo (``Key Sympols``) or a
+    wrong case (``key symbols``) otherwise silently buys no budget guarantee.
+    Returns ``None`` when every name is valid (or the list is empty/None);
+    otherwise returns exit code 2 after printing the first offender's error.
+    """
+    from .sketch import VALID_SKETCH_SECTIONS
+
+    for section in require_sections or []:
+        rc = _reject_unknown_choice(
+            section, VALID_SKETCH_SECTIONS, subcommand="sketch", noun="section"
+        )
+        if rc is not None:
+            return rc
+    return None
+
+
 def cmd_sketch(args: argparse.Namespace) -> int:
     """Generate token-budgeted Markdown sketch to stdout."""
     repo_root = Path(args.path).resolve()
@@ -638,6 +686,13 @@ def cmd_sketch(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+
+    # WI-furop (INV-fabov): reject unknown --require-section names before any
+    # analysis, so a typo / wrong case errors loudly instead of silently
+    # buying no budget guarantee.
+    rc = _validate_require_sections(getattr(args, "require_sections", []))
+    if rc is not None:
+        return rc
 
     # Warn if analyzing a subdirectory of a git repo
     git_root = _find_git_root(repo_root)
@@ -1577,6 +1632,28 @@ def cmd_slice(args: argparse.Namespace) -> int:
 def cmd_search(args: argparse.Namespace) -> int:
     """Search for symbols by name pattern."""
     repo_root = Path(args.path).resolve()
+
+    # WI-furop (INV-fabov): reject invalid --language / --kind filter values
+    # up front -- before the (potentially auto-running) analysis -- so a typo
+    # or non-language/non-kind errors loudly (exit 2) instead of silently
+    # returning "No symbols found" (exit 0), which is indistinguishable from a
+    # real empty result.
+    if args.language:
+        from .catalog import all_known_languages
+        rc = _reject_unknown_choice(
+            args.language, all_known_languages(),
+            subcommand="search", noun="language",
+        )
+        if rc is not None:
+            return rc
+    if args.kind:
+        from .symbol_kinds import all_symbol_kind_names
+        rc = _reject_unknown_choice(
+            args.kind, all_symbol_kind_names(),
+            subcommand="search", noun="symbol kind",
+        )
+        if rc is not None:
+            return rc
 
     # Get or run analysis (auto-runs if no cached results)
     input_path, was_cached, generated_files = _get_or_run_analysis(
