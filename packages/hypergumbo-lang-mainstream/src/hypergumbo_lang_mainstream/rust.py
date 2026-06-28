@@ -1678,7 +1678,6 @@ def _extract_edges_from_file(
                             edge_type="implements",
                             line=node.start_point[0] + 1,
                             evidence_type="trait_impl",
-                            confidence=0.95,
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         ))
@@ -1704,6 +1703,10 @@ def _extract_edges_from_file(
                                 line=node.start_point[0] + 1,
                                 evidence_type="trait_impl",
                                 is_resolved=False,
+                                # WI-nurun: confidence kept explicit — trait_impl
+                                # is single-valued in the derivation table (0.95),
+                                # so it cannot express the lower reliability of an
+                                # *unresolved* trait impl.
                                 confidence=0.70,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
@@ -1728,7 +1731,6 @@ def _extract_edges_from_file(
                     edge_type="imports",
                     line=node.start_point[0] + 1,
                     evidence_type="use_declaration",
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
@@ -1832,7 +1834,6 @@ def _extract_edges_from_file(
                                                 edge_type="calls",
                                                 line=node.start_point[0] + 1,
                                                 evidence_type="async_spawn",
-                                                confidence=0.85,
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
                                             ))
@@ -1850,7 +1851,6 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.90,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "function"},
@@ -1893,7 +1893,6 @@ def _extract_edges_from_file(
                                                 edge_type="calls",
                                                 line=node.start_point[0] + 1,
                                                 evidence_type="ast_call",
-                                                confidence=0.85,
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
                                                 meta={"call_construct": "function"},
@@ -1958,7 +1957,6 @@ def _extract_edges_from_file(
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
                                             evidence_type="ast_call",
-                                            confidence=0.88,
                                             origin=PASS_ID,
                                             origin_run_id=run_id,
                                             meta={"call_construct": "method", "receiver": "typed_field"},
@@ -2006,7 +2004,6 @@ def _extract_edges_from_file(
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
                                             evidence_type="ast_call_type_inferred",
-                                            confidence=0.85,
                                             origin=PASS_ID,
                                             origin_run_id=run_id,
                                             meta={
@@ -2026,7 +2023,6 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "function"},
@@ -2174,7 +2170,6 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=call_line,
                                 evidence_type="ast_call",
-                                confidence=0.75,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "macro_body"},
@@ -2445,7 +2440,6 @@ def _extract_attribute_edges(
                     dst=attr_sym.id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="ast_attribute",
@@ -2459,7 +2453,6 @@ def _extract_attribute_edges(
                     dst=dst_id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.80,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="ast_attribute",

@@ -229,7 +229,6 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="static",
-                confidence=0.8,
                 evidence_lang="bitbake",
             )
             pending_edges.append(edge)
@@ -265,7 +264,6 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="static",
-                confidence=1.0,
                 evidence_lang="bitbake",
             )
             pending_edges.append(edge)

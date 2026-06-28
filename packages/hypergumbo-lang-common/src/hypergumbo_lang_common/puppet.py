@@ -336,7 +336,6 @@ class _PuppetExtractor:
             origin=PASS_ID,
             origin_run_id=self._execution_id,
             evidence_type="require",
-            confidence=0.9,
         )
         self._edges.append(edge)
 
@@ -350,7 +349,6 @@ class _PuppetExtractor:
             origin=PASS_ID,
             origin_run_id=self._execution_id,
             evidence_type="notify",
-            confidence=0.9,
         )
         self._edges.append(edge)
 

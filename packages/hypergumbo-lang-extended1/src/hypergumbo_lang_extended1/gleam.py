@@ -289,7 +289,6 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         evidence_type="ast_import",
-                        confidence=1.0,
                         evidence_lang="gleam",
                     )
                     edges.append(edge)
@@ -334,7 +333,6 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call_direct",
-                                confidence=1.0,
                                 evidence_lang="gleam",
                             )
                         else:

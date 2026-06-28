@@ -1987,7 +1987,6 @@ def _extract_import_edges(
                         edge_type="imports",
                         line=node.lineno,
                         evidence_type="ast_import",
-                        confidence=0.95,
                         dst_ref=dst_ref,
                         origin=PASS_ID,
                         origin_run_id=run_id,
@@ -2018,7 +2017,6 @@ def _extract_import_edges(
                     edge_type="imports",
                     line=node.lineno,
                     evidence_type="ast_import",
-                    confidence=0.95,
                     dst_ref=import_dst_ref,
                     origin=PASS_ID,
                     origin_run_id=run_id,
@@ -2136,7 +2134,6 @@ def _extract_inheritance_edges(
                     dst=base_sym.id,
                     edge_type="extends",
                     line=sym.span.start_line if sym.span else 0,
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_extends",
@@ -2942,7 +2939,6 @@ def _extract_edges(
                 dst=symbol.id,
                 edge_type="references",
                 line=name_node.lineno,
-                confidence=0.80,
                 evidence_type="function_reference",
                 origin=PASS_ID,
                 origin_run_id=run_id,
@@ -3019,7 +3015,6 @@ def _extract_edges(
                         dst=module_level_vars[node.id].id,
                         edge_type="references",
                         line=node.lineno,
-                        confidence=0.85,
                         evidence_type="ast_name_read",
                         origin=PASS_ID,
                         origin_run_id=run_id,
@@ -3117,7 +3112,6 @@ def _extract_edges(
                 dst=nested.id,
                 edge_type="dispatches_to",
                 line=ret.lineno,
-                confidence=0.9,
                 # The return is a bare function *reference* (not a call); the
                 # dispatch SHAPE rides on ``meta['dispatch_kind']`` per the
                 # axis-registry division of labor (evidence_type = inference
@@ -3172,7 +3166,6 @@ def _extract_edges(
                     dst=f"python:{real_module}:0-0:{qname}:attribute",
                     edge_type="module_attr_ref",
                     line=sub.lineno,
-                    confidence=0.85,
                     evidence_type="module_attribute_reference",
                     origin=PASS_ID,
                     origin_run_id=run_id,
@@ -3449,7 +3442,6 @@ def _extract_edges(
                     edge_type="decorated_by",
                     line=line,
                     evidence_type="ast_decorator",
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
@@ -3474,7 +3466,6 @@ def _extract_edges(
                         line=line,
                         evidence_type="ast_decorator",
                         is_resolved=False,
-                        confidence=0.50,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     ))
@@ -3542,7 +3533,6 @@ def _extract_edges(
                     edge_type="signal_receiver",
                     line=line,
                     evidence_type="ast_decorator",
-                    confidence=0.90,
                     meta={"framework_dispatch": "django_signal"},
                     origin=PASS_ID,
                     origin_run_id=run_id,
@@ -3557,7 +3547,6 @@ def _extract_edges(
                     line=line,
                     evidence_type="ast_decorator",
                     is_resolved=False,
-                    confidence=0.50,
                     meta={"framework_dispatch": "django_signal"},
                     origin=PASS_ID,
                     origin_run_id=run_id,
@@ -3894,7 +3883,6 @@ def _process_call(
                 edge_type="instantiates",
                 line=call_node.lineno,
                 evidence_type="ast_new",
-                confidence=0.95,
                 origin=PASS_ID,
                 origin_run_id=run_id,
             ))
@@ -3928,7 +3916,6 @@ def _process_call(
                     line=call_node.lineno,
                     evidence_type="ast_call",
                     is_resolved=False,
-                    confidence=0.50,  # Lower confidence for unresolved
                     meta={"call_construct": "method"},
                     dst_ref=ExternalRef(
                         lang="python", module_path=module_name, name=attr_name
@@ -3947,7 +3934,6 @@ def _process_call(
                     line=call_node.lineno,
                     evidence_type="ast_call",
                     is_resolved=False,
-                    confidence=0.50,
                     meta={"call_construct": "method"},
                     dst_ref=ExternalRef(
                         lang="python",
@@ -3977,7 +3963,6 @@ def _process_call(
                     line=call_node.lineno,
                     evidence_type="ast_call",
                     is_resolved=False,
-                    confidence=0.50,
                     meta={"call_construct": "method", "resolution_quality": "type_inferred"},
                     dst_ref=ExternalRef(
                         lang="python", module_path=ext_module, name=attr_name
@@ -3998,7 +3983,6 @@ def _process_call(
                     line=call_node.lineno,
                     evidence_type="ast_call",
                     is_resolved=False,
-                    confidence=0.40,
                     meta={"call_construct": "method", "resolution_quality": "type_inferred"},
                     origin=PASS_ID,
                     origin_run_id=run_id,
@@ -4025,7 +4009,6 @@ def _process_call(
                         line=call_node.lineno,
                         evidence_type="ast_call_direct",
                         is_resolved=False,
-                        confidence=0.50,
                         dst_ref=ExternalRef(
                             lang="python", module_path=submodule, name=callee
                         ),
@@ -4049,7 +4032,6 @@ def _process_call(
                     line=call_node.lineno,
                     evidence_type="ast_call_direct",
                     is_resolved=False,
-                    confidence=0.50,
                     dst_ref=ExternalRef(
                         lang="python", module_path=module_name, name=original_name
                     ),

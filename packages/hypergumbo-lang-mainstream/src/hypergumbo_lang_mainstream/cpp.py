@@ -826,7 +826,6 @@ def _extract_edges_from_tree(
                         edge_type="imports",
                         line=node.start_point[0] + 1,
                         evidence_type="include_directive",
-                        confidence=0.95,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
@@ -841,7 +840,6 @@ def _extract_edges_from_tree(
                         edge_type="imports",
                         line=node.start_point[0] + 1,
                         evidence_type="include_directive",
-                        confidence=0.95,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
@@ -873,7 +871,6 @@ def _extract_edges_from_tree(
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
-                                        confidence=0.85,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         meta={"call_construct": "method", "receiver": "field_chain"},
@@ -932,7 +929,6 @@ def _extract_edges_from_tree(
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             meta={"call_construct": "function"},
@@ -1057,7 +1053,6 @@ def _extract_edges_from_tree(
                             edge_type="instantiates",
                             line=node.start_point[0] + 1,
                             evidence_type="stack_construction",
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
@@ -1078,7 +1073,6 @@ def _extract_edges_from_tree(
                             edge_type="instantiates",
                             line=node.start_point[0] + 1,
                             evidence_type="stack_construction",
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
@@ -1116,7 +1110,6 @@ def _extract_edges_from_tree(
                                 edge_type="references",
                                 line=node.start_point[0] + 1,
                                 evidence_type="function_pointer",
-                                confidence=0.85,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
@@ -1236,7 +1229,6 @@ def _extract_edges_from_tree(
                         dst=dispatch_tables[name],
                         edge_type="references",
                         line=inner.start_point[0] + 1,
-                        confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="dispatch_table_reference",

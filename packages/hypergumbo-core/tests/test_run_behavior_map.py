@@ -23,7 +23,7 @@ def test_run_behavior_map_writes_behavior_map_json(tmp_path):
 
     assert data["schema_version"] == SCHEMA_VERSION
     assert data["view"] == "behavior_map"
-    assert data["confidence_model"] == "hypergumbo-evidence-v1"
+    assert data["confidence_model"] == "hypergumbo-evidence-v2"
     assert data["analysis_incomplete"] is False
     assert isinstance(data["nodes"], list)
     assert isinstance(data["edges"], list)

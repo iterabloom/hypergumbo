@@ -407,7 +407,6 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="static",
-                            confidence=1.0,
                             evidence_lang="sparql",
                         )
                         edges.append(edge)

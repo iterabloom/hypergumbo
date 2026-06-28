@@ -242,7 +242,6 @@ def _extract_r_symbols(
                                             dst=f"r:{pkg_name}:0-0:{pkg_name}:package",
                                             edge_type="imports",
                                             line=start_line,
-                                            confidence=0.85,
                                             origin=PASS_ID,
                                             evidence_type="import",
                                             meta={

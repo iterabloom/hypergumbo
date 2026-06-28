@@ -358,7 +358,6 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="link",
-                    confidence=0.95,
                 )
                 self._pending_edges.append(edge)
 

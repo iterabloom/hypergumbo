@@ -786,8 +786,8 @@ class TestErlangDocstrings:
         assert len(tcp_edges) == 1
         assert tcp_edges[0].dst == "erlang:gen_tcp:0-0:send:function"
 
-        # Confidence should be lower than resolved calls
-        assert all(e.confidence == 0.70 for e in ext_edges)
+        # Confidence is derived from the ast_call evidence type (was 0.70)
+        assert all(e.confidence == 0.85 for e in ext_edges)
 
 
 class TestErlangCyclomaticComplexity:

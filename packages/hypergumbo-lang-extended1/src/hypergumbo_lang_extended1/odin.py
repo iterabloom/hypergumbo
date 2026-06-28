@@ -283,7 +283,6 @@ def _extract_edges_recursive(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         evidence_type="ast_import",
-                        confidence=1.0,
                         evidence_lang="odin",
                     )
                     edges.append(edge)
@@ -311,7 +310,6 @@ def _extract_edges_recursive(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         evidence_type="ast_call_direct",
-                        confidence=1.0,
                         evidence_lang="odin",
                     )
                 else:

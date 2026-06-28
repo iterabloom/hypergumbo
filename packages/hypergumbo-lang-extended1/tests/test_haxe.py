@@ -163,7 +163,7 @@ class TestAnalyzeHaxe:
         )
         assert edge is not None
         assert edge.edge_type == "calls"
-        assert edge.confidence == 1.0
+        assert edge.confidence == 0.85
 
     def test_recursive_calls(self, tmp_path: Path) -> None:
         make_haxe_file(tmp_path, "Factorial.hx", """class Factorial {

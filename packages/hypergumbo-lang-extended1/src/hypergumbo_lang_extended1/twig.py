@@ -103,7 +103,6 @@ def _create_extends_edges(
             origin=PASS_ID,
             origin_run_id=run_id,
             evidence_type="extends",
-            confidence=0.95,
             meta={"template": template_name},
         )
         edges.append(edge)
@@ -167,7 +166,6 @@ def _create_include_edges(
             origin=PASS_ID,
             origin_run_id=run_id,
             evidence_type="include",
-            confidence=0.95,
             meta={"template": template_name},
         )
         edges.append(edge)
@@ -227,7 +225,6 @@ def _create_include_function_edges(
         origin=PASS_ID,
         origin_run_id=run_id,
         evidence_type="include",
-        confidence=0.95,
         meta={"template": template_name, "form": "function"},
     )
     return [edge]

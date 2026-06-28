@@ -385,7 +385,6 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
-                                confidence=1.0,
                                 evidence_lang="haxe",
                             )
                         else:

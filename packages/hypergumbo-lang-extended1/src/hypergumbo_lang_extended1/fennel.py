@@ -283,7 +283,6 @@ class FennelAnalyzer(TreeSitterAnalyzer):
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call_direct",
-                                confidence=1.0,
                                 evidence_lang="fennel",
                             )
                         else:

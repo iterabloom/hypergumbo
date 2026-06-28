@@ -247,7 +247,6 @@ def _extract_edges_from_file(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         evidence_type="extends",
-                        confidence=0.95,
                     ))
 
         elif node.type == "instance":
@@ -263,7 +262,6 @@ def _extract_edges_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="instance",
-                    confidence=0.90,
                 ))
 
     # --- Reference edges ---

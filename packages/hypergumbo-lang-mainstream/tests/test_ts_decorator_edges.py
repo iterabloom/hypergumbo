@@ -113,7 +113,9 @@ class UserController {
         Regression: NestJS @Post() decorator resolved to the Post data class
         from graphql.schema.ts instead of remaining unresolved. When the only
         symbol matching a decorator name is a class/interface/type (not a
-        function), the edge should be unresolved (confidence 0.50).
+        function), the edge should be unresolved (dst stays :unresolved).
+        Confidence derives from evidence_type (ast_decorator -> 0.95) and no
+        longer encodes resolution status (was a hardcoded 0.50 pre-WI-nurun).
         """
         code_schema = '''
 export class Post {
@@ -149,8 +151,11 @@ class CatsController {
             f"Decorator @Post resolved to Post class from graphql.schema.ts: {edge.dst}. "
             f"Should be unresolved since Post class is not a decorator function."
         )
-        # Should be unresolved (confidence 0.50)
-        assert edge.confidence <= 0.50, (
-            f"Decorator @Post resolved with confidence {edge.confidence} to {edge.dst}. "
-            f"Should be unresolved (0.50) since no function named Post exists."
+        # Confidence derives from evidence_type (ast_decorator -> 0.95) post
+        # WI-nurun migration; was hardcoded 0.50 as a proxy for "unresolved".
+        # The "did not resolve to the wrong-kind class" check is the dst assert
+        # above (dst stays :unresolved); confidence no longer encodes that.
+        assert edge.confidence == 0.95, (
+            f"Decorator @Post edge has confidence {edge.confidence} to {edge.dst}. "
+            f"Expected derived ast_decorator confidence 0.95."
         )

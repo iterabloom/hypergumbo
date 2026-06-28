@@ -938,7 +938,6 @@ def _extract_edges_from_file(
                     edge_type="imports",
                     line=node.start_point[0] + 1,
                     evidence_type="import_statement",
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
@@ -964,7 +963,6 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.90,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
@@ -978,7 +976,6 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.90,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
@@ -993,7 +990,6 @@ def _extract_edges_from_file(
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             meta={"call_construct": "function"},
@@ -1056,7 +1052,6 @@ def _extract_edges_from_file(
                             edge_type="references",
                             line=node.start_point[0] + 1,
                             evidence_type="function_reference",
-                            confidence=0.80,
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         ))
@@ -1091,7 +1086,6 @@ def _extract_edges_from_file(
                                 edge_type="references",
                                 line=node.start_point[0] + 1,
                                 evidence_type="function_reference",
-                                confidence=0.80,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                             ))

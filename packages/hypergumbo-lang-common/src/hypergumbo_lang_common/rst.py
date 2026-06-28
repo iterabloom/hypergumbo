@@ -293,7 +293,6 @@ class _RSTExtractor:
                 origin=PASS_ID,
                 origin_run_id=self._execution_id,
                 evidence_type="static",
-                confidence=1.0,
                 evidence_lang="rst",
             )
             self._edges.append(edge)
@@ -318,7 +317,6 @@ class _RSTExtractor:
                                         origin=PASS_ID,
                                         origin_run_id=self._execution_id,
                                         evidence_type="static",
-                                        confidence=1.0,
                                         evidence_lang="rst",
                                     )
                                     self._edges.append(edge)
@@ -393,7 +391,6 @@ class _RSTExtractor:
             origin=PASS_ID,
             origin_run_id=self._execution_id,
             evidence_type="static",
-            confidence=1.0,
             evidence_lang="rst",
         )
         self._edges.append(edge)

@@ -225,7 +225,6 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="static",
-            confidence=1.0,
             evidence_lang="requirements",
         )
         self._pending_edges.append(edge)
@@ -303,7 +302,6 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="static",
-                confidence=0.9,
                 evidence_lang="requirements",
             )
             self._pending_edges.append(edge)
@@ -340,7 +338,6 @@ class RequirementsAnalyzer(TreeSitterAnalyzer):
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="static",
-                confidence=1.0,
                 evidence_lang="requirements",
             )
             self._pending_edges.append(edge)

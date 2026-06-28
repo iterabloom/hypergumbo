@@ -2180,7 +2180,7 @@ class MyService {
         ]
         assert len(decorated_edges) == 1
         assert decorated_edges[0].dst == anno_cls.id
-        assert decorated_edges[0].confidence == 0.95
+        assert decorated_edges[0].confidence == 0.5
 
     def test_unresolved_annotation_edge(self, tmp_path: Path) -> None:
         """Annotation referencing external class creates unresolved edge."""

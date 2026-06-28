@@ -425,7 +425,6 @@ def _extract_edges_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="import",
-                    confidence=0.95,
                 )
                 edges.append(edge)
 
@@ -460,7 +459,6 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             evidence_type="typeclass_instance",
-                            confidence=0.90,
                         )
                         edges.append(edge)
 
@@ -538,6 +536,10 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
+                                # WI-nurun: confidence kept explicit — this edge
+                                # targets an *external* (unresolved) callee but is
+                                # not flagged is_resolved=False, so derivation
+                                # would over-score it as a resolved call.
                                 confidence=0.50,
                                 meta={"call_construct": "application_external"},
                             )

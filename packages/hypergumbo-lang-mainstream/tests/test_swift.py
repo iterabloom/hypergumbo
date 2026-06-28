@@ -1037,8 +1037,9 @@ class TestSwiftReceiverTypeTracking:
         assert len(store_send) >= 1, (
             f"Expected Store.send, got: {[e.dst for e in send_edges]}"
         )
-        # Confidence should be 0.90 (type-qualified)
-        assert store_send[0].confidence == 0.90
+        # Confidence is 0.85, derived from the ast_call evidence type
+        # (resolved). Previously hardcoded at 0.90 for type-qualified.
+        assert store_send[0].confidence == 0.85
 
     def test_extract_var_type_annotation(self) -> None:
         """Test _extract_var_type with type annotation."""

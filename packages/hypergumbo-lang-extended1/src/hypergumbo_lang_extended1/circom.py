@@ -372,7 +372,6 @@ def _extract_edges_from_file(
                         dst=result.symbol.id,
                         edge_type="references",
                         line=node.start_point[0] + 1,
-                        confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         evidence_type="signal_constraint",

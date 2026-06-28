@@ -79,7 +79,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 SCHEMA_VERSION = "0.14.2"
-CONFIDENCE_MODEL = "hypergumbo-evidence-v1"
+CONFIDENCE_MODEL = "hypergumbo-evidence-v2"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v8"
 SHAPE_ID_SCHEME = "hypergumbo-shapeid-v2"
 REPO_FINGERPRINT_SCHEME = "hypergumbo-repofp-v1"

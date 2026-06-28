@@ -207,7 +207,6 @@ class _AstroFileExtractor:
                             dst=f"astro:{import_path}:1-1:file:file",
                             edge_type="imports",
                             line=line_num,
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=self._execution_id,
                             evidence_type="import",

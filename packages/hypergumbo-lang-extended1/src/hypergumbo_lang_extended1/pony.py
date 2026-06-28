@@ -443,7 +443,6 @@ def _extract_call_edge(
             origin=PASS_ID,
             origin_run_id=run_id,
             evidence_type="static",
-            confidence=1.0,
             evidence_lang="pony",
         )
     else:

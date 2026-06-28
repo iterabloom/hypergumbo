@@ -413,7 +413,6 @@ def _extract_edges_from_tree(
                                         dst=parent_sym.id,
                                         edge_type="inherits",
                                         line=child.start_point[0] + 1,
-                                        confidence=0.95,
                                         # vocab:F2 (WI-lojug): AST-derived from the
                                         # `is` (inheritance_specifier) clause — not a
                                         # call. Without this, the Edge.create default
@@ -557,7 +556,6 @@ def _extract_edges_from_tree(
                         dst=event_sym.id,
                         edge_type="references",
                         line=node.start_point[0] + 1,
-                        confidence=0.95,
                         # vocab:F2 (WI-lojug): a name-resolved reference to the
                         # event symbol, not a direct call — avoid the
                         # 'ast_call_direct' default on this non-call edge.

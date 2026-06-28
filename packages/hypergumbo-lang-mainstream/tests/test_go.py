@@ -6957,7 +6957,7 @@ func main() {}
         notify_sym = next(s for s in result.symbols if s.name == "Integration.Notify")
         assert edge.src == exec_sym.id
         assert edge.dst == notify_sym.id
-        assert edge.confidence == 0.88
+        assert edge.confidence == 0.85
         assert edge.edge_type == "calls"
 
     def test_pointer_field_call(self, tmp_path: Path) -> None:
@@ -6989,7 +6989,7 @@ func main() {}
             if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
         ]
         assert len(typed_edges) == 1
-        assert typed_edges[0].confidence == 0.88
+        assert typed_edges[0].confidence == 0.85
 
     def test_cross_file_field_call(self, tmp_path: Path) -> None:
         """Chained field call resolves via global symbols across files."""

@@ -326,7 +326,7 @@ git+https://github.com/user/repo.git#egg=mypackage
         dep_edges = [e for e in result.edges if e.edge_type == "depends"]
         assert len(dep_edges) == 1
         assert "vcs:package:mypackage" in dep_edges[0].dst
-        assert dep_edges[0].confidence == 0.9
+        assert dep_edges[0].confidence == 0.95
 
     def test_mercurial_url_requirement(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path, "requirements.txt", """

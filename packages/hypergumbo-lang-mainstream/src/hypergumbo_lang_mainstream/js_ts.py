@@ -2554,7 +2554,6 @@ def _extract_inheritance_edges(
                     dst=base_sym.id,
                     edge_type="extends",
                     line=sym.span.start_line if sym.span else 0,
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_extends",
@@ -2565,7 +2564,6 @@ def _extract_inheritance_edges(
                     dst=iface_sym.id,
                     edge_type="implements",
                     line=sym.span.start_line if sym.span else 0,
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_implements",
@@ -2590,7 +2588,7 @@ def _extract_inheritance_edges(
                         edges.append(Edge.create(
                             src=sym.id, dst=rb.id, edge_type="extends",
                             line=sym.span.start_line if sym.span else 0,
-                            confidence=0.95, origin=PASS_ID,
+                            origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_extends",
                         ))
@@ -2599,7 +2597,7 @@ def _extract_inheritance_edges(
                         edges.append(Edge.create(
                             src=sym.id, dst=ri.id, edge_type="implements",
                             line=sym.span.start_line if sym.span else 0,
-                            confidence=0.95, origin=PASS_ID,
+                            origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_implements",
                         ))
@@ -2764,7 +2762,6 @@ def _extract_type_reference_edges(
                             dst=dst_sym.id,
                             edge_type="references",
                             line=src_sym.span.start_line if src_sym.span else 0,
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_type_ref",
@@ -2804,7 +2801,6 @@ def _extract_type_reference_edges(
                             dst=dst_sym.id,
                             edge_type="references",
                             line=src_sym.span.start_line if src_sym.span else 0,
-                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_type_ref",
@@ -2873,7 +2869,6 @@ def _extract_decorator_edges(
                     dst=decorator_sym.id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.95,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_decorator",
@@ -2888,7 +2883,6 @@ def _extract_decorator_edges(
                     dst=dst_id,
                     edge_type="decorated_by",
                     line=line,
-                    confidence=0.50,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_decorator",
@@ -4497,7 +4491,6 @@ def _emit_anon_callback_reference_edges(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="callback_argument_reference",
-                    confidence=0.75,
                 ))
 
 
@@ -4575,7 +4568,6 @@ def _extract_edges(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="import_static",
-                        confidence=0.95,
                     )
                     edges.append(edge)
                     break
@@ -4638,7 +4630,6 @@ def _extract_edges(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
-                                    confidence=0.95,
                                 ))
                         break
 
@@ -4659,7 +4650,6 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="require_static",
-                                confidence=0.90,
                             )
                             edges.append(edge)
                             break
@@ -4675,7 +4665,6 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="require_dynamic",
-                                confidence=0.40,
                             )
                             edges.append(edge)
                             break
@@ -4767,7 +4756,6 @@ def _extract_edges(
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
                                 is_resolved=False,
-                                confidence=0.70,
                                 dst_ref=ExternalRef(
                                     lang=lang,
                                     module_path=module_hint,
@@ -4793,7 +4781,6 @@ def _extract_edges(
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
                                 is_resolved=False,
-                                confidence=0.70,
                                 dst_ref=ExternalRef(
                                     lang=lang,
                                     module_path=func_name,
@@ -4890,7 +4877,6 @@ def _extract_edges(
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         evidence_type="ast_method_this_property",
-                                        confidence=0.90,
                                     )
                                     edges.append(edge)
                                     edge_added = True
@@ -4938,7 +4924,6 @@ def _extract_edges(
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_inferred",
                                     is_resolved=False,
-                                    confidence=0.70,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -4967,7 +4952,6 @@ def _extract_edges(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_type_inferred",
-                                    confidence=0.85,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -5003,7 +4987,6 @@ def _extract_edges(
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_method_inferred",
                                 is_resolved=False,
-                                confidence=0.65,
                             )
                             edges.append(edge)
                             edge_added = True
@@ -5109,7 +5092,6 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="callback_argument_reference",
-                                confidence=0.75,
                             ))
                     # WI-zavad anon-callback slice: companion references edge for
                     # inline anonymous callbacks (see helper).
@@ -5170,7 +5152,6 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
-                                confidence=0.70,
                                 meta={"framework_dispatch": "middleware_chain"},
                             ))
 
@@ -5284,7 +5265,6 @@ def _extract_edges(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="object_field_reference",
-                            confidence=0.80,
                         ))
 
         # Shorthand property: {handleClick} — equivalent to {handleClick: handleClick}
@@ -5314,7 +5294,6 @@ def _extract_edges(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="object_field_reference",
-                        confidence=0.80,
                     ))
 
     return edges

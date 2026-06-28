@@ -705,7 +705,6 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         edge_type="imports",
                         line=node.start_point[0] + 1,
                         evidence_type="import_statement",
-                        confidence=0.95,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
@@ -767,7 +766,6 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "function"},
@@ -790,7 +788,6 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "function"},

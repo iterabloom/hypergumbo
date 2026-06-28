@@ -465,7 +465,6 @@ class _RobotExtractor:
                 origin=PASS_ID,
                 origin_run_id=self._execution_id,
                 evidence_type="static",
-                confidence=1.0,
                 evidence_lang="robot",
             )
             self._edges.append(edge)

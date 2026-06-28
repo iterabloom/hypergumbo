@@ -185,7 +185,7 @@ end.
         )
         assert edge is not None
         assert edge.edge_type == "calls"
-        assert edge.confidence == 1.0
+        assert edge.confidence == 0.85
 
     def test_recursive_calls(self, tmp_path: Path) -> None:
         make_pascal_file(tmp_path, "recursive.pas", """program Recursive;
@@ -252,7 +252,7 @@ end.
             None
         )
         assert edge is not None
-        assert edge.confidence == 1.0
+        assert edge.confidence == 0.85
 
     def test_unresolved_call_target(self, tmp_path: Path) -> None:
         make_pascal_file(tmp_path, "unresolved.pas", """program Unresolved;

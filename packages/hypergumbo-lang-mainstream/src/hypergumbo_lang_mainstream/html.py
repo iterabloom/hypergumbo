@@ -165,7 +165,6 @@ def analyze_html(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_import",
-                confidence=0.95,  # High confidence for static HTML
                 meta={"construct": "script_src"},
             )
             edges.append(edge)

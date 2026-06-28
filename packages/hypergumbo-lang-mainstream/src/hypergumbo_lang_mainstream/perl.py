@@ -359,7 +359,6 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             evidence_type="use",
-                            confidence=0.95,
                         )
                         edges.append(edge)
 
@@ -379,7 +378,6 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             evidence_type="require",
-                            confidence=0.90,
                         )
                         edges.append(edge)
 

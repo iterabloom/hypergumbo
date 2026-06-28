@@ -5406,7 +5406,7 @@ class TestUnresolvedEdgeEmission:
         assert edge["meta"]["evidence_type"] == "ast_call"
         assert edge["meta"]["call_construct"] == "method"
         assert edge["is_resolved"] is False
-        assert edge["confidence"] == 0.50
+        assert edge["confidence"] == 0.40
 
     def test_unresolved_edge_for_imported_class_method(self, tmp_path: Path) -> None:
         """Calls to methods on imported classes emit unresolved edges."""

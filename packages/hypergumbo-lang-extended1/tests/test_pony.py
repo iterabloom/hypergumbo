@@ -441,7 +441,7 @@ class Calculator
             if "Calculator.helper_calc" in e.dst and "unresolved" not in e.dst
         ]
         assert len(resolved_edges) == 1
-        assert resolved_edges[0].confidence == 1.0
+        assert resolved_edges[0].confidence == 0.95
 
     def test_call_with_explicit_type(self, tmp_path: Path) -> None:
         """Test call resolution with explicit type.method format."""
@@ -461,7 +461,7 @@ class Main
             if "Helper.do_task" in e.dst and "unresolved" not in e.dst
         ]
         assert len(resolved_edges) == 1
-        assert resolved_edges[0].confidence == 1.0
+        assert resolved_edges[0].confidence == 0.95
 
     def test_all_symbols_have_canonical_stable_id(self, tmp_path: Path) -> None:
         """Every symbol's stable_id is the canonical sha256 form (WI-rijup).

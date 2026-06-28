@@ -392,7 +392,6 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             evidence_type="use-package",
-                            confidence=0.95,
                         )
                         edges.append(edge)
 

@@ -126,7 +126,6 @@ def analyze_blade(
                     dst=f"blade:template:{name}:0-0:{name}:template",
                     edge_type="extends_template",
                     line=line_num,
-                    confidence=0.85,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="extends",

@@ -442,7 +442,6 @@ def _extract_nix_edges(
                         dst=dst_id,
                         edge_type="imports",
                         line=start_line,
-                        confidence=0.80,
                         origin=PASS_ID,
                         evidence_type="static",
                         origin_run_id=run_id,

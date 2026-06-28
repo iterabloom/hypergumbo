@@ -2735,7 +2735,7 @@ end
             f"Expected 1 invokes_callback edge, got {len(callback_edges)}. "
             f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
         )
-        assert callback_edges[0].confidence == 0.9
+        assert callback_edges[0].confidence == 0.85
 
     def test_after_action_creates_callback_edge(self, tmp_path: Path) -> None:
         """after_action :method creates invokes_callback edge."""
@@ -3508,7 +3508,7 @@ end
         )
         assert assoc_edges[0].evidence_type == "ast_call_direct"
         assert (assoc_edges[0].meta or {}).get("framework_dispatch") == "activerecord_association"
-        assert assoc_edges[0].confidence == 0.90
+        assert assoc_edges[0].confidence == 0.85
 
     def test_belongs_to_creates_association_edge(self, tmp_path: Path) -> None:
         """belongs_to :account creates association edge from User to Account."""
@@ -3632,7 +3632,7 @@ end
             f"Expected unresolved association edge, got {len(assoc_edges)}"
         )
         assert "unresolved" in assoc_edges[0].dst
-        assert assoc_edges[0].confidence == 0.70
+        assert assoc_edges[0].confidence == 0.85
 
     def test_has_many_pluralization_ies(self, tmp_path: Path) -> None:
         """has_many :categories correctly singularizes to Category (ies → y)."""
@@ -3785,7 +3785,7 @@ end
         ]
         assert len(delegate_edges) == 1
         assert "unresolved" in delegate_edges[0].dst
-        assert delegate_edges[0].confidence == 0.65
+        assert delegate_edges[0].confidence == 0.85
 
     def test_delegate_to_class(self, tmp_path: Path) -> None:
         """delegate :name, to: :class is a valid pattern (delegates to class)."""
@@ -3841,7 +3841,7 @@ end
         assert len(delegate_edges) == 1
         assert "unresolved" in delegate_edges[0].dst
         assert "Account#nonexistent_method" in delegate_edges[0].dst
-        assert delegate_edges[0].confidence == 0.65
+        assert delegate_edges[0].confidence == 0.85
 
     def test_delegate_inside_method_ignored(self, tmp_path: Path) -> None:
         """delegate inside a method body should be ignored (only class-level)."""

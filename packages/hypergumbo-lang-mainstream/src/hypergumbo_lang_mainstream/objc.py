@@ -558,7 +558,6 @@ def _extract_edges_from_file(
                         edge_type="imports",
                         line=line,
                         evidence_type="import_statement",
-                        confidence=0.95,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))
@@ -579,7 +578,6 @@ def _extract_edges_from_file(
                         edge_type="calls",
                         line=line,
                         evidence_type="message_send",
-                        confidence=0.90,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     ))

@@ -408,7 +408,6 @@ def _extract_edges_from_tree(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_import",
-                            confidence=1.0,
                         )
                         edges.append(edge)
 
@@ -429,7 +428,6 @@ def _extract_edges_from_tree(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="ast_import",
-                        confidence=1.0,
                     )
                     edges.append(edge)
 

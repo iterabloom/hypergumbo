@@ -288,7 +288,6 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="import",
-                                    confidence=0.95,
                                 )
                                 edges.append(edge)
                     else:
@@ -312,7 +311,6 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
-                                confidence=0.9,
                             )
                             edges.append(edge)
 
