@@ -706,7 +706,7 @@ class Edge:
         origin: str = "",
         origin_run_id: str = "",
         evidence_type: str = "ast_call_direct",
-        confidence: float = 0.85,
+        confidence: float | None = None,
         evidence_lang: Optional[str] = None,
         evidence_spans: Optional[List[Dict[str, Any]]] = None,
         is_resolved: bool = True,
@@ -750,6 +750,16 @@ class Edge:
                 meta = merged
             else:
                 meta = dataflow_meta
+        # confidence:F1 (ADR-0039): when the producer passes no explicit
+        # confidence, derive detection-reliability from the inference pathway
+        # (Edge.evidence_type), conditioned on is_resolved. Unseeded pathways
+        # fall back to the historical 0.85 default, so unmigrated producers are
+        # unaffected; producers that pass an explicit confidence keep it.
+        if confidence is None:
+            from hypergumbo_core.confidence import derive_confidence
+            confidence = derive_confidence(evidence_type, is_resolved=is_resolved)
+            if confidence is None:
+                confidence = 0.85
         # Generate deterministic edge ID from src, dst, type, AND line
         # Line is included to ensure uniqueness for multiple call sites
         edge_hash = hashlib.sha256(f"{src}:{dst}:{edge_type}:{line}".encode()).hexdigest()[:16]

@@ -1400,6 +1400,38 @@ def test_edge_from_dict_with_defaults() -> None:
     assert edge.evidence_type == "ast_call_direct"  # Default
 
 
+def test_create_derives_confidence_when_omitted():
+    # confidence:F1 (ADR-0039): Edge.create with no explicit confidence
+    # derives detection-reliability from the inference pathway.
+    # Seeded single-valued pathway -> the registry value:
+    e = Edge.create(src="a", dst="b", edge_type="imports", line=1,
+                    evidence_type="ast_import", origin="test", origin_run_id="test")
+    assert e.confidence == 0.95
+    # Seeded multimodal pathway -> conditioned on is_resolved:
+    e_res = Edge.create(src="a", dst="b", edge_type="calls", line=1,
+                        evidence_type="ast_call_direct", is_resolved=True,
+                        origin="test", origin_run_id="test")
+    e_unres = Edge.create(src="a", dst="b", edge_type="calls", line=1,
+                          evidence_type="ast_call_direct", is_resolved=False,
+                          origin="test", origin_run_id="test")
+    assert e_res.confidence == 0.85
+    assert e_unres.confidence == 0.50
+    # Unseeded pathway -> the historical 0.85 default (unmigrated producers
+    # are unaffected):
+    e_unseeded = Edge.create(src="a", dst="b", edge_type="references", line=1,
+                             evidence_type="naming_convention",
+                             origin="test", origin_run_id="test")
+    assert e_unseeded.confidence == 0.85
+
+
+def test_create_keeps_explicit_confidence():
+    # An explicit confidence is never overridden by derivation.
+    e = Edge.create(src="a", dst="b", edge_type="imports", line=1,
+                    evidence_type="ast_import", confidence=0.42,
+                    origin="test", origin_run_id="test")
+    assert e.confidence == 0.42
+
+
 class TestCreateBoundaryNodes:
     """Tests for create_boundary_nodes (WI-sikur / INV-miniz)."""
 
