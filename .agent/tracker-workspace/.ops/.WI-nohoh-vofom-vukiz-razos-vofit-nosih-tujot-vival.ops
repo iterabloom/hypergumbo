@@ -69,3 +69,18 @@
     tags: [dogfood]  # 8203
   remove:  # 8203
     tags: [dogfooding]  # 8203
+- op: update  # 4d6d
+  at: '2026-06-28T12:36:23Z'  # 4d6d
+  by: agent  # 4d6d
+  actor: jgstern_agent  # 4d6d
+  clock: 7  # 4d6d
+  nonce: 4d6d  # 4d6d
+  set:  # 4d6d
+    status: done  # 4d6d
+- op: discuss  # 9417
+  at: '2026-06-28T12:36:23Z'  # 9417
+  by: agent  # 9417
+  actor: jgstern_agent  # 9417
+  clock: 8  # 9417
+  nonce: '9417'  # 9417
+  message: "DONE — already resolved (stale / premise no longer holds). The pass_id->\"pass\" wire-format alias IS documented, in both the machine schema and the human spec; no code change needed. Verified:\n- Machine schema: docs/schema.json:1247 carries the \"pass\" key (description \"Analysis pass identifier\") and lists it required (1339). A consumer reading the schema sees the wire key is \"pass\", not \"pass_id\".\n- Human spec: docs/hypergumbo-spec.md:286 (inline `pass_id: str  # e.g., \"python\" (serialized as \"pass\" in JSON output)`) AND line 739 (a dedicated \"**Output-specific note:** The IR field `pass_id` is serialized as `pass` in JSON output.\").\n- Provenance: the line-739 note was added 2026-02-11 (commit 67450a3624), which PRE-DATES this item's filing (2026-05-28) — so the \"undocumented in schema\" premise was already inaccurate at filing time; the schema.json \"pass\" key and the spec mapping both existed.\nThe internal dataclass uses pass_id (ir.py:222 `pass_id: str  # axis: pass-id`); the serialization alias to \"pass\" (Python reserved word) is the documented wire form. Sibling under WI-gogif (wire-format-vs-internal-API). The prior agent's optional suggestion to also mirror the note in the AnalysisRun dataclass docstring is a dev-facing nicety, not part of the item's \"undocumented in schema\" complaint, and is not required to satisfy it."  # 9417
