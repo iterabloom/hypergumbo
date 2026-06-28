@@ -48,6 +48,25 @@ def test_every_spec_has_nonempty_description():
         assert spec.description, f"{spec.name} has empty description"
 
 
+def test_depends_on_and_depends_on_manifest_are_distinct_relationships():
+    # WI-dinih verdict (KEEP distinct, NOT a fold): depends_on and
+    # depends_on_manifest are different relationships, not aliases.
+    # depends_on = a package/build manifest DECLARING its dependency
+    # (json_config/make/meson/...); depends_on_manifest = the dependency
+    # linker RESOLVING an importing source file to a manifest-declared dep
+    # (evidence_type=import_to_manifest). Different src kinds, evidence_type,
+    # and producer pass -- folding them would conflate declaration with
+    # resolution. The strategy's vocab:F1 prose calls them an "alias pair";
+    # this test LOCKS the keep-distinct verdict so any future fold is a
+    # deliberate decision rather than a silent re-litigation.
+    on = find_edge_type("depends_on")
+    manifest = find_edge_type("depends_on_manifest")
+    assert on is not None and manifest is not None
+    assert on.name != manifest.name
+    assert on.axis == AXIS_RELATIONSHIP
+    assert manifest.axis == AXIS_RELATIONSHIP
+
+
 def test_specs_are_frozen():
     with pytest.raises(dataclasses.FrozenInstanceError):
         EDGE_TYPES[0].name = "mutated"  # type: ignore[misc]

@@ -63,8 +63,8 @@ Values that name the relationship the edge expresses between src and dst. Per AD
 - **`data_flows_to`** — Data flow edge per ADR-0015 — value computed at src reaches dst.
 - **`decorated_by`** — Symbol is decorated/annotated by another (e.g., Python decorator, Java annotation, C# attribute, Rust derive).
 - **`defines_target`** — Config file defines a build/run/deploy target (Makefile rule, package.json script, pyproject entry point, Compose service, etc.).
-- **`depends_on`** — Generic dependency relationship.
-- **`depends_on_manifest`** — Dependency declared in a package or build manifest.
+- **`depends_on`** — A package/build manifest DECLARES a dependency on another (package.json, Dockerfile, Makefile, meson, ...): a declaration edge from the manifest/project to its dependency. Distinct from depends_on_manifest (the import-resolution bridge) -- see WI-dinih.
+- **`depends_on_manifest`** — An importing source file RESOLVED to a manifest-declared dependency (the dependency linker's import->declared-dep bridge; evidence_type=import_to_manifest): a resolution edge from the file to the dependency. Distinct from depends_on (the manifest's own declaration) -- see WI-dinih.
 - **`dispatches_to`** — Caller dispatches to callee via runtime indirection (virtual method, function pointer, DI resolution, etc.).
 - **`event_publishes`** — Producer publishes an event/message that the consumer receives via an async channel (event bus, queue, CRDT, etc.).
 - **`extends`** — Class extends a superclass.

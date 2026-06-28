@@ -92,11 +92,18 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     ),
     EdgeTypeSpec(
         "depends_on", AXIS_RELATIONSHIP,
-        "Generic dependency relationship.",
+        "A package/build manifest DECLARES a dependency on another "
+        "(package.json, Dockerfile, Makefile, meson, ...): a declaration "
+        "edge from the manifest/project to its dependency. Distinct from "
+        "depends_on_manifest (the import-resolution bridge) -- see WI-dinih.",
     ),
     EdgeTypeSpec(
         "depends_on_manifest", AXIS_RELATIONSHIP,
-        "Dependency declared in a package or build manifest.",
+        "An importing source file RESOLVED to a manifest-declared "
+        "dependency (the dependency linker's import->declared-dep bridge; "
+        "evidence_type=import_to_manifest): a resolution edge from the file "
+        "to the dependency. Distinct from depends_on (the manifest's own "
+        "declaration) -- see WI-dinih.",
     ),
     EdgeTypeSpec(
         "sources", AXIS_RELATIONSHIP,
