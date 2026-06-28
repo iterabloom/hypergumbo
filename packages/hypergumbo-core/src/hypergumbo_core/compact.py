@@ -947,6 +947,56 @@ def select_by_coverage(
     )
 
 
+def _reproject_features(
+    features: List[dict],
+    included_node_ids: set,
+    included_edge_ids: set,
+) -> List[dict]:
+    """Re-project feature slices onto the compacted node/edge set (INV-titid).
+
+    The compact pass selects a budget-limited subset of nodes and edges, but
+    the source map's ``features[]`` carry full-graph ``node_ids``/``edge_ids``
+    references. Left unchanged, the great majority of those references dangle
+    in the compact output -- the feature claims to describe a slice of the
+    compact graph yet points at pruned content. This rewrites each surviving
+    feature's references to the retained sets and drops any feature whose
+    every entry node was pruned, mirroring the entrypoint-filtering precedent
+    (an entrypoint whose symbol was pruned is dropped; so is a feature whose
+    anchor was pruned). The result is the twin of INV-tarol's slice fix:
+    feature scope is re-derived from the emitted graph rather than copied
+    wholesale. ``admission_stats`` (not node-keyed) passes through unchanged.
+    """
+    reprojected: List[dict] = []
+    for feat in features:
+        entry_nodes = [
+            n for n in feat.get("entry_nodes", []) if n in included_node_ids
+        ]
+        # A feature whose every entry node was pruned no longer describes
+        # anything in the compact graph -- drop it (parallel to entrypoints).
+        if not entry_nodes:
+            continue
+        new_feat = dict(feat)
+        new_feat["entry_nodes"] = entry_nodes
+        new_feat["node_ids"] = [
+            n for n in feat.get("node_ids", []) if n in included_node_ids
+        ]
+        new_feat["edge_ids"] = [
+            e for e in feat.get("edge_ids", []) if e in included_edge_ids
+        ]
+        if "node_depths" in feat:
+            new_feat["node_depths"] = {
+                k: v for k, v in feat["node_depths"].items()
+                if k in included_node_ids
+            }
+        if "node_tiers" in feat:
+            new_feat["node_tiers"] = {
+                k: v for k, v in feat["node_tiers"].items()
+                if k in included_node_ids
+            }
+        reprojected.append(new_feat)
+    return reprojected
+
+
 def format_compact_behavior_map(
     behavior_map: dict,
     symbols: List[Symbol],
@@ -1066,6 +1116,12 @@ def format_compact_behavior_map(
             ep for ep in behavior_map.get("entrypoints", [])
             if ep.get("symbol_id") in included_ids
         ]
+
+        # Re-project features onto the compacted graph (INV-titid).
+        included_edge_ids = {e.get("id") for e in compact_map["edges"]}
+        compact_map["features"] = _reproject_features(
+            behavior_map.get("features", []), included_ids, included_edge_ids
+        )
     else:
         # Use original coverage-based selection
         result = select_by_coverage(symbols, edges, config, force_include_ids)
@@ -1090,6 +1146,12 @@ def format_compact_behavior_map(
             ep for ep in behavior_map.get("entrypoints", [])
             if ep.get("symbol_id") in included_ids
         ]
+
+        # Re-project features onto the compacted graph (INV-titid).
+        included_edge_ids = {e.get("id") for e in compact_map["edges"]}
+        compact_map["features"] = _reproject_features(
+            behavior_map.get("features", []), included_ids, included_edge_ids
+        )
 
     return compact_map
 

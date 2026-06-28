@@ -1658,6 +1658,138 @@ class TestEntrypointFiltering:
             assert ep["symbol_id"] in included_ids
 
 
+class TestFeatureReprojection:
+    """Tests for feature re-projection onto the compacted graph (INV-titid).
+
+    The compact pass selects a budget-limited subset of nodes/edges. Feature
+    slices in the source behavior map carry full-graph node/edge references;
+    without re-projection the great majority of those references dangle in the
+    compact output (the feature claims to describe a slice of the compact
+    graph but points at pruned content). These tests pin the twin contract to
+    INV-tarol's slice fix: a compact feature must be self-contained — every id
+    it references exists in the compact's own nodes/edges — and a feature whose
+    anchor was pruned is dropped, mirroring entrypoint filtering.
+    """
+
+    @pytest.mark.parametrize("connectivity_aware", [False, True])
+    def test_feature_refs_have_no_dangling_after_compaction(
+        self, connectivity_aware
+    ):
+        """No feature ref points at content absent from the compact output."""
+        symbols = [make_symbol(f"sym_{i}") for i in range(10)]
+        edges = [
+            make_edge(symbols[i].id, symbols[i + 1].id) for i in range(4)
+        ]
+        feature = {
+            "id": "sha256:feat0",
+            "name": "feat0",
+            "entry_nodes": [symbols[0].id],
+            "node_ids": [s.id for s in symbols[:5]],
+            "edge_ids": [e.id for e in edges],
+            "node_depths": {s.id: i for i, s in enumerate(symbols[:5])},
+            "node_tiers": {s.id: 1 for s in symbols[:5]},
+        }
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [
+                {"symbol_id": symbols[0].id, "kind": "main_function",
+                 "confidence": 0.9}
+            ],
+            "features": [feature],
+        }
+        config = CompactConfig(min_symbols=1, max_symbols=3)
+        result = format_compact_behavior_map(
+            behavior_map, symbols, edges, config,
+            connectivity_aware=connectivity_aware,
+        )
+
+        node_ids = {n["id"] for n in result["nodes"]}
+        edge_ids = {e["id"] for e in result["edges"]}
+        # The feature is anchored at a force-included entrypoint, so it
+        # survives -- but every reference it carries must be present.
+        assert result["features"], "feature anchored on included node was dropped"
+        for feat in result["features"]:
+            for nid in feat.get("entry_nodes", []):
+                assert nid in node_ids, f"dangling entry_node {nid}"
+            for nid in feat.get("node_ids", []):
+                assert nid in node_ids, f"dangling node_id {nid}"
+            for eid in feat.get("edge_ids", []):
+                assert eid in edge_ids, f"dangling edge_id {eid}"
+            for nid in feat.get("node_depths", {}):
+                assert nid in node_ids, f"dangling node_depths key {nid}"
+            for nid in feat.get("node_tiers", {}):
+                assert nid in node_ids, f"dangling node_tiers key {nid}"
+
+    def test_feature_dropped_when_all_entry_nodes_pruned(self):
+        """A feature whose every entry node was pruned is removed entirely."""
+        symbols = [make_symbol(f"sym_{i}") for i in range(5)]
+        ghost_id = "python:gone.py:1-10:function:ghost"
+        feature = {
+            "id": "sha256:ghost",
+            "name": "ghost",
+            "entry_nodes": [ghost_id],
+            "node_ids": [ghost_id],
+            "edge_ids": [],
+        }
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": [],
+            "features": [feature],
+        }
+        config = CompactConfig(min_symbols=1, max_symbols=3)
+        result = format_compact_behavior_map(
+            behavior_map, symbols, [], config,
+            force_include_entrypoints=False,
+        )
+
+        assert all(f["name"] != "ghost" for f in result["features"]), \
+            "feature with no surviving entry node should be dropped"
+
+    def test_feature_kept_when_entry_node_survives_and_refs_filtered(self):
+        """A surviving feature keeps in-set refs and drops pruned ones."""
+        anchor = make_symbol("anchor")
+        other = make_symbol("other")
+        edge_ao = make_edge(anchor.id, other.id)
+        ghost_id = "python:gone.py:1-10:function:ghost"
+        ghost_edge_id = f"edge:{ghost_id}->{anchor.id}"
+        feature = {
+            "id": "sha256:anchored",
+            "name": "anchored",
+            "entry_nodes": [anchor.id],
+            "node_ids": [anchor.id, other.id, ghost_id],
+            "edge_ids": [edge_ao.id, ghost_edge_id],
+        }
+        behavior_map = {
+            "nodes": [anchor.to_dict(), other.to_dict()],
+            "edges": [edge_ao.to_dict()],
+            "entrypoints": [
+                {"symbol_id": anchor.id, "kind": "main_function",
+                 "confidence": 0.9},
+                {"symbol_id": other.id, "kind": "main_function",
+                 "confidence": 0.9},
+            ],
+            "features": [feature],
+        }
+        # max_symbols=4 leaves room for both force-included entrypoints
+        # (the forced cap is max_symbols//2 == 2).
+        config = CompactConfig(min_symbols=1, max_symbols=4)
+        result = format_compact_behavior_map(
+            behavior_map, [anchor, other], [edge_ao], config,
+        )
+
+        kept = [f for f in result["features"] if f["name"] == "anchored"]
+        assert kept, "feature anchored on an included node should survive"
+        feat = kept[0]
+        # Phantom refs are gone; the real edge between two included nodes
+        # is retained.
+        assert ghost_id not in feat["node_ids"]
+        assert ghost_edge_id not in feat["edge_ids"]
+        assert anchor.id in feat["entry_nodes"]
+        assert edge_ao.id in feat["edge_ids"]
+
+
 class TestForceIncludeEntrypoints:
     """Tests for force-including entrypoints in selection."""
 
