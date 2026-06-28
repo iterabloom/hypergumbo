@@ -7851,6 +7851,20 @@ def _is_route_symbol(symbol: Symbol) -> bool:
     return False
 
 
+def _is_route_marker(symbol: Symbol) -> bool:
+    """Return True for a framework-materialized route *marker* node.
+
+    A route marker (``meta.framework_role == "route"``, e.g. an analyzer's
+    standalone ``GET:/health:route`` node) is a registration stub with
+    essentially no outbound edges — distinct from the concept-enriched
+    *function* handler (matched via ``meta.concepts``), which carries the real
+    call graph. When both map to the same ``(method, path)`` slice filename,
+    preferring the non-marker keeps the informative slice instead of the
+    degenerate marker one (INV-nubub).
+    """
+    return (symbol.meta or {}).get("framework_role") == "route"
+
+
 def _extract_route_info(symbol: Symbol) -> dict | None:
     """Pull (method, path) out of a route symbol's metadata.
 
@@ -7937,8 +7951,9 @@ def _emit_handler_slices(
             continue
         handlers.append(sym)
 
-    # Step 2: group by symbol id so shared handlers emit once with a merged
-    # routes list. Preserves the ranked insertion order.
+    # Step 2: group by symbol id so a single handler registered under
+    # multiple routes emits once with a merged routes list. Preserves the
+    # ranked insertion order.
     id_to_routes: dict[str, list[dict]] = {}
     id_order: list[str] = []
     id_to_symbol: dict[str, Symbol] = {}
@@ -7951,6 +7966,35 @@ def _emit_handler_slices(
         if info and info not in id_to_routes[h.id]:
             id_to_routes[h.id].append(info)
 
+    # Step 2b (INV-nubub): collapse distinct ids that resolve to the SAME
+    # on-disk slice filename. The framework route marker
+    # (meta.framework_role == "route", ~0 outbound edges) and the
+    # concept-enriched function handler (the real call graph) for one
+    # (method, path) are different ids but produce the same filename; grouping
+    # by id alone let both reach the write step, and the second writer
+    # silently clobbered the first on disk, leaving only the degenerate marker
+    # slice. Keep ONE slice per filename -- prefer the non-marker so the
+    # informative function slice wins -- and merge every colliding id's routes
+    # into the survivor.
+    fname_order: list[str] = []
+    fname_to_symbol: dict[str, Symbol] = {}
+    fname_to_routes: dict[str, list[dict]] = {}
+    for hid in id_order:
+        sym = id_to_symbol[hid]
+        routes = id_to_routes[hid]
+        primary = routes[0] if routes else None
+        fname = _handler_slice_filename(sym, primary)
+        if fname not in fname_to_routes:
+            fname_order.append(fname)
+            fname_to_symbol[fname] = sym
+            fname_to_routes[fname] = list(routes)
+            continue
+        if _is_route_marker(fname_to_symbol[fname]) and not _is_route_marker(sym):
+            fname_to_symbol[fname] = sym
+        for info in routes:
+            if info not in fname_to_routes[fname]:
+                fname_to_routes[fname].append(info)
+
     # Pre-compute out-degree for the index file (gives consumers a quick
     # "how many callees does this handler have?" signal without re-scanning).
     out_degree: dict[str, int] = {}
@@ -7962,10 +8006,10 @@ def _emit_handler_slices(
     written: list[Path] = []
     index_entries: list[dict] = []
 
-    for rank, handler_id in enumerate(id_order):
-        handler = id_to_symbol[handler_id]
-        routes = id_to_routes[handler_id]
-        primary_route = routes[0] if routes else None
+    for rank, fname in enumerate(fname_order):
+        handler = fname_to_symbol[fname]
+        handler_id = handler.id
+        routes = fname_to_routes[fname]
 
         entry: dict = {
             "id": handler_id,
@@ -8006,7 +8050,7 @@ def _emit_handler_slices(
             index_entries.append(entry)
             continue
 
-        filename = _handler_slice_filename(handler, primary_route)
+        filename = fname  # the group key (one slice file per (method, path))
         out_path = out_dir / filename
 
         node_ids_set = set(result.node_ids)

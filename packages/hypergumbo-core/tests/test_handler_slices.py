@@ -468,3 +468,123 @@ def test_emit_handler_slices_overflow_handlers_not_in_features(tmp_path: Path) -
     index = json.loads((tmp_path / "slice.handler.index.json").read_text())
     not_emitted = [h for h in index["handlers"] if not h.get("emitted", False)]
     assert len(not_emitted) == 3
+
+
+# ---------------------------------------------------------------------------
+# INV-nubub: route-marker / function-handler filename collision
+# ---------------------------------------------------------------------------
+
+
+def test_route_marker_does_not_overwrite_function_slice(tmp_path: Path) -> None:
+    """INV-nubub: the framework route marker (framework_role='route', ~0
+    edges) and the concept-enriched function handler map to the same
+    (method, path) filename. The richer function slice must win on disk, not
+    be silently overwritten by the degenerate marker.
+    """
+    func = _concept_handler("_health", "src/serve.py", "GET", "/health")
+    marker = _kind_route_handler("GET_health", "src/serve.py", "GET", "/health")
+    callee = _non_route_symbol("_compute", "src/serve.py")
+    edge = Edge(
+        id="e1", src=func.id, dst=callee.id, edge_type="calls", line=2,
+        confidence=0.9, origin="test", origin_run_id="test",
+    )
+    # Order [func, marker] so the buggy "last writer wins" would leave the
+    # degenerate marker slice on disk.
+    symbols = [func, marker, callee]
+    bmap = _behavior_map(symbols, [edge])
+    bmap["features"] = []
+
+    written = _emit_handler_slices(bmap, symbols, [edge], tmp_path, tmp_path)
+
+    # Exactly one handler slice file for GET /health (the index is separate).
+    slice_files = [p for p in written if p.name == "slice.handler.GET.health.json"]
+    assert len(slice_files) == 1
+
+    data = json.loads(slice_files[0].read_text())
+    node_ids = data["feature"]["node_ids"]
+    # The rich function slice (function + its callee), NOT the 1-node marker.
+    assert len(node_ids) >= 2
+    assert func.id in node_ids
+
+    # Index consistency: one emitted entry for this file, keyed to the
+    # function symbol, whose node_count matches the on-disk file (no orphaned
+    # second entry pointing at an overwritten file).
+    index = json.loads((tmp_path / "slice.handler.index.json").read_text())
+    health = [
+        h for h in index["handlers"]
+        if h.get("file") == "slice.handler.GET.health.json"
+    ]
+    assert len(health) == 1
+    assert health[0]["id"] == func.id
+    assert health[0]["node_count"] == len(node_ids)
+    # The marker's route metadata is merged onto the emitted entry.
+    assert {"method": "GET", "path": "/health"} in health[0]["routes"]
+
+
+def test_marker_only_route_still_emits(tmp_path: Path) -> None:
+    """A route with ONLY a framework marker (no concept-function sibling, e.g.
+    the Go kind='route' case) still emits its slice -- the dedup must not drop
+    a marker when it is the sole candidate for its filename.
+    """
+    marker = _kind_route_handler("getAlerts", "api/v2.go", "GET", "/alerts")
+    bmap = _behavior_map([marker], [])
+    bmap["features"] = []
+
+    written = _emit_handler_slices(bmap, [marker], [], tmp_path, tmp_path)
+
+    slice_files = [p for p in written if p.name == "slice.handler.GET.alerts.json"]
+    assert len(slice_files) == 1
+    index = json.loads((tmp_path / "slice.handler.index.json").read_text())
+    emitted = [h for h in index["handlers"] if h.get("emitted")]
+    assert len(emitted) == 1
+    assert emitted[0]["id"] == marker.id
+
+
+def test_handler_index_has_no_duplicate_files(tmp_path: Path) -> None:
+    """No two emitted index entries may share a `file` (the collision
+    invariant): every emitted slice file is written exactly once.
+    """
+    func = _concept_handler("_health", "src/serve.py", "GET", "/health")
+    marker = _kind_route_handler("GET_health", "src/serve.py", "GET", "/health")
+    symbols = [func, marker]
+    bmap = _behavior_map(symbols, [])
+    bmap["features"] = []
+
+    _emit_handler_slices(bmap, symbols, [], tmp_path, tmp_path)
+
+    index = json.loads((tmp_path / "slice.handler.index.json").read_text())
+    files = [h["file"] for h in index["handlers"] if h.get("emitted")]
+    assert len(files) == len(set(files))
+
+
+def test_marker_first_multiroute_function_swaps_and_merges(tmp_path: Path) -> None:
+    """When the route marker is seen BEFORE the function handler, the chosen
+    symbol upgrades to the function; and a function registered under a second
+    route contributes that route to the merged list (INV-nubub collapse).
+    """
+    marker = _kind_route_handler("GET_health", "src/serve.py", "GET", "/health")
+    f_get = _concept_handler("health", "src/serve.py", "GET", "/health")
+    # Same id as f_get, a second route registration (GET + HEAD /health).
+    f_head = Symbol(
+        id=f_get.id, name=f_get.name, kind="function", language="python",
+        path="src/serve.py", span=Span(1, 5, 0, 10), stable_id=f_get.stable_id,
+        meta={"concepts": [{"concept": "route", "method": "HEAD", "path": "/health"}]},
+    )
+    # Marker first so the swap-to-function branch is exercised.
+    symbols = [marker, f_get, f_head]
+    bmap = _behavior_map(symbols, [])
+    bmap["features"] = []
+
+    _emit_handler_slices(bmap, symbols, [], tmp_path, tmp_path)
+
+    index = json.loads((tmp_path / "slice.handler.index.json").read_text())
+    health = [
+        h for h in index["handlers"]
+        if h.get("file") == "slice.handler.GET.health.json"
+    ]
+    assert len(health) == 1
+    # Upgraded from the marker to the function handler.
+    assert health[0]["id"] == f_get.id
+    # Both the GET and the merged HEAD registration are present.
+    methods = {r["method"] for r in health[0]["routes"]}
+    assert methods == {"GET", "HEAD"}
