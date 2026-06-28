@@ -1,0 +1,21 @@
+- op: create  # 561f
+  at: '2026-06-28T00:55:26Z'  # 561f
+  by: agent  # 561f
+  actor: jgstern_agent  # 561f
+  clock: 1  # 561f
+  nonce: 561f  # 561f
+  data:  # 561f
+    kind: work_item  # 561f
+    title: "Fold the 2 residual AXIS_PENDING call-construct peers (ast_call_namespace, qualified_call) per audit-findings 0012"  # 561f
+    status: todo_hard  # 561f
+    priority: 3  # 561f
+    parent:  # 561f
+    tags:  # 561f
+    - analysis_quality  # 561f
+    - vocabulary  # 561f
+    isbefore: []  # 561f
+    duplicate_of: []  # 561f
+    not_duplicate_of: []  # 561f
+    pr_ref:  # 561f
+    description: "Cluster 28D (audit-findings 0012) apex/peer call-construct fold, follow-up to the ast_call_method fold (WI-nibis/WI-hubit). Two AXIS_PENDING call-construct peers remain in EVIDENCE_TYPES, both from inline-ternary producers, both 0-edge on the self-corpus (need a multi-language corpus to size). (1) ast_call_namespace -- js_ts.py:4919, ternary 'ast_new if is_class else ast_call_namespace' (JS namespace-import call, import star as obj then obj.method()); fold to ast_call + meta['call_construct']='namespace' (NOT ast_call_direct -- a namespace member call is not a direct call). (2) qualified_call -- r_lang.py:398, ternary 'static if not path_hint else qualified_call' (R pkg::fn); per its registry description fold to the 'static' apex + meta['call_construct']='qualified'. Each ternary needs its non-folded branch preserved. Add a row to the 0012 addendum + the substrate-wide negative close-check. Completes the Cluster-D fold (then remove both from the registry). Source: vocab:F1 deferral, dev d9bdc39d0a."  # 561f
+    fields: {}  # 561f

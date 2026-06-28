@@ -1,0 +1,21 @@
+- op: create  # b6a3
+  at: '2026-06-27T20:56:56Z'  # b6a3
+  by: agent  # b6a3
+  actor: jgstern_agent  # b6a3
+  clock: 1  # b6a3
+  nonce: b6a3  # b6a3
+  data:  # b6a3
+    kind: work_item  # b6a3
+    title: "Linker 'references' edges (websocket-endpoint, middleware-chain) carry explicit ast_call_direct — verify correct inference-pathway"  # b6a3
+    status: todo_hard  # b6a3
+    priority: 3  # b6a3
+    parent:  # b6a3
+    tags:  # b6a3
+    - analysis_quality  # b6a3
+    - protocol_linkers  # b6a3
+    isbefore: []  # b6a3
+    duplicate_of: []  # b6a3
+    not_duplicate_of: []  # b6a3
+    pr_ref:  # b6a3
+    description: "Surfaced during vocab:F2 (WI-lojug). After fixing the Solidity DEFAULT leaks, 3 'references' edges on the hypergumbo self-corpus still carry evidence_type='ast_call_direct' — all websocket_endpoint references (ws-client.ts, serve.py x2) emitted EXPLICITLY by the websocket linker (websocket.py ~864). The middleware_chain linker similarly emits 'references' edges with explicit ast_call_direct (test_middleware_chain_linker.py asserts it). These are NOT default leaks (the producer explicitly passes the value), so they're outside vocab:F2's default-leak scope — but ast_call_direct ('inferred from a direct AST call') is semantically questionable on a non-call 'references' edge.\n\nVERIFY each producer's actual inference mechanism and pick the correct registered evidence_type: per the ADR-0028 evidence-type vocabulary, a websocket endpoint detected via URL/event-name pattern matching should be 'naming_convention' (+ meta.detection_pattern), and a plain symbol reference should be 'reference'/'function_reference' — NOT ast_call_direct. If a given edge IS genuinely inferred from a call AST, ast_call_direct is defensible and the edge_type may be the real question. Update the producers + their pinning tests (test_websocket.py ~1339 region, test_middleware_chain_linker.py ~63). Registry-conformant values only (producer_coherence gate). Cross-ref WI-lojug (default-leak class, done)."  # b6a3
+    fields: {}  # b6a3

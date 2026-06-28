@@ -44,3 +44,18 @@
     tags: [dogfood_tranche_03]  # b7b8
   remove:  # b7b8
     tags: [dogfood_tranch_03]  # b7b8
+- op: update  # 05af
+  at: '2026-06-28T00:56:42Z'  # 05af
+  by: agent  # 05af
+  actor: jgstern_agent  # 05af
+  clock: 5  # 05af
+  nonce: 05af  # 05af
+  set:  # 05af
+    status: done  # 05af
+- op: discuss  # 7675
+  at: '2026-06-28T00:56:42Z'  # 7675
+  by: agent  # 7675
+  actor: jgstern_agent  # 7675
+  clock: 6  # 7675
+  nonce: '7675'  # 7675
+  message: "Folded ast_call_method to the ast_call apex + meta['call_construct']='method' per audit-findings 0012 (Cluster 28D). The py.py:3811 resolved-method-call default that survived the original Phase-3 migration is closed; ast_call_method removed from EVIDENCE_TYPES. Live self-analysis (dev d9bdc39d0a): ast_call_method edges 4995->0; ast_call+call_construct=method now 27670. Closure evidence: negative close-check test (find_emitted_evidence_types has no ast_call_method) + production-path behavioral test (resolved self.method() emits ast_call + meta['call_construct']='method') + the L3 producer-coherence gate. Merged to selfh/dev d9bdc39d0a under CI failover (Codeberg 503); repatriates on disengage."  # 7675
