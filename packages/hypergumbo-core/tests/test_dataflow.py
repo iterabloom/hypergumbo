@@ -2365,3 +2365,64 @@ class TestCrossLanguageLibraryPatterns:
             assert "match" in pattern, (
                 f"{lang}: pattern missing match: {pattern}"
             )
+
+
+class TestMutatorAccessModePythonYaml:
+    """INV-kudug symptom 3: collection-mutator calls classify as 'mutate'
+    (in-place modification); file/stream/socket writes stay 'write'; the
+    element-removal family stays 'delete'. Exercised through the REAL
+    python.yaml library_patterns via annotate_dataflow_ast (not a synthetic
+    config), so the assertions pin the production mapping.
+    """
+
+    def _mode_for_call(self, source: str, method: str) -> "str | None":
+        import ast
+        from hypergumbo_core.dataflow import (
+            annotate_dataflow_ast,
+            get_dataflow_config,
+        )
+        tree = ast.parse(source)
+        edge = Edge.create(
+            src="py:a.py:1:scope:function",
+            dst=f"py:a.py:1:{method}:method",
+            edge_type="calls",
+            line=1,
+            origin="test", origin_run_id="test",
+        )
+        config = get_dataflow_config("python")
+        result = annotate_dataflow_ast(
+            [edge], tree, source=source, config=config
+        )
+        return (result[0].meta or {}).get("access_mode")
+
+    def test_append_is_mutate(self) -> None:
+        assert self._mode_for_call("items.append(x)", "append") == "mutate"
+
+    def test_add_is_mutate(self) -> None:
+        assert self._mode_for_call("s.add(x)", "add") == "mutate"
+
+    def test_extend_is_mutate(self) -> None:
+        assert self._mode_for_call("items.extend(xs)", "extend") == "mutate"
+
+    def test_insert_is_mutate(self) -> None:
+        assert self._mode_for_call("items.insert(0, x)", "insert") == "mutate"
+
+    def test_setdefault_is_mutate(self) -> None:
+        assert self._mode_for_call("d.setdefault(k, v)", "setdefault") == "mutate"
+
+    def test_update_stays_mutate(self) -> None:
+        assert self._mode_for_call("d.update(other)", "update") == "mutate"
+
+    def test_file_write_stays_write(self) -> None:
+        # Decision B: external-sink writes are writes, not mutations.
+        assert self._mode_for_call("f.write(data)", "write") == "write"
+
+    def test_socket_send_stays_write(self) -> None:
+        assert self._mode_for_call("sock.send(data)", "send") == "write"
+
+    def test_pop_stays_delete(self) -> None:
+        # Decision C: element removal stays 'delete' (the more specific cell).
+        assert self._mode_for_call("items.pop()", "pop") == "delete"
+
+    def test_remove_stays_delete(self) -> None:
+        assert self._mode_for_call("items.remove(x)", "remove") == "delete"
