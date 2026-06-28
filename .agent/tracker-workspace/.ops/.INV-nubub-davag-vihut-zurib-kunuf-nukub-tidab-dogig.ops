@@ -65,3 +65,18 @@
     tags: [dogfood]  # b2f7
   remove:  # b2f7
     tags: [dogfooding]  # b2f7
+- op: update  # aa83
+  at: '2026-06-28T12:24:22Z'  # aa83
+  by: agent  # aa83
+  actor: jgstern_agent  # aa83
+  clock: 7  # aa83
+  nonce: aa83  # aa83
+  set:  # aa83
+    status: satisfied  # aa83
+- op: discuss  # 7a1d
+  at: '2026-06-28T12:24:22Z'  # 7a1d
+  by: agent  # 7a1d
+  actor: jgstern_agent  # 7a1d
+  clock: 8  # 7a1d
+  nonce: 7a1d  # 7a1d
+  message: "SATISFIED — fixed in PR merged to selfh (commit 808111dafe) and verified behaviorally by re-running the item's OWN filed repro (`hypergumbo run` on the serve.py-bearing package, the same 8 route handlers the collision table was filed on).\n\nRoot cause confirmed as filed: _emit_handler_slices grouped by symbol id, but the framework route marker (meta.framework_role=\"route\", ~0 edges) and the concept-enriched function handler for one (method,path) are distinct ids producing the SAME slice.handler.<METHOD>.<path>.json filename → second writer clobbered the first on disk. Fix = a Step-2b pass that collapses distinct ids resolving to the same filename, keeping ONE slice per file, preferring the non-marker function (new _is_route_marker helper) and merging colliding siblings' routes. The same-id-multiple-routes merge (Step 2) is preserved; marker-only routes still emit.\n\nBehavioral evidence — production `hypergumbo run packages/hypergumbo-tracker` → bm.slices/:\n  emitted index entries: 8; unique files: 8; duplicate-file (collision) entries: 0\n  index/file node_count mismatches: 0; degenerate (<=1 node) slices: 0/8\n  All 8 emitted slices are the RICH FUNCTION slice, keyed to the function symbol (not the route marker):\n    GET.health n=5/e=4, GET.api_items n=6/e=7, GET.api_items_item_id n=6/e=7, GET.api_ready n=6/e=7,\n    POST.api_items n=8/e=9, POST.api_items_item_id_update n=7/e=8, POST.api_items_item_id_discuss n=7/e=8, WS.ws n=17/e=19\n  WAS (filed): every one of the 8 files showed the degenerate marker slice (n=1/e=0 for 7/8, n=2/e=1 for WS), overwriting the function slice; the index had duplicate-file entries with disagreeing node_count. The current on-disk numbers are EXACTLY the \"richer\" column from the filed collision table.\n\nThe item's filed property test (\"each slice.handler.*.json feature.node_ids count must equal the matching index node_count\") now holds: 0 mismatches. Production-path tests (test_handler_slices.py, calling _emit_handler_slices directly): route-marker-does-not-overwrite-function-slice, index-has-no-duplicate-files, marker-only-route-still-emits, marker-first-multiroute-function-swaps-and-merges. Routes-coverage sibling cluster: INV-pomol (post-pass-14-correction, reduced to schema-organization observation), INV-dogif (React Router detection) — both distinct, remain as filed."  # 7a1d
