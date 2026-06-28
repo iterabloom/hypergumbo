@@ -50,12 +50,12 @@ def test_derive_confidence_unregistered_returns_none():
 
 def test_derive_confidence_registered_but_unseeded_returns_none():
     # Derivation is opt-in per type: a registered type without a
-    # base_confidence (the long tail, incl. the deliberately-deferred
-    # multimodal ast_call_direct) also yields None.
-    spec = find_evidence_type("ast_call_direct")
-    assert spec is not None
-    assert spec.base_confidence is None
-    assert derive_confidence("ast_call_direct") is None
+    # base_confidence (the long tail) yields None so the caller keeps its
+    # own literal. Picked dynamically so seeding more pathways later does
+    # not break this (only ~10 of ~125 pathways are seeded).
+    unseeded = next((s for s in EVIDENCE_TYPES if s.base_confidence is None), None)
+    assert unseeded is not None
+    assert derive_confidence(unseeded.name) is None
 
 
 def test_all_base_confidence_within_unit_interval():
@@ -83,3 +83,48 @@ def test_seeded_types_are_canonical_inference_pathways():
         assert spec is not None, name
         assert spec.axis == "inference_pathway", name
         assert spec.base_confidence == _SEEDED[name], name
+
+
+# --- Multimodal (is_resolved-conditioned) pathways ---
+
+# The call types whose detection reliability splits on Edge.is_resolved,
+# verified against the live self-corpus cross-tab (resolved modal vs
+# unresolved modal). Seeded as base_confidence (resolved) +
+# base_confidence_unresolved.
+_MULTIMODAL = {
+    "ast_call_direct": (0.85, 0.50),
+    "ast_call": (0.85, 0.40),
+}
+
+
+def test_derive_confidence_multimodal_splits_on_is_resolved():
+    for name, (resolved, unresolved) in _MULTIMODAL.items():
+        assert derive_confidence(name, is_resolved=True) == resolved, name
+        assert derive_confidence(name, is_resolved=False) == unresolved, name
+
+
+def test_derive_confidence_defaults_to_resolved():
+    # is_resolved defaults to True (the common, higher-reliability case).
+    assert derive_confidence("ast_call_direct") == 0.85
+
+
+def test_single_valued_pathways_ignore_is_resolved():
+    # A pathway without base_confidence_unresolved returns base_confidence
+    # regardless of is_resolved.
+    assert derive_confidence("ast_import", is_resolved=False) == 0.95
+    assert derive_confidence("ast_import", is_resolved=True) == 0.95
+
+
+def test_unresolved_variant_implies_resolved_base():
+    # No spec may carry base_confidence_unresolved without base_confidence
+    # (the unresolved value is a variant OF the resolved base).
+    for spec in EVIDENCE_TYPES:
+        if spec.base_confidence_unresolved is not None:
+            assert spec.base_confidence is not None, spec.name
+
+
+def test_unresolved_base_confidence_within_band():
+    # Same analyzer/linker floor-ceiling guard as the resolved base.
+    for spec in EVIDENCE_TYPES:
+        if spec.base_confidence_unresolved is not None:
+            assert 0.30 <= spec.base_confidence_unresolved <= 0.95, spec.name

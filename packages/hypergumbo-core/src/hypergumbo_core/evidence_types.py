@@ -97,12 +97,19 @@ class EvidenceTypeSpec:
     only evidence is this pathway. ``None`` means the value is not yet
     derived for this type (the caller keeps its own literal); see
     :func:`hypergumbo_core.confidence.derive_confidence`.
+
+    ``base_confidence_unresolved`` is the variant for unresolved edges
+    (``Edge.is_resolved=False``) on pathways whose reliability is
+    is_resolved-conditioned (the multimodal call types ``ast_call`` /
+    ``ast_call_direct``). ``None`` means the pathway is not
+    is_resolved-conditioned and ``base_confidence`` applies regardless.
     """
 
     name: str
     axis: str
     description: str
     base_confidence: float | None = None
+    base_confidence_unresolved: float | None = None
 
 
 EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
@@ -117,9 +124,11 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("ast_attribute", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an attribute access in source AST."),
     EvidenceTypeSpec("ast_call", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a generic call expression in source AST."),
+                     "Edge inferred from a generic call expression in source AST.",
+                     base_confidence=0.85, base_confidence_unresolved=0.40),
     EvidenceTypeSpec("ast_call_direct", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a direct (non-method) call site."),
+                     "Edge inferred from a direct (non-method) call site.",
+                     base_confidence=0.85, base_confidence_unresolved=0.50),
     EvidenceTypeSpec("ast_call_extension", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an extension-method call (Kotlin / Swift / C#)."),
     EvidenceTypeSpec("ast_call_inherited", AXIS_INFERENCE_PATHWAY,

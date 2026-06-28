@@ -36,8 +36,13 @@ from __future__ import annotations
 from hypergumbo_core.evidence_types import find_evidence_type
 
 
-def derive_confidence(evidence_type: str) -> float | None:
+def derive_confidence(evidence_type: str, *, is_resolved: bool = True) -> float | None:
     """Return the ADR-0039 detection-reliability for an inference pathway.
+
+    For pathways whose reliability is conditioned on resolution (the
+    multimodal call types), an unresolved edge (``is_resolved=False``) gets
+    the lower ``base_confidence_unresolved``; resolved edges and
+    non-conditioned pathways get ``base_confidence``.
 
     ``None`` when ``evidence_type`` is not in the registry, or is registered
     without a seeded ``base_confidence`` (the caller then keeps its literal).
@@ -45,4 +50,6 @@ def derive_confidence(evidence_type: str) -> float | None:
     spec = find_evidence_type(evidence_type)
     if spec is None:
         return None
+    if not is_resolved and spec.base_confidence_unresolved is not None:
+        return spec.base_confidence_unresolved
     return spec.base_confidence
