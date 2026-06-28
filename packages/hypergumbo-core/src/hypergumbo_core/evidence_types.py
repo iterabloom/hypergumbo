@@ -90,11 +90,19 @@ VALID_AXES: Final[frozenset[str]] = frozenset({
 
 @dataclass(frozen=True)
 class EvidenceTypeSpec:
-    """A single Edge.evidence_type value and its axis classification."""
+    """A single Edge.evidence_type value and its axis classification.
+
+    ``base_confidence`` is the ADR-0039 detection-reliability seed for this
+    inference pathway — the canonical ``Edge.confidence`` for an edge whose
+    only evidence is this pathway. ``None`` means the value is not yet
+    derived for this type (the caller keeps its own literal); see
+    :func:`hypergumbo_core.confidence.derive_confidence`.
+    """
 
     name: str
     axis: str
     description: str
+    base_confidence: float | None = None
 
 
 EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
@@ -137,7 +145,8 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("ast_implements", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an `implements` clause in source AST."),
     EvidenceTypeSpec("ast_import", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from an import statement in source AST."),
+                     "Edge inferred from an import statement in source AST.",
+                     base_confidence=0.95),
     EvidenceTypeSpec("ast_include", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an include directive in source AST (C/C++)."),
     EvidenceTypeSpec("ast_includes", AXIS_INFERENCE_PATHWAY,
@@ -152,9 +161,11 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("ast_method_type_inferred", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a method call with type-inferred receiver."),
     EvidenceTypeSpec("ast_name_read", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a bare-name read of a module-level variable (WI-jagus)."),
+                     "Edge inferred from a bare-name read of a module-level variable (WI-jagus).",
+                     base_confidence=0.85),
     EvidenceTypeSpec("ast_new", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a `new` constructor expression."),
+                     "Edge inferred from a `new` constructor expression.",
+                     base_confidence=0.95),
     EvidenceTypeSpec("ast_package", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a package declaration."),
     EvidenceTypeSpec("ast_perform", AXIS_INFERENCE_PATHWAY,
@@ -182,7 +193,8 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("callable_reference", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a callable reference (Kotlin `::fn`, etc.)."),
     EvidenceTypeSpec("callback_argument_reference", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a callback function passed as an argument."),
+                     "Edge inferred from a callback function passed as an argument.",
+                     base_confidence=0.75),
     EvidenceTypeSpec("canonical_name", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from canonical-name resolution."),
     EvidenceTypeSpec("cgo_call", AXIS_INFERENCE_PATHWAY,
@@ -237,7 +249,8 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("import_static", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a Java `import static` declaration."),
     EvidenceTypeSpec("import_to_manifest", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a manifest-driven import resolution."),
+                     "Edge inferred from a manifest-driven import resolution.",
+                     base_confidence=0.90),
     EvidenceTypeSpec("include", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a generic include construct."),
     EvidenceTypeSpec("include_directive", AXIS_INFERENCE_PATHWAY,
@@ -260,9 +273,11 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("method_reference", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a method reference (Java `::method`, etc.)."),
     EvidenceTypeSpec("module_attribute_reference", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a module-level attribute reference."),
+                     "Edge inferred from a module-level attribute reference.",
+                     base_confidence=0.85),
     EvidenceTypeSpec("module_export_heuristic", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from a module-export heuristic recognition."),
+                     "Edge inferred from a module-export heuristic recognition.",
+                     base_confidence=0.75),
     EvidenceTypeSpec("module_identifier_reference", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a module-qualified identifier reference."),
     EvidenceTypeSpec("module_source", AXIS_INFERENCE_PATHWAY,
@@ -302,7 +317,8 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
     EvidenceTypeSpec("source_statement", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a generic source-level statement."),
     EvidenceTypeSpec("span_overlap", AXIS_INFERENCE_PATHWAY,
-                     "Edge inferred from text-span overlap between symbols."),
+                     "Edge inferred from text-span overlap between symbols.",
+                     base_confidence=0.90),
     EvidenceTypeSpec("sql_foreign_key", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a SQL `FOREIGN KEY` constraint."),
     EvidenceTypeSpec("stack_construction", AXIS_INFERENCE_PATHWAY,
