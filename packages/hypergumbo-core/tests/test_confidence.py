@@ -15,7 +15,12 @@ no published edge value changes here. See
 from __future__ import annotations
 
 from hypergumbo_core.confidence import derive_confidence
-from hypergumbo_core.evidence_types import EVIDENCE_TYPES, find_evidence_type
+from hypergumbo_core.evidence_types import (
+    EVIDENCE_TYPES,
+    _CONFIDENCE_SEEDS,
+    _RAW_EVIDENCE_TYPES,
+    find_evidence_type,
+)
 
 
 # The single-valued, in-band inference pathways seeded in this first slice.
@@ -128,3 +133,31 @@ def test_unresolved_base_confidence_within_band():
     for spec in EVIDENCE_TYPES:
         if spec.base_confidence_unresolved is not None:
             assert 0.30 <= spec.base_confidence_unresolved <= 0.95, spec.name
+
+
+# --- WI-nurun: the centralized _CONFIDENCE_SEEDS overlay (PR1) ---
+
+
+def test_confidence_seeds_all_registered_inference_pathway_in_band():
+    """Every seed key is a registered inference-pathway type within the
+    analyzer/linker band (0.30-0.95). Guards future seed additions."""
+    for name, val in _CONFIDENCE_SEEDS.items():
+        spec = find_evidence_type(name)
+        assert spec is not None, name
+        assert spec.axis == "inference_pathway", name
+        assert 0.30 <= val <= 0.95, name
+
+
+def test_confidence_seeds_applied_to_registry():
+    """The overlay sets base_confidence on the public registry, and
+    derive_confidence returns the seeded value, for every seed key."""
+    for name, val in _CONFIDENCE_SEEDS.items():
+        assert find_evidence_type(name).base_confidence == val, name
+        assert derive_confidence(name) == val, name
+
+
+def test_confidence_seeds_disjoint_from_inline_seeds():
+    """The dict and the inline-on-spec seeds are disjoint sources of truth
+    (no type is seeded both inline and via the overlay table)."""
+    inline = {s.name for s in _RAW_EVIDENCE_TYPES if s.base_confidence is not None}
+    assert inline.isdisjoint(_CONFIDENCE_SEEDS), inline & _CONFIDENCE_SEEDS.keys()

@@ -66,7 +66,7 @@ Seeding completeness (per the Phase 1 plan file):
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
@@ -112,7 +112,7 @@ class EvidenceTypeSpec:
     base_confidence_unresolved: float | None = None
 
 
-EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
+_RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
     # ----------------------------------------------------------------
     # Cluster A — Canonical inference pathways (AXIS_INFERENCE_PATHWAY).
     # Each value names how the analyzer concluded this edge exists.
@@ -484,6 +484,112 @@ EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = (
                      "At-risk Cluster D call-construct: fold candidate "
                      "to `ast_call_direct` + `meta['call_construct']='namespace'`. "
                      "Pending cluster-D audit."),
+)
+
+
+# --- Detection-reliability seeds (ADR-0039 / WI-nurun confidence:F1) ---------
+# Single authoritative table of per-evidence-type base confidences for the
+# single-valued inference pathways. The two multimodal call-types
+# (``ast_call`` / ``ast_call_direct``), whose confidence is conditioned on
+# ``is_resolved``, carry their (resolved, unresolved) pair inline on the spec
+# above and are intentionally absent here. Each value is the edge-weighted
+# modal confidence that pathway's producers currently hardcode (the
+# corpus-dominant value, with the AST-scan site modal as the fallback for
+# pathways absent from the self-corpus). So when a producer drops its explicit
+# ``confidence=`` and lets ``Edge.create`` derive (the WI-nurun producer
+# migration), the published value is unchanged for the dominant cohort while
+# the per-emitter hardcoded outliers collapse to this single canonical value —
+# the INV-suvil fix (confidence derived from evidence, not hardcoded per
+# emitter). Keys are disjoint from the inline-seeded specs above
+# (``test_confidence_seeds_disjoint_from_inline``).
+_CONFIDENCE_SEEDS: dict[str, float] = {
+    "ast_annotation": 0.5,
+    "ast_attribute": 0.95,
+    "ast_call_extension": 0.8,
+    "ast_call_type_inferred": 0.85,
+    "ast_decorator": 0.95,
+    "ast_extends": 0.95,
+    "ast_implements": 0.95,
+    "ast_method_inferred": 0.7,
+    "ast_method_this_property": 0.9,
+    "ast_method_type_inferred": 0.85,
+    "ast_type_ref": 0.85,
+    "async_spawn": 0.85,
+    "behaviour": 0.95,
+    "behaviour_callback": 0.9,
+    "bridging_header_import": 0.95,
+    "build_target_main": 0.95,
+    "canonical_name": 0.95,
+    "closure_wrapper": 0.85,
+    "dispatch_pattern": 0.7,
+    "dispatch_table_reference": 0.85,
+    "dockerfile_copy_from": 0.95,
+    "dockerfile_from": 0.95,
+    "enclosing_scope": 0.9,
+    "eta_expansion": 0.85,
+    "extends": 0.95,
+    "function_pointer": 0.85,
+    "function_reference": 0.8,
+    "function_reference_arg": 0.7,
+    "grpc_stub_resolution": 0.75,
+    "hash_field_reference": 0.8,
+    "hg_annotation": 0.95,
+    "import": 0.95,
+    "import_declaration": 0.95,
+    "import_directive": 0.95,
+    "import_statement": 0.95,
+    "import_static": 0.95,
+    "include": 0.95,
+    "include_directive": 0.95,
+    "instance": 0.9,
+    "link": 0.95,
+    "message_send": 0.9,
+    "method_reference": 0.85,
+    "module_identifier_reference": 0.85,
+    "module_source": 0.95,
+    "notify": 0.9,
+    "object_field_reference": 0.8,
+    "open": 0.95,
+    "open_import": 0.95,
+    "reference": 0.95,
+    "require": 0.95,
+    "require_dynamic": 0.4,
+    "require_statement": 0.95,
+    "require_static": 0.9,
+    "signal_constraint": 0.85,
+    "source_statement": 0.95,
+    "stack_construction": 0.85,
+    "static": 0.95,
+    "struct_field_reference": 0.7,
+    "trait_impl": 0.95,
+    "typeclass_instance": 0.9,
+    "use": 0.95,
+    "use-package": 0.95,
+    "use_declaration": 0.95,
+    "use_directive": 0.95,
+    "using_directive": 0.95,
+}
+
+
+def _apply_confidence_seeds(
+    specs: tuple[EvidenceTypeSpec, ...],
+) -> tuple[EvidenceTypeSpec, ...]:
+    """Overlay ``_CONFIDENCE_SEEDS`` onto the raw registry (WI-nurun).
+
+    Pathways named in the seed table receive their ``base_confidence``;
+    everything else (already-inline-seeded specs, and pathways whose
+    producers always pass a computed ``confidence=``) passes through
+    unchanged.
+    """
+    return tuple(
+        replace(spec, base_confidence=_CONFIDENCE_SEEDS[spec.name])
+        if spec.name in _CONFIDENCE_SEEDS else spec
+        for spec in specs
+    )
+
+
+EVIDENCE_TYPES: Final[tuple[EvidenceTypeSpec, ...]] = _apply_confidence_seeds(
+    _RAW_EVIDENCE_TYPES
 )
 
 
