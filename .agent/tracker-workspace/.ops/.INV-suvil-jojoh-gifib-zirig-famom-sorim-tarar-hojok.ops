@@ -77,3 +77,10 @@
   clock: 8  # a9a5
   nonce: a9a5  # a9a5
   message: "2026-06-10 design-interview ruling (ADR-0039, merged in PR #4181): confidence is redefined as pure detection reliability with a confidence_source enum, ranking adjustments relocate to a new rank_score, and quality.score/reason are deleted via a one-version deprecation. Hardcoded per-emitter values must be re-derived under that contract. Stays violated until the rework lands; re-validate then."  # a9a5
+- op: discuss  # a349
+  at: '2026-06-28T02:37:35Z'  # a349
+  by: agent  # a349
+  actor: jgstern_agent  # a349
+  clock: 9  # a349
+  nonce: a349  # a349
+  message: "confidence:F1 FIRST SLICE landed (merged selfh/dev a4e5117918 under failover): the central evidence->confidence derivation layer now EXISTS -- EvidenceTypeSpec.base_confidence field + hypergumbo_core.confidence.derive_confidence(evidence_type), seeded for 8 single-valued in-band inference pathways (ast_import/ast_new 0.95, span_overlap/import_to_manifest 0.90, ast_name_read/module_attribute_reference 0.85, module_export_heuristic/callback_argument_reference 0.75). STAYS VIOLATED: the reader is not yet WIRED into Edge.create or producers, so confidence is still hardcoded per-emitter at ~575 sites; closure needs the default-flip + producer migration + confidence_source discriminator (the high-blast-radius F1 steps, gated on the full vocab:F1 axis-gating wave per strategy). Continuation tracked in the new confidence:F1 WI."  # a349

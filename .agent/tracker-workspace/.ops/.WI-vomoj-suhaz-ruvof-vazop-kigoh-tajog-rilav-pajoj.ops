@@ -49,3 +49,10 @@
   clock: 5  # 69d8
   nonce: 69d8  # 69d8
   message: "Phase 4b shipped in PR #3494. SCHEMA_VERSION 0.3.1 → 0.4.0. 33 endpoint_shape values pruned from EDGE_TYPES (the dst-kind leakage 6 + bridge family 7 + IPC family 7 + dispatch/publish family 13 — exactly the cohort cleared by the deep-20260501-125217 bakeoff validation). 25 endpoint_shape values from the WI-tavas-voror sweep stay in the registry (their producers haven't been migrated yet). Consumer-side dead enumerations cleaned up across IMPORT_EDGE_TYPES / CROSS_CUTTING_EDGE_TYPES / DEFAULT_EDGE_TYPE_WEIGHTS / _TRACEABLE_EDGE_TYPES / TAINT_CALL_EDGE_TYPES / _REACHABILITY_EDGE_TYPES / bakeoff-deep _CALL_FLOW_EDGE_TYPES. Test fixtures using deprecated edge_types migrated to canonical 'calls' + meta['bridge_kind'] / meta['protocol'] / meta['dispatch_kind']. 3573 tests pass, 100% coverage on all changed source files. ADR-0023 §6 fully complete; the next gating item is WI-variv-lujug (drift-linter axis-principle tightening) which is now actionable."  # 69d8
+- op: discuss  # f63c
+  at: '2026-06-28T03:39:25Z'  # f63c
+  by: agent  # f63c
+  actor: jgstern_agent  # f63c
+  clock: 6  # f63c
+  nonce: f63c  # f63c
+  message: "Observation (NOT a status change) surfaced during the WI-dinih work 2026-06-28: EDGE_TYPES currently carries 25 values on AXIS_ENDPOINT_SHAPE (deprecation candidates, each flagged 'likely fold to X + meta[...]'), and AXIS_ENDPOINT_SHAPE is still in edge_types.py VALID_AXES -- yet this item ('remove endpoint_shape values from EDGE_TYPES') is marked done. Either the Phase-4 removal was point-in-time and 25 new endpoint_shape edge types accrued since (new languages/linkers registering fold-candidates), or the removal regressed/was partial. Contrast: the evidence_type axis (ADR-0028) fully retired its endpoint_shape cluster (0 values; axis not in VALID_AXES). Flagging for a tracker-hygiene re-verify and a decision: reopen WI-vomoj vs file a fresh edge_type endpoint_shape retirement umbrella. The deprecated bare 'depends' edge type (bitbake/requirements producers) is one of these 25."  # f63c

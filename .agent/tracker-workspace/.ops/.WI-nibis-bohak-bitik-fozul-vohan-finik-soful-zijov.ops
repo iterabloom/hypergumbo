@@ -159,3 +159,18 @@
   clock: 18  # b94a
   nonce: b94a  # b94a
   message: "Reopened: tranch_03 card 043 (anon-card-tranch03-043, sourced from F60.A2, filed as WI-hubit) reproduces the original mechanism on substrate at HEAD 9a18959071 sha256 a32c4a31...; blind severity 3 (Moderate). The ast_call_method evidence_type continues emitting on 4995 substrate edges (4.52% of all edges, 97.9% of the pending axis) six schema-minor-versions past the WI-nibis Cluster D close. Regression evidence per twenty-pass-dogfood-procedure Phase 6.1 Step 4a status-adjustment rule. Cross-referenced in WI-hubit discussion thread."  # b94a
+- op: update  # e4ee
+  at: '2026-06-28T00:58:04Z'  # e4ee
+  by: agent  # e4ee
+  actor: jgstern_agent  # e4ee
+  clock: 19  # e4ee
+  nonce: e4ee  # e4ee
+  set:  # e4ee
+    status: done  # e4ee
+- op: discuss  # 1297
+  at: '2026-06-28T00:58:04Z'  # 1297
+  by: agent  # 1297
+  actor: jgstern_agent  # 1297
+  clock: 20  # 1297
+  nonce: '1297'  # 1297
+  message: "The 2026-06-05 reopen repro is resolved: ast_call_method (the dominant Cluster-D peer, 97.9% of the pending call-construct axis, ~4995 self-corpus edges) folded to ast_call + meta['call_construct']='method' per audit-findings 0012; live self-analysis (dev d9bdc39d0a) ast_call_method 4995->0, ast_call+call_construct=method 27670. The original 28-value Cluster-D fold (PR 3570) was already done + bakeoff-validated; this closes the surviving py.py:3811 default leak that caused the reopen. 0012 addendum records the verdict. Two residual 0-edge ternary peers (ast_call_namespace, qualified_call) remain registered AXIS_PENDING -- follow-up WI-fivof. Merged selfh/dev d9bdc39d0a under failover."  # 1297

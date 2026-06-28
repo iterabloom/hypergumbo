@@ -20,3 +20,10 @@
     description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-dovus, WI-guvup, WI-molit, WI-lojug. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # e194
     fields:  # e194
       statement: "edge.meta.evidence_type must hold exactly one axis: no fragmented aliases for one pathway, no undocumented values, no resolution-state smuggled into the label, no call-specific default leaking onto non-call edges."  # e194
+- op: discuss  # 18b4
+  at: '2026-06-28T00:58:05Z'  # 18b4
+  by: agent  # 18b4
+  actor: jgstern_agent  # 18b4
+  clock: 2  # 18b4
+  nonce: 18b4  # 18b4
+  message: "vocab:F1 progress (merged selfh/dev d9bdc39d0a under failover): the dominant evidence_type axis-smuggling leak in this family -- ast_call_method (Cluster D call-construct, 97.9% of the pending_classification axis, ~4995 self-corpus edges) -- folded to ast_call + meta['call_construct']='method' (WI-nibis + WI-hubit done; live ast_call_method 4995->0). Two 0-edge call-construct peers remain (follow-up WI-fivof). Separately INV-dovus closed satisfied: its import-fragmentation premise was superseded by audit-findings 0004 (import family canonical, not a violation), so it is not an axis-purity violation under this umbrella."  # 18b4

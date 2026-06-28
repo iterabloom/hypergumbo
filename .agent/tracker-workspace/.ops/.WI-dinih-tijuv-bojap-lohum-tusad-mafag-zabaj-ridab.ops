@@ -55,3 +55,18 @@
   clock: 5  # bb11
   nonce: bb11  # bb11
   message: "RELATED_BUT_DISTINCT to WI-guvup: Family-K vocabulary drift: dinih=edge.type (18 vs 8), guvup=edge.meta.evidence_type (33 vs 9); same pattern, sibling fields, parallel doc/normalize fixes. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # bb11
+- op: update  # 9631
+  at: '2026-06-28T03:39:25Z'  # 9631
+  by: agent  # 9631
+  actor: jgstern_agent  # 9631
+  clock: 6  # 9631
+  nonce: '9631'  # 9631
+  set:  # 9631
+    status: done  # 9631
+- op: discuss  # 7927
+  at: '2026-06-28T03:39:25Z'  # 7927
+  by: agent  # 7927
+  actor: jgstern_agent  # 7927
+  clock: 7  # 7927
+  nonce: '7927'  # 7927
+  message: "Resolved (PR e543e7443b, merged selfh/dev under failover). (1) Contested depends pair: VERDICT keep-distinct (NOT a fold). The code shows depends_on is a manifest DECLARING its dependency (json_config.py:220, src=project_id -> dep) while depends_on_manifest is the dependency linker RESOLVING an importing source file to a manifest-declared dep (dependency.py:158, src=file -> dep, evidence_type=import_to_manifest); different src kinds, evidence_type, and producer pass -- folding would conflate declaration with resolution. Fixed the 2 mislabeled registry descriptions to make declaration-vs-resolution legible + cross-reference, and added a property test locking the keep-distinct verdict so a future fold is deliberate. (2) The broader 18-vs-8 edge.type doc drift is resolved: spec.md documents the 3-axis structure (relationship/endpoint_shape/pending) and defers to edge_types.py as source of truth + concept-axes.md per-axis view; the L3 producer-coherence gate (test_no_strict_producer_violations_for_edge_type) enforces membership. The '18 distinct' count is stale (substrate ~53). (3) The deprecated bare depends fold + the 25-value endpoint_shape cluster retirement are the separate ADR-0023 section 6 migration (WI-vomoj domain), not this drift item."  # 7927

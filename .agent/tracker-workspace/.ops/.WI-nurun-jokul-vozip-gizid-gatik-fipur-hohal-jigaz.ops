@@ -1,0 +1,20 @@
+- op: create  # f8d2
+  at: '2026-06-28T02:37:35Z'  # f8d2
+  by: agent  # f8d2
+  actor: jgstern_agent  # f8d2
+  clock: 1  # f8d2
+  nonce: f8d2  # f8d2
+  data:  # f8d2
+    kind: work_item  # f8d2
+    title: "confidence:F1 continuation: wire derive_confidence (multimodal is_resolved + Edge.create default flip + producer migration + range validation)"  # f8d2
+    status: todo_hard  # f8d2
+    priority: 1  # f8d2
+    parent:  # f8d2
+    tags:  # f8d2
+    - analysis_quality  # f8d2
+    isbefore: []  # f8d2
+    duplicate_of: []  # f8d2
+    not_duplicate_of: []  # f8d2
+    pr_ref:  # f8d2
+    description: "Continues confidence:F1 (ADR-0039) after the first slice (derive_confidence reader + base_confidence seed for 8 single-valued pathways; merged selfh/dev a4e5117918). REMAINING, high-blast-radius, DECISION-GATED steps: (1) Multimodal pathways conditioned on is_resolved -- ast_call_direct (resolved 0.85 / unresolved 0.50) and ast_call (resolved 0.85 / unresolved 0.40); ADR-0039 fork: two base fields vs base+penalty (recommend two explicit fields -- empirical penalties differ per type). (2) Flip the Edge.create flat ~0.85 default to route through derive_confidence when no explicit confidence passed (~44k edges). (3) Add Edge.confidence_source discriminator (bounded-enum evidence_derived|emitter_constant|composite, ADR-0024 lightweight axis) + the >100-edge-constant property guard, enabling INCREMENTAL producer migration (no flag-day). (4) Range validation (each edge within its evidence-type band) into the ADR-0033 validator + ADR-0043 finalize sub-step 10 (advisory for composite until F2). OPEN FORKS (need human ruling, per scope wf_84ea50b4-043): (a) DOMINANT -- proceed before the full vocab:F1 axis-gating wave (strategy names it the 'true prerequisite') or wait; the first slice was fold-safe but the default-flip/migration are where vocab:F1 incompleteness could re-key edges. (b) per-type base/range NUMBERS (hybrid: modal where in-band, principled bands for multimodal). (c) bump confidence_model hypergumbo-evidence-v1 -> v2 on the default flip. F2 (ranking/detection separation) owns type_hierarchy dampener + entrypoint boosts + the composite-vs-pure decision; naming_convention=1.0 ceiling-breach is a containment.py producer fix. Advances INV-suvil."  # f8d2
+    fields: {}  # f8d2
