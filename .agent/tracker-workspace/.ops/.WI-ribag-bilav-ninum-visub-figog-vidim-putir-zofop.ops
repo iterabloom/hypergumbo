@@ -42,3 +42,18 @@
   clock: 4  # 719e
   nonce: 719e  # 719e
   message: "Cross-ref backfill (2026-05-30, linked-pile investigation): the May-30 backfill on this item names the sketch-perf cluster correctly. L8 review confirms a fourth co-member is INV-dadaf-zozih-janid-kupag-zukag-balun-tapab-jivog. Candidate sub-META framing for all four (this item + INV-jumim + WI-zipoj + INV-dadaf): \"sketch read-path does redundant computation when authoritative data is already on bm.json or disk\" — the centrality/embedding recompute on warm cache here, the test-file rglob in INV-jumim, the >1M LOC slowness in WI-zipoj, and the artifact-emission in INV-dadaf are four faces of one anti-pattern."  # 719e
+- op: update  # dee2
+  at: '2026-06-29T05:17:45Z'  # dee2
+  by: agent  # dee2
+  actor: jgstern_agent  # dee2
+  clock: 5  # dee2
+  nonce: dee2  # dee2
+  set:  # dee2
+    status: done  # dee2
+- op: discuss  # 54b0
+  at: '2026-06-29T05:17:45Z'  # 54b0
+  by: agent  # 54b0
+  actor: jgstern_agent  # 54b0
+  clock: 6  # 54b0
+  nonce: 54b0  # 54b0
+  message: "Done via PR #321 (merged to selfh/dev). INV-papuj cluster PR-B. Characterized then fixed: the 2026-05-13 'centrality + per-file embedding not cached' framing was partly stale — the per-file embedding cost (additional_file_centrality_scores) is already cached in sketch_precomputed. The DOMINANT warm-sketch cost (characterized on the self-corpus: 155s full warm sketch vs 27s with --no-comparison-sketches = ~83%) was the 4x/16x comparison sketches REGENERATING every invocation despite their text being cache_write-ten to the per-(repo,state,analyzer) cache dir with no cache-read short-circuit (an INV-papuj cache-read miss). Fix: serialize each comparison sketch's SketchStats to a .stats.json sidecar; new _get_or_generate_comparison_sketch reads text+stats back when present (state-scoped dir => present==fresh) and skips regeneration, keeping the representativeness table always-on. BEHAVIORAL REPRO: fully-warm 'hypergumbo . -t 8000' WITH the table dropped from ~155s to ~28s (== the --no-comparison-sketches baseline, i.e. comparison sketches are now ~free on warm cache). Human ruled (2026-06-29) cache-read short-circuit over default-off. Residual: symbol-centrality recompute within a single generate_sketch (compute_dampened_centrality) is a small slice of the ~28s single generation, deferred. Affected suite 10,429 passed, 100% coverage."  # 54b0

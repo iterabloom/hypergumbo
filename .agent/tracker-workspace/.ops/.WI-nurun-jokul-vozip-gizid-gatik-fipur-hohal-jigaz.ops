@@ -39,3 +39,25 @@
   clock: 4  # ae98
   nonce: ae98  # ae98
   message: "PR1 (confidence table) DONE — merged selfh 043cff6738. Human rulings applied: proceed now, hybrid numbers, v2 bump (deferred to PR2). Centralized _CONFIDENCE_SEEDS overlay added to evidence_types.py: seeded base_confidence count 10 -> 75 (65 new single-valued inference pathways). Each value = edge-weighted modal confidence its producers currently hardcode (corpus-dominant; AST-scan site modal fallback for non-self-corpus pathways). Constraints enforced by tests: inference_pathway axis only, 0.30-0.95 band, disjoint from the inline-seeded specs. NO published value change (seeds only affect omit-confidence edges, dominated by already-seeded ast_call_direct); broad suite 4657 passed.\n\nDEFERRED (NOT seeded — separate producer-side ceiling-fix): four 1.0-modal pathways breach the 0.95 reserved ceiling and must be lowered at the producer, not enshrined as a base: naming_convention (1.0, ~19k `contains` edges — the dominant ceiling-breach; note the evidence_type=naming_convention on `contains` edges also looks like a producer mislabel worth a separate look), build_dependency, subdir_include, tree_sitter. Their producers keep explicit confidence in PR2 (not migrated).\n\nNEXT — PR2 (the value-moving producer migration): drop the literal `confidence=` at the 305 Edge.create sites whose evidence_type is a literal SEEDED pathway (keep the 173 computed-confidence sites; keep computed-evidence_type sites; keep the 4 deferred-type sites). Net ~5% edge movement, dominated by the intended ast_call resolved spread-collapse (0.95->0.85) + unresolved (0.5->0.4). confidence_model v1->v2 bump rides PR2. Then range-validation gate (advisory) + close INV-suvil with before->after distribution evidence."  # ae98
+- op: discuss  # c90e
+  at: '2026-06-28T23:36:17Z'  # c90e
+  by: agent  # c90e
+  actor: jgstern_agent  # c90e
+  clock: 5  # c90e
+  nonce: c90e  # c90e
+  message: "PR2 (producer migration) DONE — merged selfh 812569158c. INV-suvil now SATISFIED (analyzer edge confidence is derived, not hardcoded; 9,638/9,638 analyzer-seeded self-corpus edges == derive_confidence; confidence_model v1->v2). Steps 1 (multimodal), 2 (default-flip), 3 (producer migration) of this WI are complete.\n\nThree over-migration scope corrections were made during PR2 (each spec/ADR-grounded, not new decisions): (a) reverted all 27 LINKER files — linker confidence is a separate match-quality model (spec §12); (b) kept dynamically-COMPUTED confidence sites explicit; (c) reverted 3 context-encoding analyzer sites (Go ambiguous 0.50, Rust unresolved trait_impl 0.70, Haskell external 0.50) whose low value encodes ambiguity/unresolved-ness that single-valued derivation can't express.\n\nREMAINING on this WI:\n- Step 4: range-validation gate (advisory) — each edge's confidence within its evidence_type band; into the ADR-0033 validator / ADR-0043 finalize sub-step 10. NOT yet done. This is the last piece of WI-nurun proper.\nSeparate follow-ups (file/track as their own items when picked up): ADR-0039 confidence_source discriminator + rank_score separation (later F-stage); producer-side ceiling fix for the 4 deferred 1.0-modal pathways (naming_convention ~19k contains edges at 1.0, build_dependency, subdir_include, tree_sitter); proper is_resolved/multimodal modeling of the 3 context-encoders (so they derive too — e.g. make trait_impl multimodal 0.95/0.70; mark Go-ambiguous + Haskell-external edges is_resolved=False)."  # c90e
+- op: update  # bb34
+  at: '2026-06-29T00:51:26Z'  # bb34
+  by: agent  # bb34
+  actor: jgstern_agent  # bb34
+  clock: 6  # bb34
+  nonce: bb34  # bb34
+  set:  # bb34
+    status: done  # bb34
+- op: discuss  # 420b
+  at: '2026-06-29T00:51:26Z'  # 420b
+  by: agent  # 420b
+  actor: jgstern_agent  # 420b
+  clock: 7  # 420b
+  nonce: 420b  # 420b
+  message: "DONE — all four steps merged to selfh. Step 1 (multimodal is_resolved seeds) + step 2 (Edge.create default-flip): prior arc. Step 3 (producer migration, 218 analyzer sites; PR2 812569158c) closed INV-suvil. Step 4 (range-validation gate; PR3 eed5195497): confidence.confidence_within_band + spec_validator._check_confidence_range advisory cross_field/info check, wired into validate_ir + disclosed in _WIRED_CHECKS; forward regression guard (corpus 0 out-of-band).\n\nNet result: analyzer edge confidence is derived from evidence_type via the registry base_confidence table (75 seeded pathways, is_resolved-conditioned for call types), confidence_model v2. Linker confidence (match-quality, spec §12) and a handful of computed/context-encoder sites remain explicit by design.\n\nFollow-ups (separate items, NOT part of this WI): ADR-0039 confidence_source discriminator + rank_score separation; producer-side ceiling fix for the 4 deferred 1.0-modal pathways (naming_convention ~19k contains edges at 1.0, build_dependency, subdir_include, tree_sitter); proper is_resolved/multimodal modeling of the 3 context-encoders (Go ambiguous, Rust unresolved trait_impl, Haskell external) so they derive too."  # 420b
