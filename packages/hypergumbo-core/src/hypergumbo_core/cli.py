@@ -617,6 +617,63 @@ def _generate_sketch_filename(
     return ".".join(parts) + ".md"
 
 
+def _get_or_generate_comparison_sketch(
+    repo_root: Path,
+    cache_dir: "Path | None",
+    budget: int,
+    *,
+    exclude_tests: bool,
+    with_source: bool,
+    gen_kwargs: dict,
+) -> SketchStats:
+    """Return the representativeness :class:`SketchStats` for a comparison-budget
+    sketch, reusing the on-disk cache when present (WI-ribag).
+
+    The 4x/16x comparison sketches feed the representativeness table but were
+    regenerated on every ``sketch`` invocation despite being ``cache_write``-ten
+    to the per-(repo, state, analyzer-identity) cache dir — the dominant
+    warm-sketch cost (~83% of wall-clock on the self-corpus) and a textbook
+    INV-papuj cache-read miss. When both the cached sketch text and its
+    serialized stats sidecar are present for the current state, they are read
+    back and the expensive ``generate_sketch`` call is skipped; otherwise the
+    sketch is generated and BOTH artifacts are cached so the next warm run hits.
+    A present file in the state-scoped cache dir is fresh by construction (any
+    source change rotates the dir), so existence is the only freshness check
+    needed. ``exclude_tests`` / ``with_source`` are explicit (not in
+    ``gen_kwargs``) because they also key the cache filename.
+    """
+    sketch_filename = _generate_sketch_filename(
+        tokens=budget, exclude_tests=exclude_tests, with_source=with_source,
+    )
+    sketch_path = cache_dir / sketch_filename if cache_dir is not None else None
+    stats_path = (
+        cache_dir / Path(sketch_filename).with_suffix(".stats.json")
+        if cache_dir is not None else None
+    )
+    if (
+        sketch_path is not None and sketch_path.exists()
+        and stats_path is not None and stats_path.exists()
+    ):
+        try:
+            return SketchStats.from_dict(json.loads(stats_path.read_text()))
+        except (OSError, ValueError):  # pragma: no cover - corrupt cache regenerates
+            pass
+
+    stats = SketchStats()
+    sketch_text = generate_sketch(
+        repo_root,
+        max_tokens=budget,
+        exclude_tests=exclude_tests,
+        with_source=with_source,
+        stats_out=stats,
+        **gen_kwargs,
+    )
+    if sketch_path is not None and stats_path is not None:
+        cache_write(sketch_path, sketch_text)
+        cache_write(stats_path, json.dumps(stats.to_dict()))
+    return stats
+
+
 def _reject_unknown_choice(
     value: str,
     valid: "frozenset[str]",
@@ -878,71 +935,48 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         budget_4x = max_tokens * 4
         budget_16x = max_tokens * 16
 
-        stats_4x = SketchStats()
-        stats_16x = SketchStats()
-
-        # Generate 4x budget sketch
-        sketch_4x = generate_sketch(
-            repo_root,
-            max_tokens=budget_4x,
-            exclude_tests=exclude_tests,
-            first_party_priority=first_party_priority,
-            extra_excludes=extra_excludes,
-            config_extraction_mode=config_mode,
-            verbose=False,
-            max_config_files=max_config_files,
-            fleximax_lines=fleximax_lines,
-            max_chunk_chars=max_chunk_chars,
-            language_proportional=language_proportional,
-            progress=False,
-            cached_results=cached_results,
-            with_source=with_source,
-            stats_out=stats_4x,
+        # WI-ribag: read each comparison sketch's stats from cache when fresh
+        # instead of regenerating the (expensive) 4x/16x sketches on every
+        # invocation — the dominant warm-sketch cost. The helper caches both
+        # the sketch text and a stats sidecar; gen_kwargs are the
+        # generate_sketch params that do NOT key the cache filename
+        # (exclude_tests/with_source are passed separately because they do).
+        comparison_kwargs = {
+            "first_party_priority": first_party_priority,
+            "extra_excludes": extra_excludes,
+            "config_extraction_mode": config_mode,
+            "verbose": False,
+            "max_config_files": max_config_files,
+            "fleximax_lines": fleximax_lines,
+            "max_chunk_chars": max_chunk_chars,
+            "language_proportional": language_proportional,
+            "progress": False,
+            "cached_results": cached_results,
+        }
+        stats_4x = _get_or_generate_comparison_sketch(
+            repo_root, cache_dir, budget_4x,
+            exclude_tests=exclude_tests, with_source=with_source,
+            gen_kwargs=comparison_kwargs,
         )
-
-        # Generate 16x budget sketch
-        sketch_16x = generate_sketch(
-            repo_root,
-            max_tokens=budget_16x,
-            exclude_tests=exclude_tests,
-            first_party_priority=first_party_priority,
-            extra_excludes=extra_excludes,
-            config_extraction_mode=config_mode,
-            verbose=False,
-            max_config_files=max_config_files,
-            fleximax_lines=fleximax_lines,
-            max_chunk_chars=max_chunk_chars,
-            language_proportional=language_proportional,
-            progress=False,
-            cached_results=cached_results,
-            with_source=with_source,
-            stats_out=stats_16x,
+        stats_16x = _get_or_generate_comparison_sketch(
+            repo_root, cache_dir, budget_16x,
+            exclude_tests=exclude_tests, with_source=with_source,
+            gen_kwargs=comparison_kwargs,
         )
 
         display_representativeness_table(stats, stats_4x, stats_16x)
 
-        sketch_4x_filename = _generate_sketch_filename(
-            tokens=budget_4x,
-            exclude_tests=exclude_tests,
-            with_source=with_source,
-        )
-        sketch_16x_filename = _generate_sketch_filename(
-            tokens=budget_16x,
-            exclude_tests=exclude_tests,
-            with_source=with_source,
-        )
-
-        # WI-jupar: comparison sketches now live in cache_dir alongside
-        # the main sketch. No /tmp staging — that path was shared across
-        # repos (filename-by-budget collision) and never cleaned up. The
-        # cache_dir is per-(repo, state, analyzer-identity), so each
-        # repo's comparison sketches stay isolated and ride normal cache
-        # lifecycle (cache-status / cache-clear / INV-padum honk).
+        # WI-jupar: comparison sketches live in cache_dir alongside the main
+        # sketch (per-(repo, state, analyzer-identity)). The helper above wrote
+        # them on a miss; on a hit they were already present. Point the user at
+        # the cached paths either way.
         if cache_dir is not None:
-            cache_4x = cache_dir / sketch_4x_filename
-            cache_16x = cache_dir / sketch_16x_filename
-            cache_write(cache_4x, sketch_4x)
-            cache_write(cache_16x, sketch_16x)
+            cache_4x = cache_dir / _generate_sketch_filename(
+                tokens=budget_4x, exclude_tests=exclude_tests, with_source=with_source,
+            )
+            cache_16x = cache_dir / _generate_sketch_filename(
+                tokens=budget_16x, exclude_tests=exclude_tests, with_source=with_source,
+            )
             print(
                 f"\nhypergumbo also cached comparison sketches:\n"
                 f"  4x budget ({budget_4x:,}t):  {cache_4x}\n"

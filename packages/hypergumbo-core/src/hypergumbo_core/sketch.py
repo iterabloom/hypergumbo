@@ -140,6 +140,27 @@ class SketchStats:
     has_entrypoints: bool = False
     has_datamodels: bool = False
 
+    def to_dict(self) -> dict:
+        """Serialize to a JSON-safe dict of the flat scalar fields.
+
+        Used to cache the 4x/16x comparison-sketch stats alongside their
+        already-cached text so a warm sketch can render the representativeness
+        table without regenerating them (WI-ribag).
+        """
+        import dataclasses
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SketchStats":
+        """Reconstruct from :meth:`to_dict` output, tolerating schema drift.
+
+        Unknown keys are ignored and missing keys take their field default, so
+        a stats cache written by a different build reloads without error.
+        """
+        import dataclasses
+        known = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known})
+
     def symbol_mass(self, in_degree_sum: int) -> float:
         """Compute symbol mass percentage."""
         if self.total_in_degree == 0:
