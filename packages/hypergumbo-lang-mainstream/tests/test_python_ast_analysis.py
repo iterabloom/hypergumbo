@@ -520,6 +520,56 @@ def test_run_stdlib_submodule_import_stamped_ecosystem_stdlib(tmp_path: Path) ->
     assert (req_nodes[0].get("meta") or {}).get("ecosystem") == "third_party"
 
 
+def test_run_resolves_call_to_function_defined_in_package_init(
+    tmp_path: Path,
+) -> None:
+    """INV-nuzas residual: a cross-module call to a function DEFINED IN a
+    package's ``__init__.py`` resolves to the in-tree symbol instead of leaking
+    to an ``external_symbol`` twin. ``_module_name_from_path`` keys an
+    ``__init__.py``'s symbols under ``pkg.__init__``, but callers/imports
+    reference ``pkg`` — so the ``(module, name)`` lookup missed every symbol
+    defined directly in a package ``__init__`` (342 first-party ``calls`` edges
+    on the self-corpus leaked to external twins). The registry now also aliases
+    ``__init__``-defined symbols under the importable package name.
+    """
+    pkg = tmp_path / "mypkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("def helper():\n    return 1\n")
+    (tmp_path / "main.py").write_text(
+        "import mypkg\n"
+        "\n"
+        "def use():\n"
+        "    return mypkg.helper()\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    helper_nodes = [
+        n for n in data["nodes"]
+        if n["kind"] == "function" and n["id"].endswith(":helper:function")
+    ]
+    assert helper_nodes, "in-tree helper function node missing"
+    helper_id = helper_nodes[0]["id"]
+
+    # mypkg.helper() resolves to the in-tree helper symbol...
+    resolved = [
+        e for e in data["edges"]
+        if e["type"] == "calls" and e["dst"] == helper_id
+    ]
+    assert resolved, "mypkg.helper() should resolve to the in-tree helper symbol"
+    assert resolved[0]["is_resolved"] is True
+
+    # ...and does NOT leak to an external_symbol twin.
+    ext_helper = [
+        n for n in data["nodes"]
+        if n["kind"] == "external_symbol" and n["id"].endswith(":helper:unresolved")
+    ]
+    assert not ext_helper, (
+        f"helper must not appear as external_symbol: {[n['id'] for n in ext_helper]}"
+    )
+
+
 def test_run_detects_module_attr_ref_edges_for_env_read(tmp_path: Path) -> None:
     """WI-guhok: attribute-style reads of imported modules emit module_attr_ref edges.
 

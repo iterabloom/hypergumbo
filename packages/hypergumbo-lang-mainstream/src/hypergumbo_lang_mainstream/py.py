@@ -4117,8 +4117,24 @@ def analyze_python(
     global_symbols: dict[tuple[str, str], Symbol] = {}
     for py_file, analysis in file_analyses.items():
         module_name = _module_name_from_path(py_file, repo_root, source_roots)
+        # INV-nuzas: a package's __init__.py *is* the package module. A symbol
+        # DEFINED in ``pkg/__init__.py`` is importable/callable as ``pkg.<name>``,
+        # but _module_name_from_path keys it under ``pkg.__init__`` — so every
+        # cross-module call/import to such a symbol missed the (module, name)
+        # lookup and leaked to an external_symbol twin (342 first-party ``calls``
+        # edges on the self-corpus). Also register __init__-defined symbols under
+        # the importable package name. (The re-export aliasing below covers names
+        # IMPORTED into __init__; this covers names DEFINED there. The
+        # ``pkg.__init__`` key is retained for back-compat — nothing references
+        # it, but keeping it makes this strictly additive / zero-regression.)
+        keys = [module_name]
+        if py_file.name == "__init__.py":
+            package_name = module_name.rsplit(".__init__", 1)[0]
+            if package_name != module_name:
+                keys.append(package_name)
         for symbol in analysis.symbols:
-            global_symbols[(module_name, symbol.name)] = symbol
+            for key in keys:
+                global_symbols[(key, symbol.name)] = symbol
 
     # Process re-exports from __init__.py files
     # When __init__.py does "from .submodule import helper", add an alias
