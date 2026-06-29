@@ -14,7 +14,7 @@ no published edge value changes here. See
 
 from __future__ import annotations
 
-from hypergumbo_core.confidence import derive_confidence
+from hypergumbo_core.confidence import confidence_within_band, derive_confidence
 from hypergumbo_core.evidence_types import (
     EVIDENCE_TYPES,
     _CONFIDENCE_SEEDS,
@@ -161,3 +161,34 @@ def test_confidence_seeds_disjoint_from_inline_seeds():
     (no type is seeded both inline and via the overlay table)."""
     inline = {s.name for s in _RAW_EVIDENCE_TYPES if s.base_confidence is not None}
     assert inline.isdisjoint(_CONFIDENCE_SEEDS), inline & _CONFIDENCE_SEEDS.keys()
+
+
+# --- WI-nurun step 4: range-validation band reader ---
+
+
+def test_confidence_within_band_seeded_in_band():
+    # single-valued: band [0.30, base]
+    assert confidence_within_band("ast_import", 0.95) is True   # == base
+    assert confidence_within_band("ast_import", 0.30) is True   # == floor
+    assert confidence_within_band("ast_import", 0.60) is True   # mid
+    # multimodal: band [unresolved, resolved]
+    assert confidence_within_band("ast_call", 0.85) is True     # == resolved
+    assert confidence_within_band("ast_call", 0.40) is True     # == unresolved
+    assert confidence_within_band("ast_call", 0.60) is True     # mid
+    # a context-encoder value sits inside its pathway band
+    assert confidence_within_band("trait_impl", 0.70) is True   # within [0.30, 0.95]
+
+
+def test_confidence_within_band_out_of_band():
+    assert confidence_within_band("ast_import", 1.0) is False   # > base (reserved ceiling)
+    assert confidence_within_band("ast_import", 0.20) is False  # < floor
+    assert confidence_within_band("ast_call", 0.95) is False    # > resolved base
+    assert confidence_within_band("ast_call", 0.30) is False    # < unresolved low
+
+
+def test_confidence_within_band_unseeded_or_unregistered_is_in_band():
+    # naming_convention is registered but deliberately NOT seeded (1.0
+    # ceiling-breach deferred to a producer fix) -> no band -> in-band.
+    assert confidence_within_band("naming_convention", 1.0) is True
+    # unregistered type -> no band -> in-band (caller's literal stands).
+    assert confidence_within_band("not-a-real-evidence-type", 0.5) is True

@@ -2277,3 +2277,38 @@ def test_id_roundtrip_wired_into_validate_ir() -> None:
         and "start" in v.message
         for v in violations
     )
+
+
+def test_confidence_range_flags_out_of_band_edge() -> None:
+    """WI-nurun step 4: an edge whose confidence is outside its evidence
+    pathway's derived band emits an advisory cross_field/info violation."""
+    from hypergumbo_core.ir import Edge
+    # ast_import band is [0.30, 0.95]; 1.0 breaches the reserved ceiling.
+    edge = Edge.create(
+        src="python:a.py:1-1:f:function", dst="python:b.py:1-1:g:function",
+        edge_type="imports", line=1, evidence_type="ast_import",
+        confidence=1.0, origin="test", origin_run_id="test",
+    )
+    conf = [
+        v for v in validate_ir([], [edge], [])
+        if v.field_name == "confidence"
+    ]
+    assert len(conf) == 1
+    assert conf[0].validator_class == "cross_field"
+    assert conf[0].severity == "info"
+    assert conf[0].record_id == edge.id
+    assert conf[0].observed == "1.0"
+
+
+def test_confidence_range_clean_for_in_band_edge() -> None:
+    """An in-band (derived) confidence emits no range violation."""
+    from hypergumbo_core.ir import Edge
+    edge = Edge.create(
+        src="python:a.py:1-1:f:function", dst="python:b.py:1-1:g:function",
+        edge_type="imports", line=1, evidence_type="ast_import",
+        confidence=0.95, origin="test", origin_run_id="test",
+    )
+    assert [
+        v for v in validate_ir([], [edge], [])
+        if v.field_name == "confidence"
+    ] == []

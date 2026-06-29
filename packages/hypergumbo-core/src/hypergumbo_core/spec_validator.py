@@ -179,6 +179,12 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
                     "prefix (content-gated on a non-empty run set; WI-vudul "
                     "output-boundary format guard — Class-B language=None "
                     "identity-hash stand-ins are exempt)."},
+    {"check": "confidence_range", "validator_class": "cross_field",
+     "description": "Edge.confidence sits within the derived [low, "
+                    "base_confidence] band for its evidence_type — a WI-nurun "
+                    "step-4 forward regression guard against off-band / "
+                    "reserved-ceiling (1.0) per-emitter values (advisory info; "
+                    "unregistered/unseeded pathways carry no band)."},
 )
 
 
@@ -234,6 +240,57 @@ def validate_ir(
     violations.extend(_check_origin_run_id_fk(symbols, edges, analysis_runs))
     violations.extend(_check_dangling_endpoint(symbols, edges, analysis_runs))
     violations.extend(_check_fingerprint_format(symbols, edges, analysis_runs))
+    violations.extend(_check_confidence_range(edges))
+    return violations
+
+
+def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
+    """WI-nurun step 4: advisory range-validation of `Edge.confidence`.
+
+    Per ADR-0039, an analyzer edge's confidence is *derived* from its
+    inference pathway (`evidence_type`). This check flags any edge whose
+    confidence falls outside the derived ``[low, base_confidence]`` band for
+    its pathway — a per-emitter value that no longer tracks the pathway (a
+    derivation regression, or an over-claim such as the reserved-ceiling 1.0).
+    It is a forward regression guard: the post-migration corpus is fully
+    in-band (0 violations), and edges whose evidence_type is unregistered or
+    not-yet-seeded carry no band (treated in-band). Emitted as advisory
+    ``info`` under the existing ``cross_field`` class (confidence cohering with
+    evidence_type is a cross-field property).
+    """
+    from hypergumbo_core.confidence import confidence_within_band
+    from hypergumbo_core.evidence_types import find_evidence_type
+
+    violations: list[ValidationViolation] = []
+    for edge in edges:
+        ev = getattr(edge, "evidence_type", None)
+        conf = getattr(edge, "confidence", None)
+        if ev is None or conf is None:
+            continue
+        if confidence_within_band(ev, conf):
+            continue
+        spec = find_evidence_type(ev)
+        # find_evidence_type is non-None here: confidence_within_band only
+        # returns False for a seeded (hence registered) pathway.
+        low = (
+            spec.base_confidence_unresolved
+            if spec.base_confidence_unresolved is not None
+            else 0.30
+        )
+        violations.append(ValidationViolation(
+            severity="info",
+            validator_class="cross_field",
+            message=(
+                f"Edge.confidence {conf} for evidence_type '{ev}' is outside "
+                f"the derived band [{low}, {spec.base_confidence}] — the "
+                f"per-emitter value no longer tracks the inference pathway "
+                f"(WI-nurun range validation)."
+            ),
+            field_name="confidence",
+            record_id=getattr(edge, "id", None),
+            observed=str(conf),
+            expected=f"[{low}, {spec.base_confidence}]",
+        ))
     return violations
 
 

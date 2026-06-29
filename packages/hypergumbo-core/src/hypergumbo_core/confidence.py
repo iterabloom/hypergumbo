@@ -11,13 +11,17 @@ This first slice (confidence:F1) is intentionally narrow: it derives only the
 single-valued, behavior-preserving inference pathways whose ``base_confidence``
 is seeded in :data:`hypergumbo_core.evidence_types.EVIDENCE_TYPES` (verified to
 carry exactly one observed confidence each on the live behavior map, so the
-seeded value reproduces today's published value). It does NOT yet route
-``Edge.create`` through the reader (flipping the flat ~0.85 dataclass default
-touches ~44k edges) and does NOT migrate producers; those are later,
-higher-blast-radius F1 steps that the strategy gates on the full vocab:F1
-axis-gating wave. Until a producer is wired, ``derive_confidence`` is a pure,
-side-effect-free lookup with no consumers in the emit path — introducing the
-layer without changing any published value.
+seeded value reproduces today's published value). The derivation is now LIVE (WI-nurun): the table seeds 75 inference pathways
+(single-valued + the multimodal call types ``ast_call`` / ``ast_call_direct``,
+which are ``Edge.is_resolved``-conditioned via ``base_confidence_unresolved``);
+``Edge.create`` derives confidence when a producer omits it (the default-flip),
+and the producer migration dropped the literal ``confidence=`` at the analyzer
+emit sites — so analyzer edge confidence is now derived from evidence, closing
+INV-suvil. Linker edges keep their separate match-quality value (spec §12), and
+a handful of sites whose confidence encodes context the table cannot express
+(dynamically-computed match-strength / the ``type_hierarchy`` dampener; the
+ambiguity / unresolved context-encoders) deliberately retain an explicit
+``confidence=``.
 
 Contract: ``derive_confidence(evidence_type)`` returns the registered
 ``base_confidence`` for that inference pathway, or ``None`` when the type is
@@ -25,10 +29,12 @@ unregistered OR registered-but-not-yet-seeded. ``None`` deliberately means "no
 derived value" so the caller keeps its own literal — there is NO single
 fallback constant. The spec's 0.30 unknown-evidence MUST was withdrawn
 (confidence:F3 Stage A); re-introducing any blanket default would recreate the
-wrong-for-most-of-corpus problem WI-gifat filed. Multimodal pathways (e.g.
-``ast_call`` / ``ast_call_direct``, whose confidence is driven by the sibling
-``Edge.is_resolved`` field) are deliberately left unseeded here and gain
-conditioning in a later F1 step.
+wrong-for-most-of-corpus problem WI-gifat filed.
+
+``confidence_within_band`` is the WI-nurun step-4 range-validation reader: it
+checks an edge's confidence sits inside the derived ``[low, base]`` band for
+its pathway — a forward regression guard surfaced as an advisory
+``cross_field`` violation by :mod:`hypergumbo_core.spec_validator`.
 """
 
 from __future__ import annotations
@@ -53,3 +59,32 @@ def derive_confidence(evidence_type: str, *, is_resolved: bool = True) -> float 
     if not is_resolved and spec.base_confidence_unresolved is not None:
         return spec.base_confidence_unresolved
     return spec.base_confidence
+
+
+# Analyzer/linker confidence floor (spec §12). 1.0 is a reserved ceiling — no
+# detection method is *certain* — so the band's upper bound is the pathway's
+# seeded base_confidence (<= 0.95), never above it.
+_BAND_FLOOR: float = 0.30
+
+
+def confidence_within_band(evidence_type: str, confidence: float) -> bool:
+    """Return True if ``confidence`` is within the valid band for a pathway.
+
+    For a *seeded* inference pathway the band is ``[low, base_confidence]``
+    where ``low`` is ``base_confidence_unresolved`` when the pathway is
+    is_resolved-conditioned (the multimodal call types), else the analyzer
+    floor :data:`_BAND_FLOOR`. A confidence outside this band is a per-emitter
+    value that no longer tracks its inference pathway — a derivation regression
+    or an over-claim (e.g. the reserved-ceiling 1.0). Unregistered or
+    not-yet-seeded pathways have no band and are reported in-band (the caller's
+    literal stands). This is the WI-nurun step-4 range-validation reader.
+    """
+    spec = find_evidence_type(evidence_type)
+    if spec is None or spec.base_confidence is None:
+        return True
+    low = (
+        spec.base_confidence_unresolved
+        if spec.base_confidence_unresolved is not None
+        else _BAND_FLOOR
+    )
+    return low - 1e-9 <= confidence <= spec.base_confidence + 1e-9
