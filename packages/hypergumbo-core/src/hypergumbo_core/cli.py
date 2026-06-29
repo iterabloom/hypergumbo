@@ -8944,17 +8944,36 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
         subparser.print_help()
 
 
+def _suppress_broken_stdout_pipe() -> None:
+    """Point the stdout fd at ``/dev/null`` after a downstream pipe closed.
+
+    When a reader such as ``head`` exits early, the next write to stdout raises
+    ``BrokenPipeError``; even after we catch it, Python flushes the standard
+    streams at interpreter shutdown and would re-raise, printing a traceback
+    after otherwise-correct output. Redirecting the fd to ``/dev/null`` swallows
+    that final flush. Best-effort: if stdout is already unusable there is
+    nothing to suppress.
+    """
+    try:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+    except (OSError, ValueError):  # pragma: no cover - stdout already closed
+        pass
+
+
 def main(argv=None) -> int:
     import logging
 
-    # Restore default SIGPIPE behavior so commands like
-    # ``hypergumbo explain Symbol | head`` exit quietly when the downstream
-    # pipe closes, instead of producing a BrokenPipeError traceback after
-    # otherwise-correct output. POSIX-only: signal.SIGPIPE doesn't exist
-    # on Windows, where Python uses a different mechanism for closed pipes.
-    import signal
-    if hasattr(signal, "SIGPIPE"):
-        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    # INV-vopuh: do NOT reset SIGPIPE to SIG_DFL. Python's default disposition
+    # (SIG_IGN) turns a write to a closed pipe into a *catchable*
+    # ``BrokenPipeError``. Resetting it to SIG_DFL made an EPIPE on ANY pipe in
+    # the process fatal with signal 13 (exit 141, zero output) — including the
+    # ``transformers`` safetensors-conversion *background thread* that fires
+    # during ``model.encode()`` (sketch_embeddings.py), which silently killed
+    # ``sketch`` at higher token budgets regardless of where the main thread
+    # was. The one case SIG_DFL was installed for — ``hypergumbo explain | head``
+    # exiting quietly — is handled by catching ``BrokenPipeError`` around command
+    # dispatch below.
 
     parser = build_parser()
 
@@ -9083,5 +9102,21 @@ def main(argv=None) -> int:
         parser.print_help()  # pragma: no cover
         return 1  # pragma: no cover
 
-    return args.func(args)
+    try:
+        result = args.func(args)
+        # Flush while we can still catch a closed downstream pipe *in-band*.
+        # stdout is block-buffered when piped, so a large write (e.g. a full
+        # sketch) is otherwise deferred to interpreter shutdown — where the
+        # EPIPE escapes as an "Exception ignored in: <stdout>" message and a
+        # 120 exit instead of being caught here (INV-vopuh, the `| head` UX).
+        sys.stdout.flush()
+        return result
+    except BrokenPipeError:
+        # The downstream reader closed the pipe (e.g. ``... | head``). Redirect
+        # the stdout fd to /dev/null so Python's shutdown flush does not
+        # re-raise, then exit quietly with a non-zero status (a reader leaving
+        # mid-output is not a clean completion; under a shell pipeline the
+        # reader's own exit status dominates anyway).
+        _suppress_broken_stdout_pipe()
+        return 1
 
