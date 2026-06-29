@@ -483,6 +483,43 @@ def test_run_namespace_package_bare_import_stays_external(tmp_path: Path) -> Non
     assert nspkg_edges[0]["is_resolved"] is False
 
 
+def test_run_stdlib_submodule_import_stamped_ecosystem_stdlib(tmp_path: Path) -> None:
+    """WI-bifih behavioral closure: a stdlib *submodule* import
+    (``from unittest.mock import patch``) resolves to an ``external_symbol``
+    boundary node stamped ``ecosystem=stdlib`` — not the ``third_party``
+    mis-stamp it got when ``is_stdlib_module`` was exact-match-only (python.yaml
+    enumerates ``unittest`` but not the submodule ``unittest.mock``, the largest
+    slice of the 355-edge mis-stamp population). The node stays external / tier 3
+    (ADR-0041 §3: stdlib is external to the project; ``is_resolved`` stays False).
+    """
+    (tmp_path / "main.py").write_text(
+        "from unittest.mock import patch\n"
+        "import requests\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    mock_nodes = [
+        n for n in data["nodes"]
+        if n["kind"] == "external_symbol" and "unittest.mock" in n["id"]
+    ]
+    assert mock_nodes, "unittest.mock boundary node missing"
+    mock_node = mock_nodes[0]
+    # The dotted stdlib submodule is now recognised as stdlib...
+    assert (mock_node.get("meta") or {}).get("ecosystem") == "stdlib"
+    # ...while staying an external / tier-3 boundary node (NOT "resolved").
+    assert mock_node["supply_chain"]["tier_name"] == "external_dep"
+
+    # Contrast: a genuine third-party top-level module stays third_party.
+    req_nodes = [
+        n for n in data["nodes"]
+        if n["kind"] == "external_symbol" and "requests" in n["id"]
+    ]
+    assert req_nodes
+    assert (req_nodes[0].get("meta") or {}).get("ecosystem") == "third_party"
+
+
 def test_run_detects_module_attr_ref_edges_for_env_read(tmp_path: Path) -> None:
     """WI-guhok: attribute-style reads of imported modules emit module_attr_ref edges.
 

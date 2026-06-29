@@ -183,6 +183,34 @@ class TestParsePythonDependencies:
         assert "os" not in manifest.entries
         assert "sys" not in manifest.entries
 
+    def test_stdlib_carve_out_follows_catalog_not_sys(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        # ADR-0041 §3 single-source (WI-bifih): the stdlib carve-out must follow
+        # the python.yaml ``stdlib_modules`` catalog, NOT the live interpreter's
+        # ``sys.stdlib_module_names`` (the second source §3 forbids). Prove it by
+        # making the catalog declare a name that is NOT in sys.stdlib_module_names
+        # ("clicklib") as stdlib: it must be carved out (only possible via the
+        # catalog), while a name the catalog omits is kept.
+        import sys
+
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog
+        from hypergumbo_lang_mainstream import py_deps as _py_deps
+
+        assert "clicklib" not in getattr(sys, "stdlib_module_names", frozenset())
+        fake = IoBoundaryCatalog(
+            language="python", stdlib_modules=frozenset({"clicklib"})
+        )
+        monkeypatch.setattr(_py_deps, "load_catalog", lambda lang: fake)
+        (tmp_path / "pyproject.toml").write_text(
+            "[project]\n"
+            'name = "demo"\n'
+            'dependencies = ["clicklib", "keepme"]\n'
+        )
+        manifest = parse_python_dependencies(tmp_path)
+        assert "clicklib" not in manifest.entries  # carved by the catalog
+        assert "keepme" in manifest.entries  # absent from catalog -> kept
+
     def test_unknown_dist_falls_through_to_dist_name(self, tmp_path: Path) -> None:
         # An unknown PyPI dist name (not installed in dev env) falls
         # through to the dist name verbatim with hyphens → underscores.

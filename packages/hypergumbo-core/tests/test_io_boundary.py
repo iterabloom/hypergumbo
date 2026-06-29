@@ -3849,6 +3849,49 @@ class TestStdlibModulesAndFilter2:
         cat = IoBoundaryCatalog(language="python")
         assert not cat.is_stdlib_module("os")
 
+    def test_is_stdlib_module_dotted_submodule_of_enumerated_package(self) -> None:
+        # WI-bifih: python.yaml enumerates only TOP-LEVEL module names and
+        # declares no ``stdlib_prefixes``, so a submodule import like
+        # ``unittest.mock`` / ``os.path`` / ``urllib.request`` must still be
+        # recognised as stdlib via its top-level package — otherwise its
+        # ecosystem is mis-stamped ``third_party`` (355 such edges on the
+        # self-corpus). A submodule of an enumerated stdlib package IS stdlib.
+        cat = IoBoundaryCatalog(
+            language="python",
+            stdlib_modules=frozenset({"os", "unittest", "urllib", "importlib"}),
+        )
+        assert cat.is_stdlib_module("os.path")
+        assert cat.is_stdlib_module("unittest.mock")
+        assert cat.is_stdlib_module("urllib.request")
+        assert cat.is_stdlib_module("importlib.metadata")
+        # Head NOT enumerated -> stays non-stdlib (no false positives).
+        assert not cat.is_stdlib_module("requests.sessions")
+        # A bare non-stdlib name with no separator is unaffected.
+        assert not cat.is_stdlib_module("requests")
+
+    def test_is_stdlib_module_slash_submodule_of_enumerated_package(self) -> None:
+        # The same fallback covers slash-namespaced languages when the
+        # top-level package is enumerated in ``stdlib_modules`` (rather than
+        # ``stdlib_prefixes``).
+        cat = IoBoundaryCatalog(
+            language="go", stdlib_modules=frozenset({"encoding"})
+        )
+        assert cat.is_stdlib_module("encoding/json")
+        assert not cat.is_stdlib_module("github.com/x/y")
+
+    def test_is_stdlib_module_dotted_submodule_against_shipped_python_yaml(
+        self,
+    ) -> None:
+        # The real shipped catalog, exercising the WI-bifih mis-stamp
+        # population (unittest.mock x251, importlib.util/machinery, urllib.*,
+        # concurrent.futures, ...).
+        cat = load_catalog("python")
+        assert cat.is_stdlib_module("unittest.mock")
+        assert cat.is_stdlib_module("importlib.util")
+        assert cat.is_stdlib_module("urllib.request")
+        assert cat.is_stdlib_module("concurrent.futures")
+        assert not cat.is_stdlib_module("requests.sessions")
+
     def test_is_stdlib_module_complete_flag(self) -> None:
         cat = IoBoundaryCatalog(
             language="python",

@@ -49,16 +49,20 @@ tier 3, the current default (no regression).
 
 Stdlib carve-out
 ----------------
-``sys.stdlib_module_names`` (Python 3.10+) is used to filter the resolved
-import-name set. A user who declares ``os`` (or any other stdlib name)
-in ``pyproject.toml`` won't accidentally promote it to tier 2.
+The single-source ``python.yaml`` ``stdlib_modules`` catalog (ADR-0041 §3,
+via ``io_boundary.load_catalog("python").is_stdlib_module``) filters the
+resolved import-name set. A user who declares ``os`` (or any other stdlib
+name) in ``pyproject.toml`` won't accidentally promote it to tier 2. This is
+the SAME stdlib recognizer the supply-chain ecosystem classifier uses — one
+source, not the live interpreter's ``sys.stdlib_module_names`` (which would
+be a second, version-drifting source the §3 single-source constraint forbids).
 """
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
+from hypergumbo_core.io_boundary import load_catalog
 from hypergumbo_core.supply_chain import DependencyManifest
 
 
@@ -266,11 +270,12 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
     ``libs/<lib>/pyproject.toml``, etc., per WI-zujip). Returns an empty
     manifest when no pyproject is present anywhere.
 
-    Stdlib module names are filtered out via ``sys.stdlib_module_names``
-    (Python 3.10+) so a user who erroneously declares ``os`` (or any
-    other stdlib name) in pyproject doesn't accidentally promote it to
-    tier 2. Same dependency declared by multiple packages collapses to
-    one entry (set-union semantics).
+    Stdlib module names are filtered out via the single-source
+    ``python.yaml`` stdlib catalog (ADR-0041 §3,
+    ``io_boundary.load_catalog("python").is_stdlib_module``) so a user who
+    erroneously declares ``os`` (or any other stdlib name) in pyproject
+    doesn't accidentally promote it to tier 2. Same dependency declared by
+    multiple packages collapses to one entry (set-union semantics).
 
     Returns:
         ``DependencyManifest`` mapping importable top-level names to
@@ -297,8 +302,13 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
 
     import_names = _resolve_import_names(dist_names)
 
-    stdlib_names = getattr(sys, "stdlib_module_names", frozenset())
-    import_names = {n for n in import_names if n not in stdlib_names}
+    # Single-source stdlib carve-out (ADR-0041 §3 / WI-bifih): the python.yaml
+    # ``stdlib_modules`` catalog is the ONE authoritative stdlib recognizer for
+    # both the supply-chain/ecosystem classifier and this manifest filter,
+    # replacing the prior second source (the live interpreter's
+    # ``sys.stdlib_module_names``) so the two cannot drift.
+    stdlib_catalog = load_catalog("python")
+    import_names = {n for n in import_names if not stdlib_catalog.is_stdlib_module(n)}
 
     # Workspace-member subtraction (supply-verdict F3 / INV-nuzas, ADR-0041
     # D8a). A monorepo sibling that another package declares as a dependency is

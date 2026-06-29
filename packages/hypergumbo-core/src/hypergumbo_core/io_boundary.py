@@ -560,6 +560,15 @@ class IoBoundaryCatalog:
           ``prefix + "."`` or ``prefix + "/"``. The two separators
           cover dot-namespaced languages (Python, Java) and slash-
           namespaced languages (Go's encoding/json).
+        - Top-level-package fallback: a *submodule* of an enumerated
+          top-level stdlib package is itself stdlib (``os.path``,
+          ``unittest.mock``, ``urllib.request``). The Python catalog
+          enumerates only top-level module names and declares no
+          ``stdlib_prefixes``, so without this fallback every stdlib
+          *submodule* import was mis-stamped ``ecosystem=third_party``
+          (WI-bifih). Keyed on the first dotted/slashed segment, so a
+          third-party ``requests.sessions`` (head ``requests`` not
+          enumerated) correctly stays non-stdlib.
 
         Returns False when both sets are empty (the default state —
         before a catalog populates them).
@@ -574,6 +583,10 @@ class IoBoundaryCatalog:
             for sep in (".", "/"):
                 if module.startswith(prefix + sep):
                     return True
+        for sep in (".", "/"):
+            head = module.partition(sep)[0]
+            if head != module and head in self.stdlib_modules:
+                return True
         return False
 
     def is_stdlib_module_complete(self, module: str) -> bool:
