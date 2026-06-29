@@ -25,7 +25,7 @@ import re
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Callable, Iterable, Iterator
 
 from .paths import is_test_file
 
@@ -782,6 +782,41 @@ class FileIndex:
         for v in by_name.values():
             v.sort()
 
+        return cls(repo_root, by_ext, by_name, all_files)
+
+    @classmethod
+    def from_paths(cls, repo_root: Path, paths: Iterable[Path]) -> "FileIndex":
+        """Build a FileIndex from an explicit list of files (no os.walk).
+
+        INV-jumim: the sketch read-path uses this to scope filesystem
+        discovery to a behavior map's own node paths. When ``sketch --input``
+        summarizes a frozen behavior map, ``find_files`` and the Structure
+        helpers must see the MAP's universe — not a re-walk of the current
+        working directory, which both hung for 60+s on populated repos and
+        produced a whole-repo sketch from a package-scoped map. Paths are
+        deduplicated; ``by_ext`` / ``by_name`` mirror :meth:`build` so
+        :meth:`match_pattern` (extension / filename / glob) behaves identically
+        on a synthesized index. Excludes are NOT re-applied: the map's node
+        paths are already the post-analysis universe.
+        """
+        by_ext: dict[str, list[Path]] = {}
+        by_name: dict[str, list[Path]] = {}
+        all_files: list[Path] = []
+        seen: set[Path] = set()
+        for fpath in paths:
+            if fpath in seen:
+                continue
+            seen.add(fpath)
+            all_files.append(fpath)
+            ext = fpath.suffix.lower()
+            if ext:
+                by_ext.setdefault(ext, []).append(fpath)
+            by_name.setdefault(fpath.name, []).append(fpath)
+        all_files.sort()
+        for v in by_ext.values():
+            v.sort()
+        for v in by_name.values():
+            v.sort()
         return cls(repo_root, by_ext, by_name, all_files)
 
     @property

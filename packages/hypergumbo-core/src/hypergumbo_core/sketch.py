@@ -70,7 +70,10 @@ from __future__ import annotations
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional
+
+if TYPE_CHECKING:
+    from .discovery import FileIndex
 
 from .discovery import find_files, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
@@ -2687,6 +2690,80 @@ def _normalize_name_excludes(excludes: list[str]) -> list[str]:
     return out
 
 
+def _dir_children_from_index(dir_path: Path) -> Optional[list[tuple[str, bool]]]:
+    """Immediate child ``(name, is_dir)`` pairs under ``dir_path`` derived from
+    the global :class:`FileIndex`, or ``None`` when no index covers ``dir_path``.
+
+    INV-jumim: when the sketch read-path is scoped to a behavior map (the
+    ``--input`` case installs a synthetic ``FileIndex`` from the map's node
+    paths), the Structure section must reflect the MAP's universe — its
+    directory listing and "(N items)" / "[and N other items]" counts — rather
+    than a re-walk of the working tree. Each indexed file contributes its first
+    path component under ``dir_path`` as a child; a component with deeper parts
+    is a directory. Returns ``None`` (caller falls back to ``iterdir()``) when
+    no index is set, or it does not cover ``dir_path``.
+    """
+    from .discovery import get_file_index
+
+    index = get_file_index()
+    if index is None:
+        return None
+    try:
+        dir_path.relative_to(index.repo_root)
+    except ValueError:
+        return None
+    children: dict[str, bool] = {}
+    for f in index.all_files():
+        try:
+            rel = f.relative_to(dir_path)
+        except ValueError:
+            continue
+        parts = rel.parts
+        if not parts:  # pragma: no cover - index stores files, not dir_path itself
+            continue
+        name = parts[0]
+        is_dir = len(parts) > 1
+        children[name] = children.get(name, False) or is_dir
+    return sorted(children.items())
+
+
+def _count_dir_items(
+    dir_path: Path,
+    repo_root: Path,
+    name_excludes: list[str],
+    exclude_tests: bool = False,
+) -> int:
+    """Count immediate non-excluded children of ``dir_path``.
+
+    Honors a map-scoped :class:`FileIndex` when one covers ``dir_path``
+    (INV-jumim: a ``--input`` sketch must count the MAP's items, not the
+    working tree's), else falls back to ``iterdir()``. When ``exclude_tests``
+    is set, test source files are dropped but CONFIG/DOC test-adjacent files
+    are kept (mirroring the pre-existing Structure-section semantics).
+    """
+    from fnmatch import fnmatch
+
+    children = _dir_children_from_index(dir_path)
+    if children is None:
+        try:
+            children = [(it.name, it.is_dir()) for it in dir_path.iterdir()]
+        except (PermissionError, OSError):  # pragma: no cover
+            return 0
+    count = 0
+    for name, is_dir in children:
+        if any(fnmatch(name, p) for p in name_excludes):
+            continue
+        if exclude_tests:
+            rel_path = str((dir_path / name).relative_to(repo_root))
+            if _is_test_path(rel_path):
+                if is_dir:
+                    continue  # Skip test directory
+                if not is_additional_file_candidate(dir_path / name):
+                    continue  # Skip test source file (keep CONFIG/DOC)
+        count += 1
+    return count
+
+
 def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
     """Count all non-excluded items (files and directories) at root level.
 
@@ -2700,15 +2777,7 @@ def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
     Returns:
         Number of non-excluded items at root level.
     """
-    from fnmatch import fnmatch
-
-    name_excludes = _normalize_name_excludes(excludes)
-    count = 0
-    for item in repo_root.iterdir():
-        if any(fnmatch(item.name, pat) for pat in name_excludes):
-            continue
-        count += 1
-    return count
+    return _count_dir_items(repo_root, repo_root, _normalize_name_excludes(excludes))
 
 
 def _format_structure_tree_fallback(
@@ -2740,16 +2809,6 @@ def _format_structure_tree_fallback(
     lines = [_section_header("Structure", exclude_tests), "", "```"]
     lines.append(f"{repo_root.name}/")
 
-    # Get top-level directories, filtering out excluded ones
-    dirs = []
-    for d in repo_root.iterdir():
-        if not d.is_dir():
-            continue
-        excluded = any(fnmatch(d.name, pattern) for pattern in name_excludes)
-        if not excluded:
-            dirs.append(d.name)
-
-    # Also get root-level files (source and config/doc files)
     # Build set of all source file patterns from SOURCE_EXTENSIONS
     source_patterns: set[str] = set()
     for patterns in SOURCE_EXTENSIONS.values():
@@ -2759,18 +2818,42 @@ def _format_structure_tree_fallback(
         """Check if filename matches any source file pattern."""
         return any(fnmatch(filename, pat) for pat in source_patterns)
 
+    # INV-jumim: when a map-scoped FileIndex is installed (--input), derive the
+    # top-level dir/file listing from the MAP's universe rather than re-walking
+    # the working tree.
+    root_children = _dir_children_from_index(repo_root)
+    dirs = []
     root_files = []
-    for f in repo_root.iterdir():
-        if not f.is_file():
-            continue
-        if any(fnmatch(f.name, pattern) for pattern in name_excludes):
-            continue
-        # Include source files and additional file candidates (CONFIG/DOCUMENTATION)
-        if is_source_file(f.name) or is_additional_file_candidate(f):
-            # When excluding tests, skip test files
-            if exclude_tests and _is_test_path(f.name):
+    if root_children is not None:
+        for name, is_dir in root_children:
+            if any(fnmatch(name, pattern) for pattern in name_excludes):
                 continue
-            root_files.append(f.name)
+            if is_dir:
+                dirs.append(name)
+            elif is_source_file(name) or is_additional_file_candidate(repo_root / name):
+                if exclude_tests and _is_test_path(name):
+                    continue
+                root_files.append(name)
+    else:
+        # Get top-level directories, filtering out excluded ones
+        for d in repo_root.iterdir():
+            if not d.is_dir():
+                continue
+            excluded = any(fnmatch(d.name, pattern) for pattern in name_excludes)
+            if not excluded:
+                dirs.append(d.name)
+        # Also get root-level files (source and config/doc files)
+        for f in repo_root.iterdir():
+            if not f.is_file():
+                continue
+            if any(fnmatch(f.name, pattern) for pattern in name_excludes):
+                continue
+            # Include source files and additional file candidates (CONFIG/DOC)
+            if is_source_file(f.name) or is_additional_file_candidate(f):
+                # When excluding tests, skip test files
+                if exclude_tests and _is_test_path(f.name):
+                    continue
+                root_files.append(f.name)
 
     root_files = sorted(root_files)
     dirs = sorted(dirs)
@@ -2780,29 +2863,9 @@ def _format_structure_tree_fallback(
         lines.append("```")
         return "\n".join(lines)
 
-    # Count items in each directory
+    # Count items in each directory (map-scoped FileIndex aware, INV-jumim)
     def count_items(dir_path: Path) -> int:
-        count = 0
-        try:
-            for item in dir_path.iterdir():
-                # Skip excluded items
-                if any(fnmatch(item.name, p) for p in name_excludes):
-                    continue
-                # When excluding tests, skip test files but keep config/doc files
-                if exclude_tests:
-                    rel_path = str(item.relative_to(repo_root))
-                    if _is_test_path(rel_path):
-                        if item.is_file():
-                            # Keep config/documentation files (Additional Files candidates)
-                            if not is_additional_file_candidate(item):
-                                continue  # Skip test source file
-                        else:
-                            # Skip test directories
-                            continue
-                count += 1
-        except PermissionError:  # pragma: no cover
-            pass
-        return count
+        return _count_dir_items(dir_path, repo_root, name_excludes, exclude_tests)
 
     # Combine dirs and files, showing dirs first (max 10 total items)
     all_items = [(d, True) for d in dirs] + [(f, False) for f in root_files]
@@ -2883,8 +2946,6 @@ def _format_structure_tree(
             └── test_main.py
         ```
     """
-    from fnmatch import fnmatch
-
     # Combine default and extra excludes for counting
     excludes = list(DEFAULT_EXCLUDES)
     if extra_excludes:
@@ -2932,18 +2993,12 @@ def _format_structure_tree(
             node = node["children"][part]
 
     def count_items(path: Path) -> int:
-        """Count items in a directory, excluding patterns."""
-        if not path.is_dir():  # pragma: no cover
-            return 0
-        count = 0
-        try:
-            for item in path.iterdir():
-                if any(fnmatch(item.name, pat) for pat in name_excludes):
-                    continue
-                count += 1
-        except OSError:  # pragma: no cover
-            pass
-        return count
+        """Count items in a directory, excluding patterns.
+
+        INV-jumim: honors a map-scoped FileIndex (the ``--input`` case) so the
+        "[and N other items]" annotations reflect the MAP, not the working tree.
+        """
+        return _count_dir_items(path, repo_root, name_excludes)
 
     def render_tree(node: dict, path: Path, prefix: str = "") -> list[str]:
         """Render tree node and its children."""
@@ -3189,7 +3244,9 @@ def _collect_important_files(
     # 5b. Root-level source files (even without symbols)
     # For flat repos (all files at root), collect source files directly.
     # This ensures repos like qemu-sgabios show all root-level .c/.h/.S files,
-    # not just those with symbols detected.
+    # not just those with symbols detected. INV-jumim: honor a map-scoped
+    # FileIndex (the --input case) so a sketch does not pull in root files that
+    # are absent from the map's universe.
     if len(seen_root_files) < max_root_files:
         from fnmatch import fnmatch
 
@@ -3198,12 +3255,19 @@ def _collect_important_files(
         for patterns in SOURCE_EXTENSIONS.values():
             source_patterns.update(patterns)
 
-        for item in sorted(repo_root.iterdir(), key=lambda x: x.name):
-            if not item.is_file():
-                continue
+        root_children = _dir_children_from_index(repo_root)
+        if root_children is not None:
+            root_file_names = sorted(
+                name for name, is_dir in root_children if not is_dir
+            )
+        else:
+            root_file_names = sorted(
+                item.name for item in repo_root.iterdir() if item.is_file()
+            )
+        for name in root_file_names:
             # Check if it matches a source file pattern
-            if any(fnmatch(item.name, pat) for pat in source_patterns):
-                add_file(item.name)
+            if any(fnmatch(name, pat) for pat in source_patterns):
+                add_file(name)
             if len(seen_root_files) >= max_root_files:
                 break
 
@@ -5821,7 +5885,133 @@ def _format_symbols(
     return "\n".join(lines)
 
 
+# Node "path" values that name no filesystem file (e.g. "<external>").
+_NON_FILE_PATH_PREFIX = "<"
+
+
+def _map_source_paths(repo_root: Path, cached_results: Optional[dict]) -> list[Path]:
+    """Distinct absolute source paths named by a behavior map's nodes.
+
+    INV-jumim: the read-path scoping (and the ``cmd_sketch`` staleness check)
+    need the file universe a ``--input`` map describes. Each node's ``path`` is
+    relative to ``repo_root``; synthetic non-filesystem paths (``<external>``
+    and friends) are skipped, and duplicates (multiple symbols per file) are
+    collapsed. Returns ``[]`` when no map is given or it names no real files.
+    """
+    if not cached_results:
+        return []
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for node in cached_results.get("nodes", []):
+        path = node.get("path")
+        if not path or path.startswith(_NON_FILE_PATH_PREFIX):
+            continue
+        abs_path = repo_root / path
+        if abs_path in seen:
+            continue
+        seen.add(abs_path)
+        out.append(abs_path)
+    return out
+
+
+def _file_index_from_map(
+    repo_root: Path, cached_results: Optional[dict]
+) -> "FileIndex | None":
+    """Synthesize a :class:`FileIndex` scoped to a behavior map's file universe.
+
+    Returns ``None`` when the map names no real files, so callers leave the
+    global index untouched and keep their normal filesystem read-path.
+    """
+    from .discovery import FileIndex
+
+    paths = _map_source_paths(repo_root, cached_results)
+    if not paths:
+        return None
+    return FileIndex.from_paths(repo_root, paths)
+
+
+def _peek_cached_results(repo_root: Path) -> Optional[dict]:
+    """Read an existing on-disk behavior map for ``repo_root`` WITHOUT running
+    analysis.
+
+    Mirrors :func:`_generate_sketch_impl`'s read-only auto-discovery so the
+    read-path can be map-scoped even when ``--input`` was not passed but a warm
+    cache exists. Never triggers ``run_behavior_map`` (the impl owns the
+    cold-cache auto-run). Returns ``None`` on any miss/error.
+    """
+    from .sketch_embeddings import _get_results_cache_dir
+
+    try:
+        cache_dir = _get_results_cache_dir(repo_root)
+        cached_path = cache_dir / "hypergumbo.results.json"
+        if cached_path.exists():
+            import json
+            return json.loads(cached_path.read_text())
+    except Exception:  # pragma: no cover - cache discovery errors shouldn't block
+        pass
+    return None
+
+
 def generate_sketch(
+    repo_root: Path,
+    max_tokens: Optional[int] = None,
+    exclude_tests: bool = False,
+    first_party_priority: bool = True,
+    extra_excludes: Optional[List[str]] = None,
+    config_extraction_mode: ConfigExtractionMode = ConfigExtractionMode.HEURISTIC,
+    verbose: bool = False,
+    max_config_files: int = 15,
+    fleximax_lines: int = 100,
+    max_chunk_chars: int = 800,
+    language_proportional: bool = True,
+    progress: bool = False,
+    cached_results: Optional[dict] = None,
+    with_source: bool = False,
+    stats_out: Optional[SketchStats] = None,
+    require_sections: Optional[List[str]] = None,
+) -> str:
+    """Generate a token-budgeted Markdown sketch of the repository.
+
+    Thin wrapper around :func:`_generate_sketch_impl` that scopes the
+    filesystem read-path to a behavior map's own file universe when one is
+    available (INV-jumim). When ``cached_results`` is provided (``--input``) or
+    a warm on-disk map is found, a synthetic :class:`FileIndex` built from the
+    map's node paths is installed for the duration of the call so test-file
+    counting, language detection, source-file discovery, and the Structure tree
+    summarize the MAP — not a re-walk of the working tree (which hung 60+s and
+    produced whole-repo sketches from package-scoped maps). The prior global
+    index is always restored. See :func:`_generate_sketch_impl` for the full
+    section-by-section contract and argument docs.
+    """
+    from .discovery import get_file_index, set_file_index
+
+    repo_root = Path(repo_root).resolve()
+    map_for_scope = (
+        cached_results if cached_results is not None
+        else _peek_cached_results(repo_root)
+    )
+    map_index = _file_index_from_map(repo_root, map_for_scope)
+    kwargs = {
+        "max_tokens": max_tokens, "exclude_tests": exclude_tests,
+        "first_party_priority": first_party_priority, "extra_excludes": extra_excludes,
+        "config_extraction_mode": config_extraction_mode, "verbose": verbose,
+        "max_config_files": max_config_files, "fleximax_lines": fleximax_lines,
+        "max_chunk_chars": max_chunk_chars,
+        "language_proportional": language_proportional, "progress": progress,
+        "cached_results": cached_results, "with_source": with_source,
+        "stats_out": stats_out, "require_sections": require_sections,
+    }
+    if map_index is None:
+        return _generate_sketch_impl(repo_root, **kwargs)
+    prev_index = get_file_index()
+    set_file_index(map_index)
+    try:
+        return _generate_sketch_impl(repo_root, **kwargs)
+    finally:
+        set_file_index(prev_index)
+
+
+def _generate_sketch_impl(
     repo_root: Path,
     max_tokens: Optional[int] = None,
     exclude_tests: bool = False,

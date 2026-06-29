@@ -749,7 +749,14 @@ def cmd_sketch(args: argparse.Namespace) -> int:
             return 1
         cached_results = load_behavior_map(input_file)
 
-        # Warn if results file is older than any source files in repo
+        # Warn if results file is older than any source files in repo.
+        # NOTE: this freshness check intentionally walks the working tree
+        # (not the map's node paths): its purpose is to detect source files
+        # that changed OR were ADDED since the map was generated — a new file
+        # is precisely a staleness signal and by definition is not yet in the
+        # map. The INV-jumim read-path scoping deliberately does NOT cover this
+        # check; the dominant --input bottleneck (the _analyze_test_files
+        # rglob) is addressed via the synthetic FileIndex in generate_sketch.
         results_mtime = input_file.stat().st_mtime
         newest_source_mtime = 0.0
         for ext in ["*.py", "*.js", "*.ts", "*.tsx", "*.go", "*.rs", "*.java"]:
