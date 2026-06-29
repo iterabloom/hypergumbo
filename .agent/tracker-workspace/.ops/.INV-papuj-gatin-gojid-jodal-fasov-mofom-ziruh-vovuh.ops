@@ -52,3 +52,18 @@
   clock: 5  # 2f27
   nonce: 2f27  # 2f27
   message: "Cluster PR-B landed: WI-ribag done via PR #321. The shared read-path short-circuit + cache-policy is now substantially in place — PR-A scopes the --input read-path to the map's universe (no CWD re-walk), PR-B reads the 4x/16x comparison sketches from a stats sidecar instead of regenerating them (the dominant warm-sketch cost). Remaining: PR-C (WI-zipoj, P4) — >1M-LOC corpus-scale validation + a size-based default for the comparison-sketch path. INV-papuj closes after PR-C. Residual deferred (not an INV-papuj violation since it's not an ignored cache): symbol-centrality recompute within a single generate_sketch is not cached."  # 2f27
+- op: update  # bd7f
+  at: '2026-06-29T09:15:28Z'  # bd7f
+  by: agent  # bd7f
+  actor: jgstern_agent  # bd7f
+  clock: 6  # bd7f
+  nonce: bd7f  # bd7f
+  set:  # bd7f
+    status: satisfied  # bd7f
+- op: discuss  # 9bb9
+  at: '2026-06-29T09:15:29Z'  # 9bb9
+  by: agent  # 9bb9
+  actor: jgstern_agent  # 9bb9
+  clock: 7  # 9bb9
+  nonce: 9bb9  # 9bb9
+  message: "Satisfied by the PR-A + PR-B cluster (human-greenlit broad fix, 2026-06-28/29). Invariant: 'for any sketch subcommand invoked when fresh cached data exists on disk, the read-path must short-circuit and reuse the cache; no sketch subcommand may re-walk the filesystem or recompute derived data when an authoritative cached version is available.' BEHAVIORAL EVIDENCE (two live repros on the real artifact): (1) PR #320 (INV-jumim) — generate_sketch synthesizes a FileIndex from the --input map's node paths so find_files/_analyze_test_files, languages, config, source-files, and the (now FileIndex-aware) Structure tree summarize the MAP instead of re-walking the CWD; repro: 'sketch --input <90-file pkg map>' from the repo root = 9.6s (was >30s hang) and package-scoped (not whole-repo). (2) PR #321 (WI-ribag) — the 4x/16x comparison sketches now read from a .stats.json sidecar cache instead of regenerating every run; repro: fully-warm 'hypergumbo . -t 8000' WITH the table = ~28s (was ~155s). Members all resolved: INV-jumim satisfied, WI-ribag done, WI-zipoj done (scale-invariant reasoning + self-corpus before/after; >1M-LOC absolute deferred), INV-dadaf satisfied (routes --input no longer writes artifacts). RESIDUAL (NOT an INV-papuj violation): symbol-centrality recompute within a single generate_sketch is uncached — but there is no 'authoritative cached version available' being ignored (centrality is simply not cached), so the invariant holds; caching it is a deferred optimization. Separately surfaced: WI-rukaz (analysis/sketch_precomputed throughput at >1M-LOC, distinct from this read-path invariant)."  # 9bb9

@@ -91,3 +91,18 @@
     tags: [dogfood]  # cafc
   remove:  # cafc
     tags: [dogfooding]  # cafc
+- op: update  # c536
+  at: '2026-06-29T16:59:09Z'  # c536
+  by: agent  # c536
+  actor: jgstern_agent  # c536
+  clock: 10  # c536
+  nonce: c536  # c536
+  set:  # c536
+    status: satisfied  # c536
+- op: discuss  # a9e8
+  at: '2026-06-29T16:59:09Z'  # a9e8
+  by: agent  # a9e8
+  actor: jgstern_agent  # a9e8
+  clock: 11  # a9e8
+  nonce: a9e8  # a9e8
+  message: "Fixed in PR #323 (dev 0ccf253efc). Root cause: main() forced process-wide SIGPIPE=SIG_DFL, so an EPIPE on ANY pipe — notably the transformers safetensors-conversion *background thread* fired during model.encode() (sketch_embeddings.py:164,226) — killed the whole interpreter with signal 13 (exit 141, 0 bytes) regardless of which thread provoked it. pass-10's 'dies inside _compute_centrality_with_python' was a red herring: centrality is pure-Python regex over a ThreadPoolExecutor of threads (no pipes), it was merely where the main thread sat when the async signal arrived; budget sensitivity = wider encode()/race window; '> file' never helped because the broken pipe was never stdout. Fix: leave SIGPIPE at Python's default SIG_IGN so a closed-pipe write raises a catchable BrokenPipeError confined to the provoking thread and the sketch completes; the one case SIG_DFL served ('explain | head' quiet exit) is handled by catching BrokenPipeError around command dispatch + in-band sys.stdout.flush() (block buffering otherwise defers the EPIPE to interpreter shutdown -> exit 120 + leaked traceback) + redirect stdout fd to /dev/null, exit 1. subprocess children unaffected (restore_signals=True).\n\nBehavioral evidence: (1) deterministic mechanism repro — a background-thread broken-pipe write exits 141/0-bytes under SIG_DFL (the exact symptom) and 0/full-output under Python default; (2) production-path regression test::test_background_thread_broken_pipe_does_not_kill_process drives the real cli.main() prologue then writes to a closed pipe from a worker thread -> rc -13 (SIGPIPE) on old code, 0 on the fix; (3) 'sketch --input fresh.json | head -3' now PIPESTATUS=1 0, no BrokenPipeError/traceback. Full affected suite 3019 passed, cli.py 100%.\n\nHonest gap: the ORIGINAL flaky live trigger (fresh 'hypergumbo . -t N') could not be re-armed on current dev — 'sketch --input' dodges it because the map carries cached sketch_precomputed embeddings (encode()'s background thread never fires) and the fresh path is ~8min/run with a timing-dependent race. The regression is locked structurally (the SIG_DFL kill-switch removed, proven via the production entry point), not by re-triggering the historical flake."  # a9e8

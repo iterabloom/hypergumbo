@@ -89,3 +89,18 @@
   clock: 9  # bea0
   nonce: bea0  # bea0
   message: "2026-06-10 design-interview ruling (ADR-0041, merged in PR #4181): stdlib moves to tier 3 with a new ecosystem axis (stdlib|third_party) under a single-source catalog constraint — python.yaml stdlib_modules is that single source, so this wiring item is now mandated by the design rather than optional. Implement the analyzer import-resolution wiring against the catalog once the ADR merges."  # bea0
+- op: update  # ba5c
+  at: '2026-06-29T18:56:47Z'  # ba5c
+  by: agent  # ba5c
+  actor: jgstern_agent  # ba5c
+  clock: 10  # ba5c
+  nonce: ba5c  # ba5c
+  set:  # ba5c
+    status: done  # ba5c
+- op: discuss  # 5c5e
+  at: '2026-06-29T18:56:47Z'  # 5c5e
+  by: agent  # 5c5e
+  actor: jgstern_agent  # 5c5e
+  clock: 11  # 5c5e
+  nonce: 5c5e  # 5c5e
+  message: "Done in PR #324 (dev 5a771f6bc9). SCOPE CORRECTION (overtaken-by-events): the filed framing — 'wire python.yaml stdlib_modules into Python IMPORT RESOLUTION to cut dead-code FPs' — was OBE. A 5-agent understand-phase verified: (1) ADR-0041 §3's ecosystem stamping ALREADY landed — boundary nodes already carry meta.ecosystem from the same single-source catalog (cli.py _make_ecosystem_classifier -> is_stdlib_module, stamped ir.py:1354-1357); (2) the dead-code-FP premise is FALSE — 'imports' edges feed neither the dead-code candidate set (only function/method kinds, cli.py:5613) nor its reachability BFS (_REACHABILITY_EDGE_TYPES={calls,dispatches_to,wraps}, cli.py:5781); (3) ADR-0037 forbids 'resolving' stdlib (it stays external/tier-3/is_resolved=False).\n\nThe REAL FK-safe residual, delivered: (A) IoBoundaryCatalog.is_stdlib_module was exact-match-only and python.yaml enumerates only TOP-LEVEL modules with no stdlib_prefixes, so every dotted stdlib SUBMODULE was mis-stamped ecosystem=third_party. Empirically 355 import-edge boundary nodes on the self-corpus (unittest.mock x251, importlib.util x40, importlib.machinery x29, urllib.*, concurrent.futures, collections.abc, xml.etree, http.client). Added a first-dotted/slashed-segment fallback (submodule of an enumerated top-level stdlib pkg IS stdlib; requests.sessions head not enumerated stays non-stdlib). (B) closed the §3 single-source gap in this package: py_deps.parse_python_dependencies used a SECOND stdlib source (sys.stdlib_module_names); now uses the same catalog (load_catalog('python').is_stdlib_module).\n\nBehavioral evidence: e2e test (test_python_ast_analysis.py::test_run_stdlib_submodule_import_stamped_ecosystem_stdlib) — 'from unittest.mock import patch' now yields an external_symbol boundary node with meta.ecosystem='stdlib' (was 'third_party'), staying tier_name='external_dep'/is_resolved=False; contrast 'import requests' -> 'third_party'. Unit tests for is_stdlib_module dotted/slashed submodule recognition (test_io_boundary.py) + single-source carve-out follows catalog-not-sys (test_py_deps.py). Full affected suite 4061 passed, io_boundary.py + py_deps.py 100%. ADR-0037 FK untouched (only meta.ecosystem changes)."  # 5c5e

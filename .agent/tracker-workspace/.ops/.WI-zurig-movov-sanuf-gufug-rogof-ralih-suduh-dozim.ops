@@ -33,3 +33,18 @@
   clock: 3  # 982c
   nonce: 982c  # 982c
   message: "Re-confirms websocket-linker 12 ws calls edges from one frontend client, 11/12 target test endpoints; no is-test scoping (websocket.py:903-943). The fastapi/starlette split is the WI-fizir facet. (dogfood; blinded sev 4)"  # 982c
+- op: update  # c63e
+  at: '2026-06-29T20:19:06Z'  # c63e
+  by: agent  # c63e
+  actor: jgstern_agent  # c63e
+  clock: 4  # c63e
+  nonce: c63e  # c63e
+  set:  # c63e
+    priority: 3  # c63e
+- op: discuss  # 84c7
+  at: '2026-06-29T20:19:07Z'  # 84c7
+  by: agent  # 84c7
+  actor: jgstern_agent  # 84c7
+  clock: 5  # 84c7
+  nonce: 84c7  # 84c7
+  message: "Dominant filed defect DRAINED by linker-evidence-gating:F1 (find_non_test_files). The websocket-linker discovers endpoints via find_js_ts_files/find_python_files which both route through discovery.find_non_test_files (websocket.py:275,280), so test-fixture WS endpoints (test_websocket.py / test_starlette_routes.py) are no longer scanned -> no synthetic test endpoints -> no phantom client->test pairings. Behavioral evidence (current dev self-corpus map): websocket-linker 'calls' edges 12->1; the 11 test-fixture phantom edges from ws-client.ts are gone; only the 1 legit production pairing (ws-client.ts -> serve.py /ws) remains. Downgraded P1->P3: the P1-justifying FP volume is drained. RESIDUAL (minor, kept open): the surviving edge still has src = the FILE node (ws-client.ts:1-1:file:file) not the resolved new WebSocket() call site, and cross_language=true is graph-unverifiable (dst language=None) — the latter ties INV-zigup. Same-package/same-file scoping is not currently manifesting (only 1 legit edge)."  # 84c7

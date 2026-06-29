@@ -109,3 +109,10 @@
   set: {}  # 0576
   add:  # 0576
     tags: [awaits_bakeoff_validation]  # 0576
+- op: discuss  # d205
+  at: '2026-06-29T20:13:55Z'  # d205
+  by: agent  # d205
+  actor: jgstern_agent  # d205
+  clock: 13  # d205
+  nonce: d205  # d205
+  message: "Partial progress (PR #326, dev 04ea7977fd) — the package-__init__ call-resolution facet. _module_name_from_path keys a package __init__.py's symbols under 'pkg.__init__', but callers/imports reference 'pkg', so the (module,name) registry lookup missed every symbol DEFINED in a package __init__ (the existing re-export aliasing only covered names IMPORTED into the __init__; module_to_file_id only resolved import edges to the file node, not calls to the symbol). The registry now also aliases __init__-defined symbols under the importable package name (strictly additive; the dead 'pkg.__init__' key retained -> zero regression, confirmed by 4117-pass affected suite). Behavioral evidence (self-corpus run before->after): in-tree-module 'calls'->external_symbol twins 342->283 (59 recovered); fold_array_join (defined in url_folding/__init__.py) 0->6 callers resolved. STAYS VIOLATED: the 283 residual is OTHER facets — receiver-typed method calls needing type inference (regex.match, dict.items, cache.clear), and non-__init__ cross-package cases. These need dispatch:F3-class receiver/alias resolution (the harder slice). Keeping awaits_bakeoff_validation (342->283 is a quantitative claim)."  # d205
