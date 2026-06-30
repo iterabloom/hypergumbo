@@ -67,3 +67,18 @@
   clock: 6  # af4e
   nonce: af4e  # af4e
   message: "RELATED_BUT_DISTINCT to INV-vavat: inheritance-family edge.type vocab: moliz=extends/inherits/implements/overrides consolidation (discovery); vavat=3 vestigial singletons incl inherits/overrides + script_src; moliz doesn't cover script_src. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # af4e
+- op: update  # b524
+  at: '2026-06-30T15:20:38Z'  # b524
+  by: agent  # b524
+  actor: jgstern_agent  # b524
+  clock: 7  # b524
+  nonce: b524  # b524
+  set:  # b524
+    status: done  # b524
+- op: discuss  # abf0
+  at: '2026-06-30T15:20:39Z'  # abf0
+  by: agent  # abf0
+  actor: jgstern_agent  # abf0
+  clock: 8  # abf0
+  nonce: abf0  # abf0
+  message: "Done (no-fold ruling + optional residual audit; tracker-only, no code). Per wave3 §A row 4 + ADR-0023/INV-vavat (INV-vavat satisfied): the OOP inheritance-family edge types — extends (class extension), inherits (Solidity), implements (interface), overrides (method override) — are KEPT DISTINCT (NO fold). They name genuinely different relations, not one relation under multiple silent vocabularies; ADR-0023 ruled the relationship axis with these as distinct registered values, and the sibling INV-vavat (RELATED_BUT_DISTINCT) already handled the vestigial inherits/overrides singletons (satisfied). A consumer wanting 'all subclass relationships' enumerates {extends, inherits} — acceptable per the keep-distinct ruling. RESIDUAL CONCEPT-AUDIT (this discovery item's deliverable): grepped all inheritance-family edge_type emissions across packages/*/src. Findings beyond the litigated 4 — (a) a CONTRACT-IMPLEMENTATION family: implements_rpc / openapi_implements / resolver_implements (service implements a gRPC/OpenAPI/GraphQL contract) — a NEW candidate leak DISTINCT from OOP-implements (different domain); (b) extends_template / uses_mixin (Twig/Jinja / Sass) — already tracked as planned folds in edge_types.py/concept-axes.md docstrings. Per keep-distinct-by-default + the umbrella structure, did NOT fold (a) — recorded it as a discussion note on the parent umbrella INV-numat for human triage rather than fragmenting a new item. The OOP-inheritance discovery this item filed is resolved by the keep-distinct ruling."  # abf0

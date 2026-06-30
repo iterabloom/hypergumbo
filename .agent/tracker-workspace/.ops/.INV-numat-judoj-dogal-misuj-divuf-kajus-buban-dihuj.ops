@@ -184,3 +184,10 @@
   clock: 21  # a817
   nonce: a817  # a817
   message: "Drain audit: E-misapplied. No quantitative bakeoff-improvement claim -- this is a structural vocabulary-axis-mixing item (ADR-0031/0032 field-split work). The 'bakeoff validation' the discussion references is next-step methodology to rule out unmapped values, not a metric movement a cohort can confirm. Tracked by its own status; stripping misapplied tag."  # a817
+- op: discuss  # 6292
+  at: '2026-06-30T15:20:38Z'  # 6292
+  by: agent  # 6292
+  actor: jgstern_agent  # 6292
+  clock: 22  # 6292
+  nonce: '6292'  # 6292
+  message: "Residual-audit finding from WI-moliz (no-fold ruling, now closed): beyond the OOP inheritance family (extends/inherits/implements/overrides — KEPT DISTINCT per ADR-0023/INV-vavat), the inheritance-family edge_type grep across packages/*/src surfaced a CONTRACT-IMPLEMENTATION cluster — implements_rpc / openapi_implements / resolver_implements ('an in-code symbol implements an externally-declared gRPC/OpenAPI/GraphQL contract') — 3 protocol-specific vocabularies for arguably one relation. Candidate sibling leak under this umbrella, DISTINCT from OOP class-implements-interface (different domain). Also extends_template (Twig/Jinja) + uses_mixin (Sass) already carry planned 'likely fold to extends/references + meta' docstrings in edge_types.py/concept-axes.md. NOT folded (keep-distinct default); flagged for human triage on whether the contract-implementation family warrants its own ADR-0023-style canonical+meta consolidation. No code action taken."  # 6292
