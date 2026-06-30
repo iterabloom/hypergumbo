@@ -177,7 +177,8 @@ def test_cmd_io_boundaries_json_envelope_top_level_keys(
 ) -> None:
     """PR-B property test: --json envelope top-level shape locked.
 
-    The io-boundaries envelope (schema_version 1.0 per PR-B) is a wire
+    The io-boundaries envelope (schema_version 2.0 since WI-huhit/WI-foduh
+    redefined total_io_edges + added external_potential_edges) is a wire
     contract for downstream consumers (verify-claims, security audit
     scripts, RCT variants). Loud-fail on any silent change to the
     top-level keys, value types, or schema_version string.
@@ -213,6 +214,7 @@ def test_cmd_io_boundaries_json_envelope_top_level_keys(
     expected_keys = {
         "schema_version",
         "total_io_edges",
+        "external_potential_edges",
         "boundaries",
         "unsupported_languages",
     }

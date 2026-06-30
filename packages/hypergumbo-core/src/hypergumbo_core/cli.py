@@ -4196,13 +4196,27 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         if boundary_filter or primitive_filter or exclude_tests:
             from .io_boundary import IO_BOUNDARIES_SCHEMA_VERSION
 
-            filtered_total = sum(len(e.chains) for e in filtered_entries.values())
+            # INV-pubom (amended, WI-huhit/WI-foduh): total_io_edges is the
+            # real/verified surface (excl external_potential); external_potential
+            # is disclosed separately — same split as BoundaryMap.to_dict so the
+            # filtered and unfiltered JSON paths agree.
+            filtered_total = sum(
+                len(e.chains)
+                for k, e in filtered_entries.items()
+                if k != "external_potential"
+            )
+            filtered_ep = (
+                len(filtered_entries["external_potential"].chains)
+                if "external_potential" in filtered_entries
+                else 0
+            )
             output = {
                 # PR-B: pin the io-boundaries envelope schema_version on
                 # the filtered path too; the unfiltered path inherits it
                 # from ``BoundaryMap.to_dict``.
                 "schema_version": IO_BOUNDARIES_SCHEMA_VERSION,
                 "total_io_edges": filtered_total,
+                "external_potential_edges": filtered_ep,
                 "boundaries": {
                     k: v.to_dict() for k, v in sorted(filtered_entries.items())
                 },
@@ -4241,8 +4255,9 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     if ep_suppressed_count:
         print(
             f"  external_potential: {ep_suppressed_count} chain(s) "
-            f"suppressed (pass --show-external-potential to include "
-            f"them, or use --boundary external_potential).",
+            f"suppressed and excluded from the headline total (unverified "
+            f"receiver-unresolved calls; pass --show-external-potential to "
+            f"include them, or use --boundary external_potential).",
         )
     _print_unsupported_languages_notice(unsupported_languages)
 
@@ -4334,8 +4349,23 @@ def _print_io_boundaries_by_type(
         print("No I/O boundary calls detected.")
         return
 
-    total = sum(len(e.chains) for e in entries.values())
-    print(f"I/O Boundary Map ({total} boundary calls)\n")
+    # WI-huhit/WI-foduh: the headline canonical count is the REAL/verified I/O
+    # surface (excl external_potential), matching JSON total_io_edges regardless
+    # of --show-external-potential; external_potential is disclosed separately.
+    total = sum(
+        len(e.chains) for k, e in entries.items() if k != "external_potential"
+    )
+    ep_n = (
+        len(entries["external_potential"].chains)
+        if "external_potential" in entries
+        else 0
+    )
+    ep_note = (
+        f"; +{ep_n} external_potential [unverified, excluded from total]"
+        if ep_n
+        else ""
+    )
+    print(f"I/O Boundary Map ({total} boundary calls{ep_note})\n")
 
     for boundary_type in sorted(entries.keys()):
         entry = entries[boundary_type]
@@ -4415,8 +4445,22 @@ def _print_io_boundaries_by_file(
             display_path = _relativize(raw_path, repo_root) if raw_path else "unknown"
             chains_by_file[display_path].append(chain)
 
-    total = sum(len(v) for v in chains_by_file.values())
-    print(f"I/O Boundary Map by File ({total} boundary calls)\n")
+    # WI-huhit/WI-foduh: canonical count excludes external_potential (matches
+    # JSON total_io_edges); external_potential disclosed separately.
+    total = sum(
+        len(e.chains) for k, e in entries.items() if k != "external_potential"
+    )
+    ep_n = (
+        len(entries["external_potential"].chains)
+        if "external_potential" in entries
+        else 0
+    )
+    ep_note = (
+        f"; +{ep_n} external_potential [unverified, excluded from total]"
+        if ep_n
+        else ""
+    )
+    print(f"I/O Boundary Map by File ({total} boundary calls{ep_note})\n")
 
     for filepath in sorted(chains_by_file.keys()):
         file_chains = chains_by_file[filepath]

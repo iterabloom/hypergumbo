@@ -667,8 +667,11 @@ _WRITER_CONTRACT_NEVER_POPULATED: tuple[tuple[str, str, str], ...] = ()
 # cross-check because the boundary/metrics-builder layer doesn't have
 # a record stream to inspect — but the contract is recorded here:
 #
-# - total_io_edges canonical = sum(len(e.chains) for e in entries.values())
-#   (post-external_potential chain count); see io_boundary.py.
+# - total_io_edges canonical = sum(len(e.chains) for k, e in entries.items()
+#   if k != "external_potential") — the real/verified I/O surface, EXCLUDING
+#   the external_potential bucket (disclosed separately as
+#   external_potential_edges). INV-pubom amended 2026-06-30 (WI-huhit/WI-foduh);
+#   see io_boundary.py.
 # - total_files canonical = len({n.path for n in nodes if n.path})
 #   (node-distinct-path count); see metrics.py:compute_metrics.
 

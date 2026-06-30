@@ -543,7 +543,16 @@ def _default_coverage(boundary_map: BoundaryMap) -> BoundaryCoverage:
     supplies the stricter per-language signal that also catches a partially
     blind analysis (WI-kajil).
     """
-    if boundary_map.total_io_edges == 0:
+    # INV-bitig gate: "did the analysis SEE any I/O at all?" — count BOTH
+    # confirmed I/O (total_io_edges, real categories) AND the external_potential
+    # bucket. The WI-huhit/WI-foduh headline redefine excludes external_potential
+    # from total_io_edges, but external_potential>0 still means the analysis ran
+    # and found (receiver-unresolved) calls, so it is NOT an unanalyzed input;
+    # this gate keeps the original "any boundary signal" semantics.
+    if (
+        boundary_map.total_io_edges == 0
+        and boundary_map.external_potential_edges == 0
+    ):
         return BoundaryCoverage(
             complete=False,
             reason=(

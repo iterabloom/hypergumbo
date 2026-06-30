@@ -2743,8 +2743,10 @@ class TestIoBoundariesEnvelopeSchema:
     """
 
     def test_io_boundaries_schema_version_constant_pinned(self) -> None:
-        """The exported constant pins the inaugural ``1.0`` value."""
-        assert IO_BOUNDARIES_SCHEMA_VERSION == "1.0", (
+        """The exported constant pins ``2.0`` (bumped from 1.0 by WI-huhit/
+        WI-foduh: total_io_edges redefined to real categories + the new
+        external_potential_edges key)."""
+        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.0", (
             "io-boundaries schema_version is a wire-format contract. "
             "Do NOT change the value without bumping it deliberately "
             "AND updating the inline schema docs + CHANGELOG."
@@ -2763,7 +2765,10 @@ class TestIoBoundariesEnvelopeSchema:
         # ``unsupported_languages`` is added by ``cmd_io_boundaries`` in
         # cli.py (it's not part of BoundaryMap state), so it's not in
         # this lock-set; the CLI integration test below covers it.
-        expected_keys = {"schema_version", "total_io_edges", "boundaries"}
+        expected_keys = {
+            "schema_version", "total_io_edges", "external_potential_edges",
+            "boundaries",
+        }
         assert set(d.keys()) == expected_keys, (
             f"Unexpected top-level keys in BoundaryMap.to_dict(): "
             f"got {sorted(d.keys())}, expected {sorted(expected_keys)}. "
@@ -2777,6 +2782,7 @@ class TestIoBoundariesEnvelopeSchema:
         d = bmap.to_dict()
         assert isinstance(d["schema_version"], str)
         assert isinstance(d["total_io_edges"], int)
+        assert isinstance(d["external_potential_edges"], int)
         assert isinstance(d["boundaries"], dict)
 
 
@@ -2947,6 +2953,41 @@ class TestExternalPotentialBucket:
                 assert chain.io_edge_dst != dst, (
                     "catalog-matched edge leaked into external_potential"
                 )
+
+    def test_total_io_edges_excludes_external_potential_disclosed_separately(
+        self,
+    ) -> None:
+        """WI-huhit/WI-foduh: ``total_io_edges`` is the real/verified I/O
+        surface (excl ``external_potential``); ``external_potential_edges``
+        discloses the bucket separately so it no longer inflates the headline.
+        """
+        from hypergumbo_core.io_boundary import compute_boundary_map
+
+        # One real net_send (urlopen, in catalog) + one external_potential
+        # (snapshot_download, unresolved wrapper not in any catalog).
+        real_dst = "python:urllib.request:0-0:urlopen:unresolved"
+        ep_dst = "python:huggingface_hub:0-0:snapshot_download:unresolved"
+        edges = [
+            self._mock_edge("python:/app/a.py:1-2:f:function", real_dst),
+            self._mock_edge("python:/app/b.py:1-2:g:function", ep_dst),
+        ]
+        nodes_by_id = {
+            real_dst: self._boundary_node(real_dst, "urlopen"),
+            ep_dst: self._boundary_node(ep_dst, "snapshot_download"),
+        }
+        bmap = compute_boundary_map(
+            edges, {"python": load_catalog("python")}, nodes_by_id=nodes_by_id,
+        )
+        # Both buckets exist...
+        assert bmap.entries["net_send"].chains  # real
+        assert bmap.entries["external_potential"].chains  # unverified noise
+        # ...but the headline counts ONLY the real category; external_potential
+        # is disclosed in its own field (not folded into total_io_edges).
+        assert bmap.total_io_edges == 1
+        assert bmap.external_potential_edges == 1
+        d = bmap.to_dict()
+        assert d["total_io_edges"] == 1
+        assert d["external_potential_edges"] == 1
 
     def test_in_progress_language_emits_chain_with_unreliable_annotation(
         self,
