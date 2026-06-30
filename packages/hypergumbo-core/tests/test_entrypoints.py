@@ -10,6 +10,8 @@ from hypergumbo_core.entrypoints import (
     detect_entrypoints,
     Entrypoint,
     EntrypointKind,
+    ENTRYPOINT_EVIDENCE_TYPES,
+    ENTRYPOINT_SOURCES,
     BASE_ENTRYPOINT_CAP,
     MAX_ENTRYPOINT_CAP,
 )
@@ -2319,7 +2321,11 @@ class TestEntrypointSerialization:
     """Tests for Entrypoint serialization methods."""
 
     def test_to_dict(self) -> None:
-        """Entrypoint.to_dict() returns correct dictionary structure."""
+        """Entrypoint.to_dict() returns correct dictionary structure.
+
+        WI-rukam: the record now carries a ``meta`` dict mirroring
+        ``Edge.meta``; ``meta.id`` is auto-stamped on every record.
+        """
         ep = Entrypoint(
             symbol_id="python:app.py:1-5:handler:function",
             kind=EntrypointKind.HTTP_ROUTE,
@@ -2329,12 +2335,17 @@ class TestEntrypointSerialization:
 
         result = ep.to_dict()
 
-        assert result == {
-            "symbol_id": "python:app.py:1-5:handler:function",
-            "kind": "http_route",
-            "confidence": 0.95,
-            "label": "HTTP GET /users",
+        assert set(result.keys()) == {
+            "symbol_id", "kind", "confidence", "label", "meta",
         }
+        assert result["symbol_id"] == "python:app.py:1-5:handler:function"
+        assert result["kind"] == "http_route"
+        assert result["confidence"] == 0.95
+        assert result["label"] == "HTTP GET /users"
+        # Direct construction stamps only the derived id (no source /
+        # evidence_type — those come from the producer via .create()).
+        assert result["meta"]["id"].startswith("entrypoint:sha256:")
+        assert set(result["meta"].keys()) == {"id"}
 
     def test_to_dict_all_kinds(self) -> None:
         """to_dict() correctly serializes all EntrypointKind values."""
@@ -2347,6 +2358,176 @@ class TestEntrypointSerialization:
             )
             result = ep.to_dict()
             assert result["kind"] == kind.value
+            assert result["meta"]["id"].startswith("entrypoint:sha256:")
+
+
+class TestEntrypointProvenance:
+    """WI-rukam: every Entrypoint carries id/source/evidence_type under meta.
+
+    The record grows a ``meta`` dict mirroring ``Edge.meta``: a stable
+    content-hash ``id`` (auto-stamped), the producer-pass ``source``, and
+    the inference-pathway ``evidence_type`` (both set by ``.create()``).
+    """
+
+    def test_id_auto_stamped_on_direct_construction(self) -> None:
+        ep = Entrypoint(
+            symbol_id="python:app.py:1-5:h:function",
+            kind=EntrypointKind.HTTP_ROUTE,
+            confidence=0.9,
+            label="HTTP GET /x",
+        )
+        assert ep.meta["id"].startswith("entrypoint:sha256:")
+
+    def test_id_deterministic_for_same_inputs(self) -> None:
+        kwargs = {
+            "symbol_id": "python:app.py:1-5:h:function",
+            "kind": EntrypointKind.HTTP_ROUTE,
+            "confidence": 0.9,
+            "label": "HTTP GET /x",
+        }
+        assert Entrypoint(**kwargs).meta["id"] == Entrypoint(**kwargs).meta["id"]
+
+    def test_id_varies_by_kind_symbol_and_label(self) -> None:
+        base = {
+            "symbol_id": "python:app.py:1-5:h:function",
+            "kind": EntrypointKind.HTTP_ROUTE,
+            "confidence": 0.9,
+            "label": "HTTP GET /x",
+        }
+        base_id = Entrypoint(**base).meta["id"]
+        assert Entrypoint(**{**base, "kind": EntrypointKind.CONTROLLER}).meta["id"] != base_id
+        assert Entrypoint(**{**base, "symbol_id": "other"}).meta["id"] != base_id
+        assert Entrypoint(**{**base, "label": "HTTP POST /x"}).meta["id"] != base_id
+
+    def test_confidence_excluded_from_id(self) -> None:
+        """id is identity (kind/symbol/label) — confidence is a ranking
+        value, not part of the record's identity."""
+        a = Entrypoint(symbol_id="s", kind=EntrypointKind.HTTP_ROUTE,
+                       confidence=0.9, label="L")
+        b = Entrypoint(symbol_id="s", kind=EntrypointKind.HTTP_ROUTE,
+                       confidence=0.1, label="L")
+        assert a.meta["id"] == b.meta["id"]
+
+    def test_create_sets_source_evidence_and_id(self) -> None:
+        ep = Entrypoint.create(
+            symbol_id="python:app.py:1-5:h:function",
+            kind=EntrypointKind.HTTP_ROUTE,
+            confidence=0.95,
+            label="HTTP GET /x",
+            source="concept_detector",
+            evidence_type="framework_pattern",
+        )
+        assert ep.meta["source"] == "concept_detector"
+        assert ep.meta["evidence_type"] == "framework_pattern"
+        assert ep.meta["id"].startswith("entrypoint:sha256:")
+        # to_dict round-trips the full provenance.
+        assert ep.to_dict()["meta"] == ep.meta
+
+    def test_create_rejects_unknown_source(self) -> None:
+        with pytest.raises(ValueError, match="source"):
+            Entrypoint.create(
+                symbol_id="s", kind=EntrypointKind.HTTP_ROUTE,
+                confidence=0.9, label="L",
+                source="not_a_source", evidence_type="framework_pattern",
+            )
+
+    def test_create_rejects_unknown_evidence_type(self) -> None:
+        with pytest.raises(ValueError, match="evidence_type"):
+            Entrypoint.create(
+                symbol_id="s", kind=EntrypointKind.HTTP_ROUTE,
+                confidence=0.9, label="L",
+                source="concept_detector", evidence_type="not_a_pathway",
+            )
+
+    def test_vocabulary_constants_are_frozensets(self) -> None:
+        assert isinstance(ENTRYPOINT_SOURCES, frozenset)
+        assert isinstance(ENTRYPOINT_EVIDENCE_TYPES, frozenset)
+        assert "concept_detector" in ENTRYPOINT_SOURCES
+        assert "framework_pattern" in ENTRYPOINT_EVIDENCE_TYPES
+
+    # --- Behavioral / production-path coverage (closure evidence) ---
+
+    def _provenance_fixture(self):
+        """Symbols + edges exercising every concept_detector evidence
+        pathway plus the script_module_detector producer."""
+        route = make_symbol(
+            "get_users", path="src/api/users.py",
+            meta={"concepts": [
+                {"concept": "route", "path": "/users", "method": "GET"}]},
+        )
+        manifest_cli = make_symbol(
+            "mycli", path="src/cli.py",
+            meta={"concepts": [{"concept": "npm_bin"}]},
+        )
+        main_fn = make_symbol(
+            "main", path="src/main.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        controller = make_symbol(
+            "FooController", path="src/foo.py",
+            meta={"concepts": [{"concept": "controller_by_name"}]},
+        )
+        shell = make_symbol(
+            "deploy.sh", path="scripts/deploy.sh", kind="file",
+            language="bash",
+            meta={"concepts": [{"concept": "shell_script"}]},
+        )
+        # script_module: TS file with an outbound call and no inbound import.
+        ts_file = make_symbol(
+            "app.ts", path="src/app.ts", kind="file", language="typescript",
+        )
+        callee = make_symbol("helper", path="src/helper.ts", language="typescript")
+        call_edge = Edge.create(
+            src=ts_file.id, dst=callee.id, edge_type="calls", line=1,
+            origin="test", origin_run_id="uuid:test",
+        )
+        nodes = [route, manifest_cli, main_fn, controller, shell, ts_file, callee]
+        return nodes, [call_edge]
+
+    def test_detect_entrypoints_all_carry_provenance(self) -> None:
+        """Every entrypoint emitted by detect_entrypoints has a valid
+        id/source/evidence_type — the structural invariant (WI-rukam)."""
+        nodes, edges = self._provenance_fixture()
+        eps = detect_entrypoints(nodes, edges)
+        assert eps  # fixture must produce some
+        for ep in eps:
+            assert ep.meta["id"].startswith("entrypoint:sha256:")
+            assert ep.meta["source"] in ENTRYPOINT_SOURCES
+            assert ep.meta["evidence_type"] in ENTRYPOINT_EVIDENCE_TYPES
+
+    def test_evidence_type_per_representative_kind(self) -> None:
+        nodes, edges = self._provenance_fixture()
+        eps = detect_entrypoints(nodes, edges)
+        by_kind = {ep.kind: ep for ep in eps}
+        assert by_kind[EntrypointKind.HTTP_ROUTE].meta["evidence_type"] == "framework_pattern"
+        assert by_kind[EntrypointKind.CLI_COMMAND].meta["evidence_type"] == "manifest_declared"
+        assert by_kind[EntrypointKind.MAIN_FUNCTION].meta["evidence_type"] == "language_convention"
+        assert by_kind[EntrypointKind.CONTROLLER].meta["evidence_type"] == "naming_heuristic"
+        assert by_kind[EntrypointKind.SHELL_SCRIPT].meta["evidence_type"] == "structural"
+        assert by_kind[EntrypointKind.SCRIPT_MODULE].meta["evidence_type"] == "structural"
+        # source: concept-detected vs structural script-module producer.
+        assert by_kind[EntrypointKind.HTTP_ROUTE].meta["source"] == "concept_detector"
+        assert by_kind[EntrypointKind.SCRIPT_MODULE].meta["source"] == "script_module_detector"
+
+    def test_connectivity_fallback_carries_provenance(self) -> None:
+        """The connectivity fallback (no concepts matched) stamps its own
+        source + evidence_type."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        c = make_symbol("c", path="src/c.py")
+        edges = [
+            Edge.create(src=a.id, dst=b.id, edge_type="calls", line=1,
+                        origin="test", origin_run_id="uuid:test"),
+            Edge.create(src=a.id, dst=c.id, edge_type="calls", line=2,
+                        origin="test", origin_run_id="uuid:test"),
+        ]
+        eps = detect_entrypoints([a, b, c], edges)
+        conn = [e for e in eps if e.kind == EntrypointKind.CONNECTIVITY_BASED]
+        assert conn
+        for ep in conn:
+            assert ep.meta["source"] == "connectivity_fallback"
+            assert ep.meta["evidence_type"] == "connectivity_heuristic"
+            assert ep.meta["id"].startswith("entrypoint:sha256:")
 
 
 class TestEntrypointRankingPenalties:

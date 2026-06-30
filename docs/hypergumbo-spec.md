@@ -686,7 +686,7 @@ Single file: `hypergumbo.results.json`
 ### Top-level structure
 ```json
 {
-  "schema_version": "0.14.2",
+  "schema_version": "0.14.3",
   "confidence_model": "hypergumbo-evidence-v2",
   "stable_id_scheme": "hypergumbo-stableid-v8",
   "shape_id_scheme": "hypergumbo-shapeid-v2",
@@ -894,7 +894,12 @@ Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`,
       "symbol_id": "python:src/app.py:10-25:get_users:function",
       "kind": "http_route",
       "confidence": 0.95,
-      "label": "HTTP GET /users"
+      "label": "HTTP GET /users",
+      "meta": {
+        "id": "entrypoint:sha256:1a2b3c4d5e6f7a8b",
+        "source": "concept_detector",
+        "evidence_type": "framework_pattern"
+      }
     }
   ]
 }
@@ -905,6 +910,10 @@ Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`,
 - `kind`: Entry point type (`http_route`, `cli_command`, `main_function`, `background_task`, `websocket_handler`, `library_export`, `shell_script`, `html_entry`, `script_module`, `connectivity_based`, etc.). The `shell_script` kind (INV-tajap) marks bash/sh executable scripts; emitted on the file-kind Symbol whenever the bash analyzer parses a file (every parsed bash file qualifies — `find_bash_files` already requires either a shebang or `.sh`/`.bash` extension). The `html_entry` kind (INV-tajap) marks SPA roots / convention-named `index.html` files; emitted on the file-kind Symbol when the filename is `index.html` (case-insensitive). The `script_module` kind (INV-tajap) marks TS/JS standalone-script files — file-kind Symbols in `typescript` / `javascript` that have **no inbound `imports` edges** (nobody imports the file) **and at least one outbound `calls` edge** (the file does work at module load). Unlike `shell_script` / `html_entry`, this rule requires the full edge set, so the detection runs in `detect_entrypoints` itself instead of via an analyzer-stamped `meta.concepts` entry. The `websocket_handler` kind (WI-kuvig) covers WebSocket endpoints — both definition-based handlers (NestJS gateways, Phoenix channels, etc., via a `websocket_handler` concept) and path-registered WebSocket routes (Starlette `WebSocketRoute`, whose minted route symbol carries the synthetic `meta.http_method == "WS"`); a route whose method is the `WS` marker classifies as `websocket_handler`, **not** `http_route` + `method=WS`, and the `WS` value is retained on the node's `meta.http_method` for backward-compat. Path-bearing WS routes use a `"WS <path>"` label (parallel to `"HTTP <method> <path>"`) so the handler-concept entrypoint and the route-symbol entrypoint for one route dedup to one.
 - `confidence`: Detection confidence (0.0–1.0), reflecting pattern strength, penalties for test/vendor code, and connectivity boost
 - `label`: Human-readable description
+- `meta`: Provenance dict mirroring `Edge.meta` (WI-rukam) so a consumer can interpret an entrypoint's `confidence` the way it interprets an edge's. Keys (registered on the `entrypoint_meta` axis in `axis_meta_keys.py`):
+  - `id`: stable content-hash identity `entrypoint:sha256:<16hex>` of (kind, symbol_id, label) — always present, auto-stamped. Confidence is **not** part of the identity (it is a ranking value, not a record key). Mirrors `Edge.id`.
+  - `source`: producer pass that emitted the record — `concept_detector` (YAML-concept matches), `connectivity_fallback` (the no-patterns-matched top-N-by-out-degree fallback), or `script_module_detector` (the edge-set-dependent TS/JS standalone-script rule). Mirrors `Edge.origin`.
+  - `evidence_type`: inference pathway, **aligned 1:1 with the confidence tiers below** — `manifest_declared` (0.99), `framework_pattern` (0.95), `structural` (0.85), `language_convention` (0.80, incl. library exports), `naming_heuristic` (0.70), `connectivity_heuristic` (0.50). A separate vocabulary from the edge inference-pathway registry (`evidence_types.py`); entrypoint detection methods do not overlap edge inference pathways. Mirrors `Edge.evidence_type`.
 
 **Confidence tiers** (see [§8](#8-entrypoint-detection) and [§12](#12-confidence-scoring)):
 - 0.99: Manifest-declared (package.json `bin`, Cargo.toml `[[bin]]`, pyproject.toml `[project.scripts]`)

@@ -25,6 +25,13 @@ Axis taxonomy
   ``framework_dispatch`` (Wave 5 fold residue per audit-findings 0014
   — the post-fold home of framework-specific
   ``Edge.evidence_type`` values).
+- ``entrypoint_meta`` — the key appears on ``Entrypoint.meta``
+  (``entrypoints.Entrypoint``, not an ``ir.py`` dataclass). Example:
+  ``evidence_type`` (WI-rukam — the Entrypoint analog of the
+  ``Edge.evidence_type`` inference-pathway axis, nested under ``meta``
+  so the Entrypoint record keeps a 4-field typed core). The value
+  vocabularies live as single-source frozensets in ``entrypoints.py``
+  (``ENTRYPOINT_SOURCES`` / ``ENTRYPOINT_EVIDENCE_TYPES``).
 
 A handful of keys are emitted on both sides (e.g., ``language`` could
 plausibly appear on either dict); convention in this codebase is that
@@ -87,10 +94,12 @@ from typing import Final
 
 AXIS_SYMBOL_META: Final[str] = "symbol_meta"
 AXIS_EDGE_META: Final[str] = "edge_meta"
+AXIS_ENTRYPOINT_META: Final[str] = "entrypoint_meta"
 
 VALID_AXES: Final[frozenset[str]] = frozenset({
     AXIS_SYMBOL_META,
     AXIS_EDGE_META,
+    AXIS_ENTRYPOINT_META,
 })
 
 
@@ -480,6 +489,50 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "annotations not (yet) elevated to a named meta "
                 "key. Use sparingly — sustained use of a tag is "
                 "an ADR-0024 promotion signal."),
+    # ------------------------------------------------------------------
+    # Entrypoint.meta — provenance fields mirroring Edge's provenance
+    # shape (WI-rukam). The Entrypoint record keeps a 4-field typed core
+    # (symbol_id / kind / confidence / label); per the WI-rukam ruling the
+    # id + producer + inference-pathway provenance nests under ``meta``
+    # (rather than three new typed fields) so a consumer can interpret an
+    # entrypoint's confidence the same way it interprets an edge's
+    # (Edge.id / Edge.origin / Edge.evidence_type). Value vocabularies are
+    # the single-source frozensets ``ENTRYPOINT_SOURCES`` /
+    # ``ENTRYPOINT_EVIDENCE_TYPES`` in ``entrypoints.py``; ``Entrypoint.create``
+    # validates against them.
+    # ------------------------------------------------------------------
+    MetaKeySpec("id", AXIS_ENTRYPOINT_META,
+                "Stable content-hash identity of an Entrypoint record: "
+                "``entrypoint:sha256:<16hex>`` of (kind, symbol_id, label). "
+                "Auto-stamped in ``Entrypoint.__post_init__`` so every "
+                "record — including test-constructed ones — carries it. The "
+                "Entrypoint analog of ``Edge.id`` (WI-rukam); confidence is "
+                "NOT part of the identity (it is a ranking value, not a "
+                "record key)."),
+    MetaKeySpec("source", AXIS_ENTRYPOINT_META,
+                "Producer pass that emitted the Entrypoint — one of "
+                "'concept_detector' (``_detect_from_concepts``, YAML-concept "
+                "matches), 'connectivity_fallback' (``_connectivity_fallback``, "
+                "the no-patterns-matched top-N-by-out-degree fallback), or "
+                "'script_module_detector' (``_detect_script_modules``, the "
+                "edge-set-dependent TS/JS standalone-script rule). The "
+                "Entrypoint analog of ``Edge.origin`` (WI-rukam); value space "
+                "is ``entrypoints.ENTRYPOINT_SOURCES``."),
+    MetaKeySpec("evidence_type", AXIS_ENTRYPOINT_META,
+                "Inference pathway by which the entrypoint was detected — one "
+                "of 'manifest_declared' (package-manifest bin/scripts entry), "
+                "'framework_pattern' (decorator/base-class/usage/reflective-"
+                "dispatch YAML match), 'structural' (main-guard, shebang, "
+                "filename, or import-graph shape), 'language_convention' "
+                "(main()/test functions/library exports), 'naming_heuristic' "
+                "(*Controller/*Handler/cmd_* name patterns), or "
+                "'connectivity_heuristic' (the out-degree fallback). The "
+                "Entrypoint analog of ``Edge.evidence_type`` (WI-rukam) — a "
+                "SEPARATE vocabulary from the edge inference-pathway registry "
+                "(``evidence_types.py``): entrypoint detection methods do not "
+                "overlap edge inference pathways. Value space is "
+                "``entrypoints.ENTRYPOINT_EVIDENCE_TYPES``; aligns 1:1 with "
+                "the spec §8/§9 confidence tiers."),
 )
 
 

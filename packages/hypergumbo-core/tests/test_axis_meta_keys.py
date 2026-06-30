@@ -22,6 +22,7 @@ import pytest
 
 from hypergumbo_core.axis_meta_keys import (
     AXIS_EDGE_META,
+    AXIS_ENTRYPOINT_META,
     AXIS_SYMBOL_META,
     META_KEYS,
     MetaKeySpec,
@@ -57,7 +58,9 @@ def test_specs_are_frozen():
 
 
 def test_valid_axes_constant_matches_module_constants():
-    assert VALID_AXES == frozenset({AXIS_SYMBOL_META, AXIS_EDGE_META})
+    assert VALID_AXES == frozenset({
+        AXIS_SYMBOL_META, AXIS_EDGE_META, AXIS_ENTRYPOINT_META,
+    })
 
 
 def test_every_axis_has_at_least_one_spec():
@@ -128,21 +131,40 @@ def test_meta_key_spec_is_dataclass():
 # --- Cross-axis hygiene ---
 
 def test_no_meta_key_collides_with_typed_field():
-    """Meta keys must NOT collide with named typed fields on Symbol /
-    Edge dataclasses. The convention (per the module docstring) is
-    that a field elevated to a typed slot is named on the dataclass
-    rather than carried in ``meta``. A registry entry colliding with
-    a typed field name signals an unfinished promotion (the key was
-    added to meta and the typed field was later introduced, but the
-    meta entry wasn't retired) — both shapes existing simultaneously
-    creates an ambiguity for consumers."""
-    from hypergumbo_core.ir import Edge, Symbol
+    """A meta key must NOT collide with a named typed field ON THE SAME
+    dataclass. The convention (per the module docstring) is that a field
+    elevated to a typed slot is named on the dataclass rather than carried
+    in ``meta``. A registry entry colliding with a typed field name on its
+    OWN parent dataclass signals an unfinished promotion (the key was added
+    to meta and the typed field was later introduced, but the meta entry
+    wasn't retired) — both shapes existing simultaneously creates an
+    ambiguity for consumers.
 
-    typed_symbol_fields = {f.name for f in dataclasses.fields(Symbol)}
-    typed_edge_fields = {f.name for f in dataclasses.fields(Edge)}
-    registry_names = all_meta_key_names()
-    collisions = registry_names & (typed_symbol_fields | typed_edge_fields)
-    assert not collisions, (
-        f"Meta keys collide with typed field names: {sorted(collisions)}. "
-        "Either retire the meta entry or rename the typed field."
-    )
+    The check is axis-aware: a ``symbol_meta`` key is checked against
+    ``Symbol`` fields, an ``edge_meta`` key against ``Edge`` fields, and an
+    ``entrypoint_meta`` key against ``Entrypoint`` fields. Cross-dataclass
+    name reuse is NOT a collision — ``Entrypoint.meta["id"]`` is fine even
+    though ``Edge`` has a typed ``id`` field, because they describe
+    different records (WI-rukam introduced the third axis)."""
+    from hypergumbo_core.ir import Edge, Symbol
+    from hypergumbo_core.entrypoints import Entrypoint
+
+    axis_to_fields = {
+        AXIS_SYMBOL_META: {f.name for f in dataclasses.fields(Symbol)},
+        AXIS_EDGE_META: {f.name for f in dataclasses.fields(Edge)},
+        AXIS_ENTRYPOINT_META: {f.name for f in dataclasses.fields(Entrypoint)},
+    }
+    for spec in META_KEYS:
+        own_fields = axis_to_fields[spec.axis]
+        assert spec.name not in own_fields, (
+            f"Meta key {spec.name!r} (axis {spec.axis}) collides with a "
+            f"typed field on its own parent dataclass. Either retire the "
+            f"meta entry or rename the typed field."
+        )
+
+
+def test_meta_keys_on_axis_entrypoint_meta_includes_provenance():
+    """WI-rukam: the Entrypoint provenance keys live on the
+    ``entrypoint_meta`` axis."""
+    entrypoint_keys = {spec.name for spec in meta_keys_on_axis(AXIS_ENTRYPOINT_META)}
+    assert {"id", "source", "evidence_type"} <= entrypoint_keys

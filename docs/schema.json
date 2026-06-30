@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.14.2"
+      "const": "0.14.3"
     },
     "confidence_model": {
       "type": "string",
@@ -1765,6 +1765,21 @@
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Detection confidence"
+        },
+        "meta": {
+          "type": "object",
+          "description": "Provenance dict mirroring Edge.meta (WI-rukam). Keys: 'id' (entrypoint:sha256:<16hex> content hash of kind+symbol_id+label, always present), 'source' (producer pass: concept_detector / connectivity_fallback / script_module_detector), 'evidence_type' (inference pathway: manifest_declared / framework_pattern / structural / language_convention / naming_heuristic / connectivity_heuristic). Registered on the entrypoint_meta axis in axis_meta_keys.py.",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "evidence_type": {
+              "type": "string"
+            }
+          }
         }
       },
       "required": [

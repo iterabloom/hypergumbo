@@ -639,10 +639,18 @@ def find_axis_drift(repo_root: Path) -> list[str]:
 
     Used by the property test in ``tests/test_evidence_types.py`` and
     the pre-commit linter at ``scripts/check-evidence-type-drift``.
+
+    ``ENTRYPOINT_EVIDENCE_TYPES`` (``entrypoints.py``) is excluded: it
+    matches the ``EVIDENCE_TYPE`` name filter by substring but enumerates
+    the SEPARATE ``Entrypoint.meta`` inference-pathway axis (WI-rukam), not
+    ``Edge.evidence_type``. Same shape as the ``KIND``-filter exclusions
+    for ``PROTOCOL_KINDS`` / ``BRIDGE_KINDS`` — a name collision across
+    axes, resolved by name-exclusion rather than renaming the constant.
     """
     from hypergumbo_core.axis_drift import find_drift
     return find_drift(
         repo_root,
         name_filter="EVIDENCE_TYPE",
         registry_names=all_evidence_type_names(),
+        excluded_target_names=("ENTRYPOINT_EVIDENCE_TYPES",),
     )
