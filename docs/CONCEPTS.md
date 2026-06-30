@@ -327,7 +327,7 @@ Total concepts: **319** (live: 43, inert: 276, ghost: 0).
 | `websocket_connection` | inert | rails | _(none)_ |
 | `websocket_emitter` | inert | express | _(none)_ |
 | `websocket_gateway` | live | nestjs | `entrypoints.py` |
-| `websocket_handler` | live | aiohttp, akka-http, cowboy, express, falcon, fastify, feathers, flask, graphql, ktor, laravel, litestar, micronaut, nestjs, phoenix, play, quart, rails, sanic, tornado, vapor | `entrypoints.py` |
+| `websocket_handler` | live | aiohttp, akka-http, cowboy, express, falcon, fastify, feathers, flask, graphql, ktor, laravel, litestar, micronaut, nestjs, phoenix, play, quart, rails, sanic, starlette, tornado, vapor | `entrypoints.py` |
 | `websocket_hub` | inert | aspnet | _(none)_ |
 | `websocket_middleware` | inert | javalin | _(none)_ |
 | `websocket_namespace` | inert | express | _(none)_ |

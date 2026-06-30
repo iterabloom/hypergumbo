@@ -22,8 +22,11 @@ patterns:
       path: "metadata.route_path"
       method: "metadata.methods"
 
-  # WebSocketRoute("/ws", handler) → method "WS" set synthetically by the extractor
-  - concept: route
+  # WebSocketRoute("/ws", handler) → method "WS" set synthetically by the
+  # extractor; the handler concept is websocket_handler (WI-kuvig/WI-lomoz)
+  # so it classifies as a WebSocket entrypoint, not an HTTP route. The
+  # synthetic "WS" method is retained on the minted route symbol's meta.
+  - concept: websocket_handler
     usage:
       kind: "^call$"
       name: "^WebSocketRoute$"

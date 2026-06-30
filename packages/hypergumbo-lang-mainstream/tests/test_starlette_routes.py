@@ -262,3 +262,60 @@ def test_starlette_yaml_attaches_concept_route_to_handler(tmp_path: Path) -> Non
     concepts = handler.get("meta", {}).get("concepts", [])
     concept_names = {c["concept"] for c in concepts}
     assert "route" in concept_names
+
+
+def _ws_app(tmp_path: Path) -> dict:
+    """Run a WebSocketRoute fixture through run_behavior_map; return the map.
+
+    A pyproject.toml manifest is required so framework detection loads
+    starlette.yaml (mirrors test_starlette_yaml_attaches_concept_route_to_handler).
+    """
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\ndependencies = ["starlette"]\n'
+    )
+    (tmp_path / "app.py").write_text(
+        "from starlette.routing import WebSocketRoute\n"
+        "\n"
+        "async def ws_handler(websocket):\n"
+        "    pass\n"
+        "\n"
+        "routes = [WebSocketRoute('/ws', ws_handler)]\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    return json.loads(out_path.read_text())
+
+
+def test_starlette_websocket_handler_gets_websocket_concept(tmp_path: Path) -> None:
+    """WI-lomoz: the WebSocketRoute handler is enriched with concept
+    'websocket_handler' (not 'route'), aligning the concept axis with the
+    websocket_handler entrypoint kind."""
+    data = _ws_app(tmp_path)
+    handler = next(
+        n for n in data["nodes"] if n["kind"] == "function" and n["name"] == "ws_handler"
+    )
+    concept_names = {c["concept"] for c in handler.get("meta", {}).get("concepts", [])}
+    assert "websocket_handler" in concept_names
+    assert "route" not in concept_names
+
+
+def test_starlette_websocket_route_is_websocket_handler_entrypoint(tmp_path: Path) -> None:
+    """WI-kuvig: a Starlette WebSocketRoute classifies as a websocket_handler
+    entrypoint, never an http_route with an 'HTTP WS' label. The synthetic
+    'WS' method is RETAINED on the route node."""
+    data = _ws_app(tmp_path)
+
+    kinds = {e["kind"] for e in data["entrypoints"]}
+    assert "websocket_handler" in kinds
+    # No HTTP route entrypoint mislabeled as an HTTP "WS" method.
+    assert not any(
+        e["kind"] == "http_route" and "WS" in e["label"] for e in data["entrypoints"]
+    )
+
+    # RETAIN: the minted route node still carries the synthetic WS method.
+    ws_route_nodes = [
+        n for n in data["nodes"]
+        if (n.get("meta") or {}).get("route_path") == "/ws"
+        and (n.get("meta") or {}).get("http_method") == "WS"
+    ]
+    assert ws_route_nodes

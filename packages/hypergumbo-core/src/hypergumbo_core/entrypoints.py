@@ -287,6 +287,23 @@ def _pick_best_bootstrap_framework(concepts: list[dict]) -> str:
     return bootstrap_fws[0]
 
 
+def _ws_route_label(path: str, framework: str = "") -> str:
+    """Label for a WebSocket entrypoint (WI-kuvig/WI-lomoz).
+
+    Path-bearing WS routes (e.g. Starlette ``WebSocketRoute("/ws", ...)``) get
+    a ``"WS <path>"`` label — parallel to the HTTP ``"HTTP <method> <path>"``
+    shape — so the handler-concept entrypoint and the minted route-symbol
+    entrypoint for the same route collapse to one in the label-dedup pass.
+    Pathless concept handlers (NestJS gateways, etc.) keep the framework label
+    and are not collapsed.
+    """
+    if path:
+        return f"WS {path}"
+    if framework:
+        return f"{framework.title()} WebSocket handler"
+    return "WebSocket handler"
+
+
 def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     """Detect entrypoints from semantic concept metadata.
 
@@ -353,10 +370,11 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             concept_type = concept.get("concept")
             framework = concept.get("framework", "")
 
-            # Route concept -> HTTP_ROUTE
+            # Route concept -> HTTP_ROUTE (or WEBSOCKET_HANDLER when the
+            # route's method is the synthetic "WS" marker — WI-kuvig: a
+            # WebSocket route is not an HTTP route; meta.http_method="WS" is
+            # retained on the symbol, only the entrypoint kind changes).
             if concept_type == "route":
-                if EntrypointKind.HTTP_ROUTE in added_kinds:
-                    continue
                 # WI-kilal: when the concept dict doesn't carry method/path,
                 # fall back to the Symbol's meta-level fields. Rails routes
                 # are emitted by the ruby analyzer with framework_role="route"
@@ -371,6 +389,26 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 # -> 1 HTTP_ROUTE entrypoint).
                 method = concept.get("method", "") or sym.meta.get("http_method", "")
                 path = concept.get("path", "") or sym.meta.get("route_path", "")
+                # Suppress false-positive route classification on frontend
+                # UI code (WI-ronik).  React/Vue/Angular component event
+                # handlers syntactically resemble Express route handlers
+                # but are not server-side routes.
+                confidence = 0.95
+                if _is_frontend_file(sym):
+                    confidence = 0.05  # Below MIN_ENTRYPOINT_CONFIDENCE
+                if method == "WS":
+                    if EntrypointKind.WEBSOCKET_HANDLER in added_kinds:
+                        continue
+                    entrypoints.append(Entrypoint(
+                        symbol_id=sym.id,
+                        kind=EntrypointKind.WEBSOCKET_HANDLER,
+                        confidence=confidence,
+                        label=_ws_route_label(path, concept.get("framework", "")),
+                    ))
+                    added_kinds.add(EntrypointKind.WEBSOCKET_HANDLER)
+                    continue
+                if EntrypointKind.HTTP_ROUTE in added_kinds:
+                    continue
                 if method and path:
                     label = f"HTTP {method.upper()} {path}"
                 elif method:
@@ -379,13 +417,6 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                     label = f"HTTP route {path}"
                 else:
                     label = "HTTP route"
-                # Suppress false-positive route classification on frontend
-                # UI code (WI-ronik).  React/Vue/Angular component event
-                # handlers syntactically resemble Express route handlers
-                # but are not server-side routes.
-                confidence = 0.95
-                if _is_frontend_file(sym):
-                    confidence = 0.05  # Below MIN_ENTRYPOINT_CONFIDENCE
                 entrypoints.append(Entrypoint(
                     symbol_id=sym.id,
                     kind=EntrypointKind.HTTP_ROUTE,
@@ -446,15 +477,16 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
             elif concept_type in ("websocket_handler", "websocket_gateway"):
                 if EntrypointKind.WEBSOCKET_HANDLER in added_kinds:
                     continue
-                if framework:
-                    label = f"{framework.title()} WebSocket handler"
-                else:
-                    label = "WebSocket handler"
+                # Path-bearing WS routes (Starlette WebSocketRoute) get a
+                # "WS <path>" label so they dedup with the minted route
+                # symbol; pathless handlers (NestJS gateways) keep the
+                # framework label (WI-kuvig/WI-lomoz).
+                ws_path = concept.get("path", "") or sym.meta.get("route_path", "")
                 entrypoints.append(Entrypoint(
                     symbol_id=sym.id,
                     kind=EntrypointKind.WEBSOCKET_HANDLER,
                     confidence=0.95,
-                    label=label,
+                    label=_ws_route_label(ws_path, framework),
                 ))
                 added_kinds.add(EntrypointKind.WEBSOCKET_HANDLER)
 
@@ -1007,8 +1039,11 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     # rather than going through YAML concept enrichment.  These symbols are
     # found by the routes CLI command (which checks both concepts and kind)
     # but were missed by entrypoint detection until now.
-    # Track existing route entrypoint symbol_ids to avoid duplicates.
-    route_ep_ids = {ep.symbol_id for ep in entrypoints if ep.kind == EntrypointKind.HTTP_ROUTE}
+    # Track existing route/websocket entrypoint symbol_ids to avoid duplicates.
+    route_ep_ids = {
+        ep.symbol_id for ep in entrypoints
+        if ep.kind in (EntrypointKind.HTTP_ROUTE, EntrypointKind.WEBSOCKET_HANDLER)
+    }
 
     for sym in symbols:
         if (sym.meta or {}).get("framework_role") != "route":
@@ -1018,6 +1053,17 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
         meta = sym.meta or {}
         method = meta.get("http_method", "")
         path = meta.get("route_path", "")
+        # WI-kuvig: a route whose method is the synthetic "WS" marker is a
+        # WebSocket handler, not an HTTP route. meta.http_method="WS" stays on
+        # the symbol (RETAIN); only the entrypoint kind reflects the protocol.
+        if method == "WS":
+            entrypoints.append(Entrypoint(
+                symbol_id=sym.id,
+                kind=EntrypointKind.WEBSOCKET_HANDLER,
+                confidence=0.90,  # Slightly lower than concept-enriched (0.95)
+                label=_ws_route_label(path, meta.get("framework", "")),
+            ))
+            continue
         if method and path:
             label = f"HTTP {method.upper()} {path}"
         elif method:
@@ -1282,6 +1328,12 @@ def detect_entrypoints(
     non_route_eps: list[Entrypoint] = []
     for ep in unique_entrypoints:
         if ep.kind in _ROUTE_KINDS and ep.label.startswith("HTTP "):
+            route_label_groups[ep.label].append(ep)
+        elif ep.kind == EntrypointKind.WEBSOCKET_HANDLER and ep.label.startswith("WS "):
+            # Path-bearing WS routes ("WS /ws") dedup like HTTP routes so the
+            # handler concept and the minted route symbol collapse to one;
+            # pathless WS handlers ("<Framework> WebSocket handler") fall
+            # through and stay distinct (WI-kuvig/WI-lomoz).
             route_label_groups[ep.label].append(ep)
         else:
             non_route_eps.append(ep)

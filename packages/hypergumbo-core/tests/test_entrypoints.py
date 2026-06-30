@@ -3084,6 +3084,144 @@ class TestRouteKindEntrypointDetection:
         assert sym2.id in ep_ids
 
 
+class TestWebSocketRouteClassification:
+    """WI-kuvig/WI-lomoz: a route whose method is the synthetic "WS" marker
+    classifies as EntrypointKind.WEBSOCKET_HANDLER, not HTTP_ROUTE+method=WS.
+
+    The WS marker (``meta.http_method == "WS"`` / concept ``method == "WS"``)
+    is RETAINED on the symbol; only the entrypoint *kind* reflects the
+    protocol. Path-bearing WS routes get a ``"WS <path>"`` label so the
+    handler-concept entrypoint and the minted route-symbol entrypoint dedup
+    to one (mirroring HTTP routes), while pathless concept WebSocket handlers
+    (NestJS gateways, etc.) keep their ``"<Framework> WebSocket handler"``
+    label and are not collapsed.
+    """
+
+    def test_route_symbol_with_ws_method_is_websocket_handler(self) -> None:
+        """Pass 2: a direct route symbol with http_method=='WS' → WEBSOCKET_HANDLER."""
+        sym = make_symbol(
+            "starlette:ws_handler",
+            path="src/app.py",
+            meta={
+                "framework_role": "route",
+                "http_method": "WS",
+                "route_path": "/ws",
+                "route_class": "WebSocketRoute",
+                "framework": "starlette",
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        http_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(ws_eps) == 1
+        assert len(http_eps) == 0
+        assert "/ws" in ws_eps[0].label
+        assert not ws_eps[0].label.startswith("HTTP ")
+
+    def test_route_symbol_with_ws_method_retains_http_method_on_node(self) -> None:
+        """RETAIN: classification does not mutate the symbol's meta.http_method."""
+        sym = make_symbol(
+            "starlette:ws_handler",
+            path="src/app.py",
+            meta={"framework_role": "route", "http_method": "WS", "route_path": "/ws"},
+        )
+        detect_entrypoints([sym], [])
+        assert sym.meta["http_method"] == "WS"
+
+    def test_route_concept_with_ws_method_is_websocket_handler(self) -> None:
+        """Pass 1: a concept 'route' carrying method 'WS' → WEBSOCKET_HANDLER,
+        never an 'HTTP WS …' label (defense-in-depth structural guard)."""
+        sym = make_symbol(
+            "ws_handler",
+            path="src/app.py",
+            meta={"concepts": [{"concept": "route", "method": "WS", "path": "/ws"}]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+        assert all(not e.label.startswith("HTTP ") for e in entrypoints)
+
+    def test_symbol_with_two_ws_route_concepts_dedups_per_symbol(self) -> None:
+        """A symbol carrying two WS route concepts yields one WEBSOCKET_HANDLER
+        (per-symbol added_kinds dedup, mirroring the HTTP_ROUTE guard)."""
+        sym = make_symbol(
+            "ws_handler",
+            path="src/app.py",
+            meta={"concepts": [
+                {"concept": "route", "method": "WS", "path": "/ws"},
+                {"concept": "route", "method": "WS", "path": "/ws2"},
+            ]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+
+    def test_websocket_handler_concept_with_path_includes_path_in_label(self) -> None:
+        """Pass 1: a websocket_handler concept that carries a path labels as
+        'WS <path>' so it dedups with the minted route symbol."""
+        sym = make_symbol(
+            "ws_handler",
+            path="src/app.py",
+            meta={"concepts": [{"concept": "websocket_handler", "framework": "starlette", "path": "/ws"}]},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 1
+        assert ws_eps[0].label == "WS /ws"
+
+    def test_pathless_websocket_handler_keeps_framework_label(self) -> None:
+        """A pathless concept WebSocket handler (NestJS gateway) keeps the
+        framework label and is NOT relabeled/collapsed."""
+        a = make_symbol(
+            "GatewayA", path="src/a.ts",
+            meta={"concepts": [{"concept": "websocket_handler", "framework": "nestjs"}]},
+        )
+        b = make_symbol(
+            "GatewayB", path="src/b.ts",
+            meta={"concepts": [{"concept": "websocket_handler", "framework": "nestjs"}]},
+        )
+        entrypoints = detect_entrypoints([a, b], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(ws_eps) == 2  # distinct symbols, pathless → not deduped
+        assert all(e.label == "Nestjs WebSocket handler" for e in ws_eps)
+
+    def test_starlette_ws_handler_and_route_symbol_dedup_to_one(self) -> None:
+        """The handler concept entrypoint (Pass 1) and the minted route-symbol
+        entrypoint (Pass 2) for the same WS route collapse to ONE
+        WEBSOCKET_HANDLER (mirrors HTTP route dedup), zero HTTP_ROUTE."""
+        handler = make_symbol(
+            "ws_handler", path="src/app.py", start_line=1, end_line=2,
+            meta={"concepts": [{"concept": "websocket_handler", "framework": "starlette", "path": "/ws"}]},
+        )
+        route_sym = make_symbol(
+            "starlette:ws_handler", path="src/app.py", start_line=5, end_line=5,
+            meta={
+                "framework_role": "route", "http_method": "WS", "route_path": "/ws",
+                "route_class": "WebSocketRoute", "framework": "starlette",
+                "handler_ref": handler.id,
+            },
+        )
+        entrypoints = detect_entrypoints([handler, route_sym], [])
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        http_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(ws_eps) == 1
+        assert len(http_eps) == 0
+        assert ws_eps[0].label == "WS /ws"
+
+    def test_http_route_with_real_method_still_http_route(self) -> None:
+        """Regression guard: a non-WS route is unaffected."""
+        sym = make_symbol(
+            "starlette:health", path="src/app.py",
+            meta={"framework_role": "route", "http_method": "GET", "route_path": "/health"},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+        http_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        ws_eps = [e for e in entrypoints if e.kind == EntrypointKind.WEBSOCKET_HANDLER]
+        assert len(http_eps) == 1
+        assert len(ws_eps) == 0
+        assert http_eps[0].label == "HTTP GET /health"
+
+
 class TestLanguageDominanceRanking:
     """Tests for language dominance in entrypoint ranking.
 
