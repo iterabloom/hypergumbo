@@ -84,3 +84,18 @@
   clock: 8  # 0949
   nonce: '0949'  # 0949
   message: "RELATED_BUT_DISTINCT to WI-kuvig: WS-route taxonomy split: lomoz=usage_contexts 'WebSocketRoute' vs 'Route' (entrypoints half closed); kuvig=entrypoints kind http_route vs websocket_handler; distinct surfaces. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 0949
+- op: update  # 764c
+  at: '2026-06-30T12:31:29Z'  # 764c
+  by: agent  # 764c
+  actor: jgstern_agent  # 764c
+  clock: 9  # 764c
+  nonce: 764c  # 764c
+  set:  # 764c
+    status: done  # 764c
+- op: discuss  # 984b
+  at: '2026-06-30T12:31:29Z'  # 984b
+  by: agent  # 984b
+  actor: jgstern_agent  # 984b
+  clock: 10  # 984b
+  nonce: 984b  # 984b
+  message: "Done. Merged 2b96ba4e3a (PR #342). The rescoped concern (entrypoints said 'http_route' while usage_contexts said 'WebSocketRoute' for the same WS construct — two taxonomies disagreeing) is RESOLVED: WebSocketRoute now enriches the handler with concept 'websocket_handler' (starlette.yaml) and classifies as entrypoint kind 'websocket_handler', so entrypoints (websocket_handler) and usage_contexts (context_name='WebSocketRoute') now CONSISTENTLY indicate WebSocket rather than disagreeing (http_route vs WebSocketRoute). context_name is intentionally LEFT as the verbatim source class: ir.py declares it a free-text display axis ('consumers display/lookup, never branch on the value'), so rewriting it would falsify the source and destabilize uc.id; the categorical alignment lives on the entrypoint-kind axis, not the free-text display string. Behavioral evidence: test_starlette_websocket_handler_gets_websocket_concept (handler concept=websocket_handler, not route) + the entrypoint-kind test. Cross-ref WI-kuvig (entrypoints half, same PR)."  # 984b

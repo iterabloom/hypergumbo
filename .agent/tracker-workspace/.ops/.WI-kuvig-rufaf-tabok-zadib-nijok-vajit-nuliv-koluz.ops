@@ -54,3 +54,18 @@
   clock: 5  # dd4b
   nonce: dd4b  # dd4b
   message: "RELATED_BUT_DISTINCT to WI-zadot: WS/framework-endpoint kind mislabeling: kuvig=entrypoint.kind=http_route for WS; zadot=synthetic linker nodes kind=function language=python; distinct surfaces. Distinct fix; cross-link not fold. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # dd4b
+- op: update  # 9327
+  at: '2026-06-30T12:31:28Z'  # 9327
+  by: agent  # 9327
+  actor: jgstern_agent  # 9327
+  clock: 6  # 9327
+  nonce: '9327'  # 9327
+  set:  # 9327
+    status: done  # 9327
+- op: discuss  # a43e
+  at: '2026-06-30T12:31:28Z'  # a43e
+  by: agent  # a43e
+  actor: jgstern_agent  # a43e
+  clock: 7  # a43e
+  nonce: a43e  # a43e
+  message: "Done. Merged 2b96ba4e3a (PR #342, selfh/dev FF). Behavioral repro on merged code: a Starlette WebSocketRoute('/ws', handler) now yields entrypoint kind='websocket_handler' (label 'WS /ws') — was kind='http_route' label 'HTTP WS /ws'; zero http_route entrypoints carry a WS method. Exactly ONE entrypoint (handler-concept + minted route-symbol dedup to one). Root: starlette.yaml WebSocketRoute concept route->websocket_handler + _detect_from_concepts classifies any route whose method is the synthetic 'WS' marker as WEBSOCKET_HANDLER (both the concept-route pass and the direct-route-symbol pass), keeping framework_role='route' so route->handler dispatches_to still lands. meta.http_method='WS' RETAINED on the node. Production-path tests: test_starlette_routes.py::test_starlette_websocket_route_is_websocket_handler_entrypoint (run_behavior_map asserts kind + RETAIN) + TestWebSocketRouteClassification (9 unit tests). Premise was PARTIALLY STALE: every framework except Starlette already emitted concept websocket_handler; Starlette was the lone holdout (the WI body's 'route-handler-linker uses http_route for all routes' was misattributed — the catch-all lived in entrypoints._detect_from_concepts)."  # a43e
